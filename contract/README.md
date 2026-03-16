@@ -4,6 +4,7 @@ The plane ↔ operator wire contract, and the single source of truth for it.
 
 | File | What |
 |---|---|
+| [`API.md`](API.md) | The HTTP API `admin` and `hgr` talk to |
 | [`PROTOCOL.md`](PROTOCOL.md) | Connection lifecycle, envelope, correlation, resume, liveness, backpressure |
 | [`MESSAGES.md`](MESSAGES.md) | Every message type and its payload schema |
 | [`fixtures/`](fixtures/) | One canonical JSON document per message type |
