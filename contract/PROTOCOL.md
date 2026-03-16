@@ -17,7 +17,7 @@ operator                                            hub
    │                                                 │
    ├─ WSS connect (Authorization: Bearer <token>) ───►
    │                                                 │
-   ├─ hello { cluster_id, session_id, resume_from, lossy } ►
+   ├─ hello { cluster_id, agent_version, session_id, resume_from, lossy } ►
    │                                                 │
    ◄─ welcome { session_id, ack_seq, full_resync } ──┤
    │                                                 │
@@ -94,7 +94,13 @@ Each direction numbers its own stream from 1 and continues across reconnects wit
 session. Both sides hold a replay buffer of sent frames.
 
 **Not every frame is sequenced.** `hello`, `welcome`, `ping`, `pong`, and `ack` carry no `seq` and
-never enter a replay buffer. A heartbeat that consumed sequence numbers would widen the replay
+never enter a replay buffer. Everything else is sequenced, **including `stream.end`** — a prune
+decision depends on that frame, so it must not be able to arrive out of order or go missing
+quietly.
+
+`ack` exists for the case where a side must release its peer's replay buffer but has nothing else
+to send. Under one-way load the heartbeat would otherwise be the only carrier, and holding a
+buffer for up to a full ping interval is a needless amount of memory to pin. A heartbeat that consumed sequence numbers would widen the replay
 window in proportion to idle time, which is the opposite of what a heartbeat is for.
 
 **Acknowledgement is continuous, not per-session.** Every frame may carry `ack` — the highest

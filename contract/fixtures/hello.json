@@ -6,6 +6,7 @@
   "payload": {
     "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
     "agent_version": "0.4.2",
+    "lossy": false,
     "resume_from": 4390,
     "session_id": "01J9X2E5G7QK8V3B0YHN4TZSES"
   }

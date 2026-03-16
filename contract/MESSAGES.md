@@ -24,12 +24,12 @@ bandwidth we do not care about at this scale.
 
 | Type | Direction | Payload |
 |---|---|---|
-| `hello` | op → hub | `cluster_id`, `agent_version`, `resume_from` |
+| `hello` | op → hub | `cluster_id`, `agent_version`, `session_id`, `resume_from`, `lossy` |
 | `welcome` | hub → op | `session_id`, `ack_seq`, `full_resync` |
 | `ping` / `pong` | either | empty |
 | `error` | either | `code`, `message`, `retryable` |
 | `ack` | either | empty. Carries acknowledgement in the envelope's `ack` field, for when there is nothing else to say. |
-| `stream.end` | either | `count`, `complete` |
+| `stream.end` | either | `count`, `complete`. **Sequenced**, unlike the other session frames — a prune decision depends on it, so it must not be able to arrive out of order or be lost silently. |
 
 ## Supply — operator → hub
 
@@ -81,6 +81,10 @@ registry exists to prevent.
 | Type | Direction | Payload |
 |---|---|---|
 | `resync.begin` | either | `scope` — `supply | demand | all` |
+
+`reply_to` is the sole correlation between a `resync.begin` and its terminating `stream.end`. A
+receiver handling concurrent resyncs of different scopes matches them on that and nothing else,
+which is why `stream.end` carries no `scope` of its own.
 
 A resync opens with `resync.begin` and closes with the ordinary `stream.end`; there is no
 `resync.end`. Two terminators with identical payloads would be two ways to say one thing, and a

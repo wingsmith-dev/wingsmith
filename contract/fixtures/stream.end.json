@@ -7,6 +7,7 @@
   "ack": 8801,
   "reply_to": "01J9X2E5G7QK8V3B0YHN4TZC71",
   "payload": {
-    "count": 128
+    "count": 128,
+    "complete": true
   }
 }
