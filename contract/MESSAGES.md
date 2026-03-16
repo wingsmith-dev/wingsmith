@@ -28,13 +28,14 @@ bandwidth we do not care about at this scale.
 | `welcome` | hub → op | `session_id`, `ack_seq`, `full_resync` |
 | `ping` / `pong` | either | empty |
 | `error` | either | `code`, `message`, `retryable` |
-| `stream.end` | either | `count` |
+| `ack` | either | empty. Carries acknowledgement in the envelope's `ack` field, for when there is nothing else to say. |
+| `stream.end` | either | `count`, `complete` |
 
 ## Supply — operator → hub
 
 | Type | Payload |
 |---|---|
-| `node.observed` | identity, membership, conditions, kubelet and driver versions, cordon state |
+| `node.observed` | identity, membership, conditions, cordon state, kernel / driver / container-runtime / agent versions |
 | `node.event` | joined, left, cordoned, degraded |
 | `device.observed` | per-accelerator: uuid, model, memory, health, ECC and throttle state, MIG profile, current allocation |
 | `device.event` | degraded, recovered, reset, fell off the bus |
@@ -79,11 +80,16 @@ registry exists to prevent.
 
 | Type | Direction | Payload |
 |---|---|---|
-| `resync.begin` | either | `scope` |
-| `resync.end` | either | `count` |
+| `resync.begin` | either | `scope` — `supply | demand | all` |
+
+A resync opens with `resync.begin` and closes with the ordinary `stream.end`; there is no
+`resync.end`. Two terminators with identical payloads would be two ways to say one thing, and a
+receiver that has to handle both will eventually handle only one.
 
 Everything between is ordinary `.desired` / `.observed` frames sharing one `reply_to`. There is no
-special resync encoding — a snapshot is just the whole set, sent at once.
+special resync encoding — a snapshot is just the whole set, sent at once. **`stream.end` carries
+`complete`**, and a snapshot that does not end with `complete: true` must not be pruned against:
+the receiver keeps what it has rather than deleting against a partial view.
 
 ---
 

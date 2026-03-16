@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "type": "allocation.observed",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC7A",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8811,
+  "ack": 4420,
+  "payload": {
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "replica_id": "rep_01J9X2HHHHHHHHHHHHHHHHHHHH",
+    "deployment_id": "dep_01J9X2GGGGGGGGGGGGGGGGGGGG",
+    "project_id": "prj_01J9X2JJJJJJJJJJJJJJJJJJJJ",
+    "node_id": "nod_01J9X2BBBBBBBBBBBBBBBBBBBB",
+    "device_ids": [
+      "dev_01J9X2CCCCCCCCCCCCCCCCCCCC",
+      "dev_01J9X2CCCCCCCCCCCCCCCCCCCD"
+    ],
+    "exclusive": true,
+    "granted_at": "2026-08-19T13:41:05.220Z",
+    "observed_at": "2026-08-19T14:02:11.400Z"
+  }
+}

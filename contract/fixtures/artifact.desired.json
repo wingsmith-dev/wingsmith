@@ -1,0 +1,32 @@
+{
+  "v": 1,
+  "type": "artifact.desired",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC74",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 4418,
+  "ack": 8807,
+  "payload": {
+    "artifact_id": "art_01J9X2EEEEEEEEEEEEEEEEEEEE",
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "kind": "weights",
+    "digest": "sha256:9f2c1b7a4d3e5068a1b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f801",
+    "format": "safetensors",
+    "size_bytes": 141733920768,
+    "licence": "llama3.1",
+    "sources": [
+      {
+        "kind": "s3",
+        "uri": "s3://hangar-artifacts/eu-west-1/9f2c1b7a/model.safetensors",
+        "priority": 1,
+        "credential_ref": "artifact-store-eu-west-1"
+      },
+      {
+        "kind": "hf",
+        "uri": "hf://meta-llama/Llama-3.1-70B-Instruct",
+        "priority": 2,
+        "credential_ref": null
+      }
+    ],
+    "updated_at": "2026-08-19T11:04:19.000Z"
+  }
+}

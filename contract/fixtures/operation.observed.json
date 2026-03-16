@@ -1,0 +1,27 @@
+{
+  "v": 1,
+  "type": "operation.observed",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC7E",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8814,
+  "ack": 4421,
+  "payload": {
+    "operation_id": "opr_01J9X2KKKKKKKKKKKKKKKKKKKK",
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "phase": "failed",
+    "progress": 0.8,
+    "message": "drained 4 of 5 replicas before the deadline elapsed",
+    "result": {
+      "evicted_replicas": "4",
+      "remaining_replicas": "1"
+    },
+    "failure": {
+      "code": "deadline",
+      "message": "replica rep_01J9X2HHHHHHHHHHHHHHHHHHHH did not finish in-flight requests in time",
+      "retryable": true
+    },
+    "started_at": "2026-08-19T14:02:01.100Z",
+    "completed_at": "2026-08-19T15:02:00.000Z",
+    "observed_at": "2026-08-19T14:02:11.400Z"
+  }
+}

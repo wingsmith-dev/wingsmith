@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "type": "deployment.desired",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC72",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 4416,
+  "ack": 8807,
+  "payload": {
+    "deployment_id": "dep_01J9X2GGGGGGGGGGGGGGGGGGGG",
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "project_id": "prj_01J9X2JJJJJJJJJJJJJJJJJJJJ",
+    "recipe_id": "rec_01J9X2FFFFFFFFFFFFFFFFFFFF",
+    "recipe_revision": 7,
+    "lifecycle": "service",
+    "priority_class": "production",
+    "min_replicas": 2,
+    "max_replicas": 8,
+    "placement": {
+      "device_class": "h100-80gb-sxm",
+      "devices_per_replica": 2,
+      "min_device_memory_mb": 81559,
+      "topology": "single_domain",
+      "allowed_pools": [
+        "h100-sxm-8x"
+      ],
+      "node_selector": {
+        "region": "eu-west-1"
+      }
+    },
+    "artifact_ids": [
+      "art_01J9X2EEEEEEEEEEEEEEEEEEEE"
+    ],
+    "generation": 14,
+    "updated_at": "2026-08-19T13:58:02.000Z"
+  }
+}

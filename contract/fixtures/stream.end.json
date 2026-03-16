@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "type": "stream.end",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC6S",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 4414,
+  "ack": 8801,
+  "reply_to": "01J9X2E5G7QK8V3B0YHN4TZC71",
+  "payload": {
+    "count": 128
+  }
+}

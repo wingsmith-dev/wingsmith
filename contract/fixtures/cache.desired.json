@@ -1,0 +1,26 @@
+{
+  "v": 1,
+  "type": "cache.desired",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC76",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 4420,
+  "ack": 8807,
+  "payload": {
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "entries": [
+      {
+        "artifact_id": "art_01J9X2EEEEEEEEEEEEEEEEEEEE",
+        "priority": 1,
+        "pin": true
+      },
+      {
+        "artifact_id": "art_01J9X2EEEEEEEEEEEEEEEEEEEF",
+        "priority": 5,
+        "pin": false
+      }
+    ],
+    "eviction_policy": "lru",
+    "capacity_bytes": 8796093022208,
+    "updated_at": "2026-08-19T09:31:00.000Z"
+  }
+}

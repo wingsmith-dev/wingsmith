@@ -1,0 +1,11 @@
+{
+  "v": 1,
+  "type": "welcome",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC6N",
+  "ts": "2026-08-19T14:02:10.114Z",
+  "payload": {
+    "session_id": "01J9X2E5G7QK8V3B0YHN4TZSES",
+    "ack_seq": 4412,
+    "full_resync": false
+  }
+}

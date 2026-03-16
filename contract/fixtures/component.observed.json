@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "type": "component.observed",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC7C",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8813,
+  "ack": 4420,
+  "payload": {
+    "component_id": "cmp_01J9X2MMMMMMMMMMMMMMMMMMMM",
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "name": "serving-runtime",
+    "desired_version": "0.9.3",
+    "running_version": "0.9.2",
+    "phase": "rolling",
+    "ready_instances": 5,
+    "total_instances": 8,
+    "last_error": {
+      "code": "image_pull_failed",
+      "message": "ghcr.io/hangar-dev/vllm:0.9.3 unauthorized on nod_01J9X2BBBBBBBBBBBBBBBBBBBC",
+      "at": "2026-08-19T13:57:31.660Z"
+    },
+    "observed_at": "2026-08-19T14:02:11.400Z"
+  }
+}

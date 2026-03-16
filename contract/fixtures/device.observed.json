@@ -1,0 +1,40 @@
+{
+  "v": 1,
+  "type": "device.observed",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC6Y",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8804,
+  "ack": 4412,
+  "payload": {
+    "device_id": "dev_01J9X2CCCCCCCCCCCCCCCCCCCC",
+    "node_id": "nod_01J9X2BBBBBBBBBBBBBBBBBBBB",
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "uuid": "GPU-4c1f9a2e-7b30-4d55-9f21-0a8e6c3b1d47",
+    "index": 0,
+    "model": "NVIDIA H100 80GB HBM3",
+    "device_class": "h100-80gb-sxm",
+    "memory_total_mb": 81559,
+    "memory_used_mb": 74210,
+    "health": "healthy",
+    "ecc": {
+      "mode_enabled": true,
+      "volatile_corrected": 12,
+      "volatile_uncorrected": 0,
+      "aggregate_uncorrected": 0
+    },
+    "throttled": false,
+    "throttle_reasons": [],
+    "mig": {
+      "enabled": true,
+      "profile": "3g.40gb",
+      "instance_id": "1"
+    },
+    "topology_domain_id": "tpd_01J9X2DDDDDDDDDDDDDDDDDDDD",
+    "allocation": {
+      "replica_id": "rep_01J9X2HHHHHHHHHHHHHHHHHHHH",
+      "deployment_id": "dep_01J9X2GGGGGGGGGGGGGGGGGGGG",
+      "project_id": "prj_01J9X2JJJJJJJJJJJJJJJJJJJJ"
+    },
+    "observed_at": "2026-08-19T14:02:11.400Z"
+  }
+}

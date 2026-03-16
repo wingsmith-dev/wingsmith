@@ -1,0 +1,22 @@
+{
+  "v": 1,
+  "type": "cache.observed",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC7B",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8812,
+  "ack": 4420,
+  "payload": {
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "artifact_id": "art_01J9X2EEEEEEEEEEEEEEEEEEEE",
+    "state": "resident",
+    "resident": true,
+    "bytes_resident": 141733920768,
+    "node_ids": [
+      "nod_01J9X2BBBBBBBBBBBBBBBBBBBB",
+      "nod_01J9X2BBBBBBBBBBBBBBBBBBBC"
+    ],
+    "eviction_pressure": 0.72,
+    "last_accessed_at": "2026-08-19T14:01:59.300Z",
+    "observed_at": "2026-08-19T14:02:11.400Z"
+  }
+}

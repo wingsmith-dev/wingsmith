@@ -1,0 +1,12 @@
+{
+  "v": 1,
+  "type": "hello",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC6M",
+  "ts": "2026-08-19T14:02:10.001Z",
+  "payload": {
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "agent_version": "0.4.2",
+    "resume_from": 4390,
+    "session_id": "01J9X2E5G7QK8V3B0YHN4TZSES"
+  }
+}

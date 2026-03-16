@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "type": "replica.event",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC79",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8810,
+  "ack": 4420,
+  "payload": {
+    "replica_id": "rep_01J9X2HHHHHHHHHHHHHHHHHHHH",
+    "deployment_id": "dep_01J9X2GGGGGGGGGGGGGGGGGGGG",
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "event": "oom",
+    "reason": "kv_cache_exhausted",
+    "message": "engine exceeded device memory at 32k context with 2-way tensor parallelism",
+    "occurred_at": "2026-08-19T14:00:12.008Z"
+  }
+}

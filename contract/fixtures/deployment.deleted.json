@@ -1,0 +1,14 @@
+{
+  "v": 1,
+  "type": "deployment.deleted",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC73",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 4417,
+  "ack": 8807,
+  "payload": {
+    "deployment_id": "dep_01J9X2GGGGGGGGGGGGGGGGGGGG",
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "generation": 15,
+    "deleted_at": "2026-08-19T14:02:00.750Z"
+  }
+}

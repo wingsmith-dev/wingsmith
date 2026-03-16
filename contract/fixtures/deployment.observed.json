@@ -1,0 +1,24 @@
+{
+  "v": 1,
+  "type": "deployment.observed",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC77",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8808,
+  "ack": 4420,
+  "payload": {
+    "deployment_id": "dep_01J9X2GGGGGGGGGGGGGGGGGGGG",
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "generation": 14,
+    "phase": "degraded",
+    "desired_replicas": 4,
+    "ready_replicas": 3,
+    "updated_replicas": 4,
+    "unavailable_replicas": 1,
+    "last_error": {
+      "code": "insufficient_capacity",
+      "message": "no single nvlink domain with 2 free h100-80gb-sxm devices",
+      "at": "2026-08-19T14:01:44.010Z"
+    },
+    "observed_at": "2026-08-19T14:02:11.400Z"
+  }
+}

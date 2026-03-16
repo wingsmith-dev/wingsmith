@@ -1,0 +1,19 @@
+{
+  "v": 1,
+  "type": "topology.observed",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC70",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8806,
+  "ack": 4412,
+  "payload": {
+    "domain_id": "tpd_01J9X2DDDDDDDDDDDDDDDDDDDD",
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "kind": "nvlink",
+    "node_id": "nod_01J9X2BBBBBBBBBBBBBBBBBBBB",
+    "device_ids": [
+      "dev_01J9X2CCCCCCCCCCCCCCCCCCCC",
+      "dev_01J9X2CCCCCCCCCCCCCCCCCCCD"
+    ],
+    "observed_at": "2026-08-19T14:02:11.400Z"
+  }
+}

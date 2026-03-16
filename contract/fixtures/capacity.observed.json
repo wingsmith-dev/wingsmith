@@ -1,0 +1,29 @@
+{
+  "v": 1,
+  "type": "capacity.observed",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC71",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8807,
+  "ack": 4412,
+  "payload": {
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "pool": "h100-sxm-8x",
+    "classes": [
+      {
+        "device_class": "h100-80gb-sxm",
+        "total": 64,
+        "free": 12,
+        "allocated": 50,
+        "unhealthy": 2
+      },
+      {
+        "device_class": "a100-80gb-sxm",
+        "total": 16,
+        "free": 16,
+        "allocated": 0,
+        "unhealthy": 0
+      }
+    ],
+    "observed_at": "2026-08-19T14:02:11.400Z"
+  }
+}

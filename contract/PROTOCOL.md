@@ -17,7 +17,7 @@ operator                                            hub
    │                                                 │
    ├─ WSS connect (Authorization: Bearer <token>) ───►
    │                                                 │
-   ├─ hello { cluster_id, agent_version, resume_from } ►
+   ├─ hello { cluster_id, session_id, resume_from, lossy } ►
    │                                                 │
    ◄─ welcome { session_id, ack_seq, full_resync } ──┤
    │                                                 │
@@ -112,8 +112,10 @@ sender's replay buffer are re-sent immediately after `welcome`.
 streams its complete observed state back, and both sides then discard anything absent from that
 snapshot. Resync is correct but expensive, and a control plane that resyncs on every blip is how a
 control plane takes itself down — so the buffer is sized to cover a rolling restart, not a network
-hiccup. A sender whose replay buffer overflowed marks itself lossy and must request a fresh session
-rather than pretend it can resume.
+hiccup. A sender whose replay buffer overflowed sets `lossy: true` in `hello` and must be given a fresh
+session rather than be allowed to pretend it can resume. `session_id` in `hello` names which
+session is being resumed — `resume_from` alone cannot, since a sequence number means nothing
+without the session it counts within.
 
 Sequenced frames are processed strictly in order. A duplicate (`seq` below the expected) is
 dropped. A gap (`seq` above the expected) closes the connection rather than being accepted as a

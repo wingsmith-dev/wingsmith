@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "type": "operation.desired",
+  "id": "01J9X2E5G7QK8V3B0YHN4TZC7D",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 4421,
+  "ack": 8813,
+  "payload": {
+    "operation_id": "opr_01J9X2KKKKKKKKKKKKKKKKKKKK",
+    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "kind": "drain",
+    "target": {
+      "kind": "node",
+      "id": "nod_01J9X2BBBBBBBBBBBBBBBBBBBC"
+    },
+    "reason": "driver upgrade to 570.86.15",
+    "requested_by": "operator@example.com",
+    "deadline": "2026-08-19T15:02:00.000Z",
+    "parameters": {
+      "grace_period_seconds": "1800",
+      "force_after_deadline": "true"
+    },
+    "created_at": "2026-08-19T14:02:00.000Z"
+  }
+}
