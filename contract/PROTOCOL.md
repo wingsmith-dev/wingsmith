@@ -46,6 +46,7 @@ Every frame is a single JSON object. There are no bare payloads.
   "type": "device.observed",
   "id": "01J9X2E5G7QK8V3B0YHN4TZC6M",
   "seq": 4412,
+  "ack": 4390,
   "reply_to": null,
   "ts": "2026-08-19T14:02:11.482Z",
   "payload": {}
@@ -57,7 +58,8 @@ Every frame is a single JSON object. There are no bare payloads.
 | `v` | envelope version. Bump only for changes to the envelope itself, never for payloads. |
 | `type` | `<noun>.<verb>`, lowercase, dot-separated. The payload schema is a function of this and nothing else. |
 | `id` | ULID, unique per frame per direction. |
-| `seq` | monotonic per direction per session, starting at 1. See §4. |
+| `seq` | monotonic per direction per session, starting at 1, or absent on unsequenced frames. See §4. |
+| `ack` | highest **contiguous** `seq` the sender has durably processed from the peer. Piggybacked on any frame. See §4. |
 | `reply_to` | the `id` of the frame being answered, or null. See §3. |
 | `ts` | RFC 3339 with milliseconds, UTC, sender's clock. Diagnostic only — never used for ordering. |
 | `payload` | type-specific object. Never a scalar, never an array, so fields can be added without a version bump. |
@@ -88,22 +90,38 @@ There is exactly one generic failure frame:
 
 ## 4. Sequence numbers and resume
 
-Each direction maintains its own counter, starting at 1 for a new session and continuing across
-reconnects within a resumed session. Both sides keep a bounded replay buffer of sent frames.
+Each direction numbers its own stream from 1 and continues across reconnects within a resumed
+session. Both sides hold a replay buffer of sent frames.
 
-On reconnect the operator sends `hello` with `resume_from` set to the highest `seq` it has
-**processed** from the hub. The hub answers `welcome` with `ack_seq` — the highest seq it has
-processed from the operator — and either replays from `resume_from + 1`, or sets
-`full_resync: true` when the gap exceeds its buffer.
+**Not every frame is sequenced.** `hello`, `welcome`, `ping`, `pong`, and `ack` carry no `seq` and
+never enter a replay buffer. A heartbeat that consumed sequence numbers would widen the replay
+window in proportion to idle time, which is the opposite of what a heartbeat is for.
 
-`full_resync` means: the hub sends its complete desired state for that cluster as a stream, and
-the operator sends its complete observed state back. Both sides then discard anything not present
-in that snapshot. Resync is correct but expensive, and a control plane that resyncs everything on
-every blip is how a control plane takes itself down — so the buffer is sized to cover a rolling
-restart, not a network hiccup.
+**Acknowledgement is continuous, not per-session.** Every frame may carry `ack` — the highest
+*contiguous* seq the sender has durably processed. Receiving it releases everything at or below it
+from the peer's replay buffer. Contiguous is the operative word: a hole is never acknowledged past,
+so a frame whose handler failed is simply not acked and will be replayed. **Withholding the ack is
+how a receiver signals "I could not apply this"** — there is no negative acknowledgement.
 
-Frames are processed strictly in `seq` order. A gap is not tolerated: the receiver closes the
-connection and reconnects with resume, rather than skipping.
+On reconnect the operator sends `hello` with `resume_from` set to its highest contiguous processed
+seq. The hub answers `welcome` with its own `ack_seq`, and either resumes the session or returns a
+new `session_id` with `full_resync: true` when the gap exceeds its buffer. Unreleased frames in the
+sender's replay buffer are re-sent immediately after `welcome`.
+
+`full_resync` means: the hub streams its complete desired state for that cluster, the operator
+streams its complete observed state back, and both sides then discard anything absent from that
+snapshot. Resync is correct but expensive, and a control plane that resyncs on every blip is how a
+control plane takes itself down — so the buffer is sized to cover a rolling restart, not a network
+hiccup. A sender whose replay buffer overflowed marks itself lossy and must request a fresh session
+rather than pretend it can resume.
+
+Sequenced frames are processed strictly in order. A duplicate (`seq` below the expected) is
+dropped. A gap (`seq` above the expected) closes the connection rather than being accepted as a
+hole.
+
+**The resume cursor must be durable.** It lives beside the CRDs, not in memory. An operator that
+restarts during a partition and comes back with an in-memory cursor rewinds its own stream, which
+forfeits the property the whole architecture exists to provide.
 
 ## 5. Liveness
 
