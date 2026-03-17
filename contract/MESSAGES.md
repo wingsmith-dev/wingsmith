@@ -24,11 +24,11 @@ bandwidth we do not care about at this scale.
 
 | Type | Direction | Payload |
 |---|---|---|
-| `hello` | op → hub | `cluster_id`, `agent_version`, `session_id`, `resume_from`, `lossy` |
-| `welcome` | hub → op | `session_id`, `ack_seq`, `full_resync` |
-| `ping` / `pong` | either | empty |
+| `hello` | op → hub | `cluster_id`, `agent_version`, `session_id`, `resume_from`, `lossy`. **Unsequenced.** |
+| `welcome` | hub → op | `session_id`, `ack_seq`, `full_resync`. **Unsequenced.** |
+| `ping` / `pong` | either | empty. **Unsequenced.** |
 | `error` | either | `code`, `message`, `retryable` |
-| `ack` | either | empty. Carries acknowledgement in the envelope's `ack` field, for when there is nothing else to say. |
+| `ack` | either | empty. **Unsequenced.** Carries acknowledgement in the envelope's `ack` field, for when there is nothing else to say. |
 | `stream.end` | either | `count`, `complete`. **Sequenced**, unlike the other session frames — a prune decision depends on it, so it must not be able to arrive out of order or be lost silently. |
 
 ## Supply — operator → hub

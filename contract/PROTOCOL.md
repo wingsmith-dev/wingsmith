@@ -64,8 +64,12 @@ Every frame is a single JSON object. There are no bare payloads.
 | `ts` | RFC 3339 with milliseconds, UTC, sender's clock. Diagnostic only — never used for ordering. |
 | `payload` | type-specific object. Never a scalar, never an array, so fields can be added without a version bump. |
 
-Unknown fields are ignored on receipt. Unknown `type` values are logged and dropped, never fatal —
-this is what lets an operator run one version behind the plane.
+Unknown fields are ignored on receipt. Unknown `type` values are **never fatal** — this is what lets
+an operator run one version behind the plane. The frame is dropped, and the receiver answers with an
+`error` naming the type and `retryable: false`. Dropping in silence would be cheaper but it makes
+version skew invisible in exactly the case that matters: a newer sender whose frames are being
+discarded has no way to find out, and the first symptom is state that never converges. The `error`
+is an ordinary sequenced frame; answering an unknown type therefore consumes a sequence number.
 
 ## 3. Correlation
 
@@ -111,12 +115,22 @@ how a receiver signals "I could not apply this"** — there is no negative ackno
 
 On reconnect the operator sends `hello` with `resume_from` set to its highest contiguous processed
 seq. The hub answers `welcome` with its own `ack_seq`, and either resumes the session or returns a
-new `session_id` with `full_resync: true` when the gap exceeds its buffer. Unreleased frames in the
+new `session_id` with `full_resync: true` when the gap exceeds its buffer.
+
+Three conditions force `full_resync`, and `resume_from` is not consulted for any of them: the
+`session_id` is one the hub has no record of (a hub restart looks exactly like this), `lossy` is
+set, or the requested point has already left the replay buffer. A sequence number from a session the
+receiver cannot identify is not a resume request the receiver can evaluate, so it is not treated as
+one. Unreleased frames in the
 sender's replay buffer are re-sent immediately after `welcome`.
 
 `full_resync` means: the hub streams its complete desired state for that cluster, the operator
 streams its complete observed state back, and both sides then discard anything absent from that
-snapshot. Resync is correct but expensive, and a control plane that resyncs on every blip is how a
+snapshot. Each side opens its own stream explicitly with `resync.begin` and closes it with
+`stream.end` — the `full_resync` flag announces that this is about to happen, it does not stand in
+for the framing. Without the explicit open, a receiver could not tell a resync snapshot from
+ordinary traffic, and the prune at the end is only safe against a stream it knows the boundaries
+of. Resync is correct but expensive, and a control plane that resyncs on every blip is how a
 control plane takes itself down — so the buffer is sized to cover a rolling restart, not a network
 hiccup. A sender whose replay buffer overflowed sets `lossy: true` in `hello` and must be given a fresh
 session rather than be allowed to pretend it can resume. `session_id` in `hello` names which

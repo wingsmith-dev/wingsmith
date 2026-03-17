@@ -13,12 +13,20 @@ from websockets.asyncio.server import serve
 from app.db import engine
 from app.utils import logs
 from app.config import settings
+from app.hub.sink import NullSink
 from app.core.auth import bearer_token
 from app.core.auth import resolve_principal
+from app.hub.state import SessionRegistry
 from app.hub.session import OperatorSession
 
 
 logger = getLogger(__name__)
+
+REGISTRY = SessionRegistry()
+"""Sessions the hub can resume, shared by every connection this process serves."""
+
+SINK = NullSink()
+"""Where inbound frames go until the ingestion track supplies a database-backed `Sink`."""
 
 
 def _process_request(connection: ServerConnection, request: Request) -> Response | None:
@@ -32,7 +40,7 @@ def _process_request(connection: ServerConnection, request: Request) -> Response
 
 async def _handler(connection: ServerConnection) -> None:
     principal = resolve_principal(bearer_token(connection.request.headers.get("Authorization")))
-    await OperatorSession(connection, principal).run()
+    await OperatorSession(connection, principal, registry=REGISTRY, sink=SINK).run()
 
 
 async def serve_forever(stop: asyncio.Future[None] | None = None) -> None:
