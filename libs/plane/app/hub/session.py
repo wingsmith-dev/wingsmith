@@ -19,6 +19,7 @@ from dataclasses import dataclass
 
 import msgspec
 
+from msgspec import Raw
 from msgspec import Struct
 from msgspec import json as msgjson
 
@@ -228,7 +229,7 @@ class OperatorSession:
     async def _handshake(self) -> None:
         async with asyncio.timeout(self.config.handshake_timeout):
             raw = await self.connection.recv()
-        envelope = self._decode(raw)
+        envelope = self._decode(self._decode_envelope(raw))
         if envelope.type != "hello":
             raise ProtocolViolation(f"expected hello, got {envelope.type}")
 
@@ -241,13 +242,15 @@ class OperatorSession:
         self.state = state
         state.connection_count += 1
 
+        if not full_resync:
+            state.rewind_inbound()
         if not full_resync and hello.resume_from:
             state.replay.release(hello.resume_from)
         if envelope.ack and not full_resync:
             state.replay.release(envelope.ack)
 
         welcome = Welcome(session_id=state.session_id, ack_seq=state.ack_cursor, full_resync=full_resync)
-        await self._send_now(self._frame("welcome", welcome))
+        await self._send_now(self._frame("welcome", welcome, reply_to=envelope.id))
         logger.info(
             "hub.session.welcome cluster=%s session=%s resume_from=%s full_resync=%s",
             hello.cluster_id,
@@ -312,24 +315,36 @@ class OperatorSession:
         while True:
             raw = await self.connection.recv()
             self._last_recv = asyncio.get_running_loop().time()
+            raw_envelope = self._decode_envelope(raw)
             try:
-                envelope = self._decode(raw)
+                envelope = self._decode(raw_envelope)
             except UnknownType as exc:
                 logger.info("hub.frame.unknown_type type=%s", exc.type_name)
-                await self._send(
-                    "error",
-                    Error(code="invalid", message=f"unknown type {exc.type_name}", retryable=False),
-                    reply_to=exc.frame_id,
-                )
+                await self._reject(raw_envelope, f"unknown type {exc.type_name}")
                 continue
             except msgspec.ValidationError as exc:
                 logger.info("hub.frame.invalid error=%s", exc)
-                await self._send("error", Error(code="invalid", message=str(exc), retryable=False))
+                await self._reject(raw_envelope, str(exc))
                 continue
 
             await self._on_frame(envelope)
 
-    async def _on_frame(self, envelope: Envelope[Struct]) -> None:
+    async def _reject(self, envelope: Envelope[Any], message: str) -> None:
+        """Drops an undecodable frame and says so, without breaking the sequence (§2).
+
+        An unknown `type` is never fatal, which is only true if the frame still counts: the
+        envelope decoded, so its `seq` is meaningful, and skipping the accounting would leave the
+        peer's next frame arriving as a gap — closing the connection over exactly the frame the
+        contract says to drop. Answering also finishes the frame: it will never be applied, so the
+        ack is owed now rather than withheld forever.
+        """
+        if not self._accept(envelope):
+            return
+        await self._send("error", Error(code="invalid", message=message, retryable=False), reply_to=envelope.id)
+        await self._settle(envelope)
+
+    def _accept(self, envelope: Envelope[Any]) -> bool:
+        """Applies the ordering rules of §4. False means a duplicate, silently dropped."""
         state = self._state
         if envelope.ack:
             state.replay.release(envelope.ack)
@@ -342,12 +357,27 @@ class OperatorSession:
                 raise ProtocolViolation(f"{envelope.type} must carry a seq")
             if envelope.seq < state.expected_seq:
                 logger.debug("hub.frame.duplicate seq=%s expected=%s", envelope.seq, state.expected_seq)
-                return
+                return False
             if envelope.seq > state.expected_seq:
                 raise ProtocolViolation(f"sequence gap: expected {state.expected_seq}, got {envelope.seq}")
             state.expected_seq = envelope.seq + 1
         elif envelope.seq is not None:
             raise ProtocolViolation(f"{envelope.type} must not carry a seq")
+        return True
+
+    async def _settle(self, envelope: Envelope[Any]) -> None:
+        """Records a frame as durably processed, releasing the ack when the cursor moves."""
+        state = self._state
+        if not envelope.sequenced or envelope.seq is None:
+            return
+        before = state.ack_cursor
+        state.mark_applied(envelope.seq)
+        if state.ack_cursor != before:
+            await self._flush_ack()
+
+    async def _on_frame(self, envelope: Envelope[Struct]) -> None:
+        if not self._accept(envelope):
+            return
 
         try:
             await self._dispatch(envelope)
@@ -357,11 +387,7 @@ class OperatorSession:
             logger.exception("hub.frame.not_applied type=%s seq=%s", envelope.type, envelope.seq)
             return
 
-        if envelope.sequenced and envelope.seq is not None:
-            before = state.ack_cursor
-            state.mark_applied(envelope.seq)
-            if state.ack_cursor != before:
-                await self._flush_ack()
+        await self._settle(envelope)
 
     async def _dispatch(self, envelope: Envelope[Struct]) -> None:
         payload = envelope.payload
@@ -498,7 +524,8 @@ class OperatorSession:
 
     # ----------------------------------------------------------------- decoding
 
-    def _decode(self, raw: Any) -> Envelope[Struct]:
+    def _decode_envelope(self, raw: Any) -> Envelope[Raw]:
+        """Decodes the envelope alone. Failing here is fatal: an unreadable frame has no `seq`."""
         data = raw.encode() if isinstance(raw, str) else bytes(raw)
         if len(data) > MAX_FRAME_BYTES:
             raise ProtocolViolation("frame exceeds the maximum size")
@@ -508,6 +535,10 @@ class OperatorSession:
             raise ProtocolViolation(f"undecodable frame: {exc}") from exc
         if envelope.v != ENVELOPE_VERSION:
             raise ProtocolViolation(f"unsupported envelope version {envelope.v}")
+        return envelope
+
+    def _decode(self, envelope: Envelope[Raw]) -> Envelope[Struct]:
+        """Decodes the payload against the type registry. Failing here is not fatal (§2)."""
         struct = MESSAGE_TYPES.get(envelope.type)
         if struct is None:
             raise UnknownType(envelope.type, envelope.id)

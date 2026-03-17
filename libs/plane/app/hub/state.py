@@ -103,6 +103,17 @@ class SessionState:
         self.next_seq += 1
         return seq
 
+    def rewind_inbound(self) -> None:
+        """Re-arms the inbound cursor at the last acknowledged frame, for a resumed connection.
+
+        A resuming peer replays from `ack_seq + 1`, so every frame received but not applied on the
+        previous connection arrives again. Carrying the old expectation across the reconnect would
+        read those frames as duplicates and drop them — and since their ack was withheld precisely
+        because they were not applied, the stream would never advance past the hole.
+        """
+        self.expected_seq = self.ack_cursor + 1
+        self._applied.clear()
+
     def mark_applied(self, seq: int) -> None:
         """Records a durably processed inbound seq and advances the contiguous ack cursor."""
         self._applied.add(seq)

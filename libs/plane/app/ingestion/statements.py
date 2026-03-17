@@ -1,0 +1,378 @@
+"""The statements ingestion writes, built and nothing else.
+
+Kept apart from the sink so that every write this package can perform is one
+pure function of a decoded payload, compilable and assertable without a
+database. The two package rules — observed state only, no telemetry — are
+enforced here, by which columns a builder is willing to name.
+"""
+
+from uuid import UUID
+from typing import Any
+
+from sqlalchemy import Delete
+from sqlalchemy import Insert
+from sqlalchemy import Update
+from sqlalchemy import delete
+from sqlalchemy import exists
+from sqlalchemy import insert
+from sqlalchemy import select
+from sqlalchemy import update
+from sqlalchemy import literal
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+from app.core.ids import NODE
+from app.core.ids import DEVICE
+from app.core.ids import TOPOLOGY_DOMAIN
+from app.core.ids import new_uid
+from app.db.models import Node
+from app.db.models import Pool
+from app.db.models import Event
+from app.db.models import Device
+from app.db.models import Cluster
+from app.db.models import Component
+from app.db.models import Operation
+from app.db.models import TopologyDomain
+from app.db.models import ComponentStatus
+from app.db.models import ClusterSyncState
+from app.hub.messages import NodeEvent
+from app.hub.messages import DeviceEvent
+from app.hub.messages import NodeObserved
+from app.hub.messages import ReplicaEvent
+from app.hub.messages import DeviceObserved
+from app.hub.messages import TopologyObserved
+from app.hub.messages import ComponentObserved
+from app.hub.messages import OperationObserved
+from app.ingestion.time import parse_ts
+
+
+NODE_CONSTRAINT = "uq_supply_node_cluster_name"
+DEVICE_CONSTRAINT = "uq_supply_device_cluster_uuid"
+TOPOLOGY_CONSTRAINT = "uq_supply_topology_domain_identity"
+
+UID_WIDTH = 40
+
+EVENT_SEVERITY = {
+    "joined": "info",
+    "left": "warning",
+    "cordoned": "info",
+    "degraded": "warning",
+    "recovered": "info",
+    "reset": "info",
+    "fell_off_bus": "error",
+    "started": "info",
+    "ready": "info",
+    "failed": "error",
+    "oom": "error",
+    "preempted": "warning",
+}
+
+
+def observed_uid(wire_id: str, prefix: str) -> str:
+    """The public id an observed row is given the first time it is seen.
+
+    A cluster-side identifier carrying the right prefix is adopted verbatim,
+    because it is the only handle later frames use to cross-reference the row —
+    `device.observed` names its node by it, and nothing on these tables stores a
+    second, foreign identity. Anything else gets a freshly minted one. The check
+    is the prefix and the column width rather than `is_uid`, since an operator
+    mints its own ids and only the prefix is contractual. Either way the id is
+    written on insert only: `uid` never appears in an update set, so a row
+    rediscovered after a reconnect keeps the id it was first given.
+    """
+    if wire_id.startswith(prefix) and len(prefix) < len(wire_id) <= UID_WIDTH:
+        return wire_id
+    return new_uid(prefix)
+
+
+def cluster_ref(cluster_uid: str):
+    return select(Cluster.id).where(Cluster.uid == cluster_uid).scalar_subquery()
+
+
+def _node_ref(cluster_id: UUID, node_uid: str):
+    return select(Node.id).where(Node.cluster_id == cluster_id, Node.uid == node_uid).scalar_subquery()
+
+
+def _pool_ref(cluster_id: UUID, name: str):
+    return select(Pool.id).where(Pool.cluster_id == cluster_id, Pool.name == name).scalar_subquery()
+
+
+def _domain_ref(cluster_id: UUID, domain_uid: str):
+    return (
+        select(TopologyDomain.id)
+        .where(TopologyDomain.cluster_id == cluster_id, TopologyDomain.uid == domain_uid)
+        .scalar_subquery()
+    )
+
+
+def _upsert(model: Any, values: dict[str, Any], constraint: str) -> Insert:
+    """An upsert whose update set is the insert values minus the identity columns.
+
+    `uid`, `cluster_id`, and the natural key are what the row *is*; everything
+    else is what was last observed about it. Excluding the first group from the
+    update set is what makes a rediscovered row keep its identity.
+    """
+    frozen = {"uid", "cluster_id", "name", "device_uuid", "kind", "identifier"}
+    statement = pg_insert(model).values(**values)
+    return statement.on_conflict_do_update(
+        constraint=constraint,
+        set_={key: statement.excluded[key] for key in values if key not in frozen},
+    )
+
+
+def node_condition(payload: NodeObserved) -> str:
+    if payload.membership != "joined":
+        return payload.membership
+    if not payload.ready:
+        return "not_ready"
+    if any(c.type != "ready" and c.status == "true" for c in payload.conditions):
+        return "degraded"
+    return "ready"
+
+
+def upsert_node(cluster_id: UUID, payload: NodeObserved) -> Insert:
+    """Writes one observed node.
+
+    `runtime_version` is on the wire and deliberately not written: `Node` has no
+    orchestrator- or runtime-specific version column, because the plane does not
+    know a cluster is Kubernetes. CPU, memory, arch, os image and taints are not
+    on the wire at all and so are absent from the statement entirely rather than
+    written as nulls — an upsert must not erase what a later frame supplied.
+    """
+    values: dict[str, Any] = {
+        "uid": observed_uid(payload.node_id, NODE),
+        "cluster_id": cluster_id,
+        "name": payload.name,
+        "pool_id": _pool_ref(cluster_id, payload.pool) if payload.pool else None,
+        "condition": node_condition(payload),
+        "cordoned": payload.cordoned,
+        "ready": payload.ready,
+        "kernel_version": payload.kernel_version or None,
+        "driver_version": payload.driver_version or None,
+        "agent_version": payload.agent_version or None,
+        "labels": payload.labels,
+        "observed_at": parse_ts(payload.observed_at),
+    }
+    return _upsert(Node, values, NODE_CONSTRAINT)
+
+
+def upsert_device(cluster_id: UUID, payload: DeviceObserved) -> Insert:
+    """Writes one observed device.
+
+    Dropped as telemetry: `memory_used_mb` (a measurement of the moment) and
+    `ecc.volatile_corrected` (a rate, not a state — corrected errors are
+    counted by the metrics pipeline). The uncorrected ECC counters are kept
+    because they are what makes a device unschedulable. `allocation` is not
+    written here: a device's commitment is an `Allocation`, not a column.
+    """
+    domain = payload.topology_domain_id
+    values: dict[str, Any] = {
+        "uid": observed_uid(payload.device_id, DEVICE),
+        "cluster_id": cluster_id,
+        "node_id": _node_ref(cluster_id, payload.node_id),
+        "topology_domain_id": _domain_ref(cluster_id, domain) if domain else None,
+        "device_uuid": payload.uuid,
+        "device_index": payload.index,
+        "device_class": payload.device_class,
+        "model_name": payload.model or None,
+        "memory_mib": payload.memory_total_mb,
+        "health": payload.health,
+        "ecc_enabled": payload.ecc.mode_enabled,
+        "ecc_volatile_errors": payload.ecc.volatile_uncorrected,
+        "ecc_aggregate_errors": payload.ecc.aggregate_uncorrected,
+        "throttled": payload.throttled,
+        "throttle_reasons": payload.throttle_reasons,
+        "mig_enabled": payload.mig.enabled,
+        "mig_profile": payload.mig.profile,
+        "observed_at": parse_ts(payload.observed_at),
+    }
+    return _upsert(Device, values, DEVICE_CONSTRAINT)
+
+
+def upsert_topology_domain(cluster_id: UUID, payload: TopologyObserved) -> Insert:
+    values: dict[str, Any] = {
+        "uid": observed_uid(payload.domain_id, TOPOLOGY_DOMAIN),
+        "cluster_id": cluster_id,
+        "node_id": _node_ref(cluster_id, payload.node_id) if payload.node_id else None,
+        "kind": payload.kind,
+        "identifier": payload.domain_id,
+        "device_count": len(payload.device_ids),
+        "spans_nodes": payload.node_id is None,
+        "observed_at": parse_ts(payload.observed_at),
+    }
+    return _upsert(TopologyDomain, values, TOPOLOGY_CONSTRAINT)
+
+
+def attach_domain_devices(cluster_id: UUID, payload: TopologyObserved) -> Update:
+    """Points the devices a domain names at it, for devices whose own frame lags."""
+    return (
+        update(Device)
+        .where(Device.cluster_id == cluster_id, Device.uid.in_(payload.device_ids))
+        .values(topology_domain_id=_domain_ref(cluster_id, payload.domain_id))
+    )
+
+
+def upsert_component_status(cluster_id: UUID, payload: ComponentObserved) -> Insert:
+    """Writes the observed half of a component.
+
+    Keyed on the declared `Component` it belongs to: a status for a component
+    nobody declared has nothing to be the observed half *of*, and the insert
+    resolves to a null component and fails rather than inventing one.
+    """
+    component = (
+        select(Component.id).where(Component.cluster_id == cluster_id, Component.name == payload.name).scalar_subquery()
+    )
+    values: dict[str, Any] = {
+        "component_id": component,
+        "cluster_id": cluster_id,
+        "observed_version": payload.running_version or None,
+        "rollout_phase": payload.phase,
+        "healthy": payload.phase == "healthy",
+        "message": payload.last_error.message if payload.last_error else None,
+        "observed_at": parse_ts(payload.observed_at),
+    }
+    statement = pg_insert(ComponentStatus).values(**values)
+    return statement.on_conflict_do_update(
+        index_elements=[ComponentStatus.component_id],
+        set_={key: statement.excluded[key] for key in values if key not in {"component_id", "cluster_id"}},
+    )
+
+
+def update_operation(cluster_id: UUID, payload: OperationObserved) -> Update:
+    """Applies observed progress to an operation the plane declared.
+
+    An `UPDATE` and never an upsert: an operation is imperative and requested by
+    somebody, so ingestion may report on one but must never bring one into
+    existence. `progress` is not written — there is no column for it, and a
+    percentage between two phases is a measurement.
+    """
+    values: dict[str, Any] = {
+        "phase": payload.phase,
+        "result": payload.result,
+        "error": payload.failure.message if payload.failure else None,
+        "started_at": parse_ts(payload.started_at),
+        "finished_at": parse_ts(payload.completed_at),
+    }
+    return (
+        update(Operation)
+        .where(Operation.uid == payload.operation_id, Operation.cluster_id == cluster_id)
+        .values(**{key: value for key, value in values.items() if value is not None})
+    )
+
+
+def _insert_event(
+    cluster_id: UUID,
+    type_name: str,
+    severity: str,
+    subject_type: str,
+    subject_id: Any,
+    message: str,
+    details: dict[str, str],
+    occurred_at: Any,
+) -> Insert:
+    """An append-only event insert, guarded against replaying the same event twice.
+
+    `ops_event` has no natural key, so idempotency is a `NOT EXISTS` over the
+    tuple that identifies one occurrence — cluster, type, subject and instant.
+    Advisory rather than enforced: without a unique constraint two concurrent
+    sessions could still race, which is why the guard is here and noted rather
+    than assumed.
+    """
+    columns = [
+        "cluster_id",
+        "type",
+        "severity",
+        "subject_type",
+        "subject_id",
+        "message",
+        "details",
+        "occurred_at",
+    ]
+    duplicate = exists(
+        select(Event.id).where(
+            Event.cluster_id == cluster_id,
+            Event.type == type_name,
+            Event.subject_type == subject_type,
+            Event.occurred_at == occurred_at,
+            Event.message == message,
+        )
+    )
+    values = select(
+        literal(cluster_id).label("cluster_id"),
+        literal(type_name).label("type"),
+        literal(severity).label("severity"),
+        literal(subject_type).label("subject_type"),
+        subject_id.label("subject_id") if hasattr(subject_id, "label") else literal(subject_id).label("subject_id"),
+        literal(message).label("message"),
+        literal(details, JSONB).label("details"),
+        literal(occurred_at, Event.occurred_at.type).label("occurred_at"),
+    ).where(~duplicate)
+    return insert(Event).from_select(columns, values)
+
+
+def insert_node_event(cluster_id: UUID, payload: NodeEvent) -> Insert:
+    return _insert_event(
+        cluster_id,
+        f"node.{payload.event}",
+        EVENT_SEVERITY.get(payload.event, "info"),
+        "node",
+        _node_ref(cluster_id, payload.node_id),
+        payload.message,
+        {"reason": payload.reason},
+        parse_ts(payload.occurred_at),
+    )
+
+
+def insert_device_event(cluster_id: UUID, payload: DeviceEvent) -> Insert:
+    return _insert_event(
+        cluster_id,
+        f"device.{payload.event}",
+        EVENT_SEVERITY.get(payload.event, "info"),
+        "device",
+        select(Device.id).where(Device.cluster_id == cluster_id, Device.uid == payload.device_id).scalar_subquery(),
+        payload.message,
+        {"reason": payload.reason, "node_id": payload.node_id},
+        parse_ts(payload.occurred_at),
+    )
+
+
+def insert_replica_event(cluster_id: UUID, payload: ReplicaEvent) -> Insert:
+    return _insert_event(
+        cluster_id,
+        f"replica.{payload.event}",
+        EVENT_SEVERITY.get(payload.event, "info"),
+        "replica",
+        None,
+        payload.message,
+        {"reason": payload.reason, "replica_id": payload.replica_id, "deployment_id": payload.deployment_id},
+        parse_ts(payload.occurred_at),
+    )
+
+
+def prune_nodes(cluster_id: UUID, keep: set[str]) -> Delete:
+    return delete(Node).where(Node.cluster_id == cluster_id, Node.uid.notin_(keep or {""}))
+
+
+def prune_devices(cluster_id: UUID, keep: set[str]) -> Delete:
+    return delete(Device).where(Device.cluster_id == cluster_id, Device.uid.notin_(keep or {""}))
+
+
+def prune_topology_domains(cluster_id: UUID, keep: set[str]) -> Delete:
+    return delete(TopologyDomain).where(
+        TopologyDomain.cluster_id == cluster_id, TopologyDomain.uid.notin_(keep or {""})
+    )
+
+
+def upsert_sync_state(cluster_id: UUID, values: dict[str, Any], bump: bool = False) -> Insert:
+    """Writes the observed half of a cluster.
+
+    `Cluster.phase` is declared and is never touched from here; the two halves
+    have one writer each, which is the reason the split exists at all.
+    `observed_generation` counts frames applied, so it is incremented on the
+    conflict path rather than taken from the insert values.
+    """
+    statement = pg_insert(ClusterSyncState).values(cluster_id=cluster_id, **values)
+    updates: dict[str, Any] = {key: statement.excluded[key] for key in values}
+    if bump:
+        updates["observed_generation"] = ClusterSyncState.observed_generation + 1
+    return statement.on_conflict_do_update(index_elements=[ClusterSyncState.cluster_id], set_=updates)

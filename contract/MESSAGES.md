@@ -25,7 +25,7 @@ bandwidth we do not care about at this scale.
 | Type | Direction | Payload |
 |---|---|---|
 | `hello` | op → hub | `cluster_id`, `agent_version`, `session_id`, `resume_from`, `lossy`. **Unsequenced.** |
-| `welcome` | hub → op | `session_id`, `ack_seq`, `full_resync`. **Unsequenced.** |
+| `welcome` | hub → op | `session_id`, `ack_seq`, `full_resync`. **Unsequenced.** `reply_to` is the `hello`'s id. |
 | `ping` / `pong` | either | empty. **Unsequenced.** |
 | `error` | either | `code`, `message`, `retryable` |
 | `ack` | either | empty. **Unsequenced.** Carries acknowledgement in the envelope's `ack` field, for when there is nothing else to say. |

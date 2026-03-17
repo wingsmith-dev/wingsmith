@@ -71,6 +71,15 @@ version skew invisible in exactly the case that matters: a newer sender whose fr
 discarded has no way to find out, and the first symptom is state that never converges. The `error`
 is an ordinary sequenced frame; answering an unknown type therefore consumes a sequence number.
 
+**A dropped frame is still counted.** A receiver that cannot decode a payload — unknown type,
+malformed body — must still advance its arrival expectation for that `seq` and acknowledge it.
+Otherwise §2 and §4 contradict each other: the next frame arrives as a gap and closes the
+connection, which is the failure §2 exists to prevent. Only the envelope is fatal when
+undecodable; the payload is not.
+
+An `error` frame is never fatal to an established session, whatever its `retryable` value. Fatality
+is reserved for the handshake, where a rejected credential leaves nothing to continue.
+
 ## 3. Correlation
 
 Three interaction shapes, all on the one connection:
@@ -112,6 +121,18 @@ window in proportion to idle time, which is the opposite of what a heartbeat is 
 from the peer's replay buffer. Contiguous is the operative word: a hole is never acknowledged past,
 so a frame whose handler failed is simply not acked and will be replayed. **Withholding the ack is
 how a receiver signals "I could not apply this"** — there is no negative acknowledgement.
+
+Reading does not stop at a hole. Frames after a failed one are still delivered and applied — they
+are idempotent and delivery is at-least-once — but the contiguous cursor stays behind the hole, so
+nothing past it is acknowledged. This makes the receiver's arrival expectation and its applied
+cursor two different numbers, and conflating them is a live bug: a refused frame would turn the
+peer's next ordinary frame into a gap, so withholding an ack would tear the connection down instead
+of causing a replay.
+
+It follows that **on resume a receiver must rewind its arrival expectation to `ack_cursor + 1`**.
+The peer is about to replay from the last acknowledged point, and a receiver still expecting the
+higher number it had already seen would read that replay as a duplicate, drop it, and never advance
+its cursor again. The session survives and makes no progress, which is worse than a clean failure.
 
 On reconnect the operator sends `hello` with `resume_from` set to its highest contiguous processed
 seq. The hub answers `welcome` with its own `ack_seq`, and either resumes the session or returns a

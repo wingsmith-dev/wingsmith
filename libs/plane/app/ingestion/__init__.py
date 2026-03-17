@@ -10,3 +10,10 @@ Two rules this package exists to enforce:
 - Telemetry does not come through here. Utilisation, temperature, throughput and
   token counts go from the cluster to the observability stack directly.
 """
+
+from app.ingestion.sink import DatabaseSink
+from app.ingestion.sink import UnknownCluster
+from app.ingestion.sink import DatabaseDesiredSource
+
+
+__all__ = ["DatabaseDesiredSource", "DatabaseSink", "UnknownCluster"]

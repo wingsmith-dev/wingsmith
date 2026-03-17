@@ -155,6 +155,8 @@ type Client struct {
 	mu         stdsync.Mutex
 	nextSeq    uint64
 	cursor     Cursor
+	expected   uint64
+	holed      bool
 	connected  bool
 	connects   uint64
 	lastRecvAt time.Time
@@ -182,11 +184,26 @@ func NewClient(opts Options) *Client {
 // Sequence numbers are assigned by the writer, not here, so a frame the queue replaces never
 // leaves a hole in the sequence the hub would have to treat as a gap.
 func (c *Client) Send(t MessageType, subject string, payload any) error {
+	_, err := c.SendCorrelated(t, subject, payload, "")
+	return err
+}
+
+// SendCorrelated enqueues a frame that answers, or belongs to, an earlier one, and returns the id
+// the frame was given.
+//
+// A stream is the only reason this exists: `reply_to` is the sole correlation between a
+// `resync.begin` and the `stream.end` that closes it (MESSAGES.md, Resync), so the operator cannot
+// open a resync of its own without both setting reply_to and knowing the id it must be set to. An
+// empty replyTo leaves the field null, which is what an ordinary event carries.
+func (c *Client) SendCorrelated(t MessageType, subject string, payload any, replyTo string) (string, error) {
 	e, err := newEnvelope(t, payload)
 	if err != nil {
-		return fmt.Errorf("marshal payload: %w", err)
+		return "", fmt.Errorf("marshal payload: %w", err)
 	}
-	return c.queue.Push(&outbound{env: e, subject: subject})
+	if replyTo != "" {
+		e.ReplyTo = &replyTo
+	}
+	return e.ID, c.queue.Push(&outbound{env: e, subject: subject})
 }
 
 // Connected reports whether a hub session is currently established.
@@ -385,6 +402,8 @@ func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
 
 	c.mu.Lock()
 	c.cursor = next
+	c.expected = next.Seq + 1
+	c.holed = false
 	if fresh {
 		c.nextSeq = 1
 	}
@@ -446,35 +465,33 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		case TypeWelcome, TypeHello:
 			return fmt.Errorf("unexpected %s after the handshake", e.Type)
 		case TypeError:
-			if err := hubError(e); err != nil {
-				var fatal *fatalError
-				if errors.As(err, &fatal) {
+			c.log.Warn("hub error", "error", hubError(e))
+			fresh, err := c.accept(e)
+			if err != nil {
+				return err
+			}
+			if fresh && e.Sequenced() {
+				if err := c.advance(ctx, *e.Seq); err != nil {
 					return err
 				}
-				c.log.Warn("hub error", "error", err)
 			}
 			continue
 		}
 
-		if e.Sequenced() {
-			if e.Seq == nil {
-				return fmt.Errorf("sequenced frame %s carries no seq", e.Type)
-			}
-			c.mu.Lock()
-			expected := c.cursor.Seq + 1
-			c.mu.Unlock()
-			if *e.Seq < expected {
-				c.log.Debug("dropping duplicate frame", "seq", *e.Seq, "expected", expected)
-				continue
-			}
-			if *e.Seq > expected {
-				return fmt.Errorf("sequence gap: expected %d, got %d", expected, *e.Seq)
-			}
+		fresh, err := c.accept(e)
+		if err != nil {
+			return err
+		}
+		if !fresh {
+			continue
 		}
 
 		if err := c.opts.Handler.Handle(ctx, e); err != nil {
 			c.log.Error("handler rejected frame; withholding ack",
 				"type", e.Type, "seq", e.Seq, "error", err)
+			c.mu.Lock()
+			c.holed = true
+			c.mu.Unlock()
 			continue
 		}
 
@@ -487,6 +504,33 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	}
 }
 
+// accept applies §4's ordering rules to one inbound frame and reports whether it is new.
+//
+// Arrival order and applied position are two different cursors and must not be conflated. The
+// expected sequence tracks what has arrived; the durable cursor tracks what has been applied
+// contiguously. A frame the handler refuses stalls the second without stalling the first —
+// withholding the ack is how "I could not apply this" is said, and it must not manufacture a gap
+// out of the peer's next perfectly ordinary frame.
+func (c *Client) accept(e *Envelope) (bool, error) {
+	if !e.Sequenced() {
+		return true, nil
+	}
+	if e.Seq == nil {
+		return false, fmt.Errorf("sequenced frame %s carries no seq", e.Type)
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	switch {
+	case *e.Seq < c.expected:
+		c.log.Debug("dropping duplicate frame", "seq", *e.Seq, "expected", c.expected)
+		return false, nil
+	case *e.Seq > c.expected:
+		return false, fmt.Errorf("sequence gap: expected %d, got %d", c.expected, *e.Seq)
+	}
+	c.expected++
+	return true, nil
+}
+
 // advance records the frame as durably processed and makes sure the acknowledgement reaches the
 // hub.
 //
@@ -496,8 +540,11 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 // a reconnect and replays from the last durable point, which is the recoverable direction.
 func (c *Client) advance(ctx context.Context, seq uint64) error {
 	c.mu.Lock()
-	next := c.cursor
+	next, holed := c.cursor, c.holed
 	c.mu.Unlock()
+	if holed || seq != next.Seq+1 {
+		return nil
+	}
 	next.Seq = seq
 
 	if err := c.opts.Checkpointer.Save(ctx, next); err != nil {
