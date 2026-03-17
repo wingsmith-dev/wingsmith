@@ -207,6 +207,23 @@ nothing can replace and evict freely; a queue holding pre-numbered frames cannot
 replacement leaves a hole that the receiver is required by §4 to read as a gap and close the
 connection over. The backpressure policy and the gap rule are only compatible under this ordering.
 
+## 6b. Poison frames
+
+Withholding the ack asks for a replay, so it is only the right answer when a replay could succeed —
+a database that was down, a lock that was held, a dependency not yet written. A frame that can
+**never** be applied is different: a malformed id, a payload that violates a stated invariant. There
+is no negative acknowledgement to express that with, so withholding the ack on one would replay it
+forever and the stream behind it would never advance.
+
+A permanently unappliable frame is therefore **accepted, discarded, and logged loudly**, exactly as
+an unknown type is. The receiver counts the seq, acks it, and records the rejection with enough
+detail to identify the sender. This is the one place the protocol trades a lost record for
+liveness, and it is deliberate: one dropped observation is a stale row until the next resync, while
+a wedged stream is a cluster that has stopped being managed.
+
+Transient failure withholds. Permanent failure accepts and drops. A receiver that cannot tell the
+two apart should withhold, because a replay loop is at least visible.
+
 ## 7. What must never cross this link
 
 Inference traffic. Logs. Metrics. Model weights. If any of them appear in a payload, the control

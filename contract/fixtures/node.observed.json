@@ -1,13 +1,13 @@
 {
   "v": 1,
   "type": "node.observed",
-  "id": "01J9X2E5G7QK8V3B0YHN4TZC6W",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc6w",
   "ts": "2026-08-19T14:02:11.482Z",
   "seq": 8802,
   "ack": 4412,
   "payload": {
-    "node_id": "nod_01J9X2BBBBBBBBBBBBBBBBBBBB",
-    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "name": "gpu-h100-a-07",
     "pool": "h100-sxm-8x",
     "membership": "joined",
@@ -34,8 +34,8 @@
     "runtime_version": "containerd://1.7.27",
     "agent_version": "0.4.2",
     "device_ids": [
-      "dev_01J9X2CCCCCCCCCCCCCCCCCCCC",
-      "dev_01J9X2CCCCCCCCCCCCCCCCCCCD"
+      "dev_01j9x2cccccccccccccccccccc",
+      "dev_01j9x2cccccccccccccccccccd"
     ],
     "labels": {
       "region": "eu-west-1",

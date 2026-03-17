@@ -14,6 +14,16 @@ the verb says what kind of frame it is.
 | `.event` | operator → hub | something happened, at a point in time. Never inferred from state. |
 | `.request` / `.response` | either | correlated pair, per §3 |
 
+**The cluster mints the ids of the things it observes.** `node.observed` carries the `nod_` id, not
+a name the plane will later assign an id to; `device.observed` names its node by that same id.
+Identity originates where observation does, because an observed object needs a handle from the
+moment it is discovered, and the plane cannot supply one for a thing it has not yet heard of. The
+plane stores the id as given and never re-mints it — see ADR 0002.
+
+This makes id shape contractual. An observed id is its prefix followed by a Crockford base32 ULID
+body, and a frame carrying a malformed one is not something a replay can fix (see §"Poison frames"
+in [`PROTOCOL.md`](PROTOCOL.md)).
+
 **Full objects, never patches.** A patch stream that loses a frame is unrecoverable; a full-object
 stream that loses a frame is stale until the next one, which resume then fixes. The cost is
 bandwidth we do not care about at this scale.

@@ -45,6 +45,10 @@ touching every handler instead of one.
 
 Prefixed, opaque, stable: `clu_ nod_ dev_ tpd_ pol_ art_ rec_ dep_ rep_ end_ prj_ qta_ opr_ cmp_`.
 
+The body is a Crockford base32 ULID, **lowercase**. Crockford is case-insensitive when decoding, but
+these ids are opaque strings that get compared, indexed and put in URLs, so exactly one spelling is
+canonical — two spellings of one id is the same problem as two ids.
+
 A path segment accepts **either the id or the name** where an object has a unique name
 (`GET /v1/clusters/iad-1` and `GET /v1/clusters/clu_01hq0v8p2m` are the same request). Prefix
 matching is **not** supported by the API — `hgr` resolves prefixes client-side, and that is where

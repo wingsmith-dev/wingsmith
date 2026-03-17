@@ -1,13 +1,13 @@
 {
   "v": 1,
   "type": "artifact.desired",
-  "id": "01J9X2E5G7QK8V3B0YHN4TZC74",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc74",
   "ts": "2026-08-19T14:02:11.482Z",
   "seq": 4418,
   "ack": 8807,
   "payload": {
-    "artifact_id": "art_01J9X2EEEEEEEEEEEEEEEEEEEE",
-    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "artifact_id": "art_01j9x2eeeeeeeeeeeeeeeeeeee",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "kind": "weights",
     "digest": "sha256:9f2c1b7a4d3e5068a1b2c3d4e5f60718293a4b5c6d7e8f9012a3b4c5d6e7f801",
     "format": "safetensors",

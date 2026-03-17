@@ -1,12 +1,12 @@
 {
   "v": 1,
   "type": "capacity.observed",
-  "id": "01J9X2E5G7QK8V3B0YHN4TZC71",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc71",
   "ts": "2026-08-19T14:02:11.482Z",
   "seq": 8807,
   "ack": 4412,
   "payload": {
-    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "pool": "h100-sxm-8x",
     "classes": [
       {

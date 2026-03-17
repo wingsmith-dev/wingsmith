@@ -1,14 +1,14 @@
 {
   "v": 1,
   "type": "device.observed",
-  "id": "01J9X2E5G7QK8V3B0YHN4TZC6Y",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc6y",
   "ts": "2026-08-19T14:02:11.482Z",
   "seq": 8804,
   "ack": 4412,
   "payload": {
-    "device_id": "dev_01J9X2CCCCCCCCCCCCCCCCCCCC",
-    "node_id": "nod_01J9X2BBBBBBBBBBBBBBBBBBBB",
-    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "device_id": "dev_01j9x2cccccccccccccccccccc",
+    "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "uuid": "GPU-4c1f9a2e-7b30-4d55-9f21-0a8e6c3b1d47",
     "index": 0,
     "model": "NVIDIA H100 80GB HBM3",
@@ -29,11 +29,11 @@
       "profile": "3g.40gb",
       "instance_id": "1"
     },
-    "topology_domain_id": "tpd_01J9X2DDDDDDDDDDDDDDDDDDDD",
+    "topology_domain_id": "tpd_01j9x2dddddddddddddddddddd",
     "allocation": {
-      "replica_id": "rep_01J9X2HHHHHHHHHHHHHHHHHHHH",
-      "deployment_id": "dep_01J9X2GGGGGGGGGGGGGGGGGGGG",
-      "project_id": "prj_01J9X2JJJJJJJJJJJJJJJJJJJJ"
+      "replica_id": "rep_01j9x2hhhhhhhhhhhhhhhhhhhh",
+      "deployment_id": "dep_01j9x2gggggggggggggggggggg",
+      "project_id": "prj_01j9x2jjjjjjjjjjjjjjjjjjjj"
     },
     "observed_at": "2026-08-19T14:02:11.400Z"
   }

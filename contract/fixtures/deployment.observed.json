@@ -1,13 +1,13 @@
 {
   "v": 1,
   "type": "deployment.observed",
-  "id": "01J9X2E5G7QK8V3B0YHN4TZC77",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc77",
   "ts": "2026-08-19T14:02:11.482Z",
   "seq": 8808,
   "ack": 4420,
   "payload": {
-    "deployment_id": "dep_01J9X2GGGGGGGGGGGGGGGGGGGG",
-    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "deployment_id": "dep_01j9x2gggggggggggggggggggg",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "generation": 14,
     "phase": "degraded",
     "desired_replicas": 4,

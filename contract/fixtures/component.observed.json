@@ -1,13 +1,13 @@
 {
   "v": 1,
   "type": "component.observed",
-  "id": "01J9X2E5G7QK8V3B0YHN4TZC7C",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc7c",
   "ts": "2026-08-19T14:02:11.482Z",
   "seq": 8813,
   "ack": 4420,
   "payload": {
-    "component_id": "cmp_01J9X2MMMMMMMMMMMMMMMMMMMM",
-    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "component_id": "cmp_01j9x2mmmmmmmmmmmmmmmmmmmm",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "name": "serving-runtime",
     "desired_version": "0.9.3",
     "running_version": "0.9.2",

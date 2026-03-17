@@ -16,6 +16,8 @@ from pathlib import Path
 import pytest
 
 from msgspec import json as msgjson
+from msgspec import structs
+from sqlalchemy import Delete
 from sqlalchemy.dialects import postgresql
 
 from app.hub.sink import Sink
@@ -104,20 +106,31 @@ def test_the_natural_key_is_never_in_the_update_set(builder, type_name: str, fro
         assert f"{column} = excluded.{column}" not in update_set
 
 
-def test_observed_uid_adopts_a_well_formed_cluster_side_id() -> None:
-    wire = "nod_01J9X2BBBBBBBBBBBBBBBBBBBB"
+def test_observed_uid_stores_the_cluster_minted_id_verbatim() -> None:
+    """The cluster names what it observes; the plane does not rename it (ADR 0002)."""
+    wire = "nod_01j9x2bbbbbbbbbbbbbbbbbbbb"
     assert statements.observed_uid(wire, "nod_") == wire
 
 
-def test_observed_uid_mints_when_the_wire_id_is_unusable() -> None:
-    minted = statements.observed_uid("node-7", "nod_")
-    assert minted.startswith("nod_")
-    assert minted != statements.observed_uid("", "nod_")
+@pytest.mark.parametrize(
+    "wire",
+    [
+        "node-7",
+        "",
+        "nod_01J9X2BBBBBBBBBBBBBBBBBBBB",
+        "nod_short",
+        "nod_01j9x2bbbbbbbbbbbbbbbbbbbbbb",
+    ],
+)
+def test_a_malformed_id_is_refused_rather_than_replaced(wire: str) -> None:
+    """Minting a substitute would hide the defect and split the row's identity."""
+    with pytest.raises(statements.MalformedObservation):
+        statements.observed_uid(wire, "nod_")
 
 
-def test_observed_uid_refuses_a_wrongly_prefixed_id() -> None:
-    minted = statements.observed_uid("dev_01J9X2CCCCCCCCCCCCCCCCCCCC", "nod_")
-    assert minted.startswith("nod_")
+def test_a_wrongly_prefixed_id_is_refused() -> None:
+    with pytest.raises(statements.MalformedObservation):
+        statements.observed_uid("dev_01j9x2cccccccccccccccccccc", "nod_")
 
 
 # --------------------------------------------------------------------------- telemetry
@@ -300,6 +313,13 @@ def observed_frame(type_name: str, reply_to: str | None = None) -> SinkFrame:
     return SinkFrame(cluster_id=CLUSTER, type=type_name, payload=payload(type_name), seq=1, reply_to=reply_to)
 
 
+def malformed_frame(reply_to: str | None = None) -> SinkFrame:
+    """A `node.observed` whose id the plane can never store."""
+    frame = observed_frame("node.observed", reply_to=reply_to)
+    broken = structs.replace(frame.payload, node_id="node-7")
+    return structs.replace(frame, payload=broken)
+
+
 def test_the_database_sink_satisfies_the_protocols() -> None:
     assert isinstance(DatabaseSink(), Sink)
     assert isinstance(DatabaseDesiredSource(), DesiredSource)
@@ -310,6 +330,32 @@ async def test_applying_one_frame_commits_once() -> None:
     sink = DatabaseSink(sessions)
     await sink.apply_observed(observed_frame("node.observed"))
     assert sessions.commits == 1
+
+
+async def test_a_malformed_id_is_acknowledged_and_dropped_not_replayed() -> None:
+    """A poison frame would come back forever; the stream behind it must advance.
+
+    The contrast with the unknown-cluster case below is the whole point: that one
+    raises, because a cluster the plane has not enrolled yet is a condition a
+    later retry can resolve.
+    """
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
+
+    await sink.apply_observed(malformed_frame())
+
+    assert sessions.commits == 0
+
+
+async def test_a_dropped_frame_still_poisons_the_open_epoch() -> None:
+    """Absence from local state is not evidence when a frame did not land."""
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
+    await sink.begin_resync(CLUSTER, "supply", "req-1")
+    await sink.apply_observed(malformed_frame(reply_to="req-1"))
+    await sink.end_resync(CLUSTER, "req-1", count=1, complete=True)
+
+    assert not [stmt for stmt in sessions.executed if isinstance(stmt, Delete)]
 
 
 async def test_an_unknown_cluster_raises_rather_than_acknowledging() -> None:

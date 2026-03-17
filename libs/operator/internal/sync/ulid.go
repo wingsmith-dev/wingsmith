@@ -6,7 +6,7 @@ import (
 )
 
 // crockford is the Crockford base32 alphabet ULIDs are encoded in.
-const crockford = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+const crockford = "0123456789abcdefghjkmnpqrstvwxyz"
 
 // NewULID returns a 26-character ULID: 48 bits of millisecond timestamp followed by 80 bits of
 // randomness. Frame ids are lexicographically sortable by creation time, which is what makes a

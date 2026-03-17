@@ -1,13 +1,13 @@
 {
   "v": 1,
   "type": "operation.observed",
-  "id": "01J9X2E5G7QK8V3B0YHN4TZC7E",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc7e",
   "ts": "2026-08-19T14:02:11.482Z",
   "seq": 8814,
   "ack": 4421,
   "payload": {
-    "operation_id": "opr_01J9X2KKKKKKKKKKKKKKKKKKKK",
-    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "operation_id": "opr_01j9x2kkkkkkkkkkkkkkkkkkkk",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "phase": "failed",
     "progress": 0.8,
     "message": "drained 4 of 5 replicas before the deadline elapsed",

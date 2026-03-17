@@ -24,7 +24,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.core.ids import NODE
 from app.core.ids import DEVICE
 from app.core.ids import TOPOLOGY_DOMAIN
-from app.core.ids import new_uid
+from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Pool
 from app.db.models import Event
@@ -50,7 +50,6 @@ NODE_CONSTRAINT = "uq_supply_node_cluster_name"
 DEVICE_CONSTRAINT = "uq_supply_device_cluster_uuid"
 TOPOLOGY_CONSTRAINT = "uq_supply_topology_domain_identity"
 
-UID_WIDTH = 40
 
 EVENT_SEVERITY = {
     "joined": "info",
@@ -68,21 +67,29 @@ EVENT_SEVERITY = {
 }
 
 
-def observed_uid(wire_id: str, prefix: str) -> str:
-    """The public id an observed row is given the first time it is seen.
+class MalformedObservation(Exception):
+    """A frame that can never be applied, however many times it is replayed.
 
-    A cluster-side identifier carrying the right prefix is adopted verbatim,
-    because it is the only handle later frames use to cross-reference the row —
-    `device.observed` names its node by it, and nothing on these tables stores a
-    second, foreign identity. Anything else gets a freshly minted one. The check
-    is the prefix and the column width rather than `is_uid`, since an operator
-    mints its own ids and only the prefix is contractual. Either way the id is
-    written on insert only: `uid` never appears in an update set, so a row
-    rediscovered after a reconnect keeps the id it was first given.
+    Distinct from an ordinary failure on purpose. The protocol has no negative
+    acknowledgement, so the only way to refuse a frame is to withhold the ack and
+    be sent it again — which is right for a transient failure and a wedged stream
+    for a permanent one. See PROTOCOL.md 6b.
     """
-    if wire_id.startswith(prefix) and len(prefix) < len(wire_id) <= UID_WIDTH:
-        return wire_id
-    return new_uid(prefix)
+
+
+def observed_uid(wire_id: str, prefix: str) -> str:
+    """The public id an observed row carries.
+
+    Minted by the cluster, not by the plane: an observed object needs a handle
+    from the moment it is discovered, and later frames cross-reference it by that
+    handle before the plane has necessarily seen the row it names (ADR 0002). The
+    plane validates the shape and stores it verbatim — `uid` never appears in an
+    update set, so a row rediscovered after a reconnect keeps the id it was first
+    given.
+    """
+    if not is_uid(wire_id) or not wire_id.startswith(prefix):
+        raise MalformedObservation(f"{wire_id!r} is not a {prefix} identifier")
+    return wire_id
 
 
 def cluster_ref(cluster_uid: str):

@@ -1,14 +1,14 @@
 {
   "v": 1,
   "type": "device.event",
-  "id": "01J9X2E5G7QK8V3B0YHN4TZC6Z",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc6z",
   "ts": "2026-08-19T14:02:11.482Z",
   "seq": 8805,
   "ack": 4412,
   "payload": {
-    "device_id": "dev_01J9X2CCCCCCCCCCCCCCCCCCCD",
-    "node_id": "nod_01J9X2BBBBBBBBBBBBBBBBBBBB",
-    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "device_id": "dev_01j9x2cccccccccccccccccccd",
+    "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "event": "fell_off_bus",
     "reason": "gpu_lost",
     "message": "device disappeared from the PCIe bus; node reboot required",

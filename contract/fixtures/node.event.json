@@ -1,13 +1,13 @@
 {
   "v": 1,
   "type": "node.event",
-  "id": "01J9X2E5G7QK8V3B0YHN4TZC6X",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc6x",
   "ts": "2026-08-19T14:02:11.482Z",
   "seq": 8803,
   "ack": 4412,
   "payload": {
-    "node_id": "nod_01J9X2BBBBBBBBBBBBBBBBBBBC",
-    "cluster_id": "clu_01J9X2AAAAAAAAAAAAAAAAAAAA",
+    "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbc",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "event": "degraded",
     "reason": "driver_mismatch",
     "message": "driver 550.90.07 does not match the pool's pinned 570.86.15",

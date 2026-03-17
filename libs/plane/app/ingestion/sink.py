@@ -37,6 +37,7 @@ from app.ingestion.resync import DEVICE
 from app.ingestion.resync import TOPOLOGY
 from app.ingestion.resync import ResyncEpoch
 from app.ingestion.resync import decide
+from app.ingestion.statements import MalformedObservation
 
 
 logger = getLogger(__name__)
@@ -94,8 +95,28 @@ class DatabaseSink:
     # ----------------------------------------------------------------- observed
 
     async def apply_observed(self, frame: SinkFrame) -> None:
+        """Applies one observed frame, or refuses it in one of two different ways.
+
+        Raising withholds the ack and asks for a replay, which is the right
+        answer only when a replay could succeed. A malformed frame is a poison
+        frame: it would come back unchanged forever and the stream behind it
+        would never advance, so it is accepted, discarded and logged instead
+        (PROTOCOL.md 6b). The resync epoch is poisoned either way — a frame that
+        did not land is not evidence about what exists.
+        """
         try:
             tracked = await self._write(frame)
+        except MalformedObservation as exc:
+            self._poison(frame)
+            logger.error(
+                "ingestion.rejected cluster=%s type=%s seq=%s id=%s reason=%s",
+                frame.cluster_id,
+                frame.type,
+                frame.seq,
+                frame.id,
+                exc,
+            )
+            return
         except Exception:
             self._poison(frame)
             raise
