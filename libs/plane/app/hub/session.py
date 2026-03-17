@@ -24,6 +24,7 @@ from msgspec import Struct
 from msgspec import json as msgjson
 
 from app.hub.sink import Sink
+from app.hub.sink import Liveness
 from app.hub.sink import SinkFrame
 from app.hub.sink import MemorySink
 from app.hub.sink import DesiredSource
@@ -128,6 +129,7 @@ class OperatorSession:
     """
 
     __slots__ = (
+        "_close_reason",
         "_closing",
         "_last_recv",
         "_outbound",
@@ -160,6 +162,7 @@ class OperatorSession:
         self._outbound: asyncio.Queue[bytes] = asyncio.Queue(maxsize=self.config.send_queue_size)
         self._last_recv = 0.0
         self._closing = False
+        self._close_reason: str | None = None
         self._stopped = asyncio.Event()
 
     # ----------------------------------------------------------------- lifecycle
@@ -187,6 +190,7 @@ class OperatorSession:
             await self._pump()
         finally:
             await self._close(1000, "")
+            await self._mark_disconnected()
             self._stopped.set()
             logger.info(
                 "hub.session.close principal=%s session=%s",
@@ -219,6 +223,7 @@ class OperatorSession:
         if self._closing:
             return
         self._closing = True
+        self._close_reason = reason or None
         try:
             await self.connection.close(code, reason)
         except Exception:
@@ -259,12 +264,33 @@ class OperatorSession:
             full_resync,
         )
 
+        await self._mark_connected(hello)
+
         if full_resync:
             await self._stream_full_resync()
             return
 
         for frame in state.replay.pending():
             await self._send_now(frame)
+
+    async def _mark_connected(self, hello: Hello) -> None:
+        """Reports the peer as reachable. A sink that cannot record it must not fail the session."""
+        if not isinstance(self.sink, Liveness):
+            return
+        try:
+            await self.sink.mark_connected(hello.cluster_id, hello.agent_version)
+        except Exception:
+            logger.warning("hub.session.sync_state_failed phase=connect cluster=%s", hello.cluster_id, exc_info=True)
+
+    async def _mark_disconnected(self) -> None:
+        if self.state is None or not isinstance(self.sink, Liveness):
+            return
+        try:
+            await self.sink.mark_disconnected(self.state.cluster_id, self._close_reason)
+        except Exception:
+            logger.warning(
+                "hub.session.sync_state_failed phase=disconnect cluster=%s", self.state.cluster_id, exc_info=True
+            )
 
     def _resolve_session(self, hello: Hello) -> tuple[SessionState, bool]:
         """Decides whether the requested resume point can be honoured (PROTOCOL §4).

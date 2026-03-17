@@ -73,17 +73,40 @@ def test_malformed_label_is_rejected():
         parse_labels(["tier"])
 
 
+COLLECTIONS = (
+    "clusters",
+    "nodes",
+    "devices",
+    "topology-domains",
+    "pools",
+    "artifacts",
+    "recipes",
+    "deployments",
+    "endpoints",
+    "projects",
+    "quotas",
+    "priority-classes",
+    "policies",
+    "allocations",
+    "operations",
+    "components",
+    "events",
+)
+
+OBSERVED = ("nodes", "devices", "topology-domains", "allocations", "events")
+
+
 def test_v1_routes_are_mounted():
     paths = {route.path for route in create_app().routes}
     assert "/health" in paths
-    for collection in ("clusters", "nodes", "devices", "topology-domains", "pools", "events"):
+    for collection in COLLECTIONS:
         assert f"/v1/{collection}" in paths
 
 
 def test_observed_collections_reject_writes():
     """Observed objects are discovered, not created — API.md §6."""
     methods = {route.path: route.methods for route in create_app().routes}
-    for collection in ("nodes", "devices", "topology-domains", "events"):
+    for collection in OBSERVED:
         assert "POST" not in methods[f"/v1/{collection}"]
 
 

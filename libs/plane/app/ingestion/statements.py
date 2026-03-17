@@ -378,7 +378,10 @@ def upsert_sync_state(cluster_id: UUID, values: dict[str, Any], bump: bool = Fal
     `observed_generation` counts frames applied, so it is incremented on the
     conflict path rather than taken from the insert values.
     """
-    statement = pg_insert(ClusterSyncState).values(cluster_id=cluster_id, **values)
+    insert_values: dict[str, Any] = {"cluster_id": cluster_id, **values}
+    if bump:
+        insert_values["observed_generation"] = 1
+    statement = pg_insert(ClusterSyncState).values(**insert_values)
     updates: dict[str, Any] = {key: statement.excluded[key] for key in values}
     if bump:
         updates["observed_generation"] = ClusterSyncState.observed_generation + 1

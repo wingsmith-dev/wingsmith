@@ -1,0 +1,426 @@
+package observe
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"reflect"
+	stdsync "sync"
+	"time"
+
+	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+)
+
+// Wire types this loop produces.
+const (
+	TypeNodeObserved     = "node.observed"
+	TypeNodeEvent        = "node.event"
+	TypeDeviceObserved   = "device.observed"
+	TypeDeviceEvent      = "device.event"
+	TypeTopologyObserved = "topology.observed"
+	TypeCapacityObserved = "capacity.observed"
+)
+
+const (
+	membershipJoined = "joined"
+	defaultPool      = "default"
+	unknownClass     = "unknown"
+	resyncScope      = "supply"
+)
+
+// Sender is the half of sync.Client this loop needs. Narrowing it keeps the observation loop
+// testable without a socket, and makes it obvious that nothing here reads the stream.
+type Sender interface {
+	Send(t syncpkg.MessageType, subject string, payload any) error
+	SendCorrelated(t syncpkg.MessageType, subject string, payload any, replyTo string) (string, error)
+}
+
+// Observer is the upward loop. It discovers the cluster's supply on an interval, projects it into
+// contract types, and sends what changed.
+//
+// Only changed objects go out. The stream is full-object and at-least-once, so re-sending an
+// unchanged node buys nothing and spends the send queue's replacement slots on frames the hub
+// already has. What guarantees the hub is not left behind is resync, not repetition.
+type Observer struct {
+	ClusterID    string
+	AgentVersion string
+	Discoverer   Discoverer
+	Sender       Sender
+	Interval     time.Duration
+	Log          *slog.Logger
+
+	mu     stdsync.Mutex
+	sender Sender
+	last   projection
+	seen   bool
+}
+
+// New fills in an Observer's defaults and returns it.
+func New(o *Observer) *Observer {
+	if o.Interval <= 0 {
+		o.Interval = 30 * time.Second
+	}
+	if o.Log == nil {
+		o.Log = slog.Default()
+	}
+	o.Log = o.Log.With("component", "observe")
+	o.sender = o.Sender
+	return o
+}
+
+// Bind supplies the Sender after construction, which the wiring needs because the sync client
+// takes this loop's Resync as part of its own options: one of the two has to be built first.
+func (o *Observer) Bind(s Sender) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.sender = s
+}
+
+func (o *Observer) send() (Sender, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.sender == nil {
+		return nil, fmt.Errorf("observe: no sender bound")
+	}
+	return o.sender, nil
+}
+
+// Run observes on an interval until ctx is cancelled.
+//
+// A failed discovery is logged and the previous projection is kept: a cluster we could not read
+// is not a cluster with nothing in it, and emitting the difference would tell the hub every node
+// had gone away.
+func (o *Observer) Run(ctx context.Context) error {
+	ticker := time.NewTicker(o.Interval)
+	defer ticker.Stop()
+	for {
+		if err := o.Tick(ctx); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			o.Log.Error("observation failed", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+		}
+	}
+}
+
+// Tick performs one discovery and sends whatever it changed.
+func (o *Observer) Tick(ctx context.Context) error {
+	snapshot, err := o.Discoverer.Discover(ctx)
+	if err != nil {
+		return fmt.Errorf("discover: %w", err)
+	}
+	snapshot.normalise()
+	next := o.project(snapshot)
+
+	o.mu.Lock()
+	prev, seen := o.last, o.seen
+	o.last, o.seen = next, true
+	o.mu.Unlock()
+
+	if err := o.sendChanged(prev, next, seen); err != nil {
+		return err
+	}
+	return o.sendEvents(prev, next, seen, snapshot.At)
+}
+
+// Resync streams the complete observed inventory as its own correlated stream, per PROTOCOL §4.
+// It is called by the sync client whenever the hub grants a fresh session, and the count in
+// stream.end is the number of frames actually sent.
+func (o *Observer) Resync(ctx context.Context) error {
+	snapshot, err := o.Discoverer.Discover(ctx)
+	if err != nil {
+		o.Log.Error("resync discovery failed; streaming the last known projection", "error", err)
+	} else {
+		snapshot.normalise()
+		next := o.project(snapshot)
+		o.mu.Lock()
+		o.last, o.seen = next, true
+		o.mu.Unlock()
+	}
+
+	o.mu.Lock()
+	current := o.last
+	o.mu.Unlock()
+
+	requestID, err := o.openStream(wire.ResyncBegin{Scope: resyncScope})
+	if err != nil {
+		return fmt.Errorf("open resync: %w", err)
+	}
+
+	count := 0
+	send := func(t syncpkg.MessageType, subject string, payload any) error {
+		if err := o.pushCorrelated(t, subject, payload, requestID); err != nil {
+			return err
+		}
+		count++
+		return nil
+	}
+	for _, n := range current.nodes {
+		if err := send(TypeNodeObserved, n.NodeID, n); err != nil {
+			return err
+		}
+	}
+	for _, d := range current.devices {
+		if err := send(TypeDeviceObserved, d.DeviceID, d); err != nil {
+			return err
+		}
+	}
+	for _, t := range current.domains {
+		if err := send(TypeTopologyObserved, t.DomainID, t); err != nil {
+			return err
+		}
+	}
+	for _, c := range current.capacity {
+		if err := send(TypeCapacityObserved, c.Pool, c); err != nil {
+			return err
+		}
+	}
+
+	if err := o.pushCorrelated(syncpkg.TypeStreamEnd, "", wire.StreamEnd{Count: count, Complete: true}, requestID); err != nil {
+		return fmt.Errorf("close resync: %w", err)
+	}
+	o.Log.Info("streamed observed inventory", "frames", count)
+	return nil
+}
+
+func (o *Observer) sendChanged(prev, next projection, seen bool) error {
+	prevNodes := indexNodes(prev.nodes)
+	for _, n := range next.nodes {
+		if seen {
+			if old, ok := prevNodes[n.NodeID]; ok && sameNode(old, n) {
+				continue
+			}
+		}
+		if err := o.push(TypeNodeObserved, n.NodeID, n); err != nil {
+			return err
+		}
+	}
+	prevDevices := indexDevices(prev.devices)
+	for _, d := range next.devices {
+		if seen {
+			if old, ok := prevDevices[d.DeviceID]; ok && sameDevice(old, d) {
+				continue
+			}
+		}
+		if err := o.push(TypeDeviceObserved, d.DeviceID, d); err != nil {
+			return err
+		}
+	}
+	prevDomains := indexDomains(prev.domains)
+	for _, t := range next.domains {
+		if seen {
+			if old, ok := prevDomains[t.DomainID]; ok && sameDomain(old, t) {
+				continue
+			}
+		}
+		if err := o.push(TypeTopologyObserved, t.DomainID, t); err != nil {
+			return err
+		}
+	}
+	prevCapacity := indexCapacity(prev.capacity)
+	for _, c := range next.capacity {
+		if seen {
+			if old, ok := prevCapacity[c.Pool]; ok && sameCapacity(old, c) {
+				continue
+			}
+		}
+		if err := o.push(TypeCapacityObserved, c.Pool, c); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// sendEvents reports transitions. An event is something that happened, so it is only ever derived
+// from a difference between two readings — never from a state that merely holds.
+func (o *Observer) sendEvents(prev, next projection, seen bool, at time.Time) error {
+	occurred := formatTime(at)
+	prevNodes := indexNodes(prev.nodes)
+	nextNodes := indexNodes(next.nodes)
+
+	for _, n := range next.nodes {
+		old, existed := prevNodes[n.NodeID]
+		switch {
+		case !existed:
+			// A first reading is not a transition. Without this guard every restart would
+			// replay a join for the whole fleet, and an event that did not happen is worse
+			// than one that was merely not reported: the observed frames carry membership.
+			if !seen {
+				continue
+			}
+			if err := o.nodeEvent(n.NodeID, "joined", "discovered", "node "+n.Name+" joined the cluster", occurred); err != nil {
+				return err
+			}
+		default:
+			if !old.Cordoned && n.Cordoned {
+				if err := o.nodeEvent(n.NodeID, "cordoned", "unschedulable", "node "+n.Name+" was marked unschedulable", occurred); err != nil {
+					return err
+				}
+			}
+			if old.Ready && !n.Ready {
+				if err := o.nodeEvent(n.NodeID, "degraded", "not_ready", "node "+n.Name+" stopped reporting ready", occurred); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if seen {
+		for _, old := range prev.nodes {
+			if _, ok := nextNodes[old.NodeID]; !ok {
+				if err := o.nodeEvent(old.NodeID, "left", "not_found", "node "+old.Name+" is no longer a member of the cluster", occurred); err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	prevDevices := indexDevices(prev.devices)
+	nextDevices := indexDevices(next.devices)
+	for _, d := range next.devices {
+		old, existed := prevDevices[d.DeviceID]
+		if !existed {
+			continue
+		}
+		switch {
+		case old.Health == HealthHealthy && d.Health == HealthUnhealthy:
+			if err := o.deviceEvent(d.DeviceID, d.NodeID, "degraded", "health_check_failed",
+				"device "+d.UUID+" reports unhealthy", occurred); err != nil {
+				return err
+			}
+		case old.Health == HealthUnhealthy && d.Health == HealthHealthy:
+			if err := o.deviceEvent(d.DeviceID, d.NodeID, "recovered", "health_check_passed",
+				"device "+d.UUID+" reports healthy again", occurred); err != nil {
+				return err
+			}
+		}
+	}
+	if seen {
+		for _, old := range prev.devices {
+			if _, ok := nextDevices[old.DeviceID]; ok {
+				continue
+			}
+			// A device on a node that has itself left did not fall off a bus. The node.event
+			// already accounts for the disappearance, and two explanations of one loss is one
+			// too many.
+			if _, nodeRemains := nextNodes[old.NodeID]; !nodeRemains {
+				continue
+			}
+			if err := o.deviceEvent(old.DeviceID, old.NodeID, "fell_off_bus", "gpu_lost",
+				"device "+old.UUID+" is no longer present on its node", occurred); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// push enqueues an uncorrelated frame. The subject is the id of the object described, which is
+// what PROTOCOL §6 replaces on when the queue is full.
+func (o *Observer) push(t syncpkg.MessageType, subject string, payload any) error {
+	s, err := o.send()
+	if err != nil {
+		return err
+	}
+	return s.Send(t, subject, payload)
+}
+
+func (o *Observer) pushCorrelated(t syncpkg.MessageType, subject string, payload any, replyTo string) error {
+	s, err := o.send()
+	if err != nil {
+		return err
+	}
+	_, err = s.SendCorrelated(t, subject, payload, replyTo)
+	return err
+}
+
+// openStream sends resync.begin and returns the id every frame in the snapshot must correlate to.
+func (o *Observer) openStream(begin wire.ResyncBegin) (string, error) {
+	s, err := o.send()
+	if err != nil {
+		return "", err
+	}
+	return s.SendCorrelated(syncpkg.TypeResyncBegin, "", begin, "")
+}
+
+func (o *Observer) nodeEvent(nodeID, event, reason, message, at string) error {
+	return o.push(TypeNodeEvent, nodeID, wire.NodeEvent{
+		NodeID:     nodeID,
+		ClusterID:  o.ClusterID,
+		Event:      event,
+		Reason:     reason,
+		Message:    message,
+		OccurredAt: at,
+	})
+}
+
+func (o *Observer) deviceEvent(deviceID, nodeID, event, reason, message, at string) error {
+	return o.push(TypeDeviceEvent, deviceID, wire.DeviceEvent{
+		DeviceID:   deviceID,
+		NodeID:     nodeID,
+		ClusterID:  o.ClusterID,
+		Event:      event,
+		Reason:     reason,
+		Message:    message,
+		OccurredAt: at,
+	})
+}
+
+func indexNodes(in []wire.NodeObserved) map[string]wire.NodeObserved {
+	out := make(map[string]wire.NodeObserved, len(in))
+	for _, n := range in {
+		out[n.NodeID] = n
+	}
+	return out
+}
+
+func indexDevices(in []wire.DeviceObserved) map[string]wire.DeviceObserved {
+	out := make(map[string]wire.DeviceObserved, len(in))
+	for _, d := range in {
+		out[d.DeviceID] = d
+	}
+	return out
+}
+
+func indexDomains(in []wire.TopologyObserved) map[string]wire.TopologyObserved {
+	out := make(map[string]wire.TopologyObserved, len(in))
+	for _, t := range in {
+		out[t.DomainID] = t
+	}
+	return out
+}
+
+func indexCapacity(in []wire.CapacityObserved) map[string]wire.CapacityObserved {
+	out := make(map[string]wire.CapacityObserved, len(in))
+	for _, c := range in {
+		out[c.Pool] = c
+	}
+	return out
+}
+
+// The observed_at stamp is excluded from every comparison below: it moves on every tick, and a
+// clock reading is not an observation changing.
+func sameNode(a, b wire.NodeObserved) bool {
+	a.ObservedAt, b.ObservedAt = "", ""
+	return reflect.DeepEqual(a, b)
+}
+
+func sameDevice(a, b wire.DeviceObserved) bool {
+	a.ObservedAt, b.ObservedAt = "", ""
+	return reflect.DeepEqual(a, b)
+}
+
+func sameDomain(a, b wire.TopologyObserved) bool {
+	a.ObservedAt, b.ObservedAt = "", ""
+	return reflect.DeepEqual(a, b)
+}
+
+func sameCapacity(a, b wire.CapacityObserved) bool {
+	a.ObservedAt, b.ObservedAt = "", ""
+	return reflect.DeepEqual(a, b)
+}

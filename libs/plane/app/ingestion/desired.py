@@ -188,9 +188,7 @@ async def _deployments(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> 
 
     out: list[DeploymentDesired] = []
     for deployment, workload, recipe, project_uid, priority, artifact_uid in rows:
-        artifact_ids = [artifact_uid] + [
-            adapters[a] for a in (deployment.adapter_artifact_ids or []) if a in adapters
-        ]
+        artifact_ids = [artifact_uid] + [adapters[a] for a in (deployment.adapter_artifact_ids or []) if a in adapters]
         out.append(
             DeploymentDesired(
                 deployment_id=deployment.uid,

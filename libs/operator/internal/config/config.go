@@ -53,6 +53,11 @@ type Config struct {
 	// the connection dead and redialling. It must exceed HeartbeatInterval.
 	LivenessTimeout time.Duration
 
+	// ObserveInterval is how often the operator re-reads its own cluster's supply and sends
+	// what changed. It is a resolution knob, not a correctness one: the observed stream is
+	// full-object and resync fills any hole, so a slower interval only ages the hub's view.
+	ObserveInterval time.Duration
+
 	// BackoffMin and BackoffMax bound the reconnect backoff.
 	BackoffMin time.Duration
 	BackoffMax time.Duration
@@ -78,6 +83,7 @@ func Load() (*Config, error) {
 		SendQueueSize:         envInt("HANGAR_SEND_QUEUE_SIZE", 1024),
 		HeartbeatInterval:     envDuration("HANGAR_HEARTBEAT_INTERVAL", 10*time.Second),
 		LivenessTimeout:       envDuration("HANGAR_LIVENESS_TIMEOUT", 30*time.Second),
+		ObserveInterval:       envDuration("HANGAR_OBSERVE_INTERVAL", 30*time.Second),
 		BackoffMin:            envDuration("HANGAR_BACKOFF_MIN", time.Second),
 		BackoffMax:            envDuration("HANGAR_BACKOFF_MAX", 30*time.Second),
 		LeaderElection:        envBool("HANGAR_LEADER_ELECTION", false),
@@ -115,6 +121,9 @@ func (c *Config) validate() error {
 	}
 	if c.LivenessTimeout <= c.HeartbeatInterval {
 		return fmt.Errorf("HANGAR_LIVENESS_TIMEOUT (%s) must exceed HANGAR_HEARTBEAT_INTERVAL (%s)", c.LivenessTimeout, c.HeartbeatInterval)
+	}
+	if c.ObserveInterval <= 0 {
+		return fmt.Errorf("HANGAR_OBSERVE_INTERVAL must be positive")
 	}
 	if c.BackoffMax < c.BackoffMin {
 		return fmt.Errorf("HANGAR_BACKOFF_MAX must be >= HANGAR_BACKOFF_MIN")

@@ -21,6 +21,7 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/internal/checkpoint"
 	"github.com/hangar-dev/hangar/libs/operator/internal/config"
 	"github.com/hangar-dev/hangar/libs/operator/internal/health"
+	"github.com/hangar-dev/hangar/libs/operator/internal/observe"
 	"github.com/hangar-dev/hangar/libs/operator/internal/reconcile"
 	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
 )
@@ -75,6 +76,14 @@ func run() error {
 		Log:        log,
 		Checkpoint: cursor,
 	}
+	observer := observe.New(&observe.Observer{
+		ClusterID:    cfg.ClusterID,
+		AgentVersion: version,
+		Discoverer:   &observe.KubeDiscoverer{Client: directClient},
+		Interval:     cfg.ObserveInterval,
+		Log:          log,
+	})
+
 	client := syncpkg.NewClient(syncpkg.Options{
 		HubURL:            cfg.HubURL,
 		ClusterID:         cfg.ClusterID,
@@ -86,10 +95,12 @@ func run() error {
 		BackoffMin:        cfg.BackoffMin,
 		BackoffMax:        cfg.BackoffMax,
 		SendQueueSize:     cfg.SendQueueSize,
-		Handler:           store,
+		Handler:           observe.WithObserver(store, observer),
 		Checkpointer:      checkpoint.Adapt(cursor),
 		Logger:            log,
 	})
+
+	observer.Bind(client)
 
 	healthSrv := health.New(cfg.HealthAddr, log, map[string]health.Check{
 		"hub": func() error {
@@ -103,6 +114,7 @@ func run() error {
 	g, gctx := errgroup.WithContext(ctx)
 	g.Go(func() error { return healthSrv.Run(gctx) })
 	g.Go(func() error { return client.Run(gctx) })
+	g.Go(func() error { return observer.Run(gctx) })
 	g.Go(func() error {
 		log.Info("starting reconcile loop")
 		return mgr.Start(gctx)

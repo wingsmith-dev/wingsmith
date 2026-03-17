@@ -43,7 +43,10 @@ dev = [
 minversion = "7.0"
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "--strict-markers -v"
+addopts = "--strict-markers -v -m 'not database'"
+markers = [
+  "database: needs a live Postgres; deselected by default, run with `just test-db`",
+]
 filterwarnings = [
   "ignore::DeprecationWarning",
   "ignore::PendingDeprecationWarning",

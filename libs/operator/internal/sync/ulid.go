@@ -19,7 +19,14 @@ func NewULID() string {
 		ms >>= 8
 	}
 	_, _ = rand.Read(raw[6:])
+	return ULIDBody(raw)
+}
 
+// ULIDBody encodes 16 bytes as the 26-character Crockford base32 body of a ULID.
+//
+// It is exported because observed ids share this encoding: an id the cluster mints is a prefix
+// plus a body of exactly this shape, and two encoders would eventually disagree about one.
+func ULIDBody(raw [16]byte) string {
 	var bits uint64
 	var nbits uint
 	out := make([]byte, 0, 26)

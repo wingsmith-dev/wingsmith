@@ -1,0 +1,244 @@
+import datetime as dt
+
+from sqlalchemy import Row
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.ids import NODE
+from app.core.ids import DEVICE
+from app.core.ids import ARTIFACT
+from app.core.ids import COMPONENT
+from app.core.ids import OPERATION
+from app.core.ids import DEPLOYMENT
+from app.core.ids import new_uid
+from app.db.models import Operation
+from app.core.schemas import ListResponse
+from app.core.exceptions import Invalid
+from app.core.exceptions import Conflict
+from app.core.exceptions import NotFound
+from app.core.pagination import page
+from app.core.pagination import clamp_limit
+from app.core.pagination import decode_cursor
+
+from .schemas import OperationSchema
+from .schemas import OperationTargetSchema
+from .schemas import OperationCreateRequest
+from .repository import TARGET_KINDS
+from .repository import OperationRepository
+
+
+TYPES: dict[str, tuple[str, str]] = {
+    "node.drain": (NODE, "drain"),
+    "node.cordon": (NODE, "cordon"),
+    "node.uncordon": (NODE, "cordon"),
+    "node.reboot": (NODE, "reboot"),
+    "device.reset": (DEVICE, "device_reset"),
+    "cache.warm": (ARTIFACT, "cache_warm"),
+    "deployment.roll": (DEPLOYMENT, "roll"),
+    "component.upgrade": (COMPONENT, "upgrade"),
+}
+"""Every operation type, the id prefix its target must carry, and the wire kind.
+
+The second element is what a `node.drain` targeting `dev_...` is checked
+against: the type names the kind of thing it acts upon, so a mismatched prefix
+is a category error at creation and not a failure discovered inside the cluster
+an hour later. The third is the `operation.desired` kind the dispatcher will
+send; `uncordon` shares `cordon` because the wire kind names the mechanism and
+the parameters say which direction.
+"""
+
+PENDING = "pending"
+OPEN_PHASES = frozenset({"pending", "running"})
+TERMINAL_PHASES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
+PHASES = OPEN_PHASES | TERMINAL_PHASES
+
+
+def wire_kind(type_name: str) -> str:
+    return TYPES[type_name][1]
+
+
+class OperationService:
+    """Writes the declared half of an operation exactly once, at creation.
+
+    Everything after that — phase, result, error, started_at, finished_at — is
+    ingestion's, applied from `operation.observed`. This service never writes
+    those columns for a live operation, which is what keeps the two writers off
+    each other's fields.
+    """
+
+    def __init__(self, db: AsyncSession, actor: str = "unknown") -> None:
+        self.db = db
+        self.actor = actor
+        self.repo = OperationRepository(db)
+
+    def schema(self, operation: Operation, cluster_uid: str | None, target_uid: str) -> OperationSchema:
+        payload = operation.payload or {}
+        return OperationSchema(
+            id=operation.uid,
+            cluster_id=cluster_uid,
+            type=operation.type,
+            target=OperationTargetSchema(type=operation.target_type, id=target_uid),
+            reason=operation.reason,
+            requested_by=operation.requested_by,
+            parameters=payload.get("parameters", {}),
+            deadline_at=operation.deadline_at,
+            created_at=operation.created_at,
+            updated_at=operation.updated_at,
+            phase=operation.phase,
+            result=operation.result,
+            error=operation.error,
+            attempts=operation.attempts,
+            started_at=operation.started_at,
+            finished_at=operation.finished_at,
+        )
+
+    def _row_schema(self, row: Row, target_uid: str) -> OperationSchema:
+        return self.schema(row[0], row.cluster_uid, target_uid)
+
+    async def _target_uid(self, operation: Operation) -> str:
+        """Renders a stored row id back as the public id of whatever it points at.
+
+        `target_id` is polymorphic and holds a primary key, so the prefix is
+        recovered from `target_type` rather than from the value.
+        """
+        prefix = next((p for p, kind in TARGET_KINDS.items() if kind == operation.target_type), None)
+        if prefix is None:
+            return str(operation.target_id)
+        return await self.repo.target_uid(prefix, operation.target_id) or str(operation.target_id)
+
+    async def get(self, ref: str) -> OperationSchema:
+        row = await self.repo.get(ref)
+        if row is None:
+            raise NotFound(f"no operation {ref!r}")
+        return self._row_schema(row, await self._target_uid(row[0]))
+
+    async def list(
+        self,
+        limit: int | None = None,
+        cursor: str | None = None,
+        cluster: str | None = None,
+        kind: str | None = None,
+        phase: str | None = None,
+        target: str | None = None,
+        actor: str | None = None,
+        since: dt.datetime | None = None,
+    ) -> ListResponse[OperationSchema]:
+        if kind is not None and kind not in TYPES:
+            raise Invalid(f"unknown operation type {kind!r}", {"allowed": sorted(TYPES)})
+        if phase is not None and phase not in PHASES:
+            raise Invalid(f"unknown phase {phase!r}", {"allowed": sorted(PHASES)})
+        size = clamp_limit(limit)
+        rows = await self.repo.list(
+            limit=size,
+            before_seq=decode_cursor(cursor),
+            cluster=cluster,
+            kind=kind,
+            phase=phase,
+            target=target,
+            actor=actor,
+            since=since,
+        )
+        kept, next_cursor = page(rows, size, lambda r: r[0].seq)
+        items = [self._row_schema(row, await self._target_uid(row[0])) for row in kept]
+        return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
+
+    async def create(self, data: OperationCreateRequest, idempotency_key: str | None = None) -> OperationSchema:
+        """Validates the target against the type, then records the intent.
+
+        The phase written here is `pending` and nothing else: the plane records
+        that somebody asked for this, and the cluster is what makes it happen.
+        """
+        if data.type not in TYPES:
+            raise Invalid(f"unknown operation type {data.type!r}", {"allowed": sorted(TYPES)})
+        prefix, _ = TYPES[data.type]
+
+        if idempotency_key is not None:
+            existing = await self.repo.by_idempotency_key(idempotency_key)
+            if existing is not None:
+                operation = existing[0]
+                target_uid = await self._target_uid(operation)
+                if operation.type != data.type or target_uid != data.target:
+                    raise Conflict(
+                        "idempotency key was already used for a different operation",
+                        {"operation": operation.uid, "type": operation.type, "target": target_uid},
+                    )
+                return self._row_schema(existing, target_uid)
+
+        if not data.target.startswith(prefix):
+            raise Invalid(
+                f"{data.type} acts on {TARGET_KINDS[prefix]} targets, not {data.target!r}",
+                {"type": data.type, "expected_prefix": prefix, "target": data.target},
+            )
+        target = await self.repo.resolve_target(data.target)
+        if target is None:
+            raise NotFound(f"no target {data.target!r}")
+
+        cluster_id = target.cluster_id
+        if data.cluster is not None:
+            cluster = await self.repo.cluster_by_ref(data.cluster)
+            if cluster is None:
+                raise NotFound(f"no cluster {data.cluster!r}")
+            if cluster_id is not None and cluster.id != cluster_id:
+                raise Invalid(
+                    f"target {data.target!r} does not belong to cluster {data.cluster!r}",
+                    {"target": data.target, "cluster": data.cluster},
+                )
+            cluster_id = cluster.id
+        if cluster_id is None:
+            raise Invalid(
+                f"{data.type} needs a cluster: its target does not belong to one",
+                {"type": data.type, "target": data.target},
+            )
+
+        payload: dict = {"parameters": data.parameters}
+        if idempotency_key is not None:
+            payload["idempotency_key"] = idempotency_key
+
+        operation = Operation(
+            uid=new_uid(OPERATION),
+            cluster_id=cluster_id,
+            type=data.type,
+            target_type=TARGET_KINDS[prefix],
+            target_id=target.id,
+            phase=PENDING,
+            requested_by=self.actor,
+            reason=data.reason,
+            payload=payload,
+            deadline_at=data.deadline,
+        )
+        try:
+            await self.repo.add(operation)
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise Conflict("operation could not be recorded") from exc
+        return self.schema(operation, await self.repo.cluster_uid(cluster_id), target.uid)
+
+    async def cancel(self, ref: str) -> OperationSchema:
+        """Cancels an operation that has not been picked up yet, and only that.
+
+        `ops_operation` has no cancel-request column, so there is nowhere to
+        record "the plane wants this stopped" separately from the phase ingestion
+        owns. While the operation is still `pending` nothing in the cluster has
+        reported on it and moving it to `cancelled` cannot race a writer; once it
+        is `running` it can only be cancelled by whatever is running it, so this
+        answers `conflict` rather than lying about having stopped it.
+        """
+        row = await self.repo.get(ref)
+        if row is None:
+            raise NotFound(f"no operation {ref!r}")
+        operation = row[0]
+        if operation.phase in TERMINAL_PHASES:
+            raise Conflict(
+                f"operation {ref!r} already finished as {operation.phase!r}",
+                {"phase": operation.phase},
+            )
+        if operation.phase != PENDING:
+            raise Conflict(
+                f"operation {ref!r} is already running and can only be stopped by the cluster",
+                {"phase": operation.phase},
+            )
+        operation.phase = "cancelled"
+        operation.finished_at = dt.datetime.now(dt.UTC)
+        await self.db.commit()
+        return self._row_schema(row, await self._target_uid(operation))

@@ -65,6 +65,24 @@ class Sink(Protocol):
 
 
 @runtime_checkable
+class Liveness(Protocol):
+    """The optional half of a `Sink`: what a session knows and only a session can report.
+
+    Kept separate from `Sink` so that a sink with nowhere to put connection state is still a
+    complete sink. A session calls these when a peer arrives and when it goes away, which is the
+    one fact about a cluster that no frame carries.
+    """
+
+    async def mark_connected(self, cluster_uid: str, agent_version: str) -> None:
+        """The peer completed a handshake. `agent_version` comes off `hello`."""
+        ...
+
+    async def mark_disconnected(self, cluster_uid: str, error: str | None = None) -> None:
+        """The peer is gone. `error` is why, when the hub was the one that closed."""
+        ...
+
+
+@runtime_checkable
 class DesiredSource(Protocol):
     """Where a session draws declared state from when it must stream a full resync down."""
 
@@ -80,13 +98,15 @@ class MemorySink:
     type is in the set raises, which is how a receiver says "I could not apply this".
     """
 
-    __slots__ = ("events", "fail_types", "observed", "operations", "resyncs")
+    __slots__ = ("connections", "disconnections", "events", "fail_types", "observed", "operations", "resyncs")
 
     def __init__(self, fail_types: set[str] | None = None) -> None:
         self.observed: list[SinkFrame] = []
         self.events: list[SinkFrame] = []
         self.operations: list[SinkFrame] = []
         self.resyncs: list[tuple[str, str, str, int | None, bool | None]] = []
+        self.connections: list[tuple[str, str]] = []
+        self.disconnections: list[tuple[str, str | None]] = []
         self.fail_types: set[str] = fail_types or set()
 
     def _guard(self, frame: SinkFrame) -> None:
@@ -111,6 +131,12 @@ class MemorySink:
     async def end_resync(self, cluster_id: str, request_id: str, count: int, complete: bool) -> None:
         self.resyncs.append(("end", cluster_id, request_id, count, complete))
 
+    async def mark_connected(self, cluster_uid: str, agent_version: str) -> None:
+        self.connections.append((cluster_uid, agent_version))
+
+    async def mark_disconnected(self, cluster_uid: str, error: str | None = None) -> None:
+        self.disconnections.append((cluster_uid, error))
+
 
 class NullSink:
     """A `Sink` that accepts everything and keeps nothing.
@@ -128,6 +154,10 @@ class NullSink:
     async def begin_resync(self, cluster_id: str, scope: str, request_id: str) -> None: ...
 
     async def end_resync(self, cluster_id: str, request_id: str, count: int, complete: bool) -> None: ...
+
+    async def mark_connected(self, cluster_uid: str, agent_version: str) -> None: ...
+
+    async def mark_disconnected(self, cluster_uid: str, error: str | None = None) -> None: ...
 
 
 class EmptyDesiredSource:
