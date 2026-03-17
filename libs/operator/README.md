@@ -34,32 +34,30 @@ deploy/              kustomize bundle: namespace, CRD, RBAC, config, deployment
 
 ## The wire
 
-Every WebSocket text frame is one JSON `Envelope`:
+`contract/PROTOCOL.md` and `contract/MESSAGES.md` are the authority; `internal/wire` is the Go half
+of them, kept honest by the fixture corpus in `contract/fixtures`. `internal/sync` holds no wire
+types of its own — a second envelope definition would be a second contract, and only one of them
+would be tested.
 
-| Field | Meaning |
-|---|---|
-| `type` | `hello`, `hello.ack`, `ping`, `pong`, `desired`, `observed`, `ack`, `error` |
-| `id` | unique per envelope, stable across replay |
-| `correlation_id` | set on a reply to the `id` it answers |
-| `seq` | the sender's monotonic sequence, per direction, continuing across reconnects |
-| `ack` | highest contiguous peer sequence the sender has durably processed |
-| `ts` | creation time, not refreshed on replay |
-| `payload` | type-specific body — **schema owned by the contract track** |
-
-`ping`, `pong`, `ack`, `hello` and `hello.ack` are unsequenced: a heartbeat must never widen a
-replay window.
+Every WebSocket text frame is one JSON envelope carrying `v`, `type`, `id`, optional `seq` and
+`ack`, optional `reply_to`, an RFC 3339 UTC millisecond `ts`, and a type-specific `payload` object.
+`hello`, `welcome`, `ping`, `pong` and `ack` are unsequenced; everything else is sequenced,
+including `stream.end`. The bearer token travels as an `Authorization` header on the WebSocket
+handshake, never in a payload.
 
 **Resume.** Each direction numbers its own stream. The operator persists the highest contiguous
-sequence it has durably applied and offers it in `hello` alongside the session id; the hub replays
-from there. If the hub cannot honour the resume point it issues a new session id, the operator
-resets its cursor and calls `Resync`. Upward, sequenced envelopes are held in a replay buffer until
+sequence it has durably applied — in a `StreamCheckpoint` CRD, not in memory — and offers it in
+`hello` as `resume_from` alongside the session id and the `lossy` flag. The hub answers `welcome`
+and either resumes or returns a new session with `full_resync`, in which case the operator resets
+its cursor and calls `Resync` before the snapshot streams. A duplicate is dropped; a gap closes the
+connection. Upward, sequenced envelopes are held in a replay buffer until
 the hub's `ack` releases them, and are resent after the handshake.
 
-**Backpressure.** One bounded queue sits between every producer and the single writer. The overflow
-policy is explicit (`HANGAR_SEND_QUEUE_POLICY`): `drop-oldest` keeps the freshest state,
-`drop-newest` preserves the backlog, `disconnect` refuses to lose anything and tears the stream
-down so a resume repairs it. Dropped envelopes are still in the replay buffer, so backpressure
-costs latency and ordering, not delivery, until the buffer itself overflows.
+**Backpressure.** One bounded queue sits between every producer and the single writer. The policy
+is PROTOCOL §6 and is not configurable: a full queue replaces the oldest frame with the same type
+and subject, because observed state is a snapshot of the present and falling behind should cost
+resolution rather than correctness. Events are exempt — they are dropped from the tail and the loss
+is counted. Sequence numbers are assigned by the writer, so a replaced frame never leaves a hole.
 
 ## Configuration
 
@@ -75,10 +73,9 @@ costs latency and ordering, not delivery, until the buffer itself overflows.
 | `HANGAR_METRICS_ADDR` | `0` | controller-runtime metrics, `0` disables |
 | `HANGAR_NAMESPACE` | `hangar-system` | where CRDs and the lease live |
 | `HANGAR_SEND_QUEUE_SIZE` | `1024` | outbound queue bound |
-| `HANGAR_SEND_QUEUE_POLICY` | `drop-oldest` | `drop-oldest`, `drop-newest`, `disconnect` |
 | `HANGAR_HEARTBEAT_INTERVAL` | `10s` | application-level ping interval |
 | `HANGAR_LIVENESS_TIMEOUT` | `30s` | silence tolerated before redialling; must exceed the interval |
-| `HANGAR_BACKOFF_MIN` / `HANGAR_BACKOFF_MAX` | `500ms` / `30s` | reconnect backoff, full jitter |
+| `HANGAR_BACKOFF_MIN` / `HANGAR_BACKOFF_MAX` | `1s` / `30s` | reconnect backoff, full jitter |
 | `HANGAR_LEADER_ELECTION` | `false` | controller-runtime leader election |
 
 Liveness is unconditional and readiness carries the hub session: a partitioned operator is healthy,

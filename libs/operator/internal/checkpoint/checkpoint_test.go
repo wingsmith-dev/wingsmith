@@ -11,6 +11,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	checkpointv1alpha1 "github.com/hangar-dev/hangar/libs/operator/api/checkpoint/v1alpha1"
+	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
 )
 
 func newFakeClient(t *testing.T, objs ...client.Object) client.Client {
@@ -149,9 +150,10 @@ func TestNewSessionCannotClaimHistory(t *testing.T) {
 	}
 }
 
-// TestLossySurvivesRestartAndSuppressesResume proves a lossy marker cannot be laundered away by a
-// crash: it is durable, and while set the adapter refuses to offer the cursor for resume.
-func TestLossySurvivesRestartAndSuppressesResume(t *testing.T) {
+// TestLossySurvivesRestartAndIsDeclared proves a lossy marker cannot be laundered away by a
+// crash: it is durable, and it reaches the client so that hello can declare it rather than ask
+// for a resume this side cannot honour.
+func TestLossySurvivesRestartAndIsDeclared(t *testing.T) {
 	ctx := context.Background()
 	c := newFakeClient(t)
 
@@ -175,12 +177,15 @@ func TestLossySurvivesRestartAndSuppressesResume(t *testing.T) {
 		t.Fatalf("lossy marker lost across restart: %+v", got)
 	}
 
-	session, seq, err := Adapt(restarted).Load(ctx)
+	cursor, err := Adapt(restarted).Load(ctx)
 	if err != nil {
 		t.Fatalf("adapter load: %v", err)
 	}
-	if session != "" || seq != 0 {
-		t.Fatalf("lossy cursor offered for resume: %q/%d", session, seq)
+	if !cursor.Lossy {
+		t.Fatalf("lossy cursor laundered by the adapter: %+v", cursor)
+	}
+	if cursor.SessionID != "sess-a" || cursor.Seq != 2 {
+		t.Fatalf("adapter lost the cursor it must declare alongside lossy: %+v", cursor)
 	}
 
 	if err := restarted.Save(ctx, State{SessionID: "sess-b", AppliedSeq: 0}); err != nil {
@@ -228,4 +233,30 @@ type errClient struct{ client.Client }
 
 func (errClient) Get(context.Context, client.ObjectKey, client.Object, ...client.GetOption) error {
 	return errors.New("apiserver unreachable")
+}
+
+// TestAdapterSaveDoesNotClearLossy: an ordinary cursor advance carries no evidence that the
+// replay buffer recovered or that a resync completed, so it must not clear the marker that says
+// the local view is not a valid resume base.
+func TestAdapterSaveDoesNotClearLossy(t *testing.T) {
+	ctx := context.Background()
+	store := loaded(t, newFakeClient(t))
+	adapter := Adapt(store)
+
+	if err := adapter.Save(ctx, syncpkg.Cursor{SessionID: "sess-a", Seq: 1}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	if err := store.SetLossy(ctx, true); err != nil {
+		t.Fatalf("set lossy: %v", err)
+	}
+	if err := adapter.Save(ctx, syncpkg.Cursor{SessionID: "sess-a", Seq: 2}); err != nil {
+		t.Fatalf("save after lossy: %v", err)
+	}
+	cursor, err := adapter.Load(ctx)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if !cursor.Lossy {
+		t.Fatal("an ordinary advance cleared the lossy marker")
+	}
 }

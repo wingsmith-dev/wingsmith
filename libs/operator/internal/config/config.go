@@ -42,11 +42,9 @@ type Config struct {
 	// MetricsAddr is the listen address for controller-runtime metrics, or "0" to disable.
 	MetricsAddr string
 
-	// SendQueueSize bounds the outbound envelope queue.
+	// SendQueueSize bounds the outbound frame queue. The overflow policy is not configurable:
+	// PROTOCOL §6 fixes it at replace-by-subject with events dropped from the tail.
 	SendQueueSize int
-
-	// SendQueuePolicy decides what happens when the send queue is full.
-	SendQueuePolicy string
 
 	// HeartbeatInterval is how often the operator sends an application-level ping.
 	HeartbeatInterval time.Duration
@@ -66,15 +64,6 @@ type Config struct {
 	Namespace string
 }
 
-const (
-	// DropOldest evicts the oldest queued envelope to make room for a new one.
-	DropOldest = "drop-oldest"
-	// DropNewest refuses the new envelope and keeps the queued backlog.
-	DropNewest = "drop-newest"
-	// Disconnect tears the stream down so that a resume re-derives state from the hub.
-	Disconnect = "disconnect"
-)
-
 // Load reads configuration from the environment, applying defaults and validating the result.
 func Load() (*Config, error) {
 	c := &Config{
@@ -87,10 +76,9 @@ func Load() (*Config, error) {
 		HealthAddr:            env("HANGAR_HEALTH_ADDR", ":8081"),
 		MetricsAddr:           env("HANGAR_METRICS_ADDR", "0"),
 		SendQueueSize:         envInt("HANGAR_SEND_QUEUE_SIZE", 1024),
-		SendQueuePolicy:       env("HANGAR_SEND_QUEUE_POLICY", DropOldest),
 		HeartbeatInterval:     envDuration("HANGAR_HEARTBEAT_INTERVAL", 10*time.Second),
 		LivenessTimeout:       envDuration("HANGAR_LIVENESS_TIMEOUT", 30*time.Second),
-		BackoffMin:            envDuration("HANGAR_BACKOFF_MIN", 500*time.Millisecond),
+		BackoffMin:            envDuration("HANGAR_BACKOFF_MIN", time.Second),
 		BackoffMax:            envDuration("HANGAR_BACKOFF_MAX", 30*time.Second),
 		LeaderElection:        envBool("HANGAR_LEADER_ELECTION", false),
 		Namespace:             env("HANGAR_NAMESPACE", "hangar-system"),
@@ -121,11 +109,6 @@ func (c *Config) validate() error {
 	}
 	if u.Scheme != "ws" && u.Scheme != "wss" {
 		return fmt.Errorf("HANGAR_HUB_URL scheme must be ws or wss, got %q", u.Scheme)
-	}
-	switch c.SendQueuePolicy {
-	case DropOldest, DropNewest, Disconnect:
-	default:
-		return fmt.Errorf("HANGAR_SEND_QUEUE_POLICY must be one of %s, %s, %s", DropOldest, DropNewest, Disconnect)
 	}
 	if c.SendQueueSize < 1 {
 		return fmt.Errorf("HANGAR_SEND_QUEUE_SIZE must be positive")

@@ -124,6 +124,12 @@ receiver cannot identify is not a resume request the receiver can evaluate, so i
 one. Unreleased frames in the
 sender's replay buffer are re-sent immediately after `welcome`.
 
+`ack_seq` in `welcome` refers to the session named in that same `welcome`. When the hub grants a
+fresh session — `full_resync: true`, or a `session_id` different from the one asked for — both
+directions restart numbering at 1 and both replay buffers are discarded. Frames held under the old
+numbering are not re-sent; the resync supersedes them, and re-sending them would mean two
+descriptions of the same state arriving under two numbering schemes.
+
 `full_resync` means: the hub streams its complete desired state for that cluster, the operator
 streams its complete observed state back, and both sides then discard anything absent from that
 snapshot. Each side opens its own stream explicitly with `resync.begin` and closes it with
@@ -132,8 +138,11 @@ for the framing. Without the explicit open, a receiver could not tell a resync s
 ordinary traffic, and the prune at the end is only safe against a stream it knows the boundaries
 of. Resync is correct but expensive, and a control plane that resyncs on every blip is how a
 control plane takes itself down — so the buffer is sized to cover a rolling restart, not a network
-hiccup. A sender whose replay buffer overflowed sets `lossy: true` in `hello` and must be given a fresh
-session rather than be allowed to pretend it can resume. `session_id` in `hello` names which
+hiccup. `lossy: true` in `hello` means "I cannot serve as a resume base", and the sender must be given a
+fresh session rather than be allowed to pretend it can resume. Replay-buffer overflow is one cause;
+a durable cursor written mid-resync, describing a local view that was never a coherent point in the
+stream, is another. The flag names the consequence rather than any particular cause, because every
+cause has the same remedy. `session_id` in `hello` names which
 session is being resumed — `resume_from` alone cannot, since a sequence number means nothing
 without the session it counts within.
 
@@ -167,6 +176,15 @@ deliberate:
   known-lost one.
 - **Hub → operator.** Desired state must not be dropped. When the queue is full the hub closes
   the connection and lets resume sort it out. Correctness over continuity.
+
+When the queue is full and **no frame matches** the incoming one's type and subject, the oldest
+frame overall is evicted and counted as a drop. This is recoverable for the same reason the
+replacement case is: the sender will observe the state again.
+
+**Sequence numbers are assigned at write time, not when a frame is queued.** A queue that renumbers
+nothing can replace and evict freely; a queue holding pre-numbered frames cannot, because every
+replacement leaves a hole that the receiver is required by §4 to read as a gap and close the
+connection over. The backpressure policy and the gap rule are only compatible under this ordering.
 
 ## 7. What must never cross this link
 

@@ -16,33 +16,19 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/checkpoint"
 	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
-// TypeStreamEnd terminates a stream of frames sharing one correlation id, per PROTOCOL.md §3. The
-// store treats it as the only admissible proof that a resync snapshot arrived whole.
-const TypeStreamEnd syncpkg.MessageType = "stream.end"
-
-// desiredState is the assumed shape of a TypeDesired payload.
-//
-// GUESS: the contract track owns this schema. Everything here is deliberately generic so the
-// skeleton can persist desired state without knowing the domain object model.
+// desiredState is one declared object lifted out of its `<noun>.desired` frame: the identity the
+// local copy is keyed by, and the payload verbatim. The payload is stored as it arrived rather
+// than re-encoded, because the CRD is a durable copy of what the hub said, not this operator's
+// reading of it.
 type desiredState struct {
-	Kind     string          `json:"kind"`
-	Name     string          `json:"name"`
-	Revision int64           `json:"revision"`
-	Deleted  bool            `json:"deleted,omitempty"`
-	Object   json.RawMessage `json:"object,omitempty"`
-}
-
-// streamEnd is the assumed shape of a TypeStreamEnd payload.
-//
-// GUESS: the contract track owns this schema. Only Complete and Count are load-bearing here, and
-// both are read conservatively: absent means "not proven complete", never "assume complete".
-type streamEnd struct {
-	Snapshot string `json:"snapshot,omitempty"`
-	Complete bool   `json:"complete"`
-	Count    *int   `json:"count,omitempty"`
-	Reason   string `json:"reason,omitempty"`
+	Kind     string
+	Name     string
+	Revision int64
+	Deleted  bool
+	Object   json.RawMessage
 }
 
 // resyncEpoch accumulates a full-resync snapshot as it streams in.
@@ -78,11 +64,13 @@ var _ syncpkg.Handler = (*Store)(nil)
 // Handle implements sync.Handler. Returning an error withholds the acknowledgement, so the hub
 // replays the envelope on the next resume rather than the operator losing it.
 func (s *Store) Handle(ctx context.Context, e *syncpkg.Envelope) error {
-	switch e.Type {
-	case syncpkg.TypeDesired:
+	switch {
+	case isDesired(e.Type):
 		return s.handleDesired(ctx, e)
-	case TypeStreamEnd:
+	case e.Type == syncpkg.TypeStreamEnd:
 		return s.handleStreamEnd(ctx, e)
+	case e.Type == syncpkg.TypeResyncBegin:
+		return s.Resync(ctx)
 	default:
 		s.Log.Debug("ignoring envelope", "type", e.Type, "seq", e.Seq)
 		return nil
@@ -90,14 +78,10 @@ func (s *Store) Handle(ctx context.Context, e *syncpkg.Envelope) error {
 }
 
 func (s *Store) handleDesired(ctx context.Context, e *syncpkg.Envelope) error {
-	var d desiredState
-	if err := json.Unmarshal(e.Payload, &d); err != nil {
+	d, err := decodeDesired(e)
+	if err != nil {
 		s.poison()
-		return fmt.Errorf("decode desired state: %w", err)
-	}
-	if d.Name == "" {
-		s.poison()
-		return fmt.Errorf("desired state has no name")
+		return err
 	}
 	if err := s.apply(ctx, d); err != nil {
 		s.poison()
@@ -173,7 +157,7 @@ func (s *Store) handleStreamEnd(ctx context.Context, e *syncpkg.Envelope) error 
 		return nil
 	}
 
-	var end streamEnd
+	var end wire.StreamEnd
 	if len(e.Payload) > 0 {
 		if err := json.Unmarshal(e.Payload, &end); err != nil {
 			return fmt.Errorf("decode stream end: %w", err)
@@ -185,12 +169,11 @@ func (s *Store) handleStreamEnd(ctx context.Context, e *syncpkg.Envelope) error 
 		s.Log.Warn("resync snapshot had a failed apply; leaving local state untouched")
 		return nil
 	case !end.Complete:
-		s.Log.Warn("resync snapshot did not complete; leaving local state untouched",
-			"reason", end.Reason)
+		s.Log.Warn("resync snapshot did not complete; leaving local state untouched")
 		return nil
-	case end.Count != nil && *end.Count != epoch.received:
+	case end.Count != epoch.received:
 		s.Log.Warn("resync snapshot truncated; leaving local state untouched",
-			"declared", *end.Count, "received", epoch.received)
+			"declared", end.Count, "received", epoch.received)
 		return nil
 	}
 

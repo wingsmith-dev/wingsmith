@@ -2,17 +2,21 @@ package sync
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	stdsync "sync"
 	"testing"
 	"time"
+
+	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
 type recorder struct {
 	mu       stdsync.Mutex
 	seen     []uint64
+	types    []string
 	resyncs  int
 	rejectAt uint64
 }
@@ -20,10 +24,15 @@ type recorder struct {
 func (r *recorder) Handle(_ context.Context, e *Envelope) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.rejectAt != 0 && e.Seq == r.rejectAt {
+	var seq uint64
+	if e.Seq != nil {
+		seq = *e.Seq
+	}
+	if r.rejectAt != 0 && seq == r.rejectAt {
 		return errHandlerReject
 	}
-	r.seen = append(r.seen, e.Seq)
+	r.seen = append(r.seen, seq)
+	r.types = append(r.types, e.Type)
 	return nil
 }
 
@@ -46,29 +55,99 @@ func (r *recorder) resyncCount() int {
 	return r.resyncs
 }
 
+// resyncOrdering records the interleaving of resyncs and frames as a string: "r" for a resync,
+// "f" for a frame. The order is the assertion — a snapshot frame applied before the resync that
+// announces it would be applied into a local view still claiming to be authoritative.
+type resyncOrdering struct {
+	recorder
+	log []byte
+}
+
+func (r *resyncOrdering) Handle(ctx context.Context, e *Envelope) error {
+	if err := r.recorder.Handle(ctx, e); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.log = append(r.log, 'f')
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *resyncOrdering) Resync(ctx context.Context) error {
+	if err := r.recorder.Resync(ctx); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.log = append(r.log, 'r')
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *resyncOrdering) ordering() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return string(r.log)
+}
+
+// flakyCheckpointer fails every Save once armed, which is how a partitioned API server looks to
+// the client.
+type flakyCheckpointer struct {
+	mu     stdsync.Mutex
+	cursor Cursor
+	fail   bool
+	saves  int
+}
+
+func (f *flakyCheckpointer) Load(context.Context) (Cursor, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cursor, nil
+}
+
+func (f *flakyCheckpointer) Save(_ context.Context, c Cursor) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.saves++
+	if f.fail {
+		return errors.New("apiserver unreachable")
+	}
+	f.cursor = c
+	return nil
+}
+
+func (f *flakyCheckpointer) arm() {
+	f.mu.Lock()
+	f.fail = true
+	f.mu.Unlock()
+}
+
+func (f *flakyCheckpointer) current() Cursor {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.cursor
+}
+
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func startClient(t *testing.T, h *fakeHub, mutate func(*Options)) (*Client, *recorder) {
-	t.Helper()
-	rec := &recorder{}
-	opts := Options{
+func testOptions(h *fakeHub) Options {
+	return Options{
 		HubURL:            h.url(),
-		ClusterID:         "cluster-test",
+		ClusterID:         "clu_test",
 		Token:             "token",
+		AgentVersion:      "0.0.1-test",
 		HeartbeatInterval: 20 * time.Millisecond,
 		LivenessTimeout:   200 * time.Millisecond,
 		BackoffMin:        5 * time.Millisecond,
 		BackoffMax:        20 * time.Millisecond,
 		SendQueueSize:     16,
-		SendQueuePolicy:   policyDropOldest,
-		Handler:           rec,
 		Logger:            testLogger(),
 	}
-	if mutate != nil {
-		mutate(&opts)
-	}
+}
+
+func startWith(t *testing.T, opts Options) *Client {
+	t.Helper()
 	c := NewClient(opts)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
@@ -81,7 +160,38 @@ func startClient(t *testing.T, h *fakeHub, mutate func(*Options)) (*Client, *rec
 			t.Error("client did not stop")
 		}
 	})
-	return c, rec
+	return c
+}
+
+func startClient(t *testing.T, h *fakeHub, mutate func(*Options)) (*Client, *recorder) {
+	t.Helper()
+	rec := &recorder{}
+	opts := testOptions(h)
+	opts.Handler = rec
+	if mutate != nil {
+		mutate(&opts)
+	}
+	return startWith(t, opts), rec
+}
+
+func TestHandshakeIsContractShaped(t *testing.T) {
+	h := newFakeHub(t)
+	startClient(t, h, nil)
+
+	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+	if got := h.lastAuthHeader(); got != "Bearer token" {
+		t.Fatalf("token must travel as an Authorization header, got %q", got)
+	}
+	hello := h.lastHello()
+	if hello.ClusterID != "clu_test" || hello.AgentVersion != "0.0.1-test" {
+		t.Fatalf("unexpected hello: %+v", hello)
+	}
+	if hello.SessionID != nil || hello.ResumeFrom != nil {
+		t.Fatalf("a first connection resumes nothing: %+v", hello)
+	}
+	if hello.Lossy {
+		t.Fatal("a first connection is not lossy")
+	}
 }
 
 func TestHandshakeAndDownwardDelivery(t *testing.T) {
@@ -89,10 +199,10 @@ func TestHandshakeAndDownwardDelivery(t *testing.T) {
 	_, rec := startClient(t, h, nil)
 
 	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
-	h.push(map[string]string{"name": "a"})
-	h.push(map[string]string{"name": "b"})
+	h.push("dep_a")
+	h.push("dep_b")
 
-	eventually(t, 2*time.Second, "two envelopes delivered", func() bool { return len(rec.seenSeqs()) == 2 })
+	eventually(t, 2*time.Second, "two frames delivered", func() bool { return len(rec.seenSeqs()) == 2 })
 	if got := rec.seenSeqs(); got[0] != 1 || got[1] != 2 {
 		t.Fatalf("expected seqs 1,2 got %v", got)
 	}
@@ -108,111 +218,169 @@ func TestReconnectAfterPartition(t *testing.T) {
 	eventually(t, 3*time.Second, "session re-established", func() bool { return c.Connected() })
 }
 
-func TestResumeSkipsAlreadyDeliveredEnvelopes(t *testing.T) {
+// TestResumeFromTheDurableCursor restarts the client against a cursor that outlived it, which is
+// the property PROTOCOL §4 requires: a process that has never spoken to this hub still knows
+// where the stream got to.
+func TestResumeFromTheDurableCursor(t *testing.T) {
 	h := newFakeHub(t)
-	_, rec := startClient(t, h, nil)
+	cursor := &MemoryCheckpointer{}
+
+	first := &recorder{}
+	opts := testOptions(h)
+	opts.Handler, opts.Checkpointer = first, cursor
+	c := NewClient(opts)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); _ = c.Run(ctx) }()
 
 	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
-	h.push(map[string]string{"name": "a"})
-	h.push(map[string]string{"name": "b"})
-	eventually(t, 2*time.Second, "first two delivered", func() bool { return len(rec.seenSeqs()) == 2 })
+	h.push("dep_a")
+	h.push("dep_b")
+	eventually(t, 2*time.Second, "two frames delivered", func() bool { return len(first.seenSeqs()) == 2 })
 
-	h.kill()
-	h.push(map[string]string{"name": "c"})
+	cancel()
+	<-done
 
-	eventually(t, 3*time.Second, "third envelope delivered after resume", func() bool {
-		return len(rec.seenSeqs()) == 3
+	saved, err := cursor.Load(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved.Seq != 2 {
+		t.Fatalf("durable cursor = %d, want 2", saved.Seq)
+	}
+
+	second := &recorder{}
+	opts = testOptions(h)
+	opts.Handler, opts.Checkpointer = second, cursor
+	startWith(t, opts)
+
+	eventually(t, 3*time.Second, "restarted client reconnects", func() bool { return h.connectionCount() >= 2 })
+	eventually(t, 2*time.Second, "hello carries the durable cursor", func() bool {
+		hello := h.lastHello()
+		return hello.ResumeFrom != nil && *hello.ResumeFrom == 2
 	})
-	got := rec.seenSeqs()
-	want := []uint64{1, 2, 3}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("expected %v, got %v (resume must not redeliver)", want, got)
-		}
-	}
-	if hello := h.lastHello(); hello.LastReceivedSeq != 2 {
-		t.Fatalf("expected resume from seq 2, hello said %d", hello.LastReceivedSeq)
-	}
-	if rec.resyncCount() != 0 {
-		t.Fatalf("expected no resync on a successful resume, got %d", rec.resyncCount())
+	h.push("dep_c")
+	eventually(t, 2*time.Second, "stream continues", func() bool { return len(second.seenSeqs()) == 1 })
+	if got := second.seenSeqs(); got[0] != 3 {
+		t.Fatalf("resume redelivered already-applied frames: %v", got)
 	}
 }
 
-func TestResumeRefusedTriggersResync(t *testing.T) {
+func TestDuplicateFrameIsDropped(t *testing.T) {
 	h := newFakeHub(t)
 	_, rec := startClient(t, h, nil)
 
 	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
-	h.push(map[string]string{"name": "a"})
+	h.push("dep_a")
+	h.push("dep_b")
+	eventually(t, 2*time.Second, "two frames delivered", func() bool { return len(rec.seenSeqs()) == 2 })
+
+	h.pushAt(2, "dep_b")
+	h.push("dep_c")
+	eventually(t, 2*time.Second, "third frame delivered", func() bool { return len(rec.seenSeqs()) == 3 })
+	if got := rec.seenSeqs(); got[2] != 3 {
+		t.Fatalf("duplicate was applied: %v", got)
+	}
+	if h.connectionCount() != 1 {
+		t.Fatal("a duplicate must be dropped, not treated as a protocol failure")
+	}
+}
+
+func TestGapClosesTheConnection(t *testing.T) {
+	h := newFakeHub(t)
+	_, rec := startClient(t, h, nil)
+
+	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+	h.push("dep_a")
+	eventually(t, 2*time.Second, "first frame delivered", func() bool { return len(rec.seenSeqs()) == 1 })
+
+	h.pushAt(7, "dep_far")
+	eventually(t, 3*time.Second, "connection closed and redialled", func() bool { return h.connectionCount() >= 2 })
+	for _, seq := range rec.seenSeqs() {
+		if seq == 7 {
+			t.Fatal("a gap must close the connection, never be accepted as a hole")
+		}
+	}
+}
+
+func TestResumeRefusedCallsResyncBeforeTheSnapshot(t *testing.T) {
+	h := newFakeHub(t)
+	rec := &resyncOrdering{}
+	opts := testOptions(h)
+	opts.Handler = rec
+	startWith(t, opts)
+
+	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+	h.push("dep_a")
 	eventually(t, 2*time.Second, "first delivered", func() bool { return len(rec.seenSeqs()) == 1 })
 
 	h.setResume(false)
 	h.kill()
 
-	eventually(t, 3*time.Second, "resync after refused resume", func() bool { return rec.resyncCount() >= 1 })
-	eventually(t, 3*time.Second, "full replay after refused resume", func() bool {
-		return len(rec.seenSeqs()) >= 2
-	})
+	eventually(t, 3*time.Second, "resync after refused resume", func() bool { return rec.resyncCount() >= 2 })
+	eventually(t, 3*time.Second, "snapshot replayed", func() bool { return len(rec.seenSeqs()) >= 2 })
+	if got := rec.ordering(); !strings.HasPrefix(got, "rfrf") {
+		t.Fatalf("resync must precede the snapshot it announces, ordering was %q", got)
+	}
 	if got := rec.seenSeqs(); got[1] != 1 {
-		t.Fatalf("expected the stream to restart at seq 1, got %v", got)
+		t.Fatalf("a fresh session numbers from 1, got %v", got)
 	}
 }
 
-func TestUnacknowledgedUpwardEnvelopesAreReplayed(t *testing.T) {
-	h := newFakeHub(t)
-	c, _ := startClient(t, h, nil)
-	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
-
-	if err := c.Send(TypeObserved, map[string]string{"n": "1"}); err != nil {
-		t.Fatal(err)
-	}
-	eventually(t, 2*time.Second, "first observed received", func() bool { return len(h.upwardSeqs()) == 1 })
-
-	h.kill()
-	if err := c.Send(TypeObserved, map[string]string{"n": "2"}); err != nil {
-		t.Fatal(err)
-	}
-	eventually(t, 3*time.Second, "second observed received after resume", func() bool {
-		return len(h.upwardSeqs()) == 2
-	})
-	got := h.upwardSeqs()
-	if got[0] != 1 || got[1] != 2 {
-		t.Fatalf("expected contiguous upward seqs 1,2 got %v", got)
-	}
-}
-
-func TestRejectedEnvelopeIsNotAcknowledged(t *testing.T) {
+func TestAckAdvancesOnlyOnContiguousDurableApply(t *testing.T) {
 	h := newFakeHub(t)
 	rec := &recorder{rejectAt: 1}
-	c := NewClient(Options{
-		HubURL:            h.url(),
-		ClusterID:         "cluster-test",
-		HeartbeatInterval: 20 * time.Millisecond,
-		LivenessTimeout:   200 * time.Millisecond,
-		BackoffMin:        5 * time.Millisecond,
-		BackoffMax:        20 * time.Millisecond,
-		SendQueueSize:     16,
-		Handler:           rec,
-		Logger:            testLogger(),
-	})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() { _ = c.Run(ctx) }()
+	opts := testOptions(h)
+	opts.Handler = rec
+	c := startWith(t, opts)
 
 	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
-	h.push(map[string]string{"name": "a"})
-	eventually(t, 2*time.Second, "envelope offered", func() bool { return h.lastHello().ClusterID != "" })
+	h.push("dep_a")
+	if err := c.Send("node.observed", "nod_1", wire.NodeObserved{NodeID: "nod_1"}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 2*time.Second, "upward frame received", func() bool { return len(h.upwardSeqs()) == 1 })
 	time.Sleep(100 * time.Millisecond)
+
+	if got := h.highestAck(); got != 0 {
+		t.Fatalf("a rejected frame must not be acknowledged, hub saw ack %d", got)
+	}
 
 	h.kill()
 	eventually(t, 3*time.Second, "reconnect", func() bool { return h.connectionCount() >= 2 })
-	eventually(t, 2*time.Second, "resume from zero", func() bool { return h.lastHello().LastReceivedSeq == 0 })
+	eventually(t, 2*time.Second, "resume from the last applied frame", func() bool {
+		hello := h.lastHello()
+		return hello.ResumeFrom == nil || *hello.ResumeFrom == 0
+	})
+}
+
+func TestCheckpointSaveFailureEndsTheSession(t *testing.T) {
+	h := newFakeHub(t)
+	cursor := &flakyCheckpointer{}
+	rec := &recorder{}
+	opts := testOptions(h)
+	opts.Handler, opts.Checkpointer = rec, cursor
+	startWith(t, opts)
+
+	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+	h.push("dep_a")
+	eventually(t, 2*time.Second, "first frame applied", func() bool { return cursor.current().Seq == 1 })
+
+	cursor.arm()
+	h.push("dep_b")
+
+	eventually(t, 3*time.Second, "session torn down after a failed checkpoint", func() bool {
+		return h.connectionCount() >= 2
+	})
+	if got := cursor.current().Seq; got != 1 {
+		t.Fatalf("cursor advanced past a frame it could not record: %d", got)
+	}
 }
 
 func TestLivenessTimeoutForcesReconnect(t *testing.T) {
 	h := newFakeHub(t)
-	h.setStallHello(true)
-	_, _ = startClient(t, h, func(o *Options) {
+	h.setSilent(true)
+	startClient(t, h, func(o *Options) {
 		o.HeartbeatInterval = 20 * time.Millisecond
 		o.LivenessTimeout = 60 * time.Millisecond
 	})
@@ -220,92 +388,85 @@ func TestLivenessTimeoutForcesReconnect(t *testing.T) {
 	eventually(t, 3*time.Second, "redial after a silent hub", func() bool { return h.connectionCount() >= 2 })
 }
 
-func TestBackpressureDropOldest(t *testing.T) {
-	q := newSendQueue(2, policyDropOldest)
+// TestLossyHelloAfterReplayOverflow: once the buffer has discarded an unacknowledged frame this
+// side can no longer reproduce its own stream, and PROTOCOL §4 says it must say so rather than
+// ask for a resume it cannot honour.
+func TestLossyHelloAfterReplayOverflow(t *testing.T) {
+	h := newFakeHub(t)
+	h.setWithholdAck(true)
+	c, _ := startClient(t, h, func(o *Options) { o.SendQueueSize = 2 })
+
+	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+	for i := 0; i < 6; i++ {
+		if err := c.Send("node.observed", "nod_"+string(rune('a'+i)), wire.NodeObserved{NodeID: "nod"}); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	eventually(t, 2*time.Second, "replay buffer overflow", func() bool { return c.replay.Lossy() })
+
+	h.kill()
+	eventually(t, 3*time.Second, "lossy hello", func() bool { return h.lastHello().Lossy })
+	eventually(t, 3*time.Second, "fresh session granted", func() bool { return c.Connected() })
+	if c.replay.Lossy() {
+		t.Fatal("a fresh session must clear the lossy marker")
+	}
+}
+
+func TestBackpressureReplacesTheSameSubject(t *testing.T) {
+	q := newSendQueue(2)
 	for i := 1; i <= 4; i++ {
-		if err := q.Push(&Envelope{Type: TypeObserved, Seq: uint64(i)}); err != nil {
+		e := mustEnvelope(t, "device.observed", wire.DeviceObserved{DeviceID: "dev_1", Index: i})
+		if err := q.Push(&outbound{env: e, subject: "dev_1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other := mustEnvelope(t, "device.observed", wire.DeviceObserved{DeviceID: "dev_2"})
+	if err := q.Push(&outbound{env: other, subject: "dev_2"}); err != nil {
+		t.Fatal(err)
+	}
+	if q.Len() != 2 {
+		t.Fatalf("queue exceeded its bound: %d", q.Len())
+	}
+	if q.Dropped() != 1 {
+		t.Fatalf("only the unrelated subject evicts, got %d drops", q.Dropped())
+	}
+	seen := map[string]int{}
+	for i := 0; i < 2; i++ {
+		item, err := q.Pop(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		seen[item.subject]++
+	}
+	if seen["dev_1"] != 1 || seen["dev_2"] != 1 {
+		t.Fatalf("each subject must survive exactly once: %v", seen)
+	}
+}
+
+func TestBackpressureDropsEventsFromTheTail(t *testing.T) {
+	q := newSendQueue(2)
+	for i := 1; i <= 4; i++ {
+		e := mustEnvelope(t, "device.event", wire.DeviceEvent{DeviceID: "dev_1", Event: "degraded"})
+		if err := q.Push(&outbound{env: e, subject: "dev_1"}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	if q.Len() != 2 {
-		t.Fatalf("expected depth 2, got %d", q.Len())
+		t.Fatalf("queue exceeded its bound: %d", q.Len())
 	}
 	if q.Dropped() != 2 {
-		t.Fatalf("expected 2 drops, got %d", q.Dropped())
-	}
-	e, err := q.Pop(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if e.Seq != 3 {
-		t.Fatalf("drop-oldest must keep the freshest envelopes, head was %d", e.Seq)
+		t.Fatalf("event loss must be counted, got %d", q.Dropped())
 	}
 }
 
-func TestBackpressureDropNewest(t *testing.T) {
-	q := newSendQueue(2, policyDropNewest)
-	for i := 1; i <= 4; i++ {
-		if err := q.Push(&Envelope{Type: TypeObserved, Seq: uint64(i)}); err != nil {
-			t.Fatal(err)
-		}
-	}
-	e, err := q.Pop(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if e.Seq != 1 {
-		t.Fatalf("drop-newest must preserve the backlog, head was %d", e.Seq)
-	}
-	if q.Dropped() != 2 {
-		t.Fatalf("expected 2 drops, got %d", q.Dropped())
-	}
-}
-
-func TestBackpressureDisconnect(t *testing.T) {
-	q := newSendQueue(1, policyDisconnect)
-	if err := q.Push(&Envelope{Type: TypeObserved, Seq: 1}); err != nil {
-		t.Fatal(err)
-	}
-	err := q.Push(&Envelope{Type: TypeObserved, Seq: 2})
-	if err != ErrQueueFull {
-		t.Fatalf("expected ErrQueueFull, got %v", err)
-	}
-}
-
-func TestBackpressureDisconnectPolicySurfacesToTheCaller(t *testing.T) {
+func TestSendNeverBlocksWhileDisconnected(t *testing.T) {
 	h := newFakeHub(t)
 	h.setStallHello(true)
-	c, _ := startClient(t, h, func(o *Options) {
-		o.SendQueueSize = 2
-		o.SendQueuePolicy = policyDisconnect
-		o.HeartbeatInterval = time.Second
-		o.LivenessTimeout = 10 * time.Second
-	})
-
-	if err := c.Send(TypeObserved, map[string]int{"i": 1}); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Send(TypeObserved, map[string]int{"i": 2}); err != nil {
-		t.Fatal(err)
-	}
-	if err := c.Send(TypeObserved, map[string]int{"i": 3}); err != ErrQueueFull {
-		t.Fatalf("expected ErrQueueFull once the bound is reached, got %v", err)
-	}
-	if c.QueueDepth() != 2 {
-		t.Fatalf("queue exceeded its bound: %d", c.QueueDepth())
-	}
-}
-
-func TestSendQueueDoesNotBlockWhileDisconnected(t *testing.T) {
-	h := newFakeHub(t)
-	h.setStallHello(true)
-	c, _ := startClient(t, h, func(o *Options) {
-		o.SendQueueSize = 4
-		o.SendQueuePolicy = policyDropOldest
-	})
+	c, _ := startClient(t, h, func(o *Options) { o.SendQueueSize = 4 })
 
 	for i := 0; i < 100; i++ {
-		if err := c.Send(TypeObserved, map[string]int{"i": i}); err != nil {
+		if err := c.Send("device.observed", "dev_1", wire.DeviceObserved{DeviceID: "dev_1", Index: i}); err != nil {
 			t.Fatalf("Send blocked or failed at %d: %v", i, err)
 		}
 	}
@@ -319,9 +480,10 @@ func TestEnvelopeSequencing(t *testing.T) {
 		typ  MessageType
 		want bool
 	}{
-		{TypeDesired, true}, {TypeObserved, true}, {TypeError, true},
+		{"deployment.desired", true}, {"node.observed", true}, {TypeError, true},
+		{TypeStreamEnd, true}, {TypeResyncBegin, true},
 		{TypePing, false}, {TypePong, false}, {TypeAck, false},
-		{TypeHello, false}, {TypeHelloAck, false},
+		{TypeHello, false}, {TypeWelcome, false},
 	} {
 		if got := (&Envelope{Type: tc.typ}).Sequenced(); got != tc.want {
 			t.Errorf("%s: Sequenced() = %v, want %v", tc.typ, got, tc.want)
@@ -329,21 +491,21 @@ func TestEnvelopeSequencing(t *testing.T) {
 	}
 }
 
-func TestEnvelopeRoundTrip(t *testing.T) {
-	in := &Envelope{
-		Type: TypeDesired, ID: "abc", CorrelationID: "def", Seq: 7, Ack: 3,
-		Timestamp: time.Now().UTC().Truncate(time.Millisecond),
-		Payload:   json.RawMessage(`{"k":"v"}`),
+func TestNewEnvelopeIsContractShaped(t *testing.T) {
+	e := mustEnvelope(t, TypePing, wire.Ping{})
+	if e.V != wire.EnvelopeVersion {
+		t.Errorf("v = %d, want %d", e.V, wire.EnvelopeVersion)
 	}
-	b, err := json.Marshal(in)
-	if err != nil {
-		t.Fatal(err)
+	if len(e.ID) != 26 {
+		t.Errorf("id %q is not a 26-character ULID", e.ID)
 	}
-	var out Envelope
-	if err := json.Unmarshal(b, &out); err != nil {
-		t.Fatal(err)
+	if !wire.TimestampPattern.MatchString(e.Ts) {
+		t.Errorf("ts %q is not RFC 3339 UTC with milliseconds", e.Ts)
 	}
-	if out.Seq != in.Seq || out.Ack != in.Ack || out.CorrelationID != in.CorrelationID || !out.Timestamp.Equal(in.Timestamp) {
-		t.Fatalf("round trip mismatch: %+v vs %+v", out, in)
+	if e.Seq != nil {
+		t.Error("an unsequenced frame must not carry seq")
+	}
+	if string(e.Payload) != "{}" {
+		t.Errorf("payload must be an object, got %s", e.Payload)
 	}
 }

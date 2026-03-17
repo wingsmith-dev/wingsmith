@@ -2,9 +2,7 @@ package sync
 
 import (
 	"context"
-	"crypto/rand"
 	"crypto/tls"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,27 +14,27 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-)
 
-const (
-	policyDropOldest = "drop-oldest"
-	policyDropNewest = "drop-newest"
-	policyDisconnect = "disconnect"
+	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
 // maxFrameBytes caps a single inbound frame. Domain objects are small; anything larger is a bug
 // or an attack, and the data plane never travels this path.
 const maxFrameBytes = 8 << 20
 
-// Handler consumes envelopes the hub pushes down.
+// handshakeTimeout is PROTOCOL §1: a connection that has not completed the handshake within 10
+// seconds is closed.
+const handshakeTimeout = 10 * time.Second
+
+// Handler consumes frames the hub pushes down.
 //
-// Returning an error means the envelope was not durably applied: the client will not advance its
-// acknowledged sequence past it, so the hub replays it on the next resume. This is the seam where
-// the sync loop hands desired state to the CRD writer.
+// Returning an error means the frame was not durably applied: the client will not advance its
+// acknowledged sequence past it, so the hub replays it on the next resume. Withholding the ack is
+// the only "could not apply" signal in the protocol — there is no negative acknowledgement.
 type Handler interface {
 	Handle(ctx context.Context, e *Envelope) error
-	// Resync is called when the hub could not honour a resume and the local view must be
-	// rebuilt from the replayed stream rather than trusted incrementally.
+	// Resync is called when the hub could not honour a resume, before the snapshot streams, so
+	// that the receiver can open its epoch and stop treating its local view as authoritative.
 	Resync(ctx context.Context) error
 }
 
@@ -49,44 +47,54 @@ func (f HandlerFunc) Handle(ctx context.Context, e *Envelope) error { return f(c
 // Resync implements Handler.
 func (f HandlerFunc) Resync(context.Context) error { return nil }
 
-// Checkpointer persists the resume cursor across operator restarts.
+// Cursor is the durable resume position: which session it counts within, how far the operator has
+// contiguously and durably processed, and whether this side can still reproduce its own stream.
 //
-// The in-memory implementation is fine for a skeleton, but a restart during a partition must not
-// silently rewind the stream, so the real implementation is expected to store the cursor
-// alongside the CRDs that hold desired state.
-type Checkpointer interface {
-	Load(ctx context.Context) (sessionID string, lastReceivedSeq uint64, err error)
-	Save(ctx context.Context, sessionID string, lastReceivedSeq uint64) error
+// Lossy travels with the cursor rather than beside it because it is the answer to the same
+// question: a lossy cursor is not a resume point, and the two must never be read apart.
+type Cursor struct {
+	SessionID string
+	Seq       uint64
+	Lossy     bool
 }
 
-// MemoryCheckpointer keeps the resume cursor in memory only.
+// Checkpointer persists the resume cursor across operator restarts.
+//
+// PROTOCOL §4 requires the cursor to be durable: an operator that restarts during a partition and
+// comes back with an in-memory cursor rewinds its own stream.
+type Checkpointer interface {
+	Load(ctx context.Context) (Cursor, error)
+	Save(ctx context.Context, c Cursor) error
+}
+
+// MemoryCheckpointer keeps the resume cursor in memory only. It is for tests; a real operator
+// stores the cursor beside its CRDs.
 type MemoryCheckpointer struct {
-	mu      stdsync.Mutex
-	session string
-	seq     uint64
+	mu     stdsync.Mutex
+	cursor Cursor
 }
 
 // Load implements Checkpointer.
-func (m *MemoryCheckpointer) Load(context.Context) (string, uint64, error) {
+func (m *MemoryCheckpointer) Load(context.Context) (Cursor, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.session, m.seq, nil
+	return m.cursor, nil
 }
 
 // Save implements Checkpointer.
-func (m *MemoryCheckpointer) Save(_ context.Context, session string, seq uint64) error {
+func (m *MemoryCheckpointer) Save(_ context.Context, c Cursor) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.session, m.seq = session, seq
+	m.cursor = c
 	return nil
 }
 
 // Options configures a Client.
 type Options struct {
-	HubURL          string
-	ClusterID       string
-	Token           string
-	OperatorVersion string
+	HubURL       string
+	ClusterID    string
+	Token        string
+	AgentVersion string
 
 	TLSConfig  *tls.Config
 	HTTPClient *http.Client
@@ -96,8 +104,7 @@ type Options struct {
 	BackoffMin        time.Duration
 	BackoffMax        time.Duration
 
-	SendQueueSize   int
-	SendQueuePolicy string
+	SendQueueSize int
 
 	Handler      Handler
 	Checkpointer Checkpointer
@@ -109,10 +116,10 @@ func (o *Options) defaults() {
 		o.HeartbeatInterval = 10 * time.Second
 	}
 	if o.LivenessTimeout <= 0 {
-		o.LivenessTimeout = 3 * o.HeartbeatInterval
+		o.LivenessTimeout = 30 * time.Second
 	}
 	if o.BackoffMin <= 0 {
-		o.BackoffMin = 500 * time.Millisecond
+		o.BackoffMin = time.Second
 	}
 	if o.BackoffMax <= 0 {
 		o.BackoffMax = 30 * time.Second
@@ -120,11 +127,8 @@ func (o *Options) defaults() {
 	if o.SendQueueSize <= 0 {
 		o.SendQueueSize = 1024
 	}
-	if o.SendQueuePolicy == "" {
-		o.SendQueuePolicy = policyDropOldest
-	}
-	if o.OperatorVersion == "" {
-		o.OperatorVersion = "dev"
+	if o.AgentVersion == "" {
+		o.AgentVersion = "dev"
 	}
 	if o.Logger == nil {
 		o.Logger = slog.Default()
@@ -139,7 +143,8 @@ func (o *Options) defaults() {
 
 // Client is the operator's outbound stream to the hub. It dials out, never listens, and owns the
 // full connection lifecycle: reconnect with jittered backoff, application-level heartbeat with a
-// declared liveness timeout, sequence-based resume, and a bounded send queue.
+// declared liveness timeout, sequence-based resume from a durable cursor, and a bounded send
+// queue.
 type Client struct {
 	opts Options
 	log  *slog.Logger
@@ -147,13 +152,12 @@ type Client struct {
 	queue  *sendQueue
 	replay *replayBuffer
 
-	mu              stdsync.Mutex
-	nextSeq         uint64
-	lastReceivedSeq uint64
-	sessionID       string
-	connected       bool
-	connects        uint64
-	lastRecvAt      time.Time
+	mu         stdsync.Mutex
+	nextSeq    uint64
+	cursor     Cursor
+	connected  bool
+	connects   uint64
+	lastRecvAt time.Time
 }
 
 // NewClient builds a client. It does not dial; call Run.
@@ -162,37 +166,27 @@ func NewClient(opts Options) *Client {
 	return &Client{
 		opts:    opts,
 		log:     opts.Logger.With("component", "sync"),
-		queue:   newSendQueue(opts.SendQueueSize, opts.SendQueuePolicy),
+		queue:   newSendQueue(opts.SendQueueSize),
 		replay:  newReplayBuffer(opts.SendQueueSize),
 		nextSeq: 1,
 	}
 }
 
-// Send enqueues a sequenced envelope for delivery. It never blocks: the bounded queue's overflow
-// policy decides what happens when the hub is slow or gone.
+// Send enqueues a frame for delivery. It never blocks: the bounded queue's §6 policy decides what
+// happens when the hub is slow or gone.
 //
-// A sequenced envelope enters the replay buffer before it enters the send queue, so an envelope
-// the overflow policy drops from the live path is still resent on the next resume. Backpressure
-// therefore costs latency and ordering, not delivery, until the replay buffer itself overflows —
-// at which point the buffer marks itself lossy and the next handshake asks for a fresh session.
-func (c *Client) Send(t MessageType, payload any) error {
-	var raw json.RawMessage
-	if payload != nil {
-		b, err := json.Marshal(payload)
-		if err != nil {
-			return fmt.Errorf("marshal payload: %w", err)
-		}
-		raw = b
+// The subject names the object the frame describes — a device id, a deployment id — and is what
+// the queue replaces on. Two frames of one type about one subject are two readings of the same
+// thing, so under pressure only the newer survives.
+//
+// Sequence numbers are assigned by the writer, not here, so a frame the queue replaces never
+// leaves a hole in the sequence the hub would have to treat as a gap.
+func (c *Client) Send(t MessageType, subject string, payload any) error {
+	e, err := newEnvelope(t, payload)
+	if err != nil {
+		return fmt.Errorf("marshal payload: %w", err)
 	}
-	e := &Envelope{Type: t, ID: newID(), Timestamp: time.Now().UTC(), Payload: raw}
-	if e.Sequenced() {
-		c.mu.Lock()
-		e.Seq = c.nextSeq
-		c.nextSeq++
-		c.mu.Unlock()
-		c.replay.Add(e)
-	}
-	return c.queue.Push(e)
+	return c.queue.Push(&outbound{env: e, subject: subject})
 }
 
 // Connected reports whether a hub session is currently established.
@@ -212,18 +206,20 @@ func (c *Client) Connects() uint64 {
 // QueueDepth reports the current outbound queue depth.
 func (c *Client) QueueDepth() int { return c.queue.Len() }
 
-// Dropped reports how many outbound envelopes the overflow policy has discarded.
+// Dropped reports how many outbound events the overflow policy has discarded.
 func (c *Client) Dropped() uint64 { return c.queue.Dropped() }
 
 // Run dials the hub and keeps the session alive until ctx is cancelled. Every session failure is
-// retried with exponential backoff and full jitter; only a fatal protocol error stops the loop.
+// retried with exponential backoff and full jitter; there is no retry cap, because an operator
+// that cannot reach the hub keeps reconciling from its CRDs indefinitely. Only a fatal protocol
+// error stops the loop.
 func (c *Client) Run(ctx context.Context) error {
-	session, seq, err := c.opts.Checkpointer.Load(ctx)
+	cursor, err := c.opts.Checkpointer.Load(ctx)
 	if err != nil {
 		return fmt.Errorf("load resume cursor: %w", err)
 	}
 	c.mu.Lock()
-	c.sessionID, c.lastReceivedSeq = session, seq
+	c.cursor = cursor
 	c.mu.Unlock()
 
 	defer c.queue.Close()
@@ -248,15 +244,15 @@ func (c *Client) Run(ctx context.Context) error {
 			attempt++
 			c.log.Warn("hub session ended", "error", err, "attempt", attempt)
 		}
-		d := c.backoff(attempt)
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-time.After(d):
+		case <-time.After(c.backoff(attempt)):
 		}
 	}
 }
 
+// backoff is exponential from BackoffMin to BackoffMax with full jitter.
 func (c *Client) backoff(attempt int) time.Duration {
 	if attempt <= 0 {
 		return 0
@@ -282,7 +278,6 @@ func (c *Client) session(ctx context.Context) error {
 	if c.opts.Token != "" {
 		header.Set("Authorization", "Bearer "+c.opts.Token)
 	}
-	header.Set("X-Hangar-Cluster-Id", c.opts.ClusterID)
 
 	conn, resp, err := websocket.Dial(dialCtx, c.opts.HubURL, &websocket.DialOptions{
 		HTTPClient: httpClient,
@@ -290,7 +285,7 @@ func (c *Client) session(ctx context.Context) error {
 	})
 	if err != nil {
 		if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
-			return &fatalError{fmt.Errorf("hub rejected enrolment token: %s", resp.Status)}
+			return &fatalError{fmt.Errorf("hub rejected bearer token: %s", resp.Status)}
 		}
 		return fmt.Errorf("dial hub: %w", err)
 	}
@@ -332,89 +327,95 @@ func (c *Client) session(ctx context.Context) error {
 	return err
 }
 
-// handshake sends hello, waits for hello.ack, and replays anything the hub has not acknowledged.
+// handshake sends hello from the durable cursor, waits for welcome, and replays anything the hub
+// has not acknowledged.
 func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
+	ctx, cancel := context.WithTimeout(ctx, handshakeTimeout)
+	defer cancel()
+
 	c.mu.Lock()
-	hello := Hello{
-		ClusterID:       c.opts.ClusterID,
-		Token:           c.opts.Token,
-		OperatorVersion: c.opts.OperatorVersion,
-		SessionID:       c.sessionID,
-		LastReceivedSeq: c.lastReceivedSeq,
-		NextSendSeq:     c.nextSeq,
-	}
+	cursor := c.cursor
 	c.mu.Unlock()
-	if c.replay.Lossy() {
-		hello.SessionID = ""
+
+	hello := wire.Hello{
+		ClusterID:    c.opts.ClusterID,
+		AgentVersion: c.opts.AgentVersion,
+		Lossy:        cursor.Lossy || c.replay.Lossy(),
+	}
+	if cursor.SessionID != "" {
+		session := cursor.SessionID
+		hello.SessionID = &session
+		hello.ResumeFrom = seqPtr(cursor.Seq)
 	}
 
-	if err := c.writeEnvelope(ctx, conn, &Envelope{
-		Type:      TypeHello,
-		ID:        newID(),
-		Timestamp: time.Now().UTC(),
-		Ack:       hello.LastReceivedSeq,
-		Payload:   mustJSON(hello),
-	}); err != nil {
+	frame, err := newEnvelope(TypeHello, hello)
+	if err != nil {
+		return err
+	}
+	frame.Ack = seqPtr(cursor.Seq)
+	if err := c.write(ctx, conn, frame); err != nil {
 		return fmt.Errorf("send hello: %w", err)
 	}
 
-	ackCtx, cancel := context.WithTimeout(ctx, c.opts.LivenessTimeout)
-	defer cancel()
-	e, err := readEnvelope(ackCtx, conn)
+	in, err := readEnvelope(ctx, conn)
 	if err != nil {
-		return fmt.Errorf("await hello.ack: %w", err)
+		return fmt.Errorf("await welcome: %w", err)
 	}
-	if e.Type == TypeError {
-		var p ErrorPayload
-		_ = json.Unmarshal(e.Payload, &p)
-		if p.Fatal {
-			return &fatalError{fmt.Errorf("hub refused connection: %s: %s", p.Code, p.Message)}
-		}
-		return fmt.Errorf("hub error: %s: %s", p.Code, p.Message)
-	}
-	if e.Type != TypeHelloAck {
-		return fmt.Errorf("expected %s, got %s", TypeHelloAck, e.Type)
-	}
-	var ack HelloAck
-	if err := json.Unmarshal(e.Payload, &ack); err != nil {
-		return fmt.Errorf("decode hello.ack: %w", err)
+	switch in.Type {
+	case TypeWelcome:
+	case TypeError:
+		return hubError(in)
+	default:
+		return fmt.Errorf("expected %s, got %s", TypeWelcome, in.Type)
 	}
 
-	c.mu.Lock()
-	previous := c.sessionID
-	c.sessionID = ack.SessionID
-	if !ack.Resumed || previous != ack.SessionID {
-		c.lastReceivedSeq = 0
+	var welcome wire.Welcome
+	if err := json.Unmarshal(in.Payload, &welcome); err != nil {
+		return fmt.Errorf("decode welcome: %w", err)
 	}
-	last := c.lastReceivedSeq
-	c.mu.Unlock()
 
-	if err := c.opts.Checkpointer.Save(ctx, ack.SessionID, last); err != nil {
+	fresh := welcome.FullResync || welcome.SessionID != cursor.SessionID
+	next := Cursor{SessionID: welcome.SessionID, Seq: cursor.Seq}
+	if fresh {
+		next.Seq = 0
+	}
+	if err := c.opts.Checkpointer.Save(ctx, next); err != nil {
 		return fmt.Errorf("save resume cursor: %w", err)
 	}
 
-	if !ack.Resumed {
-		c.log.Info("hub started a new session", "session_id", ack.SessionID)
-		if previous != "" {
-			if err := c.opts.Handler.Resync(ctx); err != nil {
-				return fmt.Errorf("resync: %w", err)
-			}
+	c.mu.Lock()
+	c.cursor = next
+	if fresh {
+		c.nextSeq = 1
+	}
+	c.mu.Unlock()
+
+	if fresh {
+		c.replay.Reset()
+		c.log.Info("hub started a new session", "session_id", welcome.SessionID,
+			"full_resync", welcome.FullResync)
+		if err := c.opts.Handler.Resync(ctx); err != nil {
+			return fmt.Errorf("resync: %w", err)
 		}
 	}
 
-	c.replay.Ack(ack.LastReceivedSeq)
-	pending := c.replay.Pending(ack.LastReceivedSeq)
+	c.replay.Ack(welcome.AckSeq)
+	pending := c.replay.Pending(welcome.AckSeq)
+	if fresh {
+		pending = nil
+	}
 	for _, p := range pending {
-		if err := c.writeEnvelope(ctx, conn, p); err != nil {
-			return fmt.Errorf("replay envelope %d: %w", p.Seq, err)
+		if err := c.write(ctx, conn, p); err != nil {
+			return fmt.Errorf("replay frame %d: %w", *p.Seq, err)
 		}
 	}
-	c.log.Info("hub session established",
-		"session_id", ack.SessionID, "resumed", ack.Resumed,
-		"replayed", len(pending), "resume_from", last+1)
+	c.log.Info("hub session established", "session_id", welcome.SessionID,
+		"full_resync", welcome.FullResync, "replayed", len(pending), "resume_from", next.Seq+1)
 	return nil
 }
 
+// readLoop processes inbound frames strictly in order: a duplicate is dropped, a gap closes the
+// connection rather than being accepted as a hole.
 func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 	for {
 		e, err := readEnvelope(ctx, conn)
@@ -425,80 +426,142 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 		c.lastRecvAt = time.Now()
 		c.mu.Unlock()
 
-		if e.Ack > 0 {
-			c.replay.Ack(e.Ack)
+		if e.Ack != nil {
+			c.replay.Ack(*e.Ack)
 		}
 
 		switch e.Type {
 		case TypePing:
-			if err := c.queue.Push(&Envelope{
-				Type: TypePong, ID: newID(), CorrelationID: e.ID,
-				Timestamp: time.Now().UTC(), Ack: c.ackCursor(),
-			}); err != nil {
+			pong, err := newEnvelope(TypePong, wire.Pong{})
+			if err != nil {
+				return err
+			}
+			pong.ReplyTo = replyTo(e.ID)
+			if err := c.queue.Push(&outbound{env: pong, subject: e.ID}); err != nil {
 				return err
 			}
 			continue
 		case TypePong, TypeAck:
 			continue
+		case TypeWelcome, TypeHello:
+			return fmt.Errorf("unexpected %s after the handshake", e.Type)
 		case TypeError:
-			var p ErrorPayload
-			_ = json.Unmarshal(e.Payload, &p)
-			if p.Fatal {
-				return &fatalError{fmt.Errorf("hub error: %s: %s", p.Code, p.Message)}
+			if err := hubError(e); err != nil {
+				var fatal *fatalError
+				if errors.As(err, &fatal) {
+					return err
+				}
+				c.log.Warn("hub error", "error", err)
 			}
-			c.log.Warn("hub error", "code", p.Code, "message", p.Message)
 			continue
 		}
 
 		if e.Sequenced() {
+			if e.Seq == nil {
+				return fmt.Errorf("sequenced frame %s carries no seq", e.Type)
+			}
 			c.mu.Lock()
-			expected := c.lastReceivedSeq + 1
+			expected := c.cursor.Seq + 1
 			c.mu.Unlock()
-			if e.Seq < expected {
-				c.log.Debug("dropping duplicate envelope", "seq", e.Seq, "expected", expected)
+			if *e.Seq < expected {
+				c.log.Debug("dropping duplicate frame", "seq", *e.Seq, "expected", expected)
 				continue
 			}
-			if e.Seq > expected {
-				return fmt.Errorf("sequence gap: expected %d, got %d", expected, e.Seq)
+			if *e.Seq > expected {
+				return fmt.Errorf("sequence gap: expected %d, got %d", expected, *e.Seq)
 			}
 		}
 
 		if err := c.opts.Handler.Handle(ctx, e); err != nil {
-			c.log.Error("handler rejected envelope", "type", e.Type, "seq", e.Seq, "error", err)
+			c.log.Error("handler rejected frame; withholding ack",
+				"type", e.Type, "seq", e.Seq, "error", err)
 			continue
 		}
 
-		if e.Sequenced() {
-			c.mu.Lock()
-			c.lastReceivedSeq = e.Seq
-			session, last := c.sessionID, c.lastReceivedSeq
-			c.mu.Unlock()
-			if err := c.opts.Checkpointer.Save(ctx, session, last); err != nil {
-				return fmt.Errorf("save resume cursor: %w", err)
-			}
-			if err := c.queue.Push(&Envelope{
-				Type: TypeAck, ID: newID(), CorrelationID: e.ID,
-				Timestamp: time.Now().UTC(), Ack: last,
-			}); err != nil {
-				return err
-			}
+		if !e.Sequenced() {
+			continue
+		}
+		if err := c.advance(ctx, *e.Seq); err != nil {
+			return err
 		}
 	}
 }
 
+// advance records the frame as durably processed and makes sure the acknowledgement reaches the
+// hub.
+//
+// A checkpoint write that fails ends the session rather than the frame. Continuing would leave
+// the in-memory cursor ahead of the durable one, so the next resume would ask from a point that
+// was never recorded and the frames in between would never be replayed. Ending the session costs
+// a reconnect and replays from the last durable point, which is the recoverable direction.
+func (c *Client) advance(ctx context.Context, seq uint64) error {
+	c.mu.Lock()
+	next := c.cursor
+	c.mu.Unlock()
+	next.Seq = seq
+
+	if err := c.opts.Checkpointer.Save(ctx, next); err != nil {
+		return fmt.Errorf("save resume cursor at seq %d: %w", seq, err)
+	}
+	c.mu.Lock()
+	c.cursor = next
+	c.mu.Unlock()
+
+	if c.queue.Len() > 0 {
+		return nil
+	}
+	ack, err := newEnvelope(TypeAck, wire.Ack{})
+	if err != nil {
+		return err
+	}
+	return c.queue.Push(&outbound{env: ack, subject: ""})
+}
+
+// writeLoop is the only writer. It assigns sequence numbers here rather than at Send so that a
+// frame the queue discarded never consumed one, and stamps the current ack on every frame so an
+// acknowledgement rides out on whatever is leaving anyway.
 func (c *Client) writeLoop(ctx context.Context, conn *websocket.Conn) error {
 	for {
-		e, err := c.queue.Pop(ctx)
+		item, err := c.queue.Pop(ctx)
 		if err != nil {
 			return err
 		}
-		if e.Ack == 0 {
-			e.Ack = c.ackCursor()
+		e := item.env
+		if e.Sequenced() && e.Seq == nil {
+			c.mu.Lock()
+			e.Seq = seqPtr(c.nextSeq)
+			c.nextSeq++
+			c.mu.Unlock()
+			if c.replay.Add(e) {
+				c.log.Warn("replay buffer overflowed; the next hello declares itself lossy")
+				if err := c.markLossy(ctx); err != nil {
+					return err
+				}
+			}
 		}
-		if err := c.writeEnvelope(ctx, conn, e); err != nil {
+		e.Ack = seqPtr(c.ackCursor())
+		if err := c.write(ctx, conn, e); err != nil {
 			return err
 		}
 	}
+}
+
+// markLossy records durably that this side can no longer reproduce its own stream.
+func (c *Client) markLossy(ctx context.Context) error {
+	c.mu.Lock()
+	next := c.cursor
+	c.mu.Unlock()
+	if next.Lossy || next.SessionID == "" {
+		return nil
+	}
+	next.Lossy = true
+	if err := c.opts.Checkpointer.Save(ctx, next); err != nil {
+		return fmt.Errorf("record lossy replay buffer: %w", err)
+	}
+	c.mu.Lock()
+	c.cursor.Lossy = true
+	c.mu.Unlock()
+	return nil
 }
 
 // heartbeatLoop sends an application-level ping on an interval and tears the connection down when
@@ -516,11 +579,14 @@ func (c *Client) heartbeatLoop(ctx context.Context) error {
 			idle := time.Since(c.lastRecvAt)
 			c.mu.Unlock()
 			if idle > c.opts.LivenessTimeout {
-				return fmt.Errorf("hub silent for %s, exceeding liveness timeout %s", idle.Truncate(time.Millisecond), c.opts.LivenessTimeout)
+				return fmt.Errorf("hub silent for %s, exceeding liveness timeout %s",
+					idle.Truncate(time.Millisecond), c.opts.LivenessTimeout)
 			}
-			if err := c.queue.Push(&Envelope{
-				Type: TypePing, ID: newID(), Timestamp: time.Now().UTC(), Ack: c.ackCursor(),
-			}); err != nil {
+			ping, err := newEnvelope(TypePing, wire.Ping{})
+			if err != nil {
+				return err
+			}
+			if err := c.queue.Push(&outbound{env: ping, subject: ""}); err != nil {
 				return err
 			}
 		}
@@ -530,10 +596,10 @@ func (c *Client) heartbeatLoop(ctx context.Context) error {
 func (c *Client) ackCursor() uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.lastReceivedSeq
+	return c.cursor.Seq
 }
 
-func (c *Client) writeEnvelope(ctx context.Context, conn *websocket.Conn, e *Envelope) error {
+func (c *Client) write(ctx context.Context, conn *websocket.Conn, e *Envelope) error {
 	b, err := json.Marshal(e)
 	if err != nil {
 		return fmt.Errorf("marshal envelope: %w", err)
@@ -541,6 +607,18 @@ func (c *Client) writeEnvelope(ctx context.Context, conn *websocket.Conn, e *Env
 	wctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	return conn.Write(wctx, websocket.MessageText, b)
+}
+
+// hubError renders an error frame, marking a non-retryable one fatal so the run loop stops
+// instead of redialling into the same refusal.
+func hubError(e *Envelope) error {
+	var p wire.Error
+	_ = json.Unmarshal(e.Payload, &p)
+	err := fmt.Errorf("hub error %s: %s", p.Code, p.Message)
+	if !p.Retryable {
+		return &fatalError{err}
+	}
+	return err
 }
 
 func readEnvelope(ctx context.Context, conn *websocket.Conn) (*Envelope, error) {
@@ -555,25 +633,14 @@ func readEnvelope(ctx context.Context, conn *websocket.Conn) (*Envelope, error) 
 	if err := json.Unmarshal(b, &e); err != nil {
 		return nil, fmt.Errorf("decode envelope: %w", err)
 	}
+	if e.V != wire.EnvelopeVersion {
+		return nil, fmt.Errorf("unsupported envelope version %d", e.V)
+	}
 	return &e, nil
 }
 
-// fatalError marks a failure that retrying cannot fix, such as a rejected enrolment token.
+// fatalError marks a failure that retrying cannot fix, such as a rejected bearer token.
 type fatalError struct{ err error }
 
 func (f *fatalError) Error() string { return f.err.Error() }
 func (f *fatalError) Unwrap() error { return f.err }
-
-func newID() string {
-	var b [16]byte
-	_, _ = rand.Read(b[:])
-	return hex.EncodeToString(b[:])
-}
-
-func mustJSON(v any) json.RawMessage {
-	b, err := json.Marshal(v)
-	if err != nil {
-		panic(err)
-	}
-	return b
-}

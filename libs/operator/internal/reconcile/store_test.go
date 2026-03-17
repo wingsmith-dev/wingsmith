@@ -17,6 +17,7 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/checkpoint"
 	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
 const testNS = "hangar-system"
@@ -51,22 +52,31 @@ func newStore(t *testing.T, objs []client.Object, funcs *interceptor.Funcs) (*St
 	}, c
 }
 
-func desired(t *testing.T, name string, rev int64) *syncpkg.Envelope {
+func frame(t *testing.T, typ string, seq uint64, payload any) *syncpkg.Envelope {
 	t.Helper()
-	b, err := json.Marshal(desiredState{Kind: "thing", Name: name, Revision: rev})
+	b, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &syncpkg.Envelope{Type: syncpkg.TypeDesired, Seq: uint64(rev), Payload: b}
+	s := seq
+	return &syncpkg.Envelope{Type: typ, Seq: &s, Payload: b}
 }
 
-func endFrame(t *testing.T, e streamEnd) *syncpkg.Envelope {
+func desired(t *testing.T, name string, rev int64) *syncpkg.Envelope {
 	t.Helper()
-	b, err := json.Marshal(e)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &syncpkg.Envelope{Type: TypeStreamEnd, Seq: 999, Payload: b}
+	return frame(t, wireDeploymentDesired, uint64(rev),
+		wire.DeploymentDesired{DeploymentID: name, ClusterID: "clu_test", Generation: rev})
+}
+
+func deleted(t *testing.T, name string, rev int64) *syncpkg.Envelope {
+	t.Helper()
+	return frame(t, wireDeploymentDeleted, uint64(rev),
+		wire.DeploymentDeleted{DeploymentID: name, ClusterID: "clu_test", Generation: rev})
+}
+
+func endFrame(t *testing.T, e wire.StreamEnd) *syncpkg.Envelope {
+	t.Helper()
+	return frame(t, syncpkg.TypeStreamEnd, 999, e)
 }
 
 func localNames(t *testing.T, c client.Client) []string {
@@ -107,8 +117,7 @@ func TestResyncPrunesWhatTheSnapshotOmits(t *testing.T) {
 			t.Fatalf("handle %s: %v", n, err)
 		}
 	}
-	count := 3
-	if err := s.Handle(ctx, endFrame(t, streamEnd{Complete: true, Count: &count})); err != nil {
+	if err := s.Handle(ctx, endFrame(t, wire.StreamEnd{Complete: true, Count: 3})); err != nil {
 		t.Fatalf("stream end: %v", err)
 	}
 
@@ -142,7 +151,7 @@ func TestTruncatedSnapshotNeverPrunes(t *testing.T) {
 			if err := s.Handle(ctx, desired(t, "keep-a", 2)); err != nil {
 				t.Fatal(err)
 			}
-			if err := s.Handle(ctx, endFrame(t, streamEnd{Complete: false, Reason: "hub buffer overflow"})); err != nil {
+			if err := s.Handle(ctx, endFrame(t, wire.StreamEnd{Complete: false})); err != nil {
 				t.Fatal(err)
 			}
 		},
@@ -150,13 +159,12 @@ func TestTruncatedSnapshotNeverPrunes(t *testing.T) {
 			if err := s.Handle(ctx, desired(t, "keep-a", 2)); err != nil {
 				t.Fatal(err)
 			}
-			n := 9
-			if err := s.Handle(ctx, endFrame(t, streamEnd{Complete: true, Count: &n})); err != nil {
+			if err := s.Handle(ctx, endFrame(t, wire.StreamEnd{Complete: true, Count: 9})); err != nil {
 				t.Fatal(err)
 			}
 		},
 		"empty stream.end payload": func(t *testing.T, s *Store, ctx context.Context) {
-			if err := s.Handle(ctx, &syncpkg.Envelope{Type: TypeStreamEnd, Seq: 999}); err != nil {
+			if err := s.Handle(ctx, &syncpkg.Envelope{Type: syncpkg.TypeStreamEnd}); err != nil {
 				t.Fatal(err)
 			}
 		},
@@ -202,8 +210,7 @@ func TestFailedApplyDuringResyncNeverPrunes(t *testing.T) {
 	if err := s.Handle(ctx, desired(t, "brand-new", 3)); err == nil {
 		t.Fatal("failed apply reported success")
 	}
-	count := 2
-	if err := s.Handle(ctx, endFrame(t, streamEnd{Complete: true, Count: &count})); err != nil {
+	if err := s.Handle(ctx, endFrame(t, wire.StreamEnd{Complete: true, Count: 2})); err != nil {
 		t.Fatalf("stream end: %v", err)
 	}
 
@@ -225,12 +232,11 @@ func TestMalformedFrameDuringResyncNeverPrunes(t *testing.T) {
 	if err := s.Handle(ctx, desired(t, "keep-a", 2)); err != nil {
 		t.Fatal(err)
 	}
-	bad := &syncpkg.Envelope{Type: syncpkg.TypeDesired, Seq: 3, Payload: json.RawMessage(`{"name":`)}
+	bad := &syncpkg.Envelope{Type: wireDeploymentDesired, Payload: json.RawMessage(`{"deployment_id":`)}
 	if err := s.Handle(ctx, bad); err == nil {
 		t.Fatal("malformed frame accepted")
 	}
-	count := 2
-	if err := s.Handle(ctx, endFrame(t, streamEnd{Complete: true, Count: &count})); err != nil {
+	if err := s.Handle(ctx, endFrame(t, wire.StreamEnd{Complete: true, Count: 2})); err != nil {
 		t.Fatal(err)
 	}
 	if got := localNames(t, c); !equal(got, before) {
@@ -245,8 +251,7 @@ func TestStreamEndOutsideResyncIsInert(t *testing.T) {
 	before := []string{"keep-a", "keep-b"}
 	s, c := newStore(t, existing(before...), nil)
 
-	count := 0
-	if err := s.Handle(ctx, endFrame(t, streamEnd{Complete: true, Count: &count})); err != nil {
+	if err := s.Handle(ctx, endFrame(t, wire.StreamEnd{Complete: true, Count: 0})); err != nil {
 		t.Fatalf("stream end: %v", err)
 	}
 	if got := localNames(t, c); !equal(got, before) {
@@ -266,15 +271,10 @@ func TestResyncSnapshotHonoursDeletions(t *testing.T) {
 	if err := s.Handle(ctx, desired(t, "keep-a", 2)); err != nil {
 		t.Fatal(err)
 	}
-	b, err := json.Marshal(desiredState{Kind: "thing", Name: "gone", Revision: 3, Deleted: true})
-	if err != nil {
+	if err := s.Handle(ctx, deleted(t, "gone", 3)); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Handle(ctx, &syncpkg.Envelope{Type: syncpkg.TypeDesired, Seq: 3, Payload: b}); err != nil {
-		t.Fatal(err)
-	}
-	count := 2
-	if err := s.Handle(ctx, endFrame(t, streamEnd{Complete: true, Count: &count})); err != nil {
+	if err := s.Handle(ctx, endFrame(t, wire.StreamEnd{Complete: true, Count: 2})); err != nil {
 		t.Fatal(err)
 	}
 	if got := localNames(t, c); !equal(got, []string{"keep-a"}) {
