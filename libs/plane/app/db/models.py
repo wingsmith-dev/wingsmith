@@ -1,0 +1,943 @@
+from __future__ import annotations
+
+import datetime as dt
+
+from uuid import UUID
+
+from sqlalchemy import UUID as DBUUID
+from sqlalchemy import Text
+from sqlalchemy import Index
+from sqlalchemy import String
+from sqlalchemy import Boolean
+from sqlalchemy import Integer
+from sqlalchemy import Numeric
+from sqlalchemy import DateTime
+from sqlalchemy import BigInteger
+from sqlalchemy import ForeignKey
+from sqlalchemy import UniqueConstraint
+from sqlalchemy import text
+from sqlalchemy.orm import Mapped
+from sqlalchemy.orm import relationship
+from sqlalchemy.orm import mapped_column
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import JSONB
+
+from app.db.base import BaseMixin
+
+
+dUUID = text("gen_random_uuid()")
+
+
+# =========================
+# Supply
+# =========================
+
+
+class Cluster(BaseMixin):
+    """A GPU cluster we own and operate, and the root of every observed record.
+
+    The declared half is the registry entry: name, region, phase, and the labels
+    placement matches against. `phase` is declared intent — an operator marks a
+    cluster `draining` — and is deliberately not the same axis as reachability,
+    which is observed and lives on `ClusterSyncState`. There is no address column:
+    the plane never dials a cluster, so a cluster's identity is the credential its
+    agent presents, not a URL the plane could call.
+    """
+
+    __tablename__ = "supply_cluster"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    region: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    zone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    residency: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    phase: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending", index=True)
+    labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    capabilities: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    enrolled_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    sync_state: Mapped[ClusterSyncState | None] = relationship(
+        "ClusterSyncState", back_populates="cluster", lazy="noload", uselist=False, cascade="all, delete-orphan"
+    )
+    nodes: Mapped[list[Node]] = relationship("Node", back_populates="cluster", lazy="noload")
+    pools: Mapped[list[Pool]] = relationship("Pool", back_populates="cluster", lazy="noload")
+
+
+class ClusterSyncState(BaseMixin):
+    """The observed half of a cluster: is its agent connected and how current is it.
+
+    Split from `Cluster` because the two have different writers. `Cluster` is
+    written only by the API; this row is written only by ingestion, on every
+    connect, heartbeat, and disconnect. Folding `reachable` into `Cluster.phase`
+    would give one record two writers and make "declared draining" and "observed
+    unreachable" indistinguishable.
+    """
+
+    __tablename__ = "supply_cluster_sync_state"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    reachable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    connected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disconnected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sync_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observed_generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    cluster: Mapped[Cluster] = relationship("Cluster", back_populates="sync_state", lazy="noload")
+
+
+class Node(BaseMixin):
+    """A machine observed inside a cluster. Never declared — nodes appear, they are not written.
+
+    Attributes here are deliberately generic (os image, kernel, driver, agent
+    version): the plane does not know a cluster is Kubernetes, so no runtime- or
+    orchestrator-specific version field belongs on this table. `cordoned` is an
+    observed boolean rather than a value in a condition enum, because cordoning is
+    something an `Operation` does and draining has a lifecycle of its own.
+    """
+
+    __tablename__ = "supply_node"
+    __table_args__ = (UniqueConstraint("cluster_id", "name", name="uq_supply_node_cluster_name"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    pool_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_pool.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    condition: Mapped[str] = mapped_column(String(32), nullable=False, server_default="unknown", index=True)
+    cordoned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    ready: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    cpu_cores: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    memory_mib: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    cpu_arch: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    os_image: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    kernel_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    driver_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    taints: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    joined_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    cluster: Mapped[Cluster] = relationship("Cluster", back_populates="nodes", lazy="noload")
+    pool: Mapped[Pool | None] = relationship("Pool", back_populates="nodes", lazy="noload")
+    devices: Mapped[list[Device]] = relationship("Device", back_populates="node", lazy="noload")
+
+
+class TopologyDomain(BaseMixin):
+    """A set of devices that share an interconnect — NVLink, NVSwitch, a PCIe root, or a NUMA node.
+
+    First-class rather than a label on `Device` so that "eight devices in one
+    fabric" is a join, not a string comparison. `kind` names what is shared and
+    `parent_id` nests domains, so a NUMA domain can contain PCIe roots which
+    contain NVLink islands.
+    """
+
+    __tablename__ = "supply_topology_domain"
+    __table_args__ = (UniqueConstraint("cluster_id", "kind", "identifier", name="uq_supply_topology_domain_identity"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    node_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_node.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    parent_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_topology_domain.id", ondelete="SET NULL"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    identifier: Mapped[str] = mapped_column(String(128), nullable=False)
+    link_generation: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    link_bandwidth_gbps: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    device_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    spans_nodes: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    devices: Mapped[list[Device]] = relationship(
+        "Device", back_populates="topology_domain", lazy="noload", foreign_keys="Device.topology_domain_id"
+    )
+
+
+class Device(BaseMixin):
+    """One accelerator. The schedulable unit of the whole system.
+
+    There is no `gpu_count` anywhere above this table, because a count cannot say
+    which of eight GPUs is throttling, which has ECC errors, and which is already
+    committed. Health, ECC and throttle state, memory, and MIG profile live here;
+    utilization, temperature, and power do not — those are telemetry and never
+    enter Postgres.
+    """
+
+    __tablename__ = "supply_device"
+    __table_args__ = (
+        UniqueConstraint("cluster_id", "device_uuid", name="uq_supply_device_cluster_uuid"),
+        Index("ix_supply_device_class_health", "cluster_id", "device_class", "health"),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    node_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_node.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    topology_domain_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_topology_domain.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    device_uuid: Mapped[str] = mapped_column(String(128), nullable=False)
+    device_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    device_class: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    vendor: Mapped[str] = mapped_column(String(32), nullable=False, server_default="nvidia")
+    model_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    pci_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    memory_mib: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    compute_capability: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    health: Mapped[str] = mapped_column(String(32), nullable=False, server_default="unknown", index=True)
+    health_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ecc_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    ecc_volatile_errors: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    ecc_aggregate_errors: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    ecc_pending_retirement: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    throttled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    throttle_reasons: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
+    mig_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    mig_profile: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mig_parent_device_uuid: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    allocatable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    node: Mapped[Node] = relationship("Node", back_populates="devices", lazy="noload")
+    topology_domain: Mapped[TopologyDomain | None] = relationship(
+        "TopologyDomain", back_populates="devices", lazy="noload", foreign_keys=[topology_domain_id]
+    )
+
+
+class Pool(BaseMixin):
+    """A declared provisioning spec that carves a homogeneous slice out of a cluster.
+
+    Declared rather than a selector over observed nodes because we own the
+    substrate: min/max are a scaling loop's inputs, not a description. This is the
+    one object in the supply group that breaks if the plane ever manages a cluster
+    it did not provision.
+    """
+
+    __tablename__ = "supply_pool"
+    __table_args__ = (UniqueConstraint("cluster_id", "name", name="uq_supply_pool_cluster_name"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    device_class: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    devices_per_node: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    node_shape: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    min_nodes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    max_nodes: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    taints: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    cluster: Mapped[Cluster] = relationship("Cluster", back_populates="pools", lazy="noload")
+    nodes: Mapped[list[Node]] = relationship("Node", back_populates="pool", lazy="noload")
+
+
+# =========================
+# Demand
+# =========================
+
+
+class Artifact(BaseMixin):
+    """Immutable, content-addressed bytes: weights, adapters, datasets, images.
+
+    Identity is the digest, so the same weights registered twice are one row. A
+    fine-tune output, a private customer checkpoint, a quantized derivative, and a
+    LoRA adapter are all artifacts — none of them are catalog entries, and the
+    catalog is deliberately absent from this schema.
+    """
+
+    __tablename__ = "demand_artifact"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    digest: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weights", index=True)
+    format: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    licence: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    parameter_count: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    base_artifact_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_artifact.id", ondelete="SET NULL"), nullable=True
+    )
+    project_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("bind_project.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, server_default="{}")
+
+    locations: Mapped[list[ArtifactLocation]] = relationship(
+        "ArtifactLocation", back_populates="artifact", lazy="noload", cascade="all, delete-orphan"
+    )
+
+
+class ArtifactLocation(BaseMixin):
+    """Where one artifact's bytes can be fetched from. An artifact may have several.
+
+    Separate from `Artifact` because locations are mutable and plural while the
+    artifact is neither. Credentials are referenced, never inlined.
+    """
+
+    __tablename__ = "demand_artifact_location"
+    __table_args__ = (UniqueConstraint("artifact_id", "uri", name="uq_demand_artifact_location_uri"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    artifact_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_artifact.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    scheme: Mapped[str] = mapped_column(String(32), nullable=False)
+    uri: Mapped[str] = mapped_column(Text, nullable=False)
+    region: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    credential_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("ops_credential.id", ondelete="SET NULL"), nullable=True
+    )
+    preferred: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
+    artifact: Mapped[Artifact] = relationship("Artifact", back_populates="locations", lazy="noload")
+
+
+class Recipe(BaseMixin):
+    """A fully-specified, reproducible way to serve an artifact.
+
+    The load-bearing object of the demand group: engine and version, quantization,
+    tensor/pipeline/expert parallelism, context length, KV and prefix cache
+    configuration, engine arguments, and the device shape that all of that
+    implies. `device_class` is required, not optional — you cannot tensor-parallel
+    across an A100 and an H100, so a shape without a class is not a shape.
+    Context length lives here rather than on any catalog entry because it
+    determines the footprint.
+    """
+
+    __tablename__ = "demand_recipe"
+    __table_args__ = (UniqueConstraint("name", "version", name="uq_demand_recipe_name_version"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    artifact_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_artifact.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    engine: Mapped[str] = mapped_column(String(64), nullable=False)
+    engine_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    engine_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    quantization: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    dtype: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    tensor_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    pipeline_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    expert_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    context_length: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_batch_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kv_cache_dtype: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    kv_cache_fraction: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
+    prefix_cache_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    prefix_cache_config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    device_class: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    device_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    device_memory_mib_min: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    requires_single_topology_domain: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    topology_domain_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    cpu_cores: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    memory_mib: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    disk_gib: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    artifact: Mapped[Artifact] = relationship("Artifact", lazy="noload")
+
+
+class Workload(BaseMixin):
+    """The schedulable supertype. Everything that is placed is a workload first.
+
+    `kind` discriminates `service | task | gang`; `admission_phase` runs
+    `pending → admitted → placed → running` (plus terminal `succeeded | failed`)
+    for all three. Serving admits instantly, which makes the phase feel redundant
+    today and makes it free — adding a queue later changes no consumer's state
+    machine. Priority, project, and cluster live here so that preemption and quota
+    are one code path across serving, batch, and gang jobs rather than three.
+    """
+
+    __tablename__ = "demand_workload"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    project_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    cluster_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    priority_class_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_priority_class.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    admission_phase: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", index=True)
+    admission_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gang_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    preemptible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    queued_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    admitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    placed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deadline_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    deployment: Mapped[Deployment | None] = relationship(
+        "Deployment", back_populates="workload", lazy="noload", uselist=False
+    )
+
+
+class Deployment(BaseMixin):
+    """A recipe reconciled onto one cluster, with scale bounds. The unit the agent obeys.
+
+    Deployment is the `service` specialisation of `Workload`, joined one-to-one:
+    scale bounds and the recipe live here, while admission phase, priority, and
+    project stay on the supertype so a task or gang uses the same placement path.
+    Deployments are disposable — recreated on every recipe bump, engine upgrade,
+    and drain — which is why the public name lives on `Endpoint` instead.
+    """
+
+    __tablename__ = "demand_deployment"
+    __table_args__ = (UniqueConstraint("cluster_id", "name", name="uq_demand_deployment_cluster_name"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    workload_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_workload.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    recipe_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_recipe.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    min_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    max_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    desired_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="1")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    adapter_artifact_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
+    overrides: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+    workload: Mapped[Workload] = relationship("Workload", back_populates="deployment", lazy="noload")
+    recipe: Mapped[Recipe] = relationship("Recipe", lazy="noload")
+    replicas: Mapped[list[Replica]] = relationship("Replica", back_populates="deployment", lazy="noload")
+
+
+class Replica(BaseMixin):
+    """One running instance of a deployment, observed. Written only by ingestion.
+
+    Carries readiness and the engine version actually running — which may lag the
+    recipe's during a rollout — and the node it landed on. The devices it holds
+    are in `Allocation`, not here, because a gang commits many devices at once.
+    """
+
+    __tablename__ = "demand_replica"
+    __table_args__ = (UniqueConstraint("cluster_id", "name", name="uq_demand_replica_cluster_name"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    deployment_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    node_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_node.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    phase: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending", index=True)
+    ready: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    ready_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    engine_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    observed_generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    restart_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    deployment: Mapped[Deployment] = relationship("Deployment", back_populates="replicas", lazy="noload")
+
+
+class Endpoint(BaseMixin):
+    """The stable public name clients call. Plane-only — it never syncs to a cluster.
+
+    Global where a deployment is per-cluster, and a contract where a deployment is
+    disposable. Keeping them separate is what allows weighted splits, canaries,
+    cross-cluster failover, and renaming without breaking clients; merging them
+    would give one globally unique record N cluster-side writers.
+    """
+
+    __tablename__ = "demand_endpoint"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    visibility: Mapped[str] = mapped_column(String(16), nullable=False, server_default="private")
+    routing_strategy: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weighted")
+    failover_order: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    targets: Mapped[list[EndpointTarget]] = relationship(
+        "EndpointTarget", back_populates="endpoint", lazy="noload", cascade="all, delete-orphan"
+    )
+
+
+class EndpointTarget(BaseMixin):
+    """One deployment behind one endpoint, with a traffic weight.
+
+    The many-to-many between global names and per-cluster deployments. It exists
+    as a table rather than as gateway configuration so that a canary or a
+    weighted split is versioned and auditable like anything else.
+    """
+
+    __tablename__ = "demand_endpoint_target"
+    __table_args__ = (UniqueConstraint("endpoint_id", "deployment_id", name="uq_demand_endpoint_target"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    endpoint_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_endpoint.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    deployment_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    weight: Mapped[int] = mapped_column(Integer, nullable=False, server_default="100")
+    role: Mapped[str] = mapped_column(String(16), nullable=False, server_default="primary")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    endpoint: Mapped[Endpoint] = relationship("Endpoint", back_populates="targets", lazy="noload")
+    deployment: Mapped[Deployment] = relationship("Deployment", lazy="noload")
+
+
+class WarmSet(BaseMixin):
+    """Declared weight-cache intent: which artifacts should be resident on a cluster.
+
+    The declared half of the weight cache. Its observed counterpart is
+    `CacheEntry`, in the machinery group. The KV and prefix caches are unrelated
+    to this and are configuration on `Recipe` — collapsing the two would produce
+    an object half desired-state and half runtime.
+    """
+
+    __tablename__ = "demand_warm_set"
+    __table_args__ = (UniqueConstraint("cluster_id", "artifact_id", name="uq_demand_warm_set_cluster_artifact"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    artifact_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_artifact.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    eviction_policy: Mapped[str] = mapped_column(String(32), nullable=False, server_default="lru")
+    pinned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    min_replicas_resident: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+
+# =========================
+# Binding
+# =========================
+
+
+class Tenant(BaseMixin):
+    """The billing and isolation root. Projects hang off it; quota attaches below it."""
+
+    __tablename__ = "bind_tenant"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    projects: Mapped[list[Project]] = relationship("Project", back_populates="tenant", lazy="noload")
+
+
+class Project(BaseMixin):
+    """The unit quota, priority, and workload ownership attach to, inside a tenant."""
+
+    __tablename__ = "bind_project"
+    __table_args__ = (UniqueConstraint("tenant_id", "slug", name="uq_bind_project_tenant_slug"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    tenant_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_tenant.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    slug: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    default_priority_class_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("bind_priority_class.id", ondelete="SET NULL"), nullable=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    tenant: Mapped[Tenant] = relationship("Tenant", back_populates="projects", lazy="noload")
+    quotas: Mapped[list[Quota]] = relationship("Quota", back_populates="project", lazy="noload")
+
+
+class Quota(BaseMixin):
+    """A guaranteed device floor plus a fair share of otherwise-idle capacity.
+
+    Per project, per device class, optionally scoped to one cluster. Two numbers
+    rather than one cap: a hard limit leaves expensive silicon idle while someone
+    queues, and over-quota-with-preemption is the primitive that makes mixed
+    inference and training economics work at all.
+    """
+
+    __tablename__ = "bind_quota"
+    __table_args__ = (
+        UniqueConstraint("project_id", "cluster_id", "device_class", name="uq_bind_quota_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    project_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_project.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    cluster_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    device_class: Mapped[str] = mapped_column(String(64), nullable=False)
+    guaranteed_devices: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    limit_devices: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    over_quota_weight: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False, server_default="1")
+    over_quota_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    project: Mapped[Project] = relationship("Project", back_populates="quotas", lazy="noload")
+
+
+class PriorityClass(BaseMixin):
+    """What preempts what. Referenced by every schedulable workload from day one.
+
+    Only two values are needed today; the point is that the reference exists now
+    so that preemption is a policy change later rather than a migration across
+    every workload.
+    """
+
+    __tablename__ = "bind_priority_class"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    value: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    preemptible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    preempts: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class Policy(BaseMixin):
+    """A placement constraint: region, residency, device class, cost ceiling, allowed clusters.
+
+    Attachable to more than one kind of subject, so the subject reference lives in
+    `PolicyAttachment` rather than as a nullable column per subject type here.
+    """
+
+    __tablename__ = "bind_policy"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    allowed_regions: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
+    allowed_residencies: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
+    allowed_device_classes: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
+    allowed_cluster_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
+    denied_cluster_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
+    max_hourly_cost: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
+    rules: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    attachments: Mapped[list[PolicyAttachment]] = relationship(
+        "PolicyAttachment", back_populates="policy", lazy="noload", cascade="all, delete-orphan"
+    )
+
+
+class PolicyAttachment(BaseMixin):
+    """Binds a policy to a tenant, project, endpoint, or cluster.
+
+    A polymorphic pair of `subject_type` and `subject_id` rather than four
+    nullable foreign keys, because the set of attachable subjects is expected to
+    grow and each addition would otherwise be a column.
+    """
+
+    __tablename__ = "bind_policy_attachment"
+    __table_args__ = (
+        UniqueConstraint("policy_id", "subject_type", "subject_id", name="uq_bind_policy_attachment"),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    policy_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_policy.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    subject_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject_id: Mapped[UUID] = mapped_column(DBUUID, nullable=False, index=True)
+
+    policy: Mapped[Policy] = relationship("Policy", back_populates="attachments", lazy="noload")
+
+
+class Allocation(BaseMixin):
+    """Observed: a set of devices committed together to one workload.
+
+    The allocation, not its members, is the unit of commitment — a gang takes all
+    N devices or none, so the atomicity has to live on a row that can be created
+    once. Members are rows in `AllocationDevice`, whose unique constraint on
+    device is what stops two live allocations claiming the same accelerator.
+    """
+
+    __tablename__ = "bind_allocation"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    workload_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_workload.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    replica_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_replica.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    project_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    device_class: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    device_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    over_quota: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    phase: Mapped[str] = mapped_column(String(16), nullable=False, server_default="held", index=True)
+    acquired_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    released_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    devices: Mapped[list[AllocationDevice]] = relationship(
+        "AllocationDevice", back_populates="allocation", lazy="noload", cascade="all, delete-orphan"
+    )
+
+
+class AllocationDevice(BaseMixin):
+    """One device inside one allocation.
+
+    A partial unique index on `device_id` for live allocations enforces that an
+    accelerator is committed to at most one workload at a time while still
+    retaining released rows for history.
+    """
+
+    __tablename__ = "bind_allocation_device"
+    __table_args__ = (
+        UniqueConstraint("allocation_id", "device_id", name="uq_bind_allocation_device"),
+        Index(
+            "uq_bind_allocation_device_live",
+            "device_id",
+            unique=True,
+            postgresql_where=text("released_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    allocation_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_allocation.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    device_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_device.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    released_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    allocation: Mapped[Allocation] = relationship("Allocation", back_populates="devices", lazy="noload")
+
+
+# =========================
+# Machinery
+# =========================
+
+
+class Component(BaseMixin):
+    """Declared: something we install into a cluster at a version.
+
+    The agent, the serving runtime, exporters, collectors, the cache tier, the
+    gateway — all the same kind of thing. Observability included, deliberately:
+    the moment it gets a bespoke path, the cache tier wants one too.
+    """
+
+    __tablename__ = "ops_component"
+    __table_args__ = (UniqueConstraint("cluster_id", "name", name="uq_ops_component_cluster_name"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    desired_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    status: Mapped[ComponentStatus | None] = relationship(
+        "ComponentStatus", back_populates="component", lazy="noload", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class ComponentStatus(BaseMixin):
+    """Observed: what version of a component is actually running, and how the rollout is going.
+
+    A separate table from `Component` rather than a nullable `observed_version`
+    column on it, because declared and observed have different writers. The pair
+    read together is what "component is behind" means.
+    """
+
+    __tablename__ = "ops_component_status"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    component_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("ops_component.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    observed_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    rollout_phase: Mapped[str] = mapped_column(String(32), nullable=False, server_default="unknown", index=True)
+    healthy: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    component: Mapped[Component] = relationship("Component", back_populates="status", lazy="noload")
+
+
+class Operation(BaseMixin):
+    """An imperative, long-running, failable action against some target.
+
+    Drain, cordon, reboot, device reset, cache warm, rolling update, component
+    upgrade — one table with a typed payload rather than a status column on each
+    object acted upon. A status field cannot answer who did this, why, how long
+    it has been stuck, or what happens at the deadline. `target_type` /
+    `target_id` are polymorphic because the set of targets spans four groups.
+    """
+
+    __tablename__ = "ops_operation"
+    __table_args__ = (Index("ix_ops_operation_target", "target_type", "target_id"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    cluster_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    target_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_id: Mapped[UUID] = mapped_column(DBUUID, nullable=False)
+    phase: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", index=True)
+    requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    deadline_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Event(BaseMixin):
+    """Observed, append-only: node joined, device degraded, load failed, OOM, preemption.
+
+    State, not telemetry — discrete, low-volume, and worth joining against. Metric
+    streams do not come through here and never enter Postgres.
+    """
+
+    __tablename__ = "ops_event"
+    __table_args__ = (
+        Index("ix_ops_event_subject", "subject_type", "subject_id"),
+        Index("ix_ops_event_cluster_occurred", "cluster_id", "occurred_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    cluster_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True
+    )
+    type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, server_default="info", index=True)
+    subject_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject_id: Mapped[UUID | None] = mapped_column(DBUUID, nullable=True)
+    operation_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("ops_operation.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    details: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    occurred_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CacheEntry(BaseMixin):
+    """Observed residency of an artifact on a cluster or a specific node.
+
+    Read against the declared `WarmSet` to say whether intent has been met, and
+    read by the router, which can only be cache-aware if it knows where weights
+    actually are. `node_id` is nullable because residency may be a cluster-level
+    tier rather than a local disk.
+    """
+
+    __tablename__ = "ops_cache_entry"
+    __table_args__ = (
+        UniqueConstraint("cluster_id", "node_id", "artifact_id", name="uq_ops_cache_entry_scope"),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    node_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_node.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    artifact_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_artifact.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    tier: Mapped[str] = mapped_column(String(32), nullable=False, server_default="node")
+    state: Mapped[str] = mapped_column(String(32), nullable=False, server_default="absent", index=True)
+    bytes_resident: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_verified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Credential(BaseMixin):
+    """Declared, scoped secrets: registry pulls, HF tokens, artifact-store access.
+
+    Never cluster-admin — the plane holds no credential that can drive a cluster,
+    which is the whole point of the agent dialling out. The secret material is
+    stored by reference to an external secret store rather than inline.
+    """
+
+    __tablename__ = "ops_credential"
+    __table_args__ = (UniqueConstraint("scope_type", "scope_id", "name", name="uq_ops_credential_scope_name"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    scope_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_id: Mapped[UUID | None] = mapped_column(DBUUID, nullable=True)
+    secret_ref: Mapped[str] = mapped_column(Text, nullable=False)
+    attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

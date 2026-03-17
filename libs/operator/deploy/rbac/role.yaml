@@ -1,0 +1,55 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hangar-operator
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - placeholder.hangar.dev
+  resources:
+  - syncedresources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - placeholder.hangar.dev
+  resources:
+  - syncedresources/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - sync.hangar.dev
+  resources:
+  - streamcheckpoints
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch

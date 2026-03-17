@@ -1,0 +1,8 @@
+Async alembic environment. The database URL comes from app.config.settings, never
+from alembic.ini.
+
+    uv run alembic revision --autogenerate -m "..."
+    uv run alembic upgrade head
+
+The revision history is intentionally empty; the initial schema migration is
+authored alongside the object model.
