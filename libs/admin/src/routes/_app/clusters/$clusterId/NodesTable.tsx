@@ -1,13 +1,14 @@
-import { NodesTable as SupplyNodesTable } from "@/components/supply/nodes-table"
-import { useClusterNodes } from "@/modules/clusters/queries"
+import { DataTable } from "@/components/layout/data-table"
+import { nodeColumns } from "@/components/supply/columns"
+import { useNodes } from "@/modules/supply/queries"
 
-export function NodesTable({ clusterId }: { clusterId: string }) {
-  const { data, isLoading, error } = useClusterNodes(clusterId)
+export function ClusterNodesTable({ clusterId }: { clusterId: string }) {
+  const list = useNodes({ cluster: clusterId })
   return (
-    <SupplyNodesTable
-      nodes={data?.items}
-      isLoading={isLoading}
-      error={error}
+    <DataTable
+      columns={nodeColumns({ showCluster: false })}
+      list={list}
+      rowKey={(node) => node.id}
       empty="No nodes have joined this cluster yet."
     />
   )

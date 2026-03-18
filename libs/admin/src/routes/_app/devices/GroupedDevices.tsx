@@ -1,20 +1,20 @@
-import { DevicesTable } from "@/components/supply/devices-table"
+import { DataTable } from "@/components/layout/data-table"
+import { deviceColumns } from "@/components/supply/columns"
 import { Badge } from "@/components/ui/badge"
-import { TOPOLOGY_KIND_LABEL } from "@/modules/supply/display"
-import type { Device, TopologyDomain } from "@/modules/supply/types"
+import { topologyKindLabel } from "@/modules/supply/display"
+import type { Device } from "@/modules/supply/types"
 
 const GANG_SIZE = 8
 
-export function GroupedDevices({
-  devices,
-  domains,
-}: {
-  devices: Device[]
-  domains: TopologyDomain[]
-}) {
+/**
+ * Devices bucketed by the fabric they share. Grouping happens over what has
+ * been loaded, and the header says so — a gang that looks incomplete may just
+ * be a page boundary.
+ */
+export function GroupedDevices({ devices }: { devices: Device[] }) {
   const byDomain = new Map<string, Device[]>()
   for (const device of devices) {
-    const key = device.topology_domain_id ?? "unassigned"
+    const key = device.topology?.identifier ?? "unassigned"
     const bucket = byDomain.get(key)
     if (bucket) bucket.push(device)
     else byDomain.set(key, [device])
@@ -22,25 +22,22 @@ export function GroupedDevices({
 
   return (
     <div className="space-y-5">
-      {[...byDomain.entries()].map(([domainId, group]) => {
-        const domain = domains.find((d) => d.id === domainId)
+      {[...byDomain.entries()].map(([identifier, group]) => {
         const healthy = group.filter((d) => d.health === "healthy").length
-        const free = group.filter(
-          (d) => d.health === "healthy" && !d.allocation
-        ).length
+        const free = group.filter((d) => d.allocatable).length
+        const kind = group[0]?.topology?.kind
 
         return (
-          <section key={domainId} className="space-y-2">
+          <section key={identifier} className="space-y-2">
             <div className="flex flex-wrap items-baseline gap-3">
-              <span className="font-mono text-xs">{domainId}</span>
-              {domain && (
+              <span className="font-mono text-xs">{identifier}</span>
+              {kind && (
                 <span className="font-mono text-2xs text-muted-foreground/60">
-                  {TOPOLOGY_KIND_LABEL[domain.kind]} · {domain.interconnect} ·{" "}
-                  {domain.node_name}
+                  {topologyKindLabel(kind)}
                 </span>
               )}
               <span className="font-mono text-2xs text-muted-foreground/60">
-                {healthy}/{group.length} healthy · {free} free
+                {healthy}/{group.length} healthy · {free} allocatable
               </span>
               {free >= GANG_SIZE && (
                 <Badge
@@ -51,10 +48,19 @@ export function GroupedDevices({
                 </Badge>
               )}
             </div>
-            <DevicesTable
-              devices={group}
-              isLoading={false}
-              showTopology={false}
+            <DataTable
+              columns={deviceColumns({ showTopology: false })}
+              list={{
+                items: group,
+                loaded: group.length,
+                isLoading: false,
+                error: null,
+                hasNextPage: false,
+                isFetchingNextPage: false,
+                fetchNextPage: () => {},
+              }}
+              rowKey={(device) => device.id}
+              empty="No devices."
             />
           </section>
         )

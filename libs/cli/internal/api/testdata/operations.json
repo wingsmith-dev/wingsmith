@@ -1,0 +1,72 @@
+{
+    "items": [
+        {
+            "id": "opr_01m0dqbd54w2vs83gy7j97c4ts",
+            "cluster_id": "clu_01m0djye4vgns3hw9qhavf23am",
+            "type": "node.drain",
+            "target": {
+                "type": "node",
+                "id": "nod_01m0djye6qjc2gc9d5mbmdfctz"
+            },
+            "reason": null,
+            "requested_by": "operator",
+            "parameters": {},
+            "deadline_at": null,
+            "created_at": "2026-08-19T19:18:13.922601Z",
+            "updated_at": null,
+            "phase": "pending",
+            "result": null,
+            "error": null,
+            "attempts": 0,
+            "cancel_requested_at": null,
+            "started_at": null,
+            "finished_at": null
+        },
+        {
+            "id": "opr_01m0dqbd3h8k1j4gb13m8axbnb",
+            "cluster_id": "clu_01m0djye4vgns3hw9qhavf23am",
+            "type": "node.drain",
+            "target": {
+                "type": "node",
+                "id": "nod_01m0djye6jep09vmwbz7w3rekq"
+            },
+            "reason": "firmware",
+            "requested_by": "operator",
+            "parameters": {},
+            "deadline_at": null,
+            "created_at": "2026-08-19T19:18:13.868674Z",
+            "updated_at": null,
+            "phase": "pending",
+            "result": null,
+            "error": null,
+            "attempts": 0,
+            "cancel_requested_at": null,
+            "started_at": null,
+            "finished_at": null
+        },
+        {
+            "id": "opr_01m0dp96dxr4fhf9f6hs4gn1pd",
+            "cluster_id": "clu_01m0djye4vgns3hw9qhavf23am",
+            "type": "node.drain",
+            "target": {
+                "type": "node",
+                "id": "nod_01m0djye6096jczp3fsc7jat79"
+            },
+            "reason": "test-cancel",
+            "requested_by": "operator",
+            "parameters": {},
+            "deadline_at": null,
+            "created_at": "2026-08-19T18:59:32.924215Z",
+            "updated_at": "2026-08-19T18:59:33.043106Z",
+            "phase": "cancelled",
+            "result": null,
+            "error": null,
+            "attempts": 0,
+            "cancel_requested_at": "2026-08-19T18:59:33.044385Z",
+            "started_at": null,
+            "finished_at": "2026-08-19T18:59:33.044385Z"
+        }
+    ],
+    "count": 3,
+    "next_cursor": "MTAwNA"
+}

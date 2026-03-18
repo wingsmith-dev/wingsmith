@@ -1,28 +1,31 @@
 import { Field, FieldGrid } from "@/components/layout/field"
+import { DataTable } from "@/components/layout/data-table"
+import { Dash, Labels } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { CordonState, NodeConditionLabel } from "@/components/supply/indicators"
-import { DevicesTable } from "@/components/supply/devices-table"
-import { Badge } from "@/components/ui/badge"
+import { deviceColumns } from "@/components/supply/columns"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatAbsolute, formatRelative } from "@/lib/format"
-import { useNode, useNodeDevices } from "@/modules/supply/queries"
+import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
+import { gibibytes, unhealthyCount } from "@/modules/supply/display"
+import { useDevices, useNode } from "@/modules/supply/queries"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useParams } from "@tanstack/react-router"
 import { TopologyCard } from "./TopologyCard"
+import { NodeOperations } from "./NodeOperations"
 
 export function NodeDetailPage() {
   const { nodeId } = useParams({ from: "/_app/nodes/$nodeId" })
   const { data: node, isLoading, error } = useNode(nodeId)
-  const devices = useNodeDevices(nodeId)
+  const devices = useDevices({ node: nodeId })
 
   if (error) {
     return (
       <div className="flex flex-col">
         <PageHeader title="Node" />
         <div className="p-10 text-center text-sm text-destructive">
-          {error instanceof Error ? error.message : "Failed to load node"}
+          {formatError(error, "Failed to load node")}
         </div>
       </div>
     )
@@ -32,7 +35,7 @@ export function NodeDetailPage() {
     <div className="flex flex-col">
       <PageHeader
         title={node?.name ?? "Node"}
-        description={node ? `${node.id} · ${node.instance_type}` : undefined}
+        description={node ? `${node.id} · ${node.cluster_name}` : undefined}
         actions={
           <Button asChild variant="outline" size="sm">
             <Link to="/nodes">
@@ -52,19 +55,9 @@ export function NodeDetailPage() {
               <NodeConditionLabel condition={node.condition} />
               <CordonState cordoned={node.cordoned} />
               <span className="font-mono text-2xs text-muted-foreground/60">
-                last seen {formatRelative(node.last_seen_at)}
+                observed {formatRelative(node.observed_at)}
               </span>
-              <div className="flex flex-wrap gap-1">
-                {Object.entries(node.labels).map(([key, value]) => (
-                  <Badge
-                    key={key}
-                    variant="outline"
-                    className="font-mono text-2xs"
-                  >
-                    {key}={value}
-                  </Badge>
-                ))}
-              </div>
+              <Labels labels={node.labels} />
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
@@ -77,17 +70,17 @@ export function NodeDetailPage() {
                     <Field label="Cluster">
                       <Link
                         to="/clusters/$clusterId"
-                        params={{ clusterId: node.cluster_id }}
+                        params={{ clusterId: node.cluster }}
                         className="hover:underline"
                       >
                         {node.cluster_name}
                       </Link>
                     </Field>
                     <Field label="Pool">
-                      {node.pool_id ? (
+                      {node.pool ? (
                         <Link
                           to="/pools/$poolId"
-                          params={{ poolId: node.pool_id }}
+                          params={{ poolId: node.pool }}
                           className="hover:underline"
                         >
                           {node.pool_name}
@@ -96,37 +89,59 @@ export function NodeDetailPage() {
                         "unpooled"
                       )}
                     </Field>
-                    <Field label="Device class">
-                      {node.device_class ?? "—"}
+                    <Field label="Devices">
+                      {node.devices.total} total · {unhealthyCount(node.devices)}{" "}
+                      unhealthy
                     </Field>
-                    <Field label="Devices healthy">
-                      {node.devices_healthy}/{node.device_count} ·{" "}
-                      {node.devices_allocated} allocated
+                    <Field label="By health">
+                      {Object.entries(node.devices.by_health)
+                        .map(([health, count]) => `${health} ${count}`)
+                        .join(" · ") || "—"}
                     </Field>
                     <Field label="CPU / RAM">
-                      {node.cpu_cores} cores · {node.memory_gb} GB
+                      {node.cpu_cores ?? "—"} cores · {gibibytes(node.memory_mib)}
                     </Field>
-                    <Field label="Driver / kernel">
-                      {node.driver_version ?? "—"} · {node.kernel_version ?? "—"}
+                    <Field label="Architecture">
+                      <Dash>{node.cpu_arch}</Dash>
                     </Field>
-                    <Field label="Joined">{formatAbsolute(node.joined_at)}</Field>
+                    <Field label="OS image">
+                      <Dash>{node.os_image}</Dash>
+                    </Field>
+                    <Field label="Kernel">
+                      <Dash>{node.kernel_version}</Dash>
+                    </Field>
+                    <Field label="Driver">
+                      <Dash>{node.driver_version}</Dash>
+                    </Field>
+                    <Field label="Agent">
+                      <Dash>{node.agent_version}</Dash>
+                    </Field>
+                    <Field label="Joined">
+                      {node.joined_at ? formatAbsolute(node.joined_at) : "—"}
+                    </Field>
                     <Field label="Taints">
-                      {node.taints.length ? node.taints.join(", ") : "none"}
+                      {node.taints.length ? `${node.taints.length} taint(s)` : "none"}
                     </Field>
                   </FieldGrid>
                 </CardContent>
               </Card>
 
-              <TopologyCard domains={node.topology_domains} />
+              <TopologyCard nodeId={node.id} />
             </div>
 
-            <DevicesTable
-              devices={devices.data?.items}
-              isLoading={devices.isLoading}
-              error={devices.error}
-              showNode={false}
-              empty="This node reports no devices."
-            />
+            <NodeOperations node={node} />
+
+            <div>
+              <h2 className="mb-2 font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground/50">
+                Devices
+              </h2>
+              <DataTable
+                columns={deviceColumns({ showNode: false })}
+                list={devices}
+                rowKey={(device) => device.id}
+                empty="This node reports no devices."
+              />
+            </div>
           </>
         )}
       </div>

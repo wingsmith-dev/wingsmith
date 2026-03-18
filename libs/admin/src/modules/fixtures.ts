@@ -1,6 +1,6 @@
 /**
- * Barrel of fixture registrations, imported for side effects only. Each module
- * that has fixtures adds a line here; nothing else imports these files.
+ * The offline plane, imported for side effects only. Registering every
+ * collection in one place is what lets `VITE_API_MODE=fixtures` answer the same
+ * paths, with the same envelope and the same errors, as the real thing.
  */
-import "./clusters/fixtures"
-import "./supply/fixtures"
+import "./offline"

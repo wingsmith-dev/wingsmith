@@ -1,42 +1,61 @@
 import { Field, FieldGrid } from "@/components/layout/field"
+import { Dash } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { DeviceHealthLabel } from "@/components/supply/indicators"
+import { NewOperationDialog } from "@/components/machinery/new-operation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { formatAbsolute, formatRelative } from "@/lib/format"
-import { TOPOLOGY_KIND_LABEL } from "@/modules/supply/display"
+import { formatError, formatRelative } from "@/lib/format"
+import { gibibytes, topologyKindLabel } from "@/modules/supply/display"
 import { useDevice } from "@/modules/supply/queries"
+import { useAllocations } from "@/modules/machinery/queries"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useParams } from "@tanstack/react-router"
 
 export function DeviceDetailPage() {
   const { deviceId } = useParams({ from: "/_app/devices/$deviceId" })
   const { data: device, isLoading, error } = useDevice(deviceId)
+  const allocations = useAllocations({ device: device?.id })
 
   if (error) {
     return (
       <div className="flex flex-col">
         <PageHeader title="Device" />
         <div className="p-10 text-center text-sm text-destructive">
-          {error instanceof Error ? error.message : "Failed to load device"}
+          {formatError(error, "Failed to load device")}
         </div>
       </div>
     )
   }
 
+  const holder = allocations.items?.find((a) => a.live)
+
   return (
     <div className="flex flex-col">
       <PageHeader
-        title={device?.uuid ?? "Device"}
+        title={device?.device_uuid ?? "Device"}
         description={device ? `${device.id} · ${device.device_class}` : undefined}
         actions={
-          <Button asChild variant="outline" size="sm">
-            <Link to="/devices">
-              <IconArrowLeft className="size-4" />
-              All devices
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            {device && (
+              <NewOperationDialog
+                defaultType="device.reset"
+                defaultTarget={device.id}
+                trigger={
+                  <Button size="sm" variant="outline">
+                    Reset
+                  </Button>
+                }
+              />
+            )}
+            <Button asChild variant="outline" size="sm">
+              <Link to="/devices">
+                <IconArrowLeft className="size-4" />
+                All devices
+              </Link>
+            </Button>
+          </div>
         }
       />
 
@@ -52,20 +71,26 @@ export function DeviceDetailPage() {
               <CardContent className="space-y-3">
                 <DeviceHealthLabel device={device} />
                 <FieldGrid>
-                  <Field label="ECC volatile">
-                    {device.ecc_errors.volatile}
+                  <Field label="Reason">
+                    <Dash>{device.health_reason}</Dash>
                   </Field>
-                  <Field label="ECC aggregate">
-                    {device.ecc_errors.aggregate}
+                  <Field label="ECC">
+                    {device.ecc_enabled ? "enabled" : "disabled"}
+                  </Field>
+                  <Field label="ECC volatile">{device.ecc_volatile_errors}</Field>
+                  <Field label="ECC aggregate">{device.ecc_aggregate_errors}</Field>
+                  <Field label="Pending retirement">
+                    {device.ecc_pending_retirement ? "yes" : "no"}
                   </Field>
                   <Field label="Throttle reasons">
                     {device.throttle_reasons.length
                       ? device.throttle_reasons.join(", ")
                       : "none"}
                   </Field>
-                  <Field label="Last seen">
-                    {formatRelative(device.last_seen_at)}
+                  <Field label="Allocatable">
+                    {device.allocatable ? "yes" : "no"}
                   </Field>
+                  <Field label="Observed">{formatRelative(device.observed_at)}</Field>
                 </FieldGrid>
               </CardContent>
             </Card>
@@ -79,7 +104,7 @@ export function DeviceDetailPage() {
                   <Field label="Cluster">
                     <Link
                       to="/clusters/$clusterId"
-                      params={{ clusterId: device.cluster_id }}
+                      params={{ clusterId: device.cluster }}
                       className="hover:underline"
                     >
                       {device.cluster_name}
@@ -88,29 +113,35 @@ export function DeviceDetailPage() {
                   <Field label="Node">
                     <Link
                       to="/nodes/$nodeId"
-                      params={{ nodeId: device.node_id }}
+                      params={{ nodeId: device.node }}
                       className="hover:underline"
                     >
                       {device.node_name}
                     </Link>
                   </Field>
-                  <Field label="Index">#{device.index}</Field>
-                  <Field label="Memory">
-                    {device.memory_used_gb}/{device.memory_gb} GB
+                  <Field label="Index">#{device.device_index}</Field>
+                  <Field label="Memory">{gibibytes(device.memory_mib)}</Field>
+                  <Field label="Vendor / model">
+                    {device.vendor} · <Dash>{device.model_name}</Dash>
                   </Field>
-                  <Field label="MIG profile">
-                    {device.mig_profile ?? "disabled"}
+                  <Field label="PCI address">
+                    <Dash>{device.pci_address}</Dash>
                   </Field>
-                  <Field label="Topology domain">
-                    {device.topology_domain_id ? (
+                  <Field label="Compute capability">
+                    <Dash>{device.compute_capability}</Dash>
+                  </Field>
+                  <Field label="MIG">
+                    {device.mig_enabled ? (device.mig_profile ?? "enabled") : "disabled"}
+                  </Field>
+                  <Field label="Topology domain" className="sm:col-span-2">
+                    {device.topology ? (
                       <Link
                         to="/devices"
-                        search={{ domain: device.topology_domain_id }}
+                        search={{ domain: device.topology.id }}
                         className="hover:underline"
                       >
-                        {device.topology_domain_id}
-                        {device.topology_kind &&
-                          ` · ${TOPOLOGY_KIND_LABEL[device.topology_kind]}`}
+                        {device.topology.identifier} ·{" "}
+                        {topologyKindLabel(device.topology.kind)}
                       </Link>
                     ) : (
                       "—"
@@ -125,24 +156,26 @@ export function DeviceDetailPage() {
                 <CardTitle className="text-sm">Allocation</CardTitle>
               </CardHeader>
               <CardContent>
-                {device.allocation ? (
+                {holder ? (
                   <FieldGrid>
-                    <Field label="Replica">{device.allocation.replica_id}</Field>
-                    <Field label="Deployment">
-                      {device.allocation.deployment_name} ·{" "}
-                      {device.allocation.deployment_id}
+                    <Field label="Allocation">
+                      <Link
+                        to="/allocations"
+                        search={{ device: device.id }}
+                        className="hover:underline"
+                      >
+                        {holder.id}
+                      </Link>
                     </Field>
-                    <Field label="Project">
-                      {device.allocation.project_name} ·{" "}
-                      {device.allocation.project_id}
-                    </Field>
-                    <Field label="Allocated at">
-                      {formatAbsolute(device.allocation.allocated_at)}
-                    </Field>
+                    <Field label="Workload">{holder.workload}</Field>
+                    <Field label="Project">{holder.project_slug}</Field>
+                    <Field label="Acquired">{formatRelative(holder.acquired_at)}</Field>
                   </FieldGrid>
                 ) : (
                   <p className="font-mono text-2xs text-muted-foreground/60">
-                    Idle — no replica currently holds this device.
+                    {allocations.isLoading
+                      ? "Loading…"
+                      : "No live allocation holds this device."}
                   </p>
                 )}
               </CardContent>

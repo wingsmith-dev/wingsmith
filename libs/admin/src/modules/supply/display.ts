@@ -1,40 +1,59 @@
 import type { StatusTone } from "@/components/layout/status-dot"
-import type {
-  DeviceHealth,
-  NodeCondition,
-  ProvisioningSource,
-  TopologyKind,
-} from "./types"
 
-export const NODE_CONDITION_TONE: Record<NodeCondition, StatusTone> = {
+const NODE_CONDITION_TONES: Record<string, StatusTone> = {
   ready: "ok",
   not_ready: "danger",
   unknown: "neutral",
 }
 
-export const NODE_CONDITION_LABEL: Record<NodeCondition, string> = {
-  ready: "Ready",
-  not_ready: "Not ready",
-  unknown: "Unknown",
+export function nodeConditionTone(condition: string): StatusTone {
+  return NODE_CONDITION_TONES[condition] ?? "neutral"
 }
 
-export const DEVICE_HEALTH_TONE: Record<DeviceHealth, StatusTone> = {
+const DEVICE_HEALTH_TONES: Record<string, StatusTone> = {
   healthy: "ok",
   degraded: "warn",
-  failed: "danger",
+  unhealthy: "danger",
   unknown: "neutral",
 }
 
-export const TOPOLOGY_KIND_LABEL: Record<TopologyKind, string> = {
+export function deviceHealthTone(health: string): StatusTone {
+  return DEVICE_HEALTH_TONES[health] ?? "neutral"
+}
+
+export const NODE_CONDITIONS = ["ready", "not_ready", "unknown"]
+
+/** The health vocabulary the plane's own filters accept. */
+export const DEVICE_HEALTHS = ["healthy", "degraded", "unhealthy", "unknown"]
+
+const TOPOLOGY_KIND_LABELS: Record<string, string> = {
   nvswitch: "NVSwitch",
   nvlink: "NVLink",
   pcie: "PCIe root",
   numa: "NUMA node",
 }
 
-export const PROVISIONING_SOURCE_LABEL: Record<ProvisioningSource, string> = {
-  owned_bare_metal: "Owned bare metal",
-  colocation: "Colocation",
-  cloud_reserved: "Cloud reserved",
-  cloud_on_demand: "Cloud on demand",
+export function topologyKindLabel(kind: string): string {
+  return TOPOLOGY_KIND_LABELS[kind] ?? kind
+}
+
+/** Devices report memory in MiB; nobody reads a GPU spec in mebibytes. */
+export function gibibytes(mib: number | null): string {
+  if (mib === null) return "—"
+  return `${Math.round(mib / 1024)} GiB`
+}
+
+export function healthCount(
+  byHealth: Record<string, number>,
+  health: string
+): number {
+  return byHealth[health] ?? 0
+}
+
+/** Devices in a rollup that are anything other than healthy. */
+export function unhealthyCount(rollup: {
+  total: number
+  by_health: Record<string, number>
+}): number {
+  return rollup.total - healthCount(rollup.by_health, "healthy")
 }

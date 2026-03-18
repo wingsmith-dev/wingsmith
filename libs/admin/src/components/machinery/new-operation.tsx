@@ -1,0 +1,147 @@
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { formatError } from "@/lib/format"
+import { useCreateOperation } from "@/modules/machinery/queries"
+import { OPERATION_TYPES, type OperationType } from "@/modules/machinery/types"
+import { useNavigate } from "@tanstack/react-router"
+import { useState } from "react"
+import { toast } from "sonner"
+
+const TYPES = Object.keys(OPERATION_TYPES) as OperationType[]
+
+/**
+ * `POST /v1/operations` with a type and a target — never a verb on the target's
+ * own path. On success the caller is sent to the operation's page, because what
+ * comes back is a thing with a lifecycle to watch, not an acknowledgement.
+ */
+export function NewOperationDialog({
+  defaultType,
+  defaultTarget,
+  trigger,
+}: {
+  defaultType?: OperationType
+  defaultTarget?: string
+  trigger?: React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const [type, setType] = useState<OperationType>(defaultType ?? "node.drain")
+  const [target, setTarget] = useState(defaultTarget ?? "")
+  const [reason, setReason] = useState("")
+  const create = useCreateOperation()
+  const navigate = useNavigate()
+
+  const prefix = OPERATION_TYPES[type]
+  const targetLooksWrong = target !== "" && !target.startsWith(prefix)
+
+  const submit = () => {
+    create.mutate(
+      { type, target, reason: reason || null },
+      {
+        onSuccess: (operation) => {
+          setOpen(false)
+          toast.success(`${operation.type} requested`, { description: operation.id })
+          navigate({
+            to: "/operations/$operationId",
+            params: { operationId: operation.id },
+          })
+        },
+        onError: (error) => toast.error(formatError(error, "Could not start operation")),
+      }
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {trigger ?? <Button size="sm">New operation</Button>}
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New operation</DialogTitle>
+          <DialogDescription>
+            An operation is a type and a target. It gets an id and a phase, and is
+            polled — it is not a button that returns 200.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="operation-type">Type</Label>
+            <Select value={type} onValueChange={(v) => setType(v as OperationType)}>
+              <SelectTrigger id="operation-type" className="font-mono text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TYPES.map((value) => (
+                  <SelectItem key={value} value={value} className="font-mono text-xs">
+                    {value}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="operation-target">Target</Label>
+            <Input
+              id="operation-target"
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder={`${prefix}…`}
+              className="font-mono text-xs"
+            />
+            <p
+              className={
+                targetLooksWrong
+                  ? "font-mono text-2xs text-destructive"
+                  : "font-mono text-2xs text-muted-foreground/60"
+              }
+            >
+              {type} acts on targets whose id starts with {prefix}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="operation-reason">Reason</Label>
+            <Input
+              id="operation-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="firmware"
+              className="font-mono text-xs"
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={submit}
+            disabled={target === "" || targetLooksWrong || create.isPending}
+          >
+            {create.isPending ? "Starting…" : "Start operation"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

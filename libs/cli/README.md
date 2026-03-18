@@ -7,63 +7,83 @@ the same rule the console follows, for the same reason.
 Every command is noun–verb (`hgr cluster ls`, `hgr cluster get iad-1`), and every command has a
 machine contract: humans read a table, scripts read `-o json`, agents read a stable envelope.
 
-> **Status: Supply implemented.** `cluster`, `node`, `device`, and `pool` are implemented end to
-> end. The Demand, Binding, and Machinery nouns are registered so the surface is reviewable, but
-> their verbs return `UNIMPLEMENTED` until the API contract lands. Nothing here guesses at an
-> endpoint that has not been agreed.
+> **Status: every collection is implemented.** All seventeen `/v1` collections have `ls` and
+> `get`, and `operation` additionally has `create`, `cancel`, and `wait`. The wire types are
+> reconciled field-for-field against the plane's `schemas.py` and pinned by a corpus captured
+> from a running server; nothing here is a guess.
 
 ---
 
 ## Quickstart
 
-Nothing is deployed yet, so start offline:
+Against a plane:
 
 ```sh
 go build -o bin/hgr ./cmd/hgr
+hgr config set context.server http://localhost:8000
+hgr config set context.token  hgr_pat_…
+hgr whoami
+hgr cluster ls
+hgr device ls --cluster iad-1 --health unhealthy
+hgr operation create node.drain iad-1-n01 --reason firmware --wait
+```
+
+Or offline, with `--fake`:
+
+```sh
 ./bin/hgr --fake cluster ls
-./bin/hgr --fake cluster get iad-1
-./bin/hgr --fake cluster ls -o json | jq '.items[].name'
-./bin/hgr --fake node ls --cluster iad-1
-./bin/hgr --fake device ls --cluster iad-1 --status free --group-by domain
-./bin/hgr --fake pool ls
+./bin/hgr --fake node ls --cluster iad-1 --cordoned
+./bin/hgr --fake device ls --cluster iad-1 --allocatable --group-by domain
+./bin/hgr --fake device ls --all -o json | jq '.count'
 ```
 
 ```
 $ hgr --fake cluster ls
-NAME   REGION        PHASE     NODES  DEVICES  DEPLOYS  CLASSES           SYNCED
-ams-1  eu-west       draining      8     8/64        2  a100-80               3m
-iad-1  us-east       active       24  168/192       11  h100-80               9s
-sin-1  ap-southeast  pending       0      0/0        0  -                  never
-sjc-1  us-west       active       16   52/128        7  h200-141,l40s-48     14s
-↳ hgr cluster get ams-1  Inspect one
+NAME   REGION          PHASE                 REACHABLE  SYNC             SYNCED
+iad-1  us-east-1       active                yes        connected           12s
+sjc-1  us-west-2       active (unreachable)  no         disconnected        11m
+ams-1  eu-west-1       draining              yes        connected           12s
+sin-1  ap-southeast-1  pending               no         never_connected   never
+↳ hgr cluster get iad-1  Inspect one
 ```
+
+`sjc-1` is the point of the whole layout: it is `active` because that is what we declared, and
+unreachable because that is what is true. Neither answer is allowed to overwrite the other.
 
 ```
 $ hgr --fake cluster get iad-1
-iad-1 clu_01hq0v8p2m
-  region        us-east
-  phase         active
-  reachable     yes
-  agent         0.4.2
-  capabilities  nvlink rdma mig
-  nodes         24
-  deployments   11
-  labels        fabric=nvswitch tier=prod
-  enrolled      210d ago
-  last sync     9s
+iad-1 clu_01m0dj00000000000000000001
 
-devices
-CLASS    TOTAL  HEALTHY  ALLOCATED  FREE
-h100-80    192      190        168    22
+declared
+  display name  iad-1 region
+  region        us-east-1
+  zone          us-east-1b
+  residency     us
+  phase         active
+  capabilities  mig nvlink rdma
+  labels        fabric=nvswitch tier=prod
+  enrolled      210d
+  revision      1769023398698256
+
+observed
+  reachable   yes
+  sync state  connected
+  agent       0.4.2
+  lag         340ms
+  last sync   12s
+  last seen   8s
+  last error  -
 ```
 
-Against a real plane:
+```
+$ hgr --fake operation create node.drain iad-1-n02 --reason firmware --wait
+✓ node.drain succeeded
 
-```sh
-hgr config set context.server https://plane.hangar.dev
-hgr config set context.token  hgr_pat_…
-hgr whoami
-hgr cluster ls
+observed
+  phase     succeeded
+  attempts  1
+  took      0s
+  result    evicted_replicas=3
 ```
 
 ---
@@ -75,10 +95,10 @@ grouped in help the way the model groups them.
 
 | Group | Nouns | Kind |
 |---|---|---|
-| Supply | `cluster` ✅, `node` ✅, `device` ✅, `pool` ✅ | observed, except Pool (declared) |
+| Supply | `cluster`, `node`, `device`, `topology-domain`, `pool` | observed, except Cluster and Pool (declared halves too) |
 | Demand | `artifact`, `recipe`, `deployment`, `endpoint` | declared |
-| Binding | `project`, `quota` | declared |
-| Machinery | `operation` | imperative, long-running |
+| Binding | `project`, `quota`, `priority-class`, `policy` | declared |
+| Machinery | `operation`, `allocation`, `component`, `event` | imperative, observed, and mixed |
 
 Plus CLI-local commands: `context`, `config`, `whoami`, `explain`, `version`.
 
@@ -104,12 +124,15 @@ live, not a `--drain` flag hiding on `cluster`.
 | `template=…` | Go text/template over the JSON |
 | `jsonpath=…` | dotted path with `[n]` and `[*]` projection |
 
-The JSON contract for a list is an **object**, never a bare array, so counts and cursors can be
-added later without breaking a parser:
+The JSON contract for a list is the API's own envelope, an **object** and never a bare array:
 
 ```json
-{ "items": [ … ], "count": 4 }
+{ "items": [ … ], "count": 50, "next_cursor": "MTAwMQ" }
 ```
+
+`count` is the size of *this page*. A listing with a `next_cursor` is not the whole collection,
+and the human output says so; `--cursor` takes the next page and `--all` follows the cursors to
+the end.
 
 **Agent mode** (`--agent` or `HANGAR_AGENT=1`) wraps everything — success and failure alike — in
 one envelope: `schema_version`, `ok`, `command`, `data`, `error`, `warnings`, `next_actions`,
@@ -128,9 +151,14 @@ and CI without a server.
   one.
 - **Implements `api.Backend`**, the same interface the HTTP client implements. Commands cannot
   tell them apart, so a command tested against the fake is a command tested for real shape.
-- **Seeded, not random** — five clusters across four regions in every phase, including one
-  disabled and one never-synced, so filters and edge rendering have something to bite on.
-  `HANGAR_FAKE_STATE=/path/to/state.json` swaps the seed for a fixture.
+- **Shaped like the server** — every field name, the envelope, cursor behaviour and the error
+  vocabulary match a real plane, and a test compares the fake's output key-for-key against a
+  corpus captured from one. A fixture that disagrees with the server is worse than no fixture:
+  it makes the client's tests pass while the client is broken.
+- **Seeded, not random** — four clusters in every phase, including an unreachable one and one
+  that never connected, plus a cordoned node, an unhealthy device, a partially satisfied gang
+  and a quota over its limit. `HANGAR_FAKE_STATE=/path/to/state.json` pins the state to a file
+  and persists mutations, so create-then-poll workflows work offline.
 - **Failure injection** — `HANGAR_FAKE_FAIL=NOT_FOUND` (any code from `hgr explain`) makes every
   call fail with that code, which is how error paths and exit codes get tested.
 
@@ -221,41 +249,45 @@ noun means adding one file under `internal/cli/` and one method per verb on `api
 
 ---
 
-## API assumptions
+## The API this speaks
 
-These were needed to make `cluster` work end to end and are **guesses until the contract track
-confirms them**:
+Everything is `/v1` on the plane's HTTP API, as specified in
+[`contract/API.md`](../../contract/API.md) and implemented by `libs/plane`. The client was
+reconciled against the server's own `schemas.py`, and where the two disagreed the server won.
 
-- `GET /v1/nodes`, `/v1/devices`, `/v1/pools` list the rest of Supply, with the same envelope and
-  the shared query params `cluster`, `pool`, `node`, `class`, `health`, `status`, `domain`,
-  `cordoned`, `all`, `search`, `limit`, `cursor`, and repeated `label=k=v`. `GET /v1/{noun}/{ref}`
-  resolves by id or by the noun's natural key (node name, pool name, device UUID).
-- Node cordon state is an observed boolean beside status, never a status value.
-- A device carries its topology domain inline (`{id, name, kind, devices}`) so "eight devices in
-  one NVLink domain" is answerable without a second call.
-- Pool is declared (`device_class`, `node_shape`, `min_nodes`, `max_nodes`, `provisioning_source`)
-  with observed membership (`nodes`, `ready_nodes`, `devices`) on the same object.
-- `GET /v1/clusters` returns `{"items": [...]}`; filters are query params `phase`, `region`,
-  `search`, `limit`, `cursor`, and repeated `label=k=v`.
-- `GET /v1/clusters/{id_or_name}` resolves by either identifier.
-- `GET /v1/whoami` returns the active identity.
-- Project scope travels as the `X-Hangar-Project` header.
-- Cluster phases are `pending | active | draining | disabled`, with reachability a separate
-  boolean rather than a phase.
-- Device counts on a cluster are a per-class rollup (`class`, `total`, `healthy`, `allocated`),
-  not a single integer.
-- Errors carry `{"code", "message", "detail"}`, with the code drawn from the same vocabulary
-  `hgr explain` lists.
-
----
+- **Envelope** — `{items, count, next_cursor}` on every list; a detail response is the object
+  itself, unwrapped.
+- **Errors** — `{code, message, detail}`, with `detail` an object. `code` is what the CLI
+  branches on: `not_found`, `conflict`, `invalid`, `invalid_request`, `not_authorized`,
+  `forbidden`, `internal`.
+- **Identifiers** — prefixed, lowercase, 30 characters. A path segment takes an id or a name.
+- **Filters** — each endpoint declares its own; the client sends only the ones that endpoint
+  accepts, because a parameter the server does not know is one it ignores in silence. Shared:
+  `limit`, `cursor`, `search`, repeatable `label=k=v`.
+- **Declared and observed are never merged** — a cluster has a declared `phase` beside observed
+  `reachable` and `sync`; a node has observed `condition`, `ready` and `cordoned` as three
+  separate facts; a component has `desired_version` beside `status.observed_version`.
+- **No `/v1/whoami`** — auth is stubbed to one static principal, so `hgr whoami` reports the
+  configured context and whether `/health` answers, and invents no user.
+- **Writes** — `Idempotency-Key` on `POST /v1/operations`; `If-Match` against `revision` for
+  conditional updates.
 
 ## Development
 
 ```sh
-go build ./...
-go vet ./...
-go test ./...
+go build ./... && go vet ./... && gofmt -l . && go test ./...
 go build -o bin/hgr ./cmd/hgr
+```
+
+`internal/api/testdata/` is a corpus captured verbatim from a running plane. The unit tests
+decode it with `DisallowUnknownFields` and compare the client's own serialisation key-for-key,
+so a server-side schema change fails the build rather than silently dropping a field. Refresh it
+by curling each collection when the API changes.
+
+The transport itself is exercised against a live plane when one is pointed at:
+
+```sh
+HANGAR_TEST_SERVER=http://localhost:8000 go test ./internal/api/
 ```
 
 Structure and conventions are lifted from Acme's `libs/cli` deliberately — same shape, no

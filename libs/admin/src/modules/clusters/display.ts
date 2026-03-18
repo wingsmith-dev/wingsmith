@@ -1,5 +1,5 @@
 import type { StatusTone } from "@/components/layout/status-dot"
-import type { ClusterPhase, ComponentPhase, SyncState } from "./types"
+import type { ClusterPhase, SyncState } from "./types"
 
 export const CLUSTER_PHASE_TONE: Record<ClusterPhase, StatusTone> = {
   pending: "info",
@@ -8,25 +8,31 @@ export const CLUSTER_PHASE_TONE: Record<ClusterPhase, StatusTone> = {
   disabled: "neutral",
 }
 
-export const SYNC_TONE: Record<SyncState, StatusTone> = {
+export const CLUSTER_PHASES: ClusterPhase[] = [
+  "pending",
+  "active",
+  "draining",
+  "disabled",
+]
+
+const SYNC_TONES: Record<string, StatusTone> = {
   connected: "ok",
-  reconnecting: "warn",
   disconnected: "danger",
+  never_connected: "neutral",
 }
 
-export const SYNC_LABEL: Record<SyncState, string> = {
-  connected: "Connected",
-  reconnecting: "Reconnecting",
-  disconnected: "Disconnected",
-}
-
-export const COMPONENT_PHASE_TONE: Record<ComponentPhase, StatusTone> = {
-  healthy: "ok",
-  upgrading: "info",
-  degraded: "warn",
-  missing: "danger",
+/**
+ * `sync.state` is derived by the plane, so an unknown value is rendered
+ * neutrally rather than crashing a lookup that assumed a closed set.
+ */
+export function syncTone(state: SyncState): StatusTone {
+  return SYNC_TONES[state] ?? "warn"
 }
 
 export function humanize(value: string): string {
   return value.replace(/_/g, " ")
+}
+
+export function clusterLabel(cluster: { display_name: string | null; name: string }) {
+  return cluster.display_name ?? cluster.name
 }

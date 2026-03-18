@@ -1,138 +1,486 @@
 package fake
 
 import (
-	"encoding/json"
-	"os"
+	"fmt"
 	"time"
 
 	"github.com/hangar/cli/internal/api"
-	"github.com/hangar/cli/internal/errs"
 )
 
-// state is the whole simulated control plane, persisted as one JSON document.
-type state struct {
-	Identity api.Identity  `json:"identity"`
-	Clusters []api.Cluster `json:"clusters"`
-	Pools    []api.Pool    `json:"pools"`
-	Nodes    []api.Node    `json:"nodes"`
-	Devices  []api.Device  `json:"devices"`
+// seed builds the offline control plane. It is deterministic in shape and
+// relative in time: ids are prefixed lowercase 30-character strings like the
+// plane's, and ages are offsets from now so no fixture ever has to be
+// regenerated to stay plausible.
+//
+// The corpus is deliberately awkward — an unreachable cluster, a cordoned
+// node, an unhealthy device, a throttled one, a deployment that never got
+// admitted, a quota over its limit — because a seed where everything is fine
+// tests nothing that matters.
+func seed() *state {
+	now := time.Now().UTC()
+	st := &state{}
+
+	counter := 0
+	uid := func(prefix string) string {
+		counter++
+		return fmt.Sprintf("%s01m0dj%020d", prefix, counter)
+	}
+
+	type clusterSpec struct {
+		name, region, zone, phase, residency string
+		reachable                            bool
+		syncState                            string
+		agent                                string
+		lastError                            string
+		nodes                                int
+		class                                string
+		perNode                              int
+	}
+	specs := []clusterSpec{
+		{"iad-1", "us-east-1", "us-east-1b", api.PhaseActive, "us", true, "connected", "0.4.2", "", 3, "h100-80", 8},
+		{"sjc-1", "us-west-2", "", api.PhaseActive, "us", false, "disconnected", "0.4.1", "stream closed by peer", 2, "l40s-48", 4},
+		{"ams-1", "eu-west-1", "euw1-az1", api.PhaseDraining, "eu", true, "connected", "0.4.2", "", 1, "a100-80", 8},
+		{"sin-1", "ap-southeast-1", "", api.PhasePending, "apac", false, "never_connected", "", "", 0, "", 0},
+	}
+
+	for _, spec := range specs {
+		clusterID := uid("clu_")
+		display := spec.name + " region"
+		enrolled := now.Add(-time.Duration(210*24) * time.Hour)
+		sync := api.ClusterSync{State: spec.syncState}
+		if spec.syncState != "never_connected" {
+			sync.LastSyncAt = ptr(now.Add(-12 * time.Second))
+			sync.LastSeenAt = ptr(now.Add(-8 * time.Second))
+			sync.AgentVersion = strptr(spec.agent)
+			sync.LagMS = intptr(340)
+		}
+		if spec.lastError != "" {
+			sync.LastError = strptr(spec.lastError)
+			sync.LastSyncAt = ptr(now.Add(-11 * time.Minute))
+		}
+		cluster := api.Cluster{
+			ID:           clusterID,
+			Name:         spec.name,
+			DisplayName:  strptr(display),
+			Region:       spec.region,
+			Zone:         nilIfEmpty(spec.zone),
+			Residency:    nilIfEmpty(spec.residency),
+			Phase:        spec.phase,
+			Labels:       map[string]any{"tier": "prod", "fabric": "nvswitch"},
+			Capabilities: map[string]any{"nvlink": true, "rdma": true, "mig": spec.class == "h100-80"},
+			EnrolledAt:   ptr(enrolled),
+			CreatedAt:    enrolled,
+			Revision:     revision(enrolled),
+			Reachable:    spec.reachable,
+			Sync:         sync,
+		}
+		st.Clusters = append(st.Clusters, cluster)
+		if spec.nodes == 0 {
+			continue
+		}
+
+		poolID := uid("pol_")
+		poolName := spec.class + "-prod"
+		membership := api.PoolMembership{}
+
+		for i := 1; i <= spec.nodes; i++ {
+			nodeID := uid("nod_")
+			nodeName := fmt.Sprintf("%s-n%02d", spec.name, i)
+			cordoned := spec.phase == api.PhaseDraining && i == 1
+			condition := api.NodeReady
+			ready := true
+			if spec.name == "sjc-1" && i == 2 {
+				condition = api.NodeNotReady
+				ready = false
+			}
+			byHealth := map[string]int{api.HealthHealthy: spec.perNode}
+			if i == 1 {
+				byHealth[api.HealthHealthy] = spec.perNode - 1
+				byHealth[api.HealthUnhealthy] = 1
+			}
+
+			domainID := uid("tpd_")
+			domainKind := "nvswitch"
+			if spec.class == "l40s-48" {
+				domainKind = "pcie"
+			}
+			st.TopologyDomains = append(st.TopologyDomains, api.TopologyDomain{
+				ID:                domainID,
+				Cluster:           clusterID,
+				ClusterName:       spec.name,
+				Node:              strptr(nodeID),
+				NodeName:          strptr(nodeName),
+				Kind:              domainKind,
+				Identifier:        nodeName + "/" + domainKind + "-0",
+				LinkGeneration:    strptr("4"),
+				LinkBandwidthGbps: intptr(900),
+				DeviceCount:       spec.perNode,
+				Attributes:        map[string]any{"switches": 4},
+				ObservedAt:        ptr(now.Add(-20 * time.Second)),
+				CreatedAt:         enrolled,
+			})
+
+			st.Nodes = append(st.Nodes, api.Node{
+				ID:            nodeID,
+				Name:          nodeName,
+				Cluster:       clusterID,
+				ClusterName:   spec.name,
+				Pool:          strptr(poolID),
+				PoolName:      strptr(poolName),
+				Condition:     condition,
+				Cordoned:      cordoned,
+				Ready:         ready,
+				CPUCores:      intptr(192),
+				MemoryMiB:     intptr(2097152),
+				CPUArch:       strptr("amd64"),
+				OSImage:       strptr("Ubuntu 22.04.4 LTS"),
+				KernelVersion: strptr("5.15.0-119-generic"),
+				DriverVersion: strptr("550.90.07"),
+				AgentVersion:  strptr(spec.agent),
+				Labels:        map[string]any{"tier": "prod", "fabric": domainKind},
+				Taints:        []any{},
+				Devices:       api.NodeDeviceRollup{Total: spec.perNode, ByHealth: byHealth},
+				JoinedAt:      ptr(enrolled.Add(48 * time.Hour)),
+				ObservedAt:    ptr(now.Add(-20 * time.Second)),
+				CreatedAt:     enrolled,
+			})
+
+			membership.NodesTotal++
+			if ready {
+				membership.NodesReady++
+			}
+			if cordoned {
+				membership.NodesCordoned++
+			}
+
+			for index := 0; index < spec.perNode; index++ {
+				health := api.HealthHealthy
+				var reason *string
+				allocatable := true
+				if i == 1 && index == spec.perNode-1 {
+					health = api.HealthUnhealthy
+					reason = strptr("Xid 79: GPU has fallen off the bus")
+					allocatable = false
+				}
+				throttled := i == 2 && index == 0
+				var throttleReasons []string
+				if throttled {
+					throttleReasons = []string{"sw_power_cap"}
+				}
+				st.Devices = append(st.Devices, api.Device{
+					ID:                 uid("dev_"),
+					Cluster:            clusterID,
+					ClusterName:        spec.name,
+					Node:               nodeID,
+					NodeName:           nodeName,
+					DeviceUUID:         fmt.Sprintf("GPU-%s-%02d", nodeName, index),
+					DeviceIndex:        index,
+					DeviceClass:        spec.class,
+					Vendor:             "nvidia",
+					ModelName:          strptr("NVIDIA " + spec.class),
+					PCIAddress:         strptr(fmt.Sprintf("0000:%02x:00.0", 16+index)),
+					MemoryMiB:          81920,
+					ComputeCapability:  strptr("9.0"),
+					Health:             health,
+					HealthReason:       reason,
+					ECCEnabled:         true,
+					ECCVolatileErrors:  0,
+					ECCAggregateErrors: 12,
+					Throttled:          throttled,
+					ThrottleReasons:    throttleReasons,
+					Allocatable:        allocatable,
+					Topology:           &api.DeviceTopology{ID: domainID, Kind: domainKind, Identifier: nodeName + "/" + domainKind + "-0"},
+					ObservedAt:         ptr(now.Add(-20 * time.Second)),
+					CreatedAt:          enrolled,
+				})
+				membership.DevicesTotal++
+				if health == api.HealthHealthy {
+					membership.DevicesHealthy++
+				}
+				if allocatable {
+					membership.DevicesAllocatable++
+				}
+			}
+		}
+
+		st.Pools = append(st.Pools, api.Pool{
+			ID:                  poolID,
+			ClusterID:           clusterID,
+			Name:                poolName,
+			DeviceClass:         spec.class,
+			DevicesPerNode:      spec.perNode,
+			NodeShape:           map[string]any{"sku": fmt.Sprintf("%dx%s", spec.perNode, spec.class), "cpu": 192, "memory_gib": 2048},
+			MinNodes:            1,
+			MaxNodes:            16,
+			Labels:              map[string]any{"tier": "prod"},
+			Taints:              []any{},
+			Enabled:             spec.phase != api.PhaseDisabled,
+			CreatedAt:           enrolled,
+			Revision:            revision(enrolled),
+			Membership:          membership,
+			WithinDeclaredBound: membership.NodesTotal >= 1,
+		})
+
+		st.Components = append(st.Components, api.Component{
+			ID:             uid("cmp_"),
+			ClusterID:      clusterID,
+			Name:           "scheduler",
+			Kind:           "scheduler",
+			DesiredVersion: "1.4.0",
+			Config:         map[string]any{},
+			Enabled:        true,
+			CreatedAt:      enrolled,
+			Revision:       revision(enrolled),
+			Status: api.ComponentStatus{
+				ObservedVersion: strptr("1.3.2"),
+				RolloutPhase:    "rolling",
+				Healthy:         spec.reachable,
+				ObservedAt:      ptr(now.Add(-time.Minute)),
+			},
+			Behind: true,
+		})
+	}
+
+	tenant := api.ProjectTenant{ID: uid("ten_"), Slug: "acme", Name: "Acme", Enabled: true}
+	projectID := uid("prj_")
+	created := now.Add(-90 * 24 * time.Hour)
+	st.Projects = append(st.Projects, api.Project{
+		Tenant:               tenant,
+		ID:                   projectID,
+		Slug:                 "core",
+		Name:                 "Core",
+		DefaultPriorityClass: strptr("production"),
+		Enabled:              true,
+		EffectiveEnabled:     true,
+		CreatedAt:            created,
+		Revision:             revision(created),
+	})
+
+	st.PriorityClasses = append(st.PriorityClasses,
+		api.PriorityClass{ID: uid("prc_"), Name: "production", Value: 100, Preemptible: false, Preempts: true, IsDefault: true, CreatedAt: created, Revision: revision(created)},
+		api.PriorityClass{ID: uid("prc_"), Name: "batch", Value: 10, Preemptible: true, Preempts: false, CreatedAt: created, Revision: revision(created)},
+	)
+
+	st.Policies = append(st.Policies, api.Policy{
+		ID:                   uid("plc_"),
+		Name:                 "eu-only",
+		Description:          strptr("keep eu tenants in eu regions"),
+		AllowedRegions:       []string{"eu-west-1"},
+		AllowedResidencies:   []string{"eu"},
+		AllowedDeviceClasses: []string{},
+		AllowedClusters:      []string{},
+		DeniedClusters:       []string{},
+		Rules:                map[string]any{},
+		Enabled:              true,
+		CreatedAt:            created,
+		Revision:             revision(created),
+		Attachments: []api.PolicyAttachment{{
+			SubjectType: "project",
+			SubjectID:   "1f0d1f34-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+			Subject:     strptr(projectID),
+			SubjectName: strptr("core"),
+		}},
+	})
+
+	artifactID := uid("art_")
+	st.Artifacts = append(st.Artifacts, api.Artifact{
+		ID:             artifactID,
+		Digest:         "sha256:7b1f0c0a2e4d6f8091a2b3c4d5e6f70819a2b3c4d5e6f70819a2b3c4d5e6f708",
+		Name:           "llama-3.1-70b-instruct",
+		Kind:           "weights",
+		Format:         strptr("safetensors"),
+		SizeBytes:      141_000_000_000,
+		Licence:        strptr("llama-3.1"),
+		ParameterCount: int64ptr(70_000_000_000),
+		Metadata:       map[string]any{"family": "llama"},
+		CreatedAt:      created,
+		Revision:       revision(created),
+		Locations: []api.ArtifactLocation{
+			{Scheme: "s3", URI: "s3://hangar-weights/llama-3.1-70b", Region: strptr("us-east-1"), Preferred: true},
+		},
+	})
+
+	recipeID := uid("rec_")
+	st.Recipes = append(st.Recipes, api.Recipe{
+		ID:             recipeID,
+		ArtifactID:     artifactID,
+		Name:           "llama-70b-tp8",
+		Version:        1,
+		Engine:         "vllm",
+		EngineVersion:  "0.6.3",
+		EngineArgs:     map[string]any{"max_num_seqs": 256},
+		Dtype:          strptr("bfloat16"),
+		Parallelism:    api.RecipeParallelism{Tensor: 8, Pipeline: 1, Expert: 1},
+		ContextLength:  131072,
+		MaxBatchTokens: intptr(65536),
+		Cache: api.RecipeCache{
+			KVCacheDtype:      strptr("fp8"),
+			KVCacheFraction:   floatptr(0.9),
+			PrefixCacheConfig: map[string]any{},
+		},
+		Shape: api.RecipeShape{
+			DeviceClass:                  "h100-80",
+			DeviceCount:                  8,
+			DeviceMemoryMiBMin:           81920,
+			RequiresSingleTopologyDomain: true,
+			TopologyDomainKind:           strptr("nvswitch"),
+		},
+		Resources: api.RecipeResources{CPUCores: intptr(32), MemoryMiB: intptr(262144), DiskGiB: intptr(512)},
+		Labels:    map[string]any{"family": "llama"},
+		CreatedAt: created,
+		Revision:  revision(created),
+	})
+
+	iad := st.Clusters[0].ID
+	sjc := st.Clusters[1].ID
+	depRunning := uid("dep_")
+	depPending := uid("dep_")
+	st.Deployments = append(st.Deployments,
+		api.Deployment{
+			ID: depRunning, Name: "chat-iad", ClusterID: iad, RecipeID: recipeID,
+			MinReplicas: 2, MaxReplicas: 6, DesiredReplicas: 4, Generation: 7, Enabled: true,
+			AdapterArtifactIDs: []string{}, Overrides: map[string]any{}, Labels: map[string]any{"tier": "prod"},
+			CreatedAt: created, Revision: revision(created),
+			Workload: api.DeploymentWorkload{
+				Type: "service", Phase: "running", ProjectID: projectID, PriorityClass: "production",
+				GangSize: 8, QueuedAt: ptr(created), AdmittedAt: ptr(created), PlacedAt: ptr(created), StartedAt: ptr(created),
+			},
+			Replicas: api.DeploymentReplicaRollup{Total: 4, Ready: 3, Running: 4, AtCurrentGeneration: 3},
+		},
+		api.Deployment{
+			ID: depPending, Name: "chat-sjc", ClusterID: sjc, RecipeID: recipeID,
+			MinReplicas: 1, MaxReplicas: 2, DesiredReplicas: 1, Generation: 1, Enabled: true,
+			AdapterArtifactIDs: []string{}, Overrides: map[string]any{}, Labels: map[string]any{},
+			CreatedAt: now.Add(-2 * time.Hour), Revision: revision(now.Add(-2 * time.Hour)),
+			Workload: api.DeploymentWorkload{
+				Type: "service", Phase: "pending", Reason: strptr("no cluster satisfies the recipe shape"),
+				ProjectID: projectID, PriorityClass: "batch", Preemptible: true, GangSize: 8,
+				QueuedAt: ptr(now.Add(-2 * time.Hour)),
+			},
+			Replicas: api.DeploymentReplicaRollup{},
+		},
+	)
+
+	st.Endpoints = append(st.Endpoints, api.Endpoint{
+		ID: uid("end_"), Name: "chat", DisplayName: strptr("Chat"), ProjectID: projectID,
+		Visibility: "private", RoutingStrategy: "weighted", Enabled: true,
+		Targets: []api.EndpointTarget{
+			{DeploymentID: depRunning, Weight: 90, Role: "primary", Enabled: true},
+			{DeploymentID: depPending, Weight: 10, Role: "canary", Enabled: false},
+		},
+		FailoverOrder: []string{depRunning, depPending},
+		Labels:        map[string]any{},
+		CreatedAt:     created,
+		Revision:      revision(created),
+	})
+
+	st.Quotas = append(st.Quotas,
+		api.Quota{
+			ID: uid("qta_"), Project: projectID, ProjectSlug: "core",
+			Cluster: strptr(iad), ClusterName: strptr("iad-1"), DeviceClass: "h100-80",
+			GuaranteedDevices: 16, LimitDevices: intptr(24), OverQuotaWeight: 1.0, OverQuotaEnabled: true,
+			CreatedAt: created, Revision: revision(created),
+			Usage:           api.QuotaUsage{AllocatedDevices: 32, LiveAllocations: 4, OverQuotaDevices: 16},
+			HeadroomDevices: intptr(-8), OverLimit: true,
+		},
+		api.Quota{
+			ID: uid("qta_"), Project: projectID, ProjectSlug: "core",
+			DeviceClass: "l40s-48", GuaranteedDevices: 4, OverQuotaWeight: 0.5, OverQuotaEnabled: false,
+			CreatedAt: created, Revision: revision(created),
+			Usage: api.QuotaUsage{AllocatedDevices: 2, LiveAllocations: 1},
+		},
+	)
+
+	firstNode := st.Nodes[0]
+	held := make([]api.AllocationDevice, 0, 4)
+	for _, d := range st.Devices {
+		if d.Node == firstNode.ID && len(held) < 4 {
+			held = append(held, api.AllocationDevice{Device: d.ID, DeviceUUID: d.DeviceUUID, Node: d.Node, Live: true})
+		}
+	}
+	st.Allocations = append(st.Allocations,
+		api.Allocation{
+			ID: uid("alc_"), Cluster: iad, ClusterName: "iad-1", Project: projectID, ProjectSlug: "core",
+			Workload: uid("wkl_"), DeviceClass: "h100-80", DeviceCount: 8, Phase: "held", Live: true,
+			GangComplete: false, AcquiredAt: ptr(now.Add(-6 * time.Hour)), ObservedAt: ptr(now.Add(-time.Minute)),
+			CreatedAt: now.Add(-6 * time.Hour), Devices: held,
+		},
+		api.Allocation{
+			ID: uid("alc_"), Cluster: sjc, ClusterName: "sjc-1", Project: projectID, ProjectSlug: "core",
+			Workload: uid("wkl_"), DeviceClass: "l40s-48", DeviceCount: 2, OverQuota: true, Phase: "released",
+			Live: false, GangComplete: true, AcquiredAt: ptr(now.Add(-30 * time.Hour)), ReleasedAt: ptr(now.Add(-2 * time.Hour)),
+			CreatedAt: now.Add(-30 * time.Hour), Devices: []api.AllocationDevice{},
+		},
+	)
+
+	drainTarget := st.Nodes[len(st.Nodes)-1]
+	st.Operations = append(st.Operations,
+		api.Operation{
+			ID: uid("opr_"), ClusterID: strptr(drainTarget.Cluster), Type: "node.drain",
+			Target: api.OperationTarget{Type: "node", ID: drainTarget.ID}, Reason: strptr("firmware"),
+			RequestedBy: "operator", Parameters: map[string]any{"grace_seconds": 600},
+			CreatedAt: now.Add(-4 * time.Minute), Phase: api.OpRunning, Attempts: 1,
+			StartedAt: ptr(now.Add(-3 * time.Minute)),
+		},
+		api.Operation{
+			ID: uid("opr_"), ClusterID: strptr(iad), Type: "cache.warm",
+			Target: api.OperationTarget{Type: "cluster", ID: iad}, RequestedBy: "operator",
+			Parameters: map[string]any{"artifact": artifactID}, CreatedAt: now.Add(-3 * time.Hour),
+			Phase: api.OpSucceeded, Attempts: 1, StartedAt: ptr(now.Add(-3 * time.Hour)),
+			FinishedAt: ptr(now.Add(-2 * time.Hour)), Result: map[string]any{"bytes": 141000000000},
+		},
+		api.Operation{
+			ID: uid("opr_"), ClusterID: strptr(sjc), Type: "device.reset",
+			Target: api.OperationTarget{Type: "device", ID: st.Devices[len(st.Devices)-1].ID},
+			Reason: strptr("ecc"), RequestedBy: "operator", Parameters: map[string]any{},
+			CreatedAt: now.Add(-26 * time.Hour), Phase: api.OpFailed, Attempts: 3,
+			Error: strptr("device did not come back after reset"), StartedAt: ptr(now.Add(-26 * time.Hour)),
+			FinishedAt: ptr(now.Add(-25 * time.Hour)),
+		},
+	)
+
+	st.Events = append(st.Events,
+		api.Event{
+			ID: "f735209c-c20c-4c7f-8458-d3479f76bf69", Kind: "plane.started", Severity: "info",
+			Subject: api.EventSubject{Type: "plane"}, Message: "control plane started",
+			Details: map[string]any{"version": "0.1.0"}, OccurredAt: now.Add(-5 * time.Hour), RecordedAt: now.Add(-5 * time.Hour),
+		},
+		api.Event{
+			ID: "3566dbd6-521e-4395-a489-7e17c9d300a4", ClusterID: strptr(iad), Kind: "device.unhealthy",
+			Severity: "error", Subject: api.EventSubject{Type: "device", ID: strptr("809bd430-0c48-40eb-be06-913bbbb181c8")},
+			Message: "Xid 79 on " + firstNode.Name, Details: map[string]any{"xid": 79},
+			OccurredAt: now.Add(-42 * time.Minute), RecordedAt: now.Add(-42 * time.Minute),
+		},
+		api.Event{
+			ID: "9a2f7bb1-6b0e-4c62-9a3a-77a8f9d1c2b4", ClusterID: strptr(sjc), Kind: "cluster.disconnected",
+			Severity: "warning", Subject: api.EventSubject{Type: "cluster", ID: strptr("fb690d40-2fe5-448a-b92c-7a33d14552c9")},
+			Message: "sjc-1 stream closed by peer", Details: map[string]any{},
+			OccurredAt: now.Add(-11 * time.Minute), RecordedAt: now.Add(-11 * time.Minute),
+		},
+	)
+
+	return st
 }
 
-// load reads a fixture document, falling back to the built-in seed. The seed
-// is relative to a fixed epoch offset from now so ages stay plausible without
-// the fixture needing to be regenerated.
-func load(path string) (*state, error) {
-	if path == "" {
-		return seed(), nil
-	}
-	data, err := os.ReadFile(path)
-	if os.IsNotExist(err) {
-		return seed(), nil
-	}
-	if err != nil {
-		return nil, errs.Wrap(err, errs.CodeInternal, "cannot read fake state at %s", path)
-	}
-	var st state
-	if err := json.Unmarshal(data, &st); err != nil {
-		return nil, errs.Wrap(err, errs.CodeInternal, "fake state at %s is not valid JSON", path)
-	}
-	return &st, nil
+// revision mirrors the plane's revision token: microseconds since the epoch,
+// opaque to the client and only ever compared or echoed back in `If-Match`.
+func revision(t time.Time) string {
+	return fmt.Sprintf("%d", t.UnixMicro())
 }
 
 func ptr(t time.Time) *time.Time { return &t }
 
-func seed() *state {
-	now := time.Now().UTC()
-	st := &state{
-		Identity: api.Identity{
-			User:    "operator",
-			Email:   "operator@hangar.dev",
-			Role:    "admin",
-			Project: "default",
-			Server:  "fake://local",
-		},
-		Clusters: []api.Cluster{
-			{
-				ID:           "clu_01hq0v8p2m",
-				Name:         "iad-1",
-				Region:       "us-east",
-				Phase:        api.PhaseActive,
-				Reachable:    true,
-				AgentVersion: "0.4.2",
-				Capabilities: []string{"nvlink", "rdma", "mig"},
-				Labels:       map[string]string{"tier": "prod", "fabric": "nvswitch"},
-				Nodes:        24,
-				Deployments:  11,
-				Devices: []api.DeviceSummary{
-					{Class: "h100-80", Total: 192, Healthy: 190, Allocated: 168},
-				},
-				EnrolledAt: now.Add(-210 * 24 * time.Hour),
-				LastSyncAt: ptr(now.Add(-9 * time.Second)),
-			},
-			{
-				ID:           "clu_01hq0v9r4t",
-				Name:         "sjc-1",
-				Region:       "us-west",
-				Phase:        api.PhaseActive,
-				Reachable:    true,
-				AgentVersion: "0.4.2",
-				Capabilities: []string{"nvlink", "rdma"},
-				Labels:       map[string]string{"tier": "prod"},
-				Nodes:        16,
-				Deployments:  7,
-				Devices: []api.DeviceSummary{
-					{Class: "h200-141", Total: 96, Healthy: 96, Allocated: 40},
-					{Class: "l40s-48", Total: 32, Healthy: 31, Allocated: 12},
-				},
-				EnrolledAt: now.Add(-120 * 24 * time.Hour),
-				LastSyncAt: ptr(now.Add(-14 * time.Second)),
-			},
-			{
-				ID:           "clu_01hq0vb6xk",
-				Name:         "ams-1",
-				Region:       "eu-west",
-				Phase:        api.PhaseDraining,
-				Reachable:    true,
-				AgentVersion: "0.4.1",
-				Capabilities: []string{"nvlink"},
-				Labels:       map[string]string{"tier": "prod", "residency": "eu"},
-				Nodes:        8,
-				Deployments:  2,
-				Devices: []api.DeviceSummary{
-					{Class: "a100-80", Total: 64, Healthy: 60, Allocated: 8},
-				},
-				EnrolledAt: now.Add(-400 * 24 * time.Hour),
-				LastSyncAt: ptr(now.Add(-3 * time.Minute)),
-			},
-			{
-				ID:           "clu_01hq0vcd91",
-				Name:         "sin-1",
-				Region:       "ap-southeast",
-				Phase:        api.PhasePending,
-				Reachable:    false,
-				AgentVersion: "",
-				Labels:       map[string]string{"tier": "staging"},
-				Nodes:        0,
-				Deployments:  0,
-				EnrolledAt:   now.Add(-40 * time.Minute),
-			},
-			{
-				ID:          "clu_01hq0vdf27",
-				Name:        "lab-0",
-				Region:      "us-east",
-				Phase:       api.PhaseDisabled,
-				Reachable:   false,
-				Labels:      map[string]string{"tier": "lab"},
-				Nodes:       2,
-				Deployments: 0,
-				Devices: []api.DeviceSummary{
-					{Class: "l4-24", Total: 8, Healthy: 8, Allocated: 0},
-				},
-				EnrolledAt: now.Add(-30 * 24 * time.Hour),
-				LastSyncAt: ptr(now.Add(-9 * 24 * time.Hour)),
-			},
-		},
+func strptr(s string) *string {
+	if s == "" {
+		return nil
 	}
-	st.Pools, st.Nodes, st.Devices = buildSupply(now, st.Clusters)
-	return st
+	return &s
 }
+
+func nilIfEmpty(s string) *string { return strptr(s) }
+
+func intptr(v int) *int { return &v }
+
+func int64ptr(v int64) *int64 { return &v }
+
+func floatptr(v float64) *float64 { return &v }

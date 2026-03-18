@@ -1,30 +1,19 @@
 import { StatusDot, StatusLabel } from "@/components/layout/status-dot"
 import { Badge } from "@/components/ui/badge"
-import {
-  DEVICE_HEALTH_TONE,
-  NODE_CONDITION_LABEL,
-  NODE_CONDITION_TONE,
-  TOPOLOGY_KIND_LABEL,
-} from "@/modules/supply/display"
-import type {
-  Device,
-  DeviceAllocation,
-  NodeCondition,
-  TopologyKind,
-} from "@/modules/supply/types"
-import { Link } from "@tanstack/react-router"
+import { deviceHealthTone, nodeConditionTone } from "@/modules/supply/display"
+import type { Device } from "@/modules/supply/types"
 
-export function NodeConditionLabel({ condition }: { condition: NodeCondition }) {
+export function NodeConditionLabel({ condition }: { condition: string }) {
   return (
-    <StatusLabel tone={NODE_CONDITION_TONE[condition]}>
-      {NODE_CONDITION_LABEL[condition]}
+    <StatusLabel tone={nodeConditionTone(condition)}>
+      {condition.replace(/_/g, " ")}
     </StatusLabel>
   )
 }
 
 /**
- * Cordon is observed schedulability, not health — it is rendered on its own
- * axis so a ready-but-cordoned node never reads as a healthy, usable node.
+ * Cordon is observed schedulability, not health, and gets its own axis: a
+ * ready-but-cordoned node must never read as a healthy, usable node.
  */
 export function CordonState({ cordoned }: { cordoned: boolean }) {
   if (!cordoned) {
@@ -48,9 +37,7 @@ export function CordonState({ cordoned }: { cordoned: boolean }) {
 export function DeviceHealthLabel({ device }: { device: Device }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
-      <StatusLabel tone={DEVICE_HEALTH_TONE[device.health]}>
-        {device.health}
-      </StatusLabel>
+      <StatusLabel tone={deviceHealthTone(device.health)}>{device.health}</StatusLabel>
       {device.throttled && (
         <Badge
           variant="outline"
@@ -63,8 +50,16 @@ export function DeviceHealthLabel({ device }: { device: Device }) {
   )
 }
 
+/**
+ * ECC counters, volatile over aggregate. `ecc_pending_retirement` is called out
+ * separately because a page pending retirement is a device that is about to
+ * stop being schedulable, not merely one with a history.
+ */
 export function EccCell({ device }: { device: Device }) {
-  const clean = device.ecc_errors.volatile === 0 && device.ecc_errors.aggregate === 0
+  if (!device.ecc_enabled) {
+    return <span className="font-mono text-2xs text-muted-foreground/40">off</span>
+  }
+  const clean = device.ecc_volatile_errors === 0 && device.ecc_aggregate_errors === 0
   return (
     <span
       className={
@@ -73,51 +68,27 @@ export function EccCell({ device }: { device: Device }) {
           : "font-mono text-2xs text-amber-600 dark:text-amber-400"
       }
     >
-      {device.ecc_errors.volatile}/{device.ecc_errors.aggregate}
+      {device.ecc_volatile_errors}/{device.ecc_aggregate_errors}
+      {device.ecc_pending_retirement && " ⚑"}
     </span>
   )
 }
 
-export function AllocationCell({
-  allocation,
-}: {
-  allocation: DeviceAllocation | null
-}) {
-  if (!allocation) {
-    return <span className="font-mono text-2xs text-muted-foreground/50">idle</span>
-  }
+/**
+ * Allocatability is the device's own observed flag. What actually holds it is a
+ * different question, answered by `/allocations?device=` and not by this row —
+ * the device schema carries no allocation object.
+ */
+export function AllocatableCell({ allocatable }: { allocatable: boolean }) {
   return (
-    <div className="font-mono text-2xs leading-tight">
-      <div>{allocation.deployment_name}</div>
-      <div className="text-muted-foreground/60">
-        {allocation.replica_id} · {allocation.project_name}
-      </div>
-    </div>
-  )
-}
-
-export function TopologyBadge({
-  domainId,
-  kind,
-}: {
-  domainId: string | null
-  kind: TopologyKind | null
-}) {
-  if (!domainId) {
-    return <span className="font-mono text-2xs text-muted-foreground/50">—</span>
-  }
-  return (
-    <Link
-      to="/devices"
-      search={{ domain: domainId }}
-      className="inline-flex items-center gap-1.5 font-mono text-2xs hover:underline"
+    <span
+      className={
+        allocatable
+          ? "font-mono text-2xs text-emerald-600 dark:text-emerald-400"
+          : "font-mono text-2xs text-muted-foreground/50"
+      }
     >
-      <span>{domainId}</span>
-      {kind && (
-        <span className="text-muted-foreground/50">
-          {TOPOLOGY_KIND_LABEL[kind]}
-        </span>
-      )}
-    </Link>
+      {allocatable ? "allocatable" : "unschedulable"}
+    </span>
   )
 }

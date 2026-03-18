@@ -1,0 +1,23 @@
+{
+    "items": [
+        {
+            "id": "plc_01m0dnxc6wgvtmknjrxdja5fy7",
+            "name": "eu-only",
+            "description": null,
+            "allowed_regions": [],
+            "allowed_residencies": [],
+            "allowed_device_classes": [],
+            "allowed_clusters": [],
+            "denied_clusters": [],
+            "max_hourly_cost": null,
+            "rules": {},
+            "enabled": true,
+            "created_at": "2026-08-19T18:52:20.371830Z",
+            "updated_at": null,
+            "revision": "1787165540371830",
+            "attachments": []
+        }
+    ],
+    "count": 1,
+    "next_cursor": null
+}

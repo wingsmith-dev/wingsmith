@@ -1,7 +1,7 @@
 import { StatusDot } from "@/components/layout/status-dot"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatAbsolute, formatRelative } from "@/lib/format"
-import { SYNC_LABEL, SYNC_TONE } from "@/modules/clusters/display"
+import { humanize, syncTone } from "@/modules/clusters/display"
 import type { ClusterSync } from "@/modules/clusters/types"
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -15,33 +15,25 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
+/**
+ * The observed half of a cluster. `state` is derived by the plane — a cluster
+ * that has never connected is not the same as one that connected and dropped,
+ * and neither is a value anybody declared.
+ */
 export function SyncCard({ sync }: { sync: ClusterSync }) {
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-sm">
-          <StatusDot
-            tone={SYNC_TONE[sync.state]}
-            pulse={sync.state === "connected"}
-          />
+          <StatusDot tone={syncTone(sync.state)} pulse={sync.state === "connected"} />
           Sync connection
           <span className="ml-auto font-mono text-2xs font-normal text-muted-foreground/60">
-            operator {sync.operator_version}
+            agent {sync.agent_version ?? "—"}
           </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="divide-y">
-        <Row label="State" value={SYNC_LABEL[sync.state]} />
-        <Row
-          label="Connected since"
-          value={
-            sync.connected_since ? formatRelative(sync.connected_since) : "—"
-          }
-        />
-        <Row
-          label="Last heartbeat"
-          value={formatRelative(sync.last_heartbeat_at)}
-        />
+        <Row label="State" value={humanize(sync.state)} />
         <Row
           label="Last sync"
           value={
@@ -51,10 +43,17 @@ export function SyncCard({ sync }: { sync: ClusterSync }) {
           }
         />
         <Row
-          label="Stream lag"
-          value={sync.stream_lag_ms === null ? "—" : `${sync.stream_lag_ms} ms`}
+          label="Last seen"
+          value={
+            <span title={formatAbsolute(sync.last_seen_at)}>
+              {formatRelative(sync.last_seen_at)}
+            </span>
+          }
         />
-        <Row label="Pending declarations" value={sync.pending_declarations} />
+        <Row
+          label="Stream lag"
+          value={sync.lag_ms === null ? "—" : `${sync.lag_ms} ms`}
+        />
         {sync.last_error && (
           <div className="pt-2">
             <p className="font-mono text-2xs uppercase tracking-wider text-muted-foreground/60">

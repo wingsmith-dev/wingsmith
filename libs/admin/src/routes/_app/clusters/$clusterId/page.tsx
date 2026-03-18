@@ -1,20 +1,25 @@
+import { Labels } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusLabel } from "@/components/layout/status-dot"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { formatAbsolute } from "@/lib/format"
-import { CLUSTER_PHASE_TONE, humanize } from "@/modules/clusters/display"
+import { formatError } from "@/lib/format"
+import {
+  CLUSTER_PHASE_TONE,
+  clusterLabel,
+  humanize,
+  syncTone,
+} from "@/modules/clusters/display"
 import { useCluster } from "@/modules/clusters/queries"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useParams } from "@tanstack/react-router"
 import { ComponentsTable } from "./ComponentsTable"
-import { DevicesTable } from "./DevicesTable"
-import { HealthCard } from "./HealthCard"
-import { NodesTable } from "./NodesTable"
-import { TopologyTable } from "./TopologyTable"
+import { ClusterDevicesTable } from "./DevicesTable"
+import { DeclaredCard } from "./HealthCard"
+import { ClusterNodesTable } from "./NodesTable"
 import { SyncCard } from "./SyncCard"
+import { ClusterTopologyTable } from "./TopologyTable"
 
 export function ClusterDetailPage() {
   const { clusterId } = useParams({ from: "/_app/clusters/$clusterId" })
@@ -25,7 +30,7 @@ export function ClusterDetailPage() {
       <div className="flex flex-col">
         <PageHeader title="Cluster" />
         <div className="p-10 text-center text-sm text-destructive">
-          {error instanceof Error ? error.message : "Failed to load cluster"}
+          {formatError(error, "Failed to load cluster")}
         </div>
       </div>
     )
@@ -34,8 +39,8 @@ export function ClusterDetailPage() {
   return (
     <div className="flex flex-col">
       <PageHeader
-        title={cluster?.display_name ?? "Cluster"}
-        description={cluster ? `${cluster.name} · ${cluster.region}` : undefined}
+        title={cluster ? clusterLabel(cluster) : "Cluster"}
+        description={cluster ? `${cluster.id} · ${cluster.region}` : undefined}
         actions={
           <Button asChild variant="outline" size="sm">
             <Link to="/clusters">
@@ -52,71 +57,41 @@ export function ClusterDetailPage() {
         {cluster && (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <StatusLabel tone={CLUSTER_PHASE_TONE[cluster.phase]}>
+              <StatusLabel tone={CLUSTER_PHASE_TONE[cluster.phase] ?? "neutral"}>
                 {humanize(cluster.phase)}
               </StatusLabel>
               <StatusLabel tone={cluster.reachable ? "ok" : "danger"}>
                 {cluster.reachable ? "reachable" : "unreachable"}
               </StatusLabel>
-              <span className="font-mono text-2xs text-muted-foreground/60">
-                enrolled {formatAbsolute(cluster.enrolled_at)}
-              </span>
-              <div className="flex flex-wrap gap-1">
-                {Object.entries(cluster.labels).map(([key, value]) => (
-                  <Badge
-                    key={key}
-                    variant="outline"
-                    className="font-mono text-2xs"
-                  >
-                    {key}={value}
-                  </Badge>
-                ))}
-              </div>
+              <StatusLabel tone={syncTone(cluster.sync.state)}>
+                {humanize(cluster.sync.state)}
+              </StatusLabel>
+              <Labels labels={cluster.labels} />
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <HealthCard capacity={cluster.capacity} />
+              <DeclaredCard cluster={cluster} />
               <SyncCard sync={cluster.sync} />
             </div>
 
             <Tabs defaultValue="nodes">
               <TabsList>
-                <TabsTrigger value="nodes">
-                  Nodes
-                  <span className="ml-1.5 font-mono text-2xs text-muted-foreground/60">
-                    {cluster.capacity.nodes_total}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="devices">
-                  Devices
-                  <span className="ml-1.5 font-mono text-2xs text-muted-foreground/60">
-                    {cluster.capacity.devices_total}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="topology">
-                  Topology
-                  <span className="ml-1.5 font-mono text-2xs text-muted-foreground/60">
-                    {cluster.topology_domain_count}
-                  </span>
-                </TabsTrigger>
-                <TabsTrigger value="components">
-                  Components
-                  <span className="ml-1.5 font-mono text-2xs text-muted-foreground/60">
-                    {cluster.components.length}
-                  </span>
-                </TabsTrigger>
+                <TabsTrigger value="nodes">Nodes</TabsTrigger>
+                <TabsTrigger value="devices">Devices</TabsTrigger>
+                <TabsTrigger value="topology">Topology</TabsTrigger>
+                <TabsTrigger value="components">Components</TabsTrigger>
               </TabsList>
               <TabsContent value="nodes" className="mt-3">
-                <NodesTable clusterId={clusterId} />
+                <ClusterNodesTable clusterId={cluster.id} />
               </TabsContent>
               <TabsContent value="devices" className="mt-3">
-                <DevicesTable clusterId={clusterId} />
+                <ClusterDevicesTable clusterId={cluster.id} />
               </TabsContent>
               <TabsContent value="topology" className="mt-3">
-                <TopologyTable clusterId={clusterId} />
+                <ClusterTopologyTable clusterId={cluster.id} />
               </TabsContent>
               <TabsContent value="components" className="mt-3">
-                <ComponentsTable components={cluster.components} />
+                <ComponentsTable clusterId={cluster.id} />
               </TabsContent>
             </Tabs>
           </>

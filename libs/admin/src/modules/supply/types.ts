@@ -1,130 +1,160 @@
-export type NodeCondition = "ready" | "not_ready" | "unknown"
+/** `NodeSchema.condition`. Cordon is not one of these — it is its own boolean. */
+export type NodeCondition = "ready" | "not_ready" | "unknown" | (string & {})
 
-export type DeviceHealth = "healthy" | "degraded" | "failed" | "unknown"
+/** `DeviceSchema.health`. Left open: health vocabulary is the operator's. */
+export type DeviceHealth = "healthy" | "degraded" | "unhealthy" | "unknown" | (string & {})
 
-export type TopologyKind = "nvswitch" | "nvlink" | "pcie" | "numa"
+export type TopologyKind = "nvswitch" | "nvlink" | "pcie" | "numa" | (string & {})
 
-export type ProvisioningSource =
-  | "owned_bare_metal"
-  | "colocation"
-  | "cloud_reserved"
-  | "cloud_on_demand"
-
-export interface EccCounters {
-  volatile: number
-  aggregate: number
+/**
+ * `DeviceTopologySchema` — the device's domain inlined for display. A summary
+ * and never the authority: it carries no parent, no membership and no counts,
+ * so anything that needs the domain itself reads `/topology-domains`.
+ */
+export interface DeviceTopologyRef {
+  id: string
+  kind: TopologyKind
+  identifier: string
 }
 
-/** Which replica currently holds the device, and who that replica belongs to. */
-export interface DeviceAllocation {
-  replica_id: string
-  deployment_id: string
-  deployment_name: string
-  project_id: string
-  project_name: string
-  allocated_at: string
-}
-
+/** `TopologyDomainSchema` — observed, and the authority on topology. */
 export interface TopologyDomain {
   id: string
-  cluster_id: string
+  cluster: string
   cluster_name: string
-  node_id: string
-  node_name: string
+  node: string | null
+  node_name: string | null
+  parent: string | null
   kind: TopologyKind
-  interconnect: string
-  bandwidth_gbps: number | null
+  identifier: string
+  link_generation: string | null
+  link_bandwidth_gbps: number | null
   device_count: number
-  devices_healthy: number
-  devices_allocated: number
+  spans_nodes: boolean
+  attributes: Record<string, unknown>
+  observed_at: string | null
+  created_at: string
+  updated_at: string | null
 }
 
+/**
+ * `NodeDeviceRollupSchema`. State only — how many devices and how they split by
+ * health. No utilization, no temperature, no power.
+ */
+export interface NodeDeviceRollup {
+  total: number
+  by_health: Record<string, number>
+}
+
+/** `NodeSchema` — a machine observed inside a cluster. Nothing here is declared. */
 export interface SupplyNode {
   id: string
-  cluster_id: string
-  cluster_name: string
   name: string
-  pool_id: string | null
+  cluster: string
+  cluster_name: string
+  pool: string | null
   pool_name: string | null
   condition: NodeCondition
   /**
-   * Observed schedulability. Distinct from `condition`: a node is cordoned by a
-   * drain Operation and stays cordoned long after it reports ready again.
+   * Observed schedulability. Its own boolean rather than a value of
+   * `condition`: cordon is the state a drain Operation leaves behind, and
+   * "cordoned" and "not ready" are different facts needing different responses.
    */
   cordoned: boolean
-  instance_type: string
+  ready: boolean
+  cpu_cores: number | null
+  memory_mib: number | null
+  cpu_arch: string | null
+  os_image: string | null
   kernel_version: string | null
   driver_version: string | null
-  cpu_cores: number
-  memory_gb: number
-  device_class: string | null
-  device_count: number
-  devices_healthy: number
-  devices_allocated: number
-  topology_domain_ids: string[]
+  agent_version: string | null
   labels: Record<string, string>
-  taints: string[]
-  joined_at: string
-  last_seen_at: string | null
+  taints: unknown[]
+  devices: NodeDeviceRollup
+  joined_at: string | null
+  observed_at: string | null
+  created_at: string
+  updated_at: string | null
 }
 
-export interface NodeDetail extends SupplyNode {
-  topology_domains: TopologyDomain[]
-}
-
+/**
+ * `DeviceSchema` — one accelerator, the schedulable unit, always observed.
+ *
+ * There is no allocation object here and no telemetry: what holds a device is
+ * answered by `/allocations?device=`, and utilization, temperature and power go
+ * to the observability stack directly.
+ */
 export interface Device {
   id: string
-  cluster_id: string
+  cluster: string
   cluster_name: string
-  node_id: string
+  node: string
   node_name: string
-  index: number
-  uuid: string
+  device_uuid: string
+  device_index: number
   device_class: string
-  memory_gb: number
-  memory_used_gb: number
+  vendor: string
+  model_name: string | null
+  pci_address: string | null
+  memory_mib: number
+  compute_capability: string | null
   health: DeviceHealth
+  health_reason: string | null
+  ecc_enabled: boolean
+  ecc_volatile_errors: number
+  ecc_aggregate_errors: number
+  ecc_pending_retirement: boolean
   throttled: boolean
   throttle_reasons: string[]
-  ecc_errors: EccCounters
+  mig_enabled: boolean
   mig_profile: string | null
-  topology_domain_id: string | null
-  topology_kind: TopologyKind | null
-  allocation: DeviceAllocation | null
-  last_seen_at: string | null
+  mig_parent_device_uuid: string | null
+  allocatable: boolean
+  topology: DeviceTopologyRef | null
+  observed_at: string | null
+  created_at: string
+  updated_at: string | null
 }
 
-/** The half of a Pool the plane writes and the cluster obeys. */
-export interface PoolDeclaration {
-  device_class: string
-  node_shape: string
-  devices_per_node: number
-  min_nodes: number
-  max_nodes: number
-  provisioning_source: ProvisioningSource
-  labels: Record<string, string>
-  taints: string[]
-}
-
-/** The half the cluster writes and the plane reads. */
+/** `PoolMembershipSchema` — the observed half of a pool, as a rollup. */
 export interface PoolMembership {
   nodes_total: number
   nodes_ready: number
   nodes_cordoned: number
   devices_total: number
   devices_healthy: number
-  devices_allocated: number
-  topology_domains: number
-  last_scaled_at: string | null
+  devices_allocatable: number
 }
 
+/** `PoolSchema` — declared spec and observed membership, side by side. */
 export interface Pool {
   id: string
-  name: string
   cluster_id: string
-  cluster_name: string
-  declared: PoolDeclaration
-  observed: PoolMembership
+  name: string
+  device_class: string
+  devices_per_node: number
+  node_shape: Record<string, unknown>
+  min_nodes: number
+  max_nodes: number
+  labels: Record<string, string>
+  taints: unknown[]
+  enabled: boolean
   created_at: string
   updated_at: string | null
+  revision: string
+  membership: PoolMembership
+  /** Derived by the plane so the console and `hgr` cannot disagree about it. */
+  within_declared_bounds: boolean
+}
+
+export interface PoolUpdateRequest {
+  device_class?: string
+  devices_per_node?: number
+  node_shape?: Record<string, unknown>
+  min_nodes?: number
+  max_nodes?: number
+  labels?: Record<string, string>
+  taints?: unknown[]
+  enabled?: boolean
 }

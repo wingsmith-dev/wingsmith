@@ -17,26 +17,35 @@ import (
 func newWhoamiCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "whoami",
-		Short: "Show who the active token belongs to",
-		Args:  cobra.NoArgs,
+		Short: "Show what the CLI is pointed at, and whether it answers",
+		Long: `There is no identity endpoint on the plane, and this does not invent one.
+
+Authentication is stubbed to a single static token that resolves to a single
+principal, so the only truthful answers are which server and project the CLI
+is configured for, whether a token is present, and whether the plane responds.
+When that changes, this command grows a user — not before.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
 			defer cancel()
-			id, err := app.Backend.Whoami(ctx)
+			id, err := app.Backend.Identity(ctx)
 			if err != nil {
 				return err
 			}
+			id.Project = app.Project
 			return app.Emit(&output.Result{
 				Command: cmdPath(cmd),
 				Data:    id,
-				Names:   []string{id.User},
+				Names:   []string{id.Server},
 				Human: func(w io.Writer, s ui.Style, width int) {
 					kv := app.KV()
-					kv.Add("user", id.User)
-					kv.Add("email", id.Email)
-					kv.Add("role", id.Role)
-					kv.Add("project", app.Project)
 					kv.Add("server", id.Server)
+					kv.Add("project", app.Project)
+					kv.Add("token", boolWord(id.HasToken))
+					kv.Add("reachable", yesNo(s, id.Reachable))
+					if id.Simulated {
+						kv.Add("backend", s.Amber("fake (offline)"))
+					}
 					kv.Render(w)
 				},
 			})

@@ -1,26 +1,34 @@
 import { api, type ListResponse } from "@/lib/api"
-import type { Device, SupplyNode, TopologyDomain } from "@/modules/supply/types"
-import type { Cluster, ClusterDetail } from "./types"
+import type { Cluster, ClusterUpdateRequest } from "./types"
 
-export function fetchClusters(region?: string) {
-  return api.get<ListResponse<Cluster>>("/clusters", { region })
+export interface ClusterFilters {
+  region?: string
+  phase?: string
+  search?: string
+  /** Repeatable `label=k=v`; the plane rejects anything that is not `k=v`. */
+  label?: string[]
 }
 
-export async function fetchCluster(clusterId: string) {
-  const data = await api.get<{ cluster: ClusterDetail }>(`/clusters/${clusterId}`)
-  return data.cluster
+export function fetchClusters(
+  filters: ClusterFilters = {},
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<Cluster>> {
+  return api.list<Cluster>("/clusters", { ...filters, cursor, limit })
 }
 
-export function fetchClusterNodes(clusterId: string) {
-  return api.get<ListResponse<SupplyNode>>(`/clusters/${clusterId}/nodes`)
+/** Resolves by id or by name — `contract/API.md` §3 accepts either. */
+export function fetchCluster(ref: string): Promise<Cluster> {
+  return api.get<Cluster>(`/clusters/${encodeURIComponent(ref)}`)
 }
 
-export function fetchClusterDevices(clusterId: string) {
-  return api.get<ListResponse<Device>>(`/clusters/${clusterId}/devices`)
-}
-
-export function fetchClusterTopology(clusterId: string) {
-  return api.get<ListResponse<TopologyDomain>>(
-    `/clusters/${clusterId}/topology-domains`
-  )
+/** Conditional on `revision`; a mismatch is `409 conflict`. */
+export function updateCluster(
+  ref: string,
+  body: ClusterUpdateRequest,
+  revision?: string
+): Promise<Cluster> {
+  return api.patch<Cluster>(`/clusters/${encodeURIComponent(ref)}`, body, {
+    ifMatch: revision,
+  })
 }

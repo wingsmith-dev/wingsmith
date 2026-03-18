@@ -1,0 +1,23 @@
+{
+    "items": [
+        {
+            "id": "art_01j9x2aaaaaaaaaaaaaaaaaaaa",
+            "digest": "sha256:abc",
+            "name": "llama",
+            "kind": "weights",
+            "format": null,
+            "size_bytes": 0,
+            "licence": null,
+            "parameter_count": null,
+            "base_artifact_id": null,
+            "project_id": null,
+            "metadata": {},
+            "created_at": "2026-08-19T18:52:20.410324Z",
+            "updated_at": null,
+            "revision": "1787165540410324",
+            "locations": []
+        }
+    ],
+    "count": 1,
+    "next_cursor": null
+}

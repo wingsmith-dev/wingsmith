@@ -1,82 +1,68 @@
 import { useQuery } from "@tanstack/react-query"
+import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
   fetchDevice,
   fetchDevices,
   fetchNode,
-  fetchNodeDevices,
   fetchNodes,
   fetchPool,
-  fetchPoolNodes,
   fetchPools,
   fetchTopologyDomains,
   type DeviceFilters,
   type NodeFilters,
+  type PoolFilters,
+  type TopologyFilters,
 } from "./api"
 
 export function useNodes(filters: NodeFilters = {}) {
-  return useQuery({
-    queryKey: ["nodes", filters],
-    queryFn: () => fetchNodes(filters),
-  })
+  return useCursorList(["nodes", filters], (cursor) => fetchNodes(filters, cursor))
 }
 
-export function useNode(nodeId: string) {
+export function useNode(ref: string) {
   return useQuery({
-    queryKey: ["nodes", nodeId],
-    queryFn: () => fetchNode(nodeId),
-    enabled: !!nodeId,
-  })
-}
-
-export function useNodeDevices(nodeId: string) {
-  return useQuery({
-    queryKey: ["nodes", nodeId, "devices"],
-    queryFn: () => fetchNodeDevices(nodeId),
-    enabled: !!nodeId,
+    queryKey: ["nodes", "detail", ref],
+    queryFn: () => fetchNode(ref),
+    enabled: !!ref,
   })
 }
 
 export function useDevices(filters: DeviceFilters = {}) {
+  return useCursorList(["devices", filters], (cursor) => fetchDevices(filters, cursor))
+}
+
+export function useDevice(ref: string) {
   return useQuery({
-    queryKey: ["devices", filters],
-    queryFn: () => fetchDevices(filters),
+    queryKey: ["devices", "detail", ref],
+    queryFn: () => fetchDevice(ref),
+    enabled: !!ref,
   })
 }
 
-export function useDevice(deviceId: string) {
-  return useQuery({
-    queryKey: ["devices", deviceId],
-    queryFn: () => fetchDevice(deviceId),
-    enabled: !!deviceId,
-  })
+export function useTopologyDomains(filters: TopologyFilters = {}) {
+  return useCursorList(["topology-domains", filters], (cursor) =>
+    fetchTopologyDomains(filters, cursor)
+  )
 }
 
-export function useTopologyDomains(clusterId?: string) {
-  return useQuery({
-    queryKey: ["topology-domains", { clusterId }],
-    queryFn: () => fetchTopologyDomains(clusterId),
-  })
+/**
+ * Topology domains for one scope, drained. The gang-availability summary is an
+ * aggregate over the whole set, so a first page would answer a different
+ * question from the one it appears to answer.
+ */
+export function useAllTopologyDomains(filters: TopologyFilters = {}) {
+  return useAllPages(["topology-domains", filters], (cursor) =>
+    fetchTopologyDomains(filters, cursor, 200)
+  )
 }
 
-export function usePools(clusterId?: string) {
-  return useQuery({
-    queryKey: ["pools", { clusterId }],
-    queryFn: () => fetchPools(clusterId),
-  })
+export function usePools(filters: PoolFilters = {}) {
+  return useCursorList(["pools", filters], (cursor) => fetchPools(filters, cursor))
 }
 
-export function usePool(poolId: string) {
+export function usePool(ref: string) {
   return useQuery({
-    queryKey: ["pools", poolId],
-    queryFn: () => fetchPool(poolId),
-    enabled: !!poolId,
-  })
-}
-
-export function usePoolNodes(poolId: string) {
-  return useQuery({
-    queryKey: ["pools", poolId, "nodes"],
-    queryFn: () => fetchPoolNodes(poolId),
-    enabled: !!poolId,
+    queryKey: ["pools", "detail", ref],
+    queryFn: () => fetchPool(ref),
+    enabled: !!ref,
   })
 }

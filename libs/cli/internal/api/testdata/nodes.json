@@ -1,0 +1,107 @@
+{
+    "items": [
+        {
+            "id": "nod_01m0djye5pj161h6s5acgrb1s5",
+            "name": "iad-1-n01",
+            "cluster": "clu_01m0djye4vgns3hw9qhavf23am",
+            "cluster_name": "iad-1",
+            "pool": "pol_01m0djye5gy5bmjw11d8wzqwcr",
+            "pool_name": "h100-prod",
+            "condition": "ready",
+            "cordoned": false,
+            "ready": true,
+            "cpu_cores": 192,
+            "memory_mib": 2097152,
+            "cpu_arch": "amd64",
+            "os_image": "Ubuntu 22.04.4 LTS",
+            "kernel_version": "5.15.0-119-generic",
+            "driver_version": "550.90.07",
+            "agent_version": "0.4.2",
+            "labels": {
+                "tier": "prod",
+                "fabric": "nvswitch"
+            },
+            "taints": [],
+            "devices": {
+                "total": 8,
+                "by_health": {
+                    "healthy": 7,
+                    "unhealthy": 1
+                }
+            },
+            "joined_at": "2026-05-11T18:01:14.574792Z",
+            "observed_at": "2026-08-19T18:00:54.574792Z",
+            "created_at": "2026-08-19T18:01:14.670060Z",
+            "updated_at": null
+        },
+        {
+            "id": "nod_01m0djye6096jczp3fsc7jat79",
+            "name": "iad-1-n02",
+            "cluster": "clu_01m0djye4vgns3hw9qhavf23am",
+            "cluster_name": "iad-1",
+            "pool": "pol_01m0djye5gy5bmjw11d8wzqwcr",
+            "pool_name": "h100-prod",
+            "condition": "ready",
+            "cordoned": false,
+            "ready": true,
+            "cpu_cores": 192,
+            "memory_mib": 2097152,
+            "cpu_arch": "amd64",
+            "os_image": "Ubuntu 22.04.4 LTS",
+            "kernel_version": "5.15.0-119-generic",
+            "driver_version": "550.90.07",
+            "agent_version": "0.4.2",
+            "labels": {
+                "tier": "prod",
+                "fabric": "nvswitch"
+            },
+            "taints": [],
+            "devices": {
+                "total": 8,
+                "by_health": {
+                    "healthy": 7,
+                    "degraded": 1
+                }
+            },
+            "joined_at": "2026-05-12T18:01:14.574792Z",
+            "observed_at": "2026-08-19T18:00:54.574792Z",
+            "created_at": "2026-08-19T18:01:14.670060Z",
+            "updated_at": null
+        },
+        {
+            "id": "nod_01m0djye6jep09vmwbz7w3rekq",
+            "name": "iad-1-n03",
+            "cluster": "clu_01m0djye4vgns3hw9qhavf23am",
+            "cluster_name": "iad-1",
+            "pool": "pol_01m0djye5gy5bmjw11d8wzqwcr",
+            "pool_name": "h100-prod",
+            "condition": "ready",
+            "cordoned": false,
+            "ready": true,
+            "cpu_cores": 192,
+            "memory_mib": 2097152,
+            "cpu_arch": "amd64",
+            "os_image": "Ubuntu 22.04.4 LTS",
+            "kernel_version": "5.15.0-119-generic",
+            "driver_version": "550.90.07",
+            "agent_version": "0.4.2",
+            "labels": {
+                "tier": "prod",
+                "fabric": "nvswitch"
+            },
+            "taints": [],
+            "devices": {
+                "total": 8,
+                "by_health": {
+                    "healthy": 8
+                }
+            },
+            "joined_at": "2026-05-13T18:01:14.574792Z",
+            "observed_at": "2026-08-19T18:00:54.574792Z",
+            "created_at": "2026-08-19T18:01:14.670060Z",
+            "updated_at": null
+        }
+    ],
+    "count": 3,
+    "next_cursor": "MTAwMg"
+}

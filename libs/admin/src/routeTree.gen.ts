@@ -11,20 +11,27 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteRouteImport } from './routes/login/route'
+import { Route as AppAllocationsRouteRouteImport } from './routes/_app/allocations/route'
 import { Route as AppArtifactsRouteRouteImport } from './routes/_app/artifacts/route'
 import { Route as AppClustersRouteRouteImport } from './routes/_app/clusters/route'
 import { Route as AppDeploymentsRouteRouteImport } from './routes/_app/deployments/route'
 import { Route as AppDevicesRouteRouteImport } from './routes/_app/devices/route'
 import { Route as AppEndpointsRouteRouteImport } from './routes/_app/endpoints/route'
+import { Route as AppEventsRouteRouteImport } from './routes/_app/events/route'
 import { Route as AppNodesRouteRouteImport } from './routes/_app/nodes/route'
 import { Route as AppOperationsRouteRouteImport } from './routes/_app/operations/route'
+import { Route as AppPoliciesRouteRouteImport } from './routes/_app/policies/route'
 import { Route as AppPoolsRouteRouteImport } from './routes/_app/pools/route'
+import { Route as AppPriorityClassesRouteRouteImport } from './routes/_app/priority-classes/route'
 import { Route as AppProjectsRouteRouteImport } from './routes/_app/projects/route'
 import { Route as AppQuotasRouteRouteImport } from './routes/_app/quotas/route'
 import { Route as AppRecipesRouteRouteImport } from './routes/_app/recipes/route'
 import { Route as AppClustersClusterIdRouteRouteImport } from './routes/_app/clusters/$clusterId/route'
+import { Route as AppDeploymentsDeploymentIdRouteRouteImport } from './routes/_app/deployments/$deploymentId/route'
 import { Route as AppDevicesDeviceIdRouteRouteImport } from './routes/_app/devices/$deviceId/route'
+import { Route as AppEndpointsEndpointIdRouteRouteImport } from './routes/_app/endpoints/$endpointId/route'
 import { Route as AppNodesNodeIdRouteRouteImport } from './routes/_app/nodes/$nodeId/route'
+import { Route as AppOperationsOperationIdRouteRouteImport } from './routes/_app/operations/$operationId/route'
 import { Route as AppPoolsPoolIdRouteRouteImport } from './routes/_app/pools/$poolId/route'
 
 const AppRoute = AppRouteImport.update({
@@ -35,6 +42,11 @@ const LoginRouteRoute = LoginRouteRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppAllocationsRouteRoute = AppAllocationsRouteRouteImport.update({
+  id: '/allocations',
+  path: '/allocations',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppArtifactsRouteRoute = AppArtifactsRouteRouteImport.update({
   id: '/artifacts',
@@ -61,6 +73,11 @@ const AppEndpointsRouteRoute = AppEndpointsRouteRouteImport.update({
   path: '/endpoints',
   getParentRoute: () => AppRoute,
 } as any)
+const AppEventsRouteRoute = AppEventsRouteRouteImport.update({
+  id: '/events',
+  path: '/events',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppNodesRouteRoute = AppNodesRouteRouteImport.update({
   id: '/nodes',
   path: '/nodes',
@@ -71,9 +88,19 @@ const AppOperationsRouteRoute = AppOperationsRouteRouteImport.update({
   path: '/operations',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPoliciesRouteRoute = AppPoliciesRouteRouteImport.update({
+  id: '/policies',
+  path: '/policies',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppPoolsRouteRoute = AppPoolsRouteRouteImport.update({
   id: '/pools',
   path: '/pools',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPriorityClassesRouteRoute = AppPriorityClassesRouteRouteImport.update({
+  id: '/priority-classes',
+  path: '/priority-classes',
   getParentRoute: () => AppRoute,
 } as any)
 const AppProjectsRouteRoute = AppProjectsRouteRouteImport.update({
@@ -97,16 +124,34 @@ const AppClustersClusterIdRouteRoute =
     path: '/$clusterId',
     getParentRoute: () => AppClustersRouteRoute,
   } as any)
+const AppDeploymentsDeploymentIdRouteRoute =
+  AppDeploymentsDeploymentIdRouteRouteImport.update({
+    id: '/$deploymentId',
+    path: '/$deploymentId',
+    getParentRoute: () => AppDeploymentsRouteRoute,
+  } as any)
 const AppDevicesDeviceIdRouteRoute = AppDevicesDeviceIdRouteRouteImport.update({
   id: '/$deviceId',
   path: '/$deviceId',
   getParentRoute: () => AppDevicesRouteRoute,
 } as any)
+const AppEndpointsEndpointIdRouteRoute =
+  AppEndpointsEndpointIdRouteRouteImport.update({
+    id: '/$endpointId',
+    path: '/$endpointId',
+    getParentRoute: () => AppEndpointsRouteRoute,
+  } as any)
 const AppNodesNodeIdRouteRoute = AppNodesNodeIdRouteRouteImport.update({
   id: '/$nodeId',
   path: '/$nodeId',
   getParentRoute: () => AppNodesRouteRoute,
 } as any)
+const AppOperationsOperationIdRouteRoute =
+  AppOperationsOperationIdRouteRouteImport.update({
+    id: '/$operationId',
+    path: '/$operationId',
+    getParentRoute: () => AppOperationsRouteRoute,
+  } as any)
 const AppPoolsPoolIdRouteRoute = AppPoolsPoolIdRouteRouteImport.update({
   id: '/$poolId',
   path: '/$poolId',
@@ -116,59 +161,80 @@ const AppPoolsPoolIdRouteRoute = AppPoolsPoolIdRouteRouteImport.update({
 export interface FileRoutesByFullPath {
   '/login': typeof LoginRouteRoute
   '/': typeof AppRouteWithChildren
+  '/allocations': typeof AppAllocationsRouteRoute
   '/artifacts': typeof AppArtifactsRouteRoute
   '/clusters': typeof AppClustersRouteRouteWithChildren
-  '/deployments': typeof AppDeploymentsRouteRoute
+  '/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/devices': typeof AppDevicesRouteRouteWithChildren
-  '/endpoints': typeof AppEndpointsRouteRoute
+  '/endpoints': typeof AppEndpointsRouteRouteWithChildren
+  '/events': typeof AppEventsRouteRoute
   '/nodes': typeof AppNodesRouteRouteWithChildren
-  '/operations': typeof AppOperationsRouteRoute
+  '/operations': typeof AppOperationsRouteRouteWithChildren
+  '/policies': typeof AppPoliciesRouteRoute
   '/pools': typeof AppPoolsRouteRouteWithChildren
+  '/priority-classes': typeof AppPriorityClassesRouteRoute
   '/projects': typeof AppProjectsRouteRoute
   '/quotas': typeof AppQuotasRouteRoute
   '/recipes': typeof AppRecipesRouteRoute
   '/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
+  '/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
+  '/endpoints/$endpointId': typeof AppEndpointsEndpointIdRouteRoute
   '/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
+  '/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRouteRoute
   '/': typeof AppRouteWithChildren
+  '/allocations': typeof AppAllocationsRouteRoute
   '/artifacts': typeof AppArtifactsRouteRoute
   '/clusters': typeof AppClustersRouteRouteWithChildren
-  '/deployments': typeof AppDeploymentsRouteRoute
+  '/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/devices': typeof AppDevicesRouteRouteWithChildren
-  '/endpoints': typeof AppEndpointsRouteRoute
+  '/endpoints': typeof AppEndpointsRouteRouteWithChildren
+  '/events': typeof AppEventsRouteRoute
   '/nodes': typeof AppNodesRouteRouteWithChildren
-  '/operations': typeof AppOperationsRouteRoute
+  '/operations': typeof AppOperationsRouteRouteWithChildren
+  '/policies': typeof AppPoliciesRouteRoute
   '/pools': typeof AppPoolsRouteRouteWithChildren
+  '/priority-classes': typeof AppPriorityClassesRouteRoute
   '/projects': typeof AppProjectsRouteRoute
   '/quotas': typeof AppQuotasRouteRoute
   '/recipes': typeof AppRecipesRouteRoute
   '/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
+  '/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
+  '/endpoints/$endpointId': typeof AppEndpointsEndpointIdRouteRoute
   '/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
+  '/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/login': typeof LoginRouteRoute
   '/_app': typeof AppRouteWithChildren
+  '/_app/allocations': typeof AppAllocationsRouteRoute
   '/_app/artifacts': typeof AppArtifactsRouteRoute
   '/_app/clusters': typeof AppClustersRouteRouteWithChildren
-  '/_app/deployments': typeof AppDeploymentsRouteRoute
+  '/_app/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/_app/devices': typeof AppDevicesRouteRouteWithChildren
-  '/_app/endpoints': typeof AppEndpointsRouteRoute
+  '/_app/endpoints': typeof AppEndpointsRouteRouteWithChildren
+  '/_app/events': typeof AppEventsRouteRoute
   '/_app/nodes': typeof AppNodesRouteRouteWithChildren
-  '/_app/operations': typeof AppOperationsRouteRoute
+  '/_app/operations': typeof AppOperationsRouteRouteWithChildren
+  '/_app/policies': typeof AppPoliciesRouteRoute
   '/_app/pools': typeof AppPoolsRouteRouteWithChildren
+  '/_app/priority-classes': typeof AppPriorityClassesRouteRoute
   '/_app/projects': typeof AppProjectsRouteRoute
   '/_app/quotas': typeof AppQuotasRouteRoute
   '/_app/recipes': typeof AppRecipesRouteRoute
   '/_app/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
+  '/_app/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/_app/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
+  '/_app/endpoints/$endpointId': typeof AppEndpointsEndpointIdRouteRoute
   '/_app/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
+  '/_app/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/_app/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
 }
 export interface FileRouteTypes {
@@ -176,58 +242,79 @@ export interface FileRouteTypes {
   fullPaths:
     | '/login'
     | '/'
+    | '/allocations'
     | '/artifacts'
     | '/clusters'
     | '/deployments'
     | '/devices'
     | '/endpoints'
+    | '/events'
     | '/nodes'
     | '/operations'
+    | '/policies'
     | '/pools'
+    | '/priority-classes'
     | '/projects'
     | '/quotas'
     | '/recipes'
     | '/clusters/$clusterId'
+    | '/deployments/$deploymentId'
     | '/devices/$deviceId'
+    | '/endpoints/$endpointId'
     | '/nodes/$nodeId'
+    | '/operations/$operationId'
     | '/pools/$poolId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/'
+    | '/allocations'
     | '/artifacts'
     | '/clusters'
     | '/deployments'
     | '/devices'
     | '/endpoints'
+    | '/events'
     | '/nodes'
     | '/operations'
+    | '/policies'
     | '/pools'
+    | '/priority-classes'
     | '/projects'
     | '/quotas'
     | '/recipes'
     | '/clusters/$clusterId'
+    | '/deployments/$deploymentId'
     | '/devices/$deviceId'
+    | '/endpoints/$endpointId'
     | '/nodes/$nodeId'
+    | '/operations/$operationId'
     | '/pools/$poolId'
   id:
     | '__root__'
     | '/login'
     | '/_app'
+    | '/_app/allocations'
     | '/_app/artifacts'
     | '/_app/clusters'
     | '/_app/deployments'
     | '/_app/devices'
     | '/_app/endpoints'
+    | '/_app/events'
     | '/_app/nodes'
     | '/_app/operations'
+    | '/_app/policies'
     | '/_app/pools'
+    | '/_app/priority-classes'
     | '/_app/projects'
     | '/_app/quotas'
     | '/_app/recipes'
     | '/_app/clusters/$clusterId'
+    | '/_app/deployments/$deploymentId'
     | '/_app/devices/$deviceId'
+    | '/_app/endpoints/$endpointId'
     | '/_app/nodes/$nodeId'
+    | '/_app/operations/$operationId'
     | '/_app/pools/$poolId'
   fileRoutesById: FileRoutesById
 }
@@ -251,6 +338,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/allocations': {
+      id: '/_app/allocations'
+      path: '/allocations'
+      fullPath: '/allocations'
+      preLoaderRoute: typeof AppAllocationsRouteRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/artifacts': {
       id: '/_app/artifacts'
@@ -287,6 +381,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppEndpointsRouteRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/events': {
+      id: '/_app/events'
+      path: '/events'
+      fullPath: '/events'
+      preLoaderRoute: typeof AppEventsRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/nodes': {
       id: '/_app/nodes'
       path: '/nodes'
@@ -301,11 +402,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppOperationsRouteRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/policies': {
+      id: '/_app/policies'
+      path: '/policies'
+      fullPath: '/policies'
+      preLoaderRoute: typeof AppPoliciesRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/pools': {
       id: '/_app/pools'
       path: '/pools'
       fullPath: '/pools'
       preLoaderRoute: typeof AppPoolsRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/priority-classes': {
+      id: '/_app/priority-classes'
+      path: '/priority-classes'
+      fullPath: '/priority-classes'
+      preLoaderRoute: typeof AppPriorityClassesRouteRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/projects': {
@@ -336,6 +451,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppClustersClusterIdRouteRouteImport
       parentRoute: typeof AppClustersRouteRoute
     }
+    '/_app/deployments/$deploymentId': {
+      id: '/_app/deployments/$deploymentId'
+      path: '/$deploymentId'
+      fullPath: '/deployments/$deploymentId'
+      preLoaderRoute: typeof AppDeploymentsDeploymentIdRouteRouteImport
+      parentRoute: typeof AppDeploymentsRouteRoute
+    }
     '/_app/devices/$deviceId': {
       id: '/_app/devices/$deviceId'
       path: '/$deviceId'
@@ -343,12 +465,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDevicesDeviceIdRouteRouteImport
       parentRoute: typeof AppDevicesRouteRoute
     }
+    '/_app/endpoints/$endpointId': {
+      id: '/_app/endpoints/$endpointId'
+      path: '/$endpointId'
+      fullPath: '/endpoints/$endpointId'
+      preLoaderRoute: typeof AppEndpointsEndpointIdRouteRouteImport
+      parentRoute: typeof AppEndpointsRouteRoute
+    }
     '/_app/nodes/$nodeId': {
       id: '/_app/nodes/$nodeId'
       path: '/$nodeId'
       fullPath: '/nodes/$nodeId'
       preLoaderRoute: typeof AppNodesNodeIdRouteRouteImport
       parentRoute: typeof AppNodesRouteRoute
+    }
+    '/_app/operations/$operationId': {
+      id: '/_app/operations/$operationId'
+      path: '/$operationId'
+      fullPath: '/operations/$operationId'
+      preLoaderRoute: typeof AppOperationsOperationIdRouteRouteImport
+      parentRoute: typeof AppOperationsRouteRoute
     }
     '/_app/pools/$poolId': {
       id: '/_app/pools/$poolId'
@@ -371,6 +507,17 @@ const AppClustersRouteRouteChildren: AppClustersRouteRouteChildren = {
 const AppClustersRouteRouteWithChildren =
   AppClustersRouteRoute._addFileChildren(AppClustersRouteRouteChildren)
 
+interface AppDeploymentsRouteRouteChildren {
+  AppDeploymentsDeploymentIdRouteRoute: typeof AppDeploymentsDeploymentIdRouteRoute
+}
+
+const AppDeploymentsRouteRouteChildren: AppDeploymentsRouteRouteChildren = {
+  AppDeploymentsDeploymentIdRouteRoute: AppDeploymentsDeploymentIdRouteRoute,
+}
+
+const AppDeploymentsRouteRouteWithChildren =
+  AppDeploymentsRouteRoute._addFileChildren(AppDeploymentsRouteRouteChildren)
+
 interface AppDevicesRouteRouteChildren {
   AppDevicesDeviceIdRouteRoute: typeof AppDevicesDeviceIdRouteRoute
 }
@@ -383,6 +530,17 @@ const AppDevicesRouteRouteWithChildren = AppDevicesRouteRoute._addFileChildren(
   AppDevicesRouteRouteChildren,
 )
 
+interface AppEndpointsRouteRouteChildren {
+  AppEndpointsEndpointIdRouteRoute: typeof AppEndpointsEndpointIdRouteRoute
+}
+
+const AppEndpointsRouteRouteChildren: AppEndpointsRouteRouteChildren = {
+  AppEndpointsEndpointIdRouteRoute: AppEndpointsEndpointIdRouteRoute,
+}
+
+const AppEndpointsRouteRouteWithChildren =
+  AppEndpointsRouteRoute._addFileChildren(AppEndpointsRouteRouteChildren)
+
 interface AppNodesRouteRouteChildren {
   AppNodesNodeIdRouteRoute: typeof AppNodesNodeIdRouteRoute
 }
@@ -394,6 +552,17 @@ const AppNodesRouteRouteChildren: AppNodesRouteRouteChildren = {
 const AppNodesRouteRouteWithChildren = AppNodesRouteRoute._addFileChildren(
   AppNodesRouteRouteChildren,
 )
+
+interface AppOperationsRouteRouteChildren {
+  AppOperationsOperationIdRouteRoute: typeof AppOperationsOperationIdRouteRoute
+}
+
+const AppOperationsRouteRouteChildren: AppOperationsRouteRouteChildren = {
+  AppOperationsOperationIdRouteRoute: AppOperationsOperationIdRouteRoute,
+}
+
+const AppOperationsRouteRouteWithChildren =
+  AppOperationsRouteRoute._addFileChildren(AppOperationsRouteRouteChildren)
 
 interface AppPoolsRouteRouteChildren {
   AppPoolsPoolIdRouteRoute: typeof AppPoolsPoolIdRouteRoute
@@ -408,28 +577,36 @@ const AppPoolsRouteRouteWithChildren = AppPoolsRouteRoute._addFileChildren(
 )
 
 interface AppRouteChildren {
+  AppAllocationsRouteRoute: typeof AppAllocationsRouteRoute
   AppArtifactsRouteRoute: typeof AppArtifactsRouteRoute
   AppClustersRouteRoute: typeof AppClustersRouteRouteWithChildren
-  AppDeploymentsRouteRoute: typeof AppDeploymentsRouteRoute
+  AppDeploymentsRouteRoute: typeof AppDeploymentsRouteRouteWithChildren
   AppDevicesRouteRoute: typeof AppDevicesRouteRouteWithChildren
-  AppEndpointsRouteRoute: typeof AppEndpointsRouteRoute
+  AppEndpointsRouteRoute: typeof AppEndpointsRouteRouteWithChildren
+  AppEventsRouteRoute: typeof AppEventsRouteRoute
   AppNodesRouteRoute: typeof AppNodesRouteRouteWithChildren
-  AppOperationsRouteRoute: typeof AppOperationsRouteRoute
+  AppOperationsRouteRoute: typeof AppOperationsRouteRouteWithChildren
+  AppPoliciesRouteRoute: typeof AppPoliciesRouteRoute
   AppPoolsRouteRoute: typeof AppPoolsRouteRouteWithChildren
+  AppPriorityClassesRouteRoute: typeof AppPriorityClassesRouteRoute
   AppProjectsRouteRoute: typeof AppProjectsRouteRoute
   AppQuotasRouteRoute: typeof AppQuotasRouteRoute
   AppRecipesRouteRoute: typeof AppRecipesRouteRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAllocationsRouteRoute: AppAllocationsRouteRoute,
   AppArtifactsRouteRoute: AppArtifactsRouteRoute,
   AppClustersRouteRoute: AppClustersRouteRouteWithChildren,
-  AppDeploymentsRouteRoute: AppDeploymentsRouteRoute,
+  AppDeploymentsRouteRoute: AppDeploymentsRouteRouteWithChildren,
   AppDevicesRouteRoute: AppDevicesRouteRouteWithChildren,
-  AppEndpointsRouteRoute: AppEndpointsRouteRoute,
+  AppEndpointsRouteRoute: AppEndpointsRouteRouteWithChildren,
+  AppEventsRouteRoute: AppEventsRouteRoute,
   AppNodesRouteRoute: AppNodesRouteRouteWithChildren,
-  AppOperationsRouteRoute: AppOperationsRouteRoute,
+  AppOperationsRouteRoute: AppOperationsRouteRouteWithChildren,
+  AppPoliciesRouteRoute: AppPoliciesRouteRoute,
   AppPoolsRouteRoute: AppPoolsRouteRouteWithChildren,
+  AppPriorityClassesRouteRoute: AppPriorityClassesRouteRoute,
   AppProjectsRouteRoute: AppProjectsRouteRoute,
   AppQuotasRouteRoute: AppQuotasRouteRoute,
   AppRecipesRouteRoute: AppRecipesRouteRoute,

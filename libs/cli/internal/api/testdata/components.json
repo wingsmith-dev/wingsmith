@@ -1,0 +1,26 @@
+{
+    "items": [
+        {
+            "id": "cmp_01m0dp6bkxvkp6kpcf4rat9ksr",
+            "cluster_id": "clu_01m0djye4vgns3hw9qhavf23am",
+            "name": "scheduler",
+            "kind": "scheduler",
+            "desired_version": "1.4.0",
+            "config": {},
+            "enabled": true,
+            "created_at": "2026-08-19T18:57:59.932751Z",
+            "updated_at": null,
+            "revision": "1787165879932751",
+            "status": {
+                "observed_version": null,
+                "rollout_phase": "unknown",
+                "healthy": false,
+                "message": null,
+                "observed_at": null
+            },
+            "behind": true
+        }
+    ],
+    "count": 1,
+    "next_cursor": null
+}

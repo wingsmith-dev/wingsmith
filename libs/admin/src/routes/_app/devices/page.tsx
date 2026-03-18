@@ -1,88 +1,93 @@
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
+import { DataTable } from "@/components/layout/data-table"
 import { PageHeader } from "@/components/layout/page-header"
-import { DevicesTable } from "@/components/supply/devices-table"
+import { deviceColumns } from "@/components/supply/columns"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
-import { useClusters } from "@/modules/clusters/queries"
-import { useDevices, useTopologyDomains } from "@/modules/supply/queries"
+import { clusterLabel } from "@/modules/clusters/display"
+import { useClusterOptions } from "@/modules/clusters/queries"
+import { DEVICE_HEALTHS } from "@/modules/supply/display"
+import { useAllTopologyDomains, useDevices } from "@/modules/supply/queries"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { GroupedDevices } from "./GroupedDevices"
 import { TopologySummary } from "./TopologySummary"
 
-const HEALTH = [
-  { value: "healthy", label: "Healthy" },
-  { value: "degraded", label: "Degraded" },
-  { value: "failed", label: "Failed" },
-  { value: "unknown", label: "Unknown" },
-]
-
-const ALLOCATION = [
-  { value: "true", label: "Allocated" },
-  { value: "false", label: "Idle" },
+const ALLOCATABLE = [
+  { value: "true", label: "Allocatable" },
+  { value: "false", label: "Unschedulable" },
 ]
 
 export function DevicesPage() {
   const search = useSearch({ from: "/_app/devices" })
   const navigate = useNavigate({ from: "/devices" })
-  const { data: clusters } = useClusters()
-  const { data: topology } = useTopologyDomains(search.cluster)
-  const { data, isLoading, error } = useDevices({
-    cluster_id: search.cluster,
+  const { data: clusters } = useClusterOptions()
+  const topology = useAllTopologyDomains({ cluster: search.cluster })
+
+  const list = useDevices({
+    cluster: search.cluster,
+    node: search.node,
+    pool: search.pool,
+    class: search.class,
     health: search.health,
-    topology_domain_id: search.domain,
-    allocated: search.allocated ? search.allocated === "true" : undefined,
+    topology_domain: search.domain,
+    allocatable:
+      search.allocatable === undefined ? undefined : search.allocatable === "true",
   })
 
   const set =
-    (key: "cluster" | "health" | "domain" | "allocated") => (value: string) =>
+    (key: "cluster" | "health" | "domain" | "allocatable" | "class") =>
+    (value: string) =>
       navigate({
-        search: (prev) => ({
-          ...prev,
-          [key]: value === ALL ? undefined : value,
-        }),
+        search: (prev) => ({ ...prev, [key]: value === ALL ? undefined : value }),
       })
 
-  const grouped = search.group === true
+  const classes = [...new Set((list.items ?? []).map((d) => d.device_class))].sort()
 
   return (
     <div className="flex flex-col">
       <PageHeader
         title="Devices"
-        description="observed · the schedulable unit — health, ECC, fabric, allocation"
+        description="observed · the schedulable unit — health, ECC, fabric, allocatability"
       />
 
       <div className="space-y-4 p-4">
-        <TopologySummary domains={topology?.items ?? []} />
+        <TopologySummary domains={topology.data} isLoading={topology.isLoading} />
 
         <div className="flex flex-wrap items-center gap-2">
           <FilterSelect
             label="Cluster"
             value={search.cluster ?? ALL}
             onChange={set("cluster")}
-            options={(clusters?.items ?? []).map((c) => ({
-              value: c.id,
-              label: c.display_name,
+            options={(clusters ?? []).map((cluster) => ({
+              value: cluster.id,
+              label: clusterLabel(cluster),
             }))}
+          />
+          <FilterSelect
+            label="Class"
+            value={search.class ?? ALL}
+            onChange={set("class")}
+            options={classes.map((c) => ({ value: c, label: c }))}
           />
           <FilterSelect
             label="Health"
             value={search.health ?? ALL}
             onChange={set("health")}
-            options={HEALTH}
+            options={DEVICE_HEALTHS.map((h) => ({ value: h, label: h }))}
           />
           <FilterSelect
-            label="Allocation"
-            value={search.allocated ?? ALL}
-            onChange={set("allocated")}
-            options={ALLOCATION}
+            label="Schedulable"
+            value={search.allocatable ?? ALL}
+            onChange={set("allocatable")}
+            options={ALLOCATABLE}
           />
           <FilterSelect
             label="Domain"
             value={search.domain ?? ALL}
             onChange={set("domain")}
-            options={(topology?.items ?? []).map((d) => ({
-              value: d.id,
-              label: d.id,
+            options={(topology.data ?? []).map((domain) => ({
+              value: domain.id,
+              label: domain.identifier,
             }))}
           />
 
@@ -95,30 +100,36 @@ export function DevicesPage() {
             </Label>
             <Switch
               id="group-topology"
-              checked={grouped}
+              checked={search.group === true}
               onCheckedChange={(checked) =>
                 navigate({
-                  search: (prev) => ({
-                    ...prev,
-                    group: checked ? true : undefined,
-                  }),
+                  search: (prev) => ({ ...prev, group: checked ? true : undefined }),
                 })
               }
             />
           </div>
         </div>
 
-        <div className="font-mono text-2xs text-muted-foreground/60">
-          {data?.count ?? 0} devices
-        </div>
-
-        {grouped && data && !isLoading ? (
-          <GroupedDevices devices={data.items} domains={topology?.items ?? []} />
+        {search.group && list.items ? (
+          <>
+            <GroupedDevices devices={list.items} />
+            {list.hasNextPage && (
+              <button
+                type="button"
+                onClick={() => list.fetchNextPage()}
+                className="w-full rounded-lg border border-dashed py-2 font-mono text-2xs text-muted-foreground hover:bg-accent/40"
+              >
+                {list.isFetchingNextPage
+                  ? "Loading…"
+                  : `Load more — ${list.loaded} devices grouped so far`}
+              </button>
+            )}
+          </>
         ) : (
-          <DevicesTable
-            devices={data?.items}
-            isLoading={isLoading}
-            error={error}
+          <DataTable
+            columns={deviceColumns()}
+            list={list}
+            rowKey={(device) => device.id}
             empty="No devices match these filters."
           />
         )}

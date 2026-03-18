@@ -1,24 +1,35 @@
-// Package fake is a local, deterministic stand-in for the Hangar control
-// plane. It exists so the CLI is genuinely usable — and testable — before the
-// API contract lands: every command works with zero network access.
-//
-// Select it with --fake, HANGAR_FAKE=1, or `fake: true` in the config file.
 package fake
 
 import (
 	"context"
+	"encoding/base64"
+	"fmt"
 	"os"
-	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hangar/cli/internal/api"
 	"github.com/hangar/cli/internal/errs"
 )
 
+// defaultLimit and maxLimit mirror the plane's pagination, so a listing that
+// paginates against the fake paginates the same way against the server.
+const (
+	defaultLimit = 50
+	maxLimit     = 200
+)
+
 // Backend implements api.Backend against seeded in-memory state.
 type Backend struct {
 	state *state
+	path  string
 	fail  string
+	// polls counts `operation get` calls per operation so a drain visibly
+	// advances through its phases offline, the way one does in a cluster.
+	polls map[string]int
+	// minted keeps ids unique within one process even inside a microsecond.
+	minted int
 }
 
 // New builds a fake backend from the built-in seed. A path may point at a
@@ -28,7 +39,7 @@ func New(path string) (*Backend, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Backend{state: st, fail: os.Getenv("HANGAR_FAKE_FAIL")}, nil
+	return &Backend{state: st, path: path, fail: os.Getenv("HANGAR_FAKE_FAIL"), polls: map[string]int{}}, nil
 }
 
 func (b *Backend) Simulated() bool { return true }
@@ -46,91 +57,207 @@ func (b *Backend) injected() error {
 	return errs.New(code, "injected failure (HANGAR_FAKE_FAIL=%s)", b.fail)
 }
 
-// Whoami returns the simulated identity.
-func (b *Backend) Whoami(ctx context.Context) (api.Identity, error) {
+// persist writes the current state when the caller pinned one to a file.
+func (b *Backend) persist() error { return save(b.path, b.state) }
+
+// newUID mints an identifier shaped like the plane's: a prefix and a
+// 26-character lowercase body.
+func (b *Backend) newUID(prefix string) string {
+	b.minted++
+	return fmt.Sprintf("%s%026d", prefix, time.Now().UTC().UnixMicro()+int64(b.minted))
+}
+
+// Identity reports the simulated context.
+func (b *Backend) Identity(ctx context.Context) (api.Identity, error) {
 	if err := b.injected(); err != nil {
 		return api.Identity{}, err
 	}
-	return b.state.Identity, nil
+	return api.Identity{Server: "fake://local", HasToken: true, Reachable: true, Simulated: true}, nil
 }
 
-// Clusters lists the seeded clusters, applying the same filters the plane is
-// expected to apply server-side.
-func (b *Backend) Clusters(ctx context.Context, opts api.ListOpts) ([]api.Cluster, error) {
-	if err := b.injected(); err != nil {
-		return nil, err
-	}
-	var out []api.Cluster
-	for _, c := range b.state.Clusters {
-		if !opts.All && c.Phase == api.PhaseDisabled {
-			continue
-		}
-		if opts.Status != "" && !strings.EqualFold(c.Phase, opts.Status) {
-			continue
-		}
-		if opts.Region != "" && !strings.EqualFold(c.Region, opts.Region) {
-			continue
-		}
-		if opts.Search != "" && !matches(c, opts.Search) {
-			continue
-		}
-		if !hasLabels(c, opts.Labels) {
-			continue
-		}
-		out = append(out, c)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	if opts.Limit > 0 && len(out) > opts.Limit {
-		out = out[:opts.Limit]
-	}
-	return out, nil
+// --- pagination ------------------------------------------------------------
+
+func encodeCursor(offset int) string {
+	return strings.TrimRight(base64.URLEncoding.EncodeToString([]byte(strconv.Itoa(offset))), "=")
 }
 
-// Cluster resolves a cluster by exact ID, exact name, or unique ID prefix.
-func (b *Backend) Cluster(ctx context.Context, ref string) (api.Cluster, error) {
+func decodeCursor(cursor string) (int, error) {
+	if cursor == "" {
+		return 0, nil
+	}
+	padded := cursor + strings.Repeat("=", (4-len(cursor)%4)%4)
+	raw, err := base64.URLEncoding.DecodeString(padded)
+	if err != nil {
+		return 0, errs.New(errs.CodeUsage, "cursor is not valid")
+	}
+	n, err := strconv.Atoi(string(raw))
+	if err != nil {
+		return 0, errs.New(errs.CodeUsage, "cursor is not valid")
+	}
+	return n, nil
+}
+
+// paginate slices a filtered collection into one page and mints the cursor
+// for the next, unless the caller asked to follow them all.
+func paginate[T any](items []T, opts api.ListOpts) (api.Page[T], error) {
+	if opts.All {
+		return api.Page[T]{Items: items, Count: len(items)}, nil
+	}
+	offset, err := decodeCursor(opts.Cursor)
+	if err != nil {
+		return api.Page[T]{}, err
+	}
+	limit := opts.Limit
+	if limit <= 0 {
+		limit = defaultLimit
+	}
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	if offset > len(items) {
+		offset = len(items)
+	}
+	end := offset + limit
+	next := ""
+	if end < len(items) {
+		next = encodeCursor(end)
+	} else {
+		end = len(items)
+	}
+	page := items[offset:end]
+	return api.Page[T]{Items: page, Count: len(page), NextCursor: next}, nil
+}
+
+// collect filters a collection with the given predicate and pages the result.
+func collect[T any](b *Backend, items []T, opts api.ListOpts, keep func(T) bool) (api.Page[T], error) {
 	if err := b.injected(); err != nil {
-		return api.Cluster{}, err
+		return api.Page[T]{}, err
+	}
+	kept := make([]T, 0, len(items))
+	for _, it := range items {
+		if keep == nil || keep(it) {
+			kept = append(kept, it)
+		}
+	}
+	return paginate(kept, opts)
+}
+
+// find resolves a reference to exactly one object. A reference is an id, a
+// name, or a unique prefix of either: prefix resolution is the client's job,
+// per contract/API.md §3, so the fake does it here too.
+func find[T any](b *Backend, noun string, items []T, ref string, keys func(T) []string) (T, error) {
+	var zero T
+	if err := b.injected(); err != nil {
+		return zero, err
 	}
 	if strings.TrimSpace(ref) == "" {
-		return api.Cluster{}, errs.New(errs.CodeUsage, "a cluster name or id is required")
+		return zero, errs.New(errs.CodeUsage, "a %s name or id is required", noun)
 	}
-	var hits []api.Cluster
-	for _, c := range b.state.Clusters {
-		if c.ID == ref || c.Name == ref {
-			return c, nil
+	var hits []T
+	var labels []string
+	for _, it := range items {
+		ks := keys(it)
+		for _, k := range ks {
+			if k == ref {
+				return it, nil
+			}
 		}
-		if strings.HasPrefix(c.ID, ref) || strings.HasPrefix(c.Name, ref) {
-			hits = append(hits, c)
+		for _, k := range ks {
+			if k != "" && strings.HasPrefix(k, ref) {
+				hits = append(hits, it)
+				labels = append(labels, ks[0])
+				break
+			}
 		}
 	}
 	switch len(hits) {
 	case 1:
 		return hits[0], nil
 	case 0:
-		return api.Cluster{}, errs.New(errs.CodeNotFound, "no cluster named %q", ref).
-			WithFix("List clusters", "hgr cluster ls")
+		return zero, errs.New(errs.CodeNotFound, "no %s named %q", noun, ref).
+			WithFix("List them", "hgr "+noun+" ls")
 	default:
-		names := make([]string, 0, len(hits))
-		for _, h := range hits {
-			names = append(names, h.Name)
-		}
-		return api.Cluster{}, errs.New(errs.CodeAmbiguous, "%q matches %d clusters", ref, len(hits)).
-			WithCause(strings.Join(names, ", "))
+		return zero, errs.New(errs.CodeAmbiguous, "%q matches %d %ss", ref, len(hits), noun).
+			WithCause(strings.Join(labels, ", "))
 	}
 }
 
-func matches(c api.Cluster, q string) bool {
-	q = strings.ToLower(q)
-	return strings.Contains(strings.ToLower(c.Name), q) ||
-		strings.Contains(strings.ToLower(c.ID), q) ||
-		strings.Contains(strings.ToLower(c.Region), q)
+// --- predicate helpers -----------------------------------------------------
+
+func eqFold(want, got string) bool {
+	return want == "" || strings.EqualFold(want, got)
 }
 
-func hasLabels(c api.Cluster, want map[string]string) bool {
+func refEq(want string, candidates ...string) bool {
+	if want == "" {
+		return true
+	}
+	for _, c := range candidates {
+		if c != "" && strings.EqualFold(c, want) {
+			return true
+		}
+	}
+	return false
+}
+
+func refEqPtr(want string, id, name *string) bool {
+	if want == "" {
+		return true
+	}
+	return refEq(want, deref(id), deref(name))
+}
+
+func boolEq(want *bool, got bool) bool {
+	return want == nil || *want == got
+}
+
+func contains(needle string, haystack ...string) bool {
+	if needle == "" {
+		return true
+	}
+	needle = strings.ToLower(needle)
+	for _, h := range haystack {
+		if strings.Contains(strings.ToLower(h), needle) {
+			return true
+		}
+	}
+	return false
+}
+
+func labelsMatch(labels map[string]any, want map[string]string) bool {
 	for k, v := range want {
-		if c.Labels[k] != v {
+		got, ok := labels[k]
+		if !ok || toString(got) != v {
 			return false
 		}
 	}
 	return true
 }
+
+func toString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	if v == nil {
+		return ""
+	}
+	return fmt.Sprint(v)
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func after(t *time.Time, cutoff *time.Time) bool {
+	if cutoff == nil {
+		return true
+	}
+	return t != nil && !t.Before(*cutoff)
+}
+
+// Backend must answer everything the CLI can ask, or the fake stops being a
+// stand-in and becomes a subset nobody can rely on.
+var _ api.Backend = (*Backend)(nil)

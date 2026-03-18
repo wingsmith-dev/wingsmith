@@ -1,9 +1,9 @@
 import { Field } from "@/components/layout/field"
+import { Labels } from "@/components/layout/mono"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { formatRelative } from "@/lib/format"
-import { PROVISIONING_SOURCE_LABEL } from "@/modules/supply/display"
 import type { Pool } from "@/modules/supply/types"
 import { Link } from "@tanstack/react-router"
 
@@ -14,24 +14,29 @@ function PanelHeading({ kind }: { kind: "declared" | "observed" }) {
         {kind}
       </span>
       <span className="font-mono text-2xs text-muted-foreground/40">
-        {kind === "declared"
-          ? "written by the plane"
-          : "reported by the cluster"}
+        {kind === "declared" ? "written by the plane" : "reported by the cluster"}
       </span>
     </div>
   )
 }
 
+function shapeLabel(shape: Record<string, unknown>): string {
+  const sku = shape.sku
+  if (typeof sku === "string") return sku
+  const entries = Object.entries(shape)
+  if (entries.length === 0) return "—"
+  return entries.map(([k, v]) => `${k}=${String(v)}`).join(" ")
+}
+
 /**
- * Declared spec and observed membership sit in two separate panels on purpose:
- * min/max is intent, node and device counts are what the cluster came back with.
+ * Two panels, never one. min/max is intent; node and device counts are what the
+ * cluster came back with. `within_declared_bounds` is the plane's own verdict
+ * rather than a comparison re-derived here, so the console and `hgr` cannot
+ * disagree about whether a pool is outside what was asked for.
  */
 export function PoolCard({ pool }: { pool: Pool }) {
-  const { declared, observed } = pool
-  const withinBounds =
-    observed.nodes_total >= declared.min_nodes &&
-    observed.nodes_total <= declared.max_nodes
-  const span = Math.max(declared.max_nodes, 1)
+  const { membership } = pool
+  const span = Math.max(pool.max_nodes, 1)
 
   return (
     <Card className="overflow-hidden p-0">
@@ -43,41 +48,47 @@ export function PoolCard({ pool }: { pool: Pool }) {
         >
           {pool.name}
         </Link>
-        <span className="font-mono text-2xs text-muted-foreground/60">
-          {pool.id}
-        </span>
+        <span className="font-mono text-2xs text-muted-foreground/60">{pool.id}</span>
         <Link
           to="/clusters/$clusterId"
           params={{ clusterId: pool.cluster_id }}
           className="font-mono text-2xs text-muted-foreground hover:underline"
         >
-          {pool.cluster_name}
+          {pool.cluster_id}
         </Link>
-        {!withinBounds && (
-          <Badge
-            variant="outline"
-            className="ml-auto border-amber-500/40 bg-amber-500/10 font-mono text-2xs text-amber-600 dark:text-amber-400"
-          >
-            outside declared bounds
-          </Badge>
-        )}
+        <div className="ml-auto flex gap-2">
+          {!pool.enabled && (
+            <Badge variant="outline" className="font-mono text-2xs">
+              disabled
+            </Badge>
+          )}
+          {!pool.within_declared_bounds && (
+            <Badge
+              variant="outline"
+              className="border-amber-500/40 bg-amber-500/10 font-mono text-2xs text-amber-600 dark:text-amber-400"
+            >
+              outside declared bounds
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="grid divide-y md:grid-cols-2 md:divide-x md:divide-y-0">
         <div className="p-4">
           <PanelHeading kind="declared" />
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Device class">{declared.device_class}</Field>
-            <Field label="Node shape">{declared.node_shape}</Field>
-            <Field label="Devices per node">{declared.devices_per_node}</Field>
+            <Field label="Device class">{pool.device_class}</Field>
+            <Field label="Node shape">{shapeLabel(pool.node_shape)}</Field>
+            <Field label="Devices per node">{pool.devices_per_node}</Field>
             <Field label="Bounds">
-              {declared.min_nodes}–{declared.max_nodes} nodes
+              {pool.min_nodes}–{pool.max_nodes} nodes
             </Field>
-            <Field label="Provisioning source">
-              {PROVISIONING_SOURCE_LABEL[declared.provisioning_source]}
-            </Field>
+            <Field label="Enabled">{pool.enabled ? "yes" : "no"}</Field>
             <Field label="Taints">
-              {declared.taints.length ? declared.taints.join(", ") : "none"}
+              {pool.taints.length ? `${pool.taints.length} taint(s)` : "none"}
+            </Field>
+            <Field label="Labels" className="sm:col-span-2">
+              <Labels labels={pool.labels} />
             </Field>
           </div>
         </div>
@@ -86,29 +97,27 @@ export function PoolCard({ pool }: { pool: Pool }) {
           <PanelHeading kind="observed" />
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Nodes ready">
-              {observed.nodes_ready}/{observed.nodes_total}
+              {membership.nodes_ready}/{membership.nodes_total}
             </Field>
-            <Field label="Nodes cordoned">{observed.nodes_cordoned}</Field>
+            <Field label="Nodes cordoned">{membership.nodes_cordoned}</Field>
             <Field label="Devices healthy">
-              {observed.devices_healthy}/{observed.devices_total}
+              {membership.devices_healthy}/{membership.devices_total}
             </Field>
-            <Field label="Devices allocated">
-              {observed.devices_allocated}
+            <Field label="Devices allocatable">
+              {membership.devices_allocatable}
             </Field>
-            <Field label="Topology domains">{observed.topology_domains}</Field>
-            <Field label="Last scaled">
-              {formatRelative(observed.last_scaled_at)}
-            </Field>
+            <Field label="Updated">{formatRelative(pool.updated_at)}</Field>
+            <Field label="Revision">{pool.revision}</Field>
           </div>
           <div className="mt-4 space-y-1.5">
             <div className="flex justify-between font-mono text-2xs text-muted-foreground/60">
               <span>membership against bounds</span>
               <span>
-                {observed.nodes_total} of {declared.max_nodes} max
+                {membership.nodes_total} of {pool.max_nodes} max
               </span>
             </div>
             <Progress
-              value={(observed.nodes_total / span) * 100}
+              value={(membership.nodes_total / span) * 100}
               className="h-1.5"
             />
           </div>

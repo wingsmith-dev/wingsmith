@@ -1,11 +1,20 @@
-import { StubPage } from "@/components/layout/stub-page"
 import { withPage } from "@/lib/with-page"
 import { createFileRoute } from "@tanstack/react-router"
+import { DeploymentsPage } from "./page"
 
-function Page() {
-  return <StubPage title="Deployments" description="declared · recipe × cluster × scale bounds" />
+export interface DeploymentsSearch {
+  cluster?: string
+  project?: string
+  phase?: string
+  type?: string
 }
 
 export const Route = createFileRoute("/_app/deployments")({
-  component: withPage(Page, "/_app/deployments"),
+  validateSearch: (search: Record<string, unknown>): DeploymentsSearch => ({
+    cluster: typeof search.cluster === "string" ? search.cluster : undefined,
+    project: typeof search.project === "string" ? search.project : undefined,
+    phase: typeof search.phase === "string" ? search.phase : undefined,
+    type: typeof search.type === "string" ? search.type : undefined,
+  }),
+  component: withPage(DeploymentsPage, "/_app/deployments"),
 })

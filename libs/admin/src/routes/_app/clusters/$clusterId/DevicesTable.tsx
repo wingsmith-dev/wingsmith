@@ -1,13 +1,14 @@
-import { DevicesTable as SupplyDevicesTable } from "@/components/supply/devices-table"
-import { useClusterDevices } from "@/modules/clusters/queries"
+import { DataTable } from "@/components/layout/data-table"
+import { deviceColumns } from "@/components/supply/columns"
+import { useDevices } from "@/modules/supply/queries"
 
-export function DevicesTable({ clusterId }: { clusterId: string }) {
-  const { data, isLoading, error } = useClusterDevices(clusterId)
+export function ClusterDevicesTable({ clusterId }: { clusterId: string }) {
+  const list = useDevices({ cluster: clusterId })
   return (
-    <SupplyDevicesTable
-      devices={data?.items}
-      isLoading={isLoading}
-      error={error}
+    <DataTable
+      columns={deviceColumns()}
+      list={list}
+      rowKey={(device) => device.id}
       empty="No devices reported."
     />
   )

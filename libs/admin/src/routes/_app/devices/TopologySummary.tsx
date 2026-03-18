@@ -1,36 +1,41 @@
 import { Card, CardContent } from "@/components/ui/card"
-import { TOPOLOGY_KIND_LABEL } from "@/modules/supply/display"
+import { topologyKindLabel } from "@/modules/supply/display"
 import type { TopologyDomain } from "@/modules/supply/types"
 
 const GANG_SIZE = 8
 
 /**
- * Answers the question the object model says this UI must answer: how many
- * topology domains currently hold a full gang of healthy, unallocated devices.
+ * How much of the fleet can still take a tensor-parallel-8 job. Counted over
+ * every domain in scope rather than the first page, because "are there eight
+ * devices in one fabric" is an aggregate and a partial answer is a wrong one.
  */
-export function TopologySummary({ domains }: { domains: TopologyDomain[] }) {
-  const full = domains.filter((d) => d.devices_healthy >= GANG_SIZE)
-  const free = domains.filter(
-    (d) => d.devices_healthy - d.devices_allocated >= GANG_SIZE
-  )
-  const kinds = [...new Set(domains.map((d) => d.kind))]
+export function TopologySummary({
+  domains,
+  isLoading,
+}: {
+  domains: TopologyDomain[] | undefined
+  isLoading: boolean
+}) {
+  const all = domains ?? []
+  const full = all.filter((d) => d.device_count >= GANG_SIZE)
+  const kinds = [...new Set(all.map((d) => d.kind))]
 
   return (
     <Card>
       <CardContent className="flex flex-wrap items-center gap-x-10 gap-y-3 py-4">
-        <Stat label="Topology domains" value={String(domains.length)} />
+        <Stat label="Topology domains" value={isLoading ? "…" : String(all.length)} />
         <Stat
-          label={`Domains with ${GANG_SIZE} healthy`}
-          value={`${full.length}`}
+          label={`Domains of ${GANG_SIZE}+`}
+          value={isLoading ? "…" : String(full.length)}
+          tone={!isLoading && full.length === 0 ? "danger" : "ok"}
         />
         <Stat
-          label={`Domains with ${GANG_SIZE} free`}
-          value={`${free.length}`}
-          tone={free.length === 0 ? "danger" : "ok"}
+          label="Spanning nodes"
+          value={isLoading ? "…" : String(all.filter((d) => d.spans_nodes).length)}
         />
         <Stat
           label="Fabrics"
-          value={kinds.map((k) => TOPOLOGY_KIND_LABEL[k]).join(" · ") || "—"}
+          value={kinds.map(topologyKindLabel).join(" · ") || "—"}
         />
       </CardContent>
     </Card>

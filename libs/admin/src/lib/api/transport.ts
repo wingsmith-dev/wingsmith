@@ -1,8 +1,18 @@
 export type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE"
 
+/**
+ * A query value. Arrays are emitted as repeated params, which is how the plane
+ * accepts `label=k=v` more than once on one request.
+ */
+export type QueryValue = string | number | boolean | string[] | undefined | null
+
 export interface RequestOptions {
-  query?: Record<string, string | number | boolean | undefined>
+  query?: Record<string, QueryValue>
   body?: unknown
+  /** Conditional update against the object's `revision`. */
+  ifMatch?: string
+  /** Replay protection for mutating requests. */
+  idempotencyKey?: string
 }
 
 /**
@@ -15,13 +25,26 @@ export interface Transport {
   request<T>(method: HttpMethod, path: string, options?: RequestOptions): Promise<T>
 }
 
-export class ApiError extends Error {
+/**
+ * The plane's error body, `{code, message, detail}`. `code` is the contract and
+ * is what callers branch on; `message` is for people and is never parsed.
+ */
+export class PlaneError extends Error {
   readonly status: number
+  readonly code: string
+  readonly detail: Record<string, unknown>
 
-  constructor(status: number, message: string) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    detail: Record<string, unknown> = {}
+  ) {
     super(message)
-    this.name = "ApiError"
+    this.name = "PlaneError"
     this.status = status
+    this.code = code
+    this.detail = detail
   }
 }
 
@@ -32,17 +55,41 @@ export class NetworkError extends Error {
   }
 }
 
-export class ForbiddenError extends ApiError {
-  constructor(message?: string) {
-    super(403, message ?? "You do not have permission to perform this action.")
+export class ForbiddenError extends PlaneError {
+  constructor(message?: string, detail?: Record<string, unknown>) {
+    super(
+      403,
+      "forbidden",
+      message ?? "You do not have permission to perform this action.",
+      detail
+    )
     this.name = "ForbiddenError"
   }
 }
 
-export class NotFoundError extends ApiError {
-  constructor(message?: string) {
-    super(404, message ?? "Not found.")
+export class NotAuthorizedError extends PlaneError {
+  constructor(message?: string, detail?: Record<string, unknown>) {
+    super(401, "not_authorized", message ?? "Your credentials were not accepted.", detail)
+    this.name = "NotAuthorizedError"
+  }
+}
+
+export class NotFoundError extends PlaneError {
+  constructor(message?: string, detail?: Record<string, unknown>) {
+    super(404, "not_found", message ?? "Not found.", detail)
     this.name = "NotFoundError"
+  }
+}
+
+/**
+ * `409`. The plane spends this status on two different codes: `conflict` for a
+ * failed `If-Match`, and `invalid` for a request that is well formed but asks
+ * for something incoherent — writing to an observed resource, say.
+ */
+export class ConflictError extends PlaneError {
+  constructor(code: string, message: string, detail?: Record<string, unknown>) {
+    super(409, code, message, detail)
+    this.name = "ConflictError"
   }
 }
 
@@ -50,8 +97,12 @@ export function buildQueryString(query: RequestOptions["query"]): string {
   if (!query) return ""
   const params = new URLSearchParams()
   for (const [key, value] of Object.entries(query)) {
-    if (value === undefined || value === "") continue
-    params.set(key, String(value))
+    if (value === undefined || value === null || value === "") continue
+    if (Array.isArray(value)) {
+      for (const entry of value) if (entry !== "") params.append(key, entry)
+      continue
+    }
+    params.append(key, String(value))
   }
   const encoded = params.toString()
   return encoded ? `?${encoded}` : ""
@@ -59,10 +110,17 @@ export function buildQueryString(query: RequestOptions["query"]): string {
 
 /**
  * The plane's list envelope. Every collection endpoint returns this shape;
- * `next_cursor` is null when the page is the last one.
+ * `next_cursor` is null when the page is the last one, and `count` is the size
+ * of this page rather than the size of the collection.
  */
 export interface ListResponse<T> {
   items: T[]
   count: number
   next_cursor: string | null
+}
+
+/** The pagination params every collection accepts. */
+export interface PageParams {
+  limit?: number
+  cursor?: string
 }

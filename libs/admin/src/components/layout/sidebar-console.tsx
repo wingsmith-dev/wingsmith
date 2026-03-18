@@ -23,8 +23,12 @@ import {
   IconLogout,
   IconPackages,
   IconServer,
+  IconLayoutGrid,
   IconServer2,
+  IconShieldLock,
+  IconSortDescending,
   IconStack2,
+  IconTimelineEvent,
   IconTopologyStar3,
 } from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
@@ -49,10 +53,14 @@ const demandItems: NavItem[] = [
 const bindingItems: NavItem[] = [
   { label: "Projects", to: "/projects", icon: IconFolders },
   { label: "Quotas", to: "/quotas", icon: IconGauge },
+  { label: "Priority classes", to: "/priority-classes", icon: IconSortDescending },
+  { label: "Policies", to: "/policies", icon: IconShieldLock },
 ]
 
 const machineryItems: NavItem[] = [
   { label: "Operations", to: "/operations", icon: IconActivity },
+  { label: "Allocations", to: "/allocations", icon: IconLayoutGrid },
+  { label: "Events", to: "/events", icon: IconTimelineEvent },
 ]
 
 const activeClass =

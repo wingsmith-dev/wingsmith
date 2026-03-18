@@ -1,0 +1,28 @@
+{
+    "items": [
+        {
+            "id": "qta_01m0dp6bg832nntbx05yrb6qte",
+            "project": "prj_01j9x2aaaaaaaaaaaaaaaaaaaa",
+            "project_slug": "core",
+            "cluster": "clu_01m0djye4vgns3hw9qhavf23am",
+            "cluster_name": "iad-1",
+            "device_class": "h100-80",
+            "guaranteed_devices": 16,
+            "limit_devices": 32,
+            "over_quota_weight": 1.0,
+            "over_quota_enabled": true,
+            "created_at": "2026-08-19T18:57:59.812809Z",
+            "updated_at": null,
+            "revision": "1787165879812809",
+            "usage": {
+                "allocated_devices": 0,
+                "live_allocations": 0,
+                "over_quota_devices": 0
+            },
+            "headroom_devices": 32,
+            "over_limit": false
+        }
+    ],
+    "count": 1,
+    "next_cursor": null
+}

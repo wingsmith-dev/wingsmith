@@ -1,11 +1,16 @@
-import { StubPage } from "@/components/layout/stub-page"
 import { withPage } from "@/lib/with-page"
 import { createFileRoute } from "@tanstack/react-router"
+import { EndpointsPage } from "./page"
 
-function Page() {
-  return <StubPage title="Endpoints" description="declared · the stable public name clients call" />
+export interface EndpointsSearch {
+  project?: string
+  search?: string
 }
 
 export const Route = createFileRoute("/_app/endpoints")({
-  component: withPage(Page, "/_app/endpoints"),
+  validateSearch: (search: Record<string, unknown>): EndpointsSearch => ({
+    project: typeof search.project === "string" ? search.project : undefined,
+    search: typeof search.search === "string" ? search.search : undefined,
+  }),
+  component: withPage(EndpointsPage, "/_app/endpoints"),
 })

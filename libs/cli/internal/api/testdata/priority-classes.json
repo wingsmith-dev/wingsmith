@@ -1,0 +1,30 @@
+{
+    "items": [
+        {
+            "id": "prc_01m0dnxc6tgfxmah0n961rhn40",
+            "name": "production",
+            "value": 100,
+            "preemptible": true,
+            "preempts": false,
+            "is_default": false,
+            "description": null,
+            "created_at": "2026-08-19T18:52:20.359783Z",
+            "updated_at": null,
+            "revision": "1787165540359783"
+        },
+        {
+            "id": "prc_01m0dnxc6t6er6h4my315ezz6z",
+            "name": "batch",
+            "value": 10,
+            "preemptible": true,
+            "preempts": false,
+            "is_default": false,
+            "description": null,
+            "created_at": "2026-08-19T18:52:20.359783Z",
+            "updated_at": null,
+            "revision": "1787165540359783"
+        }
+    ],
+    "count": 2,
+    "next_cursor": null
+}

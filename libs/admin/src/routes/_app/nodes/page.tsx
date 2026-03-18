@@ -1,31 +1,34 @@
-import { PageHeader } from "@/components/layout/page-header"
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
-import { NodesTable } from "@/components/supply/nodes-table"
-import { useClusters } from "@/modules/clusters/queries"
+import { DataTable } from "@/components/layout/data-table"
+import { PageHeader } from "@/components/layout/page-header"
+import { nodeColumns } from "@/components/supply/columns"
+import { clusterLabel } from "@/modules/clusters/display"
+import { useClusterOptions } from "@/modules/clusters/queries"
+import { NODE_CONDITIONS } from "@/modules/supply/display"
 import { useNodes } from "@/modules/supply/queries"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 
-const CONDITIONS = [
-  { value: "ready", label: "Ready" },
-  { value: "not_ready", label: "Not ready" },
-  { value: "unknown", label: "Unknown" },
+const CORDONED = [
+  { value: "true", label: "Cordoned" },
+  { value: "false", label: "Schedulable" },
 ]
 
 export function NodesPage() {
   const search = useSearch({ from: "/_app/nodes" })
   const navigate = useNavigate({ from: "/nodes" })
-  const { data: clusters } = useClusters()
-  const { data, isLoading, error } = useNodes({
-    cluster_id: search.cluster,
+  const { data: clusters } = useClusterOptions()
+
+  const list = useNodes({
+    cluster: search.cluster,
+    pool: search.pool,
     condition: search.condition,
+    cordoned: search.cordoned === undefined ? undefined : search.cordoned === "true",
   })
 
-  const set = (key: "cluster" | "condition") => (value: string) =>
+  const set = (key: "cluster" | "condition" | "cordoned") => (value: string) =>
     navigate({
       search: (prev) => ({ ...prev, [key]: value === ALL ? undefined : value }),
     })
-
-  const cordoned = data?.items.filter((n) => n.cordoned).length ?? 0
 
   return (
     <div className="flex flex-col">
@@ -40,27 +43,29 @@ export function NodesPage() {
             label="Cluster"
             value={search.cluster ?? ALL}
             onChange={set("cluster")}
-            options={(clusters?.items ?? []).map((c) => ({
-              value: c.id,
-              label: c.display_name,
+            options={(clusters ?? []).map((cluster) => ({
+              value: cluster.id,
+              label: clusterLabel(cluster),
             }))}
           />
           <FilterSelect
             label="Condition"
             value={search.condition ?? ALL}
             onChange={set("condition")}
-            options={CONDITIONS}
+            options={NODE_CONDITIONS.map((c) => ({ value: c, label: c }))}
           />
-          <div className="ml-auto font-mono text-2xs text-muted-foreground/60">
-            {data?.count ?? 0} nodes · {cordoned} cordoned
-          </div>
+          <FilterSelect
+            label="Cordon"
+            value={search.cordoned ?? ALL}
+            onChange={set("cordoned")}
+            options={CORDONED}
+          />
         </div>
 
-        <NodesTable
-          nodes={data?.items}
-          isLoading={isLoading}
-          error={error}
-          showCluster
+        <DataTable
+          columns={nodeColumns()}
+          list={list}
+          rowKey={(node) => node.id}
           empty="No nodes match these filters."
         />
       </div>

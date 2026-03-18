@@ -4,12 +4,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,7 +23,7 @@ import (
 type Client struct {
 	Server  string
 	Token   string
-	Project string
+	Scope   string
 	HTTP    *http.Client
 	Version string
 }
@@ -39,7 +41,7 @@ func NewClient(server, token, project, version string, timeout time.Duration) (*
 	return &Client{
 		Server:  strings.TrimRight(server, "/"),
 		Token:   token,
-		Project: project,
+		Scope:   project,
 		Version: version,
 		HTTP:    &http.Client{Timeout: timeout},
 	}, nil
@@ -47,149 +49,363 @@ func NewClient(server, token, project, version string, timeout time.Duration) (*
 
 func (c *Client) Simulated() bool { return false }
 
-// Whoami resolves the active token.
-func (c *Client) Whoami(ctx context.Context) (Identity, error) {
-	var out Identity
-	err := c.get(ctx, "/v1/whoami", nil, &out)
-	out.Server = c.Server
-	return out, err
+// Identity reports the configured context and whether the plane answers.
+// There is no `/v1/whoami`: auth is one static token and the plane resolves
+// every caller to the same principal, so inventing a user here would be
+// fiction. `/health` is the only thing that can be truthfully asked.
+func (c *Client) Identity(ctx context.Context) (Identity, error) {
+	id := Identity{Server: c.Server, Project: c.Scope, HasToken: c.Token != ""}
+	var health struct {
+		Status bool `json:"status"`
+	}
+	if err := c.get(ctx, "/health", nil, &health); err != nil {
+		return id, err
+	}
+	id.Reachable = health.Status
+	return id, nil
 }
 
-// Clusters lists enrolled clusters.
-func (c *Client) Clusters(ctx context.Context, opts ListOpts) ([]Cluster, error) {
-	q := url.Values{}
-	if opts.Status != "" {
-		q.Set("phase", opts.Status)
-	}
-	if opts.Region != "" {
-		q.Set("region", opts.Region)
-	}
-	if opts.Search != "" {
-		q.Set("search", opts.Search)
-	}
+// --- query construction ----------------------------------------------------
+
+// query builds a query string from the dimensions one endpoint declares.
+// Nothing is sent that the endpoint does not accept: a filter the server does
+// not know is a filter silently ignored, and a listing that quietly ignores
+// its filter is worse than one that refuses it.
+type query struct {
+	v url.Values
+}
+
+func newQuery(opts ListOpts) *query {
+	q := &query{v: url.Values{}}
 	if opts.Limit > 0 {
-		q.Set("limit", strconv.Itoa(opts.Limit))
+		q.v.Set("limit", strconv.Itoa(opts.Limit))
 	}
 	if opts.Cursor != "" {
-		q.Set("cursor", opts.Cursor)
-	}
-	for k, v := range opts.Labels {
-		q.Add("label", k+"="+v)
-	}
-	var out struct {
-		Items []Cluster `json:"items"`
-	}
-	if err := c.get(ctx, "/v1/clusters", q, &out); err != nil {
-		return nil, err
-	}
-	return out.Items, nil
-}
-
-// Nodes lists cluster members.
-func (c *Client) Nodes(ctx context.Context, opts ListOpts) ([]Node, error) {
-	var out struct {
-		Items []Node `json:"items"`
-	}
-	err := c.get(ctx, "/v1/nodes", supplyQuery(opts), &out)
-	return out.Items, err
-}
-
-// Node fetches one node by ID or name.
-func (c *Client) Node(ctx context.Context, ref string) (Node, error) {
-	var out Node
-	err := c.get(ctx, "/v1/nodes/"+url.PathEscape(ref), nil, &out)
-	return out, err
-}
-
-// Devices lists individual accelerators.
-func (c *Client) Devices(ctx context.Context, opts ListOpts) ([]Device, error) {
-	var out struct {
-		Items []Device `json:"items"`
-	}
-	err := c.get(ctx, "/v1/devices", supplyQuery(opts), &out)
-	return out.Items, err
-}
-
-// Device fetches one device by ID or UUID.
-func (c *Client) Device(ctx context.Context, ref string) (Device, error) {
-	var out Device
-	err := c.get(ctx, "/v1/devices/"+url.PathEscape(ref), nil, &out)
-	return out, err
-}
-
-// Pools lists declared provisioning specs.
-func (c *Client) Pools(ctx context.Context, opts ListOpts) ([]Pool, error) {
-	var out struct {
-		Items []Pool `json:"items"`
-	}
-	err := c.get(ctx, "/v1/pools", supplyQuery(opts), &out)
-	return out.Items, err
-}
-
-// Pool fetches one pool by ID or name.
-func (c *Client) Pool(ctx context.Context, ref string) (Pool, error) {
-	var out Pool
-	err := c.get(ctx, "/v1/pools/"+url.PathEscape(ref), nil, &out)
-	return out, err
-}
-
-// supplyQuery maps ListOpts onto the query params the supply endpoints share.
-func supplyQuery(opts ListOpts) url.Values {
-	q := url.Values{}
-	for k, v := range map[string]string{
-		"status":  opts.Status,
-		"cluster": opts.Cluster,
-		"pool":    opts.Pool,
-		"node":    opts.Node,
-		"class":   opts.Class,
-		"health":  opts.Health,
-		"domain":  opts.Domain,
-		"region":  opts.Region,
-		"search":  opts.Search,
-		"cursor":  opts.Cursor,
-	} {
-		if v != "" {
-			q.Set(k, v)
-		}
-	}
-	if opts.All {
-		q.Set("all", "true")
-	}
-	if opts.Cordoned {
-		q.Set("cordoned", "true")
-	}
-	if opts.Limit > 0 {
-		q.Set("limit", strconv.Itoa(opts.Limit))
-	}
-	for k, v := range opts.Labels {
-		q.Add("label", k+"="+v)
+		q.v.Set("cursor", opts.Cursor)
 	}
 	return q
 }
 
-// Cluster fetches one cluster by ID or name.
-func (c *Client) Cluster(ctx context.Context, ref string) (Cluster, error) {
-	var out Cluster
-	err := c.get(ctx, "/v1/clusters/"+url.PathEscape(ref), nil, &out)
+func (q *query) str(name, value string) *query {
+	if value != "" {
+		q.v.Set(name, value)
+	}
+	return q
+}
+
+func (q *query) boolean(name string, value *bool) *query {
+	if value != nil {
+		q.v.Set(name, strconv.FormatBool(*value))
+	}
+	return q
+}
+
+func (q *query) at(name string, value *time.Time) *query {
+	if value != nil {
+		q.v.Set(name, value.UTC().Format(time.RFC3339))
+	}
+	return q
+}
+
+// labels emits one `label=k=v` per selector entry, which is the repeatable
+// form the plane parses.
+func (q *query) labels(selector map[string]string) *query {
+	for k, v := range selector {
+		q.v.Add("label", k+"="+v)
+	}
+	return q
+}
+
+func (q *query) values() url.Values { return q.v }
+
+// --- generic list and get --------------------------------------------------
+
+// listPage fetches exactly one page.
+func listPage[T any](ctx context.Context, c *Client, path string, q url.Values) (Page[T], error) {
+	var out Page[T]
+	err := c.get(ctx, path, q, &out)
 	return out, err
 }
 
+// list fetches one page, or every page when ListOpts.All is set. Following
+// the cursor is the client's job: the server has no "give me everything" mode
+// and adding one would be a request with no bound on its own cost.
+func list[T any](ctx context.Context, c *Client, path string, q url.Values, opts ListOpts) (Page[T], error) {
+	page, err := listPage[T](ctx, c, path, q)
+	if err != nil || !opts.All {
+		return page, err
+	}
+	for page.NextCursor != "" {
+		next := cloneValues(q)
+		next.Set("cursor", page.NextCursor)
+		more, err := listPage[T](ctx, c, path, next)
+		if err != nil {
+			return page, err
+		}
+		page.Items = append(page.Items, more.Items...)
+		page.NextCursor = more.NextCursor
+		if more.Count == 0 {
+			break
+		}
+	}
+	page.Count = len(page.Items)
+	return page, nil
+}
+
+func cloneValues(v url.Values) url.Values {
+	out := make(url.Values, len(v))
+	for k, vals := range v {
+		out[k] = append([]string(nil), vals...)
+	}
+	return out
+}
+
+func one[T any](ctx context.Context, c *Client, path, ref string, q url.Values) (T, error) {
+	var out T
+	err := c.get(ctx, path+"/"+url.PathEscape(ref), q, &out)
+	return out, err
+}
+
+// --- supply ----------------------------------------------------------------
+
+func (c *Client) Clusters(ctx context.Context, o ListOpts) (Page[Cluster], error) {
+	q := newQuery(o).str("region", o.Region).str("phase", o.Phase).str("search", o.Search).labels(o.Labels)
+	return list[Cluster](ctx, c, "/v1/clusters", q.values(), o)
+}
+
+func (c *Client) Cluster(ctx context.Context, ref string) (Cluster, error) {
+	return one[Cluster](ctx, c, "/v1/clusters", ref, nil)
+}
+
+func (c *Client) Nodes(ctx context.Context, o ListOpts) (Page[Node], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("pool", o.Pool).str("condition", o.Condition).
+		boolean("ready", o.Ready).boolean("cordoned", o.Cordoned).str("search", o.Search).labels(o.Labels)
+	return list[Node](ctx, c, "/v1/nodes", q.values(), o)
+}
+
+func (c *Client) Node(ctx context.Context, ref string) (Node, error) {
+	return one[Node](ctx, c, "/v1/nodes", ref, nil)
+}
+
+func (c *Client) Devices(ctx context.Context, o ListOpts) (Page[Device], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("node", o.Node).str("pool", o.Pool).
+		str("class", o.Class).str("health", o.Health).boolean("allocatable", o.Allocatable).
+		str("topology_domain", o.TopologyDomain)
+	return list[Device](ctx, c, "/v1/devices", q.values(), o)
+}
+
+func (c *Client) Device(ctx context.Context, ref string) (Device, error) {
+	return one[Device](ctx, c, "/v1/devices", ref, nil)
+}
+
+func (c *Client) TopologyDomains(ctx context.Context, o ListOpts) (Page[TopologyDomain], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("node", o.Node).str("kind", o.Kind).
+		boolean("spans_nodes", o.SpansNodes)
+	return list[TopologyDomain](ctx, c, "/v1/topology-domains", q.values(), o)
+}
+
+func (c *Client) TopologyDomain(ctx context.Context, ref string) (TopologyDomain, error) {
+	return one[TopologyDomain](ctx, c, "/v1/topology-domains", ref, nil)
+}
+
+func (c *Client) Pools(ctx context.Context, o ListOpts) (Page[Pool], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("class", o.Class).boolean("enabled", o.Enabled).
+		str("search", o.Search).labels(o.Labels)
+	return list[Pool](ctx, c, "/v1/pools", q.values(), o)
+}
+
+func (c *Client) Pool(ctx context.Context, ref string) (Pool, error) {
+	return one[Pool](ctx, c, "/v1/pools", ref, nil)
+}
+
+// --- demand ----------------------------------------------------------------
+
+func (c *Client) Artifacts(ctx context.Context, o ListOpts) (Page[Artifact], error) {
+	q := newQuery(o).str("kind", o.Kind).str("format", o.Format).str("project", o.Project).
+		str("search", o.Search).labels(o.Labels)
+	return list[Artifact](ctx, c, "/v1/artifacts", q.values(), o)
+}
+
+func (c *Client) Artifact(ctx context.Context, ref string) (Artifact, error) {
+	return one[Artifact](ctx, c, "/v1/artifacts", ref, nil)
+}
+
+func (c *Client) Recipes(ctx context.Context, o ListOpts) (Page[Recipe], error) {
+	q := newQuery(o).str("artifact", o.Artifact).str("engine", o.Engine).str("class", o.Class).
+		str("search", o.Search).labels(o.Labels)
+	return list[Recipe](ctx, c, "/v1/recipes", q.values(), o)
+}
+
+func (c *Client) Recipe(ctx context.Context, ref string) (Recipe, error) {
+	return one[Recipe](ctx, c, "/v1/recipes", ref, nil)
+}
+
+func (c *Client) Deployments(ctx context.Context, o ListOpts) (Page[Deployment], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("recipe", o.Recipe).str("project", o.Project).
+		str("phase", o.Phase).str("type", o.Type).labels(o.Labels)
+	return list[Deployment](ctx, c, "/v1/deployments", q.values(), o)
+}
+
+// Deployment resolves by id, or by name within a cluster: a deployment name
+// is unique per cluster and not globally, so `--cluster` is how a name is
+// made unambiguous.
+func (c *Client) Deployment(ctx context.Context, ref string) (Deployment, error) {
+	return one[Deployment](ctx, c, "/v1/deployments", ref, nil)
+}
+
+func (c *Client) Endpoints(ctx context.Context, o ListOpts) (Page[Endpoint], error) {
+	q := newQuery(o).str("project", o.Project).str("artifact", o.Artifact).
+		str("search", o.Search).labels(o.Labels)
+	return list[Endpoint](ctx, c, "/v1/endpoints", q.values(), o)
+}
+
+func (c *Client) Endpoint(ctx context.Context, ref string) (Endpoint, error) {
+	return one[Endpoint](ctx, c, "/v1/endpoints", ref, nil)
+}
+
+// --- binding ---------------------------------------------------------------
+
+func (c *Client) Projects(ctx context.Context, o ListOpts) (Page[Project], error) {
+	q := newQuery(o).str("tenant", o.Tenant).boolean("enabled", o.Enabled).str("search", o.Search)
+	return list[Project](ctx, c, "/v1/projects", q.values(), o)
+}
+
+func (c *Client) Project(ctx context.Context, ref string) (Project, error) {
+	return one[Project](ctx, c, "/v1/projects", ref, nil)
+}
+
+func (c *Client) Quotas(ctx context.Context, o ListOpts) (Page[Quota], error) {
+	q := newQuery(o).str("project", o.Project).str("cluster", o.Cluster).str("class", o.Class).
+		boolean("over_quota_enabled", o.OverQuotaEnabled)
+	return list[Quota](ctx, c, "/v1/quotas", q.values(), o)
+}
+
+func (c *Client) Quota(ctx context.Context, ref string) (Quota, error) {
+	return one[Quota](ctx, c, "/v1/quotas", ref, nil)
+}
+
+func (c *Client) PriorityClasses(ctx context.Context, o ListOpts) (Page[PriorityClass], error) {
+	q := newQuery(o).boolean("preemptible", o.Preemptible).boolean("preempts", o.Preempts).str("search", o.Search)
+	return list[PriorityClass](ctx, c, "/v1/priority-classes", q.values(), o)
+}
+
+func (c *Client) PriorityClass(ctx context.Context, ref string) (PriorityClass, error) {
+	return one[PriorityClass](ctx, c, "/v1/priority-classes", ref, nil)
+}
+
+func (c *Client) Policies(ctx context.Context, o ListOpts) (Page[Policy], error) {
+	q := newQuery(o).boolean("enabled", o.Enabled).str("region", o.Region).str("class", o.Class).
+		str("search", o.Search).str("subject_type", o.Kind).str("subject", o.Subject)
+	return list[Policy](ctx, c, "/v1/policies", q.values(), o)
+}
+
+func (c *Client) Policy(ctx context.Context, ref string) (Policy, error) {
+	return one[Policy](ctx, c, "/v1/policies", ref, nil)
+}
+
+// --- machinery -------------------------------------------------------------
+
+func (c *Client) Allocations(ctx context.Context, o ListOpts) (Page[Allocation], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("project", o.Project).str("class", o.Class).
+		str("phase", o.Phase).boolean("over_quota", o.OverQuota).boolean("live", o.Live).
+		str("replica", o.Replica).str("device", o.Device)
+	return list[Allocation](ctx, c, "/v1/allocations", q.values(), o)
+}
+
+func (c *Client) Allocation(ctx context.Context, ref string) (Allocation, error) {
+	return one[Allocation](ctx, c, "/v1/allocations", ref, nil)
+}
+
+func (c *Client) Operations(ctx context.Context, o ListOpts) (Page[Operation], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("type", o.Type).str("phase", o.Phase).
+		str("target", o.Target).str("actor", o.Actor).at("since", o.Since)
+	return list[Operation](ctx, c, "/v1/operations", q.values(), o)
+}
+
+func (c *Client) Operation(ctx context.Context, ref string) (Operation, error) {
+	return one[Operation](ctx, c, "/v1/operations", ref, nil)
+}
+
+// CreateOperation posts a type and a target. There is no verb endpoint on the
+// target's own path, so this is the only way to drain, cordon, reset or warm
+// anything.
+func (c *Client) CreateOperation(ctx context.Context, req OperationRequest, idempotencyKey string) (Operation, error) {
+	var out Operation
+	headers := map[string]string{}
+	if idempotencyKey != "" {
+		headers["Idempotency-Key"] = idempotencyKey
+	}
+	err := c.send(ctx, http.MethodPost, "/v1/operations", nil, req, headers, &out)
+	return out, err
+}
+
+// CancelOperation asks for cancellation and returns the operation. DELETE is
+// cancellation and not deletion: the row is the answer to who asked for this
+// and why, which is the reason the object exists.
+func (c *Client) CancelOperation(ctx context.Context, ref string) (Operation, error) {
+	var out Operation
+	err := c.send(ctx, http.MethodDelete, "/v1/operations/"+url.PathEscape(ref), nil, nil, nil, &out)
+	return out, err
+}
+
+func (c *Client) Components(ctx context.Context, o ListOpts) (Page[Component], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("name", o.Name).str("kind", o.Kind).
+		boolean("behind", o.Behind).boolean("enabled", o.Enabled).str("search", o.Search)
+	return list[Component](ctx, c, "/v1/components", q.values(), o)
+}
+
+func (c *Client) Component(ctx context.Context, ref string) (Component, error) {
+	return one[Component](ctx, c, "/v1/components", ref, nil)
+}
+
+func (c *Client) Events(ctx context.Context, o ListOpts) (Page[Event], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("subject", o.Subject).str("kind", o.Kind).
+		str("severity", o.Severity).at("since", o.Since).at("until", o.Until)
+	return list[Event](ctx, c, "/v1/events", q.values(), o)
+}
+
+func (c *Client) Event(ctx context.Context, ref string) (Event, error) {
+	return one[Event](ctx, c, "/v1/events", ref, nil)
+}
+
+// --- transport -------------------------------------------------------------
+
 func (c *Client) get(ctx context.Context, path string, q url.Values, out any) error {
+	return c.send(ctx, http.MethodGet, path, q, nil, nil, out)
+}
+
+func (c *Client) send(ctx context.Context, method, path string, q url.Values, body any, headers map[string]string, out any) error {
 	u := c.Server + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+
+	var reader io.Reader
+	if body != nil {
+		encoded, err := json.Marshal(body)
+		if err != nil {
+			return errs.Wrap(err, errs.CodeInternal, "cannot encode request body")
+		}
+		reader = bytes.NewReader(encoded)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, u, reader)
 	if err != nil {
 		return errs.Wrap(err, errs.CodeInternal, "cannot build request")
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "hgr/"+c.Version)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
-	if c.Project != "" {
-		req.Header.Set("X-Hangar-Project", c.Project)
+	if c.Scope != "" {
+		req.Header.Set("X-Hangar-Project", c.Scope)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	resp, err := c.HTTP.Do(req)
@@ -202,25 +418,39 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	payload, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if resp.StatusCode >= 400 {
-		return httpError(resp, body)
+		return httpError(resp, payload)
 	}
-	if out == nil {
+	if out == nil || resp.StatusCode == http.StatusNoContent {
 		return nil
 	}
-	if err := json.Unmarshal(body, out); err != nil {
+	if err := json.Unmarshal(payload, out); err != nil {
 		return errs.Wrap(err, errs.CodeServerError, "control plane returned a response the CLI cannot decode")
 	}
 	return nil
 }
 
-// wireError is the plane's error body. Its shape is an assumption until the
-// contract lands; an unparseable body degrades to the status line.
+// wireError is the plane's error body: `code` is the contract and is what the
+// CLI branches on, `message` is for people, and `detail` is an object.
 type wireError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Detail  string `json:"detail"`
+	Code    string         `json:"code"`
+	Message string         `json:"message"`
+	Detail  map[string]any `json:"detail"`
+}
+
+// planeCodes maps the plane's error vocabulary onto the CLI's. The plane's
+// `invalid` is a category error rather than a validation failure and answers
+// 409, so it maps to INVALID_STATE and not USAGE.
+var planeCodes = map[string]errs.Code{
+	"not_found":       errs.CodeNotFound,
+	"conflict":        errs.CodeConflict,
+	"invalid":         errs.CodeInvalidState,
+	"invalid_request": errs.CodeUsage,
+	"not_authorized":  errs.CodeAuthRequired,
+	"forbidden":       errs.CodeForbidden,
+	"internal":        errs.CodeServerError,
+	"http_error":      errs.CodeServerError,
 }
 
 func httpError(resp *http.Response, body []byte) error {
@@ -249,15 +479,13 @@ func httpError(resp *http.Response, body []byte) error {
 	case http.StatusTooManyRequests:
 		code = errs.CodeRateLimited
 	}
-	if we.Code != "" {
-		if _, ok := errs.Explain(errs.ParseCode(we.Code)); ok {
-			code = errs.ParseCode(we.Code)
-		}
+	if mapped, ok := planeCodes[we.Code]; ok {
+		code = mapped
 	}
 
 	e := errs.New(code, "%s", msg).WithCausef("HTTP %d from %s", resp.StatusCode, resp.Request.URL.Path)
-	if we.Detail != "" {
-		e = e.WithCause(we.Detail)
+	if len(we.Detail) > 0 {
+		e = e.WithCause(detailString(we.Detail))
 	}
 	if code == errs.CodeRateLimited {
 		if s := resp.Header.Get("Retry-After"); s != "" {
@@ -267,6 +495,19 @@ func httpError(resp *http.Response, body []byte) error {
 		}
 	}
 	return e
+}
+
+func detailString(detail map[string]any) string {
+	keys := make([]string, 0, len(detail))
+	for k := range detail {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%v", k, detail[k]))
+	}
+	return strings.Join(parts, " ")
 }
 
 // ParseDuration accepts Go durations plus a bare number of seconds.

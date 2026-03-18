@@ -1,0 +1,101 @@
+{
+    "items": [
+        {
+            "id": "pol_01m0djye5gy5bmjw11d8wzqwcr",
+            "cluster_id": "clu_01m0djye4vgns3hw9qhavf23am",
+            "name": "h100-prod",
+            "device_class": "h100-80",
+            "devices_per_node": 8,
+            "node_shape": {
+                "cpu": 192,
+                "sku": "8xh100-80",
+                "memory_gib": 2048
+            },
+            "min_nodes": 4,
+            "max_nodes": 16,
+            "labels": {
+                "tier": "prod",
+                "fabric": "nvswitch"
+            },
+            "taints": [],
+            "enabled": true,
+            "created_at": "2026-08-19T18:01:14.670060Z",
+            "updated_at": null,
+            "revision": "1787162474670060",
+            "membership": {
+                "nodes_total": 9,
+                "nodes_ready": 9,
+                "nodes_cordoned": 0,
+                "devices_total": 72,
+                "devices_healthy": 70,
+                "devices_allocatable": 71
+            },
+            "within_declared_bounds": true
+        },
+        {
+            "id": "pol_01m0djye7rtsc9hnjmt2fc775m",
+            "cluster_id": "clu_01m0djye7mpwgb3ksr4b9xbby2",
+            "name": "l40s-serving",
+            "device_class": "l40s-48",
+            "devices_per_node": 4,
+            "node_shape": {
+                "cpu": 192,
+                "sku": "4xl40s-48",
+                "memory_gib": 2048
+            },
+            "min_nodes": 1,
+            "max_nodes": 4,
+            "labels": {
+                "tier": "prod"
+            },
+            "taints": [],
+            "enabled": true,
+            "created_at": "2026-08-19T18:01:14.670060Z",
+            "updated_at": null,
+            "revision": "1787162474670060",
+            "membership": {
+                "nodes_total": 3,
+                "nodes_ready": 3,
+                "nodes_cordoned": 0,
+                "devices_total": 12,
+                "devices_healthy": 11,
+                "devices_allocatable": 11
+            },
+            "within_declared_bounds": true
+        },
+        {
+            "id": "pol_01m0djye83cnr3j2cw2rey7hya",
+            "cluster_id": "clu_01m0djye81hnzae2p3ec50vsvc",
+            "name": "a100-eu",
+            "device_class": "a100-80",
+            "devices_per_node": 8,
+            "node_shape": {
+                "cpu": 192,
+                "sku": "8xa100-80",
+                "memory_gib": 2048
+            },
+            "min_nodes": 0,
+            "max_nodes": 2,
+            "labels": {
+                "tier": "prod",
+                "residency": "eu"
+            },
+            "taints": [],
+            "enabled": false,
+            "created_at": "2026-08-19T18:01:14.670060Z",
+            "updated_at": null,
+            "revision": "1787162474670060",
+            "membership": {
+                "nodes_total": 2,
+                "nodes_ready": 1,
+                "nodes_cordoned": 2,
+                "devices_total": 16,
+                "devices_healthy": 14,
+                "devices_allocatable": 15
+            },
+            "within_declared_bounds": true
+        }
+    ],
+    "count": 3,
+    "next_cursor": null
+}

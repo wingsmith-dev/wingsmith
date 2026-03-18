@@ -1,47 +1,22 @@
 import { useQuery } from "@tanstack/react-query"
-import {
-  fetchCluster,
-  fetchClusterDevices,
-  fetchClusterNodes,
-  fetchClusters,
-  fetchClusterTopology,
-} from "./api"
+import { useAllPages, useCursorList } from "@/lib/paginate"
+import { fetchCluster, fetchClusters, type ClusterFilters } from "./api"
 
-export function useClusters(region?: string) {
-  return useQuery({
-    queryKey: ["clusters", { region }],
-    queryFn: () => fetchClusters(region),
-  })
+export function useClusters(filters: ClusterFilters = {}) {
+  return useCursorList(["clusters", filters], (cursor) =>
+    fetchClusters(filters, cursor)
+  )
 }
 
-export function useCluster(clusterId: string) {
-  return useQuery({
-    queryKey: ["clusters", clusterId],
-    queryFn: () => fetchCluster(clusterId),
-    enabled: !!clusterId,
-  })
+/** Every cluster, drained across pages — for filter controls and name lookups. */
+export function useClusterOptions() {
+  return useAllPages(["clusters", "options"], (cursor) => fetchClusters({}, cursor, 200))
 }
 
-export function useClusterNodes(clusterId: string) {
+export function useCluster(ref: string) {
   return useQuery({
-    queryKey: ["clusters", clusterId, "nodes"],
-    queryFn: () => fetchClusterNodes(clusterId),
-    enabled: !!clusterId,
-  })
-}
-
-export function useClusterDevices(clusterId: string) {
-  return useQuery({
-    queryKey: ["clusters", clusterId, "devices"],
-    queryFn: () => fetchClusterDevices(clusterId),
-    enabled: !!clusterId,
-  })
-}
-
-export function useClusterTopology(clusterId: string) {
-  return useQuery({
-    queryKey: ["clusters", clusterId, "topology"],
-    queryFn: () => fetchClusterTopology(clusterId),
-    enabled: !!clusterId,
+    queryKey: ["clusters", "detail", ref],
+    queryFn: () => fetchCluster(ref),
+    enabled: !!ref,
   })
 }

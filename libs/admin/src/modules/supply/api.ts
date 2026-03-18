@@ -1,59 +1,102 @@
 import { api, type ListResponse } from "@/lib/api"
-import type { Device, NodeDetail, Pool, SupplyNode, TopologyDomain } from "./types"
+import type { Device, Pool, PoolUpdateRequest, SupplyNode, TopologyDomain } from "./types"
 
+/**
+ * Every filter name below is the plane's, not the console's. Litestar drops
+ * query params it does not declare without complaining, so a filter spelled
+ * `cluster_id` is not a filter that fails — it is a filter that silently
+ * returns everything.
+ */
 export interface NodeFilters {
-  cluster_id?: string
-  pool_id?: string
+  cluster?: string
+  pool?: string
   condition?: string
+  ready?: boolean
   cordoned?: boolean
+  search?: string
+  label?: string[]
 }
 
 export interface DeviceFilters {
-  cluster_id?: string
-  node_id?: string
-  topology_domain_id?: string
-  device_class?: string
+  cluster?: string
+  node?: string
+  pool?: string
+  /** Sent as `class`; `device_class` is not a parameter the plane knows. */
+  class?: string
   health?: string
-  allocated?: boolean
+  allocatable?: boolean
+  topology_domain?: string
 }
 
-export function fetchNodes(filters: NodeFilters = {}) {
-  return api.get<ListResponse<SupplyNode>>("/nodes", { ...filters })
+export interface TopologyFilters {
+  cluster?: string
+  node?: string
+  kind?: string
+  spans_nodes?: boolean
 }
 
-export async function fetchNode(nodeId: string) {
-  const data = await api.get<{ node: NodeDetail }>(`/nodes/${nodeId}`)
-  return data.node
+export interface PoolFilters {
+  cluster?: string
+  class?: string
+  enabled?: boolean
+  search?: string
+  label?: string[]
 }
 
-export function fetchNodeDevices(nodeId: string) {
-  return api.get<ListResponse<Device>>(`/nodes/${nodeId}/devices`)
+export function fetchNodes(
+  filters: NodeFilters = {},
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<SupplyNode>> {
+  return api.list<SupplyNode>("/nodes", { ...filters, cursor, limit })
 }
 
-export function fetchDevices(filters: DeviceFilters = {}) {
-  return api.get<ListResponse<Device>>("/devices", { ...filters })
+export function fetchNode(ref: string): Promise<SupplyNode> {
+  return api.get<SupplyNode>(`/nodes/${encodeURIComponent(ref)}`)
 }
 
-export async function fetchDevice(deviceId: string) {
-  const data = await api.get<{ device: Device }>(`/devices/${deviceId}`)
-  return data.device
+export function fetchDevices(
+  filters: DeviceFilters = {},
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<Device>> {
+  return api.list<Device>("/devices", { ...filters, cursor, limit })
 }
 
-export function fetchTopologyDomains(clusterId?: string) {
-  return api.get<ListResponse<TopologyDomain>>("/topology-domains", {
-    cluster_id: clusterId,
+export function fetchDevice(ref: string): Promise<Device> {
+  return api.get<Device>(`/devices/${encodeURIComponent(ref)}`)
+}
+
+export function fetchTopologyDomains(
+  filters: TopologyFilters = {},
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<TopologyDomain>> {
+  return api.list<TopologyDomain>("/topology-domains", { ...filters, cursor, limit })
+}
+
+export function fetchTopologyDomain(ref: string): Promise<TopologyDomain> {
+  return api.get<TopologyDomain>(`/topology-domains/${encodeURIComponent(ref)}`)
+}
+
+export function fetchPools(
+  filters: PoolFilters = {},
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<Pool>> {
+  return api.list<Pool>("/pools", { ...filters, cursor, limit })
+}
+
+export function fetchPool(ref: string): Promise<Pool> {
+  return api.get<Pool>(`/pools/${encodeURIComponent(ref)}`)
+}
+
+export function updatePool(
+  ref: string,
+  body: PoolUpdateRequest,
+  revision?: string
+): Promise<Pool> {
+  return api.patch<Pool>(`/pools/${encodeURIComponent(ref)}`, body, {
+    ifMatch: revision,
   })
-}
-
-export function fetchPools(clusterId?: string) {
-  return api.get<ListResponse<Pool>>("/pools", { cluster_id: clusterId })
-}
-
-export async function fetchPool(poolId: string) {
-  const data = await api.get<{ pool: Pool }>(`/pools/${poolId}`)
-  return data.pool
-}
-
-export function fetchPoolNodes(poolId: string) {
-  return api.get<ListResponse<SupplyNode>>(`/pools/${poolId}/nodes`)
 }

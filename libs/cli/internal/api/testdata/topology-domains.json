@@ -1,0 +1,66 @@
+{
+    "items": [
+        {
+            "id": "tpd_01m0djye5sxv7nfcwqkte4ehpx",
+            "cluster": "clu_01m0djye4vgns3hw9qhavf23am",
+            "cluster_name": "iad-1",
+            "node": "nod_01m0djye5pj161h6s5acgrb1s5",
+            "node_name": "iad-1-n01",
+            "parent": null,
+            "kind": "nvswitch",
+            "identifier": "iad-1-n01/nvswitch-0",
+            "link_generation": "4",
+            "link_bandwidth_gbps": 900,
+            "device_count": 8,
+            "spans_nodes": false,
+            "attributes": {
+                "switches": 4
+            },
+            "observed_at": "2026-08-19T18:00:54.574792Z",
+            "created_at": "2026-08-19T18:01:14.670060Z",
+            "updated_at": null
+        },
+        {
+            "id": "tpd_01m0djye6h1v0wg4txrq8xh1jp",
+            "cluster": "clu_01m0djye4vgns3hw9qhavf23am",
+            "cluster_name": "iad-1",
+            "node": "nod_01m0djye6096jczp3fsc7jat79",
+            "node_name": "iad-1-n02",
+            "parent": null,
+            "kind": "nvswitch",
+            "identifier": "iad-1-n02/nvswitch-0",
+            "link_generation": "4",
+            "link_bandwidth_gbps": 900,
+            "device_count": 8,
+            "spans_nodes": false,
+            "attributes": {
+                "switches": 4
+            },
+            "observed_at": "2026-08-19T18:00:54.574792Z",
+            "created_at": "2026-08-19T18:01:14.670060Z",
+            "updated_at": null
+        },
+        {
+            "id": "tpd_01m0djye6p52g9fyb5j5e3hk0v",
+            "cluster": "clu_01m0djye4vgns3hw9qhavf23am",
+            "cluster_name": "iad-1",
+            "node": "nod_01m0djye6jep09vmwbz7w3rekq",
+            "node_name": "iad-1-n03",
+            "parent": null,
+            "kind": "nvswitch",
+            "identifier": "iad-1-n03/nvswitch-0",
+            "link_generation": "4",
+            "link_bandwidth_gbps": 900,
+            "device_count": 8,
+            "spans_nodes": false,
+            "attributes": {
+                "switches": 4
+            },
+            "observed_at": "2026-08-19T18:00:54.574792Z",
+            "created_at": "2026-08-19T18:01:14.670060Z",
+            "updated_at": null
+        }
+    ],
+    "count": 3,
+    "next_cursor": "MTAwMg"
+}

@@ -1,0 +1,23 @@
+{
+    "items": [
+        {
+            "id": "prj_01j9x2aaaaaaaaaaaaaaaaaaaa",
+            "tenant": {
+                "id": "ten_01m0dnxc6p89ykkt4s0mwvm4ta",
+                "slug": "acme",
+                "name": "Acme",
+                "enabled": true
+            },
+            "slug": "core",
+            "name": "Core",
+            "default_priority_class": null,
+            "enabled": true,
+            "effective_enabled": true,
+            "created_at": "2026-08-19T18:52:20.383567Z",
+            "updated_at": null,
+            "revision": "1787165540383567"
+        }
+    ],
+    "count": 1,
+    "next_cursor": null
+}
