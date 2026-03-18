@@ -7,6 +7,7 @@ from litestar.config.cors import CORSConfig
 from app.db import engine
 from app.api import routes
 from app.utils import logs
+from app.core.params import reject_unknown_params
 from app.core.context import request_context
 from app.core.handlers import EXCEPTION_HANDLERS
 
@@ -40,6 +41,7 @@ def create_app() -> Litestar:
     app = Litestar(
         logging_config=None,
         exception_handlers=EXCEPTION_HANDLERS,
+        before_request=reject_unknown_params,
         cors_config=cors_config,
         on_startup=[on_startup],
         on_shutdown=[on_shutdown],

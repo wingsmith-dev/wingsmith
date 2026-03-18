@@ -45,3 +45,15 @@ class Invalid(PlaneError):
 
     code = "invalid"
     status = 409
+
+
+class UnknownParameter(PlaneError):
+    """A request carrying a query parameter the matched handler does not declare.
+
+    400 rather than 409: unlike `Invalid`, nothing is being asked of the resource
+    at all — the request itself is malformed, and answering it would mean
+    returning a set the caller believes is filtered when it is not.
+    """
+
+    code = "unknown_parameter"
+    status = 400

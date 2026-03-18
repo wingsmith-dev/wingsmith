@@ -1,5 +1,6 @@
 import pytest
 
+from litestar.testing import TestClient
 from litestar.testing import create_test_client
 
 from app.core import ids
@@ -129,3 +130,57 @@ def test_plane_errors_render_as_the_contract_envelope():
         "message": "no cluster 'iad-9'",
         "detail": {"ref": "iad-9"},
     }
+
+
+def test_unknown_query_parameter_is_rejected_with_the_contract_envelope():
+    with TestClient(app=create_app()) as client:
+        response = client.get("/v1/nodes", params={"status": "ready"})
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["code"] == "unknown_parameter"
+    assert body["detail"]["unknown"] == ["status"]
+    assert "cordoned" in body["detail"]["accepted"]
+
+
+def test_known_query_parameter_passes_the_gate():
+    with TestClient(app=create_app()) as client:
+        response = client.get("/v1/nodes", params={"cordoned": "true"})
+
+    assert response.json().get("code") != "unknown_parameter"
+
+
+def test_repeated_label_is_accepted():
+    with TestClient(app=create_app()) as client:
+        response = client.get("/v1/nodes?label=tier%3Dgold&label=zone%3Da")
+
+    assert response.json().get("code") != "unknown_parameter"
+
+
+def test_a_filter_valid_on_one_collection_is_rejected_on_another():
+    """`severity` is an events filter; nodes does not declare it."""
+    with TestClient(app=create_app()) as client:
+        assert client.get("/v1/events", params={"severity": "warning"}).json().get("code") != "unknown_parameter"
+        rejected = client.get("/v1/nodes", params={"severity": "warning"})
+
+    assert rejected.status_code == 400
+    assert rejected.json()["detail"]["unknown"] == ["severity"]
+
+
+def test_aliased_parameter_is_accepted_under_its_wire_name():
+    """`/v1/devices` declares `device_class` as `Parameter(query="class")`."""
+    with TestClient(app=create_app()) as client:
+        accepted = client.get("/v1/devices", params={"class": "h100"})
+        rejected = client.get("/v1/devices", params={"device_class": "h100"})
+
+    assert accepted.json().get("code") != "unknown_parameter"
+    assert rejected.status_code == 400
+    assert rejected.json()["detail"]["unknown"] == ["device_class"]
+
+
+def test_health_is_unaffected():
+    with TestClient(app=create_app()) as client:
+        response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": True}

@@ -32,6 +32,16 @@ breaking every client, and lists that never paginate are a temporary condition.
 `code` is the contract; `message` is for people. HTTP status carries the same information for
 anything that only speaks status codes, but clients should branch on `code`.
 
+**Unknown query parameters are rejected**, `400` with `code: "unknown_parameter"`, and `detail`
+carrying `unknown` (the offending names) and `accepted` (everything that route declares). The
+default web-framework behaviour — ignore what you do not recognise — is the wrong one for a
+filtered collection: a misspelt, retired, or invented filter answers `200 OK` with the whole set,
+and the response is indistinguishable from a correctly filtered one. A silently ignored filter is
+a lie the caller cannot detect, and both clients shipped months of it. The accepted set is derived
+from the matched handler's own signature at request time, under each parameter's wire name, so
+aliases (`?class=`), repeated params (`?label=k=v&label=...`), and new filters need no registration
+anywhere. `/health` and the OpenAPI routes are exempt.
+
 ## 2. Identity and scope
 
 - `Authorization: Bearer <token>` — **stubbed**. One static token, no user auth, no rotation.
