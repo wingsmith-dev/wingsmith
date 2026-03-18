@@ -1,9 +1,11 @@
 import {
-  ConflictError,
-  NotFoundError,
   registerFixtures,
   type FixtureContext,
-} from "@/lib/api"
+} from "@/lib/api/fixtures"
+import {
+  ConflictError,
+  NotFoundError,
+} from "@/lib/api/transport"
 import {
   OPERATION_TYPES,
   isOpen,

@@ -1,13 +1,15 @@
 import {
-  ConflictError,
-  NotFoundError,
   matchesLabels,
   matchesSearch,
   page,
   registerFixtures,
   type FixtureContext,
   type FixtureQuery,
-} from "@/lib/api"
+} from "@/lib/api/fixtures"
+import {
+  ConflictError,
+  NotFoundError,
+} from "@/lib/api/transport"
 
 /** Every object the plane can return has at least an id. */
 interface Row {
