@@ -148,6 +148,20 @@ export interface Pool {
   within_declared_bounds: boolean
 }
 
+export interface PoolCreateRequest {
+  /** The plane's field is `cluster` and takes an id or a name, not `cluster_id`. */
+  cluster: string
+  name: string
+  device_class: string
+  devices_per_node?: number
+  node_shape?: Record<string, unknown>
+  min_nodes?: number
+  max_nodes?: number
+  labels?: Record<string, string>
+  taints?: unknown[]
+  enabled?: boolean
+}
+
 export interface PoolUpdateRequest {
   device_class?: string
   devices_per_node?: number

@@ -1,5 +1,6 @@
 import type { Column } from "@/components/layout/data-table"
 import { Dash, Id } from "@/components/layout/mono"
+import { ResourceCell } from "@/components/layout/resource-cell"
 import { Badge } from "@/components/ui/badge"
 import { formatRelative } from "@/lib/format"
 import { gibibytes, topologyKindLabel, unhealthyCount } from "@/modules/supply/display"
@@ -20,13 +21,15 @@ export function nodeColumns(options: { showCluster?: boolean; showPool?: boolean
       key: "name",
       header: "Node",
       cell: (node) => (
-        <Link
-          to="/nodes/$nodeId"
-          params={{ nodeId: node.id }}
-          className="block font-mono text-xs hover:underline"
-        >
-          {node.name}
-        </Link>
+        <ResourceCell kind="node">
+          <Link
+            to="/nodes/$nodeId"
+            params={{ nodeId: node.id }}
+            className="block truncate font-mono text-xs hover:underline"
+          >
+            {node.name}
+          </Link>
+        </ResourceCell>
       ),
     },
   ]
@@ -138,14 +141,16 @@ export function deviceColumns(options: { showNode?: boolean; showTopology?: bool
       key: "uuid",
       header: "Device",
       cell: (device) => (
-        <Link
-          to="/devices/$deviceId"
-          params={{ deviceId: device.id }}
-          className="block font-mono text-xs hover:underline"
-        >
-          {device.device_uuid}
-          <span className="ml-2 text-muted-foreground/50">#{device.device_index}</span>
-        </Link>
+        <ResourceCell kind="device">
+          <Link
+            to="/devices/$deviceId"
+            params={{ deviceId: device.id }}
+            className="block font-mono text-xs hover:underline"
+          >
+            {device.device_uuid}
+            <span className="ml-2 text-muted-foreground/50">#{device.device_index}</span>
+          </Link>
+        </ResourceCell>
       ),
     },
   ]
@@ -247,14 +252,16 @@ export function topologyColumns(): Column<TopologyDomain>[] {
       key: "identifier",
       header: "Domain",
       cell: (domain) => (
-        <Link
-          to="/devices"
-          search={{ domain: domain.id }}
-          className="block font-mono text-xs hover:underline"
-        >
-          {domain.identifier}
-          <Id value={domain.id} className="ml-2" />
-        </Link>
+        <ResourceCell kind="topology-domain">
+          <Link
+            to="/devices"
+            search={{ domain: domain.id }}
+            className="block font-mono text-xs hover:underline"
+          >
+            {domain.identifier}
+            <Id value={domain.id} className="ml-2" />
+          </Link>
+        </ResourceCell>
       ),
     },
     {

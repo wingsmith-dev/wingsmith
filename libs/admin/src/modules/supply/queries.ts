@@ -1,6 +1,8 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
+  createPool,
+  deletePool,
   fetchDevice,
   fetchDevices,
   fetchNode,
@@ -8,11 +10,13 @@ import {
   fetchPool,
   fetchPools,
   fetchTopologyDomains,
+  updatePool,
   type DeviceFilters,
   type NodeFilters,
   type PoolFilters,
   type TopologyFilters,
 } from "./api"
+import type { PoolCreateRequest, PoolUpdateRequest } from "./types"
 
 export function useNodes(filters: NodeFilters = {}) {
   return useCursorList(["nodes", filters], (cursor) => fetchNodes(filters, cursor))
@@ -64,5 +68,31 @@ export function usePool(ref: string) {
     queryKey: ["pools", "detail", ref],
     queryFn: () => fetchPool(ref),
     enabled: !!ref,
+  })
+}
+
+export function useCreatePool() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: PoolCreateRequest) => createPool(body),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["pools"] }),
+  })
+}
+
+/** Conditional on `revision`; a stale edit is refused rather than merged. */
+export function useUpdatePool() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { ref: string; body: PoolUpdateRequest; revision?: string }) =>
+      updatePool(vars.ref, vars.body, vars.revision),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["pools"] }),
+  })
+}
+
+export function useDeletePool() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) => deletePool(ref),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["pools"] }),
   })
 }

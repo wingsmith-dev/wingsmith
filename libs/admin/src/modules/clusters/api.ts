@@ -1,5 +1,5 @@
 import { api, type ListResponse } from "@/lib/api"
-import type { Cluster, ClusterUpdateRequest } from "./types"
+import type { Cluster, ClusterCreateRequest, ClusterUpdateRequest } from "./types"
 
 export interface ClusterFilters {
   region?: string
@@ -17,6 +17,10 @@ export function fetchClusters(
   return api.list<Cluster>("/clusters", { ...filters, cursor, limit })
 }
 
+export function createCluster(body: ClusterCreateRequest): Promise<Cluster> {
+  return api.post<Cluster>("/clusters", body)
+}
+
 /** Resolves by id or by name — `contract/API.md` §3 accepts either. */
 export function fetchCluster(ref: string): Promise<Cluster> {
   return api.get<Cluster>(`/clusters/${encodeURIComponent(ref)}`)
@@ -31,4 +35,8 @@ export function updateCluster(
   return api.patch<Cluster>(`/clusters/${encodeURIComponent(ref)}`, body, {
     ifMatch: revision,
   })
+}
+
+export function deleteCluster(ref: string): Promise<void> {
+  return api.delete<void>(`/clusters/${encodeURIComponent(ref)}`)
 }

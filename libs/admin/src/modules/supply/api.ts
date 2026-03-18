@@ -1,5 +1,12 @@
 import { api, type ListResponse } from "@/lib/api"
-import type { Device, Pool, PoolUpdateRequest, SupplyNode, TopologyDomain } from "./types"
+import type {
+  Device,
+  Pool,
+  PoolCreateRequest,
+  PoolUpdateRequest,
+  SupplyNode,
+  TopologyDomain,
+} from "./types"
 
 /**
  * Every filter name below is the plane's, not the console's. Litestar drops
@@ -99,4 +106,12 @@ export function updatePool(
   return api.patch<Pool>(`/pools/${encodeURIComponent(ref)}`, body, {
     ifMatch: revision,
   })
+}
+
+export function createPool(body: PoolCreateRequest): Promise<Pool> {
+  return api.post<Pool>("/pools", body)
+}
+
+export function deletePool(ref: string): Promise<void> {
+  return api.delete<void>(`/pools/${encodeURIComponent(ref)}`)
 }

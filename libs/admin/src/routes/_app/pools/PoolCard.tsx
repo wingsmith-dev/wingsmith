@@ -1,5 +1,7 @@
+import { RowActions } from "@/components/layout/destructive"
 import { Field } from "@/components/layout/field"
 import { Labels } from "@/components/layout/mono"
+import { ResourceGlyph } from "@/components/layout/resource-icon"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
@@ -34,13 +36,22 @@ function shapeLabel(shape: Record<string, unknown>): string {
  * rather than a comparison re-derived here, so the console and `hgr` cannot
  * disagree about whether a pool is outside what was asked for.
  */
-export function PoolCard({ pool }: { pool: Pool }) {
+export function PoolCard({
+  pool,
+  onEdit,
+  onDelete,
+}: {
+  pool: Pool
+  onEdit?: () => void
+  onDelete?: () => void
+}) {
   const { membership } = pool
   const span = Math.max(pool.max_nodes, 1)
 
   return (
     <Card className="overflow-hidden p-0">
-      <div className="flex flex-wrap items-baseline gap-3 border-b bg-muted/30 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3 border-b bg-muted/30 px-4 py-3">
+        <ResourceGlyph kind="pool" size="sm" />
         <Link
           to="/pools/$poolId"
           params={{ poolId: pool.id }}
@@ -56,7 +67,7 @@ export function PoolCard({ pool }: { pool: Pool }) {
         >
           {pool.cluster_id}
         </Link>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex items-center gap-2">
           {!pool.enabled && (
             <Badge variant="outline" className="font-mono text-2xs">
               disabled
@@ -70,6 +81,14 @@ export function PoolCard({ pool }: { pool: Pool }) {
               outside declared bounds
             </Badge>
           )}
+          <RowActions
+            actions={[
+              ...(onEdit ? [{ label: "Edit", onSelect: onEdit }] : []),
+              ...(onDelete
+                ? [{ label: "Delete", onSelect: onDelete, destructive: true }]
+                : []),
+            ]}
+          />
         </div>
       </div>
 

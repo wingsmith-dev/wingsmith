@@ -1,6 +1,14 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAllPages, useCursorList } from "@/lib/paginate"
-import { fetchCluster, fetchClusters, type ClusterFilters } from "./api"
+import {
+  createCluster,
+  deleteCluster,
+  fetchCluster,
+  fetchClusters,
+  updateCluster,
+  type ClusterFilters,
+} from "./api"
+import type { ClusterCreateRequest, ClusterUpdateRequest } from "./types"
 
 export function useClusters(filters: ClusterFilters = {}) {
   return useCursorList(["clusters", filters], (cursor) =>
@@ -18,5 +26,37 @@ export function useCluster(ref: string) {
     queryKey: ["clusters", "detail", ref],
     queryFn: () => fetchCluster(ref),
     enabled: !!ref,
+  })
+}
+
+export function useCreateCluster() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: ClusterCreateRequest) => createCluster(body),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["clusters"] }),
+  })
+}
+
+/**
+ * Carries the cluster's `revision` as `If-Match`, so an edit written against a
+ * stale read is rejected by the plane rather than silently overwriting it.
+ */
+export function useUpdateCluster() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { ref: string; body: ClusterUpdateRequest; revision?: string }) =>
+      updateCluster(vars.ref, vars.body, vars.revision),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["clusters"] }),
+  })
+}
+
+export function useDeleteCluster() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) => deleteCluster(ref),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["clusters"] })
+      client.invalidateQueries({ queryKey: ["pools"] })
+    },
   })
 }

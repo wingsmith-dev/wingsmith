@@ -42,6 +42,17 @@ export interface Cluster {
   sync: ClusterSync
 }
 
+export interface ClusterCreateRequest {
+  name: string
+  region: string
+  display_name?: string | null
+  zone?: string | null
+  residency?: string | null
+  phase?: ClusterPhase
+  labels?: Record<string, string>
+  capabilities?: Record<string, unknown>
+}
+
 export interface ClusterUpdateRequest {
   display_name?: string | null
   region?: string
