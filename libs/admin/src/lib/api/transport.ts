@@ -93,6 +93,22 @@ export class ConflictError extends PlaneError {
   }
 }
 
+/**
+ * Raised before a request leaves the browser when the console is in read-only
+ * mode. It is enforced here rather than only on the buttons, because a hidden
+ * button is a suggestion and a guarded transport is a guarantee.
+ */
+export class ReadOnlyError extends PlaneError {
+  constructor() {
+    super(
+      403,
+      "read_only",
+      "The console is in read-only mode. Turn it off in Settings to make changes."
+    )
+    this.name = "ReadOnlyError"
+  }
+}
+
 export function buildQueryString(query: RequestOptions["query"]): string {
   if (!query) return ""
   const params = new URLSearchParams()

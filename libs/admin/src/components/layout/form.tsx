@@ -20,6 +20,7 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import { ResourceIcon, type ResourceKind } from "@/components/layout/resource-icon"
 import { formatError } from "@/lib/format"
+import { useReadOnly } from "@/modules/settings/store"
 import { cn } from "@/lib/utils"
 import { useId, useState } from "react"
 
@@ -54,6 +55,7 @@ export function FormDialog({
   onSubmit: () => void
   wide?: boolean
 }>) {
+  const readOnly = useReadOnly()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={cn("max-h-[85vh] overflow-y-auto", wide && "sm:max-w-2xl")}>
@@ -69,10 +71,17 @@ export function FormDialog({
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault()
-            if (!disabled && !pending) onSubmit()
+            if (!disabled && !pending && !readOnly) onSubmit()
           }}
         >
           {children}
+
+          {readOnly && (
+            <p className="rounded-md border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+              The console is in read-only mode. Turn it off in Settings to make
+              changes.
+            </p>
+          )}
 
           {!!error && (
             <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
@@ -84,7 +93,7 @@ export function FormDialog({
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={disabled || pending}>
+            <Button type="submit" disabled={disabled || pending || readOnly}>
               {pending ? "Saving…" : submitLabel}
             </Button>
           </DialogFooter>

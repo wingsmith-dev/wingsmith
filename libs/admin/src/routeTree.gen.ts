@@ -28,6 +28,7 @@ import { Route as AppPriorityClassesRouteRouteImport } from './routes/_app/prior
 import { Route as AppProjectsRouteRouteImport } from './routes/_app/projects/route'
 import { Route as AppQuotasRouteRouteImport } from './routes/_app/quotas/route'
 import { Route as AppRecipesRouteRouteImport } from './routes/_app/recipes/route'
+import { Route as AppSettingsRouteRouteImport } from './routes/_app/settings/route'
 import { Route as AppClustersClusterIdRouteRouteImport } from './routes/_app/clusters/$clusterId/route'
 import { Route as AppDeploymentsDeploymentIdRouteRouteImport } from './routes/_app/deployments/$deploymentId/route'
 import { Route as AppDevicesDeviceIdRouteRouteImport } from './routes/_app/devices/$deviceId/route'
@@ -130,6 +131,11 @@ const AppRecipesRouteRoute = AppRecipesRouteRouteImport.update({
   path: '/recipes',
   getParentRoute: () => AppRoute,
 } as any)
+const AppSettingsRouteRoute = AppSettingsRouteRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppClustersClusterIdRouteRoute =
   AppClustersClusterIdRouteRouteImport.update({
     id: '/$clusterId',
@@ -189,6 +195,7 @@ export interface FileRoutesByFullPath {
   '/projects': typeof AppProjectsRouteRoute
   '/quotas': typeof AppQuotasRouteRoute
   '/recipes': typeof AppRecipesRouteRoute
+  '/settings': typeof AppSettingsRouteRoute
   '/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
   '/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
@@ -216,6 +223,7 @@ export interface FileRoutesByTo {
   '/projects': typeof AppProjectsRouteRoute
   '/quotas': typeof AppQuotasRouteRoute
   '/recipes': typeof AppRecipesRouteRoute
+  '/settings': typeof AppSettingsRouteRoute
   '/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
   '/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
@@ -245,6 +253,7 @@ export interface FileRoutesById {
   '/_app/projects': typeof AppProjectsRouteRoute
   '/_app/quotas': typeof AppQuotasRouteRoute
   '/_app/recipes': typeof AppRecipesRouteRoute
+  '/_app/settings': typeof AppSettingsRouteRoute
   '/_app/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
   '/_app/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/_app/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
@@ -274,6 +283,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/quotas'
     | '/recipes'
+    | '/settings'
     | '/clusters/$clusterId'
     | '/deployments/$deploymentId'
     | '/devices/$deviceId'
@@ -301,6 +311,7 @@ export interface FileRouteTypes {
     | '/projects'
     | '/quotas'
     | '/recipes'
+    | '/settings'
     | '/clusters/$clusterId'
     | '/deployments/$deploymentId'
     | '/devices/$deviceId'
@@ -329,6 +340,7 @@ export interface FileRouteTypes {
     | '/_app/projects'
     | '/_app/quotas'
     | '/_app/recipes'
+    | '/_app/settings'
     | '/_app/clusters/$clusterId'
     | '/_app/deployments/$deploymentId'
     | '/_app/devices/$deviceId'
@@ -477,6 +489,13 @@ declare module '@tanstack/react-router' {
       path: '/recipes'
       fullPath: '/recipes'
       preLoaderRoute: typeof AppRecipesRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/settings': {
+      id: '/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AppSettingsRouteRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/clusters/$clusterId': {
@@ -628,6 +647,7 @@ interface AppRouteChildren {
   AppProjectsRouteRoute: typeof AppProjectsRouteRoute
   AppQuotasRouteRoute: typeof AppQuotasRouteRoute
   AppRecipesRouteRoute: typeof AppRecipesRouteRoute
+  AppSettingsRouteRoute: typeof AppSettingsRouteRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -647,6 +667,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppProjectsRouteRoute: AppProjectsRouteRoute,
   AppQuotasRouteRoute: AppQuotasRouteRoute,
   AppRecipesRouteRoute: AppRecipesRouteRoute,
+  AppSettingsRouteRoute: AppSettingsRouteRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

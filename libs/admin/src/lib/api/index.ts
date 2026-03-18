@@ -1,7 +1,9 @@
 import "@/modules/fixtures"
 
+import { isReadOnly } from "@/modules/settings/store"
 import { fixtureTransport } from "./fixtures"
 import { httpTransport } from "./http"
+import { ReadOnlyError } from "./transport"
 import type {
   HttpMethod,
   ListResponse,
@@ -19,6 +21,7 @@ export const transport: Transport =
   import.meta.env.VITE_API_MODE === "fixtures" ? fixtureTransport : httpTransport
 
 function call<T>(method: HttpMethod, path: string, options?: RequestOptions) {
+  if (method !== "GET" && isReadOnly()) return Promise.reject(new ReadOnlyError())
   return transport.request<T>(method, path, options)
 }
 
@@ -44,6 +47,7 @@ export {
   NotAuthorizedError,
   NotFoundError,
   PlaneError,
+  ReadOnlyError,
 } from "./transport"
 export type {
   HttpMethod,

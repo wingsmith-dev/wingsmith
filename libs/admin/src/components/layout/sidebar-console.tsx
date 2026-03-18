@@ -13,7 +13,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { transport } from "@/lib/api"
 import { ResourceIcon, type ResourceKind } from "@/components/layout/resource-icon"
-import { IconLogout, IconTopologyStar3 } from "@tabler/icons-react"
+import { IconLogout, IconSettings, IconTopologyStar3 } from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
 import { useAuthStore } from "@/modules/auth/store"
 
@@ -23,31 +23,41 @@ const overviewItems: NavItem[] = [
   { label: "Overview", to: "/overview", kind: "overview" },
 ]
 
-const supplyItems: NavItem[] = [
+/**
+ * Grouped by what an operator came to do, not by the domain model. Supply,
+ * demand, binding and machinery are the right vocabulary in the code and the
+ * docs; in a sidebar they ask the reader to translate before they can navigate.
+ * Within each group the operated thing comes before the thing that defines it —
+ * an endpoint has a URL and users, a recipe is something you wrote last week.
+ */
+const servingItems: NavItem[] = [
+  { label: "Endpoints", to: "/endpoints", kind: "endpoint" },
+  { label: "Deployments", to: "/deployments", kind: "deployment" },
+]
+
+const catalogItems: NavItem[] = [
+  { label: "Recipes", to: "/recipes", kind: "recipe" },
+  { label: "Artifacts", to: "/artifacts", kind: "artifact" },
+]
+
+const fleetItems: NavItem[] = [
   { label: "Clusters", to: "/clusters", kind: "cluster" },
+  { label: "Pools", to: "/pools", kind: "pool" },
   { label: "Nodes", to: "/nodes", kind: "node" },
   { label: "Devices", to: "/devices", kind: "device" },
-  { label: "Pools", to: "/pools", kind: "pool" },
 ]
 
-const demandItems: NavItem[] = [
-  { label: "Artifacts", to: "/artifacts", kind: "artifact" },
-  { label: "Recipes", to: "/recipes", kind: "recipe" },
-  { label: "Deployments", to: "/deployments", kind: "deployment" },
-  { label: "Endpoints", to: "/endpoints", kind: "endpoint" },
-]
-
-const bindingItems: NavItem[] = [
+const accessItems: NavItem[] = [
   { label: "Projects", to: "/projects", kind: "project" },
   { label: "Quotas", to: "/quotas", kind: "quota" },
   { label: "Priority classes", to: "/priority-classes", kind: "priority-class" },
   { label: "Policies", to: "/policies", kind: "policy" },
 ]
 
-const machineryItems: NavItem[] = [
+const activityItems: NavItem[] = [
   { label: "Operations", to: "/operations", kind: "operation" },
-  { label: "Allocations", to: "/allocations", kind: "allocation" },
   { label: "Events", to: "/events", kind: "event" },
+  { label: "Allocations", to: "/allocations", kind: "allocation" },
 ]
 
 const activeClass =
@@ -121,14 +131,28 @@ export function ConsoleSidebar({ ...props }: React.ComponentProps<typeof Sidebar
 
       <SidebarContent>
         <NavGroup items={overviewItems} pathname={pathname} />
-        <NavGroup label="Supply" items={supplyItems} pathname={pathname} />
-        <NavGroup label="Demand" items={demandItems} pathname={pathname} />
-        <NavGroup label="Binding" items={bindingItems} pathname={pathname} />
-        <NavGroup label="Machinery" items={machineryItems} pathname={pathname} />
+        <NavGroup label="Serving" items={servingItems} pathname={pathname} />
+        <NavGroup label="Catalog" items={catalogItems} pathname={pathname} />
+        <NavGroup label="Fleet" items={fleetItems} pathname={pathname} />
+        <NavGroup label="Access" items={accessItems} pathname={pathname} />
+        <NavGroup label="Activity" items={activityItems} pathname={pathname} />
       </SidebarContent>
 
       <SidebarFooter className="p-2">
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              asChild
+              isActive={pathname.startsWith("/settings")}
+              tooltip="Settings"
+              className={activeClass}
+            >
+              <Link to="/settings">
+                <IconSettings />
+                <span>Settings</span>
+              </Link>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               tooltip={operator?.email ?? "Sign out"}

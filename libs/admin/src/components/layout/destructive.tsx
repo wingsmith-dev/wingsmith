@@ -18,6 +18,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { ResourceIcon, type ResourceKind } from "@/components/layout/resource-icon"
 import { formatError } from "@/lib/format"
+import { useReadOnly } from "@/modules/settings/store"
 import { IconDotsVertical } from "@tabler/icons-react"
 
 /**
@@ -45,6 +46,7 @@ export function DeleteDialog({
   pending?: boolean
   onConfirm: () => void
 }) {
+  const readOnly = useReadOnly()
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent>
@@ -72,7 +74,7 @@ export function DeleteDialog({
               e.preventDefault()
               onConfirm()
             }}
-            disabled={pending}
+            disabled={pending || readOnly}
             className="bg-destructive text-white hover:bg-destructive/90"
           >
             {pending ? "Deleting…" : "Delete"}
@@ -89,9 +91,13 @@ export interface RowAction {
   destructive?: boolean
 }
 
-/** The trailing `⋮` on a row or card. Stops the click reaching the row link. */
+/**
+ * The trailing `⋮` on a row or card. Stops the click reaching the row link, and
+ * disappears entirely in read-only mode — every action it carries is a write.
+ */
 export function RowActions({ actions }: { actions: RowAction[] }) {
-  if (actions.length === 0) return null
+  const readOnly = useReadOnly()
+  if (readOnly || actions.length === 0) return null
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>

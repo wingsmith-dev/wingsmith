@@ -1,10 +1,14 @@
 import { SidebarTrigger } from "@/components/ui/sidebar"
+import { WriteAction } from "@/components/layout/write-action"
 import { cn } from "@/lib/utils"
 
 interface PageHeaderProps {
   title: string
   description?: string
+  /** Suppressed in read-only mode: every header action starts a write. */
   actions?: React.ReactNode
+  /** Actions that read rather than write, and so survive read-only mode. */
+  readActions?: React.ReactNode
   className?: string
 }
 
@@ -12,6 +16,7 @@ export function PageHeader({
   title,
   description,
   actions,
+  readActions,
   className,
 }: PageHeaderProps) {
   return (
@@ -34,7 +39,12 @@ export function PageHeader({
             </p>
           )}
         </div>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
+        {(actions || readActions) && (
+          <div className="flex items-center gap-2">
+            {readActions}
+            {actions && <WriteAction>{actions}</WriteAction>}
+          </div>
+        )}
       </div>
     </header>
   )
