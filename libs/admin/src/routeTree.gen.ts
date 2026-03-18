@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteRouteImport } from './routes/login/route'
 import { Route as AppAllocationsRouteRouteImport } from './routes/_app/allocations/route'
@@ -20,6 +21,7 @@ import { Route as AppEndpointsRouteRouteImport } from './routes/_app/endpoints/r
 import { Route as AppEventsRouteRouteImport } from './routes/_app/events/route'
 import { Route as AppNodesRouteRouteImport } from './routes/_app/nodes/route'
 import { Route as AppOperationsRouteRouteImport } from './routes/_app/operations/route'
+import { Route as AppOverviewRouteRouteImport } from './routes/_app/overview/route'
 import { Route as AppPoliciesRouteRouteImport } from './routes/_app/policies/route'
 import { Route as AppPoolsRouteRouteImport } from './routes/_app/pools/route'
 import { Route as AppPriorityClassesRouteRouteImport } from './routes/_app/priority-classes/route'
@@ -34,6 +36,11 @@ import { Route as AppNodesNodeIdRouteRouteImport } from './routes/_app/nodes/$no
 import { Route as AppOperationsOperationIdRouteRouteImport } from './routes/_app/operations/$operationId/route'
 import { Route as AppPoolsPoolIdRouteRouteImport } from './routes/_app/pools/$poolId/route'
 
+const IndexRoute = IndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -86,6 +93,11 @@ const AppNodesRouteRoute = AppNodesRouteRouteImport.update({
 const AppOperationsRouteRoute = AppOperationsRouteRouteImport.update({
   id: '/operations',
   path: '/operations',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppOverviewRouteRoute = AppOverviewRouteRouteImport.update({
+  id: '/overview',
+  path: '/overview',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPoliciesRouteRoute = AppPoliciesRouteRouteImport.update({
@@ -159,8 +171,8 @@ const AppPoolsPoolIdRouteRoute = AppPoolsPoolIdRouteRouteImport.update({
 } as any)
 
 export interface FileRoutesByFullPath {
+  '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
-  '/': typeof AppRouteWithChildren
   '/allocations': typeof AppAllocationsRouteRoute
   '/artifacts': typeof AppArtifactsRouteRoute
   '/clusters': typeof AppClustersRouteRouteWithChildren
@@ -170,6 +182,7 @@ export interface FileRoutesByFullPath {
   '/events': typeof AppEventsRouteRoute
   '/nodes': typeof AppNodesRouteRouteWithChildren
   '/operations': typeof AppOperationsRouteRouteWithChildren
+  '/overview': typeof AppOverviewRouteRoute
   '/policies': typeof AppPoliciesRouteRoute
   '/pools': typeof AppPoolsRouteRouteWithChildren
   '/priority-classes': typeof AppPriorityClassesRouteRoute
@@ -185,8 +198,8 @@ export interface FileRoutesByFullPath {
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
 }
 export interface FileRoutesByTo {
+  '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
-  '/': typeof AppRouteWithChildren
   '/allocations': typeof AppAllocationsRouteRoute
   '/artifacts': typeof AppArtifactsRouteRoute
   '/clusters': typeof AppClustersRouteRouteWithChildren
@@ -196,6 +209,7 @@ export interface FileRoutesByTo {
   '/events': typeof AppEventsRouteRoute
   '/nodes': typeof AppNodesRouteRouteWithChildren
   '/operations': typeof AppOperationsRouteRouteWithChildren
+  '/overview': typeof AppOverviewRouteRoute
   '/policies': typeof AppPoliciesRouteRoute
   '/pools': typeof AppPoolsRouteRouteWithChildren
   '/priority-classes': typeof AppPriorityClassesRouteRoute
@@ -212,6 +226,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
   '/_app': typeof AppRouteWithChildren
   '/_app/allocations': typeof AppAllocationsRouteRoute
@@ -223,6 +238,7 @@ export interface FileRoutesById {
   '/_app/events': typeof AppEventsRouteRoute
   '/_app/nodes': typeof AppNodesRouteRouteWithChildren
   '/_app/operations': typeof AppOperationsRouteRouteWithChildren
+  '/_app/overview': typeof AppOverviewRouteRoute
   '/_app/policies': typeof AppPoliciesRouteRoute
   '/_app/pools': typeof AppPoolsRouteRouteWithChildren
   '/_app/priority-classes': typeof AppPriorityClassesRouteRoute
@@ -240,8 +256,8 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/login'
     | '/'
+    | '/login'
     | '/allocations'
     | '/artifacts'
     | '/clusters'
@@ -251,6 +267,7 @@ export interface FileRouteTypes {
     | '/events'
     | '/nodes'
     | '/operations'
+    | '/overview'
     | '/policies'
     | '/pools'
     | '/priority-classes'
@@ -266,8 +283,8 @@ export interface FileRouteTypes {
     | '/pools/$poolId'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/login'
     | '/'
+    | '/login'
     | '/allocations'
     | '/artifacts'
     | '/clusters'
@@ -277,6 +294,7 @@ export interface FileRouteTypes {
     | '/events'
     | '/nodes'
     | '/operations'
+    | '/overview'
     | '/policies'
     | '/pools'
     | '/priority-classes'
@@ -292,6 +310,7 @@ export interface FileRouteTypes {
     | '/pools/$poolId'
   id:
     | '__root__'
+    | '/'
     | '/login'
     | '/_app'
     | '/_app/allocations'
@@ -303,6 +322,7 @@ export interface FileRouteTypes {
     | '/_app/events'
     | '/_app/nodes'
     | '/_app/operations'
+    | '/_app/overview'
     | '/_app/policies'
     | '/_app/pools'
     | '/_app/priority-classes'
@@ -319,12 +339,20 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  IndexRoute: typeof IndexRoute
   LoginRouteRoute: typeof LoginRouteRoute
   AppRoute: typeof AppRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/': {
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -400,6 +428,13 @@ declare module '@tanstack/react-router' {
       path: '/operations'
       fullPath: '/operations'
       preLoaderRoute: typeof AppOperationsRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/overview': {
+      id: '/_app/overview'
+      path: '/overview'
+      fullPath: '/overview'
+      preLoaderRoute: typeof AppOverviewRouteRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/policies': {
@@ -586,6 +621,7 @@ interface AppRouteChildren {
   AppEventsRouteRoute: typeof AppEventsRouteRoute
   AppNodesRouteRoute: typeof AppNodesRouteRouteWithChildren
   AppOperationsRouteRoute: typeof AppOperationsRouteRouteWithChildren
+  AppOverviewRouteRoute: typeof AppOverviewRouteRoute
   AppPoliciesRouteRoute: typeof AppPoliciesRouteRoute
   AppPoolsRouteRoute: typeof AppPoolsRouteRouteWithChildren
   AppPriorityClassesRouteRoute: typeof AppPriorityClassesRouteRoute
@@ -604,6 +640,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppEventsRouteRoute: AppEventsRouteRoute,
   AppNodesRouteRoute: AppNodesRouteRouteWithChildren,
   AppOperationsRouteRoute: AppOperationsRouteRouteWithChildren,
+  AppOverviewRouteRoute: AppOverviewRouteRoute,
   AppPoliciesRouteRoute: AppPoliciesRouteRoute,
   AppPoolsRouteRoute: AppPoolsRouteRouteWithChildren,
   AppPriorityClassesRouteRoute: AppPriorityClassesRouteRoute,
@@ -615,6 +652,7 @@ const AppRouteChildren: AppRouteChildren = {
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
+  IndexRoute: IndexRoute,
   LoginRouteRoute: LoginRouteRoute,
   AppRoute: AppRouteWithChildren,
 }

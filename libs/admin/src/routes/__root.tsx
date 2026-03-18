@@ -19,7 +19,7 @@ export const Route = createRootRoute({
   beforeLoad: ({ location }) => {
     if (location.pathname !== "/") return
     const { isAuthenticated } = useAuthStore.getState()
-    throw redirect({ to: isAuthenticated ? "/clusters" : "/login" })
+    throw redirect({ to: isAuthenticated ? "/overview" : "/login" })
   },
   errorComponent: RootErrorComponent,
   component: RootComponent,
