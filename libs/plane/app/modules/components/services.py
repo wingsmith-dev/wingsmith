@@ -157,7 +157,7 @@ class ComponentService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"component {data.name!r} already exists in {data.cluster!r}") from exc
-        return self.schema(component, cluster.uid, None)
+        return await self.get(component.uid)
 
     async def update(
         self, ref: str, data: ComponentUpdateRequest, if_match: str | None = None, cluster: str | None = None
@@ -185,7 +185,7 @@ class ComponentService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("component conflicts with an existing one") from exc
-        return self.schema(component, row.cluster_uid, await self.repo.status(component.id))
+        return await self.get(component.uid)
 
     async def delete(self, ref: str, cluster: str | None = None) -> None:
         """Deletes the declaration; the status row goes with it by cascade.

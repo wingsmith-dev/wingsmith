@@ -157,10 +157,10 @@ class PoolService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"pool {data.name!r} already exists in {data.cluster!r}") from exc
-        return self.schema(pool, cluster.uid, EMPTY)
+        return await self.get(pool.uid)
 
     async def update(self, ref: str, data: PoolUpdateRequest, if_match: str | None = None) -> PoolSchema:
-        pool, cluster_uid = await self._one(ref)
+        pool, _ = await self._one(ref)
         if if_match is not None and if_match != _revision(pool):
             raise Conflict("pool changed since it was read", {"revision": _revision(pool)})
 
@@ -179,8 +179,7 @@ class PoolService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("pool conflicts with an existing one") from exc
-        rollup = await self.repo.membership([pool.id])
-        return self.schema(pool, cluster_uid, _membership(rollup.get(pool.id)))
+        return await self.get(pool.uid)
 
     async def delete(self, ref: str) -> None:
         """Refuses while the pool still has nodes in it.

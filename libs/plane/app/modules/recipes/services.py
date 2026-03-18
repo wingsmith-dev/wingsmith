@@ -224,10 +224,10 @@ class RecipeService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"recipe {data.name!r} version {data.version} already exists") from exc
-        return self.schema(recipe, artifact.uid)
+        return await self.get(recipe.uid)
 
     async def update(self, ref: str, data: RecipeUpdateRequest, if_match: str | None = None) -> RecipeSchema:
-        recipe, artifact_uid = await self._one(ref)
+        recipe, _ = await self._one(ref)
         if if_match is not None and if_match != _revision(recipe):
             raise Conflict("recipe changed since it was read", {"revision": _revision(recipe)})
 
@@ -256,7 +256,7 @@ class RecipeService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("recipe conflicts with an existing one") from exc
-        return self.schema(recipe, artifact_uid)
+        return await self.get(recipe.uid)
 
     async def delete(self, ref: str) -> None:
         """Refuses while a deployment still names the recipe.

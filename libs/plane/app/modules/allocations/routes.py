@@ -8,8 +8,8 @@ client deletes a row.
 `?device=dev_...` answers "which allocation holds this device right now" straight
 off the partial unique index that enforces one live holder per device.
 
-Ids are bare UUIDs: `Allocation` has no `uid` column and §3's prefix list has
-nothing for it.
+Ids are prefixed `alc_` uids, like every other resource, since the schema
+migration gave `Allocation` its own `uid` column.
 """
 
 from litestar import Response

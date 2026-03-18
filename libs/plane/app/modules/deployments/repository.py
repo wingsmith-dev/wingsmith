@@ -189,11 +189,15 @@ class DeploymentRepository:
         await self.db.flush()
         return deployment
 
-    async def delete(self, workload: Workload) -> None:
-        """Deletes the supertype; the deployment row cascades off it.
+    async def delete(self, workload: Workload, deployment: Deployment) -> None:
+        """Deletes the specialisation and then the supertype it hangs off.
 
-        Deleting the deployment alone would leave a workload with no
-        specialisation — a row the placement layer would still consider.
+        Deleting the workload alone would leave the ORM holding a loaded
+        `Workload.deployment`, which it detaches by nulling `workload_id` before
+        issuing the delete — a not-null column, so the delete fails on its way
+        out. The database would cascade either way; the order is what keeps the
+        unit of work from writing an impossible row first.
         """
+        await self.db.delete(deployment)
         await self.db.delete(workload)
         await self.db.flush()

@@ -214,7 +214,7 @@ class OperationService:
                 if replayed is not None:
                     return self._row_schema(replayed, await self._target_uid(replayed[0]))
             raise Conflict("operation could not be recorded") from exc
-        return self.schema(operation, await self.repo.cluster_uid(cluster_id), target.uid)
+        return await self.get(operation.uid)
 
     async def cancel(self, ref: str) -> OperationSchema:
         """Records that the plane wants the operation stopped.
@@ -243,4 +243,4 @@ class OperationService:
             operation.phase = "cancelled"
             operation.finished_at = operation.cancel_requested_at
         await self.db.commit()
-        return self._row_schema(row, await self._target_uid(operation))
+        return await self.get(operation.uid)

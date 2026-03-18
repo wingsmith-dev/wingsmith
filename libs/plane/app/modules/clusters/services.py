@@ -134,8 +134,7 @@ class ClusterService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"cluster {data.name!r} already exists") from exc
-        await self.db.refresh(cluster, ["sync_state"])
-        return self.schema(cluster)
+        return await self.get(cluster.uid)
 
     async def update(self, ref: str, data: ClusterUpdateRequest, if_match: str | None = None) -> ClusterSchema:
         cluster = await self.repo.get(ref)
@@ -155,8 +154,7 @@ class ClusterService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("cluster conflicts with an existing one") from exc
-        await self.db.refresh(cluster, ["sync_state"])
-        return self.schema(cluster)
+        return await self.get(cluster.uid)
 
     async def delete(self, ref: str) -> None:
         cluster = await self.repo.get(ref)

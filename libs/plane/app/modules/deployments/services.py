@@ -302,19 +302,7 @@ class DeploymentService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"deployment {data.name!r} already exists in {data.cluster!r}") from exc
-
-        adapters = await self.repo.adapter_uids(list(deployment.adapter_artifact_ids))
-        priority_class = await self.repo.priority_class_name(priority_class_id)
-        return self.schema(
-            deployment=deployment,
-            workload=workload,
-            cluster_uid=cluster.uid,
-            recipe_uid=recipe.uid,
-            project_uid=project.uid,
-            priority_class=priority_class or "",
-            adapter_uids=[adapters[i] for i in deployment.adapter_artifact_ids if i in adapters],
-            replicas=EMPTY,
-        )
+        return await self.get(deployment.uid)
 
     async def update(self, ref: str, data: DeploymentUpdateRequest, if_match: str | None = None) -> DeploymentSchema:
         row = await self._one(ref)
@@ -353,7 +341,7 @@ class DeploymentService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("deployment conflicts with an existing one") from exc
-        return await self._render(await self._one(deployment.uid))
+        return await self.get(deployment.uid)
 
     async def delete(self, ref: str) -> None:
         """Deletes the workload, which the deployment row cascades off.
@@ -364,5 +352,5 @@ class DeploymentService:
         a resurrection.
         """
         row = await self._one(ref)
-        await self.repo.delete(row[1])
+        await self.repo.delete(row[1], row[0])
         await self.db.commit()

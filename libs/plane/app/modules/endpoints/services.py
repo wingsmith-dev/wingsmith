@@ -207,12 +207,18 @@ class EndpointService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"endpoint {data.name!r} already exists") from exc
-        await self.db.refresh(endpoint, ["targets"])
-        return await self._render(endpoint, project.uid)
+        return await self.get(endpoint.uid)
 
     async def update(self, ref: str, data: EndpointUpdateRequest, if_match: str | None = None) -> EndpointSchema:
+        """Replaces the declared half, and the target set as a whole when it is given.
+
+        The replacement empties the collection and flushes before attaching the new
+        rows: `(endpoint_id, deployment_id)` is unique, and a single flush orders
+        every insert before the deletes, so re-weighting a target the endpoint
+        already has would collide with the row it is about to replace.
+        """
         row = await self._one(ref)
-        endpoint, project_uid = row[0], row.project_uid
+        endpoint = row[0]
         if if_match is not None and if_match != _revision(endpoint):
             raise Conflict("endpoint changed since it was read", {"revision": _revision(endpoint)})
 
@@ -228,6 +234,8 @@ class EndpointService:
                 raise Invalid("failover order can only be changed alongside the targets it orders")
             check_targets(targets)
             rows, order = await self._resolve(targets, fields.pop("failover_order", []))
+            endpoint.targets = []
+            await self.db.flush()
             endpoint.targets = rows
             endpoint.failover_order = order
 
@@ -239,8 +247,7 @@ class EndpointService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("endpoint conflicts with an existing one") from exc
-        await self.db.refresh(endpoint, ["targets"])
-        return await self._render(endpoint, project_uid)
+        return await self.get(endpoint.uid)
 
     async def delete(self, ref: str) -> None:
         """Deletes the endpoint and its targets; the deployments behind it stay.

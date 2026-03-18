@@ -123,21 +123,19 @@ class ArtifactService:
             raise Invalid("an artifact without a digest has no identity")
         check_locations(data.locations)
 
-        base_uid = None
         base_id = None
         if data.base_artifact is not None:
             base = await self.repo.artifact_by_ref(data.base_artifact)
             if base is None:
                 raise NotFound(f"no artifact {data.base_artifact!r}")
-            base_id, base_uid = base.id, base.uid
+            base_id = base.id
 
-        project_uid = None
         project_id = None
         if data.project is not None:
             project = await self.repo.project_by_ref(data.project)
             if project is None:
                 raise NotFound(f"no project {data.project!r}")
-            project_id, project_uid = project.id, project.uid
+            project_id = project.id
 
         artifact = Artifact(
             uid=new_uid(ARTIFACT),
@@ -162,11 +160,17 @@ class ArtifactService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"artifact {data.digest!r} already exists") from exc
-        await self.db.refresh(artifact, ["locations"])
-        return self.schema(artifact, base_uid, project_uid)
+        return await self.get(artifact.uid)
 
     async def update(self, ref: str, data: ArtifactUpdateRequest, if_match: str | None = None) -> ArtifactSchema:
-        artifact, base_uid, project_uid = await self._one(ref)
+        """Replaces the declared half, and the location set as a whole when it is given.
+
+        The replacement empties the collection and flushes before attaching the new
+        rows: `uri` is unique, and a single flush orders every insert before the
+        deletes, so keeping a location while changing its region would collide with
+        the row it is about to replace.
+        """
+        artifact, _, _ = await self._one(ref)
         if if_match is not None and if_match != _revision(artifact):
             raise Conflict("artifact changed since it was read", {"revision": _revision(artifact)})
 
@@ -179,16 +183,18 @@ class ArtifactService:
         if "project" in fields:
             ref_value = fields.pop("project")
             if ref_value is None:
-                artifact.project_id, project_uid = None, None
+                artifact.project_id = None
             else:
                 project = await self.repo.project_by_ref(ref_value)
                 if project is None:
                     raise NotFound(f"no project {ref_value!r}")
-                artifact.project_id, project_uid = project.id, project.uid
+                artifact.project_id = project.id
 
         if "locations" in fields:
             locations = fields.pop("locations")
             check_locations(locations)
+            artifact.locations = []
+            await self.db.flush()
             artifact.locations = [
                 ArtifactLocation(scheme=loc.scheme, uri=loc.uri, region=loc.region, preferred=loc.preferred)
                 for loc in locations
@@ -204,8 +210,7 @@ class ArtifactService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("artifact conflicts with an existing one") from exc
-        await self.db.refresh(artifact, ["locations"])
-        return self.schema(artifact, base_uid, project_uid)
+        return await self.get(artifact.uid)
 
     async def delete(self, ref: str) -> None:
         """Refuses while a recipe still names the artifact.

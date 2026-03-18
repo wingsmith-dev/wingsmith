@@ -107,7 +107,7 @@ class ProjectService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"project {data.slug!r} already exists in {data.tenant!r}") from exc
-        return self.schema(project, tenant, priority_class.name if priority_class else None)
+        return await self.get(project.uid)
 
     async def update(self, ref: str, data: ProjectUpdateRequest, if_match: str | None = None) -> ProjectSchema:
         row = await self._one(ref)
@@ -116,18 +116,15 @@ class ProjectService:
             raise Conflict("project changed since it was read", {"revision": _revision(project)})
 
         fields = data.to_dict(exclude_unset=True)
-        priority_class_name = row.default_priority_class
         if "default_priority_class" in fields:
             ref_value = fields.pop("default_priority_class")
             if ref_value is None:
                 project.default_priority_class_id = None
-                priority_class_name = None
             else:
                 priority_class = await self.repo.priority_class_by_ref(ref_value)
                 if priority_class is None:
                     raise NotFound(f"no priority class {ref_value!r}")
                 project.default_priority_class_id = priority_class.id
-                priority_class_name = priority_class.name
         for key, value in fields.items():
             setattr(project, key, value)
 
@@ -136,7 +133,7 @@ class ProjectService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("project conflicts with an existing one") from exc
-        return self.schema(project, row[1], priority_class_name)
+        return await self.get(project.uid)
 
     async def delete(self, ref: str) -> None:
         """A project holding workloads or allocations refuses to go.

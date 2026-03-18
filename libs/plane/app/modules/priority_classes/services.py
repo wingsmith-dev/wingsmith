@@ -110,7 +110,7 @@ class PriorityClassService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"priority class {data.name!r} already exists") from exc
-        return self.schema(priority_class)
+        return await self.get(priority_class.uid)
 
     async def update(
         self, ref: str, data: PriorityClassUpdateRequest, if_match: str | None = None
@@ -132,7 +132,7 @@ class PriorityClassService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("priority class conflicts with an existing one") from exc
-        return self.schema(priority_class)
+        return await self.get(priority_class.uid)
 
     async def delete(self, ref: str) -> None:
         """Refuses while workloads still reference the class.

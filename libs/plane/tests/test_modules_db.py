@@ -1,0 +1,512 @@
+"""Module services against a real Postgres, because a compiled statement cannot expire a column.
+
+Every other module suite builds statements and schemas without a database. That is fast and it is
+blind to the one thing a write path can get wrong on its own: `updated_at` carries a server-side
+`onupdate`, so SQLAlchemy expires it after an UPDATE and re-reads it lazily — which in async code
+is a `MissingGreenlet` at response-render time, long after the write itself succeeded. Nothing
+short of executing the UPDATE and then reading the schema can see that.
+
+So each module here runs `create → get → list → patch → delete` through its service against a
+migrated database and asserts the returned schema is whole, with `updated_at` and `revision`
+checked after the patch. The suite is marked `database` and deselected by default (`addopts`);
+with no reachable server every test skips rather than fails.
+"""
+
+import os
+import subprocess
+
+from pathlib import Path
+
+import pytest
+import psycopg
+
+from sqlalchemy import text
+from sqlalchemy.pool import NullPool
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine
+
+from app.core.ids import NODE
+from app.core.ids import TENANT
+from app.core.ids import new_uid
+from app.core.exceptions import Conflict
+from app.modules.pools.schemas import PoolCreateRequest
+from app.modules.pools.schemas import PoolUpdateRequest
+from app.modules.pools.services import PoolService
+from app.modules.quotas.schemas import QuotaCreateRequest
+from app.modules.quotas.schemas import QuotaUpdateRequest
+from app.modules.quotas.services import QuotaService
+from app.modules.recipes.schemas import RecipeCreateRequest
+from app.modules.recipes.schemas import RecipeUpdateRequest
+from app.modules.clusters.schemas import ClusterCreateRequest
+from app.modules.clusters.schemas import ClusterUpdateRequest
+from app.modules.policies.schemas import PolicyCreateRequest
+from app.modules.policies.schemas import PolicyUpdateRequest
+from app.modules.policies.schemas import PolicyAttachmentRequest
+from app.modules.projects.schemas import ProjectCreateRequest
+from app.modules.projects.schemas import ProjectUpdateRequest
+from app.modules.recipes.services import RecipeService
+from app.modules.artifacts.schemas import ArtifactCreateRequest
+from app.modules.artifacts.schemas import ArtifactUpdateRequest
+from app.modules.artifacts.schemas import ArtifactLocationRequest
+from app.modules.clusters.services import ClusterService
+from app.modules.endpoints.schemas import EndpointCreateRequest
+from app.modules.endpoints.schemas import EndpointTargetRequest
+from app.modules.endpoints.schemas import EndpointUpdateRequest
+from app.modules.policies.services import PolicyService
+from app.modules.projects.services import ProjectService
+from app.modules.artifacts.services import ArtifactService
+from app.modules.components.schemas import ComponentCreateRequest
+from app.modules.components.schemas import ComponentUpdateRequest
+from app.modules.endpoints.services import EndpointService
+from app.modules.operations.schemas import OperationCreateRequest
+from app.modules.components.services import ComponentService
+from app.modules.deployments.schemas import DeploymentCreateRequest
+from app.modules.deployments.schemas import DeploymentUpdateRequest
+from app.modules.operations.services import OperationService
+from app.modules.deployments.services import DeploymentService
+from app.modules.priority_classes.schemas import PriorityClassCreateRequest
+from app.modules.priority_classes.schemas import PriorityClassUpdateRequest
+from app.modules.priority_classes.services import PriorityClassService
+
+
+pytestmark = pytest.mark.database
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+ADMIN_URL = os.environ.get("HANGAR_TEST_DATABASE_URL", "postgresql+psycopg://hangar:hangar@localhost:5442/hangar")
+TEST_DATABASE = "hangar_modules_test"
+
+
+# --------------------------------------------------------------------------- database
+
+
+@pytest.fixture(scope="session")
+def database() -> str:
+    """A freshly migrated test database, or a skip when nothing is listening."""
+    admin = make_url(ADMIN_URL)
+    dsn = admin.set(drivername="postgresql").render_as_string(hide_password=False)
+    try:
+        connection = psycopg.connect(dsn, connect_timeout=3, autocommit=True)
+    except psycopg.Error as exc:
+        pytest.skip(f"no database at {admin.host}:{admin.port} — run `just dev-up` ({exc})")
+
+    with connection:
+        connection.execute(f'DROP DATABASE IF EXISTS "{TEST_DATABASE}" WITH (FORCE)')
+        connection.execute(f'CREATE DATABASE "{TEST_DATABASE}"')
+
+    url = admin.set(database=TEST_DATABASE).render_as_string(hide_password=False)
+    subprocess.run(
+        ["uv", "run", "alembic", "upgrade", "head"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        env={**os.environ, "HANGAR_DATABASE_URL": url},
+    )
+    return url
+
+
+@pytest.fixture
+async def db(database: str):
+    """One empty database and one session per test, with the app's own session settings."""
+    engine = create_async_engine(database, poolclass=NullPool)
+    async with engine.begin() as connection:
+        tables = await connection.execute(
+            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'alembic_version'")
+        )
+        names = ", ".join(f'"{row[0]}"' for row in tables)
+        if names:
+            await connection.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    try:
+        async with sessions() as session:
+            yield session
+    finally:
+        await engine.dispose()
+
+
+# --------------------------------------------------------------------------- seeds
+
+
+async def seed_tenant(db: AsyncSession, slug: str = "acme") -> str:
+    uid = new_uid(TENANT)
+    await db.execute(
+        text("INSERT INTO bind_tenant (uid, slug, name) VALUES (:uid, :slug, :name)"),
+        {"uid": uid, "slug": slug, "name": slug.title()},
+    )
+    await db.commit()
+    return uid
+
+
+async def seed_node(db: AsyncSession, cluster_uid: str, name: str = "node-a") -> str:
+    uid = new_uid(NODE)
+    await db.execute(
+        text(
+            "INSERT INTO supply_node (uid, cluster_id, name)"
+            " VALUES (:uid, (SELECT id FROM supply_cluster WHERE uid = :cluster), :name)"
+        ),
+        {"uid": uid, "cluster": cluster_uid, "name": name},
+    )
+    await db.commit()
+    return uid
+
+
+async def a_cluster(db: AsyncSession, name: str = "alpha"):
+    return await ClusterService(db).create(ClusterCreateRequest(name=name, region="eu-west-1"))
+
+
+async def a_project(db: AsyncSession, slug: str = "search"):
+    await seed_tenant(db)
+    return await ProjectService(db).create(ProjectCreateRequest(tenant="acme", slug=slug, name=slug.title()))
+
+
+async def an_artifact(db: AsyncSession, digest: str = "sha256:aaaa", name: str = "llama"):
+    return await ArtifactService(db).create(ArtifactCreateRequest(digest=digest, name=name))
+
+
+async def a_recipe(db: AsyncSession, artifact_id: str, name: str = "llama-vllm"):
+    return await RecipeService(db).create(
+        RecipeCreateRequest(
+            artifact=artifact_id,
+            name=name,
+            engine="vllm",
+            engine_version="0.6.0",
+            device_class="h100",
+            context_length=8192,
+        )
+    )
+
+
+async def a_deployment(db: AsyncSession, name: str = "llama-prod"):
+    cluster = await a_cluster(db)
+    project = await a_project(db)
+    artifact = await an_artifact(db)
+    recipe = await a_recipe(db, artifact.id)
+    await PriorityClassService(db).create(
+        PriorityClassCreateRequest(name="standard", value=100, is_default=True),
+    )
+    deployment = await DeploymentService(db).create(
+        DeploymentCreateRequest(cluster=cluster.id, recipe=recipe.id, name=name, project=project.id)
+    )
+    return cluster, project, recipe, deployment
+
+
+def assert_patched(before, after) -> None:
+    """The exact shape that was raising: a patched row renders with a moved stamp.
+
+    `updated_at` is null until the first update and `revision` is derived from it,
+    so a service that never re-read the column after committing would either raise
+    or hand back the revision it was given.
+    """
+    assert after.updated_at is not None
+    assert before.updated_at is None or after.updated_at >= before.updated_at
+    assert after.revision != before.revision
+    assert after.revision == str(int(after.updated_at.timestamp() * 1_000_000))
+
+
+# --------------------------------------------------------------------------- modules
+
+
+async def test_clusters_lifecycle(db: AsyncSession) -> None:
+    service = ClusterService(db)
+    created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
+    assert created.id.startswith("clu_")
+    assert created.created_at is not None
+
+    assert (await service.get(created.id)).id == created.id
+    listed = await service.list()
+    assert [item.id for item in listed.items] == [created.id]
+
+    patched = await service.update(created.id, ClusterUpdateRequest(phase="active"))
+    assert patched.phase == "active"
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_projects_lifecycle(db: AsyncSession) -> None:
+    await seed_tenant(db)
+    service = ProjectService(db)
+    created = await service.create(ProjectCreateRequest(tenant="acme", slug="search", name="Search"))
+    assert created.tenant.slug == "acme"
+
+    assert (await service.get(created.id)).slug == "search"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(created.id, ProjectUpdateRequest(name="Search Team"))
+    assert patched.name == "Search Team"
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_priority_classes_lifecycle(db: AsyncSession) -> None:
+    service = PriorityClassService(db)
+    created = await service.create(PriorityClassCreateRequest(name="batch", value=10))
+
+    assert (await service.get(created.id)).name == "batch"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(created.id, PriorityClassUpdateRequest(value=20))
+    assert patched.value == 20
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_artifacts_lifecycle(db: AsyncSession) -> None:
+    service = ArtifactService(db)
+    created = await service.create(
+        ArtifactCreateRequest(
+            digest="sha256:aaaa",
+            name="llama",
+            locations=[ArtifactLocationRequest(scheme="s3", uri="s3://weights/llama")],
+        )
+    )
+    assert [loc.uri for loc in created.locations] == ["s3://weights/llama"]
+
+    assert (await service.get(created.id)).digest == "sha256:aaaa"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(
+        created.id,
+        ArtifactUpdateRequest(
+            name="llama-3",
+            locations=[ArtifactLocationRequest(scheme="s3", uri="s3://weights/llama-3")],
+        ),
+    )
+    assert patched.name == "llama-3"
+    assert [loc.uri for loc in patched.locations] == ["s3://weights/llama-3"]
+
+    kept = await service.update(
+        created.id,
+        ArtifactUpdateRequest(
+            locations=[ArtifactLocationRequest(scheme="s3", uri="s3://weights/llama-3", region="eu-west-1")]
+        ),
+    )
+    assert [(loc.uri, loc.region) for loc in kept.locations] == [("s3://weights/llama-3", "eu-west-1")]
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_recipes_lifecycle(db: AsyncSession) -> None:
+    artifact = await an_artifact(db)
+    service = RecipeService(db)
+    created = await a_recipe(db, artifact.id)
+    assert created.artifact_id == artifact.id
+
+    assert (await service.get(created.id)).engine == "vllm"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(created.id, RecipeUpdateRequest(engine_version="0.7.0"))
+    assert patched.engine_version == "0.7.0"
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_pools_lifecycle(db: AsyncSession) -> None:
+    cluster = await a_cluster(db)
+    service = PoolService(db)
+    created = await service.create(PoolCreateRequest(cluster=cluster.id, name="h100-pool", device_class="h100"))
+    assert created.membership.nodes_total == 0
+
+    assert (await service.get(created.id)).name == "h100-pool"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(created.id, PoolUpdateRequest(min_nodes=1, max_nodes=4))
+    assert (patched.min_nodes, patched.max_nodes) == (1, 4)
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_quotas_lifecycle(db: AsyncSession) -> None:
+    project = await a_project(db)
+    service = QuotaService(db)
+    created = await service.create(
+        QuotaCreateRequest(project=project.id, device_class="h100", guaranteed_devices=4)
+    )
+    assert created.usage.allocated_devices == 0
+
+    assert (await service.get(created.id)).device_class == "h100"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(created.id, QuotaUpdateRequest(guaranteed_devices=8, limit_devices=16))
+    assert (patched.guaranteed_devices, patched.limit_devices) == (8, 16)
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_policies_lifecycle(db: AsyncSession) -> None:
+    cluster = await a_cluster(db)
+    service = PolicyService(db)
+    created = await service.create(
+        PolicyCreateRequest(
+            name="eu-only",
+            allowed_regions=["eu-west-1"],
+            attachments=[PolicyAttachmentRequest(subject_type="cluster", subject=cluster.id)],
+        )
+    )
+    assert [a.subject for a in created.attachments] == [cluster.id]
+
+    assert (await service.get(created.id)).name == "eu-only"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(created.id, PolicyUpdateRequest(enabled=False, attachments=[]))
+    assert patched.enabled is False
+    assert patched.attachments == []
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_components_lifecycle(db: AsyncSession) -> None:
+    cluster = await a_cluster(db)
+    service = ComponentService(db)
+    created = await service.create(
+        ComponentCreateRequest(cluster=cluster.id, name="agent", kind="agent", desired_version="1.0.0")
+    )
+    assert created.cluster_id == cluster.id
+
+    assert (await service.get(created.id)).desired_version == "1.0.0"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(created.id, ComponentUpdateRequest(desired_version="1.1.0"))
+    assert patched.desired_version == "1.1.0"
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_deployments_lifecycle(db: AsyncSession) -> None:
+    cluster, project, recipe, created = await a_deployment(db)
+    service = DeploymentService(db)
+    assert created.workload.project_id == project.id
+    assert created.recipe_id == recipe.id
+    assert created.cluster_id == cluster.id
+
+    assert (await service.get(created.id)).name == "llama-prod"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(created.id, DeploymentUpdateRequest(desired_replicas=1, max_replicas=3))
+    assert patched.max_replicas == 3
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_endpoints_lifecycle(db: AsyncSession) -> None:
+    _, project, _, deployment = await a_deployment(db)
+    service = EndpointService(db)
+    created = await service.create(
+        EndpointCreateRequest(
+            name="chat",
+            project=project.id,
+            targets=[EndpointTargetRequest(deployment=deployment.id)],
+        )
+    )
+    assert [t.deployment_id for t in created.targets] == [deployment.id]
+
+    assert (await service.get(created.id)).name == "chat"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(
+        created.id,
+        EndpointUpdateRequest(
+            enabled=False,
+            targets=[EndpointTargetRequest(deployment=deployment.id, weight=50)],
+            failover_order=[deployment.id],
+        ),
+    )
+    assert patched.enabled is False
+    assert [t.weight for t in patched.targets] == [50]
+    assert patched.failover_order == [deployment.id]
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_operations_create_get_list_cancel(db: AsyncSession) -> None:
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id)
+    service = OperationService(db, actor="tester")
+
+    created = await service.create(OperationCreateRequest(type="node.drain", target=node))
+    assert created.phase == "pending"
+    assert created.target.id == node
+    assert created.requested_by == "tester"
+
+    assert (await service.get(created.id)).id == created.id
+    assert (await service.list()).count == 1
+
+    cancelled = await service.cancel(created.id)
+    assert cancelled.phase == "cancelled"
+    assert cancelled.cancel_requested_at is not None
+    assert cancelled.updated_at is not None
+
+    with pytest.raises(Conflict):
+        await service.cancel(created.id)
+
+
+# --------------------------------------------------------------------------- concurrency
+
+
+async def test_stale_if_match_conflicts(db: AsyncSession) -> None:
+    """A second patch holding the first patch's revision is refused.
+
+    This only means anything against a database: the revision comes from
+    `updated_at`, which the database writes and the service has to read back.
+    """
+    service = ClusterService(db)
+    created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
+    patched = await service.update(created.id, ClusterUpdateRequest(phase="active"), if_match=created.revision)
+
+    with pytest.raises(Conflict):
+        await service.update(created.id, ClusterUpdateRequest(phase="draining"), if_match=created.revision)
+
+    fresh = await service.update(created.id, ClusterUpdateRequest(phase="draining"), if_match=patched.revision)
+    assert fresh.phase == "draining"
+    assert_patched(patched, fresh)
+
+
+async def test_stale_if_match_conflicts_on_every_module(db: AsyncSession) -> None:
+    """The same check for the modules whose `_revision` is its own copy of the helper."""
+    project = await a_project(db)
+    artifact = await an_artifact(db)
+    recipe = await a_recipe(db, artifact.id)
+
+    with pytest.raises(Conflict):
+        await ProjectService(db).update(project.id, ProjectUpdateRequest(name="x"), if_match="0")
+    with pytest.raises(Conflict):
+        await ArtifactService(db).update(artifact.id, ArtifactUpdateRequest(name="x"), if_match="0")
+    with pytest.raises(Conflict):
+        await RecipeService(db).update(recipe.id, RecipeUpdateRequest(engine_version="x"), if_match="0")
+
+
+async def test_repeated_patches_keep_moving_the_stamp(db: AsyncSession) -> None:
+    """Two patches in one session: the second must not see the first's expired column."""
+    service = PoolService(db)
+    cluster = await a_cluster(db)
+    pool = await service.create(PoolCreateRequest(cluster=cluster.id, name="h100-pool", device_class="h100"))
+
+    first = await service.update(pool.id, PoolUpdateRequest(min_nodes=1))
+    second = await service.update(pool.id, PoolUpdateRequest(min_nodes=2), if_match=first.revision)
+
+    assert second.min_nodes == 2
+    assert second.updated_at >= first.updated_at
