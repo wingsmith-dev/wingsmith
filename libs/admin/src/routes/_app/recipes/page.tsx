@@ -12,6 +12,7 @@ import type { Recipe } from "@/modules/demand/types"
 import { RecipeForm } from "./RecipeForm"
 import { useState } from "react"
 import { toast } from "sonner"
+import { Link, useSearch } from "@tanstack/react-router"
 
 function columns(
   onEdit: (recipe: Recipe) => void,
@@ -23,13 +24,13 @@ function columns(
     header: "Recipe",
     cell: (recipe) => (
       <ResourceCell kind="recipe">
-        <span className="block">
+        <Link to="/recipes/$recipeId" params={{ recipeId: recipe.id }} className="block">
           <span className="font-mono text-xs">{recipe.name}</span>
           <span className="ml-2 font-mono text-2xs text-muted-foreground/60">
             v{recipe.version}
           </span>
           <Id value={recipe.id} className="ml-2" />
-        </span>
+        </Link>
       </ResourceCell>
     ),
   },
@@ -122,7 +123,8 @@ function columns(
  * nothing spread across an A100 and an H100, so the two are never split.
  */
 export function RecipesPage() {
-  const list = useRecipes()
+  const search = useSearch({ from: "/_app/recipes" })
+  const list = useRecipes({ artifact: search.artifact })
   const remove = useDeleteRecipe()
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Recipe | undefined>()
@@ -140,6 +142,16 @@ export function RecipesPage() {
         }
       />
       <div className="space-y-4 p-4">
+        {search.artifact && (
+          <div className="flex items-center gap-2 font-mono text-2xs text-muted-foreground">
+            <span>filtered to artifact {search.artifact}</span>
+            <Button asChild size="sm" variant="ghost" className="font-mono text-2xs">
+              <Link to="/recipes" search={{}}>
+                clear
+              </Link>
+            </Button>
+          </div>
+        )}
         <DataTable
           columns={columns(setEditing, setDoomed)}
           list={list}

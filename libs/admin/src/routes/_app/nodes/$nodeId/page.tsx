@@ -1,4 +1,6 @@
 import { Field, FieldGrid } from "@/components/layout/field"
+import { InFlightOperations } from "@/components/machinery/in-flight"
+import { OperationActions } from "@/components/machinery/operation-actions"
 import { DataTable } from "@/components/layout/data-table"
 import { Dash, Labels } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
@@ -9,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { gibibytes, unhealthyCount } from "@/modules/supply/display"
+import { useOpenOperations } from "@/modules/machinery/queries"
 import { useDevices, useNode } from "@/modules/supply/queries"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useParams } from "@tanstack/react-router"
@@ -19,6 +22,7 @@ export function NodeDetailPage() {
   const { nodeId } = useParams({ from: "/_app/nodes/$nodeId" })
   const { data: node, isLoading, error } = useNode(nodeId)
   const devices = useDevices({ node: nodeId })
+  const inFlight = useOpenOperations(node?.id)
 
   if (error) {
     return (
@@ -37,6 +41,15 @@ export function NodeDetailPage() {
         title={node?.name ?? "Node"}
         description={node ? `${node.id} · ${node.cluster_name}` : undefined}
         actions={
+          node && (
+            <OperationActions
+              target={node.id}
+              prefix="nod_"
+              context={{ cordoned: node.cordoned, open: inFlight.types }}
+            />
+          )
+        }
+        readActions={
           <Button asChild variant="outline" size="sm">
             <Link to="/nodes">
               <IconArrowLeft className="size-4" />
@@ -51,6 +64,8 @@ export function NodeDetailPage() {
 
         {node && (
           <>
+            <InFlightOperations operations={inFlight.operations} />
+
             <div className="flex flex-wrap items-center gap-3">
               <NodeConditionLabel condition={node.condition} />
               <CordonState cordoned={node.cordoned} />
@@ -129,8 +144,6 @@ export function NodeDetailPage() {
               <TopologyCard nodeId={node.id} />
             </div>
 
-            <NodeOperations node={node} />
-
             <div>
               <h2 className="mb-2 font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground/50">
                 Devices
@@ -142,6 +155,8 @@ export function NodeDetailPage() {
                 empty="This node reports no devices."
               />
             </div>
+
+            <NodeOperations node={node} />
           </>
         )}
       </div>

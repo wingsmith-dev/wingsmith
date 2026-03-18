@@ -2,21 +2,24 @@ import { Field, FieldGrid } from "@/components/layout/field"
 import { Dash } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { DeviceHealthLabel } from "@/components/supply/indicators"
-import { NewOperationDialog } from "@/components/machinery/new-operation"
+import { InFlightOperations } from "@/components/machinery/in-flight"
+import { OperationActions } from "@/components/machinery/operation-actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatError, formatRelative } from "@/lib/format"
 import { gibibytes, topologyKindLabel } from "@/modules/supply/display"
 import { useDevice } from "@/modules/supply/queries"
-import { useAllocations } from "@/modules/machinery/queries"
+import { useAllocations, useOpenOperations } from "@/modules/machinery/queries"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useParams } from "@tanstack/react-router"
+import { DeviceOperations } from "./DeviceOperations"
 
 export function DeviceDetailPage() {
   const { deviceId } = useParams({ from: "/_app/devices/$deviceId" })
   const { data: device, isLoading, error } = useDevice(deviceId)
   const allocations = useAllocations({ device: device?.id })
+  const inFlight = useOpenOperations(device?.id)
 
   if (error) {
     return (
@@ -37,30 +40,28 @@ export function DeviceDetailPage() {
         title={device?.device_uuid ?? "Device"}
         description={device ? `${device.id} · ${device.device_class}` : undefined}
         actions={
-          <div className="flex gap-2">
-            {device && (
-              <NewOperationDialog
-                defaultType="device.reset"
-                defaultTarget={device.id}
-                trigger={
-                  <Button size="sm" variant="outline">
-                    Reset
-                  </Button>
-                }
-              />
-            )}
-            <Button asChild variant="outline" size="sm">
-              <Link to="/devices">
-                <IconArrowLeft className="size-4" />
-                All devices
-              </Link>
-            </Button>
-          </div>
+          device && (
+            <OperationActions
+              target={device.id}
+              prefix="dev_"
+              context={{ allocated: !!holder, open: inFlight.types }}
+            />
+          )
+        }
+        readActions={
+          <Button asChild variant="outline" size="sm">
+            <Link to="/devices">
+              <IconArrowLeft className="size-4" />
+              All devices
+            </Link>
+          </Button>
         }
       />
 
       <div className="space-y-4 p-4">
         {isLoading && <Skeleton className="h-40 w-full" />}
+
+        {device && <InFlightOperations operations={inFlight.operations} />}
 
         {device && (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -182,6 +183,8 @@ export function DeviceDetailPage() {
             </Card>
           </div>
         )}
+
+        {device && <DeviceOperations device={device} />}
       </div>
     </div>
   )

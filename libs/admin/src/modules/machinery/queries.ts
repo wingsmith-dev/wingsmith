@@ -41,6 +41,32 @@ export function useOperation(ref: string) {
   })
 }
 
+/**
+ * The operations still open against one target. Its own query rather than a
+ * slice of whatever the history table happened to load: a resource page has to
+ * answer "is something already running here?" before it offers to start
+ * another, and it keeps polling until nothing is.
+ */
+export function useOpenOperations(target: string | undefined) {
+  const query = useQuery({
+    queryKey: ["operations", "open", target],
+    queryFn: () => fetchOperations({ target: target! }, undefined, 50),
+    enabled: !!target,
+    refetchInterval: (q) => {
+      const data = q.state.data as { items: Operation[] } | undefined
+      return data?.items.some((operation) => isOpen(operation.phase)) ? POLL_MS : false
+    },
+  })
+  const operations = (query.data?.items ?? []).filter((operation) =>
+    isOpen(operation.phase)
+  )
+  return {
+    operations,
+    types: operations.map((operation) => operation.type as string),
+    isLoading: query.isLoading,
+  }
+}
+
 export function useCreateOperation() {
   const client = useQueryClient()
   return useMutation({

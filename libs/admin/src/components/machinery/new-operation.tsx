@@ -28,17 +28,21 @@ const TYPES = Object.keys(OPERATION_TYPES) as OperationType[]
 
 /**
  * `POST /v1/operations` with a type and a target — never a verb on the target's
- * own path. On success the caller is sent to the operation's page, because what
- * comes back is a thing with a lifecycle to watch, not an acknowledgement.
+ * own path. What comes back is a thing with a lifecycle to watch, so from the
+ * global operations page the caller is sent to it. Fired from the resource the
+ * operation acts on, `stayOnPage` keeps them where they are and hands them the
+ * link instead: one component, two dispositions.
  */
 export function NewOperationDialog({
   defaultType,
   defaultTarget,
   trigger,
+  stayOnPage,
 }: {
   defaultType?: OperationType
   defaultTarget?: string
   trigger?: React.ReactNode
+  stayOnPage?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [type, setType] = useState<OperationType>(defaultType ?? "node.drain")
@@ -56,11 +60,20 @@ export function NewOperationDialog({
       {
         onSuccess: (operation) => {
           setOpen(false)
+          const go = () =>
+            navigate({
+              to: "/operations/$operationId",
+              params: { operationId: operation.id },
+            })
+          if (stayOnPage) {
+            toast.success(`${operation.type} requested`, {
+              description: operation.id,
+              action: { label: "View", onClick: go },
+            })
+            return
+          }
           toast.success(`${operation.type} requested`, { description: operation.id })
-          navigate({
-            to: "/operations/$operationId",
-            params: { operationId: operation.id },
-          })
+          go()
         },
         onError: (error) => toast.error(formatError(error, "Could not start operation")),
       }

@@ -14,16 +14,28 @@ import {
 import { useCluster } from "@/modules/clusters/queries"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useParams } from "@tanstack/react-router"
+import { useState } from "react"
 import { ComponentsTable } from "./ComponentsTable"
 import { ClusterDevicesTable } from "./DevicesTable"
 import { DeclaredCard } from "./HealthCard"
 import { ClusterNodesTable } from "./NodesTable"
+import { ClusterPoolsPanel } from "./PoolsPanel"
 import { SyncCard } from "./SyncCard"
 import { ClusterTopologyTable } from "./TopologyTable"
+
+function TabNote({ children }: React.PropsWithChildren) {
+  return (
+    <p className="font-mono text-2xs leading-relaxed text-muted-foreground/60">
+      {children}
+    </p>
+  )
+}
 
 export function ClusterDetailPage() {
   const { clusterId } = useParams({ from: "/_app/clusters/$clusterId" })
   const { data: cluster, isLoading, error } = useCluster(clusterId)
+  const [tab, setTab] = useState("nodes")
+  const [creatingPool, setCreatingPool] = useState(false)
 
   if (error) {
     return (
@@ -42,6 +54,17 @@ export function ClusterDetailPage() {
         title={cluster ? clusterLabel(cluster) : "Cluster"}
         description={cluster ? `${cluster.id} · ${cluster.region}` : undefined}
         actions={
+          <Button
+            size="sm"
+            onClick={() => {
+              setTab("pools")
+              setCreatingPool(true)
+            }}
+          >
+            New pool
+          </Button>
+        }
+        readActions={
           <Button asChild variant="outline" size="sm">
             <Link to="/clusters">
               <IconArrowLeft className="size-4" />
@@ -74,20 +97,42 @@ export function ClusterDetailPage() {
               <SyncCard sync={cluster.sync} />
             </div>
 
-            <Tabs defaultValue="nodes">
+            <Tabs value={tab} onValueChange={setTab}>
               <TabsList>
                 <TabsTrigger value="nodes">Nodes</TabsTrigger>
+                <TabsTrigger value="pools">Pools</TabsTrigger>
                 <TabsTrigger value="devices">Devices</TabsTrigger>
                 <TabsTrigger value="topology">Topology</TabsTrigger>
                 <TabsTrigger value="components">Components</TabsTrigger>
               </TabsList>
-              <TabsContent value="nodes" className="mt-3">
+              <TabsContent value="pools" className="mt-3 space-y-3">
+                <TabNote>
+                  Declared. A pool is the provisioning spec this cluster is asked
+                  for; its node bounds are how more or fewer nodes get requested.
+                </TabNote>
+                <ClusterPoolsPanel
+                  clusterId={cluster.id}
+                  creating={creatingPool}
+                  onCreatingChange={setCreatingPool}
+                />
+              </TabsContent>
+              <TabsContent value="nodes" className="mt-3 space-y-3">
+                <TabNote>
+                  Observed. Nodes are reported by the cluster and cannot be added
+                  or removed here — raise a pool's node bounds instead, and act on
+                  a node by draining or cordoning it.
+                </TabNote>
                 <ClusterNodesTable clusterId={cluster.id} />
               </TabsContent>
-              <TabsContent value="devices" className="mt-3">
+              <TabsContent value="devices" className="mt-3 space-y-3">
+                <TabNote>
+                  Observed. Devices arrive with the node that reports them; a
+                  device is acted on by resetting it, never by editing it.
+                </TabNote>
                 <ClusterDevicesTable clusterId={cluster.id} />
               </TabsContent>
-              <TabsContent value="topology" className="mt-3">
+              <TabsContent value="topology" className="mt-3 space-y-3">
+                <TabNote>Observed. The cluster is the authority on topology.</TabNote>
                 <ClusterTopologyTable clusterId={cluster.id} />
               </TabsContent>
               <TabsContent value="components" className="mt-3">

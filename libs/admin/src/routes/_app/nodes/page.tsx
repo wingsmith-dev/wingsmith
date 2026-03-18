@@ -1,5 +1,4 @@
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
-import { DataTable } from "@/components/layout/data-table"
 import { PageHeader } from "@/components/layout/page-header"
 import { nodeColumns } from "@/components/supply/columns"
 import { clusterLabel } from "@/modules/clusters/display"
@@ -7,6 +6,7 @@ import { useClusterOptions } from "@/modules/clusters/queries"
 import { NODE_CONDITIONS } from "@/modules/supply/display"
 import { useNodes } from "@/modules/supply/queries"
 import { useNavigate, useSearch } from "@tanstack/react-router"
+import { GroupedNodes } from "./GroupedNodes"
 
 const CORDONED = [
   { value: "true", label: "Cordoned" },
@@ -62,10 +62,9 @@ export function NodesPage() {
           />
         </div>
 
-        <DataTable
-          columns={nodeColumns()}
+        <GroupedNodes
+          columns={nodeColumns({ showCluster: false })}
           list={list}
-          rowKey={(node) => node.id}
           empty="No nodes match these filters."
         />
       </div>

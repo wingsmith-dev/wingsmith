@@ -7,6 +7,7 @@ export interface DeploymentsSearch {
   project?: string
   phase?: string
   type?: string
+  recipe?: string
 }
 
 export const Route = createFileRoute("/_app/deployments")({
@@ -15,6 +16,7 @@ export const Route = createFileRoute("/_app/deployments")({
     project: typeof search.project === "string" ? search.project : undefined,
     phase: typeof search.phase === "string" ? search.phase : undefined,
     type: typeof search.type === "string" ? search.type : undefined,
+    recipe: typeof search.recipe === "string" ? search.recipe : undefined,
   }),
   component: withPage(DeploymentsPage, "/_app/deployments"),
 })

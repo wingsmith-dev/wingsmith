@@ -163,6 +163,7 @@ export function DeploymentsPage() {
     project: search.project,
     phase: search.phase,
     type: search.type,
+    recipe: search.recipe,
   })
 
   const set = (key: "cluster" | "phase" | "type") => (value: string) =>

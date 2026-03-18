@@ -13,6 +13,7 @@ import { formatError } from "@/lib/format"
 import { ArtifactForm } from "./ArtifactForm"
 import { useState } from "react"
 import { toast } from "sonner"
+import { Link } from "@tanstack/react-router"
 
 function columns(
   onEdit: (artifact: Artifact) => void,
@@ -24,10 +25,14 @@ function columns(
     header: "Artifact",
     cell: (artifact) => (
       <ResourceCell kind="artifact">
-        <span className="block">
+        <Link
+          to="/artifacts/$artifactId"
+          params={{ artifactId: artifact.id }}
+          className="block"
+        >
           <span className="font-mono text-xs">{artifact.name}</span>
           <Id value={artifact.id} className="ml-2" />
-        </span>
+        </Link>
       </ResourceCell>
     ),
   },

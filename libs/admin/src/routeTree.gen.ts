@@ -29,6 +29,7 @@ import { Route as AppProjectsRouteRouteImport } from './routes/_app/projects/rou
 import { Route as AppQuotasRouteRouteImport } from './routes/_app/quotas/route'
 import { Route as AppRecipesRouteRouteImport } from './routes/_app/recipes/route'
 import { Route as AppSettingsRouteRouteImport } from './routes/_app/settings/route'
+import { Route as AppArtifactsArtifactIdRouteRouteImport } from './routes/_app/artifacts/$artifactId/route'
 import { Route as AppClustersClusterIdRouteRouteImport } from './routes/_app/clusters/$clusterId/route'
 import { Route as AppDeploymentsDeploymentIdRouteRouteImport } from './routes/_app/deployments/$deploymentId/route'
 import { Route as AppDevicesDeviceIdRouteRouteImport } from './routes/_app/devices/$deviceId/route'
@@ -36,6 +37,7 @@ import { Route as AppEndpointsEndpointIdRouteRouteImport } from './routes/_app/e
 import { Route as AppNodesNodeIdRouteRouteImport } from './routes/_app/nodes/$nodeId/route'
 import { Route as AppOperationsOperationIdRouteRouteImport } from './routes/_app/operations/$operationId/route'
 import { Route as AppPoolsPoolIdRouteRouteImport } from './routes/_app/pools/$poolId/route'
+import { Route as AppRecipesRecipeIdRouteRouteImport } from './routes/_app/recipes/$recipeId/route'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -136,6 +138,12 @@ const AppSettingsRouteRoute = AppSettingsRouteRouteImport.update({
   path: '/settings',
   getParentRoute: () => AppRoute,
 } as any)
+const AppArtifactsArtifactIdRouteRoute =
+  AppArtifactsArtifactIdRouteRouteImport.update({
+    id: '/$artifactId',
+    path: '/$artifactId',
+    getParentRoute: () => AppArtifactsRouteRoute,
+  } as any)
 const AppClustersClusterIdRouteRoute =
   AppClustersClusterIdRouteRouteImport.update({
     id: '/$clusterId',
@@ -175,12 +183,17 @@ const AppPoolsPoolIdRouteRoute = AppPoolsPoolIdRouteRouteImport.update({
   path: '/$poolId',
   getParentRoute: () => AppPoolsRouteRoute,
 } as any)
+const AppRecipesRecipeIdRouteRoute = AppRecipesRecipeIdRouteRouteImport.update({
+  id: '/$recipeId',
+  path: '/$recipeId',
+  getParentRoute: () => AppRecipesRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
   '/allocations': typeof AppAllocationsRouteRoute
-  '/artifacts': typeof AppArtifactsRouteRoute
+  '/artifacts': typeof AppArtifactsRouteRouteWithChildren
   '/clusters': typeof AppClustersRouteRouteWithChildren
   '/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/devices': typeof AppDevicesRouteRouteWithChildren
@@ -194,8 +207,9 @@ export interface FileRoutesByFullPath {
   '/priority-classes': typeof AppPriorityClassesRouteRoute
   '/projects': typeof AppProjectsRouteRoute
   '/quotas': typeof AppQuotasRouteRoute
-  '/recipes': typeof AppRecipesRouteRoute
+  '/recipes': typeof AppRecipesRouteRouteWithChildren
   '/settings': typeof AppSettingsRouteRoute
+  '/artifacts/$artifactId': typeof AppArtifactsArtifactIdRouteRoute
   '/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
   '/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
@@ -203,12 +217,13 @@ export interface FileRoutesByFullPath {
   '/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
   '/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
+  '/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
   '/allocations': typeof AppAllocationsRouteRoute
-  '/artifacts': typeof AppArtifactsRouteRoute
+  '/artifacts': typeof AppArtifactsRouteRouteWithChildren
   '/clusters': typeof AppClustersRouteRouteWithChildren
   '/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/devices': typeof AppDevicesRouteRouteWithChildren
@@ -222,8 +237,9 @@ export interface FileRoutesByTo {
   '/priority-classes': typeof AppPriorityClassesRouteRoute
   '/projects': typeof AppProjectsRouteRoute
   '/quotas': typeof AppQuotasRouteRoute
-  '/recipes': typeof AppRecipesRouteRoute
+  '/recipes': typeof AppRecipesRouteRouteWithChildren
   '/settings': typeof AppSettingsRouteRoute
+  '/artifacts/$artifactId': typeof AppArtifactsArtifactIdRouteRoute
   '/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
   '/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
@@ -231,6 +247,7 @@ export interface FileRoutesByTo {
   '/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
   '/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
+  '/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -238,7 +255,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRouteRoute
   '/_app': typeof AppRouteWithChildren
   '/_app/allocations': typeof AppAllocationsRouteRoute
-  '/_app/artifacts': typeof AppArtifactsRouteRoute
+  '/_app/artifacts': typeof AppArtifactsRouteRouteWithChildren
   '/_app/clusters': typeof AppClustersRouteRouteWithChildren
   '/_app/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/_app/devices': typeof AppDevicesRouteRouteWithChildren
@@ -252,8 +269,9 @@ export interface FileRoutesById {
   '/_app/priority-classes': typeof AppPriorityClassesRouteRoute
   '/_app/projects': typeof AppProjectsRouteRoute
   '/_app/quotas': typeof AppQuotasRouteRoute
-  '/_app/recipes': typeof AppRecipesRouteRoute
+  '/_app/recipes': typeof AppRecipesRouteRouteWithChildren
   '/_app/settings': typeof AppSettingsRouteRoute
+  '/_app/artifacts/$artifactId': typeof AppArtifactsArtifactIdRouteRoute
   '/_app/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
   '/_app/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/_app/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
@@ -261,6 +279,7 @@ export interface FileRoutesById {
   '/_app/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
   '/_app/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/_app/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
+  '/_app/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -284,6 +303,7 @@ export interface FileRouteTypes {
     | '/quotas'
     | '/recipes'
     | '/settings'
+    | '/artifacts/$artifactId'
     | '/clusters/$clusterId'
     | '/deployments/$deploymentId'
     | '/devices/$deviceId'
@@ -291,6 +311,7 @@ export interface FileRouteTypes {
     | '/nodes/$nodeId'
     | '/operations/$operationId'
     | '/pools/$poolId'
+    | '/recipes/$recipeId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -312,6 +333,7 @@ export interface FileRouteTypes {
     | '/quotas'
     | '/recipes'
     | '/settings'
+    | '/artifacts/$artifactId'
     | '/clusters/$clusterId'
     | '/deployments/$deploymentId'
     | '/devices/$deviceId'
@@ -319,6 +341,7 @@ export interface FileRouteTypes {
     | '/nodes/$nodeId'
     | '/operations/$operationId'
     | '/pools/$poolId'
+    | '/recipes/$recipeId'
   id:
     | '__root__'
     | '/'
@@ -341,6 +364,7 @@ export interface FileRouteTypes {
     | '/_app/quotas'
     | '/_app/recipes'
     | '/_app/settings'
+    | '/_app/artifacts/$artifactId'
     | '/_app/clusters/$clusterId'
     | '/_app/deployments/$deploymentId'
     | '/_app/devices/$deviceId'
@@ -348,6 +372,7 @@ export interface FileRouteTypes {
     | '/_app/nodes/$nodeId'
     | '/_app/operations/$operationId'
     | '/_app/pools/$poolId'
+    | '/_app/recipes/$recipeId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -498,6 +523,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsRouteRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/artifacts/$artifactId': {
+      id: '/_app/artifacts/$artifactId'
+      path: '/$artifactId'
+      fullPath: '/artifacts/$artifactId'
+      preLoaderRoute: typeof AppArtifactsArtifactIdRouteRouteImport
+      parentRoute: typeof AppArtifactsRouteRoute
+    }
     '/_app/clusters/$clusterId': {
       id: '/_app/clusters/$clusterId'
       path: '/$clusterId'
@@ -547,8 +579,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPoolsPoolIdRouteRouteImport
       parentRoute: typeof AppPoolsRouteRoute
     }
+    '/_app/recipes/$recipeId': {
+      id: '/_app/recipes/$recipeId'
+      path: '/$recipeId'
+      fullPath: '/recipes/$recipeId'
+      preLoaderRoute: typeof AppRecipesRecipeIdRouteRouteImport
+      parentRoute: typeof AppRecipesRouteRoute
+    }
   }
 }
+
+interface AppArtifactsRouteRouteChildren {
+  AppArtifactsArtifactIdRouteRoute: typeof AppArtifactsArtifactIdRouteRoute
+}
+
+const AppArtifactsRouteRouteChildren: AppArtifactsRouteRouteChildren = {
+  AppArtifactsArtifactIdRouteRoute: AppArtifactsArtifactIdRouteRoute,
+}
+
+const AppArtifactsRouteRouteWithChildren =
+  AppArtifactsRouteRoute._addFileChildren(AppArtifactsRouteRouteChildren)
 
 interface AppClustersRouteRouteChildren {
   AppClustersClusterIdRouteRoute: typeof AppClustersClusterIdRouteRoute
@@ -630,9 +680,21 @@ const AppPoolsRouteRouteWithChildren = AppPoolsRouteRoute._addFileChildren(
   AppPoolsRouteRouteChildren,
 )
 
+interface AppRecipesRouteRouteChildren {
+  AppRecipesRecipeIdRouteRoute: typeof AppRecipesRecipeIdRouteRoute
+}
+
+const AppRecipesRouteRouteChildren: AppRecipesRouteRouteChildren = {
+  AppRecipesRecipeIdRouteRoute: AppRecipesRecipeIdRouteRoute,
+}
+
+const AppRecipesRouteRouteWithChildren = AppRecipesRouteRoute._addFileChildren(
+  AppRecipesRouteRouteChildren,
+)
+
 interface AppRouteChildren {
   AppAllocationsRouteRoute: typeof AppAllocationsRouteRoute
-  AppArtifactsRouteRoute: typeof AppArtifactsRouteRoute
+  AppArtifactsRouteRoute: typeof AppArtifactsRouteRouteWithChildren
   AppClustersRouteRoute: typeof AppClustersRouteRouteWithChildren
   AppDeploymentsRouteRoute: typeof AppDeploymentsRouteRouteWithChildren
   AppDevicesRouteRoute: typeof AppDevicesRouteRouteWithChildren
@@ -646,13 +708,13 @@ interface AppRouteChildren {
   AppPriorityClassesRouteRoute: typeof AppPriorityClassesRouteRoute
   AppProjectsRouteRoute: typeof AppProjectsRouteRoute
   AppQuotasRouteRoute: typeof AppQuotasRouteRoute
-  AppRecipesRouteRoute: typeof AppRecipesRouteRoute
+  AppRecipesRouteRoute: typeof AppRecipesRouteRouteWithChildren
   AppSettingsRouteRoute: typeof AppSettingsRouteRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppAllocationsRouteRoute: AppAllocationsRouteRoute,
-  AppArtifactsRouteRoute: AppArtifactsRouteRoute,
+  AppArtifactsRouteRoute: AppArtifactsRouteRouteWithChildren,
   AppClustersRouteRoute: AppClustersRouteRouteWithChildren,
   AppDeploymentsRouteRoute: AppDeploymentsRouteRouteWithChildren,
   AppDevicesRouteRoute: AppDevicesRouteRouteWithChildren,
@@ -666,7 +728,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppPriorityClassesRouteRoute: AppPriorityClassesRouteRoute,
   AppProjectsRouteRoute: AppProjectsRouteRoute,
   AppQuotasRouteRoute: AppQuotasRouteRoute,
-  AppRecipesRouteRoute: AppRecipesRouteRoute,
+  AppRecipesRouteRoute: AppRecipesRouteRouteWithChildren,
   AppSettingsRouteRoute: AppSettingsRouteRoute,
 }
 

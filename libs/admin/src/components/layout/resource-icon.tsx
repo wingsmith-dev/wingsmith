@@ -22,17 +22,20 @@ export function ResourceGlyph({
 }: {
   kind: ResourceKind
   className?: string
-  size?: "sm" | "md"
+  size?: "xs" | "sm" | "md"
 }) {
   return (
     <div
       className={cn(
         "flex shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary",
-        size === "sm" ? "size-7" : "size-9",
+        size === "xs" ? "size-6" : size === "sm" ? "size-7" : "size-9",
         className
       )}
     >
-      <ResourceIcon kind={kind} className={size === "sm" ? "size-4" : "size-5"} />
+      <ResourceIcon
+        kind={kind}
+        className={size === "md" ? "size-5" : size === "sm" ? "size-4" : "size-3.5"}
+      />
     </div>
   )
 }

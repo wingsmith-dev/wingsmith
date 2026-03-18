@@ -161,5 +161,11 @@
     }
     html {
         @apply font-sans;
+        /* One browser-zoom notch, baked in. Tailwind sizes text, spacing, radii
+           and icons in rem, so moving the root moves all of them together —
+           which is what zooming does and what nudging font sizes alone does
+           not. A percentage rather than a px value so a reader who has raised
+           their browser's default font size keeps that gain. */
+        font-size: 110%;
     }
 }
