@@ -11,16 +11,24 @@ import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { parallelismLabel, workloadPhaseTone } from "@/modules/demand/display"
-import { useDeployment, useRecipe } from "@/modules/demand/queries"
+import { DeleteDialog } from "@/components/layout/destructive"
+import { useDeleteDeployment, useDeployment, useRecipe } from "@/modules/demand/queries"
+import { DeploymentForm } from "../DeploymentForm"
+import { useState } from "react"
+import { toast } from "sonner"
 import { useOperations } from "@/modules/machinery/queries"
 import { IconArrowLeft } from "@tabler/icons-react"
-import { Link, useParams } from "@tanstack/react-router"
+import { Link, useNavigate, useParams } from "@tanstack/react-router"
 
 export function DeploymentDetailPage() {
   const { deploymentId } = useParams({ from: "/_app/deployments/$deploymentId" })
   const { data: deployment, isLoading, error } = useDeployment(deploymentId)
   const { data: recipe } = useRecipe(deployment?.recipe_id ?? "")
   const operations = useOperations({ target: deployment?.id })
+  const remove = useDeleteDeployment()
+  const navigate = useNavigate()
+  const [editing, setEditing] = useState(false)
+  const [doomed, setDoomed] = useState(false)
 
   if (error) {
     return (
@@ -43,6 +51,16 @@ export function DeploymentDetailPage() {
         actions={
           <div className="flex gap-2">
             {deployment && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                  Edit
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setDoomed(true)}>
+                  Delete
+                </Button>
+              </>
+            )}
+            {deployment && (
               <NewOperationDialog
                 defaultType="deployment.roll"
                 defaultTarget={deployment.id}
@@ -62,6 +80,38 @@ export function DeploymentDetailPage() {
           </div>
         }
       />
+
+      {deployment && editing && (
+        <DeploymentForm
+          key={deployment.revision}
+          open
+          deployment={deployment}
+          onOpenChange={(open) => !open && setEditing(false)}
+        />
+      )}
+      {deployment && (
+        <DeleteDialog
+        icon="deployment"
+          open={doomed}
+          onOpenChange={setDoomed}
+          kind="deployment"
+          name={deployment.name}
+          note="Its replicas are torn down and any endpoint target pointing at it stops routing."
+          error={remove.error}
+          pending={remove.isPending}
+          onConfirm={() =>
+            remove.mutate(deployment.id, {
+              onSuccess: () => {
+                setDoomed(false)
+                toast.success("Deployment deleted", { description: deployment.name })
+                navigate({ to: "/deployments" })
+              },
+              onError: (e) =>
+                toast.error(formatError(e, "Could not delete deployment")),
+            })
+          }
+        />
+      )}
 
       <div className="space-y-4 p-4">
         {isLoading && <Skeleton className="h-40 w-full" />}

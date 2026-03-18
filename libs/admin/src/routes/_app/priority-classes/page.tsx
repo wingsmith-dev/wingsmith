@@ -1,86 +1,85 @@
-import { DataTable, type Column } from "@/components/layout/data-table"
-import { Dash, Id } from "@/components/layout/mono"
+import { CardGrid } from "@/components/binding/card-grid"
+import { DeleteDialog } from "@/components/layout/destructive"
 import { PageHeader } from "@/components/layout/page-header"
-import { Badge } from "@/components/ui/badge"
-import { usePriorityClasses } from "@/modules/binding/queries"
+import { Button } from "@/components/ui/button"
+import { formatError } from "@/lib/format"
+import { useDeletePriorityClass, usePriorityClasses } from "@/modules/binding/queries"
 import type { PriorityClass } from "@/modules/binding/types"
-
-const columns: Column<PriorityClass>[] = [
-  {
-    key: "name",
-    header: "Class",
-    cell: (priority) => (
-      <span className="block">
-        <span className="font-mono text-xs">{priority.name}</span>
-        <Id value={priority.id} className="ml-2" />
-      </span>
-    ),
-  },
-  {
-    key: "value",
-    header: "Value",
-    align: "right",
-    cell: (priority) => (
-      <span className="font-mono text-xs">{priority.value}</span>
-    ),
-  },
-  {
-    key: "preempts",
-    header: "Preempts others",
-    cell: (priority) => (
-      <span className="font-mono text-2xs">{priority.preempts ? "yes" : "no"}</span>
-    ),
-  },
-  {
-    key: "preemptible",
-    header: "Can be preempted",
-    cell: (priority) => (
-      <span className="font-mono text-2xs">
-        {priority.preemptible ? "yes" : "no"}
-      </span>
-    ),
-  },
-  {
-    key: "default",
-    header: "Default",
-    cell: (priority) =>
-      priority.is_default ? (
-        <Badge variant="secondary" className="font-mono text-2xs">
-          default
-        </Badge>
-      ) : (
-        <span className="font-mono text-2xs text-muted-foreground/40">—</span>
-      ),
-  },
-  {
-    key: "description",
-    header: "Description",
-    cell: (priority) => (
-      <span className="text-xs text-muted-foreground">
-        <Dash>{priority.description}</Dash>
-      </span>
-    ),
-  },
-]
+import { PriorityClassCard } from "./PriorityClassCard"
+import { PriorityClassForm } from "./PriorityClassForm"
+import { useState } from "react"
+import { toast } from "sonner"
 
 /**
- * `preempts` and `preemptible` are two switches, not one axis: a class can take
- * capacity from others and still be safe from eviction itself, and folding them
- * would make production serving and best-effort batch the same kind of thing.
+ * Cards rather than a table. This collection is bounded by design — a handful
+ * of classes across the whole plane — and each one is two switches and a
+ * number, which a row flattens into columns that read like an accident.
  */
 export function PriorityClassesPage() {
   const list = usePriorityClasses()
+  const remove = useDeletePriorityClass()
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<PriorityClass | undefined>()
+  const [doomed, setDoomed] = useState<PriorityClass | undefined>()
+
   return (
     <div className="flex flex-col">
-      <PageHeader title="Priority classes" description="declared · what preempts what" />
+      <PageHeader
+        title="Priority classes"
+        description="declared · what preempts what"
+        actions={
+          <Button size="sm" onClick={() => setCreating(true)}>
+            New priority class
+          </Button>
+        }
+      />
       <div className="space-y-4 p-4">
-        <DataTable
-          columns={columns}
+        <CardGrid
           list={list}
           rowKey={(priority) => priority.id}
           empty="No priority classes."
-        />
+        >
+          {(priority) => (
+            <PriorityClassCard
+              priorityClass={priority}
+              onEdit={() => setEditing(priority)}
+              onDelete={() => setDoomed(priority)}
+            />
+          )}
+        </CardGrid>
       </div>
+
+      {creating && (
+        <PriorityClassForm open onOpenChange={(open) => !open && setCreating(false)} />
+      )}
+      {editing && (
+        <PriorityClassForm
+          key={editing.revision}
+          open
+          priorityClass={editing}
+          onOpenChange={(open) => !open && setEditing(undefined)}
+        />
+      )}
+      <DeleteDialog
+        icon="priority-class"
+        open={!!doomed}
+        onOpenChange={(open) => !open && setDoomed(undefined)}
+        kind="priority class"
+        name={doomed?.name ?? ""}
+        note="Workloads and projects naming it lose their priority."
+        error={remove.error}
+        pending={remove.isPending}
+        onConfirm={() =>
+          doomed &&
+          remove.mutate(doomed.id, {
+            onSuccess: () => {
+              setDoomed(undefined)
+              toast.success("Priority class deleted", { description: doomed.name })
+            },
+            onError: (e) => toast.error(formatError(e, "Could not delete class")),
+          })
+        }
+      />
     </div>
   )
 }

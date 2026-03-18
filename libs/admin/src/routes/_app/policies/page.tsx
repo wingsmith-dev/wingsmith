@@ -1,133 +1,81 @@
-import { DataTable, type Column } from "@/components/layout/data-table"
-import { Dash, Id } from "@/components/layout/mono"
+import { CardGrid } from "@/components/binding/card-grid"
+import { DeleteDialog } from "@/components/layout/destructive"
 import { PageHeader } from "@/components/layout/page-header"
-import { StatusLabel } from "@/components/layout/status-dot"
-import { Badge } from "@/components/ui/badge"
-import { usePolicies } from "@/modules/binding/queries"
+import { Button } from "@/components/ui/button"
+import { formatError } from "@/lib/format"
+import { useDeletePolicy, usePolicies } from "@/modules/binding/queries"
 import type { Policy } from "@/modules/binding/types"
-
-function List({ values, tone }: { values: string[]; tone: "allow" | "deny" }) {
-  if (values.length === 0) {
-    return (
-      <span className="font-mono text-2xs text-muted-foreground/40">
-        {tone === "allow" ? "no opinion" : "none"}
-      </span>
-    )
-  }
-  return (
-    <div className="flex flex-wrap gap-1">
-      {values.map((value) => (
-        <Badge
-          key={value}
-          variant="outline"
-          className={
-            tone === "deny"
-              ? "border-destructive/40 font-mono text-2xs text-destructive"
-              : "font-mono text-2xs"
-          }
-        >
-          {value}
-        </Badge>
-      ))}
-    </div>
-  )
-}
-
-const columns: Column<Policy>[] = [
-  {
-    key: "name",
-    header: "Policy",
-    cell: (policy) => (
-      <span className="block">
-        <span className="font-mono text-xs">{policy.name}</span>
-        <Id value={policy.id} className="ml-2" />
-      </span>
-    ),
-  },
-  {
-    key: "description",
-    header: "Description",
-    cell: (policy) => (
-      <span className="text-xs text-muted-foreground">
-        <Dash>{policy.description}</Dash>
-      </span>
-    ),
-  },
-  {
-    key: "regions",
-    header: "Allowed regions",
-    cell: (policy) => <List values={policy.allowed_regions} tone="allow" />,
-  },
-  {
-    key: "residencies",
-    header: "Residencies",
-    secondary: true,
-    cell: (policy) => <List values={policy.allowed_residencies} tone="allow" />,
-  },
-  {
-    key: "denied",
-    header: "Denied clusters",
-    cell: (policy) => <List values={policy.denied_clusters} tone="deny" />,
-  },
-  {
-    key: "cost",
-    header: "Max hourly cost",
-    align: "right",
-    cell: (policy) => (
-      <span className="font-mono text-2xs">
-        {policy.max_hourly_cost === null ? "—" : policy.max_hourly_cost}
-      </span>
-    ),
-  },
-  {
-    key: "attachments",
-    header: "Attached to",
-    cell: (policy) =>
-      policy.attachments.length === 0 ? (
-        <span className="font-mono text-2xs text-muted-foreground/40">
-          nothing — constrains nothing
-        </span>
-      ) : (
-        <span className="font-mono text-2xs text-muted-foreground">
-          {policy.attachments
-            .map((a) => `${a.subject_type}:${a.subject_name ?? a.subject ?? a.subject_id}`)
-            .join(" ")}
-        </span>
-      ),
-  },
-  {
-    key: "enabled",
-    header: "Enabled",
-    align: "right",
-    cell: (policy) => (
-      <StatusLabel tone={policy.enabled ? "ok" : "neutral"}>
-        {policy.enabled ? "yes" : "no"}
-      </StatusLabel>
-    ),
-  },
-]
+import { PolicyCard } from "./PolicyCard"
+import { PolicyForm } from "./PolicyForm"
+import { useState } from "react"
+import { toast } from "sonner"
 
 /**
- * Allow-lists and deny-lists are separate columns: an empty allow-list means
- * "no opinion", not "nothing allowed", and a denial has to survive somebody
- * widening the allow-list later.
+ * Cards rather than a table. A policy is five lists and an attachment set, and
+ * a row that flattens them either truncates the lists or makes every other
+ * column unreadable.
  */
 export function PoliciesPage() {
   const list = usePolicies()
+  const remove = useDeletePolicy()
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<Policy | undefined>()
+  const [doomed, setDoomed] = useState<Policy | undefined>()
+
   return (
     <div className="flex flex-col">
       <PageHeader
         title="Policies"
         description="declared · placement constraints and what they bind to"
+        actions={
+          <Button size="sm" onClick={() => setCreating(true)}>
+            New policy
+          </Button>
+        }
       />
       <div className="space-y-4 p-4">
-        <DataTable
-          columns={columns}
-          list={list}
-          rowKey={(policy) => policy.id}
-          empty="No policies declared."
-        />
+        <CardGrid list={list} rowKey={(policy) => policy.id} empty="No policies declared.">
+          {(policy) => (
+            <PolicyCard
+              policy={policy}
+              onEdit={() => setEditing(policy)}
+              onDelete={() => setDoomed(policy)}
+            />
+          )}
+        </CardGrid>
       </div>
+
+      {creating && (
+        <PolicyForm open onOpenChange={(open) => !open && setCreating(false)} />
+      )}
+      {editing && (
+        <PolicyForm
+          key={editing.revision}
+          open
+          policy={editing}
+          onOpenChange={(open) => !open && setEditing(undefined)}
+        />
+      )}
+      <DeleteDialog
+        icon="policy"
+        open={!!doomed}
+        onOpenChange={(open) => !open && setDoomed(undefined)}
+        kind="policy"
+        name={doomed?.name ?? ""}
+        note="Everything it was attached to becomes unconstrained."
+        error={remove.error}
+        pending={remove.isPending}
+        onConfirm={() =>
+          doomed &&
+          remove.mutate(doomed.id, {
+            onSuccess: () => {
+              setDoomed(undefined)
+              toast.success("Policy deleted", { description: doomed.name })
+            },
+            onError: (e) => toast.error(formatError(e, "Could not delete policy")),
+          })
+        }
+      />
     </div>
   )
 }

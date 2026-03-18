@@ -1,11 +1,17 @@
 import { api, type ListResponse } from "@/lib/api"
 import type {
   Artifact,
+  ArtifactCreateRequest,
+  ArtifactUpdateRequest,
   Deployment,
+  DeploymentCreateRequest,
   DeploymentUpdateRequest,
   Endpoint,
+  EndpointCreateRequest,
   EndpointUpdateRequest,
   Recipe,
+  RecipeCreateRequest,
+  RecipeUpdateRequest,
 } from "./types"
 
 export interface ArtifactFilters {
@@ -54,6 +60,25 @@ export function fetchArtifact(ref: string): Promise<Artifact> {
   return api.get<Artifact>(`/artifacts/${encodeURIComponent(ref)}`)
 }
 
+export function createArtifact(body: ArtifactCreateRequest): Promise<Artifact> {
+  return api.post<Artifact>("/artifacts", body)
+}
+
+/** Conditional on `revision`; a mismatch is `409 conflict`. */
+export function updateArtifact(
+  ref: string,
+  body: ArtifactUpdateRequest,
+  revision?: string
+): Promise<Artifact> {
+  return api.patch<Artifact>(`/artifacts/${encodeURIComponent(ref)}`, body, {
+    ifMatch: revision,
+  })
+}
+
+export function deleteArtifact(ref: string): Promise<void> {
+  return api.delete<void>(`/artifacts/${encodeURIComponent(ref)}`)
+}
+
 export function fetchRecipes(
   filters: RecipeFilters = {},
   cursor?: string,
@@ -64,6 +89,24 @@ export function fetchRecipes(
 
 export function fetchRecipe(ref: string): Promise<Recipe> {
   return api.get<Recipe>(`/recipes/${encodeURIComponent(ref)}`)
+}
+
+export function createRecipe(body: RecipeCreateRequest): Promise<Recipe> {
+  return api.post<Recipe>("/recipes", body)
+}
+
+export function updateRecipe(
+  ref: string,
+  body: RecipeUpdateRequest,
+  revision?: string
+): Promise<Recipe> {
+  return api.patch<Recipe>(`/recipes/${encodeURIComponent(ref)}`, body, {
+    ifMatch: revision,
+  })
+}
+
+export function deleteRecipe(ref: string): Promise<void> {
+  return api.delete<void>(`/recipes/${encodeURIComponent(ref)}`)
 }
 
 export function fetchDeployments(
@@ -82,6 +125,10 @@ export function fetchDeployment(ref: string, cluster?: string): Promise<Deployme
   return api.get<Deployment>(`/deployments/${encodeURIComponent(ref)}`, { cluster })
 }
 
+export function createDeployment(body: DeploymentCreateRequest): Promise<Deployment> {
+  return api.post<Deployment>("/deployments", body)
+}
+
 export function updateDeployment(
   ref: string,
   body: DeploymentUpdateRequest,
@@ -90,6 +137,10 @@ export function updateDeployment(
   return api.patch<Deployment>(`/deployments/${encodeURIComponent(ref)}`, body, {
     ifMatch: revision,
   })
+}
+
+export function deleteDeployment(ref: string): Promise<void> {
+  return api.delete<void>(`/deployments/${encodeURIComponent(ref)}`)
 }
 
 export function fetchEndpoints(
@@ -104,6 +155,10 @@ export function fetchEndpoint(ref: string): Promise<Endpoint> {
   return api.get<Endpoint>(`/endpoints/${encodeURIComponent(ref)}`)
 }
 
+export function createEndpoint(body: EndpointCreateRequest): Promise<Endpoint> {
+  return api.post<Endpoint>("/endpoints", body)
+}
+
 export function updateEndpoint(
   ref: string,
   body: EndpointUpdateRequest,
@@ -112,4 +167,8 @@ export function updateEndpoint(
   return api.patch<Endpoint>(`/endpoints/${encodeURIComponent(ref)}`, body, {
     ifMatch: revision,
   })
+}
+
+export function deleteEndpoint(ref: string): Promise<void> {
+  return api.delete<void>(`/endpoints/${encodeURIComponent(ref)}`)
 }

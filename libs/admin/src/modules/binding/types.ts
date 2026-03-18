@@ -24,6 +24,16 @@ export interface Project {
   revision: string
 }
 
+/** The tenant is a slug or id; there is no `/v1/tenants` collection to pick from. */
+export interface ProjectCreateRequest {
+  tenant: string
+  slug: string
+  name: string
+  default_priority_class?: string | null
+  enabled?: boolean
+}
+
+/** The slug is identity and the tenant is ownership, so neither is patchable. */
 export interface ProjectUpdateRequest {
   name?: string
   default_priority_class?: string | null
@@ -58,6 +68,17 @@ export interface Quota {
   over_limit: boolean
 }
 
+/** Project, cluster and class fix what the quota is about, and only at creation. */
+export interface QuotaCreateRequest {
+  project: string
+  device_class: string
+  cluster?: string | null
+  guaranteed_devices?: number
+  limit_devices?: number | null
+  over_quota_weight?: number
+  over_quota_enabled?: boolean
+}
+
 export interface QuotaUpdateRequest {
   guaranteed_devices?: number
   limit_devices?: number | null
@@ -81,6 +102,24 @@ export interface PriorityClass {
   created_at: string
   updated_at: string | null
   revision: string
+}
+
+export interface PriorityClassCreateRequest {
+  name: string
+  value: number
+  preemptible?: boolean
+  preempts?: boolean
+  is_default?: boolean
+  description?: string | null
+}
+
+/** The name is what workloads reference by string, so it is fixed at creation. */
+export interface PriorityClassUpdateRequest {
+  value?: number
+  preemptible?: boolean
+  preempts?: boolean
+  is_default?: boolean
+  description?: string | null
 }
 
 /**
@@ -115,4 +154,38 @@ export interface Policy {
   updated_at: string | null
   revision: string
   attachments: PolicyAttachment[]
+}
+
+/** `PolicyAttachmentRequest` — `subject` is a ref, resolved against its type. */
+export interface PolicyAttachmentRequest {
+  subject_type: string
+  subject: string
+}
+
+export interface PolicyCreateRequest {
+  name: string
+  description?: string | null
+  allowed_regions?: string[]
+  allowed_residencies?: string[]
+  allowed_device_classes?: string[]
+  allowed_clusters?: string[]
+  denied_clusters?: string[]
+  max_hourly_cost?: number | null
+  rules?: Record<string, unknown>
+  enabled?: boolean
+  attachments?: PolicyAttachmentRequest[]
+}
+
+export interface PolicyUpdateRequest {
+  name?: string
+  description?: string | null
+  allowed_regions?: string[]
+  allowed_residencies?: string[]
+  allowed_device_classes?: string[]
+  allowed_clusters?: string[]
+  denied_clusters?: string[]
+  max_hourly_cost?: number | null
+  rules?: Record<string, unknown>
+  enabled?: boolean
+  attachments?: PolicyAttachmentRequest[]
 }

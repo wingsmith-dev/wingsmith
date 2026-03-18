@@ -1,23 +1,36 @@
 import { DataTable, type Column } from "@/components/layout/data-table"
+import { ResourceCell } from "@/components/layout/resource-cell"
+import { DeleteDialog, RowActions } from "@/components/layout/destructive"
 import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { Badge } from "@/components/ui/badge"
 import { parallelismLabel } from "@/modules/demand/display"
-import { useRecipes } from "@/modules/demand/queries"
+import { Button } from "@/components/ui/button"
+import { formatError } from "@/lib/format"
+import { useDeleteRecipe, useRecipes } from "@/modules/demand/queries"
 import type { Recipe } from "@/modules/demand/types"
+import { RecipeForm } from "./RecipeForm"
+import { useState } from "react"
+import { toast } from "sonner"
 
-const columns: Column<Recipe>[] = [
+function columns(
+  onEdit: (recipe: Recipe) => void,
+  onDelete: (recipe: Recipe) => void
+): Column<Recipe>[] {
+  return [
   {
     key: "name",
     header: "Recipe",
     cell: (recipe) => (
-      <span className="block">
-        <span className="font-mono text-xs">{recipe.name}</span>
-        <span className="ml-2 font-mono text-2xs text-muted-foreground/60">
-          v{recipe.version}
+      <ResourceCell kind="recipe">
+        <span className="block">
+          <span className="font-mono text-xs">{recipe.name}</span>
+          <span className="ml-2 font-mono text-2xs text-muted-foreground/60">
+            v{recipe.version}
+          </span>
+          <Id value={recipe.id} className="ml-2" />
         </span>
-        <Id value={recipe.id} className="ml-2" />
-      </span>
+      </ResourceCell>
     ),
   },
   {
@@ -88,7 +101,21 @@ const columns: Column<Recipe>[] = [
       </span>
     ),
   },
-]
+  {
+    key: "actions",
+    header: "",
+    align: "right",
+    cell: (recipe) => (
+      <RowActions
+        actions={[
+          { label: "Edit", onSelect: () => onEdit(recipe) },
+          { label: "Delete", destructive: true, onSelect: () => onDelete(recipe) },
+        ]}
+      />
+    ),
+  },
+  ]
+}
 
 /**
  * A shape is a class and a count together — a tensor-parallel-8 recipe means
@@ -96,20 +123,62 @@ const columns: Column<Recipe>[] = [
  */
 export function RecipesPage() {
   const list = useRecipes()
+  const remove = useDeleteRecipe()
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<Recipe | undefined>()
+  const [doomed, setDoomed] = useState<Recipe | undefined>()
+
   return (
     <div className="flex flex-col">
       <PageHeader
         title="Recipes"
         description="declared · a reproducible way to serve an artifact"
+        actions={
+          <Button size="sm" onClick={() => setCreating(true)}>
+            New recipe
+          </Button>
+        }
       />
       <div className="space-y-4 p-4">
         <DataTable
-          columns={columns}
+          columns={columns(setEditing, setDoomed)}
           list={list}
           rowKey={(recipe) => recipe.id}
           empty="No recipes defined."
         />
       </div>
+
+      {creating && (
+        <RecipeForm open onOpenChange={(open) => !open && setCreating(false)} />
+      )}
+      {editing && (
+        <RecipeForm
+          key={editing.revision}
+          open
+          recipe={editing}
+          onOpenChange={(open) => !open && setEditing(undefined)}
+        />
+      )}
+      <DeleteDialog
+        icon="recipe"
+        open={!!doomed}
+        onOpenChange={(open) => !open && setDoomed(undefined)}
+        kind="recipe"
+        name={doomed?.name ?? ""}
+        note="Deployments built from it are left without a spec."
+        error={remove.error}
+        pending={remove.isPending}
+        onConfirm={() =>
+          doomed &&
+          remove.mutate(doomed.id, {
+            onSuccess: () => {
+              setDoomed(undefined)
+              toast.success("Recipe deleted", { description: doomed.name })
+            },
+            onError: (e) => toast.error(formatError(e, "Could not delete recipe")),
+          })
+        }
+      />
     </div>
   )
 }

@@ -1,5 +1,7 @@
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { DataTable, type Column } from "@/components/layout/data-table"
+import { ResourceCell } from "@/components/layout/resource-cell"
+import { DeleteDialog, RowActions } from "@/components/layout/destructive"
 import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusLabel } from "@/components/layout/status-dot"
@@ -11,23 +13,34 @@ import {
   WORKLOAD_TYPES,
   workloadPhaseTone,
 } from "@/modules/demand/display"
-import { useDeployments } from "@/modules/demand/queries"
+import { Button } from "@/components/ui/button"
+import { formatError } from "@/lib/format"
+import { useDeleteDeployment, useDeployments } from "@/modules/demand/queries"
 import type { Deployment } from "@/modules/demand/types"
+import { DeploymentForm } from "./DeploymentForm"
+import { useState } from "react"
+import { toast } from "sonner"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 
-const columns: Column<Deployment>[] = [
+function columns(
+  onEdit: (deployment: Deployment) => void,
+  onDelete: (deployment: Deployment) => void
+): Column<Deployment>[] {
+  return [
   {
     key: "name",
     header: "Deployment",
     cell: (deployment) => (
-      <Link
-        to="/deployments/$deploymentId"
-        params={{ deploymentId: deployment.id }}
-        className="block"
-      >
-        <span className="font-mono text-xs">{deployment.name}</span>
-        <Id value={deployment.id} className="ml-2" />
-      </Link>
+      <ResourceCell kind="deployment">
+        <Link
+          to="/deployments/$deploymentId"
+          params={{ deploymentId: deployment.id }}
+          className="block"
+        >
+          <span className="font-mono text-xs">{deployment.name}</span>
+          <Id value={deployment.id} className="ml-2" />
+        </Link>
+      </ResourceCell>
     ),
   },
   {
@@ -115,7 +128,21 @@ const columns: Column<Deployment>[] = [
       </span>
     ),
   },
-]
+  {
+    key: "actions",
+    header: "",
+    align: "right",
+    cell: (deployment) => (
+      <RowActions
+        actions={[
+          { label: "Edit", onSelect: () => onEdit(deployment) },
+          { label: "Delete", destructive: true, onSelect: () => onDelete(deployment) },
+        ]}
+      />
+    ),
+  },
+  ]
+}
 
 /**
  * Spec, scheduling supertype and observed replicas are three different things,
@@ -127,6 +154,10 @@ export function DeploymentsPage() {
   const search = useSearch({ from: "/_app/deployments" })
   const navigate = useNavigate({ from: "/deployments" })
   const { data: clusters } = useClusterOptions()
+  const remove = useDeleteDeployment()
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<Deployment | undefined>()
+  const [doomed, setDoomed] = useState<Deployment | undefined>()
   const list = useDeployments({
     cluster: search.cluster,
     project: search.project,
@@ -144,6 +175,11 @@ export function DeploymentsPage() {
       <PageHeader
         title="Deployments"
         description="declared · recipe × cluster, with observed replicas beside it"
+        actions={
+          <Button size="sm" onClick={() => setCreating(true)}>
+            New deployment
+          </Button>
+        }
       />
 
       <div className="space-y-4 p-4">
@@ -172,12 +208,44 @@ export function DeploymentsPage() {
         </div>
 
         <DataTable
-          columns={columns}
+          columns={columns(setEditing, setDoomed)}
           list={list}
           rowKey={(deployment) => deployment.id}
           empty="Nothing is deployed."
         />
       </div>
+
+      {creating && (
+        <DeploymentForm open onOpenChange={(open) => !open && setCreating(false)} />
+      )}
+      {editing && (
+        <DeploymentForm
+          key={editing.revision}
+          open
+          deployment={editing}
+          onOpenChange={(open) => !open && setEditing(undefined)}
+        />
+      )}
+      <DeleteDialog
+        icon="deployment"
+        open={!!doomed}
+        onOpenChange={(open) => !open && setDoomed(undefined)}
+        kind="deployment"
+        name={doomed?.name ?? ""}
+        note="Its replicas are torn down and any endpoint target pointing at it stops routing."
+        error={remove.error}
+        pending={remove.isPending}
+        onConfirm={() =>
+          doomed &&
+          remove.mutate(doomed.id, {
+            onSuccess: () => {
+              setDoomed(undefined)
+              toast.success("Deployment deleted", { description: doomed.name })
+            },
+            onError: (e) => toast.error(formatError(e, "Could not delete deployment")),
+          })
+        }
+      />
     </div>
   )
 }

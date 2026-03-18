@@ -14,13 +14,21 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { formatError } from "@/lib/format"
-import { useEndpoint } from "@/modules/demand/queries"
+import { DeleteDialog } from "@/components/layout/destructive"
+import { useDeleteEndpoint, useEndpoint } from "@/modules/demand/queries"
+import { EndpointForm } from "../EndpointForm"
+import { useState } from "react"
+import { toast } from "sonner"
 import { IconArrowLeft } from "@tabler/icons-react"
-import { Link, useParams } from "@tanstack/react-router"
+import { Link, useNavigate, useParams } from "@tanstack/react-router"
 
 export function EndpointDetailPage() {
   const { endpointId } = useParams({ from: "/_app/endpoints/$endpointId" })
   const { data: endpoint, isLoading, error } = useEndpoint(endpointId)
+  const remove = useDeleteEndpoint()
+  const navigate = useNavigate()
+  const [editing, setEditing] = useState(false)
+  const [doomed, setDoomed] = useState(false)
 
   if (error) {
     return (
@@ -39,14 +47,57 @@ export function EndpointDetailPage() {
         title={endpoint?.name ?? "Endpoint"}
         description={endpoint?.id}
         actions={
-          <Button asChild variant="outline" size="sm">
-            <Link to="/endpoints">
-              <IconArrowLeft className="size-4" />
-              All endpoints
-            </Link>
-          </Button>
+          <div className="flex gap-2">
+            {endpoint && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                  Edit
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setDoomed(true)}>
+                  Delete
+                </Button>
+              </>
+            )}
+            <Button asChild variant="outline" size="sm">
+              <Link to="/endpoints">
+                <IconArrowLeft className="size-4" />
+                All endpoints
+              </Link>
+            </Button>
+          </div>
         }
       />
+
+      {endpoint && editing && (
+        <EndpointForm
+          key={endpoint.revision}
+          open
+          endpoint={endpoint}
+          onOpenChange={(open) => !open && setEditing(false)}
+        />
+      )}
+      {endpoint && (
+        <DeleteDialog
+        icon="endpoint"
+          open={doomed}
+          onOpenChange={setDoomed}
+          kind="endpoint"
+          name={endpoint.name}
+          note="Clients calling this name start failing immediately."
+          error={remove.error}
+          pending={remove.isPending}
+          onConfirm={() =>
+            remove.mutate(endpoint.id, {
+              onSuccess: () => {
+                setDoomed(false)
+                toast.success("Endpoint deleted", { description: endpoint.name })
+                navigate({ to: "/endpoints" })
+              },
+              onError: (e) => toast.error(formatError(e, "Could not delete endpoint")),
+            })
+          }
+        />
+      )}
 
       <div className="space-y-4 p-4">
         {isLoading && <Skeleton className="h-40 w-full" />}

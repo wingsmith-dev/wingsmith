@@ -1,21 +1,33 @@
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { DataTable, type Column } from "@/components/layout/data-table"
+import { ResourceCell } from "@/components/layout/resource-cell"
+import { DeleteDialog, RowActions } from "@/components/layout/destructive"
 import { PageHeader } from "@/components/layout/page-header"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { useProjectOptions } from "@/modules/binding/queries"
-import { useQuotas } from "@/modules/binding/queries"
+import { Button } from "@/components/ui/button"
+import { formatError } from "@/lib/format"
+import { useDeleteQuota, useProjectOptions, useQuotas } from "@/modules/binding/queries"
 import type { Quota } from "@/modules/binding/types"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
 import { useNavigate, useSearch } from "@tanstack/react-router"
+import { QuotaForm } from "./QuotaForm"
+import { useState } from "react"
+import { toast } from "sonner"
 
-const columns: Column<Quota>[] = [
+function columns(
+  onEdit: (quota: Quota) => void,
+  onDelete: (quota: Quota) => void
+): Column<Quota>[] {
+  return [
   {
     key: "project",
     header: "Project",
     cell: (quota) => (
-      <span className="font-mono text-xs">{quota.project_slug}</span>
+      <ResourceCell kind="quota">
+        <span className="font-mono text-xs">{quota.project_slug}</span>
+      </ResourceCell>
     ),
   },
   {
@@ -106,7 +118,21 @@ const columns: Column<Quota>[] = [
       </span>
     ),
   },
-]
+  {
+    key: "actions",
+    header: "",
+    align: "right",
+    cell: (quota) => (
+      <RowActions
+        actions={[
+          { label: "Edit", onSelect: () => onEdit(quota) },
+          { label: "Delete", destructive: true, onSelect: () => onDelete(quota) },
+        ]}
+      />
+    ),
+  },
+  ]
+}
 
 /**
  * A guaranteed floor and a fair share, with usage beside them and never merged
@@ -124,6 +150,11 @@ export function QuotasPage() {
     class: search.class,
   })
 
+  const remove = useDeleteQuota()
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<Quota | undefined>()
+  const [doomed, setDoomed] = useState<Quota | undefined>()
+
   const set = (key: "project" | "cluster") => (value: string) =>
     navigate({
       search: (prev) => ({ ...prev, [key]: value === ALL ? undefined : value }),
@@ -134,6 +165,11 @@ export function QuotasPage() {
       <PageHeader
         title="Quotas"
         description="declared floor and fair share · observed usage beside it"
+        actions={
+          <Button size="sm" onClick={() => setCreating(true)}>
+            New quota
+          </Button>
+        }
       />
 
       <div className="space-y-4 p-4">
@@ -159,12 +195,44 @@ export function QuotasPage() {
         </div>
 
         <DataTable
-          columns={columns}
+          columns={columns(setEditing, setDoomed)}
           list={list}
           rowKey={(quota) => quota.id}
           empty="No quotas declared."
         />
       </div>
+
+      {creating && (
+        <QuotaForm open onOpenChange={(open) => !open && setCreating(false)} />
+      )}
+      {editing && (
+        <QuotaForm
+          key={editing.revision}
+          open
+          quota={editing}
+          onOpenChange={(open) => !open && setEditing(undefined)}
+        />
+      )}
+      <DeleteDialog
+        icon="quota"
+        open={!!doomed}
+        onOpenChange={(open) => !open && setDoomed(undefined)}
+        kind="quota"
+        name={`${doomed?.project_slug ?? ""} · ${doomed?.device_class ?? ""}`}
+        note="The project keeps no guaranteed floor on that class."
+        error={remove.error}
+        pending={remove.isPending}
+        onConfirm={() =>
+          doomed &&
+          remove.mutate(doomed.id, {
+            onSuccess: () => {
+              setDoomed(undefined)
+              toast.success("Quota deleted", { description: doomed.project_slug })
+            },
+            onError: (e) => toast.error(formatError(e, "Could not delete quota")),
+          })
+        }
+      />
     </div>
   )
 }
