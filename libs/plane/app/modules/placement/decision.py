@@ -1,0 +1,109 @@
+"""The output side of placement: a decision that explains itself per cluster.
+
+A scheduler that answers "no capacity" is unoperable. Every cluster considered
+gets a verdict carrying the numbers the rejection was computed from, so the
+answer to "why not iad-1" is in the return value rather than in a log line
+someone has to go and find.
+"""
+
+from msgspec import Struct
+
+
+class Verdict(Struct, frozen=True, kw_only=True):
+    """Base for every decision struct: immutable and keyword-constructed."""
+
+
+CLUSTER_PHASE = "cluster_phase"
+CLUSTER_UNREACHABLE = "cluster_unreachable"
+POLICY_REGION = "policy_region"
+POLICY_RESIDENCY = "policy_residency"
+POLICY_DEVICE_CLASS = "policy_device_class"
+POLICY_CLUSTER_NOT_ALLOWED = "policy_cluster_not_allowed"
+POLICY_CLUSTER_DENIED = "policy_cluster_denied"
+QUOTA_EXHAUSTED = "quota_exhausted"
+NO_SUCH_DEVICE_CLASS = "no_such_device_class"
+INSUFFICIENT_CAPACITY = "insufficient_capacity"
+INSUFFICIENT_TOPOLOGY = "insufficient_topology"
+
+
+class Rejection(Verdict):
+    """One reason a cluster was ruled out, with the numbers behind it."""
+
+    code: str
+    message: str
+    detail: dict = {}
+
+
+class PreemptionVictim(Verdict):
+    """A workload that would have to go for this placement to fit.
+
+    `devices_in_scope` is what preempting it contributes here; `devices_released`
+    is everything it holds in the cluster. They differ when a workload straddles
+    topology domains, and the difference is the honest cost of the eviction —
+    an allocation dies whole, so the devices outside the scope are freed too.
+    """
+
+    workload: str
+    project: str
+    priority_value: int
+    devices_in_scope: int
+    devices_released: int
+
+
+class PreemptionPlan(Verdict):
+    """What would be evicted, identified but never performed.
+
+    Placement returns this and stops. Actually preempting is a caller's decision,
+    taken with a transaction open, which is exactly the thing this package does
+    not have.
+    """
+
+    victims: tuple[PreemptionVictim, ...]
+    devices_reclaimed: int
+
+    @property
+    def empty(self) -> bool:
+        return not self.victims
+
+
+class ClusterVerdict(Verdict):
+    """One cluster's full reasoning, feasible or not.
+
+    Carries the counts even when it fails, because "6 free h100 in the largest
+    nvlink domain, 8 asked for" is an operator's next action and "no capacity"
+    is not.
+    """
+
+    cluster: str
+    cluster_name: str
+    feasible: bool
+    free_devices: int
+    reasons: tuple[Rejection, ...] = ()
+    domain: str | None = None
+    domain_identifier: str | None = None
+    domain_free_devices: int = 0
+    largest_domain_free_devices: int = 0
+    fit_slack: int = 0
+    quota_headroom: int | None = None
+    preemption: PreemptionPlan | None = None
+
+
+class PlacementDecision(Verdict):
+    """Which cluster, and why every other one lost.
+
+    `placed` is false and `cluster` is None when nothing fits; the verdicts are
+    populated identically either way, so the rejection path is as informative as
+    the success path.
+    """
+
+    request: str
+    placed: bool
+    cluster: str | None
+    cluster_name: str | None
+    verdicts: tuple[ClusterVerdict, ...]
+    preemption: PreemptionPlan | None = None
+    summary: str = ""
+
+    @property
+    def requires_preemption(self) -> bool:
+        return self.preemption is not None and not self.preemption.empty

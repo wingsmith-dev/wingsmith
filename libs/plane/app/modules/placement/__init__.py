@@ -7,3 +7,36 @@ testable without a cluster and without a database.
 
 Callers read the snapshot, call in, and persist the result themselves.
 """
+
+from .engine import place
+from .decision import Rejection
+from .decision import ClusterVerdict
+from .decision import PreemptionPlan
+from .decision import PreemptionVictim
+from .decision import PlacementDecision
+from .snapshot import DeviceHold
+from .snapshot import QuotaSnapshot
+from .snapshot import DeviceSnapshot
+from .snapshot import PolicySnapshot
+from .snapshot import ClusterSnapshot
+from .snapshot import CapacitySnapshot
+from .snapshot import PlacementRequest
+from .snapshot import TopologyDomainSnapshot
+
+
+__all__ = [
+    "CapacitySnapshot",
+    "ClusterSnapshot",
+    "ClusterVerdict",
+    "DeviceHold",
+    "DeviceSnapshot",
+    "PlacementDecision",
+    "PlacementRequest",
+    "PolicySnapshot",
+    "PreemptionPlan",
+    "PreemptionVictim",
+    "QuotaSnapshot",
+    "Rejection",
+    "TopologyDomainSnapshot",
+    "place",
+]
