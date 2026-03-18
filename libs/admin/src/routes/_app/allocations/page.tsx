@@ -1,5 +1,6 @@
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { DataTable, type Column } from "@/components/layout/data-table"
+import { ResourceCell } from "@/components/layout/resource-cell"
 import { Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusLabel } from "@/components/layout/status-dot"
@@ -23,10 +24,12 @@ const columns: Column<Allocation>[] = [
     key: "id",
     header: "Allocation",
     cell: (allocation) => (
-      <span className="block font-mono text-xs">
-        {allocation.workload}
-        <Id value={allocation.id} className="ml-2" />
-      </span>
+      <ResourceCell kind="allocation">
+        <span className="block font-mono text-xs">
+          {allocation.workload}
+          <Id value={allocation.id} className="ml-2" />
+        </span>
+      </ResourceCell>
     ),
   },
   {

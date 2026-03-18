@@ -29,7 +29,7 @@ export function PageHeader({
             {title}
           </h1>
           {description && (
-            <p className="mt-0.5 font-mono text-xs text-muted-foreground/60">
+            <p className="mt-1 font-mono text-2xs text-muted-foreground/60">
               {description}
             </p>
           )}

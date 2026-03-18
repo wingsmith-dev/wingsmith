@@ -1,0 +1,63 @@
+import {
+  IconActivity,
+  IconBinaryTree,
+  IconBolt,
+  IconBox,
+  IconCpu,
+  IconFolders,
+  IconGauge,
+  IconLayoutDashboard,
+  IconLayoutGrid,
+  IconPackages,
+  IconServer,
+  IconServer2,
+  IconShieldLock,
+  IconSortDescending,
+  IconStack2,
+  IconTimelineEvent,
+  IconTopologyStar3,
+} from "@tabler/icons-react"
+
+export type ResourceKind =
+  | "overview"
+  | "cluster"
+  | "node"
+  | "device"
+  | "pool"
+  | "topology-domain"
+  | "artifact"
+  | "recipe"
+  | "deployment"
+  | "endpoint"
+  | "project"
+  | "quota"
+  | "priority-class"
+  | "policy"
+  | "operation"
+  | "allocation"
+  | "event"
+
+/**
+ * One icon per kind of thing, resolved in one place. A node is the same glyph in
+ * the sidebar, the page header, a card and a table cell — an operator learns the
+ * vocabulary once.
+ */
+export const RESOURCE_ICONS: Record<ResourceKind, React.ElementType> = {
+  overview: IconLayoutDashboard,
+  cluster: IconServer2,
+  node: IconServer,
+  device: IconCpu,
+  pool: IconStack2,
+  "topology-domain": IconTopologyStar3,
+  artifact: IconPackages,
+  recipe: IconBinaryTree,
+  deployment: IconBox,
+  endpoint: IconBolt,
+  project: IconFolders,
+  quota: IconGauge,
+  "priority-class": IconSortDescending,
+  policy: IconShieldLock,
+  operation: IconActivity,
+  allocation: IconLayoutGrid,
+  event: IconTimelineEvent,
+}

@@ -1,5 +1,6 @@
 import type { Column } from "@/components/layout/data-table"
 import { Dash, Id } from "@/components/layout/mono"
+import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Badge } from "@/components/ui/badge"
 import { formatRelative } from "@/lib/format"
@@ -17,14 +18,16 @@ export function operationColumns(): Column<Operation>[] {
       key: "type",
       header: "Operation",
       cell: (operation) => (
-        <Link
-          to="/operations/$operationId"
-          params={{ operationId: operation.id }}
-          className="block font-mono text-xs hover:underline"
-        >
-          {operation.type}
-          <Id value={operation.id} className="ml-2" />
-        </Link>
+        <ResourceCell kind="operation">
+          <Link
+            to="/operations/$operationId"
+            params={{ operationId: operation.id }}
+            className="block font-mono text-xs hover:underline"
+          >
+            {operation.type}
+            <Id value={operation.id} className="ml-2" />
+          </Link>
+        </ResourceCell>
       ),
     },
     {

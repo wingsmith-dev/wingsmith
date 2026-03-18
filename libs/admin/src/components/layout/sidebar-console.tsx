@@ -12,55 +12,42 @@ import {
 } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
 import { transport } from "@/lib/api"
-import {
-  IconActivity,
-  IconBinaryTree,
-  IconBolt,
-  IconBox,
-  IconCpu,
-  IconFolders,
-  IconGauge,
-  IconLogout,
-  IconPackages,
-  IconServer,
-  IconLayoutGrid,
-  IconServer2,
-  IconShieldLock,
-  IconSortDescending,
-  IconStack2,
-  IconTimelineEvent,
-  IconTopologyStar3,
-} from "@tabler/icons-react"
+import { ResourceIcon, type ResourceKind } from "@/components/layout/resource-icon"
+import { IconLogout, IconTopologyStar3 } from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
 import { useAuthStore } from "@/modules/auth/store"
 
-type NavItem = { label: string; to: string; icon: React.ElementType }
+type NavItem = { label: string; to: string; kind: ResourceKind }
+
+const overviewItems: NavItem[] = [
+  { label: "Overview", to: "/overview", kind: "overview" },
+]
 
 const supplyItems: NavItem[] = [
-  { label: "Clusters", to: "/clusters", icon: IconServer2 },
-  { label: "Nodes", to: "/nodes", icon: IconServer },
-  { label: "Devices", to: "/devices", icon: IconCpu },
-  { label: "Pools", to: "/pools", icon: IconStack2 },
+  { label: "Clusters", to: "/clusters", kind: "cluster" },
+  { label: "Nodes", to: "/nodes", kind: "node" },
+  { label: "Devices", to: "/devices", kind: "device" },
+  { label: "Pools", to: "/pools", kind: "pool" },
 ]
 
 const demandItems: NavItem[] = [
-  { label: "Artifacts", to: "/artifacts", icon: IconPackages },
-  { label: "Recipes", to: "/recipes", icon: IconBinaryTree },
-  { label: "Deployments", to: "/deployments", icon: IconBox },
-  { label: "Endpoints", to: "/endpoints", icon: IconBolt },
+  { label: "Artifacts", to: "/artifacts", kind: "artifact" },
+  { label: "Recipes", to: "/recipes", kind: "recipe" },
+  { label: "Deployments", to: "/deployments", kind: "deployment" },
+  { label: "Endpoints", to: "/endpoints", kind: "endpoint" },
 ]
 
 const bindingItems: NavItem[] = [
-  { label: "Projects", to: "/projects", icon: IconFolders },
-  { label: "Quotas", to: "/quotas", icon: IconGauge },
-  { label: "Priority classes", to: "/priority-classes", icon: IconSortDescending },
-  { label: "Policies", to: "/policies", icon: IconShieldLock },
+  { label: "Projects", to: "/projects", kind: "project" },
+  { label: "Quotas", to: "/quotas", kind: "quota" },
+  { label: "Priority classes", to: "/priority-classes", kind: "priority-class" },
+  { label: "Policies", to: "/policies", kind: "policy" },
 ]
 
 const machineryItems: NavItem[] = [
-  { label: "Operations", to: "/operations", icon: IconActivity },
-  { label: "Allocations", to: "/allocations", icon: IconLayoutGrid },
-  { label: "Events", to: "/events", icon: IconTimelineEvent },
+  { label: "Operations", to: "/operations", kind: "operation" },
+  { label: "Allocations", to: "/allocations", kind: "allocation" },
+  { label: "Events", to: "/events", kind: "event" },
 ]
 
 const activeClass =
@@ -71,15 +58,15 @@ function NavGroup({
   items,
   pathname,
 }: {
-  label: string
+  label?: string
   items: NavItem[]
   pathname: string
 }) {
   return (
     <SidebarGroup>
-      <SidebarGroupLabel className="font-mono text-2xs font-semibold uppercase tracking-[0.15em] text-muted-foreground/50">
+      {label && <SidebarGroupLabel className="font-mono text-2xs font-semibold uppercase tracking-[0.15em] text-muted-foreground/50">
         {label}
-      </SidebarGroupLabel>
+      </SidebarGroupLabel>}
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.to}>
@@ -90,7 +77,7 @@ function NavGroup({
               className={activeClass}
             >
               <Link to={item.to}>
-                <item.icon />
+                <ResourceIcon kind={item.kind} />
                 <span>{item.label}</span>
               </Link>
             </SidebarMenuButton>
@@ -133,6 +120,7 @@ export function ConsoleSidebar({ ...props }: React.ComponentProps<typeof Sidebar
       </SidebarHeader>
 
       <SidebarContent>
+        <NavGroup items={overviewItems} pathname={pathname} />
         <NavGroup label="Supply" items={supplyItems} pathname={pathname} />
         <NavGroup label="Demand" items={demandItems} pathname={pathname} />
         <NavGroup label="Binding" items={bindingItems} pathname={pathname} />
