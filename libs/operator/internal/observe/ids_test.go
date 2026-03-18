@@ -78,10 +78,7 @@ func TestNoTelemetryOnTheWire(t *testing.T) {
 				t.Fatalf("%s frame carries telemetry %q: %s", f.typ, word, blob)
 			}
 		}
-		if strings.Contains(body, `"memory_used_mb":0`) {
-			continue
-		}
-		if strings.Contains(body, `"memory_used_mb"`) {
+		if strings.Contains(body, "memory_used") {
 			t.Fatalf("%s frame reports used memory, which is a measurement: %s", f.typ, blob)
 		}
 	}

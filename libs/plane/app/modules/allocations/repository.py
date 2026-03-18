@@ -1,25 +1,19 @@
-from uuid import UUID
-
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ids import ALLOCATION
+from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Device
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Replica
+from app.db.models import Workload
 from app.db.models import Allocation
 from app.db.models import AllocationDevice
 from app.core.filters import ref_ids
-
-
-def as_uuid(value: str) -> UUID | None:
-    try:
-        return UUID(value)
-    except (ValueError, AttributeError, TypeError):
-        return None
 
 
 def device_ids(ref: str) -> Select:
@@ -48,18 +42,19 @@ class AllocationRepository:
                 Project.uid.label("project_uid"),
                 Project.slug.label("project_slug"),
                 Replica.uid.label("replica_uid"),
+                Workload.uid.label("workload_uid"),
             )
             .join(Cluster, Allocation.cluster_id == Cluster.id)
             .join(Project, Allocation.project_id == Project.id)
+            .join(Workload, Allocation.workload_id == Workload.id)
             .outerjoin(Replica, Allocation.replica_id == Replica.id)
         )
 
     def get_query(self, ref: str) -> Select:
-        """An allocation has no `uid` and no name, so the reference is its key."""
-        parsed = as_uuid(ref)
-        if parsed is None:
-            return self._base().where(Allocation.id.is_(None))
-        return self._base().where(Allocation.id == parsed)
+        """An allocation has an `alc_` id and no name, so the id is the reference."""
+        if not is_uid(ref) or not ref.startswith(ALLOCATION):
+            return self._base().where(Allocation.uid.is_(None))
+        return self._base().where(Allocation.uid == ref)
 
     def holder_query(self, device_ref: str) -> Select:
         """Which allocation holds this device right now.

@@ -5,27 +5,14 @@ from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ids import is_uid
 from app.db.models import Workload
 from app.db.models import PriorityClass
 
 
-def as_uuid(value: str) -> UUID | None:
-    try:
-        return UUID(value)
-    except (ValueError, AttributeError):
-        return None
-
-
 def ref_column(ref: str):
-    """`PriorityClass` has no `uid` column, so a reference is a name or the key.
-
-    `app.core.filters.ref_ids` cannot be used here for exactly that reason: it
-    resolves against `model.uid`, and this table has none to resolve against.
-    """
-    parsed = as_uuid(ref)
-    if parsed is not None:
-        return PriorityClass.id, parsed
-    return PriorityClass.name, ref
+    """A priority class is addressed by its `prc_` id or by its unique name."""
+    return PriorityClass.uid if is_uid(ref) else PriorityClass.name
 
 
 class PriorityClassRepository:
@@ -33,8 +20,7 @@ class PriorityClassRepository:
         self.db = db
 
     def get_query(self, ref: str) -> Select:
-        column, value = ref_column(ref)
-        return select(PriorityClass).where(column == value)
+        return select(PriorityClass).where(ref_column(ref) == ref)
 
     def list_query(
         self,

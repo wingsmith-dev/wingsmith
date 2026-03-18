@@ -1,6 +1,8 @@
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ids import PRIORITY_CLASS
+from app.core.ids import new_uid
 from app.db.models import PriorityClass
 from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
@@ -24,9 +26,9 @@ def _revision(priority_class: PriorityClass) -> str:
 def precedence(classes: list[PriorityClass]) -> list[PriorityClass]:
     """Highest value first, name as the tiebreaker.
 
-    The tiebreaker exists only so that a database that already contains a tie
-    still sorts deterministically. New ties are refused outright — see
-    `PriorityClassService.create`.
+    The tiebreaker is vestigial now that `value` is unique in the database, and
+    is kept because a total order that does not depend on the constraint holding
+    costs one extra sort key.
     """
     return sorted(classes, key=lambda c: (-c.value, c.name))
 
@@ -38,7 +40,7 @@ class PriorityClassService:
 
     def schema(self, priority_class: PriorityClass) -> PriorityClassSchema:
         return PriorityClassSchema(
-            id=str(priority_class.id),
+            id=priority_class.uid,
             name=priority_class.name,
             value=priority_class.value,
             preemptible=priority_class.preemptible,
@@ -92,6 +94,7 @@ class PriorityClassService:
             raise Invalid("name is required")
         await self._claim_value(data.value)
         priority_class = PriorityClass(
+            uid=new_uid(PRIORITY_CLASS),
             name=data.name,
             value=data.value,
             preemptible=data.preemptible,

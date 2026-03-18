@@ -70,6 +70,22 @@ def test_device_upsert_targets_the_natural_key() -> None:
     assert "ON CONFLICT ON CONSTRAINT uq_supply_device_cluster_uuid DO UPDATE" in sql
 
 
+def test_a_domain_spanning_nodes_is_stored_as_spanning_and_nodeless() -> None:
+    """`node_id` can only name one machine, so a multi-node fabric names none."""
+    domain = payload("topology.observed")
+    assert len(domain.node_ids) > 1 and domain.spans_nodes
+    _, params = compile_sql(statements.upsert_topology_domain(CLUSTER_ID, domain))
+    assert params["node_id"] is None
+    assert params["spans_nodes"] is True
+
+
+def test_a_domain_on_one_node_names_that_node() -> None:
+    domain = structs.replace(payload("topology.observed"), node_ids=["nod_01j9x2bbbbbbbbbbbbbbbbbbbb"], spans_nodes=False)
+    sql, params = compile_sql(statements.upsert_topology_domain(CLUSTER_ID, domain))
+    assert params["spans_nodes"] is False
+    assert "supply_node" in sql
+
+
 def test_topology_upsert_targets_the_natural_key() -> None:
     sql, _ = compile_sql(statements.upsert_topology_domain(CLUSTER_ID, payload("topology.observed")))
     assert "ON CONFLICT ON CONSTRAINT uq_supply_topology_domain_identity DO UPDATE" in sql
@@ -137,7 +153,6 @@ def test_a_wrongly_prefixed_id_is_refused() -> None:
 
 
 TELEMETRY_VALUES = {
-    74210,  # device.observed memory_used_mb
     12,  # device.observed ecc.volatile_corrected
 }
 
@@ -147,7 +162,7 @@ def test_device_upsert_keeps_state_and_drops_measurements() -> None:
     _, params = compile_sql(statements.upsert_device(CLUSTER_ID, device))
     values = scalar_params(params)
     assert device.memory_total_mb in values
-    assert device.memory_used_mb not in values
+    assert not hasattr(device, "memory_used_mb")
     assert device.ecc.volatile_corrected not in values
     assert device.ecc.volatile_uncorrected in values
 

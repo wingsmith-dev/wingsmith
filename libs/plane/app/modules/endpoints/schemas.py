@@ -38,6 +38,7 @@ class EndpointSchema(Struct):
     enabled: bool
     targets: list[EndpointTargetSchema]
     failover_order: list[str]
+    labels: dict
     created_at: dt.datetime
     updated_at: dt.datetime | None
     revision: str
@@ -59,6 +60,7 @@ class EndpointCreateRequest(Struct):
     enabled: bool = True
     targets: list[EndpointTargetRequest] = []
     failover_order: list[str] = []
+    labels: dict = {}
 
 
 class EndpointUpdateRequest(Struct):
@@ -81,3 +83,4 @@ class EndpointUpdateRequest(Struct):
     enabled: bool | UnsetType = UNSET
     targets: list[EndpointTargetRequest] | UnsetType = UNSET
     failover_order: list[str] | UnsetType = UNSET
+    labels: dict | UnsetType = UNSET

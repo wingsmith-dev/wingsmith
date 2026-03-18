@@ -63,6 +63,7 @@ class RecipeSchema(Struct):
     cache: RecipeCacheSchema
     shape: RecipeShapeSchema
     resources: RecipeResourcesSchema
+    labels: dict
     created_at: dt.datetime
     updated_at: dt.datetime | None
     revision: str
@@ -95,6 +96,7 @@ class RecipeCreateRequest(Struct):
     cpu_cores: int | None = None
     memory_mib: int | None = None
     disk_gib: int | None = None
+    labels: dict = {}
 
 
 class RecipeUpdateRequest(Struct):
@@ -130,3 +132,4 @@ class RecipeUpdateRequest(Struct):
     cpu_cores: int | None | UnsetType = UNSET
     memory_mib: int | None | UnsetType = UNSET
     disk_gib: int | None | UnsetType = UNSET
+    labels: dict | UnsetType = UNSET

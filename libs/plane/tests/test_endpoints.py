@@ -19,7 +19,6 @@ from app.modules.endpoints.services import VISIBILITIES
 from app.modules.endpoints.services import _revision
 from app.modules.endpoints.services import check_shape
 from app.modules.endpoints.services import check_targets
-from app.modules.endpoints.services import reject_labels
 from app.modules.endpoints.repository import EndpointRepository
 
 
@@ -149,10 +148,10 @@ def test_a_disabled_target_does_not_count_towards_live_weight():
         check_targets([target("serve-a", weight=100, enabled=False)])
 
 
-def test_label_selector_is_refused_rather_than_silently_ignored():
-    with pytest.raises(Invalid):
-        reject_labels({"tier": "gold"})
-    assert reject_labels({}) is None
+def test_label_selector_becomes_a_predicate_per_key(repo):
+    text = sql(repo.list_query(limit=10, labels={"tier": "gold", "team": "search"}))
+    assert text.count("demand_endpoint.labels ->>") == 2
+    assert "->>" not in sql(repo.list_query(limit=10))
 
 
 def test_revision_is_derived_from_the_last_write():

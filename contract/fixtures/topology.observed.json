@@ -9,7 +9,11 @@
     "domain_id": "tpd_01j9x2dddddddddddddddddddd",
     "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "kind": "nvlink",
-    "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",
+    "node_ids": [
+      "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",
+      "nod_01j9x2bbbbbbbbbbbbbbbbbbbc"
+    ],
+    "spans_nodes": true,
     "device_ids": [
       "dev_01j9x2cccccccccccccccccccc",
       "dev_01j9x2cccccccccccccccccccd"

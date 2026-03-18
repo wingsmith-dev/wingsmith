@@ -55,6 +55,7 @@ EVENT_SEVERITY = {
     "joined": "info",
     "left": "warning",
     "cordoned": "info",
+    "uncordoned": "info",
     "degraded": "warning",
     "recovered": "info",
     "reset": "info",
@@ -166,11 +167,12 @@ def upsert_node(cluster_id: UUID, payload: NodeObserved) -> Insert:
 def upsert_device(cluster_id: UUID, payload: DeviceObserved) -> Insert:
     """Writes one observed device.
 
-    Dropped as telemetry: `memory_used_mb` (a measurement of the moment) and
-    `ecc.volatile_corrected` (a rate, not a state — corrected errors are
-    counted by the metrics pipeline). The uncorrected ECC counters are kept
-    because they are what makes a device unschedulable. `allocation` is not
-    written here: a device's commitment is an `Allocation`, not a column.
+    `memory_mib` is the device's capacity, which is state; how much of it is in
+    use is a measurement and is not on the wire at all. Dropped as telemetry:
+    `ecc.volatile_corrected` (a rate, not a state — corrected errors are counted
+    by the metrics pipeline). The uncorrected ECC counters are kept because they
+    are what makes a device unschedulable. `allocation` is not written here: a
+    device's commitment is an `Allocation`, not a column.
     """
     domain = payload.topology_domain_id
     values: dict[str, Any] = {
@@ -197,14 +199,25 @@ def upsert_device(cluster_id: UUID, payload: DeviceObserved) -> Insert:
 
 
 def upsert_topology_domain(cluster_id: UUID, payload: TopologyObserved) -> Insert:
+    """Writes one observed topology domain.
+
+    `TopologyDomain.node_id` is a single nullable column, so it can only hold the
+    node of a domain confined to one machine. A domain that spans nodes — an
+    NVSwitch fabric, a GB200 rack — is stored with a null `node_id` and
+    `spans_nodes` true, which is what that column pair means; the full membership
+    lives on the wire and is recoverable from the domain's devices and their
+    nodes. Storing every named node would need a join table this ingestion does
+    not own.
+    """
+    single_node = payload.node_ids[0] if len(payload.node_ids) == 1 else None
     values: dict[str, Any] = {
         "uid": observed_uid(payload.domain_id, TOPOLOGY_DOMAIN),
         "cluster_id": cluster_id,
-        "node_id": _node_ref(cluster_id, payload.node_id) if payload.node_id else None,
+        "node_id": _node_ref(cluster_id, single_node) if single_node else None,
         "kind": payload.kind,
         "identifier": payload.domain_id,
         "device_count": len(payload.device_ids),
-        "spans_nodes": payload.node_id is None,
+        "spans_nodes": payload.spans_nodes,
         "observed_at": parse_ts(payload.observed_at),
     }
     return _upsert(TopologyDomain, values, TOPOLOGY_CONSTRAINT)

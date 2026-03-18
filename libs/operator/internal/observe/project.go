@@ -22,14 +22,33 @@ type projection struct {
 }
 
 // domainAccumulator groups devices into topology domains as the nodes are walked.
+//
+// A domain is keyed on kind and key alone, never on the node that contributed its first device:
+// a fabric spanning machines is one domain seen from several of them, and keying it per node
+// would shatter it into one domain per machine.
 type domainAccumulator struct {
 	order []string
 	byKey map[string]*wire.TopologyObserved
+	nodes map[string]map[string]bool
+}
+
+// addNode records a node as part of a domain, once, in discovery order.
+func (a *domainAccumulator) addNode(key, nodeID string) {
+	if a.nodes[key] == nil {
+		a.nodes[key] = map[string]bool{}
+	}
+	if a.nodes[key][nodeID] {
+		return
+	}
+	a.nodes[key][nodeID] = true
+	dom := a.byKey[key]
+	dom.NodeIDs = append(dom.NodeIDs, nodeID)
+	dom.SpansNodes = len(dom.NodeIDs) > 1
 }
 
 func (o *Observer) project(s Snapshot) projection {
 	observedAt := formatTime(s.At)
-	acc := domainAccumulator{byKey: map[string]*wire.TopologyObserved{}}
+	acc := domainAccumulator{byKey: map[string]*wire.TopologyObserved{}, nodes: map[string]map[string]bool{}}
 	pools := map[string]map[string]*wire.CapacityClass{}
 	poolOrder := []string{}
 
@@ -58,18 +77,18 @@ func (o *Observer) project(s Snapshot) projection {
 				key := d.DomainKind + "/" + d.DomainKey
 				dom, ok := acc.byKey[key]
 				if !ok {
-					node := nodeID
 					dom = &wire.TopologyObserved{
 						DomainID:   id,
 						ClusterID:  o.ClusterID,
 						Kind:       d.DomainKind,
-						NodeID:     &node,
+						NodeIDs:    []string{},
 						DeviceIDs:  []string{},
 						ObservedAt: observedAt,
 					}
 					acc.byKey[key] = dom
 					acc.order = append(acc.order, key)
 				}
+				acc.addNode(key, nodeID)
 				dom.DeviceIDs = append(dom.DeviceIDs, deviceID)
 			}
 
@@ -108,10 +127,7 @@ func (o *Observer) project(s Snapshot) projection {
 				Model:         d.Model,
 				DeviceClass:   d.DeviceClass,
 				MemoryTotalMB: d.MemoryTotalMB,
-				// MemoryUsedMB stays zero on purpose: a used-bytes reading is a measurement,
-				// and PROTOCOL §7 keeps measurements off this link.
-				MemoryUsedMB: 0,
-				Health:       health,
+				Health:        health,
 				Ecc: wire.DeviceEcc{
 					ModeEnabled:          d.Ecc.ModeEnabled,
 					VolatileCorrected:    d.Ecc.VolatileCorrected,

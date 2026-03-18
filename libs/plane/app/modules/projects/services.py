@@ -35,7 +35,7 @@ class ProjectService:
         return ProjectSchema(
             id=project.uid,
             tenant=ProjectTenantSchema(
-                id=str(tenant.id),
+                id=tenant.uid,
                 slug=tenant.slug,
                 name=tenant.name,
                 enabled=tenant.enabled,

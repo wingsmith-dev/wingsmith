@@ -4,6 +4,8 @@ import inspect
 import pytest
 
 from app.core.ids import PREFIXES
+from app.core.ids import PRIORITY_CLASS
+from app.core.ids import new_uid
 from app.modules.priority_classes.routes import PriorityClassRoutes
 from app.modules.priority_classes.schemas import PriorityClassSchema
 from app.modules.priority_classes.schemas import PriorityClassCreateRequest
@@ -39,14 +41,10 @@ def test_no_id_prefix_is_reserved_for_priority_classes():
     assert not any(p.startswith(("pri", "pcl")) for p in PREFIXES)
 
 
-def test_reference_is_a_name_or_a_raw_key_because_there_is_no_uid():
-    column, value = ref_column("production")
-    assert column.name == "name"
-    assert value == "production"
-    key = uuid.uuid4()
-    column, value = ref_column(str(key))
-    assert column.name == "id"
-    assert value == key
+def test_reference_is_a_public_id_or_a_name():
+    assert ref_column("production").name == "name"
+    assert ref_column(new_uid(PRIORITY_CLASS)).name == "uid"
+    assert ref_column(str(uuid.uuid4())).name == "name"
 
 
 def test_get_query_resolves_a_name(repo):

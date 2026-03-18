@@ -366,6 +366,7 @@ class Recipe(BaseMixin):
     cpu_cores: Mapped[int | None] = mapped_column(Integer, nullable=True)
     memory_mib: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     disk_gib: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     artifact: Mapped[Artifact] = relationship("Artifact", lazy="noload")
 
@@ -384,6 +385,7 @@ class Workload(BaseMixin):
     __tablename__ = "demand_workload"
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     project_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=False, index=True
@@ -442,6 +444,7 @@ class Deployment(BaseMixin):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     adapter_artifact_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
     overrides: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     workload: Mapped[Workload] = relationship("Workload", back_populates="deployment", lazy="noload")
     recipe: Mapped[Recipe] = relationship("Recipe", lazy="noload")
@@ -505,6 +508,7 @@ class Endpoint(BaseMixin):
     routing_strategy: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weighted")
     failover_order: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     targets: Mapped[list[EndpointTarget]] = relationship(
         "EndpointTarget", back_populates="endpoint", lazy="noload", cascade="all, delete-orphan"
@@ -573,6 +577,7 @@ class Tenant(BaseMixin):
     __tablename__ = "bind_tenant"
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
@@ -638,14 +643,19 @@ class PriorityClass(BaseMixin):
 
     Only two values are needed today; the point is that the reference exists now
     so that preemption is a policy change later rather than a migration across
-    every workload.
+    every workload. `value` is unique in the database and not merely checked in
+    the service: two classes at one number make eviction order depend on whatever
+    the planner returns that day, and a service-level check alone loses that race
+    between two concurrent writers.
     """
 
     __tablename__ = "bind_priority_class"
+    __table_args__ = (UniqueConstraint("value", name="uq_bind_priority_class_value"),)
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    value: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    value: Mapped[int] = mapped_column(Integer, nullable=False)
     preemptible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     preempts: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
@@ -662,6 +672,7 @@ class Policy(BaseMixin):
     __tablename__ = "bind_policy"
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     allowed_regions: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
@@ -713,6 +724,7 @@ class Allocation(BaseMixin):
     __tablename__ = "bind_allocation"
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     cluster_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
     )
@@ -835,10 +847,24 @@ class Operation(BaseMixin):
     object acted upon. A status field cannot answer who did this, why, how long
     it has been stuck, or what happens at the deadline. `target_type` /
     `target_id` are polymorphic because the set of targets spans four groups.
+
+    `phase` is ingestion's and `cancel_requested_at` is the plane's, disjoint the
+    way `Cluster.phase` and `ClusterSyncState` are: asking a running operation to
+    stop is a request the cluster observes, not a phase the plane may assert on
+    its behalf. `idempotency_key` is a column rather than a key inside `payload`
+    because only a unique index can stop two concurrent retries both inserting.
     """
 
     __tablename__ = "ops_operation"
-    __table_args__ = (Index("ix_ops_operation_target", "target_type", "target_id"),)
+    __table_args__ = (
+        Index("ix_ops_operation_target", "target_type", "target_id"),
+        Index(
+            "uq_ops_operation_idempotency_key",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
@@ -850,6 +876,8 @@ class Operation(BaseMixin):
     target_id: Mapped[UUID] = mapped_column(DBUUID, nullable=False)
     phase: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", index=True)
     requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    idempotency_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cancel_requested_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     result: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

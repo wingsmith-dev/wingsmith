@@ -263,6 +263,11 @@ func (o *Observer) sendEvents(prev, next projection, seen bool, at time.Time) er
 					return err
 				}
 			}
+			if old.Cordoned && !n.Cordoned {
+				if err := o.nodeEvent(n.NodeID, "uncordoned", "schedulable", "node "+n.Name+" was marked schedulable again", occurred); err != nil {
+					return err
+				}
+			}
 			if old.Ready && !n.Ready {
 				if err := o.nodeEvent(n.NodeID, "degraded", "not_ready", "node "+n.Name+" stopped reporting ready", occurred); err != nil {
 					return err

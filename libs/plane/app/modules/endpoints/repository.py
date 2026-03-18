@@ -62,6 +62,7 @@ class EndpointRepository:
         project: str | None = None,
         artifact: str | None = None,
         search: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> Select:
         query = self._base().order_by(Endpoint.seq.asc()).limit(limit + 1)
         if after_seq is not None:
@@ -72,6 +73,8 @@ class EndpointRepository:
             query = query.where(Endpoint.id.in_(self.serving_artifact_query(artifact)))
         if search is not None:
             query = query.where(Endpoint.name.ilike(f"%{search}%"))
+        for key, value in (labels or {}).items():
+            query = query.where(Endpoint.labels[key].astext == value)
         return query
 
     def deployment_uid_query(self, deployment_ids: list) -> Select:

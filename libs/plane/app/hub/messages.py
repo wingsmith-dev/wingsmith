@@ -165,7 +165,7 @@ class NodeObserved(Struct):
 class NodeEvent(Struct):
     node_id: str
     cluster_id: str
-    event: Literal["joined", "left", "cordoned", "degraded"]
+    event: Literal["joined", "left", "cordoned", "uncordoned", "degraded"]
     reason: str
     message: str
     occurred_at: str
@@ -199,7 +199,6 @@ class DeviceObserved(Struct):
     model: str
     device_class: str
     memory_total_mb: int
-    memory_used_mb: int
     health: Literal["healthy", "degraded", "unhealthy", "unknown"]
     ecc: DeviceEcc
     throttled: bool
@@ -221,12 +220,21 @@ class DeviceEvent(Struct):
 
 
 class TopologyObserved(Struct):
+    """One topology domain, the devices that share it, and the nodes it spans.
+
+    `node_ids` is a list because a domain is not a property of a machine: an
+    NVSwitch fabric or a GB200 rack is one NVLink domain across several nodes.
+    Zero, one, or many are all legal, and `spans_nodes` is the cluster's own
+    answer rather than something the plane recomputes.
+    """
+
     domain_id: str
     cluster_id: str
     kind: Literal["nvlink", "pcie_root", "numa"]
+    node_ids: list[str]
+    spans_nodes: bool
     device_ids: list[str]
     observed_at: str
-    node_id: str | None = None
 
 
 class CapacityClass(Struct):

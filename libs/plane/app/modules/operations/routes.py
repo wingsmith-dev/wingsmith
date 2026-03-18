@@ -79,7 +79,8 @@ class OperationRoutes(Controller):
         """Cancellation, and deliberately not deletion.
 
         Deleting the row would throw away the answer to who asked for this and
-        why, which is the reason the object exists. The operation stays and moves
-        to `cancelled`.
+        why, which is the reason the object exists. A pending operation moves to
+        `cancelled` outright; a running one has `cancel_requested_at` stamped and
+        reaches its terminal phase when the cluster reports it.
         """
         return Response(await svc.cancel(ref))

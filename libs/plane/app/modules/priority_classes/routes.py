@@ -1,9 +1,9 @@
 """Priority classes: what preempts what.
 
 The route path is `/v1/priority-classes` per `contract/API.md` §6; the Python
-package is underscored because a hyphen is not an identifier. Ids here are bare
-UUIDs, not prefixed: `PriorityClass` has no `uid` column, and §3's prefix list
-spends `pol_` on pools.
+package is underscored because a hyphen is not an identifier. Ids are `prc_`:
+`pol_` was already spent on pools, so policy and priority class took `plc_` and
+`prc_` rather than crowding a prefix that was taken.
 """
 
 from litestar import Response

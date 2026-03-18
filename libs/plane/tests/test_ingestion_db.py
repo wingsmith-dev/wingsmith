@@ -179,7 +179,15 @@ async def apply_supply(
         )
     )
     await sink.apply_observed(
-        observed("topology.observed", cluster_uid, reply_to, domain_id=domain, node_id=node, device_ids=list(devices))
+        observed(
+            "topology.observed",
+            cluster_uid,
+            reply_to,
+            domain_id=domain,
+            node_ids=[node],
+            spans_nodes=False,
+            device_ids=list(devices),
+        )
     )
 
 

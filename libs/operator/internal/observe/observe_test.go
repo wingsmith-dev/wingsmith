@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"testing"
 	"time"
 
@@ -165,6 +166,9 @@ func TestFirstTickSendsTheInventory(t *testing.T) {
 	if dom.Kind != "nvlink" || len(dom.DeviceIDs) != 2 {
 		t.Fatalf("domain projected as %+v", dom)
 	}
+	if len(dom.NodeIDs) != 1 || dom.NodeIDs[0] != node.NodeID || dom.SpansNodes {
+		t.Fatalf("a single-node domain projected as %+v", dom)
+	}
 
 	cap := r.ofType(TypeCapacityObserved)[0].payload.(wire.CapacityObserved)
 	if len(cap.Classes) != 1 {
@@ -172,6 +176,41 @@ func TestFirstTickSendsTheInventory(t *testing.T) {
 	}
 	if c := cap.Classes[0]; c.Total != 2 || c.Allocated != 1 || c.Free != 1 || c.Unhealthy != 0 {
 		t.Fatalf("capacity rollup is %+v", c)
+	}
+}
+
+// TestDomainSpanningNodes: a fabric shared by two machines is one domain that names both, not one
+// domain attributed to whichever node happened to be walked first.
+func TestDomainSpanningNodes(t *testing.T) {
+	s := sampleSnapshot()
+	s.Nodes = append(s.Nodes, Node{
+		Name: "gpu-h100-a-08", Pool: "h100-sxm-8x", Ready: true,
+		Devices: []Device{{
+			UUID: "GPU-cccc", Index: 0, DeviceClass: "h100-80gb-sxm",
+			MemoryTotalMB: 81559, Health: HealthHealthy,
+			DomainKind: "nvlink", DomainKey: "clique-0",
+		}},
+	})
+	o := newTestObserver(t, NewFake(s))
+	r := o.recorder(t)
+	if err := o.Tick(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	domains := r.ofType(TypeTopologyObserved)
+	if len(domains) != 1 {
+		t.Fatalf("one fabric across two nodes produced %d domains", len(domains))
+	}
+	dom := domains[0].payload.(wire.TopologyObserved)
+	if !dom.SpansNodes {
+		t.Fatalf("a domain over two nodes does not report spans_nodes: %+v", dom)
+	}
+	want := []string{NodeID(testCluster, "gpu-h100-a-07"), NodeID(testCluster, "gpu-h100-a-08")}
+	if !reflect.DeepEqual(dom.NodeIDs, want) {
+		t.Fatalf("domain names %v, want %v", dom.NodeIDs, want)
+	}
+	if len(dom.DeviceIDs) != 3 {
+		t.Fatalf("domain names %d devices, want 3", len(dom.DeviceIDs))
 	}
 }
 
@@ -281,6 +320,18 @@ func TestTransitionsBecomeEvents(t *testing.T) {
 		}
 		if !got["cordoned"] || !got["degraded"] {
 			t.Fatalf("cordon and readiness loss produced %v", got)
+		}
+	})
+
+	t.Run("node is uncordoned", func(t *testing.T) {
+		r.reset()
+		fake.Set(sampleSnapshot())
+		if err := o.Tick(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		events := r.ofType(TypeNodeEvent)
+		if len(events) != 1 || events[0].payload.(wire.NodeEvent).Event != "uncordoned" {
+			t.Fatalf("returning a node to service produced %+v", events)
 		}
 	})
 

@@ -66,6 +66,7 @@ class DeploymentRepository:
         project: str | None = None,
         phase: str | None = None,
         type: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> Select:
         query = self._base().order_by(Deployment.seq.asc()).limit(limit + 1)
         if after_seq is not None:
@@ -80,6 +81,8 @@ class DeploymentRepository:
             query = query.where(Workload.admission_phase == phase)
         if type is not None:
             query = query.where(Workload.kind == type)
+        for key, value in (labels or {}).items():
+            query = query.where(Deployment.labels[key].astext == value)
         return query
 
     def replica_rollup_query(self, deployment_ids: list) -> Select:

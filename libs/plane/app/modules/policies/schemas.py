@@ -8,9 +8,8 @@ from app.core.schemas import UnsetType
 class PolicyAttachmentSchema(Struct):
     """One subject a policy binds to.
 
-    `subject` is the public reference — a prefixed id where the subject type has
-    one, and the tenant slug where it does not. `subject_id` is the raw key and
-    is carried alongside because `PolicyAttachment.subject_id` is polymorphic and
+    `subject` is the public reference and every subject type now has a prefixed
+    one. `subject_id` is the raw key and is carried alongside because `PolicyAttachment.subject_id` is polymorphic and
     has no foreign key, so a subject that has since been deleted still has a row
     here and would otherwise serialise as a subject with no identity at all.
     """

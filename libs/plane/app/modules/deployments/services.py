@@ -8,6 +8,7 @@ from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ids import WORKLOAD
 from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
 from app.db.models import Workload
@@ -41,18 +42,6 @@ EMPTY = DeploymentReplicaRollupSchema(
 )
 
 RECONCILED_FIELDS = frozenset({"adapter_artifacts", "overrides"})
-
-
-def reject_labels(labels: dict[str, str] | None) -> None:
-    """Refuses a label selector the schema cannot answer.
-
-    `demand_deployment` has no label column and neither does `demand_workload`,
-    so there is nothing to select against. Ignoring the selector and returning
-    every deployment is the failure mode worth avoiding: a client filtering for
-    one tenant's deployments would silently receive everyone's.
-    """
-    if labels:
-        raise Invalid("deployments carry no labels to select on", {"labels": sorted(labels)})
 
 
 def check_scale(min_replicas: int, desired_replicas: int, max_replicas: int) -> None:
@@ -141,6 +130,7 @@ class DeploymentService:
             enabled=deployment.enabled,
             adapter_artifact_ids=adapter_uids,
             overrides=deployment.overrides,
+            labels=deployment.labels,
             created_at=deployment.created_at,
             updated_at=deployment.updated_at,
             revision=_revision(deployment, workload),
@@ -198,7 +188,6 @@ class DeploymentService:
         type: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> ListResponse[DeploymentSchema]:
-        reject_labels(labels)
         if phase is not None and phase not in PHASES:
             raise Invalid(f"unknown phase {phase!r}", {"allowed": sorted(PHASES)})
         if type is not None and type not in TYPES:
@@ -212,6 +201,7 @@ class DeploymentService:
             project=project,
             phase=phase,
             type=type,
+            labels=labels,
         )
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
         rollup = await self.repo.replicas([r[0].id for r in kept])
@@ -280,6 +270,7 @@ class DeploymentService:
         priority_class_id = await self._priority_class_id(data.priority_class, project)
 
         workload = Workload(
+            uid=new_uid(WORKLOAD),
             kind=data.type,
             project_id=project.id,
             cluster_id=cluster.id,
@@ -303,6 +294,7 @@ class DeploymentService:
             enabled=data.enabled,
             adapter_artifact_ids=await self._adapter_ids(data.adapter_artifacts),
             overrides=data.overrides,
+            labels=data.labels,
         )
         try:
             await self.repo.add(workload, deployment)

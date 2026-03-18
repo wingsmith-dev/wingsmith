@@ -87,8 +87,6 @@ func TestProjectedFramesMatchTheFixtures(t *testing.T) {
 		}
 		sort.Strings(missing)
 		for _, k := range missing {
-			// memory_used_mb is the one field the fixture defines and this loop refuses to
-			// measure; it is sent as zero rather than omitted, so it is never missing.
 			t.Errorf("%s omits %q, which the fixture defines", typ, k)
 		}
 	}

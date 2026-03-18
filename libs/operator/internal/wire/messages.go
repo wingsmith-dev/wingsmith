@@ -115,8 +115,9 @@ type DeviceAllocation struct {
 	ProjectID    string `json:"project_id"`
 }
 
-// DeviceObserved is the full observed state of one accelerator. Utilization, temperature and
-// throughput are deliberately absent; see PROTOCOL §7.
+// DeviceObserved is the full observed state of one accelerator. Utilization, temperature,
+// throughput and memory in use are deliberately absent; see PROTOCOL §7. MemoryTotalMB is
+// capacity, which is state; how much of it is occupied is a measurement and goes elsewhere.
 type DeviceObserved struct {
 	DeviceID         string            `json:"device_id"`
 	NodeID           string            `json:"node_id"`
@@ -126,7 +127,6 @@ type DeviceObserved struct {
 	Model            string            `json:"model"`
 	DeviceClass      string            `json:"device_class"`
 	MemoryTotalMB    int64             `json:"memory_total_mb"`
-	MemoryUsedMB     int64             `json:"memory_used_mb"`
 	Health           string            `json:"health"`
 	Ecc              DeviceEcc         `json:"ecc"`
 	Throttled        bool              `json:"throttled"`
@@ -148,12 +148,17 @@ type DeviceEvent struct {
 	OccurredAt string `json:"occurred_at"`
 }
 
-// TopologyObserved is one topology domain and the devices that share it.
+// TopologyObserved is one topology domain, the devices that share it, and the nodes it spans.
+//
+// NodeIDs is a set because a domain is not a property of a machine: an NVSwitch fabric or a
+// GB200 rack is one NVLink domain across many nodes. Zero, one, or many are all legal, and
+// SpansNodes is the cluster's own answer rather than something the plane recomputes.
 type TopologyObserved struct {
 	DomainID   string   `json:"domain_id"`
 	ClusterID  string   `json:"cluster_id"`
 	Kind       string   `json:"kind"`
-	NodeID     *string  `json:"node_id,omitempty"`
+	NodeIDs    []string `json:"node_ids"`
+	SpansNodes bool     `json:"spans_nodes"`
 	DeviceIDs  []string `json:"device_ids"`
 	ObservedAt string   `json:"observed_at"`
 }

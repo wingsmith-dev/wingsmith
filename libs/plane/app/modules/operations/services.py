@@ -88,6 +88,7 @@ class OperationService:
             result=operation.result,
             error=operation.error,
             attempts=operation.attempts,
+            cancel_requested_at=operation.cancel_requested_at,
             started_at=operation.started_at,
             finished_at=operation.finished_at,
         )
@@ -190,10 +191,6 @@ class OperationService:
                 {"type": data.type, "target": data.target},
             )
 
-        payload: dict = {"parameters": data.parameters}
-        if idempotency_key is not None:
-            payload["idempotency_key"] = idempotency_key
-
         operation = Operation(
             uid=new_uid(OPERATION),
             cluster_id=cluster_id,
@@ -203,7 +200,8 @@ class OperationService:
             phase=PENDING,
             requested_by=self.actor,
             reason=data.reason,
-            payload=payload,
+            idempotency_key=idempotency_key,
+            payload={"parameters": data.parameters},
             deadline_at=data.deadline,
         )
         try:
@@ -211,18 +209,24 @@ class OperationService:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
+            if idempotency_key is not None:
+                replayed = await self.repo.by_idempotency_key(idempotency_key)
+                if replayed is not None:
+                    return self._row_schema(replayed, await self._target_uid(replayed[0]))
             raise Conflict("operation could not be recorded") from exc
         return self.schema(operation, await self.repo.cluster_uid(cluster_id), target.uid)
 
     async def cancel(self, ref: str) -> OperationSchema:
-        """Cancels an operation that has not been picked up yet, and only that.
+        """Records that the plane wants the operation stopped.
 
-        `ops_operation` has no cancel-request column, so there is nowhere to
-        record "the plane wants this stopped" separately from the phase ingestion
-        owns. While the operation is still `pending` nothing in the cluster has
-        reported on it and moving it to `cancelled` cannot race a writer; once it
-        is `running` it can only be cancelled by whatever is running it, so this
-        answers `conflict` rather than lying about having stopped it.
+        `cancel_requested_at` is the plane's column and `phase` is ingestion's,
+        which is what lets a `running` operation be cancelled at all: the request
+        is a fact the cluster observes and answers with a terminal phase, not a
+        phase the plane asserts on the cluster's behalf. While the operation is
+        still `pending` nothing has reported on it and no writer can be raced, so
+        the phase moves to `cancelled` here as well and the request is recorded
+        alongside it — one code path, and the pending case does not wait on a
+        cluster that was never told.
         """
         row = await self.repo.get(ref)
         if row is None:
@@ -233,12 +237,10 @@ class OperationService:
                 f"operation {ref!r} already finished as {operation.phase!r}",
                 {"phase": operation.phase},
             )
-        if operation.phase != PENDING:
-            raise Conflict(
-                f"operation {ref!r} is already running and can only be stopped by the cluster",
-                {"phase": operation.phase},
-            )
-        operation.phase = "cancelled"
-        operation.finished_at = dt.datetime.now(dt.UTC)
+        if operation.cancel_requested_at is None:
+            operation.cancel_requested_at = dt.datetime.now(dt.UTC)
+        if operation.phase == PENDING:
+            operation.phase = "cancelled"
+            operation.finished_at = operation.cancel_requested_at
         await self.db.commit()
         return self._row_schema(row, await self._target_uid(operation))

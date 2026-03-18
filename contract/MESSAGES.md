@@ -46,13 +46,26 @@ bandwidth we do not care about at this scale.
 | Type | Payload |
 |---|---|
 | `node.observed` | identity, membership, conditions, cordon state, kernel / driver / container-runtime / agent versions |
-| `node.event` | joined, left, cordoned, degraded |
-| `device.observed` | per-accelerator: uuid, model, memory, health, ECC and throttle state, MIG profile, current allocation |
+| `node.event` | joined, left, cordoned, uncordoned, degraded |
+| `device.observed` | per-accelerator: uuid, model, memory capacity, health, ECC and throttle state, MIG profile, current allocation |
 | `device.event` | degraded, recovered, reset, fell off the bus |
-| `topology.observed` | which devices share an NVLink domain, PCIe root, NUMA node |
+| `topology.observed` | which devices share an NVLink domain, PCIe root, NUMA node, and which nodes the domain spans |
 | `capacity.observed` | derived rollup per pool: free, allocated, unhealthy, by device class |
 
-Device metrics — utilization, temperature, throughput — are **not** here. See PROTOCOL §7.
+Device metrics — utilization, temperature, throughput, memory in use — are **not** here. Device
+memory appears only as `memory_total_mb`: capacity is state, occupancy is measurement. See
+PROTOCOL §7.
+
+**A topology domain names nodes, plural.** `topology.observed` carries `node_ids` and
+`spans_nodes`, not a single `node_id`. An NVLink domain over an NVSwitch fabric or a GB200 rack
+crosses machines, which is precisely the shape topology exists to describe; a domain confined to
+one machine simply carries one id, and a domain whose nodes are not yet known carries none.
+`spans_nodes` is true when more than one node is named — the plane reads it rather than recomputing
+it, so the cluster stays the authority on its own fabric.
+
+**Cordon and uncordon are both events.** A cordon is an operator decision and so is its reversal;
+an event log that records only one of the two forces the reader to diff `node.observed` to learn
+when a node came back, which is the inference `.event` frames exist to avoid.
 
 ## Demand — hub → operator
 

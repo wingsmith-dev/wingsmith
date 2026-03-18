@@ -17,6 +17,11 @@ PROJECT = "prj_"
 QUOTA = "qta_"
 OPERATION = "opr_"
 COMPONENT = "cmp_"
+TENANT = "ten_"
+PRIORITY_CLASS = "prc_"
+POLICY = "plc_"
+ALLOCATION = "alc_"
+WORKLOAD = "wkl_"
 
 PREFIXES = frozenset(
     {
@@ -34,6 +39,11 @@ PREFIXES = frozenset(
         QUOTA,
         OPERATION,
         COMPONENT,
+        TENANT,
+        PRIORITY_CLASS,
+        POLICY,
+        ALLOCATION,
+        WORKLOAD,
     }
 )
 

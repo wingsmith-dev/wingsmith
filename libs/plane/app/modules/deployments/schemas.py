@@ -62,6 +62,7 @@ class DeploymentSchema(Struct):
     enabled: bool
     adapter_artifact_ids: list[str]
     overrides: dict
+    labels: dict
     created_at: dt.datetime
     updated_at: dt.datetime | None
     revision: str
@@ -92,6 +93,7 @@ class DeploymentCreateRequest(Struct):
     deadline_at: dt.datetime | None = None
     adapter_artifacts: list[str] = []
     overrides: dict = {}
+    labels: dict = {}
 
 
 class DeploymentUpdateRequest(Struct):
@@ -111,6 +113,7 @@ class DeploymentUpdateRequest(Struct):
     enabled: bool | UnsetType = UNSET
     adapter_artifacts: list[str] | UnsetType = UNSET
     overrides: dict | UnsetType = UNSET
+    labels: dict | UnsetType = UNSET
     priority_class: str | UnsetType = UNSET
     preemptible: bool | UnsetType = UNSET
     deadline_at: dt.datetime | None | UnsetType = UNSET

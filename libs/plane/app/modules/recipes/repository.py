@@ -34,6 +34,7 @@ class RecipeRepository:
         engine: str | None = None,
         device_class: str | None = None,
         search: str | None = None,
+        labels: dict[str, str] | None = None,
     ) -> Select:
         query = self._base().order_by(Recipe.seq.asc()).limit(limit + 1)
         if after_seq is not None:
@@ -46,6 +47,8 @@ class RecipeRepository:
             query = query.where(Recipe.device_class == device_class)
         if search is not None:
             query = query.where(Recipe.name.ilike(f"%{search}%"))
+        for key, value in (labels or {}).items():
+            query = query.where(Recipe.labels[key].astext == value)
         return query
 
     async def get(self, ref: str) -> Row | None:

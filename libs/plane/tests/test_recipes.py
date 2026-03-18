@@ -17,7 +17,6 @@ from app.modules.recipes.schemas import RecipeCreateRequest
 from app.modules.recipes.schemas import RecipeUpdateRequest
 from app.modules.recipes.services import _revision
 from app.modules.recipes.services import check_shape
-from app.modules.recipes.services import reject_labels
 from app.modules.recipes.services import check_footprint
 from app.modules.recipes.repository import RecipeRepository
 
@@ -140,10 +139,11 @@ def test_ids_are_prefixed_and_lowercase():
     assert uid.startswith("rec_") and uid == uid.lower()
 
 
-def test_label_selector_is_refused_rather_than_silently_ignored():
-    with pytest.raises(Invalid):
-        reject_labels({"tier": "gold"})
-    assert reject_labels(None) is None
+def test_label_selector_becomes_a_predicate_per_key(repo):
+    """One `->>` comparison per key, so two labels narrow rather than widen."""
+    text = sql(repo.list_query(limit=10, labels={"tier": "gold", "team": "search"}))
+    assert text.count("demand_recipe.labels ->>") == 2
+    assert "->>" not in sql(repo.list_query(limit=10))
 
 
 def test_revision_is_derived_from_the_last_write_not_stored():

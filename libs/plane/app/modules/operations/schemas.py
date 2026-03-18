@@ -19,7 +19,8 @@ class OperationSchema(Struct):
     """An imperative action with a lifecycle, not a verb that returned 200.
 
     The declared half — type, target, reason, actor, deadline — is written once
-    by the API at creation. The observed half — phase, result, error, attempts,
+    by the API at creation, with `cancel_requested_at` as the one field the plane
+    may write afterwards. The observed half — phase, result, error, attempts,
     and the two timestamps — is written by ingestion from `operation.observed`
     thereafter. The two writers do not share a field after creation, the same way
     `Cluster.phase` and `ClusterSyncState` are split.
@@ -39,6 +40,7 @@ class OperationSchema(Struct):
     result: dict | None
     error: str | None
     attempts: int
+    cancel_requested_at: dt.datetime | None
     started_at: dt.datetime | None
     finished_at: dt.datetime | None
 

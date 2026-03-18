@@ -31,17 +31,6 @@ STRATEGIES = frozenset({"weighted", "failover", "latency"})
 ROLES = frozenset({"primary", "canary", "fallback"})
 
 
-def reject_labels(labels: dict[str, str] | None) -> None:
-    """Refuses a label selector the schema cannot answer.
-
-    `demand_endpoint` has no label column. Ignoring the selector and returning
-    every endpoint is the failure mode worth avoiding: a client filtering for one
-    tenant's endpoints would silently receive everyone's.
-    """
-    if labels:
-        raise Invalid("endpoints carry no labels to select on", {"labels": sorted(labels)})
-
-
 def check_targets(targets: list[EndpointTargetRequest]) -> None:
     """Rejects a target set that could not route.
 
@@ -104,6 +93,7 @@ class EndpointService:
                 if t.deployment_id in uids
             ],
             failover_order=[uids[d] for d in endpoint.failover_order if d in uids],
+            labels=endpoint.labels,
             created_at=endpoint.created_at,
             updated_at=endpoint.updated_at,
             revision=_revision(endpoint),
@@ -139,7 +129,6 @@ class EndpointService:
         search: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> ListResponse[EndpointSchema]:
-        reject_labels(labels)
         size = clamp_limit(limit)
         rows = await self.repo.list(
             limit=size,
@@ -147,6 +136,7 @@ class EndpointService:
             project=project,
             artifact=artifact,
             search=search,
+            labels=labels,
         )
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
         uids = await self.repo.deployment_uids(self._referenced([r[0] for r in kept]))
@@ -208,6 +198,7 @@ class EndpointService:
             routing_strategy=data.routing_strategy,
             failover_order=failover_order,
             enabled=data.enabled,
+            labels=data.labels,
             targets=targets,
         )
         try:

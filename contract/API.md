@@ -43,7 +43,8 @@ touching every handler instead of one.
 
 ## 3. Identifiers
 
-Prefixed, opaque, stable: `clu_ nod_ dev_ tpd_ pol_ art_ rec_ dep_ rep_ end_ prj_ qta_ opr_ cmp_`.
+Prefixed, opaque, stable: `clu_ nod_ dev_ tpd_ pol_ art_ rec_ dep_ rep_ end_ prj_ qta_ opr_ cmp_
+ten_ prc_ plc_ alc_ wkl_`.
 
 The body is a Crockford base32 ULID, **lowercase**. Crockford is case-insensitive when decoding, but
 these ids are opaque strings that get compared, indexed and put in URLs, so exactly one spelling is

@@ -11,12 +11,12 @@ from app.core.filters import ref_ids
 
 
 def tenant_ids(ref: str) -> Select:
-    """`Tenant` carries no `uid`, so its reference is its slug."""
+    """A tenant is referenced by its `ten_` id or by its slug."""
     return ref_ids(Tenant, ref, name_column="slug")
 
 
 def priority_class_ids(ref: str) -> Select:
-    """`PriorityClass` carries no `uid` either: its reference is its name."""
+    """A priority class is referenced by its `prc_` id or by its name."""
     return ref_ids(PriorityClass, ref, name_column="name")
 
 

@@ -52,12 +52,12 @@ class AllocationService:
         allocation: Allocation = row[0]
         live = allocation.released_at is None
         return AllocationSchema(
-            id=str(allocation.id),
+            id=allocation.uid,
             cluster=row.cluster_uid,
             cluster_name=row.cluster_name,
             project=row.project_uid,
             project_slug=row.project_slug,
-            workload=str(allocation.workload_id),
+            workload=row.workload_uid,
             replica=row.replica_uid,
             device_class=allocation.device_class,
             device_count=allocation.device_count,

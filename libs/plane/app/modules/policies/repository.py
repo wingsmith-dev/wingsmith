@@ -15,30 +15,16 @@ from app.core.filters import ref_ids
 
 
 SUBJECTS = {
-    "tenant": (Tenant, "slug", "slug"),
+    "tenant": (Tenant, "slug", "uid"),
     "project": (Project, "slug", "uid"),
     "cluster": (Cluster, "name", "uid"),
     "endpoint": (Endpoint, "name", "uid"),
 }
 
 
-def as_uuid(value: str) -> UUID | None:
-    try:
-        return UUID(value)
-    except (ValueError, AttributeError, TypeError):
-        return None
-
-
 def ref_column(ref: str):
-    """`Policy` has no `uid` column, so a reference is its name or its raw key.
-
-    `app.core.filters.ref_ids` resolves against `model.uid`; there is none here
-    to resolve against, which is why this is spelled out rather than reused.
-    """
-    parsed = as_uuid(ref)
-    if parsed is not None:
-        return Policy.id, parsed
-    return Policy.name, ref
+    """A policy is addressed by its `plc_` id or by its unique name."""
+    return Policy.uid if is_uid(ref) else Policy.name
 
 
 class PolicyRepository:
@@ -53,8 +39,7 @@ class PolicyRepository:
         self.db = db
 
     def get_query(self, ref: str) -> Select:
-        column, value = ref_column(ref)
-        return select(Policy).where(column == value)
+        return select(Policy).where(ref_column(ref) == ref)
 
     def list_query(
         self,
@@ -104,15 +89,9 @@ class PolicyRepository:
         entry = SUBJECTS.get(subject_type)
         if entry is None:
             return None
-        model, name_column, public = entry
-        parsed = as_uuid(ref)
-        if parsed is not None:
-            column, value = model.id, parsed
-        elif public == "uid" and is_uid(ref):
-            column, value = model.uid, ref
-        else:
-            column, value = getattr(model, name_column), ref
-        return select(model).where(column == value).limit(1)
+        model, name_column, _ = entry
+        column = model.uid if is_uid(ref) else getattr(model, name_column)
+        return select(model).where(column == ref).limit(1)
 
     def subjects_query(self, subject_type: str, ids: list) -> Select | None:
         entry = SUBJECTS.get(subject_type)

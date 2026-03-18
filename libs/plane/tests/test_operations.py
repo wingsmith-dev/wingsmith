@@ -187,9 +187,11 @@ def test_cluster_ref_resolves_an_id_against_uid_not_name(repo):
     assert "supply_cluster.uid = " in sql(repo.list_query(limit=10, cluster=new_uid(CLUSTER)))
 
 
-def test_idempotency_key_is_looked_up_in_the_payload_json(repo):
+def test_idempotency_key_is_looked_up_in_its_own_column(repo):
+    """A column, not `payload ->> 'idempotency_key'`: only a column can be indexed."""
     text = sql(repo.idempotency_query("retry-1"))
-    assert "ops_operation.payload ->> " in text
+    assert "ops_operation.idempotency_key = " in text
+    assert "payload ->>" not in text
 
 
 # -------------------------------------------------------------------- shapes
@@ -247,8 +249,15 @@ def test_cancellation_returns_the_operation_rather_than_deleting_it():
     assert "not deletion" in doc
 
 
-def test_a_running_operation_is_not_cancelled_by_the_plane_alone():
+def test_the_plane_and_ingestion_write_disjoint_cancel_fields():
+    """The plane stamps `cancel_requested_at`; only ingestion moves `phase`.
+
+    Except while the operation is still `pending`, where nothing has reported on
+    it and there is no writer to race.
+    """
     from app.modules.operations.services import OperationService
 
-    doc = OperationService.cancel.__doc__ or ""
-    assert "no cancel-request column" in doc
+    source = inspect.getsource(OperationService.cancel)
+    assert "cancel_requested_at" in source
+    assert source.count('operation.phase = "cancelled"') == 1
+    assert "if operation.phase == PENDING:" in source

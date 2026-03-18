@@ -129,12 +129,12 @@ class OperationRepository:
     def idempotency_query(self, key: str) -> Select:
         """Finds a prior operation created under the same `Idempotency-Key`.
 
-        The key lives inside `payload` because `ops_operation` has no
-        `idempotency_key` column and this track adds no migration. That makes the
-        check advisory: there is no unique index behind it, so two retries
-        arriving at once can both miss and both insert.
+        `idempotency_key` is a column with a partial unique index behind it, so
+        this lookup is the fast path and the index is the correctness: two
+        retries arriving at once can both miss here, and the second one loses at
+        insert rather than becoming a second drain.
         """
-        return self._base().where(Operation.payload["idempotency_key"].astext == key).order_by(Operation.seq.desc())
+        return self._base().where(Operation.idempotency_key == key)
 
     async def get(self, ref: str) -> Row | None:
         if not is_uid(ref) or not ref.startswith(OPERATION):

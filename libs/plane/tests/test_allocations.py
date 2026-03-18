@@ -5,6 +5,7 @@ import datetime as dt
 import pytest
 
 from app.core.ids import DEVICE
+from app.core.ids import ALLOCATION
 from app.core.ids import new_uid
 from app.modules.allocations.routes import AllocationRoutes
 from app.modules.allocations.schemas import AllocationSchema
@@ -73,13 +74,15 @@ def test_the_device_filter_reuses_the_live_holder_lookup(repo):
     assert "bind_allocation_device.released_at IS NULL" in text
 
 
-def test_get_query_resolves_a_raw_key_because_allocations_have_no_uid(repo):
-    key = uuid.uuid4()
-    assert "bind_allocation.id = " in sql(repo.get_query(str(key)))
+def test_get_query_resolves_the_public_id(repo):
+    assert "bind_allocation.uid = " in sql(repo.get_query(new_uid(ALLOCATION)))
 
 
-def test_a_reference_that_is_not_a_key_matches_nothing_rather_than_erroring(repo):
-    assert "bind_allocation.id IS NULL" in sql(repo.get_query("not-an-allocation"))
+def test_a_reference_that_is_not_an_allocation_id_matches_nothing_rather_than_erroring(repo):
+    """A raw key, a name, and another object's id are all not-an-allocation."""
+    assert "bind_allocation.uid IS NULL" in sql(repo.get_query("not-an-allocation"))
+    assert "bind_allocation.uid IS NULL" in sql(repo.get_query(str(uuid.uuid4())))
+    assert "bind_allocation.uid IS NULL" in sql(repo.get_query(new_uid(DEVICE)))
 
 
 def test_base_query_joins_cluster_project_and_replica(repo):

@@ -3,6 +3,7 @@ import inspect
 
 import pytest
 
+from app.core.ids import POLICY
 from app.core.ids import CLUSTER
 from app.core.ids import PROJECT
 from app.core.ids import new_uid
@@ -30,14 +31,10 @@ def sql(query) -> str:
     return str(query)
 
 
-def test_reference_is_a_name_or_a_raw_key_because_policies_have_no_uid():
-    column, value = ref_column("eu-only")
-    assert column.name == "name"
-    assert value == "eu-only"
-    key = uuid.uuid4()
-    column, value = ref_column(str(key))
-    assert column.name == "id"
-    assert value == key
+def test_reference_is_a_public_id_or_a_name():
+    assert ref_column("eu-only").name == "name"
+    assert ref_column(new_uid(POLICY)).name == "uid"
+    assert ref_column(str(uuid.uuid4())).name == "name"
 
 
 def test_get_query_resolves_a_name(repo):

@@ -23,21 +23,6 @@ from .schemas import RecipeParallelismSchema
 from .repository import RecipeRepository
 
 
-def reject_labels(labels: dict[str, str] | None) -> None:
-    """Refuses a label selector the schema cannot answer.
-
-    `demand_recipe` has no label column, so there is nothing to select against.
-    Answering anyway — by ignoring the selector and returning every recipe — is
-    the failure mode worth avoiding: a client filtering for one tenant's recipes
-    would silently receive everyone's.
-    """
-    if labels:
-        raise Invalid(
-            "recipes carry no labels to select on",
-            {"labels": sorted(labels)},
-        )
-
-
 def check_footprint(**fields: int | None) -> None:
     """Rejects a negative resource request.
 
@@ -141,6 +126,7 @@ class RecipeService:
                 memory_mib=recipe.memory_mib,
                 disk_gib=recipe.disk_gib,
             ),
+            labels=recipe.labels,
             created_at=recipe.created_at,
             updated_at=recipe.updated_at,
             revision=_revision(recipe),
@@ -165,7 +151,6 @@ class RecipeService:
         search: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> ListResponse[RecipeSchema]:
-        reject_labels(labels)
         size = clamp_limit(limit)
         rows = await self.repo.list(
             limit=size,
@@ -174,6 +159,7 @@ class RecipeService:
             engine=engine,
             device_class=device_class,
             search=search,
+            labels=labels,
         )
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
         items = [self.schema(r[0], r.artifact_uid) for r in kept]
@@ -230,6 +216,7 @@ class RecipeService:
             cpu_cores=data.cpu_cores,
             memory_mib=data.memory_mib,
             disk_gib=data.disk_gib,
+            labels=data.labels,
         )
         try:
             await self.repo.add(recipe)

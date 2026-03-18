@@ -21,7 +21,6 @@ from app.modules.deployments.services import TYPES
 from app.modules.deployments.services import PHASES
 from app.modules.deployments.services import _revision
 from app.modules.deployments.services import check_scale
-from app.modules.deployments.services import reject_labels
 from app.modules.deployments.repository import DeploymentRepository
 
 
@@ -116,11 +115,11 @@ def test_zero_replicas_is_parked_not_invalid():
     assert check_scale(0, 0, 4) is None
 
 
-def test_label_selector_is_refused_rather_than_silently_ignored():
-    with pytest.raises(Invalid):
-        reject_labels({"tier": "gold"})
-    assert reject_labels({}) is None
-    assert reject_labels(None) is None
+def test_label_selector_becomes_a_predicate_per_key(repo):
+    """Labels are the deployment's own, never the workload supertype's."""
+    text = sql(repo.list_query(limit=10, labels={"tier": "gold", "team": "search"}))
+    assert text.count("demand_deployment.labels ->>") == 2
+    assert "->>" not in sql(repo.list_query(limit=10))
 
 
 def test_revision_follows_the_later_of_the_two_rows():

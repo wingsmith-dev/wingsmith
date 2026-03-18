@@ -4,6 +4,8 @@ from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ids import POLICY
+from app.core.ids import new_uid
 from app.db.models import Policy
 from app.db.models import PolicyAttachment
 from app.core.schemas import ListResponse
@@ -61,7 +63,7 @@ class PolicyService:
         cluster_uids: dict,
     ) -> PolicySchema:
         return PolicySchema(
-            id=str(policy.id),
+            id=policy.uid,
             name=policy.name,
             description=policy.description,
             allowed_regions=list(policy.allowed_regions),
@@ -189,6 +191,7 @@ class PolicyService:
         denied_keys = await self._cluster_keys(data.denied_clusters)
         check_cluster_lists([str(k) for k in allowed_keys], [str(k) for k in denied_keys])
         policy = Policy(
+            uid=new_uid(POLICY),
             name=data.name,
             description=data.description,
             allowed_regions=data.allowed_regions,
@@ -207,7 +210,7 @@ class PolicyService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"policy {data.name!r} already exists") from exc
-        return await self.get(str(policy.id))
+        return await self.get(policy.uid)
 
     async def update(self, ref: str, data: PolicyUpdateRequest, if_match: str | None = None) -> PolicySchema:
         policy = await self._one(ref)
@@ -238,7 +241,7 @@ class PolicyService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("policy conflicts with an existing one") from exc
-        return await self.get(str(policy.id))
+        return await self.get(policy.uid)
 
     async def delete(self, ref: str) -> None:
         """Attachments go with the policy.
