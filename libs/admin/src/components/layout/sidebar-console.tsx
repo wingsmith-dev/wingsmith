@@ -13,9 +13,15 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { transport } from "@/lib/api"
 import { ResourceIcon, type ResourceKind } from "@/components/layout/resource-icon"
-import { IconLogout, IconSettings, IconTopologyStar3 } from "@tabler/icons-react"
+import {
+  IconEye,
+  IconLogout,
+  IconSettings,
+  IconTopologyStar3,
+} from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
 import { useAuthStore } from "@/modules/auth/store"
+import { useReadOnly } from "@/modules/settings/store"
 
 type NavItem = { label: string; to: string; kind: ResourceKind }
 
@@ -99,6 +105,7 @@ function NavGroup({
 }
 
 export function ConsoleSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+  const readOnly = useReadOnly()
   const pathname = useRouterState().location.pathname
   const signOut = useAuthStore((s) => s.signOut)
   const operator = useAuthStore((s) => s.operator)
@@ -139,6 +146,7 @@ export function ConsoleSidebar({ ...props }: React.ComponentProps<typeof Sidebar
       </SidebarContent>
 
       <SidebarFooter className="p-2">
+        {readOnly && <ReadOnlyNotice />}
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
@@ -167,5 +175,25 @@ export function ConsoleSidebar({ ...props }: React.ComponentProps<typeof Sidebar
 
       <SidebarRail />
     </Sidebar>
+  )
+}
+
+/**
+ * Read-only is a mode, not an event: a banner over every page shouts a fact that
+ * never changes. It sits by Settings because that is where it is turned off, and
+ * it names its own limit — the hub keeps reconciling regardless of this console.
+ */
+function ReadOnlyNotice() {
+  return (
+    <Link
+      to="/settings"
+      title="Writes are blocked from this console. Connected clusters still reconcile."
+      className="mb-1 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-amber-700 transition-colors hover:bg-amber-500/15 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 dark:text-amber-400"
+    >
+      <IconEye className="size-4 shrink-0" />
+      <span className="min-w-0 flex-1 truncate font-mono text-2xs uppercase tracking-[0.14em] group-data-[collapsible=icon]:hidden">
+        read-only
+      </span>
+    </Link>
   )
 }
