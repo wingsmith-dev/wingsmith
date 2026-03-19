@@ -51,7 +51,13 @@ type KubeDiscoverer struct {
 
 var _ Discoverer = (*KubeDiscoverer)(nil)
 
-// Discover implements Discoverer.
+// +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+
+// Discover implements Discoverer. KubeDiscoverer is not a controller-runtime reconciler, but the
+// RBAC markers live here rather than on a Reconcile method because this is the only place that
+// issues the List calls they authorize; controller-gen aggregates markers by package, not by
+// type, so placement next to the call site keeps the grant traceable to its use.
 func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 	var nodes corev1.NodeList
 	if err := k.Client.List(ctx, &nodes); err != nil {
