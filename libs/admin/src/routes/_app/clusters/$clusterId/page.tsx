@@ -19,6 +19,7 @@ import { ComponentsTable } from "./ComponentsTable"
 import { ClusterDevicesTable } from "./DevicesTable"
 import { DeclaredCard } from "./HealthCard"
 import { ClusterNodesTable } from "./NodesTable"
+import { ClusterOverviewTab } from "./OverviewTab"
 import { ClusterPoolsPanel } from "./PoolsPanel"
 import { SyncCard } from "./SyncCard"
 import { ClusterTopologyTable } from "./TopologyTable"
@@ -34,7 +35,7 @@ function TabNote({ children }: React.PropsWithChildren) {
 export function ClusterDetailPage() {
   const { clusterId } = useParams({ from: "/_app/clusters/$clusterId" })
   const { data: cluster, isLoading, error } = useCluster(clusterId)
-  const [tab, setTab] = useState("nodes")
+  const [tab, setTab] = useState("overview")
   const [creatingPool, setCreatingPool] = useState(false)
 
   if (error) {
@@ -99,12 +100,16 @@ export function ClusterDetailPage() {
 
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList>
+                <TabsTrigger value="overview">Overview</TabsTrigger>
                 <TabsTrigger value="nodes">Nodes</TabsTrigger>
                 <TabsTrigger value="pools">Pools</TabsTrigger>
                 <TabsTrigger value="devices">Devices</TabsTrigger>
                 <TabsTrigger value="topology">Topology</TabsTrigger>
                 <TabsTrigger value="components">Components</TabsTrigger>
               </TabsList>
+              <TabsContent value="overview" className="mt-3">
+                <ClusterOverviewTab cluster={cluster} />
+              </TabsContent>
               <TabsContent value="pools" className="mt-3 space-y-3">
                 <TabNote>
                   Declared. A pool is the provisioning spec this cluster is asked

@@ -1,6 +1,11 @@
+import type { StatusTone } from "@/components/layout/status-dot"
+import { formatRelative } from "@/lib/format"
+import type { ResourceKind } from "@/lib/resource-kinds"
 import type { Cluster } from "@/modules/clusters/types"
 import type { Deployment, Endpoint } from "@/modules/demand/types"
-import type { Device, SupplyNode } from "@/modules/supply/types"
+import type { Operation } from "@/modules/machinery/types"
+import type { Device, Pool, SupplyNode } from "@/modules/supply/types"
+import type { LinkProps } from "@tanstack/react-router"
 
 export interface ClusterSummary {
   total: number
@@ -148,4 +153,254 @@ export function summariseDemand(
     endpoints: endpoints.length,
     endpointsEnabled: endpoints.filter((e) => e.enabled).length,
   }
+}
+
+export interface Actionable {
+  id: string
+  tone: StatusTone
+  kind: ResourceKind
+  title: string
+  detail?: string
+  badges?: string[]
+  link: LinkProps
+}
+
+export interface ClusterActionableInput {
+  cluster: Cluster
+  pools?: Pool[]
+  nodes?: SupplyNode[]
+  devices?: Device[]
+  deployments?: Deployment[]
+  operations?: Operation[]
+}
+
+const STALE_SYNC_MS = 5 * 60 * 1000
+
+const TONE_RANK: Record<StatusTone, number> = {
+  danger: 0,
+  warn: 1,
+  info: 2,
+  ok: 3,
+  neutral: 4,
+}
+
+/** A deployment phase nobody has to chase. Everything else is still moving. */
+const SETTLED_PHASES = ["running"]
+
+function syncActionables(cluster: Cluster): Actionable[] {
+  const out: Actionable[] = []
+  const link: LinkProps = {
+    to: "/clusters/$clusterId",
+    params: { clusterId: cluster.id },
+  }
+
+  if (!cluster.reachable) {
+    out.push({
+      id: "cluster:unreachable",
+      tone: "danger",
+      kind: "cluster",
+      title: "Cluster is unreachable",
+      detail: `last seen ${formatRelative(cluster.sync.last_seen_at)}`,
+      link,
+    })
+  }
+
+  if (cluster.sync.state !== "connected") {
+    out.push({
+      id: "cluster:sync",
+      tone: cluster.sync.state === "never_connected" ? "warn" : "danger",
+      kind: "cluster",
+      title: `Sync link is ${cluster.sync.state.replace(/_/g, " ")}`,
+      detail: cluster.sync.last_error ?? undefined,
+      badges: cluster.sync.agent_version
+        ? [`agent ${cluster.sync.agent_version}`]
+        : undefined,
+      link,
+    })
+  }
+
+  const lastSync = cluster.sync.last_sync_at
+  if (lastSync && Date.now() - new Date(lastSync).getTime() > STALE_SYNC_MS) {
+    out.push({
+      id: "cluster:stale",
+      tone: "warn",
+      kind: "cluster",
+      title: `Last sync was ${formatRelative(lastSync)}`,
+      detail: "observed state on this page is at least that old",
+      link,
+    })
+  }
+
+  return out
+}
+
+/**
+ * Bounds are stated as the two numbers themselves, not as a ratio: "wants 4
+ * nodes, has 3" is a thing to go and fix, and "75% of declared" is not.
+ */
+function poolActionables(pools: Pool[]): Actionable[] {
+  const out: Actionable[] = []
+
+  for (const pool of pools) {
+    const have = pool.membership.nodes_total
+    const link: LinkProps = { to: "/pools/$poolId", params: { poolId: pool.id } }
+    const badges = [pool.device_class, ...(pool.enabled ? [] : ["disabled"])]
+
+    if (have < pool.min_nodes) {
+      out.push({
+        id: `pool:under:${pool.id}`,
+        tone: "danger",
+        kind: "pool",
+        title: `${pool.name} wants ${pool.min_nodes} nodes, has ${have}`,
+        detail: `${pool.min_nodes - have} short of the declared minimum`,
+        badges,
+        link,
+      })
+    } else if (have > pool.max_nodes) {
+      out.push({
+        id: `pool:over:${pool.id}`,
+        tone: "warn",
+        kind: "pool",
+        title: `${pool.name} has ${have} nodes, max is ${pool.max_nodes}`,
+        badges,
+        link,
+      })
+    } else if (!pool.within_declared_bounds) {
+      out.push({
+        id: `pool:bounds:${pool.id}`,
+        tone: "warn",
+        kind: "pool",
+        title: `${pool.name} is outside its declared bounds`,
+        detail: `${have} nodes against ${pool.min_nodes}–${pool.max_nodes}`,
+        badges,
+        link,
+      })
+    }
+  }
+
+  return out
+}
+
+function deviceActionables(devices: Device[]): Actionable[] {
+  return summariseDevices(devices).impaired.map((device) => ({
+    id: `device:${device.id}`,
+    tone: device.health === "unhealthy" ? ("danger" as const) : ("warn" as const),
+    kind: "device" as const,
+    title: `${device.node_name} · gpu ${device.device_index} is ${device.health}${
+      device.throttled ? " and throttled" : ""
+    }`,
+    detail: device.health_reason ?? undefined,
+    badges: [device.device_class, ...device.throttle_reasons],
+    link: { to: "/devices/$deviceId", params: { deviceId: device.id } },
+  }))
+}
+
+function nodeActionables(nodes: SupplyNode[]): Actionable[] {
+  const out: Actionable[] = []
+
+  for (const node of nodes) {
+    const link: LinkProps = { to: "/nodes/$nodeId", params: { nodeId: node.id } }
+
+    if (!node.ready) {
+      out.push({
+        id: `node:notready:${node.id}`,
+        tone: "danger",
+        kind: "node",
+        title: `${node.name} is ${node.condition.replace(/_/g, " ")}`,
+        detail: `last observed ${formatRelative(node.observed_at)}`,
+        badges: node.pool_name ? [node.pool_name] : undefined,
+        link,
+      })
+    }
+
+    if (node.cordoned) {
+      out.push({
+        id: `node:cordoned:${node.id}`,
+        tone: "warn",
+        kind: "node",
+        title: `${node.name} is cordoned`,
+        detail: "nothing new will be scheduled onto it until it is uncordoned",
+        badges: node.pool_name ? [node.pool_name] : undefined,
+        link,
+      })
+    }
+  }
+
+  return out
+}
+
+function deploymentActionables(deployments: Deployment[]): Actionable[] {
+  const out: Actionable[] = []
+
+  for (const deployment of deployments) {
+    const link: LinkProps = {
+      to: "/deployments/$deploymentId",
+      params: { deploymentId: deployment.id },
+    }
+
+    if (!SETTLED_PHASES.includes(deployment.workload.phase)) {
+      out.push({
+        id: `deployment:phase:${deployment.id}`,
+        tone: deployment.workload.phase === "pending" ? "warn" : "info",
+        kind: "deployment",
+        title: `${deployment.name} is ${deployment.workload.phase}`,
+        detail: deployment.workload.reason ?? undefined,
+        badges: [deployment.workload.type],
+        link,
+      })
+    }
+
+    if (deployment.replicas.ready < deployment.desired_replicas) {
+      out.push({
+        id: `deployment:replicas:${deployment.id}`,
+        tone: deployment.replicas.ready === 0 ? "danger" : "warn",
+        kind: "deployment",
+        title: `${deployment.name} has ${deployment.replicas.ready} of ${deployment.desired_replicas} replicas ready`,
+        detail:
+          deployment.replicas.failed > 0
+            ? `${deployment.replicas.failed} failed · ${deployment.replicas.pending} pending`
+            : `${deployment.replicas.pending} pending`,
+        link,
+      })
+    }
+  }
+
+  return out
+}
+
+function operationActionables(operations: Operation[]): Actionable[] {
+  return operations.map((operation) => ({
+    id: `operation:${operation.id}`,
+    tone: "info" as const,
+    kind: "operation" as const,
+    title: `${operation.type} is ${operation.phase}`,
+    detail: `${operation.target.type} ${operation.target.id} · requested ${formatRelative(
+      operation.created_at
+    )}`,
+    badges: operation.attempts > 1 ? [`attempt ${operation.attempts}`] : undefined,
+    link: { to: "/operations/$operationId", params: { operationId: operation.id } },
+  }))
+}
+
+/**
+ * Everything on this cluster a human should do something about, and nothing
+ * else. Each source is optional so one failed sub-query costs its own rows
+ * rather than the whole list, and the order is by how loud the thing is.
+ */
+export function deriveClusterActionables({
+  cluster,
+  pools,
+  nodes,
+  devices,
+  deployments,
+  operations,
+}: ClusterActionableInput): Actionable[] {
+  return [
+    ...syncActionables(cluster),
+    ...poolActionables(pools ?? []),
+    ...deviceActionables(devices ?? []),
+    ...nodeActionables(nodes ?? []),
+    ...deploymentActionables(deployments ?? []),
+    ...operationActionables(operations ?? []),
+  ].sort((a, b) => TONE_RANK[a.tone] - TONE_RANK[b.tone])
 }
