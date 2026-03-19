@@ -1,13 +1,12 @@
-apiVersion: v1
-kind: Secret
-metadata:
-  name: hangar-operator
-  namespace: hangar-system
-type: Opaque
-stringData:
-  # Auth is stubbed: a static enrolment token, no rotation. See docs/plans/01 §11.5.
-  enrolment-token: replace-me
----
+# The enrolment token is a credential and does not ship here. Auth is stubbed: a static bearer
+# token, no rotation — see docs/plans/01 §11.5. Before applying this bundle, create it out of
+# band, e.g.:
+#
+#   kubectl create secret generic hangar-operator -n hangar-system \
+#     --from-literal=enrolment-token=<real-token>
+#
+# 30-deployment.yaml reads it from this Secret's `enrolment-token` key. Without it, the Pod
+# fails to start rather than silently dialling the hub with a placeholder credential.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -22,3 +21,4 @@ data:
   HANGAR_HEARTBEAT_INTERVAL: 10s
   HANGAR_LIVENESS_TIMEOUT: 30s
   HANGAR_SEND_QUEUE_SIZE: "1024"
+  HANGAR_LEADER_ELECTION: "true"

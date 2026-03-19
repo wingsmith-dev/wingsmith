@@ -86,7 +86,7 @@ func Load() (*Config, error) {
 		ObserveInterval:       envDuration("HANGAR_OBSERVE_INTERVAL", 30*time.Second),
 		BackoffMin:            envDuration("HANGAR_BACKOFF_MIN", time.Second),
 		BackoffMax:            envDuration("HANGAR_BACKOFF_MAX", 30*time.Second),
-		LeaderElection:        envBool("HANGAR_LEADER_ELECTION", false),
+		LeaderElection:        envBool("HANGAR_LEADER_ELECTION", true),
 		Namespace:             env("HANGAR_NAMESPACE", "hangar-system"),
 	}
 
