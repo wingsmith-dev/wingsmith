@@ -39,6 +39,18 @@ class Settings:
     DB_POOL_MAX_OVERFLOW: int = 10
     DB_POOL_PRE_PING: bool = True
 
+    METRICS_SOURCES: str = ""
+    """Per-cluster metric stores: `us=https://prom.us:9090,ap=https://prom.ap:9090`.
+
+    One store per cluster rather than one store filtered by label, because the
+    reference clusters each keep their own Prometheus and set no `externalLabels`.
+    Empty means the console shows inventory only, which is a working state.
+    """
+
+    METRICS_TIMEOUT: float = 5.0
+    METRICS_WINDOW: str = "5m"
+    METRICS_STEP: str = "60s"
+
     OPERATOR_TOKEN: str = "hangar-local-operator-token"
     """Single static bearer token accepted by both processes.
 

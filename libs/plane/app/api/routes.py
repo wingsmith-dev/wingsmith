@@ -5,6 +5,7 @@ from app.core.routes import HealthRoutes
 from app.modules.nodes.routes import NodeRoutes
 from app.modules.pools.routes import PoolRoutes
 from app.modules.events.routes import EventRoutes
+from app.modules.metrics.routes import MetricsRoutes
 from app.modules.quotas.routes import QuotaRoutes
 from app.modules.devices.routes import DeviceRoutes
 from app.modules.recipes.routes import RecipeRoutes
@@ -39,6 +40,7 @@ V1_ROUTES = [
     OperationRoutes,
     ComponentRoutes,
     EventRoutes,
+    MetricsRoutes,
 ]
 
 
