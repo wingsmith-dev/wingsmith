@@ -10,10 +10,15 @@ is the correct, if expensive, answer.
 """
 
 import time
+import asyncio
 import secrets
 
 from typing import Any
+from logging import getLogger
 from collections import deque
+
+
+logger = getLogger(__name__)
 
 
 _CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
@@ -83,6 +88,7 @@ class SessionState:
         "cluster_id",
         "connection_count",
         "expected_seq",
+        "idle_since",
         "next_seq",
         "replay",
         "session_id",
@@ -97,6 +103,13 @@ class SessionState:
         self._applied: set[int] = set()
         self.replay = ReplayBuffer(replay_capacity)
         self.connection_count = 0
+        self.idle_since: float | None = None
+        """`time.monotonic()` of the moment the last connection detached.
+
+        `None` while a connection is attached — a live session is never a reap candidate,
+        TTL or no TTL. Independent of `connection_count`, which counts connections
+        cumulatively rather than concurrently.
+        """
 
     def take_seq(self) -> int:
         seq = self.next_seq
@@ -142,8 +155,60 @@ class SessionRegistry:
     def drop(self, session_id: str) -> None:
         self._sessions.pop(session_id, None)
 
+    def connected(self, session_id: str) -> None:
+        """A connection attached to `session_id`. Cancels any idle countdown.
+
+        `connection_count` is cumulative — the total number of connections this session has
+        ever had, not how many are open now — because that is the number the interop
+        harness and `test/interop/hub.py` already expose it as. Liveness for the reaper is
+        tracked separately, through `idle_since`.
+        """
+        state = self._sessions.get(session_id)
+        if state is not None:
+            state.connection_count += 1
+            state.idle_since = None
+
+    def disconnected(self, session_id: str) -> None:
+        """A connection detached from `session_id`. Starts the idle countdown at zero."""
+        state = self._sessions.get(session_id)
+        if state is None:
+            return
+        state.idle_since = time.monotonic()
+
+    def reap(self, ttl: float) -> list[str]:
+        """Drops every session idle for at least `ttl` seconds. Never one with a live connection.
+
+        A session is a reap candidate only once `idle_since` is set, which `connected()`
+        clears — so a session mid-reconnect, or one whose connection never finished
+        detaching, cannot be dropped out from under it.
+        """
+        now = time.monotonic()
+        dropped = [
+            session_id
+            for session_id, state in self._sessions.items()
+            if state.idle_since is not None and now - state.idle_since >= ttl
+        ]
+        for session_id in dropped:
+            self._sessions.pop(session_id, None)
+        return dropped
+
     def __contains__(self, session_id: Any) -> bool:
         return session_id in self._sessions
 
     def __len__(self) -> int:
         return len(self._sessions)
+
+
+async def reaper_loop(registry: SessionRegistry, ttl: float, interval: float) -> None:
+    """Sweeps `registry` on `interval`, dropping sessions idle past `ttl`.
+
+    Runs for the life of the process (see `app.hub.server.serve_forever`), so a
+    cluster that disconnects and never reconnects stops holding a replay buffer of
+    up to `replay_capacity` frames once the fleet's reprovisioning lifetime has
+    genuinely moved past it — see ADR 0005.
+    """
+    while True:
+        await asyncio.sleep(interval)
+        dropped = registry.reap(ttl)
+        if dropped:
+            logger.info("hub.reaper.dropped count=%s sessions=%s", len(dropped), dropped)

@@ -7,9 +7,12 @@ from litestar.config.cors import CORSConfig
 from app.db import engine
 from app.api import routes
 from app.utils import logs
+from app.config import settings
+from app.core.auth import admin_auth_enabled
 from app.core.params import reject_unknown_params
 from app.core.context import request_context
 from app.core.handlers import EXCEPTION_HANDLERS
+from app.config.settings import validate
 
 
 logger = getLogger(__name__)
@@ -17,6 +20,14 @@ logger = getLogger(__name__)
 
 async def on_startup() -> None:
     logger.info("api.startup")
+    if not admin_auth_enabled():
+        logger.warning(
+            "api.admin_auth_disabled *** ADMIN AUTHENTICATION IS DISABLED *** "
+            "every request to this API resolves to a full-scope admin principal "
+            "with no credential check. This is safe ONLY behind a perimeter with "
+            "no ingress (kubectl port-forward only). Set HANGAR_ADMIN_AUTH=enabled "
+            "and HANGAR_ADMIN_PASSWORD_HASH before this plane is ever exposed."
+        )
 
 
 async def on_shutdown() -> None:
@@ -24,16 +35,21 @@ async def on_shutdown() -> None:
     logger.info("api.shutdown")
 
 
+def _allowed_origins() -> list[str]:
+    return [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+
 def create_app() -> Litestar:
     """Builds the HTTP application.
 
-    Every handler gets a `context` dependency carrying the caller identity, so
-    no route is ever written without one even while auth is stubbed.
+    Every handler gets a `context` dependency carrying the caller identity,
+    resolved through the single seam in `app.core.auth.resolve_principal`.
     """
+    validate(settings)
     logs.configure("api")
 
     cors_config = CORSConfig(
-        allow_origins=["*"],
+        allow_origins=_allowed_origins(),
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )

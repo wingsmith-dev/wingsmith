@@ -44,12 +44,38 @@ anywhere. `/health` and the OpenAPI routes are exempt.
 
 ## 2. Identity and scope
 
-- `Authorization: Bearer <token>` — **stubbed**. One static token, no user auth, no rotation.
-- `X-Hangar-Project: prj_...` — scopes the request to a project.
+- `Authorization: Bearer <token>` — required. Two kinds of token, one header.
+- `X-Hangar-Project: prj_...` — scopes the request to a project. Not yet enforced server-side;
+  reserved.
 
-Auth is deliberately deferred, but every handler resolves a caller identity from day one even
-though it is always the same one. The seam is one function; without it, adding auth later means
-touching every handler instead of one.
+Two principal kinds share the header:
+
+- **operator** — cluster agents. The token is a static, per-deployment service credential,
+  compared to the configured value in constant time. Never rotated per-request, never derived from
+  anything sent over this API.
+- **admin** — humans, via `admin` and `hgr`. `POST /v1/auth/login` takes `{"password": "..."}` and
+  returns `{"token": "...", "expires_in": <seconds>}`; that token, not the password, is the bearer
+  credential on every request after. It is short-lived and signed, and expires without a rotation
+  call — log in again. Sending the password itself as a per-request credential is deliberately not
+  supported: it would end up in proxy logs and could not be rotated independently of the person who
+  knows it.
+
+A request with no token, an unrecognized token, or an expired or tampered session token gets
+`401 not_authorized` in the standard error envelope. `/health` is exempt so probes do not need
+credentials.
+
+**`ADMIN_AUTH=disabled`.** A day-1 deployment with no ingress — reached only by
+`kubectl port-forward` — can turn off the admin half of this check entirely; every request then
+resolves to a full-scope admin principal with no credential required. The hub's operator-token
+check has no equivalent switch and is never affected by this setting: it authorizes writing
+observed state for the whole fleet over a socket agents dial in on the network, which a
+port-forward does not protect. Turning `ADMIN_AUTH` off is an explicit operator choice, never a
+side effect of leaving credentials unset, and the plane logs a warning naming the exposure on every
+startup while it is active. Flip it back to `enabled` (or unset it outside local development, where
+it is the default) before this plane is ever reachable through anything but a port-forward.
+
+Every handler resolves a caller identity through one function (`resolve_principal`), so a future
+OIDC/SSO integration replaces how a `Principal` is produced without touching a single route.
 
 ## 3. Identifiers
 

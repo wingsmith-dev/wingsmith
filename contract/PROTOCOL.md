@@ -175,6 +175,27 @@ hole.
 restarts during a partition and comes back with an in-memory cursor rewinds its own stream, which
 forfeits the property the whole architecture exists to provide.
 
+**Resume is per hub instance, not per fleet.** The hub runs N replicas and the *session* —
+cursors and replay buffer — lives in one replica's memory, never in Postgres
+([ADR 0005](../docs/decisions/0005-the-hub-scales-by-shedding-session-state.md)). Reconnecting to
+the same pod resumes exactly as described above. Reconnecting to a different pod, which a
+Kubernetes Service makes ordinary rather than exceptional, finds a pod with no record of the
+session and therefore `full_resync: true` under the third condition above — this is expensive but
+never wrong, and it is the price of not paying a permanent write cost to avoid it. What *is*
+durable across every pod is ownership: one hub session is the writer for a given `cluster_id`,
+established by an atomic claim in Postgres at `hello`, so two sessions can never both believe they
+hold the same cluster. A hub instance that loses its claim to a newer `hello` elsewhere discovers
+this on its own — nothing pushes it a notice, since the session that displaced it may have no
+channel back to the one it displaced — and closes the connection, which the operator experiences as
+an ordinary drop-and-reconnect.
+
+Because that discovery is by polling, displacement is bounded rather than instantaneous: for up to
+one poll interval the displaced session may still write. It is by construction the older and
+therefore staler of the two, so what that window can produce is a stale row and a flap of
+`reachable` — never a divergence that survives, since the displacing connection resyncs and the
+operator restreams its inventory over anything stale. Ingestion writes are not themselves fenced
+against the claim.
+
 ## 5. Liveness
 
 Application-level, not WebSocket ping frames — those are handled by intermediaries and prove

@@ -44,6 +44,7 @@ MACHINERY = {
     "ops_event",
     "ops_cache_entry",
     "ops_credential",
+    "hub_cluster_claim",
 }
 
 EXPECTED = SUPPLY | DEMAND | BINDING | MACHINERY

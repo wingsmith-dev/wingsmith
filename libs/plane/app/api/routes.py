@@ -2,12 +2,13 @@ from litestar import Router
 from litestar import Litestar
 
 from app.core.routes import HealthRoutes
+from app.core.auth_routes import AuthRoutes
 from app.modules.nodes.routes import NodeRoutes
 from app.modules.pools.routes import PoolRoutes
 from app.modules.events.routes import EventRoutes
-from app.modules.metrics.routes import MetricsRoutes
 from app.modules.quotas.routes import QuotaRoutes
 from app.modules.devices.routes import DeviceRoutes
+from app.modules.metrics.routes import MetricsRoutes
 from app.modules.recipes.routes import RecipeRoutes
 from app.modules.clusters.routes import ClusterRoutes
 from app.modules.policies.routes import PolicyRoutes
@@ -47,5 +48,5 @@ V1_ROUTES = [
 def init_app(app: Litestar) -> Litestar:
     """Registers every controller. Modules are added to `V1_ROUTES` as they land."""
     app.register(Router(path="", route_handlers=[HealthRoutes]))
-    app.register(Router(path="/v1", route_handlers=list(V1_ROUTES)))
+    app.register(Router(path="/v1", route_handlers=[AuthRoutes, *V1_ROUTES]))
     return app

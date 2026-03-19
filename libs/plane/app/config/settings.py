@@ -33,6 +33,30 @@ class Settings:
     HUB_PORT: int = 8001
     HUB_PATH: str = "/v1/hub/sync"
 
+    HUB_INSTANCE_ID: str = ""
+    """Identity this hub process claims clusters under. Empty resolves, in order, to
+    `HOSTNAME` (a pod name under Kubernetes) and then a random id — see
+    `app.hub.identity.instance_id`. Never a default worth hardcoding: two pods that
+    resolved to the same value would be indistinguishable owners in the claim table.
+    """
+
+    HUB_SESSION_TTL_SECONDS: int = 600
+    """How long an idle `SessionState` — cursors and replay buffer — survives with no
+    connection attached before the reaper drops it. Sized well past a rolling restart
+    (PROTOCOL §4's buffer is sized the same way) so a routine redeploy never reaps a
+    session an operator is about to resume; a cluster gone for longer than this pays a
+    `full_resync` on return, which is the documented, correct cost of losing the cache.
+    """
+
+    HUB_REAPER_INTERVAL_SECONDS: float = 60.0
+    """How often the reaper sweeps the registry for idle sessions past `HUB_SESSION_TTL_SECONDS`."""
+
+    HUB_OWNERSHIP_CHECK_SECONDS: float = 10.0
+    """How often a live session polls its own claim row to notice it has been displaced
+    by a newer `hello` elsewhere in the fleet. Kept close to the ping interval so a
+    displaced pod stops writing within roughly one liveness cycle of losing the claim.
+    """
+
     DATABASE_URL: str = "postgresql+psycopg://hangar:hangar@localhost:5442/hangar"
     DB_ECHO: bool = False
     DB_POOL_SIZE: int = 10
@@ -51,11 +75,37 @@ class Settings:
     METRICS_WINDOW: str = "5m"
     METRICS_STEP: str = "60s"
 
-    OPERATOR_TOKEN: str = "hangar-local-operator-token"
-    """Single static bearer token accepted by both processes.
+    OPERATOR_TOKEN: str = ""
+    """Bearer token cluster agents present to the hub and the API.
 
-    Auth is deliberately stubbed: there is one caller identity in the system and
-    this token names it. The seam is `app.core.auth.resolve_principal`.
+    No default outside `local`: an unset token in any other `APP_ENV` refuses to
+    boot rather than fall back to something guessable. In `local`, an unset
+    token resolves to `app.core.auth.LOCAL_OPERATOR_TOKEN` so a fresh checkout
+    still runs without any configuration.
+    """
+
+    ADMIN_AUTH: str = ""
+    """`enabled` or `disabled`. Empty means "not explicitly set", which resolves
+    to `disabled` when `APP_ENV == "local"` and `enabled` everywhere else — see
+    `app.core.auth.admin_auth_enabled`. This is the one switch that turns admin
+    authentication on the HTTP API off entirely; it never affects the hub, whose
+    operator-token check cannot be disabled.
+    """
+
+    ADMIN_PASSWORD_HASH: str = ""
+    """Bcrypt hash of the admin password, e.g. `python -m app.core.auth hash`."""
+
+    SESSION_SIGNING_SECRET: str = ""
+    """HMAC key signing admin session tokens. Required outside `local` whenever
+    admin auth is enabled; subject to the same fail-closed rule as `OPERATOR_TOKEN`.
+    """
+
+    SESSION_TTL_SECONDS: int = 900
+    """Lifetime of a session token minted by `POST /v1/auth/login`."""
+
+    ALLOWED_ORIGINS: str = "http://localhost:5173"
+    """Comma-separated origins the API's CORS policy accepts. Empty disallows
+    every browser origin; there is no `*` option.
     """
 
 
@@ -75,6 +125,36 @@ def _coerce(raw: str, target: Any) -> Any:
     if target is float:
         return float(raw)
     return raw
+
+
+def resolved_admin_auth(s: "Settings") -> str:
+    """The effective `ADMIN_AUTH` mode after applying the `local`-only default."""
+    if s.ADMIN_AUTH:
+        return s.ADMIN_AUTH
+    return "disabled" if s.APP_ENV == "local" else "enabled"
+
+
+def validate(s: "Settings") -> None:
+    """Fails process boot on credentials that would otherwise fail open.
+
+    Called once by each entrypoint (`app.api.app.create_app`, `app.hub.server.run`),
+    never at import time, so tests can build arbitrary `Settings` without a live
+    process refusing to start.
+    """
+    if s.ADMIN_AUTH not in ("", "enabled", "disabled"):
+        raise RuntimeError(f"ADMIN_AUTH must be 'enabled' or 'disabled', got {s.ADMIN_AUTH!r}")
+
+    if s.APP_ENV == "local":
+        return
+
+    if not s.OPERATOR_TOKEN:
+        raise RuntimeError("OPERATOR_TOKEN must be set when APP_ENV is not 'local'")
+
+    if resolved_admin_auth(s) == "enabled":
+        if not s.SESSION_SIGNING_SECRET:
+            raise RuntimeError("SESSION_SIGNING_SECRET must be set when APP_ENV is not 'local' and admin auth is enabled")
+        if not s.ADMIN_PASSWORD_HASH:
+            raise RuntimeError("ADMIN_PASSWORD_HASH must be set when APP_ENV is not 'local' and admin auth is enabled")
 
 
 def load(env: dict[str, str] | None = None) -> Settings:

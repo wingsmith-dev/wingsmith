@@ -33,6 +33,9 @@ from app.core.auth import Principal
 from app.hub.state import SessionState
 from app.hub.state import SessionRegistry
 from app.hub.state import new_id
+from app.hub.identity import instance_id
+from app.hub.ownership import ClaimStore
+from app.hub.ownership import MemoryClaimStore
 from app.hub.messages import MESSAGE_TYPES
 from app.hub.messages import ENVELOPE_VERSION
 from app.hub.messages import UNSEQUENCED_TYPES
@@ -104,6 +107,22 @@ class Backpressure(ProtocolViolation):
         super().__init__(message, code="unavailable", close_code=CLOSE_TRY_AGAIN_LATER)
 
 
+class Displaced(ProtocolViolation):
+    """This session lost its claim on `cluster_id` — a newer `hello` won it elsewhere (ADR 0005).
+
+    Not a protocol error in the operator's sense: the fix is a plain reconnect, most
+    likely to a different pod, which is why this carries the same "try again" close code
+    as `Backpressure` rather than the generic protocol-error one.
+    """
+
+    def __init__(self, cluster_id: str) -> None:
+        super().__init__(
+            f"claim on cluster {cluster_id!r} lost to a newer session",
+            code="displaced",
+            close_code=CLOSE_TRY_AGAIN_LATER,
+        )
+
+
 @dataclass(frozen=True)
 class SessionConfig:
     """Timings and bounds. Defaults are the numbers in PROTOCOL §1, §5 and §6."""
@@ -113,6 +132,7 @@ class SessionConfig:
     liveness_timeout: float = 30.0
     send_queue_size: int = 1024
     replay_capacity: int = 4096
+    ownership_check_interval: float = 10.0
 
 
 def now_ts() -> str:
@@ -134,9 +154,11 @@ class OperatorSession:
         "_last_recv",
         "_outbound",
         "_stopped",
+        "claims",
         "config",
         "connection",
         "desired",
+        "instance",
         "principal",
         "registry",
         "sink",
@@ -151,6 +173,8 @@ class OperatorSession:
         sink: Sink | None = None,
         desired: DesiredSource | None = None,
         config: SessionConfig | None = None,
+        claims: ClaimStore | None = None,
+        instance: str | None = None,
     ) -> None:
         self.connection = connection
         self.principal = principal
@@ -158,6 +182,8 @@ class OperatorSession:
         self.registry = SessionRegistry(self.config.replay_capacity) if registry is None else registry
         self.sink: Sink = MemorySink() if sink is None else sink
         self.desired: DesiredSource = EmptyDesiredSource() if desired is None else desired
+        self.claims: ClaimStore = MemoryClaimStore() if claims is None else claims
+        self.instance = instance_id() if instance is None else instance
         self.state: SessionState | None = None
         self._outbound: asyncio.Queue[bytes] = asyncio.Queue(maxsize=self.config.send_queue_size)
         self._last_recv = 0.0
@@ -191,6 +217,8 @@ class OperatorSession:
         finally:
             await self._close(1000, "")
             await self._mark_disconnected()
+            if self.state is not None:
+                self.registry.disconnected(self.state.session_id)
             self._stopped.set()
             logger.info(
                 "hub.session.close principal=%s session=%s",
@@ -203,6 +231,7 @@ class OperatorSession:
             asyncio.create_task(self._read_loop(), name="hub-read"),
             asyncio.create_task(self._write_loop(), name="hub-write"),
             asyncio.create_task(self._liveness_loop(), name="hub-liveness"),
+            asyncio.create_task(self._ownership_loop(), name="hub-ownership"),
         ]
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
@@ -245,7 +274,8 @@ class OperatorSession:
 
         state, full_resync = self._resolve_session(hello)
         self.state = state
-        state.connection_count += 1
+        await self.claims.claim(state.cluster_id, state.session_id, self.instance)
+        self.registry.connected(state.session_id)
 
         if not full_resync:
             state.rewind_inbound()
@@ -480,6 +510,20 @@ class OperatorSession:
                     close_code=CLOSE_TRY_AGAIN_LATER,
                 )
             await self._send("ping", Ping())
+
+    async def _ownership_loop(self) -> None:
+        """Polls this session's own claim row and self-evicts the moment it no longer wins.
+
+        Nothing pushes a displaced session a notification — it may be mid-stream on a
+        different pod than the one that displaced it — so it has to ask (ADR 0005).
+        """
+        while True:
+            await asyncio.sleep(self.config.ownership_check_interval)
+            state = self.state
+            if state is None:
+                continue
+            if not await self.claims.owns(state.cluster_id, state.session_id):
+                raise Displaced(state.cluster_id)
 
     async def send_desired(self, type_name: str, payload: Struct, reply_to: str | None = None) -> None:
         """Queues declared state for the operator. The public seam for the registry track."""

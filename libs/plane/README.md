@@ -50,6 +50,28 @@ uv run python -m app.hub            # operator hub on :8001
 `--check` on either process builds it, runs its lifecycle, and exits — enough to prove wiring
 without binding a long-lived listener.
 
+### Scaling the hub
+
+The hub runs N replicas under Kubernetes. Per
+[ADR 0005](../../docs/decisions/0005-the-hub-scales-by-shedding-session-state.md), it scales by
+**shedding** session state rather than sharing it: `SessionState` — cursors and the replay buffer
+— stays in one pod's memory, never in Postgres. Reconnecting to the pod you left resumes exactly;
+reconnecting to a different one, which a Service makes routine, costs a `full_resync`
+(`contract/PROTOCOL.md` §4) — expensive but always correct, never a silent gap.
+
+What *is* shared, in Postgres, is a single fact: exactly one hub session may be the writer for a
+given `cluster_id` at a time. `hello` claims that cluster with one atomic `INSERT ... ON CONFLICT
+DO UPDATE` (`app/hub/ownership.py`); the session it displaces has no channel back to the one that
+displaced it, so it discovers the loss itself, polling its own claim row on
+`HUB_OWNERSHIP_CHECK_SECONDS`, and closes the connection the moment the row names someone else. No
+sticky routing is required or assumed — correctness does not depend on the Service routing an
+operator back to the same pod, only on the claim table.
+
+A session whose cluster never reconnects is reaped after `HUB_SESSION_TTL_SECONDS` of no attached
+connection (`app/hub/state.py: reaper_loop`), so an abandoned replay buffer does not sit in memory
+for the life of the process. `HUB_INSTANCE_ID` names a pod in the claim table; left unset it falls
+back to `$HOSTNAME` and then a random id.
+
 ## Configuration
 
 Environment only, typed by `app/config/settings.py`. Each field reads `HANGAR_<NAME>` first and
@@ -61,17 +83,41 @@ then the bare `<NAME>`, so `DATABASE_URL` works unprefixed.
 | `APP_LOG_LEVEL` / `APP_LOG_FORMAT` | `INFO` / `console` (`json` in production) |
 | `API_HOST` / `API_PORT` | `0.0.0.0` / `8000` |
 | `HUB_HOST` / `HUB_PORT` / `HUB_PATH` | `0.0.0.0` / `8001` / `/v1/hub/sync` |
+| `HUB_INSTANCE_ID` | unset — falls back to `$HOSTNAME`, then a random id |
+| `HUB_SESSION_TTL_SECONDS` | `600` |
+| `HUB_REAPER_INTERVAL_SECONDS` | `60` |
+| `HUB_OWNERSHIP_CHECK_SECONDS` | `10` |
 | `DATABASE_URL` | `postgresql+asyncpg://hangar:hangar@localhost:5442/hangar` |
-| `OPERATOR_TOKEN` | `hangar-local-operator-token` |
+| `OPERATOR_TOKEN` | unset — falls back to `hangar-local-operator-token` only when `APP_ENV=local` |
+| `ADMIN_AUTH` | unset — resolves to `disabled` when `APP_ENV=local`, `enabled` otherwise |
+| `ADMIN_PASSWORD_HASH` | unset |
+| `SESSION_SIGNING_SECRET` | unset — required outside `local` when admin auth is enabled |
+| `SESSION_TTL_SECONDS` | `900` |
+| `ALLOWED_ORIGINS` | `http://localhost:5173` |
 
 The default database URL matches `compose.yml` at the repo root.
 
 ## Auth
 
-Deliberately stubbed. There is one static bearer token and one principal; `resolve_principal` in
-`app/core/auth.py` is the single seam where real credential resolution goes. Every handler still
-receives a `context` carrying that identity, so no route is written without one and adding real
-auth later touches no call site.
+Two principal kinds, resolved through one seam: `resolve_principal` in `app/core/auth.py`.
+
+- **operator** — cluster agents, a static bearer token compared with `hmac.compare_digest`. The
+  hub only ever accepts this; it has no disable switch.
+- **admin** — humans (console, `hgr`), who `POST /v1/auth/login` with a password and get back a
+  short-lived signed session token to use as the bearer credential on every subsequent request.
+  The password itself is never sent again.
+
+Outside `APP_ENV=local`, an unset `OPERATOR_TOKEN` refuses to boot rather than accept anything.
+Admin auth on the HTTP API can be turned off with `ADMIN_AUTH=disabled` for a day-1 deployment
+behind a perimeter with no ingress (`kubectl port-forward` only) — every request then resolves to
+an admin principal, and the process logs a warning naming that assumption on every startup. Every
+handler receives a `context` carrying the resolved identity, so no route is written without one.
+
+Generate a password hash for `ADMIN_PASSWORD_HASH`:
+
+```bash
+uv run python -c "from app.core.auth import hash_password; print(hash_password('your password'))"
+```
 
 ## Migrations
 

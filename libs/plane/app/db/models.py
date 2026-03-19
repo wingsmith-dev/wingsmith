@@ -969,3 +969,33 @@ class Credential(BaseMixin):
     attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# =========================
+# Hub
+# =========================
+
+
+class HubClusterClaim(BaseMixin):
+    """Which hub session currently owns a cluster's stream (ADR 0005).
+
+    `SessionState` — cursors and the replay buffer — is deliberately in-process and not
+    shared across hub replicas. What must be shared is the single fact that makes sharing
+    it unnecessary: exactly one session may write for a given `cluster_id` at a time. A
+    `hello` claims the row with an atomic upsert that always wins, since a new `hello` is
+    definitionally the newer claim; the session it displaces discovers the loss by polling
+    this row rather than being told, since it may be mid-stream on another pod entirely.
+
+    Keyed by the wire `cluster_id`, not a foreign key into `supply_cluster` — the hub
+    resolves clusters lazily per frame (see `app.ingestion.sink`) and a claim must be
+    takeable before that resolution has ever happened.
+    """
+
+    __tablename__ = "hub_cluster_claim"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    cluster_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    session_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    instance: Mapped[str] = mapped_column(String(128), nullable=False)
+    claimed_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    heartbeat_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))

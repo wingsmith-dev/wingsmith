@@ -22,6 +22,8 @@ from app.hub.state import new_id
 from app.hub.session import Backpressure
 from app.hub.session import SessionConfig
 from app.hub.session import OperatorSession
+from app.hub.ownership import ClaimStore
+from app.hub.ownership import MemoryClaimStore
 from app.hub.messages import DeviceObserved
 from app.hub.messages import DeploymentDesired
 
@@ -119,16 +121,21 @@ class Harness:
         sink: MemorySink | None = None,
         config: SessionConfig | None = None,
         send_gate: asyncio.Event | None = None,
+        claims: ClaimStore | None = None,
+        instance: str | None = None,
     ) -> None:
         self.connection = FakeConnection(send_gate=send_gate)
         self.sink = sink or MemorySink()
         self.registry = SessionRegistry(replay_capacity=16) if registry is None else registry
+        self.claims = claims or MemoryClaimStore()
         self.session = OperatorSession(
             self.connection,
             STATIC_OPERATOR,
             registry=self.registry,
             sink=self.sink,
             config=config or SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64),
+            claims=self.claims,
+            instance=instance or "hub-test",
         )
         self.task: asyncio.Task[None] | None = None
 
@@ -484,5 +491,130 @@ async def test_a_full_replay_buffer_closes_the_connection() -> None:
 
     assert harness.connection.closed.is_set()
     await harness.stop()
+
+
+# --------------------------------------------------------------------------- ownership (ADR 0005)
+
+
+async def test_a_second_session_for_one_cluster_displaces_the_first() -> None:
+    """Two live sessions for one `cluster_id` — the pre-ADR-0005 race across pods, modeled
+    here with two `Harness`es sharing a claim store but not a registry, the way two pods
+    would share Postgres but not memory.
+    """
+    claims = MemoryClaimStore()
+    ownership_config = SessionConfig(
+        ping_interval=60, liveness_timeout=120, send_queue_size=64, ownership_check_interval=0.01
+    )
+    first = Harness(claims=claims, config=ownership_config, instance="pod-a")
+    await first.start()
+    await first.hello()
+    assert first.session.state is not None
+
+    second = Harness(claims=claims, config=ownership_config, instance="pod-b")
+    await second.start()
+    await second.hello()
+
+    await asyncio.wait_for(first.connection.closed.wait(), timeout=1)
+    assert first.connection.close_code == 1013, "displaced closes with try-again, not a protocol error"
+    assert not await claims.owns(CLUSTER, first.session.state.session_id)
+    assert await claims.owns(CLUSTER, second.session.state.session_id)
+    await first.stop()
+    await second.stop()
+
+
+async def test_claim_is_atomic_under_concurrent_claims() -> None:
+    """`ClusterClaimRepository.upsert` is one statement — racing callers land in some
+    order, never in a state where the row disagrees with itself.
+    """
+    claims = MemoryClaimStore()
+    session_ids = [new_id() for _ in range(8)]
+    await asyncio.gather(*(claims.claim(CLUSTER, sid, f"pod-{i}") for i, sid in enumerate(session_ids)))
+
+    winners = [sid for sid in session_ids if await claims.owns(CLUSTER, sid)]
+    assert len(winners) == 1, "exactly one claim wins; the row never names two owners at once"
+
+
+async def test_a_session_that_lost_its_claim_stops_writing() -> None:
+    """Once displaced, the session must not go on treating frames as applied — it should
+    raise and close rather than silently keep acking on behalf of a claim it no longer holds.
+    """
+    claims = MemoryClaimStore()
+    config = SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64, ownership_check_interval=0.01)
+    harness = Harness(claims=claims, config=config)
+    await harness.start()
+    await harness.hello()
+    session_id = harness.session.state.session_id
+
+    await claims.claim(CLUSTER, new_id(), "someone-else")
+
+    await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
+    assert harness.connection.close_code == 1013
+    assert not await claims.owns(CLUSTER, session_id)
+    await harness.stop()
+
+
+# --------------------------------------------------------------------------- ttl reaper (ADR 0005)
+
+
+async def test_the_reaper_drops_idle_sessions_but_never_live_ones() -> None:
+    registry = SessionRegistry(replay_capacity=16)
+    live = Harness(registry=registry)
+    await live.start()
+    await live.hello()
+    live_id = live.session.state.session_id
+
+    idle = Harness(registry=registry)
+    await idle.start()
+    await idle.hello()
+    idle_id = idle.session.state.session_id
+    await idle.stop()
+
+    await until(lambda: registry.get(idle_id) is not None and registry.get(idle_id).idle_since is not None)
+
+    dropped = registry.reap(ttl=0.0)
+
+    assert idle_id in dropped
+    assert idle_id not in registry
+    assert live_id in registry, "a session with a live connection is never reaped"
+    await live.stop()
+
+
+async def test_reap_respects_the_ttl() -> None:
+    registry = SessionRegistry(replay_capacity=16)
+    harness = Harness(registry=registry)
+    await harness.start()
+    await harness.hello()
+    session_id = harness.session.state.session_id
+    await harness.stop()
+
+    await until(lambda: registry.get(session_id) is not None and registry.get(session_id).idle_since is not None)
+
+    assert registry.reap(ttl=3600.0) == [], "not idle long enough yet"
+    assert session_id in registry
+
+
+# --------------------------------------------------------------------------- resume still works within one instance
+
+
+async def test_resume_still_works_within_one_hub_instance() -> None:
+    """The baseline ADR-0005 must not regress: one instance, one claim store, resume as before."""
+    registry = SessionRegistry(replay_capacity=16)
+    claims = MemoryClaimStore()
+    first = Harness(registry=registry, claims=claims, instance="pod-a")
+    await first.start()
+    welcome = await first.hello()
+    session_id = welcome["payload"]["session_id"]
+    await first.session.send_desired("deployment.desired", desired_payload())
+    await first.connection.next_of_type("deployment.desired")
+    await first.stop()
+
+    second = Harness(registry=registry, claims=claims, instance="pod-a")
+    await second.start()
+    resumed = await second.hello(session_id=session_id, resume_from=3)
+
+    assert resumed["payload"]["full_resync"] is False
+    assert resumed["payload"]["session_id"] == session_id
+    assert await claims.owns(CLUSTER, session_id)
+    await second.stop()
 
 

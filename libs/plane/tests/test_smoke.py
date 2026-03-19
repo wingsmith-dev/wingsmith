@@ -4,15 +4,32 @@ from app.config import settings
 from app.core.auth import STATIC_OPERATOR
 from app.core.auth import resolve_principal
 from app.core.routes import HealthRoutes
+from app.core.exceptions import NotAuthorized
 
 
 def test_settings_default_database_url() -> None:
     assert settings.DATABASE_URL.startswith("postgresql+psycopg://")
 
 
-def test_every_caller_resolves_to_the_static_operator() -> None:
-    assert resolve_principal(None) == STATIC_OPERATOR
-    assert resolve_principal(settings.OPERATOR_TOKEN) == STATIC_OPERATOR
+def test_operator_token_resolves_to_the_operator_principal() -> None:
+    assert resolve_principal(settings.OPERATOR_TOKEN or "hangar-local-operator-token") == STATIC_OPERATOR
+
+
+def test_no_token_resolves_under_local_defaults_because_admin_auth_is_disabled() -> None:
+    assert resolve_principal(None).kind == "admin"
+
+
+def test_wrong_token_is_rejected_when_admin_auth_would_be_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "ADMIN_AUTH", "enabled")
+    try:
+        raised = False
+        try:
+            resolve_principal("not-a-real-token")
+        except NotAuthorized:
+            raised = True
+        assert raised
+    finally:
+        monkeypatch.setattr(settings, "ADMIN_AUTH", "")
 
 
 def test_health() -> None:
