@@ -14,29 +14,44 @@ import (
 )
 
 type recorder struct {
-	mu       stdsync.Mutex
-	seen     []uint64
-	types    []string
-	resyncs  int
-	rejectAt uint64
+	mu        stdsync.Mutex
+	seen      []uint64
+	types     []string
+	resyncs   int
+	rejectAt  uint64
+	panicAt   uint64
+	panicSync bool
 }
 
 func (r *recorder) Handle(_ context.Context, e *Envelope) error {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	var seq uint64
 	if e.Seq != nil {
 		seq = *e.Seq
 	}
-	if r.rejectAt != 0 && seq == r.rejectAt {
+	reject := r.rejectAt != 0 && seq == r.rejectAt
+	doPanic := r.panicAt != 0 && seq == r.panicAt
+	r.mu.Unlock()
+	if doPanic {
+		panic("handler exploded on frame " + e.Type)
+	}
+	if reject {
 		return errHandlerReject
 	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.seen = append(r.seen, seq)
 	r.types = append(r.types, e.Type)
 	return nil
 }
 
 func (r *recorder) Resync(context.Context) error {
+	r.mu.Lock()
+	shouldPanic := r.panicSync
+	r.mu.Unlock()
+	if shouldPanic {
+		panic("resync exploded")
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.resyncs++
@@ -351,6 +366,103 @@ func TestAckAdvancesOnlyOnContiguousDurableApply(t *testing.T) {
 	eventually(t, 2*time.Second, "resume from the last applied frame", func() bool {
 		hello := h.lastHello()
 		return hello.ResumeFrom == nil || *hello.ResumeFrom == 0
+	})
+}
+
+// TestPanickingHandlerIsSurvivedAndTheFrameAdvances is the PROTOCOL §6b case for a panic: a
+// handler panic is treated as a permanently unappliable frame (accepted, discarded, logged), not
+// as a transient failure to withhold the ack for, because a deterministic panic would otherwise
+// replay forever and wedge the stream. The client must stay up and keep making progress past it.
+func TestPanickingHandlerIsSurvivedAndTheFrameAdvances(t *testing.T) {
+	h := newFakeHub(t)
+	rec := &recorder{panicAt: 2}
+	opts := testOptions(h)
+	opts.Handler = rec
+	c := startWith(t, opts)
+
+	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+	h.push("dep_a")
+	h.push("dep_b")
+	h.push("dep_c")
+
+	eventually(t, 2*time.Second, "frames around the panic are applied", func() bool {
+		return len(rec.seenSeqs()) == 2
+	})
+	if got := rec.seenSeqs(); got[0] != 1 || got[1] != 3 {
+		t.Fatalf("expected seqs 1,3 (2 panicked and was discarded), got %v", got)
+	}
+	if h.connectionCount() != 1 {
+		t.Fatal("a panicking handler must not tear down the connection")
+	}
+
+	// Ack is only visible on the hub via a carrier frame (mirroring
+	// TestAckAdvancesOnlyOnContiguousDurableApply): a bare TypeAck is unsequenced and the fake
+	// hub only records sequenced upward frames.
+	if err := c.Send("node.observed", "nod_1", wire.NodeObserved{NodeID: "nod_1"}); err != nil {
+		t.Fatal(err)
+	}
+	eventually(t, 2*time.Second, "the panicked frame is acknowledged like any other", func() bool {
+		return h.highestAck() >= 3
+	})
+}
+
+// TestPanickingHandlerDoesNotCrashTheProcess is table-driven over the panic value shapes a real
+// handler could produce (a string, an error, a runtime panic such as an out-of-range index) to
+// confirm none of them escape the recovery boundary.
+func TestPanickingHandlerDoesNotCrashTheProcess(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		trigger func(*Envelope)
+	}{
+		{"string panic", func(*Envelope) { panic("boom") }},
+		{"error panic", func(*Envelope) { panic(errHandlerReject) }},
+		{"nil deref", func(*Envelope) { var e *Envelope; _ = e.Type }},
+		{"slice out of range", func(*Envelope) { var s []int; _ = s[3] }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newFakeHub(t)
+			opts := testOptions(h)
+			opts.Handler = HandlerFunc(func(_ context.Context, e *Envelope) error {
+				tc.trigger(e)
+				return nil
+			})
+			c := startWith(t, opts)
+
+			eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+			h.push("dep_a")
+
+			eventually(t, 2*time.Second, "the connection survives the panic", func() bool {
+				return c.Connected() && h.connectionCount() == 1
+			})
+		})
+	}
+}
+
+// TestPanickingResyncEndsTheSessionAndRetries is Resync's analogue: unlike a handler panic,
+// Resync is not about one frame, so a recovered panic there does not get §6b's accept-and-discard
+// treatment. It surfaces as an ordinary session error, ending the session and retrying with
+// backoff exactly like any other resync failure — visible and bounded rather than crashing.
+func TestPanickingResyncEndsTheSessionAndRetries(t *testing.T) {
+	h := newFakeHub(t)
+	rec := &recorder{panicSync: true}
+	opts := testOptions(h)
+	opts.Handler = rec
+	opts.BackoffMin = time.Millisecond
+	opts.BackoffMax = 5 * time.Millisecond
+	c := startWith(t, opts)
+
+	eventually(t, 2*time.Second, "first connection attempts a fresh session", func() bool {
+		return h.connectionCount() >= 1
+	})
+	// The panic ends the session like any other resync failure: no ack is possible for a
+	// resync that never finished opening its epoch, so the durable cursor's session id is what
+	// the retry resumes against. The properties under test are that the goroutine survives the
+	// panic and the run loop redials rather than the process going down.
+	eventually(t, 3*time.Second, "the client redials after the panic instead of dying", func() bool {
+		return h.connectionCount() >= 2
+	})
+	eventually(t, 3*time.Second, "the retried session eventually establishes", func() bool {
+		return c.Connected()
 	})
 }
 

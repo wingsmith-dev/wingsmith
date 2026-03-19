@@ -10,6 +10,7 @@ import (
 	"math"
 	mrand "math/rand/v2"
 	"net/http"
+	"runtime/debug"
 	stdsync "sync"
 	"time"
 
@@ -330,9 +331,12 @@ func (c *Client) session(ctx context.Context) error {
 	errCh := make(chan error, 3)
 	var wg stdsync.WaitGroup
 	wg.Add(3)
-	go func() { defer wg.Done(); errCh <- c.readLoop(sessCtx, conn) }()
-	go func() { defer wg.Done(); errCh <- c.writeLoop(sessCtx, conn) }()
-	go func() { defer wg.Done(); errCh <- c.heartbeatLoop(sessCtx) }()
+	go func() { defer wg.Done(); errCh <- c.runProtected("read", func() error { return c.readLoop(sessCtx, conn) }) }()
+	go func() { defer wg.Done(); errCh <- c.runProtected("write", func() error { return c.writeLoop(sessCtx, conn) }) }()
+	go func() {
+		defer wg.Done()
+		errCh <- c.runProtected("heartbeat", func() error { return c.heartbeatLoop(sessCtx) })
+	}()
 
 	err = <-errCh
 	cancel()
@@ -413,7 +417,7 @@ func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
 		c.replay.Reset()
 		c.log.Info("hub started a new session", "session_id", welcome.SessionID,
 			"full_resync", welcome.FullResync)
-		if err := c.opts.Handler.Resync(ctx); err != nil {
+		if err := c.safeResync(ctx); err != nil {
 			return fmt.Errorf("resync: %w", err)
 		}
 	}
@@ -486,13 +490,24 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			continue
 		}
 
-		if err := c.opts.Handler.Handle(ctx, e); err != nil {
-			c.log.Error("handler rejected frame; withholding ack",
-				"type", e.Type, "seq", e.Seq, "error", err)
-			c.mu.Lock()
-			c.holed = true
-			c.mu.Unlock()
-			continue
+		if err := c.safeHandle(ctx, e); err != nil {
+			var pe *panicError
+			if errors.As(err, &pe) {
+				// PROTOCOL §6b: a panic is not obviously transient, and a deterministic one
+				// recurs on every retry — withholding the ack would wedge the stream behind it
+				// forever. Treated as a permanently unappliable frame instead: accepted,
+				// discarded, and logged loudly, exactly like an unknown type or a malformed
+				// payload. The frame's sequence still advances below.
+				c.log.Error("handler panicked; discarding frame per PROTOCOL 6b",
+					"type", e.Type, "seq", e.Seq, "panic", pe.value, "stack", string(pe.stack))
+			} else {
+				c.log.Error("handler rejected frame; withholding ack",
+					"type", e.Type, "seq", e.Seq, "error", err)
+				c.mu.Lock()
+				c.holed = true
+				c.mu.Unlock()
+				continue
+			}
 		}
 
 		if !e.Sequenced() {
@@ -691,3 +706,53 @@ type fatalError struct{ err error }
 
 func (f *fatalError) Error() string { return f.err.Error() }
 func (f *fatalError) Unwrap() error { return f.err }
+
+// panicError marks a failure recovered from a panic rather than returned normally, carrying the
+// recovered value and a stack trace captured at the point of recovery so the log line is enough
+// to diagnose without reproducing the crash.
+type panicError struct {
+	value any
+	stack []byte
+}
+
+func (p *panicError) Error() string { return fmt.Sprintf("panic: %v", p.value) }
+
+// safeHandle calls the handler chain with a recovery boundary. A panic there is a bug in code the
+// client does not own — a nil deref, a slice out of range, a panic surfaced from the Kubernetes
+// client — and must degrade one frame rather than take down the whole operator process.
+func (c *Client) safeHandle(ctx context.Context, e *Envelope) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = &panicError{value: r, stack: debug.Stack()}
+		}
+	}()
+	return c.opts.Handler.Handle(ctx, e)
+}
+
+// safeResync calls Resync with the same recovery boundary as safeHandle. Resync is not about one
+// frame, so a recovered panic here is not eligible for §6b's accept-and-discard treatment; it
+// surfaces as an ordinary session error, which ends the session and retries with backoff exactly
+// like any other resync failure.
+func (c *Client) safeResync(ctx context.Context) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = &panicError{value: r, stack: debug.Stack()}
+		}
+	}()
+	return c.opts.Handler.Resync(ctx)
+}
+
+// runProtected recovers a panic from fn so a bug in one session goroutine ends that session
+// rather than the process. The recovered error is treated like any other session error by Run:
+// the session is torn down and retried with jittered backoff.
+func (c *Client) runProtected(label string, fn func() error) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			stack := debug.Stack()
+			c.log.Error("recovered panic in session goroutine",
+				"goroutine", label, "panic", r, "stack", string(stack))
+			err = &panicError{value: r, stack: stack}
+		}
+	}()
+	return fn()
+}
