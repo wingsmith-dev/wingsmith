@@ -12,6 +12,8 @@ import {
   summariseDevices,
   summariseNodes,
 } from "@/modules/overview/summary"
+import { MetricsSection } from "@/components/metrics/metrics-section"
+
 import { Actionables, type SourceFailure } from "./Actionables"
 import { ClusterEvents } from "./ClusterEvents"
 import { ClusterIdentity, GlanceTiles } from "./Glance"
@@ -63,6 +65,8 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
         }
         failures={failures}
       />
+
+      <MetricsSection scope="cluster" refId={cluster.id} />
 
       <GlanceTiles
         cluster={cluster}

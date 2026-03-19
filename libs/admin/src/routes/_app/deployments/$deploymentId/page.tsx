@@ -1,5 +1,6 @@
 import { Field, FieldGrid } from "@/components/layout/field"
 import { Dash, Labels } from "@/components/layout/mono"
+import { MetricsSection } from "@/components/metrics/metrics-section"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { NewOperationDialog } from "@/components/machinery/new-operation"
@@ -115,6 +116,14 @@ export function DeploymentDetailPage() {
 
       <div className="space-y-4 p-4">
         {isLoading && <Skeleton className="h-40 w-full" />}
+
+        {deployment && (
+          <MetricsSection
+            scope="deployment"
+            refId={deployment.id}
+            family="inference"
+          />
+        )}
 
         {deployment && replicas && (
           <>

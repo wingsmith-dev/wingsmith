@@ -1,5 +1,6 @@
 import { Field, FieldGrid } from "@/components/layout/field"
 import { InFlightOperations } from "@/components/machinery/in-flight"
+import { MetricsSection } from "@/components/metrics/metrics-section"
 import { OperationActions } from "@/components/machinery/operation-actions"
 import { DataTable } from "@/components/layout/data-table"
 import { Dash, Labels } from "@/components/layout/mono"
@@ -66,6 +67,8 @@ export function NodeDetailPage() {
           <>
             <InFlightOperations operations={inFlight.operations} />
 
+            <MetricsSection scope="node" refId={node.id} />
+
             <div className="flex flex-wrap items-center gap-3">
               <NodeConditionLabel condition={node.condition} />
               <CordonState cordoned={node.cordoned} />
@@ -78,7 +81,9 @@ export function NodeDetailPage() {
             <div className="grid gap-4 lg:grid-cols-2">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Membership &amp; host</CardTitle>
+                  <CardTitle className="text-sm">
+                    Membership &amp; host
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <FieldGrid>
@@ -105,8 +110,8 @@ export function NodeDetailPage() {
                       )}
                     </Field>
                     <Field label="Devices">
-                      {node.devices.total} total · {unhealthyCount(node.devices)}{" "}
-                      unhealthy
+                      {node.devices.total} total ·{" "}
+                      {unhealthyCount(node.devices)} unhealthy
                     </Field>
                     <Field label="By health">
                       {Object.entries(node.devices.by_health)
@@ -114,7 +119,8 @@ export function NodeDetailPage() {
                         .join(" · ") || "—"}
                     </Field>
                     <Field label="CPU / RAM">
-                      {node.cpu_cores ?? "—"} cores · {gibibytes(node.memory_mib)}
+                      {node.cpu_cores ?? "—"} cores ·{" "}
+                      {gibibytes(node.memory_mib)}
                     </Field>
                     <Field label="Architecture">
                       <Dash>{node.cpu_arch}</Dash>
@@ -135,7 +141,9 @@ export function NodeDetailPage() {
                       {node.joined_at ? formatAbsolute(node.joined_at) : "—"}
                     </Field>
                     <Field label="Taints">
-                      {node.taints.length ? `${node.taints.length} taint(s)` : "none"}
+                      {node.taints.length
+                        ? `${node.taints.length} taint(s)`
+                        : "none"}
                     </Field>
                   </FieldGrid>
                 </CardContent>
@@ -145,7 +153,7 @@ export function NodeDetailPage() {
             </div>
 
             <div>
-              <h2 className="mb-2 font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground/50">
+              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
                 Devices
               </h2>
               <DataTable

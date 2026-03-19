@@ -3,6 +3,7 @@ import { Dash } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { DeviceHealthLabel } from "@/components/supply/indicators"
 import { InFlightOperations } from "@/components/machinery/in-flight"
+import { MetricsSection } from "@/components/metrics/metrics-section"
 import { OperationActions } from "@/components/machinery/operation-actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -62,6 +63,8 @@ export function DeviceDetailPage() {
         {isLoading && <Skeleton className="h-40 w-full" />}
 
         {device && <InFlightOperations operations={inFlight.operations} />}
+
+        {device && <MetricsSection scope="device" refId={device.id} />}
 
         {device && (
           <div className="grid gap-4 lg:grid-cols-2">

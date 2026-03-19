@@ -1,4 +1,5 @@
 import { DataTable } from "@/components/layout/data-table"
+import { MetricsSection } from "@/components/metrics/metrics-section"
 import { PageHeader } from "@/components/layout/page-header"
 import { nodeColumns } from "@/components/supply/columns"
 import { Button } from "@/components/ui/button"
@@ -44,6 +45,8 @@ export function PoolDetailPage() {
       <div className="space-y-4 p-4">
         {isLoading && <Skeleton className="h-56 w-full" />}
         {pool && <PoolCard pool={pool} />}
+
+        {pool && <MetricsSection scope="pool" refId={pool.id} />}
 
         <div>
           <h2 className="mb-2 font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground/50">
