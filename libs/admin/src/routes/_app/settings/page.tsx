@@ -15,7 +15,7 @@ import { useTheme } from "@/components/theme-provider"
 import { BASE_URL } from "@/lib/api/http"
 import { transport } from "@/lib/api"
 import { useAuthStore } from "@/modules/auth/store"
-import { useSettingsStore } from "@/modules/settings/store"
+import { ACCENTS, useSettingsStore, type Accent } from "@/modules/settings/store"
 
 function Section({
   title,
@@ -44,6 +44,8 @@ export function SettingsPage() {
   const { theme, setTheme } = useTheme()
   const readOnly = useSettingsStore((s) => s.readOnly)
   const setReadOnly = useSettingsStore((s) => s.setReadOnly)
+  const accent = useSettingsStore((s) => s.accent)
+  const setAccent = useSettingsStore((s) => s.setAccent)
   const operator = useAuthStore((s) => s.operator)
   const signOut = useAuthStore((s) => s.signOut)
 
@@ -93,6 +95,33 @@ export function SettingsPage() {
         </Section>
 
         <Section title="Appearance" description="how it looks on this machine">
+          <div className="space-y-1.5">
+            <Label>Accent</Label>
+            <p className="text-2xs text-muted-foreground/70">
+              Drives the active nav item, resource glyphs, buttons and focus
+              rings. Green, amber and red are reserved for ok, warn and danger.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {ACCENTS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setAccent(value as Accent)}
+                  data-accent={value}
+                  aria-pressed={accent === value}
+                  className={
+                    accent === value
+                      ? "flex items-center gap-2 rounded-md border-2 border-primary bg-primary/10 px-2.5 py-1.5 font-mono text-2xs"
+                      : "flex items-center gap-2 rounded-md border px-2.5 py-1.5 font-mono text-2xs hover:bg-accent"
+                  }
+                >
+                  <span className="size-3.5 rounded-full bg-primary" />
+                  {value}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="theme">Theme</Label>
             <Select value={theme} onValueChange={(v) => setTheme(v as typeof theme)}>

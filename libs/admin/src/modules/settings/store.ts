@@ -1,10 +1,16 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
+export const ACCENTS = ["cyan", "indigo", "cobalt", "violet", "magenta"] as const
+
+export type Accent = (typeof ACCENTS)[number]
+
 interface SettingsState {
   /** Refuses every write from this browser. See `ReadOnlyError`. */
   readOnly: boolean
   setReadOnly: (readOnly: boolean) => void
+  accent: Accent
+  setAccent: (accent: Accent) => void
 }
 
 /**
@@ -18,10 +24,27 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       readOnly: import.meta.env.VITE_READ_ONLY === "true",
       setReadOnly: (readOnly) => set({ readOnly }),
+      accent: "cyan",
+      setAccent: (accent) => {
+        applyAccent(accent)
+        set({ accent })
+      },
     }),
-    { name: "hangar.settings" }
+    {
+      name: "hangar.settings",
+      onRehydrateStorage: () => (state) => applyAccent(state?.accent ?? "cyan"),
+    }
   )
 )
+
+/** The accent is a data attribute on the root, so it composes with `.dark`. */
+function applyAccent(accent: Accent): void {
+  document.documentElement.dataset.accent = accent
+}
+
+export function useAccent(): Accent {
+  return useSettingsStore((s) => s.accent)
+}
 
 export function useReadOnly(): boolean {
   return useSettingsStore((s) => s.readOnly)

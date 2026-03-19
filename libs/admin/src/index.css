@@ -91,6 +91,86 @@
     --sidebar-ring: oklch(0.68 0.115 208);
 }
 
+/* Accent candidates. Primary drives the active nav item, the logo tile, every
+   resource glyph, submit buttons, focus rings and chart-1 — so the hue is load
+   bearing, not decoration. Green, amber and red are all spoken for by ok, warn
+   and danger, which is why every candidate here sits in the blue-to-magenta arc. */
+:root[data-accent="cyan"] {
+    --primary: oklch(0.545 0.128 208);
+    --ring: oklch(0.545 0.128 208);
+    --sidebar-primary: oklch(0.545 0.128 208);
+    --sidebar-ring: oklch(0.545 0.128 208);
+    --chart-1: oklch(0.545 0.128 208);
+}
+
+.dark[data-accent="cyan"] {
+    --primary: oklch(0.68 0.115 208);
+    --ring: oklch(0.68 0.115 208);
+    --sidebar-primary: oklch(0.68 0.115 208);
+    --sidebar-ring: oklch(0.68 0.115 208);
+    --chart-1: oklch(0.68 0.115 208);
+}
+:root[data-accent="indigo"] {
+    --primary: oklch(0.520 0.190 272);
+    --ring: oklch(0.520 0.190 272);
+    --sidebar-primary: oklch(0.520 0.190 272);
+    --sidebar-ring: oklch(0.520 0.190 272);
+    --chart-1: oklch(0.520 0.190 272);
+}
+
+.dark[data-accent="indigo"] {
+    --primary: oklch(0.66 0.170 272);
+    --ring: oklch(0.66 0.170 272);
+    --sidebar-primary: oklch(0.66 0.170 272);
+    --sidebar-ring: oklch(0.66 0.170 272);
+    --chart-1: oklch(0.66 0.170 272);
+}
+:root[data-accent="cobalt"] {
+    --primary: oklch(0.530 0.170 255);
+    --ring: oklch(0.530 0.170 255);
+    --sidebar-primary: oklch(0.530 0.170 255);
+    --sidebar-ring: oklch(0.530 0.170 255);
+    --chart-1: oklch(0.530 0.170 255);
+}
+
+.dark[data-accent="cobalt"] {
+    --primary: oklch(0.68 0.150 255);
+    --ring: oklch(0.68 0.150 255);
+    --sidebar-primary: oklch(0.68 0.150 255);
+    --sidebar-ring: oklch(0.68 0.150 255);
+    --chart-1: oklch(0.68 0.150 255);
+}
+:root[data-accent="violet"] {
+    --primary: oklch(0.550 0.205 295);
+    --ring: oklch(0.550 0.205 295);
+    --sidebar-primary: oklch(0.550 0.205 295);
+    --sidebar-ring: oklch(0.550 0.205 295);
+    --chart-1: oklch(0.550 0.205 295);
+}
+
+.dark[data-accent="violet"] {
+    --primary: oklch(0.69 0.180 295);
+    --ring: oklch(0.69 0.180 295);
+    --sidebar-primary: oklch(0.69 0.180 295);
+    --sidebar-ring: oklch(0.69 0.180 295);
+    --chart-1: oklch(0.69 0.180 295);
+}
+:root[data-accent="magenta"] {
+    --primary: oklch(0.560 0.215 350);
+    --ring: oklch(0.560 0.215 350);
+    --sidebar-primary: oklch(0.560 0.215 350);
+    --sidebar-ring: oklch(0.560 0.215 350);
+    --chart-1: oklch(0.560 0.215 350);
+}
+
+.dark[data-accent="magenta"] {
+    --primary: oklch(0.70 0.190 350);
+    --ring: oklch(0.70 0.190 350);
+    --sidebar-primary: oklch(0.70 0.190 350);
+    --sidebar-ring: oklch(0.70 0.190 350);
+    --chart-1: oklch(0.70 0.190 350);
+}
+
 @theme inline {
     --font-sans: 'Plus Jakarta Sans', sans-serif;
     --font-mono: 'Geist Mono', monospace;
