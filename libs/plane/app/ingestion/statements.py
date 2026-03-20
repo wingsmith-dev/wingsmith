@@ -24,6 +24,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.core.ids import NODE
 from app.core.ids import DEVICE
 from app.core.ids import TOPOLOGY_DOMAIN
+from app.core.ids import DISCOVERED_WORKLOAD
 from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Pool
@@ -35,6 +36,7 @@ from app.db.models import Operation
 from app.db.models import TopologyDomain
 from app.db.models import ComponentStatus
 from app.db.models import ClusterSyncState
+from app.db.models import DiscoveredWorkload
 from app.hub.messages import NodeEvent
 from app.hub.messages import DeviceEvent
 from app.hub.messages import NodeObserved
@@ -43,12 +45,14 @@ from app.hub.messages import DeviceObserved
 from app.hub.messages import TopologyObserved
 from app.hub.messages import ComponentObserved
 from app.hub.messages import OperationObserved
+from app.hub.messages import WorkloadDiscovered
 from app.ingestion.time import parse_ts
 
 
 NODE_CONSTRAINT = "uq_supply_node_cluster_name"
 DEVICE_CONSTRAINT = "uq_supply_device_cluster_uuid"
 TOPOLOGY_CONSTRAINT = "uq_supply_topology_domain_identity"
+DISCOVERED_CONSTRAINT = "uq_demand_discovered_workload_identity"
 
 
 EVENT_SEVERITY = {
@@ -113,14 +117,17 @@ def _domain_ref(cluster_id: UUID, domain_uid: str):
     )
 
 
-def _upsert(model: Any, values: dict[str, Any], constraint: str) -> Insert:
+def _upsert(model: Any, values: dict[str, Any], constraint: str, keep: set[str] | None = None) -> Insert:
     """An upsert whose update set is the insert values minus the identity columns.
 
     `uid`, `cluster_id`, and the natural key are what the row *is*; everything
     else is what was last observed about it. Excluding the first group from the
     update set is what makes a rediscovered row keep its identity.
+
+    `keep` names further columns a rediscovery must not move — a first-sighting
+    stamp is written once and is wrong the moment an upsert refreshes it.
     """
-    frozen = {"uid", "cluster_id", "name", "device_uuid", "kind", "identifier"}
+    frozen = {"uid", "cluster_id", "name", "device_uuid", "kind", "identifier", "namespace"} | (keep or set())
     statement = pg_insert(model).values(**values)
     return statement.on_conflict_do_update(
         constraint=constraint,
@@ -196,6 +203,38 @@ def upsert_device(cluster_id: UUID, payload: DeviceObserved) -> Insert:
         "observed_at": parse_ts(payload.observed_at),
     }
     return _upsert(Device, values, DEVICE_CONSTRAINT)
+
+
+def upsert_discovered_workload(cluster_id: UUID, payload: WorkloadDiscovered) -> Insert:
+    """Writes one sighting of a workload the plane did not declare.
+
+    `first_seen_at` is in the insert values and in the frozen set, so it records
+    when we first saw the workload and is never moved by a later observation —
+    "running here since before we arrived" is the fact an operator adopting it
+    wants, and an upsert that refreshed it on every tick would destroy it.
+
+    Replica counts are the cluster's own accounting rather than a measurement,
+    which is what keeps them on this side of the telemetry line.
+    """
+    observed = parse_ts(payload.observed_at)
+    values: dict[str, Any] = {
+        "uid": observed_uid(payload.workload_id, DISCOVERED_WORKLOAD),
+        "cluster_id": cluster_id,
+        "namespace": payload.namespace,
+        "name": payload.name,
+        "kind": payload.kind,
+        "model": payload.model,
+        "images": payload.images,
+        "replicas_desired": payload.replicas_desired,
+        "replicas_ready": payload.replicas_ready,
+        "devices_per_replica": payload.devices_per_replica,
+        "devices_total": payload.devices_total,
+        "node_uids": payload.node_ids,
+        "labels": payload.labels,
+        "first_seen_at": observed,
+        "observed_at": observed,
+    }
+    return _upsert(DiscoveredWorkload, values, DISCOVERED_CONSTRAINT, keep={"first_seen_at"})
 
 
 def upsert_topology_domain(cluster_id: UUID, payload: TopologyObserved) -> Insert:
@@ -380,6 +419,18 @@ def prune_devices(cluster_id: UUID, keep: set[str]) -> Delete:
 def prune_topology_domains(cluster_id: UUID, keep: set[str]) -> Delete:
     return delete(TopologyDomain).where(
         TopologyDomain.cluster_id == cluster_id, TopologyDomain.uid.notin_(keep or {""})
+    )
+
+
+def prune_discovered_workloads(cluster_id: UUID, keep: set[str]) -> Delete:
+    """Forgets sightings a complete snapshot did not mention.
+
+    Deleting the sighting does not delete the decision made about it: adoptions
+    are keyed by the cluster's stable workload uid and outlive the row, so a
+    workload that disappears for a resync and comes back is still tracked.
+    """
+    return delete(DiscoveredWorkload).where(
+        DiscoveredWorkload.cluster_id == cluster_id, DiscoveredWorkload.uid.notin_(keep or {""})
     )
 
 

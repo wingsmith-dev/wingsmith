@@ -401,6 +401,64 @@ async def test_a_component_frame_for_an_undeclared_component_is_refused(sessions
         await sink.apply_observed(observed("component.observed"))
 
 
+# --------------------------------------------------------------------------- discovered
+
+WORKLOAD = "dsw_01j9x2ffffffffffffffffffff"
+
+
+async def test_a_discovered_workload_is_recorded_without_a_deployment(sessions, cluster) -> None:
+    """The sighting lands and nothing declared appears beside it.
+
+    A row in `demand_deployment` would be a declaration, and the operator would be
+    handed a difference between it and what is running — a rollout of a model that
+    was already serving.
+    """
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(observed("workload.discovered"))
+
+    rows = await fetch(sessions, "select uid, name, devices_total, model from demand_discovered_workload")
+    assert rows == [(WORKLOAD, "llama-70b-vllm", 8, "meta-llama/Llama-3.1-70B-Instruct")]
+    assert await fetch(sessions, "select count(*) from demand_deployment") == [(0,)]
+
+
+async def test_re_observing_a_workload_keeps_when_we_first_saw_it(sessions, cluster) -> None:
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(observed("workload.discovered"))
+    first = (await fetch(sessions, "select first_seen_at from demand_discovered_workload"))[0][0]
+
+    await sink.apply_observed(observed("workload.discovered", replicas_ready=1, observed_at="2026-08-19T15:00:00.000Z"))
+    rows = await fetch(sessions, "select uid, replicas_ready, first_seen_at from demand_discovered_workload")
+    assert rows == [(WORKLOAD, 1, first)]
+
+
+async def test_a_decision_survives_the_sighting_being_pruned(sessions, cluster) -> None:
+    """The reason adoptions are keyed by uid and not by a foreign key.
+
+    A cluster that reconnects and streams a snapshot without this workload takes
+    the sighting away. If the decision went with it, an operator would re-adopt the
+    same models every time a resync raced a rolling restart.
+    """
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(observed("workload.discovered"))
+    cluster_id = (await fetch(sessions, "select cluster_id from demand_discovered_workload"))[0][0]
+
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "insert into demand_workload_adoption (cluster_id, workload_uid, decision)"
+                " values (:cluster_id, :uid, 'tracked')"
+            ),
+            {"cluster_id": cluster_id, "uid": WORKLOAD},
+        )
+
+    request = new_id()
+    await sink.begin_resync(CLUSTER, "supply", request)
+    await sink.end_resync(CLUSTER, request, 0, True)
+
+    assert await fetch(sessions, "select count(*) from demand_discovered_workload") == [(0,)]
+    assert await fetch(sessions, "select decision from demand_workload_adoption") == [("tracked",)]
+
+
 # --------------------------------------------------------------------------- resync
 
 

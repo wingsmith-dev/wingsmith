@@ -31,10 +31,12 @@ from app.hub.messages import DeviceObserved
 from app.hub.messages import TopologyObserved
 from app.hub.messages import ComponentObserved
 from app.hub.messages import OperationObserved
+from app.hub.messages import WorkloadDiscovered
 from app.ingestion.time import now
 from app.ingestion.resync import NODE
 from app.ingestion.resync import DEVICE
 from app.ingestion.resync import TOPOLOGY
+from app.ingestion.resync import WORKLOAD
 from app.ingestion.resync import ResyncEpoch
 from app.ingestion.resync import decide
 from app.ingestion.statements import MalformedObservation
@@ -155,6 +157,10 @@ class DatabaseSink:
                 assert isinstance(payload, ComponentObserved)
                 await db.execute(statements.upsert_component_status(cluster_id, payload))
                 return None
+            case "workload.discovered":
+                assert isinstance(payload, WorkloadDiscovered)
+                await db.execute(statements.upsert_discovered_workload(cluster_id, payload))
+                return WORKLOAD, statements.observed_uid(payload.workload_id, "dsw_")
             case "capacity.observed":
                 return None
             case _:
@@ -218,15 +224,17 @@ class DatabaseSink:
             resolved = await self._cluster_id(db, cluster_id)
             devices = await db.execute(statements.prune_devices(resolved, epoch.present[DEVICE]))
             domains = await db.execute(statements.prune_topology_domains(resolved, epoch.present[TOPOLOGY]))
+            workloads = await db.execute(statements.prune_discovered_workloads(resolved, epoch.present[WORKLOAD]))
             nodes = await db.execute(statements.prune_nodes(resolved, epoch.present[NODE]))
             await db.execute(statements.upsert_sync_state(resolved, {"last_sync_at": now()}))
         logger.info(
-            "ingestion.resync.pruned cluster=%s received=%d nodes=%d devices=%d domains=%d",
+            "ingestion.resync.pruned cluster=%s received=%d nodes=%d devices=%d domains=%d workloads=%d",
             cluster_id,
             epoch.received,
             nodes.rowcount,
             devices.rowcount,
             domains.rowcount,
+            workloads.rowcount,
         )
 
     def _epoch_for(self, frame: SinkFrame) -> ResyncEpoch | None:

@@ -38,6 +38,7 @@ ID_PREFIXES = (
     "qta_",
     "opr_",
     "cmp_",
+    "dsw_",
 )
 
 UNSEQUENCED_TYPES = frozenset({"hello", "welcome", "ping", "pong", "ack"})
@@ -235,6 +236,41 @@ class TopologyObserved(Struct):
     spans_nodes: bool
     device_ids: list[str]
     observed_at: str
+
+
+class WorkloadDiscovered(Struct):
+    """A workload already running in a cluster that the plane never declared.
+
+    Purely observed, and deliberately not a `Deployment`: the plane has declared
+    nothing about this object, so giving it a declared record would immediately
+    create a difference between what we say and what is running — and the first
+    reconcile of that difference is a rollout of weights that are already warm.
+    It stays a sighting until someone decides otherwise.
+
+    `devices_per_replica` and `devices_total` are the cluster's own accounting,
+    not a measurement, which is what keeps this on the sync stream rather than in
+    the telemetry pipeline.
+
+    `kind` is open text where every other enum on the wire is closed. A cluster is
+    entitled to run models under something we have never heard of, and a closed
+    set would make that workload undecodable — dropped rather than reported,
+    which is the one outcome an inventory must not have.
+    """
+
+    workload_id: str
+    cluster_id: str
+    namespace: str
+    name: str
+    kind: str
+    images: list[str]
+    replicas_desired: int
+    replicas_ready: int
+    devices_per_replica: int
+    devices_total: int
+    node_ids: list[str]
+    labels: dict[str, str]
+    observed_at: str
+    model: str | None = None
 
 
 class CapacityClass(Struct):
@@ -469,6 +505,7 @@ MESSAGE_TYPES: dict[str, type[Struct]] = {
     "device.event": DeviceEvent,
     "topology.observed": TopologyObserved,
     "capacity.observed": CapacityObserved,
+    "workload.discovered": WorkloadDiscovered,
     "deployment.desired": DeploymentDesired,
     "deployment.deleted": DeploymentDeleted,
     "artifact.desired": ArtifactDesired,

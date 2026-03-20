@@ -16,6 +16,7 @@ from dataclasses import dataclass
 NODE = "node"
 DEVICE = "device"
 TOPOLOGY = "topology"
+WORKLOAD = "workload"
 
 
 @dataclass
@@ -29,7 +30,9 @@ class ResyncEpoch:
     cluster_uid: str
     scope: str
     request_id: str
-    present: dict[str, set[str]] = field(default_factory=lambda: {NODE: set(), DEVICE: set(), TOPOLOGY: set()})
+    present: dict[str, set[str]] = field(
+        default_factory=lambda: {NODE: set(), DEVICE: set(), TOPOLOGY: set(), WORKLOAD: set()}
+    )
     received: int = 0
     poisoned: bool = False
 

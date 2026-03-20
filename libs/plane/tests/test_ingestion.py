@@ -408,14 +408,14 @@ async def test_an_untracked_type_still_counts_toward_the_snapshot() -> None:
     assert sink._epochs["req-2"].present[NODE] == set()
 
 
-async def test_a_whole_snapshot_issues_three_scoped_deletes() -> None:
+async def test_a_whole_snapshot_issues_one_scoped_delete_per_pruned_kind() -> None:
     sessions = FakeSessions()
     sink = DatabaseSink(sessions)
     await sink.begin_resync(CLUSTER, "supply", "req-3")
     await sink.apply_observed(observed_frame("node.observed", reply_to="req-3"))
     await sink.end_resync(CLUSTER, "req-3", 1, True)
     deletes = [s for s in sessions.executed if str(s).upper().startswith("DELETE")]
-    assert len(deletes) == 3
+    assert len(deletes) == 4
 
 
 async def test_a_truncated_snapshot_deletes_nothing() -> None:

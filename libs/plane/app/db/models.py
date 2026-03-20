@@ -486,6 +486,84 @@ class Replica(BaseMixin):
     deployment: Mapped[Deployment] = relationship("Deployment", back_populates="replicas", lazy="noload")
 
 
+class DiscoveredWorkload(BaseMixin):
+    """A workload found running in a cluster that the plane never declared.
+
+    Observed, and written only by ingestion. Deliberately not a `Deployment`: a
+    deployment is something the plane declared and the cluster obeys, so writing
+    a sighting into that table would manufacture a difference between declared
+    and running state on the spot — and reconciling that difference means
+    restarting a process whose weights are already in VRAM. This table says only
+    "this exists", which is a fact no reconciler can act on.
+
+    `uid` is minted by the cluster from a natural key (ADR 0002), so a sighting
+    pruned on one resync and rediscovered on the next comes back with the same
+    identity — which is what lets an adoption decision outlive it.
+    """
+
+    __tablename__ = "demand_discovered_workload"
+    __table_args__ = (
+        UniqueConstraint("cluster_id", "namespace", "name", "kind", name="uq_demand_discovered_workload_identity"),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    namespace: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    images: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    replicas_desired: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    replicas_ready: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    devices_per_replica: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    devices_total: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    node_uids: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    first_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    cluster: Mapped[Cluster] = relationship("Cluster", lazy="noload")
+
+
+class WorkloadAdoption(BaseMixin):
+    """What we decided about a sighting: track it, or stop showing it.
+
+    A separate row from the sighting because the two have different writers —
+    ingestion owns `DiscoveredWorkload` and only the API writes here. Folding the
+    decision into the observed row would give that table two writers and make an
+    operator's choice something a resync could overwrite.
+
+    Keyed by `workload_uid` rather than a foreign key, for the same reason: the
+    sighting is pruned whenever a snapshot says the workload is gone, and a
+    decision that vanishes with it would have to be made again every time a
+    cluster reconnects mid-snapshot.
+
+    Nothing here is ever streamed to a cluster. Tracking is a decision to watch,
+    not a decision to declare, and there is no `deployment.desired` at the end of
+    it — which is the whole point: adopting five running models must not restart
+    any of them.
+    """
+
+    __tablename__ = "demand_workload_adoption"
+    __table_args__ = (UniqueConstraint("cluster_id", "workload_uid", name="uq_demand_workload_adoption_identity"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    workload_uid: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    project_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("bind_project.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    decided_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Endpoint(BaseMixin):
     """The stable public name clients call. Plane-only — it never syncs to a cluster.
 
@@ -617,9 +695,7 @@ class Quota(BaseMixin):
     """
 
     __tablename__ = "bind_quota"
-    __table_args__ = (
-        UniqueConstraint("project_id", "cluster_id", "device_class", name="uq_bind_quota_scope"),
-    )
+    __table_args__ = (UniqueConstraint("project_id", "cluster_id", "device_class", name="uq_bind_quota_scope"),)
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
@@ -698,9 +774,7 @@ class PolicyAttachment(BaseMixin):
     """
 
     __tablename__ = "bind_policy_attachment"
-    __table_args__ = (
-        UniqueConstraint("policy_id", "subject_type", "subject_id", name="uq_bind_policy_attachment"),
-    )
+    __table_args__ = (UniqueConstraint("policy_id", "subject_type", "subject_id", name="uq_bind_policy_attachment"),)
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     policy_id: Mapped[UUID] = mapped_column(
@@ -927,9 +1001,7 @@ class CacheEntry(BaseMixin):
     """
 
     __tablename__ = "ops_cache_entry"
-    __table_args__ = (
-        UniqueConstraint("cluster_id", "node_id", "artifact_id", name="uq_ops_cache_entry_scope"),
-    )
+    __table_args__ = (UniqueConstraint("cluster_id", "node_id", "artifact_id", name="uq_ops_cache_entry_scope"),)
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     cluster_id: Mapped[UUID] = mapped_column(
@@ -997,5 +1069,9 @@ class HubClusterClaim(BaseMixin):
     cluster_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     session_id: Mapped[str] = mapped_column(String(32), nullable=False)
     instance: Mapped[str] = mapped_column(String(128), nullable=False)
-    claimed_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
-    heartbeat_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    claimed_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    heartbeat_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
