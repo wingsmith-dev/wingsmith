@@ -92,12 +92,34 @@ type Node struct {
 	AllocatedDevices int
 }
 
+// Workload is one workload found already running in the cluster that the plane did not put there.
+//
+// It is recorded as a sighting and never as a deployment. The plane has declared nothing about
+// this object, so there is no declared-versus-running difference for anything to reconcile — which
+// is the point: adopting a model that is already serving must not move a byte of it out of VRAM.
+type Workload struct {
+	Namespace         string
+	Name              string
+	Kind              string
+	Images            []string
+	ReplicasDesired   int
+	ReplicasReady     int
+	DevicesPerReplica int
+	DevicesTotal      int
+	Nodes             []string
+	Labels            map[string]string
+	// Model is what the workload says it is serving, when it says so at all. A hint for the
+	// human deciding whether to track it, never something placement reads.
+	Model string
+}
+
 // Snapshot is one complete reading of the cluster's supply. It is always whole: a partial
 // snapshot would be indistinguishable from hardware that has gone away, and the observed stream
 // prunes against what it is told.
 type Snapshot struct {
-	Nodes []Node
-	At    time.Time
+	Nodes     []Node
+	Workloads []Workload
+	At        time.Time
 }
 
 // Discoverer produces a Snapshot. The interface exists so the loop can be driven without a
@@ -119,6 +141,19 @@ func (s *Snapshot) normalise() {
 			return n.Devices[a].UUID < n.Devices[b].UUID
 		})
 		sort.Slice(n.Conditions, func(a, b int) bool { return n.Conditions[a].Type < n.Conditions[b].Type })
+	}
+	sort.Slice(s.Workloads, func(i, j int) bool {
+		if s.Workloads[i].Namespace != s.Workloads[j].Namespace {
+			return s.Workloads[i].Namespace < s.Workloads[j].Namespace
+		}
+		if s.Workloads[i].Kind != s.Workloads[j].Kind {
+			return s.Workloads[i].Kind < s.Workloads[j].Kind
+		}
+		return s.Workloads[i].Name < s.Workloads[j].Name
+	})
+	for i := range s.Workloads {
+		sort.Strings(s.Workloads[i].Nodes)
+		sort.Strings(s.Workloads[i].Images)
 	}
 	if s.At.IsZero() {
 		s.At = time.Now().UTC()

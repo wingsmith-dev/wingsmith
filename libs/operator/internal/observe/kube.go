@@ -63,12 +63,17 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 	if err := k.Client.List(ctx, &nodes); err != nil {
 		return Snapshot{}, fmt.Errorf("list nodes: %w", err)
 	}
-	allocated, err := k.allocatedByNode(ctx)
+	var pods corev1.PodList
+	if err := k.Client.List(ctx, &pods); err != nil {
+		return Snapshot{}, fmt.Errorf("list pods: %w", err)
+	}
+	workloads, err := k.discoverWorkloads(ctx, &pods)
 	if err != nil {
 		return Snapshot{}, err
 	}
+	allocated := allocatedByNode(&pods)
 
-	out := Snapshot{At: time.Now().UTC(), Nodes: make([]Node, 0, len(nodes.Items))}
+	out := Snapshot{At: time.Now().UTC(), Nodes: make([]Node, 0, len(nodes.Items)), Workloads: workloads}
 	for i := range nodes.Items {
 		n := projectKubeNode(&nodes.Items[i])
 		n.AllocatedDevices = allocated[n.Name]
@@ -78,25 +83,21 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 }
 
 // allocatedByNode counts accelerators committed to work, from the cluster's own scheduling
-// records rather than from the hardware.
-func (k *KubeDiscoverer) allocatedByNode(ctx context.Context) (map[string]int, error) {
-	var pods corev1.PodList
-	if err := k.Client.List(ctx, &pods); err != nil {
-		return nil, fmt.Errorf("list pods: %w", err)
-	}
+// records rather than from the hardware. It takes the pod listing rather than making its own:
+// workload discovery reads the same pods, and two listings a moment apart would let a node's
+// allocation and the workload holding it disagree.
+func allocatedByNode(pods *corev1.PodList) map[string]int {
 	out := map[string]int{}
 	for i := range pods.Items {
 		p := &pods.Items[i]
-		if p.Spec.NodeName == "" || p.Status.Phase == corev1.PodSucceeded || p.Status.Phase == corev1.PodFailed {
+		if !schedulable(p) {
 			continue
 		}
-		for _, c := range p.Spec.Containers {
-			if q, ok := c.Resources.Limits[resourceGPU]; ok {
-				out[p.Spec.NodeName] += int(q.Value())
-			}
+		if devices := podDevices(p); devices > 0 {
+			out[p.Spec.NodeName] += devices
 		}
 	}
-	return out, nil
+	return out
 }
 
 func projectKubeNode(n *corev1.Node) Node {

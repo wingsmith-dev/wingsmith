@@ -11,6 +11,7 @@ const (
 	nodePrefix     = "nod_"
 	devicePrefix   = "dev_"
 	topologyPrefix = "tpd_"
+	workloadPrefix = "dsw_"
 )
 
 // mintID derives a stable observed id from a cluster-local natural key.
@@ -49,4 +50,15 @@ func DeviceID(clusterID, uuid string) string {
 // TopologyDomainID is the id this cluster gives a topology domain, keyed by kind and identifier.
 func TopologyDomainID(clusterID, kind, identifier string) string {
 	return mintID(topologyPrefix, clusterID, "topology:"+kind, identifier)
+}
+
+// DiscoveredWorkloadID is the id this cluster gives a workload it found already running. The
+// natural key is namespace, kind and name, which is what uniquely identifies the object inside its
+// own cluster and what it will still be called after the operator restarts.
+//
+// Stability matters more here than for hardware: a decision to track a workload is stored against
+// this id, so an id that changed between operator restarts would ask an operator to re-adopt the
+// same five models every time a pod moved.
+func DiscoveredWorkloadID(clusterID, namespace, kind, name string) string {
+	return mintID(workloadPrefix, clusterID, "workload:"+kind, namespace+"/"+name)
 }

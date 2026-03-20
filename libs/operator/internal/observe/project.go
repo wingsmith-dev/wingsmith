@@ -15,10 +15,11 @@ func formatTime(t time.Time) string { return t.UTC().Format(timestampLayout) }
 // projection is one snapshot expressed entirely in contract types. It is what gets compared,
 // sent, and re-streamed on resync; the Kubernetes objects it came from do not survive this far.
 type projection struct {
-	nodes    []wire.NodeObserved
-	devices  []wire.DeviceObserved
-	domains  []wire.TopologyObserved
-	capacity []wire.CapacityObserved
+	nodes     []wire.NodeObserved
+	devices   []wire.DeviceObserved
+	domains   []wire.TopologyObserved
+	capacity  []wire.CapacityObserved
+	workloads []wire.WorkloadDiscovered
 }
 
 // domainAccumulator groups devices into topology domains as the nodes are walked.
@@ -212,6 +213,36 @@ func (o *Observer) project(s Snapshot) projection {
 			Pool:       pool,
 			Classes:    classes,
 			ObservedAt: observedAt,
+		})
+	}
+	for _, w := range s.Workloads {
+		nodeIDs := make([]string, 0, len(w.Nodes))
+		for _, name := range w.Nodes {
+			nodeIDs = append(nodeIDs, NodeID(o.ClusterID, name))
+		}
+		labels := w.Labels
+		if labels == nil {
+			labels = map[string]string{}
+		}
+		images := w.Images
+		if images == nil {
+			images = []string{}
+		}
+		p.workloads = append(p.workloads, wire.WorkloadDiscovered{
+			WorkloadID:        DiscoveredWorkloadID(o.ClusterID, w.Namespace, w.Kind, w.Name),
+			ClusterID:         o.ClusterID,
+			Namespace:         w.Namespace,
+			Name:              w.Name,
+			Kind:              w.Kind,
+			Images:            images,
+			ReplicasDesired:   w.ReplicasDesired,
+			ReplicasReady:     w.ReplicasReady,
+			DevicesPerReplica: w.DevicesPerReplica,
+			DevicesTotal:      w.DevicesTotal,
+			NodeIDs:           nodeIDs,
+			Labels:            labels,
+			Model:             w.Model,
+			ObservedAt:        observedAt,
 		})
 	}
 	return p

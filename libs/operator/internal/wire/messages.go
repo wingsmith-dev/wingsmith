@@ -193,6 +193,26 @@ type PlacementConstraints struct {
 }
 
 // DeploymentDesired is the declared state of one deployment. Full object, never a patch.
+// WorkloadDiscovered is a workload found already running in the cluster that the plane never
+// declared. It is a sighting and nothing more: there is no declared object behind it, so there is
+// nothing for a reconciler to converge and no reason for anything to restart.
+type WorkloadDiscovered struct {
+	WorkloadID        string            `json:"workload_id"`
+	ClusterID         string            `json:"cluster_id"`
+	Namespace         string            `json:"namespace"`
+	Name              string            `json:"name"`
+	Kind              string            `json:"kind"`
+	Images            []string          `json:"images"`
+	ReplicasDesired   int               `json:"replicas_desired"`
+	ReplicasReady     int               `json:"replicas_ready"`
+	DevicesPerReplica int               `json:"devices_per_replica"`
+	DevicesTotal      int               `json:"devices_total"`
+	NodeIDs           []string          `json:"node_ids"`
+	Labels            map[string]string `json:"labels"`
+	Model             string            `json:"model,omitempty"`
+	ObservedAt        string            `json:"observed_at"`
+}
+
 type DeploymentDesired struct {
 	DeploymentID   string               `json:"deployment_id"`
 	ClusterID      string               `json:"cluster_id"`
@@ -416,6 +436,7 @@ var MessageTypes = map[string]func() any{
 	"device.event":        func() any { return &DeviceEvent{} },
 	"topology.observed":   func() any { return &TopologyObserved{} },
 	"capacity.observed":   func() any { return &CapacityObserved{} },
+	"workload.discovered": func() any { return &WorkloadDiscovered{} },
 	"deployment.desired":  func() any { return &DeploymentDesired{} },
 	"deployment.deleted":  func() any { return &DeploymentDeleted{} },
 	"artifact.desired":    func() any { return &ArtifactDesired{} },

@@ -14,12 +14,13 @@ import (
 
 // Wire types this loop produces.
 const (
-	TypeNodeObserved     = "node.observed"
-	TypeNodeEvent        = "node.event"
-	TypeDeviceObserved   = "device.observed"
-	TypeDeviceEvent      = "device.event"
-	TypeTopologyObserved = "topology.observed"
-	TypeCapacityObserved = "capacity.observed"
+	TypeNodeObserved       = "node.observed"
+	TypeNodeEvent          = "node.event"
+	TypeDeviceObserved     = "device.observed"
+	TypeDeviceEvent        = "device.event"
+	TypeTopologyObserved   = "topology.observed"
+	TypeCapacityObserved   = "capacity.observed"
+	TypeWorkloadDiscovered = "workload.discovered"
 )
 
 const (
@@ -181,6 +182,11 @@ func (o *Observer) Resync(ctx context.Context) error {
 			return err
 		}
 	}
+	for _, w := range current.workloads {
+		if err := send(TypeWorkloadDiscovered, w.WorkloadID, w); err != nil {
+			return err
+		}
+	}
 
 	if err := o.pushCorrelated(syncpkg.TypeStreamEnd, "", wire.StreamEnd{Count: count, Complete: true}, requestID); err != nil {
 		return fmt.Errorf("close resync: %w", err)
@@ -231,6 +237,17 @@ func (o *Observer) sendChanged(prev, next projection, seen bool) error {
 			}
 		}
 		if err := o.push(TypeCapacityObserved, c.Pool, c); err != nil {
+			return err
+		}
+	}
+	prevWorkloads := indexWorkloads(prev.workloads)
+	for _, w := range next.workloads {
+		if seen {
+			if old, ok := prevWorkloads[w.WorkloadID]; ok && sameWorkload(old, w) {
+				continue
+			}
+		}
+		if err := o.push(TypeWorkloadDiscovered, w.WorkloadID, w); err != nil {
 			return err
 		}
 	}
@@ -400,6 +417,14 @@ func indexDomains(in []wire.TopologyObserved) map[string]wire.TopologyObserved {
 	return out
 }
 
+func indexWorkloads(in []wire.WorkloadDiscovered) map[string]wire.WorkloadDiscovered {
+	out := make(map[string]wire.WorkloadDiscovered, len(in))
+	for _, w := range in {
+		out[w.WorkloadID] = w
+	}
+	return out
+}
+
 func indexCapacity(in []wire.CapacityObserved) map[string]wire.CapacityObserved {
 	out := make(map[string]wire.CapacityObserved, len(in))
 	for _, c := range in {
@@ -426,6 +451,11 @@ func sameDomain(a, b wire.TopologyObserved) bool {
 }
 
 func sameCapacity(a, b wire.CapacityObserved) bool {
+	a.ObservedAt, b.ObservedAt = "", ""
+	return reflect.DeepEqual(a, b)
+}
+
+func sameWorkload(a, b wire.WorkloadDiscovered) bool {
 	a.ObservedAt, b.ObservedAt = "", ""
 	return reflect.DeepEqual(a, b)
 }
