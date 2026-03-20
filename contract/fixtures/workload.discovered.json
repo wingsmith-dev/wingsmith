@@ -1,0 +1,31 @@
+{
+  "v": 1,
+  "type": "workload.discovered",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzd11",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8811,
+  "ack": 4412,
+  "payload": {
+    "workload_id": "dsw_01j9x2ffffffffffffffffffff",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+    "namespace": "serving",
+    "name": "llama-70b-vllm",
+    "kind": "deployment",
+    "images": [
+      "ghcr.io/acme/vllm:0.9.1"
+    ],
+    "replicas_desired": 2,
+    "replicas_ready": 2,
+    "devices_per_replica": 4,
+    "devices_total": 8,
+    "node_ids": [
+      "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",
+      "nod_01j9x2bbbbbbbbbbbbbbbbbbbc"
+    ],
+    "labels": {
+      "app": "llama-70b-vllm"
+    },
+    "model": "meta-llama/Llama-3.1-70B-Instruct",
+    "observed_at": "2026-08-19T14:02:11.400Z"
+  }
+}

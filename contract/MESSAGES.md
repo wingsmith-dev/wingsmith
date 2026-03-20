@@ -51,10 +51,19 @@ bandwidth we do not care about at this scale.
 | `device.event` | degraded, recovered, reset, fell off the bus |
 | `topology.observed` | which devices share an NVLink domain, PCIe root, NUMA node, and which nodes the domain spans |
 | `capacity.observed` | derived rollup per pool: free, allocated, unhealthy, by device class |
+| `workload.discovered` | a workload already running in the cluster that the plane never declared |
 
 Device metrics — utilization, temperature, throughput, memory in use — are **not** here. Device
 memory appears only as `memory_total_mb`: capacity is state, occupancy is measurement. See
 PROTOCOL §7.
+
+**A discovered workload is a sighting, not a deployment.** `workload.discovered` reports what was
+already running when the operator arrived — the pods holding GPUs that the plane did not put
+there. It is supply-side because it describes what a cluster is doing with its own hardware, and
+it is a distinct type from `deployment.observed` for one reason: `deployment.observed` is the
+cluster reporting on something the plane declared, and there is nothing declared here. Adopting a
+sighting attaches a name and a project to it; it never produces a `deployment.desired`, because
+declaring what is already running is how a control plane restarts it.
 
 **A topology domain names nodes, plural.** `topology.observed` carries `node_ids` and
 `spans_nodes`, not a single `node_id`. An NVLink domain over an NVSwitch fabric or a GB200 rack

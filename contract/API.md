@@ -147,6 +147,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/nodes`, `/v1/devices`, `/v1/topology-domains` | observed, read-only |
 | `/v1/pools` | declared, with observed membership |
 | `/v1/artifacts`, `/v1/recipes`, `/v1/deployments`, `/v1/endpoints` | declared |
+| `/v1/discovered` | observed, read-only, plus two decision verbs — see below |
 | `/v1/replicas`, `/v1/allocations` | observed, read-only |
 | `/v1/projects`, `/v1/quotas`, `/v1/priority-classes`, `/v1/policies` | declared |
 | `/v1/components` | declared version, observed rollout |
@@ -156,6 +157,14 @@ not created. Writing to an observed resource is a category error and returns `40
 Sub-resources are addressed by filter, not by nesting: `GET /v1/devices?cluster=iad-1`, not
 `/v1/clusters/iad-1/devices`. One collection per object type keeps filtering, pagination and
 permissions in one place instead of N.
+
+**`/v1/discovered` is the one observed collection that accepts a `POST`**, and the exception proves
+the rule: `POST /v1/discovered/{ref}/track` and `.../ignore` do not write the sighting, which stays
+ingestion's alone. They write a decision beside it — one row saying we looked at this and want it in
+the inventory, or do not. Neither produces a `deployment.desired`, and that is the guarantee the two
+verbs exist to make: declaring a workload that is already running is how a control plane restarts
+it, and reloading a model into VRAM costs minutes of served traffic. Adoption is a decision to
+observe, never a decision to declare. `?status=new|tracked|ignored` filters on the decision.
 
 Common query params: `limit`, `cursor`, `search`, `label` (repeatable, `k=v`), plus the object's
 own dimensions (`cluster`, `pool`, `class`, `health`, `phase`, `project`).
