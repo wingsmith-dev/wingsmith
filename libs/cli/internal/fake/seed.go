@@ -374,6 +374,22 @@ func seed() *state {
 		Revision:      revision(created),
 	})
 
+	// Five models across two clusters, none of them declared here. This is what a plane looks
+	// like the day it is pointed at clusters that were already serving.
+	found := now.Add(-30 * 24 * time.Hour)
+	st.Discovered = append(st.Discovered,
+		discovered(uid("dsw_"), iad, "iad-1", "serving", "llama-70b-vllm", "meta-llama/Llama-3.1-70B-Instruct",
+			"ghcr.io/acme/vllm:0.9.1", 2, 2, 4, found, "new", nil),
+		discovered(uid("dsw_"), iad, "iad-1", "serving", "mixtral-8x7b", "mistralai/Mixtral-8x7B-Instruct-v0.1",
+			"ghcr.io/acme/vllm:0.9.1", 1, 1, 2, found, "tracked", strptr(projectID)),
+		discovered(uid("dsw_"), iad, "iad-1", "research", "sd3-batch", "",
+			"ghcr.io/acme/comfy:1.4.0", 1, 0, 1, now.Add(-3*24*time.Hour), "new", nil),
+		discovered(uid("dsw_"), sjc, "sjc-1", "serving", "qwen2-72b", "Qwen/Qwen2-72B-Instruct",
+			"ghcr.io/acme/sglang:0.4.2", 2, 2, 4, found, "new", nil),
+		discovered(uid("dsw_"), sjc, "sjc-1", "serving", "embed-bge-m3", "BAAI/bge-m3",
+			"ghcr.io/acme/tei:1.5.0", 3, 3, 1, found, "ignored", nil),
+	)
+
 	st.Quotas = append(st.Quotas,
 		api.Quota{
 			ID: uid("qta_"), Project: projectID, ProjectSlug: "core",
@@ -484,3 +500,37 @@ func intptr(v int) *int { return &v }
 func int64ptr(v int64) *int64 { return &v }
 
 func floatptr(v float64) *float64 { return &v }
+
+// discovered builds one sighting. Every field it fills is observed except the
+// decision, which is the split the two tables behind this endpoint exist to keep.
+func discovered(
+	id, cluster, clusterName, namespace, name, model, image string,
+	desired, ready, perReplica int,
+	first time.Time,
+	status string,
+	project *string,
+) api.DiscoveredWorkload {
+	seen := time.Now().UTC().Add(-90 * time.Second)
+	w := api.DiscoveredWorkload{
+		ID: id, ClusterID: cluster, ClusterName: clusterName,
+		Namespace: namespace, Name: name, Kind: "deployment",
+		Images:          []string{image},
+		ReplicasDesired: desired, ReplicasReady: ready,
+		DevicesPerReplica: perReplica, DevicesTotal: perReplica * ready,
+		NodeIDs:     []string{},
+		Labels:      map[string]any{"name": name},
+		Status:      status,
+		ProjectID:   project,
+		FirstSeenAt: ptr(first),
+		ObservedAt:  ptr(seen),
+	}
+	if model != "" {
+		w.Model = strptr(model)
+	}
+	if status != "new" {
+		decided := first.Add(time.Hour)
+		who := "admin"
+		w.DecidedAt, w.DecidedBy = ptr(decided), &who
+	}
+	return w
+}

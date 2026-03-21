@@ -17,23 +17,24 @@ import (
 // state is the whole simulated control plane, persisted as one JSON document
 // whose keys are the API's collection names.
 type state struct {
-	Clusters        []api.Cluster        `json:"clusters"`
-	Nodes           []api.Node           `json:"nodes"`
-	Devices         []api.Device         `json:"devices"`
-	TopologyDomains []api.TopologyDomain `json:"topology_domains"`
-	Pools           []api.Pool           `json:"pools"`
-	Artifacts       []api.Artifact       `json:"artifacts"`
-	Recipes         []api.Recipe         `json:"recipes"`
-	Deployments     []api.Deployment     `json:"deployments"`
-	Endpoints       []api.Endpoint       `json:"endpoints"`
-	Projects        []api.Project        `json:"projects"`
-	Quotas          []api.Quota          `json:"quotas"`
-	PriorityClasses []api.PriorityClass  `json:"priority_classes"`
-	Policies        []api.Policy         `json:"policies"`
-	Allocations     []api.Allocation     `json:"allocations"`
-	Operations      []api.Operation      `json:"operations"`
-	Components      []api.Component      `json:"components"`
-	Events          []api.Event          `json:"events"`
+	Clusters        []api.Cluster            `json:"clusters"`
+	Nodes           []api.Node               `json:"nodes"`
+	Devices         []api.Device             `json:"devices"`
+	TopologyDomains []api.TopologyDomain     `json:"topology_domains"`
+	Pools           []api.Pool               `json:"pools"`
+	Artifacts       []api.Artifact           `json:"artifacts"`
+	Recipes         []api.Recipe             `json:"recipes"`
+	Deployments     []api.Deployment         `json:"deployments"`
+	Discovered      []api.DiscoveredWorkload `json:"discovered"`
+	Endpoints       []api.Endpoint           `json:"endpoints"`
+	Projects        []api.Project            `json:"projects"`
+	Quotas          []api.Quota              `json:"quotas"`
+	PriorityClasses []api.PriorityClass      `json:"priority_classes"`
+	Policies        []api.Policy             `json:"policies"`
+	Allocations     []api.Allocation         `json:"allocations"`
+	Operations      []api.Operation          `json:"operations"`
+	Components      []api.Component          `json:"components"`
+	Events          []api.Event              `json:"events"`
 }
 
 // load reads a fixture document, falling back to the built-in seed. When a

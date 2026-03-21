@@ -48,6 +48,8 @@ type ListOpts struct {
 	Severity       string
 	Device         string
 	Replica        string
+	Namespace      string
+	Status         string
 
 	Ready            *bool
 	Cordoned         *bool
@@ -403,6 +405,44 @@ type Deployment struct {
 	Revision           string                  `json:"revision"`
 	Workload           DeploymentWorkload      `json:"workload"`
 	Replicas           DeploymentReplicaRollup `json:"replicas"`
+}
+
+// DiscoveredWorkload is something already running in a cluster that the plane
+// never declared. Status is `new` until somebody decides: `tracked` puts it in
+// the inventory, `ignored` takes it out of the list.
+//
+// There is no generation and no recipe here, and that is the point. Adopting one
+// records a decision and declares nothing, so nothing reconciles and nothing
+// restarts — a model whose weights are already resident stays that way.
+type DiscoveredWorkload struct {
+	ID                string         `json:"id"`
+	ClusterID         string         `json:"cluster_id"`
+	ClusterName       string         `json:"cluster_name"`
+	Namespace         string         `json:"namespace"`
+	Name              string         `json:"name"`
+	Kind              string         `json:"kind"`
+	Model             *string        `json:"model"`
+	Images            []string       `json:"images"`
+	ReplicasDesired   int            `json:"replicas_desired"`
+	ReplicasReady     int            `json:"replicas_ready"`
+	DevicesPerReplica int            `json:"devices_per_replica"`
+	DevicesTotal      int            `json:"devices_total"`
+	NodeIDs           []string       `json:"node_ids"`
+	Labels            map[string]any `json:"labels"`
+	Status            string         `json:"status"`
+	ProjectID         *string        `json:"project_id"`
+	Note              *string        `json:"note"`
+	DecidedBy         *string        `json:"decided_by"`
+	DecidedAt         *time.Time     `json:"decided_at"`
+	FirstSeenAt       *time.Time     `json:"first_seen_at"`
+	ObservedAt        *time.Time     `json:"observed_at"`
+}
+
+// DecisionRequest is what track and ignore send. It carries nothing a cluster
+// could act on, which is what makes adoption safe.
+type DecisionRequest struct {
+	Project string `json:"project,omitempty"`
+	Note    string `json:"note,omitempty"`
 }
 
 // EndpointTarget is one deployment behind one endpoint, with a traffic

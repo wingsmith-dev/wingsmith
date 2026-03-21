@@ -253,6 +253,26 @@ func (c *Client) Deployment(ctx context.Context, ref string) (Deployment, error)
 	return one[Deployment](ctx, c, "/v1/deployments", ref, nil)
 }
 
+func (c *Client) DiscoveredWorkloads(ctx context.Context, o ListOpts) (Page[DiscoveredWorkload], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("namespace", o.Namespace).
+		str("status", o.Status).str("search", o.Search)
+	return list[DiscoveredWorkload](ctx, c, "/v1/discovered", q.values(), o)
+}
+
+func (c *Client) DiscoveredWorkload(ctx context.Context, ref string) (DiscoveredWorkload, error) {
+	return one[DiscoveredWorkload](ctx, c, "/v1/discovered", ref, nil)
+}
+
+// DecideWorkload records track or ignore. It is a POST on a subpath rather than
+// a PATCH on the workload because the object it writes is not the workload: the
+// sighting is observed and has exactly one writer, which is ingestion.
+func (c *Client) DecideWorkload(ctx context.Context, ref, decision string, req DecisionRequest) (DiscoveredWorkload, error) {
+	var out DiscoveredWorkload
+	path := "/v1/discovered/" + url.PathEscape(ref) + "/" + decision
+	err := c.send(ctx, http.MethodPost, path, nil, req, nil, &out)
+	return out, err
+}
+
 func (c *Client) Endpoints(ctx context.Context, o ListOpts) (Page[Endpoint], error) {
 	q := newQuery(o).str("project", o.Project).str("artifact", o.Artifact).
 		str("search", o.Search).labels(o.Labels)

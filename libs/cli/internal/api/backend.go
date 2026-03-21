@@ -29,6 +29,9 @@ type Backend interface {
 	Recipe(ctx context.Context, ref string) (Recipe, error)
 	Deployments(ctx context.Context, opts ListOpts) (Page[Deployment], error)
 	Deployment(ctx context.Context, ref string) (Deployment, error)
+	DiscoveredWorkloads(ctx context.Context, opts ListOpts) (Page[DiscoveredWorkload], error)
+	DiscoveredWorkload(ctx context.Context, ref string) (DiscoveredWorkload, error)
+	DecideWorkload(ctx context.Context, ref, decision string, req DecisionRequest) (DiscoveredWorkload, error)
 	Endpoints(ctx context.Context, opts ListOpts) (Page[Endpoint], error)
 	Endpoint(ctx context.Context, ref string) (Endpoint, error)
 

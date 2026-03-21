@@ -56,6 +56,7 @@ func TestEveryNounListsAndGets(t *testing.T) {
 		"artifact", "recipe", "deployment", "endpoint",
 		"project", "quota", "priority-class", "policy",
 		"allocation", "operation", "component", "event",
+		"discovered",
 	}
 	for _, n := range nouns {
 		t.Run(n, func(t *testing.T) {
@@ -347,5 +348,60 @@ func TestAgentEnvelope(t *testing.T) {
 	}
 	if envelope.Meta["simulated"] != true {
 		t.Error("agent mode did not mark the fake as simulated")
+	}
+}
+
+// TestAdoptingAWorkloadDeclaresNothing is the guarantee the discovered noun
+// exists to make. Tracking a workload records a decision; if it ever produced a
+// deployment, the plane would hand the cluster a difference to reconcile and the
+// model would be restarted to close it.
+func TestAdoptingAWorkloadDeclaresNothing(t *testing.T) {
+	before, _, code := run(t, "deployment", "ls", "-o", "name")
+	if code != 0 {
+		t.Fatalf("deployment ls exit %d", code)
+	}
+
+	out, _, code := run(t, "discovered", "track", "llama-70b-vllm", "--project", "core", "-o", "json")
+	if code != 0 {
+		t.Fatalf("track exit %d: %s", code, out)
+	}
+	var tracked map[string]any
+	if err := json.Unmarshal([]byte(out), &tracked); err != nil {
+		t.Fatalf("track is not an object: %v", err)
+	}
+	if tracked["status"] != "tracked" {
+		t.Fatalf("status is %v, want tracked", tracked["status"])
+	}
+	for _, declared := range []string{"generation", "recipe_id", "desired_replicas", "revision"} {
+		if _, ok := tracked[declared]; ok {
+			t.Errorf("a tracked sighting carries %q, which only a declared object has", declared)
+		}
+	}
+
+	after, _, code := run(t, "deployment", "ls", "-o", "name")
+	if code != 0 {
+		t.Fatalf("deployment ls exit %d", code)
+	}
+	if before != after {
+		t.Errorf("tracking a discovered workload changed the declared deployments:\n%s\n%s", before, after)
+	}
+}
+
+// TestIgnoringAWorkloadKeepsTheSighting: ignore is a decision about a listing,
+// not a claim that the workload stopped running.
+func TestIgnoringAWorkloadKeepsTheSighting(t *testing.T) {
+	out, _, code := run(t, "discovered", "ignore", "sd3-batch", "-o", "json")
+	if code != 0 {
+		t.Fatalf("ignore exit %d: %s", code, out)
+	}
+	var ignored map[string]any
+	if err := json.Unmarshal([]byte(out), &ignored); err != nil {
+		t.Fatalf("ignore is not an object: %v", err)
+	}
+	if ignored["status"] != "ignored" {
+		t.Fatalf("status is %v, want ignored", ignored["status"])
+	}
+	if ignored["observed_at"] == nil {
+		t.Error("ignoring a workload dropped what the cluster observed about it")
 	}
 }

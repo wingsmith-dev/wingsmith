@@ -22,10 +22,14 @@ import (
 type noun[T any] struct {
 	name    string
 	aliases []string
-	group   string
-	short   string
-	long    string
-	example string
+	// plurally overrides the pluralised name in listings and messages, for a
+	// noun whose plural the rule cannot reach: "discovered" pluralises to
+	// "discovereds", which is not a thing anyone would say.
+	plurally string
+	group    string
+	short    string
+	long     string
+	example  string
 
 	list func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[T], error)
 	get  func(ctx context.Context, b api.Backend, ref string) (T, error)
@@ -66,7 +70,7 @@ func (n noun[T]) listCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "ls",
 		Aliases: []string{"list"},
-		Short:   "List " + plural(n.name),
+		Short:   "List " + n.pluralName(),
 		Example: n.example,
 		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -88,13 +92,13 @@ func (n noun[T]) runList(app *App, cmd *cobra.Command, f *filters) error {
 	ctx, cancel := app.RequestContext()
 	defer cancel()
 
-	step := app.Report.Step("listing " + plural(n.name))
+	step := app.Report.Step("listing " + n.pluralName())
 	page, err := n.list(ctx, app.Backend, opts)
 	if err != nil {
 		step.Fail("failed")
 		return err
 	}
-	step.Done("%d %s", page.Count, plural(n.name))
+	step.Done("%d %s", page.Count, n.pluralName())
 
 	names := make([]string, 0, len(page.Items))
 	rows := make([][]string, 0, len(page.Items))
@@ -150,7 +154,7 @@ type groupedPage[T any] struct {
 
 func (n noun[T]) buckets(by string, items []T) ([]listGroup, map[string][]T, error) {
 	if n.groupKey == nil {
-		return nil, nil, errs.New(errs.CodeUsage, "%s listings cannot be grouped", plural(n.name))
+		return nil, nil, errs.New(errs.CodeUsage, "%s listings cannot be grouped", n.pluralName())
 	}
 	index := map[string]*listGroup{}
 	membership := map[string][]T{}
@@ -183,7 +187,7 @@ func (n noun[T]) buckets(by string, items []T) ([]listGroup, map[string][]T, err
 func (n noun[T]) groupedTable(app *App, page api.Page[T], groups []listGroup, membership map[string][]T) func(io.Writer, ui.Style, int) {
 	return func(w io.Writer, s ui.Style, width int) {
 		if len(page.Items) == 0 {
-			fmt.Fprintf(w, "%s\n", s.Dim(orDefault(n.empty, "no "+plural(n.name)+" match")))
+			fmt.Fprintf(w, "%s\n", s.Dim(orDefault(n.empty, "no "+n.pluralName()+" match")))
 			return
 		}
 		for i, g := range groups {
@@ -211,7 +215,7 @@ func (n noun[T]) groupedTable(app *App, page api.Page[T], groups []listGroup, me
 func (n noun[T]) table(app *App, page api.Page[T]) func(io.Writer, ui.Style, int) {
 	return func(w io.Writer, s ui.Style, width int) {
 		if len(page.Items) == 0 {
-			fmt.Fprintf(w, "%s\n", s.Dim(orDefault(n.empty, "no "+plural(n.name)+" match")))
+			fmt.Fprintf(w, "%s\n", s.Dim(orDefault(n.empty, "no "+n.pluralName()+" match")))
 			return
 		}
 		t := app.Table(n.columns...)
@@ -304,7 +308,7 @@ func (n noun[T]) resolve(ctx context.Context, app *App, ref string) (T, error) {
 			labels = append(labels, n.label(h))
 		}
 		var zero T
-		return zero, errs.New(errs.CodeAmbiguous, "%q matches %d %s", ref, len(hits), plural(n.name)).
+		return zero, errs.New(errs.CodeAmbiguous, "%q matches %d %s", ref, len(hits), n.pluralName()).
 			WithCause(strings.Join(labels, ", "))
 	}
 }
@@ -362,6 +366,8 @@ type filters struct {
 	severity  string
 	device    string
 	replica   string
+	namespace string
+	status    string
 	format    string
 
 	ready            bool
@@ -417,7 +423,7 @@ func (f *filters) opts(cmd *cobra.Command) (api.ListOpts, error) {
 		Type: f.typ, Name: f.name, Engine: f.engine, Artifact: f.artifact, Recipe: f.recipe,
 		Condition: f.condition, TopologyDomain: f.domain, Target: f.target, Actor: f.actor,
 		Subject: f.subject, Severity: f.severity, Device: f.device, Replica: f.replica,
-		Format: f.format,
+		Namespace: f.namespace, Status: f.status, Format: f.format,
 
 		Ready:            optBool(cmd, "ready", f.ready),
 		Cordoned:         optBool(cmd, "cordoned", f.cordoned),
@@ -473,6 +479,14 @@ func columnTitles(cols []ui.Column) []string {
 		out = append(out, c.Title)
 	}
 	return out
+}
+
+// pluralName is what a listing of this noun is called.
+func (n noun[T]) pluralName() string {
+	if n.plurally != "" {
+		return n.plurally
+	}
+	return plural(n.name)
 }
 
 func plural(noun string) string {

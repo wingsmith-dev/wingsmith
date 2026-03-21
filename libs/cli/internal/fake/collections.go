@@ -141,6 +141,64 @@ func (b *Backend) Deployment(ctx context.Context, ref string) (api.Deployment, e
 	})
 }
 
+func (b *Backend) DiscoveredWorkloads(ctx context.Context, o api.ListOpts) (api.Page[api.DiscoveredWorkload], error) {
+	cluster := b.clusterRef(o.Cluster)
+	return collect(b, b.state.Discovered, o, func(d api.DiscoveredWorkload) bool {
+		return refEq(cluster, d.ClusterID) && eqFold(o.Namespace, d.Namespace) &&
+			eqFold(o.Status, d.Status) && contains(o.Search, d.Name, d.ID)
+	})
+}
+
+func (b *Backend) DiscoveredWorkload(ctx context.Context, ref string) (api.DiscoveredWorkload, error) {
+	return find(b, "discovered workload", b.state.Discovered, ref, func(d api.DiscoveredWorkload) []string {
+		return []string{d.Name, d.ID}
+	})
+}
+
+// DecideWorkload records the decision and touches nothing else. The fake is as
+// inert as the real thing here on purpose: if adopting could ever produce a
+// declared object, this is where the shape test would catch it.
+func (b *Backend) DecideWorkload(ctx context.Context, ref, decision string, req api.DecisionRequest) (api.DiscoveredWorkload, error) {
+	found, err := b.DiscoveredWorkload(ctx, ref)
+	if err != nil {
+		return api.DiscoveredWorkload{}, err
+	}
+	now := time.Now().UTC()
+	for i := range b.state.Discovered {
+		if b.state.Discovered[i].ID != found.ID {
+			continue
+		}
+		d := &b.state.Discovered[i]
+		d.Status = decided(decision)
+		d.DecidedAt = &now
+		who := "admin"
+		d.DecidedBy = &who
+		d.ProjectID = optional(req.Project)
+		d.Note = optional(req.Note)
+		if err := b.persist(); err != nil {
+			return api.DiscoveredWorkload{}, err
+		}
+		return *d, nil
+	}
+	return api.DiscoveredWorkload{}, errs.New(errs.CodeNotFound, "no discovered workload %q", ref)
+}
+
+// decided turns the verb the caller used into the state it leaves behind, which
+// is what the plane stores and what every reader compares against.
+func decided(decision string) string {
+	if decision == "ignore" {
+		return "ignored"
+	}
+	return "tracked"
+}
+
+func optional(v string) *string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	return &v
+}
+
 func (b *Backend) Endpoints(ctx context.Context, o api.ListOpts) (api.Page[api.Endpoint], error) {
 	return collect(b, b.state.Endpoints, o, func(e api.Endpoint) bool {
 		return refEq(o.Project, e.ProjectID) &&
