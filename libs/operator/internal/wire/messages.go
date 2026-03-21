@@ -210,7 +210,23 @@ type WorkloadDiscovered struct {
 	NodeIDs           []string          `json:"node_ids"`
 	Labels            map[string]string `json:"labels"`
 	Model             string            `json:"model,omitempty"`
+	SpecFingerprint   string            `json:"spec_fingerprint"`
 	ObservedAt        string            `json:"observed_at"`
+}
+
+// Adopt rides on a DeploymentDesired that was promoted from a discovered workload. Its presence
+// changes the frame's meaning entirely: the named object already exists and is already serving, so
+// the operator takes ownership of it in place rather than applying a rendered spec over it.
+//
+// SpecFingerprint is what was true when the promotion was accepted. A reconciler that finds the
+// live object digesting to anything else must refuse and say so — the workload drifted, or the
+// render disagrees with reality, and either way converging means restarting a model to close a gap
+// nobody asked to close.
+type Adopt struct {
+	Namespace       string `json:"namespace"`
+	Kind            string `json:"kind"`
+	Name            string `json:"name"`
+	SpecFingerprint string `json:"spec_fingerprint"`
 }
 
 type DeploymentDesired struct {
@@ -227,6 +243,7 @@ type DeploymentDesired struct {
 	ArtifactIDs    []string             `json:"artifact_ids"`
 	Generation     int64                `json:"generation"`
 	UpdatedAt      string               `json:"updated_at"`
+	Adopt          *Adopt               `json:"adopt,omitempty"`
 }
 
 // DeploymentDeleted withdraws a deployment.

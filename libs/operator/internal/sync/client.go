@@ -331,8 +331,14 @@ func (c *Client) session(ctx context.Context) error {
 	errCh := make(chan error, 3)
 	var wg stdsync.WaitGroup
 	wg.Add(3)
-	go func() { defer wg.Done(); errCh <- c.runProtected("read", func() error { return c.readLoop(sessCtx, conn) }) }()
-	go func() { defer wg.Done(); errCh <- c.runProtected("write", func() error { return c.writeLoop(sessCtx, conn) }) }()
+	go func() {
+		defer wg.Done()
+		errCh <- c.runProtected("read", func() error { return c.readLoop(sessCtx, conn) })
+	}()
+	go func() {
+		defer wg.Done()
+		errCh <- c.runProtected("write", func() error { return c.writeLoop(sessCtx, conn) })
+	}()
 	go func() {
 		defer wg.Done()
 		errCh <- c.runProtected("heartbeat", func() error { return c.heartbeatLoop(sessCtx) })

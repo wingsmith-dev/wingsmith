@@ -111,6 +111,10 @@ type Workload struct {
 	// Model is what the workload says it is serving, when it says so at all. A hint for the
 	// human deciding whether to track it, never something placement reads.
 	Model string
+	// Fingerprint digests the pod template — what is running, not how much of it. It is what
+	// an adoption is pinned to: the plane records the digest it adopted, and a reconciler that
+	// finds a different one refuses to converge rather than restarting the workload to match.
+	Fingerprint string
 }
 
 // Snapshot is one complete reading of the cluster's supply. It is always whole: a partial

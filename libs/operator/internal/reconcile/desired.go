@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
@@ -48,6 +49,14 @@ func decodeDesired(e *syncpkg.Envelope) (desiredState, error) {
 			return d, fmt.Errorf("decode %s: %w", e.Type, err)
 		}
 		d.Kind, d.Name, d.Revision = "deployment", resourceName(p.DeploymentID), p.Generation
+		if p.Adopt != nil {
+			d.Adopt = &v1alpha1.AdoptRef{
+				Namespace:       p.Adopt.Namespace,
+				Kind:            p.Adopt.Kind,
+				Name:            p.Adopt.Name,
+				SpecFingerprint: p.Adopt.SpecFingerprint,
+			}
+		}
 	case wireDeploymentDeleted:
 		var p wire.DeploymentDeleted
 		if err := json.Unmarshal(e.Payload, &p); err != nil {

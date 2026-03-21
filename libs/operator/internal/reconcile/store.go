@@ -29,6 +29,7 @@ type desiredState struct {
 	Revision int64
 	Deleted  bool
 	Object   json.RawMessage
+	Adopt    *v1alpha1.AdoptRef
 }
 
 // resyncEpoch accumulates a full-resync snapshot as it streams in.
@@ -111,6 +112,7 @@ func (s *Store) apply(ctx context.Context, d desiredState) error {
 				Kind:     d.Kind,
 				Revision: d.Revision,
 				Payload:  rawOrNil(d.Object),
+				Adopt:    d.Adopt,
 			},
 		}
 		return s.Client.Create(ctx, obj)
@@ -127,6 +129,7 @@ func (s *Store) apply(ctx context.Context, d desiredState) error {
 	existing.Spec.Kind = d.Kind
 	existing.Spec.Revision = d.Revision
 	existing.Spec.Payload = rawOrNil(d.Object)
+	existing.Spec.Adopt = d.Adopt
 	return s.Client.Patch(ctx, &existing, patch)
 }
 

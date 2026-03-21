@@ -242,6 +242,7 @@ func (o *Observer) project(s Snapshot) projection {
 			NodeIDs:           nodeIDs,
 			Labels:            labels,
 			Model:             w.Model,
+			SpecFingerprint:   w.Fingerprint,
 			ObservedAt:        observedAt,
 		})
 	}

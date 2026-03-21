@@ -8,6 +8,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/hangar-dev/hangar/libs/operator/internal/workload"
 )
 
 // Labels and annotations the workload discoverer reads.
@@ -47,6 +49,7 @@ type podUsage struct {
 	replicas          int
 	ready             int
 	nodes             map[string]bool
+	fingerprint       string
 }
 
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch
@@ -76,6 +79,9 @@ func (k *KubeDiscoverer) discoverWorkloads(ctx context.Context, pods *corev1.Pod
 		}
 		u.replicas++
 		u.devicesTotal += devices
+		if u.fingerprint == "" {
+			u.fingerprint = workload.FingerprintPod(p)
+		}
 		if devices > u.devicesPerReplica {
 			u.devicesPerReplica = devices
 		}
@@ -108,6 +114,7 @@ func (k *KubeDiscoverer) discoverWorkloads(ctx context.Context, pods *corev1.Pod
 			DevicesTotal:      u.devicesTotal,
 			Nodes:             keys(u.nodes),
 			Labels:            map[string]string{},
+			Fingerprint:       u.fingerprint,
 		}
 		// The controller is the authority on how many replicas were asked for; the pods are
 		// the authority on how many devices are actually held. A workload scaled to four with
@@ -119,6 +126,7 @@ func (k *KubeDiscoverer) discoverWorkloads(ctx context.Context, pods *corev1.Pod
 			w.Images = c.images
 			w.Labels = c.labels
 			w.Model = c.model
+			w.Fingerprint = c.fingerprint
 		}
 		out = append(out, w)
 	}
@@ -127,11 +135,12 @@ func (k *KubeDiscoverer) discoverWorkloads(ctx context.Context, pods *corev1.Pod
 
 // controller is the declared half of a discovered workload, as its own cluster records it.
 type controller struct {
-	desired int
-	ready   int
-	images  []string
-	labels  map[string]string
-	model   string
+	desired     int
+	ready       int
+	images      []string
+	labels      map[string]string
+	model       string
+	fingerprint string
 }
 
 func (k *KubeDiscoverer) controllers(ctx context.Context) (map[workloadKey]controller, error) {
@@ -152,11 +161,12 @@ func (k *KubeDiscoverer) controllers(ctx context.Context) (map[workloadKey]contr
 		}
 		key := workloadKey{Namespace: d.Namespace, Kind: kindDeployment, Name: d.Name}
 		out[key] = controller{
-			desired: desired,
-			ready:   int(d.Status.ReadyReplicas),
-			images:  templateImages(&d.Spec.Template),
-			labels:  exportedWorkloadLabels(d.Labels),
-			model:   modelHint(d.ObjectMeta, &d.Spec.Template),
+			desired:     desired,
+			ready:       int(d.Status.ReadyReplicas),
+			images:      templateImages(&d.Spec.Template),
+			labels:      exportedWorkloadLabels(d.Labels),
+			model:       modelHint(d.ObjectMeta, &d.Spec.Template),
+			fingerprint: workload.Fingerprint(&d.Spec.Template.Spec),
 		}
 	}
 
@@ -175,11 +185,12 @@ func (k *KubeDiscoverer) controllers(ctx context.Context) (map[workloadKey]contr
 		}
 		key := workloadKey{Namespace: s.Namespace, Kind: kindStatefulSet, Name: s.Name}
 		out[key] = controller{
-			desired: desired,
-			ready:   int(s.Status.ReadyReplicas),
-			images:  templateImages(&s.Spec.Template),
-			labels:  exportedWorkloadLabels(s.Labels),
-			model:   modelHint(s.ObjectMeta, &s.Spec.Template),
+			desired:     desired,
+			ready:       int(s.Status.ReadyReplicas),
+			images:      templateImages(&s.Spec.Template),
+			labels:      exportedWorkloadLabels(s.Labels),
+			model:       modelHint(s.ObjectMeta, &s.Spec.Template),
+			fingerprint: workload.Fingerprint(&s.Spec.Template.Spec),
 		}
 	}
 	return out, nil

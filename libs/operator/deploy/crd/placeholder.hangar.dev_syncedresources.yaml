@@ -54,6 +54,36 @@ spec:
               hub. The payload is held opaquely on purpose: the operator skeleton must persist and reconcile
               desired state without knowing the domain schema, which another track defines.
             properties:
+              adopt:
+                description: |-
+                  Adopt names a cluster object that already exists and is already running, promoted from a
+                  discovered workload. Its presence forbids applying a rendered spec: the reconciler takes
+                  ownership in place, and only after the live object still digests to AdoptFingerprint.
+
+                  The field is on the durable copy rather than read out of the payload each time because it
+                  is a safety gate. A gate that depends on parsing the domain schema is a gate that opens
+                  when the parse fails.
+                properties:
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                  namespace:
+                    description: Namespace, Kind and Name locate the object in this
+                      cluster.
+                    type: string
+                  specFingerprint:
+                    description: |-
+                      SpecFingerprint is the digest of the pod template as it was when the plane accepted the
+                      promotion. A reconciler that finds anything else must refuse and report, never converge:
+                      closing that gap means restarting a model that nobody asked to have restarted.
+                    type: string
+                required:
+                - kind
+                - name
+                - namespace
+                - specFingerprint
+                type: object
               kind:
                 description: Kind is the domain object kind as named on the wire.
                 minLength: 1

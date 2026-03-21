@@ -22,6 +22,29 @@ type SyncedResourceSpec struct {
 	// +kubebuilder:pruning:PreserveUnknownFields
 	// +optional
 	Payload *apiextensionsv1.JSON `json:"payload,omitempty"`
+
+	// Adopt names a cluster object that already exists and is already running, promoted from a
+	// discovered workload. Its presence forbids applying a rendered spec: the reconciler takes
+	// ownership in place, and only after the live object still digests to AdoptFingerprint.
+	//
+	// The field is on the durable copy rather than read out of the payload each time because it
+	// is a safety gate. A gate that depends on parsing the domain schema is a gate that opens
+	// when the parse fails.
+	// +optional
+	Adopt *AdoptRef `json:"adopt,omitempty"`
+}
+
+// AdoptRef identifies an already-running object this desired state was promoted from.
+type AdoptRef struct {
+	// Namespace, Kind and Name locate the object in this cluster.
+	Namespace string `json:"namespace"`
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+
+	// SpecFingerprint is the digest of the pod template as it was when the plane accepted the
+	// promotion. A reconciler that finds anything else must refuse and report, never converge:
+	// closing that gap means restarting a model that nobody asked to have restarted.
+	SpecFingerprint string `json:"specFingerprint"`
 }
 
 // SyncedResourceStatus is the observed half, shipped back up the stream by the sync loop.
