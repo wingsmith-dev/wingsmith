@@ -164,7 +164,15 @@ ingestion's alone. They write a decision beside it — one row saying we looked 
 the inventory, or do not. Neither produces a `deployment.desired`, and that is the guarantee the two
 verbs exist to make: declaring a workload that is already running is how a control plane restarts
 it, and reloading a model into VRAM costs minutes of served traffic. Adoption is a decision to
-observe, never a decision to declare. `?status=new|tracked|ignored` filters on the decision.
+observe, never a decision to declare. `?status=new|tracked|ignored|promoted` filters on the decision.
+
+**`POST /v1/discovered/{ref}/promote`** is the one that does declare, and it returns a Deployment
+because that is what it made. The caller sends back the `spec_fingerprint` they were shown and the
+promotion is refused if the workload changed since; the digest is then recorded on the deployment as
+`adopted_fingerprint`, and the cluster refuses to reconcile it while the live object digests to
+anything else. Scale is not a parameter — the bounds are taken from what the workload is already
+running, because a promotion that also set the replica count would scale a live workload as a side
+effect of cataloguing it. From there the object is managed through `/v1/deployments` like any other.
 
 Common query params: `limit`, `cursor`, `search`, `label` (repeatable, `k=v`), plus the object's
 own dimensions (`cluster`, `pool`, `class`, `health`, `phase`, `project`).

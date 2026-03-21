@@ -65,6 +65,14 @@ cluster reporting on something the plane declared, and there is nothing declared
 sighting attaches a name and a project to it; it never produces a `deployment.desired`, because
 declaring what is already running is how a control plane restarts it.
 
+**`deployment.desired` carries `adopt` when it was promoted from one of those sightings.** Its
+presence changes what the frame asks for: the named object already exists and is already serving, so
+the operator takes ownership in place rather than applying a rendered spec over it. `spec_fingerprint`
+digests the pod template — what is running, deliberately not how much of it, so scaling never reads
+as redefinition. A reconciler that finds the live object digesting to anything else must refuse and
+report it, never converge; closing that gap means restarting a model to match a spec nobody asked to
+change.
+
 **A topology domain names nodes, plural.** `topology.observed` carries `node_ids` and
 `spans_nodes`, not a single `node_id`. An NVLink domain over an NVSwitch fabric or a GB200 rack
 crosses machines, which is precisely the shape topology exists to describe; a domain confined to

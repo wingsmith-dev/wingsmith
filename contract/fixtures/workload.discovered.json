@@ -26,6 +26,7 @@
       "app": "llama-70b-vllm"
     },
     "model": "meta-llama/Llama-3.1-70B-Instruct",
+    "spec_fingerprint": "sha256:9f2c1b7d4e6a0835c1d9b2f47a0e6538d1c4b9a70f2e5836c1d4b9a70f2e5836",
     "observed_at": "2026-08-19T14:02:11.400Z"
   }
 }
