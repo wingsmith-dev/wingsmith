@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/hangar/cli/internal/api"
+	"strings"
 )
 
 // seed builds the offline control plane. It is deterministic in shape and
@@ -511,18 +512,23 @@ func discovered(
 	project *string,
 ) api.DiscoveredWorkload {
 	seen := time.Now().UTC().Add(-90 * time.Second)
+	digest := "sha256:" + strings.Repeat(name+"0", 4)
+	if len(digest) > 71 {
+		digest = digest[:71]
+	}
 	w := api.DiscoveredWorkload{
 		ID: id, ClusterID: cluster, ClusterName: clusterName,
 		Namespace: namespace, Name: name, Kind: "deployment",
 		Images:          []string{image},
 		ReplicasDesired: desired, ReplicasReady: ready,
 		DevicesPerReplica: perReplica, DevicesTotal: perReplica * ready,
-		NodeIDs:     []string{},
-		Labels:      map[string]any{"name": name},
-		Status:      status,
-		ProjectID:   project,
-		FirstSeenAt: ptr(first),
-		ObservedAt:  ptr(seen),
+		NodeIDs:         []string{},
+		Labels:          map[string]any{"name": name},
+		Status:          status,
+		ProjectID:       project,
+		SpecFingerprint: &digest,
+		FirstSeenAt:     ptr(first),
+		ObservedAt:      ptr(seen),
 	}
 	if model != "" {
 		w.Model = strptr(model)

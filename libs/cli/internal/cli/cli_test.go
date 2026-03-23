@@ -405,3 +405,69 @@ func TestIgnoringAWorkloadKeepsTheSighting(t *testing.T) {
 		t.Error("ignoring a workload dropped what the cluster observed about it")
 	}
 }
+
+// TestPromotionPinsTheDigestItWasShown: the caller never types the digest. The command reads the
+// workload and sends back what it was just shown, so an adoption cannot be pinned to a spec
+// nobody looked at.
+func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
+	before, _, code := run(t, "discovered", "get", "llama-70b-vllm", "-o", "json")
+	if code != 0 {
+		t.Fatalf("get exit %d", code)
+	}
+	var sighting map[string]any
+	if err := json.Unmarshal([]byte(before), &sighting); err != nil {
+		t.Fatalf("get is not an object: %v", err)
+	}
+
+	out, _, code := run(t, "discovered", "promote", "llama-70b-vllm",
+		"--recipe", "llama-70b", "--project", "core", "-o", "json")
+	if code != 0 {
+		t.Fatalf("promote exit %d: %s", code, out)
+	}
+	var deployment map[string]any
+	if err := json.Unmarshal([]byte(out), &deployment); err != nil {
+		t.Fatalf("promote is not a deployment: %v", err)
+	}
+	if deployment["adopted_fingerprint"] != sighting["spec_fingerprint"] {
+		t.Fatalf("pinned to %v but the workload reported %v",
+			deployment["adopted_fingerprint"], sighting["spec_fingerprint"])
+	}
+	if deployment["adopted_workload_id"] != sighting["id"] {
+		t.Fatal("the deployment does not point back at the workload it was promoted from")
+	}
+}
+
+// TestPromotionAdoptsTheScaleItFound: the bounds come from what is running, never from a default.
+// A promotion that scaled a live workload as a side effect of cataloguing it would be the same
+// class of accident as re-rendering its spec.
+func TestPromotionAdoptsTheScaleItFound(t *testing.T) {
+	out, _, code := run(t, "discovered", "promote", "qwen2-72b",
+		"--recipe", "llama-70b", "--project", "core", "-o", "json")
+	if code != 0 {
+		t.Fatalf("promote exit %d: %s", code, out)
+	}
+	var deployment map[string]any
+	if err := json.Unmarshal([]byte(out), &deployment); err != nil {
+		t.Fatalf("promote is not a deployment: %v", err)
+	}
+	for _, field := range []string{"min_replicas", "desired_replicas", "max_replicas"} {
+		if deployment[field] != float64(2) {
+			t.Errorf("%s is %v, but the workload runs 2 replicas", field, deployment[field])
+		}
+	}
+	if deployment["generation"] != float64(1) {
+		t.Errorf("generation is %v, want 1 — an adoption starts where it is", deployment["generation"])
+	}
+}
+
+// TestPromotionNeedsToKnowWhatItIsAdopting: without a recipe and an owner the plane would be
+// holding a deployment it cannot describe.
+func TestPromotionNeedsToKnowWhatItIsAdopting(t *testing.T) {
+	_, errOut, code := run(t, "discovered", "promote", "llama-70b-vllm")
+	if code == 0 {
+		t.Fatal("promote succeeded with no recipe and no project")
+	}
+	if !strings.Contains(errOut, "--recipe") {
+		t.Fatalf("the error does not say what is missing: %s", errOut)
+	}
+}

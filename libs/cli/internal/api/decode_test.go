@@ -23,6 +23,7 @@ func TestPagesDecodeExactly(t *testing.T) {
 	checkPage[Artifact](t, "artifacts.json")
 	checkPage[Recipe](t, "recipes.json")
 	checkPage[Deployment](t, "deployments.json")
+	checkPage[DiscoveredWorkload](t, "discovered.json")
 	checkPage[Endpoint](t, "endpoints.json")
 	checkPage[Project](t, "projects.json")
 	checkPage[Quota](t, "quotas.json")

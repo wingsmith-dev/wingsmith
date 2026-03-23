@@ -403,6 +403,8 @@ type Deployment struct {
 	CreatedAt          time.Time               `json:"created_at"`
 	UpdatedAt          *time.Time              `json:"updated_at"`
 	Revision           string                  `json:"revision"`
+	AdoptedWorkloadID  *string                 `json:"adopted_workload_id"`
+	AdoptedFingerprint *string                 `json:"adopted_fingerprint"`
 	Workload           DeploymentWorkload      `json:"workload"`
 	Replicas           DeploymentReplicaRollup `json:"replicas"`
 }
@@ -429,7 +431,9 @@ type DiscoveredWorkload struct {
 	DevicesTotal      int            `json:"devices_total"`
 	NodeIDs           []string       `json:"node_ids"`
 	Labels            map[string]any `json:"labels"`
+	SpecFingerprint   *string        `json:"spec_fingerprint"`
 	Status            string         `json:"status"`
+	DeploymentID      *string        `json:"deployment_id"`
 	ProjectID         *string        `json:"project_id"`
 	Note              *string        `json:"note"`
 	DecidedBy         *string        `json:"decided_by"`
@@ -443,6 +447,20 @@ type DiscoveredWorkload struct {
 type DecisionRequest struct {
 	Project string `json:"project,omitempty"`
 	Note    string `json:"note,omitempty"`
+}
+
+// PromoteRequest turns a sighting into a deployment the plane manages.
+//
+// Fingerprint is the digest the caller was shown. The plane refuses the promotion if the workload
+// has changed since, so an adoption is never pinned to a spec nobody looked at. There is no field
+// here for the image, the overrides or the replica count: anything that could change what the
+// workload is running would make promotion capable of restarting it.
+type PromoteRequest struct {
+	Recipe        string `json:"recipe"`
+	Project       string `json:"project"`
+	Fingerprint   string `json:"fingerprint"`
+	Name          string `json:"name,omitempty"`
+	PriorityClass string `json:"priority_class,omitempty"`
 }
 
 // EndpointTarget is one deployment behind one endpoint, with a traffic

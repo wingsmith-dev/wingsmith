@@ -21,7 +21,11 @@ const (
 
 func newDiscoveredCmd(app *App) *cobra.Command {
 	cmd := discoveredNoun().command(app)
-	cmd.AddCommand(newDecisionCmd(app, decisionTracked), newDecisionCmd(app, decisionIgnored))
+	cmd.AddCommand(
+		newDecisionCmd(app, decisionTracked),
+		newDecisionCmd(app, decisionIgnored),
+		newPromoteCmd(app),
+	)
 	return cmd
 }
 
@@ -42,7 +46,8 @@ whose weights are already loaded stays loaded.`,
 		example: `  hgr discovered ls
   hgr discovered ls --status new
   hgr discovered ls --cluster iad-1 -o wide
-  hgr discovered track llama-70b-vllm --project core`,
+  hgr discovered track llama-70b-vllm --project core
+  hgr discovered promote llama-70b-vllm --recipe llama-70b-vllm --project core`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.DiscoveredWorkload], error) {
 			return b.DiscoveredWorkloads(ctx, o)
 		},
@@ -62,6 +67,7 @@ whose weights are already loaded stays loaded.`,
 			{Title: "replicas", Align: ui.AlignRight},
 			{Title: "devices", Align: ui.AlignRight},
 			{Title: "status"},
+			{Title: "digest", Wide: true},
 			{Title: "seen", Align: ui.AlignRight},
 		},
 		row: func(s ui.Style, d api.DiscoveredWorkload) []string {
@@ -70,6 +76,7 @@ whose weights are already loaded stays loaded.`,
 				fmt.Sprintf("%d/%d", d.ReplicasReady, d.ReplicasDesired),
 				strconv.Itoa(d.DevicesTotal),
 				statusColor(s, d.Status),
+				shortDigest(str(d.SpecFingerprint)),
 				ago(d.FirstSeenAt),
 			}
 		},
@@ -112,6 +119,8 @@ whose weights are already loaded stays loaded.`,
 			fmt.Fprintf(w, "\n%s\n", s.Dim("decision"))
 			dkv := app.KV()
 			dkv.Add("status", statusColor(s, d.Status))
+			dkv.Add("deployment", orDash(str(d.DeploymentID)))
+			dkv.Add("digest", orDash(shortDigest(str(d.SpecFingerprint))))
 			dkv.Add("project", orDash(str(d.ProjectID)))
 			dkv.Add("note", orDash(str(d.Note)))
 			dkv.Add("by", orDash(str(d.DecidedBy)))
@@ -119,8 +128,15 @@ whose weights are already loaded stays loaded.`,
 			dkv.Render(w)
 		},
 		next: func(d api.DiscoveredWorkload) []errs.Action {
-			if d.Status == "tracked" {
+			switch d.Status {
+			case "promoted":
 				return []errs.Action{
+					{Description: "Manage it", Command: "hgr deployment get " + str(d.DeploymentID)},
+				}
+			case "tracked":
+				return []errs.Action{
+					{Description: "Let the plane manage it",
+						Command: "hgr discovered promote " + d.Name + " --recipe <recipe> --project <project>"},
 					{Description: "Stop showing it", Command: "hgr discovered ignore " + d.Name},
 				}
 			}
@@ -204,4 +220,90 @@ func statusColor(s ui.Style, status string) string {
 	default:
 		return s.Amber(status)
 	}
+}
+
+// newPromoteCmd builds the one verb here that writes declared state.
+//
+// The digest is not a flag. The command reads the workload, sends back the digest it was just
+// shown, and the plane refuses if the workload moved in between — the caller cannot be asked to
+// type a value whose whole purpose is that nobody chose it.
+func newPromoteCmd(app *App) *cobra.Command {
+	var (
+		recipe        string
+		project       string
+		name          string
+		priorityClass string
+	)
+	cmd := &cobra.Command{
+		Use:   "promote <workload>",
+		Short: "Let the plane manage a workload it found running",
+		Long: `Promote a discovered workload into a deployment.
+
+The plane starts holding a deployment for it, so it appears under ` + "`hgr deployment`" + ` and
+is scaled and patched like any other. Nothing restarts to make that true: the
+deployment is pinned to the digest of what is running right now, and the cluster
+refuses to reconcile it while the live workload digests to anything else.
+
+Changing the recipe or the overrides afterwards will roll it, as it should — that
+is a change you asked for. Promotion itself is not.
+
+Scale is not an argument. The bounds are taken from what the workload is already
+running, so cataloguing it cannot scale it as a side effect.`,
+		Example: `  hgr discovered promote llama-70b-vllm --recipe llama-70b-vllm --project core
+  hgr discovered promote qwen2-72b --recipe qwen2-72b --project core --name qwen-sjc`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if recipe == "" || project == "" {
+				return errs.New(errs.CodeInputRequired, "promote needs --recipe and --project").
+					WithCause("the plane has to know what this workload is and who owns it")
+			}
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+
+			found, err := app.Backend.DiscoveredWorkload(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			if found.SpecFingerprint == nil || *found.SpecFingerprint == "" {
+				return errs.New(errs.CodeInvalidState,
+					"%q has no digest, so an adoption cannot be pinned to it", found.Name).
+					WithCause("the cluster's operator has not reported what this workload is running")
+			}
+			deployment, err := app.Backend.PromoteWorkload(ctx, found.ID, api.PromoteRequest{
+				Recipe:        recipe,
+				Project:       project,
+				Fingerprint:   *found.SpecFingerprint,
+				Name:          name,
+				PriorityClass: priorityClass,
+			})
+			if err != nil {
+				return err
+			}
+			n := deploymentNoun()
+			return app.Emit(&output.Result{
+				Command: cmdPath(cmd),
+				Data:    deployment,
+				Names:   []string{deployment.ID},
+				Human: func(w io.Writer, s ui.Style, width int) {
+					n.detail(app, w, s, deployment)
+				},
+				Next: n.nextFor(deployment),
+			})
+		},
+	}
+	fl := cmd.Flags()
+	fl.StringVar(&recipe, "recipe", "", "the recipe this workload is an instance of")
+	fl.StringVar(&project, "project", "", "the project that owns it")
+	fl.StringVar(&name, "name", "", "deployment name, defaulting to the workload's own")
+	fl.StringVar(&priorityClass, "priority-class", "", "priority class, defaulting to the project's")
+	return cmd
+}
+
+// shortDigest renders a fingerprint at the length a human compares by eye.
+func shortDigest(fingerprint string) string {
+	trimmed := strings.TrimPrefix(fingerprint, "sha256:")
+	if len(trimmed) > 12 {
+		return trimmed[:12]
+	}
+	return trimmed
 }

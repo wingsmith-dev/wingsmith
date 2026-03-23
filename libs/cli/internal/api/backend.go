@@ -32,6 +32,7 @@ type Backend interface {
 	DiscoveredWorkloads(ctx context.Context, opts ListOpts) (Page[DiscoveredWorkload], error)
 	DiscoveredWorkload(ctx context.Context, ref string) (DiscoveredWorkload, error)
 	DecideWorkload(ctx context.Context, ref, decision string, req DecisionRequest) (DiscoveredWorkload, error)
+	PromoteWorkload(ctx context.Context, ref string, req PromoteRequest) (Deployment, error)
 	Endpoints(ctx context.Context, opts ListOpts) (Page[Endpoint], error)
 	Endpoint(ctx context.Context, ref string) (Endpoint, error)
 

@@ -256,6 +256,7 @@ replicas is a rollup of what is actually running.`,
 			{Title: "desired", Align: ui.AlignRight},
 			{Title: "bounds", Align: ui.AlignRight},
 			{Title: "gen", Align: ui.AlignRight},
+			{Title: "adopted"},
 			{Title: "enabled"},
 			{Title: "age", Align: ui.AlignRight},
 		},
@@ -266,7 +267,8 @@ replicas is a rollup of what is actually running.`,
 				fmt.Sprintf("%d/%d", d.Replicas.Ready, d.Replicas.Total),
 				strconv.Itoa(d.DesiredReplicas),
 				fmt.Sprintf("%d-%d", d.MinReplicas, d.MaxReplicas),
-				strconv.Itoa(d.Generation), boolWord(d.Enabled), agoAt(d.CreatedAt),
+				strconv.Itoa(d.Generation), boolWord(d.AdoptedWorkloadID != nil),
+				boolWord(d.Enabled), agoAt(d.CreatedAt),
 			}
 		},
 		bind: func(f *filters, cmd *cobra.Command) {
@@ -292,6 +294,15 @@ replicas is a rollup of what is actually running.`,
 			kv.Add("labels", labelString(d.Labels))
 			kv.Add("revision", d.Revision)
 			kv.Render(w)
+
+			if d.AdoptedWorkloadID != nil {
+				fmt.Fprintf(w, "\n%s\n", s.Dim("adopted"))
+				akv := app.KV()
+				akv.Add("workload", str(d.AdoptedWorkloadID))
+				akv.Add("pinned to", shortDigest(str(d.AdoptedFingerprint)))
+				akv.Add("note", "the cluster refuses to reconcile this while what is running digests to anything else")
+				akv.Render(w)
+			}
 
 			fmt.Fprintf(w, "\n%s\n", s.Dim("workload"))
 			wkv := app.KV()

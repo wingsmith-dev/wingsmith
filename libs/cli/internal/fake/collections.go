@@ -192,6 +192,82 @@ func decided(decision string) string {
 	return "tracked"
 }
 
+// PromoteWorkload mirrors the plane's gate, refusals included. A fake that promoted anything it
+// was asked to would let a command that cannot work in production pass its tests.
+func (b *Backend) PromoteWorkload(ctx context.Context, ref string, req api.PromoteRequest) (api.Deployment, error) {
+	found, err := b.DiscoveredWorkload(ctx, ref)
+	if err != nil {
+		return api.Deployment{}, err
+	}
+	if found.DeploymentID != nil {
+		return api.Deployment{}, errs.New(errs.CodeConflict, "%q was already promoted", found.Name)
+	}
+	if found.SpecFingerprint == nil || *found.SpecFingerprint == "" {
+		return api.Deployment{}, errs.New(errs.CodeInvalidState,
+			"this cluster has not reported what %q is running, so there is nothing to pin the adoption to", found.Name)
+	}
+	if req.Fingerprint != *found.SpecFingerprint {
+		return api.Deployment{}, errs.New(errs.CodeConflict,
+			"%q changed since it was read; re-read it and promote again", found.Name)
+	}
+	recipe, err := b.Recipe(ctx, req.Recipe)
+	if err != nil {
+		return api.Deployment{}, err
+	}
+	project, err := b.Project(ctx, req.Project)
+	if err != nil {
+		return api.Deployment{}, err
+	}
+
+	now := time.Now().UTC()
+	name := req.Name
+	if name == "" {
+		name = found.Name
+	}
+	deployment := api.Deployment{
+		ID: b.newUID("dep_"), Name: name, ClusterID: found.ClusterID, RecipeID: recipe.ID,
+		MinReplicas:     found.ReplicasDesired,
+		MaxReplicas:     found.ReplicasDesired,
+		DesiredReplicas: found.ReplicasDesired,
+		Generation:      1, Enabled: true,
+		AdapterArtifactIDs: []string{},
+		Overrides:          map[string]any{},
+		Labels:             found.Labels,
+		CreatedAt:          now,
+		Revision:           revision(now),
+		AdoptedWorkloadID:  &found.ID,
+		AdoptedFingerprint: found.SpecFingerprint,
+		Workload: api.DeploymentWorkload{
+			Type: "service", Phase: "running", ProjectID: project.ID,
+			PriorityClass: orElse(req.PriorityClass, "production"),
+			GangSize:      1, QueuedAt: &now, StartedAt: &now,
+		},
+		Replicas: api.DeploymentReplicaRollup{
+			Total: found.ReplicasDesired, Ready: found.ReplicasReady, Running: found.ReplicasReady,
+			AtCurrentGeneration: found.ReplicasReady,
+		},
+	}
+	b.state.Deployments = append(b.state.Deployments, deployment)
+	for i := range b.state.Discovered {
+		if b.state.Discovered[i].ID == found.ID {
+			b.state.Discovered[i].Status = "promoted"
+			b.state.Discovered[i].DeploymentID = &deployment.ID
+			b.state.Discovered[i].ProjectID = &project.ID
+		}
+	}
+	if err := b.persist(); err != nil {
+		return api.Deployment{}, err
+	}
+	return deployment, nil
+}
+
+func orElse(v, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return v
+}
+
 func optional(v string) *string {
 	if strings.TrimSpace(v) == "" {
 		return nil

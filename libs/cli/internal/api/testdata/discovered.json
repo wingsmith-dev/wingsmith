@@ -1,0 +1,64 @@
+{
+    "items": [
+        {
+            "id": "dsw_01m0djye4vgns3hw9qhavf23a1",
+            "cluster_id": "clu_01m0djye4vgns3hw9qhavf23am",
+            "cluster_name": "iad-1",
+            "namespace": "serving",
+            "name": "llama-70b-vllm",
+            "kind": "deployment",
+            "model": "meta-llama/Llama-3.1-70B-Instruct",
+            "images": [
+                "ghcr.io/acme/vllm:0.9.1"
+            ],
+            "replicas_desired": 2,
+            "replicas_ready": 2,
+            "devices_per_replica": 4,
+            "devices_total": 8,
+            "node_ids": [
+                "nod_01j9x2aaaaaaaaaaaaaaaaaaaa"
+            ],
+            "labels": {},
+            "status": "new",
+            "deployment_id": null,
+            "spec_fingerprint": "sha256:9f2c1b7d4e6a0835c1d9b2f47a0e6538d1c4b9a70f2e5836c1d4b9a70f2e5836",
+            "project_id": null,
+            "note": null,
+            "decided_by": null,
+            "decided_at": null,
+            "first_seen_at": "2026-07-21T00:05:23.255828Z",
+            "observed_at": "2026-08-19T18:52:43.826528Z"
+        },
+        {
+            "id": "dsw_01m0djye4vgns3hw9qhavf23a2",
+            "cluster_id": "clu_01m0djye4vgns3hw9qhavf23am",
+            "cluster_name": "iad-1",
+            "namespace": "serving",
+            "name": "mixtral-8x7b",
+            "kind": "deployment",
+            "model": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+            "images": [
+                "ghcr.io/acme/vllm:0.9.1"
+            ],
+            "replicas_desired": 2,
+            "replicas_ready": 2,
+            "devices_per_replica": 4,
+            "devices_total": 8,
+            "node_ids": [
+                "nod_01j9x2aaaaaaaaaaaaaaaaaaaa"
+            ],
+            "labels": {},
+            "status": "promoted",
+            "deployment_id": "dep_00000000000000000000000001",
+            "spec_fingerprint": "sha256:9f2c1b7d4e6a0835c1d9b2f47a0e6538d1c4b9a70f2e5836c1d4b9a70f2e5836",
+            "project_id": "prj_01j9x2aaaaaaaaaaaaaaaaaaaa",
+            "note": null,
+            "decided_by": "admin",
+            "decided_at": "2026-08-19T18:52:43.826528Z",
+            "first_seen_at": "2026-07-21T00:05:23.255828Z",
+            "observed_at": "2026-08-19T18:52:43.826528Z"
+        }
+    ],
+    "count": 2,
+    "next_cursor": null
+}

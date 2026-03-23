@@ -273,6 +273,15 @@ func (c *Client) DecideWorkload(ctx context.Context, ref, decision string, req D
 	return out, err
 }
 
+// PromoteWorkload returns a Deployment, not a workload, because that is what it made. From here
+// the object is managed through /v1/deployments like any other.
+func (c *Client) PromoteWorkload(ctx context.Context, ref string, req PromoteRequest) (Deployment, error) {
+	var out Deployment
+	path := "/v1/discovered/" + url.PathEscape(ref) + "/promote"
+	err := c.send(ctx, http.MethodPost, path, nil, req, nil, &out)
+	return out, err
+}
+
 func (c *Client) Endpoints(ctx context.Context, o ListOpts) (Page[Endpoint], error) {
 	q := newQuery(o).str("project", o.Project).str("artifact", o.Artifact).
 		str("search", o.Search).labels(o.Labels)
