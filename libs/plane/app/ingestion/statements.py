@@ -231,6 +231,7 @@ def upsert_discovered_workload(cluster_id: UUID, payload: WorkloadDiscovered) ->
         "devices_total": payload.devices_total,
         "node_uids": payload.node_ids,
         "labels": payload.labels,
+        "spec_fingerprint": payload.spec_fingerprint or None,
         "first_seen_at": observed,
         "observed_at": observed,
     }

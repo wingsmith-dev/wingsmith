@@ -49,6 +49,12 @@ class DeploymentSchema(Struct):
 
     Three parts kept apart on purpose: the spec is what we asked for, `workload`
     is the scheduling supertype, and `replicas` is what the cluster reports.
+
+    `adopted_workload_id` is set when this deployment was promoted from a workload
+    that was already running, and `adopted_fingerprint` is what that workload's pod
+    template digested to at the time. The cluster refuses to reconcile the
+    deployment while the live object digests to anything else, so the pair is worth
+    reading before assuming a change here will take effect.
     """
 
     id: str
@@ -66,6 +72,8 @@ class DeploymentSchema(Struct):
     created_at: dt.datetime
     updated_at: dt.datetime | None
     revision: str
+    adopted_workload_id: str | None
+    adopted_fingerprint: str | None
     workload: DeploymentWorkloadSchema
     replicas: DeploymentReplicaRollupSchema
 

@@ -269,6 +269,7 @@ class WorkloadDiscovered(Struct):
     devices_total: int
     node_ids: list[str]
     labels: dict[str, str]
+    spec_fingerprint: str
     observed_at: str
     model: str | None = None
 
@@ -300,6 +301,25 @@ class PlacementConstraints(Struct):
     node_selector: dict[str, str]
 
 
+class Adopt(Struct):
+    """Rides on a `deployment.desired` that was promoted from a discovered workload.
+
+    Its presence changes what the frame asks for. The named object already exists
+    and is already serving, so the operator takes ownership of it in place rather
+    than applying a rendered spec over it.
+
+    `spec_fingerprint` is what was true when the promotion was accepted. A
+    reconciler finding the live object digesting to anything else must refuse and
+    say so: the workload drifted, or our render disagrees with reality, and either
+    way converging means restarting a model to close a gap nobody asked to close.
+    """
+
+    namespace: str
+    kind: str
+    name: str
+    spec_fingerprint: str
+
+
 class DeploymentDesired(Struct):
     deployment_id: str
     cluster_id: str
@@ -314,6 +334,7 @@ class DeploymentDesired(Struct):
     artifact_ids: list[str]
     generation: int
     updated_at: str
+    adopt: Adopt | None = None
 
 
 class DeploymentDeleted(Struct):

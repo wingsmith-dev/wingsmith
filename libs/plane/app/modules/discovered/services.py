@@ -1,16 +1,26 @@
 import datetime as dt
 
 from sqlalchemy import Row
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ids import WORKLOAD
+from app.core.ids import DEPLOYMENT
+from app.core.ids import new_uid
+from app.db.models import Workload
+from app.db.models import Deployment
 from app.db.models import DiscoveredWorkload
 from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
+from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.modules.deployments.schemas import DeploymentSchema
+from app.modules.deployments.services import DeploymentService
 
+from .schemas import PromoteRequest
 from .schemas import DecisionRequest
 from .schemas import DiscoveredWorkloadSchema
 from .repository import DiscoveredWorkloadRepository
@@ -18,9 +28,10 @@ from .repository import DiscoveredWorkloadRepository
 
 TRACKED = "tracked"
 IGNORED = "ignored"
+PROMOTED = "promoted"
 NEW = "new"
 
-STATUSES = frozenset({NEW, TRACKED, IGNORED})
+STATUSES = frozenset({NEW, TRACKED, IGNORED, PROMOTED})
 
 
 class DiscoveredWorkloadService:
@@ -43,6 +54,7 @@ class DiscoveredWorkloadService:
     def schema(self, row: Row) -> DiscoveredWorkloadSchema:
         workload: DiscoveredWorkload = row[0]
         adoption = row[3]
+        deployment_uid = row[5]
         return DiscoveredWorkloadSchema(
             id=workload.uid,
             cluster_id=row[1],
@@ -58,7 +70,9 @@ class DiscoveredWorkloadService:
             devices_total=workload.devices_total,
             node_ids=list(workload.node_uids),
             labels=workload.labels,
-            status=adoption.decision if adoption is not None else NEW,
+            status=self._status(adoption, deployment_uid),
+            deployment_id=deployment_uid,
+            spec_fingerprint=workload.spec_fingerprint,
             project_id=row[4],
             note=adoption.note if adoption is not None else None,
             decided_by=adoption.decided_by if adoption is not None else None,
@@ -66,6 +80,18 @@ class DiscoveredWorkloadService:
             first_seen_at=workload.first_seen_at,
             observed_at=workload.observed_at,
         )
+
+    @staticmethod
+    def _status(adoption, deployment_uid: str | None) -> str:
+        """Promotion outranks the decision that led to it.
+
+        A promoted workload is necessarily tracked, and reporting it as `tracked`
+        would hide the one thing about it that changed: the plane now holds a
+        deployment for it.
+        """
+        if deployment_uid is not None:
+            return PROMOTED
+        return adoption.decision if adoption is not None else NEW
 
     async def _one(self, ref: str, cluster: str | None = None) -> Row:
         row = await self.repo.get(ref, cluster)
@@ -125,3 +151,111 @@ class DiscoveredWorkloadService:
         )
         await self.db.commit()
         return await self.get(workload.uid)
+
+    async def promote(self, ref: str, data: PromoteRequest) -> DeploymentSchema:
+        """Turns a sighting into a deployment the plane manages, or refuses to.
+
+        This is the one call in this module that writes declared state, and every
+        guard on it exists because the failure mode is a restart of a model that is
+        already serving.
+
+        The digest is checked twice over. `data.fingerprint` must be what the
+        sighting currently reports, so a caller cannot promote a workload that
+        changed between reading and deciding; and the digest is then recorded on
+        the deployment, so the cluster refuses to reconcile it if it drifts later.
+        The second check is the load-bearing one — the sighting can be up to one
+        observation interval stale, and the cluster is the only thing that knows
+        what is running right now.
+
+        Scale comes from the workload rather than the caller. A promotion that also
+        set the replica count would scale a live workload as a side effect of
+        cataloguing it.
+        """
+        row = await self._one(ref)
+        workload: DiscoveredWorkload = row[0]
+        if row[5] is not None:
+            raise Conflict(
+                f"{workload.name!r} was already promoted",
+                {"deployment": row[5]},
+            )
+        if not workload.spec_fingerprint:
+            raise Invalid(
+                "this cluster has not reported what the workload is running, so there is "
+                "nothing to pin the adoption to",
+                {"workload": workload.uid},
+            )
+        if data.fingerprint != workload.spec_fingerprint:
+            raise Conflict(
+                "the workload changed since it was read; re-read it and promote again",
+                {"observed": workload.spec_fingerprint, "sent": data.fingerprint},
+            )
+
+        recipe = await self.repo.recipe_by_ref(data.recipe)
+        if recipe is None:
+            raise NotFound(f"no recipe {data.recipe!r}")
+        project = await self.repo.project_row(data.project)
+        if project is None:
+            raise NotFound(f"no project {data.project!r}")
+        priority_class_id = await self._priority_class_id(data.priority_class, project)
+
+        replicas = max(workload.replicas_desired, 0)
+        deployment_workload = Workload(
+            uid=new_uid(WORKLOAD),
+            kind="service",
+            project_id=project.id,
+            cluster_id=workload.cluster_id,
+            priority_class_id=priority_class_id,
+            admission_phase="running",
+            gang_size=1,
+            preemptible=False,
+            queued_at=dt.datetime.now(dt.UTC),
+        )
+        deployment = Deployment(
+            uid=new_uid(DEPLOYMENT),
+            workload=deployment_workload,
+            recipe_id=recipe[0],
+            cluster_id=workload.cluster_id,
+            name=data.name or workload.name,
+            min_replicas=replicas,
+            max_replicas=replicas,
+            desired_replicas=replicas,
+            generation=1,
+            enabled=True,
+            adapter_artifact_ids=[],
+            overrides={},
+            labels=dict(workload.labels or {}),
+            adopted_workload_uid=workload.uid,
+            adopted_fingerprint=workload.spec_fingerprint,
+        )
+        try:
+            await self.repo.add(deployment_workload, deployment)
+            await self.repo.decide(
+                {
+                    "cluster_id": workload.cluster_id,
+                    "workload_uid": workload.uid,
+                    "decision": TRACKED,
+                    "project_id": project.id,
+                    "note": None,
+                    "decided_by": self.principal,
+                    "decided_at": dt.datetime.now(dt.UTC),
+                }
+            )
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise Conflict(f"a deployment named {data.name or workload.name!r} already exists in this cluster") from exc
+        return await DeploymentService(self.db).get(deployment.uid)
+
+    async def _priority_class_id(self, ref: str | None, project):
+        """The project's default answers when the caller does not, as elsewhere."""
+        if ref is not None:
+            found = await self.repo.priority_class_by_name(ref)
+            if found is None:
+                raise NotFound(f"no priority class {ref!r}")
+            return found.id
+        if project.default_priority_class_id is not None:
+            return project.default_priority_class_id
+        fallback = await self.repo.default_priority_class()
+        if fallback is None:
+            raise Invalid("no priority class was given and none is marked default")
+        return fallback.id

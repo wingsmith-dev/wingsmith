@@ -6,8 +6,10 @@ from litestar.di import Provide
 
 from app.core.context import RequestContext
 from app.core.schemas import ListResponse
+from app.modules.deployments.schemas import DeploymentSchema
 
 from .depends import discovered_svc_generator
+from .schemas import PromoteRequest
 from .schemas import DecisionRequest
 from .schemas import DiscoveredWorkloadSchema
 from .services import IGNORED
@@ -22,6 +24,12 @@ class DiscoveredWorkloadRoutes(Controller):
     the object they write is not the workload: the sighting is observed and has
     exactly one writer, and these record a decision beside it. Neither verb sends
     anything to a cluster.
+
+    `promote` is the one that does, and it is the only write in this controller
+    that produces declared state. It returns a deployment rather than a workload
+    because that is what it made: from here the object is managed through
+    `/v1/deployments` like any other, with the difference that the cluster will
+    refuse to reconcile it if what is running stops matching what we adopted.
     """
 
     tags = ["Discovered"]
@@ -65,6 +73,12 @@ class DiscoveredWorkloadRoutes(Controller):
         self, context: RequestContext, svc: DiscoveredWorkloadService, ref: str, data: DecisionRequest
     ) -> Response[DiscoveredWorkloadSchema]:
         return Response(await svc.decide(ref, TRACKED, data))
+
+    @post("/{ref:str}/promote", status_code=201)
+    async def promote_discovered(
+        self, context: RequestContext, svc: DiscoveredWorkloadService, ref: str, data: PromoteRequest
+    ) -> Response[DeploymentSchema]:
+        return Response(await svc.promote(ref, data), status_code=201)
 
     @post("/{ref:str}/ignore")
     async def ignore_discovered(

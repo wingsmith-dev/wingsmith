@@ -134,6 +134,8 @@ class DeploymentService:
             created_at=deployment.created_at,
             updated_at=deployment.updated_at,
             revision=_revision(deployment, workload),
+            adopted_workload_id=deployment.adopted_workload_uid,
+            adopted_fingerprint=deployment.adopted_fingerprint,
             workload=DeploymentWorkloadSchema(
                 type=workload.kind,
                 phase=workload.admission_phase,

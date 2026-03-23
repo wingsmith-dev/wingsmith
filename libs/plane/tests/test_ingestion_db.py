@@ -9,26 +9,17 @@ fast and needs nothing running. `just test-db` selects it; with no reachable ser
 the file skips rather than fails.
 """
 
-import os
 import json
-import uuid
 import asyncio
-import subprocess
 
 from typing import Any
-from pathlib import Path
 
 import pytest
-import psycopg
 
 from msgspec import json as msgjson
 from msgspec import structs
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.pool import NullPool
-from sqlalchemy.engine import make_url
-from sqlalchemy.ext.asyncio import async_sessionmaker
-from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.hub.sink import SinkFrame
 from app.core.auth import STATIC_OPERATOR
@@ -38,7 +29,12 @@ from app.hub.session import OperatorSession
 from app.hub.messages import MESSAGE_TYPES
 from app.ingestion.sink import DatabaseSink
 from app.ingestion.sink import UnknownCluster
+from app.ingestion.desired import stream_desired
 
+from tests.conftest import ROOT
+from tests.conftest import CLUSTER
+from tests.conftest import fetch
+from tests.conftest import seed_cluster
 from tests.test_hub_session import FakeConnection
 from tests.test_hub_session import frame as wire_frame
 from tests.test_hub_session import payload_of
@@ -47,13 +43,8 @@ from tests.test_hub_session import payload_of
 pytestmark = pytest.mark.database
 
 
-ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT.parents[1] / "contract" / "fixtures"
 
-ADMIN_URL = os.environ.get("HANGAR_TEST_DATABASE_URL", "postgresql+psycopg://hangar:hangar@localhost:5442/hangar")
-TEST_DATABASE = "hangar_ingestion_test"
-
-CLUSTER = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
 OTHER_CLUSTER = "clu_01j9x2aaaaaaaaaaaaaaaaaaab"
 NODE = "nod_01j9x2bbbbbbbbbbbbbbbbbbbb"
 DEVICE = "dev_01j9x2cccccccccccccccccccc"
@@ -65,66 +56,6 @@ OTHER_DEVICES = ("dev_01j9x2ccccccccccccccccccex", "dev_01j9x2cccccccccccccccccc
 OTHER_DOMAIN = "tpd_01j9x2ddddddddddddddddddx"
 OPERATION = "opr_01j9x2kkkkkkkkkkkkkkkkkkkk"
 COMPONENT = "cmp_01j9x2mmmmmmmmmmmmmmmmmmmm"
-
-
-# --------------------------------------------------------------------------- database
-
-
-@pytest.fixture(scope="session")
-def database() -> str:
-    """A freshly migrated test database, or a skip when nothing is listening."""
-    admin = make_url(ADMIN_URL)
-    dsn = admin.set(drivername="postgresql").render_as_string(hide_password=False)
-    try:
-        connection = psycopg.connect(dsn, connect_timeout=3, autocommit=True)
-    except psycopg.Error as exc:
-        pytest.skip(f"no database at {admin.host}:{admin.port} — run `just dev-up` ({exc})")
-
-    with connection:
-        connection.execute(f'DROP DATABASE IF EXISTS "{TEST_DATABASE}" WITH (FORCE)')
-        connection.execute(f'CREATE DATABASE "{TEST_DATABASE}"')
-
-    url = admin.set(database=TEST_DATABASE).render_as_string(hide_password=False)
-    subprocess.run(
-        ["uv", "run", "alembic", "upgrade", "head"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        env={**os.environ, "HANGAR_DATABASE_URL": url},
-    )
-    return url
-
-
-@pytest.fixture
-async def sessions(database: str):
-    engine = create_async_engine(database, poolclass=NullPool)
-    async with engine.begin() as connection:
-        await connection.execute(text("TRUNCATE supply_cluster RESTART IDENTITY CASCADE"))
-        await connection.execute(text("TRUNCATE ops_event, ops_operation RESTART IDENTITY CASCADE"))
-    try:
-        yield async_sessionmaker(engine, expire_on_commit=False)
-    finally:
-        await engine.dispose()
-
-
-@pytest.fixture
-async def cluster(sessions) -> uuid.UUID:
-    return await seed_cluster(sessions, CLUSTER, "alpha")
-
-
-async def seed_cluster(sessions, uid: str, name: str) -> uuid.UUID:
-    async with sessions.begin() as db:
-        result = await db.execute(
-            text("INSERT INTO supply_cluster (uid, name, region) VALUES (:uid, :name, 'eu-west-1') RETURNING id"),
-            {"uid": uid, "name": name},
-        )
-        return result.scalar_one()
-
-
-async def fetch(sessions, sql: str, params: dict[str, Any] | None = None) -> list[Any]:
-    async with sessions() as db:
-        result = await db.execute(text(sql), params or {})
-        return result.all()
 
 
 # --------------------------------------------------------------------------- payloads
@@ -457,6 +388,30 @@ async def test_a_decision_survives_the_sighting_being_pruned(sessions, cluster) 
 
     assert await fetch(sessions, "select count(*) from demand_discovered_workload") == [(0,)]
     assert await fetch(sessions, "select decision from demand_workload_adoption") == [("tracked",)]
+
+
+async def test_a_tracked_workload_is_not_streamed_as_desired_state(sessions, cluster) -> None:
+    """The guarantee, checked where it actually lives.
+
+    Tracking writes a decision. If it leaked into `stream_desired`, the cluster
+    would be handed a deployment for a workload it is already running and would
+    reconcile the difference by restarting it.
+    """
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(observed("workload.discovered"))
+    cluster_id = (await fetch(sessions, "select cluster_id from demand_discovered_workload"))[0][0]
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "insert into demand_workload_adoption (cluster_id, workload_uid, decision)"
+                " values (:cluster_id, :uid, 'tracked')"
+            ),
+            {"cluster_id": cluster_id, "uid": WORKLOAD},
+        )
+
+    async with sessions() as db:
+        frames = [item async for item in stream_desired(db, CLUSTER, "demand")]
+    assert not [f for f in frames if f[0] == "deployment.desired"]
 
 
 # --------------------------------------------------------------------------- resync

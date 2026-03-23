@@ -31,6 +31,8 @@ from app.db.models import Component
 from app.db.models import Deployment
 from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
+from app.db.models import DiscoveredWorkload
+from app.hub.messages import Adopt
 from app.hub.messages import CacheDesired
 from app.hub.messages import ArtifactSource
 from app.hub.messages import CacheWarmEntry
@@ -159,12 +161,27 @@ def _placement(recipe: Recipe, pools: list[str]) -> PlacementConstraints:
 
 async def _deployments(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> list[DeploymentDesired]:
     query = (
-        select(Deployment, Workload, Recipe, Project.uid, PriorityClass.name, Artifact.uid)
+        select(
+            Deployment,
+            Workload,
+            Recipe,
+            Project.uid,
+            PriorityClass.name,
+            Artifact.uid,
+            DiscoveredWorkload.namespace,
+            DiscoveredWorkload.kind,
+            DiscoveredWorkload.name,
+        )
         .join(Workload, Deployment.workload_id == Workload.id)
         .join(Recipe, Deployment.recipe_id == Recipe.id)
         .join(Project, Workload.project_id == Project.id)
         .join(PriorityClass, Workload.priority_class_id == PriorityClass.id)
         .join(Artifact, Recipe.artifact_id == Artifact.id)
+        .outerjoin(
+            DiscoveredWorkload,
+            (DiscoveredWorkload.cluster_id == Deployment.cluster_id)
+            & (DiscoveredWorkload.uid == Deployment.adopted_workload_uid),
+        )
         .where(Deployment.cluster_id == cluster_id, Deployment.enabled == True)
         .order_by(Deployment.seq)
     )
@@ -187,7 +204,8 @@ async def _deployments(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> 
     }
 
     out: list[DeploymentDesired] = []
-    for deployment, workload, recipe, project_uid, priority, artifact_uid in rows:
+    for row in rows:
+        deployment, workload, recipe, project_uid, priority, artifact_uid = row[:6]
         artifact_ids = [artifact_uid] + [adapters[a] for a in (deployment.adapter_artifact_ids or []) if a in adapters]
         out.append(
             DeploymentDesired(
@@ -204,9 +222,29 @@ async def _deployments(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> 
                 artifact_ids=artifact_ids,
                 generation=deployment.generation,
                 updated_at=format_ts(deployment.updated_at or deployment.created_at),
+                adopt=_adopt(deployment, row[6], row[7], row[8]),
             )
         )
     return out
+
+
+def _adopt(deployment: Deployment, namespace: str | None, kind: str | None, name: str | None) -> Adopt | None:
+    """The adoption block, when this deployment was promoted from a running workload.
+
+    Both halves have to be present. The deployment carries the digest it was
+    pinned to, and the sighting carries where the object lives; without the
+    sighting there is nothing to name, and the frame goes down as an ordinary
+    deployment — which is the safe direction only because a deployment the
+    operator cannot identify as adopted is one it has no rendered spec for either.
+    """
+    if not deployment.adopted_workload_uid or namespace is None:
+        return None
+    return Adopt(
+        namespace=namespace,
+        kind=kind or "deployment",
+        name=name or deployment.name,
+        spec_fingerprint=deployment.adopted_fingerprint or "",
+    )
 
 
 async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheDesired | None:

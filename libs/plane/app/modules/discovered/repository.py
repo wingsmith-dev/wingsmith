@@ -5,8 +5,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.ids import is_uid
+from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
+from app.db.models import Workload
+from app.db.models import Deployment
+from app.db.models import PriorityClass
 from app.db.models import WorkloadAdoption
 from app.db.models import DiscoveredWorkload
 from app.core.filters import ref_ids
@@ -27,8 +31,14 @@ class DiscoveredWorkloadRepository:
         self.db = db
 
     def _base(self) -> Select:
+        """The sighting, the decision beside it, and the deployment it became.
+
+        `promoted` is not a stored status. It is the presence of a deployment
+        pointing back at this sighting, which is one fact in one place rather than
+        a column that has to be kept in agreement with the deployments table.
+        """
         return (
-            select(DiscoveredWorkload, Cluster.uid, Cluster.name, WorkloadAdoption, Project.uid)
+            select(DiscoveredWorkload, Cluster.uid, Cluster.name, WorkloadAdoption, Project.uid, Deployment.uid)
             .join(Cluster, DiscoveredWorkload.cluster_id == Cluster.id)
             .outerjoin(
                 WorkloadAdoption,
@@ -36,6 +46,11 @@ class DiscoveredWorkloadRepository:
                 & (WorkloadAdoption.workload_uid == DiscoveredWorkload.uid),
             )
             .outerjoin(Project, WorkloadAdoption.project_id == Project.id)
+            .outerjoin(
+                Deployment,
+                (Deployment.cluster_id == DiscoveredWorkload.cluster_id)
+                & (Deployment.adopted_workload_uid == DiscoveredWorkload.uid),
+            )
         )
 
     async def get(self, ref: str, cluster: str | None = None) -> Row | None:
@@ -64,8 +79,10 @@ class DiscoveredWorkloadRepository:
             query = query.where(DiscoveredWorkload.namespace == namespace)
         if status == "new":
             query = query.where(WorkloadAdoption.id.is_(None))
+        elif status == "promoted":
+            query = query.where(Deployment.id.is_not(None))
         elif status is not None:
-            query = query.where(WorkloadAdoption.decision == status)
+            query = query.where(WorkloadAdoption.decision == status, Deployment.id.is_(None))
         if search is not None:
             query = query.where(DiscoveredWorkload.name.ilike(f"%{search}%"))
         return query
@@ -87,4 +104,36 @@ class DiscoveredWorkloadRepository:
                 set_={key: statement.excluded[key] for key in values if key not in {"cluster_id", "workload_uid"}},
             )
         )
+        await self.db.flush()
+
+    async def recipe_by_ref(self, ref: str) -> Row | None:
+        """The newest revision of a recipe named by name, or the one named by id."""
+        column = Recipe.uid if is_uid(ref) else Recipe.name
+        result = await self.db.execute(
+            select(Recipe.id, Recipe.uid).where(column == ref).order_by(Recipe.version.desc()).limit(1)
+        )
+        return result.first()
+
+    async def priority_class_by_name(self, name: str):
+        result = await self.db.execute(select(PriorityClass).where(PriorityClass.name == name))
+        return result.scalar_one_or_none()
+
+    async def default_priority_class(self):
+        result = await self.db.execute(
+            select(PriorityClass)
+            .where(PriorityClass.is_default.is_(True))
+            .order_by(PriorityClass.value.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def project_row(self, ref: str) -> Project | None:
+        """A project is named by its slug, not by its display name, as everywhere else."""
+        column = Project.uid if is_uid(ref) else Project.slug
+        result = await self.db.execute(select(Project).where(column == ref).limit(1))
+        return result.scalar_one_or_none()
+
+    async def add(self, workload: Workload, deployment: Deployment) -> None:
+        self.db.add(workload)
+        self.db.add(deployment)
         await self.db.flush()

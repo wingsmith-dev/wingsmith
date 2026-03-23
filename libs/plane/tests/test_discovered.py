@@ -24,6 +24,7 @@ from app.hub.messages import WorkloadDiscovered
 from app.core.exceptions import Invalid
 from app.modules.discovered import services
 from app.modules.discovered.routes import DiscoveredWorkloadRoutes
+from app.modules.discovered.schemas import PromoteRequest
 from app.modules.discovered.schemas import DecisionRequest
 from app.modules.discovered.schemas import DiscoveredWorkloadSchema
 from app.modules.discovered.services import DiscoveredWorkloadService
@@ -31,6 +32,33 @@ from app.modules.discovered.repository import DiscoveredWorkloadRepository
 
 
 CLUSTER = UUID("11111111-1111-1111-1111-111111111111")
+
+
+def function_source(module, *path: str) -> str:
+    """The source of one function or method, docstring stripped.
+
+    Scoped to a single function on purpose. These tests assert that `track` and
+    `ignore` declare nothing, which is a claim about those code paths and not
+    about the module — `promote` lives beside them and is supposed to declare.
+    """
+    tree = ast.parse(inspect.getsource(module))
+    node: ast.AST = tree
+    for name in path:
+        node = next(
+            child
+            for child in ast.walk(node)
+            if isinstance(child, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and child.name == name
+        )
+    return ast.unparse(strip_docstrings(node))
+
+
+def strip_docstrings(node: ast.AST) -> ast.AST:
+    for child in ast.walk(node):
+        if isinstance(child, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and (
+            ast.get_docstring(child) is not None
+        ):
+            child.body = child.body[1:]
+    return node
 
 
 def code_of(module) -> str:
@@ -66,6 +94,7 @@ def sighting(**overrides) -> WorkloadDiscovered:
         "devices_total": 8,
         "node_ids": ["nod_01j9x2bbbbbbbbbbbbbbbbbbbb"],
         "labels": {"app": "llama-70b-vllm"},
+        "spec_fingerprint": "sha256:9f2c1b7d4e6a08",
         "model": "meta-llama/Llama-3.1-70B-Instruct",
         "observed_at": "2026-08-19T14:02:11.400Z",
     }
@@ -78,23 +107,54 @@ def test_the_wire_type_is_registered() -> None:
 
 
 def test_tracking_a_workload_declares_nothing() -> None:
-    """The load-bearing test. Nothing a decision writes can reach a cluster.
+    """The load-bearing test. Tracking writes a decision and no declared state.
 
-    `stream_desired` is the only thing that puts declared state on the wire, and it
-    reads neither of the two tables this module touches. A discovered workload
-    therefore cannot produce a `deployment.desired`, and a reconciler cannot be
-    handed a difference to converge.
+    Promotion is the only path that creates a deployment, and it is a separate,
+    explicitly gated call. Track and ignore construct nothing a reconciler could
+    ever be handed.
+    """
+    source = function_source(services, "DiscoveredWorkloadService", "decide")
+    assert "Deployment(" not in source
+    assert "Workload(" not in source
+
+
+def test_the_desired_stream_never_reads_the_decision() -> None:
+    """`stream_desired` is the only thing that puts declared state on the wire.
+
+    It joins the sighting to name the object an adoption points at, and it must
+    never read the adoption table: a decision to track is not a declaration, so a
+    tracked workload that was never promoted has nothing to stream.
     """
     source = code_of(desired)
-    assert "DiscoveredWorkload" not in source
     assert "WorkloadAdoption" not in source
 
 
-def test_the_service_creates_no_deployment() -> None:
-    source = code_of(services)
-    assert "Deployment" not in source
-    assert "generation" not in source
-    assert "Recipe" not in source
+def test_a_promotion_adopts_the_scale_it_found() -> None:
+    """Promotion must not decide the replica count.
+
+    Taking it from the request would scale a live workload as a side effect of
+    cataloguing it, which is the same class of accident as re-rendering its spec.
+    """
+    source = function_source(services, "DiscoveredWorkloadService", "promote")
+    assert "workload.replicas_desired" in source
+    assert "data.replicas" not in source
+    assert "min_replicas=replicas" in source and "max_replicas=replicas" in source
+
+
+def test_a_promotion_pins_the_digest_it_was_shown() -> None:
+    source = function_source(services, "DiscoveredWorkloadService", "promote")
+    assert "adopted_fingerprint=workload.spec_fingerprint" in source
+    assert "data.fingerprint != workload.spec_fingerprint" in source
+
+
+def test_the_promote_request_cannot_ask_for_a_different_spec() -> None:
+    """Nothing in the request can change what the workload is running.
+
+    A field here for the image, the overrides or the replica count would make
+    promotion capable of causing the restart the whole path exists to avoid.
+    """
+    fields = set(PromoteRequest.__struct_fields__)
+    assert fields == {"recipe", "project", "fingerprint", "name", "priority_class"}
 
 
 def test_the_sighting_and_the_decision_are_different_tables() -> None:
@@ -142,7 +202,14 @@ def test_a_prune_is_scoped_to_one_cluster() -> None:
 
 def test_an_undecided_sighting_reads_as_new() -> None:
     assert services.NEW == "new"
-    assert services.STATUSES == {"new", "tracked", "ignored"}
+    assert services.STATUSES == {"new", "tracked", "ignored", "promoted"}
+
+
+def test_promotion_outranks_the_decision_that_led_to_it() -> None:
+    decided = type("Adoption", (), {"decision": "tracked"})()
+    assert DiscoveredWorkloadService._status(decided, "dep_01j9x2gggggggggggggggggggg") == "promoted"
+    assert DiscoveredWorkloadService._status(decided, None) == "tracked"
+    assert DiscoveredWorkloadService._status(None, None) == "new"
 
 
 async def test_listing_rejects_a_status_that_is_not_a_decision() -> None:

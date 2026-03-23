@@ -420,6 +420,13 @@ class Deployment(BaseMixin):
     project stay on the supertype so a task or gang uses the same placement path.
     Deployments are disposable — recreated on every recipe bump, engine upgrade,
     and drain — which is why the public name lives on `Endpoint` instead.
+
+    `adopted_workload_uid` is set when this deployment was promoted from a workload
+    that was already running. It changes what the cluster is being asked to do:
+    the object exists, so the operator takes ownership rather than applying, and
+    only while the live object still digests to `adopted_fingerprint`. A mismatch
+    is refused in the cluster and reported, never converged — closing that gap
+    means restarting a model to match a spec nobody asked to change.
     """
 
     __tablename__ = "demand_deployment"
@@ -445,6 +452,8 @@ class Deployment(BaseMixin):
     adapter_artifact_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
     overrides: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    adopted_workload_uid: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    adopted_fingerprint: Mapped[str | None] = mapped_column(String(80), nullable=True)
 
     workload: Mapped[Workload] = relationship("Workload", back_populates="deployment", lazy="noload")
     recipe: Mapped[Recipe] = relationship("Recipe", lazy="noload")
@@ -522,6 +531,7 @@ class DiscoveredWorkload(BaseMixin):
     devices_total: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     node_uids: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    spec_fingerprint: Mapped[str | None] = mapped_column(String(80), nullable=True)
     first_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
