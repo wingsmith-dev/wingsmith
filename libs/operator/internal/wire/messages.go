@@ -328,19 +328,21 @@ type DeploymentObserved struct {
 
 // ReplicaObserved is one running instance on named devices.
 type ReplicaObserved struct {
-	ReplicaID     string   `json:"replica_id"`
-	DeploymentID  string   `json:"deployment_id"`
-	ClusterID     string   `json:"cluster_id"`
-	NodeID        string   `json:"node_id"`
-	DeviceIDs     []string `json:"device_ids"`
-	Phase         string   `json:"phase"`
-	Ready         bool     `json:"ready"`
-	Engine        string   `json:"engine"`
-	EngineVersion string   `json:"engine_version"`
-	RecipeID      string   `json:"recipe_id"`
-	RestartCount  int      `json:"restart_count"`
-	StartedAt     *string  `json:"started_at,omitempty"`
-	ObservedAt    string   `json:"observed_at"`
+	ReplicaID          string   `json:"replica_id"`
+	Name               string   `json:"name"`
+	DeploymentID       string   `json:"deployment_id"`
+	ClusterID          string   `json:"cluster_id"`
+	NodeID             string   `json:"node_id"`
+	DeviceIDs          []string `json:"device_ids"`
+	Phase              string   `json:"phase"`
+	Ready              bool     `json:"ready"`
+	Engine             string   `json:"engine"`
+	EngineVersion      string   `json:"engine_version"`
+	RecipeID           string   `json:"recipe_id"`
+	RestartCount       int      `json:"restart_count"`
+	ObservedGeneration int64    `json:"observed_generation"`
+	StartedAt          *string  `json:"started_at,omitempty"`
+	ObservedAt         string   `json:"observed_at"`
 }
 
 // ReplicaEvent reports something that happened to a replica at a point in time.
@@ -356,6 +358,7 @@ type ReplicaEvent struct {
 
 // AllocationObserved is the set of devices currently committed to a replica.
 type AllocationObserved struct {
+	AllocationID string   `json:"allocation_id"`
 	ClusterID    string   `json:"cluster_id"`
 	ReplicaID    string   `json:"replica_id"`
 	DeploymentID string   `json:"deployment_id"`
@@ -367,17 +370,26 @@ type AllocationObserved struct {
 	ObservedAt   string   `json:"observed_at"`
 }
 
+// CacheNodeResidency is what one node holds of one artifact. A node mid-fetch and a node
+// already serving are not the same fact, so state and bytes are per node rather than rolled up.
+type CacheNodeResidency struct {
+	NodeID        string  `json:"node_id"`
+	State         string  `json:"state"`
+	BytesResident int64   `json:"bytes_resident"`
+	Path          *string `json:"path,omitempty"`
+}
+
 // CacheObserved is the residency of one artifact against the declared warm-set.
 type CacheObserved struct {
-	ClusterID        string   `json:"cluster_id"`
-	ArtifactID       string   `json:"artifact_id"`
-	State            string   `json:"state"`
-	Resident         bool     `json:"resident"`
-	BytesResident    int64    `json:"bytes_resident"`
-	NodeIDs          []string `json:"node_ids"`
-	EvictionPressure float64  `json:"eviction_pressure"`
-	LastAccessedAt   *string  `json:"last_accessed_at,omitempty"`
-	ObservedAt       string   `json:"observed_at"`
+	ClusterID        string               `json:"cluster_id"`
+	ArtifactID       string               `json:"artifact_id"`
+	State            string               `json:"state"`
+	Resident         bool                 `json:"resident"`
+	BytesResident    int64                `json:"bytes_resident"`
+	Nodes            []CacheNodeResidency `json:"nodes"`
+	EvictionPressure float64              `json:"eviction_pressure"`
+	LastAccessedAt   *string              `json:"last_accessed_at,omitempty"`
+	ObservedAt       string               `json:"observed_at"`
 }
 
 // ComponentObserved is the rollout status of one component.

@@ -7,6 +7,7 @@
   "ack": 4420,
   "payload": {
     "replica_id": "rep_01j9x2hhhhhhhhhhhhhhhhhhhh",
+    "name": "llama-70b-chat-7d4f9c8b5-2xqjn",
     "deployment_id": "dep_01j9x2gggggggggggggggggggg",
     "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",
@@ -20,6 +21,7 @@
     "engine_version": "0.9.3",
     "recipe_id": "rec_01j9x2ffffffffffffffffffff",
     "restart_count": 1,
+    "observed_generation": 14,
     "started_at": "2026-08-19T13:41:07.512Z",
     "observed_at": "2026-08-19T14:02:11.400Z"
   }

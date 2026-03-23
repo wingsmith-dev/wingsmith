@@ -6,6 +6,7 @@
   "seq": 8811,
   "ack": 4420,
   "payload": {
+    "allocation_id": "alc_01j9x2kkkkkkkkkkkkkkkkkkkk",
     "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "replica_id": "rep_01j9x2hhhhhhhhhhhhhhhhhhhh",
     "deployment_id": "dep_01j9x2gggggggggggggggggggg",

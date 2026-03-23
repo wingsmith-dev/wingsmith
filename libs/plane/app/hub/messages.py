@@ -411,6 +411,7 @@ class DeploymentObserved(Struct):
 
 class ReplicaObserved(Struct):
     replica_id: str
+    name: str
     deployment_id: str
     cluster_id: str
     node_id: str
@@ -421,6 +422,7 @@ class ReplicaObserved(Struct):
     engine_version: str
     recipe_id: str
     restart_count: int
+    observed_generation: int
     observed_at: str
     started_at: str | None = None
 
@@ -436,6 +438,7 @@ class ReplicaEvent(Struct):
 
 
 class AllocationObserved(Struct):
+    allocation_id: str
     cluster_id: str
     replica_id: str
     deployment_id: str
@@ -447,13 +450,29 @@ class AllocationObserved(Struct):
     observed_at: str
 
 
+class CacheNodeResidency(Struct):
+    """What one node holds of one artifact.
+
+    A node mid-fetch and a node already serving are not the same fact, and a
+    router choosing where to send a request needs to tell them apart — so state
+    and bytes are per node here rather than rolled up. The cluster-level numbers
+    on `CacheObserved` stay, because a tier that is not a local disk has
+    residency with no node to attribute it to.
+    """
+
+    node_id: str
+    state: Literal["absent", "fetching", "resident", "evicting"]
+    bytes_resident: int
+    path: str | None = None
+
+
 class CacheObserved(Struct):
     cluster_id: str
     artifact_id: str
     state: Literal["absent", "fetching", "resident", "evicting"]
     resident: bool
     bytes_resident: int
-    node_ids: list[str]
+    nodes: list[CacheNodeResidency]
     eviction_pressure: float
     observed_at: str
     last_accessed_at: str | None = None

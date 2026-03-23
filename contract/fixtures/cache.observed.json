@@ -11,9 +11,18 @@
     "state": "resident",
     "resident": true,
     "bytes_resident": 141733920768,
-    "node_ids": [
-      "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",
-      "nod_01j9x2bbbbbbbbbbbbbbbbbbbc"
+    "nodes": [
+      {
+        "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbb",
+        "state": "resident",
+        "bytes_resident": 141733920768,
+        "path": "/var/lib/hangar/cache/art_01j9x2eeeeeeeeeeeeeeeeeeee"
+      },
+      {
+        "node_id": "nod_01j9x2bbbbbbbbbbbbbbbbbbbc",
+        "state": "fetching",
+        "bytes_resident": 88080384000
+      }
     ],
     "eviction_pressure": 0.72,
     "last_accessed_at": "2026-08-19T14:01:59.300Z",

@@ -99,11 +99,33 @@ when a node came back, which is the inference `.event` frames exist to avoid.
 | Type | Payload |
 |---|---|
 | `deployment.observed` | phase, replica counts, last error |
-| `replica.observed` | which devices, readiness, engine version, restart count |
+| `replica.observed` | which devices, readiness, engine version, restart count, observed generation |
 | `replica.event` | started, ready, failed, OOM, preempted |
 | `allocation.observed` | devices currently committed, and to what |
-| `cache.observed` | artifact residency and eviction pressure |
+| `cache.observed` | artifact residency, per node, and eviction pressure |
 | `component.observed` | rollout status per component |
+
+**`replica.observed` carries the replica's `name`.** The cluster-local name — the pod name under
+Kubernetes — alongside the `rep_` identifier. They are not redundant: the identifier is what other
+frames cross-reference, the name is what an operator types into `kubectl` when a replica is wedged,
+and neither is derivable from the other.
+
+**`replica.observed` carries `observed_generation`.** A replica's phase says whether it is up; the
+generation says which version of the deployment it is up *at*. A rollout is exactly the interval in
+which those two disagree, so a reader without the generation cannot distinguish "four ready" mid-roll
+from "four ready" when it has finished — and the plane would have to infer the difference from
+engine version, which is not the same thing and moves for other reasons.
+
+**`allocation.observed` carries an `allocation_id`.** Every observed object is named by the cluster
+that discovered it (ADR 0002), and an allocation is no exception. Keying it by `replica_id` instead
+would work only while allocations and replicas stay one-to-one, and would leave the plane minting
+identifiers for rows it does not own the moment they do not.
+
+**`cache.observed` reports residency per node.** `nodes` carries a state and a byte count for each
+node holding any part of the artifact; the top-level `state`, `resident` and `bytes_resident` remain
+the cluster-wide rollup, because a shared tier has residency with no node to attribute it to. A node
+mid-fetch and a node already serving are different facts to a cache-aware router, and a flat list of
+node ids cannot tell them apart.
 
 ## Operations
 
