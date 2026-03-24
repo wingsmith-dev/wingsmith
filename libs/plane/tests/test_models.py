@@ -20,6 +20,7 @@ DEMAND = {
     "demand_recipe",
     "demand_workload",
     "demand_deployment",
+    "demand_deployment_status",
     "demand_discovered_workload",
     "demand_workload_adoption",
     "demand_replica",

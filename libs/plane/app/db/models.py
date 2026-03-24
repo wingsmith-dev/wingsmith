@@ -458,6 +458,48 @@ class Deployment(BaseMixin):
     workload: Mapped[Workload] = relationship("Workload", back_populates="deployment", lazy="noload")
     recipe: Mapped[Recipe] = relationship("Recipe", lazy="noload")
     replicas: Mapped[list[Replica]] = relationship("Replica", back_populates="deployment", lazy="noload")
+    status: Mapped[DeploymentStatus | None] = relationship(
+        "DeploymentStatus", back_populates="deployment", lazy="noload", uselist=False
+    )
+
+
+class DeploymentStatus(BaseMixin):
+    """Observed: what a deployment is actually doing in its cluster.
+
+    A separate table from `Deployment` for the same reason `ComponentStatus` is
+    separate from `Component` — declared and observed have different writers, and
+    a nullable `phase` column on the declared row would let an API write land on
+    top of a cluster's. The pair read together is what "the deployment is behind"
+    means.
+
+    The replica counts here are the cluster's own accounting and are deliberately
+    redundant with the rollup over `demand_replica`. They arrive in one frame and
+    are internally consistent at the instant the cluster took them, which a rollup
+    over rows written by many frames is not; the rollup answers which replicas,
+    this answers how many the cluster thinks there are.
+    """
+
+    __tablename__ = "demand_deployment_status"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    deployment_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    observed_generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    phase: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending", index=True)
+    desired_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    ready_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    updated_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    unavailable_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_error_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    deployment: Mapped[Deployment] = relationship("Deployment", back_populates="status", lazy="noload")
 
 
 class Replica(BaseMixin):
@@ -1011,7 +1053,19 @@ class CacheEntry(BaseMixin):
     """
 
     __tablename__ = "ops_cache_entry"
-    __table_args__ = (UniqueConstraint("cluster_id", "node_id", "artifact_id", name="uq_ops_cache_entry_scope"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "cluster_id",
+            "node_id",
+            "artifact_id",
+            name="uq_ops_cache_entry_scope",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+    """`node_id` is null for cluster-scoped residency, and by default Postgres considers two nulls
+    distinct — which would make the cluster-scoped row un-upsertable and insert a fresh duplicate on
+    every observation. `NULLS NOT DISTINCT` is what makes "the cluster tier holds this artifact" a
+    single row rather than an append-only log of the same fact."""
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     cluster_id: Mapped[UUID] = mapped_column(
