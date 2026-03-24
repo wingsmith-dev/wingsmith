@@ -21,6 +21,17 @@ from app.db.models import PriorityClass
 from app.core.filters import ref_ids
 
 
+RUNNING_PHASES = ("starting", "ready", "draining")
+"""The observed phases in which a replica's process is actually up.
+
+`running` is not one of the phases a cluster reports — the wire enum is
+`pending | starting | ready | draining | terminated | failed` — so counting rows
+equal to the string would have counted nothing, forever. A replica that is
+draining is still serving what it already accepted, which is why it is here and
+`terminated` is not.
+"""
+
+
 class DeploymentRepository:
     """Reads deployments joined to the workload they specialise.
 
@@ -96,7 +107,7 @@ class DeploymentRepository:
                 Replica.deployment_id,
                 func.count(Replica.id).label("total"),
                 func.sum(case((Replica.ready.is_(True), 1), else_=0)).label("ready"),
-                func.sum(case((Replica.phase == "running", 1), else_=0)).label("running"),
+                func.sum(case((Replica.phase.in_(RUNNING_PHASES), 1), else_=0)).label("running"),
                 func.sum(case((Replica.phase == "pending", 1), else_=0)).label("pending"),
                 func.sum(case((Replica.phase == "failed", 1), else_=0)).label("failed"),
                 func.sum(
