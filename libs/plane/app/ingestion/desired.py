@@ -38,6 +38,7 @@ from app.hub.messages import ArtifactSource
 from app.hub.messages import CacheWarmEntry
 from app.hub.messages import ArtifactDesired
 from app.hub.messages import ComponentDesired
+from app.hub.messages import DeploymentDeleted
 from app.hub.messages import DeploymentDesired
 from app.hub.messages import PlacementConstraints
 from app.ingestion.time import now
@@ -78,6 +79,40 @@ async def stream_desired(db: AsyncSession, cluster_uid: str, scope: str) -> Asyn
         cache = await _cache(db, cluster_uid, cluster_id)
         if cache is not None:
             yield "cache.desired", cache
+
+
+async def desired_object(
+    db: AsyncSession, cluster_uid: str, kind: str, uid: str, generation: int = 0
+) -> tuple[str, Struct] | None:
+    """One declared object, rendered exactly the way a full resync renders it.
+
+    Live dispatch needs a single frame where resync needs the whole snapshot, and
+    the two must never disagree: a deployment that reaches a cluster one way on
+    connect and a different way on a write is a divergence that only shows up
+    once something is already serving the wrong thing. So this narrows the same
+    query the snapshot runs rather than standing a second renderer beside it.
+
+    Absence is an answer, not a failure. A deployment that is gone — deleted, or
+    disabled, or moved to another cluster — renders as `deployment.deleted`,
+    because from the cluster's side those are one fact: stop running this. The
+    generation is the caller's, since there is no row left to read it from.
+
+    Returns `None` only when there is nothing this seam can say — an unknown
+    cluster, or a kind live dispatch does not carry yet.
+    """
+    cluster_id = await db.scalar(select(Cluster.id).where(Cluster.uid == cluster_uid))
+    if cluster_id is None or kind != "deployment":
+        return None
+
+    found = await _deployments(db, cluster_uid, cluster_id, only=uid)
+    if found:
+        return "deployment.desired", found[0]
+    return "deployment.deleted", DeploymentDeleted(
+        deployment_id=uid,
+        cluster_id=cluster_uid,
+        generation=generation,
+        deleted_at=format_ts(None),
+    )
 
 
 async def _components(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> list[ComponentDesired]:
@@ -159,7 +194,9 @@ def _placement(recipe: Recipe, pools: list[str]) -> PlacementConstraints:
     )
 
 
-async def _deployments(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> list[DeploymentDesired]:
+async def _deployments(
+    db: AsyncSession, cluster_uid: str, cluster_id: UUID, only: str | None = None
+) -> list[DeploymentDesired]:
     query = (
         select(
             Deployment,
@@ -185,6 +222,8 @@ async def _deployments(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> 
         .where(Deployment.cluster_id == cluster_id, Deployment.enabled == True)
         .order_by(Deployment.seq)
     )
+    if only is not None:
+        query = query.where(Deployment.uid == only)
     rows = (await db.execute(query)).all()
     if not rows:
         return []

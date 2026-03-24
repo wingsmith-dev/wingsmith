@@ -34,6 +34,7 @@ from app.hub.state import SessionState
 from app.hub.state import SessionRegistry
 from app.hub.state import new_id
 from app.hub.identity import instance_id
+from app.hub.dispatch import LiveSessions
 from app.hub.ownership import ClaimStore
 from app.hub.ownership import MemoryClaimStore
 from app.hub.messages import MESSAGE_TYPES
@@ -159,6 +160,7 @@ class OperatorSession:
         "connection",
         "desired",
         "instance",
+        "live",
         "principal",
         "registry",
         "sink",
@@ -175,6 +177,7 @@ class OperatorSession:
         config: SessionConfig | None = None,
         claims: ClaimStore | None = None,
         instance: str | None = None,
+        live: LiveSessions | None = None,
     ) -> None:
         self.connection = connection
         self.principal = principal
@@ -184,6 +187,7 @@ class OperatorSession:
         self.desired: DesiredSource = EmptyDesiredSource() if desired is None else desired
         self.claims: ClaimStore = MemoryClaimStore() if claims is None else claims
         self.instance = instance_id() if instance is None else instance
+        self.live = LiveSessions() if live is None else live
         self.state: SessionState | None = None
         self._outbound: asyncio.Queue[bytes] = asyncio.Queue(maxsize=self.config.send_queue_size)
         self._last_recv = 0.0
@@ -218,6 +222,7 @@ class OperatorSession:
             await self._close(1000, "")
             await self._mark_disconnected()
             if self.state is not None:
+                self.live.unregister(self.state.cluster_id, self)
                 self.registry.disconnected(self.state.session_id)
             self._stopped.set()
             logger.info(
@@ -276,6 +281,7 @@ class OperatorSession:
         self.state = state
         await self.claims.claim(state.cluster_id, state.session_id, self.instance)
         self.registry.connected(state.session_id)
+        self.live.register(state.cluster_id, self)
 
         if not full_resync:
             state.rewind_inbound()

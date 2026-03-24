@@ -13,6 +13,10 @@ from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
 from app.db.models import Workload
 from app.db.models import Deployment
+from app.db.notify import DEPLOYMENT as DEPLOYMENT_KIND
+from app.db.notify import Notifier
+from app.db.notify import DeclaredChange
+from app.db.notify import DatabaseNotifier
 from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
@@ -103,9 +107,25 @@ def _rollup(row: dict | None) -> DeploymentReplicaRollupSchema:
 
 
 class DeploymentService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, notifier: Notifier | None = None) -> None:
         self.db = db
         self.repo = DeploymentRepository(db)
+        self.notifier: Notifier = DatabaseNotifier() if notifier is None else notifier
+
+    async def _announce(self, cluster_uid: str, uid: str, generation: int) -> None:
+        """Wakes whichever hub holds this cluster's stream, after the write is committed.
+
+        Every caller of this is on the far side of its own `commit()`, and that
+        ordering is the contract: the hub answers the hint by re-reading the row,
+        so announcing first would race the reader against a transaction that has
+        not landed. Missing the wakeup entirely costs latency and nothing else —
+        the next full resync carries the same state — which is why this never
+        stands between the caller and its response.
+        """
+        await self.notifier.changed(
+            self.db,
+            DeclaredChange(cluster_id=cluster_uid, kind=DEPLOYMENT_KIND, uid=uid, generation=generation),
+        )
 
     def schema(
         self,
@@ -304,6 +324,7 @@ class DeploymentService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"deployment {data.name!r} already exists in {data.cluster!r}") from exc
+        await self._announce(cluster.uid, deployment.uid, deployment.generation)
         return await self.get(deployment.uid)
 
     async def update(self, ref: str, data: DeploymentUpdateRequest, if_match: str | None = None) -> DeploymentSchema:
@@ -343,6 +364,7 @@ class DeploymentService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("deployment conflicts with an existing one") from exc
+        await self._announce(row.cluster_uid, deployment.uid, deployment.generation)
         return await self.get(deployment.uid)
 
     async def delete(self, ref: str) -> None:
@@ -354,5 +376,7 @@ class DeploymentService:
         a resurrection.
         """
         row = await self._one(ref)
+        uid, generation, cluster_uid = row[0].uid, row[0].generation, row.cluster_uid
         await self.repo.delete(row[1], row[0])
         await self.db.commit()
+        await self._announce(cluster_uid, uid, generation)

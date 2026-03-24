@@ -30,7 +30,10 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.ids import NODE
 from app.core.ids import TENANT
 from app.core.ids import new_uid
+from app.db.notify import MemoryNotifier
 from app.core.exceptions import Conflict
+from app.ingestion.desired import desired_object
+from app.ingestion.desired import stream_desired
 from app.modules.pools.schemas import PoolCreateRequest
 from app.modules.pools.schemas import PoolUpdateRequest
 from app.modules.pools.services import PoolService
@@ -390,6 +393,60 @@ async def test_components_lifecycle(db: AsyncSession) -> None:
 
     await service.delete(created.id)
     assert (await service.list()).count == 0
+
+
+async def test_a_deployment_write_announces_itself_to_the_hub(db: AsyncSession) -> None:
+    """The wakeup that turns a write into something a cluster hears about now.
+
+    Asserted through an injected notifier rather than a real `LISTEN`, because the
+    thing worth pinning down is that every write path announces, and announces the
+    cluster the object actually belongs to. Whether the notification arrives is
+    explicitly not a guarantee — resync covers a lost one.
+    """
+    notifier = MemoryNotifier()
+    cluster, _, _, created = await a_deployment(db)
+    service = DeploymentService(db, notifier=notifier)
+
+    await service.update(created.id, DeploymentUpdateRequest(desired_replicas=1, max_replicas=3))
+    await service.delete(created.id)
+
+    assert [(c.cluster_id, c.kind, c.uid) for c in notifier.changes] == [
+        (cluster.id, "deployment", created.id),
+        (cluster.id, "deployment", created.id),
+    ]
+
+
+async def test_live_dispatch_renders_what_a_resync_would_have_sent(db: AsyncSession) -> None:
+    """The divergence this seam exists not to introduce.
+
+    Two ways of reaching a cluster with the same deployment — the snapshot on
+    connect and the single frame on a write — have to agree field for field, or a
+    reconnect silently changes what is running.
+    """
+    cluster, _, _, created = await a_deployment(db)
+
+    frames = [item async for item in stream_desired(db, cluster.id, "demand")]
+    from_resync = [payload for kind, payload in frames if kind == "deployment.desired"]
+    kind, from_dispatch = await desired_object(db, cluster.id, "deployment", created.id)
+
+    assert kind == "deployment.desired"
+    assert from_dispatch == from_resync[0]
+
+
+async def test_a_deployment_that_is_gone_dispatches_as_a_deletion(db: AsyncSession) -> None:
+    """Absence is the answer, and it has to be the *deleted* answer.
+
+    The row is gone by the time the hub re-reads, so there is nothing to render;
+    rendering nothing would leave the cluster serving a deployment nobody declares
+    any more.
+    """
+    cluster, _, _, created = await a_deployment(db)
+    await DeploymentService(db, notifier=MemoryNotifier()).delete(created.id)
+
+    kind, payload = await desired_object(db, cluster.id, "deployment", created.id, generation=7)
+
+    assert kind == "deployment.deleted"
+    assert (payload.deployment_id, payload.cluster_id, payload.generation) == (created.id, cluster.id, 7)
 
 
 async def test_deployments_lifecycle(db: AsyncSession) -> None:

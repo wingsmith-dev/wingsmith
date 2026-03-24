@@ -20,6 +20,8 @@ from app.hub.state import reaper_loop
 from app.ingestion import DatabaseSink
 from app.ingestion import DatabaseDesiredSource
 from app.hub.session import OperatorSession
+from app.hub.dispatch import LiveSessions
+from app.hub.dispatch import listen_loop
 from app.hub.identity import instance_id
 from app.hub.ownership import DatabaseClaimStore
 from app.config.settings import validate
@@ -39,6 +41,13 @@ DESIRED = DatabaseDesiredSource()
 CLAIMS = DatabaseClaimStore()
 """Durable single-writer ownership per `cluster_id` (ADR 0005). Shared across pods via Postgres,
 unlike `REGISTRY`, which is deliberately not shared.
+"""
+
+LIVE = LiveSessions()
+"""Connections this process can push declared state to right now, keyed by cluster.
+
+Separate from `REGISTRY` on purpose: that one holds sessions that outlive their
+connection, this one holds the objects that have one. See `app.hub.dispatch`.
 """
 
 INSTANCE = instance_id()
@@ -78,6 +87,7 @@ async def _handler(connection: ServerConnection) -> None:
         desired=DESIRED,
         claims=CLAIMS,
         instance=INSTANCE,
+        live=LIVE,
     ).run()
 
 
@@ -93,6 +103,7 @@ async def serve_forever(stop: asyncio.Future[None] | None = None) -> None:
         reaper_loop(REGISTRY, settings.HUB_SESSION_TTL_SECONDS, settings.HUB_REAPER_INTERVAL_SECONDS),
         name="hub-reaper",
     )
+    listener = asyncio.create_task(listen_loop(LIVE), name="hub-dispatch")
 
     server: Server
     async with serve(
@@ -110,7 +121,8 @@ async def serve_forever(stop: asyncio.Future[None] | None = None) -> None:
         server.close()
 
     reaper.cancel()
-    await asyncio.gather(reaper, return_exceptions=True)
+    listener.cancel()
+    await asyncio.gather(reaper, listener, return_exceptions=True)
     await engine.dispose()
     logger.info("hub.shutdown")
 
