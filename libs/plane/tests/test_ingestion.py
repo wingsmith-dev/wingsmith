@@ -186,6 +186,132 @@ def test_capacity_observed_is_a_rollup_and_has_no_statement() -> None:
     assert not hasattr(statements, "upsert_capacity")
 
 
+# --------------------------------------------------------------------------- the demand side
+
+DEPLOYMENT_ID = uuid.UUID("22222222-2222-2222-2222-222222222222")
+WORKLOAD_ID = uuid.UUID("33333333-3333-3333-3333-333333333333")
+PROJECT_ID = uuid.UUID("44444444-4444-4444-4444-444444444444")
+REPLICA_ID = uuid.UUID("55555555-5555-5555-5555-555555555555")
+ARTIFACT_ID = uuid.UUID("66666666-6666-6666-6666-666666666666")
+ALLOCATION_ID = uuid.UUID("77777777-7777-7777-7777-777777777777")
+
+
+def test_deployment_status_is_its_own_row_and_never_the_declared_one() -> None:
+    """Declared and observed have different writers, so they cannot share a row."""
+    sql, _ = compile_sql(
+        statements.upsert_deployment_status(CLUSTER_ID, DEPLOYMENT_ID, payload("deployment.observed"))
+    )
+    assert "INSERT INTO demand_deployment_status" in sql
+    assert "demand_deployment " not in sql
+    assert "min_replicas" not in sql and "max_replicas" not in sql
+
+
+def test_deployment_status_records_the_generation_it_observed() -> None:
+    """Four ready at the old generation and four at the new one are different facts."""
+    observed = payload("deployment.observed")
+    _, params = compile_sql(statements.upsert_deployment_status(CLUSTER_ID, DEPLOYMENT_ID, observed))
+    assert observed.generation in scalar_params(params)
+
+
+def test_deployment_status_flattens_the_last_error() -> None:
+    observed = payload("deployment.observed")
+    assert observed.last_error is not None
+    _, params = compile_sql(statements.upsert_deployment_status(CLUSTER_ID, DEPLOYMENT_ID, observed))
+    values = scalar_params(params)
+    assert observed.last_error.code in values
+    assert observed.last_error.message in values
+
+
+def test_replica_upsert_targets_the_natural_key() -> None:
+    sql, _ = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, payload("replica.observed")))
+    assert "ON CONFLICT ON CONSTRAINT uq_demand_replica_cluster_name DO UPDATE" in sql
+
+
+def test_replica_stores_the_engine_version_and_not_the_engine() -> None:
+    """The engine is the recipe's; the version is what lags during a rollout."""
+    observed = payload("replica.observed")
+    _, params = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, observed))
+    values = scalar_params(params)
+    assert observed.engine_version in values
+    assert observed.engine not in values
+
+
+def test_replica_does_not_write_the_devices_it_holds() -> None:
+    """A replica's commitment is an allocation, not a column on the replica."""
+    sql, _ = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, payload("replica.observed")))
+    assert "device" not in sql
+
+
+def test_allocation_uses_the_cluster_minted_id() -> None:
+    """An observed row is named by the cluster that discovered it (ADR 0002)."""
+    observed = payload("allocation.observed")
+    sql, params = compile_sql(
+        statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, PROJECT_ID, REPLICA_ID, observed)
+    )
+    assert observed.allocation_id in scalar_params(params)
+    assert "uid = excluded.uid" not in sql
+
+
+def test_allocation_reads_its_device_class_back_from_the_devices() -> None:
+    """Having the cluster restate it would create a second place for it to be wrong."""
+    observed = payload("allocation.observed")
+    sql, params = compile_sql(
+        statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, PROJECT_ID, REPLICA_ID, observed)
+    )
+    assert "SELECT supply_device.device_class" in sql
+    assert len(observed.device_ids) in scalar_params(params)
+
+
+def test_dropping_a_device_releases_it_rather_than_deleting_the_row() -> None:
+    """The partial unique index frees the accelerator; the history stays."""
+    sql, _ = compile_sql(
+        statements.release_allocation_devices(ALLOCATION_ID, CLUSTER_ID, payload("allocation.observed"))
+    )
+    assert "UPDATE bind_allocation_device SET" in sql and "released_at=" in sql
+    assert "DELETE" not in sql
+    assert "bind_allocation_device.device_id NOT IN" in sql
+
+
+def test_attaching_devices_leaves_an_existing_membership_alone() -> None:
+    """Membership is fixed when the allocation is granted; re-inserting would move released_at."""
+    sql, _ = compile_sql(
+        statements.attach_allocation_devices(ALLOCATION_ID, CLUSTER_ID, payload("allocation.observed"))
+    )
+    assert "ON CONFLICT ON CONSTRAINT uq_bind_allocation_device DO NOTHING" in sql
+
+
+def test_cache_residency_is_written_per_node_and_for_the_cluster() -> None:
+    """A router has to pick a node that holds the weights, not a cluster that does."""
+    observed = payload("cache.observed")
+    assert len(observed.nodes) == 2
+    built = statements.upsert_cache_entries(CLUSTER_ID, ARTIFACT_ID, observed)
+    assert len(built) == 1 + len(observed.nodes)
+
+    _, cluster_params = compile_sql(built[0])
+    assert "cluster" in scalar_params(cluster_params)
+    assert cluster_params["node_id"] is None
+    for statement in built[1:]:
+        node_sql, node_params = compile_sql(statement)
+        assert "SELECT supply_node.id" in node_sql
+        assert "node" in scalar_params(node_params)
+
+
+def test_cache_entries_upsert_rather_than_append() -> None:
+    """`node_id` is null for the cluster row, so the constraint must be NULLS NOT DISTINCT."""
+    for statement in statements.upsert_cache_entries(CLUSTER_ID, ARTIFACT_ID, payload("cache.observed")):
+        sql, _ = compile_sql(statement)
+        assert "ON CONFLICT ON CONSTRAINT uq_ops_cache_entry_scope DO UPDATE" in sql
+
+
+def test_a_node_mid_fetch_is_not_recorded_as_resident() -> None:
+    observed = payload("cache.observed")
+    fetching = next(node for node in observed.nodes if node.state == "fetching")
+    built = statements.upsert_cache_entries(CLUSTER_ID, ARTIFACT_ID, observed)
+    states = [compile_sql(statement)[1]["state"] for statement in built]
+    assert fetching.state in states
+    assert states.count("resident") == 2
+
+
 # --------------------------------------------------------------------------- declared state
 
 

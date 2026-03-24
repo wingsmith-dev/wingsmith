@@ -22,15 +22,24 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from app.hub.sink import SinkFrame
 from app.db.engine import session_factory
 from app.db.models import Cluster
+from app.db.models import Project
+from app.db.models import Replica
+from app.db.models import Artifact
+from app.db.models import Allocation
+from app.db.models import Deployment
 from app.ingestion import statements
 from app.hub.messages import NodeEvent
 from app.hub.messages import DeviceEvent
 from app.hub.messages import NodeObserved
 from app.hub.messages import ReplicaEvent
+from app.hub.messages import CacheObserved
 from app.hub.messages import DeviceObserved
+from app.hub.messages import ReplicaObserved
 from app.hub.messages import TopologyObserved
 from app.hub.messages import ComponentObserved
 from app.hub.messages import OperationObserved
+from app.hub.messages import AllocationObserved
+from app.hub.messages import DeploymentObserved
 from app.hub.messages import WorkloadDiscovered
 from app.ingestion.time import now
 from app.ingestion.resync import NODE
@@ -93,6 +102,63 @@ class DatabaseSink:
             raise UnknownCluster(cluster_uid)
         self._clusters[cluster_uid] = cluster_id
         return cluster_id
+
+    # ----------------------------------------------------------------- references
+
+    async def _uid_ref(self, db: AsyncSession, model: Any, uid: str) -> UUID | None:
+        """The primary key behind a public id, or None if the plane has never heard of it."""
+        result = await db.execute(select(model.id).where(model.uid == uid))
+        return result.scalar_one_or_none()
+
+    async def _deployment(self, db: AsyncSession, cluster_id: UUID, uid: str) -> tuple[UUID, UUID] | None:
+        """`(deployment_id, workload_id)` for a declared deployment in this cluster.
+
+        Scoped to the cluster deliberately: a frame naming a deployment that lives
+        somewhere else is not a deployment this stream may write about.
+        """
+        result = await db.execute(
+            select(Deployment.id, Deployment.workload_id).where(
+                Deployment.cluster_id == cluster_id, Deployment.uid == uid
+            )
+        )
+        row = result.first()
+        return (row[0], row[1]) if row else None
+
+    async def _allocation(
+        self, db: AsyncSession, cluster_id: UUID, cluster_uid: str, payload: AllocationObserved
+    ) -> None:
+        """Writes one allocation and reconciles its device membership in the same transaction.
+
+        Three statements rather than one because an allocation is a row and a set:
+        the row says what is committed and to whom, the set says which accelerators,
+        and a device dropped from the set has to be stamped released — that is what
+        frees it for the next allocation under the partial unique index.
+
+        A frame naming a deployment or project the plane does not have is accepted
+        and dropped, not replayed. Ingestion may not create either one — both are
+        declared — and withholding the ack would wedge the stream behind a frame
+        that can never be applied.
+        """
+        deployment = await self._deployment(db, cluster_id, payload.deployment_id)
+        project_id = await self._uid_ref(db, Project, payload.project_id)
+        if deployment is None or project_id is None:
+            logger.info(
+                "ingestion.allocation.unresolved allocation=%s deployment=%s project=%s cluster=%s",
+                payload.allocation_id,
+                payload.deployment_id,
+                payload.project_id,
+                cluster_uid,
+            )
+            return
+
+        replica_id = await self._uid_ref(db, Replica, payload.replica_id)
+        statement = statements.upsert_allocation(
+            cluster_id, deployment[1], project_id, replica_id, payload
+        ).returning(Allocation.id)
+        allocation_id = (await db.execute(statement)).scalar_one()
+        await db.execute(statements.release_allocation_devices(allocation_id, cluster_id, payload))
+        if payload.device_ids:
+            await db.execute(statements.attach_allocation_devices(allocation_id, cluster_id, payload))
 
     # ----------------------------------------------------------------- observed
 
@@ -161,6 +227,48 @@ class DatabaseSink:
                 assert isinstance(payload, WorkloadDiscovered)
                 await db.execute(statements.upsert_discovered_workload(cluster_id, payload))
                 return WORKLOAD, statements.observed_uid(payload.workload_id, "dsw_")
+            case "deployment.observed":
+                assert isinstance(payload, DeploymentObserved)
+                deployment = await self._deployment(db, cluster_id, payload.deployment_id)
+                if deployment is None:
+                    logger.info(
+                        "ingestion.deployment.unknown deployment=%s cluster=%s",
+                        payload.deployment_id,
+                        frame.cluster_id,
+                    )
+                    return None
+                await db.execute(statements.upsert_deployment_status(cluster_id, deployment[0], payload))
+                return None
+            case "replica.observed":
+                assert isinstance(payload, ReplicaObserved)
+                deployment = await self._deployment(db, cluster_id, payload.deployment_id)
+                if deployment is None:
+                    logger.info(
+                        "ingestion.replica.unknown_deployment replica=%s deployment=%s cluster=%s",
+                        payload.replica_id,
+                        payload.deployment_id,
+                        frame.cluster_id,
+                    )
+                    return None
+                await db.execute(statements.upsert_replica(cluster_id, deployment[0], payload))
+                return None
+            case "allocation.observed":
+                assert isinstance(payload, AllocationObserved)
+                await self._allocation(db, cluster_id, frame.cluster_id, payload)
+                return None
+            case "cache.observed":
+                assert isinstance(payload, CacheObserved)
+                artifact_id = await self._uid_ref(db, Artifact, payload.artifact_id)
+                if artifact_id is None:
+                    logger.info(
+                        "ingestion.cache.unknown_artifact artifact=%s cluster=%s",
+                        payload.artifact_id,
+                        frame.cluster_id,
+                    )
+                    return None
+                for statement in statements.upsert_cache_entries(cluster_id, artifact_id, payload):
+                    await db.execute(statement)
+                return None
             case "capacity.observed":
                 return None
             case _:
