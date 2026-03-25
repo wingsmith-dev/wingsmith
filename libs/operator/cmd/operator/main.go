@@ -51,7 +51,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := reconcile.SetupWithManager(mgr, log); err != nil {
+	if err := reconcile.SetupWithManager(mgr, cfg, log); err != nil {
 		return err
 	}
 

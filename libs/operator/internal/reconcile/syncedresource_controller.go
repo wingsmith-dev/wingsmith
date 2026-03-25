@@ -7,35 +7,49 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
+	"github.com/hangar-dev/hangar/libs/operator/internal/render"
 	"github.com/hangar-dev/hangar/libs/operator/internal/workload"
 )
 
-// SyncedResourceReconciler is a no-op reconciler over the placeholder CRD. It demonstrates the
-// loop and nothing else: it reads desired state out of the CR, does no Kubernetes work, and
-// records what it observed back onto status, which is what the sync loop ships upward.
+// SyncedResourceReconciler converges the durable local copy of declared state onto the cluster.
 //
-// The real reconciler that expands domain objects into Kubernetes objects belongs to whoever owns
-// the object model.
+// One controller over one CRD rather than one per domain kind. The kinds are not independent —
+// a deployment cannot render without its recipe, its artifact, and those weights already being
+// resident — so splitting them into separate controllers would buy separation and immediately
+// spend it on cross-controller lookups for the same objects.
 type SyncedResourceReconciler struct {
 	Client client.Client
 	Scheme *runtime.Scheme
 	Log    *slog.Logger
+
+	// Namespace is where the durable copies of declared state live.
+	Namespace string
+
+	// Render carries the per-cluster conventions a render needs and the plane does not declare.
+	Render render.Options
 }
 
 // +kubebuilder:rbac:groups=placeholder.hangar.dev,resources=syncedresources,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=placeholder.hangar.dev,resources=syncedresources/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=coordination.k8s.io,resources=leases,verbs=get;list;watch;create;update;patch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=nvidia.com,resources=dynamographdeployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=nvidia.com,resources=dynamographdeployments/status,verbs=get
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
+// +kubebuilder:rbac:groups=batch,resources=jobs/status,verbs=get
 
 // Reconcile implements the reconcile loop.
 func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -54,49 +68,59 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.reconcileAdopted(ctx, &res)
 	}
 
-	if res.Status.ObservedRevision == res.Spec.Revision {
+	// Every kind is re-examined on every pass rather than skipped once its revision has been
+	// observed. Desired state is only one of the inputs: a deployment also depends on a recipe
+	// that may have arrived since, on weights that may have finished downloading since, and on
+	// a rendered object that something else may have edited since. Gating on the revision alone
+	// would make all three invisible until the plane happened to write again.
+
+	switch res.Spec.Kind {
+	case "deployment":
+		return r.reconcileDeployment(ctx, &res)
+	case "cache":
+		return r.reconcileCache(ctx, &res)
+	case "recipe", "artifact":
+		// Nothing to converge on its own. Both are read by the deployment path, and an edit to
+		// either re-triggers that path through the watch below rather than doing work here.
+		return r.observed(ctx, &res)
+	case "component":
+		// Cluster-level dependencies — GPU operator, device plugin, storage, ingress. Driving
+		// these to a declared version is a Helm release rather than an object to apply, which
+		// is long-running and failable in a way an apply is not. It is deliberately not done
+		// here yet.
+		return r.observed(ctx, &res)
+	default:
+		return r.fail(ctx, &res, "UnknownKind", fmt.Sprintf("no reconciler for kind %q", res.Spec.Kind))
+	}
+}
+
+// observed records a declared object this controller has nothing to apply for.
+func (r *SyncedResourceReconciler) observed(ctx context.Context, res *v1alpha1.SyncedResource) (ctrl.Result, error) {
+	if res.Status.ObservedRevision == res.Spec.Revision && res.Status.Phase == "Accepted" {
 		return ctrl.Result{}, nil
 	}
-
-	r.Log.Info("reconciling", "name", res.Name, "kind", res.Spec.Kind, "revision", res.Spec.Revision)
-
 	patch := client.MergeFrom(res.DeepCopy())
 	res.Status.ObservedRevision = res.Spec.Revision
-	res.Status.Phase = "Reconciled"
-	meta := metav1.Condition{
-		Type:               "Ready",
-		Status:             metav1.ConditionTrue,
-		Reason:             "NoOpReconciler",
-		Message:            "skeleton reconciler performed no cluster work",
-		ObservedGeneration: res.Generation,
-		LastTransitionTime: metav1.Now(),
-	}
-	res.Status.Conditions = upsertCondition(res.Status.Conditions, meta)
-	if err := r.Client.Status().Patch(ctx, &res, patch); err != nil {
-		return ctrl.Result{}, err
-	}
-	return ctrl.Result{}, nil
+	res.Status.Phase = "Accepted"
+	setCondition(res, metav1.ConditionTrue, "NoClusterWork", "held as declared state; nothing to apply")
+	return ctrl.Result{}, r.Client.Status().Patch(ctx, res, patch)
 }
 
 // SetupWithManager wires the reconciler to the manager.
+//
+// Owning the rendered objects is what closes the loop in the other direction: a graph deployment
+// whose status changes, or a prefetch job that finishes downloading, wakes the declared object it
+// came from without anything having to poll for it.
 func (r *SyncedResourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	graph := &unstructured.Unstructured{}
+	graph.SetGroupVersionKind(render.GVK)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.SyncedResource{}).
+		Owns(&batchv1.Job{}).
+		Owns(graph).
 		Named("syncedresource").
 		Complete(r)
-}
-
-func upsertCondition(existing []metav1.Condition, c metav1.Condition) []metav1.Condition {
-	for i := range existing {
-		if existing[i].Type == c.Type {
-			if existing[i].Status == c.Status {
-				c.LastTransitionTime = existing[i].LastTransitionTime
-			}
-			existing[i] = c
-			return existing
-		}
-	}
-	return append(existing, c)
 }
 
 // reconcileAdopted handles desired state promoted from a workload that was already running.
@@ -142,7 +166,7 @@ func (r *SyncedResourceReconciler) reconcileAdopted(ctx context.Context, res *v1
 		condition.Reason = "MatchesAdoptedFingerprint"
 		condition.Message = "running as adopted; no cluster work performed"
 	}
-	res.Status.Conditions = upsertCondition(res.Status.Conditions, condition)
+	apimeta.SetStatusCondition(&res.Status.Conditions, condition)
 	return ctrl.Result{}, r.Client.Status().Patch(ctx, res, patch)
 }
 

@@ -21,6 +21,7 @@ import (
 	checkpointv1alpha1 "github.com/hangar-dev/hangar/libs/operator/api/checkpoint/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/config"
+	"github.com/hangar-dev/hangar/libs/operator/internal/render"
 )
 
 // Scheme is the runtime scheme shared by the manager and every client built from it.
@@ -70,11 +71,25 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 }
 
 // SetupWithManager registers every controller this operator runs.
-func SetupWithManager(mgr ctrl.Manager, logger *slog.Logger) error {
+func SetupWithManager(mgr ctrl.Manager, cfg *config.Config, logger *slog.Logger) error {
 	r := &SyncedResourceReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
-		Log:    logger.With("controller", "syncedresource"),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		Log:       logger.With("controller", "syncedresource"),
+		Namespace: cfg.Namespace,
+		Render:    RenderOptions(cfg),
 	}
 	return r.SetupWithManager(mgr)
+}
+
+// RenderOptions lifts the per-cluster rendering conventions out of configuration.
+func RenderOptions(cfg *config.Config) render.Options {
+	return render.Options{
+		Namespace:      cfg.WorkloadNamespace,
+		PoolLabelKey:   cfg.PoolLabelKey,
+		GPUPoolValue:   cfg.GPUPoolValue,
+		ModelCachePVC:  cfg.ModelCachePVC,
+		CachePoolValue: cfg.CachePoolValue,
+		CacheTaintKey:  cfg.CacheTaintKey,
+	}
 }
