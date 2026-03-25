@@ -90,9 +90,26 @@ when a node came back, which is the inference `.event` frames exist to avoid.
 |---|---|
 | `deployment.desired` | recipe reference, scale bounds, priority, placement constraints |
 | `deployment.deleted` | id |
+| `recipe.desired` | how to serve an artifact: engine, image, args, parallelism, cache settings |
 | `artifact.desired` | what weights should be resident, and where they come from |
 | `component.desired` | what is installed and at what version |
 | `cache.desired` | the artifact warm-set for this cluster |
+
+**A recipe travels as its own declared object, not inlined on the deployments that name it.**
+`deployment.desired` references it by `recipe_id` and `recipe_revision`, the way it already
+references artifacts by id. This is the split KServe draws between `ServingRuntime` and
+`InferenceService`, for the same reason: recipes are shared. Several deployments of one model on
+one cluster differ in scale and placement rather than in engine configuration, so inlining would
+ship the same body repeatedly and turn one recipe edit into a rewrite of every frame naming it.
+
+The cost is an ordering dependency, and the stream pays it the same way it already does for
+artifacts: recipes precede the deployments that reference them. A receiver that sees a deployment
+whose recipe has not landed — possible after a resume, not after a resync — waits rather than
+renders, because a render against a missing recipe is a guess.
+
+The device shape is deliberately absent from `recipe.desired`. It reaches the cluster on the
+deployment's `placement`, derived from that same recipe. Two copies of one fact on one wire is two
+things that can disagree, and the placement copy is the one placement already reads.
 
 ## Demand — operator → hub
 

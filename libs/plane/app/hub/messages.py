@@ -292,6 +292,55 @@ class CapacityObserved(Struct):
 # --------------------------------------------------------------------------- demand, hub -> op
 
 
+class RecipeParallelism(Struct):
+    tensor: int
+    pipeline: int
+    expert: int
+
+
+class RecipeResources(Struct):
+    cpu_cores: int | None = None
+    memory_mib: int | None = None
+    disk_gib: int | None = None
+
+
+class RecipeDesired(Struct):
+    """How to serve an artifact, in enough detail for a cluster to render it.
+
+    A declared object of its own rather than a block inlined on every deployment
+    that names it. Recipes are shared — several deployments of the same model on
+    the same cluster differ in scale and placement, not in engine configuration —
+    so inlining would ship the same body repeatedly and turn one recipe edit into
+    a rewrite of every frame referencing it.
+
+    The device shape is deliberately absent. It reaches the cluster on the
+    deployment's `placement`, derived from this recipe, and carrying it twice
+    invites the two copies to disagree.
+    """
+
+    recipe_id: str
+    cluster_id: str
+    artifact_id: str
+    name: str
+    version: int
+    engine: str
+    engine_version: str
+    engine_image: str | None
+    engine_args: dict[str, str]
+    quantization: str | None
+    dtype: str | None
+    parallelism: RecipeParallelism
+    context_length: int
+    max_batch_tokens: int | None
+    kv_cache_dtype: str | None
+    kv_cache_fraction: float | None
+    prefix_cache_enabled: bool
+    prefix_cache_config: dict[str, str]
+    resources: RecipeResources
+    labels: dict[str, str]
+    updated_at: str
+
+
 class PlacementConstraints(Struct):
     device_class: str
     devices_per_replica: int
@@ -548,6 +597,7 @@ MESSAGE_TYPES: dict[str, type[Struct]] = {
     "workload.discovered": WorkloadDiscovered,
     "deployment.desired": DeploymentDesired,
     "deployment.deleted": DeploymentDeleted,
+    "recipe.desired": RecipeDesired,
     "artifact.desired": ArtifactDesired,
     "component.desired": ComponentDesired,
     "cache.desired": CacheDesired,

@@ -182,6 +182,53 @@ type CapacityObserved struct {
 
 // ---------------------------------------------------------------------------- demand, hub -> op
 
+// RecipeParallelism is how one replica is split across its devices.
+type RecipeParallelism struct {
+	Tensor   int `json:"tensor"`
+	Pipeline int `json:"pipeline"`
+	Expert   int `json:"expert"`
+}
+
+// RecipeResources is the non-accelerator footprint of one replica.
+type RecipeResources struct {
+	CPUCores  *int   `json:"cpu_cores,omitempty"`
+	MemoryMiB *int64 `json:"memory_mib,omitempty"`
+	DiskGiB   *int   `json:"disk_gib,omitempty"`
+}
+
+// RecipeDesired is how to serve an artifact, in enough detail for a cluster to render it.
+//
+// The same split KServe draws between ServingRuntime and InferenceService: this object is the
+// engine and its configuration, and the deployment referencing it supplies scale and placement.
+// Recipes are shared, so they travel as their own declared object rather than inlined on every
+// deployment that names them.
+//
+// The device shape is deliberately absent — it arrives on the deployment's Placement, derived from
+// this recipe, and carrying it twice invites the two copies to disagree.
+type RecipeDesired struct {
+	RecipeID           string            `json:"recipe_id"`
+	ClusterID          string            `json:"cluster_id"`
+	ArtifactID         string            `json:"artifact_id"`
+	Name               string            `json:"name"`
+	Version            int               `json:"version"`
+	Engine             string            `json:"engine"`
+	EngineVersion      string            `json:"engine_version"`
+	EngineImage        *string           `json:"engine_image"`
+	EngineArgs         map[string]string `json:"engine_args"`
+	Quantization       *string           `json:"quantization"`
+	Dtype              *string           `json:"dtype"`
+	Parallelism        RecipeParallelism `json:"parallelism"`
+	ContextLength      int               `json:"context_length"`
+	MaxBatchTokens     *int              `json:"max_batch_tokens"`
+	KVCacheDtype       *string           `json:"kv_cache_dtype"`
+	KVCacheFraction    *float64          `json:"kv_cache_fraction"`
+	PrefixCacheEnabled bool              `json:"prefix_cache_enabled"`
+	PrefixCacheConfig  map[string]string `json:"prefix_cache_config"`
+	Resources          RecipeResources   `json:"resources"`
+	Labels             map[string]string `json:"labels"`
+	UpdatedAt          string            `json:"updated_at"`
+}
+
 // PlacementConstraints is the device shape and placement rules a deployment binds against.
 type PlacementConstraints struct {
 	DeviceClass       string            `json:"device_class"`
@@ -468,6 +515,7 @@ var MessageTypes = map[string]func() any{
 	"workload.discovered": func() any { return &WorkloadDiscovered{} },
 	"deployment.desired":  func() any { return &DeploymentDesired{} },
 	"deployment.deleted":  func() any { return &DeploymentDeleted{} },
+	"recipe.desired":      func() any { return &RecipeDesired{} },
 	"artifact.desired":    func() any { return &ArtifactDesired{} },
 	"component.desired":   func() any { return &ComponentDesired{} },
 	"cache.desired":       func() any { return &CacheDesired{} },

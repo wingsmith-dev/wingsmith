@@ -17,6 +17,7 @@ import (
 var desiredTypes = map[syncpkg.MessageType]struct{}{
 	wireDeploymentDesired: {},
 	wireDeploymentDeleted: {},
+	wireRecipeDesired:     {},
 	wireArtifactDesired:   {},
 	wireComponentDesired:  {},
 	wireCacheDesired:      {},
@@ -25,6 +26,7 @@ var desiredTypes = map[syncpkg.MessageType]struct{}{
 const (
 	wireDeploymentDesired = "deployment.desired"
 	wireDeploymentDeleted = "deployment.deleted"
+	wireRecipeDesired     = "recipe.desired"
 	wireArtifactDesired   = "artifact.desired"
 	wireComponentDesired  = "component.desired"
 	wireCacheDesired      = "cache.desired"
@@ -63,6 +65,12 @@ func decodeDesired(e *syncpkg.Envelope) (desiredState, error) {
 			return d, fmt.Errorf("decode %s: %w", e.Type, err)
 		}
 		d.Kind, d.Name, d.Revision, d.Deleted = "deployment", resourceName(p.DeploymentID), p.Generation, true
+	case wireRecipeDesired:
+		var p wire.RecipeDesired
+		if err := json.Unmarshal(e.Payload, &p); err != nil {
+			return d, fmt.Errorf("decode %s: %w", e.Type, err)
+		}
+		d.Kind, d.Name, d.Revision = "recipe", resourceName(p.RecipeID), int64(p.Version)
 	case wireArtifactDesired:
 		var p wire.ArtifactDesired
 		if err := json.Unmarshal(e.Payload, &p); err != nil {

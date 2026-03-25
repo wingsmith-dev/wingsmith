@@ -36,10 +36,13 @@ from app.hub.messages import Adopt
 from app.hub.messages import CacheDesired
 from app.hub.messages import ArtifactSource
 from app.hub.messages import CacheWarmEntry
+from app.hub.messages import RecipeDesired
 from app.hub.messages import ArtifactDesired
 from app.hub.messages import ComponentDesired
 from app.hub.messages import DeploymentDeleted
 from app.hub.messages import DeploymentDesired
+from app.hub.messages import RecipeResources
+from app.hub.messages import RecipeParallelism
 from app.hub.messages import PlacementConstraints
 from app.ingestion.time import now
 
@@ -74,6 +77,8 @@ async def stream_desired(db: AsyncSession, cluster_uid: str, scope: str) -> Asyn
     if scope in DEMAND_SCOPES:
         for payload in await _artifacts(db, cluster_uid, cluster_id):
             yield "artifact.desired", payload
+        for payload in await _recipes(db, cluster_uid, cluster_id):
+            yield "recipe.desired", payload
         for payload in await _deployments(db, cluster_uid, cluster_id):
             yield "deployment.desired", payload
         cache = await _cache(db, cluster_uid, cluster_id)
@@ -180,6 +185,58 @@ async def _artifacts(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> li
         )
         for artifact in artifacts
     ]
+
+
+async def _recipes(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> list[RecipeDesired]:
+    """Every recipe named by a deployment on this cluster.
+
+    Recipes are global and deployments are per-cluster, so what a cluster is told
+    about is the reachable set rather than the table: a cluster has no business
+    knowing how to serve a model it was never asked to run.
+    """
+    query = (
+        select(Recipe, Artifact.uid)
+        .join(Deployment, Deployment.recipe_id == Recipe.id)
+        .join(Artifact, Recipe.artifact_id == Artifact.id)
+        .where(Deployment.cluster_id == cluster_id, Deployment.enabled == True)
+        .distinct()
+        .order_by(Recipe.seq)
+    )
+    return [_recipe(recipe, cluster_uid, artifact_uid) for recipe, artifact_uid in (await db.execute(query)).all()]
+
+
+def _recipe(recipe: Recipe, cluster_uid: str, artifact_uid: str) -> RecipeDesired:
+    return RecipeDesired(
+        recipe_id=recipe.uid,
+        cluster_id=cluster_uid,
+        artifact_id=artifact_uid,
+        name=recipe.name,
+        version=recipe.version,
+        engine=recipe.engine,
+        engine_version=recipe.engine_version,
+        engine_image=recipe.engine_image,
+        engine_args={key: str(value) for key, value in (recipe.engine_args or {}).items()},
+        quantization=recipe.quantization,
+        dtype=recipe.dtype,
+        parallelism=RecipeParallelism(
+            tensor=recipe.tensor_parallel,
+            pipeline=recipe.pipeline_parallel,
+            expert=recipe.expert_parallel,
+        ),
+        context_length=recipe.context_length,
+        max_batch_tokens=recipe.max_batch_tokens,
+        kv_cache_dtype=recipe.kv_cache_dtype,
+        kv_cache_fraction=float(recipe.kv_cache_fraction) if recipe.kv_cache_fraction is not None else None,
+        prefix_cache_enabled=recipe.prefix_cache_enabled,
+        prefix_cache_config={key: str(value) for key, value in (recipe.prefix_cache_config or {}).items()},
+        resources=RecipeResources(
+            cpu_cores=recipe.cpu_cores,
+            memory_mib=recipe.memory_mib,
+            disk_gib=recipe.disk_gib,
+        ),
+        labels={key: str(value) for key, value in (recipe.labels or {}).items()},
+        updated_at=format_ts(recipe.updated_at or recipe.created_at),
+    )
 
 
 def _placement(recipe: Recipe, pools: list[str]) -> PlacementConstraints:
