@@ -182,6 +182,21 @@ type CapacityObserved struct {
 
 // ---------------------------------------------------------------------------- demand, hub -> op
 
+// RecipeOverlay is the escape hatch for what this plane does not model.
+//
+// Engines and their operators carry far more configuration than a control plane wants to mirror
+// field by field, and mirroring it is a losing race. The recipe models what the plane reasons
+// about and passes the rest through.
+type RecipeOverlay struct {
+	// PodSpec is merged over the rendered pod with strategic-merge semantics, so containers,
+	// env, volumes and volume mounts merge by name.
+	PodSpec map[string]any `json:"pod_spec"`
+
+	// Dynamo is merged over the rendered graph deployment. No schema is available to read merge
+	// keys from, so maps merge and lists replace.
+	Dynamo map[string]any `json:"dynamo"`
+}
+
 // RecipeParallelism is how one replica is split across its devices.
 type RecipeParallelism struct {
 	Tensor   int `json:"tensor"`
@@ -227,6 +242,7 @@ type RecipeDesired struct {
 	Resources          RecipeResources   `json:"resources"`
 	Labels             map[string]string `json:"labels"`
 	UpdatedAt          string            `json:"updated_at"`
+	Overlay            RecipeOverlay     `json:"overlay"`
 }
 
 // PlacementConstraints is the device shape and placement rules a deployment binds against.

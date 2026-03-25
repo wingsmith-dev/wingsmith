@@ -14,6 +14,7 @@ from app.modules.recipes.schemas import RecipeSchema
 from app.modules.recipes.schemas import RecipeCacheSchema
 from app.modules.recipes.schemas import RecipeShapeSchema
 from app.modules.recipes.schemas import RecipeCreateRequest
+from app.modules.recipes.schemas import RecipeOverlaySchema
 from app.modules.recipes.schemas import RecipeUpdateRequest
 from app.modules.recipes.services import _revision
 from app.modules.recipes.services import check_shape
@@ -120,6 +121,27 @@ def test_kv_cache_is_recipe_configuration_and_not_the_weight_cache():
 def test_the_shape_is_returned_as_one_thing_class_included():
     assert "device_class" in RecipeShapeSchema.__struct_fields__
     assert "device_class" not in RecipeSchema.__struct_fields__
+
+
+def test_the_overlay_is_a_passthrough_on_every_edge_of_the_surface():
+    """What the plane does not model still has to be sayable, readable, patchable."""
+    assert set(RecipeOverlaySchema.__struct_fields__) == {"pod_spec", "dynamo"}
+    assert "overlay" in RecipeSchema.__struct_fields__
+    assert RecipeCreateRequest.__struct_fields__.index("overlay") >= 0
+    assert "overlay" in RecipeUpdateRequest.__struct_fields__
+
+
+def test_an_absent_overlay_defaults_to_an_empty_one():
+    data = RecipeCreateRequest(
+        artifact="art_1",
+        name="llama-vllm",
+        engine="vllm",
+        engine_version="0.6.0",
+        device_class="h100",
+        context_length=8192,
+    )
+    assert data.overlay == {}
+    assert RecipeUpdateRequest().to_dict(exclude_unset=True) == {}
 
 
 def test_the_weights_a_recipe_serves_cannot_be_repointed_by_a_patch():

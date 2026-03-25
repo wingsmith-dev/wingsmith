@@ -39,6 +39,24 @@
     "labels": {
       "family": "qwen3"
     },
-    "updated_at": "2026-08-19T11:22:40.000Z"
+    "updated_at": "2026-08-19T11:22:40.000Z",
+    "overlay": {
+      "pod_spec": {
+        "containers": [
+          {
+            "name": "main",
+            "env": [
+              {
+                "name": "VLLM_SSM_CONV_STATE_LAYOUT",
+                "value": "DS"
+              }
+            ]
+          }
+        ]
+      },
+      "dynamo": {
+        "backendFramework": "vllm"
+      }
+    }
   }
 }

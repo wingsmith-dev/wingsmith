@@ -15,6 +15,7 @@ import re
 from typing import Literal
 
 from msgspec import Raw
+from msgspec import field
 from msgspec import Struct
 from msgspec import json as msgjson
 
@@ -292,6 +293,27 @@ class CapacityObserved(Struct):
 # --------------------------------------------------------------------------- demand, hub -> op
 
 
+class RecipeOverlay(Struct):
+    """Escape hatches for what this plane does not model.
+
+    Engines and their operators carry far more configuration than any control
+    plane wants to mirror field by field, and mirroring it is a losing race —
+    every vLLM release adds flags. So the recipe models what the plane reasons
+    about (shape, parallelism, context, cache) and passes the rest through.
+
+    `pod_spec` is merged over the rendered pod with Kubernetes strategic-merge
+    semantics, so containers, env, volumes and volume mounts merge by name and
+    adding one environment variable does not mean restating the others.
+
+    `dynamo` is merged over the rendered graph deployment. There is no schema to
+    read merge keys from there, so maps merge and lists replace — which is the
+    intended way to hand-write a topology the renderer cannot derive.
+    """
+
+    pod_spec: dict = {}
+    dynamo: dict = {}
+
+
 class RecipeParallelism(Struct):
     tensor: int
     pipeline: int
@@ -339,6 +361,7 @@ class RecipeDesired(Struct):
     resources: RecipeResources
     labels: dict[str, str]
     updated_at: str
+    overlay: RecipeOverlay = field(default_factory=RecipeOverlay)
 
 
 class PlacementConstraints(Struct):

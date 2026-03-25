@@ -17,6 +17,7 @@ from .schemas import RecipeSchema
 from .schemas import RecipeCacheSchema
 from .schemas import RecipeShapeSchema
 from .schemas import RecipeCreateRequest
+from .schemas import RecipeOverlaySchema
 from .schemas import RecipeUpdateRequest
 from .schemas import RecipeResourcesSchema
 from .schemas import RecipeParallelismSchema
@@ -126,6 +127,10 @@ class RecipeService:
                 memory_mib=recipe.memory_mib,
                 disk_gib=recipe.disk_gib,
             ),
+            overlay=RecipeOverlaySchema(
+                pod_spec=(recipe.overlay or {}).get("pod_spec", {}) or {},
+                dynamo=(recipe.overlay or {}).get("dynamo", {}) or {},
+            ),
             labels=recipe.labels,
             created_at=recipe.created_at,
             updated_at=recipe.updated_at,
@@ -217,6 +222,7 @@ class RecipeService:
             memory_mib=data.memory_mib,
             disk_gib=data.disk_gib,
             labels=data.labels,
+            overlay=data.overlay,
         )
         try:
             await self.repo.add(recipe)

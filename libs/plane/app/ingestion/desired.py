@@ -34,14 +34,15 @@ from app.db.models import ArtifactLocation
 from app.db.models import DiscoveredWorkload
 from app.hub.messages import Adopt
 from app.hub.messages import CacheDesired
+from app.hub.messages import RecipeDesired
+from app.hub.messages import RecipeOverlay
 from app.hub.messages import ArtifactSource
 from app.hub.messages import CacheWarmEntry
-from app.hub.messages import RecipeDesired
 from app.hub.messages import ArtifactDesired
+from app.hub.messages import RecipeResources
 from app.hub.messages import ComponentDesired
 from app.hub.messages import DeploymentDeleted
 from app.hub.messages import DeploymentDesired
-from app.hub.messages import RecipeResources
 from app.hub.messages import RecipeParallelism
 from app.hub.messages import PlacementConstraints
 from app.ingestion.time import now
@@ -235,6 +236,10 @@ def _recipe(recipe: Recipe, cluster_uid: str, artifact_uid: str) -> RecipeDesire
             disk_gib=recipe.disk_gib,
         ),
         labels={key: str(value) for key, value in (recipe.labels or {}).items()},
+        overlay=RecipeOverlay(
+            pod_spec=(recipe.overlay or {}).get("pod_spec", {}) or {},
+            dynamo=(recipe.overlay or {}).get("dynamo", {}) or {},
+        ),
         updated_at=format_ts(recipe.updated_at or recipe.created_at),
     )
 

@@ -46,6 +46,18 @@ class RecipeResourcesSchema(Struct):
     disk_gib: int | None
 
 
+class RecipeOverlaySchema(Struct):
+    """Passthrough for what the plane deliberately does not model.
+
+    `pod_spec` merges over the rendered pod with strategic-merge semantics;
+    `dynamo` merges over the rendered graph deployment, where maps merge and
+    lists replace.
+    """
+
+    pod_spec: dict
+    dynamo: dict
+
+
 class RecipeSchema(Struct):
     id: str
     artifact_id: str
@@ -63,6 +75,7 @@ class RecipeSchema(Struct):
     cache: RecipeCacheSchema
     shape: RecipeShapeSchema
     resources: RecipeResourcesSchema
+    overlay: RecipeOverlaySchema
     labels: dict
     created_at: dt.datetime
     updated_at: dt.datetime | None
@@ -97,6 +110,7 @@ class RecipeCreateRequest(Struct):
     memory_mib: int | None = None
     disk_gib: int | None = None
     labels: dict = {}
+    overlay: dict = {}
 
 
 class RecipeUpdateRequest(Struct):
@@ -133,3 +147,4 @@ class RecipeUpdateRequest(Struct):
     memory_mib: int | None | UnsetType = UNSET
     disk_gib: int | None | UnsetType = UNSET
     labels: dict | UnsetType = UNSET
+    overlay: dict | UnsetType = UNSET

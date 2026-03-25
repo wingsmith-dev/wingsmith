@@ -316,6 +316,44 @@ async def test_recipes_lifecycle(db: AsyncSession) -> None:
     assert (await service.list()).count == 0
 
 
+async def test_a_recipe_carries_an_overlay_the_plane_never_reads_inside(db: AsyncSession) -> None:
+    """Opaque both ways: what goes in comes back out, and a patch replaces it whole."""
+    artifact = await an_artifact(db)
+    service = RecipeService(db)
+    overlay = {"pod_spec": {"containers": [{"name": "engine", "env": [{"name": "NCCL_DEBUG", "value": "INFO"}]}]}}
+    created = await service.create(
+        RecipeCreateRequest(
+            artifact=artifact.id,
+            name="llama-overlaid",
+            engine="vllm",
+            engine_version="0.6.0",
+            device_class="h100",
+            context_length=8192,
+            overlay=overlay,
+        )
+    )
+    assert created.overlay.pod_spec == overlay["pod_spec"]
+    assert created.overlay.dynamo == {}
+
+    patched = await service.update(created.id, RecipeUpdateRequest(overlay={"dynamo": {"replicas": 2}}))
+    assert patched.overlay.dynamo == {"replicas": 2}
+    assert patched.overlay.pod_spec == {}
+
+    plain = await a_recipe(db, artifact.id, name="llama-plain")
+    assert (plain.overlay.pod_spec, plain.overlay.dynamo) == ({}, {})
+
+
+async def test_the_overlay_reaches_the_cluster_on_the_desired_stream(db: AsyncSession) -> None:
+    cluster, _, recipe, _ = await a_deployment(db)
+    await RecipeService(db).update(recipe.id, RecipeUpdateRequest(overlay={"dynamo": {"router": {"mode": "kv"}}}))
+
+    frames = [item async for item in stream_desired(db, cluster.id, "demand")]
+    payloads = [payload for kind, payload in frames if kind == "recipe.desired"]
+
+    assert [p.overlay.dynamo for p in payloads] == [{"router": {"mode": "kv"}}]
+    assert payloads[0].overlay.pod_spec == {}
+
+
 async def test_pools_lifecycle(db: AsyncSession) -> None:
     cluster = await a_cluster(db)
     service = PoolService(db)

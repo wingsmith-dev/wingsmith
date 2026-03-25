@@ -331,6 +331,12 @@ class Recipe(BaseMixin):
     across an A100 and an H100, so a shape without a class is not a shape.
     Context length lives here rather than on any catalog entry because it
     determines the footprint.
+
+    `overlay` is the one opaque field on an otherwise fully-modelled object.
+    Engines and the Kubernetes operators that run them carry far more
+    configuration than a control plane wants to mirror field by field, and
+    mirroring it is a losing race against every engine release — so the recipe
+    models what the plane reasons about and passes the rest through untouched.
     """
 
     __tablename__ = "demand_recipe"
@@ -367,6 +373,7 @@ class Recipe(BaseMixin):
     memory_mib: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     disk_gib: Mapped[int | None] = mapped_column(Integer, nullable=True)
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    overlay: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     artifact: Mapped[Artifact] = relationship("Artifact", lazy="noload")
 
