@@ -67,6 +67,27 @@ type Config struct {
 
 	// Namespace is where the operator stores CRDs and its leader-election lease.
 	Namespace string
+
+	// WorkloadNamespace is where rendered inference workloads go. It is separate from Namespace
+	// so that a cluster admin can keep the operator's own state away from what it renders.
+	WorkloadNamespace string
+
+	// PoolLabelKey and GPUPoolValue name the node label that selects accelerator nodes. This is
+	// a per-cluster convention rather than anything the plane declares: the plane chooses the
+	// cluster and the device class, and how this cluster happens to label its GPU nodes is a
+	// local fact the operator is configured with.
+	PoolLabelKey string
+	GPUPoolValue string
+
+	// CachePoolValue and CacheTaintKey name the pool the weight prefetch job runs on and the
+	// taint that keeps everything else off it. Downloading weights is network and disk work, so
+	// it is deliberately not scheduled onto the accelerator pool where it would hold a GPU idle.
+	CachePoolValue string
+	CacheTaintKey  string
+
+	// ModelCachePVC is the shared volume holding downloaded weights, mounted at /models so that
+	// replicas of one model pull it once between them rather than once each.
+	ModelCachePVC string
 }
 
 // Load reads configuration from the environment, applying defaults and validating the result.
@@ -88,6 +109,12 @@ func Load() (*Config, error) {
 		BackoffMax:            envDuration("HANGAR_BACKOFF_MAX", 30*time.Second),
 		LeaderElection:        envBool("HANGAR_LEADER_ELECTION", true),
 		Namespace:             env("HANGAR_NAMESPACE", "hangar-system"),
+		WorkloadNamespace:     env("HANGAR_WORKLOAD_NAMESPACE", "dynamo"),
+		PoolLabelKey:          env("HANGAR_POOL_LABEL_KEY", "hangar.io/pool"),
+		GPUPoolValue:          env("HANGAR_GPU_POOL_VALUE", "gpu"),
+		CachePoolValue:        env("HANGAR_CACHE_POOL_VALUE", "cache"),
+		CacheTaintKey:         env("HANGAR_CACHE_TAINT_KEY", "hangar.io/cache"),
+		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
 	}
 
 	lvl, err := parseLevel(env("HANGAR_LOG_LEVEL", "info"))
@@ -127,6 +154,12 @@ func (c *Config) validate() error {
 	}
 	if c.BackoffMax < c.BackoffMin {
 		return fmt.Errorf("HANGAR_BACKOFF_MAX must be >= HANGAR_BACKOFF_MIN")
+	}
+	if c.WorkloadNamespace == "" {
+		return fmt.Errorf("HANGAR_WORKLOAD_NAMESPACE must not be empty")
+	}
+	if c.PoolLabelKey == "" {
+		return fmt.Errorf("HANGAR_POOL_LABEL_KEY must not be empty")
 	}
 	if c.LogFormat != "json" && c.LogFormat != "text" {
 		return fmt.Errorf("HANGAR_LOG_FORMAT must be json or text")
