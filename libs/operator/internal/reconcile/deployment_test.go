@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"testing"
 
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -86,6 +89,20 @@ func testArtifactDesired() wire.ArtifactDesired {
 		Kind:       "weights",
 		Digest:     "sha256:9f2c1b7a",
 		Sources:    []wire.ArtifactSource{{Kind: "hf", URI: "hf://Qwen/Qwen3.8-27B", Priority: 0}},
+	}
+}
+
+func gpuNode(name string, devices int64, ready bool) *corev1.Node {
+	condition := corev1.ConditionFalse
+	if ready {
+		condition = corev1.ConditionTrue
+	}
+	return &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Labels: map[string]string{"hangar.io/pool": "gpu"}},
+		Status: corev1.NodeStatus{
+			Allocatable: corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(devices, resource.DecimalSI)},
+			Conditions:  []corev1.NodeCondition{{Type: corev1.NodeReady, Status: condition}},
+		},
 	}
 }
 
@@ -182,7 +199,7 @@ func TestDeploymentRendersOnceWeightsAreResident(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch())
+	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
 	condition := readyCondition(t, out)
 	if condition.Status != metav1.ConditionTrue {
@@ -236,5 +253,65 @@ func TestRecipeIsHeldWithoutClusterWork(t *testing.T) {
 	}
 	if out.Status.ObservedRevision != out.Spec.Revision {
 		t.Error("a declared object with nothing to apply is still observed at its revision")
+	}
+}
+
+// A cluster whose nodes advertise no accelerators is indistinguishable, from the scheduler's side,
+// from a cluster where the device plugin was never installed. Both must be said out loud rather
+// than left as pods pending forever.
+func TestDeploymentWaitsWhenNoNodeCanHoldAReplica(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 0, true))
+
+	condition := readyCondition(t, out)
+	if condition.Reason != "NoSchedulableCapacity" {
+		t.Errorf("reason = %q, want NoSchedulableCapacity", condition.Reason)
+	}
+	if !strings.Contains(condition.Message, "device plugin") {
+		t.Errorf("message should name the likeliest cause, got %q", condition.Message)
+	}
+}
+
+// Capacity spread thinly over several nodes does not satisfy one replica: a tensor-parallel
+// replica cannot be split across machines at all.
+func TestCapacityIsCountedPerNodeNotClusterWide(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(),
+		gpuNode("gpu-0", 1, true), gpuNode("gpu-1", 1, true))
+
+	if got := readyCondition(t, out).Reason; got != "NoSchedulableCapacity" {
+		t.Errorf("reason = %q, want NoSchedulableCapacity: two devices on two nodes cannot run a two-device replica", got)
+	}
+}
+
+// A drain in progress is when this matters most: the accelerators are still allocatable and still
+// reported, and counting them would promise capacity that is deliberately being removed.
+func TestCordonedNodesDoNotCountAsCapacity(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	draining := gpuNode("gpu-0", 8, true)
+	draining.Spec.Unschedulable = true
+	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), draining)
+
+	if got := readyCondition(t, out).Reason; got != "NoSchedulableCapacity" {
+		t.Errorf("reason = %q, want NoSchedulableCapacity", got)
+	}
+}
+
+func TestNodesOutsideThePlacementSelectorAreNotCounted(t *testing.T) {
+	desired := testDeploymentDesired()
+	desired.Placement.NodeSelector = map[string]string{"region": "eu-west-1"}
+	dep := declared(t, "deployment", testDeploymentID, desired)
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+
+	if got := readyCondition(t, out).Reason; got != "NoSchedulableCapacity" {
+		t.Errorf("reason = %q, want NoSchedulableCapacity: the only usable node is in another region", got)
 	}
 }

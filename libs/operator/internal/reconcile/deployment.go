@@ -74,6 +74,19 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 			fmt.Sprintf("waiting for %s to finish downloading", recipe.ArtifactID))
 	}
 
+	// Capacity is checked before rendering rather than left to the scheduler, because the
+	// scheduler's answer to an impossible request is silence.
+	fits, most, err := schedulable(ctx, r.Client, dep, render.NodeSelector(dep, r.Render))
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if !fits {
+		return r.wait(ctx, res, "NoSchedulableCapacity", fmt.Sprintf(
+			"one replica needs %d accelerators of class %s and the largest usable node advertises %d; "+
+				"if the nodes are present, the device plugin may not be installed",
+			dep.Placement.DevicesPerReplica, dep.Placement.DeviceClass, most))
+	}
+
 	obj, err := render.DynamoGraphDeployment(render.Inputs{
 		Deployment: dep,
 		Recipe:     *recipe,

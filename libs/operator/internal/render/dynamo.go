@@ -166,7 +166,7 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	shm := resource.MustParse("16Gi")
 
 	spec := &corev1.PodSpec{
-		NodeSelector: nodeSelector(in.Deployment, opts),
+		NodeSelector: NodeSelector(in.Deployment, opts),
 		Tolerations: []corev1.Toleration{{
 			Key:      "nvidia.com/gpu",
 			Operator: corev1.TolerationOpEqual,
@@ -218,8 +218,11 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	return applyPodOverlay(spec, in.Recipe.Overlay.PodSpec)
 }
 
-// nodeSelector puts the replica on accelerator nodes, plus whatever the plane constrained.
-func nodeSelector(dep wire.DeploymentDesired, opts Options) map[string]string {
+// NodeSelector puts the replica on accelerator nodes, plus whatever the plane constrained.
+//
+// Exported because the capacity precondition has to ask about the same nodes this render will
+// land on. A check run against a wider set than the render targets is not a check.
+func NodeSelector(dep wire.DeploymentDesired, opts Options) map[string]string {
 	out := map[string]string{opts.PoolLabelKey: opts.GPUPoolValue}
 	for key, value := range dep.Placement.NodeSelector {
 		out[key] = value
