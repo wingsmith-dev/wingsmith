@@ -30,6 +30,22 @@ rules:
   - list
   - watch
 - apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs/status
+  verbs:
+  - get
+- apiGroups:
   - coordination.k8s.io
   resources:
   - leases
@@ -40,6 +56,24 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - nvidia.com
+  resources:
+  - dynamographdeployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - nvidia.com
+  resources:
+  - dynamographdeployments/status
+  verbs:
+  - get
 - apiGroups:
   - placeholder.hangar.dev
   resources:
