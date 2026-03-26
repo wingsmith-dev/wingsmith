@@ -26,6 +26,8 @@ from app.hub.ownership import ClaimStore
 from app.hub.ownership import MemoryClaimStore
 from app.hub.messages import DeviceObserved
 from app.hub.messages import DeploymentDesired
+from app.hub.messages import OperationDesired
+from app.hub.messages import OperationTarget
 
 
 FIXTURES = Path(__file__).resolve().parents[3] / "contract" / "fixtures"
@@ -123,6 +125,7 @@ class Harness:
         send_gate: asyncio.Event | None = None,
         claims: ClaimStore | None = None,
         instance: str | None = None,
+        desired: Any | None = None,
     ) -> None:
         self.connection = FakeConnection(send_gate=send_gate)
         self.sink = sink or MemorySink()
@@ -136,6 +139,7 @@ class Harness:
             config=config or SessionConfig(ping_interval=60, liveness_timeout=120, send_queue_size=64),
             claims=self.claims,
             instance=instance or "hub-test",
+            desired=desired,
         )
         self.task: asyncio.Task[None] | None = None
 
@@ -618,3 +622,106 @@ async def test_resume_still_works_within_one_hub_instance() -> None:
     await second.stop()
 
 
+# --------------------------------------------------------------------------- open operations on connect
+
+
+def an_operation(uid: str, kind: str = "drain") -> OperationDesired:
+    return OperationDesired(
+        operation_id=uid,
+        cluster_id=CLUSTER,
+        kind=kind,
+        target=OperationTarget(kind="node", id="nod_01J9X2EEEEEEEEEEEEEEEEEEEE"),
+        reason="driver upgrade",
+        requested_by="operator@example.com",
+        deadline="",
+        parameters={},
+        created_at="2026-08-19T14:02:11.482Z",
+    )
+
+
+class FakeOperationSource:
+    """A `DesiredSource` that declares nothing and owes two operations."""
+
+    def __init__(self, operations: list[OperationDesired] | None = None, fail: bool = False) -> None:
+        self.operations = [] if operations is None else operations
+        self.fail = fail
+        self.calls: list[str] = []
+
+    async def iter_desired(self, cluster_id: str, scope: str):
+        return
+        yield  # pragma: no cover
+
+    async def iter_open_operations(self, cluster_id: str):
+        self.calls.append(cluster_id)
+        if self.fail:
+            raise RuntimeError("no database")
+        for payload in self.operations:
+            yield "operation.desired", payload
+
+
+async def test_open_operations_are_sent_on_connect_outside_the_resync_stream() -> None:
+    """The only path an operation created while the cluster was offline has left.
+
+    They must not be inside the snapshot: a resync is authoritative over what it
+    omits, so an operation carried in one would become prunable, and pruning a
+    drain already under way would cancel it.
+    """
+    source = FakeOperationSource(
+        [an_operation("opr_01J9X2DDDDDDDDDDDDDDDDDDDD"), an_operation("opr_01J9X2FFFFFFFFFFFFFFFFFFFF", "cordon")]
+    )
+    harness = Harness(desired=source)
+    await harness.start()
+    await harness.hello()
+
+    end = await harness.connection.next_of_type("stream.end")
+    first = await harness.connection.next_of_type("operation.desired")
+    second = await harness.connection.next_of_type("operation.desired")
+
+    assert source.calls == [CLUSTER]
+    assert end["payload"]["count"] == 0, "operations are not counted in the snapshot they are not part of"
+    assert first["payload"]["operation_id"] == "opr_01J9X2DDDDDDDDDDDDDDDDDDDD"
+    assert second["payload"]["kind"] == "cordon"
+    assert first["reply_to"] is None, "an operation answers no resync request"
+    await harness.stop()
+
+
+async def test_open_operations_are_sent_on_a_resume_too() -> None:
+    """A resume replays what went unacknowledged, which says nothing about an offline gap."""
+    registry = SessionRegistry(replay_capacity=16)
+    source = FakeOperationSource([an_operation("opr_01J9X2DDDDDDDDDDDDDDDDDDDD")])
+    first = Harness(registry=registry, desired=source)
+    await first.start()
+    welcome = await first.hello()
+    await first.connection.next_of_type("operation.desired")
+    await first.stop()
+
+    second = Harness(registry=registry, desired=source)
+    await second.start()
+    resumed = await second.hello(session_id=welcome["payload"]["session_id"], resume_from=2)
+
+    assert resumed["payload"]["full_resync"] is False
+    replayed = await second.connection.next_of_type("operation.desired")
+    assert replayed["payload"]["operation_id"] == "opr_01J9X2DDDDDDDDDDDDDDDDDDDD"
+    await second.stop()
+
+
+async def test_a_source_with_no_operations_to_offer_is_a_complete_source() -> None:
+    """`EmptyDesiredSource` implements no operations half, and the handshake must not care."""
+    harness = Harness()
+    await harness.start()
+    welcome = await harness.hello()
+
+    assert welcome["payload"]["full_resync"] is True
+    await harness.stop()
+
+
+async def test_operations_that_cannot_be_read_do_not_cost_the_connection() -> None:
+    """The operator is connected and correct without them; the next connect tries again."""
+    harness = Harness(desired=FakeOperationSource(fail=True))
+    await harness.start()
+    await harness.hello()
+    await harness.connection.next_of_type("stream.end")
+
+    harness.connection.push(frame("ping", {}))
+    await harness.connection.next_of_type("pong")
+    await harness.stop()

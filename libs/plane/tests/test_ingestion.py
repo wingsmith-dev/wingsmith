@@ -23,6 +23,7 @@ from sqlalchemy.dialects import postgresql
 from app.hub.sink import Sink
 from app.hub.sink import SinkFrame
 from app.hub.sink import DesiredSource
+from app.hub.sink import OperationSource
 from app.ingestion import statements
 from app.hub.messages import MESSAGE_TYPES
 from app.ingestion.sink import DatabaseSink
@@ -464,6 +465,7 @@ def malformed_frame(reply_to: str | None = None) -> SinkFrame:
 def test_the_database_sink_satisfies_the_protocols() -> None:
     assert isinstance(DatabaseSink(), Sink)
     assert isinstance(DatabaseDesiredSource(), DesiredSource)
+    assert isinstance(DatabaseDesiredSource(), OperationSource)
 
 
 async def test_applying_one_frame_commits_once() -> None:

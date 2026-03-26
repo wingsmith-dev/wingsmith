@@ -12,6 +12,10 @@ from app.core.ids import OPERATION
 from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
 from app.db.models import Operation
+from app.db.notify import OPERATION as OPERATION_KIND
+from app.db.notify import Notifier
+from app.db.notify import DeclaredChange
+from app.db.notify import DatabaseNotifier
 from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
@@ -66,10 +70,30 @@ class OperationService:
     each other's fields.
     """
 
-    def __init__(self, db: AsyncSession, actor: str = "unknown") -> None:
+    def __init__(self, db: AsyncSession, actor: str = "unknown", notifier: Notifier | None = None) -> None:
         self.db = db
         self.actor = actor
         self.repo = OperationRepository(db)
+        self.notifier: Notifier = DatabaseNotifier() if notifier is None else notifier
+
+    async def _announce(self, cluster_uid: str, uid: str) -> None:
+        """Wakes whichever hub holds this cluster's session, after the row is committed.
+
+        An operation is not declared state, but it reaches a cluster the same way
+        one does, because there is no second channel between the two processes.
+        The ordering is the same contract as elsewhere: the hub answers a hint by
+        re-reading the row, so announcing inside the transaction would race the
+        reader against a write that has not landed.
+
+        Missing the wakeup costs latency and nothing else. Unlike declared state,
+        what repairs it is not a resync — an operation is deliberately outside
+        that snapshot — but the replay of open operations the session performs
+        when the cluster next connects.
+        """
+        await self.notifier.changed(
+            self.db,
+            DeclaredChange(cluster_id=cluster_uid, kind=OPERATION_KIND, uid=uid),
+        )
 
     def schema(self, operation: Operation, cluster_uid: str | None, target_uid: str) -> OperationSchema:
         payload = operation.payload or {}
@@ -214,6 +238,9 @@ class OperationService:
                 if replayed is not None:
                     return self._row_schema(replayed, await self._target_uid(replayed[0]))
             raise Conflict("operation could not be recorded") from exc
+        cluster_uid = await self.repo.cluster_uid(cluster_id)
+        if cluster_uid is not None:
+            await self._announce(cluster_uid, operation.uid)
         return await self.get(operation.uid)
 
     async def cancel(self, ref: str) -> OperationSchema:

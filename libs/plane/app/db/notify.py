@@ -47,6 +47,15 @@ nothing either way.
 
 DEPLOYMENT = "deployment"
 RECIPE = "recipe"
+OPERATION = "operation"
+"""An operation is not declared state, and it still travels on this channel.
+
+The channel is the only path from the API process to the hub holding a cluster's
+session, and a hint is a wakeup rather than a message — nothing in it asserts
+that what changed is intent. What the kind buys the listener is which renderer to
+answer with, and an operation's renderer is deliberately not the snapshot's
+(`app.ingestion.operations`).
+"""
 
 
 class DeclaredChange(Struct):

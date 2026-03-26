@@ -28,6 +28,7 @@ from app.hub.sink import Liveness
 from app.hub.sink import SinkFrame
 from app.hub.sink import MemorySink
 from app.hub.sink import DesiredSource
+from app.hub.sink import OperationSource
 from app.hub.sink import EmptyDesiredSource
 from app.core.auth import Principal
 from app.hub.state import SessionState
@@ -304,10 +305,11 @@ class OperatorSession:
 
         if full_resync:
             await self._stream_full_resync()
-            return
+        else:
+            for frame in state.replay.pending():
+                await self._send_now(frame)
 
-        for frame in state.replay.pending():
-            await self._send_now(frame)
+        await self._replay_open_operations()
 
     async def _mark_connected(self, hello: Hello) -> None:
         """Reports the peer as reachable. A sink that cannot record it must not fail the session."""
@@ -370,6 +372,35 @@ class OperatorSession:
             logger.warning("hub.resync.truncated error=%s", exc)
 
         await self._send("stream.end", StreamEnd(count=count, complete=complete), reply_to=request_id)
+
+    async def _replay_open_operations(self) -> None:
+        """Re-sends every operation this cluster has not finished, on any session start.
+
+        Outside the resync stream on purpose, and not counted in its `stream.end`:
+        a snapshot is authoritative over what it omits, so an operation inside one
+        would become prunable, and pruning a drain that is already evicting pods
+        would cancel work half done. The frames go down as ordinary
+        `operation.desired`, which is the same thing live dispatch sends.
+
+        Every session start, not only a full resync. A resume replays what this
+        hub sent and never had acknowledged; it says nothing about an operation
+        created while nothing was connected, whose notification found no session
+        to push to and was dropped. This is the only thing that closes that gap.
+        Re-sending one the operator is already running is safe — it drops a
+        redelivery of an operation in flight — and is the intended recovery path.
+
+        A source that cannot answer must not cost the connection: the operator is
+        connected and correct without these, and the next reconnect tries again.
+        """
+        if not isinstance(self.desired, OperationSource):
+            return
+        try:
+            async for type_name, payload in self.desired.iter_open_operations(self._state.cluster_id):
+                await self._send(type_name, payload)
+        except Backpressure:
+            raise
+        except Exception as exc:  # noqa: BLE001 - unsent operations are retried on the next connect
+            logger.warning("hub.operations.replay_failed cluster=%s error=%s", self._state.cluster_id, exc)
 
     # ----------------------------------------------------------------- inbound
 

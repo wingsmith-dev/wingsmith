@@ -17,14 +17,20 @@ from app.db.notify import DeclaredChange
 from app.db.notify import decode
 from app.db.notify import encode
 from app.hub.dispatch import LiveSessions
+from app.hub.dispatch import DatabaseRenderer
 from app.hub.dispatch import dispatch
 from app.hub.dispatch import listen_loop
+from app.hub.messages import OperationTarget
+from app.hub.messages import OperationDesired
 from app.hub.messages import DeploymentDeleted
 from app.hub.messages import DeploymentDesired
 
 
 CLUSTER = "clu_01J9X2AAAAAAAAAAAAAAAAAAAA"
+OTHER_CLUSTER = "clu_01J9X2CCCCCCCCCCCCCCCCCCCC"
 DEPLOYMENT = "dep_01J9X2BBBBBBBBBBBBBBBBBBBB"
+OPERATION = "opr_01J9X2DDDDDDDDDDDDDDDDDDDD"
+NODE = "nod_01J9X2EEEEEEEEEEEEEEEEEEEE"
 
 
 def change(**overrides) -> DeclaredChange:
@@ -196,3 +202,62 @@ async def test_a_lost_connection_is_retried() -> None:
     await asyncio.gather(task, return_exceptions=True)
 
     assert len(attempts) == 2
+
+
+# --------------------------------------------------------------------------- operations
+
+
+def operation(**overrides) -> OperationDesired:
+    fields = {
+        "operation_id": OPERATION,
+        "cluster_id": CLUSTER,
+        "kind": "drain",
+        "target": OperationTarget(kind="node", id=NODE),
+        "reason": "driver upgrade",
+        "requested_by": "operator@example.com",
+        "deadline": "",
+        "parameters": {},
+        "created_at": "2026-08-19T14:02:11.482Z",
+    }
+    fields.update(overrides)
+    return OperationDesired(**fields)
+
+
+async def test_a_new_operation_reaches_the_session_for_its_cluster_and_no_other() -> None:
+    """An operation is not declared state and still travels the declared-state channel."""
+    live = LiveSessions()
+    target, bystander = FakeSession(), FakeSession()
+    live.register(CLUSTER, target)
+    live.register(OTHER_CLUSTER, bystander)
+    hint = change(kind="operation", uid=OPERATION, generation=0)
+
+    assert await dispatch(hint, live, FakeRenderer(("operation.desired", operation()))) is True
+    assert [type_name for type_name, _ in target.sent] == ["operation.desired"]
+    assert bystander.sent == []
+
+
+async def test_an_operation_hint_is_rendered_by_the_operations_renderer(monkeypatch) -> None:
+    """The kind is what picks a renderer: the snapshot's cannot answer for an operation."""
+    seen: list[str] = []
+
+    class FakeFactory:
+        """A session factory whose session is never used, because the renderer is stubbed."""
+
+        def __call__(self):
+            return self
+
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *exc) -> bool:
+            return False
+
+    async def fake_operation_desired(db, uid):
+        seen.append(uid)
+        return "operation.desired", operation()
+
+    monkeypatch.setattr("app.hub.dispatch.operation_desired", fake_operation_desired)
+    rendered = await DatabaseRenderer(FakeFactory()).render(change(kind="operation", uid=OPERATION))
+
+    assert seen == [OPERATION]
+    assert rendered is not None and rendered[0] == "operation.desired"

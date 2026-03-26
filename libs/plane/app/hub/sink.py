@@ -91,6 +91,23 @@ class DesiredSource(Protocol):
         ...
 
 
+@runtime_checkable
+class OperationSource(Protocol):
+    """The optional half of a `DesiredSource`: the operations a cluster still owes work on.
+
+    Separate from `iter_desired` because what it yields must never join the
+    resync snapshot. A snapshot is authoritative over what is absent from it, and
+    an operation that vanished from one would be a drain cancelled by a
+    reconnect; these frames therefore go down beside the stream rather than
+    inside it. Optional for the same reason `Liveness` is: a source with no
+    operations table is still a complete source.
+    """
+
+    def iter_open_operations(self, cluster_id: str) -> AsyncIterator[tuple[str, Struct]]:
+        """Yields `(type, payload)` for every operation of this cluster still in an open phase."""
+        ...
+
+
 class MemorySink:
     """An in-memory `Sink`, for tests and for running the hub with no database.
 

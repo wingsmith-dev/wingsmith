@@ -34,6 +34,8 @@ from app.db.notify import MemoryNotifier
 from app.core.exceptions import Conflict
 from app.ingestion.desired import desired_object
 from app.ingestion.desired import stream_desired
+from app.ingestion.operations import open_operations
+from app.ingestion.operations import operation_desired
 from app.modules.pools.schemas import PoolCreateRequest
 from app.modules.pools.schemas import PoolUpdateRequest
 from app.modules.pools.services import PoolService
@@ -67,6 +69,7 @@ from app.modules.operations.schemas import OperationCreateRequest
 from app.modules.components.services import ComponentService
 from app.modules.deployments.schemas import DeploymentCreateRequest
 from app.modules.deployments.schemas import DeploymentUpdateRequest
+from app.modules.operations.services import TERMINAL_PHASES
 from app.modules.operations.services import OperationService
 from app.modules.deployments.services import DeploymentService
 from app.modules.priority_classes.schemas import PriorityClassCreateRequest
@@ -374,9 +377,7 @@ async def test_pools_lifecycle(db: AsyncSession) -> None:
 async def test_quotas_lifecycle(db: AsyncSession) -> None:
     project = await a_project(db)
     service = QuotaService(db)
-    created = await service.create(
-        QuotaCreateRequest(project=project.id, device_class="h100", guaranteed_devices=4)
-    )
+    created = await service.create(QuotaCreateRequest(project=project.id, device_class="h100", guaranteed_devices=4))
     assert created.usage.allocated_devices == 0
 
     assert (await service.get(created.id)).device_class == "h100"
@@ -557,6 +558,110 @@ async def test_operations_create_get_list_cancel(db: AsyncSession) -> None:
 
     with pytest.raises(Conflict):
         await service.cancel(created.id)
+
+
+async def test_creating_an_operation_announces_it_to_its_cluster(db: AsyncSession) -> None:
+    """The hint that reaches the hub holding the cluster's session.
+
+    An operation is not declared state, so nothing else would ever carry it down:
+    it is not in the resync snapshot and no other write path names it.
+    """
+    notifier = MemoryNotifier()
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id)
+    service = OperationService(db, actor="tester", notifier=notifier)
+
+    created = await service.create(OperationCreateRequest(type="node.drain", target=node))
+
+    assert [(c.cluster_id, c.kind, c.uid) for c in notifier.changes] == [(cluster.id, "operation", created.id)]
+
+
+async def test_creating_an_operation_with_nobody_listening_still_succeeds(db: AsyncSession) -> None:
+    """The default notifier talks to Postgres, and no hub is subscribed in a test."""
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id)
+
+    created = await OperationService(db, actor="tester").create(OperationCreateRequest(type="node.cordon", target=node))
+
+    assert created.phase == "pending"
+
+
+@pytest.mark.parametrize(("type_name", "direction"), [("node.cordon", "true"), ("node.uncordon", "false")])
+async def test_cordon_and_uncordon_are_one_wire_kind_told_apart_by_a_parameter(
+    db: AsyncSession, type_name: str, direction: str
+) -> None:
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id)
+    service = OperationService(db, actor="tester", notifier=MemoryNotifier())
+
+    created = await service.create(OperationCreateRequest(type=type_name, target=node))
+    rendered = await operation_desired(db, created.id)
+
+    assert rendered is not None
+    kind, payload = rendered
+    assert kind == "operation.desired"
+    assert payload.kind == "cordon"
+    assert payload.parameters["cordon"] == direction
+    assert payload.cluster_id == cluster.id
+    assert payload.target.kind == "node"
+    assert payload.target.id == node
+    assert payload.requested_by == "tester"
+
+
+async def test_operator_supplied_parameters_survive_the_injected_one(db: AsyncSession) -> None:
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id)
+    service = OperationService(db, actor="tester", notifier=MemoryNotifier())
+
+    created = await service.create(
+        OperationCreateRequest(type="node.uncordon", target=node, parameters={"grace_period_seconds": "1800"})
+    )
+    rendered = await operation_desired(db, created.id)
+
+    assert rendered is not None
+    assert rendered[1].parameters == {"cordon": "false", "grace_period_seconds": "1800"}
+
+
+async def test_only_open_operations_are_replayed_to_a_reconnecting_cluster(db: AsyncSession) -> None:
+    """Terminal operations are finished business, and re-sending one would redo it."""
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id)
+    other = await a_cluster(db, name="beta")
+    other_node = await seed_node(db, other.id, name="node-b")
+    service = OperationService(db, actor="tester", notifier=MemoryNotifier())
+
+    pending = await service.create(OperationCreateRequest(type="node.drain", target=node))
+    running = await service.create(OperationCreateRequest(type="node.cordon", target=node))
+    finished = await service.create(OperationCreateRequest(type="node.reboot", target=node))
+    elsewhere = await service.create(OperationCreateRequest(type="node.drain", target=other_node))
+    await db.execute(
+        text("UPDATE ops_operation SET phase = :phase WHERE uid = :uid"), {"phase": "running", "uid": running.id}
+    )
+    await db.execute(
+        text("UPDATE ops_operation SET phase = :phase WHERE uid = :uid"), {"phase": "succeeded", "uid": finished.id}
+    )
+    await db.commit()
+
+    replayed = [payload.operation_id async for _, payload in open_operations(db, cluster.id)]
+
+    assert replayed == [pending.id, running.id]
+    assert elsewhere.id not in replayed
+    assert [p.operation_id async for _, p in open_operations(db, other.id)] == [elsewhere.id]
+
+
+@pytest.mark.parametrize("phase", sorted(TERMINAL_PHASES))
+async def test_no_terminal_phase_is_ever_replayed(db: AsyncSession, phase: str) -> None:
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id)
+    created = await OperationService(db, actor="tester", notifier=MemoryNotifier()).create(
+        OperationCreateRequest(type="node.drain", target=node)
+    )
+    await db.execute(
+        text("UPDATE ops_operation SET phase = :phase WHERE uid = :uid"), {"phase": phase, "uid": created.id}
+    )
+    await db.commit()
+
+    assert [item async for item in open_operations(db, cluster.id)] == []
 
 
 # --------------------------------------------------------------------------- concurrency

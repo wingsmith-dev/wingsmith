@@ -26,10 +26,12 @@ from msgspec import Struct
 
 from app.db.engine import session_factory
 from app.db.notify import CHANNEL
+from app.db.notify import OPERATION
 from app.db.notify import DeclaredChange
 from app.db.notify import decode
 from app.db.notify import listen_dsn
 from app.ingestion.desired import desired_object
+from app.ingestion.operations import operation_desired
 
 
 logger = getLogger(__name__)
@@ -103,6 +105,8 @@ class DatabaseRenderer:
     async def render(self, change: DeclaredChange) -> tuple[str, Struct] | None:
         factory = self._factory or session_factory()
         async with factory() as db:
+            if change.kind == OPERATION:
+                return await operation_desired(db, change.uid)
             return await desired_object(db, change.cluster_id, change.kind, change.uid, change.generation)
 
 

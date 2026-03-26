@@ -152,9 +152,9 @@ class DatabaseSink:
             return
 
         replica_id = await self._uid_ref(db, Replica, payload.replica_id)
-        statement = statements.upsert_allocation(
-            cluster_id, deployment[1], project_id, replica_id, payload
-        ).returning(Allocation.id)
+        statement = statements.upsert_allocation(cluster_id, deployment[1], project_id, replica_id, payload).returning(
+            Allocation.id
+        )
         allocation_id = (await db.execute(statement)).scalar_one()
         await db.execute(statements.release_allocation_devices(allocation_id, cluster_id, payload))
         if payload.device_ids:
@@ -423,4 +423,18 @@ class DatabaseDesiredSource:
 
         async with self.sessions() as db:
             async for item in stream_desired(db, cluster_id, scope):
+                yield item
+
+    async def iter_open_operations(self, cluster_id: str):
+        """The cluster's unfinished operations, read the same way and sent separately.
+
+        A session replays these on connect because an operation created while the
+        cluster was offline has nothing else to carry it: the notification that
+        would have dispatched it live found no session, and the resync that
+        repairs declared state deliberately does not cover operations.
+        """
+        from app.ingestion.operations import open_operations
+
+        async with self.sessions() as db:
+            async for item in open_operations(db, cluster_id):
                 yield item
