@@ -22,6 +22,7 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/internal/config"
 	"github.com/hangar-dev/hangar/libs/operator/internal/health"
 	"github.com/hangar-dev/hangar/libs/operator/internal/observe"
+	"github.com/hangar-dev/hangar/libs/operator/internal/operate"
 	"github.com/hangar-dev/hangar/libs/operator/internal/reconcile"
 	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
 )
@@ -84,6 +85,12 @@ func run() error {
 		Log:          log,
 	})
 
+	executor := operate.New(&operate.Executor{
+		Client:    directClient,
+		ClusterID: cfg.ClusterID,
+		Log:       log,
+	})
+
 	client := syncpkg.NewClient(syncpkg.Options{
 		HubURL:            cfg.HubURL,
 		ClusterID:         cfg.ClusterID,
@@ -95,12 +102,13 @@ func run() error {
 		BackoffMin:        cfg.BackoffMin,
 		BackoffMax:        cfg.BackoffMax,
 		SendQueueSize:     cfg.SendQueueSize,
-		Handler:           observe.WithObserver(store, observer),
+		Handler:           operate.WithExecutor(observe.WithObserver(store, observer), executor),
 		Checkpointer:      checkpoint.Adapt(cursor),
 		Logger:            log,
 	})
 
 	observer.Bind(client)
+	executor.Bind(client)
 
 	healthSrv := health.New(cfg.HealthAddr, log, map[string]health.Check{
 		"hub": func() error {

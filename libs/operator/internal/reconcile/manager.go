@@ -60,8 +60,16 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 		LeaderElection:          cfg.LeaderElection,
 		LeaderElectionID:        "hangar-operator.placeholder.hangar.dev",
 		LeaderElectionNamespace: cfg.Namespace,
+		// Both namespaces, not one. Declared state lives in the operator's own namespace and
+		// what it renders lives in the workload namespace, and the reconciler reads back what
+		// it wrote — a prefetch job's completion is the gate a deployment waits on. A cache
+		// scoped to the first namespace alone would report those objects as absent rather than
+		// as unreadable, which is the failure that looks like a logic bug for a day.
 		Cache: cache.Options{
-			DefaultNamespaces: map[string]cache.Config{cfg.Namespace: {}},
+			DefaultNamespaces: map[string]cache.Config{
+				cfg.Namespace:         {},
+				cfg.WorkloadNamespace: {},
+			},
 		},
 	})
 	if err != nil {

@@ -155,6 +155,25 @@ Operations are the third kind of thing — imperative, long-running, able to fai
 status fields on the objects they act upon, and modelling them as such is the mistake this
 registry exists to prevent.
 
+**Operations are outside the resync contract.** A full-resync snapshot is the authority for pruning
+declared state, and an operation absent from one has not been withdrawn — it is not the kind of
+thing a snapshot describes. Pruning against one would cancel work already half-done, so an
+operation is accepted once, run to a conclusion, and reported. The consequence is that delivery is
+at-least-once with no replay window: a receiver drops a redelivery of an operation it is already
+running rather than starting a second pass over the same node.
+
+**`cordon` covers both directions.** The parameter `cordon` is `"true"` or `"false"` and defaults
+to `"true"`; there is no separate `uncordon` kind, because one wire kind and a boolean say the same
+thing as two kinds without doubling the vocabulary. `drain` cordons first as its own first step, so
+the two compose rather than overlapping.
+
+**`drain` evicts rather than deletes, and only what holds accelerators.** Eviction is the request
+the API server can refuse, so a pod covered by a disruption budget already at its floor stays put
+and the drain reports what it could not move. Deleting would succeed every time and cause the
+outage the operation exists to avoid. Pods that hold no accelerators are left alone: the agents,
+exporters and CSI drivers on a node are what make it reportable, and taking them out would blind
+the plane to the drain it just requested.
+
 ## Resync
 
 | Type | Direction | Payload |
