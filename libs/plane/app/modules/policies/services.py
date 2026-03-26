@@ -71,7 +71,6 @@ class PolicyService:
             allowed_device_classes=list(policy.allowed_device_classes),
             allowed_clusters=[cluster_uids.get(c, str(c)) for c in policy.allowed_cluster_ids],
             denied_clusters=[cluster_uids.get(c, str(c)) for c in policy.denied_cluster_ids],
-            max_hourly_cost=float(policy.max_hourly_cost) if policy.max_hourly_cost is not None else None,
             rules=policy.rules,
             enabled=policy.enabled,
             created_at=policy.created_at,
@@ -185,8 +184,6 @@ class PolicyService:
     async def create(self, data: PolicyCreateRequest) -> PolicySchema:
         if not data.name:
             raise Invalid("name is required")
-        if data.max_hourly_cost is not None and data.max_hourly_cost < 0:
-            raise Invalid("max_hourly_cost cannot be negative", {"max_hourly_cost": data.max_hourly_cost})
         allowed_keys = await self._cluster_keys(data.allowed_clusters)
         denied_keys = await self._cluster_keys(data.denied_clusters)
         check_cluster_lists([str(k) for k in allowed_keys], [str(k) for k in denied_keys])
@@ -199,7 +196,6 @@ class PolicyService:
             allowed_device_classes=data.allowed_device_classes,
             allowed_cluster_ids=allowed_keys,
             denied_cluster_ids=denied_keys,
-            max_hourly_cost=data.max_hourly_cost,
             rules=data.rules,
             enabled=data.enabled,
         )
@@ -221,9 +217,6 @@ class PolicyService:
         attachments = fields.pop("attachments", UNSET)
         allowed = fields.pop("allowed_clusters", UNSET)
         denied = fields.pop("denied_clusters", UNSET)
-        cost = fields.get("max_hourly_cost")
-        if cost is not None and cost < 0:
-            raise Invalid("max_hourly_cost cannot be negative", {"max_hourly_cost": cost})
         for key, value in fields.items():
             setattr(policy, key, value)
 

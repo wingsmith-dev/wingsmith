@@ -48,9 +48,17 @@ class OperationSchema(Struct):
 class OperationCreateRequest(Struct):
     """`{ "type": ..., "target": ... }` — never a verb on the target's own path.
 
+    `target` is either a prefixed id (`nod_01hq0v...`) or a kind-qualified name
+    (`node:gpu-node-04`). Both forms say what kind of thing they name, which is
+    what lets a `node.drain` pointed at a device be refused at creation instead
+    of inside the cluster an hour later; a bare name says nothing and is
+    refused.
+
     `cluster` is accepted only for targets that do not carry a cluster of their
     own; for everything else the cluster is derived from the target, because two
-    ways to say which cluster is two ways for them to disagree.
+    ways to say which cluster is two ways for them to disagree. It does one
+    extra job for a qualified name: names are unique per cluster, so naming one
+    is how a name that matches twice is narrowed to the one that was meant.
     """
 
     type: str

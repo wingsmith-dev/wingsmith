@@ -129,10 +129,6 @@ def test_update_request_leaves_absent_fields_unset():
     assert PolicyUpdateRequest(enabled=False).to_dict(exclude_unset=True) == {"enabled": False}
 
 
-def test_update_request_can_clear_the_cost_ceiling_with_null():
-    assert PolicyUpdateRequest(max_hourly_cost=None).to_dict(exclude_unset=True) == {"max_hourly_cost": None}
-
-
 def test_absent_attachments_leave_the_bindings_alone():
     assert "attachments" not in PolicyUpdateRequest(enabled=True).to_dict(exclude_unset=True)
 
@@ -147,7 +143,6 @@ def test_create_request_defaults_to_an_enabled_policy_with_no_opinions():
     assert data.allowed_regions == []
     assert data.allowed_clusters == []
     assert data.attachments == []
-    assert data.max_hourly_cost is None
 
 
 def test_attachment_request_names_a_subject_and_its_type():

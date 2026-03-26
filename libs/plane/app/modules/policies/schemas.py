@@ -44,7 +44,6 @@ class PolicySchema(Struct):
     allowed_device_classes: list[str]
     allowed_clusters: list[str]
     denied_clusters: list[str]
-    max_hourly_cost: float | None
     rules: dict
     enabled: bool
     created_at: dt.datetime
@@ -61,7 +60,6 @@ class PolicyCreateRequest(Struct):
     allowed_device_classes: list[str] = []
     allowed_clusters: list[str] = []
     denied_clusters: list[str] = []
-    max_hourly_cost: float | None = None
     rules: dict = {}
     enabled: bool = True
     attachments: list[PolicyAttachmentRequest] = []
@@ -83,7 +81,6 @@ class PolicyUpdateRequest(Struct):
     allowed_device_classes: list[str] | UnsetType = UNSET
     allowed_clusters: list[str] | UnsetType = UNSET
     denied_clusters: list[str] | UnsetType = UNSET
-    max_hourly_cost: float | None | UnsetType = UNSET
     rules: dict | UnsetType = UNSET
     enabled: bool | UnsetType = UNSET
     attachments: list[PolicyAttachmentRequest] | UnsetType = UNSET

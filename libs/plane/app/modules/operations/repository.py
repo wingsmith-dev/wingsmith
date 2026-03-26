@@ -1,9 +1,11 @@
 import datetime as dt
+from typing import NamedTuple
 
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import null
 from sqlalchemy import select
+from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import NODE
@@ -43,36 +45,89 @@ TARGET_KINDS = {
     ARTIFACT: "artifact",
 }
 
+TARGET_PREFIXES = {kind: prefix for prefix, kind in TARGET_KINDS.items()}
 
-def target_model(ref: str):
-    """The table a target identifier names, or `Invalid` if it names none.
+TARGET_NAME_COLUMNS = {
+    CLUSTER: "name",
+    NODE: "name",
+    DEVICE: "device_uuid",
+    DEPLOYMENT: "name",
+    COMPONENT: "name",
+    ARTIFACT: "name",
+}
+"""The column a `kind:name` reference matches for each kind.
 
-    The prefix is the only thing a target reference carries about its own kind,
-    which is exactly what makes `node.drain` pointed at a `dev_...` answerable at
-    creation rather than three hops downstream in the operator.
+A device has no name of its own; the thing an operator reads off a machine is
+its `device_uuid`, which is what `/v1/devices/{ref}` already resolves against.
+"""
+
+
+class TargetRef(NamedTuple):
+    """A parsed target reference: which kind it names, and how to find it."""
+
+    prefix: str
+    model: type
+    column: InstrumentedAttribute
+    value: str
+
+
+def parse_target(ref: str) -> TargetRef:
+    """Reads a target reference as either a prefixed id or a `kind:name` pair.
+
+    The kind has to be answerable at creation rather than three hops downstream
+    in the operator, which is what a `node.drain` pointed at a `dev_...` is
+    caught by. An id carries its kind in the prefix; a human types a name, which
+    carries nothing, so the kind is written beside it — `node:gpu-node-04`. A
+    bare name is refused rather than guessed at, because guessing is how a
+    device and a deployment that happen to share a name become the same request.
     """
+    kind, sep, name = ref.partition(":")
+    if sep:
+        prefix = TARGET_PREFIXES.get(kind)
+        if prefix is None:
+            raise Invalid(
+                f"target {ref!r} names no kind operations act upon",
+                {"target": ref, "allowed": sorted(TARGET_PREFIXES)},
+            )
+        if not name:
+            raise Invalid(f"target {ref!r} has no name after {kind!r}", {"target": ref})
+        model = TARGET_TABLES[prefix]
+        return TargetRef(prefix, model, getattr(model, TARGET_NAME_COLUMNS[prefix]), name)
     if not is_uid(ref):
-        raise Invalid(f"target {ref!r} is not an identifier", {"target": ref})
+        raise Invalid(
+            f"target {ref!r} is neither an identifier nor a kind:name reference",
+            {"target": ref, "forms": ["nod_01hq0v...", "node:gpu-node-04"]},
+        )
     model = TARGET_TABLES.get(ref[:4])
     if model is None:
         raise Invalid(f"target {ref!r} is not a kind operations act upon", {"target": ref})
-    return model
+    return TargetRef(ref[:4], model, model.uid, ref)
+
+
+def target_model(ref: str):
+    """The table a target reference names, or `Invalid` if it names none."""
+    return parse_target(ref).model
 
 
 def target_kind(ref: str) -> str:
-    """The `target_type` a target identifier implies.
+    """The `target_type` a target reference implies.
 
     Filtering on `target_id` alone would compare primary keys across six tables,
-    so the kind is matched too and the prefix is where it comes from.
+    so the kind is matched too, and it comes from the prefix or from the
+    `kind:` half of a qualified reference.
     """
-    target_model(ref)
-    return TARGET_KINDS[ref[:4]]
+    return TARGET_KINDS[parse_target(ref).prefix]
 
 
 def target_subquery(ref: str) -> Select:
-    """The row id `Operation.target_id` holds for a public target id."""
-    model = target_model(ref)
-    return select(model.id).where(model.uid == ref)
+    """The row ids `Operation.target_id` may hold for a target reference.
+
+    A set rather than a single id: a name is unique per cluster and not beyond
+    it, and a filter that matches every node called `gpu-node-04` is a filter
+    doing what it says. Creation is the path that refuses an ambiguous name.
+    """
+    parsed = parse_target(ref)
+    return select(parsed.model.id).where(parsed.column == parsed.value)
 
 
 class OperationRepository:
@@ -157,19 +212,24 @@ class OperationRepository:
         are global, which is why `cache.warm` is the one type that has to be told
         which cluster to warm.
         """
-        model = target_model(ref)
+        parsed = parse_target(ref)
+        model = parsed.model
         if model is Cluster:
             cluster_column = model.id.label("cluster_id")
         elif hasattr(model, "cluster_id"):
             cluster_column = model.cluster_id
         else:
             cluster_column = null().label("cluster_id")
-        return select(model.id, model.uid, cluster_column).where(model.uid == ref)
+        return select(model.id, model.uid, cluster_column).where(parsed.column == parsed.value)
 
-    async def resolve_target(self, ref: str) -> Row | None:
-        """Loads the target row itself, so that a missing target is a 404 at creation."""
+    async def resolve_targets(self, ref: str) -> list[Row]:
+        """Every row a target reference matches, so creation can answer for all of them.
+
+        A missing target is a 404 at creation and a name matching twice is a 400;
+        neither is a decision the repository makes, so both counts come back.
+        """
         result = await self.db.execute(self.target_query(ref))
-        return result.first()
+        return list(result.all())
 
     async def target_uid(self, prefix: str, row_id) -> str | None:
         """The public id of a target, given the table its `target_type` names."""

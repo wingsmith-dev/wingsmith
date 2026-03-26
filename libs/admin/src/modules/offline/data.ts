@@ -769,7 +769,6 @@ export const policies: Policy[] = [
     allowed_device_classes: [],
     allowed_clusters: [],
     denied_clusters: [clusters[1].id],
-    max_hourly_cost: 240,
     rules: {},
     enabled: true,
     created_at: CREATED,

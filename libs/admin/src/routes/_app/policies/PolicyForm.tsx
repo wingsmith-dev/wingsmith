@@ -2,7 +2,6 @@ import {
   FormDialog,
   FormGrid,
   JsonField,
-  NumberField,
   SwitchField,
   TextField,
 } from "@/components/layout/form"
@@ -52,7 +51,6 @@ export function PolicyForm({
   const [deniedClusters, setDeniedClusters] = useState(
     (policy?.denied_clusters ?? []).join(", ")
   )
-  const [maxCost, setMaxCost] = useState<number | null>(policy?.max_hourly_cost ?? null)
   const [enabled, setEnabled] = useState(policy?.enabled ?? true)
   const [rules, setRules] = useState<unknown>(policy?.rules ?? {})
   const [rulesValid, setRulesValid] = useState(true)
@@ -75,7 +73,6 @@ export function PolicyForm({
     allowed_device_classes: split(deviceClasses),
     allowed_clusters: split(allowedClusters),
     denied_clusters: split(deniedClusters),
-    max_hourly_cost: maxCost,
     rules: (rules as Record<string, unknown>) ?? {},
     enabled,
     attachments: (attachments as PolicyAttachmentRequest[]) ?? [],
@@ -156,12 +153,6 @@ export function PolicyForm({
           value={deniedClusters}
           onChange={setDeniedClusters}
           hint="A denial outlives somebody widening the allow-list."
-        />
-        <NumberField
-          label="Max hourly cost"
-          value={maxCost}
-          onChange={setMaxCost}
-          min={0}
         />
       </FormGrid>
 

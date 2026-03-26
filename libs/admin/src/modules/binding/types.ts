@@ -147,7 +147,6 @@ export interface Policy {
   allowed_device_classes: string[]
   allowed_clusters: string[]
   denied_clusters: string[]
-  max_hourly_cost: number | null
   rules: Record<string, unknown>
   enabled: boolean
   created_at: string
@@ -170,7 +169,6 @@ export interface PolicyCreateRequest {
   allowed_device_classes?: string[]
   allowed_clusters?: string[]
   denied_clusters?: string[]
-  max_hourly_cost?: number | null
   rules?: Record<string, unknown>
   enabled?: boolean
   attachments?: PolicyAttachmentRequest[]
@@ -184,7 +182,6 @@ export interface PolicyUpdateRequest {
   allowed_device_classes?: string[]
   allowed_clusters?: string[]
   denied_clusters?: string[]
-  max_hourly_cost?: number | null
   rules?: Record<string, unknown>
   enabled?: boolean
   attachments?: PolicyAttachmentRequest[]

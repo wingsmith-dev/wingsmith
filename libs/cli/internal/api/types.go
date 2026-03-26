@@ -578,7 +578,6 @@ type Policy struct {
 	AllowedDeviceClasses []string           `json:"allowed_device_classes"`
 	AllowedClusters      []string           `json:"allowed_clusters"`
 	DeniedClusters       []string           `json:"denied_clusters"`
-	MaxHourlyCost        *float64           `json:"max_hourly_cost"`
 	Rules                map[string]any     `json:"rules"`
 	Enabled              bool               `json:"enabled"`
 	CreatedAt            time.Time          `json:"created_at"`

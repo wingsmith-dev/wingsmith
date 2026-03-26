@@ -243,7 +243,6 @@ constrains nothing, which is why they are shown with it.`,
 			{Title: "residencies"},
 			{Title: "classes"},
 			{Title: "denied clusters"},
-			{Title: "max cost", Align: ui.AlignRight},
 			{Title: "attachments", Align: ui.AlignRight},
 			{Title: "enabled"},
 		},
@@ -251,7 +250,7 @@ constrains nothing, which is why they are shown with it.`,
 			return []string{
 				p.Name, p.ID, listCell(p.AllowedRegions), listCell(p.AllowedResidencies),
 				listCell(p.AllowedDeviceClasses), listCell(p.DeniedClusters),
-				cost(p.MaxHourlyCost), strconv.Itoa(len(p.Attachments)), boolWord(p.Enabled),
+				strconv.Itoa(len(p.Attachments)), boolWord(p.Enabled),
 			}
 		},
 		bind: func(f *filters, cmd *cobra.Command) {
@@ -271,7 +270,6 @@ constrains nothing, which is why they are shown with it.`,
 			kv.Add("allowed device classes", listCell(p.AllowedDeviceClasses))
 			kv.Add("allowed clusters", listCell(p.AllowedClusters))
 			kv.Add("denied clusters", listCell(p.DeniedClusters))
-			kv.Add("max hourly cost", cost(p.MaxHourlyCost))
 			kv.Add("rules", labelString(p.Rules))
 			kv.Add("enabled", yesNo(s, p.Enabled))
 			kv.Add("revision", p.Revision)
@@ -303,9 +301,3 @@ func listCell(v []string) string {
 	return strings.Join(v, ",")
 }
 
-func cost(v *float64) string {
-	if v == nil {
-		return "-"
-	}
-	return fmt.Sprintf("%.2f", *v)
-}

@@ -11,6 +11,7 @@ from app.core.ids import COMPONENT
 from app.core.ids import OPERATION
 from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
+from app.db.models import Cluster
 from app.db.models import Operation
 from app.db.notify import OPERATION as OPERATION_KIND
 from app.db.notify import Notifier
@@ -28,6 +29,7 @@ from .schemas import OperationSchema
 from .schemas import OperationTargetSchema
 from .schemas import OperationCreateRequest
 from .repository import TARGET_KINDS
+from .repository import parse_target
 from .repository import OperationRepository
 
 
@@ -167,6 +169,31 @@ class OperationService:
         items = [self._row_schema(row, await self._target_uid(row[0])) for row in kept]
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
+    async def _resolve(self, data: OperationCreateRequest, cluster: Cluster | None) -> Row:
+        """The one row a target reference names, or an error saying which way it failed.
+
+        A `kind:name` reference can match more than one row — a node name is
+        unique inside a cluster and nowhere above it — and the request already
+        carries the field that separates them, so a named cluster narrows the
+        match before it is called ambiguous. What it must never do is pick one:
+        draining an arbitrary machine of two that share a name is worse than
+        refusing, so anything still plural after narrowing is a 400 that names
+        the candidates.
+        """
+        matches = await self.repo.resolve_targets(data.target)
+        if not matches:
+            raise NotFound(f"no target {data.target!r}")
+        if len(matches) > 1 and cluster is not None:
+            matches = [row for row in matches if row.cluster_id == cluster.id]
+        if len(matches) > 1:
+            raise Invalid(
+                f"target {data.target!r} matches {len(matches)} objects; use its id or name a cluster",
+                {"target": data.target, "matches": sorted(row.uid for row in matches)},
+            )
+        if not matches:
+            raise NotFound(f"no target {data.target!r} in cluster {data.cluster!r}")
+        return matches[0]
+
     async def create(self, data: OperationCreateRequest, idempotency_key: str | None = None) -> OperationSchema:
         """Validates the target against the type, then records the intent.
 
@@ -177,32 +204,35 @@ class OperationService:
             raise Invalid(f"unknown operation type {data.type!r}", {"allowed": sorted(TYPES)})
         prefix, _ = TYPES[data.type]
 
+        parsed = parse_target(data.target)
+        if parsed.prefix != prefix:
+            raise Invalid(
+                f"{data.type} acts on {TARGET_KINDS[prefix]} targets, not {data.target!r}",
+                {"type": data.type, "expected_kind": TARGET_KINDS[prefix], "target": data.target},
+            )
+
+        cluster = None
+        if data.cluster is not None:
+            cluster = await self.repo.cluster_by_ref(data.cluster)
+            if cluster is None:
+                raise NotFound(f"no cluster {data.cluster!r}")
+
+        target = await self._resolve(data, cluster)
+
         if idempotency_key is not None:
             existing = await self.repo.by_idempotency_key(idempotency_key)
             if existing is not None:
                 operation = existing[0]
                 target_uid = await self._target_uid(operation)
-                if operation.type != data.type or target_uid != data.target:
+                if operation.type != data.type or target_uid != target.uid:
                     raise Conflict(
                         "idempotency key was already used for a different operation",
                         {"operation": operation.uid, "type": operation.type, "target": target_uid},
                     )
                 return self._row_schema(existing, target_uid)
 
-        if not data.target.startswith(prefix):
-            raise Invalid(
-                f"{data.type} acts on {TARGET_KINDS[prefix]} targets, not {data.target!r}",
-                {"type": data.type, "expected_prefix": prefix, "target": data.target},
-            )
-        target = await self.repo.resolve_target(data.target)
-        if target is None:
-            raise NotFound(f"no target {data.target!r}")
-
         cluster_id = target.cluster_id
-        if data.cluster is not None:
-            cluster = await self.repo.cluster_by_ref(data.cluster)
-            if cluster is None:
-                raise NotFound(f"no cluster {data.cluster!r}")
+        if cluster is not None:
             if cluster_id is not None and cluster.id != cluster_id:
                 raise Invalid(
                     f"target {data.target!r} does not belong to cluster {data.cluster!r}",

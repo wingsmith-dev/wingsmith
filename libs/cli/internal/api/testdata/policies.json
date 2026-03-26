@@ -9,7 +9,6 @@
             "allowed_device_classes": [],
             "allowed_clusters": [],
             "denied_clusters": [],
-            "max_hourly_cost": null,
             "rules": {},
             "enabled": true,
             "created_at": "2026-08-19T18:52:20.371830Z",

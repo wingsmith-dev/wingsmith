@@ -86,9 +86,6 @@ export function PolicyCard({
           <Field label="Denied clusters" className="sm:col-span-2">
             <List values={policy.denied_clusters} tone="deny" />
           </Field>
-          <Field label="Max hourly cost">
-            {policy.max_hourly_cost === null ? "—" : policy.max_hourly_cost}
-          </Field>
           <Field label="Rules">
             {Object.keys(policy.rules).length === 0
               ? "none"

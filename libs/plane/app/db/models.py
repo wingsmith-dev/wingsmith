@@ -798,7 +798,7 @@ class PriorityClass(BaseMixin):
 
 
 class Policy(BaseMixin):
-    """A placement constraint: region, residency, device class, cost ceiling, allowed clusters.
+    """A placement constraint: region, residency, device class, allowed clusters.
 
     Attachable to more than one kind of subject, so the subject reference lives in
     `PolicyAttachment` rather than as a nullable column per subject type here.
@@ -815,7 +815,6 @@ class Policy(BaseMixin):
     allowed_device_classes: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=False, server_default="{}")
     allowed_cluster_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
     denied_cluster_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
-    max_hourly_cost: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
     rules: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
