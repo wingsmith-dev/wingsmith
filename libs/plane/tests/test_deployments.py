@@ -221,3 +221,9 @@ def test_list_handler_offers_every_declared_filter():
 def test_delete_removes_the_supertype_so_no_orphan_workload_survives():
     doc = DeploymentRepository.delete.__doc__ or ""
     assert "supertype" in doc
+
+
+def test_a_create_request_may_leave_the_cluster_to_placement():
+    """The scheduler is the default path; naming a cluster is the override."""
+    data = DeploymentCreateRequest(recipe="llama-70b", name="serve", project="acme")
+    assert data.cluster is None

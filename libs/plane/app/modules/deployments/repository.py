@@ -110,9 +110,9 @@ class DeploymentRepository:
                 func.sum(case((Replica.phase.in_(RUNNING_PHASES), 1), else_=0)).label("running"),
                 func.sum(case((Replica.phase == "pending", 1), else_=0)).label("pending"),
                 func.sum(case((Replica.phase == "failed", 1), else_=0)).label("failed"),
-                func.sum(
-                    case((Replica.observed_generation == Deployment.generation, 1), else_=0)
-                ).label("at_current_generation"),
+                func.sum(case((Replica.observed_generation == Deployment.generation, 1), else_=0)).label(
+                    "at_current_generation"
+                ),
             )
             .select_from(Replica)
             .join(Deployment, Replica.deployment_id == Deployment.id)
@@ -160,9 +160,7 @@ class DeploymentRepository:
 
     async def recipe_by_ref(self, ref: str) -> Recipe | None:
         column = Recipe.uid if is_uid(ref) else Recipe.name
-        result = await self.db.execute(
-            select(Recipe).where(column == ref).order_by(Recipe.version.desc()).limit(1)
-        )
+        result = await self.db.execute(select(Recipe).where(column == ref).order_by(Recipe.version.desc()).limit(1))
         return result.scalar_one_or_none()
 
     async def project_by_ref(self, ref: str) -> Project | None:
@@ -176,7 +174,10 @@ class DeploymentRepository:
 
     async def default_priority_class(self) -> PriorityClass | None:
         result = await self.db.execute(
-            select(PriorityClass).where(PriorityClass.is_default.is_(True)).order_by(PriorityClass.value.desc()).limit(1)
+            select(PriorityClass)
+            .where(PriorityClass.is_default.is_(True))
+            .order_by(PriorityClass.value.desc())
+            .limit(1)
         )
         return result.scalar_one_or_none()
 
@@ -212,3 +213,6 @@ class DeploymentRepository:
         await self.db.delete(deployment)
         await self.db.delete(workload)
         await self.db.flush()
+
+    async def priority_class(self, priority_class_id: UUID) -> PriorityClass | None:
+        return await self.db.get(PriorityClass, priority_class_id)

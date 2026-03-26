@@ -81,15 +81,22 @@ class DeploymentSchema(Struct):
 class DeploymentCreateRequest(Struct):
     """What it takes to place a recipe on a cluster.
 
+    `cluster` is optional, and an absent one is the interesting case: placement
+    picks it, from the recipe's device shape, the project's quota, and what the
+    clusters currently report free. Naming one is an override — a deliberate
+    escape from the scheduler rather than the normal path — and it still has to
+    exist, but it is not checked for capacity. An operator who names a cluster
+    has said something placement is not entitled to overrule.
+
     `priority_class` is optional rather than absent: every workload carries one,
     but the project's default answers for most callers and making them repeat it
     is how defaults drift.
     """
 
-    cluster: str
     recipe: str
     name: str
     project: str
+    cluster: str | None = None
     priority_class: str | None = None
     type: str = "service"
     min_replicas: int = 1

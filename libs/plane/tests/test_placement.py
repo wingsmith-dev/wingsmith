@@ -1,5 +1,7 @@
 import inspect
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.modules import placement
@@ -13,6 +15,7 @@ from app.modules.placement import PlacementRequest
 from app.modules.placement import TopologyDomainSnapshot
 from app.modules.placement import place
 from app.modules.placement import decision as codes
+from app.modules.placement.services import PlacementService
 
 
 def devices(cluster, device_class="h100", count=8, node="n0", domain=None, prefix="d", **kw):
@@ -23,13 +26,13 @@ def devices(cluster, device_class="h100", count=8, node="n0", domain=None, prefi
 
 
 def nvlink(uid, identifier="nvl0", kind="nvlink", parent=None, spans_nodes=False):
-    return TopologyDomainSnapshot(
-        uid=uid, kind=kind, identifier=identifier, parent=parent, spans_nodes=spans_nodes
-    )
+    return TopologyDomainSnapshot(uid=uid, kind=kind, identifier=identifier, parent=parent, spans_nodes=spans_nodes)
 
 
 def cluster(uid, name, devs=(), doms=(), **kw):
-    return ClusterSnapshot(uid=uid, name=name, region=kw.pop("region", "us-east"), devices=tuple(devs), domains=tuple(doms), **kw)
+    return ClusterSnapshot(
+        uid=uid, name=name, region=kw.pop("region", "us-east"), devices=tuple(devs), domains=tuple(doms), **kw
+    )
 
 
 def request(count=8, **kw):
@@ -136,9 +139,7 @@ def test_nested_domains_resolve_to_the_requested_kind():
 def test_quota_exhaustion_blocks_a_project_with_free_devices_in_front_of_it():
     snap = CapacitySnapshot(
         clusters=(cluster("c1", "iad-1", devices("c1", count=16)),),
-        quotas=(
-            QuotaSnapshot(project="proj_a", device_class="h100", limit_devices=10, allocated_devices=8),
-        ),
+        quotas=(QuotaSnapshot(project="proj_a", device_class="h100", limit_devices=10, allocated_devices=8),),
     )
 
     decision = place(request(4), snap)
@@ -370,3 +371,48 @@ def test_every_rejected_cluster_reports_its_own_reasoning():
     assert codes_for(decision, "aaa-1") == [codes.INSUFFICIENT_CAPACITY]
     assert codes_for(decision, "zzz-1") == [codes.CLUSTER_PHASE]
     assert "aaa-1:" in decision.summary and "zzz-1:" in decision.summary
+
+
+def a_recipe(**overrides):
+    fields = {
+        "device_class": "h100",
+        "device_count": 4,
+        "device_memory_mib_min": 81920,
+        "requires_single_topology_domain": True,
+        "topology_domain_kind": "nvlink",
+    }
+    fields.update(overrides)
+    return SimpleNamespace(**fields)
+
+
+def a_priority(value: int = 100, preempts: bool = False):
+    return SimpleNamespace(value=value, preempts=preempts)
+
+
+def test_replicas_multiply_the_device_count_but_not_the_domain_requirement():
+    """A deployment is placed whole; a replica's collective is not the deployment.
+
+    Three replicas of a four-device recipe need twelve devices in the cluster, but
+    only each four have to share an NVLink domain — the replicas do not talk to
+    each other over it.
+    """
+    request = PlacementService(db=None).request(
+        recipe=a_recipe(),
+        project_uid="prj_1",
+        priority=a_priority(),
+        workload="serve",
+        replicas=3,
+    )
+    assert request.device_count == 12
+    assert request.requires_single_domain is True
+    assert request.domain_kind == "nvlink"
+
+
+def test_a_request_carries_the_priority_it_will_preempt_at():
+    request = PlacementService(db=None).request(
+        recipe=a_recipe(),
+        project_uid="prj_1",
+        priority=a_priority(value=900, preempts=True),
+        workload="serve",
+    )
+    assert (request.priority_value, request.preempts) == (900, True)

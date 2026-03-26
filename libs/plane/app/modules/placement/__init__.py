@@ -6,6 +6,12 @@ I/O, opens no session, and imports nothing from `app.db` or `app.api`, so it is
 testable without a cluster and without a database.
 
 Callers read the snapshot, call in, and persist the result themselves.
+
+The purity rule is about `engine.py`, `snapshot.py` and `decision.py` — the three
+this file re-exports — not about the directory. `repository.py` and `services.py`
+sit beside them because a module keeps the same five files as every other one,
+and they are the callers: they do the reading, and none of the three imports them
+back. Nothing in this package's public surface touches a session.
 """
 
 from .engine import place

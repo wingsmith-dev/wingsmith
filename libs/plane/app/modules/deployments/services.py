@@ -5,6 +5,7 @@ import datetime as dt
 from uuid import UUID
 
 from msgspec import UNSET
+from msgspec import to_builtins
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,7 @@ from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
 from app.db.models import Workload
 from app.db.models import Deployment
+from app.db.models import PriorityClass
 from app.db.notify import DEPLOYMENT as DEPLOYMENT_KIND
 from app.db.notify import Notifier
 from app.db.notify import DeclaredChange
@@ -24,6 +26,7 @@ from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.modules.placement.services import PlacementService
 
 from .schemas import DeploymentSchema
 from .schemas import DeploymentCreateRequest
@@ -227,9 +230,7 @@ class DeploymentService:
         )
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
         rollup = await self.repo.replicas([r[0].id for r in kept])
-        adapters = await self.repo.adapter_uids(
-            [i for r in kept for i in r[0].adapter_artifact_ids]
-        )
+        adapters = await self.repo.adapter_uids([i for r in kept for i in r[0].adapter_artifact_ids])
         items = [
             self.schema(
                 deployment=r[0],
@@ -254,7 +255,56 @@ class DeploymentService:
             raise NotFound("unknown adapter artifact", {"missing": sorted(set(refs) - names)})
         return [a.id for a in found]
 
-    async def _priority_class_id(self, ref: str | None, project) -> UUID:
+    async def _cluster(self, data: DeploymentCreateRequest, recipe, project, priority):
+        """Which cluster this lands on, and the sentence explaining why.
+
+        Two paths that end in the same place. A caller who named a cluster gets
+        it, checked for existence and nothing else — naming one is an override,
+        and re-deciding it against capacity would make the override advisory.
+        Everyone else gets the scheduler.
+        """
+        if data.cluster is not None:
+            found = await self.repo.cluster_by_ref(data.cluster)
+            if found is None:
+                raise NotFound(f"no cluster {data.cluster!r}")
+            return found, f"cluster {found.name} was named by the caller"
+        return await self._place(data, recipe, project, priority)
+
+    async def _place(self, data: DeploymentCreateRequest, recipe, project, priority):
+        """Asks placement, and refuses to create anything it will not answer for.
+
+        The decision is not persisted beyond the chosen cluster and its summary.
+        Every verdict it computed is reproducible by asking
+        `POST /v1/placement/preview` the same question, and storing a scheduler's
+        working out turns a snapshot into a record that ages badly — the numbers
+        it explains are already stale by the time anyone reads them.
+
+        A placement that requires preemption is still a placement. Which devices
+        get freed inside the winning cluster is a local decision made by the
+        in-cluster scheduler (`CLAUDE.md`, rule 3), so the plan travels in the
+        reason rather than becoming an eviction this process performs.
+        """
+        svc = PlacementService(self.db)
+        request = svc.request(
+            recipe=recipe,
+            project_uid=project.uid,
+            priority=priority,
+            workload=data.name,
+            kind=data.type,
+            replicas=data.desired_replicas,
+        )
+        decision = await svc.decide(request, project.id)
+        if not decision.placed or decision.cluster is None:
+            raise Conflict(
+                decision.summary or "no cluster can hold this deployment",
+                {"request": to_builtins(request), "verdicts": to_builtins(decision.verdicts)},
+            )
+        found = await self.repo.cluster_by_ref(decision.cluster)
+        if found is None:
+            raise Conflict("the cluster placement chose no longer exists", {"cluster": decision.cluster})
+        return found, decision.summary
+
+    async def _priority_class(self, ref: str | None, project) -> PriorityClass:
         """Resolves the priority class, falling back the way a scheduler must.
 
         Every workload carries one from day one, so an absent reference is not an
@@ -265,13 +315,15 @@ class DeploymentService:
             found = await self.repo.priority_class_by_name(ref)
             if found is None:
                 raise NotFound(f"no priority class {ref!r}")
-            return found.id
+            return found
         if project.default_priority_class_id is not None:
-            return project.default_priority_class_id
+            found = await self.repo.priority_class(project.default_priority_class_id)
+            if found is not None:
+                return found
         fallback = await self.repo.default_priority_class()
         if fallback is None:
             raise Invalid("no priority class was given and none is marked default")
-        return fallback.id
+        return fallback
 
     async def create(self, data: DeploymentCreateRequest) -> DeploymentSchema:
         if data.type not in TYPES:
@@ -280,24 +332,24 @@ class DeploymentService:
             raise Invalid("gang_size must be at least 1", {"gang_size": data.gang_size})
         check_scale(data.min_replicas, data.desired_replicas, data.max_replicas)
 
-        cluster = await self.repo.cluster_by_ref(data.cluster)
-        if cluster is None:
-            raise NotFound(f"no cluster {data.cluster!r}")
         recipe = await self.repo.recipe_by_ref(data.recipe)
         if recipe is None:
             raise NotFound(f"no recipe {data.recipe!r}")
         project = await self.repo.project_by_ref(data.project)
         if project is None:
             raise NotFound(f"no project {data.project!r}")
-        priority_class_id = await self._priority_class_id(data.priority_class, project)
+        priority = await self._priority_class(data.priority_class, project)
+        cluster, reason = await self._cluster(data, recipe, project, priority)
 
         workload = Workload(
             uid=new_uid(WORKLOAD),
             kind=data.type,
             project_id=project.id,
             cluster_id=cluster.id,
-            priority_class_id=priority_class_id,
-            admission_phase="pending",
+            priority_class_id=priority.id,
+            admission_phase="placed",
+            admission_reason=reason,
+            placed_at=dt.datetime.now(dt.UTC),
             gang_size=data.gang_size,
             preemptible=data.preemptible,
             deadline_at=data.deadline_at,
@@ -323,7 +375,7 @@ class DeploymentService:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
-            raise Conflict(f"deployment {data.name!r} already exists in {data.cluster!r}") from exc
+            raise Conflict(f"deployment {data.name!r} already exists in {cluster.name!r}") from exc
         await self._announce(cluster.uid, deployment.uid, deployment.generation)
         return await self.get(deployment.uid)
 

@@ -15,6 +15,7 @@ from app.modules.policies.routes import PolicyRoutes
 from app.modules.projects.routes import ProjectRoutes
 from app.modules.artifacts.routes import ArtifactRoutes
 from app.modules.endpoints.routes import EndpointRoutes
+from app.modules.placement.routes import PlacementRoutes
 from app.modules.components.routes import ComponentRoutes
 from app.modules.discovered.routes import DiscoveredWorkloadRoutes
 from app.modules.operations.routes import OperationRoutes
@@ -33,6 +34,7 @@ V1_ROUTES = [
     ArtifactRoutes,
     RecipeRoutes,
     DeploymentRoutes,
+    PlacementRoutes,
     DiscoveredWorkloadRoutes,
     EndpointRoutes,
     ProjectRoutes,
