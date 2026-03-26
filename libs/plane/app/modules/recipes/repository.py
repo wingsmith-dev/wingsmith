@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import select
@@ -5,7 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
 from app.db.models import Recipe
+from app.db.models import Cluster
 from app.db.models import Artifact
+from app.db.models import Deployment
 from app.core.filters import ref_ids
 
 
@@ -63,6 +67,24 @@ class RecipeRepository:
         column = Artifact.uid if is_uid(ref) else Artifact.name
         result = await self.db.execute(select(Artifact).where(column == ref).limit(1))
         return result.scalar_one_or_none()
+
+    async def clusters_running(self, recipe: Recipe) -> list[str]:
+        """The clusters a change to this recipe is worth waking, by uid.
+
+        A recipe is global and a deployment is not, so there is no single cluster
+        to announce to — the reachable set is whichever clusters were actually
+        told about the recipe, which is the same set `_recipes` renders it into.
+        A disabled deployment is not in it, because the cluster was never sent the
+        recipe on its behalf either.
+        """
+        query = (
+            select(Cluster.uid)
+            .join(Deployment, Deployment.cluster_id == Cluster.id)
+            .where(Deployment.recipe_id == recipe.id, Deployment.enabled == True)
+            .distinct()
+        )
+        result = await self.db.execute(query)
+        return list(result.scalars())
 
     async def add(self, recipe: Recipe) -> Recipe:
         self.db.add(recipe)

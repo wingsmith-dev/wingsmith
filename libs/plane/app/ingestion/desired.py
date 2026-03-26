@@ -103,11 +103,26 @@ async def desired_object(
     because from the cluster's side those are one fact: stop running this. The
     generation is the caller's, since there is no row left to read it from.
 
+    A recipe's absence says nothing, and that asymmetry is deliberate. There is no
+    `recipe.deleted` on the wire because a recipe only ever stops being reachable
+    from a cluster when the last deployment naming it went away, and that
+    deployment's own `deployment.deleted` is the frame the cluster acts on —
+    telling it to forget the recipe as well would be a second message about one
+    fact, arriving in an order nothing constrains.
+
     Returns `None` only when there is nothing this seam can say — an unknown
-    cluster, or a kind live dispatch does not carry yet.
+    cluster, a recipe this cluster no longer runs, or a kind live dispatch does
+    not carry yet.
     """
     cluster_id = await db.scalar(select(Cluster.id).where(Cluster.uid == cluster_uid))
-    if cluster_id is None or kind != "deployment":
+    if cluster_id is None:
+        return None
+
+    if kind == "recipe":
+        recipes = await _recipes(db, cluster_uid, cluster_id, only=uid)
+        return ("recipe.desired", recipes[0]) if recipes else None
+
+    if kind != "deployment":
         return None
 
     found = await _deployments(db, cluster_uid, cluster_id, only=uid)
@@ -188,7 +203,9 @@ async def _artifacts(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> li
     ]
 
 
-async def _recipes(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> list[RecipeDesired]:
+async def _recipes(
+    db: AsyncSession, cluster_uid: str, cluster_id: UUID, only: str | None = None
+) -> list[RecipeDesired]:
     """Every recipe named by a deployment on this cluster.
 
     Recipes are global and deployments are per-cluster, so what a cluster is told
@@ -203,6 +220,8 @@ async def _recipes(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> list
         .distinct()
         .order_by(Recipe.seq)
     )
+    if only is not None:
+        query = query.where(Recipe.uid == only)
     return [_recipe(recipe, cluster_uid, artifact_uid) for recipe, artifact_uid in (await db.execute(query)).all()]
 
 

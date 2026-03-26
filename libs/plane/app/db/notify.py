@@ -46,6 +46,7 @@ nothing either way.
 """
 
 DEPLOYMENT = "deployment"
+RECIPE = "recipe"
 
 
 class DeclaredChange(Struct):

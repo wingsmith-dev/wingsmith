@@ -5,6 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ids import RECIPE
 from app.core.ids import new_uid
 from app.db.models import Recipe
+from app.db.notify import RECIPE as RECIPE_KIND
+from app.db.notify import Notifier
+from app.db.notify import DeclaredChange
+from app.db.notify import DatabaseNotifier
 from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
@@ -85,9 +89,27 @@ def _revision(recipe: Recipe) -> str:
 
 
 class RecipeService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, notifier: Notifier | None = None) -> None:
         self.db = db
         self.repo = RecipeRepository(db)
+        self.notifier: Notifier = DatabaseNotifier() if notifier is None else notifier
+
+    async def _announce(self, recipe: Recipe) -> None:
+        """Wakes every hub holding a cluster that runs this recipe, after the commit.
+
+        A deployment write knows its one cluster; a recipe is global and knows
+        none, so the fan-out is derived — one hint per cluster with a deployment
+        naming it. A recipe nothing deploys yet announces to nobody, which is the
+        correct amount of noise for a change no cluster can observe.
+
+        Called on the far side of `commit()` for the same reason the deployment
+        path is: the hub answers a hint by re-reading the row.
+        """
+        for cluster_uid in await self.repo.clusters_running(recipe):
+            await self.notifier.changed(
+                self.db,
+                DeclaredChange(cluster_id=cluster_uid, kind=RECIPE_KIND, uid=recipe.uid),
+            )
 
     def schema(self, recipe: Recipe, artifact_uid: str) -> RecipeSchema:
         fraction = recipe.kv_cache_fraction
@@ -230,6 +252,7 @@ class RecipeService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"recipe {data.name!r} version {data.version} already exists") from exc
+        await self._announce(recipe)
         return await self.get(recipe.uid)
 
     async def update(self, ref: str, data: RecipeUpdateRequest, if_match: str | None = None) -> RecipeSchema:
@@ -262,6 +285,7 @@ class RecipeService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict("recipe conflicts with an existing one") from exc
+        await self._announce(recipe)
         return await self.get(recipe.uid)
 
     async def delete(self, ref: str) -> None:

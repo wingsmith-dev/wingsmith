@@ -605,3 +605,65 @@ async def test_repeated_patches_keep_moving_the_stamp(db: AsyncSession) -> None:
 
     assert second.min_nodes == 2
     assert second.updated_at >= first.updated_at
+
+
+async def test_a_recipe_write_announces_to_every_cluster_running_it(db: AsyncSession) -> None:
+    """A recipe has no cluster of its own, so the fan-out has to be derived.
+
+    Two clusters serving the same recipe both keep rendering the old engine
+    configuration until they are told, and each of them needs telling exactly
+    once — the reachable set is distinct clusters, not deployments.
+    """
+    notifier = MemoryNotifier()
+    alpha, project, recipe, _ = await a_deployment(db)
+    beta = await ClusterService(db).create(ClusterCreateRequest(name="beta", region="eu-west-1"))
+    await DeploymentService(db, notifier=MemoryNotifier()).create(
+        DeploymentCreateRequest(cluster=beta.id, recipe=recipe.id, name="llama-prod-beta", project=project.id)
+    )
+    await DeploymentService(db, notifier=MemoryNotifier()).create(
+        DeploymentCreateRequest(cluster=beta.id, recipe=recipe.id, name="llama-canary", project=project.id)
+    )
+
+    await RecipeService(db, notifier=notifier).update(recipe.id, RecipeUpdateRequest(engine_version="0.7.0"))
+
+    assert sorted((c.cluster_id, c.kind, c.uid) for c in notifier.changes) == sorted(
+        [(alpha.id, "recipe", recipe.id), (beta.id, "recipe", recipe.id)]
+    )
+
+
+async def test_a_recipe_no_deployment_names_announces_to_nobody(db: AsyncSession) -> None:
+    """Nothing to wake is not an error — there is no cluster that has been told about it."""
+    notifier = MemoryNotifier()
+    artifact = await an_artifact(db)
+    service = RecipeService(db, notifier=notifier)
+    created = await a_recipe(db, artifact.id)
+
+    await service.update(created.id, RecipeUpdateRequest(engine_version="0.7.0"))
+
+    assert notifier.changes == []
+
+
+async def test_live_dispatch_renders_the_recipe_a_resync_would_have_sent(db: AsyncSession) -> None:
+    """The same invariant the deployment path rests on, for the object the operator renders from."""
+    cluster, _, recipe, _ = await a_deployment(db)
+    await RecipeService(db, notifier=MemoryNotifier()).update(recipe.id, RecipeUpdateRequest(engine_version="0.7.0"))
+
+    frames = [item async for item in stream_desired(db, cluster.id, "demand")]
+    from_resync = [payload for kind, payload in frames if kind == "recipe.desired"]
+    kind, from_dispatch = await desired_object(db, cluster.id, "recipe", recipe.id)
+
+    assert kind == "recipe.desired"
+    assert from_dispatch == from_resync[0]
+
+
+async def test_a_recipe_this_cluster_does_not_run_dispatches_nothing(db: AsyncSession) -> None:
+    """No `recipe.deleted` exists, and inventing one would say twice what the deployment already said.
+
+    A recipe leaves a cluster's reachable set when the last deployment naming it
+    goes, and that deployment's own deletion is the frame the cluster acts on.
+    """
+    cluster, _, _, _ = await a_deployment(db)
+    artifact = await an_artifact(db, digest="sha256:bbbb", name="mistral")
+    unrelated = await a_recipe(db, artifact.id, name="mistral-vllm")
+
+    assert await desired_object(db, cluster.id, "recipe", unrelated.id) is None
