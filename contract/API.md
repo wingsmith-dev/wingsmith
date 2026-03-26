@@ -151,6 +151,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/replicas`, `/v1/allocations` | observed, read-only |
 | `/v1/projects`, `/v1/quotas`, `/v1/priority-classes`, `/v1/policies` | declared |
 | `/v1/components` | declared version, observed rollout |
+| `/v1/placement` | one dry-run verb, writes nothing — see below |
 | `/v1/operations` | see §7 |
 | `/v1/events` | observed, read-only, append-only |
 
@@ -173,6 +174,18 @@ promotion is refused if the workload changed since; the digest is then recorded 
 anything else. Scale is not a parameter — the bounds are taken from what the workload is already
 running, because a promotion that also set the replica count would scale a live workload as a side
 effect of cataloguing it. From there the object is managed through `/v1/deployments` like any other.
+
+**`cluster` is optional on `POST /v1/deployments`**, and leaving it out is the normal path: the
+plane picks the cluster from the recipe's device shape, the project's quota, and what the clusters
+report free. Naming one is an override — it is checked for existence and nothing else, because an
+operator who names a cluster has said something the scheduler is not entitled to overrule. When
+nothing can hold the deployment the create is `409 conflict` and the body carries a verdict per
+cluster, each with the numbers it was rejected on, so "no capacity" is never the whole answer.
+
+**`POST /v1/placement/preview`** asks the same question and writes nothing. It takes a recipe, a
+project, an optional priority class and a replica count, and returns the decision the create would
+have made. It exists because "why did it not land in iad-1" is asked before anything is created,
+and the decision already carries the reason per cluster.
 
 Common query params: `limit`, `cursor`, `search`, `label` (repeatable, `k=v`), plus the object's
 own dimensions (`cluster`, `pool`, `class`, `health`, `phase`, `project`).
