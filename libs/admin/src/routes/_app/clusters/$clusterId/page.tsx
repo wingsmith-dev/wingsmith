@@ -140,7 +140,13 @@ export function ClusterDetailPage() {
                 <TabNote>Observed. The cluster is the authority on topology.</TabNote>
                 <ClusterTopologyTable clusterId={cluster.id} />
               </TabsContent>
-              <TabsContent value="components" className="mt-3">
+              <TabsContent value="components" className="mt-3 space-y-3">
+                <TabNote>
+                  Reported, not managed. Hangar records what version of each
+                  component a cluster is running and whether it is behind, but it
+                  does not install or upgrade them — that is done out of band by
+                  whatever provisions the cluster.
+                </TabNote>
                 <ComponentsTable clusterId={cluster.id} />
               </TabsContent>
             </Tabs>
