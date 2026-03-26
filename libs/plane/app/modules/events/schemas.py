@@ -21,6 +21,10 @@ class EventSchema(Struct):
 
     There is no declared half and no revision: nothing declares an event, and
     nothing may edit one, so there is nothing for `If-Match` to protect.
+
+    `id` is an `evt_` public identifier like every other resource's. The row's
+    primary key is machinery and is not returned; `subject.id` is a separate
+    gap and still holds a raw UUID.
     """
 
     id: str

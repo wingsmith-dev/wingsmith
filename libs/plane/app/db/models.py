@@ -1034,6 +1034,7 @@ class Event(BaseMixin):
     )
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     cluster_id: Mapped[UUID | None] = mapped_column(
         DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True
     )

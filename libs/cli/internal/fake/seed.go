@@ -458,18 +458,18 @@ func seed() *state {
 
 	st.Events = append(st.Events,
 		api.Event{
-			ID: "f735209c-c20c-4c7f-8458-d3479f76bf69", Kind: "plane.started", Severity: "info",
+			ID: "evt_01j9x2e0000000000000000001", Kind: "plane.started", Severity: "info",
 			Subject: api.EventSubject{Type: "plane"}, Message: "control plane started",
 			Details: map[string]any{"version": "0.1.0"}, OccurredAt: now.Add(-5 * time.Hour), RecordedAt: now.Add(-5 * time.Hour),
 		},
 		api.Event{
-			ID: "3566dbd6-521e-4395-a489-7e17c9d300a4", ClusterID: strptr(iad), Kind: "device.unhealthy",
+			ID: "evt_01j9x2e0000000000000000002", ClusterID: strptr(iad), Kind: "device.unhealthy",
 			Severity: "error", Subject: api.EventSubject{Type: "device", ID: strptr("809bd430-0c48-40eb-be06-913bbbb181c8")},
 			Message: "Xid 79 on " + firstNode.Name, Details: map[string]any{"xid": 79},
 			OccurredAt: now.Add(-42 * time.Minute), RecordedAt: now.Add(-42 * time.Minute),
 		},
 		api.Event{
-			ID: "9a2f7bb1-6b0e-4c62-9a3a-77a8f9d1c2b4", ClusterID: strptr(sjc), Kind: "cluster.disconnected",
+			ID: "evt_01j9x2e0000000000000000003", ClusterID: strptr(sjc), Kind: "cluster.disconnected",
 			Severity: "warning", Subject: api.EventSubject{Type: "cluster", ID: strptr("fb690d40-2fe5-448a-b92c-7a33d14552c9")},
 			Message: "sjc-1 stream closed by peer", Details: map[string]any{},
 			OccurredAt: now.Add(-11 * time.Minute), RecordedAt: now.Add(-11 * time.Minute),

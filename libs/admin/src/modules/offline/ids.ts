@@ -19,7 +19,7 @@ export function uid(prefix: string): string {
   return `${prefix}${body}`
 }
 
-/** Events carry a bare UUID: `Event.subject_id` is untyped and so is the row. */
+/** `Event.subject_id` is untyped, so a subject reference is still a bare UUID. */
 export function uuid(seed: number): string {
   const hex = (n: number, len: number) =>
     Math.abs(Math.floor(n)).toString(16).padStart(len, "0").slice(0, len)

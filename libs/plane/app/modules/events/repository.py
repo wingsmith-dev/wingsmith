@@ -70,8 +70,13 @@ class EventRepository:
     def _base(self) -> Select:
         return select(Event, Cluster.uid.label("cluster_uid")).outerjoin(Cluster, Event.cluster_id == Cluster.id)
 
-    def get_query(self, ref) -> Select:
-        return self._base().where(Event.id == ref)
+    def get_query(self, ref: str) -> Select:
+        """Resolves an event the way every other module resolves a reference.
+
+        An event has no name, so `evt_...` is the only reference there is: the
+        row's primary key is machinery and has never been a public identifier.
+        """
+        return self._base().where(Event.uid == ref)
 
     def list_query(
         self,

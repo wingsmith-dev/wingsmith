@@ -9,6 +9,7 @@ one decision in this package that can delete a cluster's whole inventory.
 
 import json
 import uuid
+import logging
 
 from typing import Any
 from pathlib import Path
@@ -81,7 +82,9 @@ def test_a_domain_spanning_nodes_is_stored_as_spanning_and_nodeless() -> None:
 
 
 def test_a_domain_on_one_node_names_that_node() -> None:
-    domain = structs.replace(payload("topology.observed"), node_ids=["nod_01j9x2bbbbbbbbbbbbbbbbbbbb"], spans_nodes=False)
+    domain = structs.replace(
+        payload("topology.observed"), node_ids=["nod_01j9x2bbbbbbbbbbbbbbbbbbbb"], spans_nodes=False
+    )
     sql, params = compile_sql(statements.upsert_topology_domain(CLUSTER_ID, domain))
     assert params["spans_nodes"] is False
     assert "supply_node" in sql
@@ -199,9 +202,7 @@ ALLOCATION_ID = uuid.UUID("77777777-7777-7777-7777-777777777777")
 
 def test_deployment_status_is_its_own_row_and_never_the_declared_one() -> None:
     """Declared and observed have different writers, so they cannot share a row."""
-    sql, _ = compile_sql(
-        statements.upsert_deployment_status(CLUSTER_ID, DEPLOYMENT_ID, payload("deployment.observed"))
-    )
+    sql, _ = compile_sql(statements.upsert_deployment_status(CLUSTER_ID, DEPLOYMENT_ID, payload("deployment.observed")))
     assert "INSERT INTO demand_deployment_status" in sql
     assert "demand_deployment " not in sql
     assert "min_replicas" not in sql and "max_replicas" not in sql
@@ -246,9 +247,7 @@ def test_replica_does_not_write_the_devices_it_holds() -> None:
 def test_allocation_uses_the_cluster_minted_id() -> None:
     """An observed row is named by the cluster that discovered it (ADR 0002)."""
     observed = payload("allocation.observed")
-    sql, params = compile_sql(
-        statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, PROJECT_ID, REPLICA_ID, observed)
-    )
+    sql, params = compile_sql(statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, PROJECT_ID, REPLICA_ID, observed))
     assert observed.allocation_id in scalar_params(params)
     assert "uid = excluded.uid" not in sql
 
@@ -256,9 +255,7 @@ def test_allocation_uses_the_cluster_minted_id() -> None:
 def test_allocation_reads_its_device_class_back_from_the_devices() -> None:
     """Having the cluster restate it would create a second place for it to be wrong."""
     observed = payload("allocation.observed")
-    sql, params = compile_sql(
-        statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, PROJECT_ID, REPLICA_ID, observed)
-    )
+    sql, params = compile_sql(statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, PROJECT_ID, REPLICA_ID, observed))
     assert "SELECT supply_device.device_class" in sql
     assert len(observed.device_ids) in scalar_params(params)
 
@@ -344,6 +341,12 @@ def test_event_insert_is_guarded_against_replay() -> None:
     sql, _ = compile_sql(statements.insert_node_event(CLUSTER_ID, payload("node.event")))
     assert "INSERT INTO ops_event" in sql
     assert "NOT (EXISTS" in sql
+
+
+def test_event_insert_mints_a_public_id() -> None:
+    sql, params = compile_sql(statements.insert_node_event(CLUSTER_ID, payload("node.event")))
+    assert "uid" in sql.split("SELECT")[0]
+    assert any(isinstance(v, str) and v.startswith("evt_") for v in params.values())
 
 
 def test_device_event_resolves_its_subject() -> None:
@@ -553,6 +556,46 @@ async def test_a_truncated_snapshot_deletes_nothing() -> None:
     await sink.apply_observed(observed_frame("node.observed", reply_to="req-4"))
     await sink.end_resync(CLUSTER, "req-4", 9, True)
     assert not [s for s in sessions.executed if str(s).upper().startswith("DELETE")]
+
+
+async def test_a_demand_resync_warns_that_nothing_on_that_side_was_pruned(caplog) -> None:
+    """Demand-side pruning does not exist yet, and silence would read as success.
+
+    A `demand` snapshot closes cleanly and deletes nothing, so a replica the
+    cluster stopped reporting stays in the database forever. Until there is a
+    real prune, the log is the only thing that says so.
+    """
+    sink = DatabaseSink(FakeSessions())
+    await sink.begin_resync(CLUSTER, "demand", "req-6")
+    with caplog.at_level(logging.WARNING):
+        await sink.end_resync(CLUSTER, "req-6", 0, True)
+
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+    assert "ingestion.resync.demand_not_pruned" in warnings[0].getMessage()
+    assert "NOT pruned" in warnings[0].getMessage()
+
+
+async def test_a_supply_only_resync_says_nothing_about_demand(caplog) -> None:
+    sink = DatabaseSink(FakeSessions())
+    await sink.begin_resync(CLUSTER, "supply", "req-7")
+    with caplog.at_level(logging.WARNING):
+        await sink.end_resync(CLUSTER, "req-7", 0, True)
+
+    assert not [r for r in caplog.records if "demand_not_pruned" in r.getMessage()]
+
+
+async def test_a_full_resync_prunes_the_supply_half_and_warns_about_the_other(caplog) -> None:
+    """`all` carries both scopes, so the prune and the warning both belong to it."""
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
+    await sink.begin_resync(CLUSTER, "all", "req-8")
+    await sink.apply_observed(observed_frame("node.observed", reply_to="req-8"))
+    with caplog.at_level(logging.WARNING):
+        await sink.end_resync(CLUSTER, "req-8", 1, True)
+
+    assert [s for s in sessions.executed if str(s).upper().startswith("DELETE")]
+    assert any("demand_not_pruned" in r.getMessage() for r in caplog.records)
 
 
 async def test_frames_outside_an_epoch_are_not_counted() -> None:

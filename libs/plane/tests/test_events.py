@@ -3,7 +3,10 @@ import datetime as dt
 import pytest
 
 from app.core.ids import NODE
+from app.core.ids import EVENT
 from app.core.ids import PROJECT
+from app.core.ids import PREFIXES
+from app.core.ids import is_uid
 from app.core.ids import new_uid
 from app.core.exceptions import Invalid
 from app.modules.events.routes import EventRoutes
@@ -109,3 +112,14 @@ def test_event_separates_when_it_happened_from_when_we_recorded_it():
 
 def test_kind_is_the_wire_name_for_the_type_column(repo):
     assert "ops_event.type = " in sql(repo.list_query(limit=5, kind="device.degraded"))
+
+
+def test_get_resolves_on_the_public_id_not_the_row_key(repo):
+    text = sql(repo.get_query(new_uid(EVENT)))
+    assert "ops_event.uid = " in text
+    assert "ops_event.id = " not in text
+
+
+def test_the_event_prefix_is_registered():
+    assert EVENT in PREFIXES
+    assert is_uid(new_uid(EVENT))

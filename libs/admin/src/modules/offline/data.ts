@@ -1011,7 +1011,7 @@ export const operations: Operation[] = [
 
 export const events: PlaneEvent[] = [
   {
-    id: uuid(1),
+    id: uid("evt_"),
     cluster_id: null,
     kind: "plane.started",
     severity: "info",
@@ -1023,7 +1023,7 @@ export const events: PlaneEvent[] = [
     recorded_at: iso(300),
   },
   {
-    id: uuid(2),
+    id: uid("evt_"),
     cluster_id: clusters[0].id,
     kind: "cluster.enrolled",
     severity: "info",
@@ -1035,7 +1035,7 @@ export const events: PlaneEvent[] = [
     recorded_at: iso(172_800),
   },
   {
-    id: uuid(3),
+    id: uid("evt_"),
     cluster_id: clusters[0].id,
     kind: "device.unhealthy",
     severity: "warning",
@@ -1047,7 +1047,7 @@ export const events: PlaneEvent[] = [
     recorded_at: iso(245),
   },
   {
-    id: uuid(4),
+    id: uid("evt_"),
     cluster_id: clusters[0].id,
     kind: "node.drain.started",
     severity: "info",
@@ -1059,7 +1059,7 @@ export const events: PlaneEvent[] = [
     recorded_at: iso(17),
   },
   {
-    id: uuid(5),
+    id: uid("evt_"),
     cluster_id: clusters[1].id,
     kind: "cluster.sync.lost",
     severity: "error",
@@ -1071,7 +1071,7 @@ export const events: PlaneEvent[] = [
     recorded_at: iso(47),
   },
   {
-    id: uuid(6),
+    id: uid("evt_"),
     cluster_id: clusters[2].id,
     kind: "workload.admission.rejected",
     severity: "warning",

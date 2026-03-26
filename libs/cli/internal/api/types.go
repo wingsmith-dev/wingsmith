@@ -716,7 +716,8 @@ type EventSubject struct {
 }
 
 // Event is one observed, append-only state record. No declared half, no
-// revision: nothing declares an event and nothing may edit one.
+// revision: nothing declares an event and nothing may edit one. `ID` is an
+// `evt_` public identifier, not the row's primary key.
 type Event struct {
 	ID          string         `json:"id"`
 	ClusterID   *string        `json:"cluster_id"`

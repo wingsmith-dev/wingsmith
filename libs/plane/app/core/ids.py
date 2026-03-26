@@ -22,6 +22,7 @@ PRIORITY_CLASS = "prc_"
 POLICY = "plc_"
 ALLOCATION = "alc_"
 WORKLOAD = "wkl_"
+EVENT = "evt_"
 DISCOVERED_WORKLOAD = "dsw_"
 
 PREFIXES = frozenset(
@@ -45,6 +46,7 @@ PREFIXES = frozenset(
         POLICY,
         ALLOCATION,
         WORKLOAD,
+        EVENT,
         DISCOVERED_WORKLOAD,
     }
 )

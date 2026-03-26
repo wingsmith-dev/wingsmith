@@ -22,6 +22,44 @@ export const OPERATION_TYPES = {
 
 export type OperationType = keyof typeof OPERATION_TYPES
 
+/** The kind of object each operation type acts upon, mirroring the plane. */
+export const OPERATION_TARGET_KINDS = {
+  "node.drain": "node",
+  "node.cordon": "node",
+  "node.uncordon": "node",
+  "node.reboot": "node",
+  "device.reset": "device",
+  "cache.warm": "artifact",
+  "deployment.roll": "deployment",
+  "component.upgrade": "component",
+} as const satisfies Record<OperationType, string>
+
+const ID_PATTERN = /^[a-z]{3}_[0-9a-z]{26}$/
+
+/**
+ * Turns what a human typed into a target the plane can read a kind off.
+ *
+ * A target reference has to say what kind of thing it names — that is what
+ * makes `node.drain` against a device an error at creation rather than inside
+ * the cluster an hour later. An id says it in the prefix; a name says nothing,
+ * so the type's own target kind is written in front of it.
+ */
+export function qualifyTarget(type: OperationType, target: string): string {
+  const trimmed = target.trim()
+  if (trimmed === "" || ID_PATTERN.test(trimmed) || trimmed.includes(":")) return trimmed
+  return `${OPERATION_TARGET_KINDS[type]}:${trimmed}`
+}
+
+/** Whether a typed target names a kind this operation type does not act upon. */
+export function targetMismatch(type: OperationType, target: string): boolean {
+  const trimmed = target.trim()
+  if (trimmed === "") return false
+  if (ID_PATTERN.test(trimmed)) return !trimmed.startsWith(OPERATION_TYPES[type])
+  const [kind, name] = trimmed.split(":")
+  if (name === undefined) return false
+  return kind !== OPERATION_TARGET_KINDS[type] || name === ""
+}
+
 export type OperationPhase =
   | "pending"
   | "running"
@@ -111,7 +149,8 @@ export interface EventSubject {
 
 /**
  * `EventSchema` — one observed, append-only state record. No declared half and
- * no revision: nothing declares an event and nothing may edit one.
+ * no revision: nothing declares an event and nothing may edit one. `id` is an
+ * `evt_` public identifier, not the row's primary key.
  */
 export interface PlaneEvent {
   id: string

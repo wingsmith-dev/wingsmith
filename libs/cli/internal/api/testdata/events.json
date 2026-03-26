@@ -1,7 +1,7 @@
 {
     "items": [
         {
-            "id": "f735209c-c20c-4c7f-8458-d3479f76bf69",
+            "id": "evt_01j9x2e0000000000000000001",
             "cluster_id": null,
             "kind": "plane.started",
             "severity": "info",
@@ -18,7 +18,7 @@
             "recorded_at": "2026-08-19T18:01:14.670060Z"
         },
         {
-            "id": "3566dbd6-521e-4395-a489-7e17c9d300a4",
+            "id": "evt_01j9x2e0000000000000000002",
             "cluster_id": "clu_01m0djye81hnzae2p3ec50vsvc",
             "kind": "cluster.enrolled",
             "severity": "info",
@@ -33,7 +33,7 @@
             "recorded_at": "2026-08-19T18:01:14.670060Z"
         },
         {
-            "id": "1edf0d0f-9b4c-4494-9d72-d422fc73c999",
+            "id": "evt_01j9x2e0000000000000000003",
             "cluster_id": "clu_01m0djye81hnzae2p3ec50vsvc",
             "kind": "node.joined",
             "severity": "info",

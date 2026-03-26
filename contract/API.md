@@ -80,7 +80,7 @@ OIDC/SSO integration replaces how a `Principal` is produced without touching a s
 ## 3. Identifiers
 
 Prefixed, opaque, stable: `clu_ nod_ dev_ tpd_ pol_ art_ rec_ dep_ rep_ end_ prj_ qta_ opr_ cmp_
-ten_ prc_ plc_ alc_ wkl_`.
+ten_ prc_ plc_ alc_ wkl_ evt_`.
 
 The body is a Crockford base32 ULID, **lowercase**. Crockford is case-insensitive when decoding, but
 these ids are opaque strings that get compared, indexed and put in URLs, so exactly one spelling is
@@ -197,7 +197,21 @@ type and a target — never `POST /v1/nodes/{id}/drain`.
 
 ```json
 { "type": "node.drain", "target": "nod_01hq0v...", "reason": "firmware", "deadline": "..." }
+{ "type": "node.drain", "target": "node:gpu-node-04", "cluster": "iad-1", "reason": "firmware" }
 ```
+
+A target is written one of two ways: a prefixed id, or a kind-qualified name — `node:gpu-node-04`,
+`device:GPU-8f3c...`, `cluster:iad-1`, `deployment:llama-70b`, `component:operator`,
+`artifact:llama-3-70b`. The bare name every other path segment accepts is deliberately not a form
+here. Elsewhere the path says what kind of object it is addressing; a target does not, and the kind
+has to be answerable at creation — `node.drain` against a `dev_...` is a category error caught here
+rather than three hops downstream in the operator — so a target reference carries its own kind
+either in the id prefix or in the `kind:` half. The same two forms are accepted by the `target`
+filter on `GET /v1/operations`.
+
+Names are unique inside a cluster and not above it. A qualified name matching more than one object
+is `400 invalid` listing the candidates, never a guess; `cluster` on the create body narrows it
+first, and a name matching none is `404 not found`.
 
 Returns an Operation with an id and a phase, polled at `GET /v1/operations/{id}`. This follows from
 the object model: an operation is long-running, can fail, has an actor and a reason, and needs a

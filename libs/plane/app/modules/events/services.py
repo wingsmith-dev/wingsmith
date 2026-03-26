@@ -1,4 +1,3 @@
-import uuid
 import datetime as dt
 
 from sqlalchemy import Row
@@ -32,7 +31,7 @@ class EventService:
     def schema(self, row: Row) -> EventSchema:
         event = row[0]
         return EventSchema(
-            id=str(event.id),
+            id=event.uid,
             cluster_id=row.cluster_uid,
             kind=event.type,
             severity=event.severity,
@@ -48,11 +47,7 @@ class EventService:
         )
 
     async def get(self, ref: str) -> EventSchema:
-        try:
-            uid = uuid.UUID(ref)
-        except ValueError as exc:
-            raise NotFound(f"no event {ref!r}") from exc
-        row = await self.repo.get(uid)
+        row = await self.repo.get(ref)
         if row is None:
             raise NotFound(f"no event {ref!r}")
         return self.schema(row)

@@ -22,12 +22,14 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.ids import NODE
+from app.core.ids import EVENT
 from app.core.ids import DEVICE
 from app.core.ids import REPLICA
 from app.core.ids import ALLOCATION
 from app.core.ids import TOPOLOGY_DOMAIN
 from app.core.ids import DISCOVERED_WORKLOAD
 from app.core.ids import is_uid
+from app.core.ids import new_uid
 from app.db.models import Node
 from app.db.models import Pool
 from app.db.models import Event
@@ -554,6 +556,7 @@ def _insert_event(
     than assumed.
     """
     columns = [
+        "uid",
         "cluster_id",
         "type",
         "severity",
@@ -573,6 +576,7 @@ def _insert_event(
         )
     )
     values = select(
+        literal(new_uid(EVENT)).label("uid"),
         literal(cluster_id).label("cluster_id"),
         literal(type_name).label("type"),
         literal(severity).label("severity"),
