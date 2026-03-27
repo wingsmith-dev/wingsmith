@@ -55,6 +55,7 @@ logger = getLogger(__name__)
 
 
 SUPPLY_SCOPES = frozenset({"supply", "all"})
+DEMAND_SCOPES = frozenset({"demand", "all"})
 
 
 class UnknownCluster(Exception):
@@ -324,6 +325,19 @@ class DatabaseSink:
                 "ingestion.resync.no_prune cluster=%s request=%s reason=%s", cluster_id, request_id, decision.reason
             )
             return
+        if epoch.scope in DEMAND_SCOPES:
+            logger.warning(
+                "ingestion.resync.demand_not_pruned cluster=%s request=%s scope=%s received=%d "
+                "demand-side observed state (replicas, allocations) was applied as upserts and NOT pruned: "
+                "a replica or allocation this cluster has stopped reporting is still in the database and "
+                "will stay there until it is removed by hand. Only the supply side (nodes, devices, "
+                "topology domains, discovered workloads) is pruned against a snapshot. "
+                "Suspect stale demand rows here before trusting a replica count for this cluster.",
+                cluster_id,
+                request_id,
+                epoch.scope,
+                epoch.received,
+            )
         if epoch.scope not in SUPPLY_SCOPES:
             logger.info("ingestion.resync.nothing_to_prune cluster=%s scope=%s", cluster_id, epoch.scope)
             return
