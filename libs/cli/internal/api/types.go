@@ -214,8 +214,8 @@ type TopologyDomain struct {
 	ID                string         `json:"id"`
 	Cluster           string         `json:"cluster"`
 	ClusterName       string         `json:"cluster_name"`
-	Node              *string        `json:"node"`
-	NodeName          *string        `json:"node_name"`
+	Nodes             []string       `json:"nodes"`
+	NodeNames         []string       `json:"node_names"`
 	Parent            *string        `json:"parent"`
 	Kind              string         `json:"kind"`
 	Identifier        string         `json:"identifier"`

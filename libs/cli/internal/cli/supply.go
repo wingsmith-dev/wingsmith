@@ -370,7 +370,7 @@ be placed.`,
 			{Title: "identifier"},
 			{Title: "id", Wide: true},
 			{Title: "cluster"},
-			{Title: "node"},
+			{Title: "nodes"},
 			{Title: "kind"},
 			{Title: "devices", Align: ui.AlignRight},
 			{Title: "gen", Wide: true},
@@ -379,7 +379,7 @@ be placed.`,
 		},
 		row: func(s ui.Style, t api.TopologyDomain) []string {
 			return []string{
-				t.Identifier, t.ID, t.ClusterName, orDash(str(t.NodeName)), t.Kind,
+				t.Identifier, t.ID, t.ClusterName, listCell(t.NodeNames), t.Kind,
 				strconv.Itoa(t.DeviceCount), orDash(str(t.LinkGeneration)), num(t.LinkBandwidthGbps),
 				boolWord(t.SpansNodes),
 			}
@@ -394,7 +394,7 @@ be placed.`,
 			fmt.Fprintf(w, "%s %s\n", s.Bold(t.Identifier), s.Dim(t.ID))
 			kv := app.KV()
 			kv.Add("cluster", t.ClusterName)
-			kv.Add("node", orDash(str(t.NodeName)))
+			kv.Add("nodes", listCell(t.NodeNames))
 			kv.Add("parent", orDash(str(t.Parent)))
 			kv.Add("kind", t.Kind)
 			kv.Add("link generation", orDash(str(t.LinkGeneration)))

@@ -69,7 +69,7 @@ func (b *Backend) TopologyDomains(ctx context.Context, o api.ListOpts) (api.Page
 	node := b.nodeRef(o.Node)
 	return collect(b, b.state.TopologyDomains, o, func(t api.TopologyDomain) bool {
 		return refEq(cluster, t.Cluster, t.ClusterName) &&
-			refEqPtr(node, t.Node, t.NodeName) &&
+			refEqAny(node, t.Nodes, t.NodeNames) &&
 			eqFold(o.Kind, t.Kind) && boolEq(o.SpansNodes, t.SpansNodes)
 	})
 }

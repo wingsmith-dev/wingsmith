@@ -22,8 +22,8 @@ export interface TopologyDomain {
   id: string
   cluster: string
   cluster_name: string
-  node: string | null
-  node_name: string | null
+  nodes: string[]
+  node_names: string[]
   parent: string | null
   kind: TopologyKind
   identifier: string

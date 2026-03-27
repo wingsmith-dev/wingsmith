@@ -166,6 +166,53 @@ async def test_a_topology_frame_links_the_devices_it_names(sessions, cluster) ->
     assert domains == [(DOMAIN, "nvlink", 2, False)]
 
 
+async def test_a_topology_frame_records_every_node_it_spans(sessions, cluster) -> None:
+    """The wire has always carried `node_ids`; now the database keeps all of them."""
+    sink = DatabaseSink(sessions)
+    second = "nod_01j9x2bbbbbbbbbbbbbbbbbbbq"
+    await apply_supply(sink)
+    await sink.apply_observed(observed("node.observed", node_id=second, name="gpu-h100-a-08"))
+    await sink.apply_observed(
+        observed(
+            "topology.observed",
+            domain_id=DOMAIN,
+            node_ids=[NODE, second],
+            spans_nodes=True,
+            device_ids=[DEVICE, DEVICE_B],
+        )
+    )
+
+    rows = await fetch(
+        sessions,
+        "SELECT n.uid FROM supply_topology_domain_node m"
+        " JOIN supply_node n ON n.id = m.node_id JOIN supply_topology_domain t ON t.id = m.domain_id"
+        " WHERE t.uid = :domain ORDER BY n.uid",
+        {"domain": DOMAIN},
+    )
+    assert [row[0] for row in rows] == sorted([NODE, second])
+
+
+async def test_a_node_dropping_out_of_a_domain_drops_out_of_its_membership(sessions, cluster) -> None:
+    """Last-writer-wins: the frame is the whole membership, not an addition to it."""
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+    await sink.apply_observed(
+        observed("topology.observed", domain_id=DOMAIN, node_ids=[], spans_nodes=True, device_ids=[DEVICE])
+    )
+
+    rows = await fetch(sessions, "SELECT count(*) FROM supply_topology_domain_node")
+    assert rows == [(0,)]
+
+
+async def test_re_observing_a_domain_does_not_duplicate_its_membership(sessions, cluster) -> None:
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+    await apply_supply(sink)
+
+    rows = await fetch(sessions, "SELECT count(*) FROM supply_topology_domain_node")
+    assert rows == [(1,)]
+
+
 async def test_re_observing_a_device_updates_it_in_place(sessions, cluster) -> None:
     sink = DatabaseSink(sessions)
     await sink.apply_observed(observed("node.observed"))

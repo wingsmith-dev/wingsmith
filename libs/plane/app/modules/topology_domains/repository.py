@@ -1,29 +1,57 @@
 from sqlalchemy import Row
 from sqlalchemy import Select
+from sqlalchemy import func
+from sqlalchemy import text
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.dialects.postgresql import aggregate_order_by
 
 from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Cluster
 from app.db.models import TopologyDomain
+from app.db.models import TopologyDomainNode
 from app.core.filters import ref_ids
 
 
 class TopologyDomainRepository:
-    """Reads only. Domains are discovered by the operator, never declared."""
+    """Reads only. Domains are discovered by the operator, never declared.
+
+    Membership comes from `supply_topology_domain_node`, so filtering by node is
+    a real containment test: a fabric across four machines matches all four,
+    where the old scalar column matched none of them.
+    """
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
-        self.node = aliased(Node)
         self.parent = aliased(TopologyDomain)
+
+    def _members(self, column):
+        """The domain's membership, aggregated rather than joined into the row.
+
+        A domain that spans four nodes would otherwise return four copies of
+        itself, and the page limit counts rows.
+        """
+        return (
+            select(func.coalesce(func.array_agg(aggregate_order_by(column, Node.name.asc())), text("'{}'")))
+            .select_from(TopologyDomainNode)
+            .join(Node, TopologyDomainNode.node_id == Node.id)
+            .where(TopologyDomainNode.domain_id == TopologyDomain.id)
+            .scalar_subquery()
+        )
 
     def _base(self) -> Select:
         return (
-            select(TopologyDomain, Cluster.uid, Cluster.name, self.node.uid, self.node.name, self.parent.uid)
+            select(
+                TopologyDomain,
+                Cluster.uid,
+                Cluster.name,
+                self._members(Node.uid).label("node_uids"),
+                self._members(Node.name).label("node_names"),
+                self.parent.uid,
+            )
             .join(Cluster, TopologyDomain.cluster_id == Cluster.id)
-            .outerjoin(self.node, TopologyDomain.node_id == self.node.id)
             .outerjoin(self.parent, TopologyDomain.parent_id == self.parent.id)
         )
 
@@ -48,7 +76,11 @@ class TopologyDomainRepository:
         if cluster is not None:
             query = query.where(TopologyDomain.cluster_id.in_(ref_ids(Cluster, cluster)))
         if node is not None:
-            query = query.where(TopologyDomain.node_id.in_(ref_ids(Node, node)))
+            query = query.where(
+                TopologyDomain.id.in_(
+                    select(TopologyDomainNode.domain_id).where(TopologyDomainNode.node_id.in_(ref_ids(Node, node)))
+                )
+            )
         if kind is not None:
             query = query.where(TopologyDomain.kind == kind)
         if spans_nodes is not None:

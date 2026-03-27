@@ -43,9 +43,17 @@ def test_list_query_filters_are_all_applied():
     assert "supply_topology_domain.seq > 3" in sql
     assert "supply_cluster.name = 'iad-1'" in sql
     assert "supply_node.name = 'node-1'" in sql
+    assert "supply_topology_domain_node.domain_id" in sql
     assert "supply_topology_domain.kind = 'nvlink'" in sql
     assert "supply_topology_domain.spans_nodes = true" in sql
     assert "LIMIT 11" in sql
+
+
+def test_membership_is_aggregated_so_a_spanning_domain_is_still_one_row():
+    """Four member nodes must not return four copies of the domain: the page counts rows."""
+    sql = compiled(repo().query(limit=10))
+    assert "array_agg" in sql
+    assert "JOIN supply_topology_domain_node" not in sql
 
 
 def test_parent_is_resolved_by_a_self_join_not_a_lazy_load():
@@ -69,8 +77,9 @@ def test_schema_projection():
         created_at=now,
         updated_at=None,
     )
-    row = (domain, "clu_x", "iad-1", "nod_x", "node-1", "tpd_parent")
+    row = (domain, "clu_x", "iad-1", ["nod_x", "nod_y"], ["node-1", "node-2"], "tpd_parent")
     schema = TopologyDomainService.schema(object.__new__(TopologyDomainService), row)
     assert schema.parent == "tpd_parent"
     assert schema.device_count == 8
-    assert schema.node_name == "node-1"
+    assert schema.nodes == ["nod_x", "nod_y"]
+    assert schema.node_names == ["node-1", "node-2"]

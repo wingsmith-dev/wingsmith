@@ -152,9 +152,6 @@ class TopologyDomain(BaseMixin):
     cluster_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    node_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("supply_node.id", ondelete="CASCADE"), nullable=True, index=True
-    )
     parent_id: Mapped[UUID | None] = mapped_column(
         DBUUID, ForeignKey("supply_topology_domain.id", ondelete="SET NULL"), nullable=True
     )
@@ -170,6 +167,39 @@ class TopologyDomain(BaseMixin):
     devices: Mapped[list[Device]] = relationship(
         "Device", back_populates="topology_domain", lazy="noload", foreign_keys="Device.topology_domain_id"
     )
+    members: Mapped[list[TopologyDomainNode]] = relationship(
+        "TopologyDomainNode", back_populates="domain", lazy="noload", cascade="all, delete-orphan"
+    )
+    nodes: Mapped[list[Node]] = relationship(
+        "Node", secondary="supply_topology_domain_node", lazy="noload", viewonly=True
+    )
+
+
+class TopologyDomainNode(BaseMixin):
+    """Which nodes a topology domain spans. One row per node, written by ingestion.
+
+    `topology.observed` has always carried the full `node_ids`, but the domain
+    held a single nullable `node_id` — so a fabric across four machines stored a
+    null and the membership survived only on the wire. A domain with one member
+    and a domain with none were the same row, which made "the domains on this
+    node" a question the database could not answer. This table is that answer,
+    and it replaces the scalar rather than sitting beside it: two spellings of
+    one fact is how they drift apart.
+    """
+
+    __tablename__ = "supply_topology_domain_node"
+    __table_args__ = (UniqueConstraint("domain_id", "node_id", name="uq_supply_topology_domain_node"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    domain_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_topology_domain.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    node_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_node.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    domain: Mapped[TopologyDomain] = relationship("TopologyDomain", back_populates="members", lazy="noload")
+    node: Mapped[Node] = relationship("Node", lazy="noload")
 
 
 class Device(BaseMixin):

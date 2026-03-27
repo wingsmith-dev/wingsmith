@@ -286,19 +286,19 @@ export function topologyColumns(): Column<TopologyDomain>[] {
     },
     {
       key: "node",
-      header: "Node",
+      header: "Nodes",
       cell: (domain) =>
-        domain.node ? (
+        domain.nodes.length === 1 ? (
           <Link
             to="/nodes/$nodeId"
-            params={{ nodeId: domain.node }}
+            params={{ nodeId: domain.nodes[0] }}
             className="font-mono text-2xs text-muted-foreground hover:underline"
           >
-            {domain.node_name}
+            {domain.node_names[0]}
           </Link>
         ) : (
           <span className="font-mono text-2xs text-muted-foreground/50">
-            spans nodes
+            {domain.nodes.length === 0 ? "none" : `${domain.nodes.length} nodes`}
           </span>
         ),
     },

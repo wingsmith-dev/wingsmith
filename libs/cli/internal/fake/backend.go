@@ -207,6 +207,24 @@ func refEqPtr(want string, id, name *string) bool {
 	return refEq(want, deref(id), deref(name))
 }
 
+// refEqAny matches a domain whose membership contains the wanted node, by id or
+// by name. Membership is a set: a fabric across four machines matches all four.
+func refEqAny(want string, ids, names []string) bool {
+	if want == "" {
+		return true
+	}
+	for i, id := range ids {
+		name := ""
+		if i < len(names) {
+			name = names[i]
+		}
+		if refEq(want, id, name) {
+			return true
+		}
+	}
+	return false
+}
+
 func boolEq(want *bool, got bool) bool {
 	return want == nil || *want == got
 }

@@ -217,6 +217,8 @@ class DatabaseSink:
             case "topology.observed":
                 assert isinstance(payload, TopologyObserved)
                 await db.execute(statements.upsert_topology_domain(cluster_id, payload))
+                for statement in statements.replace_domain_nodes(cluster_id, payload):
+                    await db.execute(statement)
                 if payload.device_ids:
                     await db.execute(statements.attach_domain_devices(cluster_id, payload))
                 return TOPOLOGY, statements.observed_uid(payload.domain_id, "tpd_")

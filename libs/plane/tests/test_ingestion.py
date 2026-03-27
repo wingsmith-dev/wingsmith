@@ -72,22 +72,40 @@ def test_device_upsert_targets_the_natural_key() -> None:
     assert "ON CONFLICT ON CONSTRAINT uq_supply_device_cluster_uuid DO UPDATE" in sql
 
 
-def test_a_domain_spanning_nodes_is_stored_as_spanning_and_nodeless() -> None:
-    """`node_id` can only name one machine, so a multi-node fabric names none."""
+def test_a_domain_spanning_nodes_stores_every_member() -> None:
+    """The domain row carries the fabric; the join table carries the machines."""
     domain = payload("topology.observed")
     assert len(domain.node_ids) > 1 and domain.spans_nodes
     _, params = compile_sql(statements.upsert_topology_domain(CLUSTER_ID, domain))
-    assert params["node_id"] is None
+    assert "node_id" not in params
     assert params["spans_nodes"] is True
 
+    written = [compile_sql(s)[0] for s in statements.replace_domain_nodes(CLUSTER_ID, domain)]
+    assert any("INSERT INTO supply_topology_domain_node" in sql for sql in written)
+    assert any("DELETE FROM supply_topology_domain_node" in sql for sql in written)
 
-def test_a_domain_on_one_node_names_that_node() -> None:
+
+def test_a_domain_on_one_node_is_one_membership_row() -> None:
     domain = structs.replace(
         payload("topology.observed"), node_ids=["nod_01j9x2bbbbbbbbbbbbbbbbbbbb"], spans_nodes=False
     )
-    sql, params = compile_sql(statements.upsert_topology_domain(CLUSTER_ID, domain))
+    _, params = compile_sql(statements.upsert_topology_domain(CLUSTER_ID, domain))
     assert params["spans_nodes"] is False
-    assert "supply_node" in sql
+    assert len(statements.replace_domain_nodes(CLUSTER_ID, domain)) == 2
+
+
+def test_a_domain_with_no_named_nodes_only_clears_its_membership() -> None:
+    """Nothing to insert is not the same as nothing to remove."""
+    domain = structs.replace(payload("topology.observed"), node_ids=[])
+    written = statements.replace_domain_nodes(CLUSTER_ID, domain)
+    assert len(written) == 1
+    assert "DELETE FROM supply_topology_domain_node" in compile_sql(written[0])[0]
+
+
+def test_membership_insert_never_updates_a_row_that_is_already_there() -> None:
+    written = statements.replace_domain_nodes(CLUSTER_ID, payload("topology.observed"))
+    sql = compile_sql(written[1])[0]
+    assert "ON CONFLICT ON CONSTRAINT uq_supply_topology_domain_node DO NOTHING" in sql
 
 
 def test_topology_upsert_targets_the_natural_key() -> None:

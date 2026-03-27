@@ -11,6 +11,7 @@ SUPPLY = {
     "supply_node",
     "supply_device",
     "supply_topology_domain",
+    "supply_topology_domain_node",
     "supply_pool",
 }
 

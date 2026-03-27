@@ -46,6 +46,7 @@ from app.db.models import AllocationDevice
 from app.db.models import ClusterSyncState
 from app.db.models import DeploymentStatus
 from app.db.models import DiscoveredWorkload
+from app.db.models import TopologyDomainNode
 from app.hub.messages import NodeEvent
 from app.hub.messages import DeviceEvent
 from app.hub.messages import NodeObserved
@@ -65,6 +66,7 @@ from app.ingestion.time import parse_ts
 NODE_CONSTRAINT = "uq_supply_node_cluster_name"
 DEVICE_CONSTRAINT = "uq_supply_device_cluster_uuid"
 TOPOLOGY_CONSTRAINT = "uq_supply_topology_domain_identity"
+DOMAIN_NODE_CONSTRAINT = "uq_supply_topology_domain_node"
 DISCOVERED_CONSTRAINT = "uq_demand_discovered_workload_identity"
 REPLICA_CONSTRAINT = "uq_demand_replica_cluster_name"
 CACHE_CONSTRAINT = "uq_ops_cache_entry_scope"
@@ -456,21 +458,16 @@ def _cache_entry(values: dict[str, Any]) -> Insert:
 
 
 def upsert_topology_domain(cluster_id: UUID, payload: TopologyObserved) -> Insert:
-    """Writes one observed topology domain.
+    """Writes one observed topology domain. Membership goes to the join table.
 
-    `TopologyDomain.node_id` is a single nullable column, so it can only hold the
-    node of a domain confined to one machine. A domain that spans nodes — an
-    NVSwitch fabric, a GB200 rack — is stored with a null `node_id` and
-    `spans_nodes` true, which is what that column pair means; the full membership
-    lives on the wire and is recoverable from the domain's devices and their
-    nodes. Storing every named node would need a join table this ingestion does
-    not own.
+    The domain row says what the fabric is; `supply_topology_domain_node` says
+    which machines it reaches. They are written in the same frame but not in the
+    same statement, because a domain that spans four nodes is four rows and the
+    domain itself is one.
     """
-    single_node = payload.node_ids[0] if len(payload.node_ids) == 1 else None
     values: dict[str, Any] = {
         "uid": observed_uid(payload.domain_id, TOPOLOGY_DOMAIN),
         "cluster_id": cluster_id,
-        "node_id": _node_ref(cluster_id, single_node) if single_node else None,
         "kind": payload.kind,
         "identifier": payload.domain_id,
         "device_count": len(payload.device_ids),
@@ -478,6 +475,35 @@ def upsert_topology_domain(cluster_id: UUID, payload: TopologyObserved) -> Inser
         "observed_at": parse_ts(payload.observed_at),
     }
     return _upsert(TopologyDomain, values, TOPOLOGY_CONSTRAINT)
+
+
+def replace_domain_nodes(cluster_id: UUID, payload: TopologyObserved) -> list[Delete | Insert]:
+    """Makes the join table say exactly what this frame said, and nothing older.
+
+    A delete of the members the frame no longer names, then an insert of the ones
+    it does — last-writer-wins per cluster, the same rule the rest of ingestion
+    follows. The insert is `ON CONFLICT DO NOTHING` rather than an upsert because
+    membership carries nothing to update: the row either exists or it does not.
+    Nodes the plane has not ingested yet contribute no row and reappear on the
+    next observation of the same domain.
+    """
+    domain = _domain_ref(cluster_id, payload.domain_id)
+    members = select(Node.id).where(Node.cluster_id == cluster_id, Node.uid.in_(payload.node_ids))
+    statements: list[Delete | Insert] = [
+        delete(TopologyDomainNode).where(
+            TopologyDomainNode.domain_id == domain,
+            TopologyDomainNode.node_id.notin_(members),
+        )
+    ]
+    if payload.node_ids:
+        insertion = pg_insert(TopologyDomainNode).from_select(
+            ["domain_id", "node_id"],
+            select(domain.label("domain_id"), Node.id.label("node_id")).where(
+                Node.cluster_id == cluster_id, Node.uid.in_(payload.node_ids)
+            ),
+        )
+        statements.append(insertion.on_conflict_do_nothing(constraint=DOMAIN_NODE_CONSTRAINT))
+    return statements
 
 
 def attach_domain_devices(cluster_id: UUID, payload: TopologyObserved) -> Update:

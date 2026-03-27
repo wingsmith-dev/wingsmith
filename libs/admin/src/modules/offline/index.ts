@@ -95,7 +95,7 @@ collection({
   names: (t) => [t.identifier],
   filter: (t, q) =>
     eq(clusterRef(q.get("cluster")) ?? q.get("cluster"), t.cluster) &&
-    eq(nodeRef(q.get("node")) ?? q.get("node"), t.node) &&
+    eq(nodeRef(q.get("node")) ?? q.get("node"), ...t.nodes) &&
     eq(q.get("kind"), t.kind) &&
     bool(q.bool("spans_nodes"), t.spans_nodes),
 })
