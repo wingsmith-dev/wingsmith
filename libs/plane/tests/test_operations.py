@@ -22,6 +22,7 @@ from app.modules.operations.services import wire_kind
 from app.modules.operations.repository import TARGET_KINDS
 from app.modules.operations.repository import OperationRepository
 from app.modules.operations.repository import target_kind
+from app.modules.operations.repository import parse_target
 from app.modules.operations.repository import target_model
 
 
@@ -109,9 +110,44 @@ def test_target_model_resolves_every_actionable_prefix(prefix):
     assert target_kind(new_uid(prefix)) == TARGET_KINDS[prefix]
 
 
-def test_a_name_is_not_a_target():
+def test_a_bare_name_is_not_a_target():
+    """Refused, never guessed at: a bare name says nothing about its own kind."""
     with pytest.raises(Invalid):
         target_model("iad-1")
+
+
+@pytest.mark.parametrize("prefix", EVERY_PREFIX)
+def test_a_qualified_name_names_the_same_kind_the_prefix_does(prefix):
+    ref = f"{TARGET_KINDS[prefix]}:gpu-node-04"
+    assert target_kind(ref) == TARGET_KINDS[prefix]
+    assert target_model(ref) is target_model(new_uid(prefix))
+
+
+def test_a_qualified_name_matches_the_name_column_not_the_uid(repo):
+    text = sql(repo.target_query("node:gpu-node-04"))
+    assert "supply_node.name = " in text
+    assert "supply_node.uid = " not in text
+
+
+def test_a_device_is_named_by_the_uuid_stamped_on_the_card(repo):
+    """A device row carries no name; `device_uuid` is what an operator reads off it."""
+    assert "supply_device.device_uuid = " in sql(repo.target_query("device:GPU-8f3c"))
+
+
+def test_a_kind_operations_do_not_act_upon_cannot_be_qualified():
+    with pytest.raises(Invalid):
+        target_model("pool:hopper")
+
+
+def test_a_qualified_reference_with_no_name_is_refused():
+    with pytest.raises(Invalid):
+        target_model("node:")
+
+
+def test_the_uid_form_still_names_itself(repo):
+    uid = new_uid(NODE)
+    assert parse_target(uid).value == uid
+    assert "supply_node.uid = " in sql(repo.target_query(uid))
 
 
 def test_a_prefix_operations_do_not_act_upon_is_rejected():
@@ -261,3 +297,10 @@ def test_the_plane_and_ingestion_write_disjoint_cancel_fields():
     assert "cancel_requested_at" in source
     assert source.count('operation.phase = "cancelled"') == 1
     assert "if operation.phase == PENDING:" in source
+
+
+def test_a_qualified_target_filter_compiles_to_the_name_column(repo):
+    text = sql(repo.list_query(limit=10, target="node:gpu-node-04"))
+    assert "ops_operation.target_type = " in text
+    assert "ops_operation.target_id IN (SELECT supply_node.id" in text
+    assert "supply_node.name = " in text

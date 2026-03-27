@@ -31,7 +31,9 @@ from app.core.ids import NODE
 from app.core.ids import TENANT
 from app.core.ids import new_uid
 from app.db.notify import MemoryNotifier
+from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
+from app.core.exceptions import NotFound
 from app.ingestion.desired import desired_object
 from app.ingestion.desired import stream_desired
 from app.ingestion.operations import open_operations
@@ -185,7 +187,7 @@ async def a_recipe(db: AsyncSession, artifact_id: str, name: str = "llama-vllm")
     )
 
 
-async def a_deployment(db: AsyncSession, name: str = "llama-prod"):
+async def a_deployment(db: AsyncSession, name: str = "llama-prod", **extra):
     cluster = await a_cluster(db)
     project = await a_project(db)
     artifact = await an_artifact(db)
@@ -194,7 +196,7 @@ async def a_deployment(db: AsyncSession, name: str = "llama-prod"):
         PriorityClassCreateRequest(name="standard", value=100, is_default=True),
     )
     deployment = await DeploymentService(db).create(
-        DeploymentCreateRequest(cluster=cluster.id, recipe=recipe.id, name=name, project=project.id)
+        DeploymentCreateRequest(cluster=cluster.id, recipe=recipe.id, name=name, project=project.id, **extra)
     )
     return cluster, project, recipe, deployment
 
@@ -560,6 +562,80 @@ async def test_operations_create_get_list_cancel(db: AsyncSession) -> None:
         await service.cancel(created.id)
 
 
+async def test_an_operation_can_name_its_target_by_kind_and_name(db: AsyncSession) -> None:
+    """The id-or-name rule reaches operations, with the kind written beside the name."""
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id, name="gpu-node-04")
+    service = OperationService(db, actor="tester", notifier=MemoryNotifier())
+
+    created = await service.create(OperationCreateRequest(type="node.drain", target="node:gpu-node-04"))
+
+    assert created.target.id == node
+    assert created.target.type == "node"
+    assert created.cluster_id == cluster.id
+
+
+async def test_a_qualified_name_is_still_checked_against_the_type(db: AsyncSession) -> None:
+    cluster = await a_cluster(db)
+    await seed_node(db, cluster.id, name="gpu-node-04")
+    service = OperationService(db, actor="tester", notifier=MemoryNotifier())
+
+    with pytest.raises(Invalid):
+        await service.create(OperationCreateRequest(type="device.reset", target="node:gpu-node-04"))
+
+
+async def test_a_target_name_that_matches_nothing_is_not_found(db: AsyncSession) -> None:
+    await a_cluster(db)
+    service = OperationService(db, actor="tester", notifier=MemoryNotifier())
+
+    with pytest.raises(NotFound):
+        await service.create(OperationCreateRequest(type="node.drain", target="node:no-such-node"))
+
+
+async def test_a_target_name_matching_two_clusters_is_refused_not_guessed(db: AsyncSession) -> None:
+    """A node name is unique inside a cluster and nowhere above it.
+
+    Draining an arbitrary one of two machines that share a name is worse than
+    refusing, so the ambiguity is a 400 and `cluster` is how it is resolved.
+    """
+    alpha = await a_cluster(db)
+    beta = await a_cluster(db, name="beta")
+    await seed_node(db, alpha.id, name="gpu-node-04")
+    in_beta = await seed_node(db, beta.id, name="gpu-node-04")
+    service = OperationService(db, actor="tester", notifier=MemoryNotifier())
+
+    with pytest.raises(Invalid):
+        await service.create(OperationCreateRequest(type="node.drain", target="node:gpu-node-04"))
+
+    narrowed = await service.create(
+        OperationCreateRequest(type="node.drain", target="node:gpu-node-04", cluster="beta")
+    )
+    assert narrowed.target.id == in_beta
+
+
+async def test_a_bare_name_is_refused_at_creation(db: AsyncSession) -> None:
+    cluster = await a_cluster(db)
+    await seed_node(db, cluster.id, name="gpu-node-04")
+    service = OperationService(db, actor="tester", notifier=MemoryNotifier())
+
+    with pytest.raises(Invalid):
+        await service.create(OperationCreateRequest(type="node.drain", target="gpu-node-04"))
+
+
+async def test_an_idempotency_key_replays_through_a_named_target(db: AsyncSession) -> None:
+    """The stored operation holds an id; the retry may spell its target either way."""
+    cluster = await a_cluster(db)
+    node = await seed_node(db, cluster.id, name="gpu-node-04")
+    service = OperationService(db, actor="tester", notifier=MemoryNotifier())
+
+    first = await service.create(OperationCreateRequest(type="node.drain", target=node), idempotency_key="retry-1")
+    again = await service.create(
+        OperationCreateRequest(type="node.drain", target="node:gpu-node-04"), idempotency_key="retry-1"
+    )
+
+    assert again.id == first.id
+
+
 async def test_creating_an_operation_announces_it_to_its_cluster(db: AsyncSession) -> None:
     """The hint that reaches the hub holding the cluster's session.
 
@@ -772,3 +848,25 @@ async def test_a_recipe_this_cluster_does_not_run_dispatches_nothing(db: AsyncSe
     unrelated = await a_recipe(db, artifact.id, name="mistral-vllm")
 
     assert await desired_object(db, cluster.id, "recipe", unrelated.id) is None
+
+
+async def test_a_deployments_topology_requirement_round_trips(db: AsyncSession) -> None:
+    """Declared on the deployment, not inherited from the recipe, and readable back."""
+    _, _, _, created = await a_deployment(
+        db,
+        name="gang-8",
+        requires_single_topology_domain=True,
+        topology_domain_kind="nvswitch",
+    )
+    assert created.requires_single_topology_domain is True
+    assert created.topology_domain_kind == "nvswitch"
+
+    read = await DeploymentService(db).get(created.id)
+    assert read.requires_single_topology_domain is True
+    assert read.topology_domain_kind == "nvswitch"
+
+
+async def test_a_deployment_without_a_topology_requirement_leaves_it_null(db: AsyncSession) -> None:
+    _, _, _, created = await a_deployment(db, name="plain")
+    assert created.requires_single_topology_domain is None
+    assert created.topology_domain_kind is None

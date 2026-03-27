@@ -406,10 +406,16 @@ func newOperationCreateCmd(app *App) *cobra.Command {
 
 The cluster is derived from the target for anything that carries one, because
 two ways to say which cluster is two ways for them to disagree. --cluster is
-accepted only for targets that do not.`,
+accepted only for targets that do not, and it is also what tells two objects of
+the same name in different clusters apart.
+
+A target is an id or a name. A bare name is qualified with the kind the type
+acts upon before it is sent, because a target reference has to say what kind of
+thing it names — that is what makes node.drain against a device an error here
+rather than inside the cluster an hour later.`,
 		Example: `  hgr operation create node.drain iad-1-n01 --reason firmware
   hgr operation create device.reset dev_01m0dj… --reason ecc --wait
-  hgr operation create cache.warm iad-1 --param artifact=art_01m0dj…`,
+  hgr operation create cache.warm artifact:llama-3-70b --cluster iad-1`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			parameters := map[string]any{}
@@ -423,12 +429,8 @@ accepted only for targets that do not.`,
 			ctx, cancel := app.RequestContext()
 			defer cancel()
 
-			target, err := resolveOperationTarget(ctx, app, args[0], args[1])
-			if err != nil {
-				return err
-			}
 			req := api.OperationRequest{
-				Type: args[0], Target: target, Reason: reason,
+				Type: args[0], Target: qualifyOperationTarget(args[0], args[1]), Reason: reason,
 				Parameters: parameters, Cluster: cluster,
 			}
 			if deadline != "" {
@@ -591,37 +593,36 @@ func (a *App) emitOperation(cmd *cobra.Command, op api.Operation) error {
 	})
 }
 
-// resolveOperationTarget turns a human reference into the prefixed id the
-// plane insists on. Path segments accept a name or an id, but an operation
-// target does not: the plane checks the prefix and rejects `iad-1-n01`. So
-// the name is resolved here, which is also where prefix matching already
-// lives.
-func resolveOperationTarget(ctx context.Context, app *App, opType, ref string) (string, error) {
-	if isPublicID(ref) {
-		return ref, nil
+// operationTargetKinds names the kind of object each operation type acts upon.
+// It mirrors the plane's own table and exists for one reason: a name carries
+// nothing about its own kind, so the kind is written beside it before the
+// request leaves. `cache.warm` acts on an artifact, not on the cluster it
+// warms — that one is named by --cluster.
+var operationTargetKinds = map[string]string{
+	"node.drain":        "node",
+	"node.cordon":       "node",
+	"node.uncordon":     "node",
+	"node.reboot":       "node",
+	"device.reset":      "device",
+	"cache.warm":        "artifact",
+	"deployment.roll":   "deployment",
+	"component.upgrade": "component",
+}
+
+// qualifyOperationTarget turns a human reference into a form the plane can read
+// the kind off. An id already carries it in the prefix and an already-qualified
+// `node:gpu-node-04` is passed through; a bare name has the type's own target
+// kind written in front of it. An unrecognised type is left alone so the plane
+// answers for it, listing the types it knows.
+func qualifyOperationTarget(opType, ref string) string {
+	if isPublicID(ref) || strings.Contains(ref, ":") {
+		return ref
 	}
-	kind, _, _ := strings.Cut(opType, ".")
-	switch kind {
-	case "node":
-		n, err := nodeNoun().resolve(ctx, app, ref)
-		return n.ID, err
-	case "device":
-		d, err := deviceNoun().resolve(ctx, app, ref)
-		return d.ID, err
-	case "cluster", "cache":
-		c, err := clusterNoun().resolve(ctx, app, ref)
-		return c.ID, err
-	case "pool":
-		p, err := poolNoun().resolve(ctx, app, ref)
-		return p.ID, err
-	case "deployment":
-		d, err := deploymentNoun().resolve(ctx, app, ref)
-		return d.ID, err
-	case "component":
-		c, err := componentNoun().resolve(ctx, app, ref)
-		return c.ID, err
+	kind, ok := operationTargetKinds[opType]
+	if !ok {
+		return ref
 	}
-	return ref, nil
+	return kind + ":" + ref
 }
 
 // isPublicID reports whether a reference is already one of the plane's

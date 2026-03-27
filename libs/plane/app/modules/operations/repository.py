@@ -1,4 +1,5 @@
 import datetime as dt
+
 from typing import NamedTuple
 
 from sqlalchemy import Row
@@ -222,7 +223,7 @@ class OperationRepository:
             cluster_column = null().label("cluster_id")
         return select(model.id, model.uid, cluster_column).where(parsed.column == parsed.value)
 
-    async def resolve_targets(self, ref: str) -> list[Row]:
+    async def resolve_targets(self, ref: str) -> "list[Row]":
         """Every row a target reference matches, so creation can answer for all of them.
 
         A missing target is a 404 at creation and a name matching twice is a 400;

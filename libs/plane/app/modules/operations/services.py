@@ -29,8 +29,8 @@ from .schemas import OperationSchema
 from .schemas import OperationTargetSchema
 from .schemas import OperationCreateRequest
 from .repository import TARGET_KINDS
-from .repository import parse_target
 from .repository import OperationRepository
+from .repository import parse_target
 
 
 TYPES: dict[str, tuple[str, str]] = {

@@ -471,3 +471,34 @@ func TestPromotionNeedsToKnowWhatItIsAdopting(t *testing.T) {
 		t.Fatalf("the error does not say what is missing: %s", errOut)
 	}
 }
+
+func TestATargetNameIsQualifiedWithTheKindTheTypeActsUpon(t *testing.T) {
+	cases := []struct {
+		opType string
+		ref    string
+		want   string
+	}{
+		{"node.drain", "iad-1-n01", "node:iad-1-n01"},
+		{"device.reset", "GPU-8f3c", "device:GPU-8f3c"},
+		{"cache.warm", "llama-3-70b", "artifact:llama-3-70b"},
+		{"node.drain", "nod_01m0dj000000000000000000ab", "nod_01m0dj000000000000000000ab"},
+		{"node.drain", "node:iad-1-n01", "node:iad-1-n01"},
+		{"nonsense.type", "iad-1-n01", "iad-1-n01"},
+	}
+	for _, c := range cases {
+		if got := qualifyOperationTarget(c.opType, c.ref); got != c.want {
+			t.Errorf("%s %q became %q, wanted %q", c.opType, c.ref, got, c.want)
+		}
+	}
+}
+
+func TestEveryOperationTypeNamesTheKindItActsUpon(t *testing.T) {
+	for _, typ := range []string{
+		"node.drain", "node.cordon", "node.uncordon", "node.reboot",
+		"device.reset", "cache.warm", "deployment.roll", "component.upgrade",
+	} {
+		if operationTargetKinds[typ] == "" {
+			t.Errorf("%s has no target kind, so a name typed for it would go bare", typ)
+		}
+	}
+}

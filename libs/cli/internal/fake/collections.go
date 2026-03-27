@@ -474,8 +474,11 @@ func (b *Backend) CreateOperation(ctx context.Context, req api.OperationRequest,
 
 // resolveTarget derives the target kind and the cluster from the target's own
 // identity, because two ways to say which cluster is two ways to disagree.
+// A `kind:name` reference is looked up by its name half: the kind is already
+// implied by the operation type, and the plane checks the two agree.
 func (b *Backend) resolveTarget(req api.OperationRequest) (api.OperationTarget, *string, error) {
 	kind := strings.SplitN(req.Type, ".", 2)[0]
+	req.Target = unqualifyTarget(req.Target)
 	switch kind {
 	case "node":
 		n, err := b.Node(context.Background(), req.Target)
@@ -514,6 +517,14 @@ func (b *Backend) resolveTarget(req api.OperationRequest) (api.OperationTarget, 
 		cluster = &c.ID
 	}
 	return api.OperationTarget{Type: kind, ID: req.Target}, cluster, nil
+}
+
+// unqualifyTarget strips the `kind:` half of a qualified target reference.
+func unqualifyTarget(ref string) string {
+	if _, name, ok := strings.Cut(ref, ":"); ok && name != "" {
+		return name
+	}
+	return ref
 }
 
 // CancelOperation asks for cancellation. A pending operation stops outright;
