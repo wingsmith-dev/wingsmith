@@ -434,6 +434,13 @@ class Deployment(BaseMixin):
     only while the live object still digests to `adopted_fingerprint`. A mismatch
     is refused in the cluster and reported, never converged — closing that gap
     means restarting a model to match a spec nobody asked to change.
+
+    `requires_single_topology_domain` and `topology_domain_kind` are nullable
+    because null means "whatever the recipe says". The recipe's answer is the
+    right one for a serving replica, but a gang is a shape of its own — the same
+    recipe run as eight ranks that must share one NVLink fabric is a different
+    placement question from the same recipe served — and the deployment is the
+    only object that knows which it is.
     """
 
     __tablename__ = "demand_deployment"
@@ -461,6 +468,8 @@ class Deployment(BaseMixin):
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     adopted_workload_uid: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     adopted_fingerprint: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    requires_single_topology_domain: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    topology_domain_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     workload: Mapped[Workload] = relationship("Workload", back_populates="deployment", lazy="noload")
     recipe: Mapped[Recipe] = relationship("Recipe", lazy="noload")

@@ -159,6 +159,8 @@ class DeploymentService:
             revision=_revision(deployment, workload),
             adopted_workload_id=deployment.adopted_workload_uid,
             adopted_fingerprint=deployment.adopted_fingerprint,
+            requires_single_topology_domain=deployment.requires_single_topology_domain,
+            topology_domain_kind=deployment.topology_domain_kind,
             workload=DeploymentWorkloadSchema(
                 type=workload.kind,
                 phase=workload.admission_phase,
@@ -292,6 +294,8 @@ class DeploymentService:
             workload=data.name,
             kind=data.type,
             replicas=data.desired_replicas,
+            requires_single_domain=data.requires_single_topology_domain,
+            domain_kind=data.topology_domain_kind,
         )
         decision = await svc.decide(request, project.id)
         if not decision.placed or decision.cluster is None:
@@ -369,6 +373,8 @@ class DeploymentService:
             adapter_artifact_ids=await self._adapter_ids(data.adapter_artifacts),
             overrides=data.overrides,
             labels=data.labels,
+            requires_single_topology_domain=data.requires_single_topology_domain,
+            topology_domain_kind=data.topology_domain_kind,
         )
         try:
             await self.repo.add(workload, deployment)

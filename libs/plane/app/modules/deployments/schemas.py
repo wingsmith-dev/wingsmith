@@ -74,6 +74,8 @@ class DeploymentSchema(Struct):
     revision: str
     adopted_workload_id: str | None
     adopted_fingerprint: str | None
+    requires_single_topology_domain: bool | None
+    topology_domain_kind: str | None
     workload: DeploymentWorkloadSchema
     replicas: DeploymentReplicaRollupSchema
 
@@ -109,6 +111,8 @@ class DeploymentCreateRequest(Struct):
     adapter_artifacts: list[str] = []
     overrides: dict = {}
     labels: dict = {}
+    requires_single_topology_domain: bool | None = None
+    topology_domain_kind: str | None = None
 
 
 class DeploymentUpdateRequest(Struct):
@@ -132,3 +136,5 @@ class DeploymentUpdateRequest(Struct):
     priority_class: str | UnsetType = UNSET
     preemptible: bool | UnsetType = UNSET
     deadline_at: dt.datetime | None | UnsetType = UNSET
+    requires_single_topology_domain: bool | None | UnsetType = UNSET
+    topology_domain_kind: str | None | UnsetType = UNSET

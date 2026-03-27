@@ -45,6 +45,8 @@ class PlacementService:
         workload: str,
         kind: str = "service",
         replicas: int = 1,
+        requires_single_domain: bool | None = None,
+        domain_kind: str | None = None,
     ) -> PlacementRequest:
         """The recipe's device shape, scaled by how many replicas are wanted.
 
@@ -57,6 +59,11 @@ class PlacementService:
         of one replica's collective — the replicas do not talk to each other over
         NVLink — so requiring all thirty-two in one NVLink domain would reject
         clusters that can run the deployment perfectly well.
+
+        The topology requirement is the recipe's unless the caller states its
+        own. A recipe describes one replica of one engine; a gang deployment is
+        a shape the recipe cannot know about, so a value given here wins and a
+        null one falls through rather than clearing what the recipe asked for.
         """
         return PlacementRequest(
             workload=workload,
@@ -67,8 +74,10 @@ class PlacementService:
             priority_value=priority.value,
             preempts=priority.preempts,
             device_memory_mib_min=recipe.device_memory_mib_min,
-            requires_single_domain=recipe.requires_single_topology_domain,
-            domain_kind=recipe.topology_domain_kind,
+            requires_single_domain=(
+                recipe.requires_single_topology_domain if requires_single_domain is None else requires_single_domain
+            ),
+            domain_kind=recipe.topology_domain_kind if domain_kind is None else domain_kind,
         )
 
     async def preview(self, data: PlacementPreviewRequest) -> PlacementDecision:

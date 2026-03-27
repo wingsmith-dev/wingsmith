@@ -227,3 +227,28 @@ def test_a_create_request_may_leave_the_cluster_to_placement():
     """The scheduler is the default path; naming a cluster is the override."""
     data = DeploymentCreateRequest(recipe="llama-70b", name="serve", project="acme")
     assert data.cluster is None
+
+
+def test_a_deployment_can_declare_its_own_topology_requirement():
+    data = DeploymentCreateRequest(
+        recipe="llama-70b",
+        name="gang",
+        project="acme",
+        type="gang",
+        requires_single_topology_domain=True,
+        topology_domain_kind="nvswitch",
+    )
+    assert data.requires_single_topology_domain is True
+    assert data.topology_domain_kind == "nvswitch"
+
+
+def test_an_undeclared_topology_requirement_is_null_not_false():
+    """Null means "whatever the recipe says"; false would silently relax it."""
+    data = DeploymentCreateRequest(recipe="llama-70b", name="serve", project="acme")
+    assert data.requires_single_topology_domain is None
+    assert data.topology_domain_kind is None
+
+
+def test_the_topology_requirement_is_patchable():
+    fields = DeploymentUpdateRequest(requires_single_topology_domain=False).to_dict(exclude_unset=True)
+    assert fields == {"requires_single_topology_domain": False}

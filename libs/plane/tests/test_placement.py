@@ -416,3 +416,42 @@ def test_a_request_carries_the_priority_it_will_preempt_at():
         workload="serve",
     )
     assert (request.priority_value, request.preempts) == (900, True)
+
+
+def test_a_null_deployment_requirement_falls_through_to_the_recipe():
+    request = PlacementService(db=None).request(
+        recipe=a_recipe(),
+        project_uid="prj_1",
+        priority=a_priority(),
+        workload="serve",
+        requires_single_domain=None,
+        domain_kind=None,
+    )
+    assert request.requires_single_domain is True
+    assert request.domain_kind == "nvlink"
+
+
+def test_a_deployment_can_declare_a_shape_the_recipe_does_not_have():
+    request = PlacementService(db=None).request(
+        recipe=a_recipe(requires_single_topology_domain=False, topology_domain_kind=None),
+        project_uid="prj_1",
+        priority=a_priority(),
+        workload="gang",
+        kind="gang",
+        requires_single_domain=True,
+        domain_kind="nvswitch",
+    )
+    assert request.requires_single_domain is True
+    assert request.domain_kind == "nvswitch"
+
+
+def test_a_deployment_can_relax_a_requirement_the_recipe_asserts():
+    request = PlacementService(db=None).request(
+        recipe=a_recipe(),
+        project_uid="prj_1",
+        priority=a_priority(),
+        workload="serve",
+        requires_single_domain=False,
+    )
+    assert request.requires_single_domain is False
+    assert request.domain_kind == "nvlink"
