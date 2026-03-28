@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "normalization": "lowercase; strip a leading vendor token; map every run of non-alphanumeric characters to a single hyphen; trim hyphens. A vendor string matches an alias when their normalized forms are equal, so `NVIDIA-H100-80GB-HBM3` and `NVIDIA H100 80GB HBM3` are the same alias.",
+  "dialects": {
+    "gfd": "GPU Feature Discovery node label nvidia.com/gpu.product",
+    "dcgm": "DCGM exporter Prometheus label modelName"
+  },
+  "classes": [
+    {
+      "class": "h100-80gb-sxm",
+      "vendor": "nvidia",
+      "memory_mib": 81559,
+      "form_factor": "sxm",
+      "aliases": {
+        "gfd": ["NVIDIA-H100-80GB-HBM3"],
+        "dcgm": ["NVIDIA H100 80GB HBM3"]
+      }
+    },
+    {
+      "class": "h100-80gb-pcie",
+      "vendor": "nvidia",
+      "memory_mib": 81559,
+      "form_factor": "pcie",
+      "aliases": {
+        "gfd": ["NVIDIA-H100-PCIe"],
+        "dcgm": ["NVIDIA H100 PCIe"]
+      }
+    },
+    {
+      "class": "h100-94gb-nvl",
+      "vendor": "nvidia",
+      "memory_mib": 95830,
+      "form_factor": "nvl",
+      "aliases": {
+        "gfd": ["NVIDIA-H100-NVL"],
+        "dcgm": ["NVIDIA H100 NVL"]
+      }
+    },
+    {
+      "class": "h200-141gb-sxm",
+      "vendor": "nvidia",
+      "memory_mib": 143771,
+      "form_factor": "sxm",
+      "aliases": {
+        "gfd": ["NVIDIA-H200"],
+        "dcgm": ["NVIDIA H200"]
+      }
+    },
+    {
+      "class": "a100-40gb-sxm",
+      "vendor": "nvidia",
+      "memory_mib": 40960,
+      "form_factor": "sxm",
+      "aliases": {
+        "gfd": ["NVIDIA-A100-SXM4-40GB"],
+        "dcgm": ["NVIDIA A100-SXM4-40GB"]
+      }
+    },
+    {
+      "class": "a100-40gb-pcie",
+      "vendor": "nvidia",
+      "memory_mib": 40960,
+      "form_factor": "pcie",
+      "aliases": {
+        "gfd": ["NVIDIA-A100-PCIE-40GB"],
+        "dcgm": ["NVIDIA A100-PCIE-40GB"]
+      }
+    },
+    {
+      "class": "a100-80gb-sxm",
+      "vendor": "nvidia",
+      "memory_mib": 81920,
+      "form_factor": "sxm",
+      "aliases": {
+        "gfd": ["NVIDIA-A100-SXM4-80GB"],
+        "dcgm": ["NVIDIA A100-SXM4-80GB"]
+      }
+    },
+    {
+      "class": "a100-80gb-pcie",
+      "vendor": "nvidia",
+      "memory_mib": 81920,
+      "form_factor": "pcie",
+      "aliases": {
+        "gfd": ["NVIDIA-A100-80GB-PCIe"],
+        "dcgm": ["NVIDIA A100 80GB PCIe"]
+      }
+    },
+    {
+      "class": "l40s-48gb-pcie",
+      "vendor": "nvidia",
+      "memory_mib": 46068,
+      "form_factor": "pcie",
+      "aliases": {
+        "gfd": ["NVIDIA-L40S"],
+        "dcgm": ["NVIDIA L40S"]
+      }
+    },
+    {
+      "class": "l4-24gb-pcie",
+      "vendor": "nvidia",
+      "memory_mib": 23034,
+      "form_factor": "pcie",
+      "aliases": {
+        "gfd": ["NVIDIA-L4"],
+        "dcgm": ["NVIDIA L4"]
+      }
+    },
+    {
+      "class": "b200-180gb-sxm",
+      "vendor": "nvidia",
+      "memory_mib": 183359,
+      "form_factor": "sxm",
+      "aliases": {
+        "gfd": ["NVIDIA-B200"],
+        "dcgm": ["NVIDIA B200"]
+      }
+    },
+    {
+      "class": "rtx-pro-6000-96gb-server-edition",
+      "vendor": "nvidia",
+      "memory_mib": 97249,
+      "form_factor": "server-edition",
+      "aliases": {
+        "gfd": ["NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"],
+        "dcgm": ["NVIDIA RTX PRO 6000 Blackwell Server Edition"]
+      }
+    }
+  ]
+}

@@ -123,7 +123,7 @@ func TestKubeDiscoveryReadsLabelsNotHardware(t *testing.T) {
 	if healthy.Health != HealthHealthy || bad.Health != HealthUnhealthy {
 		t.Fatalf("health is %q / %q", healthy.Health, bad.Health)
 	}
-	if healthy.DeviceClass != "h100-80gb-hbm3" {
+	if healthy.DeviceClass != "h100-80gb-sxm" {
 		t.Fatalf("device class derived as %q", healthy.DeviceClass)
 	}
 	if healthy.MemoryTotalMB != 81559 || !healthy.Mig.Enabled {
@@ -196,5 +196,32 @@ func TestSnakeCasesKubernetesConditions(t *testing.T) {
 		if got := snake(in); got != want {
 			t.Errorf("snake(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestDeviceClassPrecedence pins the order the class is decided in: the hangar label overrides
+// everything, the dictionary names what it knows, and anything else is slugified rather than
+// dropped, so a cluster with no hangar labels at all still groups its hardware.
+func TestDeviceClassPrecedence(t *testing.T) {
+	labelled := gpuNode("gpu-a", map[string]string{
+		labelGPUCount:    "1",
+		labelGPUProduct:  "NVIDIA-H100-80GB-HBM3",
+		labelDeviceClass: "bespoke-class",
+	}, nil, true, false)
+	if got := projectKubeNode(labelled).Devices[0].DeviceClass; got != "bespoke-class" {
+		t.Fatalf("label override lost: %q", got)
+	}
+
+	unknown := gpuNode("gpu-b", map[string]string{
+		labelGPUCount:   "1",
+		labelGPUProduct: "NVIDIA-Zephyr-4000-Ultra",
+	}, nil, true, false)
+	if got := projectKubeNode(unknown).Devices[0].DeviceClass; got != "zephyr-4000-ultra" {
+		t.Fatalf("unknown hardware did not fall through to a slug: %q", got)
+	}
+
+	none := gpuNode("gpu-c", map[string]string{labelGPUCount: "1"}, nil, true, false)
+	if got := projectKubeNode(none).Devices[0].DeviceClass; got != unknownClass {
+		t.Fatalf("a node with no product label should be %q, got %q", unknownClass, got)
 	}
 }

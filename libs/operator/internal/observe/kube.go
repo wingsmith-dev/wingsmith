@@ -10,6 +10,8 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/hangar-dev/hangar/libs/operator/internal/devices"
 )
 
 // Labels and annotations the discoverer reads. GPU inventory in a real cluster is published by
@@ -207,24 +209,15 @@ func exportedLabels(in map[string]string) map[string]string {
 	return out
 }
 
-// deviceClass derives a placement class from the marketing name the device plugin publishes, so
-// that a cluster with no hangar.dev/device-class label still groups its hardware.
+// deviceClass names the hardware the way hangar names it, from contract/devices.json. The label
+// the device plugin publishes is one of two dialects for the same card and neither is canonical,
+// so the dictionary decides; hardware it does not list falls back to a slug of the vendor string,
+// which is stable and deterministic and gets logged so the table can be grown.
 func deviceClass(product string) string {
 	if product == "" {
 		return unknownClass
 	}
-	s := strings.ToLower(product)
-	s = strings.ReplaceAll(s, "nvidia-", "")
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) {
-			return r
-		}
-		return '-'
-	}, s)
-	for strings.Contains(s, "--") {
-		s = strings.ReplaceAll(s, "--", "-")
-	}
-	return strings.Trim(s, "-")
+	return devices.Load().Resolve(devices.DialectGFD, product)
 }
 
 // snake renders a Kubernetes CamelCase identifier in the wire's lower_snake_case vocabulary.
