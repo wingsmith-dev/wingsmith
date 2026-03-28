@@ -1070,7 +1070,23 @@ class Event(BaseMixin):
     __table_args__ = (
         Index("ix_ops_event_subject", "subject_type", "subject_id"),
         Index("ix_ops_event_cluster_occurred", "cluster_id", "occurred_at"),
+        Index(
+            "uq_ops_event_occurrence",
+            "cluster_id",
+            "type",
+            "subject_type",
+            "occurred_at",
+            text("md5(message)"),
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+        ),
     )
+    """One occurrence is cluster, type, subject kind, instant and message, and the replay of a
+    frame must land on the row it already wrote rather than beside it. `cluster_id` is null for
+    events the plane itself raises, and under the default rule two nulls never conflict — so
+    without `NULLS NOT DISTINCT` the constraint would exclude exactly the rows nothing else
+    de-duplicates. `message` is hashed because it is unbounded text and a btree entry over about
+    2.7kB is refused on insert: a long message must not turn a duplicate into a wedged stream."""
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)

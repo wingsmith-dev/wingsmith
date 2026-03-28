@@ -356,9 +356,11 @@ def test_node_upsert_omits_columns_the_wire_does_not_carry() -> None:
 
 
 def test_event_insert_is_guarded_against_replay() -> None:
+    """Enforced by the index, not by reading first: two sessions can both read nothing."""
     sql, _ = compile_sql(statements.insert_node_event(CLUSTER_ID, payload("node.event")))
     assert "INSERT INTO ops_event" in sql
-    assert "NOT (EXISTS" in sql
+    assert "ON CONFLICT (cluster_id, type, subject_type, occurred_at, md5(message)) DO NOTHING" in sql
+    assert "EXISTS" not in sql
 
 
 def test_event_insert_mints_a_public_id() -> None:

@@ -12,9 +12,8 @@ from typing import Any
 from sqlalchemy import Delete
 from sqlalchemy import Insert
 from sqlalchemy import Update
+from sqlalchemy import func
 from sqlalchemy import delete
-from sqlalchemy import exists
-from sqlalchemy import insert
 from sqlalchemy import select
 from sqlalchemy import update
 from sqlalchemy import literal
@@ -575,11 +574,11 @@ def _insert_event(
 ) -> Insert:
     """An append-only event insert, guarded against replaying the same event twice.
 
-    `ops_event` has no natural key, so idempotency is a `NOT EXISTS` over the
-    tuple that identifies one occurrence — cluster, type, subject and instant.
-    Advisory rather than enforced: without a unique constraint two concurrent
-    sessions could still race, which is why the guard is here and noted rather
-    than assumed.
+    The guard is `ON CONFLICT DO NOTHING` against `uq_ops_event_occurrence`,
+    which is the unique index over the tuple that identifies one occurrence —
+    cluster, type, subject kind, instant, and the message. A `NOT EXISTS` read
+    first would still let two sessions replaying the same frame both see nothing
+    and both insert; the index is the only thing that decides between them.
     """
     columns = [
         "uid",
@@ -592,15 +591,6 @@ def _insert_event(
         "details",
         "occurred_at",
     ]
-    duplicate = exists(
-        select(Event.id).where(
-            Event.cluster_id == cluster_id,
-            Event.type == type_name,
-            Event.subject_type == subject_type,
-            Event.occurred_at == occurred_at,
-            Event.message == message,
-        )
-    )
     values = select(
         literal(new_uid(EVENT)).label("uid"),
         literal(cluster_id).label("cluster_id"),
@@ -611,8 +601,20 @@ def _insert_event(
         literal(message).label("message"),
         literal(details, JSONB).label("details"),
         literal(occurred_at, Event.occurred_at.type).label("occurred_at"),
-    ).where(~duplicate)
-    return insert(Event).from_select(columns, values)
+    )
+    return (
+        pg_insert(Event)
+        .from_select(columns, values)
+        .on_conflict_do_nothing(
+            index_elements=[
+                Event.cluster_id,
+                Event.type,
+                Event.subject_type,
+                Event.occurred_at,
+                func.md5(Event.message),
+            ]
+        )
+    )
 
 
 def insert_node_event(cluster_id: UUID, payload: NodeEvent) -> Insert:

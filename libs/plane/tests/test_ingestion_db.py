@@ -282,6 +282,35 @@ async def test_a_node_event_lands_once(sessions, cluster) -> None:
     assert rows == [("node.degraded", "warning", "node", NODE)]
 
 
+async def test_two_sessions_replaying_one_event_still_write_one_row(sessions, cluster) -> None:
+    """The race a `NOT EXISTS` could not close: both read nothing, both insert."""
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(observed("node.observed"))
+    event = SinkFrame(
+        cluster_id=CLUSTER, type="node.event", payload=payload("node.event", node_id=NODE), seq=2, id=new_id()
+    )
+    await asyncio.gather(sink.record_event(event), sink.record_event(event))
+
+    assert await fetch(sessions, "SELECT count(*) FROM ops_event") == [(1,)]
+
+
+async def test_the_constraint_holds_when_the_cluster_is_null(sessions, cluster) -> None:
+    """`NULLS NOT DISTINCT`: without it, exactly the plane's own events would slip through."""
+    async with sessions() as db:
+        for _ in range(2):
+            await db.execute(
+                text(
+                    "INSERT INTO ops_event (uid, cluster_id, type, severity, subject_type, message, occurred_at)"
+                    " VALUES (:uid, NULL, 'plane.started', 'info', 'plane', 'control plane started', now())"
+                    " ON CONFLICT (cluster_id, type, subject_type, occurred_at, md5(message)) DO NOTHING"
+                ),
+                {"uid": "evt_01j9x2e0000000000000000009"},
+            )
+        await db.commit()
+
+    assert await fetch(sessions, "SELECT count(*) FROM ops_event") == [(1,)]
+
+
 async def test_a_device_event_resolves_its_device(sessions, cluster) -> None:
     sink = DatabaseSink(sessions)
     await sink.apply_observed(observed("node.observed"))
