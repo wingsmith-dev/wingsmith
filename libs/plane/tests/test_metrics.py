@@ -1,3 +1,6 @@
+from app.core.devices import DIALECT_DCGM
+from app.core.devices import DeviceClass
+from app.core.devices import DeviceTable
 from app.modules.metrics import sources
 from app.modules.metrics.client import MetricsUnavailable
 from app.modules.metrics.routes import MetricsRoutes
@@ -11,6 +14,7 @@ from app.modules.metrics.services import MetricsService
 from app.modules.metrics.services import _escape
 from app.modules.metrics.services import _render
 from app.modules.metrics.services import _selector
+from app.modules.metrics.services import _device_class_selector
 
 
 WRITE_METHODS = ("create", "update", "delete", "patch", "post", "add", "remove")
@@ -113,3 +117,36 @@ def test_answer_distinguishes_absent_from_zero():
     assert answer.unavailable is None
     assert SampleSchema(metric="gpu.utilization", title="t", unit="percent", value=None).value is None
     assert "unavailable" in MetricsSchema.__struct_fields__
+
+
+def test_device_class_selector_expands_to_vendor_names():
+    """DCGM labels by what the vendor calls the card, never by our class name."""
+    selector = _device_class_selector("rtx-pro-6000-96gb-server-edition")
+    assert selector == 'modelName="NVIDIA RTX PRO 6000 Blackwell Server Edition"'
+
+
+def test_device_class_selector_alternates_when_a_class_has_several_names():
+    table = DeviceTable(
+        [
+            DeviceClass(
+                name="h100-80gb-sxm",
+                vendor="nvidia",
+                memory_mib=81559,
+                form_factor="sxm",
+                aliases={"dcgm": ("NVIDIA H100 80GB HBM3", 'we"ird')},
+            )
+        ]
+    )
+    values = list(table.aliases("h100-80gb-sxm", DIALECT_DCGM))
+    assert _selector("modelName", values) == 'modelName=~"NVIDIA H100 80GB HBM3|we\\"ird"'
+
+
+def test_unmapped_device_class_never_selects_the_whole_fleet(caplog):
+    with caplog.at_level("WARNING"):
+        selector = _device_class_selector("zephyr-4000-ultra")
+    assert selector == 'modelName="zephyr-4000-ultra"'
+    assert "device_class_unmapped" in caplog.text
+
+
+def test_scope_labels_still_name_dcgms_own_labels():
+    assert SCOPE_LABELS == {"node": "Hostname", "device": "UUID", "device_class": "modelName"}

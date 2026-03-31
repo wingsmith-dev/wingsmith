@@ -24,6 +24,9 @@ from typing import Literal
 from dataclasses import field
 from dataclasses import dataclass
 
+from app.core.devices import DIALECT_DCGM
+from app.core.devices import table
+
 
 Unit = Literal["percent", "celsius", "watts", "mib", "mhz", "seconds", "per_second", "count"]
 Family = Literal["gpu", "inference"]
@@ -53,11 +56,22 @@ GPU_METRICS: tuple[Metric, ...] = (
     Metric("gpu.memory_free", "DCGM_FI_DEV_FB_FREE", "mib", "gpu", "Framebuffer free", aggregate="sum"),
     Metric("gpu.memory_utilization", "DCGM_FI_DEV_MEM_COPY_UTIL", "percent", "gpu", "Memory bandwidth"),
     Metric("gpu.temperature", "DCGM_FI_DEV_GPU_TEMP", "celsius", "gpu", "GPU temperature", aggregate="max"),
-    Metric("gpu.memory_temperature", "DCGM_FI_DEV_MEMORY_TEMP", "celsius", "gpu", "Memory temperature", aggregate="max"),
+    Metric(
+        "gpu.memory_temperature", "DCGM_FI_DEV_MEMORY_TEMP", "celsius", "gpu", "Memory temperature", aggregate="max"
+    ),
     Metric("gpu.power", "DCGM_FI_DEV_POWER_USAGE", "watts", "gpu", "Power draw", aggregate="sum"),
     Metric("gpu.sm_clock", "DCGM_FI_DEV_SM_CLOCK", "mhz", "gpu", "SM clock"),
-    Metric("gpu.throttle_reasons", "DCGM_FI_DEV_CLOCK_THROTTLE_REASONS", "count", "gpu", "Throttle reasons", aggregate="max"),
-    Metric("gpu.ecc_uncorrectable", "DCGM_FI_DEV_ECC_DBE_AGG_TOTAL", "count", "gpu", "Uncorrectable ECC", aggregate="sum"),
+    Metric(
+        "gpu.throttle_reasons",
+        "DCGM_FI_DEV_CLOCK_THROTTLE_REASONS",
+        "count",
+        "gpu",
+        "Throttle reasons",
+        aggregate="max",
+    ),
+    Metric(
+        "gpu.ecc_uncorrectable", "DCGM_FI_DEV_ECC_DBE_AGG_TOTAL", "count", "gpu", "Uncorrectable ECC", aggregate="sum"
+    ),
     Metric("gpu.pcie_replays", "DCGM_FI_DEV_PCIE_REPLAY_COUNTER", "count", "gpu", "PCIe replays", aggregate="sum"),
 )
 """DCGM. Names are the exporter's field names and are stable across versions."""
@@ -155,7 +169,22 @@ SCOPE_LABELS = {
     "device": "UUID",
     "device_class": "modelName",
 }
-"""DCGM's label names for the identifiers the plane already stores."""
+"""DCGM's label names for the identifiers the plane already stores.
+
+`device_class` is the one that is not an identity: DCGM puts the vendor's
+marketing name in `modelName`, and a hangar class is our name for a set of those.
+The translation is `device_class_values`, never the label on its own.
+"""
+
+
+def device_class_values(name: str) -> tuple[str, ...]:
+    """The `modelName` values a hangar device class is emitted under.
+
+    Empty when the class is not in `contract/devices.json` — which happens for
+    hardware the operator slugified rather than looked up. The caller decides
+    what to do with that; it must not turn into an unscoped query.
+    """
+    return table().aliases(name, DIALECT_DCGM)
 
 
 def family(name: Family) -> tuple[Metric, ...]:

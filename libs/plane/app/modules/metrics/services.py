@@ -17,6 +17,7 @@ The three scoping joins, and how much each can be trusted:
 
 import math
 import time
+import logging
 
 from uuid import UUID
 
@@ -49,6 +50,10 @@ from .registry import ENGINES
 from .registry import SCOPE_LABELS
 from .registry import Metric
 from .registry import family
+from .registry import device_class_values
+
+
+logger = logging.getLogger(__name__)
 
 
 def _escape(value: str) -> str:
@@ -61,6 +66,22 @@ def _selector(label: str, values: list[str]) -> str:
     if len(values) == 1:
         return f'{label}="{_escape(values[0])}"'
     return f'{label}=~"{"|".join(_escape(v) for v in values)}"'
+
+
+def _device_class_selector(name: str) -> str:
+    """Selects the series a hangar device class covers.
+
+    DCGM knows nothing about our classes, so this expands one class into the
+    vendor `modelName` strings `contract/devices.json` says map onto it. A class
+    the table does not carry falls back to matching its own name literally,
+    which selects nothing until the table grows — an unscoped selector here
+    would silently report the whole fleet as one card.
+    """
+    values = list(device_class_values(name))
+    if not values:
+        logger.warning("metrics.device_class_unmapped class=%s", name)
+        values = [name]
+    return _selector(SCOPE_LABELS["device_class"], values)
 
 
 def _render(metric: Metric, selector: str, window: str, by: str = "") -> str:
@@ -122,9 +143,7 @@ class MetricsService:
                     value = None
                 if value is not None and math.isnan(value):
                     value = None
-            samples.append(
-                SampleSchema(metric=metric.name, title=metric.title, unit=metric.unit, value=value)
-            )
+            samples.append(SampleSchema(metric=metric.name, title=metric.title, unit=metric.unit, value=value))
         return samples
 
     async def _breakdown(
@@ -169,9 +188,7 @@ class MetricsService:
         end = time.time()
         out: list[SeriesSchema] = []
         for metric in metrics:
-            for entry in await client.range(
-                _render(metric, selector, window), end - span, end, step
-            ):
+            for entry in await client.range(_render(metric, selector, window), end - span, end, step):
                 points = []
                 for at, raw in entry.get("values", []):
                     try:
@@ -214,16 +231,13 @@ class MetricsService:
         )
         if source is None:
             answer.unavailable = (
-                f"no metrics source configured for cluster {cluster.name!r}; "
-                "set HANGAR_METRICS_SOURCES"
+                f"no metrics source configured for cluster {cluster.name!r}; set HANGAR_METRICS_SOURCES"
             )
             return answer
         try:
             answer.samples = await self._gather(source, metrics, selector, window)
             if by:
-                answer.breakdown = await self._breakdown(
-                    source, metrics, selector, window, by, labels or {}
-                )
+                answer.breakdown = await self._breakdown(source, metrics, selector, window, by, labels or {})
             if with_series:
                 answer.series = await self._series(
                     source, metrics, selector, window, step or settings.METRICS_STEP, span
@@ -244,9 +258,7 @@ class MetricsService:
         cluster = (await self.db.execute(query)).scalar_one_or_none()
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
-        nodes = (
-            await self.db.execute(select(Node.name).where(Node.cluster_id == cluster.id))
-        ).scalars().all()
+        nodes = (await self.db.execute(select(Node.name).where(Node.cluster_id == cluster.id))).scalars().all()
         return await self._answer(
             "cluster",
             cluster.uid,
@@ -275,9 +287,7 @@ class MetricsService:
             raise NotFound(f"no node {ref!r}")
         cluster = await self._cluster(node.cluster_id)
         devices = (
-            await self.db.execute(
-                select(Device.device_uuid, Device.device_index).where(Device.node_id == node.id)
-            )
+            await self.db.execute(select(Device.device_uuid, Device.device_index).where(Device.node_id == node.id))
         ).all()
         return await self._answer(
             "node",
@@ -306,9 +316,7 @@ class MetricsService:
         if pool is None:
             raise NotFound(f"no pool {ref!r}")
         cluster = await self._cluster(pool.cluster_id)
-        nodes = (
-            await self.db.execute(select(Node.name).where(Node.pool_id == pool.id))
-        ).scalars().all()
+        nodes = (await self.db.execute(select(Node.name).where(Node.pool_id == pool.id))).scalars().all()
         if not nodes:
             answer = await self._answer("pool", pool.uid, cluster, (), "", window, step, span)
             answer.unavailable = "this pool has no nodes"
@@ -324,6 +332,51 @@ class MetricsService:
             span,
             by=SCOPE_LABELS["node"],
             labels={name: name for name in nodes},
+            with_series=series,
+        )
+
+    async def device_class(
+        self,
+        ref: str,
+        name: str,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> MetricsSchema:
+        """One class of card inside one cluster, broken down by node.
+
+        The class is a hangar name and DCGM has never heard of it, so the
+        selector is built from the vendor strings the contract table maps onto
+        it rather than from the name itself.
+        """
+        query = select(Cluster).where(Cluster.uid == ref if is_uid(ref) else Cluster.name == ref)
+        cluster = (await self.db.execute(query)).scalar_one_or_none()
+        if cluster is None:
+            raise NotFound(f"no cluster {ref!r}")
+        nodes = (
+            (
+                await self.db.execute(
+                    select(Node.name)
+                    .join(Device, Device.node_id == Node.id)
+                    .where(Node.cluster_id == cluster.id, Device.device_class == name)
+                    .distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return await self._answer(
+            "device_class",
+            name,
+            cluster,
+            family("gpu"),
+            _device_class_selector(name),
+            window,
+            step,
+            span,
+            by=SCOPE_LABELS["node"],
+            labels={node: node for node in nodes},
             with_series=series,
         )
 
@@ -374,9 +427,7 @@ class MetricsService:
         served = recipe.engine_args.get("served_model_name") or artifact.name
         engine = ENGINES.get(recipe.engine)
         if engine is None or not engine.metrics:
-            answer = await self._answer(
-                "deployment", deployment.uid, cluster, (), "", window, step, span
-            )
+            answer = await self._answer("deployment", deployment.uid, cluster, (), "", window, step, span)
             answer.unavailable = f"no metric dialect registered for engine {recipe.engine!r}"
             return answer
         return await self._answer(

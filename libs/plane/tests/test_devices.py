@@ -1,129 +1,106 @@
-import datetime as dt
+"""The device-class dictionary, and that it means the same thing in both languages.
 
-from app.core import ids
-from app.db.models import Device
-from app.db.models import TopologyDomain
-from app.modules.devices.routes import DeviceRoutes
-from app.modules.devices.schemas import DeviceSchema
-from app.modules.devices.schemas import DeviceTopologySchema
-from app.modules.devices.services import DeviceService
-from app.modules.devices.repository import DeviceRepository
+The Go side has its own copy of these cases in `libs/operator/internal/devices`.
+The normalization rule is the only thing keeping two hand-written loaders on one
+table, so it is asserted here character by character rather than in spirit.
+"""
 
+import json
+import logging
 
-WRITE_METHODS = ("create", "update", "delete", "patch", "post", "add", "remove")
+from pathlib import Path
 
+import pytest
 
-def compiled(query) -> str:
-    return str(query.compile(compile_kwargs={"literal_binds": True}))
-
-
-def repo() -> DeviceRepository:
-    return DeviceRepository(db=None)
-
-
-def test_service_exposes_no_write_methods():
-    for name in WRITE_METHODS:
-        assert not hasattr(DeviceService, name)
+from app.core.devices import TABLE_PATH
+from app.core.devices import DIALECT_GFD
+from app.core.devices import DIALECT_DCGM
+from app.core.devices import DeviceClass
+from app.core.devices import DeviceTable
+from app.core.devices import load
+from app.core.devices import slug
+from app.core.devices import table
+from app.core.devices import normalize
 
 
-def test_controller_only_reads():
-    handlers = [h for h in vars(DeviceRoutes).values() if hasattr(h, "http_methods")]
-    assert handlers
-    for handler in handlers:
-        assert set(handler.http_methods) == {"GET"}
+GO_TABLE = Path(__file__).resolve().parents[3] / "libs" / "operator" / "internal" / "devices" / "table.json"
 
 
-def test_schema_carries_state_but_no_telemetry():
-    fields = set(DeviceSchema.__struct_fields__)
-    assert {"health", "ecc_volatile_errors", "throttled", "mig_profile", "allocatable"} <= fields
-    assert not fields & {
-        "utilization",
-        "gpu_utilization",
-        "memory_used_mib",
-        "temperature_c",
-        "power_watts",
-        "throughput",
-    }
+def test_the_contract_file_is_what_the_operator_embeds():
+    assert json.loads(TABLE_PATH.read_text()) == json.loads(GO_TABLE.read_text())
 
 
-def test_topology_is_embedded_as_a_summary_only():
-    assert DeviceSchema.__annotations__["topology"] == DeviceTopologySchema | None
-    assert set(DeviceTopologySchema.__struct_fields__) == {"id", "kind", "identifier"}
-    assert "parent" not in DeviceTopologySchema.__struct_fields__
-    assert "device_count" not in DeviceTopologySchema.__struct_fields__
+def test_the_seed_card_resolves_from_the_live_fleets_own_string():
+    found = table().lookup(DIALECT_DCGM, "NVIDIA RTX PRO 6000 Blackwell Server Edition")
+    assert found is not None
+    assert found.name == "rtx-pro-6000-96gb-server-edition"
+    assert found.memory_mib == 97249
+    assert found.form_factor == "server-edition"
 
 
-def test_hot_list_query_matches_the_composite_index_shape():
-    sql = compiled(repo().query(limit=25, cluster="iad-1", device_class="h100", health="healthy"))
-    assert "supply_device.cluster_id IN" in sql
-    assert "supply_device.device_class = 'h100'" in sql
-    assert "supply_device.health = 'healthy'" in sql
+@pytest.mark.parametrize(
+    ("dialect", "product", "expected"),
+    [
+        (DIALECT_GFD, "NVIDIA-H100-80GB-HBM3", "h100-80gb-sxm"),
+        (DIALECT_DCGM, "NVIDIA H100 80GB HBM3", "h100-80gb-sxm"),
+        (DIALECT_GFD, "NVIDIA-H100-PCIe", "h100-80gb-pcie"),
+        (DIALECT_GFD, "NVIDIA-A100-SXM4-80GB", "a100-80gb-sxm"),
+        (DIALECT_DCGM, "NVIDIA A100 80GB PCIe", "a100-80gb-pcie"),
+        (DIALECT_GFD, "NVIDIA-L40S", "l40s-48gb-pcie"),
+    ],
+)
+def test_both_dialects_land_on_one_class(dialect, product, expected):
+    assert table().resolve(dialect, product) == expected
 
 
-def test_list_query_joins_eagerly_and_never_lazy_loads():
-    sql = compiled(repo().query(limit=25))
-    assert "JOIN supply_cluster" in sql
-    assert "JOIN supply_node" in sql
-    assert "LEFT OUTER JOIN supply_topology_domain" in sql
-    assert "supply_topology_domain.kind" in sql
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("NVIDIA-H100-80GB-HBM3", "h100-80gb-hbm3"),
+        ("NVIDIA H100 80GB HBM3", "h100-80gb-hbm3"),
+        ("  NVIDIA   L40S  ", "l40s"),
+        ("NVIDIA A100-PCIE-40GB", "a100-pcie-40gb"),
+        ("", ""),
+    ],
+)
+def test_normalization_absorbs_spelling_drift(raw, expected):
+    assert normalize(raw) == expected
 
 
-def test_remaining_filters_are_applied():
-    sql = compiled(
-        repo().query(
-            limit=5,
-            after_seq=7,
-            node="node-1",
-            pool="a100",
-            allocatable=False,
-            topology_domain="nvswitch-0",
-        )
-    )
-    assert "supply_device.seq > 7" in sql
-    assert "supply_node.name = 'node-1'" in sql
-    assert "supply_pool.name = 'a100'" in sql
-    assert "supply_device.allocatable = false" in sql
-    assert "supply_topology_domain.identifier = 'nvswitch-0'" in sql
+def test_unknown_hardware_falls_through_to_a_stable_slug(caplog):
+    with caplog.at_level(logging.WARNING):
+        assert table().resolve(DIALECT_GFD, "NVIDIA-Zephyr-4000-Ultra") == "zephyr-4000-ultra"
+    assert "devices.unmapped" in caplog.text
+    assert slug("NVIDIA-Zephyr-4000-Ultra") == "zephyr-4000-ultra"
 
 
-def test_class_filter_is_exposed_as_class_on_the_wire():
-    handler = vars(DeviceRoutes)["list_devices"]
-    assert "device_class" in handler.fn.__annotations__
+def test_a_fallthrough_is_logged_once_not_once_per_loop(caplog):
+    fresh = load()
+    with caplog.at_level(logging.WARNING):
+        for _ in range(5):
+            fresh.resolve(DIALECT_GFD, "NVIDIA-Zephyr-9000")
+    assert caplog.text.count("devices.unmapped") == 1
 
 
-def test_schema_projection_maps_topology_and_nulls():
-    now = dt.datetime.now(dt.UTC)
-    device = Device(
-        uid=ids.new_uid(ids.DEVICE),
-        device_uuid="GPU-0",
-        device_index=0,
-        device_class="h100",
-        vendor="nvidia",
-        model_name=None,
-        pci_address=None,
-        memory_mib=81920,
-        compute_capability=None,
-        health="healthy",
-        health_reason=None,
-        ecc_enabled=True,
-        ecc_volatile_errors=0,
-        ecc_aggregate_errors=0,
-        ecc_pending_retirement=False,
-        throttled=False,
-        throttle_reasons=[],
-        mig_enabled=False,
-        mig_profile=None,
-        mig_parent_device_uuid=None,
-        allocatable=True,
-        observed_at=None,
-        created_at=now,
-        updated_at=None,
-    )
-    domain = TopologyDomain(uid=ids.new_uid(ids.TOPOLOGY_DOMAIN), kind="nvlink", identifier="island-0")
-    svc = object.__new__(DeviceService)
+def test_a_dialect_does_not_borrow_anothers_aliases():
+    assert table().lookup("vllm", "NVIDIA H200") is None
 
-    with_domain = DeviceService.schema(svc, (device, "clu_x", "iad-1", "nod_x", "node-1", domain))
-    assert with_domain.topology == DeviceTopologySchema(id=domain.uid, kind="nvlink", identifier="island-0")
 
-    without = DeviceService.schema(svc, (device, "clu_x", "iad-1", "nod_x", "node-1", None))
-    assert without.topology is None
+def test_a_missing_table_is_not_fatal(tmp_path, caplog):
+    with caplog.at_level(logging.WARNING):
+        empty = load(tmp_path / "nowhere.json")
+    assert empty.classes == []
+    assert empty.resolve(DIALECT_GFD, "NVIDIA-H100-80GB-HBM3") == "h100-80gb-hbm3"
+
+
+def test_every_class_is_a_slug_and_names_its_memory():
+    for entry in table().classes:
+        assert entry.name == normalize(entry.name)
+        assert entry.memory_mib > 0
+        assert entry.form_factor
+        assert set(entry.aliases) <= {DIALECT_GFD, DIALECT_DCGM}
+
+
+def test_aliases_of_an_unknown_class_are_empty():
+    assert DeviceTable([]).aliases("h100-80gb-sxm", DIALECT_DCGM) == ()
+    assert DeviceClass("x", "nvidia", 1, "pcie", {}).aliases == {}

@@ -71,6 +71,21 @@ class MetricsRoutes(Controller):
     ) -> Response[MetricsSchema]:
         return Response(await svc.node(ref, window, step, span, series))
 
+    @get("/clusters/{ref:str}/device-classes/{name:str}")
+    async def device_class_metrics(
+        self,
+        context: RequestContext,
+        svc: MetricsService,
+        ref: str,
+        name: str,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> Response[MetricsSchema]:
+        """One device class inside one cluster, selected by what the vendor calls it."""
+        return Response(await svc.device_class(ref, name, window, step, span, series))
+
     @get("/devices/{ref:str}")
     async def device_metrics(
         self,
