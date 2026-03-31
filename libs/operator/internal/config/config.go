@@ -85,6 +85,17 @@ type Config struct {
 	CachePoolValue string
 	CacheTaintKey  string
 
+	// DCGMEndpoint is the in-cluster DCGM exporter's metrics URL, which the observation loop
+	// scrapes for device identity — the true accelerator UUID, which Kubernetes does not carry
+	// anywhere (ADR 0007). It is read cluster-locally and only for identity; the measurements on
+	// those same series are telemetry and never enter the sync stream. Empty disables the
+	// scrape, leaving discovery on the annotation and synthetic-id fallbacks.
+	DCGMEndpoint string
+
+	// DCGMTimeout bounds one scrape. It is short on purpose: an exporter that is slow must not
+	// hold up an observation tick, because a late snapshot ages every node the plane can see.
+	DCGMTimeout time.Duration
+
 	// ModelCachePVC is the shared volume holding downloaded weights, mounted at /models so that
 	// replicas of one model pull it once between them rather than once each.
 	ModelCachePVC string
@@ -115,6 +126,8 @@ func Load() (*Config, error) {
 		CachePoolValue:        env("HANGAR_CACHE_POOL_VALUE", "cache"),
 		CacheTaintKey:         env("HANGAR_CACHE_TAINT_KEY", "hangar.io/cache"),
 		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
+		DCGMEndpoint:          env("HANGAR_DCGM_ENDPOINT", "http://dcgm-exporter.platform.svc.cluster.local:9400/metrics"),
+		DCGMTimeout:           envDuration("HANGAR_DCGM_TIMEOUT", 5*time.Second),
 	}
 
 	lvl, err := parseLevel(env("HANGAR_LOG_LEVEL", "info"))

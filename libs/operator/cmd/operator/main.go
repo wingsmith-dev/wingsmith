@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -80,9 +81,17 @@ func run() error {
 	observer := observe.New(&observe.Observer{
 		ClusterID:    cfg.ClusterID,
 		AgentVersion: version,
-		Discoverer:   &observe.KubeDiscoverer{Client: directClient},
-		Interval:     cfg.ObserveInterval,
-		Log:          log,
+		Discoverer: &observe.KubeDiscoverer{
+			Client: directClient,
+			DCGM: &observe.DCGMSource{
+				Endpoint: cfg.DCGMEndpoint,
+				Client:   &http.Client{Timeout: cfg.DCGMTimeout},
+				Log:      log,
+			},
+			Log: log,
+		},
+		Interval: cfg.ObserveInterval,
+		Log:      log,
 	})
 
 	executor := operate.New(&operate.Executor{
