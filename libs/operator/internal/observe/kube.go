@@ -3,6 +3,7 @@ package observe
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -31,9 +32,11 @@ const (
 	labelDeviceClass  = "hangar.dev/device-class"
 
 	// annotationDeviceUUIDs carries the node's accelerator UUIDs in index order. Device UUIDs
-	// are not published as labels — a label value cannot hold eight of them — so a node agent
-	// or a bootstrap job writes them here. Absent it, devices are keyed by node and index,
-	// which is stable for as long as the hardware does not move between machines.
+	// are not published as labels — a label value cannot hold eight of them — and Kubernetes
+	// does not expose them at all, so identity comes from the DCGM exporter (ADR 0007). This
+	// annotation is retained as an override for a cluster that runs no DCGM; absent both,
+	// devices are keyed by node and index, which is stable for as long as the hardware does
+	// not move between machines.
 	annotationDeviceUUIDs = "hangar.dev/device-uuids"
 
 	// annotationUnhealthy lists the indices or UUIDs of accelerators a health checker has
@@ -49,6 +52,11 @@ const (
 // would buy latency the hub does not need and a second copy of every node object it does not want.
 type KubeDiscoverer struct {
 	Client client.Client
+	// DCGM is the in-cluster exporter device identity is read from. Nil, or unreachable, and
+	// discovery degrades to the annotation and then to synthetic ids rather than failing:
+	// inventory the plane cannot see is worse than inventory whose metrics do not join.
+	DCGM *DCGMSource
+	Log  *slog.Logger
 }
 
 var _ Discoverer = (*KubeDiscoverer)(nil)
@@ -75,9 +83,17 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 	}
 	allocated := allocatedByNode(&pods)
 
+	inventory, err := k.DCGM.Scrape(ctx)
+	if err != nil {
+		k.log().Warn("dcgm exporter unreachable; falling back to annotated or synthetic device ids",
+			"endpoint", k.DCGM.Endpoint, "error", err)
+	} else if inventory != nil {
+		k.log().Debug("scraped device identity", "devices", inventory.Devices, "hosts", inventory.Hosts)
+	}
+
 	out := Snapshot{At: time.Now().UTC(), Nodes: make([]Node, 0, len(nodes.Items)), Workloads: workloads}
 	for i := range nodes.Items {
-		n := projectKubeNode(&nodes.Items[i])
+		n := projectKubeNode(&nodes.Items[i], inventory, k.log())
 		n.AllocatedDevices = allocated[n.Name]
 		out.Nodes = append(out.Nodes, n)
 	}
@@ -102,7 +118,14 @@ func allocatedByNode(pods *corev1.PodList) map[string]int {
 	return out
 }
 
-func projectKubeNode(n *corev1.Node) Node {
+func (k *KubeDiscoverer) log() *slog.Logger {
+	if k.Log == nil {
+		return slog.Default()
+	}
+	return k.Log
+}
+
+func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, log *slog.Logger) Node {
 	labels := n.Labels
 	out := Node{
 		Name:           n.Name,
@@ -125,16 +148,46 @@ func projectKubeNode(n *corev1.Node) Node {
 			Since:   c.LastTransitionTime.Time,
 		})
 	}
-	out.Devices = devicesFor(n, out.Ready)
+	out.Devices = devicesFor(n, out.Ready, inventory, log)
 	return out
 }
 
-func devicesFor(n *corev1.Node, ready bool) []Device {
+// devicesFor enumerates a node's accelerators from two views that are each authoritative about a
+// different thing.
+//
+// GPU Feature Discovery decides how many there are. That is the count the kubelet advertises and
+// the scheduler allocates against, so a device the plane can place on is by definition one GFD
+// counted; DCGM sees the hardware, which is a different question. DCGM decides what each one is
+// called, because the true UUID is the only key device-scoped telemetry can be joined on.
+//
+// When the two disagree on the count, GFD wins and the disagreement is logged with both numbers:
+// DCGM entries beyond the GFD count are dropped, and GFD slots DCGM did not name fall through to
+// the annotation and then to a synthetic id. Neither view is discarded silently. If GFD says
+// nothing at all — no gpu.count label — DCGM's count is used, so a cluster without GFD still
+// yields inventory.
+func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.Logger) []Device {
 	labels, annotations := n.Labels, n.Annotations
-	count := atoi(labels[labelGPUCount])
-	if count <= 0 {
-		return nil
+	scraped := inventory.forNode(n.Name, labels)
+	byIndex := make(map[int]DCGMDevice, len(scraped))
+	for _, d := range scraped {
+		if d.Index >= 0 {
+			byIndex[d.Index] = d
+		}
 	}
+
+	count := atoi(labels[labelGPUCount])
+	switch {
+	case count <= 0 && len(scraped) > 0:
+		log.Warn("node advertises no gpu.count label; taking the device count from dcgm",
+			"node", n.Name, "dcgm", len(scraped))
+		count = len(scraped)
+	case count <= 0:
+		return nil
+	case len(scraped) > 0 && len(scraped) != count:
+		log.Warn("gfd and dcgm disagree on this node's device count; gfd wins",
+			"node", n.Name, "gfd", count, "dcgm", len(scraped))
+	}
+
 	uuids := splitList(annotations[annotationDeviceUUIDs])
 	unhealthy := map[string]struct{}{}
 	for _, u := range splitList(annotations[annotationUnhealthy]) {
@@ -142,10 +195,6 @@ func devicesFor(n *corev1.Node, ready bool) []Device {
 	}
 
 	model := labels[labelGPUProduct]
-	class := labels[labelDeviceClass]
-	if class == "" {
-		class = deviceClass(model)
-	}
 	memory := int64(atoi(labels[labelGPUMemory]))
 	mig := Mig{Enabled: labels[labelMigStrategy] != "" && labels[labelMigStrategy] != "none"}
 	clique := labels[labelGPUClique]
@@ -155,6 +204,18 @@ func devicesFor(n *corev1.Node, ready bool) []Device {
 		uuid := fmt.Sprintf("%s-gpu%d", n.Name, i)
 		if i < len(uuids) && uuids[i] != "" {
 			uuid = uuids[i]
+		}
+		scrapedModel := ""
+		if d, ok := byIndex[i]; ok {
+			uuid, scrapedModel = d.UUID, d.Model
+		}
+		nodeModel := model
+		if nodeModel == "" {
+			nodeModel = scrapedModel
+		}
+		class := labels[labelDeviceClass]
+		if class == "" {
+			class = deviceClass(model, scrapedModel)
 		}
 		health := HealthHealthy
 		switch {
@@ -171,7 +232,7 @@ func devicesFor(n *corev1.Node, ready bool) []Device {
 		d := Device{
 			UUID:            uuid,
 			Index:           i,
-			Model:           model,
+			Model:           nodeModel,
 			DeviceClass:     class,
 			MemoryTotalMB:   memory,
 			Health:          health,
@@ -209,15 +270,22 @@ func exportedLabels(in map[string]string) map[string]string {
 	return out
 }
 
-// deviceClass names the hardware the way hangar names it, from contract/devices.json. The label
-// the device plugin publishes is one of two dialects for the same card and neither is canonical,
-// so the dictionary decides; hardware it does not list falls back to a slug of the vendor string,
-// which is stable and deterministic and gets logged so the table can be grown.
-func deviceClass(product string) string {
-	if product == "" {
+// deviceClass names the hardware the way hangar names it, from contract/devices.json. The names
+// GFD and DCGM publish are two dialects for the same card and neither is canonical, so the
+// dictionary decides; hardware it does not list falls back to a slug of the vendor string, which
+// is stable and deterministic and gets logged so the table can be grown.
+// The two dialects are tried in the order they are trusted: the GFD label is a node fact that is
+// there whether or not the exporter answered, and DCGM's modelName is the same card spelled the
+// other way for a cluster where GFD is silent.
+func deviceClass(gfdProduct, dcgmModel string) string {
+	switch {
+	case gfdProduct != "":
+		return devices.Load().Resolve(devices.DialectGFD, gfdProduct)
+	case dcgmModel != "":
+		return devices.Load().Resolve(devices.DialectDCGM, dcgmModel)
+	default:
 		return unknownClass
 	}
-	return devices.Load().Resolve(devices.DialectGFD, product)
 }
 
 // snake renders a Kubernetes CamelCase identifier in the wire's lower_snake_case vocabulary.

@@ -208,7 +208,7 @@ func TestDeviceClassPrecedence(t *testing.T) {
 		labelGPUProduct:  "NVIDIA-H100-80GB-HBM3",
 		labelDeviceClass: "bespoke-class",
 	}, nil, true, false)
-	if got := projectKubeNode(labelled).Devices[0].DeviceClass; got != "bespoke-class" {
+	if got := projectKubeNode(labelled, nil, discardLog).Devices[0].DeviceClass; got != "bespoke-class" {
 		t.Fatalf("label override lost: %q", got)
 	}
 
@@ -216,12 +216,12 @@ func TestDeviceClassPrecedence(t *testing.T) {
 		labelGPUCount:   "1",
 		labelGPUProduct: "NVIDIA-Zephyr-4000-Ultra",
 	}, nil, true, false)
-	if got := projectKubeNode(unknown).Devices[0].DeviceClass; got != "zephyr-4000-ultra" {
+	if got := projectKubeNode(unknown, nil, discardLog).Devices[0].DeviceClass; got != "zephyr-4000-ultra" {
 		t.Fatalf("unknown hardware did not fall through to a slug: %q", got)
 	}
 
 	none := gpuNode("gpu-c", map[string]string{labelGPUCount: "1"}, nil, true, false)
-	if got := projectKubeNode(none).Devices[0].DeviceClass; got != unknownClass {
+	if got := projectKubeNode(none, nil, discardLog).Devices[0].DeviceClass; got != unknownClass {
 		t.Fatalf("a node with no product label should be %q, got %q", unknownClass, got)
 	}
 }

@@ -1,0 +1,9 @@
+# HELP DCGM_FI_DEV_GPU_UTIL GPU utilization (in %).
+# TYPE DCGM_FI_DEV_GPU_UTIL gauge
+DCGM_FI_DEV_GPU_UTIL{gpu="0",UUID="GPU-1e7ad0a2-3a4b-11ee-be56-0242ac120002",pci_bus_id="00000000:53:00.0",device="nvidia0",modelName="NVIDIA RTX PRO 6000 Blackwell Server Edition",Hostname="ip-10-0-101-13.us-east-2.compute.internal",DCGM_FI_DRIVER_VERSION="580.65.06",container="dcgm-exporter",namespace="platform",pod="dcgm-exporter-6f9c8"} 0
+DCGM_FI_DEV_GPU_UTIL{gpu="1",UUID="GPU-88162bb4-9e47-05b7-8feb-c45483f8e59c",pci_bus_id="00000000:57:00.0",device="nvidia1",modelName="NVIDIA RTX PRO 6000 Blackwell Server Edition",Hostname="ip-10-0-101-13.us-east-2.compute.internal",DCGM_FI_DRIVER_VERSION="580.65.06",container="dcgm-exporter",namespace="platform",pod="dcgm-exporter-6f9c8",exported_container="vllm",exported_namespace="dynamo",exported_pod="qwen3-32b-frontend-0"} 97
+# HELP DCGM_FI_DEV_FB_USED Framebuffer memory used (in MiB).
+# TYPE DCGM_FI_DEV_FB_USED gauge
+DCGM_FI_DEV_FB_USED{gpu="0",UUID="GPU-1e7ad0a2-3a4b-11ee-be56-0242ac120002",device="nvidia0",modelName="NVIDIA RTX PRO 6000 Blackwell Server Edition",Hostname="ip-10-0-101-13.us-east-2.compute.internal",namespace="platform",pod="dcgm-exporter-6f9c8"} 512
+DCGM_FI_DEV_FB_USED{gpu="1",UUID="GPU-88162bb4-9e47-05b7-8feb-c45483f8e59c",device="nvidia1",modelName="NVIDIA RTX PRO 6000 Blackwell Server Edition",Hostname="ip-10-0-101-13.us-east-2.compute.internal",namespace="platform",pod="dcgm-exporter-6f9c8",exported_namespace="dynamo",exported_pod="qwen3-32b-frontend-0"} 91234
+DCGM_FI_DEV_GPU_UTIL{gpu="0",UUID="GPU-3c8b1f60-0000-4f00-9000-aaaaaaaaaaaa",device="nvidia0",modelName="NVIDIA H100 80GB HBM3",Hostname="ip-10-0-102-7.us-east-2.compute.internal",namespace="platform",pod="dcgm-exporter-zzzzz"} 12
