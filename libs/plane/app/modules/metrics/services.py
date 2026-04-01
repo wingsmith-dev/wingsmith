@@ -1,22 +1,28 @@
-"""Turning a Hangar object into a query, and a query result into a number.
+"""Turning a Hangar object into a scope, and a backend's numbers into a response.
+
+The service resolves objects, decides which cluster answers and how strong the
+join is, and never renders a query. Which store, and in which dialect, is
+`backend.for_source`.
 
 The three scoping joins, and how much each can be trusted:
 
-* **node** — DCGM labels every series with `Hostname`, and the plane stores
-  `Node.name`. On Kubernetes these are the same string. Solid.
-* **device** — DCGM labels with `UUID` and the plane stores `Device.device_uuid`.
-  This is an identity the hardware itself issues, so it is the strongest join in
-  the module and the reason per-card panels are trustworthy.
+* **node** — the exporter labels every series with the machine's `hostname`, and
+  the plane stores `Node.name`. On Kubernetes these are the same string. Solid.
+* **device** — labelled with `UUID`, against `Device.device_uuid`. This is an
+  identity the hardware itself issues, so it is the strongest join in the module
+  and the reason per-card panels are trustworthy.
 * **deployment** — vLLM labels by `model_name`, which is the served model, not
   the deployment. Two deployments of the same model in one cluster share a
   series set and will read as one. `Recipe.engine_args["served_model_name"]` is
   honoured when present because that is the operator's chance to disambiguate;
   the fallback is the artifact name. This join is the weak one and the schema
-  says so by carrying the selector back to the client.
+  says so by carrying the scope back to the client.
+
+Every one of them is narrowed by cluster first. The fleet remote-writes into one
+store holding four clusters, two of which are databases, so an unscoped query
+does not answer for a cluster — it answers for all of them at once.
 """
 
-import math
-import time
 import logging
 
 from uuid import UUID
@@ -35,8 +41,11 @@ from app.db.models import Deployment
 from app.config.settings import settings
 from app.core.exceptions import NotFound
 
-from .client import Client
 from .client import MetricsUnavailable
+from .backend import Scope
+from .backend import Window
+from .backend import Request
+from .backend import for_source
 from .schemas import SampleSchema
 from .schemas import SeriesSchema
 from .schemas import SourceSchema
@@ -47,59 +56,11 @@ from .sources import Source
 from .sources import resolve
 from .sources import configured
 from .registry import ENGINES
-from .registry import SCOPE_LABELS
 from .registry import Metric
 from .registry import family
-from .registry import device_class_values
 
 
 logger = logging.getLogger(__name__)
-
-
-def _escape(value: str) -> str:
-    return value.replace("\\", "\\\\").replace('"', '\\"')
-
-
-def _selector(label: str, values: list[str]) -> str:
-    if not values:
-        return ""
-    if len(values) == 1:
-        return f'{label}="{_escape(values[0])}"'
-    return f'{label}=~"{"|".join(_escape(v) for v in values)}"'
-
-
-def _device_class_selector(name: str) -> str:
-    """Selects the series a hangar device class covers.
-
-    DCGM knows nothing about our classes, so this expands one class into the
-    vendor `modelName` strings `contract/devices.json` says map onto it. A class
-    the table does not carry falls back to matching its own name literally,
-    which selects nothing until the table grows — an unscoped selector here
-    would silently report the whole fleet as one card.
-    """
-    values = list(device_class_values(name))
-    if not values:
-        logger.warning("metrics.device_class_unmapped class=%s", name)
-        values = [name]
-    return _selector(SCOPE_LABELS["device_class"], values)
-
-
-def _render(metric: Metric, selector: str, window: str, by: str = "") -> str:
-    """Builds the PromQL for one metric under one selector.
-
-    Registry entries come in two shapes and this is where the difference is
-    absorbed: an inference metric carries a whole expression with `$SELECTOR`
-    and `$WINDOW` placeholders because rates and quantiles cannot be assembled
-    generically, while a DCGM entry is a bare series name that still needs its
-    aggregation wrapped around it.
-    """
-    if "$SELECTOR" in metric.expr:
-        expr = metric.expr.replace("$SELECTOR", selector).replace("$WINDOW", window)
-        return expr
-    inner = f"{metric.expr}{{{selector}}}" if selector else metric.expr
-    if by:
-        return f"{metric.aggregate} by ({by}) ({inner})"
-    return f"{metric.aggregate}({inner})"
 
 
 class MetricsService:
@@ -123,128 +84,77 @@ class MetricsService:
     def _source(self, cluster: Cluster) -> Source | None:
         return resolve(cluster.name, cluster.uid)
 
-    async def _gather(
-        self,
-        source: Source,
-        metrics: tuple[Metric, ...],
-        selector: str,
-        window: str,
-    ) -> list[SampleSchema]:
-        client = Client(source, self.timeout)
-        samples: list[SampleSchema] = []
-        for metric in metrics:
-            result = await client.instant(_render(metric, selector, window))
-            value = None
-            if result:
-                raw = result[0].get("value", [None, None])[1]
-                try:
-                    value = float(raw)
-                except (TypeError, ValueError):
-                    value = None
-                if value is not None and math.isnan(value):
-                    value = None
-            samples.append(SampleSchema(metric=metric.name, title=metric.title, unit=metric.unit, value=value))
-        return samples
-
-    async def _breakdown(
-        self,
-        source: Source,
-        metrics: tuple[Metric, ...],
-        selector: str,
-        window: str,
-        by: str,
-        labels: dict[str, str],
-    ) -> list[BreakdownSchema]:
-        """Per-member numbers, so one hot card in a healthy pool is still visible."""
-        client = Client(source, self.timeout)
-        collected: dict[str, dict[str, SampleSchema]] = {}
-        for metric in metrics:
-            for entry in await client.instant(_render(metric, selector, window, by=by)):
-                key = entry.get("metric", {}).get(by, "")
-                if not key:
-                    continue
-                try:
-                    value = float(entry.get("value", [None, None])[1])
-                except (TypeError, ValueError):
-                    value = None
-                collected.setdefault(key, {})[metric.name] = SampleSchema(
-                    metric=metric.name, title=metric.title, unit=metric.unit, value=value
-                )
-        return [
-            BreakdownSchema(key=key, label=labels.get(key, key), samples=list(samples.values()))
-            for key, samples in sorted(collected.items())
-        ]
-
-    async def _series(
-        self,
-        source: Source,
-        metrics: tuple[Metric, ...],
-        selector: str,
-        window: str,
-        step: str,
-        span: int,
-    ) -> list[SeriesSchema]:
-        client = Client(source, self.timeout)
-        end = time.time()
-        out: list[SeriesSchema] = []
-        for metric in metrics:
-            for entry in await client.range(_render(metric, selector, window), end - span, end, step):
-                points = []
-                for at, raw in entry.get("values", []):
-                    try:
-                        points.append(SeriesPointSchema(at=float(at), value=float(raw)))
-                    except (TypeError, ValueError):
-                        continue
-                out.append(
-                    SeriesSchema(
-                        metric=metric.name,
-                        title=metric.title,
-                        unit=metric.unit,
-                        labels={k: v for k, v in entry.get("metric", {}).items() if k != "__name__"},
-                        points=points,
-                    )
-                )
-        return out
-
     async def _answer(
         self,
-        scope: str,
-        ref: str,
         cluster: Cluster,
+        scope: Scope,
+        ref: str,
         metrics: tuple[Metric, ...],
-        selector: str,
         window: str | None,
         step: str | None,
         span: int,
-        by: str = "",
         labels: dict[str, str] | None = None,
         with_series: bool = False,
     ) -> MetricsSchema:
-        window = window or self.window
+        lookback = window or self.window
         source = self._source(cluster)
         answer = MetricsSchema(
-            scope=scope,
+            scope=scope.kind,
             ref=ref,
             cluster=cluster.uid,
             source=SourceSchema(**source.public()) if source else None,
-            window=window,
+            window=lookback,
         )
         if source is None:
             answer.unavailable = (
                 f"no metrics source configured for cluster {cluster.name!r}; set HANGAR_METRICS_SOURCES"
             )
             return answer
+        if not metrics:
+            return answer
+        request = Request(
+            scope=scope,
+            metrics=metrics,
+            window=Window(lookback=lookback, step=step or settings.METRICS_STEP, span=span),
+        )
+        titles = {m.name: m for m in metrics}
         try:
-            answer.samples = await self._gather(source, metrics, selector, window)
-            if by:
-                answer.breakdown = await self._breakdown(source, metrics, selector, window, by, labels or {})
+            backend = for_source(source, self.timeout)
+            answer.samples = _samples(await backend.samples(request), titles)
+            if scope.breakdown:
+                answer.breakdown = [
+                    BreakdownSchema(key=key, label=(labels or {}).get(key, key), samples=_samples(values, titles))
+                    for key, values in sorted((await backend.breakdown(request)).items())
+                ]
             if with_series:
-                answer.series = await self._series(
-                    source, metrics, selector, window, step or settings.METRICS_STEP, span
-                )
+                answer.series = [
+                    SeriesSchema(
+                        metric=curve.metric,
+                        title=titles[curve.metric].title,
+                        unit=titles[curve.metric].unit,
+                        labels=curve.labels,
+                        points=[SeriesPointSchema(at=at, value=value) for at, value in curve.points],
+                    )
+                    for curve in await backend.curves(request)
+                ]
         except MetricsUnavailable as error:
             answer.unavailable = error.message
         return answer
+
+    def _scope(
+        self,
+        kind: str,
+        source: Source | None,
+        breakdown: str = "",
+        **match: tuple[str, ...],
+    ) -> Scope:
+        """One scope, always carrying the cluster label its source is narrowed by."""
+        return Scope(
+            kind=kind,
+            cluster=source.label if source else "",
+            match={k: v for k, v in match.items() if v},
+            breakdown=breakdown,
+        )
 
     async def cluster(
         self,
@@ -259,16 +169,15 @@ class MetricsService:
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
         nodes = (await self.db.execute(select(Node.name).where(Node.cluster_id == cluster.id))).scalars().all()
+        scope = self._scope("cluster", self._source(cluster), breakdown="node")
         return await self._answer(
-            "cluster",
-            cluster.uid,
             cluster,
+            scope,
+            cluster.uid,
             family("gpu"),
-            "",
             window,
             step,
             span,
-            by=SCOPE_LABELS["node"],
             labels={name: name for name in nodes},
             with_series=series,
         )
@@ -289,16 +198,15 @@ class MetricsService:
         devices = (
             await self.db.execute(select(Device.device_uuid, Device.device_index).where(Device.node_id == node.id))
         ).all()
+        scope = self._scope("node", self._source(cluster), node=(node.name,), breakdown="device")
         return await self._answer(
-            "node",
-            node.uid,
             cluster,
+            scope,
+            node.uid,
             family("gpu"),
-            _selector(SCOPE_LABELS["node"], [node.name]),
             window,
             step,
             span,
-            by=SCOPE_LABELS["device"],
             labels={uuid: f"GPU {index}" for uuid, index in devices},
             with_series=series,
         )
@@ -317,20 +225,20 @@ class MetricsService:
             raise NotFound(f"no pool {ref!r}")
         cluster = await self._cluster(pool.cluster_id)
         nodes = (await self.db.execute(select(Node.name).where(Node.pool_id == pool.id))).scalars().all()
+        source = self._source(cluster)
         if not nodes:
-            answer = await self._answer("pool", pool.uid, cluster, (), "", window, step, span)
+            answer = await self._answer(cluster, self._scope("pool", source), pool.uid, (), window, step, span)
             answer.unavailable = "this pool has no nodes"
             return answer
+        scope = self._scope("pool", source, node=tuple(nodes), breakdown="node")
         return await self._answer(
-            "pool",
-            pool.uid,
             cluster,
+            scope,
+            pool.uid,
             family("gpu"),
-            _selector(SCOPE_LABELS["node"], list(nodes)),
             window,
             step,
             span,
-            by=SCOPE_LABELS["node"],
             labels={name: name for name in nodes},
             with_series=series,
         )
@@ -346,9 +254,9 @@ class MetricsService:
     ) -> MetricsSchema:
         """One class of card inside one cluster, broken down by node.
 
-        The class is a hangar name and DCGM has never heard of it, so the
-        selector is built from the vendor strings the contract table maps onto
-        it rather than from the name itself.
+        The class is a hangar name and the exporter has never heard of it. The
+        dialect expands it into the vendor strings `contract/devices.json` maps
+        onto it; the service only says which class it means.
         """
         query = select(Cluster).where(Cluster.uid == ref if is_uid(ref) else Cluster.name == ref)
         cluster = (await self.db.execute(query)).scalar_one_or_none()
@@ -366,16 +274,15 @@ class MetricsService:
             .scalars()
             .all()
         )
+        scope = self._scope("device_class", self._source(cluster), device_class=(name,), breakdown="node")
         return await self._answer(
-            "device_class",
-            name,
             cluster,
+            scope,
+            name,
             family("gpu"),
-            _device_class_selector(name),
             window,
             step,
             span,
-            by=SCOPE_LABELS["node"],
             labels={node: node for node in nodes},
             with_series=series,
         )
@@ -393,17 +300,8 @@ class MetricsService:
         if device is None:
             raise NotFound(f"no device {ref!r}")
         cluster = await self._cluster(device.cluster_id)
-        return await self._answer(
-            "device",
-            device.uid,
-            cluster,
-            family("gpu"),
-            _selector(SCOPE_LABELS["device"], [device.device_uuid]),
-            window,
-            step,
-            span,
-            with_series=series,
-        )
+        scope = self._scope("device", self._source(cluster), device=(device.device_uuid,))
+        return await self._answer(cluster, scope, device.uid, family("gpu"), window, step, span, with_series=series)
 
     async def deployment(
         self,
@@ -426,18 +324,28 @@ class MetricsService:
         cluster = await self._cluster(deployment.cluster_id)
         served = recipe.engine_args.get("served_model_name") or artifact.name
         engine = ENGINES.get(recipe.engine)
+        source = self._source(cluster)
         if engine is None or not engine.metrics:
-            answer = await self._answer("deployment", deployment.uid, cluster, (), "", window, step, span)
+            answer = await self._answer(
+                cluster, self._scope("deployment", source), deployment.uid, (), window, step, span
+            )
             answer.unavailable = f"no metric dialect registered for engine {recipe.engine!r}"
             return answer
+        scope = self._scope("deployment", source, deployment=(str(served),))
         return await self._answer(
-            "deployment",
-            deployment.uid,
-            cluster,
-            engine.metrics,
-            _selector(engine.identity_label, [str(served)]),
-            window,
-            step,
-            span,
-            with_series=series,
+            cluster, scope, deployment.uid, engine.metrics, window, step, span, with_series=series
         )
+
+
+def _samples(values: dict[str, float | None], metrics: dict[str, Metric]) -> list[SampleSchema]:
+    """Numbers back into the response shape, in the order the metrics were asked for."""
+    return [
+        SampleSchema(
+            metric=name,
+            title=metrics[name].title,
+            unit=metrics[name].unit,
+            value=values.get(name),
+        )
+        for name in metrics
+        if name in values
+    ]

@@ -1,23 +1,62 @@
+import pytest
+
 from app.core.devices import DIALECT_DCGM
 from app.core.devices import DeviceClass
 from app.core.devices import DeviceTable
+from app.modules.metrics import promql
 from app.modules.metrics import sources
 from app.modules.metrics.client import MetricsUnavailable
+from app.modules.metrics.promql import LABELS
+from app.modules.metrics.promql import DIALECT
+from app.modules.metrics.promql import render
+from app.modules.metrics.promql import matcher
+from app.modules.metrics.promql import selector
 from app.modules.metrics.routes import MetricsRoutes
+from app.modules.metrics.backend import Scope
+from app.modules.metrics.backend import Window
+from app.modules.metrics.backend import Backend
+from app.modules.metrics.backend import Request
+from app.modules.metrics.backend import for_source
 from app.modules.metrics.schemas import SampleSchema
 from app.modules.metrics.schemas import MetricsSchema
 from app.modules.metrics.registry import BY_NAME
 from app.modules.metrics.registry import ENGINES
-from app.modules.metrics.registry import SCOPE_LABELS
+from app.modules.metrics.registry import Metric
 from app.modules.metrics.registry import family
 from app.modules.metrics.services import MetricsService
-from app.modules.metrics.services import _escape
-from app.modules.metrics.services import _render
-from app.modules.metrics.services import _selector
-from app.modules.metrics.services import _device_class_selector
+from app.modules.metrics.prometheus import PrometheusBackend
 
 
 WRITE_METHODS = ("create", "update", "delete", "patch", "post", "add", "remove")
+
+CENTRAL = sources.Source(cluster="us", url="https://prom", label="cluster-us")
+
+
+class FakeClient:
+    """Stands in for the transport, so a backend can be exercised without a store."""
+
+    def __init__(self, answers: dict[str, list[dict]]) -> None:
+        self.answers = answers
+        self.asked: list[str] = []
+
+    async def instant(self, expression: str) -> list[dict]:
+        self.asked.append(expression)
+        return self.answers.get(expression, [])
+
+    async def range(self, expression: str, start: float, end: float, step: str) -> list[dict]:
+        self.asked.append(expression)
+        return self.answers.get(expression, [])
+
+
+def backend_with(answers: dict[str, list[dict]]) -> tuple[PrometheusBackend, FakeClient]:
+    backend = PrometheusBackend(CENTRAL, 1.0)
+    client = FakeClient(answers)
+    backend.client = client
+    return backend, client
+
+
+def sample(value: str) -> list[dict]:
+    return [{"metric": {}, "value": [0.0, value]}]
 
 
 def test_service_exposes_no_write_methods():
@@ -45,11 +84,37 @@ def test_source_never_leaks_its_token():
     assert set(parsed["us"].public()) == {"cluster", "url", "kind"}
 
 
-def test_sources_are_parsed_per_cluster():
+def test_a_dedicated_endpoint_per_cluster_still_parses():
+    """The per-cluster stores are being decommissioned, not gone."""
     parsed = sources.parse("us=https://prom.us:9090/,ap=https://prom.ap:9090|kind=prometheus")
     assert set(parsed) == {"us", "ap"}
     assert parsed["us"].url == "https://prom.us:9090"
     assert parsed["ap"].kind == "prometheus"
+    assert parsed["us"].label == ""
+
+
+def test_the_shared_store_is_one_endpoint_and_a_label_per_cluster():
+    parsed = sources.parse(
+        "default=https://central:9090|token=t,us|label=cluster-us,ap|label=cluster-ap"
+    )
+    assert set(parsed) == {"us", "ap"}
+    assert parsed["us"].url == "https://central:9090"
+    assert parsed["us"].token == "t"
+    assert parsed["us"].label == "cluster-us"
+    assert parsed["ap"].label == "cluster-ap"
+
+
+def test_an_entry_on_the_shared_store_is_never_unlabelled():
+    """An unscoped query against the central store reads four fleets as one."""
+    parsed = sources.parse("default=https://central:9090,us")
+    assert parsed["us"].label == "us"
+
+
+def test_a_cluster_with_no_entry_has_no_source_even_when_a_default_exists():
+    """Reporting plainly beats guessing a label and rendering an idle fleet."""
+    parsed = sources.parse("default=https://central:9090,us|label=cluster-us")
+    assert sources.Source(cluster="ap", url="https://central:9090") not in parsed.values()
+    assert "ap" not in parsed
 
 
 def test_malformed_source_entries_are_dropped_not_raised():
@@ -59,24 +124,50 @@ def test_malformed_source_entries_are_dropped_not_raised():
 
 
 def test_selector_quotes_are_escaped():
-    assert _escape('a"b') == 'a\\"b'
-    assert _selector("Hostname", ['no"pe']) == 'Hostname="no\\"pe"'
+    assert promql.escape('a"b') == 'a\\"b'
+    assert matcher("hostname", ('no"pe',)) == 'hostname="no\\"pe"'
 
 
 def test_selector_switches_to_regex_for_many_values():
-    assert _selector("Hostname", ["a"]) == 'Hostname="a"'
-    assert _selector("Hostname", ["a", "b"]) == 'Hostname=~"a|b"'
-    assert _selector("Hostname", []) == ""
+    assert matcher("hostname", ("a",)) == 'hostname="a"'
+    assert matcher("hostname", ("a", "b")) == 'hostname=~"a|b"'
+    assert matcher("hostname", ()) == ""
+
+
+def test_every_scope_carries_a_cluster_matcher():
+    """One central store holds four clusters, two of them databases."""
+    for kind, match in (
+        ("cluster", {}),
+        ("node", {"node": ("n1",)}),
+        ("pool", {"node": ("n1", "n2")}),
+        ("device", {"device": ("GPU-1",)}),
+        ("deployment", {"deployment": ("gpt-oss-120b",)}),
+    ):
+        where = selector(Scope(kind=kind, cluster="cluster-us", match=match))
+        assert where.startswith('cluster="cluster-us"'), kind
+
+
+def test_a_dedicated_store_gets_no_cluster_matcher():
+    """A Prometheus holding one cluster has no such label to match on."""
+    assert selector(Scope(kind="node", cluster="", match={"node": ("n1",)})) == 'hostname="n1"'
+
+
+def test_node_is_selected_by_the_label_the_exporter_actually_emits():
+    """`Hostname` matched zero series and emptied every node and pool panel."""
+    assert LABELS["node"] == "hostname"
+    assert LABELS["device"] == "UUID"
+    assert LABELS["deployment"] == "model_name"
+    assert LABELS["cluster"] == "cluster"
 
 
 def test_bare_series_metrics_are_aggregated_and_placeholders_are_substituted():
     util = BY_NAME["gpu.utilization"]
-    assert _render(util, 'Hostname="n1"', "5m") == 'avg(DCGM_FI_DEV_GPU_UTIL{Hostname="n1"})'
-    assert _render(util, "", "5m", by="UUID") == "avg by (UUID) (DCGM_FI_DEV_GPU_UTIL)"
+    assert render(util, "DCGM_FI_DEV_GPU_UTIL", 'hostname="n1"', "5m") == 'avg(DCGM_FI_DEV_GPU_UTIL{hostname="n1"})'
+    assert render(util, "DCGM_FI_DEV_GPU_UTIL", "", "5m", by="UUID") == "avg by (UUID) (DCGM_FI_DEV_GPU_UTIL)"
 
     ttft = BY_NAME["inference.ttft"]
-    rendered = _render(ttft, 'model_name="q"', "5m")
-    assert "$SELECTOR" not in rendered and "$WINDOW" not in rendered
+    rendered = render(ttft, DIALECT["inference.ttft"].candidates[0], 'model_name="q"', "5m")
+    assert "$SELECTOR" not in rendered and "$WINDOW" not in rendered and "$SERIES" not in rendered
     assert 'model_name="q"' in rendered and "[5m]" in rendered
 
 
@@ -99,30 +190,50 @@ def test_registry_covers_the_asks():
     } <= inference
 
 
-def test_engines_declare_how_their_series_are_keyed():
-    assert ENGINES["vllm"].identity_label == "model_name"
-    assert SCOPE_LABELS["node"] == "Hostname"
-    assert SCOPE_LABELS["device"] == "UUID"
-
-
 def test_metric_names_are_unique_across_dialects():
     names = [m.name for engine in ENGINES.values() for m in engine.metrics]
     assert len(names) == len(set(names))
 
 
-def test_answer_distinguishes_absent_from_zero():
-    """No series is not an idle GPU, so the value is nullable and the reason travels."""
-    answer = MetricsSchema(scope="cluster", ref="clu_1", cluster="clu_1", source=None, window="5m")
-    assert answer.samples == []
-    assert answer.unavailable is None
-    assert SampleSchema(metric="gpu.utilization", title="t", unit="percent", value=None).value is None
-    assert "unavailable" in MetricsSchema.__struct_fields__
+def test_the_registry_is_vendor_neutral():
+    """The API's vocabulary must not go blank because an engine renamed a series."""
+    for metric in BY_NAME.values():
+        assert not any("DCGM" in str(v) or "vllm" in str(v) for v in vars(metric).values())
+
+
+def test_every_registry_metric_has_a_prometheus_expression():
+    assert set(DIALECT) == set(BY_NAME)
+
+
+def test_renamed_upstream_series_are_kept_as_candidates():
+    """An upstream rename must degrade to a fallback, not to an empty panel."""
+    assert DIALECT["inference.tpot"].candidates == (
+        "vllm:time_per_output_token_seconds_bucket",
+        "vllm:inter_token_latency_seconds_bucket",
+    )
+    assert DIALECT["inference.kv_cache_utilization"].candidates[1] == "vllm:kv_cache_usage_perc"
+
+
+def test_fields_the_exporter_does_not_emit_yet_are_kept():
+    """They read as no data today and start working when the field csv grows."""
+    assert DIALECT["gpu.throttle_reasons"].candidates[0] == "DCGM_FI_DEV_CLOCK_THROTTLE_REASONS"
+    assert DIALECT["gpu.ecc_uncorrectable"].candidates[0] == "DCGM_FI_DEV_ECC_DBE_AGG_TOTAL"
+
+
+def test_source_kind_selects_the_backend():
+    assert isinstance(for_source(CENTRAL, 1.0), PrometheusBackend)
+    assert isinstance(for_source(CENTRAL, 1.0), Backend)
+
+
+def test_an_unknown_source_kind_is_unavailable_not_a_crash():
+    with pytest.raises(MetricsUnavailable):
+        for_source(sources.Source(cluster="us", url="https://x", kind="clickhouse"), 1.0)
 
 
 def test_device_class_selector_expands_to_vendor_names():
-    """DCGM labels by what the vendor calls the card, never by our class name."""
-    selector = _device_class_selector("rtx-pro-6000-96gb-server-edition")
-    assert selector == 'modelName="NVIDIA RTX PRO 6000 Blackwell Server Edition"'
+    """The exporter labels by what the vendor calls the card, never by our class name."""
+    where = selector(Scope(kind="device_class", match={"device_class": ("rtx-pro-6000-96gb-server-edition",)}))
+    assert where == 'modelName="NVIDIA RTX PRO 6000 Blackwell Server Edition"'
 
 
 def test_device_class_selector_alternates_when_a_class_has_several_names():
@@ -137,16 +248,81 @@ def test_device_class_selector_alternates_when_a_class_has_several_names():
             )
         ]
     )
-    values = list(table.aliases("h100-80gb-sxm", DIALECT_DCGM))
-    assert _selector("modelName", values) == 'modelName=~"NVIDIA H100 80GB HBM3|we\\"ird"'
+    values = table.aliases("h100-80gb-sxm", DIALECT_DCGM)
+    assert matcher("modelName", values) == 'modelName=~"NVIDIA H100 80GB HBM3|we\\"ird"'
 
 
 def test_unmapped_device_class_never_selects_the_whole_fleet(caplog):
     with caplog.at_level("WARNING"):
-        selector = _device_class_selector("zephyr-4000-ultra")
-    assert selector == 'modelName="zephyr-4000-ultra"'
+        where = selector(Scope(kind="device_class", match={"device_class": ("zephyr-4000-ultra",)}))
+    assert where == 'modelName="zephyr-4000-ultra"'
     assert "device_class_unmapped" in caplog.text
 
 
-def test_scope_labels_still_name_dcgms_own_labels():
-    assert SCOPE_LABELS == {"node": "Hostname", "device": "UUID", "device_class": "modelName"}
+async def test_candidates_render_as_an_or_chain_for_a_non_sum_metric():
+    backend, _ = backend_with({})
+    expression = await backend._expression(BY_NAME["inference.kv_cache_utilization"], "", "5m")
+    assert expression.count(" or ") == 1
+    assert "vllm:gpu_cache_usage_perc" in expression and "vllm:kv_cache_usage_perc" in expression
+
+
+async def test_a_summed_metric_never_unions_two_populated_candidates():
+    """Both spellings live during an upgrade; a union under sum doubles the number."""
+    metric = BY_NAME["gpu.ecc_uncorrectable"]
+    answers = {
+        "count(DCGM_FI_DEV_ECC_DBE_AGG_TOTAL)": sample("4"),
+        "count(DCGM_FI_DEV_ECC_DBE_VOL_TOTAL)": sample("4"),
+        "sum(DCGM_FI_DEV_ECC_DBE_AGG_TOTAL)": sample("7"),
+        "sum(DCGM_FI_DEV_ECC_DBE_VOL_TOTAL)": sample("7"),
+    }
+    backend, _ = backend_with(answers)
+    expression = await backend._expression(metric, "", "5m")
+    assert expression == "sum(DCGM_FI_DEV_ECC_DBE_AGG_TOTAL)"
+    assert " or " not in expression
+
+    values = await backend.samples(Request(scope=Scope(kind="cluster"), metrics=(metric,), window=Window("5m")))
+    assert values["gpu.ecc_uncorrectable"] == 7.0
+
+
+async def test_a_summed_metric_falls_back_to_the_populated_candidate():
+    metric = BY_NAME["gpu.ecc_uncorrectable"]
+    backend, _ = backend_with(
+        {
+            "count(DCGM_FI_DEV_ECC_DBE_VOL_TOTAL)": sample("4"),
+            "sum(DCGM_FI_DEV_ECC_DBE_VOL_TOTAL)": sample("3"),
+        }
+    )
+    values = await backend.samples(Request(scope=Scope(kind="cluster"), metrics=(metric,), window=Window("5m")))
+    assert values["gpu.ecc_uncorrectable"] == 3.0
+
+
+async def test_no_candidate_populated_is_none_not_zero():
+    metric = BY_NAME["gpu.ecc_uncorrectable"]
+    backend, _ = backend_with({})
+    values = await backend.samples(Request(scope=Scope(kind="cluster"), metrics=(metric,), window=Window("5m")))
+    assert values["gpu.ecc_uncorrectable"] is None
+
+
+async def test_nan_is_no_series_not_zero():
+    """An empty histogram quantiles to NaN, and NaN drawn as 0 reads as an idle GPU."""
+    metric = BY_NAME["inference.ttft"]
+    expression = render(metric, DIALECT["inference.ttft"].candidates[0], "", "5m")
+    backend, _ = backend_with({expression: [{"metric": {}, "value": [0.0, "NaN"]}]})
+    values = await backend.samples(Request(scope=Scope(kind="deployment"), metrics=(metric,), window=Window("5m")))
+    assert values["inference.ttft"] is None
+
+
+async def test_a_backend_only_answers_the_metrics_it_has_a_dialect_for():
+    """Room for a cost family answered out of inventory rather than a store."""
+    backend, _ = backend_with({})
+    assert backend.answers(BY_NAME["gpu.utilization"])
+    assert not backend.answers(Metric("cost.hourly", "count", "gpu", "Cost per hour"))
+
+
+def test_answer_distinguishes_absent_from_zero():
+    """No series is not an idle GPU, so the value is nullable and the reason travels."""
+    answer = MetricsSchema(scope="cluster", ref="clu_1", cluster="clu_1", source=None, window="5m")
+    assert answer.samples == []
+    assert answer.unavailable is None
+    assert SampleSchema(metric="gpu.utilization", title="t", unit="percent", value=None).value is None
+    assert "unavailable" in MetricsSchema.__struct_fields__
