@@ -46,7 +46,8 @@ const ID_PATTERN = /^[a-z]{3}_[0-9a-z]{26}$/
  */
 export function qualifyTarget(type: OperationType, target: string): string {
   const trimmed = target.trim()
-  if (trimmed === "" || ID_PATTERN.test(trimmed) || trimmed.includes(":")) return trimmed
+  if (trimmed === "" || ID_PATTERN.test(trimmed) || trimmed.includes(":"))
+    return trimmed
   return `${OPERATION_TARGET_KINDS[type]}:${trimmed}`
 }
 
@@ -54,19 +55,15 @@ export function qualifyTarget(type: OperationType, target: string): string {
 export function targetMismatch(type: OperationType, target: string): boolean {
   const trimmed = target.trim()
   if (trimmed === "") return false
-  if (ID_PATTERN.test(trimmed)) return !trimmed.startsWith(OPERATION_TYPES[type])
+  if (ID_PATTERN.test(trimmed))
+    return !trimmed.startsWith(OPERATION_TYPES[type])
   const [kind, name] = trimmed.split(":")
   if (name === undefined) return false
   return kind !== OPERATION_TARGET_KINDS[type] || name === ""
 }
 
 export type OperationPhase =
-  | "pending"
-  | "running"
-  | "succeeded"
-  | "failed"
-  | "cancelled"
-  | "timed_out"
+  "pending" | "running" | "succeeded" | "failed" | "cancelled" | "timed_out"
 
 export const OPEN_PHASES: readonly OperationPhase[] = ["pending", "running"]
 
