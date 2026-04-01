@@ -22,6 +22,12 @@ data:
   HANGAR_LIVENESS_TIMEOUT: 30s
   HANGAR_SEND_QUEUE_SIZE: "1024"
   HANGAR_LEADER_ELECTION: "true"
+  # Observe and report, write nothing. This is what a cluster is pointed at a plane with the
+  # first time: the reconciler is never registered and every operation is refused, so the only
+  # traffic is outbound. The RBAC in rbac/role.yaml is deliberately unchanged — this is a
+  # behavioural switch, not a permission one, and narrowing the role would mean two bundles to
+  # keep in step. Set to "false" when the cluster should start serving what the plane declares.
+  HANGAR_READ_ONLY: "true"
   # The in-cluster DCGM exporter, scraped for device identity only (ADR 0007). Point this at
   # whatever Service the cluster runs it under; empty disables the scrape and device ids fall
   # back to the hangar.dev/device-uuids annotation and then to <node>-gpu<index>. No RBAC is

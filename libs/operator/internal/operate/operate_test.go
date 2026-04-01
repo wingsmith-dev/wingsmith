@@ -93,13 +93,18 @@ func operation(kind, nodeName string, params map[string]string) wire.OperationDe
 
 func runOperation(t *testing.T, op wire.OperationDesired, objects ...client.Object) (*recorder, *Executor) {
 	t.Helper()
+	return runOperationOn(t, false, op, objects...)
+}
+
+func runOperationOn(t *testing.T, readOnly bool, op wire.OperationDesired, objects ...client.Object) (*recorder, *Executor) {
+	t.Helper()
 	builder := fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme)
 	for _, o := range objects {
 		builder = builder.WithObjects(o)
 	}
 	c := builder.Build()
 	rec := &recorder{}
-	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default()})
+	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default(), ReadOnly: readOnly})
 	e.Bind(rec)
 
 	payload, err := json.Marshal(op)
@@ -191,6 +196,26 @@ func TestAnUnsupportedKindFailsLoudly(t *testing.T) {
 	}
 	if last.Failure == nil || last.Failure.Retryable {
 		t.Error("an operation this operator cannot perform is not fixed by retrying it")
+	}
+}
+
+// A read-only operator refuses, and the refusal is an answer rather than silence.
+func TestAReadOnlyOperatorRefusesAndLeavesTheNodeAlone(t *testing.T) {
+	rec, e := runOperationOn(t, true, operation("cordon", "gpu-0", nil), node("gpu-0", false))
+
+	last := rec.last()
+	if last.Phase != "failed" {
+		t.Fatalf("phase = %q, want failed", last.Phase)
+	}
+	if last.Failure == nil || last.Failure.Retryable {
+		t.Error("a read-only operator is not persuaded by a retry")
+	}
+	var after corev1.Node
+	if err := e.Client.Get(context.Background(), types.NamespacedName{Name: "gpu-0"}, &after); err != nil {
+		t.Fatalf("read node: %v", err)
+	}
+	if after.Spec.Unschedulable {
+		t.Error("a read-only operator cordoned the node anyway")
 	}
 }
 

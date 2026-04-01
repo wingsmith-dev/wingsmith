@@ -52,6 +52,9 @@ type Executor struct {
 	ClusterID string
 	Log       *slog.Logger
 
+	// ReadOnly refuses every operation instead of performing it. See config.Config.ReadOnly.
+	ReadOnly bool
+
 	mu       stdsync.Mutex
 	reporter Reporter
 	running  map[string]struct{}
@@ -148,7 +151,15 @@ func (e *Executor) run(ctx context.Context, op wire.OperationDesired) {
 // An unsupported kind fails loudly rather than being ignored. Silence would leave the operation
 // pending until it timed out, and a timeout says the cluster was slow when what happened is that
 // it was asked for something it cannot do.
+//
+// A read-only operator refuses here rather than at the handler, so that a refusal travels the same
+// route as any other failure: an `operation.observed` that says why. Dropping the frame would be
+// the silence this function exists to avoid, and the plane would read a cluster that declines to
+// act as one that never answered.
 func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[string]string, error) {
+	if e.ReadOnly {
+		return nil, fmt.Errorf("this operator is read-only and will not perform %q", op.Kind)
+	}
 	switch op.Kind {
 	case "cordon":
 		return e.cordon(ctx, op)

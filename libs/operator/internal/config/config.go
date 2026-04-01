@@ -62,6 +62,20 @@ type Config struct {
 	BackoffMin time.Duration
 	BackoffMax time.Duration
 
+	// ReadOnly runs the operator as an observer and nothing else: it reports what the cluster
+	// has, and declines every path that would write to it.
+	//
+	// This is how a cluster is first pointed at a plane. Without it, nothing writes either —
+	// but only because no deployment has been declared yet, which is safety by emptiness and
+	// lasts exactly until someone declares one. The two write paths are the reconciler, which
+	// renders declared state into Kubernetes objects, and the operations executor, which
+	// cordons and drains; both are refused here.
+	//
+	// Declared state still arrives and is still stored in its CRDs. The local copy is inert
+	// without the controller that reads it, and keeping it means turning this off later starts
+	// from a complete view rather than waiting for the next resync.
+	ReadOnly bool
+
 	// LeaderElection enables controller-runtime leader election.
 	LeaderElection bool
 
@@ -118,6 +132,7 @@ func Load() (*Config, error) {
 		ObserveInterval:       envDuration("HANGAR_OBSERVE_INTERVAL", 30*time.Second),
 		BackoffMin:            envDuration("HANGAR_BACKOFF_MIN", time.Second),
 		BackoffMax:            envDuration("HANGAR_BACKOFF_MAX", 30*time.Second),
+		ReadOnly:              envBool("HANGAR_READ_ONLY", false),
 		LeaderElection:        envBool("HANGAR_LEADER_ELECTION", true),
 		Namespace:             env("HANGAR_NAMESPACE", "hangar-system"),
 		WorkloadNamespace:     env("HANGAR_WORKLOAD_NAMESPACE", "dynamo"),

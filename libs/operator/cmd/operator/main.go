@@ -53,8 +53,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if err := reconcile.SetupWithManager(mgr, cfg, log); err != nil {
-		return err
+	// The manager runs either way. Its cached client is what the desired-state store reads and
+	// writes, and that store keeps working read-only — what stops is the controller that would
+	// turn those CRDs into Kubernetes objects, which is simply never registered.
+	if !cfg.ReadOnly {
+		if err := reconcile.SetupWithManager(mgr, cfg, log); err != nil {
+			return err
+		}
 	}
 
 	tlsCfg, err := tlsConfig(cfg)
@@ -98,6 +103,7 @@ func run() error {
 		Client:    directClient,
 		ClusterID: cfg.ClusterID,
 		Log:       log,
+		ReadOnly:  cfg.ReadOnly,
 	})
 
 	client := syncpkg.NewClient(syncpkg.Options{
@@ -133,11 +139,16 @@ func run() error {
 	g.Go(func() error { return client.Run(gctx) })
 	g.Go(func() error { return observer.Run(gctx) })
 	g.Go(func() error {
-		log.Info("starting reconcile loop")
+		if cfg.ReadOnly {
+			log.Info("starting manager without the reconcile loop", "read_only", true)
+		} else {
+			log.Info("starting reconcile loop")
+		}
 		return mgr.Start(gctx)
 	})
 
-	log.Info("operator started", "hub", cfg.HubURL, "namespace", cfg.Namespace)
+	log.Info("operator started", "hub", cfg.HubURL, "namespace", cfg.Namespace,
+		"read_only", cfg.ReadOnly)
 	err = g.Wait()
 	if errors.Is(err, context.Canceled) {
 		err = nil
