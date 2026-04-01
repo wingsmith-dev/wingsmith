@@ -47,10 +47,82 @@ def test_the_seed_card_resolves_from_the_live_fleets_own_string():
         (DIALECT_GFD, "NVIDIA-A100-SXM4-80GB", "a100-80gb-sxm"),
         (DIALECT_DCGM, "NVIDIA A100 80GB PCIe", "a100-80gb-pcie"),
         (DIALECT_GFD, "NVIDIA-L40S", "l40s-48gb-pcie"),
+        (DIALECT_GFD, "NVIDIA-H200-NVL", "h200-141gb-nvl"),
+        (DIALECT_DCGM, "NVIDIA H200 NVL", "h200-141gb-nvl"),
+        (DIALECT_GFD, "NVIDIA-B300-SXM6-AC", "b300-288gb-sxm"),
+        (DIALECT_DCGM, "NVIDIA B300 SXM6 AC", "b300-288gb-sxm"),
+        (DIALECT_GFD, "NVIDIA-RTX-PRO-6000-Blackwell-Workstation-Edition", "rtx-pro-6000-96gb-workstation-edition"),
+        (DIALECT_DCGM, "NVIDIA RTX PRO 6000 Blackwell Workstation Edition", "rtx-pro-6000-96gb-workstation-edition"),
+        (
+            DIALECT_GFD,
+            "NVIDIA-RTX-PRO-6000-Blackwell-Max-Q-Workstation-Edition",
+            "rtx-pro-6000-96gb-max-q-workstation-edition",
+        ),
+        (
+            DIALECT_DCGM,
+            "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+            "rtx-pro-6000-96gb-max-q-workstation-edition",
+        ),
+        (DIALECT_GFD, "NVIDIA-RTX-6000-Ada-Generation", "rtx-6000-ada-48gb-pcie"),
+        (DIALECT_DCGM, "NVIDIA RTX 6000 Ada Generation", "rtx-6000-ada-48gb-pcie"),
     ],
 )
 def test_both_dialects_land_on_one_class(dialect, product, expected):
     assert table().resolve(dialect, product) == expected
+
+
+@pytest.mark.parametrize(
+    ("gfd_product", "dcgm_product"),
+    [
+        ("NVIDIA-H100-80GB-HBM3", "NVIDIA H100 80GB HBM3"),
+        ("NVIDIA-H200-NVL", "NVIDIA H200 NVL"),
+        ("NVIDIA-B300-SXM6-AC", "NVIDIA B300 SXM6 AC"),
+        (
+            "NVIDIA-RTX-PRO-6000-Blackwell-Workstation-Edition",
+            "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+        ),
+        (
+            "NVIDIA-RTX-PRO-6000-Blackwell-Max-Q-Workstation-Edition",
+            "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+        ),
+        ("NVIDIA-RTX-6000-Ada-Generation", "NVIDIA RTX 6000 Ada Generation"),
+    ],
+)
+def test_one_card_named_twice_is_still_one_class(gfd_product, dcgm_product):
+    """Two spellings of one card must pool, not fragment into two capacity pools."""
+    resolved = table().resolve(DIALECT_GFD, gfd_product)
+    assert resolved == table().resolve(DIALECT_DCGM, dcgm_product)
+    assert resolved != slug(gfd_product)
+
+
+@pytest.mark.parametrize(
+    ("product", "expected", "memory_mib"),
+    [
+        ("NVIDIA RTX PRO 6000 Blackwell Server Edition", "rtx-pro-6000-96gb-server-edition", 97249),
+        ("NVIDIA RTX PRO 6000 Blackwell Workstation Edition", "rtx-pro-6000-96gb-workstation-edition", 97249),
+        (
+            "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+            "rtx-pro-6000-96gb-max-q-workstation-edition",
+            97249,
+        ),
+    ],
+)
+def test_the_rtx_editions_stay_distinct_classes(product, expected, memory_mib):
+    """One die and one capacity, but three editions that place differently."""
+    found = table().lookup(DIALECT_DCGM, product)
+    assert found is not None
+    assert found.name == expected
+    assert found.memory_mib == memory_mib
+
+
+def test_no_two_classes_claim_the_same_alias():
+    for dialect in (DIALECT_GFD, DIALECT_DCGM):
+        seen: dict[str, str] = {}
+        for entry in table().classes:
+            for alias in entry.aliases.get(dialect, ()):
+                key = normalize(alias)
+                assert key not in seen, f"{alias} is claimed by both {seen.get(key)} and {entry.name}"
+                seen[key] = entry.name
 
 
 @pytest.mark.parametrize(
