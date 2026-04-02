@@ -73,8 +73,11 @@ export function useCreateProject() {
 export function useUpdateProject() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { ref: string; body: ProjectUpdateRequest; revision?: string }) =>
-      updateProject(vars.ref, vars.body, vars.revision),
+    mutationFn: (vars: {
+      ref: string
+      body: ProjectUpdateRequest
+      revision?: string
+    }) => updateProject(vars.ref, vars.body, vars.revision),
     onSuccess: () => client.invalidateQueries({ queryKey: ["projects"] }),
   })
 }
@@ -91,7 +94,9 @@ export function useDeleteProject() {
 }
 
 export function useQuotas(filters: QuotaFilters = {}) {
-  return useCursorList(["quotas", filters], (cursor) => fetchQuotas(filters, cursor))
+  return useCursorList(["quotas", filters], (cursor) =>
+    fetchQuotas(filters, cursor)
+  )
 }
 
 export function useQuota(ref: string) {
@@ -113,8 +118,11 @@ export function useCreateQuota() {
 export function useUpdateQuota() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { ref: string; body: QuotaUpdateRequest; revision?: string }) =>
-      updateQuota(vars.ref, vars.body, vars.revision),
+    mutationFn: (vars: {
+      ref: string
+      body: QuotaUpdateRequest
+      revision?: string
+    }) => updateQuota(vars.ref, vars.body, vars.revision),
     onSuccess: () => client.invalidateQueries({ queryKey: ["quotas"] }),
   })
 }
@@ -152,7 +160,8 @@ export function useCreatePriorityClass() {
   const client = useQueryClient()
   return useMutation({
     mutationFn: (body: PriorityClassCreateRequest) => createPriorityClass(body),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["priority-classes"] }),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: ["priority-classes"] }),
   })
 }
 
@@ -164,7 +173,8 @@ export function useUpdatePriorityClass() {
       body: PriorityClassUpdateRequest
       revision?: string
     }) => updatePriorityClass(vars.ref, vars.body, vars.revision),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["priority-classes"] }),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: ["priority-classes"] }),
   })
 }
 
@@ -204,8 +214,11 @@ export function useCreatePolicy() {
 export function useUpdatePolicy() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { ref: string; body: PolicyUpdateRequest; revision?: string }) =>
-      updatePolicy(vars.ref, vars.body, vars.revision),
+    mutationFn: (vars: {
+      ref: string
+      body: PolicyUpdateRequest
+      revision?: string
+    }) => updatePolicy(vars.ref, vars.body, vars.revision),
     onSuccess: () => client.invalidateQueries({ queryKey: ["policies"] }),
   })
 }

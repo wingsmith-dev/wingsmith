@@ -27,9 +27,9 @@ from typing import Protocol
 from logging import getLogger
 
 from sqlalchemy import select
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.dialects.postgresql import insert
 
 from app.db.engine import session_factory
 from app.db.models import HubClusterClaim

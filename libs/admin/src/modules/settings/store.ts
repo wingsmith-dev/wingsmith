@@ -1,7 +1,13 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
-export const ACCENTS = ["cyan", "indigo", "cobalt", "violet", "magenta"] as const
+export const ACCENTS = [
+  "cyan",
+  "indigo",
+  "cobalt",
+  "violet",
+  "magenta",
+] as const
 
 export type Accent = (typeof ACCENTS)[number]
 

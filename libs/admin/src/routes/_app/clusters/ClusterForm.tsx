@@ -34,8 +34,12 @@ export function ClusterForm({
   const [zone, setZone] = useState(cluster?.zone ?? "")
   const [residency, setResidency] = useState(cluster?.residency ?? "")
   const [phase, setPhase] = useState<ClusterPhase>(cluster?.phase ?? "pending")
-  const [labels, setLabels] = useState<Record<string, string>>(cluster?.labels ?? {})
-  const [capabilities, setCapabilities] = useState<unknown>(cluster?.capabilities ?? {})
+  const [labels, setLabels] = useState<Record<string, string>>(
+    cluster?.labels ?? {}
+  )
+  const [capabilities, setCapabilities] = useState<unknown>(
+    cluster?.capabilities ?? {}
+  )
   const [capabilitiesValid, setCapabilitiesValid] = useState(true)
 
   const create = useCreateCluster()
@@ -61,7 +65,8 @@ export function ClusterForm({
             onOpenChange(false)
             toast.success("Cluster updated", { description: next.name })
           },
-          onError: (error) => toast.error(formatError(error, "Could not update cluster")),
+          onError: (error) =>
+            toast.error(formatError(error, "Could not update cluster")),
         }
       )
       return
@@ -74,7 +79,8 @@ export function ClusterForm({
           onOpenChange(false)
           toast.success("Cluster declared", { description: next.id })
         },
-        onError: (error) => toast.error(formatError(error, "Could not create cluster")),
+        onError: (error) =>
+          toast.error(formatError(error, "Could not create cluster")),
       }
     )
   }
@@ -89,7 +95,9 @@ export function ClusterForm({
       error={create.error ?? update.error}
       pending={pending}
       submitLabel={editing ? "Save" : "Create cluster"}
-      disabled={!capabilitiesValid || region === "" || (!editing && name === "")}
+      disabled={
+        !capabilitiesValid || region === "" || (!editing && name === "")
+      }
       onSubmit={submit}
       wide
     >
@@ -116,7 +124,12 @@ export function ClusterForm({
           onChange={setRegion}
           placeholder="eu-central-1"
         />
-        <TextField label="Zone" value={zone} onChange={setZone} placeholder="a" />
+        <TextField
+          label="Zone"
+          value={zone}
+          onChange={setZone}
+          placeholder="a"
+        />
         <TextField
           label="Residency"
           value={residency}

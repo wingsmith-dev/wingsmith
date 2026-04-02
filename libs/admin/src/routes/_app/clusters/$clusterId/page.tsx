@@ -81,7 +81,9 @@ export function ClusterDetailPage() {
         {cluster && (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <StatusLabel tone={CLUSTER_PHASE_TONE[cluster.phase] ?? "neutral"}>
+              <StatusLabel
+                tone={CLUSTER_PHASE_TONE[cluster.phase] ?? "neutral"}
+              >
                 {humanize(cluster.phase)}
               </StatusLabel>
               <StatusLabel tone={cluster.reachable ? "ok" : "danger"}>
@@ -112,8 +114,9 @@ export function ClusterDetailPage() {
               </TabsContent>
               <TabsContent value="pools" className="mt-3 space-y-3">
                 <TabNote>
-                  Declared. A pool is the provisioning spec this cluster is asked
-                  for; its node bounds are how more or fewer nodes get requested.
+                  Declared. A pool is the provisioning spec this cluster is
+                  asked for; its node bounds are how more or fewer nodes get
+                  requested.
                 </TabNote>
                 <ClusterPoolsPanel
                   clusterId={cluster.id}
@@ -123,9 +126,9 @@ export function ClusterDetailPage() {
               </TabsContent>
               <TabsContent value="nodes" className="mt-3 space-y-3">
                 <TabNote>
-                  Observed. Nodes are reported by the cluster and cannot be added
-                  or removed here — raise a pool's node bounds instead, and act on
-                  a node by draining or cordoning it.
+                  Observed. Nodes are reported by the cluster and cannot be
+                  added or removed here — raise a pool's node bounds instead,
+                  and act on a node by draining or cordoning it.
                 </TabNote>
                 <ClusterNodesTable clusterId={cluster.id} />
               </TabsContent>
@@ -137,15 +140,17 @@ export function ClusterDetailPage() {
                 <ClusterDevicesTable clusterId={cluster.id} />
               </TabsContent>
               <TabsContent value="topology" className="mt-3 space-y-3">
-                <TabNote>Observed. The cluster is the authority on topology.</TabNote>
+                <TabNote>
+                  Observed. The cluster is the authority on topology.
+                </TabNote>
                 <ClusterTopologyTable clusterId={cluster.id} />
               </TabsContent>
               <TabsContent value="components" className="mt-3 space-y-3">
                 <TabNote>
                   Reported, not managed. Hangar records what version of each
-                  component a cluster is running and whether it is behind, but it
-                  does not install or upgrade them — that is done out of band by
-                  whatever provisions the cluster.
+                  component a cluster is running and whether it is behind, but
+                  it does not install or upgrade them — that is done out of band
+                  by whatever provisions the cluster.
                 </TabNote>
                 <ComponentsTable clusterId={cluster.id} />
               </TabsContent>

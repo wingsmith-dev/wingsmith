@@ -9,7 +9,10 @@ import {
   TextField,
 } from "@/components/layout/form"
 import { formatError } from "@/lib/format"
-import { usePriorityClassOptions, useProjectOptions } from "@/modules/binding/queries"
+import {
+  usePriorityClassOptions,
+  useProjectOptions,
+} from "@/modules/binding/queries"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
 import { WORKLOAD_TYPES } from "@/modules/demand/display"
@@ -68,10 +71,16 @@ export function DeploymentForm({
   const [preemptible, setPreemptible] = useState(
     deployment?.workload.preemptible ?? false
   )
-  const [deadline, setDeadline] = useState(deployment?.workload.deadline_at ?? "")
-  const [overrides, setOverrides] = useState<unknown>(deployment?.overrides ?? {})
+  const [deadline, setDeadline] = useState(
+    deployment?.workload.deadline_at ?? ""
+  )
+  const [overrides, setOverrides] = useState<unknown>(
+    deployment?.overrides ?? {}
+  )
   const [overridesValid, setOverridesValid] = useState(true)
-  const [labels, setLabels] = useState<Record<string, string>>(deployment?.labels ?? {})
+  const [labels, setLabels] = useState<Record<string, string>>(
+    deployment?.labels ?? {}
+  )
 
   const pending = create.isPending || update.isPending
   const error = create.error ?? update.error
@@ -103,7 +112,8 @@ export function DeploymentForm({
         },
         {
           onSuccess: () => done("updated"),
-          onError: (e) => toast.error(formatError(e, "Could not update deployment")),
+          onError: (e) =>
+            toast.error(formatError(e, "Could not update deployment")),
         }
       )
       return
@@ -120,7 +130,8 @@ export function DeploymentForm({
       },
       {
         onSuccess: () => done("created"),
-        onError: (e) => toast.error(formatError(e, "Could not create deployment")),
+        onError: (e) =>
+          toast.error(formatError(e, "Could not create deployment")),
       }
     )
   }
@@ -166,7 +177,10 @@ export function DeploymentForm({
             label="Project"
             value={project}
             onChange={setProject}
-            options={(projects ?? []).map((p) => ({ value: p.id, label: p.slug }))}
+            options={(projects ?? []).map((p) => ({
+              value: p.id,
+              label: p.slug,
+            }))}
           />
           <SelectField
             label="Workload type"
@@ -189,7 +203,10 @@ export function DeploymentForm({
           label="Priority class"
           value={priorityClass}
           onChange={setPriorityClass}
-          options={(priorities ?? []).map((p) => ({ value: p.name, label: p.name }))}
+          options={(priorities ?? []).map((p) => ({
+            value: p.name,
+            label: p.name,
+          }))}
         />
         <NumberField
           label="Min replicas"

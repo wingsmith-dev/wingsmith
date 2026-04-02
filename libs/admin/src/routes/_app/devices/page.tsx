@@ -31,17 +31,24 @@ export function DevicesPage() {
     health: search.health,
     topology_domain: search.domain,
     allocatable:
-      search.allocatable === undefined ? undefined : search.allocatable === "true",
+      search.allocatable === undefined
+        ? undefined
+        : search.allocatable === "true",
   })
 
   const set =
     (key: "cluster" | "health" | "domain" | "allocatable" | "class") =>
     (value: string) =>
       navigate({
-        search: (prev) => ({ ...prev, [key]: value === ALL ? undefined : value }),
+        search: (prev) => ({
+          ...prev,
+          [key]: value === ALL ? undefined : value,
+        }),
       })
 
-  const classes = [...new Set((list.items ?? []).map((d) => d.device_class))].sort()
+  const classes = [
+    ...new Set((list.items ?? []).map((d) => d.device_class)),
+  ].sort()
 
   return (
     <div className="flex flex-col">
@@ -51,7 +58,10 @@ export function DevicesPage() {
       />
 
       <div className="space-y-4 p-4">
-        <TopologySummary domains={topology.data} isLoading={topology.isLoading} />
+        <TopologySummary
+          domains={topology.data}
+          isLoading={topology.isLoading}
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           <FilterSelect
@@ -103,7 +113,10 @@ export function DevicesPage() {
               checked={search.group === true}
               onCheckedChange={(checked) =>
                 navigate({
-                  search: (prev) => ({ ...prev, group: checked ? true : undefined }),
+                  search: (prev) => ({
+                    ...prev,
+                    group: checked ? true : undefined,
+                  }),
                 })
               }
             />

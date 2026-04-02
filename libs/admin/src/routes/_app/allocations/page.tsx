@@ -65,7 +65,8 @@ const columns: Column<Allocation>[] = [
     align: "right",
     cell: (allocation) => (
       <span className="font-mono text-xs">
-        {allocation.devices.filter((d) => d.live).length}/{allocation.device_count}
+        {allocation.devices.filter((d) => d.live).length}/
+        {allocation.device_count}
       </span>
     ),
   },

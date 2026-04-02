@@ -22,7 +22,8 @@ export function NodesPage() {
     cluster: search.cluster,
     pool: search.pool,
     condition: search.condition,
-    cordoned: search.cordoned === undefined ? undefined : search.cordoned === "true",
+    cordoned:
+      search.cordoned === undefined ? undefined : search.cordoned === "true",
   })
 
   const set = (key: "cluster" | "condition" | "cordoned") => (value: string) =>

@@ -30,7 +30,7 @@ export function PageHeader({
       <div className="h-4 w-px bg-border" />
       <div className="flex flex-1 items-center justify-between gap-4">
         <div>
-          <h1 className="text-md font-semibold leading-none tracking-tight">
+          <h1 className="text-md leading-none font-semibold tracking-tight">
             {title}
           </h1>
           {description && (

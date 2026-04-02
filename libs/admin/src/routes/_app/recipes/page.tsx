@@ -19,102 +19,110 @@ function columns(
   onDelete: (recipe: Recipe) => void
 ): Column<Recipe>[] {
   return [
-  {
-    key: "name",
-    header: "Recipe",
-    cell: (recipe) => (
-      <ResourceCell kind="recipe">
-        <Link to="/recipes/$recipeId" params={{ recipeId: recipe.id }} className="block">
-          <span className="font-mono text-xs">{recipe.name}</span>
-          <span className="ml-2 font-mono text-2xs text-muted-foreground/60">
-            v{recipe.version}
-          </span>
-          <Id value={recipe.id} className="ml-2" />
-        </Link>
-      </ResourceCell>
-    ),
-  },
-  {
-    key: "engine",
-    header: "Engine",
-    cell: (recipe) => (
-      <span className="font-mono text-2xs">
-        {recipe.engine} {recipe.engine_version}
-      </span>
-    ),
-  },
-  {
-    key: "shape",
-    header: "Shape",
-    cell: (recipe) => (
-      <Badge variant="secondary" className="font-mono text-2xs">
-        {recipe.shape.device_count}× {recipe.shape.device_class}
-      </Badge>
-    ),
-  },
-  {
-    key: "parallelism",
-    header: "Parallelism",
-    cell: (recipe) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {parallelismLabel(recipe.parallelism)}
-      </span>
-    ),
-  },
-  {
-    key: "context",
-    header: "Context",
-    align: "right",
-    cell: (recipe) => (
-      <span className="font-mono text-2xs">
-        {recipe.context_length.toLocaleString()}
-      </span>
-    ),
-  },
-  {
-    key: "quantization",
-    header: "Quant / dtype",
-    cell: (recipe) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        <Dash>{recipe.quantization}</Dash> / <Dash>{recipe.dtype}</Dash>
-      </span>
-    ),
-  },
-  {
-    key: "domain",
-    header: "Single domain",
-    secondary: true,
-    cell: (recipe) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {recipe.shape.requires_single_topology_domain
-          ? (recipe.shape.topology_domain_kind ?? "required")
-          : "not required"}
-      </span>
-    ),
-  },
-  {
-    key: "cache",
-    header: "Prefix cache",
-    secondary: true,
-    cell: (recipe) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {recipe.cache.prefix_cache_enabled ? "on" : "off"}
-      </span>
-    ),
-  },
-  {
-    key: "actions",
-    header: "",
-    align: "right",
-    cell: (recipe) => (
-      <RowActions
-        actions={[
-          { label: "Edit", onSelect: () => onEdit(recipe) },
-          { label: "Delete", destructive: true, onSelect: () => onDelete(recipe) },
-        ]}
-      />
-    ),
-  },
+    {
+      key: "name",
+      header: "Recipe",
+      cell: (recipe) => (
+        <ResourceCell kind="recipe">
+          <Link
+            to="/recipes/$recipeId"
+            params={{ recipeId: recipe.id }}
+            className="block"
+          >
+            <span className="font-mono text-xs">{recipe.name}</span>
+            <span className="ml-2 font-mono text-2xs text-muted-foreground/60">
+              v{recipe.version}
+            </span>
+            <Id value={recipe.id} className="ml-2" />
+          </Link>
+        </ResourceCell>
+      ),
+    },
+    {
+      key: "engine",
+      header: "Engine",
+      cell: (recipe) => (
+        <span className="font-mono text-2xs">
+          {recipe.engine} {recipe.engine_version}
+        </span>
+      ),
+    },
+    {
+      key: "shape",
+      header: "Shape",
+      cell: (recipe) => (
+        <Badge variant="secondary" className="font-mono text-2xs">
+          {recipe.shape.device_count}× {recipe.shape.device_class}
+        </Badge>
+      ),
+    },
+    {
+      key: "parallelism",
+      header: "Parallelism",
+      cell: (recipe) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {parallelismLabel(recipe.parallelism)}
+        </span>
+      ),
+    },
+    {
+      key: "context",
+      header: "Context",
+      align: "right",
+      cell: (recipe) => (
+        <span className="font-mono text-2xs">
+          {recipe.context_length.toLocaleString()}
+        </span>
+      ),
+    },
+    {
+      key: "quantization",
+      header: "Quant / dtype",
+      cell: (recipe) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          <Dash>{recipe.quantization}</Dash> / <Dash>{recipe.dtype}</Dash>
+        </span>
+      ),
+    },
+    {
+      key: "domain",
+      header: "Single domain",
+      secondary: true,
+      cell: (recipe) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {recipe.shape.requires_single_topology_domain
+            ? (recipe.shape.topology_domain_kind ?? "required")
+            : "not required"}
+        </span>
+      ),
+    },
+    {
+      key: "cache",
+      header: "Prefix cache",
+      secondary: true,
+      cell: (recipe) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {recipe.cache.prefix_cache_enabled ? "on" : "off"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (recipe) => (
+        <RowActions
+          actions={[
+            { label: "Edit", onSelect: () => onEdit(recipe) },
+            {
+              label: "Delete",
+              destructive: true,
+              onSelect: () => onDelete(recipe),
+            },
+          ]}
+        />
+      ),
+    },
   ]
 }
 
@@ -145,7 +153,12 @@ export function RecipesPage() {
         {search.artifact && (
           <div className="flex items-center gap-2 font-mono text-2xs text-muted-foreground">
             <span>filtered to artifact {search.artifact}</span>
-            <Button asChild size="sm" variant="ghost" className="font-mono text-2xs">
+            <Button
+              asChild
+              size="sm"
+              variant="ghost"
+              className="font-mono text-2xs"
+            >
               <Link to="/recipes" search={{}}>
                 clear
               </Link>
@@ -187,7 +200,8 @@ export function RecipesPage() {
               setDoomed(undefined)
               toast.success("Recipe deleted", { description: doomed.name })
             },
-            onError: (e) => toast.error(formatError(e, "Could not delete recipe")),
+            onError: (e) =>
+              toast.error(formatError(e, "Could not delete recipe")),
           })
         }
       />

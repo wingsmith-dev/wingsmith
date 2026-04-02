@@ -31,7 +31,9 @@ export function DeclaredCard({ cluster }: { cluster: Cluster }) {
             <Dash>{cluster.residency}</Dash>
           </Field>
           <Field label="Enrolled">
-            {cluster.enrolled_at ? formatAbsolute(cluster.enrolled_at) : "not enrolled"}
+            {cluster.enrolled_at
+              ? formatAbsolute(cluster.enrolled_at)
+              : "not enrolled"}
           </Field>
           <Field label="Revision">{cluster.revision}</Field>
           <Field label="Labels" className="sm:col-span-2">
@@ -42,7 +44,9 @@ export function DeclaredCard({ cluster }: { cluster: Cluster }) {
               <span className="text-muted-foreground/40">none</span>
             ) : (
               Object.entries(cluster.capabilities)
-                .map(([key, value]) => (value === true ? key : `${key}=${String(value)}`))
+                .map(([key, value]) =>
+                  value === true ? key : `${key}=${String(value)}`
+                )
                 .join(" · ")
             )}
           </Field>

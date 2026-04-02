@@ -6,10 +6,7 @@ import {
   type FixtureContext,
   type FixtureQuery,
 } from "@/lib/api/fixtures"
-import {
-  ConflictError,
-  NotFoundError,
-} from "@/lib/api/transport"
+import { ConflictError, NotFoundError } from "@/lib/api/transport"
 
 /** Every object the plane can return has at least an id. */
 interface Row {
@@ -30,12 +27,20 @@ interface CollectionOptions<T extends Row> {
   singular: string
 }
 
-function matches<T extends Row>(row: T, query: FixtureQuery, opts: CollectionOptions<T>) {
+function matches<T extends Row>(
+  row: T,
+  query: FixtureQuery,
+  opts: CollectionOptions<T>
+) {
   if (opts.filter && !opts.filter(row, query)) return false
-  if (opts.searchable && !matchesSearch(query.get("search"), ...opts.searchable(row))) {
+  if (
+    opts.searchable &&
+    !matchesSearch(query.get("search"), ...opts.searchable(row))
+  ) {
     return false
   }
-  if (opts.labels && !matchesLabels(opts.labels(row), query.labels())) return false
+  if (opts.labels && !matchesLabels(opts.labels(row), query.labels()))
+    return false
   return true
 }
 
@@ -78,5 +83,8 @@ export function collection<T extends Row>(opts: CollectionOptions<T>) {
 
 /** The plane's `409 invalid` for writing to something that is only observed. */
 export function observedWrite(singular: string): never {
-  throw new ConflictError("invalid", `${singular} is observed and cannot be written`)
+  throw new ConflictError(
+    "invalid",
+    `${singular} is observed and cannot be written`
+  )
 }

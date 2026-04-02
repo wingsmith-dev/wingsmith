@@ -152,7 +152,9 @@ def validate(s: "Settings") -> None:
 
     if resolved_admin_auth(s) == "enabled":
         if not s.SESSION_SIGNING_SECRET:
-            raise RuntimeError("SESSION_SIGNING_SECRET must be set when APP_ENV is not 'local' and admin auth is enabled")
+            raise RuntimeError(
+                "SESSION_SIGNING_SECRET must be set when APP_ENV is not 'local' and admin auth is enabled"
+            )
         if not s.ADMIN_PASSWORD_HASH:
             raise RuntimeError("ADMIN_PASSWORD_HASH must be set when APP_ENV is not 'local' and admin auth is enabled")
 

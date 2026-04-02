@@ -35,7 +35,8 @@ import { revision, uid, uuid } from "./ids"
 
 const NOW = Date.parse("2026-08-19T18:00:00.000Z")
 
-const iso = (minutesAgo: number) => new Date(NOW - minutesAgo * 60_000).toISOString()
+const iso = (minutesAgo: number) =>
+  new Date(NOW - minutesAgo * 60_000).toISOString()
 
 const CREATED = iso(60)
 const REV = revision(CREATED)
@@ -103,11 +104,41 @@ const SPECS: ClusterSpec[] = [
         topologyKind: "nvswitch",
         bandwidth: 900,
         nodes: [
-          { suffix: "n01", condition: "ready", cordoned: false, devices: 8, unhealthy: 1 },
-          { suffix: "n02", condition: "ready", cordoned: false, devices: 8, unhealthy: 0 },
-          { suffix: "n03", condition: "ready", cordoned: true, devices: 8, unhealthy: 0 },
-          { suffix: "n04", condition: "not_ready", cordoned: true, devices: 8, unhealthy: 8 },
-          { suffix: "n05", condition: "ready", cordoned: false, devices: 8, unhealthy: 0 },
+          {
+            suffix: "n01",
+            condition: "ready",
+            cordoned: false,
+            devices: 8,
+            unhealthy: 1,
+          },
+          {
+            suffix: "n02",
+            condition: "ready",
+            cordoned: false,
+            devices: 8,
+            unhealthy: 0,
+          },
+          {
+            suffix: "n03",
+            condition: "ready",
+            cordoned: true,
+            devices: 8,
+            unhealthy: 0,
+          },
+          {
+            suffix: "n04",
+            condition: "not_ready",
+            cordoned: true,
+            devices: 8,
+            unhealthy: 8,
+          },
+          {
+            suffix: "n05",
+            condition: "ready",
+            cordoned: false,
+            devices: 8,
+            unhealthy: 0,
+          },
         ],
       },
     ],
@@ -137,9 +168,27 @@ const SPECS: ClusterSpec[] = [
         topologyKind: "pcie",
         bandwidth: 64,
         nodes: [
-          { suffix: "n01", condition: "ready", cordoned: false, devices: 4, unhealthy: 0 },
-          { suffix: "n02", condition: "ready", cordoned: false, devices: 4, unhealthy: 1 },
-          { suffix: "n03", condition: "unknown", cordoned: false, devices: 4, unhealthy: 4 },
+          {
+            suffix: "n01",
+            condition: "ready",
+            cordoned: false,
+            devices: 4,
+            unhealthy: 0,
+          },
+          {
+            suffix: "n02",
+            condition: "ready",
+            cordoned: false,
+            devices: 4,
+            unhealthy: 1,
+          },
+          {
+            suffix: "n03",
+            condition: "unknown",
+            cordoned: false,
+            devices: 4,
+            unhealthy: 4,
+          },
         ],
       },
     ],
@@ -169,8 +218,20 @@ const SPECS: ClusterSpec[] = [
         topologyKind: "nvlink",
         bandwidth: 600,
         nodes: [
-          { suffix: "n01", condition: "ready", cordoned: true, devices: 8, unhealthy: 0 },
-          { suffix: "n02", condition: "ready", cordoned: true, devices: 8, unhealthy: 2 },
+          {
+            suffix: "n01",
+            condition: "ready",
+            cordoned: true,
+            devices: 8,
+            unhealthy: 0,
+          },
+          {
+            suffix: "n02",
+            condition: "ready",
+            cordoned: true,
+            devices: 8,
+            unhealthy: 2,
+          },
         ],
       },
     ],
@@ -264,7 +325,8 @@ for (const spec of SPECS) {
       const byHealth: Record<string, number> = {}
       if (healthy > 0) byHealth.healthy = healthy
       if (node.unhealthy > 0) {
-        byHealth[node.condition === "ready" ? "unhealthy" : "unknown"] = node.unhealthy
+        byHealth[node.condition === "ready" ? "unhealthy" : "unknown"] =
+          node.unhealthy
       }
 
       domains.push({
@@ -304,7 +366,9 @@ for (const spec of SPECS) {
         driver_version: "550.90.07",
         agent_version: spec.agentVersion,
         labels: spec.labels,
-        taints: node.cordoned ? [{ key: "hangar.io/cordoned", effect: "NoSchedule" }] : [],
+        taints: node.cordoned
+          ? [{ key: "hangar.io/cordoned", effect: "NoSchedule" }]
+          : [],
         devices: { total: node.devices, by_health: byHealth },
         joined_at: iso(43_200),
         observed_at: iso(1),
@@ -334,13 +398,15 @@ for (const spec of SPECS) {
           memory_mib: DEVICE_MEMORY_MIB[pool.deviceClass] ?? 81_920,
           compute_capability: "9.0",
           health,
-          health_reason: health === "unhealthy" ? "ecc uncorrectable error" : null,
+          health_reason:
+            health === "unhealthy" ? "ecc uncorrectable error" : null,
           ecc_enabled: true,
           ecc_volatile_errors: health === "unhealthy" ? 4 : 0,
           ecc_aggregate_errors: health === "unhealthy" ? 137 : 0,
           ecc_pending_retirement: health === "unhealthy",
           throttled: health === "unhealthy",
-          throttle_reasons: health === "unhealthy" ? ["sw_thermal_slowdown"] : [],
+          throttle_reasons:
+            health === "unhealthy" ? ["sw_thermal_slowdown"] : [],
           mig_enabled: false,
           mig_profile: null,
           mig_parent_device_uuid: null,
@@ -451,7 +517,8 @@ export const projects: Project[] = [
 export const artifacts: Artifact[] = [
   {
     id: uid("art_"),
-    digest: "sha256:9f2c1a0b7d4e5f6a8b9c0d1e2f3a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c",
+    digest:
+      "sha256:9f2c1a0b7d4e5f6a8b9c0d1e2f3a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c",
     name: "llama-3.3-70b-instruct",
     kind: "weights",
     format: "safetensors",
@@ -471,12 +538,18 @@ export const artifacts: Artifact[] = [
         region: "us-east-1",
         preferred: true,
       },
-      { scheme: "https", uri: "https://cdn.hangar.dev/llama-3.3-70b", region: null, preferred: false },
+      {
+        scheme: "https",
+        uri: "https://cdn.hangar.dev/llama-3.3-70b",
+        region: null,
+        preferred: false,
+      },
     ],
   },
   {
     id: uid("art_"),
-    digest: "sha256:1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6a8b9c0d1e2f3a4b5c6d7e",
+    digest:
+      "sha256:1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6a8b9c0d1e2f3a4b5c6d7e",
     name: "bge-m3-embed",
     kind: "weights",
     format: "safetensors",
@@ -692,8 +765,18 @@ export const endpoints: Endpoint[] = [
     routing_strategy: "weighted",
     enabled: true,
     targets: [
-      { deployment_id: deployments[0].id, weight: 90, role: "primary", enabled: true },
-      { deployment_id: deployments[1].id, weight: 10, role: "canary", enabled: true },
+      {
+        deployment_id: deployments[0].id,
+        weight: 90,
+        role: "primary",
+        enabled: true,
+      },
+      {
+        deployment_id: deployments[1].id,
+        weight: 10,
+        role: "canary",
+        enabled: true,
+      },
     ],
     failover_order: [deployments[0].id, deployments[1].id],
     labels: { tier: "prod" },
@@ -710,7 +793,12 @@ export const endpoints: Endpoint[] = [
     routing_strategy: "weighted",
     enabled: true,
     targets: [
-      { deployment_id: deployments[1].id, weight: 100, role: "primary", enabled: true },
+      {
+        deployment_id: deployments[1].id,
+        weight: 100,
+        role: "primary",
+        enabled: true,
+      },
     ],
     failover_order: [],
     labels: {},
@@ -735,7 +823,11 @@ export const quotas: Quota[] = [
     created_at: CREATED,
     updated_at: null,
     revision: REV,
-    usage: { allocated_devices: 24, live_allocations: 3, over_quota_devices: 8 },
+    usage: {
+      allocated_devices: 24,
+      live_allocations: 3,
+      over_quota_devices: 8,
+    },
     headroom_devices: 8,
     over_limit: false,
   },
@@ -753,7 +845,11 @@ export const quotas: Quota[] = [
     created_at: CREATED,
     updated_at: null,
     revision: REV,
-    usage: { allocated_devices: 10, live_allocations: 2, over_quota_devices: 2 },
+    usage: {
+      allocated_devices: 10,
+      live_allocations: 2,
+      over_quota_devices: 2,
+    },
     headroom_devices: -2,
     over_limit: true,
   },

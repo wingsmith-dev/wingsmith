@@ -167,10 +167,12 @@ export function OperationDetailPage() {
                         ? formatRelative(operation.finished_at)
                         : "—"}
                     </Field>
-                    <Field label="Updated">{formatRelative(operation.updated_at)}</Field>
+                    <Field label="Updated">
+                      {formatRelative(operation.updated_at)}
+                    </Field>
                   </FieldGrid>
                   {operation.error && (
-                    <p className="mt-3 break-words font-mono text-xs text-destructive">
+                    <p className="mt-3 font-mono text-xs break-words text-destructive">
                       {operation.error}
                     </p>
                   )}

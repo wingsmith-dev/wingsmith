@@ -3,7 +3,11 @@ import { Dash, Id } from "@/components/layout/mono"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { Badge } from "@/components/ui/badge"
 import { formatRelative } from "@/lib/format"
-import { gibibytes, topologyKindLabel, unhealthyCount } from "@/modules/supply/display"
+import {
+  gibibytes,
+  topologyKindLabel,
+  unhealthyCount,
+} from "@/modules/supply/display"
 import type { Device, SupplyNode, TopologyDomain } from "@/modules/supply/types"
 import { Link } from "@tanstack/react-router"
 import {
@@ -14,7 +18,9 @@ import {
   NodeConditionLabel,
 } from "./indicators"
 
-export function nodeColumns(options: { showCluster?: boolean; showPool?: boolean } = {}) {
+export function nodeColumns(
+  options: { showCluster?: boolean; showPool?: boolean } = {}
+) {
   const { showCluster = true, showPool = true } = options
   const columns: Column<SupplyNode>[] = [
     {
@@ -64,7 +70,9 @@ export function nodeColumns(options: { showCluster?: boolean; showPool?: boolean
             {node.pool_name}
           </Link>
         ) : (
-          <span className="font-mono text-2xs text-muted-foreground/50">unpooled</span>
+          <span className="font-mono text-2xs text-muted-foreground/50">
+            unpooled
+          </span>
         ),
     })
   }
@@ -86,7 +94,8 @@ export function nodeColumns(options: { showCluster?: boolean; showPool?: boolean
       align: "right",
       cell: (node) => (
         <span className="font-mono text-xs">
-          {node.devices.total - unhealthyCount(node.devices)}/{node.devices.total}
+          {node.devices.total - unhealthyCount(node.devices)}/
+          {node.devices.total}
         </span>
       ),
     },
@@ -134,7 +143,9 @@ export function nodeColumns(options: { showCluster?: boolean; showPool?: boolean
   return columns
 }
 
-export function deviceColumns(options: { showNode?: boolean; showTopology?: boolean } = {}) {
+export function deviceColumns(
+  options: { showNode?: boolean; showTopology?: boolean } = {}
+) {
   const { showNode = true, showTopology = true } = options
   const columns: Column<Device>[] = [
     {
@@ -148,7 +159,9 @@ export function deviceColumns(options: { showNode?: boolean; showTopology?: bool
             className="block font-mono text-xs hover:underline"
           >
             {device.device_uuid}
-            <span className="ml-2 text-muted-foreground/50">#{device.device_index}</span>
+            <span className="ml-2 text-muted-foreground/50">
+              #{device.device_index}
+            </span>
           </Link>
         </ResourceCell>
       ),
@@ -209,7 +222,9 @@ export function deviceColumns(options: { showNode?: boolean; showTopology?: bool
       secondary: true,
       cell: (device) => (
         <span className="font-mono text-2xs text-muted-foreground">
-          <Dash>{device.mig_enabled ? (device.mig_profile ?? "enabled") : null}</Dash>
+          <Dash>
+            {device.mig_enabled ? (device.mig_profile ?? "enabled") : null}
+          </Dash>
         </span>
       ),
     }
@@ -268,7 +283,9 @@ export function topologyColumns(): Column<TopologyDomain>[] {
       key: "kind",
       header: "Fabric",
       cell: (domain) => (
-        <span className="font-mono text-2xs">{topologyKindLabel(domain.kind)}</span>
+        <span className="font-mono text-2xs">
+          {topologyKindLabel(domain.kind)}
+        </span>
       ),
     },
     {
@@ -298,7 +315,9 @@ export function topologyColumns(): Column<TopologyDomain>[] {
           </Link>
         ) : (
           <span className="font-mono text-2xs text-muted-foreground/50">
-            {domain.nodes.length === 0 ? "none" : `${domain.nodes.length} nodes`}
+            {domain.nodes.length === 0
+              ? "none"
+              : `${domain.nodes.length} nodes`}
           </span>
         ),
     },

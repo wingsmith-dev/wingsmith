@@ -1,11 +1,22 @@
 import { Field, FieldGrid } from "@/components/layout/field"
 import { Dash, Id, Labels } from "@/components/layout/mono"
-import { ResourceIcon, type ResourceKind } from "@/components/layout/resource-icon"
-import { StatusDot, StatusLabel, type StatusTone } from "@/components/layout/status-dot"
+import {
+  ResourceIcon,
+  type ResourceKind,
+} from "@/components/layout/resource-icon"
+import {
+  StatusDot,
+  StatusLabel,
+  type StatusTone,
+} from "@/components/layout/status-dot"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
-import { CLUSTER_PHASE_TONE, humanize, syncTone } from "@/modules/clusters/display"
+import {
+  CLUSTER_PHASE_TONE,
+  humanize,
+  syncTone,
+} from "@/modules/clusters/display"
 import type { Cluster } from "@/modules/clusters/types"
 import type { Deployment } from "@/modules/demand/types"
 import type { DeviceSummary, NodeSummary } from "@/modules/overview/summary"
@@ -42,7 +53,10 @@ function Tile({
   error: unknown
 }) {
   return (
-    <Card size="sm" className="gap-2 transition-colors hover:ring-foreground/20">
+    <Card
+      size="sm"
+      className="gap-2 transition-colors hover:ring-foreground/20"
+    >
       <div className="flex flex-col gap-2 px-3">
         <Link
           {...link}
@@ -103,8 +117,16 @@ function Tile({
 interface GlanceProps {
   cluster: Cluster
   pools: { data: Pool[] | undefined; isLoading: boolean; error: unknown }
-  nodes: { summary: NodeSummary | undefined; isLoading: boolean; error: unknown }
-  devices: { summary: DeviceSummary | undefined; isLoading: boolean; error: unknown }
+  nodes: {
+    summary: NodeSummary | undefined
+    isLoading: boolean
+    error: unknown
+  }
+  devices: {
+    summary: DeviceSummary | undefined
+    isLoading: boolean
+    error: unknown
+  }
   deployments: {
     data: Deployment[] | undefined
     isLoading: boolean
@@ -119,7 +141,8 @@ export function GlanceTiles({
   devices,
   deployments,
 }: GlanceProps) {
-  const outOfBounds = pools.data?.filter((p) => !p.within_declared_bounds).length ?? 0
+  const outOfBounds =
+    pools.data?.filter((p) => !p.within_declared_bounds).length ?? 0
   const replicasReady =
     deployments.data?.reduce((sum, d) => sum + d.replicas.ready, 0) ?? 0
   const replicasDesired =
@@ -172,7 +195,10 @@ export function GlanceTiles({
                         tone: "danger" as const,
                         link: {
                           to: "/nodes",
-                          search: { cluster: cluster.id, condition: "not_ready" },
+                          search: {
+                            cluster: cluster.id,
+                            condition: "not_ready",
+                          },
                         } as LinkProps,
                       },
                     ]
@@ -304,7 +330,9 @@ export function ClusterIdentity({ cluster }: { cluster: Cluster }) {
             <span className="text-muted-foreground/40">none</span>
           ) : (
             Object.entries(cluster.capabilities)
-              .map(([key, value]) => (value === true ? key : `${key}=${String(value)}`))
+              .map(([key, value]) =>
+                value === true ? key : `${key}=${String(value)}`
+              )
               .join(" · ")
           )}
         </Field>

@@ -39,7 +39,9 @@ export function DeviceDetailPage() {
     <div className="flex flex-col">
       <PageHeader
         title={device?.device_uuid ?? "Device"}
-        description={device ? `${device.id} · ${device.device_class}` : undefined}
+        description={
+          device ? `${device.id} · ${device.device_class}` : undefined
+        }
         actions={
           device && (
             <OperationActions
@@ -81,8 +83,12 @@ export function DeviceDetailPage() {
                   <Field label="ECC">
                     {device.ecc_enabled ? "enabled" : "disabled"}
                   </Field>
-                  <Field label="ECC volatile">{device.ecc_volatile_errors}</Field>
-                  <Field label="ECC aggregate">{device.ecc_aggregate_errors}</Field>
+                  <Field label="ECC volatile">
+                    {device.ecc_volatile_errors}
+                  </Field>
+                  <Field label="ECC aggregate">
+                    {device.ecc_aggregate_errors}
+                  </Field>
                   <Field label="Pending retirement">
                     {device.ecc_pending_retirement ? "yes" : "no"}
                   </Field>
@@ -94,7 +100,9 @@ export function DeviceDetailPage() {
                   <Field label="Allocatable">
                     {device.allocatable ? "yes" : "no"}
                   </Field>
-                  <Field label="Observed">{formatRelative(device.observed_at)}</Field>
+                  <Field label="Observed">
+                    {formatRelative(device.observed_at)}
+                  </Field>
                 </FieldGrid>
               </CardContent>
             </Card>
@@ -135,7 +143,9 @@ export function DeviceDetailPage() {
                     <Dash>{device.compute_capability}</Dash>
                   </Field>
                   <Field label="MIG">
-                    {device.mig_enabled ? (device.mig_profile ?? "enabled") : "disabled"}
+                    {device.mig_enabled
+                      ? (device.mig_profile ?? "enabled")
+                      : "disabled"}
                   </Field>
                   <Field label="Topology domain" className="sm:col-span-2">
                     {device.topology ? (
@@ -173,7 +183,9 @@ export function DeviceDetailPage() {
                     </Field>
                     <Field label="Workload">{holder.workload}</Field>
                     <Field label="Project">{holder.project_slug}</Field>
-                    <Field label="Acquired">{formatRelative(holder.acquired_at)}</Field>
+                    <Field label="Acquired">
+                      {formatRelative(holder.acquired_at)}
+                    </Field>
                   </FieldGrid>
                 ) : (
                   <p className="font-mono text-2xs text-muted-foreground/60">

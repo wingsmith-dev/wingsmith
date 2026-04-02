@@ -2,9 +2,11 @@
 export type NodeCondition = "ready" | "not_ready" | "unknown" | (string & {})
 
 /** `DeviceSchema.health`. Left open: health vocabulary is the operator's. */
-export type DeviceHealth = "healthy" | "degraded" | "unhealthy" | "unknown" | (string & {})
+export type DeviceHealth =
+  "healthy" | "degraded" | "unhealthy" | "unknown" | (string & {})
 
-export type TopologyKind = "nvswitch" | "nvlink" | "pcie" | "numa" | (string & {})
+export type TopologyKind =
+  "nvswitch" | "nvlink" | "pcie" | "numa" | (string & {})
 
 /**
  * `DeviceTopologySchema` — the device's domain inlined for display. A summary

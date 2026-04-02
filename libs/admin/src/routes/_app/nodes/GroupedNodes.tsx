@@ -105,7 +105,7 @@ export function GroupedNodes({
                       <Link
                         to="/clusters/$clusterId"
                         params={{ clusterId: group.id }}
-                        className="font-mono text-2xs uppercase tracking-[0.18em] hover:underline"
+                        className="font-mono text-2xs tracking-[0.18em] uppercase hover:underline"
                       >
                         {group.name}
                       </Link>

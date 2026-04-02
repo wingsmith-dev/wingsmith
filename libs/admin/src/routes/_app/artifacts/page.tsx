@@ -20,119 +20,121 @@ function columns(
   onDelete: (artifact: Artifact) => void
 ): Column<Artifact>[] {
   return [
-  {
-    key: "name",
-    header: "Artifact",
-    cell: (artifact) => (
-      <ResourceCell kind="artifact">
-        <Link
-          to="/artifacts/$artifactId"
-          params={{ artifactId: artifact.id }}
-          className="block"
-        >
-          <span className="font-mono text-xs">{artifact.name}</span>
-          <Id value={artifact.id} className="ml-2" />
-        </Link>
-      </ResourceCell>
-    ),
-  },
-  {
-    key: "digest",
-    header: "Digest",
-    cell: (artifact) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {artifact.digest.slice(0, 23)}…
-      </span>
-    ),
-  },
-  {
-    key: "kind",
-    header: "Kind",
-    cell: (artifact) => (
-      <Badge variant="secondary" className="font-mono text-2xs">
-        {artifact.kind}
-      </Badge>
-    ),
-  },
-  {
-    key: "format",
-    header: "Format",
-    cell: (artifact) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        <Dash>{artifact.format}</Dash>
-      </span>
-    ),
-  },
-  {
-    key: "size",
-    header: "Size",
-    align: "right",
-    cell: (artifact) => (
-      <span className="font-mono text-2xs">{formatBytes(artifact.size_bytes)}</span>
-    ),
-  },
-  {
-    key: "params",
-    header: "Parameters",
-    align: "right",
-    cell: (artifact) => (
-      <span className="font-mono text-2xs">
-        {formatParameters(artifact.parameter_count)}
-      </span>
-    ),
-  },
-  {
-    key: "locations",
-    header: "Locations",
-    secondary: true,
-    cell: (artifact) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {artifact.locations.length === 0
-          ? "none"
-          : artifact.locations
-              .map((l) => `${l.scheme}${l.preferred ? "*" : ""}`)
-              .join(" ")}
-      </span>
-    ),
-  },
-  {
-    key: "licence",
-    header: "Licence",
-    secondary: true,
-    cell: (artifact) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        <Dash>{artifact.licence}</Dash>
-      </span>
-    ),
-  },
-  {
-    key: "actions",
-    header: "",
-    align: "right",
-    cell: (artifact) => (
-      <div className="flex items-center justify-end gap-1">
-        <NewOperationDialog
-          defaultType="cache.warm"
-          defaultTarget={artifact.id}
-          trigger={
-            <Button size="sm" variant="ghost" className="font-mono text-2xs">
-              warm
-            </Button>
-          }
-        />
-        <RowActions
-          actions={[
-            { label: "Edit", onSelect: () => onEdit(artifact) },
-            {
-              label: "Delete",
-              destructive: true,
-              onSelect: () => onDelete(artifact),
-            },
-          ]}
-        />
-      </div>
-    ),
-  },
+    {
+      key: "name",
+      header: "Artifact",
+      cell: (artifact) => (
+        <ResourceCell kind="artifact">
+          <Link
+            to="/artifacts/$artifactId"
+            params={{ artifactId: artifact.id }}
+            className="block"
+          >
+            <span className="font-mono text-xs">{artifact.name}</span>
+            <Id value={artifact.id} className="ml-2" />
+          </Link>
+        </ResourceCell>
+      ),
+    },
+    {
+      key: "digest",
+      header: "Digest",
+      cell: (artifact) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {artifact.digest.slice(0, 23)}…
+        </span>
+      ),
+    },
+    {
+      key: "kind",
+      header: "Kind",
+      cell: (artifact) => (
+        <Badge variant="secondary" className="font-mono text-2xs">
+          {artifact.kind}
+        </Badge>
+      ),
+    },
+    {
+      key: "format",
+      header: "Format",
+      cell: (artifact) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          <Dash>{artifact.format}</Dash>
+        </span>
+      ),
+    },
+    {
+      key: "size",
+      header: "Size",
+      align: "right",
+      cell: (artifact) => (
+        <span className="font-mono text-2xs">
+          {formatBytes(artifact.size_bytes)}
+        </span>
+      ),
+    },
+    {
+      key: "params",
+      header: "Parameters",
+      align: "right",
+      cell: (artifact) => (
+        <span className="font-mono text-2xs">
+          {formatParameters(artifact.parameter_count)}
+        </span>
+      ),
+    },
+    {
+      key: "locations",
+      header: "Locations",
+      secondary: true,
+      cell: (artifact) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {artifact.locations.length === 0
+            ? "none"
+            : artifact.locations
+                .map((l) => `${l.scheme}${l.preferred ? "*" : ""}`)
+                .join(" ")}
+        </span>
+      ),
+    },
+    {
+      key: "licence",
+      header: "Licence",
+      secondary: true,
+      cell: (artifact) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          <Dash>{artifact.licence}</Dash>
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (artifact) => (
+        <div className="flex items-center justify-end gap-1">
+          <NewOperationDialog
+            defaultType="cache.warm"
+            defaultTarget={artifact.id}
+            trigger={
+              <Button size="sm" variant="ghost" className="font-mono text-2xs">
+                warm
+              </Button>
+            }
+          />
+          <RowActions
+            actions={[
+              { label: "Edit", onSelect: () => onEdit(artifact) },
+              {
+                label: "Delete",
+                destructive: true,
+                onSelect: () => onDelete(artifact),
+              },
+            ]}
+          />
+        </div>
+      ),
+    },
   ]
 }
 
@@ -165,7 +167,10 @@ export function ArtifactsPage() {
       </div>
 
       {creating && (
-        <ArtifactForm open onOpenChange={(open) => !open && setCreating(false)} />
+        <ArtifactForm
+          open
+          onOpenChange={(open) => !open && setCreating(false)}
+        />
       )}
       {editing && (
         <ArtifactForm
@@ -191,7 +196,8 @@ export function ArtifactsPage() {
               setDoomed(undefined)
               toast.success("Artifact deleted", { description: doomed.name })
             },
-            onError: (e) => toast.error(formatError(e, "Could not delete artifact")),
+            onError: (e) =>
+              toast.error(formatError(e, "Could not delete artifact")),
           })
         }
       />

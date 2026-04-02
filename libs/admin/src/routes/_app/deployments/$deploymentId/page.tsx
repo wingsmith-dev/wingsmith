@@ -13,7 +13,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { parallelismLabel, workloadPhaseTone } from "@/modules/demand/display"
 import { DeleteDialog } from "@/components/layout/destructive"
-import { useDeleteDeployment, useDeployment, useRecipe } from "@/modules/demand/queries"
+import {
+  useDeleteDeployment,
+  useDeployment,
+  useRecipe,
+} from "@/modules/demand/queries"
 import { DeploymentForm } from "../DeploymentForm"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -22,7 +26,9 @@ import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
 
 export function DeploymentDetailPage() {
-  const { deploymentId } = useParams({ from: "/_app/deployments/$deploymentId" })
+  const { deploymentId } = useParams({
+    from: "/_app/deployments/$deploymentId",
+  })
   const { data: deployment, isLoading, error } = useDeployment(deploymentId)
   const { data: recipe } = useRecipe(deployment?.recipe_id ?? "")
   const operations = useOperations({ target: deployment?.id })
@@ -53,10 +59,18 @@ export function DeploymentDetailPage() {
           <div className="flex gap-2">
             {deployment && (
               <>
-                <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditing(true)}
+                >
                   Edit
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setDoomed(true)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDoomed(true)}
+                >
                   Delete
                 </Button>
               </>
@@ -92,7 +106,7 @@ export function DeploymentDetailPage() {
       )}
       {deployment && (
         <DeleteDialog
-        icon="deployment"
+          icon="deployment"
           open={doomed}
           onOpenChange={setDoomed}
           kind="deployment"
@@ -104,7 +118,9 @@ export function DeploymentDetailPage() {
             remove.mutate(deployment.id, {
               onSuccess: () => {
                 setDoomed(false)
-                toast.success("Deployment deleted", { description: deployment.name })
+                toast.success("Deployment deleted", {
+                  description: deployment.name,
+                })
                 navigate({ to: "/deployments" })
               },
               onError: (e) =>
@@ -154,18 +170,17 @@ export function DeploymentDetailPage() {
                       </Link>
                     </Field>
                     <Field label="Recipe">
-                      <Link
-                        to="/recipes"
-                        className="hover:underline"
-                      >
+                      <Link to="/recipes" className="hover:underline">
                         {recipe?.name ?? deployment.recipe_id}
                       </Link>
                     </Field>
                     <Field label="Replicas">
-                      {deployment.min_replicas}–{deployment.max_replicas}, desired{" "}
-                      {deployment.desired_replicas}
+                      {deployment.min_replicas}–{deployment.max_replicas},
+                      desired {deployment.desired_replicas}
                     </Field>
-                    <Field label="Enabled">{deployment.enabled ? "yes" : "no"}</Field>
+                    <Field label="Enabled">
+                      {deployment.enabled ? "yes" : "no"}
+                    </Field>
                     <Field label="Adapters">
                       {deployment.adapter_artifact_ids.length || "none"}
                     </Field>
@@ -188,8 +203,12 @@ export function DeploymentDetailPage() {
                     <Field label="Preemptible">
                       {deployment.workload.preemptible ? "yes" : "no"}
                     </Field>
-                    <Field label="Gang size">{deployment.workload.gang_size}</Field>
-                    <Field label="Project">{deployment.workload.project_id}</Field>
+                    <Field label="Gang size">
+                      {deployment.workload.gang_size}
+                    </Field>
+                    <Field label="Project">
+                      {deployment.workload.project_id}
+                    </Field>
                     <Field label="Queued">
                       {formatRelative(deployment.workload.queued_at)}
                     </Field>
@@ -261,7 +280,9 @@ export function DeploymentDetailPage() {
                     <Field label="Parallelism">
                       {parallelismLabel(recipe.parallelism)}
                     </Field>
-                    <Field label="Context length">{recipe.context_length}</Field>
+                    <Field label="Context length">
+                      {recipe.context_length}
+                    </Field>
                     <Field label="Single domain">
                       {recipe.shape.requires_single_topology_domain
                         ? (recipe.shape.topology_domain_kind ?? "yes")
@@ -273,7 +294,7 @@ export function DeploymentDetailPage() {
             )}
 
             <div>
-              <h2 className="mb-2 font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground/50">
+              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
                 Operations
               </h2>
               <DataTable

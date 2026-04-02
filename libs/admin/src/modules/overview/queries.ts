@@ -100,8 +100,9 @@ export function useClusterDevices(clusterId: string) {
 }
 
 export function useClusterDeployments(clusterId: string) {
-  return useAllPages(["overview", "cluster", clusterId, "deployments"], (cursor) =>
-    fetchDeployments({ cluster: clusterId }, cursor, DRAIN_LIMIT)
+  return useAllPages(
+    ["overview", "cluster", clusterId, "deployments"],
+    (cursor) => fetchDeployments({ cluster: clusterId }, cursor, DRAIN_LIMIT)
   )
 }
 

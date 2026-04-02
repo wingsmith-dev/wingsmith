@@ -42,7 +42,9 @@ export function PoolForm({
   const [minNodes, setMinNodes] = useState<number | null>(pool?.min_nodes ?? 0)
   const [maxNodes, setMaxNodes] = useState<number | null>(pool?.max_nodes ?? 0)
   const [enabled, setEnabled] = useState(pool?.enabled ?? true)
-  const [labels, setLabels] = useState<Record<string, string>>(pool?.labels ?? {})
+  const [labels, setLabels] = useState<Record<string, string>>(
+    pool?.labels ?? {}
+  )
   const [nodeShape, setNodeShape] = useState<unknown>(pool?.node_shape ?? {})
   const [shapeValid, setShapeValid] = useState(true)
 
@@ -71,7 +73,8 @@ export function PoolForm({
             onOpenChange(false)
             toast.success("Pool updated", { description: next.name })
           },
-          onError: (error) => toast.error(formatError(error, "Could not update pool")),
+          onError: (error) =>
+            toast.error(formatError(error, "Could not update pool")),
         }
       )
       return
@@ -84,7 +87,8 @@ export function PoolForm({
           onOpenChange(false)
           toast.success("Pool declared", { description: next.id })
         },
-        onError: (error) => toast.error(formatError(error, "Could not create pool")),
+        onError: (error) =>
+          toast.error(formatError(error, "Could not create pool")),
       }
     )
   }

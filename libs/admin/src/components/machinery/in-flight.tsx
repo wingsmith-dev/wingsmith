@@ -9,13 +9,18 @@ import { Link } from "@tanstack/react-router"
  * to the buttons. An operation that returns no visible change is an operation
  * an operator starts three times.
  */
-export function InFlightOperations({ operations }: { operations: Operation[] }) {
+export function InFlightOperations({
+  operations,
+}: {
+  operations: Operation[]
+}) {
   if (operations.length === 0) return null
 
   return (
     <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3">
-      <p className="font-mono text-2xs uppercase tracking-[0.18em] text-amber-700 dark:text-amber-400">
-        {operations.length} operation{operations.length === 1 ? "" : "s"} in flight
+      <p className="font-mono text-2xs tracking-[0.18em] text-amber-700 uppercase dark:text-amber-400">
+        {operations.length} operation{operations.length === 1 ? "" : "s"} in
+        flight
       </p>
       <ul className="mt-2 space-y-1">
         {operations.map((operation) => (

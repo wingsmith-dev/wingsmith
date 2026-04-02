@@ -32,6 +32,9 @@ export function formatPercent(numerator: number, denominator: number): string {
   return `${Math.round((numerator / denominator) * 100)}%`
 }
 
-export function formatError(error: unknown, fallback = "Failed to load"): string {
+export function formatError(
+  error: unknown,
+  fallback = "Failed to load"
+): string {
   return error instanceof Error ? error.message : fallback
 }

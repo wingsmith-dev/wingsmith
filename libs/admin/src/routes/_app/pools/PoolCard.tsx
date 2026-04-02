@@ -12,11 +12,13 @@ import { Link } from "@tanstack/react-router"
 function PanelHeading({ kind }: { kind: "declared" | "observed" }) {
   return (
     <div className="mb-3 flex items-center gap-2">
-      <span className="font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground/50">
+      <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
         {kind}
       </span>
       <span className="font-mono text-2xs text-muted-foreground/40">
-        {kind === "declared" ? "written by the plane" : "reported by the cluster"}
+        {kind === "declared"
+          ? "written by the plane"
+          : "reported by the cluster"}
       </span>
     </div>
   )
@@ -59,7 +61,9 @@ export function PoolCard({
         >
           {pool.name}
         </Link>
-        <span className="font-mono text-2xs text-muted-foreground/60">{pool.id}</span>
+        <span className="font-mono text-2xs text-muted-foreground/60">
+          {pool.id}
+        </span>
         <Link
           to="/clusters/$clusterId"
           params={{ clusterId: pool.cluster_id }}

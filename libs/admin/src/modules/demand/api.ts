@@ -121,11 +121,18 @@ export function fetchDeployments(
  * A deployment name is unique per cluster, not globally, so a name reference
  * needs `?cluster=` alongside it. An id needs nothing.
  */
-export function fetchDeployment(ref: string, cluster?: string): Promise<Deployment> {
-  return api.get<Deployment>(`/deployments/${encodeURIComponent(ref)}`, { cluster })
+export function fetchDeployment(
+  ref: string,
+  cluster?: string
+): Promise<Deployment> {
+  return api.get<Deployment>(`/deployments/${encodeURIComponent(ref)}`, {
+    cluster,
+  })
 }
 
-export function createDeployment(body: DeploymentCreateRequest): Promise<Deployment> {
+export function createDeployment(
+  body: DeploymentCreateRequest
+): Promise<Deployment> {
   return api.post<Deployment>("/deployments", body)
 }
 
@@ -134,9 +141,13 @@ export function updateDeployment(
   body: DeploymentUpdateRequest,
   revision?: string
 ): Promise<Deployment> {
-  return api.patch<Deployment>(`/deployments/${encodeURIComponent(ref)}`, body, {
-    ifMatch: revision,
-  })
+  return api.patch<Deployment>(
+    `/deployments/${encodeURIComponent(ref)}`,
+    body,
+    {
+      ifMatch: revision,
+    }
+  )
 }
 
 export function deleteDeployment(ref: string): Promise<void> {

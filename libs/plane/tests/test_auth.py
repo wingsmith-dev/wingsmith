@@ -198,9 +198,7 @@ def test_validate_refuses_to_boot_admin_enabled_without_password_hash():
 
 
 def test_validate_refuses_to_boot_admin_enabled_without_signing_secret():
-    s = Settings(
-        APP_ENV="production", OPERATOR_TOKEN="tok", ADMIN_AUTH="enabled", ADMIN_PASSWORD_HASH="hash"
-    )
+    s = Settings(APP_ENV="production", OPERATOR_TOKEN="tok", ADMIN_AUTH="enabled", ADMIN_PASSWORD_HASH="hash")
     with pytest.raises(RuntimeError):
         validate(s)
 

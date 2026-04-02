@@ -22,7 +22,11 @@ export interface RequestOptions {
  */
 export interface Transport {
   readonly kind: "http" | "fixtures"
-  request<T>(method: HttpMethod, path: string, options?: RequestOptions): Promise<T>
+  request<T>(
+    method: HttpMethod,
+    path: string,
+    options?: RequestOptions
+  ): Promise<T>
 }
 
 /**
@@ -50,7 +54,9 @@ export class PlaneError extends Error {
 
 export class NetworkError extends Error {
   constructor() {
-    super("Unable to reach the plane. The service may be temporarily unavailable.")
+    super(
+      "Unable to reach the plane. The service may be temporarily unavailable."
+    )
     this.name = "NetworkError"
   }
 }
@@ -69,7 +75,12 @@ export class ForbiddenError extends PlaneError {
 
 export class NotAuthorizedError extends PlaneError {
   constructor(message?: string, detail?: Record<string, unknown>) {
-    super(401, "not_authorized", message ?? "Your credentials were not accepted.", detail)
+    super(
+      401,
+      "not_authorized",
+      message ?? "Your credentials were not accepted.",
+      detail
+    )
     this.name = "NotAuthorizedError"
   }
 }

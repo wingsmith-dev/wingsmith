@@ -1,6 +1,10 @@
 import { NewOperationDialog } from "@/components/machinery/new-operation"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 import {
   applicability,
   operationsForPrefix,

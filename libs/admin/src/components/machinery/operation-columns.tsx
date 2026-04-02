@@ -35,7 +35,9 @@ export function operationColumns(): Column<Operation>[] {
       header: "Target",
       cell: (operation) => (
         <span className="font-mono text-2xs">
-          <span className="text-muted-foreground/60">{operation.target.type} </span>
+          <span className="text-muted-foreground/60">
+            {operation.target.type}{" "}
+          </span>
           {operation.target.id}
         </span>
       ),

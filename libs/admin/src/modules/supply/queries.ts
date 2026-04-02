@@ -19,7 +19,9 @@ import {
 import type { PoolCreateRequest, PoolUpdateRequest } from "./types"
 
 export function useNodes(filters: NodeFilters = {}) {
-  return useCursorList(["nodes", filters], (cursor) => fetchNodes(filters, cursor))
+  return useCursorList(["nodes", filters], (cursor) =>
+    fetchNodes(filters, cursor)
+  )
 }
 
 export function useNode(ref: string) {
@@ -31,7 +33,9 @@ export function useNode(ref: string) {
 }
 
 export function useDevices(filters: DeviceFilters = {}) {
-  return useCursorList(["devices", filters], (cursor) => fetchDevices(filters, cursor))
+  return useCursorList(["devices", filters], (cursor) =>
+    fetchDevices(filters, cursor)
+  )
 }
 
 export function useDevice(ref: string) {
@@ -60,7 +64,9 @@ export function useAllTopologyDomains(filters: TopologyFilters = {}) {
 }
 
 export function usePools(filters: PoolFilters = {}) {
-  return useCursorList(["pools", filters], (cursor) => fetchPools(filters, cursor))
+  return useCursorList(["pools", filters], (cursor) =>
+    fetchPools(filters, cursor)
+  )
 }
 
 export function usePool(ref: string) {
@@ -83,8 +89,11 @@ export function useCreatePool() {
 export function useUpdatePool() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { ref: string; body: PoolUpdateRequest; revision?: string }) =>
-      updatePool(vars.ref, vars.body, vars.revision),
+    mutationFn: (vars: {
+      ref: string
+      body: PoolUpdateRequest
+      revision?: string
+    }) => updatePool(vars.ref, vars.body, vars.revision),
     onSuccess: () => client.invalidateQueries({ queryKey: ["pools"] }),
   })
 }

@@ -33,10 +33,14 @@ export function PriorityClassForm({
 
   const [name, setName] = useState(priorityClass?.name ?? "")
   const [value, setValue] = useState<number | null>(priorityClass?.value ?? 500)
-  const [preemptible, setPreemptible] = useState(priorityClass?.preemptible ?? true)
+  const [preemptible, setPreemptible] = useState(
+    priorityClass?.preemptible ?? true
+  )
   const [preempts, setPreempts] = useState(priorityClass?.preempts ?? false)
   const [isDefault, setIsDefault] = useState(priorityClass?.is_default ?? false)
-  const [description, setDescription] = useState(priorityClass?.description ?? "")
+  const [description, setDescription] = useState(
+    priorityClass?.description ?? ""
+  )
 
   const pending = create.isPending || update.isPending
   const error = create.error ?? update.error
@@ -57,7 +61,11 @@ export function PriorityClassForm({
   const submit = () => {
     if (editing) {
       update.mutate(
-        { ref: priorityClass.id, body: shared, revision: priorityClass.revision },
+        {
+          ref: priorityClass.id,
+          body: shared,
+          revision: priorityClass.revision,
+        },
         {
           onSuccess: () => done("updated"),
           onError: (e) => toast.error(formatError(e, "Could not update class")),

@@ -27,7 +27,9 @@ const columns: Column<PlaneEvent>[] = [
     key: "severity",
     header: "Severity",
     cell: (event) => (
-      <StatusLabel tone={severityTone(event.severity)}>{event.severity}</StatusLabel>
+      <StatusLabel tone={severityTone(event.severity)}>
+        {event.severity}
+      </StatusLabel>
     ),
   },
   {
@@ -42,7 +44,10 @@ const columns: Column<PlaneEvent>[] = [
       <span className="font-mono text-2xs text-muted-foreground">
         {event.subject.type}
         {event.subject.id && (
-          <span className="text-muted-foreground/50"> · {event.subject.id}</span>
+          <span className="text-muted-foreground/50">
+            {" "}
+            · {event.subject.id}
+          </span>
         )}
       </span>
     ),

@@ -8,7 +8,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { parallelismLabel } from "@/modules/demand/display"
-import { useArtifact, useDeleteRecipe, useRecipe } from "@/modules/demand/queries"
+import {
+  useArtifact,
+  useDeleteRecipe,
+  useRecipe,
+} from "@/modules/demand/queries"
 import { RecipeForm } from "../RecipeForm"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
@@ -55,10 +59,18 @@ export function RecipeDetailPage() {
         actions={
           recipe && (
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditing(true)}
+              >
                 Edit
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setDoomed(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDoomed(true)}
+              >
                 Delete
               </Button>
             </div>
@@ -99,7 +111,8 @@ export function RecipeDetailPage() {
                 toast.success("Recipe deleted", { description: recipe.name })
                 navigate({ to: "/recipes" })
               },
-              onError: (e) => toast.error(formatError(e, "Could not delete recipe")),
+              onError: (e) =>
+                toast.error(formatError(e, "Could not delete recipe")),
             })
           }
         />
@@ -143,7 +156,9 @@ export function RecipeDetailPage() {
                       </Link>
                     </Field>
                     <Field label="Revision">{recipe.revision}</Field>
-                    <Field label="Created">{formatRelative(recipe.created_at)}</Field>
+                    <Field label="Created">
+                      {formatRelative(recipe.created_at)}
+                    </Field>
                     <Field label="Created at">
                       {formatAbsolute(recipe.created_at)}
                     </Field>
@@ -161,7 +176,9 @@ export function RecipeDetailPage() {
                 <CardContent>
                   <FieldGrid>
                     <Field label="Engine">{recipe.engine}</Field>
-                    <Field label="Engine version">{recipe.engine_version}</Field>
+                    <Field label="Engine version">
+                      {recipe.engine_version}
+                    </Field>
                     <Field label="Image" className="sm:col-span-2">
                       <span className="break-all">
                         <Dash>{recipe.engine_image}</Dash>
@@ -192,8 +209,12 @@ export function RecipeDetailPage() {
                 </CardHeader>
                 <CardContent>
                   <FieldGrid>
-                    <Field label="Device class">{recipe.shape.device_class}</Field>
-                    <Field label="Device count">{recipe.shape.device_count}</Field>
+                    <Field label="Device class">
+                      {recipe.shape.device_class}
+                    </Field>
+                    <Field label="Device count">
+                      {recipe.shape.device_count}
+                    </Field>
                     <Field label="Device memory min">
                       {recipe.shape.device_memory_mib_min
                         ? `${recipe.shape.device_memory_mib_min.toLocaleString()} MiB`

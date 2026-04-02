@@ -38,7 +38,9 @@ export function PolicyForm({
 
   const [name, setName] = useState(policy?.name ?? "")
   const [description, setDescription] = useState(policy?.description ?? "")
-  const [regions, setRegions] = useState((policy?.allowed_regions ?? []).join(", "))
+  const [regions, setRegions] = useState(
+    (policy?.allowed_regions ?? []).join(", ")
+  )
   const [residencies, setResidencies] = useState(
     (policy?.allowed_residencies ?? []).join(", ")
   )
@@ -89,7 +91,8 @@ export function PolicyForm({
         { ref: policy.id, body, revision: policy.revision },
         {
           onSuccess: () => done("updated"),
-          onError: (e) => toast.error(formatError(e, "Could not update policy")),
+          onError: (e) =>
+            toast.error(formatError(e, "Could not update policy")),
         }
       )
       return

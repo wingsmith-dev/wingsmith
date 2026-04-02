@@ -27,120 +27,124 @@ function columns(
   onDelete: (deployment: Deployment) => void
 ): Column<Deployment>[] {
   return [
-  {
-    key: "name",
-    header: "Deployment",
-    cell: (deployment) => (
-      <ResourceCell kind="deployment">
+    {
+      key: "name",
+      header: "Deployment",
+      cell: (deployment) => (
+        <ResourceCell kind="deployment">
+          <Link
+            to="/deployments/$deploymentId"
+            params={{ deploymentId: deployment.id }}
+            className="block"
+          >
+            <span className="font-mono text-xs">{deployment.name}</span>
+            <Id value={deployment.id} className="ml-2" />
+          </Link>
+        </ResourceCell>
+      ),
+    },
+    {
+      key: "cluster",
+      header: "Cluster",
+      cell: (deployment) => (
         <Link
-          to="/deployments/$deploymentId"
-          params={{ deploymentId: deployment.id }}
-          className="block"
+          to="/clusters/$clusterId"
+          params={{ clusterId: deployment.cluster_id }}
+          className="font-mono text-2xs text-muted-foreground hover:underline"
         >
-          <span className="font-mono text-xs">{deployment.name}</span>
-          <Id value={deployment.id} className="ml-2" />
+          {deployment.cluster_id}
         </Link>
-      </ResourceCell>
-    ),
-  },
-  {
-    key: "cluster",
-    header: "Cluster",
-    cell: (deployment) => (
-      <Link
-        to="/clusters/$clusterId"
-        params={{ clusterId: deployment.cluster_id }}
-        className="font-mono text-2xs text-muted-foreground hover:underline"
-      >
-        {deployment.cluster_id}
-      </Link>
-    ),
-  },
-  {
-    key: "type",
-    header: "Type",
-    cell: (deployment) => (
-      <Badge variant="secondary" className="font-mono text-2xs">
-        {deployment.workload.type}
-      </Badge>
-    ),
-  },
-  {
-    key: "phase",
-    header: "Phase",
-    cell: (deployment) => (
-      <StatusLabel tone={workloadPhaseTone(deployment.workload.phase)}>
-        {deployment.workload.phase}
-      </StatusLabel>
-    ),
-  },
-  {
-    key: "replicas",
-    header: "Replicas ready",
-    align: "right",
-    cell: (deployment) => (
-      <span className="font-mono text-xs">
-        {deployment.replicas.ready}/{deployment.desired_replicas}
-      </span>
-    ),
-  },
-  {
-    key: "generation",
-    header: "At generation",
-    align: "right",
-    secondary: true,
-    cell: (deployment) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {deployment.replicas.at_current_generation}/{deployment.replicas.total} · gen{" "}
-        {deployment.generation}
-      </span>
-    ),
-  },
-  {
-    key: "priority",
-    header: "Priority",
-    secondary: true,
-    cell: (deployment) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {deployment.workload.priority_class}
-        {deployment.workload.preemptible && (
-          <span className="text-muted-foreground/50"> · preemptible</span>
-        )}
-      </span>
-    ),
-  },
-  {
-    key: "reason",
-    header: "Reason",
-    cell: (deployment) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        <Dash>{deployment.workload.reason}</Dash>
-      </span>
-    ),
-  },
-  {
-    key: "enabled",
-    header: "Enabled",
-    align: "right",
-    cell: (deployment) => (
-      <span className="font-mono text-2xs">
-        {deployment.enabled ? "yes" : "no"}
-      </span>
-    ),
-  },
-  {
-    key: "actions",
-    header: "",
-    align: "right",
-    cell: (deployment) => (
-      <RowActions
-        actions={[
-          { label: "Edit", onSelect: () => onEdit(deployment) },
-          { label: "Delete", destructive: true, onSelect: () => onDelete(deployment) },
-        ]}
-      />
-    ),
-  },
+      ),
+    },
+    {
+      key: "type",
+      header: "Type",
+      cell: (deployment) => (
+        <Badge variant="secondary" className="font-mono text-2xs">
+          {deployment.workload.type}
+        </Badge>
+      ),
+    },
+    {
+      key: "phase",
+      header: "Phase",
+      cell: (deployment) => (
+        <StatusLabel tone={workloadPhaseTone(deployment.workload.phase)}>
+          {deployment.workload.phase}
+        </StatusLabel>
+      ),
+    },
+    {
+      key: "replicas",
+      header: "Replicas ready",
+      align: "right",
+      cell: (deployment) => (
+        <span className="font-mono text-xs">
+          {deployment.replicas.ready}/{deployment.desired_replicas}
+        </span>
+      ),
+    },
+    {
+      key: "generation",
+      header: "At generation",
+      align: "right",
+      secondary: true,
+      cell: (deployment) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {deployment.replicas.at_current_generation}/
+          {deployment.replicas.total} · gen {deployment.generation}
+        </span>
+      ),
+    },
+    {
+      key: "priority",
+      header: "Priority",
+      secondary: true,
+      cell: (deployment) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {deployment.workload.priority_class}
+          {deployment.workload.preemptible && (
+            <span className="text-muted-foreground/50"> · preemptible</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "reason",
+      header: "Reason",
+      cell: (deployment) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          <Dash>{deployment.workload.reason}</Dash>
+        </span>
+      ),
+    },
+    {
+      key: "enabled",
+      header: "Enabled",
+      align: "right",
+      cell: (deployment) => (
+        <span className="font-mono text-2xs">
+          {deployment.enabled ? "yes" : "no"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (deployment) => (
+        <RowActions
+          actions={[
+            { label: "Edit", onSelect: () => onEdit(deployment) },
+            {
+              label: "Delete",
+              destructive: true,
+              onSelect: () => onDelete(deployment),
+            },
+          ]}
+        />
+      ),
+    },
   ]
 }
 
@@ -217,7 +221,10 @@ export function DeploymentsPage() {
       </div>
 
       {creating && (
-        <DeploymentForm open onOpenChange={(open) => !open && setCreating(false)} />
+        <DeploymentForm
+          open
+          onOpenChange={(open) => !open && setCreating(false)}
+        />
       )}
       {editing && (
         <DeploymentForm
@@ -243,7 +250,8 @@ export function DeploymentsPage() {
               setDoomed(undefined)
               toast.success("Deployment deleted", { description: doomed.name })
             },
-            onError: (e) => toast.error(formatError(e, "Could not delete deployment")),
+            onError: (e) =>
+              toast.error(formatError(e, "Could not delete deployment")),
           })
         }
       />

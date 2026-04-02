@@ -20,7 +20,11 @@ export interface MetricsQuery {
   step?: string
 }
 
-export function fetchMetrics(scope: MetricScope, ref: string, query: MetricsQuery = {}) {
+export function fetchMetrics(
+  scope: MetricScope,
+  ref: string,
+  query: MetricsQuery = {}
+) {
   return api.get<Metrics>(`/v1/metrics/${PATHS[scope]}/${ref}`, {
     window: query.window,
     series: query.series,

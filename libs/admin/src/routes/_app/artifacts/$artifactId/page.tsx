@@ -52,10 +52,18 @@ export function ArtifactDetailPage() {
         actions={
           artifact && (
             <div className="flex gap-2">
-              <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setEditing(true)}
+              >
                 Edit
               </Button>
-              <Button size="sm" variant="outline" onClick={() => setDoomed(true)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setDoomed(true)}
+              >
                 Delete
               </Button>
               <NewOperationDialog
@@ -102,10 +110,13 @@ export function ArtifactDetailPage() {
             remove.mutate(artifact.id, {
               onSuccess: () => {
                 setDoomed(false)
-                toast.success("Artifact deleted", { description: artifact.name })
+                toast.success("Artifact deleted", {
+                  description: artifact.name,
+                })
                 navigate({ to: "/artifacts" })
               },
-              onError: (e) => toast.error(formatError(e, "Could not delete artifact")),
+              onError: (e) =>
+                toast.error(formatError(e, "Could not delete artifact")),
             })
           }
         />
@@ -124,7 +135,12 @@ export function ArtifactDetailPage() {
                 {formatBytes(artifact.size_bytes)} ·{" "}
                 {formatParameters(artifact.parameter_count)} params
               </span>
-              <Button asChild size="sm" variant="ghost" className="font-mono text-2xs">
+              <Button
+                asChild
+                size="sm"
+                variant="ghost"
+                className="font-mono text-2xs"
+              >
                 <Link to="/recipes" search={{ artifact: artifact.id }}>
                   Recipes using this artifact
                 </Link>
@@ -168,7 +184,9 @@ export function ArtifactDetailPage() {
 
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Bytes and provenance</CardTitle>
+                  <CardTitle className="text-sm">
+                    Bytes and provenance
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <FieldGrid>
@@ -188,7 +206,9 @@ export function ArtifactDetailPage() {
                       <Dash>{artifact.project_id}</Dash>
                     </Field>
                     <Field label="Revision">{artifact.revision}</Field>
-                    <Field label="Created">{formatRelative(artifact.created_at)}</Field>
+                    <Field label="Created">
+                      {formatRelative(artifact.created_at)}
+                    </Field>
                     <Field label="Created at">
                       {formatAbsolute(artifact.created_at)}
                     </Field>
@@ -223,7 +243,9 @@ export function ArtifactDetailPage() {
               </CardHeader>
               <CardContent>
                 {Object.keys(artifact.metadata).length === 0 ? (
-                  <p className="font-mono text-2xs text-muted-foreground/50">none</p>
+                  <p className="font-mono text-2xs text-muted-foreground/50">
+                    none
+                  </p>
                 ) : (
                   <Json value={artifact.metadata} />
                 )}

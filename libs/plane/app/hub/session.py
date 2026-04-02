@@ -34,10 +34,8 @@ from app.core.auth import Principal
 from app.hub.state import SessionState
 from app.hub.state import SessionRegistry
 from app.hub.state import new_id
-from app.hub.identity import instance_id
 from app.hub.dispatch import LiveSessions
-from app.hub.ownership import ClaimStore
-from app.hub.ownership import MemoryClaimStore
+from app.hub.identity import instance_id
 from app.hub.messages import MESSAGE_TYPES
 from app.hub.messages import ENVELOPE_VERSION
 from app.hub.messages import UNSEQUENCED_TYPES
@@ -51,6 +49,8 @@ from app.hub.messages import Envelope
 from app.hub.messages import StreamEnd
 from app.hub.messages import RawEnvelope
 from app.hub.messages import ResyncBegin
+from app.hub.ownership import ClaimStore
+from app.hub.ownership import MemoryClaimStore
 
 
 logger = getLogger(__name__)

@@ -49,7 +49,7 @@ export function PoolDetailPage() {
         {pool && <MetricsSection scope="pool" refId={pool.id} />}
 
         <div>
-          <h2 className="mb-2 font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground/50">
+          <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
             Observed members
           </h2>
           <DataTable

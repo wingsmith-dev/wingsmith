@@ -22,12 +22,12 @@ from app.hub.state import new_id
 from app.hub.session import Backpressure
 from app.hub.session import SessionConfig
 from app.hub.session import OperatorSession
+from app.hub.messages import DeviceObserved
+from app.hub.messages import OperationTarget
+from app.hub.messages import OperationDesired
+from app.hub.messages import DeploymentDesired
 from app.hub.ownership import ClaimStore
 from app.hub.ownership import MemoryClaimStore
-from app.hub.messages import DeviceObserved
-from app.hub.messages import DeploymentDesired
-from app.hub.messages import OperationDesired
-from app.hub.messages import OperationTarget
 
 
 FIXTURES = Path(__file__).resolve().parents[3] / "contract" / "fixtures"

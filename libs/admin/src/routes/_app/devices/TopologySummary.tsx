@@ -23,7 +23,10 @@ export function TopologySummary({
   return (
     <Card>
       <CardContent className="flex flex-wrap items-center gap-x-10 gap-y-3 py-4">
-        <Stat label="Topology domains" value={isLoading ? "…" : String(all.length)} />
+        <Stat
+          label="Topology domains"
+          value={isLoading ? "…" : String(all.length)}
+        />
         <Stat
           label={`Domains of ${GANG_SIZE}+`}
           value={isLoading ? "…" : String(full.length)}
@@ -31,7 +34,9 @@ export function TopologySummary({
         />
         <Stat
           label="Spanning nodes"
-          value={isLoading ? "…" : String(all.filter((d) => d.spans_nodes).length)}
+          value={
+            isLoading ? "…" : String(all.filter((d) => d.spans_nodes).length)
+          }
         />
         <Stat
           label="Fabrics"
@@ -59,7 +64,7 @@ function Stat({
         : ""
   return (
     <div>
-      <div className="font-mono text-2xs uppercase tracking-wider text-muted-foreground/60">
+      <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
         {label}
       </div>
       <div className={`mt-0.5 font-mono text-sm ${toneClass}`}>{value}</div>

@@ -54,7 +54,9 @@ export function useOpenOperations(target: string | undefined) {
     enabled: !!target,
     refetchInterval: (q) => {
       const data = q.state.data as { items: Operation[] } | undefined
-      return data?.items.some((operation) => isOpen(operation.phase)) ? POLL_MS : false
+      return data?.items.some((operation) => isOpen(operation.phase))
+        ? POLL_MS
+        : false
     },
   })
   const operations = (query.data?.items ?? []).filter((operation) =>
@@ -90,7 +92,9 @@ export function useCancelOperation() {
 }
 
 export function useEvents(filters: EventFilters = {}) {
-  return useCursorList(["events", filters], (cursor) => fetchEvents(filters, cursor))
+  return useCursorList(["events", filters], (cursor) =>
+    fetchEvents(filters, cursor)
+  )
 }
 
 export function useAllocations(filters: AllocationFilters = {}) {

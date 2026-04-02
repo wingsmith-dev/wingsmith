@@ -7,7 +7,11 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { formatError } from "@/lib/format"
-import { useDeleteQuota, useProjectOptions, useQuotas } from "@/modules/binding/queries"
+import {
+  useDeleteQuota,
+  useProjectOptions,
+  useQuotas,
+} from "@/modules/binding/queries"
 import type { Quota } from "@/modules/binding/types"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
@@ -21,116 +25,127 @@ function columns(
   onDelete: (quota: Quota) => void
 ): Column<Quota>[] {
   return [
-  {
-    key: "project",
-    header: "Project",
-    cell: (quota) => (
-      <ResourceCell kind="quota">
-        <span className="font-mono text-xs">{quota.project_slug}</span>
-      </ResourceCell>
-    ),
-  },
-  {
-    key: "scope",
-    header: "Scope",
-    cell: (quota) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {quota.cluster_name ?? "every cluster"}
-      </span>
-    ),
-  },
-  {
-    key: "class",
-    header: "Class",
-    cell: (quota) => (
-      <Badge variant="secondary" className="font-mono text-2xs">
-        {quota.device_class}
-      </Badge>
-    ),
-  },
-  {
-    key: "guaranteed",
-    header: "Guaranteed",
-    align: "right",
-    cell: (quota) => (
-      <span className="font-mono text-xs">{quota.guaranteed_devices}</span>
-    ),
-  },
-  {
-    key: "limit",
-    header: "Limit",
-    align: "right",
-    cell: (quota) => (
-      <span className="font-mono text-xs">
-        {quota.limit_devices ?? <span className="text-muted-foreground/40">none</span>}
-      </span>
-    ),
-  },
-  {
-    key: "used",
-    header: "Allocated",
-    align: "right",
-    cell: (quota) => (
-      <span className="font-mono text-xs">{quota.usage.allocated_devices}</span>
-    ),
-  },
-  {
-    key: "usage",
-    header: "Against limit",
-    cell: (quota) => {
-      const ceiling = quota.limit_devices ?? quota.guaranteed_devices
-      const pct = ceiling === 0 ? 0 : (quota.usage.allocated_devices / ceiling) * 100
-      return (
-        <div className="min-w-28 space-y-1">
-          <Progress value={Math.min(pct, 100)} className="h-1.5" />
-          <span className="font-mono text-2xs text-muted-foreground/60">
-            {quota.usage.live_allocations} live ·{" "}
-            {quota.usage.over_quota_devices} over quota
-          </span>
-        </div>
-      )
+    {
+      key: "project",
+      header: "Project",
+      cell: (quota) => (
+        <ResourceCell kind="quota">
+          <span className="font-mono text-xs">{quota.project_slug}</span>
+        </ResourceCell>
+      ),
     },
-  },
-  {
-    key: "headroom",
-    header: "Headroom",
-    align: "right",
-    cell: (quota) => (
-      <span
-        className={
-          quota.over_limit
-            ? "font-mono text-xs text-destructive"
-            : "font-mono text-xs"
-        }
-      >
-        {quota.headroom_devices ?? "∞"}
-      </span>
-    ),
-  },
-  {
-    key: "over_quota",
-    header: "Over-quota",
-    align: "right",
-    secondary: true,
-    cell: (quota) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {quota.over_quota_enabled ? `weight ${quota.over_quota_weight}` : "disabled"}
-      </span>
-    ),
-  },
-  {
-    key: "actions",
-    header: "",
-    align: "right",
-    cell: (quota) => (
-      <RowActions
-        actions={[
-          { label: "Edit", onSelect: () => onEdit(quota) },
-          { label: "Delete", destructive: true, onSelect: () => onDelete(quota) },
-        ]}
-      />
-    ),
-  },
+    {
+      key: "scope",
+      header: "Scope",
+      cell: (quota) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {quota.cluster_name ?? "every cluster"}
+        </span>
+      ),
+    },
+    {
+      key: "class",
+      header: "Class",
+      cell: (quota) => (
+        <Badge variant="secondary" className="font-mono text-2xs">
+          {quota.device_class}
+        </Badge>
+      ),
+    },
+    {
+      key: "guaranteed",
+      header: "Guaranteed",
+      align: "right",
+      cell: (quota) => (
+        <span className="font-mono text-xs">{quota.guaranteed_devices}</span>
+      ),
+    },
+    {
+      key: "limit",
+      header: "Limit",
+      align: "right",
+      cell: (quota) => (
+        <span className="font-mono text-xs">
+          {quota.limit_devices ?? (
+            <span className="text-muted-foreground/40">none</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "used",
+      header: "Allocated",
+      align: "right",
+      cell: (quota) => (
+        <span className="font-mono text-xs">
+          {quota.usage.allocated_devices}
+        </span>
+      ),
+    },
+    {
+      key: "usage",
+      header: "Against limit",
+      cell: (quota) => {
+        const ceiling = quota.limit_devices ?? quota.guaranteed_devices
+        const pct =
+          ceiling === 0 ? 0 : (quota.usage.allocated_devices / ceiling) * 100
+        return (
+          <div className="min-w-28 space-y-1">
+            <Progress value={Math.min(pct, 100)} className="h-1.5" />
+            <span className="font-mono text-2xs text-muted-foreground/60">
+              {quota.usage.live_allocations} live ·{" "}
+              {quota.usage.over_quota_devices} over quota
+            </span>
+          </div>
+        )
+      },
+    },
+    {
+      key: "headroom",
+      header: "Headroom",
+      align: "right",
+      cell: (quota) => (
+        <span
+          className={
+            quota.over_limit
+              ? "font-mono text-xs text-destructive"
+              : "font-mono text-xs"
+          }
+        >
+          {quota.headroom_devices ?? "∞"}
+        </span>
+      ),
+    },
+    {
+      key: "over_quota",
+      header: "Over-quota",
+      align: "right",
+      secondary: true,
+      cell: (quota) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {quota.over_quota_enabled
+            ? `weight ${quota.over_quota_weight}`
+            : "disabled"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (quota) => (
+        <RowActions
+          actions={[
+            { label: "Edit", onSelect: () => onEdit(quota) },
+            {
+              label: "Delete",
+              destructive: true,
+              onSelect: () => onDelete(quota),
+            },
+          ]}
+        />
+      ),
+    },
   ]
 }
 
@@ -227,9 +242,12 @@ export function QuotasPage() {
           remove.mutate(doomed.id, {
             onSuccess: () => {
               setDoomed(undefined)
-              toast.success("Quota deleted", { description: doomed.project_slug })
+              toast.success("Quota deleted", {
+                description: doomed.project_slug,
+              })
             },
-            onError: (e) => toast.error(formatError(e, "Could not delete quota")),
+            onError: (e) =>
+              toast.error(formatError(e, "Could not delete quota")),
           })
         }
       />

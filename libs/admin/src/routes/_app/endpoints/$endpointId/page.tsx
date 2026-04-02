@@ -50,10 +50,18 @@ export function EndpointDetailPage() {
           <div className="flex gap-2">
             {endpoint && (
               <>
-                <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditing(true)}
+                >
                   Edit
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => setDoomed(true)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setDoomed(true)}
+                >
                   Delete
                 </Button>
               </>
@@ -78,7 +86,7 @@ export function EndpointDetailPage() {
       )}
       {endpoint && (
         <DeleteDialog
-        icon="endpoint"
+          icon="endpoint"
           open={doomed}
           onOpenChange={setDoomed}
           kind="endpoint"
@@ -90,10 +98,13 @@ export function EndpointDetailPage() {
             remove.mutate(endpoint.id, {
               onSuccess: () => {
                 setDoomed(false)
-                toast.success("Endpoint deleted", { description: endpoint.name })
+                toast.success("Endpoint deleted", {
+                  description: endpoint.name,
+                })
                 navigate({ to: "/endpoints" })
               },
-              onError: (e) => toast.error(formatError(e, "Could not delete endpoint")),
+              onError: (e) =>
+                toast.error(formatError(e, "Could not delete endpoint")),
             })
           }
         />
@@ -116,8 +127,12 @@ export function EndpointDetailPage() {
                   </Field>
                   <Field label="Project">{endpoint.project_id}</Field>
                   <Field label="Visibility">{endpoint.visibility}</Field>
-                  <Field label="Routing strategy">{endpoint.routing_strategy}</Field>
-                  <Field label="Enabled">{endpoint.enabled ? "yes" : "no"}</Field>
+                  <Field label="Routing strategy">
+                    {endpoint.routing_strategy}
+                  </Field>
+                  <Field label="Enabled">
+                    {endpoint.enabled ? "yes" : "no"}
+                  </Field>
                   <Field label="Labels" className="sm:col-span-2">
                     <Labels labels={endpoint.labels} />
                   </Field>
@@ -127,7 +142,7 @@ export function EndpointDetailPage() {
 
             <Card className="overflow-hidden p-0">
               <div className="border-b bg-muted/30 px-4 py-3">
-                <span className="font-mono text-2xs uppercase tracking-[0.18em] text-muted-foreground/50">
+                <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
                   targets
                 </span>
                 <span className="ml-2 font-mono text-2xs text-muted-foreground/40">
@@ -146,7 +161,9 @@ export function EndpointDetailPage() {
                 </TableHeader>
                 <TableBody>
                   {endpoint.targets.map((target) => {
-                    const order = endpoint.failover_order.indexOf(target.deployment_id)
+                    const order = endpoint.failover_order.indexOf(
+                      target.deployment_id
+                    )
                     return (
                       <TableRow key={target.deployment_id}>
                         <TableCell>
@@ -159,7 +176,10 @@ export function EndpointDetailPage() {
                           </Link>
                         </TableCell>
                         <TableCell>
-                          <Badge variant="secondary" className="font-mono text-2xs">
+                          <Badge
+                            variant="secondary"
+                            className="font-mono text-2xs"
+                          >
                             {target.role}
                           </Badge>
                         </TableCell>

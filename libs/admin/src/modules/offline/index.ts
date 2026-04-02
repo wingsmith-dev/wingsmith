@@ -1,11 +1,5 @@
-import {
-  registerFixtures,
-  type FixtureContext,
-} from "@/lib/api/fixtures"
-import {
-  ConflictError,
-  NotFoundError,
-} from "@/lib/api/transport"
+import { registerFixtures, type FixtureContext } from "@/lib/api/fixtures"
+import { ConflictError, NotFoundError } from "@/lib/api/transport"
 import {
   OPERATION_TYPES,
   isOpen,
@@ -47,7 +41,8 @@ collection({
   names: (c) => [c.name],
   searchable: (c) => [c.name, c.display_name, c.region],
   labels: (c) => c.labels,
-  filter: (c, q) => eq(q.get("region"), c.region) && eq(q.get("phase"), c.phase),
+  filter: (c, q) =>
+    eq(q.get("region"), c.region) && eq(q.get("phase"), c.phase),
 })
 
 const clusterRef = (ref: string | undefined) =>
@@ -169,7 +164,8 @@ collection({
   names: (p) => [p.slug],
   searchable: (p) => [p.slug, p.name],
   filter: (p, q) =>
-    eq(q.get("tenant"), p.tenant.id, p.tenant.slug) && bool(q.bool("enabled"), p.enabled),
+    eq(q.get("tenant"), p.tenant.id, p.tenant.slug) &&
+    bool(q.bool("enabled"), p.enabled),
 })
 
 collection({
@@ -190,7 +186,8 @@ collection({
   names: (p) => [p.name],
   searchable: (p) => [p.name, p.description],
   filter: (p, q) =>
-    bool(q.bool("preemptible"), p.preemptible) && bool(q.bool("preempts"), p.preempts),
+    bool(q.bool("preemptible"), p.preemptible) &&
+    bool(q.bool("preempts"), p.preempts),
 })
 
 collection({
@@ -201,7 +198,8 @@ collection({
   searchable: (p) => [p.name, p.description],
   filter: (p, q) =>
     bool(q.bool("enabled"), p.enabled) &&
-    (q.get("region") === undefined || p.allowed_regions.includes(q.get("region")!)) &&
+    (q.get("region") === undefined ||
+      p.allowed_regions.includes(q.get("region")!)) &&
     (q.get("class") === undefined ||
       p.allowed_device_classes.includes(q.get("class")!)),
 })
@@ -286,9 +284,13 @@ registerFixtures([
       const data = body as OperationCreateRequest
       const prefix = OPERATION_TYPES[data.type as keyof typeof OPERATION_TYPES]
       if (!prefix) {
-        throw new ConflictError("invalid", `unknown operation type '${data.type}'`, {
-          allowed: Object.keys(OPERATION_TYPES).sort(),
-        })
+        throw new ConflictError(
+          "invalid",
+          `unknown operation type '${data.type}'`,
+          {
+            allowed: Object.keys(OPERATION_TYPES).sort(),
+          }
+        )
       }
       if (!data.target.startsWith(prefix)) {
         throw new ConflictError(
@@ -302,7 +304,8 @@ registerFixtures([
         const replay = operations.find((o) => o.parameters.__key === key)
         if (replay) return replay
       }
-      const cluster = clusterOf(data.target) ?? clusterRef(data.cluster ?? undefined) ?? null
+      const cluster =
+        clusterOf(data.target) ?? clusterRef(data.cluster ?? undefined) ?? null
       if (cluster === null) {
         throw new ConflictError(
           "invalid",
@@ -317,7 +320,9 @@ registerFixtures([
         target: { type: TARGET_KINDS[prefix], id: data.target },
         reason: data.reason ?? null,
         requested_by: "operator",
-        parameters: key ? { ...data.parameters, __key: key } : (data.parameters ?? {}),
+        parameters: key
+          ? { ...data.parameters, __key: key }
+          : (data.parameters ?? {}),
         deadline_at: data.deadline ?? null,
         created_at: new Date().toISOString(),
         updated_at: null,

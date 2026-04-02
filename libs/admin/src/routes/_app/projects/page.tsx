@@ -18,80 +18,91 @@ function columns(
   onDelete: (project: Project) => void
 ): Column<Project>[] {
   return [
-  {
-    key: "slug",
-    header: "Project",
-    cell: (project) => (
-      <ResourceCell kind="project">
-        <span className="block">
-          <span className="font-mono text-xs">{project.slug}</span>
-          <Id value={project.id} className="ml-2" />
+    {
+      key: "slug",
+      header: "Project",
+      cell: (project) => (
+        <ResourceCell kind="project">
+          <span className="block">
+            <span className="font-mono text-xs">{project.slug}</span>
+            <Id value={project.id} className="ml-2" />
+          </span>
+        </ResourceCell>
+      ),
+    },
+    {
+      key: "name",
+      header: "Name",
+      cell: (project) => <span className="text-xs">{project.name}</span>,
+    },
+    {
+      key: "tenant",
+      header: "Tenant",
+      cell: (project) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {project.tenant.slug}
+          {!project.tenant.enabled && (
+            <span className="text-amber-600 dark:text-amber-400">
+              {" "}
+              · disabled
+            </span>
+          )}
         </span>
-      </ResourceCell>
-    ),
-  },
-  { key: "name", header: "Name", cell: (project) => <span className="text-xs">{project.name}</span> },
-  {
-    key: "tenant",
-    header: "Tenant",
-    cell: (project) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {project.tenant.slug}
-        {!project.tenant.enabled && (
-          <span className="text-amber-600 dark:text-amber-400"> · disabled</span>
-        )}
-      </span>
-    ),
-  },
-  {
-    key: "priority",
-    header: "Default priority",
-    cell: (project) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        <Dash>{project.default_priority_class}</Dash>
-      </span>
-    ),
-  },
-  {
-    key: "enabled",
-    header: "Enabled",
-    cell: (project) => (
-      <StatusLabel tone={project.enabled ? "ok" : "neutral"}>
-        {project.enabled ? "yes" : "no"}
-      </StatusLabel>
-    ),
-  },
-  {
-    key: "effective",
-    header: "Effective",
-    cell: (project) => (
-      <StatusLabel tone={project.effective_enabled ? "ok" : "danger"}>
-        {project.effective_enabled ? "schedulable" : "blocked"}
-      </StatusLabel>
-    ),
-  },
-  {
-    key: "quotas",
-    header: "",
-    align: "right",
-    cell: (project) => (
-      <div className="flex items-center justify-end gap-2">
-        <Link
-          to="/quotas"
-          search={{ project: project.id }}
-          className="font-mono text-2xs text-muted-foreground hover:underline"
-        >
-          quotas →
-        </Link>
-        <RowActions
-          actions={[
-            { label: "Edit", onSelect: () => onEdit(project) },
-            { label: "Delete", destructive: true, onSelect: () => onDelete(project) },
-          ]}
-        />
-      </div>
-    ),
-  },
+      ),
+    },
+    {
+      key: "priority",
+      header: "Default priority",
+      cell: (project) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          <Dash>{project.default_priority_class}</Dash>
+        </span>
+      ),
+    },
+    {
+      key: "enabled",
+      header: "Enabled",
+      cell: (project) => (
+        <StatusLabel tone={project.enabled ? "ok" : "neutral"}>
+          {project.enabled ? "yes" : "no"}
+        </StatusLabel>
+      ),
+    },
+    {
+      key: "effective",
+      header: "Effective",
+      cell: (project) => (
+        <StatusLabel tone={project.effective_enabled ? "ok" : "danger"}>
+          {project.effective_enabled ? "schedulable" : "blocked"}
+        </StatusLabel>
+      ),
+    },
+    {
+      key: "quotas",
+      header: "",
+      align: "right",
+      cell: (project) => (
+        <div className="flex items-center justify-end gap-2">
+          <Link
+            to="/quotas"
+            search={{ project: project.id }}
+            className="font-mono text-2xs text-muted-foreground hover:underline"
+          >
+            quotas →
+          </Link>
+          <RowActions
+            actions={[
+              { label: "Edit", onSelect: () => onEdit(project) },
+              {
+                label: "Delete",
+                destructive: true,
+                onSelect: () => onDelete(project),
+              },
+            ]}
+          />
+        </div>
+      ),
+    },
   ]
 }
 
@@ -128,7 +139,10 @@ export function ProjectsPage() {
       </div>
 
       {creating && (
-        <ProjectForm open onOpenChange={(open) => !open && setCreating(false)} />
+        <ProjectForm
+          open
+          onOpenChange={(open) => !open && setCreating(false)}
+        />
       )}
       {editing && (
         <ProjectForm
@@ -154,7 +168,8 @@ export function ProjectsPage() {
               setDoomed(undefined)
               toast.success("Project deleted", { description: doomed.slug })
             },
-            onError: (e) => toast.error(formatError(e, "Could not delete project")),
+            onError: (e) =>
+              toast.error(formatError(e, "Could not delete project")),
           })
         }
       />

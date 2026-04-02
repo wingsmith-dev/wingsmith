@@ -18,10 +18,13 @@ import type {
  * knows is broken.
  */
 export const transport: Transport =
-  import.meta.env.VITE_API_MODE === "fixtures" ? fixtureTransport : httpTransport
+  import.meta.env.VITE_API_MODE === "fixtures"
+    ? fixtureTransport
+    : httpTransport
 
 function call<T>(method: HttpMethod, path: string, options?: RequestOptions) {
-  if (method !== "GET" && isReadOnly()) return Promise.reject(new ReadOnlyError())
+  if (method !== "GET" && isReadOnly())
+    return Promise.reject(new ReadOnlyError())
   return transport.request<T>(method, path, options)
 }
 
@@ -30,12 +33,21 @@ export const api = {
     call<T>("GET", path, { query }),
   list: <T>(path: string, query?: RequestOptions["query"]) =>
     call<ListResponse<T>>("GET", path, { query }),
-  post: <T>(path: string, body?: unknown, options?: Omit<RequestOptions, "body">) =>
-    call<T>("POST", path, { ...options, body }),
-  patch: <T>(path: string, body?: unknown, options?: Omit<RequestOptions, "body">) =>
-    call<T>("PATCH", path, { ...options, body }),
-  put: <T>(path: string, body?: unknown, options?: Omit<RequestOptions, "body">) =>
-    call<T>("PUT", path, { ...options, body }),
+  post: <T>(
+    path: string,
+    body?: unknown,
+    options?: Omit<RequestOptions, "body">
+  ) => call<T>("POST", path, { ...options, body }),
+  patch: <T>(
+    path: string,
+    body?: unknown,
+    options?: Omit<RequestOptions, "body">
+  ) => call<T>("PATCH", path, { ...options, body }),
+  put: <T>(
+    path: string,
+    body?: unknown,
+    options?: Omit<RequestOptions, "body">
+  ) => call<T>("PUT", path, { ...options, body }),
   delete: <T>(path: string, options?: RequestOptions) =>
     call<T>("DELETE", path, options),
 }

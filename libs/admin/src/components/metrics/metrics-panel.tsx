@@ -55,7 +55,8 @@ function Breakdown({ data }: { data: Metrics }) {
   return (
     <Card size="sm" className="gap-0 overflow-hidden px-0">
       <div className="px-3 pb-2 font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
-        Per {data.scope === "cluster" || data.scope === "pool" ? "node" : "device"}
+        Per{" "}
+        {data.scope === "cluster" || data.scope === "pool" ? "node" : "device"}
       </div>
       <div className="divide-y divide-border/60">
         {data.breakdown.map((member) => {
@@ -138,7 +139,9 @@ export function MetricsPanel({
     .filter((s): s is NonNullable<typeof s> => Boolean(s))
 
   if (!tiles.length) {
-    return <Empty reason="the metrics store returned no series for this object" />
+    return (
+      <Empty reason="the metrics store returned no series for this object" />
+    )
   }
 
   return (

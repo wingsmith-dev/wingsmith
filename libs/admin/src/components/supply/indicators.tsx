@@ -27,7 +27,7 @@ export function CordonState({ cordoned }: { cordoned: boolean }) {
   return (
     <Badge
       variant="outline"
-      className="border-amber-500/40 bg-amber-500/10 font-mono text-2xs uppercase tracking-wider text-amber-600 dark:text-amber-400"
+      className="border-amber-500/40 bg-amber-500/10 font-mono text-2xs tracking-wider text-amber-600 uppercase dark:text-amber-400"
     >
       cordoned
     </Badge>
@@ -37,7 +37,9 @@ export function CordonState({ cordoned }: { cordoned: boolean }) {
 export function DeviceHealthLabel({ device }: { device: Device }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-2">
-      <StatusLabel tone={deviceHealthTone(device.health)}>{device.health}</StatusLabel>
+      <StatusLabel tone={deviceHealthTone(device.health)}>
+        {device.health}
+      </StatusLabel>
       {device.throttled && (
         <Badge
           variant="outline"
@@ -57,9 +59,12 @@ export function DeviceHealthLabel({ device }: { device: Device }) {
  */
 export function EccCell({ device }: { device: Device }) {
   if (!device.ecc_enabled) {
-    return <span className="font-mono text-2xs text-muted-foreground/40">off</span>
+    return (
+      <span className="font-mono text-2xs text-muted-foreground/40">off</span>
+    )
   }
-  const clean = device.ecc_volatile_errors === 0 && device.ecc_aggregate_errors === 0
+  const clean =
+    device.ecc_volatile_errors === 0 && device.ecc_aggregate_errors === 0
   return (
     <span
       className={

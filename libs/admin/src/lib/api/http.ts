@@ -12,7 +12,8 @@ import {
   type Transport,
 } from "./transport"
 
-export const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
+export const BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
 export const API_PREFIX = "/v1"
 
 /** Scopes every request to one project, per `contract/API.md` §2. */
@@ -81,7 +82,8 @@ async function request<T>(
           ? { "Idempotency-Key": options.idempotencyKey }
           : {}),
       },
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body:
+        options.body === undefined ? undefined : JSON.stringify(options.body),
     })
   } catch {
     throw new NetworkError()

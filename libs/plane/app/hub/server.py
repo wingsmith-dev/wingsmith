@@ -115,7 +115,11 @@ async def serve_forever(stop: asyncio.Future[None] | None = None) -> None:
         ping_timeout=20,
     ) as server:
         logger.info(
-            "hub.startup host=%s port=%s path=%s instance=%s", settings.HUB_HOST, settings.HUB_PORT, settings.HUB_PATH, INSTANCE
+            "hub.startup host=%s port=%s path=%s instance=%s",
+            settings.HUB_HOST,
+            settings.HUB_PORT,
+            settings.HUB_PATH,
+            INSTANCE,
         )
         await stop
         server.close()

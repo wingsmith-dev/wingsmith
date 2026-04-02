@@ -5,7 +5,9 @@ from app.config import settings
 
 
 _FORMAT_TEXT = "%(asctime)s %(levelname)-8s %(name)s [%(process_name)s] %(message)s"
-_FORMAT_JSON = '{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","process":"%(process_name)s","msg":"%(message)s"}'
+_FORMAT_JSON = (
+    '{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","process":"%(process_name)s","msg":"%(message)s"}'
+)
 
 
 class _ProcessFilter(logging.Filter):

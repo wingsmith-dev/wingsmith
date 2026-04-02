@@ -1,4 +1,7 @@
-import { ResourceGlyph, type ResourceKind } from "@/components/layout/resource-icon"
+import {
+  ResourceGlyph,
+  type ResourceKind,
+} from "@/components/layout/resource-icon"
 import { cn } from "@/lib/utils"
 
 /**

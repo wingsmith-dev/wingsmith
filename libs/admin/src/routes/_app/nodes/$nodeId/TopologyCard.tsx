@@ -18,7 +18,9 @@ export function TopologyCard({ nodeId }: { nodeId: string }) {
       </CardHeader>
       <CardContent className="space-y-3">
         {isLoading && (
-          <p className="font-mono text-2xs text-muted-foreground/60">Loading…</p>
+          <p className="font-mono text-2xs text-muted-foreground/60">
+            Loading…
+          </p>
         )}
         {items?.length === 0 && (
           <p className="font-mono text-2xs text-muted-foreground/60">
@@ -26,7 +28,10 @@ export function TopologyCard({ nodeId }: { nodeId: string }) {
           </p>
         )}
         {items?.map((domain) => (
-          <div key={domain.id} className="rounded-md border bg-background/40 p-3">
+          <div
+            key={domain.id}
+            className="rounded-md border bg-background/40 p-3"
+          >
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-mono text-xs">{domain.identifier}</span>
               <span className="font-mono text-2xs text-muted-foreground/60">
@@ -40,7 +45,9 @@ export function TopologyCard({ nodeId }: { nodeId: string }) {
                   ? `${domain.link_bandwidth_gbps} Gb/s`
                   : "—"}
               </Field>
-              <Field label="Spans nodes">{domain.spans_nodes ? "yes" : "no"}</Field>
+              <Field label="Spans nodes">
+                {domain.spans_nodes ? "yes" : "no"}
+              </Field>
             </div>
           </div>
         ))}

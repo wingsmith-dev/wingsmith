@@ -21,7 +21,8 @@ export function PoolsPage() {
   const list = usePools({
     cluster: search.cluster,
     class: search.class,
-    enabled: search.enabled === undefined ? undefined : search.enabled === "true",
+    enabled:
+      search.enabled === undefined ? undefined : search.enabled === "true",
   })
   const remove = useDeletePool()
 
@@ -36,7 +37,8 @@ export function PoolsPage() {
         toast.success("Pool deleted", { description: deleting.name })
         setDeleting(null)
       },
-      onError: (error) => toast.error(formatError(error, "Could not delete pool")),
+      onError: (error) =>
+        toast.error(formatError(error, "Could not delete pool")),
     })
   }
 

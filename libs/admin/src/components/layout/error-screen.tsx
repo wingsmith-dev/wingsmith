@@ -26,15 +26,20 @@ export function ErrorScreen({ error, reset }: ErrorScreenProps) {
     <div className="flex min-h-screen flex-col items-center justify-center bg-background p-8">
       <div className="flex max-w-md flex-col items-center gap-6 text-center">
         <div className="flex size-16 items-center justify-center rounded-2xl border bg-secondary/60">
-          {isForbidden
-            ? <IconLock className="size-8 text-muted-foreground" />
-            : <IconServerOff className="size-8 text-muted-foreground" />
-          }
+          {isForbidden ? (
+            <IconLock className="size-8 text-muted-foreground" />
+          ) : (
+            <IconServerOff className="size-8 text-muted-foreground" />
+          )}
         </div>
 
         <div className="space-y-2">
           <h1 className="text-xl font-semibold tracking-tight">
-            {isNetwork ? "System Unavailable" : isForbidden ? "Access Denied" : "Something went wrong"}
+            {isNetwork
+              ? "System Unavailable"
+              : isForbidden
+                ? "Access Denied"
+                : "Something went wrong"}
           </h1>
           <p className="text-sm text-muted-foreground">{message}</p>
         </div>

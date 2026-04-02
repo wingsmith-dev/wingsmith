@@ -63,7 +63,8 @@ export function ProjectForm({
         { ref: project.id, body: shared, revision: project.revision },
         {
           onSuccess: () => done("updated"),
-          onError: (e) => toast.error(formatError(e, "Could not update project")),
+          onError: (e) =>
+            toast.error(formatError(e, "Could not update project")),
         }
       )
       return

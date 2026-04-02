@@ -61,7 +61,12 @@ export interface ArtifactUpdateRequest {
 }
 
 /** The four kinds the plane accepts. Anything else is `409 invalid`. */
-export const ARTIFACT_KINDS = ["adapter", "dataset", "image", "weights"] as const
+export const ARTIFACT_KINDS = [
+  "adapter",
+  "dataset",
+  "image",
+  "weights",
+] as const
 
 export interface RecipeShape {
   device_class: string
@@ -183,11 +188,7 @@ export type WorkloadType = "service" | "task" | "gang" | (string & {})
 
 /** `Workload.phase`. Decided by placement, never asserted by a client. */
 export type WorkloadPhase =
-  | "pending"
-  | "admitted"
-  | "placed"
-  | "running"
-  | (string & {})
+  "pending" | "admitted" | "placed" | "running" | (string & {})
 
 /**
  * `DeploymentWorkloadSchema` — the supertype half. Not copied onto the

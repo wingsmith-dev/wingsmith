@@ -15,9 +15,9 @@ import re
 from typing import Literal
 
 from msgspec import Raw
-from msgspec import field
 from msgspec import Struct
 from msgspec import json as msgjson
+from msgspec import field
 
 
 ENVELOPE_VERSION = 1

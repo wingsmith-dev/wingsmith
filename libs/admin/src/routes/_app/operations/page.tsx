@@ -55,7 +55,10 @@ export function OperationsPage() {
             label="Type"
             value={search.type ?? ALL}
             onChange={set("type")}
-            options={Object.keys(OPERATION_TYPES).map((t) => ({ value: t, label: t }))}
+            options={Object.keys(OPERATION_TYPES).map((t) => ({
+              value: t,
+              label: t,
+            }))}
           />
           <FilterSelect
             label="Phase"

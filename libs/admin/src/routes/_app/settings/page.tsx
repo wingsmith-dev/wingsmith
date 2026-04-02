@@ -15,7 +15,11 @@ import { useTheme } from "@/components/theme-provider"
 import { BASE_URL } from "@/lib/api/http"
 import { transport } from "@/lib/api"
 import { useAuthStore } from "@/modules/auth/store"
-import { ACCENTS, useSettingsStore, type Accent } from "@/modules/settings/store"
+import {
+  ACCENTS,
+  useSettingsStore,
+  type Accent,
+} from "@/modules/settings/store"
 
 function Section({
   title,
@@ -25,7 +29,7 @@ function Section({
   return (
     <Card className="overflow-hidden p-0">
       <div className="border-b bg-muted/30 px-4 py-3">
-        <h2 className="text-sm font-semibold leading-none">{title}</h2>
+        <h2 className="text-sm leading-none font-semibold">{title}</h2>
         <p className="mt-1 font-mono text-2xs text-muted-foreground/60">
           {description}
         </p>
@@ -51,10 +55,7 @@ export function SettingsPage() {
 
   return (
     <div className="flex flex-col">
-      <PageHeader
-        title="Settings"
-        description="this console · not the plane"
-      />
+      <PageHeader title="Settings" description="this console · not the plane" />
 
       <div className="max-w-3xl space-y-4 p-4">
         <Section
@@ -69,7 +70,11 @@ export function SettingsPage() {
                 affordances that would start one.
               </p>
             </div>
-            <Switch id="read-only" checked={readOnly} onCheckedChange={setReadOnly} />
+            <Switch
+              id="read-only"
+              checked={readOnly}
+              onCheckedChange={setReadOnly}
+            />
           </div>
 
           <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
@@ -124,13 +129,20 @@ export function SettingsPage() {
 
           <div className="space-y-1.5">
             <Label htmlFor="theme">Theme</Label>
-            <Select value={theme} onValueChange={(v) => setTheme(v as typeof theme)}>
+            <Select
+              value={theme}
+              onValueChange={(v) => setTheme(v as typeof theme)}
+            >
               <SelectTrigger id="theme" className="w-56 font-mono text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 {["system", "light", "dark"].map((value) => (
-                  <SelectItem key={value} value={value} className="font-mono text-xs">
+                  <SelectItem
+                    key={value}
+                    value={value}
+                    className="font-mono text-xs"
+                  >
                     {value}
                   </SelectItem>
                 ))}

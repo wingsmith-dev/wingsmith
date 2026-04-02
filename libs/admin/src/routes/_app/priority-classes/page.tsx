@@ -3,7 +3,10 @@ import { DeleteDialog } from "@/components/layout/destructive"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
 import { formatError } from "@/lib/format"
-import { useDeletePriorityClass, usePriorityClasses } from "@/modules/binding/queries"
+import {
+  useDeletePriorityClass,
+  usePriorityClasses,
+} from "@/modules/binding/queries"
 import type { PriorityClass } from "@/modules/binding/types"
 import { PriorityClassCard } from "./PriorityClassCard"
 import { PriorityClassForm } from "./PriorityClassForm"
@@ -50,7 +53,10 @@ export function PriorityClassesPage() {
       </div>
 
       {creating && (
-        <PriorityClassForm open onOpenChange={(open) => !open && setCreating(false)} />
+        <PriorityClassForm
+          open
+          onOpenChange={(open) => !open && setCreating(false)}
+        />
       )}
       {editing && (
         <PriorityClassForm
@@ -74,9 +80,12 @@ export function PriorityClassesPage() {
           remove.mutate(doomed.id, {
             onSuccess: () => {
               setDoomed(undefined)
-              toast.success("Priority class deleted", { description: doomed.name })
+              toast.success("Priority class deleted", {
+                description: doomed.name,
+              })
             },
-            onError: (e) => toast.error(formatError(e, "Could not delete class")),
+            onError: (e) =>
+              toast.error(formatError(e, "Could not delete class")),
           })
         }
       />

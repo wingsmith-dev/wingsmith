@@ -18,7 +18,9 @@ export function useClusters(filters: ClusterFilters = {}) {
 
 /** Every cluster, drained across pages — for filter controls and name lookups. */
 export function useClusterOptions() {
-  return useAllPages(["clusters", "options"], (cursor) => fetchClusters({}, cursor, 200))
+  return useAllPages(["clusters", "options"], (cursor) =>
+    fetchClusters({}, cursor, 200)
+  )
 }
 
 export function useCluster(ref: string) {
@@ -44,8 +46,11 @@ export function useCreateCluster() {
 export function useUpdateCluster() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { ref: string; body: ClusterUpdateRequest; revision?: string }) =>
-      updateCluster(vars.ref, vars.body, vars.revision),
+    mutationFn: (vars: {
+      ref: string
+      body: ClusterUpdateRequest
+      revision?: string
+    }) => updateCluster(vars.ref, vars.body, vars.revision),
     onSuccess: () => client.invalidateQueries({ queryKey: ["clusters"] }),
   })
 }

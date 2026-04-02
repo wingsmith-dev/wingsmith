@@ -53,7 +53,9 @@ export function PriorityClassCard({
             {priorityClass.preemptible ? "yes" : "no"}
           </Field>
           <Field label="Value">{priorityClass.value}</Field>
-          <Field label="Updated">{formatRelative(priorityClass.updated_at)}</Field>
+          <Field label="Updated">
+            {formatRelative(priorityClass.updated_at)}
+          </Field>
         </div>
 
         <Field label="Description">

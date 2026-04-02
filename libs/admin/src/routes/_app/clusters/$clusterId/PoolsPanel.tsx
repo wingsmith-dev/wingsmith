@@ -35,14 +35,17 @@ export function ClusterPoolsPanel({
         toast.success("Pool deleted", { description: deleting.name })
         setDeleting(null)
       },
-      onError: (error) => toast.error(formatError(error, "Could not delete pool")),
+      onError: (error) =>
+        toast.error(formatError(error, "Could not delete pool")),
     })
   }
 
   return (
     <div className="space-y-4">
       {list.isLoading &&
-        Array.from({ length: 2 }, (_, i) => <Skeleton key={i} className="h-56 w-full" />)}
+        Array.from({ length: 2 }, (_, i) => (
+          <Skeleton key={i} className="h-56 w-full" />
+        ))}
 
       {!!list.error && (
         <p className="py-10 text-center text-sm text-destructive">

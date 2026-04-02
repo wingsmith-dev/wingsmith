@@ -11,7 +11,8 @@ export type ClusterPhase = "pending" | "active" | "draining" | "disabled"
  * because the plane derives this value and may derive one the console has not
  * been taught about yet.
  */
-export type SyncState = "connected" | "disconnected" | "never_connected" | (string & {})
+export type SyncState =
+  "connected" | "disconnected" | "never_connected" | (string & {})
 
 /** Observed liveness of a cluster's agent link. */
 export interface ClusterSync {

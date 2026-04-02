@@ -39,8 +39,12 @@ export function EndpointForm({
   const [name, setName] = useState(endpoint?.name ?? "")
   const [project, setProject] = useState(endpoint?.project_id ?? "")
   const [displayName, setDisplayName] = useState(endpoint?.display_name ?? "")
-  const [visibility, setVisibility] = useState(endpoint?.visibility ?? "private")
-  const [routing, setRouting] = useState(endpoint?.routing_strategy ?? "weighted")
+  const [visibility, setVisibility] = useState(
+    endpoint?.visibility ?? "private"
+  )
+  const [routing, setRouting] = useState(
+    endpoint?.routing_strategy ?? "weighted"
+  )
   const [enabled, setEnabled] = useState(endpoint?.enabled ?? true)
   const [targets, setTargets] = useState<unknown>(
     endpoint?.targets.map((t) => ({
@@ -51,9 +55,13 @@ export function EndpointForm({
     })) ?? []
   )
   const [targetsValid, setTargetsValid] = useState(true)
-  const [failover, setFailover] = useState<unknown>(endpoint?.failover_order ?? [])
+  const [failover, setFailover] = useState<unknown>(
+    endpoint?.failover_order ?? []
+  )
   const [failoverValid, setFailoverValid] = useState(true)
-  const [labels, setLabels] = useState<Record<string, string>>(endpoint?.labels ?? {})
+  const [labels, setLabels] = useState<Record<string, string>>(
+    endpoint?.labels ?? {}
+  )
 
   const pending = create.isPending || update.isPending
   const error = create.error ?? update.error
@@ -79,7 +87,8 @@ export function EndpointForm({
         { ref: endpoint.id, body: shared, revision: endpoint.revision },
         {
           onSuccess: () => done("updated"),
-          onError: (e) => toast.error(formatError(e, "Could not update endpoint")),
+          onError: (e) =>
+            toast.error(formatError(e, "Could not update endpoint")),
         }
       )
       return
@@ -88,7 +97,8 @@ export function EndpointForm({
       { name, project, ...shared },
       {
         onSuccess: () => done("published"),
-        onError: (e) => toast.error(formatError(e, "Could not create endpoint")),
+        onError: (e) =>
+          toast.error(formatError(e, "Could not create endpoint")),
       }
     )
   }
@@ -116,7 +126,10 @@ export function EndpointForm({
             label="Project"
             value={project}
             onChange={setProject}
-            options={(projects ?? []).map((p) => ({ value: p.id, label: p.slug }))}
+            options={(projects ?? []).map((p) => ({
+              value: p.id,
+              label: p.slug,
+            }))}
           />
         </FormGrid>
       )}

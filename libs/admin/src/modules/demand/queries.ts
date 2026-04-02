@@ -94,7 +94,9 @@ export function useDeleteArtifact() {
 }
 
 export function useRecipes(filters: RecipeFilters = {}) {
-  return useCursorList(["recipes", filters], (cursor) => fetchRecipes(filters, cursor))
+  return useCursorList(["recipes", filters], (cursor) =>
+    fetchRecipes(filters, cursor)
+  )
 }
 
 export function useRecipe(ref: string) {
@@ -106,7 +108,9 @@ export function useRecipe(ref: string) {
 }
 
 export function useRecipeOptions() {
-  return useAllPages(["recipes", "options"], (cursor) => fetchRecipes({}, cursor, 200))
+  return useAllPages(["recipes", "options"], (cursor) =>
+    fetchRecipes({}, cursor, 200)
+  )
 }
 
 export function useCreateRecipe() {
@@ -120,8 +124,11 @@ export function useCreateRecipe() {
 export function useUpdateRecipe() {
   const client = useQueryClient()
   return useMutation({
-    mutationFn: (vars: { ref: string; body: RecipeUpdateRequest; revision?: string }) =>
-      updateRecipe(vars.ref, vars.body, vars.revision),
+    mutationFn: (vars: {
+      ref: string
+      body: RecipeUpdateRequest
+      revision?: string
+    }) => updateRecipe(vars.ref, vars.body, vars.revision),
     onSuccess: () => client.invalidateQueries({ queryKey: ["recipes"] }),
   })
 }

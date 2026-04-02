@@ -79,7 +79,11 @@ export function fetchTopologyDomains(
   cursor?: string,
   limit?: number
 ): Promise<ListResponse<TopologyDomain>> {
-  return api.list<TopologyDomain>("/topology-domains", { ...filters, cursor, limit })
+  return api.list<TopologyDomain>("/topology-domains", {
+    ...filters,
+    cursor,
+    limit,
+  })
 }
 
 export function fetchTopologyDomain(ref: string): Promise<TopologyDomain> {

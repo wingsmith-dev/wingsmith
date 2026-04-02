@@ -34,7 +34,9 @@ export function ResourceGlyph({
     >
       <ResourceIcon
         kind={kind}
-        className={size === "md" ? "size-5" : size === "sm" ? "size-4" : "size-3.5"}
+        className={
+          size === "md" ? "size-5" : size === "sm" ? "size-4" : "size-3.5"
+        }
       />
     </div>
   )

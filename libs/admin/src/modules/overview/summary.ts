@@ -243,7 +243,10 @@ function poolActionables(pools: Pool[]): Actionable[] {
 
   for (const pool of pools) {
     const have = pool.membership.nodes_total
-    const link: LinkProps = { to: "/pools/$poolId", params: { poolId: pool.id } }
+    const link: LinkProps = {
+      to: "/pools/$poolId",
+      params: { poolId: pool.id },
+    }
     const badges = [pool.device_class, ...(pool.enabled ? [] : ["disabled"])]
 
     if (have < pool.min_nodes) {
@@ -284,7 +287,8 @@ function poolActionables(pools: Pool[]): Actionable[] {
 function deviceActionables(devices: Device[]): Actionable[] {
   return summariseDevices(devices).impaired.map((device) => ({
     id: `device:${device.id}`,
-    tone: device.health === "unhealthy" ? ("danger" as const) : ("warn" as const),
+    tone:
+      device.health === "unhealthy" ? ("danger" as const) : ("warn" as const),
     kind: "device" as const,
     title: `${device.node_name} · gpu ${device.device_index} is ${device.health}${
       device.throttled ? " and throttled" : ""
@@ -299,7 +303,10 @@ function nodeActionables(nodes: SupplyNode[]): Actionable[] {
   const out: Actionable[] = []
 
   for (const node of nodes) {
-    const link: LinkProps = { to: "/nodes/$nodeId", params: { nodeId: node.id } }
+    const link: LinkProps = {
+      to: "/nodes/$nodeId",
+      params: { nodeId: node.id },
+    }
 
     if (!node.ready) {
       out.push({
@@ -377,8 +384,12 @@ function operationActionables(operations: Operation[]): Actionable[] {
     detail: `${operation.target.type} ${operation.target.id} · requested ${formatRelative(
       operation.created_at
     )}`,
-    badges: operation.attempts > 1 ? [`attempt ${operation.attempts}`] : undefined,
-    link: { to: "/operations/$operationId", params: { operationId: operation.id } },
+    badges:
+      operation.attempts > 1 ? [`attempt ${operation.attempts}`] : undefined,
+    link: {
+      to: "/operations/$operationId",
+      params: { operationId: operation.id },
+    },
   }))
 }
 

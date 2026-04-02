@@ -26,7 +26,8 @@ export class FixtureQuery {
     for (const [key, value] of Object.entries(query)) {
       if (value === undefined || value === null || value === "") continue
       if (Array.isArray(value)) {
-        for (const entry of value) if (entry !== "") this.entries.push([key, entry])
+        for (const entry of value)
+          if (entry !== "") this.entries.push([key, entry])
         continue
       }
       this.entries.push([key, String(value)])
@@ -133,7 +134,10 @@ const MAX_LIMIT = 200
  */
 export function page<T>(rows: T[], query?: FixtureQuery): ListResponse<T> {
   const requested = query?.int("limit")
-  const limit = Math.min(requested && requested > 0 ? requested : DEFAULT_LIMIT, MAX_LIMIT)
+  const limit = Math.min(
+    requested && requested > 0 ? requested : DEFAULT_LIMIT,
+    MAX_LIMIT
+  )
   const cursor = query?.get("cursor")
   const offset = cursor ? Number.parseInt(atob(pad(cursor)), 10) : 0
   const start = Number.isNaN(offset) ? 0 : offset
@@ -152,7 +156,10 @@ function pad(cursor: string): string {
 }
 
 /** Case-insensitive substring match, the shape every `?search=` filter takes. */
-export function matchesSearch(needle: string | undefined, ...haystack: (string | null)[]) {
+export function matchesSearch(
+  needle: string | undefined,
+  ...haystack: (string | null)[]
+) {
   if (!needle) return true
   const term = needle.toLowerCase()
   return haystack.some((value) => value?.toLowerCase().includes(term))

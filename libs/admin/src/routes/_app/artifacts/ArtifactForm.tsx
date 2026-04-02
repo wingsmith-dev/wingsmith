@@ -42,7 +42,9 @@ export function ArtifactForm({
   const [name, setName] = useState(artifact?.name ?? "")
   const [kind, setKind] = useState(artifact?.kind ?? "weights")
   const [format, setFormat] = useState(artifact?.format ?? "")
-  const [sizeBytes, setSizeBytes] = useState<number | null>(artifact?.size_bytes ?? 0)
+  const [sizeBytes, setSizeBytes] = useState<number | null>(
+    artifact?.size_bytes ?? 0
+  )
   const [licence, setLicence] = useState(artifact?.licence ?? "")
   const [parameterCount, setParameterCount] = useState<number | null>(
     artifact?.parameter_count ?? null
@@ -86,7 +88,8 @@ export function ArtifactForm({
         { ref: artifact.id, body: shared, revision: artifact.revision },
         {
           onSuccess: () => done("updated"),
-          onError: (e) => toast.error(formatError(e, "Could not update artifact")),
+          onError: (e) =>
+            toast.error(formatError(e, "Could not update artifact")),
         }
       )
       return
@@ -95,7 +98,8 @@ export function ArtifactForm({
       { digest, ...shared },
       {
         onSuccess: () => done("registered"),
-        onError: (e) => toast.error(formatError(e, "Could not register artifact")),
+        onError: (e) =>
+          toast.error(formatError(e, "Could not register artifact")),
       }
     )
   }

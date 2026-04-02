@@ -43,7 +43,8 @@ export function ClustersPage() {
         toast.success("Cluster deleted", { description: deleting.name })
         setDeleting(null)
       },
-      onError: (error) => toast.error(formatError(error, "Could not delete cluster")),
+      onError: (error) =>
+        toast.error(formatError(error, "Could not delete cluster")),
     })
   }
 
@@ -65,13 +66,19 @@ export function ClustersPage() {
             label="Phase"
             value={search.phase ?? ALL}
             onChange={set("phase")}
-            options={CLUSTER_PHASES.map((phase) => ({ value: phase, label: phase }))}
+            options={CLUSTER_PHASES.map((phase) => ({
+              value: phase,
+              label: phase,
+            }))}
           />
           <FilterSelect
             label="Region"
             value={search.region ?? ALL}
             onChange={set("region")}
-            options={regions.map((region) => ({ value: region, label: region }))}
+            options={regions.map((region) => ({
+              value: region,
+              label: region,
+            }))}
           />
         </div>
 
@@ -121,7 +128,10 @@ export function ClustersPage() {
       </div>
 
       {creating && (
-        <ClusterForm open onOpenChange={(open) => !open && setCreating(false)} />
+        <ClusterForm
+          open
+          onOpenChange={(open) => !open && setCreating(false)}
+        />
       )}
       {editing && (
         <ClusterForm

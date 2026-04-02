@@ -18,7 +18,10 @@ import {
 } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
-import { ResourceIcon, type ResourceKind } from "@/components/layout/resource-icon"
+import {
+  ResourceIcon,
+  type ResourceKind,
+} from "@/components/layout/resource-icon"
 import { formatError } from "@/lib/format"
 import { useReadOnly } from "@/modules/settings/store"
 import { cn } from "@/lib/utils"
@@ -58,10 +61,14 @@ export function FormDialog({
   const readOnly = useReadOnly()
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={cn("max-h-[85vh] overflow-y-auto", wide && "sm:max-w-2xl")}>
+      <DialogContent
+        className={cn("max-h-[85vh] overflow-y-auto", wide && "sm:max-w-2xl")}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {icon && <ResourceIcon kind={icon} className="text-muted-foreground" />}
+            {icon && (
+              <ResourceIcon kind={icon} className="text-muted-foreground" />
+            )}
             {title}
           </DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
@@ -90,7 +97,11 @@ export function FormDialog({
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={disabled || pending || readOnly}>
@@ -214,7 +225,9 @@ export function SelectField({
   className?: string
 }) {
   const id = useId()
-  const entries = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o))
+  const entries = options.map((o) =>
+    typeof o === "string" ? { value: o, label: o } : o
+  )
   return (
     <Row label={label} hint={hint} htmlFor={id} className={className}>
       <Select value={value} onValueChange={onChange}>
@@ -223,7 +236,11 @@ export function SelectField({
         </SelectTrigger>
         <SelectContent>
           {entries.map((entry) => (
-            <SelectItem key={entry.value} value={entry.value} className="font-mono text-xs">
+            <SelectItem
+              key={entry.value}
+              value={entry.value}
+              className="font-mono text-xs"
+            >
               {entry.label}
             </SelectItem>
           ))}
@@ -293,7 +310,12 @@ export function LabelsField({
   }
 
   return (
-    <Row label={label} hint="One k=v per line." htmlFor={id} className={className}>
+    <Row
+      label={label}
+      hint="One k=v per line."
+      htmlFor={id}
+      className={className}
+    >
       <Textarea
         id={id}
         rows={3}

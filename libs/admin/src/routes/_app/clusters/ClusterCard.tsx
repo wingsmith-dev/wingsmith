@@ -5,7 +5,12 @@ import { ResourceGlyph } from "@/components/layout/resource-icon"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Card } from "@/components/ui/card"
 import { formatRelative } from "@/lib/format"
-import { CLUSTER_PHASE_TONE, clusterLabel, humanize, syncTone } from "@/modules/clusters/display"
+import {
+  CLUSTER_PHASE_TONE,
+  clusterLabel,
+  humanize,
+  syncTone,
+} from "@/modules/clusters/display"
 import type { Cluster } from "@/modules/clusters/types"
 import { Link } from "@tanstack/react-router"
 
@@ -66,11 +71,16 @@ export function ClusterCard({
           <Field label="Region">
             {cluster.region}
             {cluster.zone && (
-              <span className="text-muted-foreground/50"> · {cluster.zone}</span>
+              <span className="text-muted-foreground/50">
+                {" "}
+                · {cluster.zone}
+              </span>
             )}
           </Field>
           <Field label="Agent">{cluster.sync.agent_version ?? "—"}</Field>
-          <Field label="Last sync">{formatRelative(cluster.sync.last_sync_at)}</Field>
+          <Field label="Last sync">
+            {formatRelative(cluster.sync.last_sync_at)}
+          </Field>
           <Field label="Enrolled">{formatRelative(cluster.enrolled_at)}</Field>
           <Field label="Labels" className="sm:col-span-2">
             <Labels labels={cluster.labels} />

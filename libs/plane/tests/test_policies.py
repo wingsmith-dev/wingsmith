@@ -42,9 +42,7 @@ def test_get_query_resolves_a_name(repo):
 
 
 def test_list_query_filters_compile_into_one_statement(repo):
-    text = sql(
-        repo.list_query(limit=10, after_seq=2, enabled=True, region="iad", device_class="h100", search="eu")
-    )
+    text = sql(repo.list_query(limit=10, after_seq=2, enabled=True, region="iad", device_class="h100", search="eu"))
     assert "bind_policy.seq > " in text
     assert "bind_policy.enabled IS true" in text
     assert "bind_policy.allowed_regions" in text

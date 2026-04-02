@@ -108,7 +108,11 @@ export function fetchPriorityClasses(
   cursor?: string,
   limit?: number
 ): Promise<ListResponse<PriorityClass>> {
-  return api.list<PriorityClass>("/priority-classes", { ...filters, cursor, limit })
+  return api.list<PriorityClass>("/priority-classes", {
+    ...filters,
+    cursor,
+    limit,
+  })
 }
 
 export function fetchPriorityClass(ref: string): Promise<PriorityClass> {
@@ -127,9 +131,13 @@ export function updatePriorityClass(
   body: PriorityClassUpdateRequest,
   revision?: string
 ): Promise<PriorityClass> {
-  return api.patch<PriorityClass>(`/priority-classes/${encodeURIComponent(ref)}`, body, {
-    ifMatch: revision,
-  })
+  return api.patch<PriorityClass>(
+    `/priority-classes/${encodeURIComponent(ref)}`,
+    body,
+    {
+      ifMatch: revision,
+    }
+  )
 }
 
 export function deletePriorityClass(ref: string): Promise<void> {

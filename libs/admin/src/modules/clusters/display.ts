@@ -33,6 +33,9 @@ export function humanize(value: string): string {
   return value.replace(/_/g, " ")
 }
 
-export function clusterLabel(cluster: { display_name: string | null; name: string }) {
+export function clusterLabel(cluster: {
+  display_name: string | null
+  name: string
+}) {
   return cluster.display_name ?? cluster.name
 }

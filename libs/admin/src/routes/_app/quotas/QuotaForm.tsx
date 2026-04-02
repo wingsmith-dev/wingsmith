@@ -7,7 +7,11 @@ import {
   TextField,
 } from "@/components/layout/form"
 import { formatError } from "@/lib/format"
-import { useCreateQuota, useProjectOptions, useUpdateQuota } from "@/modules/binding/queries"
+import {
+  useCreateQuota,
+  useProjectOptions,
+  useUpdateQuota,
+} from "@/modules/binding/queries"
 import type { Quota } from "@/modules/binding/types"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
@@ -42,8 +46,12 @@ export function QuotaForm({
   const [guaranteed, setGuaranteed] = useState<number | null>(
     quota?.guaranteed_devices ?? 0
   )
-  const [limit, setLimit] = useState<number | null>(quota?.limit_devices ?? null)
-  const [weight, setWeight] = useState<number | null>(quota?.over_quota_weight ?? 1)
+  const [limit, setLimit] = useState<number | null>(
+    quota?.limit_devices ?? null
+  )
+  const [weight, setWeight] = useState<number | null>(
+    quota?.over_quota_weight ?? 1
+  )
   const [overQuota, setOverQuota] = useState(quota?.over_quota_enabled ?? true)
 
   const pending = create.isPending || update.isPending
@@ -104,7 +112,10 @@ export function QuotaForm({
             label="Project"
             value={project}
             onChange={setProject}
-            options={(projects ?? []).map((p) => ({ value: p.id, label: p.slug }))}
+            options={(projects ?? []).map((p) => ({
+              value: p.id,
+              label: p.slug,
+            }))}
           />
           <SelectField
             label="Cluster"

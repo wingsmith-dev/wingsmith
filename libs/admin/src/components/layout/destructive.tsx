@@ -16,7 +16,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
-import { ResourceIcon, type ResourceKind } from "@/components/layout/resource-icon"
+import {
+  ResourceIcon,
+  type ResourceKind,
+} from "@/components/layout/resource-icon"
 import { formatError } from "@/lib/format"
 import { useReadOnly } from "@/modules/settings/store"
 import { IconDotsVertical } from "@tabler/icons-react"
@@ -52,12 +55,14 @@ export function DeleteDialog({
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
-            {icon && <ResourceIcon kind={icon} className="text-muted-foreground" />}
+            {icon && (
+              <ResourceIcon kind={icon} className="text-muted-foreground" />
+            )}
             Delete {kind}?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            <span className="font-mono text-foreground">{name}</span> will be removed
-            from the plane. {note}
+            <span className="font-mono text-foreground">{name}</span> will be
+            removed from the plane. {note}
           </AlertDialogDescription>
         </AlertDialogHeader>
 

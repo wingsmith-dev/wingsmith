@@ -24,7 +24,8 @@ const LABELS: Partial<Record<OperationType, string>> = {
 const PREDICATES: Partial<Record<OperationType, Predicate>> = {
   "node.drain": (context) => (context.cordoned ? "already cordoned" : null),
   "node.cordon": (context) => (context.cordoned ? "already cordoned" : null),
-  "node.uncordon": (context) => (context.cordoned === false ? "not cordoned" : null),
+  "node.uncordon": (context) =>
+    context.cordoned === false ? "not cordoned" : null,
   "node.reboot": (context) =>
     context.cordoned === false ? "cordon the node first" : null,
   "device.reset": (context) =>
@@ -64,7 +65,9 @@ export const OPERATION_REGISTRY = Object.fromEntries(
 
 /** Every operation whose target carries this id prefix, in declaration order. */
 export function operationsForPrefix(prefix: string): OperationDefinition[] {
-  return Object.values(OPERATION_REGISTRY).filter((entry) => entry.prefix === prefix)
+  return Object.values(OPERATION_REGISTRY).filter(
+    (entry) => entry.prefix === prefix
+  )
 }
 
 export function operationLabel(type: string): string {

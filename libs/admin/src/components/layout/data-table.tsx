@@ -79,7 +79,11 @@ export function DataTable<T>({
             {items?.map((row) => (
               <TableRow
                 key={rowKey(row)}
-                className={onRowClick ? "cursor-pointer hover:bg-accent/40" : "hover:bg-accent/40"}
+                className={
+                  onRowClick
+                    ? "cursor-pointer hover:bg-accent/40"
+                    : "hover:bg-accent/40"
+                }
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
               >
                 {columns.map((column) => (

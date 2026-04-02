@@ -44,7 +44,9 @@ const MAX_PAGES = 40
  * control has to enumerate — clusters, projects, priority classes — and capped
  * so a runaway cursor cannot spin forever.
  */
-export async function fetchAllPages<T>(fetchPage: PageFetcher<T>): Promise<T[]> {
+export async function fetchAllPages<T>(
+  fetchPage: PageFetcher<T>
+): Promise<T[]> {
   const out: T[] = []
   let cursor: string | undefined
   for (let i = 0; i < MAX_PAGES; i++) {

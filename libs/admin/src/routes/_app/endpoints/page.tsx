@@ -20,80 +20,87 @@ function columns(
   onDelete: (endpoint: Endpoint) => void
 ): Column<Endpoint>[] {
   return [
-  {
-    key: "name",
-    header: "Endpoint",
-    cell: (endpoint) => (
-      <ResourceCell kind="endpoint">
-        <Link
-          to="/endpoints/$endpointId"
-          params={{ endpointId: endpoint.id }}
-          className="block"
-        >
-          <span className="font-mono text-xs">{endpoint.name}</span>
-          <Id value={endpoint.id} className="ml-2" />
-        </Link>
-      </ResourceCell>
-    ),
-  },
-  {
-    key: "display_name",
-    header: "Display name",
-    cell: (endpoint) => (
-      <span className="text-xs text-muted-foreground">
-        <Dash>{endpoint.display_name}</Dash>
-      </span>
-    ),
-  },
-  {
-    key: "visibility",
-    header: "Visibility",
-    cell: (endpoint) => (
-      <Badge variant="secondary" className="font-mono text-2xs">
-        {endpoint.visibility}
-      </Badge>
-    ),
-  },
-  {
-    key: "routing",
-    header: "Routing",
-    cell: (endpoint) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {endpoint.routing_strategy}
-      </span>
-    ),
-  },
-  {
-    key: "targets",
-    header: "Targets",
-    align: "right",
-    cell: (endpoint) => (
-      <span className="font-mono text-xs">
-        {endpoint.targets.filter((t) => t.enabled).length}/{endpoint.targets.length}
-      </span>
-    ),
-  },
-  {
-    key: "enabled",
-    header: "Enabled",
-    align: "right",
-    cell: (endpoint) => (
-      <span className="font-mono text-2xs">{endpoint.enabled ? "yes" : "no"}</span>
-    ),
-  },
-  {
-    key: "actions",
-    header: "",
-    align: "right",
-    cell: (endpoint) => (
-      <RowActions
-        actions={[
-          { label: "Edit", onSelect: () => onEdit(endpoint) },
-          { label: "Delete", destructive: true, onSelect: () => onDelete(endpoint) },
-        ]}
-      />
-    ),
-  },
+    {
+      key: "name",
+      header: "Endpoint",
+      cell: (endpoint) => (
+        <ResourceCell kind="endpoint">
+          <Link
+            to="/endpoints/$endpointId"
+            params={{ endpointId: endpoint.id }}
+            className="block"
+          >
+            <span className="font-mono text-xs">{endpoint.name}</span>
+            <Id value={endpoint.id} className="ml-2" />
+          </Link>
+        </ResourceCell>
+      ),
+    },
+    {
+      key: "display_name",
+      header: "Display name",
+      cell: (endpoint) => (
+        <span className="text-xs text-muted-foreground">
+          <Dash>{endpoint.display_name}</Dash>
+        </span>
+      ),
+    },
+    {
+      key: "visibility",
+      header: "Visibility",
+      cell: (endpoint) => (
+        <Badge variant="secondary" className="font-mono text-2xs">
+          {endpoint.visibility}
+        </Badge>
+      ),
+    },
+    {
+      key: "routing",
+      header: "Routing",
+      cell: (endpoint) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {endpoint.routing_strategy}
+        </span>
+      ),
+    },
+    {
+      key: "targets",
+      header: "Targets",
+      align: "right",
+      cell: (endpoint) => (
+        <span className="font-mono text-xs">
+          {endpoint.targets.filter((t) => t.enabled).length}/
+          {endpoint.targets.length}
+        </span>
+      ),
+    },
+    {
+      key: "enabled",
+      header: "Enabled",
+      align: "right",
+      cell: (endpoint) => (
+        <span className="font-mono text-2xs">
+          {endpoint.enabled ? "yes" : "no"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (endpoint) => (
+        <RowActions
+          actions={[
+            { label: "Edit", onSelect: () => onEdit(endpoint) },
+            {
+              label: "Delete",
+              destructive: true,
+              onSelect: () => onDelete(endpoint),
+            },
+          ]}
+        />
+      ),
+    },
   ]
 }
 
@@ -153,7 +160,10 @@ export function EndpointsPage() {
       </div>
 
       {creating && (
-        <EndpointForm open onOpenChange={(open) => !open && setCreating(false)} />
+        <EndpointForm
+          open
+          onOpenChange={(open) => !open && setCreating(false)}
+        />
       )}
       {editing && (
         <EndpointForm
@@ -179,7 +189,8 @@ export function EndpointsPage() {
               setDoomed(undefined)
               toast.success("Endpoint deleted", { description: doomed.name })
             },
-            onError: (e) => toast.error(formatError(e, "Could not delete endpoint")),
+            onError: (e) =>
+              toast.error(formatError(e, "Could not delete endpoint")),
           })
         }
       />

@@ -34,7 +34,11 @@ export function PoliciesPage() {
         }
       />
       <div className="space-y-4 p-4">
-        <CardGrid list={list} rowKey={(policy) => policy.id} empty="No policies declared.">
+        <CardGrid
+          list={list}
+          rowKey={(policy) => policy.id}
+          empty="No policies declared."
+        >
           {(policy) => (
             <PolicyCard
               policy={policy}
@@ -72,7 +76,8 @@ export function PoliciesPage() {
               setDoomed(undefined)
               toast.success("Policy deleted", { description: doomed.name })
             },
-            onError: (e) => toast.error(formatError(e, "Could not delete policy")),
+            onError: (e) =>
+              toast.error(formatError(e, "Could not delete policy")),
           })
         }
       />
