@@ -17,6 +17,15 @@ COPY README.md ./
 RUN uv sync --locked --no-dev
 
 FROM python:3.12.8-slim-bookworm
+
+# psycopg is the pure-Python build and loads libpq at import time. A developer's machine has one
+# already, which is why this is missing rather than wrong: the image had never been run. Installing
+# the system library keeps the dependency pinned as it is, where switching to psycopg[binary] would
+# vendor a second copy of libpq into the wheel and pin it to psycopg's release cadence.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends libpq5 && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN groupadd --gid 65532 hangar && \
     useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin hangar
 
