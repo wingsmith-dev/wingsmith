@@ -12,13 +12,12 @@ import {
 } from "@/components/ui/sidebar"
 import { Badge } from "@/components/ui/badge"
 import { transport } from "@/lib/api"
-import { ResourceIcon, type ResourceKind } from "@/components/layout/resource-icon"
 import {
-  IconEye,
-  IconLogout,
-  IconSettings,
-  IconTopologyStar3,
-} from "@tabler/icons-react"
+  ResourceIcon,
+  type ResourceKind,
+} from "@/components/layout/resource-icon"
+import { HangarMark } from "@/components/layout/hangar-mark"
+import { IconEye, IconLogout, IconSettings } from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
 import { useAuthStore } from "@/modules/auth/store"
 import { useReadOnly } from "@/modules/settings/store"
@@ -56,7 +55,11 @@ const fleetItems: NavItem[] = [
 const accessItems: NavItem[] = [
   { label: "Projects", to: "/projects", kind: "project" },
   { label: "Quotas", to: "/quotas", kind: "quota" },
-  { label: "Priority classes", to: "/priority-classes", kind: "priority-class" },
+  {
+    label: "Priority classes",
+    to: "/priority-classes",
+    kind: "priority-class",
+  },
   { label: "Policies", to: "/policies", kind: "policy" },
 ]
 
@@ -80,9 +83,11 @@ function NavGroup({
 }) {
   return (
     <SidebarGroup>
-      {label && <SidebarGroupLabel className="font-mono text-2xs font-semibold uppercase tracking-[0.15em] text-muted-foreground/50">
-        {label}
-      </SidebarGroupLabel>}
+      {label && (
+        <SidebarGroupLabel className="font-mono text-2xs font-semibold tracking-[0.15em] text-muted-foreground/50 uppercase">
+          {label}
+        </SidebarGroupLabel>
+      )}
       <SidebarMenu>
         {items.map((item) => (
           <SidebarMenuItem key={item.to}>
@@ -104,7 +109,9 @@ function NavGroup({
   )
 }
 
-export function ConsoleSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export function ConsoleSidebar({
+  ...props
+}: React.ComponentProps<typeof Sidebar>) {
   const readOnly = useReadOnly()
   const pathname = useRouterState().location.pathname
   const signOut = useAuthStore((s) => s.signOut)
@@ -114,22 +121,17 @@ export function ConsoleSidebar({ ...props }: React.ComponentProps<typeof Sidebar
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader className="gap-3 p-4">
         <div className="flex items-center gap-2">
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
-            <IconTopologyStar3 className="size-4" />
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white text-[#0b1220]">
+            <HangarMark className="size-4" />
           </div>
-          <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
-            <span className="truncate text-sm font-semibold leading-none">
-              Hangar
-            </span>
-            <span className="truncate font-mono text-2xs text-muted-foreground/60">
-              control plane
-            </span>
-          </div>
+          <span className="truncate text-sm leading-none font-semibold tracking-[0.14em] uppercase group-data-[collapsible=icon]:hidden">
+            HANGAR
+          </span>
         </div>
         {transport.kind === "fixtures" && (
           <Badge
             variant="outline"
-            className="justify-center border-amber-500/30 bg-amber-500/10 font-mono text-2xs uppercase tracking-[0.18em] text-amber-600 group-data-[collapsible=icon]:hidden dark:text-amber-400"
+            className="justify-center border-amber-500/30 bg-amber-500/10 font-mono text-2xs tracking-[0.18em] text-amber-600 uppercase group-data-[collapsible=icon]:hidden dark:text-amber-400"
           >
             Fixtures
           </Badge>
@@ -188,10 +190,10 @@ function ReadOnlyNotice() {
     <Link
       to="/settings"
       title="Writes are blocked from this console. Connected clusters still reconcile."
-      className="mb-1 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-amber-700 transition-colors hover:bg-amber-500/15 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 dark:text-amber-400"
+      className="mb-1 flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-amber-700 transition-colors group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0 hover:bg-amber-500/15 dark:text-amber-400"
     >
       <IconEye className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1 truncate font-mono text-2xs uppercase tracking-[0.14em] group-data-[collapsible=icon]:hidden">
+      <span className="min-w-0 flex-1 truncate font-mono text-2xs tracking-[0.14em] uppercase group-data-[collapsible=icon]:hidden">
         read-only
       </span>
     </Link>
