@@ -103,9 +103,15 @@ class Settings:
     SESSION_TTL_SECONDS: int = 900
     """Lifetime of a session token minted by `POST /v1/auth/login`."""
 
-    ALLOWED_ORIGINS: str = "http://localhost:5173"
+    ALLOWED_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     """Comma-separated origins the API's CORS policy accepts. Empty disallows
     every browser origin; there is no `*` option.
+
+    Both spellings of the dev server are listed because they are two origins to
+    a browser and one address to everything else. Vite prints `localhost` and
+    serves `127.0.0.1` just as happily, so which one is in the address bar is
+    not a decision anyone makes — and listing only one turns it into the
+    difference between a working console and a wall of blocked requests.
     """
 
 
