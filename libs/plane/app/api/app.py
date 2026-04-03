@@ -55,7 +55,13 @@ def create_app() -> Litestar:
     cors_config = CORSConfig(
         allow_origins=_allowed_origins(),
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
-        allow_headers=["Authorization", "Content-Type", "X-Hangar-Project", "If-Match"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "X-Hangar-Project",
+            "If-Match",
+            "Idempotency-Key",
+        ],
     )
 
     app = Litestar(
