@@ -38,7 +38,7 @@ from app.ingestion.resync import decide
 from app.ingestion.desired import format_ts
 
 
-FIXTURES = Path(__file__).resolve().parents[3] / "contract" / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[2] / "packages" / "contract" / "fixtures"
 
 CLUSTER = "clu_01J9X2AAAAAAAAAAAAAAAAAAAA"
 CLUSTER_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")

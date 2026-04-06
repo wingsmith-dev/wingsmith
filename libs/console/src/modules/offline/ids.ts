@@ -6,7 +6,7 @@ let counter = 0
  * Mints an id shaped like the plane's: a prefix and a 26-character lowercase
  * Crockford base32 ULID. Deterministic, because a fixture that produced a new
  * id on every reload would defeat the point of a fixture, and lowercase
- * because `contract/API.md` §3 has exactly one canonical spelling.
+ * because `libs/packages/contract/API.md` §3 has exactly one canonical spelling.
  */
 export function uid(prefix: string): string {
   counter += 1

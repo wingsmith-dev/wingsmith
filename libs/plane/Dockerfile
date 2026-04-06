@@ -45,6 +45,10 @@ COPY plane/app ./app
 COPY plane/migrations ./migrations
 COPY plane/alembic.ini ./
 COPY plane/README.md ./
+# The device-class table is shared with the operator and lives in the contract, not in this
+# package. `app/core/devices.py` reads it at import, so an image without it cannot answer a
+# metrics request — it fails resolving the path before it fails finding the file.
+COPY packages/contract/devices.json ./contract/devices.json
 RUN uv sync --locked --no-dev
 
 FROM python:3.12.8-slim-bookworm
@@ -65,6 +69,7 @@ COPY --from=build /opt/venv /opt/venv
 COPY --from=build /src/app ./app
 COPY --from=build /src/migrations ./migrations
 COPY --from=build /src/alembic.ini ./
+COPY --from=build /src/contract ./contract
 COPY --from=console /src/dist ./app/api/static
 
 ENV PATH="/opt/venv/bin:$PATH" \

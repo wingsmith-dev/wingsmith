@@ -1,4 +1,4 @@
-"""Round-trips the golden corpus in `contract/fixtures/`.
+"""Round-trips the golden corpus in `libs/packages/contract/fixtures/`.
 
 This is the replacement for codegen (ADR 0001). Every fixture must decode into a registered
 Struct and re-encode to a semantically identical document, and the corpus and the registry must
@@ -28,7 +28,7 @@ from app.hub.messages import decode
 from app.hub.messages import encode
 
 
-FIXTURES = Path(__file__).resolve().parents[3] / "contract" / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[2] / "packages" / "contract" / "fixtures"
 
 FIXTURE_FILES = sorted(FIXTURES.glob("*.json"))
 

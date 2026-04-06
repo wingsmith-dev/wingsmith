@@ -255,7 +255,7 @@ class MetricsService:
         """One class of card inside one cluster, broken down by node.
 
         The class is a hangar name and the exporter has never heard of it. The
-        dialect expands it into the vendor strings `contract/devices.json` maps
+        dialect expands it into the vendor strings `libs/packages/contract/devices.json` maps
         onto it; the service only says which class it means.
         """
         query = select(Cluster).where(Cluster.uid == ref if is_uid(ref) else Cluster.name == ref)

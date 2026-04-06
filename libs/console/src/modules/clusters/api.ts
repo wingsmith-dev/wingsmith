@@ -25,7 +25,7 @@ export function createCluster(body: ClusterCreateRequest): Promise<Cluster> {
   return api.post<Cluster>("/clusters", body)
 }
 
-/** Resolves by id or by name — `contract/API.md` §3 accepts either. */
+/** Resolves by id or by name — `libs/packages/contract/API.md` §3 accepts either. */
 export function fetchCluster(ref: string): Promise<Cluster> {
   return api.get<Cluster>(`/clusters/${encodeURIComponent(ref)}`)
 }

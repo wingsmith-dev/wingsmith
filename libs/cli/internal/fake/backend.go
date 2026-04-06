@@ -144,7 +144,7 @@ func collect[T any](b *Backend, items []T, opts api.ListOpts, keep func(T) bool)
 
 // find resolves a reference to exactly one object. A reference is an id, a
 // name, or a unique prefix of either: prefix resolution is the client's job,
-// per contract/API.md §3, so the fake does it here too.
+// per libs/packages/contract/API.md §3, so the fake does it here too.
 func find[T any](b *Backend, noun string, items []T, ref string, keys func(T) []string) (T, error) {
 	var zero T
 	if err := b.injected(); err != nil {

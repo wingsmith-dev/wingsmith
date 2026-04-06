@@ -7,14 +7,14 @@ import (
 )
 
 // TestEmbeddedTableMatchesTheContract keeps the copy the binary carries honest. contract.json is a
-// symlink to contract/devices.json, which go:embed will not follow, so the copy is checked instead.
+// symlink to libs/packages/contract/devices.json, which go:embed will not follow, so the copy is checked instead.
 func TestEmbeddedTableMatchesTheContract(t *testing.T) {
 	contract, err := os.ReadFile("contract.json")
 	if err != nil {
 		t.Fatalf("read contract table: %v", err)
 	}
 	if !bytes.Equal(bytes.TrimSpace(contract), bytes.TrimSpace(tableJSON)) {
-		t.Fatal("table.json has drifted from contract/devices.json; copy the contract file over it")
+		t.Fatal("table.json has drifted from libs/packages/contract/devices.json; copy the contract file over it")
 	}
 }
 

@@ -1,6 +1,6 @@
 """The hub half of the plane <-> operator session protocol.
 
-Implements `contract/PROTOCOL.md`: handshake (§1), envelope and dispatch (§2), correlation (§3),
+Implements `libs/packages/contract/PROTOCOL.md`: handshake (§1), envelope and dispatch (§2), correlation (§3),
 sequencing and resume (§4), liveness (§5) and backpressure (§6). Nothing here touches storage —
 inbound frames go to a `Sink`, declared state comes from a `DesiredSource`.
 

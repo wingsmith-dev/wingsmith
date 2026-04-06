@@ -1,8 +1,8 @@
 """Wire types for the plane <-> operator protocol.
 
-The envelope and its semantics are specified in `contract/PROTOCOL.md`; the type registry is
-`contract/MESSAGES.md`. These Structs are hand-written by design (see ADR 0001) and are kept
-honest against the Go side by the golden corpus in `contract/fixtures/`.
+The envelope and its semantics are specified in `libs/packages/contract/PROTOCOL.md`; the type registry is
+`libs/packages/contract/MESSAGES.md`. These Structs are hand-written by design (see ADR 0001) and are kept
+honest against the Go side by the golden corpus in `libs/packages/contract/fixtures/`.
 
 Timestamps are RFC 3339 UTC with milliseconds and are carried as `str`, not `datetime`. The wire
 form is the contract, and a datetime round-trip is lossy with respect to its own text: msgspec

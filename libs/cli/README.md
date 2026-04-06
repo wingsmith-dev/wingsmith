@@ -252,7 +252,7 @@ noun means adding one file under `internal/cli/` and one method per verb on `api
 ## The API this speaks
 
 Everything is `/v1` on the plane's HTTP API, as specified in
-[`contract/API.md`](../../contract/API.md) and implemented by `libs/plane`. The client was
+[`libs/packages/contract/API.md`](../../libs/packages/contract/API.md) and implemented by `libs/plane`. The client was
 reconciled against the server's own `schemas.py`, and where the two disagreed the server won.
 
 - **Envelope** — `{items, count, next_cursor}` on every list; a detail response is the object

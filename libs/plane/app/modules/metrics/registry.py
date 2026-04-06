@@ -1,6 +1,6 @@
 """What Hangar measures, named the Hangar way and nothing else.
 
-`contract/API.md` §5 keeps telemetry out of the hub deliberately: capacity is
+`libs/packages/contract/API.md` §5 keeps telemetry out of the hub deliberately: capacity is
 state and occupancy is measurement, and the two travel by different roads. This
 module is the vocabulary of the measurement road — `gpu.utilization`,
 `inference.ttft`, what unit each is in, and how a set of them collapses into one

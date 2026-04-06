@@ -17,7 +17,7 @@ absorbed it.
 
 ## The fixture rule
 
-We chose WebSocket + JSON over gRPC ([ADR 0001](../docs/decisions/0001-websocket-json-over-grpc.md)),
+We chose WebSocket + JSON over gRPC ([ADR 0001](../../../docs/decisions/0001-websocket-json-over-grpc.md)),
 which means the Go and Python type definitions are hand-written and nothing mechanically stops
 them drifting apart. `fixtures/` is the replacement: one canonical document per type, and a test
 on both sides that round-trips all of them.

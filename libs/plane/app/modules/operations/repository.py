@@ -143,7 +143,7 @@ class OperationRepository:
     def get_query(self, ref: str) -> Select:
         """Operations are addressed by id only.
 
-        `contract/API.md` §3 lets a path segment be an id *or* a name where the
+        `libs/packages/contract/API.md` §3 lets a path segment be an id *or* a name where the
         object has a unique name. An operation has none — "the drain" is not a
         thing anybody can name twice — so there is nothing here to resolve
         against and the id is the only reference.

@@ -1,6 +1,6 @@
 """Projects: the tenancy unit `X-Hangar-Project` names.
 
-There is no tenant collection in `contract/API.md` §6, so a project carries its
+There is no tenant collection in `libs/packages/contract/API.md` §6, so a project carries its
 tenant as an embedded field. A path segment takes the project id or its slug; the
 slug is unique only within a tenant, so `tenant` narrows an ambiguous one.
 

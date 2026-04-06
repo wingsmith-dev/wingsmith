@@ -14,7 +14,7 @@ Three constraints come with it: priority values become unique, because a tie in
 between two concurrent writers; `ops_operation.idempotency_key` is promoted out
 of `payload` and given a partial unique index, because only the index can stop
 two concurrent retries of one drain becoming two drains; and `labels` lands on
-the three demand tables that `contract/API.md` §6 says are filterable by label.
+the three demand tables that `libs/packages/contract/API.md` §6 says are filterable by label.
 """
 
 import os

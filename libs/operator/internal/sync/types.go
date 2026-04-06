@@ -4,7 +4,7 @@
 // backpressure on the send path.
 //
 // The envelope and every payload type live in internal/wire, which is the Go half of
-// contract/PROTOCOL.md and contract/MESSAGES.md. This package holds no wire types of its own:
+// libs/packages/contract/PROTOCOL.md and libs/packages/contract/MESSAGES.md. This package holds no wire types of its own:
 // a second definition of the envelope is a second contract, and only one of them would be
 // tested against the fixture corpus.
 package sync

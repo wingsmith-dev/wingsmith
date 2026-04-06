@@ -30,7 +30,7 @@ from app.hub.ownership import ClaimStore
 from app.hub.ownership import MemoryClaimStore
 
 
-FIXTURES = Path(__file__).resolve().parents[3] / "contract" / "fixtures"
+FIXTURES = Path(__file__).resolve().parents[2] / "packages" / "contract" / "fixtures"
 
 CLUSTER = "clu_01J9X2AAAAAAAAAAAAAAAAAAAA"
 

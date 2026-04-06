@@ -44,7 +44,7 @@ func repoRoot() string {
 
 func fixturePayload(t *testing.T, typeName string) json.RawMessage {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(repoRoot(), "contract", "fixtures", typeName+".json"))
+	raw, err := os.ReadFile(filepath.Join(repoRoot(), "libs", "packages", "contract", "fixtures", typeName+".json"))
 	if err != nil {
 		t.Fatalf("read fixture %s: %v", typeName, err)
 	}

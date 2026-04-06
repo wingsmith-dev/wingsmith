@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// fixtureDir is a symlink to contract/fixtures. It is package-local on purpose: Go's test
+// fixtureDir is a symlink to libs/packages/contract/fixtures. It is package-local on purpose: Go's test
 // result cache only tracks files opened inside the package directory, so a corpus referenced by
 // a relative path outside the module would let a stale PASS survive a fixture edit.
 const fixtureDir = "fixtures"

@@ -19,7 +19,7 @@ def parse_labels(raw: list[str] | None) -> dict[str, str]:
 def ref_ids(model, ref: str, name_column: str = "name") -> Select:
     """The set of primary keys a path- or filter-level reference names.
 
-    A reference is either an id or a name, per `contract/API.md` §3, and this is
+    A reference is either an id or a name, per `libs/packages/contract/API.md` §3, and this is
     the only place that distinction is made. Expressed as a subquery rather than
     a lookup so that filtering by a related object stays one round trip.
     """

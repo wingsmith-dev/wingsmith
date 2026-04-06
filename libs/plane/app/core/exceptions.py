@@ -39,7 +39,7 @@ class Invalid(PlaneError):
     """A request that is well-formed but asks for something incoherent.
 
     Writing to an observed resource is the canonical case: `POST /v1/devices` is
-    not a validation failure, it is a category error, and per `contract/API.md`
+    not a validation failure, it is a category error, and per `libs/packages/contract/API.md`
     it answers 409 rather than 400.
     """
 

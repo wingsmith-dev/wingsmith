@@ -4,7 +4,7 @@ import datetime as dt
 def parse_ts(value: str | None) -> dt.datetime | None:
     """Parses a wire timestamp into an aware UTC datetime.
 
-    The wire form is RFC 3339 with milliseconds (`contract/PROTOCOL.md`), but a
+    The wire form is RFC 3339 with milliseconds (`libs/packages/contract/PROTOCOL.md`), but a
     peer that sends microseconds or an offset is not worth rejecting a frame
     over, so `fromisoformat` is the fallback. An unparseable value becomes
     `None` rather than raising: a bad timestamp is not a reason to withhold an

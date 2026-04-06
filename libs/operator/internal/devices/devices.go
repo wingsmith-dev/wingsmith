@@ -1,6 +1,6 @@
 // Package devices resolves a vendor's product string into a hangar device class.
 //
-// The dictionary itself is contract/devices.json, read by both the operator and the plane, because
+// The dictionary itself is libs/packages/contract/devices.json, read by both the operator and the plane, because
 // the two dialects a card is named in — the GPU Feature Discovery node label and the DCGM
 // exporter's modelName — never agree with each other and neither is ours. table.json is a copy of
 // the contract file so the binary carries it; a test fails if the two drift.

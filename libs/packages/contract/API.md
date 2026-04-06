@@ -230,5 +230,5 @@ object's `revision`, and a mismatch is `409 conflict`.
 **Draft.** §1–§5 are settled and clients should be written against them. §6's path list is settled
 in shape but individual query dimensions will grow. Payload schemas per resource are not yet
 written here — they follow the object model in
-[`docs/plans/01`](../docs/plans/01-object-model-and-architecture.md) and become binding as each
+[`docs/plans/01`](../../../docs/plans/01-object-model-and-architecture.md) and become binding as each
 resource is implemented.

@@ -48,7 +48,7 @@ def create_app() -> Litestar:
     validate(settings)
     logs.configure("api")
 
-    # Every header `contract/API.md` lets a client send has to be listed. A preflight naming one
+    # Every header `libs/packages/contract/API.md` lets a client send has to be listed. A preflight naming one
     # that is missing is answered with 400, and a 400 preflight reaches the browser as a CORS
     # error against the endpoint — so an omission here reads as "the API is unreachable" rather
     # than "this header is not allowed", and points the search at the origin, which is fine.

@@ -57,7 +57,7 @@ The hub runs N replicas under Kubernetes. Per
 **shedding** session state rather than sharing it: `SessionState` — cursors and the replay buffer
 — stays in one pod's memory, never in Postgres. Reconnecting to the pod you left resumes exactly;
 reconnecting to a different one, which a Service makes routine, costs a `full_resync`
-(`contract/PROTOCOL.md` §4) — expensive but always correct, never a silent gap.
+(`libs/packages/contract/PROTOCOL.md` §4) — expensive but always correct, never a silent gap.
 
 What *is* shared, in Postgres, is a single fact: exactly one hub session may be the writer for a
 given `cluster_id` at a time. `hello` claims that cluster with one atomic `INSERT ... ON CONFLICT

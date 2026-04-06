@@ -105,7 +105,7 @@ func TestLiveFiltersAreUnderstood(t *testing.T) {
 		}
 	}
 
-	// A name, not just an id: contract/API.md §3 says a path segment accepts
+	// A name, not just an id: libs/packages/contract/API.md §3 says a path segment accepts
 	// either, and the CLI relies on it everywhere.
 	one, err := c.Cluster(ctx, name)
 	if err != nil {

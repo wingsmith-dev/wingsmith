@@ -71,7 +71,7 @@ class PolicyUpdateRequest(Struct):
     `attachments`, when present, is the complete set and replaces what is there.
     An empty list detaches everything; leaving the field out leaves the bindings
     alone. Per-attachment add and remove would be a nested sub-resource, and
-    `contract/API.md` §6 addresses sub-resources by filter rather than by nesting.
+    `libs/packages/contract/API.md` §6 addresses sub-resources by filter rather than by nesting.
     """
 
     name: str | UnsetType = UNSET

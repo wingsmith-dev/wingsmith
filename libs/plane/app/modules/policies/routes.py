@@ -1,7 +1,7 @@
 """Policies: the placement constraints, and what they bind to.
 
 A policy is addressed by name or by id. Its subjects are not a nested
-sub-resource — `contract/API.md` §6 addresses those by filter, so
+sub-resource — `libs/packages/contract/API.md` §6 addresses those by filter, so
 `GET /v1/policies?subject_type=project&subject=research` answers "what constrains
 this project" and `attachments` on the detail response answers the reverse.
 

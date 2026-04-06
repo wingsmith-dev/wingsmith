@@ -3,7 +3,7 @@
 One WebSocket, dialled outbound by the operator, carrying desired state down and observed state
 up. This document is the contract. Nothing in `libs/*` may change it unilaterally.
 
-Rationale for the transport choice is [ADR 0001](../docs/decisions/0001-websocket-json-over-grpc.md).
+Rationale for the transport choice is [ADR 0001](../../../docs/decisions/0001-websocket-json-over-grpc.md).
 Because we gave up codegen, four things below are our code rather than a library's: **framing,
 correlation, resume, and backpressure**. They are specified here precisely because nothing
 enforces them mechanically.
@@ -177,7 +177,7 @@ forfeits the property the whole architecture exists to provide.
 
 **Resume is per hub instance, not per fleet.** The hub runs N replicas and the *session* —
 cursors and replay buffer — lives in one replica's memory, never in Postgres
-([ADR 0005](../docs/decisions/0005-the-hub-scales-by-shedding-session-state.md)). Reconnecting to
+([ADR 0005](../../../docs/decisions/0005-the-hub-scales-by-shedding-session-state.md)). Reconnecting to
 the same pod resumes exactly as described above. Reconnecting to a different pod, which a
 Kubernetes Service makes ordinary rather than exceptional, finds a pod with no record of the
 session and therefore `full_resync: true` under the third condition above — this is expensive but

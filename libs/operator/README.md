@@ -34,8 +34,8 @@ deploy/              kustomize bundle: namespace, CRD, RBAC, config, deployment
 
 ## The wire
 
-`contract/PROTOCOL.md` and `contract/MESSAGES.md` are the authority; `internal/wire` is the Go half
-of them, kept honest by the fixture corpus in `contract/fixtures`. `internal/sync` holds no wire
+`libs/packages/contract/PROTOCOL.md` and `libs/packages/contract/MESSAGES.md` are the authority; `internal/wire` is the Go half
+of them, kept honest by the fixture corpus in `libs/packages/contract/fixtures`. `internal/sync` holds no wire
 types of its own — a second envelope definition would be a second contract, and only one of them
 would be tested.
 

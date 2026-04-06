@@ -144,7 +144,7 @@ func TestDCGMSuppliesTheUUIDAndTheContractSuppliesTheClass(t *testing.T) {
 }
 
 // TestDCGMClassResolvesThroughTheContractWhenGFDIsSilent: a cluster with the exporter but no
-// feature discovery still names its hardware out of contract/devices.json, in the other dialect.
+// feature discovery still names its hardware out of libs/packages/contract/devices.json, in the other dialect.
 func TestDCGMClassResolvesThroughTheContractWhenGFDIsSilent(t *testing.T) {
 	node := gpuNode("ip-10-0-102-7.us-east-2.compute.internal", map[string]string{}, nil, true, false)
 	d := newKubeDiscoverer(t, node)

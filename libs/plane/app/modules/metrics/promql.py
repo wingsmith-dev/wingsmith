@@ -112,7 +112,7 @@ def device_class_values(name: str) -> tuple[str, ...]:
     """The `modelName` values a hangar device class is emitted under.
 
     DCGM has never heard of a hangar class, so one class expands into the vendor
-    strings `contract/devices.json` maps onto it. A class the table does not
+    strings `libs/packages/contract/devices.json` maps onto it. A class the table does not
     carry falls back to matching its own name literally, which selects nothing
     until the table grows — an unscoped selector here would report the whole
     fleet as one card.

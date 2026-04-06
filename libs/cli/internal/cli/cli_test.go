@@ -192,7 +192,7 @@ func TestCordonIsNotACondition(t *testing.T) {
 }
 
 // Phase is declared and reachability is observed, and folding them together
-// is the conflict contract/API.md §4 exists to settle.
+// is the conflict libs/packages/contract/API.md §4 exists to settle.
 func TestPhaseAndReachabilityAreSeparate(t *testing.T) {
 	out, _, code := run(t, "cluster", "ls", "-o", "json")
 	if code != 0 {
