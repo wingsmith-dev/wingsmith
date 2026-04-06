@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 import { setAuthToken } from "./token"
+import { BASE_URL, API_PREFIX } from "@/lib/api/http"
 
 export interface Operator {
   id: string
@@ -8,20 +9,27 @@ export interface Operator {
   name: string
 }
 
-/** Stubbed identity. Replaced wholesale when real auth lands. */
-const STUB_TOKEN = import.meta.env.VITE_API_TOKEN ?? "hangar-dev-static-token"
+/**
+ * The plane issues one session token for one shared admin password
+ * (`POST /v1/auth/login`), so there is no per-person identity to show yet. This
+ * stands in for one in the chrome rather than pretending the token names a user.
+ */
+const ADMIN_OPERATOR: Operator = {
+  id: "op_admin",
+  email: "admin@hangar.local",
+  name: "Admin",
+}
 
-const STUB_OPERATOR: Operator = {
-  id: "op_stub",
-  email: "operator@hangar.local",
-  name: "Operator",
+interface LoginResponse {
+  token: string
+  expires_in: number
 }
 
 interface AuthState {
   operator: Operator | null
   accessToken: string | null
   isAuthenticated: boolean
-  signIn: () => void
+  signIn: (password: string) => Promise<void>
   signOut: () => void
 }
 
@@ -31,11 +39,29 @@ export const useAuthStore = create<AuthState>()(
       operator: null,
       accessToken: null,
       isAuthenticated: false,
-      signIn: () => {
-        setAuthToken(STUB_TOKEN)
+      /**
+       * Deliberately not routed through `httpTransport`: that attaches the bearer
+       * token this call exists to obtain, and its fixtures mode would answer a
+       * login the plane never saw.
+       */
+      signIn: async (password: string) => {
+        const response = await fetch(`${BASE_URL}${API_PREFIX}/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password }),
+        })
+        if (!response.ok) {
+          throw new Error(
+            response.status === 401
+              ? "Incorrect password."
+              : `Sign in failed with status ${response.status}.`
+          )
+        }
+        const { token } = (await response.json()) as LoginResponse
+        setAuthToken(token)
         set({
-          operator: STUB_OPERATOR,
-          accessToken: STUB_TOKEN,
+          operator: ADMIN_OPERATOR,
+          accessToken: token,
           isAuthenticated: true,
         })
       },
@@ -46,6 +72,9 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "hangar.auth",
+      // The token outlives a reload but not its own expiry, and nothing here
+      // knows when that is. An expired one rehydrates, 401s, and is cleared by
+      // signing out again — which is the same path a wrong password takes.
       onRehydrateStorage: () => (state) => {
         setAuthToken(state?.accessToken ?? null)
       },
