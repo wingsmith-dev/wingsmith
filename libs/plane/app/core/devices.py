@@ -1,9 +1,9 @@
-"""The canonical device-class dictionary, read from `contract/devices.json`.
+"""The canonical device-class dictionary, read from `libs/packages/contract/devices.json`.
 
 A card is named in at least two dialects that will never agree — GPU Feature
 Discovery publishes `NVIDIA-H100-80GB-HBM3` on a node label and the DCGM
 exporter publishes `NVIDIA H100 80GB HBM3` on a Prometheus label — and neither
-is ours. So the naming is: one table in `contract/`, read by this module and by
+is ours. So the naming is: one table in `libs/packages/contract/`, read by this module and by
 the operator's `internal/devices`, with the same normalization on both sides.
 
 Nothing here is required of a cluster. Hardware the table does not list falls
@@ -11,6 +11,7 @@ back to the slug of the vendor string, which is stable and deterministic, and
 the miss is logged once so the table can be grown.
 """
 
+import os
 import json
 import logging
 
@@ -24,7 +25,32 @@ logger = logging.getLogger(__name__)
 DIALECT_GFD: Final = "gfd"
 DIALECT_DCGM: Final = "dcgm"
 
-TABLE_PATH: Final = Path(__file__).resolve().parents[4] / "contract" / "devices.json"
+DEVICE_TABLE_ENV: Final = "HANGAR_DEVICE_TABLE"
+
+
+def _table_path() -> Path:
+    """Finds `libs/packages/contract/devices.json` in a checkout and in the image alike.
+
+    The table is shared with the operator, so it lives in `libs/packages/contract/` at the repo
+    root rather than inside this package — four levels above this module in a
+    checkout, but two in the image, where only the plane and the table are
+    copied in. Walking up to the first `libs/packages/contract/devices.json` covers both
+    without pinning a depth that is wrong in one of them; the env var is the
+    escape hatch for a layout that is neither.
+    """
+    override = os.environ.get(DEVICE_TABLE_ENV)
+    if override:
+        return Path(override)
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        for prefix in (("contract",), ("packages", "contract")):
+            candidate = parent.joinpath(*prefix, "devices.json")
+            if candidate.is_file():
+                return candidate
+    return here.parents[2] / "contract" / "devices.json"
+
+
+TABLE_PATH: Final = _table_path()
 
 
 @dataclass(frozen=True)
