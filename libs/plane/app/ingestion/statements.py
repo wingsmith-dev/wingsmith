@@ -113,8 +113,20 @@ def observed_uid(wire_id: str, prefix: str) -> str:
     return wire_id
 
 
-def cluster_ref(cluster_uid: str):
-    return select(Cluster.id).where(Cluster.uid == cluster_uid).scalar_subquery()
+def cluster_ref_clause(ref: str):
+    """Matches a cluster by whichever identity the caller happens to hold.
+
+    An operator is configured by hand, long before anyone has read back the uid
+    the plane minted for its cluster, so every lookup on the sync path accepts a
+    name too — the same way the REST layer does. Both identities are immutable,
+    and `is_uid` checks the body's shape as well as the prefix, so a name can
+    never be mistaken for a uid.
+    """
+    return (Cluster.uid if is_uid(ref) else Cluster.name) == ref
+
+
+def cluster_ref(ref: str):
+    return select(Cluster.id).where(cluster_ref_clause(ref)).scalar_subquery()
 
 
 def _node_ref(cluster_id: UUID, node_uid: str):

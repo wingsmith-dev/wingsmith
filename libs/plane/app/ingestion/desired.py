@@ -46,6 +46,7 @@ from app.hub.messages import DeploymentDesired
 from app.hub.messages import RecipeParallelism
 from app.hub.messages import PlacementConstraints
 from app.ingestion.time import now
+from app.ingestion.statements import cluster_ref_clause
 
 
 SUPPLY_SCOPES = frozenset({"supply", "all"})
@@ -67,7 +68,7 @@ async def stream_desired(db: AsyncSession, cluster_uid: str, scope: str) -> Asyn
     reference them, so a cluster applying the stream in order never holds a
     deployment pointing at weights it has not been told about.
     """
-    cluster_id = await db.scalar(select(Cluster.id).where(Cluster.uid == cluster_uid))
+    cluster_id = await db.scalar(select(Cluster.id).where(cluster_ref_clause(cluster_uid)))
     if cluster_id is None:
         return
 
@@ -114,7 +115,7 @@ async def desired_object(
     cluster, a recipe this cluster no longer runs, or a kind live dispatch does
     not carry yet.
     """
-    cluster_id = await db.scalar(select(Cluster.id).where(Cluster.uid == cluster_uid))
+    cluster_id = await db.scalar(select(Cluster.id).where(cluster_ref_clause(cluster_uid)))
     if cluster_id is None:
         return None
 

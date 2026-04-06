@@ -43,7 +43,7 @@ from tests.test_hub_session import payload_of
 pytestmark = pytest.mark.database
 
 
-FIXTURES = ROOT.parents[1] / "contract" / "fixtures"
+FIXTURES = ROOT.parents[0] / "packages" / "contract" / "fixtures"
 
 OTHER_CLUSTER = "clu_01j9x2aaaaaaaaaaaaaaaaaaab"
 NODE = "nod_01j9x2bbbbbbbbbbbbbbbbbbbb"
@@ -229,6 +229,21 @@ async def test_a_frame_for_an_unregistered_cluster_is_refused(sessions) -> None:
     sink = DatabaseSink(sessions)
     with pytest.raises(UnknownCluster):
         await sink.apply_observed(observed("node.observed"))
+
+
+async def test_a_frame_keyed_by_cluster_name_is_applied(sessions, cluster) -> None:
+    """An operator is configured before anyone has read back the uid the plane minted."""
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(observed("node.observed", cluster_uid="alpha"))
+
+    rows = await fetch(sessions, "SELECT cluster_id FROM supply_node")
+    assert rows == [(cluster,)]
+
+
+async def test_a_frame_keyed_by_an_unknown_name_is_still_refused(sessions, cluster) -> None:
+    sink = DatabaseSink(sessions)
+    with pytest.raises(UnknownCluster):
+        await sink.apply_observed(observed("node.observed", cluster_uid="not-a-cluster"))
 
 
 async def test_applying_one_frame_twice_concurrently_is_idempotent(sessions, cluster) -> None:

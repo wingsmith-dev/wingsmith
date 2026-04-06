@@ -66,9 +66,9 @@ class UnknownCluster(Exception):
     its state would silently discard it.
     """
 
-    def __init__(self, cluster_uid: str) -> None:
-        super().__init__(f"no cluster registered as {cluster_uid}")
-        self.cluster_uid = cluster_uid
+    def __init__(self, cluster_ref: str) -> None:
+        super().__init__(f"no cluster registered as {cluster_ref}")
+        self.cluster_ref = cluster_ref
 
 
 class DatabaseSink:
@@ -87,21 +87,26 @@ class DatabaseSink:
             self._sessions = session_factory()
         return self._sessions
 
-    async def _cluster_id(self, db: AsyncSession, cluster_uid: str) -> UUID:
+    async def _cluster_id(self, db: AsyncSession, cluster_ref: str) -> UUID:
         """Resolves a wire cluster id to a primary key, memoised for the process.
 
-        Safe to cache: the mapping is between two immutable identities, so the
-        only way it goes stale is a cluster being deleted, which takes its
-        observed rows with it by cascade.
+        Accepts either a uid or a name, the same way the REST layer does — an
+        operator is configured by hand, long before anyone has read back the uid
+        the plane minted, and a name someone chose is the only identity a cluster
+        has at that point.
+
+        Safe to cache either way: both are immutable once set, so the only way it
+        goes stale is a cluster being deleted, which takes its observed rows with
+        it by cascade.
         """
-        cached = self._clusters.get(cluster_uid)
+        cached = self._clusters.get(cluster_ref)
         if cached is not None:
             return cached
-        result = await db.execute(select(Cluster.id).where(Cluster.uid == cluster_uid))
+        result = await db.execute(select(Cluster.id).where(statements.cluster_ref_clause(cluster_ref)))
         cluster_id = result.scalar_one_or_none()
         if cluster_id is None:
-            raise UnknownCluster(cluster_uid)
-        self._clusters[cluster_uid] = cluster_id
+            raise UnknownCluster(cluster_ref)
+        self._clusters[cluster_ref] = cluster_id
         return cluster_id
 
     # ----------------------------------------------------------------- references

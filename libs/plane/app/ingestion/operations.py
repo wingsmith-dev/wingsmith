@@ -26,6 +26,7 @@ from app.db.models import Operation
 from app.hub.messages import OperationTarget
 from app.hub.messages import OperationDesired
 from app.ingestion.desired import format_ts
+from app.ingestion.statements import cluster_ref_clause
 from app.modules.operations.services import TYPES
 from app.modules.operations.services import OPEN_PHASES
 from app.modules.operations.services import wire_kind
@@ -71,7 +72,7 @@ async def open_operations(db: AsyncSession, cluster_uid: str) -> AsyncIterator[t
         await db.execute(
             select(Operation)
             .join(Cluster, Operation.cluster_id == Cluster.id)
-            .where(Cluster.uid == cluster_uid, Operation.phase.in_(OPEN_PHASES))
+            .where(cluster_ref_clause(cluster_uid), Operation.phase.in_(OPEN_PHASES))
             .order_by(Operation.seq)
         )
     ).scalars()
