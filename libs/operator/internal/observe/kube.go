@@ -242,7 +242,7 @@ func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.
 		if clique != "" {
 			d.DomainKind, d.DomainKey = "nvlink", clique
 		} else {
-			d.DomainKind, d.DomainKey = "pcie", n.Name
+			d.DomainKind, d.DomainKey = "pcie_root", n.Name
 		}
 		devices = append(devices, d)
 	}
@@ -270,7 +270,7 @@ func exportedLabels(in map[string]string) map[string]string {
 	return out
 }
 
-// deviceClass names the hardware the way hangar names it, from contract/devices.json. The names
+// deviceClass names the hardware the way hangar names it, from libs/packages/contract/devices.json. The names
 // GFD and DCGM publish are two dialects for the same card and neither is canonical, so the
 // dictionary decides; hardware it does not list falls back to a slug of the vendor string, which
 // is stable and deterministic and gets logged so the table can be grown.

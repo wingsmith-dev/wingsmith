@@ -156,7 +156,7 @@ func TestUnreadyNodeReportsUnknownHealth(t *testing.T) {
 	if n.Devices[0].UUID != "gpu-h100-a-09-gpu0" {
 		t.Fatalf("fallback uuid is %q", n.Devices[0].UUID)
 	}
-	if n.Devices[0].DomainKind != "pcie" {
+	if n.Devices[0].DomainKind != "pcie_root" {
 		t.Fatalf("a node with no NVLink clique reported domain %q", n.Devices[0].DomainKind)
 	}
 }
