@@ -1,6 +1,8 @@
 from litestar import Router
 from litestar import Litestar
 
+from app.api.spa import ConsoleRoutes
+from app.api.spa import has_console
 from app.core.routes import HealthRoutes
 from app.core.auth_routes import AuthRoutes
 from app.modules.nodes.routes import NodeRoutes
@@ -53,4 +55,9 @@ def init_app(app: Litestar) -> Litestar:
     """Registers every controller. Modules are added to `V1_ROUTES` as they land."""
     app.register(Router(path="", route_handlers=[HealthRoutes]))
     app.register(Router(path="/v1", route_handlers=[AuthRoutes, *V1_ROUTES]))
+    # Registered last and only when the image carries a build: the console is a
+    # catch-all, and an image built without one should 404 rather than answer
+    # every unmatched path with a missing file.
+    if has_console():
+        app.register(Router(path="", route_handlers=[ConsoleRoutes]))
     return app

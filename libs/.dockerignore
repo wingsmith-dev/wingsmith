@@ -1,0 +1,22 @@
+# The build context is `libs/`, not `libs/plane/`, because the plane image bakes the console
+# bundle and a context cannot reach above itself. Both trees' exclusions therefore live here.
+.git
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.env
+**/.env.*
+**/*.log
+**/*.md
+!**/README.md
+
+plane/tests
+
+console/node_modules
+console/dist
+
+cli
+operator

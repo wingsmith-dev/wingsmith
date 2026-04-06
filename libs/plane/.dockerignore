@@ -10,3 +10,6 @@ tests
 *.md
 !README.md
 .git
+
+# Built into the image from the console stage; a stale local copy must never win.
+app/api/static

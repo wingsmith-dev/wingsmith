@@ -12,11 +12,18 @@ import {
   type Transport,
 } from "./transport"
 
+/**
+ * Where the API lives. An empty value is meaningful and not the same as an unset
+ * one: the plane image builds this bundle with `VITE_API_BASE_URL=""` so every
+ * request is relative to the origin that served the console, which is what lets
+ * one image be correct behind a port-forward, a tunnel, or an ingress alike. The
+ * fallback is for `pnpm dev`, where the console and the API are two origins.
+ */
 export const BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
 export const API_PREFIX = "/v1"
 
-/** Scopes every request to one project, per `contract/API.md` §2. */
+/** Scopes every request to one project, per `libs/packages/contract/API.md` §2. */
 const PROJECT = import.meta.env.VITE_API_PROJECT as string | undefined
 
 interface WireError {

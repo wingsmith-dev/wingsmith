@@ -1,0 +1,3 @@
+
+# Baked in by the console build stage of the Dockerfile, never committed.
+app/api/static/
