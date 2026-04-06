@@ -14,7 +14,7 @@ metadata:
   namespace: hangar-system
 data:
   HANGAR_CLUSTER_ID: dev-cluster
-  HANGAR_HUB_URL: ws://host.docker.internal:8080/v1/operator/stream
+  HANGAR_HUB_URL: ws://host.docker.internal:8080/v1/hub/sync
   HANGAR_LOG_LEVEL: info
   HANGAR_LOG_FORMAT: json
   HANGAR_NAMESPACE: hangar-system
