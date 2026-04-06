@@ -1,4 +1,4 @@
-# admin
+# console
 
 The Hangar console. React 19 + TypeScript + TanStack Router + shadcn/ui.
 

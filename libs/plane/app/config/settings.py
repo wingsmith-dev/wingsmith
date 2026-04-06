@@ -108,7 +108,7 @@ class Settings:
     every browser origin; there is no `*` option.
 
     5273 rather than Vite's default 5173: the console pins its own port
-    (`libs/admin/vite.config.ts`) because Vite otherwise walks forward from 5173
+    (`libs/console/vite.config.ts`) because Vite otherwise walks forward from 5173
     until it finds a free one, which makes the console's origin depend on which
     other projects are running. An origin list cannot be written against that.
 
