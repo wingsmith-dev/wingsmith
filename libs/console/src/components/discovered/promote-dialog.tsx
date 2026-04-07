@@ -1,0 +1,221 @@
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { formatError } from "@/lib/format"
+import {
+  usePriorityClassOptions,
+  useProjectOptions,
+} from "@/modules/binding/queries"
+import { useRecipeOptions } from "@/modules/demand/queries"
+import { usePromoteWorkload } from "@/modules/discovered/queries"
+import { workloadLabel } from "@/modules/discovered/display"
+import type { DiscoveredWorkload } from "@/modules/discovered/types"
+import { useNavigate } from "@tanstack/react-router"
+import { useState } from "react"
+import { toast } from "sonner"
+
+const NONE = "__none__"
+
+/**
+ * Promotion is the one decision here that produces declared state, so it asks
+ * for the two things the plane cannot infer — which recipe describes what is
+ * running, and who owns it — and nothing else. Replica bounds are taken from the
+ * live workload rather than offered as a field: a promotion that also set scale
+ * would rescale a serving model as a side effect of being catalogued.
+ *
+ * The fingerprint is sent back exactly as it was shown. If the pod template moved
+ * since this row was rendered the plane refuses, which is the point.
+ */
+export function PromoteDialog({
+  workload,
+  trigger,
+}: {
+  workload: DiscoveredWorkload
+  trigger?: React.ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  const [recipe, setRecipe] = useState("")
+  const [project, setProject] = useState(workload.project_id ?? "")
+  const [name, setName] = useState(workload.name)
+  const [priorityClass, setPriorityClass] = useState(NONE)
+
+  const { data: recipes } = useRecipeOptions()
+  const { data: projects } = useProjectOptions()
+  const { data: priorityClasses } = usePriorityClassOptions()
+  const promote = usePromoteWorkload()
+  const navigate = useNavigate()
+
+  const fingerprint = workload.spec_fingerprint
+  const ready = recipe !== "" && project !== "" && !!fingerprint
+
+  const submit = () => {
+    if (!fingerprint) return
+    promote.mutate(
+      {
+        ref: workload.id,
+        body: {
+          recipe,
+          project,
+          fingerprint,
+          name: name || null,
+          priority_class: priorityClass === NONE ? null : priorityClass,
+        },
+      },
+      {
+        onSuccess: (deployment) => {
+          setOpen(false)
+          toast.success(`Adopted ${workloadLabel(workload)}`, {
+            description: deployment.id,
+            action: {
+              label: "View",
+              onClick: () => navigate({ to: "/deployments" }),
+            },
+          })
+        },
+        onError: (error) =>
+          toast.error(formatError(error, "Could not promote workload")),
+      }
+    )
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        {trigger ?? (
+          <Button size="sm" variant="outline">
+            Promote
+          </Button>
+        )}
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Promote {workloadLabel(workload)}</DialogTitle>
+          <DialogDescription>
+            Adopting this workload makes it a deployment the plane manages. It
+            keeps the replicas and the weights it already has; from here the
+            cluster refuses to reconcile it if what is running stops matching
+            what was adopted.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="promote-recipe">Recipe</Label>
+            <Select value={recipe} onValueChange={setRecipe}>
+              <SelectTrigger id="promote-recipe" className="font-mono text-xs">
+                <SelectValue placeholder="Which recipe describes this" />
+              </SelectTrigger>
+              <SelectContent>
+                {(recipes ?? []).map((option) => (
+                  <SelectItem
+                    key={option.id}
+                    value={option.id}
+                    className="font-mono text-xs"
+                  >
+                    {option.name} v{option.version}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="font-mono text-2xs text-muted-foreground/60">
+              running {workload.images.join(", ") || "an unrecorded image"}
+            </p>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="promote-project">Project</Label>
+            <Select value={project} onValueChange={setProject}>
+              <SelectTrigger id="promote-project" className="font-mono text-xs">
+                <SelectValue placeholder="Who owns it" />
+              </SelectTrigger>
+              <SelectContent>
+                {(projects ?? []).map((option) => (
+                  <SelectItem
+                    key={option.id}
+                    value={option.id}
+                    className="font-mono text-xs"
+                  >
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="promote-name">Deployment name</Label>
+            <Input
+              id="promote-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="font-mono text-xs"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="promote-priority">Priority class</Label>
+            <Select value={priorityClass} onValueChange={setPriorityClass}>
+              <SelectTrigger
+                id="promote-priority"
+                className="font-mono text-xs"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE} className="font-mono text-xs">
+                  project default
+                </SelectItem>
+                {(priorityClasses ?? []).map((option) => (
+                  <SelectItem
+                    key={option.id}
+                    value={option.name}
+                    className="font-mono text-xs"
+                  >
+                    {option.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="rounded-md border bg-muted/30 p-3">
+            <p className="font-mono text-2xs text-muted-foreground">
+              scale is taken from the workload — {workload.replicas_desired}{" "}
+              replica{workload.replicas_desired === 1 ? "" : "s"},{" "}
+              {workload.devices_per_replica} device
+              {workload.devices_per_replica === 1 ? "" : "s"} each
+            </p>
+            <p className="mt-1 font-mono text-2xs text-muted-foreground/60">
+              fingerprint {fingerprint ?? "unknown — cannot promote"}
+            </p>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button onClick={submit} disabled={!ready || promote.isPending}>
+            {promote.isPending ? "Promoting…" : "Promote"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}

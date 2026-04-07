@@ -13,6 +13,7 @@ import {
   components,
   deployments,
   devices,
+  discoveredWorkloads,
   domains,
   endpoints,
   events,
@@ -25,8 +26,14 @@ import {
   quotas,
   recipes,
 } from "./data"
-import { uid } from "./ids"
+import { revision, uid } from "./ids"
 import { collection } from "./registry"
+import type { Deployment } from "@/modules/demand/types"
+import type {
+  DecisionRequest,
+  DiscoveredWorkload,
+  PromoteRequest,
+} from "@/modules/discovered/types"
 
 const bool = (value: boolean | undefined, actual: boolean) =>
   value === undefined || value === actual
@@ -359,6 +366,134 @@ registerFixtures([
         operation.finished_at = now
       }
       return operation
+    },
+  },
+])
+
+collection({
+  path: "/discovered",
+  singular: "discovered workload",
+  rows: () => discoveredWorkloads,
+  searchable: (w) => [w.name, w.namespace, w.model],
+  labels: (w) => w.labels,
+  filter: (w, q) =>
+    eq(clusterRef(q.get("cluster")) ?? q.get("cluster"), w.cluster_id) &&
+    eq(q.get("namespace"), w.namespace) &&
+    eq(q.get("status"), w.status),
+})
+
+function sighting(ref: string): DiscoveredWorkload {
+  const found = discoveredWorkloads.find((w) => w.id === ref)
+  if (!found) throw new NotFoundError(`no discovered workload '${ref}'`)
+  return found
+}
+
+/**
+ * Track and ignore write the decision beside the sighting and nothing else.
+ * Promote is the only one that produces declared state, and it refuses on a
+ * stale fingerprint the way the plane does — that check is the whole safety of
+ * adopting a spec we do not own.
+ */
+function decide(ref: string, decision: "tracked" | "ignored", body: unknown) {
+  const workload = sighting(ref)
+  if (workload.status === "promoted") {
+    throw new ConflictError(
+      "invalid",
+      `'${workload.name}' is already declared as ${workload.deployment_id}`
+    )
+  }
+  const data = (body ?? {}) as DecisionRequest
+  workload.status = decision
+  workload.project_id = data.project ?? workload.project_id
+  workload.note = data.note ?? null
+  workload.decided_by = "operator"
+  workload.decided_at = new Date().toISOString()
+  return workload
+}
+
+registerFixtures([
+  {
+    method: "POST",
+    path: "/discovered/:ref/track",
+    handler: ({ params, body }: FixtureContext) =>
+      decide(params.ref, "tracked", body),
+  },
+  {
+    method: "POST",
+    path: "/discovered/:ref/ignore",
+    handler: ({ params, body }: FixtureContext) =>
+      decide(params.ref, "ignored", body),
+  },
+  {
+    method: "POST",
+    path: "/discovered/:ref/promote",
+    handler: ({ params, body }: FixtureContext) => {
+      const workload = sighting(params.ref)
+      const data = body as PromoteRequest
+      if (workload.spec_fingerprint !== data.fingerprint) {
+        throw new ConflictError(
+          "conflict",
+          `'${workload.name}' has changed since it was read`,
+          { expected: data.fingerprint, actual: workload.spec_fingerprint }
+        )
+      }
+      const recipe = recipes.find(
+        (r) => r.id === data.recipe || r.name === data.recipe
+      )
+      if (!recipe) throw new NotFoundError(`no recipe '${data.recipe}'`)
+      const project = projects.find(
+        (p) => p.id === data.project || p.slug === data.project
+      )
+      if (!project) throw new NotFoundError(`no project '${data.project}'`)
+
+      const now = new Date().toISOString()
+      const created: Deployment = {
+        id: uid("dep_"),
+        name: data.name || workload.name,
+        cluster_id: workload.cluster_id,
+        recipe_id: recipe.id,
+        min_replicas: workload.replicas_desired,
+        max_replicas: workload.replicas_desired,
+        desired_replicas: workload.replicas_desired,
+        generation: 1,
+        enabled: true,
+        adapter_artifact_ids: [],
+        overrides: {},
+        labels: workload.labels,
+        created_at: now,
+        updated_at: null,
+        revision: revision(now),
+        workload: {
+          type: "service",
+          phase: "running",
+          reason: null,
+          project_id: project.id,
+          priority_class:
+            data.priority_class ?? project.default_priority_class ?? "default",
+          preemptible: false,
+          gang_size: workload.devices_per_replica,
+          queued_at: now,
+          admitted_at: now,
+          placed_at: now,
+          started_at: now,
+          deadline_at: null,
+        },
+        replicas: {
+          total: workload.replicas_desired,
+          ready: workload.replicas_ready,
+          running: workload.replicas_ready,
+          pending: workload.replicas_desired - workload.replicas_ready,
+          failed: 0,
+          at_current_generation: workload.replicas_ready,
+        },
+      }
+      deployments.unshift(created)
+      workload.status = "promoted"
+      workload.deployment_id = created.id
+      workload.project_id = project.id
+      workload.decided_by = "operator"
+      workload.decided_at = now
+      return created
     },
   },
 ])

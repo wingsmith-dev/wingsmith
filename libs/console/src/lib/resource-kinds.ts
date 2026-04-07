@@ -9,6 +9,7 @@ import {
   IconLayoutDashboard,
   IconLayoutGrid,
   IconPackages,
+  IconRadar2,
   IconServer,
   IconServer2,
   IconShieldLock,
@@ -36,6 +37,7 @@ export type ResourceKind =
   | "operation"
   | "allocation"
   | "event"
+  | "discovered"
 
 /**
  * One icon per kind of thing, resolved in one place. A node is the same glyph in
@@ -60,4 +62,5 @@ export const RESOURCE_ICONS: Record<ResourceKind, React.ElementType> = {
   operation: IconActivity,
   allocation: IconLayoutGrid,
   event: IconTimelineEvent,
+  discovered: IconRadar2,
 }

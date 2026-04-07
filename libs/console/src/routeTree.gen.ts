@@ -17,6 +17,7 @@ import { Route as AppArtifactsRouteRouteImport } from './routes/_app/artifacts/r
 import { Route as AppClustersRouteRouteImport } from './routes/_app/clusters/route'
 import { Route as AppDeploymentsRouteRouteImport } from './routes/_app/deployments/route'
 import { Route as AppDevicesRouteRouteImport } from './routes/_app/devices/route'
+import { Route as AppDiscoveredRouteRouteImport } from './routes/_app/discovered/route'
 import { Route as AppEndpointsRouteRouteImport } from './routes/_app/endpoints/route'
 import { Route as AppEventsRouteRouteImport } from './routes/_app/events/route'
 import { Route as AppNodesRouteRouteImport } from './routes/_app/nodes/route'
@@ -76,6 +77,11 @@ const AppDeploymentsRouteRoute = AppDeploymentsRouteRouteImport.update({
 const AppDevicesRouteRoute = AppDevicesRouteRouteImport.update({
   id: '/devices',
   path: '/devices',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDiscoveredRouteRoute = AppDiscoveredRouteRouteImport.update({
+  id: '/discovered',
+  path: '/discovered',
   getParentRoute: () => AppRoute,
 } as any)
 const AppEndpointsRouteRoute = AppEndpointsRouteRouteImport.update({
@@ -197,6 +203,7 @@ export interface FileRoutesByFullPath {
   '/clusters': typeof AppClustersRouteRouteWithChildren
   '/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/devices': typeof AppDevicesRouteRouteWithChildren
+  '/discovered': typeof AppDiscoveredRouteRoute
   '/endpoints': typeof AppEndpointsRouteRouteWithChildren
   '/events': typeof AppEventsRouteRoute
   '/nodes': typeof AppNodesRouteRouteWithChildren
@@ -227,6 +234,7 @@ export interface FileRoutesByTo {
   '/clusters': typeof AppClustersRouteRouteWithChildren
   '/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/devices': typeof AppDevicesRouteRouteWithChildren
+  '/discovered': typeof AppDiscoveredRouteRoute
   '/endpoints': typeof AppEndpointsRouteRouteWithChildren
   '/events': typeof AppEventsRouteRoute
   '/nodes': typeof AppNodesRouteRouteWithChildren
@@ -259,6 +267,7 @@ export interface FileRoutesById {
   '/_app/clusters': typeof AppClustersRouteRouteWithChildren
   '/_app/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/_app/devices': typeof AppDevicesRouteRouteWithChildren
+  '/_app/discovered': typeof AppDiscoveredRouteRoute
   '/_app/endpoints': typeof AppEndpointsRouteRouteWithChildren
   '/_app/events': typeof AppEventsRouteRoute
   '/_app/nodes': typeof AppNodesRouteRouteWithChildren
@@ -291,6 +300,7 @@ export interface FileRouteTypes {
     | '/clusters'
     | '/deployments'
     | '/devices'
+    | '/discovered'
     | '/endpoints'
     | '/events'
     | '/nodes'
@@ -321,6 +331,7 @@ export interface FileRouteTypes {
     | '/clusters'
     | '/deployments'
     | '/devices'
+    | '/discovered'
     | '/endpoints'
     | '/events'
     | '/nodes'
@@ -352,6 +363,7 @@ export interface FileRouteTypes {
     | '/_app/clusters'
     | '/_app/deployments'
     | '/_app/devices'
+    | '/_app/discovered'
     | '/_app/endpoints'
     | '/_app/events'
     | '/_app/nodes'
@@ -437,6 +449,13 @@ declare module '@tanstack/react-router' {
       path: '/devices'
       fullPath: '/devices'
       preLoaderRoute: typeof AppDevicesRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/discovered': {
+      id: '/_app/discovered'
+      path: '/discovered'
+      fullPath: '/discovered'
+      preLoaderRoute: typeof AppDiscoveredRouteRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/endpoints': {
@@ -698,6 +717,7 @@ interface AppRouteChildren {
   AppClustersRouteRoute: typeof AppClustersRouteRouteWithChildren
   AppDeploymentsRouteRoute: typeof AppDeploymentsRouteRouteWithChildren
   AppDevicesRouteRoute: typeof AppDevicesRouteRouteWithChildren
+  AppDiscoveredRouteRoute: typeof AppDiscoveredRouteRoute
   AppEndpointsRouteRoute: typeof AppEndpointsRouteRouteWithChildren
   AppEventsRouteRoute: typeof AppEventsRouteRoute
   AppNodesRouteRoute: typeof AppNodesRouteRouteWithChildren
@@ -718,6 +738,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppClustersRouteRoute: AppClustersRouteRouteWithChildren,
   AppDeploymentsRouteRoute: AppDeploymentsRouteRouteWithChildren,
   AppDevicesRouteRoute: AppDevicesRouteRouteWithChildren,
+  AppDiscoveredRouteRoute: AppDiscoveredRouteRoute,
   AppEndpointsRouteRoute: AppEndpointsRouteRouteWithChildren,
   AppEventsRouteRoute: AppEventsRouteRoute,
   AppNodesRouteRoute: AppNodesRouteRouteWithChildren,
