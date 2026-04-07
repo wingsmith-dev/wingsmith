@@ -5,10 +5,16 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+
+	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // Labels the DCGM exporter puts on every series. They are read for identity only: the sample
@@ -50,14 +56,30 @@ type DCGMInventory struct {
 	Hosts   int
 }
 
-// DCGMSource scrapes the in-cluster DCGM exporter for device identity.
+// DCGMSource scrapes the in-cluster DCGM exporters for device identity.
 //
-// This is a cluster-local read on the observation loop's own cadence: one HTTP GET per tick,
-// whatever the node count, and the result is handed to every node in the snapshot.
+// This is a cluster-local read on the observation loop's own cadence, and the merged result is
+// handed to every node in the snapshot.
+//
+// The exporter is a DaemonSet and each pod reports only its own node's cards, so scraping the
+// Service in front of them once per tick reaches one arbitrary pod and sees one node. Every other
+// node then falls back to a synthetic device id, and because a different pod answers each tick,
+// a node accumulates one row under its real UUID and another under the fallback. Expanding the
+// Service to its pods and scraping all of them is what keeps device identity stable.
 type DCGMSource struct {
 	Endpoint string
 	Client   *http.Client
-	Log      *slog.Logger
+
+	// Kube expands Endpoint to the pods behind it. Optional: without it, or when Endpoint is not
+	// a Service's cluster-DNS name, Endpoint is scraped exactly as given — which is what a
+	// single exporter, a literal address, or a test server wants.
+	Kube client.Client
+
+	// Selector overrides the label selector used to find those pods. Empty means
+	// `app.kubernetes.io/name=<service>`, which is what the exporter's own chart sets.
+	Selector string
+
+	Log *slog.Logger
 }
 
 func (s *DCGMSource) log() *slog.Logger {
@@ -67,14 +89,54 @@ func (s *DCGMSource) log() *slog.Logger {
 	return s.Log
 }
 
-// Scrape reads the exporter and returns what it says is attached to which host.
+// Scrape reads every exporter and returns what they say is attached to which host.
+//
+// Partial failure is not fatal: a target that will not answer costs its own node's identity, and
+// failing the whole scrape would cost every node's. The count is logged so a fleet that is
+// quietly half-covered does not look healthy.
 func (s *DCGMSource) Scrape(ctx context.Context) (*DCGMInventory, error) {
 	if s == nil || strings.TrimSpace(s.Endpoint) == "" {
 		return nil, nil
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.Endpoint, nil)
+	targets := s.targets(ctx)
+
+	bodies := make([]string, len(targets))
+	errs := make([]error, len(targets))
+	var wg sync.WaitGroup
+	for i, target := range targets {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			bodies[i], errs[i] = s.fetch(ctx, target)
+		}()
+	}
+	wg.Wait()
+
+	got, failed := make([]string, 0, len(targets)), 0
+	for i := range targets {
+		if errs[i] != nil {
+			failed++
+			s.log().Warn("dcgm target failed", "target", targets[i], "error", errs[i])
+			continue
+		}
+		got = append(got, bodies[i])
+	}
+	if len(got) == 0 {
+		return nil, fmt.Errorf("scrape dcgm: all %d target(s) failed: %w", len(targets), errs[0])
+	}
+	if failed > 0 {
+		s.log().Warn("dcgm coverage is partial", "scraped", len(got), "failed", failed)
+	}
+
+	// One parse over the concatenated exposition rather than a merge of inventories: the parser
+	// already keys devices by UUID and indexes them by host, so joining the bodies is the merge.
+	return ParseDCGM(strings.Join(got, "\n")), nil
+}
+
+func (s *DCGMSource) fetch(ctx context.Context, endpoint string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("dcgm request: %w", err)
+		return "", fmt.Errorf("dcgm request: %w", err)
 	}
 	c := s.Client
 	if c == nil {
@@ -82,18 +144,104 @@ func (s *DCGMSource) Scrape(ctx context.Context) (*DCGMInventory, error) {
 	}
 	resp, err := c.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("scrape dcgm: %w", err)
+		return "", fmt.Errorf("scrape dcgm: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<10))
-		return nil, fmt.Errorf("scrape dcgm: status %d", resp.StatusCode)
+		return "", fmt.Errorf("scrape dcgm: status %d", resp.StatusCode)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
-		return nil, fmt.Errorf("read dcgm: %w", err)
+		return "", fmt.Errorf("read dcgm: %w", err)
 	}
-	return ParseDCGM(string(body)), nil
+	return string(body), nil
+}
+
+// targets expands the configured endpoint to one URL per exporter pod, falling back to the
+// endpoint itself whenever that cannot be done — no client, not a Service name, or a Service
+// nothing is behind. The fallback is the old single-GET behaviour, never an empty scrape.
+func (s *DCGMSource) targets(ctx context.Context) []string {
+	single := []string{s.Endpoint}
+	if s.Kube == nil {
+		return single
+	}
+	parsed, err := url.Parse(s.Endpoint)
+	if err != nil {
+		return single
+	}
+	service, namespace, ok := parseServiceHost(parsed.Hostname())
+	if !ok {
+		return single
+	}
+	selector, err := parseSelector(s.Selector, service)
+	if err != nil {
+		s.log().Warn("dcgm selector is not usable, scraping the endpoint as given", "error", err)
+		return single
+	}
+
+	var pods corev1.PodList
+	if err := s.Kube.List(ctx, &pods, client.InNamespace(namespace), client.MatchingLabels(selector)); err != nil {
+		s.log().Warn("dcgm pod discovery failed, scraping the endpoint as given", "error", err)
+		return single
+	}
+
+	out := []string{}
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		if pod.Status.PodIP == "" || pod.Status.Phase != corev1.PodRunning {
+			continue
+		}
+		host := pod.Status.PodIP
+		if port := parsed.Port(); port != "" {
+			host = net.JoinHostPort(host, port)
+		}
+		out = append(out, (&url.URL{Scheme: parsed.Scheme, Host: host, Path: parsed.Path, RawQuery: parsed.RawQuery}).String())
+	}
+	if len(out) == 0 {
+		return single
+	}
+	sort.Strings(out)
+	return out
+}
+
+// parseServiceHost reads `<service>.<namespace>.svc[.cluster.local]`, the only host shape that
+// names something with pods behind it. Anything else — an address, an external name, a Prometheus
+// federate URL — is a single target and is left alone.
+func parseServiceHost(host string) (service, namespace string, ok bool) {
+	parts := strings.Split(strings.TrimSuffix(host, "."), ".")
+	if len(parts) < 3 || parts[2] != "svc" {
+		return "", "", false
+	}
+	if parts[0] == "" || parts[1] == "" {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
+// parseSelector reads `k=v,k2=v2`, defaulting to the label the exporter's chart sets.
+func parseSelector(spec, service string) (map[string]string, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return map[string]string{"app.kubernetes.io/name": service}, nil
+	}
+	out := map[string]string{}
+	for _, pair := range strings.Split(spec, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		key, value, found := strings.Cut(pair, "=")
+		key = strings.TrimSpace(key)
+		if !found || key == "" {
+			return nil, fmt.Errorf("selector %q is not a comma-separated list of key=value", spec)
+		}
+		out[key] = strings.TrimSpace(value)
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("selector %q names no labels", spec)
+	}
+	return out, nil
 }
 
 // ParseDCGM reads a Prometheus text exposition into a device inventory.

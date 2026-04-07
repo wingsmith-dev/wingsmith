@@ -91,6 +91,8 @@ func run() error {
 			DCGM: &observe.DCGMSource{
 				Endpoint: cfg.DCGMEndpoint,
 				Client:   &http.Client{Timeout: cfg.DCGMTimeout},
+				Kube:     directClient,
+				Selector: cfg.DCGMSelector,
 				Log:      log,
 			},
 			Log: log,

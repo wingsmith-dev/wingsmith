@@ -1,14 +1,22 @@
 package observe
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
 const (
@@ -261,4 +269,136 @@ func TestDevicesForIgnoresANodeWithNoAccelerators(t *testing.T) {
 	if got := devicesFor(node, true, ParseDCGM(dcgmFixture(t)), discardLog); got != nil {
 		t.Fatalf("a control-plane node discovered %d devices", len(got))
 	}
+}
+
+// --------------------------------------------------------------------------- pod expansion
+
+// TestScrapeCoversEveryExporterPod is the duplicate-device bug: the exporter is a DaemonSet, so
+// scraping the Service in front of it reaches one pod and sees one node's cards. Every other node
+// then falls back to a synthetic id, and a different pod answering next tick gives that node a
+// second identity.
+func TestScrapeCoversEveryExporterPod(t *testing.T) {
+	first := exposition("node-a", "GPU-aaaa1111-0000-0000-0000-000000000001", 0)
+	second := exposition("node-b", "GPU-bbbb2222-0000-0000-0000-000000000002", 0)
+
+	one := staticServer(t, first)
+	two := staticServer(t, second)
+
+	// No port on the endpoint: the pod addresses already carry the one their test server
+	// listens on, where in a real cluster the Service's port is the right one for every pod.
+	source := &DCGMSource{
+		Endpoint: "http://dcgm-exporter.platform.svc.cluster.local/metrics",
+		Kube:     podsAt(t, "platform", "dcgm-exporter", one, two),
+		Log:      discardLog,
+	}
+
+	inv, err := source.Scrape(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inv.Devices != 2 || inv.Hosts != 2 {
+		t.Fatalf("merged inventory has %d devices across %d hosts, want 2 and 2", inv.Devices, inv.Hosts)
+	}
+	for _, host := range []string{"node-a", "node-b"} {
+		if got := inv.forNode(host, nil); len(got) != 1 {
+			t.Fatalf("node %s got %d devices from the merged scrape", host, len(got))
+		}
+	}
+}
+
+// TestScrapeSurvivesOneDeadExporter keeps a single unreachable pod from costing every node its
+// identity, which is what failing the whole scrape would do.
+func TestScrapeSurvivesOneDeadExporter(t *testing.T) {
+	alive := staticServer(t, exposition("node-a", "GPU-aaaa1111-0000-0000-0000-000000000001", 0))
+	dead := "http://127.0.0.1:1/metrics"
+
+	source := &DCGMSource{
+		Endpoint: "http://dcgm-exporter.platform.svc.cluster.local/metrics",
+		Kube:     podsAt(t, "platform", "dcgm-exporter", alive, dead),
+		Log:      discardLog,
+	}
+	inv, err := source.Scrape(t.Context())
+	if err != nil {
+		t.Fatalf("one dead exporter failed the whole scrape: %v", err)
+	}
+	if inv.Devices != 1 {
+		t.Fatalf("scraped %d devices, want the one live pod's", inv.Devices)
+	}
+}
+
+func TestParseServiceHostOnlyExpandsServiceNames(t *testing.T) {
+	for _, tc := range []struct {
+		host    string
+		service string
+		ns      string
+		ok      bool
+	}{
+		{"dcgm-exporter.platform.svc.cluster.local", "dcgm-exporter", "platform", true},
+		{"dcgm-exporter.platform.svc", "dcgm-exporter", "platform", true},
+		{"prometheus.internal.example.com", "", "", false},
+		{"10.0.0.1", "", "", false},
+		{"localhost", "", "", false},
+	} {
+		service, ns, ok := parseServiceHost(tc.host)
+		if ok != tc.ok || service != tc.service || ns != tc.ns {
+			t.Fatalf("%s -> (%q, %q, %v), want (%q, %q, %v)", tc.host, service, ns, ok, tc.service, tc.ns, tc.ok)
+		}
+	}
+}
+
+func TestParseSelectorDefaultsToTheChartsLabel(t *testing.T) {
+	got, err := parseSelector("", "dcgm-exporter")
+	if err != nil || got["app.kubernetes.io/name"] != "dcgm-exporter" {
+		t.Fatalf("default selector is %v (%v)", got, err)
+	}
+	got, err = parseSelector("app=dcgm,tier=gpu", "ignored")
+	if err != nil || got["app"] != "dcgm" || got["tier"] != "gpu" {
+		t.Fatalf("explicit selector is %v (%v)", got, err)
+	}
+	if _, err := parseSelector("not-a-pair", "x"); err == nil {
+		t.Fatal("a selector with no = was accepted")
+	}
+}
+
+// --------------------------------------------------------------------------- helpers
+
+func exposition(host, uuid string, index int) string {
+	return fmt.Sprintf(
+		"DCGM_FI_DEV_GPU_UTIL{gpu=\"%d\",UUID=\"%s\",modelname=\"NVIDIA H100 80GB HBM3\",Hostname=\"%s\"} 0\n",
+		index, uuid, host,
+	)
+}
+
+func staticServer(t *testing.T, body string) string {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, body)
+	}))
+	t.Cleanup(server.Close)
+	return server.URL + "/metrics"
+}
+
+// podsAt builds a client holding one exporter pod per URL, with the pod's IP and port taken from
+// that URL so the scrape reaches the test server standing in for it.
+func podsAt(t *testing.T, namespace, service string, urls ...string) client.Client {
+	t.Helper()
+	objs := []runtime.Object{}
+	for i, raw := range urls {
+		parsed, err := url.Parse(raw)
+		if err != nil {
+			t.Fatal(err)
+		}
+		objs = append(objs, &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%d", service, i),
+				Namespace: namespace,
+				Labels:    map[string]string{"app.kubernetes.io/name": service},
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodRunning,
+				PodIP: net.JoinHostPort(parsed.Hostname(), parsed.Port()),
+			},
+		})
+	}
+	return fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).WithRuntimeObjects(objs...).Build()
 }

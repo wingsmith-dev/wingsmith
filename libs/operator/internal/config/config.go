@@ -106,6 +106,10 @@ type Config struct {
 	// scrape, leaving discovery on the annotation and synthetic-id fallbacks.
 	DCGMEndpoint string
 
+	// DCGMSelector overrides the labels used to find the exporter pods behind DCGMEndpoint.
+	// Empty means `app.kubernetes.io/name=<service>`, taken from the endpoint's own host.
+	DCGMSelector string
+
 	// DCGMTimeout bounds one scrape. It is short on purpose: an exporter that is slow must not
 	// hold up an observation tick, because a late snapshot ages every node the plane can see.
 	DCGMTimeout time.Duration
@@ -142,6 +146,7 @@ func Load() (*Config, error) {
 		CacheTaintKey:         env("HANGAR_CACHE_TAINT_KEY", "hangar.io/cache"),
 		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
 		DCGMEndpoint:          env("HANGAR_DCGM_ENDPOINT", "http://dcgm-exporter.platform.svc.cluster.local:9400/metrics"),
+		DCGMSelector:          env("HANGAR_DCGM_SELECTOR", ""),
 		DCGMTimeout:           envDuration("HANGAR_DCGM_TIMEOUT", 5*time.Second),
 	}
 
