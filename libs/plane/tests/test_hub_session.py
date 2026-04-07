@@ -432,10 +432,14 @@ async def test_frames_are_routed_by_kind() -> None:
     harness.connection.push(frame("device.observed", payload_of("device.observed"), seq=1))
     harness.connection.push(frame("device.event", payload_of("device.event"), seq=2))
     harness.connection.push(frame("operation.observed", payload_of("operation.observed"), seq=3))
-    harness.connection.push(frame("stream.end", payload_of("stream.end"), seq=4, reply_to="req"))
+    # The one observed type whose name does not end in `.observed`. Routing by suffix alone
+    # dropped it silently, so an adopted cluster reported its running workloads and the plane
+    # logged them as unhandled.
+    harness.connection.push(frame("workload.discovered", payload_of("workload.discovered"), seq=4))
+    harness.connection.push(frame("stream.end", payload_of("stream.end"), seq=5, reply_to="req"))
     await until(lambda: len(harness.sink.resyncs) == 1)
 
-    assert [f.type for f in harness.sink.observed] == ["device.observed"]
+    assert [f.type for f in harness.sink.observed] == ["device.observed", "workload.discovered"]
     assert [f.type for f in harness.sink.events] == ["device.event"]
     assert [f.type for f in harness.sink.operations] == ["operation.observed"]
     assert harness.sink.resyncs[-1][0] == "end"

@@ -510,6 +510,8 @@ class OperatorSession:
                 )
             case "operation.observed":
                 await self.sink.record_operation(self._sink_frame(envelope))
+            case "workload.discovered":
+                await self.sink.apply_observed(self._sink_frame(envelope))
             case _:
                 if envelope.type.endswith(_EVENT_SUFFIX):
                     await self.sink.record_event(self._sink_frame(envelope))
