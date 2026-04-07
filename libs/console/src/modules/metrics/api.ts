@@ -25,7 +25,7 @@ export function fetchMetrics(
   ref: string,
   query: MetricsQuery = {}
 ) {
-  return api.get<Metrics>(`/v1/metrics/${PATHS[scope]}/${ref}`, {
+  return api.get<Metrics>(`/metrics/${PATHS[scope]}/${ref}`, {
     window: query.window,
     series: query.series,
     span: query.span,
