@@ -105,7 +105,9 @@ export function PromoteDialog({
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Promote {workloadLabel(workload)}</DialogTitle>
+          <DialogTitle className="break-all">
+            Promote {workloadLabel(workload)}
+          </DialogTitle>
           <DialogDescription>
             Adopting this workload makes it a deployment the plane manages. It
             keeps the replicas and the weights it already has; from here the
@@ -114,7 +116,7 @@ export function PromoteDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="min-w-0 space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="promote-recipe">Recipe</Label>
             <Select value={recipe} onValueChange={setRecipe}>
@@ -133,7 +135,7 @@ export function PromoteDialog({
                 ))}
               </SelectContent>
             </Select>
-            <p className="font-mono text-2xs text-muted-foreground/60">
+            <p className="font-mono text-2xs break-all text-muted-foreground/60">
               running {workload.images.join(", ") || "an unrecorded image"}
             </p>
           </div>
@@ -201,7 +203,7 @@ export function PromoteDialog({
               {workload.devices_per_replica} device
               {workload.devices_per_replica === 1 ? "" : "s"} each
             </p>
-            <p className="mt-1 font-mono text-2xs text-muted-foreground/60">
+            <p className="mt-1 font-mono text-2xs break-all text-muted-foreground/60">
               fingerprint {fingerprint ?? "unknown — cannot promote"}
             </p>
           </div>

@@ -15,7 +15,8 @@ import {
   useUpdateRecipe,
 } from "@/modules/demand/queries"
 import type { Recipe } from "@/modules/demand/types"
-import { useState } from "react"
+import type { RecipeDraft } from "@/modules/discovered/types"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 
 /**
@@ -27,10 +28,12 @@ export function RecipeForm({
   open,
   onOpenChange,
   recipe,
+  draft,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   recipe?: Recipe
+  draft?: RecipeDraft
 }) {
   const editing = !!recipe
   const create = useCreateRecipe()
@@ -38,17 +41,21 @@ export function RecipeForm({
   const { data: artifacts } = useArtifactOptions()
 
   const [artifact, setArtifact] = useState(recipe?.artifact_id ?? "")
-  const [name, setName] = useState(recipe?.name ?? "")
-  const [engine, setEngine] = useState(recipe?.engine ?? "vllm")
-  const [engineVersion, setEngineVersion] = useState(
-    recipe?.engine_version ?? ""
+  const [name, setName] = useState(recipe?.name ?? draft?.name ?? "")
+  const [engine, setEngine] = useState(
+    recipe?.engine ?? draft?.engine ?? "vllm"
   )
-  const [engineImage, setEngineImage] = useState(recipe?.engine_image ?? "")
+  const [engineVersion, setEngineVersion] = useState(
+    recipe?.engine_version ?? draft?.engine_version ?? ""
+  )
+  const [engineImage, setEngineImage] = useState(
+    recipe?.engine_image ?? draft?.engine_image ?? ""
+  )
   const [deviceClass, setDeviceClass] = useState(
-    recipe?.shape.device_class ?? ""
+    recipe?.shape.device_class ?? draft?.device_class ?? ""
   )
   const [deviceCount, setDeviceCount] = useState<number | null>(
-    recipe?.shape.device_count ?? 1
+    recipe?.shape.device_count ?? draft?.device_count ?? 1
   )
   const [deviceMemory, setDeviceMemory] = useState<number | null>(
     recipe?.shape.device_memory_mib_min ?? 0
@@ -60,47 +67,62 @@ export function RecipeForm({
     recipe?.shape.topology_domain_kind ?? ""
   )
   const [contextLength, setContextLength] = useState<number | null>(
-    recipe?.context_length ?? 8192
+    recipe?.context_length ?? draft?.context_length ?? 8192
   )
   const [maxBatchTokens, setMaxBatchTokens] = useState<number | null>(
-    recipe?.max_batch_tokens ?? null
+    recipe?.max_batch_tokens ?? draft?.max_batch_tokens ?? null
   )
   const [tensor, setTensor] = useState<number | null>(
-    recipe?.parallelism.tensor ?? 1
+    recipe?.parallelism.tensor ?? draft?.tensor_parallel ?? 1
   )
   const [pipeline, setPipeline] = useState<number | null>(
-    recipe?.parallelism.pipeline ?? 1
+    recipe?.parallelism.pipeline ?? draft?.pipeline_parallel ?? 1
   )
   const [expert, setExpert] = useState<number | null>(
-    recipe?.parallelism.expert ?? 1
+    recipe?.parallelism.expert ?? draft?.expert_parallel ?? 1
   )
-  const [quantization, setQuantization] = useState(recipe?.quantization ?? "")
-  const [dtype, setDtype] = useState(recipe?.dtype ?? "")
+  const [quantization, setQuantization] = useState(
+    recipe?.quantization ?? draft?.quantization ?? ""
+  )
+  const [dtype, setDtype] = useState(recipe?.dtype ?? draft?.dtype ?? "")
   const [kvCacheDtype, setKvCacheDtype] = useState(
     recipe?.cache.kv_cache_dtype ?? ""
   )
   const [kvCacheFraction, setKvCacheFraction] = useState<number | null>(
-    recipe?.cache.kv_cache_fraction ?? null
+    recipe?.cache.kv_cache_fraction ?? draft?.kv_cache_fraction ?? null
   )
   const [prefixCache, setPrefixCache] = useState(
     recipe?.cache.prefix_cache_enabled ?? false
   )
   const [cpuCores, setCpuCores] = useState<number | null>(
-    recipe?.resources.cpu_cores ?? null
+    recipe?.resources.cpu_cores ?? draft?.cpu_cores ?? null
   )
   const [memoryMib, setMemoryMib] = useState<number | null>(
-    recipe?.resources.memory_mib ?? null
+    recipe?.resources.memory_mib ?? draft?.memory_mib ?? null
   )
   const [diskGib, setDiskGib] = useState<number | null>(
     recipe?.resources.disk_gib ?? null
   )
   const [engineArgs, setEngineArgs] = useState<unknown>(
-    recipe?.engine_args ?? {}
+    recipe?.engine_args ?? draft?.engine_args ?? {}
   )
   const [argsValid, setArgsValid] = useState(true)
   const [labels, setLabels] = useState<Record<string, string>>(
     recipe?.labels ?? {}
   )
+
+  /**
+   * A draft names its weights, it does not know their id — the artifact is
+   * matched by name once the options land, and left empty (for a person to
+   * pick) when nothing in the catalogue matches.
+   */
+  useEffect(() => {
+    if (!draft || artifact || !artifacts) return
+    const match = artifacts.find(
+      (a) => a.name === draft.artifact_name || a.id === draft.artifact_ref
+    )
+    if (match) setArtifact(match.id)
+  }, [draft, artifact, artifacts])
 
   const pending = create.isPending || update.isPending
   const error = create.error ?? update.error
@@ -165,7 +187,11 @@ export function RecipeForm({
       open={open}
       onOpenChange={onOpenChange}
       title={editing ? "Edit recipe" : "New recipe"}
-      description="A reproducible way to serve one artifact on one device class."
+      description={
+        draft
+          ? "Read from a running workload. Nothing is written until you save."
+          : "A reproducible way to serve one artifact on one device class."
+      }
       error={error}
       pending={pending}
       disabled={

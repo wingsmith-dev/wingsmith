@@ -17,6 +17,7 @@ import type {
   DiscoveredWorkload,
   RecipeDraft,
 } from "@/modules/discovered/types"
+import { RecipeForm } from "@/routes/_app/recipes/RecipeForm"
 import { useState } from "react"
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -25,14 +26,16 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
       <span className="font-mono text-2xs text-muted-foreground/60">
         {label}
       </span>
-      <span className="text-right font-mono text-xs">{value}</span>
+      <span className="min-w-0 text-right font-mono text-xs break-all">
+        {value}
+      </span>
     </div>
   )
 }
 
 function Read({ draft }: { draft: RecipeDraft }) {
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       {!draft.confident && (
         <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
           <p className="font-mono text-2xs text-amber-600 dark:text-amber-400">
@@ -87,7 +90,11 @@ function Read({ draft }: { draft: RecipeDraft }) {
           </p>
           <div className="flex flex-wrap gap-1">
             {Object.entries(draft.engine_args).map(([k, v]) => (
-              <Badge key={k} variant="outline" className="font-mono text-2xs">
+              <Badge
+                key={k}
+                variant="outline"
+                className="max-w-full font-mono text-2xs break-all"
+              >
                 {k}
                 {v !== "" && `=${v}`}
               </Badge>
@@ -105,7 +112,7 @@ function Read({ draft }: { draft: RecipeDraft }) {
             {draft.notes.map((note) => (
               <li
                 key={note}
-                className="font-mono text-2xs text-muted-foreground"
+                className="font-mono text-2xs break-all text-muted-foreground"
               >
                 — {note}
               </li>
@@ -132,42 +139,64 @@ export function RecipeDraftDialog({
   trigger?: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
   const { data: draft, isLoading, error } = useRecipeDraft(workload.id, open)
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button size="sm" variant="outline">
-            Read as recipe
-          </Button>
-        )}
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{workloadLabel(workload)}</DialogTitle>
-          <DialogDescription>
-            How the plane reads what this cluster is running. Nothing has been
-            written — this is a proposal to confirm, not a change.
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button size="sm" variant="outline">
+              Read as recipe
+            </Button>
+          )}
+        </DialogTrigger>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="break-all">
+              {workloadLabel(workload)}
+            </DialogTitle>
+            <DialogDescription>
+              How the plane reads what this cluster is running. Nothing has been
+              written — this is a proposal to confirm, not a change.
+            </DialogDescription>
+          </DialogHeader>
 
-        {isLoading && (
-          <p className="font-mono text-2xs text-muted-foreground">reading…</p>
-        )}
-        {error && (
-          <p className="font-mono text-2xs text-destructive">
-            {formatError(error, "Could not read this workload")}
-          </p>
-        )}
-        {draft && <Read draft={draft} />}
+          {isLoading && (
+            <p className="font-mono text-2xs text-muted-foreground">reading…</p>
+          )}
+          {error && (
+            <p className="font-mono text-2xs text-destructive">
+              {formatError(error, "Could not read this workload")}
+            </p>
+          )}
+          {draft && <Read draft={draft} />}
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>
+              Close
+            </Button>
+            <Button
+              disabled={!draft}
+              onClick={() => {
+                setOpen(false)
+                setCreating(true)
+              }}
+            >
+              Create recipe
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {creating && draft && (
+        <RecipeForm
+          open
+          draft={draft}
+          onOpenChange={(next) => !next && setCreating(false)}
+        />
+      )}
+    </>
   )
 }
