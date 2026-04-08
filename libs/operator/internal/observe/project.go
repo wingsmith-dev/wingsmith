@@ -243,8 +243,26 @@ func (o *Observer) project(s Snapshot) projection {
 			Labels:            labels,
 			Model:             w.Model,
 			SpecFingerprint:   w.Fingerprint,
+			Spec:              workloadSpec(w.Spec),
 			ObservedAt:        observedAt,
 		})
 	}
 	return p
+}
+
+// workloadSpec carries the harvested serving spec onto the wire, or nothing when the workload had
+// no container holding accelerators to read one from.
+func workloadSpec(in *WorkloadSpec) *wire.WorkloadSpec {
+	if in == nil {
+		return nil
+	}
+	return &wire.WorkloadSpec{
+		Image:        in.Image,
+		Command:      in.Command,
+		Args:         in.Args,
+		EnvNames:     in.EnvNames,
+		Requests:     in.Requests,
+		Limits:       in.Limits,
+		NodeSelector: in.NodeSelector,
+	}
 }

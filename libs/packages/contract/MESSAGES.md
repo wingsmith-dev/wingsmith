@@ -65,6 +65,21 @@ cluster reporting on something the plane declared, and there is nothing declared
 sighting attaches a name and a project to it; it never produces a `deployment.desired`, because
 declaring what is already running is how a control plane restarts it.
 
+**A sighting carries `spec`: how the workload was told to serve, uninterpreted.** The image, the
+container's argv, the resources it asked for and its node selector, verbatim as its own cluster
+records them. This is what makes a sighting adoptable rather than merely visible — engine and
+version live in the image tag, context length and parallelism in the arguments, and without them
+adopting a running model means retyping by hand what the cluster already knows. The operator reads
+it off the container holding the accelerators and interprets none of it; deciding that
+`--tensor-parallel-size` means tensor parallelism is the plane's job, so that a better reading is a
+plane deploy rather than a roll across every cluster in the fleet.
+
+**`spec.env_names` is names without values, and that is a guarantee.** A serving pod is routinely
+handed a HuggingFace token or a registry credential through its environment, usually by `envFrom` a
+secret. Values would be copied into the plane's database and into every backup of it, to no
+purpose: the names already tell a reader what the workload expects to find. A secret or config-map
+reference appears as `secretRef:<name>`, naming the source without reading it.
+
 **`deployment.desired` carries `adopt` when it was promoted from one of those sightings.** Its
 presence changes what the frame asks for: the named object already exists and is already serving, so
 the operator takes ownership in place rather than applying a rendered spec over it. `spec_fingerprint`

@@ -23,10 +23,51 @@
       "nod_01j9x2bbbbbbbbbbbbbbbbbbbc"
     ],
     "labels": {
-      "app": "llama-70b-vllm"
+      "app": "llama-70b-vllm",
+      "dynamo-component": "VllmDecodeWorker",
+      "dynamo-graph-deployment-name": "llama-70b-agg",
+      "dynamo-namespace": "dynamo-llama-70b-agg"
     },
     "model": "meta-llama/Llama-3.1-70B-Instruct",
     "spec_fingerprint": "sha256:9f2c1b7d4e6a0835c1d9b2f47a0e6538d1c4b9a70f2e5836c1d4b9a70f2e5836",
+    "spec": {
+      "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1",
+      "command": [
+        "python3",
+        "-m",
+        "dynamo.vllm"
+      ],
+      "args": [
+        "--model",
+        "meta-llama/Llama-3.1-70B-Instruct",
+        "--served-model-name",
+        "llama-70b",
+        "--tensor-parallel-size",
+        "4",
+        "--max-model-len",
+        "131072",
+        "--gpu-memory-utilization",
+        "0.90",
+        "--max-num-seqs",
+        "256"
+      ],
+      "env_names": [
+        "HF_HOME",
+        "PYTHONHASHSEED",
+        "secretRef:hf-token-secret"
+      ],
+      "requests": {
+        "cpu": "16",
+        "memory": "96Gi",
+        "nvidia.com/gpu": "4"
+      },
+      "limits": {
+        "nvidia.com/gpu": "4"
+      },
+      "node_selector": {
+        "hangar.io/pool": "gpu"
+      }
+    },
     "observed_at": "2026-08-19T14:02:11.400Z"
   }
 }

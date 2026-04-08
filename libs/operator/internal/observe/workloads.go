@@ -3,6 +3,7 @@ package observe
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -127,6 +128,7 @@ func (k *KubeDiscoverer) discoverWorkloads(ctx context.Context, pods *corev1.Pod
 			w.Labels = c.labels
 			w.Model = c.model
 			w.Fingerprint = c.fingerprint
+			w.Spec = c.spec
 		}
 		out = append(out, w)
 	}
@@ -141,6 +143,7 @@ type controller struct {
 	labels      map[string]string
 	model       string
 	fingerprint string
+	spec        *WorkloadSpec
 }
 
 func (k *KubeDiscoverer) controllers(ctx context.Context) (map[workloadKey]controller, error) {
@@ -167,6 +170,7 @@ func (k *KubeDiscoverer) controllers(ctx context.Context) (map[workloadKey]contr
 			labels:      exportedWorkloadLabels(d.Labels),
 			model:       modelHint(d.ObjectMeta, &d.Spec.Template),
 			fingerprint: workload.Fingerprint(&d.Spec.Template.Spec),
+			spec:        servingSpec(&d.Spec.Template),
 		}
 	}
 
@@ -191,6 +195,7 @@ func (k *KubeDiscoverer) controllers(ctx context.Context) (map[workloadKey]contr
 			labels:      exportedWorkloadLabels(s.Labels),
 			model:       modelHint(s.ObjectMeta, &s.Spec.Template),
 			fingerprint: workload.Fingerprint(&s.Spec.Template.Spec),
+			spec:        servingSpec(&s.Spec.Template),
 		}
 	}
 	return out, nil
@@ -288,21 +293,98 @@ func modelHint(meta metav1.ObjectMeta, t *corev1.PodTemplateSpec) string {
 func exportedWorkloadLabels(in map[string]string) map[string]string {
 	out := map[string]string{}
 	for k, v := range in {
-		if rest, ok := strings.CutPrefix(k, "hangar.dev/"); ok {
-			out[rest] = v
-			continue
-		}
-		if rest, ok := strings.CutPrefix(k, "app.kubernetes.io/"); ok {
-			out[rest] = v
+		for _, prefix := range exportedLabelPrefixes {
+			if rest, ok := strings.CutPrefix(k, prefix); ok {
+				out[rest] = v
+				break
+			}
 		}
 	}
 	return out
 }
 
+// exportedLabelPrefixes are the label namespaces worth carrying beside a sighting. `nvidia.com/`
+// is here because Dynamo says more about a workload in its labels than most operators say
+// anywhere: the graph deployment a worker belongs to, its component and its role in the graph.
+// Dropping them left every discovered vLLM worker looking anonymous.
+var exportedLabelPrefixes = []string{"hangar.dev/", "app.kubernetes.io/", "nvidia.com/"}
+
 func keys(in map[string]bool) []string {
 	out := make([]string, 0, len(in))
 	for k := range in {
 		out = append(out, k)
+	}
+	return out
+}
+
+// servingSpec reports how the workload was told to serve, from the container that holds the
+// accelerators. A pod template can carry sidecars — a metrics exporter, a log shipper — and none
+// of them describe the model, so the container asking for GPUs is the one that answers.
+//
+// Nothing here is interpreted. `--tensor-parallel-size 2` leaves as two strings in a list, and the
+// plane is what decides that means tensor parallelism, because an operator is the only thing that
+// knows Kubernetes but it is not the thing that has to know vLLM.
+func servingSpec(t *corev1.PodTemplateSpec) *WorkloadSpec {
+	c := servingContainer(t)
+	if c == nil {
+		return nil
+	}
+	out := &WorkloadSpec{
+		Image:        c.Image,
+		Command:      append([]string{}, c.Command...),
+		Args:         append([]string{}, c.Args...),
+		EnvNames:     envNames(c),
+		Requests:     quantities(c.Resources.Requests),
+		Limits:       quantities(c.Resources.Limits),
+		NodeSelector: map[string]string{},
+	}
+	for k, v := range t.Spec.NodeSelector {
+		out.NodeSelector[k] = v
+	}
+	return out
+}
+
+// servingContainer is the container holding the accelerators, or nil when none of them are.
+func servingContainer(t *corev1.PodTemplateSpec) *corev1.Container {
+	for i := range t.Spec.Containers {
+		c := &t.Spec.Containers[i]
+		if q, ok := c.Resources.Limits[resourceGPU]; ok && q.Value() > 0 {
+			return c
+		}
+	}
+	return nil
+}
+
+// envNames lists what the container expects to find in its environment, names only.
+//
+// The values are deliberately absent and must stay that way. `envFrom` a secret is how a serving
+// pod is given a HuggingFace token or a registry credential, and a discovery pass that shipped
+// values would copy every one of them into the control plane's database, where nothing needs them
+// and a backup would carry them further still. A name is enough to tell a reader what the
+// workload depends on.
+func envNames(c *corev1.Container) []string {
+	out := []string{}
+	for _, e := range c.Env {
+		out = append(out, e.Name)
+	}
+	for _, from := range c.EnvFrom {
+		switch {
+		case from.SecretRef != nil:
+			out = append(out, "secretRef:"+from.SecretRef.Name)
+		case from.ConfigMapRef != nil:
+			out = append(out, "configMapRef:"+from.ConfigMapRef.Name)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// quantities renders a resource list as strings, keeping the cluster's own units. Converting
+// `96Gi` to bytes here would make the plane's reading of it this package's decision.
+func quantities(in corev1.ResourceList) map[string]string {
+	out := map[string]string{}
+	for name, q := range in {
+		out[string(name)] = q.String()
 	}
 	return out
 }

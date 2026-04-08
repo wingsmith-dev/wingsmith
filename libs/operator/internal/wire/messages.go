@@ -274,7 +274,25 @@ type WorkloadDiscovered struct {
 	Labels            map[string]string `json:"labels"`
 	Model             string            `json:"model,omitempty"`
 	SpecFingerprint   string            `json:"spec_fingerprint"`
+	Spec              *WorkloadSpec     `json:"spec,omitempty"`
 	ObservedAt        string            `json:"observed_at"`
+}
+
+// WorkloadSpec is how a discovered workload was told to serve: the image it runs, the arguments
+// it was given, and the resources it asked for. Verbatim and uninterpreted — the plane reads
+// `--tensor-parallel-size` as parallelism, this only carries it.
+//
+// `env_names` is names without values, and that is a guarantee rather than an omission. Serving
+// pods are routinely handed registry credentials and HuggingFace tokens through their
+// environment; shipping values would copy them into the plane's database and into its backups.
+type WorkloadSpec struct {
+	Image        string            `json:"image,omitempty"`
+	Command      []string          `json:"command,omitempty"`
+	Args         []string          `json:"args,omitempty"`
+	EnvNames     []string          `json:"env_names,omitempty"`
+	Requests     map[string]string `json:"requests,omitempty"`
+	Limits       map[string]string `json:"limits,omitempty"`
+	NodeSelector map[string]string `json:"node_selector,omitempty"`
 }
 
 // Adopt rides on a DeploymentDesired that was promoted from a discovered workload. Its presence

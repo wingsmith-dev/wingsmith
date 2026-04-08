@@ -115,6 +115,27 @@ type Workload struct {
 	// an adoption is pinned to: the plane records the digest it adopted, and a reconciler that
 	// finds a different one refuses to converge rather than restarting the workload to match.
 	Fingerprint string
+	// Spec is how the workload was told to serve: the image, the arguments, the resources it
+	// asked for. Reported verbatim and uninterpreted — reading `--tensor-parallel-size` as
+	// parallelism is the plane's job, not this one's, so that improving the reading is a plane
+	// deploy rather than a roll across every cluster in the fleet.
+	Spec *WorkloadSpec
+}
+
+// WorkloadSpec is what one container was told to do, as its own cluster records it.
+//
+// Environment variables appear here by name and never by value. A serving pod's environment holds
+// registry credentials and HuggingFace tokens — `envFrom` a secret is the ordinary way to run one
+// — and the control plane has no business storing them. The names are enough to tell a reader
+// what the workload expects to find.
+type WorkloadSpec struct {
+	Image        string
+	Command      []string
+	Args         []string
+	EnvNames     []string
+	Requests     map[string]string
+	Limits       map[string]string
+	NodeSelector map[string]string
 }
 
 // Snapshot is one complete reading of the cluster's supply. It is always whole: a partial
