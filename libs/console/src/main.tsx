@@ -7,6 +7,7 @@ import { createRoot } from "react-dom/client"
 import { ThemeProvider } from "@/components/theme-provider"
 import { queryClient } from "@/lib/query-client"
 import "./index.css"
+import { installUnauthorizedHandler } from "@/modules/auth/session"
 import { routeTree } from "./routeTree.gen"
 
 export const router = createRouter({ routeTree })
@@ -16,6 +17,10 @@ declare module "@tanstack/react-router" {
     router: typeof router
   }
 }
+
+installUnauthorizedHandler(() => {
+  void router.navigate({ to: "/login", replace: true })
+})
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

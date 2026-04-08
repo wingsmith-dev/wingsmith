@@ -20,6 +20,7 @@ import { HangarMark } from "@/components/layout/hangar-mark"
 import { IconEye, IconLogout, IconSettings } from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
 import { useAuthStore } from "@/modules/auth/store"
+import { useSignOut } from "@/modules/auth/session"
 import { useReadOnly } from "@/modules/settings/store"
 import { useUndecidedCount } from "@/modules/discovered/queries"
 
@@ -146,7 +147,7 @@ export function ConsoleSidebar({
 }: React.ComponentProps<typeof Sidebar>) {
   const readOnly = useReadOnly()
   const pathname = useRouterState().location.pathname
-  const signOut = useAuthStore((s) => s.signOut)
+  const signOut = useSignOut()
   const operator = useAuthStore((s) => s.operator)
 
   return (

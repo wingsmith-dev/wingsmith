@@ -73,8 +73,8 @@ export const useAuthStore = create<AuthState>()(
     {
       name: "hangar.auth",
       // The token outlives a reload but not its own expiry, and nothing here
-      // knows when that is. An expired one rehydrates, 401s, and is cleared by
-      // signing out again — which is the same path a wrong password takes.
+      // knows when that is. An expired one rehydrates, 401s on first use, and is
+      // cleared by the handler installed in `session.ts`.
       onRehydrateStorage: () => (state) => {
         setAuthToken(state?.accessToken ?? null)
       },

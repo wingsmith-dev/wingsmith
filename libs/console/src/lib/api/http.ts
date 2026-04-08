@@ -1,4 +1,4 @@
-import { getAuthToken } from "@/modules/auth/token"
+import { getAuthToken, reportUnauthorized } from "@/modules/auth/token"
 import {
   ConflictError,
   ForbiddenError,
@@ -99,7 +99,10 @@ async function request<T>(
   if (response.status === 204) return undefined as T
 
   const payload = await response.json().catch(() => null)
-  if (!response.ok) throw toError(response.status, payload)
+  if (!response.ok) {
+    if (response.status === 401) reportUnauthorized()
+    throw toError(response.status, payload)
+  }
   return payload as T
 }
 

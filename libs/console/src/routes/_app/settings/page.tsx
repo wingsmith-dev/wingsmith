@@ -15,6 +15,7 @@ import { useTheme } from "@/components/theme-provider"
 import { BASE_URL } from "@/lib/api/http"
 import { transport } from "@/lib/api"
 import { useAuthStore } from "@/modules/auth/store"
+import { useSignOut } from "@/modules/auth/session"
 import {
   ACCENTS,
   useSettingsStore,
@@ -51,7 +52,7 @@ export function SettingsPage() {
   const accent = useSettingsStore((s) => s.accent)
   const setAccent = useSettingsStore((s) => s.setAccent)
   const operator = useAuthStore((s) => s.operator)
-  const signOut = useAuthStore((s) => s.signOut)
+  const signOut = useSignOut()
 
   return (
     <div className="flex flex-col">

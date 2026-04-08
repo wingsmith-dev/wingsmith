@@ -11,3 +11,18 @@ export function getAuthToken(): string | null {
 export function setAuthToken(next: string | null): void {
   token = next
 }
+
+/**
+ * Called when the plane rejects a token. Lives here rather than in the store so
+ * the HTTP transport can report an expiry without importing the store, which
+ * imports the transport for its base URL.
+ */
+let unauthorized: (() => void) | null = null
+
+export function setUnauthorizedHandler(next: (() => void) | null): void {
+  unauthorized = next
+}
+
+export function reportUnauthorized(): void {
+  unauthorized?.()
+}
