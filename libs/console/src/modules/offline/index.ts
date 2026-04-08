@@ -458,6 +458,24 @@ registerFixtures([
         memory_mib: null,
         confident: !!match && !!model && context !== null,
         notes: match ? [] : ["could not tell which engine this runs"],
+        artifact: {
+          reference: model ? `hf:${model}` : null,
+          digest: model ? `hf:${model}` : null,
+          name: model,
+          kind: "weights",
+          format: null,
+          revision: args["revision"] ?? null,
+          parameter_count: null,
+          source_scheme: model ? "hf" : null,
+          source_uri: model ? `hf://${model}` : null,
+          verified: false,
+          metadata: { source: "discovered" },
+          existing_id:
+            artifacts.find((a) => a.digest === `hf:${model}`)?.id ?? null,
+          notes: model
+            ? ["the digest is this reference, not a hash of the bytes"]
+            : ["no --model argument, so there are no weights to identify"],
+        },
       }
     },
   },

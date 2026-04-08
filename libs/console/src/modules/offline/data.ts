@@ -520,6 +520,7 @@ export const artifacts: Artifact[] = [
     id: uid("art_"),
     digest:
       "sha256:9f2c1a0b7d4e5f6a8b9c0d1e2f3a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c",
+    verified: true,
     name: "llama-3.3-70b-instruct",
     kind: "weights",
     format: "safetensors",
@@ -551,6 +552,7 @@ export const artifacts: Artifact[] = [
     id: uid("art_"),
     digest:
       "sha256:1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f6a8b9c0d1e2f3a4b5c6d7e",
+    verified: true,
     name: "bge-m3-embed",
     kind: "weights",
     format: "safetensors",
