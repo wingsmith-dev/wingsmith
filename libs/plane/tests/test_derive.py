@@ -1,0 +1,146 @@
+"""Reading a Dynamo/vLLM workload as a recipe.
+
+The specs here are copied from what the two inference clusters actually report, not
+invented: a parser for a format we control nothing about is only worth what it does on the
+real thing.
+"""
+
+from app.modules.discovered.derive import derive
+from app.modules.discovered.derive import parse_args
+from app.modules.discovered.derive import engine_from_image
+
+
+QWEN = {
+    "image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1",
+    "command": ["python3", "-m", "dynamo.vllm"],
+    "args": [
+        "--model",
+        "Qwen/Qwen3.8-27B",
+        "--served-model-name",
+        "qwen3.8-27b",
+        "--tensor-parallel-size",
+        "2",
+        "--max-model-len",
+        "262144",
+        "--gpu-memory-utilization",
+        "0.90",
+        "--max-num-seqs",
+        "256",
+    ],
+    "requests": {"cpu": "16", "memory": "96Gi", "nvidia.com/gpu": "2"},
+    "limits": {"nvidia.com/gpu": "2"},
+}
+
+LABELS = {
+    "dynamo-component": "VllmDecodeWorker",
+    "dynamo-graph-deployment-name": "qwen3-8-27b-agg",
+    "dynamo-namespace": "dynamo-qwen3-8-27b-agg",
+}
+
+
+def test_a_dynamo_vllm_worker_reads_as_a_complete_recipe() -> None:
+    draft = derive(
+        spec=QWEN,
+        labels=LABELS,
+        name="qwen3-8-27b-agg-vllmdecodeworker-b16ef7d1",
+        devices_per_replica=2,
+        device_class="rtx-pro-6000-blackwell",
+    )
+
+    assert draft.confident
+    assert draft.notes == []
+    assert draft.engine == "vllm"
+    assert draft.engine_version == "1.3.1"
+    assert draft.artifact_ref == "hf:Qwen/Qwen3.8-27B"
+    assert draft.artifact_name == "Qwen/Qwen3.8-27B"
+    assert draft.name == "qwen3.8-27b"
+    assert draft.context_length == 262144
+    assert draft.tensor_parallel == 2
+    assert draft.device_count == 2
+    assert draft.max_batch_tokens == 256
+    assert draft.kv_cache_fraction == 0.90
+    assert draft.cpu_cores == 16
+    assert draft.memory_mib == 96 * 1024
+    assert draft.device_class == "rtx-pro-6000-blackwell"
+
+
+def test_quantisation_is_read_from_the_model_name_when_the_args_are_silent() -> None:
+    spec = dict(QWEN)
+    spec["args"] = [
+        "--model",
+        "prism-ml/Ternary-Bonsai-27B-AWQ-4bit",
+        "--served-model-name",
+        "ternary-bonsai-27b",
+        "--tensor-parallel-size",
+        "1",
+        "--max-model-len",
+        "262144",
+    ]
+    draft = derive(spec=spec, labels={}, name="w", devices_per_replica=1)
+    assert draft.quantization == "awq"
+
+
+def test_an_explicit_quantisation_argument_wins_over_the_name() -> None:
+    spec = dict(QWEN)
+    spec["args"] = QWEN["args"] + ["--quantization", "fp8"]
+    draft = derive(spec=spec, labels={}, name="w", devices_per_replica=2)
+    assert draft.quantization == "fp8"
+
+
+def test_settings_without_a_column_survive_as_engine_args() -> None:
+    spec = dict(QWEN)
+    spec["args"] = QWEN["args"] + ["--enforce-eager", "--swap-space", "8"]
+    draft = derive(spec=spec, labels={}, name="w", devices_per_replica=2)
+    assert draft.engine_args["--enforce-eager"] == ""
+    assert draft.engine_args["--swap-space"] == "8"
+    assert "--model" not in draft.engine_args, "fields with a column are not repeated here"
+
+
+def test_an_unreadable_engine_is_reported_rather_than_guessed() -> None:
+    draft = derive(
+        spec={"image": "ghcr.io/acme/something", "args": []},
+        labels={},
+        name="mystery",
+        devices_per_replica=1,
+    )
+    assert not draft.confident
+    assert draft.engine is None
+    assert any("which engine" in n for n in draft.notes)
+
+
+def test_parallelism_disagreeing_with_the_pod_is_called_out() -> None:
+    spec = dict(QWEN)
+    spec["args"] = ["--model", "m", "--max-model-len", "1024", "--tensor-parallel-size", "4"]
+    draft = derive(spec=spec, labels={}, name="w", devices_per_replica=2)
+    assert any("holds 2 devices" in n for n in draft.notes)
+    assert draft.device_count == 4, "the larger of the two, never silently the smaller"
+
+
+def test_a_name_falls_back_to_the_graph_deployment_then_the_workload() -> None:
+    spec = dict(QWEN)
+    spec["args"] = ["--model", "m", "--max-model-len", "8"]
+    assert derive(spec=spec, labels=LABELS, name="w", devices_per_replica=1).name == "qwen3-8-27b-agg"
+    assert derive(spec=spec, labels={}, name="w", devices_per_replica=1).name == "w"
+
+
+def test_equals_form_arguments_parse() -> None:
+    assert parse_args(["--model=a/b", "--tensor-parallel-size=2"]) == {
+        "model": "a/b",
+        "tensor-parallel-size": "2",
+    }
+
+
+def test_millicore_requests_round_up_to_a_whole_core() -> None:
+    draft = derive(
+        spec={"image": QWEN["image"], "args": QWEN["args"], "requests": {"cpu": "500m"}},
+        labels={},
+        name="w",
+        devices_per_replica=2,
+    )
+    assert draft.cpu_cores == 1
+
+
+def test_engine_is_read_from_the_runtime_image_convention() -> None:
+    assert engine_from_image("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1") == ("vllm", "1.3.1")
+    assert engine_from_image("nvcr.io/nvidia/ai-dynamo/sglang-runtime:0.4.2") == ("sglang", "0.4.2")
+    assert engine_from_image(None) == (None, None)

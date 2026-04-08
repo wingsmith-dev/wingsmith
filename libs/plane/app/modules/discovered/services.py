@@ -20,6 +20,8 @@ from app.core.pagination import decode_cursor
 from app.modules.deployments.schemas import DeploymentSchema
 from app.modules.deployments.services import DeploymentService
 
+from .derive import RecipeDraft
+from .derive import derive
 from .schemas import PromoteRequest
 from .schemas import DecisionRequest
 from .schemas import DiscoveredWorkloadSchema
@@ -151,6 +153,25 @@ class DiscoveredWorkloadService:
         )
         await self.db.commit()
         return await self.get(workload.uid)
+
+    async def recipe_draft(self, ref: str, cluster: str | None = None) -> RecipeDraft:
+        """Reads a sighting as a proposed recipe. Writes nothing.
+
+        A read rather than a POST because it is one: the same sighting derives the
+        same draft every time, and nothing about asking the question changes the
+        answer. What a person does with the draft — edit it, save it as a recipe,
+        throw it away — happens on the recipes module's own endpoints, so there is
+        one path that creates a recipe rather than two that must agree.
+        """
+        row = await self._one(ref, cluster=cluster)
+        workload: DiscoveredWorkload = row[0]
+        return derive(
+            spec=workload.spec or {},
+            labels=workload.labels or {},
+            name=workload.name,
+            devices_per_replica=workload.devices_per_replica,
+            device_class=await self.repo.device_class_of(list(workload.node_uids or [])),
+        )
 
     async def promote(self, ref: str, data: PromoteRequest) -> DeploymentSchema:
         """Turns a sighting into a deployment the plane manages, or refuses to.

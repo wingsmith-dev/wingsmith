@@ -8,6 +8,7 @@ from app.core.context import RequestContext
 from app.core.schemas import ListResponse
 from app.modules.deployments.schemas import DeploymentSchema
 
+from .derive import RecipeDraft
 from .depends import discovered_svc_generator
 from .schemas import PromoteRequest
 from .schemas import DecisionRequest
@@ -67,6 +68,16 @@ class DiscoveredWorkloadRoutes(Controller):
         cluster: str | None = None,
     ) -> Response[DiscoveredWorkloadSchema]:
         return Response(await svc.get(ref, cluster=cluster))
+
+    @get("/{ref:str}/recipe-draft")
+    async def draft_recipe(
+        self,
+        context: RequestContext,
+        svc: DiscoveredWorkloadService,
+        ref: str,
+        cluster: str | None = None,
+    ) -> Response[RecipeDraft]:
+        return Response(await svc.recipe_draft(ref, cluster=cluster))
 
     @post("/{ref:str}/track")
     async def track_discovered(

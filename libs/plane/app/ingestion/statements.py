@@ -9,6 +9,8 @@ enforced here, by which columns a builder is willing to name.
 from uuid import UUID
 from typing import Any
 
+import msgspec
+
 from sqlalchemy import Delete
 from sqlalchemy import Insert
 from sqlalchemy import Update
@@ -278,6 +280,7 @@ def upsert_discovered_workload(cluster_id: UUID, payload: WorkloadDiscovered) ->
         "node_uids": payload.node_ids,
         "labels": payload.labels,
         "spec_fingerprint": payload.spec_fingerprint or None,
+        "spec": msgspec.to_builtins(payload.spec) if payload.spec is not None else {},
         "first_seen_at": observed,
         "observed_at": observed,
     }

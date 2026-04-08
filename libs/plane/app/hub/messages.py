@@ -239,6 +239,29 @@ class TopologyObserved(Struct):
     observed_at: str
 
 
+class WorkloadSpec(Struct):
+    """How a discovered workload was told to serve, verbatim from its own cluster.
+
+    Uninterpreted on purpose. `args` arrives as the list the container was given
+    and stays that way through ingestion; reading `--tensor-parallel-size` as
+    parallelism happens in `modules/discovered/derive.py`, so that improving the
+    reading is a plane deploy rather than an operator roll across the fleet.
+
+    `env_names` carries names and never values. A serving pod is routinely handed
+    a HuggingFace token or a registry credential through its environment, and a
+    discovery pass that shipped values would copy every one of them into this
+    database and into its backups.
+    """
+
+    image: str | None = None
+    command: list[str] = []
+    args: list[str] = []
+    env_names: list[str] = []
+    requests: dict[str, str] = {}
+    limits: dict[str, str] = {}
+    node_selector: dict[str, str] = {}
+
+
 class WorkloadDiscovered(Struct):
     """A workload already running in a cluster that the plane never declared.
 
@@ -273,6 +296,7 @@ class WorkloadDiscovered(Struct):
     spec_fingerprint: str
     observed_at: str
     model: str | None = None
+    spec: WorkloadSpec | None = None
 
 
 class CapacityClass(Struct):

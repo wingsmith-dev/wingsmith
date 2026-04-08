@@ -1,0 +1,270 @@
+"""Reading a sighting's serving spec as a recipe.
+
+Every cluster we operate runs Dynamo over vLLM, and this leans on that hard. It is not a
+general parser and does not pretend to be one: it knows what `python3 -m dynamo.vllm`
+takes, what NVIDIA's runtime images are called, and what Dynamo writes into its labels.
+A cluster serving something else produces a draft with fewer fields filled and a note
+saying so, which is the honest outcome — a wrong guess is worse than a blank.
+
+It lives in the plane rather than the operator on purpose. Rule 2 says the operator is the
+only thing that knows Kubernetes; it does not say the operator is the thing that knows
+vLLM. Keeping engine knowledge here means a better reading ships as a plane deploy instead
+of a roll across every cluster in the fleet.
+
+Nothing here writes. It proposes, and a person confirms.
+"""
+
+import re
+
+from app.core.schemas import Struct
+
+
+# Dynamo's own labels, which say more about a workload than most operators say anywhere.
+LABEL_GRAPH = "dynamo-graph-deployment-name"
+LABEL_COMPONENT = "dynamo-component"
+LABEL_COMPONENT_TYPE = "dynamo-component-type"
+LABEL_NAMESPACE = "dynamo-namespace"
+
+# `nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1` -> engine `vllm`, version `1.3.1`.
+_RUNTIME_IMAGE = re.compile(r"/(?P<engine>[a-z0-9]+)-runtime:(?P<version>[^@\s]+)")
+_ANY_IMAGE = re.compile(r"/(?P<engine>[a-z0-9]+)[^/:]*:(?P<version>[^@\s]+)")
+
+
+class RecipeDraft(Struct):
+    """A proposed recipe, and an account of how much of it was actually read.
+
+    `confident` is false when the engine could not be identified, because every
+    field below it is then a guess dressed as a reading. `notes` names what could
+    not be determined so the person confirming knows where to look rather than
+    having to diff the draft against the cluster themselves.
+    """
+
+    artifact_ref: str | None
+    artifact_name: str | None
+    name: str
+    engine: str | None
+    engine_version: str | None
+    engine_image: str | None
+    engine_args: dict
+    context_length: int | None
+    tensor_parallel: int
+    pipeline_parallel: int
+    expert_parallel: int
+    max_batch_tokens: int | None
+    kv_cache_fraction: float | None
+    quantization: str | None
+    dtype: str | None
+    device_count: int
+    device_class: str | None
+    cpu_cores: int | None
+    memory_mib: int | None
+    confident: bool
+    notes: list[str]
+
+
+def parse_args(args: list[str]) -> dict[str, str]:
+    """Folds a container's argv into flag/value pairs.
+
+    A bare `--flag` with no value maps to the empty string rather than being
+    dropped: `--enforce-eager` is a setting, and losing it would make the draft
+    quietly disagree with what is running.
+    """
+    out: dict[str, str] = {}
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if not token.startswith("--"):
+            i += 1
+            continue
+        if "=" in token:
+            flag, _, value = token.partition("=")
+            out[flag[2:]] = value
+            i += 1
+            continue
+        key = token[2:]
+        if i + 1 < len(args) and not args[i + 1].startswith("--"):
+            out[key] = args[i + 1]
+            i += 2
+            continue
+        out[key] = ""
+        i += 1
+    return out
+
+
+def engine_from_image(image: str | None) -> tuple[str | None, str | None]:
+    """Reads engine and version out of the runtime image tag.
+
+    NVIDIA names these `<engine>-runtime`, which is a stronger signal than the
+    repository path and is tried first. Anything else falls back to the last path
+    segment, which is right often enough to be worth offering and always visible
+    to whoever confirms the draft.
+    """
+    if not image:
+        return None, None
+    if m := _RUNTIME_IMAGE.search(image):
+        return m.group("engine"), m.group("version")
+    if m := _ANY_IMAGE.search(image):
+        return m.group("engine"), m.group("version")
+    return None, None
+
+
+def _int(values: dict[str, str], key: str) -> int | None:
+    try:
+        return int(values[key])
+    except (KeyError, ValueError):
+        return None
+
+
+def _float(values: dict[str, str], key: str) -> float | None:
+    try:
+        return float(values[key])
+    except (KeyError, ValueError):
+        return None
+
+
+def _cpu_cores(requests: dict[str, str]) -> int | None:
+    """Kubernetes cpu as whole cores, rounding a millicore request up.
+
+    A workload asking for `500m` is asking for less than a core and gets one here:
+    a recipe's `cpu_cores` is a floor for placement, and rounding down would
+    schedule a replica onto less cpu than the workload already runs with.
+    """
+    raw = requests.get("cpu")
+    if not raw:
+        return None
+    try:
+        if raw.endswith("m"):
+            millis = int(raw[:-1])
+            return max(1, -(-millis // 1000))
+        return max(1, int(float(raw)))
+    except ValueError:
+        return None
+
+
+_MEMORY_UNITS = {
+    "Ki": 1 / 1024,
+    "Mi": 1,
+    "Gi": 1024,
+    "Ti": 1024 * 1024,
+    "K": 1000 / (1024 * 1024),
+    "M": 1000 * 1000 / (1024 * 1024),
+    "G": 1000 * 1000 * 1000 / (1024 * 1024),
+}
+
+
+def _memory_mib(requests: dict[str, str]) -> int | None:
+    raw = requests.get("memory")
+    if not raw:
+        return None
+    for suffix, factor in _MEMORY_UNITS.items():
+        if raw.endswith(suffix):
+            try:
+                return int(float(raw[: -len(suffix)]) * factor)
+            except ValueError:
+                return None
+    try:
+        return int(int(raw) / (1024 * 1024))
+    except ValueError:
+        return None
+
+
+def _quantization(model_ref: str | None, values: dict[str, str]) -> str | None:
+    """What the weights are quantised to, preferring what the engine was told.
+
+    The model name is consulted only when the args are silent, because vLLM reads
+    quantisation out of the checkpoint's own config and a repository called
+    `...-AWQ-4bit` is a naming convention rather than a declaration. It is a hint
+    offered for confirmation, never a fact asserted.
+    """
+    if explicit := values.get("quantization"):
+        return explicit
+    if not model_ref:
+        return None
+    lowered = model_ref.lower()
+    for known in ("awq", "gptq", "fp8", "int8", "int4", "nvfp4"):
+        if known in lowered:
+            return known
+    return None
+
+
+def derive(
+    *,
+    spec: dict,
+    labels: dict[str, str],
+    name: str,
+    devices_per_replica: int,
+    device_class: str | None = None,
+) -> RecipeDraft:
+    """Proposes a recipe from what one cluster reported about one workload."""
+    notes: list[str] = []
+    args = list(spec.get("args") or [])
+    values = parse_args(args)
+    image = spec.get("image")
+    engine, engine_version = engine_from_image(image)
+
+    if engine is None:
+        notes.append("could not tell which engine this runs; every field below is unread")
+    elif engine != "vllm":
+        notes.append(f"read as {engine!r}, but only vLLM arguments are understood")
+
+    model_ref = values.get("model") or None
+    if model_ref is None:
+        notes.append("no --model argument, so the weights could not be identified")
+
+    context_length = _int(values, "max-model-len")
+    if context_length is None:
+        notes.append("no --max-model-len, so context length needs setting by hand")
+
+    tensor_parallel = _int(values, "tensor-parallel-size") or 1
+    pipeline_parallel = _int(values, "pipeline-parallel-size") or 1
+    expert_parallel = _int(values, "expert-parallel-size") or 1
+
+    device_count = max(devices_per_replica, tensor_parallel * pipeline_parallel)
+    if devices_per_replica and device_count != devices_per_replica:
+        notes.append(
+            f"the pod holds {devices_per_replica} devices but the parallelism implies "
+            f"{tensor_parallel * pipeline_parallel}"
+        )
+
+    requests = dict(spec.get("requests") or {})
+
+    # Everything vLLM was told that is not already a first-class recipe field. Kept so the
+    # rendered spec matches what is running rather than silently dropping settings we have
+    # no column for.
+    consumed = {
+        "model",
+        "served-model-name",
+        "max-model-len",
+        "tensor-parallel-size",
+        "pipeline-parallel-size",
+        "expert-parallel-size",
+        "max-num-seqs",
+        "gpu-memory-utilization",
+        "quantization",
+        "dtype",
+    }
+    engine_args = {f"--{k}": v for k, v in values.items() if k not in consumed}
+
+    return RecipeDraft(
+        artifact_ref=f"hf:{model_ref}" if model_ref else None,
+        artifact_name=model_ref,
+        name=values.get("served-model-name") or labels.get(LABEL_GRAPH) or name,
+        engine=engine,
+        engine_version=engine_version,
+        engine_image=image,
+        engine_args=engine_args,
+        context_length=context_length,
+        tensor_parallel=tensor_parallel,
+        pipeline_parallel=pipeline_parallel,
+        expert_parallel=expert_parallel,
+        max_batch_tokens=_int(values, "max-num-seqs"),
+        kv_cache_fraction=_float(values, "gpu-memory-utilization"),
+        quantization=_quantization(model_ref, values),
+        dtype=values.get("dtype"),
+        device_count=device_count,
+        device_class=device_class,
+        cpu_cores=_cpu_cores(requests),
+        memory_mib=_memory_mib(requests),
+        confident=engine == "vllm" and model_ref is not None and context_length is not None,
+        notes=notes,
+    )

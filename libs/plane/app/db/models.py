@@ -307,6 +307,10 @@ class Artifact(BaseMixin):
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     digest: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    # False when the digest is a reference rather than content — `hf:org/model` for weights we
+    # adopted by watching a cluster serve them. The row is a real artifact and recipes may point
+    # at it, but nothing should mistake it for content-addressed until the bytes are resolved.
+    verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     kind: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weights", index=True)
     format: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -620,6 +624,7 @@ class DiscoveredWorkload(BaseMixin):
     node_uids: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     spec_fingerprint: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    spec: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     first_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     observed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

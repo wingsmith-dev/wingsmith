@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import select
@@ -5,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.core.ids import is_uid
+from app.db.models import Node
+from app.db.models import Device
 from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
@@ -132,6 +136,26 @@ class DiscoveredWorkloadRepository:
         column = Project.uid if is_uid(ref) else Project.slug
         result = await self.db.execute(select(Project).where(column == ref).limit(1))
         return result.scalar_one_or_none()
+
+    async def device_class_of(self, node_uids: Sequence[str]) -> str | None:
+        """The class of accelerator the workload is actually running on.
+
+        Read from the devices of the nodes it holds rather than from anything the
+        workload says about itself: a recipe's `device_class` decides where the
+        thing can be placed, and the cluster is the only authority on what its own
+        hardware is. Ambiguity resolves to nothing — a workload spanning two
+        classes is a question for a person, not a field to guess at.
+        """
+        if not node_uids:
+            return None
+        result = await self.db.execute(
+            select(Device.device_class)
+            .join(Node, Device.node_id == Node.id)
+            .where(Node.uid.in_(node_uids), Device.device_class.is_not(None))
+            .distinct()
+        )
+        classes = [row[0] for row in result.all()]
+        return classes[0] if len(classes) == 1 else None
 
     async def add(self, workload: Workload, deployment: Deployment) -> None:
         self.db.add(workload)
