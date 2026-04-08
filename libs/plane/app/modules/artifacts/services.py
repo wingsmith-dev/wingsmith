@@ -66,6 +66,7 @@ class ArtifactService:
         return ArtifactSchema(
             id=artifact.uid,
             digest=artifact.digest,
+            verified=artifact.verified,
             name=artifact.name,
             kind=artifact.kind,
             format=artifact.format,
@@ -140,6 +141,7 @@ class ArtifactService:
         artifact = Artifact(
             uid=new_uid(ARTIFACT),
             digest=data.digest,
+            verified=data.verified,
             name=data.name,
             kind=data.kind,
             format=data.format,

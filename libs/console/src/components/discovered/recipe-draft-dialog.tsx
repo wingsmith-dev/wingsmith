@@ -18,6 +18,8 @@ import type {
   RecipeDraft,
 } from "@/modules/discovered/types"
 import { RecipeForm } from "@/routes/_app/recipes/RecipeForm"
+import { ArtifactStep } from "./artifact-step"
+import { PromoteDialog } from "./promote-dialog"
 import { useState } from "react"
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
@@ -124,12 +126,53 @@ function Read({ draft }: { draft: RecipeDraft }) {
   )
 }
 
+/** The steps of adoption, in the order the plane can take them. */
+const STEPS = [
+  { key: "weights", label: "weights" },
+  { key: "recipe", label: "recipe" },
+  { key: "deployment", label: "deployment" },
+] as const
+
+type Step = (typeof STEPS)[number]["key"]
+
+function Steps({ current }: { current: Step }) {
+  const at = STEPS.findIndex((step) => step.key === current)
+  return (
+    <div className="flex items-center gap-1.5 font-mono text-2xs">
+      {STEPS.map((step, i) => (
+        <span key={step.key} className="flex items-center gap-1.5">
+          {i > 0 && <span className="text-muted-foreground/40">→</span>}
+          <span
+            className={
+              i === at
+                ? "text-foreground"
+                : i < at
+                  ? "text-muted-foreground"
+                  : "text-muted-foreground/40"
+            }
+          >
+            {i < at ? `${step.label} ✓` : step.label}
+          </span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
 /**
- * What the plane reads a running workload as, before anything is written.
+ * What the plane reads a running workload as, and the path from that reading to
+ * something it manages.
  *
- * Shown rather than applied: the draft is assembled from a container's arguments
- * and an image tag, which is a reading of someone else's intent and not a
- * statement of ours. A person confirms it, and only then does a recipe exist.
+ * The reading is shown rather than applied at every step: a draft is assembled
+ * from a container's arguments and an image tag, which is someone else's intent
+ * as we understood it and not a statement of ours. So the flow writes one object
+ * at a time, in the order the model requires them — weights, then a recipe that
+ * points at those weights, then a deployment that adopts the workload in place —
+ * and each step shows what it is about to write before it writes it.
+ *
+ * The first step is why this exists. A recipe needs an artifact, a workload we
+ * never declared has none, and the form used to dead-end asking for one that
+ * nobody had created.
  */
 export function RecipeDraftDialog({
   workload,
@@ -139,12 +182,31 @@ export function RecipeDraftDialog({
   trigger?: React.ReactNode
 }) {
   const [open, setOpen] = useState(false)
-  const [creating, setCreating] = useState(false)
+  const [step, setStep] = useState<Step>("weights")
+  const [registered, setArtifactId] = useState("")
+  const [recipeId, setRecipeId] = useState("")
+  const [editing, setEditing] = useState(false)
+  const [promoting, setPromoting] = useState(false)
   const { data: draft, isLoading, error } = useRecipeDraft(workload.id, open)
+
+  /** Whatever this run registered, or what the catalogue already held. */
+  const artifactId = registered || draft?.artifact.existing_id || ""
+
+  const reset = () => {
+    setStep("weights")
+    setArtifactId("")
+    setRecipeId("")
+  }
 
   return (
     <>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next)
+          if (!next && !editing && !promoting) reset()
+        }}
+      >
         <DialogTrigger asChild>
           {trigger ?? (
             <Button size="sm" variant="outline">
@@ -152,7 +214,7 @@ export function RecipeDraftDialog({
             </Button>
           )}
         </DialogTrigger>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="break-all">
               {workloadLabel(workload)}
@@ -163,6 +225,8 @@ export function RecipeDraftDialog({
             </DialogDescription>
           </DialogHeader>
 
+          <Steps current={step} />
+
           {isLoading && (
             <p className="font-mono text-2xs text-muted-foreground">reading…</p>
           )}
@@ -171,32 +235,90 @@ export function RecipeDraftDialog({
               {formatError(error, "Could not read this workload")}
             </p>
           )}
-          {draft && <Read draft={draft} />}
+
+          {draft && step === "weights" && (
+            <ArtifactStep
+              draft={draft.artifact}
+              onResolved={(id) => {
+                setArtifactId(id)
+                setStep("recipe")
+              }}
+            />
+          )}
+          {draft && step === "recipe" && <Read draft={draft} />}
+          {draft && step === "deployment" && (
+            <div className="rounded-md border bg-muted/30 p-3">
+              <p className="font-mono text-2xs text-muted-foreground">
+                the weights and the recipe exist. Adopting takes the workload
+                over in place — it keeps the replicas it already has, and the
+                cluster refuses to reconcile it if what is running stops
+                matching what was adopted.
+              </p>
+            </div>
+          )}
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               Close
             </Button>
-            <Button
-              disabled={!draft}
-              onClick={() => {
-                setOpen(false)
-                setCreating(true)
-              }}
-            >
-              Create recipe
-            </Button>
+            {step === "weights" && draft?.artifact.existing_id && (
+              <Button onClick={() => setStep("recipe")}>
+                Continue to recipe
+              </Button>
+            )}
+            {step === "weights" && draft && !draft.artifact.reference && (
+              <Button onClick={() => setStep("recipe")}>Skip</Button>
+            )}
+            {step === "recipe" && (
+              <Button
+                disabled={!draft}
+                onClick={() => {
+                  setEditing(true)
+                  setOpen(false)
+                }}
+              >
+                Create recipe
+              </Button>
+            )}
+            {step === "deployment" && (
+              <Button
+                onClick={() => {
+                  setPromoting(true)
+                  setOpen(false)
+                }}
+              >
+                Adopt as a deployment
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {creating && draft && (
+      {editing && draft && (
         <RecipeForm
           open
           draft={draft}
-          onOpenChange={(next) => !next && setCreating(false)}
+          artifactId={artifactId || undefined}
+          onCreated={(recipe) => {
+            setRecipeId(recipe.id)
+            setStep("deployment")
+            setOpen(true)
+          }}
+          onOpenChange={(next) => !next && setEditing(false)}
         />
       )}
+
+      <PromoteDialog
+        workload={workload}
+        open={promoting}
+        recipeId={recipeId}
+        onOpenChange={(next) => {
+          setPromoting(next)
+          if (!next) {
+            reset()
+          }
+        }}
+      />
     </>
   )
 }

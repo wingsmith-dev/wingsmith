@@ -45,12 +45,25 @@ const NONE = "__none__"
 export function PromoteDialog({
   workload,
   trigger,
+  open: controlledOpen,
+  onOpenChange,
+  recipeId,
 }: {
   workload: DiscoveredWorkload
   trigger?: React.ReactNode
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  recipeId?: string
 }) {
-  const [open, setOpen] = useState(false)
-  const [recipe, setRecipe] = useState("")
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+  const open = controlledOpen ?? uncontrolledOpen
+  const setOpen = (next: boolean) => {
+    setUncontrolledOpen(next)
+    onOpenChange?.(next)
+  }
+  const [pickedRecipe, setRecipe] = useState("")
+  /** The flow resolves a recipe after this dialog is mounted, so the prop wins until picked. */
+  const recipe = pickedRecipe || recipeId || ""
   const [project, setProject] = useState(workload.project_id ?? "")
   const [name, setName] = useState(workload.name)
   const [priorityClass, setPriorityClass] = useState(NONE)
@@ -96,13 +109,15 @@ export function PromoteDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger ?? (
-          <Button size="sm" variant="outline">
-            Promote
-          </Button>
-        )}
-      </DialogTrigger>
+      {controlledOpen === undefined && (
+        <DialogTrigger asChild>
+          {trigger ?? (
+            <Button size="sm" variant="outline">
+              Promote
+            </Button>
+          )}
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="break-all">

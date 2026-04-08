@@ -30,6 +30,7 @@ class ArtifactSchema(Struct):
 
     id: str
     digest: str
+    verified: bool
     name: str
     kind: str
     format: str | None
@@ -53,6 +54,14 @@ class ArtifactLocationRequest(Struct):
 
 
 class ArtifactCreateRequest(Struct):
+    """`verified` defaults true because registering a digest is a claim about bytes.
+
+    It is false only for weights adopted by reference — a `--model` read off a
+    workload that was already running, where the digest is a name and nothing has
+    hashed anything. There is no update field for it: verification is resolving
+    the bytes, which is an operation, not an edit.
+    """
+
     digest: str
     name: str
     kind: str = "weights"
@@ -64,6 +73,7 @@ class ArtifactCreateRequest(Struct):
     project: str | None = None
     metadata: dict = {}
     locations: list[ArtifactLocationRequest] = []
+    verified: bool = True
 
 
 class ArtifactUpdateRequest(Struct):

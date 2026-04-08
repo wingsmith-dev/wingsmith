@@ -175,6 +175,24 @@ anything else. Scale is not a parameter — the bounds are taken from what the w
 running, because a promotion that also set the replica count would scale a live workload as a side
 effect of cataloguing it. From there the object is managed through `/v1/deployments` like any other.
 
+**`GET /v1/discovered/{ref}/recipe-draft` reads a sighting as the objects needed to adopt it.** A
+`GET` because it is one: the same sighting derives the same draft every time, and asking changes
+nothing. It returns the proposed recipe — engine and version from the image tag, context length and
+parallelism from the container's argv — and, under `artifact`, the weights that recipe would point
+at. The artifact half exists because a recipe cannot be written without one and a workload the plane
+never declared has no artifact anywhere: `--model org/model` becomes an `hf://` source and a
+`digest` of `hf:org/model`, with the revision appended when `--revision` was given. That digest is a
+name, not a hash, so the artifact is written with `verified: false` and stays that way until
+something resolves the bytes. `artifact.existing_id` is filled when the catalogue already holds
+those weights, which makes adopting one a confirmation instead of a duplicate. Nothing on this path
+writes; `POST /v1/artifacts` and `POST /v1/recipes` do, on their own modules' endpoints, so there is
+one way to create each object rather than two that must agree.
+
+**`verified` on an artifact is provenance, not identity.** True for anything registered digest-first
+— someone had the bytes, or a hash of them. False for weights adopted by reference from a running
+workload. It is settable at creation and absent from `PATCH`: verifying an artifact means resolving
+the bytes, which is an operation, not an edit.
+
 **`cluster` is optional on `POST /v1/deployments`**, and leaving it out is the normal path: the
 plane picks the cluster from the recipe's device shape, the project's quota, and what the clusters
 report free. Naming one is an override — it is checked for existence and nothing else, because an

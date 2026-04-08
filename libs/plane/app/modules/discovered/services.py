@@ -165,13 +165,17 @@ class DiscoveredWorkloadService:
         """
         row = await self._one(ref, cluster=cluster)
         workload: DiscoveredWorkload = row[0]
-        return derive(
+        draft = derive(
             spec=workload.spec or {},
             labels=workload.labels or {},
             name=workload.name,
             devices_per_replica=workload.devices_per_replica,
             device_class=await self.repo.device_class_of(list(workload.node_uids or [])),
         )
+        draft.artifact.existing_id = await self.repo.artifact_by_reference(
+            draft.artifact.digest, draft.artifact.source_uri
+        )
+        return draft
 
     async def promote(self, ref: str, data: PromoteRequest) -> DeploymentSchema:
         """Turns a sighting into a deployment the plane manages, or refuses to.

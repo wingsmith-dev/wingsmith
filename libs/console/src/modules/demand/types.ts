@@ -10,6 +10,7 @@ export interface ArtifactLocation {
 export interface Artifact {
   id: string
   digest: string
+  verified: boolean
   name: string
   kind: string
   format: string | null
@@ -36,6 +37,7 @@ export interface ArtifactLocationRequest {
 export interface ArtifactCreateRequest {
   digest: string
   name: string
+  verified?: boolean
   kind?: string
   format?: string | null
   size_bytes?: number

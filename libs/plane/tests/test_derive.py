@@ -144,3 +144,52 @@ def test_engine_is_read_from_the_runtime_image_convention() -> None:
     assert engine_from_image("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1") == ("vllm", "1.3.1")
     assert engine_from_image("nvcr.io/nvidia/ai-dynamo/sglang-runtime:0.4.2") == ("sglang", "0.4.2")
     assert engine_from_image(None) == (None, None)
+
+
+def test_weights_read_as_an_artifact_named_by_reference() -> None:
+    draft = derive(spec=QWEN, labels=LABELS, name="w", devices_per_replica=2)
+    art = draft.artifact
+    assert art.reference == "hf:Qwen/Qwen3.8-27B"
+    assert art.digest == art.reference
+    assert art.source_scheme == "hf"
+    # What the operator turns back into `--model` when it renders a recipe.
+    assert art.source_uri == "hf://Qwen/Qwen3.8-27B"
+    assert art.verified is False
+    assert any("not a hash of the bytes" in note for note in art.notes)
+
+
+def test_a_revision_sharpens_the_reference_and_its_absence_is_said() -> None:
+    spec = {**QWEN, "args": [*QWEN["args"], "--revision", "a1b2c3d"]}
+    draft = derive(spec=spec, labels={}, name="w", devices_per_replica=2)
+    assert draft.artifact.reference == "hf:Qwen/Qwen3.8-27B@a1b2c3d"
+    assert draft.artifact.revision == "a1b2c3d"
+
+    bare = derive(spec=QWEN, labels={}, name="w", devices_per_replica=2)
+    assert any("names a repository rather than a commit" in note for note in bare.artifact.notes)
+
+
+def test_parameter_count_is_read_from_the_name_and_flagged_as_such() -> None:
+    draft = derive(spec=QWEN, labels={}, name="w", devices_per_replica=2)
+    assert draft.artifact.parameter_count == 27_000_000_000
+    assert any("from the model's name" in note for note in draft.artifact.notes)
+
+    spec = {**QWEN, "args": ["--model", "mistralai/Mixtral-8x7B-Instruct-v0.1"]}
+    moe = derive(spec=spec, labels={}, name="w", devices_per_replica=2)
+    assert moe.artifact.parameter_count == 56_000_000_000
+
+
+def test_local_weights_are_a_path_nothing_can_fetch() -> None:
+    spec = {**QWEN, "args": ["--model", "/models/qwen3-27b"]}
+    draft = derive(spec=spec, labels={}, name="w", devices_per_replica=2)
+    assert draft.artifact.reference == "path:/models/qwen3-27b"
+    assert draft.artifact.source_scheme == "file"
+    assert draft.artifact.name == "qwen3-27b"
+    assert any("path inside the cluster" in note for note in draft.artifact.notes)
+
+
+def test_a_workload_with_no_model_argument_identifies_no_weights() -> None:
+    spec = {"image": QWEN["image"], "args": ["--max-model-len", "8192"]}
+    draft = derive(spec=spec, labels={}, name="w", devices_per_replica=1)
+    assert draft.artifact.reference is None
+    assert draft.artifact.digest is None
+    assert draft.artifact.notes == ["no --model argument, so there are no weights to identify"]

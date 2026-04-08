@@ -16,7 +16,7 @@ import {
 } from "@/modules/demand/queries"
 import type { Recipe } from "@/modules/demand/types"
 import type { RecipeDraft } from "@/modules/discovered/types"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { toast } from "sonner"
 
 /**
@@ -29,18 +29,22 @@ export function RecipeForm({
   onOpenChange,
   recipe,
   draft,
+  artifactId,
+  onCreated,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   recipe?: Recipe
   draft?: RecipeDraft
+  artifactId?: string
+  onCreated?: (recipe: Recipe) => void
 }) {
   const editing = !!recipe
   const create = useCreateRecipe()
   const update = useUpdateRecipe()
   const { data: artifacts } = useArtifactOptions()
 
-  const [artifact, setArtifact] = useState(recipe?.artifact_id ?? "")
+  const [pickedArtifact, setArtifact] = useState("")
   const [name, setName] = useState(recipe?.name ?? draft?.name ?? "")
   const [engine, setEngine] = useState(
     recipe?.engine ?? draft?.engine ?? "vllm"
@@ -112,17 +116,19 @@ export function RecipeForm({
   )
 
   /**
-   * A draft names its weights, it does not know their id — the artifact is
-   * matched by name once the options land, and left empty (for a person to
-   * pick) when nothing in the catalogue matches.
+   * A draft names its weights, it does not know their id. The caller resolves
+   * one when it can — the adoption flow registers the artifact first — and
+   * otherwise it is matched by name against the catalogue, leaving the select
+   * empty for a person to pick when nothing matches.
    */
-  useEffect(() => {
-    if (!draft || artifact || !artifacts) return
-    const match = artifacts.find(
-      (a) => a.name === draft.artifact_name || a.id === draft.artifact_ref
-    )
-    if (match) setArtifact(match.id)
-  }, [draft, artifact, artifacts])
+  const matched = draft
+    ? artifacts?.find(
+        (a) =>
+          a.name === draft.artifact.name || a.digest === draft.artifact.digest
+      )
+    : undefined
+  const artifact =
+    pickedArtifact || recipe?.artifact_id || artifactId || matched?.id || ""
 
   const pending = create.isPending || update.isPending
   const error = create.error ?? update.error
@@ -174,7 +180,10 @@ export function RecipeForm({
     create.mutate(
       { artifact, ...shared },
       {
-        onSuccess: () => done("created"),
+        onSuccess: (created) => {
+          done("created")
+          onCreated?.(created)
+        },
         onError: (e) => toast.error(formatError(e, "Could not create recipe")),
       }
     )
@@ -205,7 +214,7 @@ export function RecipeForm({
       }
       onSubmit={submit}
     >
-      {!editing && (
+      {!editing && !artifactId && (
         <SelectField
           label="Artifact"
           value={artifact}

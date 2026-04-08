@@ -12,9 +12,11 @@ from app.db.models import Device
 from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
+from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import PriorityClass
+from app.db.models import ArtifactLocation
 from app.db.models import WorkloadAdoption
 from app.db.models import DiscoveredWorkload
 from app.core.filters import ref_ids
@@ -156,6 +158,29 @@ class DiscoveredWorkloadRepository:
         )
         classes = [row[0] for row in result.all()]
         return classes[0] if len(classes) == 1 else None
+
+    async def artifact_by_reference(self, digest: str | None, uri: str | None) -> str | None:
+        """The catalogue's id for weights a sighting names, if it already holds them.
+
+        Matched on the digest first and the source uri second, because the same
+        repository registered by two people is one artifact with two spellings of
+        its reference — `hf:org/model` and `hf:org/model@main` — while the `hf://`
+        location is what both of them fetch.
+        """
+        if digest:
+            found = await self.db.scalar(select(Artifact.uid).where(Artifact.digest == digest))
+            if found:
+                return found
+        if uri:
+            found = await self.db.scalar(
+                select(Artifact.uid)
+                .join(ArtifactLocation, ArtifactLocation.artifact_id == Artifact.id)
+                .where(ArtifactLocation.uri == uri)
+                .limit(1)
+            )
+            if found:
+                return found
+        return None
 
     async def add(self, workload: Workload, deployment: Deployment) -> None:
         self.db.add(workload)

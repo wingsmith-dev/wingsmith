@@ -30,6 +30,35 @@ _RUNTIME_IMAGE = re.compile(r"/(?P<engine>[a-z0-9]+)-runtime:(?P<version>[^@\s]+
 _ANY_IMAGE = re.compile(r"/(?P<engine>[a-z0-9]+)[^/:]*:(?P<version>[^@\s]+)")
 
 
+class ArtifactDraft(Struct):
+    """The weights a sighting is serving, as far as they can be identified.
+
+    A cluster reports what it was told to load, never what it loaded. `--model
+    Qwen/Qwen3-32B` is a name someone typed, not a hash of any bytes, so `digest`
+    here is that reference and `verified` is false: the row is a real artifact and
+    recipes may point at it, and nothing should mistake it for content-addressed
+    until something resolves the weights.
+
+    `existing_id` is filled by the service, not by this module. Derivation is a
+    pure reading of one pod template; whether the catalogue already holds these
+    weights is a question about the database.
+    """
+
+    reference: str | None
+    digest: str | None
+    name: str | None
+    kind: str
+    format: str | None
+    revision: str | None
+    parameter_count: int | None
+    source_scheme: str | None
+    source_uri: str | None
+    verified: bool
+    metadata: dict
+    existing_id: str | None
+    notes: list[str]
+
+
 class RecipeDraft(Struct):
     """A proposed recipe, and an account of how much of it was actually read.
 
@@ -60,6 +89,7 @@ class RecipeDraft(Struct):
     memory_mib: int | None
     confident: bool
     notes: list[str]
+    artifact: ArtifactDraft
 
 
 def parse_args(args: list[str]) -> dict[str, str]:
@@ -187,6 +217,133 @@ def _quantization(model_ref: str | None, values: dict[str, str]) -> str | None:
     return None
 
 
+# `Qwen3-32B`, `Llama-3.1-70B-Instruct`, `Mixtral-8x7B` — the parameter count is in the name often
+# enough to be worth offering, and is a naming convention rather than a fact, so it is carried as a
+# hint a person confirms.
+_PARAMS = re.compile(r"(?:^|[-_./])(?P<count>\d+(?:\.\d+)?)\s*[bB](?:$|[-_./])")
+_MOE_PARAMS = re.compile(r"(?:^|[-_./])(?P<experts>\d+)x(?P<count>\d+(?:\.\d+)?)\s*[bB](?:$|[-_./])")
+
+# What `--load-format` says the bytes are, where it says anything at all.
+_LOAD_FORMATS = {
+    "safetensors": "safetensors",
+    "pt": "pytorch",
+    "npcache": "pytorch",
+    "gguf": "gguf",
+    "bitsandbytes": "bitsandbytes",
+    "mistral": "safetensors",
+}
+
+
+def _parameter_count(name: str | None) -> int | None:
+    """Reads a parameter count out of a model name, or gives up.
+
+    `8x7B` is the total, not the active count: a Mixtral is 56B of weights that
+    must be resident, and residency is what an artifact's size is about.
+    """
+    if not name:
+        return None
+    if m := _MOE_PARAMS.search(name):
+        return int(float(m.group("count")) * int(m.group("experts")) * 1_000_000_000)
+    if m := _PARAMS.search(name):
+        return int(float(m.group("count")) * 1_000_000_000)
+    return None
+
+
+def _artifact_format(model_ref: str | None, values: dict[str, str]) -> str | None:
+    """What the weights are stored as, said only when the engine was told.
+
+    Absent otherwise: safetensors is the safe guess for almost every repository on
+    the Hub, and a guess written into a field that reads as a statement of fact is
+    exactly what this module exists not to do.
+    """
+    if fmt := _LOAD_FORMATS.get((values.get("load-format") or "").lower()):
+        return fmt
+    if model_ref and model_ref.lower().endswith(".gguf"):
+        return "gguf"
+    return None
+
+
+def derive_artifact(model_ref: str | None, values: dict[str, str], quantization: str | None) -> ArtifactDraft:
+    """Reads the weights a workload was pointed at.
+
+    A repository id becomes an `hf` source, because that is what the operator turns
+    back into `--model` when it renders a recipe — adopting weights by reference
+    and serving them by reference are the same string, and an artifact that cannot
+    be rendered back is not worth writing.
+
+    A local path is kept as a `file` source and named as one. It is honest and it
+    is nearly useless: a path is meaningful only on the cluster that holds it, so
+    the draft says so rather than implying the weights are fetchable.
+    """
+    notes: list[str] = []
+    metadata: dict = {"source": "discovered"}
+
+    if not model_ref:
+        return ArtifactDraft(
+            reference=None,
+            digest=None,
+            name=None,
+            kind="weights",
+            format=None,
+            revision=None,
+            parameter_count=None,
+            source_scheme=None,
+            source_uri=None,
+            verified=False,
+            metadata=metadata,
+            existing_id=None,
+            notes=["no --model argument, so there are no weights to identify"],
+        )
+
+    revision = values.get("revision") or values.get("code-revision") or None
+    local = model_ref.startswith(("/", "./"))
+
+    if local:
+        scheme, uri = "file", model_ref
+        notes.append("the weights are a path inside the cluster, so nothing here can fetch them")
+    else:
+        scheme, uri = "hf", f"hf://{model_ref}"
+
+    reference = f"hf:{model_ref}" if not local else f"path:{model_ref}"
+    if revision:
+        reference = f"{reference}@{revision}"
+    else:
+        notes.append("no --revision, so this names a repository rather than a commit of one")
+
+    if tokenizer := values.get("tokenizer"):
+        metadata["tokenizer"] = tokenizer
+    if served := values.get("served-model-name"):
+        metadata["served_model_name"] = served
+    if quantization:
+        metadata["quantization"] = quantization
+    if dtype := values.get("dtype"):
+        metadata["dtype"] = dtype
+    if download_dir := values.get("download-dir"):
+        metadata["download_dir"] = download_dir
+
+    parameter_count = _parameter_count(model_ref)
+    if parameter_count is not None:
+        notes.append("the parameter count was read from the model's name, not from its config")
+
+    notes.append("the digest is this reference, not a hash of the bytes — nothing has resolved them")
+
+    return ArtifactDraft(
+        reference=reference,
+        digest=reference,
+        name=model_ref.rstrip("/").split("/")[-1] if local else model_ref,
+        kind="weights",
+        format=_artifact_format(model_ref, values),
+        revision=revision,
+        parameter_count=parameter_count,
+        source_scheme=scheme,
+        source_uri=uri,
+        verified=False,
+        metadata=metadata,
+        existing_id=None,
+        notes=notes,
+    )
+
+
 def derive(
     *,
     spec: dict,
@@ -267,4 +424,5 @@ def derive(
         memory_mib=_memory_mib(requests),
         confident=engine == "vllm" and model_ref is not None and context_length is not None,
         notes=notes,
+        artifact=derive_artifact(model_ref, values, _quantization(model_ref, values)),
     )

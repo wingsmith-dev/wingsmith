@@ -60,6 +60,31 @@ export interface PromoteRequest {
 }
 
 /**
+ * The weights a sighting is serving, as far as they can be identified.
+ *
+ * `digest` is the reference — `hf:org/model`, with the revision when the args
+ * carry one — and `verified` is false to say so: a cluster reports what it was
+ * told to load, never what it loaded. `existing_id` is the catalogue's id for
+ * these weights when it already holds them, which is what makes the first step
+ * of adoption a confirmation rather than a duplicate.
+ */
+export interface ArtifactDraft {
+  reference: string | null
+  digest: string | null
+  name: string | null
+  kind: string
+  format: string | null
+  revision: string | null
+  parameter_count: number | null
+  source_scheme: string | null
+  source_uri: string | null
+  verified: boolean
+  metadata: Record<string, unknown>
+  existing_id: string | null
+  notes: string[]
+}
+
+/**
  * A recipe proposed from what a cluster reported about a running workload.
  *
  * `confident` is false when the engine could not be identified, which makes every
@@ -88,6 +113,7 @@ export interface RecipeDraft {
   memory_mib: number | null
   confident: boolean
   notes: string[]
+  artifact: ArtifactDraft
 }
 
 /** How the workload was told to serve, as its own cluster records it. */
