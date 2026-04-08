@@ -8,6 +8,7 @@ import {
 } from "@/modules/discovered/queries"
 import type { DiscoveredWorkload } from "@/modules/discovered/types"
 import { PromoteDialog } from "./promote-dialog"
+import { RecipeDraftDialog } from "./recipe-draft-dialog"
 import { toast } from "sonner"
 
 /**
@@ -64,6 +65,7 @@ export function DecisionActions({
                 Ignore
               </Button>
             )}
+            <RecipeDraftDialog workload={workload} />
             <PromoteDialog workload={workload} />
           </>
         )}

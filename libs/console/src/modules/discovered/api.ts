@@ -4,6 +4,7 @@ import type {
   DecisionRequest,
   DiscoveredWorkload,
   PromoteRequest,
+  RecipeDraft,
 } from "./types"
 
 export interface DiscoveredFilters {
@@ -67,5 +68,19 @@ export function promoteDiscoveredWorkload(
   return api.post<Deployment>(
     `/discovered/${encodeURIComponent(ref)}/promote`,
     body
+  )
+}
+
+/**
+ * What the plane reads this sighting as. A GET because it is one: the same sighting
+ * derives the same draft every time, and asking does not change anything.
+ */
+export function fetchRecipeDraft(
+  ref: string,
+  cluster?: string
+): Promise<RecipeDraft> {
+  return api.get<RecipeDraft>(
+    `/discovered/${encodeURIComponent(ref)}/recipe-draft`,
+    cluster ? { cluster } : undefined
   )
 }

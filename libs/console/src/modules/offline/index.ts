@@ -413,6 +413,55 @@ function decide(ref: string, decision: "tracked" | "ignored", body: unknown) {
 
 registerFixtures([
   {
+    method: "GET",
+    path: "/discovered/:ref/recipe-draft",
+    handler: ({ params }: FixtureContext) => {
+      const workload = sighting(params.ref)
+      const args: Record<string, string> = {}
+      const list = workload.spec?.args ?? []
+      for (let i = 0; i < list.length; i++) {
+        if (!list[i].startsWith("--")) continue
+        const next = list[i + 1]
+        args[list[i].slice(2)] = next && !next.startsWith("--") ? next : ""
+        if (next && !next.startsWith("--")) i++
+      }
+      const match = /\/([a-z0-9]+)-runtime:([^@\s]+)/.exec(
+        workload.spec?.image ?? ""
+      )
+      const model = args["model"] ?? null
+      const context = args["max-model-len"]
+        ? Number(args["max-model-len"])
+        : null
+      return {
+        artifact_ref: model ? `hf:${model}` : null,
+        artifact_name: model,
+        name: args["served-model-name"] ?? workload.name,
+        engine: match?.[1] ?? null,
+        engine_version: match?.[2] ?? null,
+        engine_image: workload.spec?.image ?? null,
+        engine_args: {},
+        context_length: context,
+        tensor_parallel: Number(args["tensor-parallel-size"] ?? 1),
+        pipeline_parallel: 1,
+        expert_parallel: 1,
+        max_batch_tokens: args["max-num-seqs"]
+          ? Number(args["max-num-seqs"])
+          : null,
+        kv_cache_fraction: args["gpu-memory-utilization"]
+          ? Number(args["gpu-memory-utilization"])
+          : null,
+        quantization: null,
+        dtype: null,
+        device_count: workload.devices_per_replica,
+        device_class: "h100-sxm",
+        cpu_cores: null,
+        memory_mib: null,
+        confident: !!match && !!model && context !== null,
+        notes: match ? [] : ["could not tell which engine this runs"],
+      }
+    },
+  },
+  {
     method: "POST",
     path: "/discovered/:ref/track",
     handler: ({ params, body }: FixtureContext) =>

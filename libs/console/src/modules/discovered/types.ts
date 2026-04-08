@@ -22,6 +22,7 @@ export interface DiscoveredWorkload {
   status: DiscoveryStatus
   deployment_id: string | null
   spec_fingerprint: string | null
+  spec: WorkloadSpec
   project_id: string | null
   note: string | null
   decided_by: string | null
@@ -56,4 +57,46 @@ export interface PromoteRequest {
   fingerprint: string
   name?: string | null
   priority_class?: string | null
+}
+
+/**
+ * A recipe proposed from what a cluster reported about a running workload.
+ *
+ * `confident` is false when the engine could not be identified, which makes every
+ * field below it a guess rather than a reading; `notes` names what could not be
+ * determined, so the person confirming knows where to look.
+ */
+export interface RecipeDraft {
+  artifact_ref: string | null
+  artifact_name: string | null
+  name: string
+  engine: string | null
+  engine_version: string | null
+  engine_image: string | null
+  engine_args: Record<string, string>
+  context_length: number | null
+  tensor_parallel: number
+  pipeline_parallel: number
+  expert_parallel: number
+  max_batch_tokens: number | null
+  kv_cache_fraction: number | null
+  quantization: string | null
+  dtype: string | null
+  device_count: number
+  device_class: string | null
+  cpu_cores: number | null
+  memory_mib: number | null
+  confident: boolean
+  notes: string[]
+}
+
+/** How the workload was told to serve, as its own cluster records it. */
+export interface WorkloadSpec {
+  image?: string | null
+  command?: string[]
+  args?: string[]
+  env_names?: string[]
+  requests?: Record<string, string>
+  limits?: Record<string, string>
+  node_selector?: Record<string, string>
 }

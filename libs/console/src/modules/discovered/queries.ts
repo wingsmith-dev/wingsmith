@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useCursorList } from "@/lib/paginate"
 import {
   fetchDiscoveredWorkload,
+  fetchRecipeDraft,
   fetchDiscoveredWorkloads,
   ignoreDiscoveredWorkload,
   promoteDiscoveredWorkload,
@@ -68,5 +69,14 @@ export function usePromoteWorkload() {
       client.invalidateQueries({ queryKey: ["discovered"] })
       client.invalidateQueries({ queryKey: ["deployments"] })
     },
+  })
+}
+
+/** The proposed recipe for one sighting, fetched when its dialog opens. */
+export function useRecipeDraft(ref: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ["discovered", "recipe-draft", ref],
+    queryFn: () => fetchRecipeDraft(ref!),
+    enabled: !!ref && enabled,
   })
 }
