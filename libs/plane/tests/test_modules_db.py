@@ -294,6 +294,20 @@ async def test_priority_classes_lifecycle(db: AsyncSession) -> None:
     assert (await service.list()).count == 0
 
 
+async def test_the_default_priority_class_cannot_be_deleted_out_from_under_the_plane(
+    db: AsyncSession,
+) -> None:
+    service = PriorityClassService(db)
+    standard = await service.create(PriorityClassCreateRequest(name="standard", value=100, is_default=True))
+
+    with pytest.raises(Conflict):
+        await service.delete(standard.id)
+
+    batch = await service.create(PriorityClassCreateRequest(name="batch", value=10, is_default=True))
+    await service.delete(standard.id)
+    assert (await service.get(batch.id)).is_default is True
+
+
 async def test_artifacts_lifecycle(db: AsyncSession) -> None:
     service = ArtifactService(db)
     created = await service.create(

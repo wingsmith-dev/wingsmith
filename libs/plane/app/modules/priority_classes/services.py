@@ -135,12 +135,19 @@ class PriorityClassService:
         return await self.get(priority_class.uid)
 
     async def delete(self, ref: str) -> None:
-        """Refuses while workloads still reference the class.
+        """Refuses while workloads reference the class, and refuses the default.
 
         `Workload.priority_class_id` is `ON DELETE RESTRICT` and not nullable, so
         the alternative to refusing is an integrity error at commit. Checking
         first turns it into the conflict the contract describes, with a count the
         caller can act on.
+
+        The default is refused because deleting it breaks every write that does
+        not name a class: creating a deployment and promoting a workload both
+        resolve the project's default and then the plane's, and a plane with
+        neither answers `no priority class was given and none is marked default`
+        to requests that were fine the day before. Marking another one default
+        first is one call, and leaves the plane able to schedule throughout.
         """
         priority_class = await self._one(ref)
         workloads = await self.repo.workload_count(priority_class.id)
@@ -148,6 +155,11 @@ class PriorityClassService:
             raise Conflict(
                 f"priority class {ref!r} is referenced by {workloads} workload(s)",
                 {"workloads": workloads},
+            )
+        if priority_class.is_default:
+            raise Conflict(
+                f"priority class {ref!r} is the default — mark another one default first",
+                {"is_default": True},
             )
         await self.repo.delete(priority_class)
         await self.db.commit()
