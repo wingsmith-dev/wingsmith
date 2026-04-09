@@ -76,6 +76,16 @@ echo "%s"
 exit ${rc:-0}
 `
 
+// benchmarkShell is how the wrapper above is started, and it is a bare name rather than a path.
+//
+// AIPerf ships distroless: there is a `/bin`, but nothing in it, and the only shell is busybox's
+// at `/busybox/sh`. `/bin/sh` is the reflex and it fails the pod before the harness runs, with a
+// runc error about a missing file rather than anything naming the image. Left unqualified, the
+// runtime resolves it against the image's own PATH, which is where an image that moved its shell
+// says so — so this works for the distroless layout and for an ordinary one without the operator
+// having to know which it was handed.
+const benchmarkShell = "sh"
+
 // artifactDir is where the harness is told to write, inside the pod.
 const artifactDir = "/benchmark-artifacts"
 
@@ -178,7 +188,7 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 					Containers: []corev1.Container{{
 						Name:    "benchmark",
 						Image:   image,
-						Command: []string{"/bin/sh", "-c"},
+						Command: []string{benchmarkShell, "-c"},
 						Args:    []string{script},
 						Env: []corev1.EnvVar{
 							{Name: "HF_HOME", Value: "/models/hf"},

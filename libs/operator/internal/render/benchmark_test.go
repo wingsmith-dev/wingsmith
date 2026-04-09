@@ -238,3 +238,21 @@ func TestBenchmarkFramesItsExport(t *testing.T) {
 		}
 	}
 }
+
+func TestBenchmarkShellIsResolvedFromTheImagePath(t *testing.T) {
+	// AIPerf is distroless: `/bin` exists and is empty, and the shell lives at `/busybox/sh`.
+	// An absolute `/bin/sh` fails the pod in runc before the harness is ever started.
+	opts, bench := benchOpts()
+	params := benchParams(nil)
+	job, err := BenchmarkJob(params["benchmark_id"], params, opts, bench)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	command := job.Spec.Template.Spec.Containers[0].Command
+	if len(command) != 2 || command[1] != "-c" {
+		t.Fatalf("command = %v, want a shell and -c", command)
+	}
+	if strings.Contains(command[0], "/") {
+		t.Errorf("command[0] = %q, want a bare name the runtime resolves against the image PATH", command[0])
+	}
+}
