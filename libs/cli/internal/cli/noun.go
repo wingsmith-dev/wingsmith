@@ -343,32 +343,34 @@ type filters struct {
 	search string
 	labels []string
 
-	cluster   string
-	pool      string
-	node      string
-	class     string
-	health    string
-	phase     string
-	region    string
-	project   string
-	tenant    string
-	kind      string
-	typ       string
-	name      string
-	engine    string
-	artifact  string
-	recipe    string
-	condition string
-	domain    string
-	target    string
-	actor     string
-	subject   string
-	severity  string
-	device    string
-	replica   string
-	namespace string
-	status    string
-	format    string
+	cluster    string
+	pool       string
+	node       string
+	class      string
+	health     string
+	phase      string
+	region     string
+	project    string
+	tenant     string
+	kind       string
+	typ        string
+	name       string
+	engine     string
+	artifact   string
+	recipe     string
+	condition  string
+	domain     string
+	target     string
+	deployment string
+	harness    string
+	actor      string
+	subject    string
+	severity   string
+	device     string
+	replica    string
+	namespace  string
+	status     string
+	format     string
 
 	ready            bool
 	cordoned         bool
@@ -424,6 +426,7 @@ func (f *filters) opts(cmd *cobra.Command) (api.ListOpts, error) {
 		Condition: f.condition, TopologyDomain: f.domain, Target: f.target, Actor: f.actor,
 		Subject: f.subject, Severity: f.severity, Device: f.device, Replica: f.replica,
 		Namespace: f.namespace, Status: f.status, Format: f.format,
+		Deployment: f.deployment, Harness: f.harness,
 
 		Ready:            optBool(cmd, "ready", f.ready),
 		Cordoned:         optBool(cmd, "cordoned", f.cordoned),

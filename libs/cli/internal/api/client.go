@@ -386,6 +386,33 @@ func (c *Client) CancelOperation(ctx context.Context, ref string) (Operation, er
 	return out, err
 }
 
+func (c *Client) Benchmarks(ctx context.Context, o ListOpts) (Page[BenchmarkRun], error) {
+	q := newQuery(o).str("deployment", o.Deployment).str("cluster", o.Cluster).
+		str("harness", o.Harness).str("phase", o.Phase).str("actor", o.Actor).at("since", o.Since)
+	return list[BenchmarkRun](ctx, c, "/v1/benchmarks", q.values(), o)
+}
+
+func (c *Client) Benchmark(ctx context.Context, ref string) (BenchmarkRun, error) {
+	return one[BenchmarkRun](ctx, c, "/v1/benchmarks", ref, nil)
+}
+
+// BenchmarkHarnesses is what can be run and what it accepts. Asked of the plane
+// rather than compiled in, so a flag the plane stopped accepting stops being
+// offered without a CLI release.
+func (c *Client) BenchmarkHarnesses(ctx context.Context) ([]BenchmarkHarness, error) {
+	page, err := list[BenchmarkHarness](ctx, c, "/v1/benchmarks/harnesses", nil, ListOpts{})
+	return page.Items, err
+}
+
+// CreateBenchmark starts a run. It creates two things on the plane — the record
+// and the operation that carries it out — and returns the record; the operation
+// is named on it and is where cancellation lives.
+func (c *Client) CreateBenchmark(ctx context.Context, req BenchmarkRequest) (BenchmarkRun, error) {
+	var out BenchmarkRun
+	err := c.send(ctx, http.MethodPost, "/v1/benchmarks", nil, req, nil, &out)
+	return out, err
+}
+
 func (c *Client) Components(ctx context.Context, o ListOpts) (Page[Component], error) {
 	q := newQuery(o).str("cluster", o.Cluster).str("name", o.Name).str("kind", o.Kind).
 		boolean("behind", o.Behind).boolean("enabled", o.Enabled).str("search", o.Search)

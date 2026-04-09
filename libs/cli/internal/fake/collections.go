@@ -437,6 +437,115 @@ func (b *Backend) replaceOperation(op api.Operation) {
 	b.state.Operations = append([]api.Operation{op}, b.state.Operations...)
 }
 
+// fakeHarnesses mirrors what the plane serves at /v1/benchmarks/harnesses.
+//
+// A copy, and knowingly one: the fake exists to answer offline, and there is no
+// plane to ask. Drift between the two shows up as a flag the real plane refuses,
+// which is a bug in the fake and not in the design.
+var fakeHarnesses = []api.BenchmarkHarness{{
+	Name:        "aiperf",
+	Image:       "nvcr.io/nvidia/ai-dynamo/aiperf:latest",
+	Description: "NVIDIA AIPerf, the successor to GenAI-Perf. Closed-loop, concurrency-first.",
+	Parameters: []api.BenchmarkParameter{
+		{Name: "concurrency", Type: "int", Default: 10, Description: "Requests in flight at once."},
+		{Name: "request_count", Type: "int", Default: 100, Description: "Total requests to send."},
+		{Name: "input_tokens_mean", Type: "int", Default: 2000, Description: "Mean synthetic prompt length, in tokens."},
+		{Name: "input_tokens_stddev", Type: "int", Default: 0, Description: "Spread of the prompt length."},
+		{Name: "output_tokens_mean", Type: "int", Default: 256, Description: "Mean generation length, in tokens."},
+		{Name: "output_tokens_stddev", Type: "int", Default: 0, Description: "Spread of the generation length."},
+		{Name: "endpoint_type", Type: "str", Default: "chat", Description: "AIPerf endpoint type: chat, completions, embeddings."},
+		{Name: "streaming", Type: "bool", Default: true, Description: "Measure TTFT and ITL, which needs a streamed response."},
+		{Name: "warmup_request_count", Type: "int", Default: 10, Description: "Requests sent and discarded before measuring."},
+		{Name: "extra", Type: "str", Default: "", Description: "Extra flags, appended verbatim to the command line."},
+	},
+}}
+
+func (b *Backend) Benchmarks(ctx context.Context, o api.ListOpts) (api.Page[api.BenchmarkRun], error) {
+	cluster := b.clusterRef(o.Cluster)
+	return collect(b, b.state.Benchmarks, o, func(run api.BenchmarkRun) bool {
+		return refEqPtr(cluster, &run.ClusterID, nil) &&
+			refEq(o.Deployment, run.DeploymentID) && eqFold(o.Harness, run.Harness) &&
+			eqFold(o.Phase, run.Phase) && eqFold(o.Actor, run.RequestedBy) &&
+			(o.Since == nil || !run.CreatedAt.Before(*o.Since))
+	})
+}
+
+func (b *Backend) Benchmark(ctx context.Context, ref string) (api.BenchmarkRun, error) {
+	return find(b, "benchmark run", b.state.Benchmarks, ref, func(run api.BenchmarkRun) []string {
+		return []string{run.ID}
+	})
+}
+
+func (b *Backend) BenchmarkHarnesses(ctx context.Context) ([]api.BenchmarkHarness, error) {
+	if err := b.injected(); err != nil {
+		return nil, err
+	}
+	return fakeHarnesses, nil
+}
+
+// CreateBenchmark refuses the same things the plane does: an unknown harness and
+// a parameter it does not accept. A fake that accepted everything would teach a
+// command line that the plane then rejects.
+func (b *Backend) CreateBenchmark(ctx context.Context, req api.BenchmarkRequest) (api.BenchmarkRun, error) {
+	if err := b.injected(); err != nil {
+		return api.BenchmarkRun{}, err
+	}
+	if strings.TrimSpace(req.Deployment) == "" {
+		return api.BenchmarkRun{}, errs.New(errs.CodeInputRequired, "a benchmark needs a deployment")
+	}
+	var harness *api.BenchmarkHarness
+	for i := range fakeHarnesses {
+		if eqFold(req.Harness, fakeHarnesses[i].Name) || req.Harness == "" {
+			harness = &fakeHarnesses[i]
+			break
+		}
+	}
+	if harness == nil {
+		return api.BenchmarkRun{}, errs.New(errs.CodeUsage, "unknown benchmark harness %q", req.Harness)
+	}
+	known := map[string]bool{}
+	for _, parameter := range harness.Parameters {
+		known[parameter.Name] = true
+	}
+	for name := range req.Parameters {
+		if !known[name] {
+			return api.BenchmarkRun{}, errs.New(errs.CodeUsage, "%s does not accept %q", harness.Name, name)
+		}
+	}
+	deployment, err := b.Deployment(ctx, req.Deployment)
+	if err != nil {
+		return api.BenchmarkRun{}, err
+	}
+	parameters := map[string]any{}
+	for _, parameter := range harness.Parameters {
+		parameters[parameter.Name] = parameter.Default
+	}
+	for name, value := range req.Parameters {
+		parameters[name] = value
+	}
+	run := api.BenchmarkRun{
+		ID:           b.newUID("bmk_"),
+		DeploymentID: deployment.ID,
+		ClusterID:    deployment.ClusterID,
+		Harness:      harness.Name,
+		Parameters:   parameters,
+		RequestedBy:  "operator",
+		Provenance: api.BenchmarkProvenance{
+			Model:                deployment.Name,
+			DeploymentGeneration: int64(deployment.Generation),
+			EngineArgs:           map[string]any{},
+		},
+		Phase:     api.OpPending,
+		CreatedAt: time.Now().UTC(),
+	}
+	if req.Reason != "" {
+		reason := req.Reason
+		run.Reason = &reason
+	}
+	b.state.Benchmarks = append([]api.BenchmarkRun{run}, b.state.Benchmarks...)
+	return run, b.persist()
+}
+
 // CreateOperation records an operation against a target the fake can resolve,
 // so `--fake` refuses the same nonsense the plane would.
 func (b *Backend) CreateOperation(ctx context.Context, req api.OperationRequest, idempotencyKey string) (api.Operation, error) {

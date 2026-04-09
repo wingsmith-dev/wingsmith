@@ -163,7 +163,7 @@ node ids cannot tell them apart.
 
 | Type | Direction | Payload |
 |---|---|---|
-| `operation.desired` | hub → op | typed: drain, cordon, reboot, device reset, cache warm, roll, upgrade. Carries target, reason, requested_by, deadline |
+| `operation.desired` | hub → op | typed: drain, cordon, reboot, device reset, cache warm, roll, upgrade, benchmark. Carries target, reason, requested_by, deadline |
 | `operation.observed` | op → hub | phase, progress, result, failure |
 
 Operations are the third kind of thing — imperative, long-running, able to fail. They are not
@@ -188,6 +188,31 @@ and the drain reports what it could not move. Deleting would succeed every time 
 outage the operation exists to avoid. Pods that hold no accelerators are left alone: the agents,
 exporters and CSI drivers on a node are what make it reportable, and taking them out would blind
 the plane to the drain it just requested.
+
+**`benchmark` measures a deployment and reports its result somewhere else.** The operation is how
+the run is carried out — it has the phases, the deadline, the cancellation and the replay every
+other operation has — but its outcome does not fit `operation.observed.result`, which is a flat
+`map[string]string`. A load generator emits nested JSON, so the numbers travel on
+`benchmark.observed` and the operation reports only that the errand finished. The parameters name
+the run (`benchmark_id`), the harness (`harness`, `image`), the model to ask for (`model`) and
+whatever knobs that harness accepts; the receiver runs it against the cluster's own inference
+endpoint and never dials out.
+
+## Benchmarks
+
+| Type | Direction | Payload |
+|---|---|---|
+| `benchmark.observed` | op → hub | benchmark_id, harness, harness_version, phase, summary, artifacts_uri, error |
+
+**`summary` is the harness's own output shape and is not normalised.** What AIPerf calls a
+percentile and what vLLM's `benchmark_serving.py` calls one are not the same field, and a schema
+here asserting they are would be this protocol designing a normalisation before either format has
+been read against a real deployment. Two runs are comparable when `harness` and `harness_version`
+agree; that is the whole guarantee, and it is deliberately not more.
+
+**Per-request records do not travel this stream.** A run's raw output — one row per request, full
+latency distributions — is telemetry: high volume, append-only, never joined. It goes from the
+cluster to object storage directly and `artifacts_uri` is the only part of it that comes here.
 
 ## Resync
 

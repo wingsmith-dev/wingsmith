@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/hangar-dev/hangar/libs/operator/internal/observe"
+	"github.com/hangar-dev/hangar/libs/operator/internal/render"
 	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
@@ -54,6 +55,19 @@ type Executor struct {
 
 	// ReadOnly refuses every operation instead of performing it. See config.Config.ReadOnly.
 	ReadOnly bool
+
+	// Render and Benchmark are what a benchmark run needs to become a job: the cluster's local
+	// scheduling conventions, and the endpoint the load is aimed at. Both are per-cluster facts
+	// the plane deliberately does not declare.
+	Render    render.Options
+	Benchmark render.BenchmarkOptions
+
+	// Logs reads a finished job's output back, which is how a harness's result gets here.
+	// Nil leaves benchmarks refusing rather than running blind.
+	Logs LogReader
+
+	// BenchmarkTimeout bounds a run whose operation carried no deadline of its own.
+	BenchmarkTimeout time.Duration
 
 	mu       stdsync.Mutex
 	reporter Reporter
@@ -165,6 +179,8 @@ func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[
 		return e.cordon(ctx, op)
 	case "drain":
 		return e.drain(ctx, op)
+	case "benchmark":
+		return e.benchmark(ctx, op)
 	default:
 		return nil, fmt.Errorf("this operator cannot perform %q", op.Kind)
 	}

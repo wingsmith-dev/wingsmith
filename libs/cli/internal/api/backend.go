@@ -53,6 +53,11 @@ type Backend interface {
 	Operation(ctx context.Context, ref string) (Operation, error)
 	CreateOperation(ctx context.Context, req OperationRequest, idempotencyKey string) (Operation, error)
 	CancelOperation(ctx context.Context, ref string) (Operation, error)
+
+	Benchmarks(ctx context.Context, opts ListOpts) (Page[BenchmarkRun], error)
+	Benchmark(ctx context.Context, ref string) (BenchmarkRun, error)
+	BenchmarkHarnesses(ctx context.Context) ([]BenchmarkHarness, error)
+	CreateBenchmark(ctx context.Context, req BenchmarkRequest) (BenchmarkRun, error)
 	Components(ctx context.Context, opts ListOpts) (Page[Component], error)
 	Component(ctx context.Context, ref string) (Component, error)
 	Events(ctx context.Context, opts ListOpts) (Page[Event], error)

@@ -80,6 +80,7 @@ const accessItems: NavItem[] = [
 
 const activityItems: NavItem[] = [
   { label: "Operations", to: "/operations", kind: "operation" },
+  { label: "Benchmarks", to: "/benchmarks", kind: "benchmark" },
   { label: "Events", to: "/events", kind: "event" },
   { label: "Allocations", to: "/allocations", kind: "allocation" },
 ]

@@ -55,6 +55,8 @@ OTHER_NODE = "nod_01j9x2bbbbbbbbbbbbbbbbbbbx"
 OTHER_DEVICES = ("dev_01j9x2ccccccccccccccccccex", "dev_01j9x2ccccccccccccccccccey")
 OTHER_DOMAIN = "tpd_01j9x2ddddddddddddddddddx"
 OPERATION = "opr_01j9x2kkkkkkkkkkkkkkkkkkkk"
+BENCHMARK = "bmk_01j9x2mmmmmmmmmmmmmmmmmmmm"
+DEPLOYMENT = "dep_01j9x2ccccccccccccccccccc1"
 COMPONENT = "cmp_01j9x2mmmmmmmmmmmmmmmmmmmm"
 
 
@@ -359,6 +361,122 @@ async def test_a_replica_event_lands_with_no_subject(sessions, cluster) -> None:
         sessions, "SELECT type, severity, subject_type, subject_id, details->>'replica_id' FROM ops_event"
     )
     assert rows == [("replica.oom", "error", "replica", None, "rep_01j9x2hhhhhhhhhhhhhhhhhhhh")]
+
+
+# --------------------------------------------------------------------------- benchmarks
+
+
+async def seed_deployment(sessions, cluster) -> None:
+    """The smallest chain that makes a deployment row legal, for tests about what hangs off one.
+
+    Every insert is an idempotent upsert on `uid`. Only rows reachable from
+    `supply_cluster` are truncated between tests, so the tenant, project,
+    priority class, artifact, recipe and workload above the deployment survive
+    into the next one and a plain insert would collide on the second call.
+    """
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                """
+                WITH t AS (
+                  INSERT INTO bind_tenant (uid, slug, name) VALUES ('ten_bench', 'bench', 'Bench')
+                  ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
+                ), p AS (
+                  INSERT INTO bind_project (uid, tenant_id, slug, name)
+                  SELECT 'prj_bench', t.id, 'bench', 'Bench' FROM t
+                  ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
+                ), c AS (
+                  INSERT INTO bind_priority_class (uid, name, value) VALUES ('prc_bench', 'bench', 41337)
+                  ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
+                ), a AS (
+                  INSERT INTO demand_artifact (uid, digest, name)
+                  VALUES ('art_bench', 'sha256:bench', 'llama-3-70b')
+                  ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
+                ), r AS (
+                  INSERT INTO demand_recipe (uid, artifact_id, name, engine, engine_version,
+                                             context_length, device_class, engine_args)
+                  SELECT 'rec_bench', a.id, 'llama-70b', 'vllm', '0.8.4', 8192, 'h100-80gb-sxm',
+                         '{"served_model_name": "llama-70b"}'::jsonb
+                  FROM a
+                  ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
+                ), w AS (
+                  INSERT INTO demand_workload (uid, kind, project_id, priority_class_id)
+                  SELECT 'wkl_bench', 'service', p.id, c.id FROM p, c
+                  ON CONFLICT (uid) DO UPDATE SET kind = excluded.kind RETURNING id
+                )
+                INSERT INTO demand_deployment (uid, workload_id, recipe_id, cluster_id, name, generation)
+                SELECT :deployment, w.id, r.id, :cluster, 'llama-70b-prod', 7 FROM w, r
+                ON CONFLICT (uid) DO UPDATE SET cluster_id = excluded.cluster_id
+                """
+            ),
+            {"deployment": DEPLOYMENT, "cluster": cluster},
+        )
+
+
+async def seed_benchmark(sessions, cluster, phase: str = "pending") -> None:
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "INSERT INTO ops_benchmark_run (uid, deployment_id, cluster_id, harness, requested_by,"
+                " model, deployment_generation, phase)"
+                " SELECT :uid, d.id, :cluster, 'aiperf', 'staff', 'llama-70b', 7, :phase"
+                " FROM demand_deployment d WHERE d.uid = :deployment"
+            ),
+            {"uid": BENCHMARK, "cluster": cluster, "deployment": DEPLOYMENT, "phase": phase},
+        )
+
+
+async def test_a_benchmark_frame_lands_the_harness_summary_verbatim(sessions, cluster) -> None:
+    """The result is stored as the harness emitted it, not parsed into columns."""
+    await seed_deployment(sessions, cluster)
+    await seed_benchmark(sessions, cluster)
+
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(
+        SinkFrame(
+            cluster_id=CLUSTER,
+            type="benchmark.observed",
+            payload=payload("benchmark.observed", benchmark_id=BENCHMARK),
+            seq=1,
+            id=new_id(),
+        )
+    )
+
+    rows = await fetch(
+        sessions,
+        "SELECT phase, harness_version, summary, artifacts_uri, error IS NOT NULL,"
+        " started_at IS NOT NULL, finished_at IS NOT NULL FROM ops_benchmark_run",
+    )
+    assert len(rows) == 1
+    phase, version, summary, artifacts, has_error, started, finished = rows[0]
+    assert (phase, version, has_error, started, finished) == ("failed", "0.4.1", True, True, True)
+    assert artifacts == payload("benchmark.observed").artifacts_uri
+    assert summary == payload("benchmark.observed").summary
+
+
+async def test_a_benchmark_frame_for_an_undeclared_run_writes_nothing(sessions, cluster) -> None:
+    """Ingestion reports on runs. A run is asked for by somebody; it never invents one."""
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(
+        SinkFrame(cluster_id=CLUSTER, type="benchmark.observed", payload=payload("benchmark.observed"), id=new_id())
+    )
+
+    assert await fetch(sessions, "SELECT count(*) FROM ops_benchmark_run") == [(0,)]
+
+
+async def test_a_failed_run_clears_a_summary_from_an_earlier_report(sessions, cluster) -> None:
+    """A stale summary beside a failed phase would read as a measurement that was not taken."""
+    await seed_deployment(sessions, cluster)
+    await seed_benchmark(sessions, cluster)
+
+    sink = DatabaseSink(sessions)
+    frame = lambda p: SinkFrame(cluster_id=CLUSTER, type="benchmark.observed", payload=p, seq=1, id=new_id())
+    await sink.apply_observed(frame(payload("benchmark.observed", benchmark_id=BENCHMARK)))
+    await sink.apply_observed(
+        frame(payload("benchmark.observed", benchmark_id=BENCHMARK, summary=None, artifacts_uri=None))
+    )
+
+    assert await fetch(sessions, "SELECT summary, artifacts_uri FROM ops_benchmark_run") == [(None, None)]
 
 
 # --------------------------------------------------------------------------- operations and components

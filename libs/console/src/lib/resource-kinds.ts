@@ -1,4 +1,5 @@
 import {
+  IconChartHistogram,
   IconActivity,
   IconBinaryTree,
   IconBuildingBank,
@@ -37,6 +38,7 @@ export type ResourceKind =
   | "priority-class"
   | "policy"
   | "operation"
+  | "benchmark"
   | "allocation"
   | "event"
   | "discovered"
@@ -63,6 +65,7 @@ export const RESOURCE_ICONS: Record<ResourceKind, React.ElementType> = {
   "priority-class": IconSortDescending,
   policy: IconShieldLock,
   operation: IconActivity,
+  benchmark: IconChartHistogram,
   allocation: IconLayoutGrid,
   event: IconTimelineEvent,
   discovered: IconRadar2,

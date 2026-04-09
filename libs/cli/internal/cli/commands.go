@@ -28,6 +28,7 @@ func register(app *App, root *cobra.Command) {
 		policyNoun().command(app),
 
 		newOperationCmd(app),
+		newBenchmarkCmd(app),
 		allocationNoun().command(app),
 		componentNoun().command(app),
 		eventNoun().command(app),

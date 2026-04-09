@@ -153,6 +153,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/components` | declared version, observed rollout |
 | `/v1/placement` | one dry-run verb, writes nothing — see below |
 | `/v1/operations` | see §7 |
+| `/v1/benchmarks` | declared run, observed result — see §7.1 |
 | `/v1/events` | observed, read-only, append-only |
 | `/v1/alerts` | derived, read-only apart from two lifecycle verbs — see below |
 | `/v1/notification-channels` | declared, plus a `test` verb |
@@ -264,7 +265,7 @@ own dimensions (`cluster`, `pool`, `class`, `health`, `phase`, `project`).
 
 ## 7. Operations are not verbs on objects
 
-Drain, cordon, reboot, device reset, cache warm, roll, upgrade. **`POST /v1/operations`** with a
+Drain, cordon, reboot, device reset, cache warm, roll, upgrade, benchmark. **`POST /v1/operations`** with a
 type and a target — never `POST /v1/nodes/{id}/drain`.
 
 ```json
@@ -290,6 +291,45 @@ the object model: an operation is long-running, can fail, has an actor and a rea
 lifecycle of its own. A verb endpoint that returns 200 can express none of that, and the first
 question anyone asks about a stuck drain — who started it, when, and why is it stuck — becomes
 unanswerable.
+
+### 7.1 Benchmarks are a record, carried by an operation
+
+**`POST /v1/benchmarks`** with a deployment and a harness starts a measurement. It creates two
+things: a `BenchmarkRun`, which is the record and the result, and a `deployment.benchmark`
+operation, which is how the run is carried out.
+
+```json
+{ "deployment": "dep_01hq0v...", "harness": "aiperf",
+  "parameters": { "concurrency": 64, "request_count": 500, "output_tokens_mean": 256 } }
+```
+
+Two objects rather than one because they answer different questions and have different lifetimes.
+The operation has the phases, the deadline, the cancellation and the replay to a cluster that
+reconnected mid-run — all machinery that already exists and is not worth building twice. What it
+cannot hold is the result: `operation.observed.result` is a flat string map, and a load generator
+emits nested JSON. So the numbers land on the run, and stopping a run in flight is
+**`DELETE /v1/operations/{id}`** against the operation it names in `operation_id` — there is no
+second way to cancel.
+
+**A run's `summary` is the harness's own output and is not normalised.** Two runs are comparable
+when their `harness` and `harness_version` match; across harnesses, or across a release that
+redefined a percentile, they are not, and this API does not flatten them into shared columns to
+pretend otherwise. A client that reads `summary` has to cope with not recognising it.
+
+**`provenance` is what makes a run worth keeping.** `model`, `deployment_generation`, `recipe_id`,
+`recipe_version` and `engine_args` are snapshotted at creation, not resolved by join: a recipe is
+mutable and a deployment is disposable, and a run has to keep describing what it measured after
+both have moved on.
+
+**`GET /v1/benchmarks/harnesses`** returns each harness with the parameters it accepts, their
+types and their defaults. Clients render their form from it rather than carrying a second copy of
+what AIPerf takes; a parameter the named harness does not accept is `400 invalid` at creation and
+not a job that fails inside a cluster ten minutes later.
+
+There is no `PATCH` and no `DELETE` on a run. A measurement is not editable, and deleting one
+discards the history the collection exists to be.
+
+Filters: `deployment`, `cluster`, `harness`, `phase`, `actor`, `since`.
 
 ## 8. Writes and idempotency
 

@@ -1,5 +1,7 @@
 package wire
 
+import "encoding/json"
+
 // ---------------------------------------------------------------------------- session
 
 // Hello is the first frame the operator sends. It is never sent twice on one connection.
@@ -529,6 +531,31 @@ type OperationObserved struct {
 	ObservedAt  string            `json:"observed_at"`
 }
 
+// BenchmarkObserved is the outcome of a benchmark run.
+//
+// Beside OperationObserved rather than inside it: that message's Result is a map[string]string and
+// every load generator worth running emits nested JSON. Widening it would widen it for drain and
+// cordon too, which have nothing to put there.
+//
+// Summary is json.RawMessage and not a struct. It is the harness's own export, forwarded byte for
+// byte, because normalising AIPerf's shape and vLLM's into shared fields is a decision that needs
+// both formats read against a real deployment first. HarnessVersion is what makes two runs
+// comparable in the meantime.
+type BenchmarkObserved struct {
+	BenchmarkID    string          `json:"benchmark_id"`
+	ClusterID      string          `json:"cluster_id"`
+	DeploymentID   string          `json:"deployment_id"`
+	Harness        string          `json:"harness"`
+	Phase          string          `json:"phase"`
+	ObservedAt     string          `json:"observed_at"`
+	HarnessVersion string          `json:"harness_version,omitempty"`
+	Summary        json.RawMessage `json:"summary,omitempty"`
+	ArtifactsURI   string          `json:"artifacts_uri,omitempty"`
+	Error          string          `json:"error,omitempty"`
+	StartedAt      *string         `json:"started_at,omitempty"`
+	CompletedAt    *string         `json:"completed_at,omitempty"`
+}
+
 // MessageTypes maps every wire type to a constructor for its payload. A type absent here is
 // unknown to this operator and its frames are logged and dropped.
 var MessageTypes = map[string]func() any{
@@ -561,4 +588,5 @@ var MessageTypes = map[string]func() any{
 	"component.observed":  func() any { return &ComponentObserved{} },
 	"operation.desired":   func() any { return &OperationDesired{} },
 	"operation.observed":  func() any { return &OperationObserved{} },
+	"benchmark.observed":  func() any { return &BenchmarkObserved{} },
 }

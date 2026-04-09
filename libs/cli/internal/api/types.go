@@ -1,6 +1,9 @@
 package api
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Page is the envelope every list response is wrapped in. `count` is the size
 // of this page, not of the collection, and `next_cursor` is absent on the last
@@ -43,6 +46,8 @@ type ListOpts struct {
 	Condition      string
 	TopologyDomain string
 	Target         string
+	Deployment     string
+	Harness        string
 	Actor          string
 	Subject        string
 	Severity       string
@@ -663,6 +668,77 @@ type Operation struct {
 	CancelRequestedAt *time.Time      `json:"cancel_requested_at"`
 	StartedAt         *time.Time      `json:"started_at"`
 	FinishedAt        *time.Time      `json:"finished_at"`
+}
+
+// BenchmarkProvenance is what was running when a run was taken, snapshotted at
+// creation. Without it a run is a number with nothing to attribute it to.
+type BenchmarkProvenance struct {
+	Model                string         `json:"model"`
+	DeploymentGeneration int64          `json:"deployment_generation"`
+	RecipeID             *string        `json:"recipe_id"`
+	RecipeVersion        *int           `json:"recipe_version"`
+	EngineArgs           map[string]any `json:"engine_args"`
+}
+
+// BenchmarkRun is one measurement of one deployment.
+//
+// Summary is json.RawMessage and not a typed struct. It is the harness's own
+// export, stored verbatim by the plane, and giving it a shape here would be this
+// client asserting it knows a format nothing promised. `hgr benchmark get -o
+// json` hands it straight to jq, which is the tool for a shape you do not know.
+type BenchmarkRun struct {
+	ID             string              `json:"id"`
+	DeploymentID   string              `json:"deployment_id"`
+	ClusterID      string              `json:"cluster_id"`
+	OperationID    *string             `json:"operation_id"`
+	Harness        string              `json:"harness"`
+	HarnessVersion *string             `json:"harness_version"`
+	Parameters     map[string]any      `json:"parameters"`
+	RequestedBy    string              `json:"requested_by"`
+	Reason         *string             `json:"reason"`
+	Provenance     BenchmarkProvenance `json:"provenance"`
+	Phase          string              `json:"phase"`
+	Summary        json.RawMessage     `json:"summary"`
+	ArtifactsURI   *string             `json:"artifacts_uri"`
+	Error          *string             `json:"error"`
+	CreatedAt      time.Time           `json:"created_at"`
+	UpdatedAt      *time.Time          `json:"updated_at"`
+	StartedAt      *time.Time          `json:"started_at"`
+	FinishedAt     *time.Time          `json:"finished_at"`
+}
+
+// Terminal reports whether a run has stopped moving.
+func (b BenchmarkRun) Terminal() bool {
+	switch b.Phase {
+	case OpPending, OpRunning:
+		return false
+	}
+	return true
+}
+
+// BenchmarkParameter is one knob a harness accepts, as the plane describes it.
+type BenchmarkParameter struct {
+	Type        string `json:"type"`
+	Name        string `json:"name"`
+	Default     any    `json:"default"`
+	Description string `json:"description"`
+}
+
+// BenchmarkHarness is a load generator and what it takes.
+type BenchmarkHarness struct {
+	Name        string               `json:"name"`
+	Image       string               `json:"image"`
+	Description string               `json:"description"`
+	Parameters  []BenchmarkParameter `json:"parameters"`
+}
+
+// BenchmarkRequest starts a run.
+type BenchmarkRequest struct {
+	Deployment string         `json:"deployment"`
+	Harness    string         `json:"harness"`
+	Reason     string         `json:"reason,omitempty"`
+	Parameters map[string]any `json:"parameters,omitempty"`
+	Deadline   *time.Time     `json:"deadline,omitempty"`
 }
 
 // Operation phases. Terminal ones are what `hgr operation wait` waits for.

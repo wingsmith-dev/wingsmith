@@ -36,6 +36,7 @@ from app.hub.messages import CacheObserved
 from app.hub.messages import DeviceObserved
 from app.hub.messages import ReplicaObserved
 from app.hub.messages import TopologyObserved
+from app.hub.messages import BenchmarkObserved
 from app.hub.messages import ComponentObserved
 from app.hub.messages import OperationObserved
 from app.hub.messages import AllocationObserved
@@ -276,6 +277,16 @@ class DatabaseSink:
                     return None
                 for statement in statements.upsert_cache_entries(cluster_id, artifact_id, payload):
                     await db.execute(statement)
+                return None
+            case "benchmark.observed":
+                assert isinstance(payload, BenchmarkObserved)
+                result = await db.execute(statements.update_benchmark_run(cluster_id, payload))
+                if result.rowcount == 0:
+                    logger.info(
+                        "ingestion.benchmark.unknown benchmark=%s cluster=%s",
+                        payload.benchmark_id,
+                        frame.cluster_id,
+                    )
                 return None
             case "capacity.observed":
                 return None

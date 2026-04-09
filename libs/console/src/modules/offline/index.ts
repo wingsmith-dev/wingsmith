@@ -9,6 +9,7 @@ import {
 import {
   allocations,
   artifacts,
+  benchmarkRuns,
   clusters,
   components,
   deployments,
@@ -30,6 +31,11 @@ import {
 import { revision, uid } from "./ids"
 import { collection } from "./registry"
 import type { Deployment } from "@/modules/demand/types"
+import type {
+  BenchmarkCreateRequest,
+  BenchmarkHarness,
+  BenchmarkRun,
+} from "@/modules/benchmarks/types"
 import type {
   DecisionRequest,
   DiscoveredWorkload,
@@ -275,6 +281,97 @@ const operationsCollection = collection({
     eq(q.get("actor"), o.requested_by),
 })
 
+/**
+ * Runs, and the harness catalogue the form is built from.
+ *
+ * The catalogue is duplicated here rather than derived from anything: offline
+ * mode is a copy of the plane's answers, and the plane is where that table
+ * actually lives. If the two drift, the demo shows a field the real plane would
+ * refuse — which is a bug in the demo and not in the design.
+ */
+const benchmarksCollection = collection({
+  path: "/benchmarks",
+  singular: "benchmark run",
+  rows: () => benchmarkRuns,
+  filter: (b, q) =>
+    eq(q.get("deployment"), b.deployment_id) &&
+    eq(clusterRef(q.get("cluster")) ?? q.get("cluster"), b.cluster_id) &&
+    eq(q.get("harness"), b.harness) &&
+    eq(q.get("phase"), b.phase) &&
+    eq(q.get("actor"), b.requested_by),
+})
+
+const HARNESSES: BenchmarkHarness[] = [
+  {
+    name: "aiperf",
+    image: "nvcr.io/nvidia/ai-dynamo/aiperf:latest",
+    description:
+      "NVIDIA AIPerf, the successor to GenAI-Perf. Closed-loop, concurrency-first.",
+    parameters: [
+      {
+        name: "concurrency",
+        type: "int",
+        default: 10,
+        description: "Requests in flight at once.",
+      },
+      {
+        name: "request_count",
+        type: "int",
+        default: 100,
+        description: "Total requests to send.",
+      },
+      {
+        name: "input_tokens_mean",
+        type: "int",
+        default: 2000,
+        description: "Mean synthetic prompt length, in tokens.",
+      },
+      {
+        name: "input_tokens_stddev",
+        type: "int",
+        default: 0,
+        description: "Spread of the prompt length.",
+      },
+      {
+        name: "output_tokens_mean",
+        type: "int",
+        default: 256,
+        description: "Mean generation length, in tokens.",
+      },
+      {
+        name: "output_tokens_stddev",
+        type: "int",
+        default: 0,
+        description: "Spread of the generation length.",
+      },
+      {
+        name: "endpoint_type",
+        type: "str",
+        default: "chat",
+        description: "AIPerf endpoint type: chat, completions, embeddings.",
+      },
+      {
+        name: "streaming",
+        type: "bool",
+        default: true,
+        description: "Measure TTFT and ITL, which needs a streamed response.",
+      },
+      {
+        name: "warmup_request_count",
+        type: "int",
+        default: 10,
+        description: "Requests sent and discarded before measuring.",
+      },
+      {
+        name: "extra",
+        type: "str",
+        default: "",
+        description: "Extra flags, appended verbatim to the command line.",
+      },
+    ],
+  },
+]
+
 const TARGET_KINDS: Record<string, string> = {
   nod_: "node",
   dev_: "device",
@@ -294,6 +391,79 @@ function clusterOf(target: string): string | null {
 }
 
 registerFixtures([
+  {
+    method: "GET",
+    path: "/benchmarks/harnesses",
+    handler: () => ({
+      items: HARNESSES,
+      count: HARNESSES.length,
+      next_cursor: null,
+    }),
+  },
+  {
+    method: "POST",
+    path: "/benchmarks",
+    handler: ({ body }: FixtureContext) => {
+      const data = body as BenchmarkCreateRequest
+      const harness = HARNESSES.find((h) => h.name === data.harness)
+      if (!harness) {
+        throw new ConflictError(
+          "invalid",
+          `unknown benchmark harness '${data.harness}'`,
+          { allowed: HARNESSES.map((h) => h.name) }
+        )
+      }
+      const deployment = deployments.find((d) => d.id === data.deployment)
+      if (!deployment) {
+        throw new NotFoundError(`no deployment '${data.deployment}'`)
+      }
+      const known = new Set(harness.parameters.map((p) => p.name))
+      const unknown = Object.keys(data.parameters ?? {}).filter(
+        (key) => !known.has(key)
+      )
+      if (unknown.length > 0) {
+        throw new ConflictError(
+          "invalid",
+          `${harness.name} does not accept ${unknown.join(", ")}`,
+          { harness: harness.name, unknown }
+        )
+      }
+      const parameters: Record<string, unknown> = {}
+      for (const parameter of harness.parameters) {
+        parameters[parameter.name] =
+          data.parameters?.[parameter.name] ?? parameter.default
+      }
+      const now = new Date().toISOString()
+      const created: BenchmarkRun = {
+        id: uid("bmk_"),
+        deployment_id: deployment.id,
+        cluster_id: deployment.cluster_id,
+        operation_id: null,
+        harness: harness.name,
+        harness_version: null,
+        parameters,
+        requested_by: "operator",
+        reason: data.reason ?? null,
+        provenance: {
+          model: deployment.name,
+          deployment_generation: deployment.generation,
+          recipe_id: deployment.recipe_id,
+          recipe_version: null,
+          engine_args: {},
+        },
+        phase: "pending",
+        summary: null,
+        artifacts_uri: null,
+        error: null,
+        created_at: now,
+        updated_at: null,
+        started_at: null,
+        finished_at: null,
+      }
+      benchmarkRuns.unshift(created)
+      return created
+    },
+  },
   {
     method: "POST",
     path: "/operations",
@@ -575,4 +745,4 @@ registerFixtures([
   },
 ])
 
-export { operationsCollection }
+export { operationsCollection, benchmarksCollection }

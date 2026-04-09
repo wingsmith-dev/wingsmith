@@ -14,6 +14,7 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteRouteImport } from './routes/login/route'
 import { Route as AppAllocationsRouteRouteImport } from './routes/_app/allocations/route'
 import { Route as AppArtifactsRouteRouteImport } from './routes/_app/artifacts/route'
+import { Route as AppBenchmarksRouteRouteImport } from './routes/_app/benchmarks/route'
 import { Route as AppClustersRouteRouteImport } from './routes/_app/clusters/route'
 import { Route as AppDeploymentsRouteRouteImport } from './routes/_app/deployments/route'
 import { Route as AppDevicesRouteRouteImport } from './routes/_app/devices/route'
@@ -32,6 +33,7 @@ import { Route as AppRecipesRouteRouteImport } from './routes/_app/recipes/route
 import { Route as AppSettingsRouteRouteImport } from './routes/_app/settings/route'
 import { Route as AppTenantsRouteRouteImport } from './routes/_app/tenants/route'
 import { Route as AppArtifactsArtifactIdRouteRouteImport } from './routes/_app/artifacts/$artifactId/route'
+import { Route as AppBenchmarksBenchmarkIdRouteRouteImport } from './routes/_app/benchmarks/$benchmarkId/route'
 import { Route as AppClustersClusterIdRouteRouteImport } from './routes/_app/clusters/$clusterId/route'
 import { Route as AppDeploymentsDeploymentIdRouteRouteImport } from './routes/_app/deployments/$deploymentId/route'
 import { Route as AppDevicesDeviceIdRouteRouteImport } from './routes/_app/devices/$deviceId/route'
@@ -63,6 +65,11 @@ const AppAllocationsRouteRoute = AppAllocationsRouteRouteImport.update({
 const AppArtifactsRouteRoute = AppArtifactsRouteRouteImport.update({
   id: '/artifacts',
   path: '/artifacts',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppBenchmarksRouteRoute = AppBenchmarksRouteRouteImport.update({
+  id: '/benchmarks',
+  path: '/benchmarks',
   getParentRoute: () => AppRoute,
 } as any)
 const AppClustersRouteRoute = AppClustersRouteRouteImport.update({
@@ -156,6 +163,12 @@ const AppArtifactsArtifactIdRouteRoute =
     path: '/$artifactId',
     getParentRoute: () => AppArtifactsRouteRoute,
   } as any)
+const AppBenchmarksBenchmarkIdRouteRoute =
+  AppBenchmarksBenchmarkIdRouteRouteImport.update({
+    id: '/$benchmarkId',
+    path: '/$benchmarkId',
+    getParentRoute: () => AppBenchmarksRouteRoute,
+  } as any)
 const AppClustersClusterIdRouteRoute =
   AppClustersClusterIdRouteRouteImport.update({
     id: '/$clusterId',
@@ -206,6 +219,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRouteRoute
   '/allocations': typeof AppAllocationsRouteRoute
   '/artifacts': typeof AppArtifactsRouteRouteWithChildren
+  '/benchmarks': typeof AppBenchmarksRouteRouteWithChildren
   '/clusters': typeof AppClustersRouteRouteWithChildren
   '/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/devices': typeof AppDevicesRouteRouteWithChildren
@@ -224,6 +238,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRouteRoute
   '/tenants': typeof AppTenantsRouteRoute
   '/artifacts/$artifactId': typeof AppArtifactsArtifactIdRouteRoute
+  '/benchmarks/$benchmarkId': typeof AppBenchmarksBenchmarkIdRouteRoute
   '/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
   '/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
@@ -238,6 +253,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRouteRoute
   '/allocations': typeof AppAllocationsRouteRoute
   '/artifacts': typeof AppArtifactsRouteRouteWithChildren
+  '/benchmarks': typeof AppBenchmarksRouteRouteWithChildren
   '/clusters': typeof AppClustersRouteRouteWithChildren
   '/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/devices': typeof AppDevicesRouteRouteWithChildren
@@ -256,6 +272,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AppSettingsRouteRoute
   '/tenants': typeof AppTenantsRouteRoute
   '/artifacts/$artifactId': typeof AppArtifactsArtifactIdRouteRoute
+  '/benchmarks/$benchmarkId': typeof AppBenchmarksBenchmarkIdRouteRoute
   '/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
   '/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
@@ -272,6 +289,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/_app/allocations': typeof AppAllocationsRouteRoute
   '/_app/artifacts': typeof AppArtifactsRouteRouteWithChildren
+  '/_app/benchmarks': typeof AppBenchmarksRouteRouteWithChildren
   '/_app/clusters': typeof AppClustersRouteRouteWithChildren
   '/_app/deployments': typeof AppDeploymentsRouteRouteWithChildren
   '/_app/devices': typeof AppDevicesRouteRouteWithChildren
@@ -290,6 +308,7 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRouteRoute
   '/_app/tenants': typeof AppTenantsRouteRoute
   '/_app/artifacts/$artifactId': typeof AppArtifactsArtifactIdRouteRoute
+  '/_app/benchmarks/$benchmarkId': typeof AppBenchmarksBenchmarkIdRouteRoute
   '/_app/clusters/$clusterId': typeof AppClustersClusterIdRouteRoute
   '/_app/deployments/$deploymentId': typeof AppDeploymentsDeploymentIdRouteRoute
   '/_app/devices/$deviceId': typeof AppDevicesDeviceIdRouteRoute
@@ -306,6 +325,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/allocations'
     | '/artifacts'
+    | '/benchmarks'
     | '/clusters'
     | '/deployments'
     | '/devices'
@@ -324,6 +344,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/tenants'
     | '/artifacts/$artifactId'
+    | '/benchmarks/$benchmarkId'
     | '/clusters/$clusterId'
     | '/deployments/$deploymentId'
     | '/devices/$deviceId'
@@ -338,6 +359,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/allocations'
     | '/artifacts'
+    | '/benchmarks'
     | '/clusters'
     | '/deployments'
     | '/devices'
@@ -356,6 +378,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/tenants'
     | '/artifacts/$artifactId'
+    | '/benchmarks/$benchmarkId'
     | '/clusters/$clusterId'
     | '/deployments/$deploymentId'
     | '/devices/$deviceId'
@@ -371,6 +394,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/_app/allocations'
     | '/_app/artifacts'
+    | '/_app/benchmarks'
     | '/_app/clusters'
     | '/_app/deployments'
     | '/_app/devices'
@@ -389,6 +413,7 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/tenants'
     | '/_app/artifacts/$artifactId'
+    | '/_app/benchmarks/$benchmarkId'
     | '/_app/clusters/$clusterId'
     | '/_app/deployments/$deploymentId'
     | '/_app/devices/$deviceId'
@@ -440,6 +465,13 @@ declare module '@tanstack/react-router' {
       path: '/artifacts'
       fullPath: '/artifacts'
       preLoaderRoute: typeof AppArtifactsRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/benchmarks': {
+      id: '/_app/benchmarks'
+      path: '/benchmarks'
+      fullPath: '/benchmarks'
+      preLoaderRoute: typeof AppBenchmarksRouteRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/clusters': {
@@ -568,6 +600,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppArtifactsArtifactIdRouteRouteImport
       parentRoute: typeof AppArtifactsRouteRoute
     }
+    '/_app/benchmarks/$benchmarkId': {
+      id: '/_app/benchmarks/$benchmarkId'
+      path: '/$benchmarkId'
+      fullPath: '/benchmarks/$benchmarkId'
+      preLoaderRoute: typeof AppBenchmarksBenchmarkIdRouteRouteImport
+      parentRoute: typeof AppBenchmarksRouteRoute
+    }
     '/_app/clusters/$clusterId': {
       id: '/_app/clusters/$clusterId'
       path: '/$clusterId'
@@ -637,6 +676,17 @@ const AppArtifactsRouteRouteChildren: AppArtifactsRouteRouteChildren = {
 
 const AppArtifactsRouteRouteWithChildren =
   AppArtifactsRouteRoute._addFileChildren(AppArtifactsRouteRouteChildren)
+
+interface AppBenchmarksRouteRouteChildren {
+  AppBenchmarksBenchmarkIdRouteRoute: typeof AppBenchmarksBenchmarkIdRouteRoute
+}
+
+const AppBenchmarksRouteRouteChildren: AppBenchmarksRouteRouteChildren = {
+  AppBenchmarksBenchmarkIdRouteRoute: AppBenchmarksBenchmarkIdRouteRoute,
+}
+
+const AppBenchmarksRouteRouteWithChildren =
+  AppBenchmarksRouteRoute._addFileChildren(AppBenchmarksRouteRouteChildren)
 
 interface AppClustersRouteRouteChildren {
   AppClustersClusterIdRouteRoute: typeof AppClustersClusterIdRouteRoute
@@ -733,6 +783,7 @@ const AppRecipesRouteRouteWithChildren = AppRecipesRouteRoute._addFileChildren(
 interface AppRouteChildren {
   AppAllocationsRouteRoute: typeof AppAllocationsRouteRoute
   AppArtifactsRouteRoute: typeof AppArtifactsRouteRouteWithChildren
+  AppBenchmarksRouteRoute: typeof AppBenchmarksRouteRouteWithChildren
   AppClustersRouteRoute: typeof AppClustersRouteRouteWithChildren
   AppDeploymentsRouteRoute: typeof AppDeploymentsRouteRouteWithChildren
   AppDevicesRouteRoute: typeof AppDevicesRouteRouteWithChildren
@@ -755,6 +806,7 @@ interface AppRouteChildren {
 const AppRouteChildren: AppRouteChildren = {
   AppAllocationsRouteRoute: AppAllocationsRouteRoute,
   AppArtifactsRouteRoute: AppArtifactsRouteRouteWithChildren,
+  AppBenchmarksRouteRoute: AppBenchmarksRouteRouteWithChildren,
   AppClustersRouteRoute: AppClustersRouteRouteWithChildren,
   AppDeploymentsRouteRoute: AppDeploymentsRouteRouteWithChildren,
   AppDevicesRouteRoute: AppDevicesRouteRouteWithChildren,

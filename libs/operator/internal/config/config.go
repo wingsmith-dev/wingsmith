@@ -117,6 +117,27 @@ type Config struct {
 	// ModelCachePVC is the shared volume holding downloaded weights, mounted at /models so that
 	// replicas of one model pull it once between them rather than once each.
 	ModelCachePVC string
+
+	// InferenceEndpoint is the in-cluster URL of the shared OpenAI-compatible frontend, which is
+	// what a benchmark points its load at.
+	//
+	// A per-cluster convention rather than anything the plane declares, for the same reason the
+	// pool labels are: the plane says which deployment to measure and the model name to ask for,
+	// and how this cluster happens to expose its frontend is a local fact. It is also the line
+	// rule 4 draws — the load is generated inside the cluster and aimed at a cluster-local
+	// address, so no inference traffic crosses the control plane even while it is being measured.
+	InferenceEndpoint string
+
+	// BenchmarkArtifactBase is where a run's raw per-request records are written, as a URI
+	// prefix. Those records are telemetry — one row per request, never joined — so they go to
+	// object storage directly and only the URI travels the sync stream. Empty leaves them in the
+	// job's pod and reports no URI, which is the default because it needs no credentials.
+	BenchmarkArtifactBase string
+
+	// BenchmarkTimeout bounds a run that reported no deadline of its own. A load generator that
+	// wedged against an endpoint which stopped answering would otherwise hold its operation open
+	// forever.
+	BenchmarkTimeout time.Duration
 }
 
 // Load reads configuration from the environment, applying defaults and validating the result.
@@ -145,6 +166,9 @@ func Load() (*Config, error) {
 		CachePoolValue:        env("HANGAR_CACHE_POOL_VALUE", "cache"),
 		CacheTaintKey:         env("HANGAR_CACHE_TAINT_KEY", "hangar.io/cache"),
 		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
+		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", "http://dynamo-frontend.dynamo.svc.cluster.local:8000"),
+		BenchmarkArtifactBase: env("HANGAR_BENCHMARK_ARTIFACT_BASE", ""),
+		BenchmarkTimeout:      envDuration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),
 		DCGMEndpoint:          env("HANGAR_DCGM_ENDPOINT", "http://dcgm-exporter.platform.svc.cluster.local:9400/metrics"),
 		DCGMSelector:          env("HANGAR_DCGM_SELECTOR", ""),
 		DCGMTimeout:           envDuration("HANGAR_DCGM_TIMEOUT", 5*time.Second),

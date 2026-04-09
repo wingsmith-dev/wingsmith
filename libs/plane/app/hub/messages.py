@@ -598,7 +598,7 @@ class OperationTarget(Struct):
 class OperationDesired(Struct):
     operation_id: str
     cluster_id: str
-    kind: Literal["drain", "cordon", "reboot", "device_reset", "cache_warm", "roll", "upgrade"]
+    kind: Literal["drain", "cordon", "reboot", "device_reset", "cache_warm", "roll", "upgrade", "benchmark"]
     target: OperationTarget
     reason: str
     requested_by: str
@@ -622,6 +622,42 @@ class OperationObserved(Struct):
     observed_at: str
     result: dict[str, str] | None = None
     failure: OperationFailure | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+
+
+# --------------------------------------------------------------------------- benchmarks
+
+
+class BenchmarkObserved(Struct):
+    """The outcome of a benchmark run, in whatever shape the harness emits.
+
+    Beside `operation.observed` rather than folded into it, because
+    `OperationObserved.result` is `dict[str, str]` and every load generator worth
+    running emits nested JSON. Widening that field would widen it for drain and
+    cordon too, which have nothing to put in it.
+
+    `summary` is not typed past `dict`. What AIPerf calls a percentile and what
+    vLLM's benchmark script calls one are not the same field, and a schema here
+    asserting they are would be this protocol inventing a normalisation nobody
+    has yet had cause to design. It is stored verbatim and `harness_version` is
+    what makes two of them comparable.
+
+    `artifacts_uri` is where the per-request records went. They are telemetry —
+    high volume, append-only, never joined — so they go from the cluster to
+    object storage directly and only the reference travels this stream.
+    """
+
+    benchmark_id: str
+    cluster_id: str
+    deployment_id: str
+    harness: str
+    phase: Literal["pending", "running", "succeeded", "failed", "cancelled", "timed_out"]
+    observed_at: str
+    harness_version: str | None = None
+    summary: dict | None = None
+    artifacts_uri: str | None = None
+    error: str | None = None
     started_at: str | None = None
     completed_at: str | None = None
 
@@ -656,6 +692,7 @@ MESSAGE_TYPES: dict[str, type[Struct]] = {
     "component.observed": ComponentObserved,
     "operation.desired": OperationDesired,
     "operation.observed": OperationObserved,
+    "benchmark.observed": BenchmarkObserved,
 }
 
 

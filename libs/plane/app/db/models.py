@@ -1064,6 +1064,73 @@ class Operation(BaseMixin):
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class BenchmarkRun(BaseMixin):
+    """One measurement of one deployment by one harness, and what it measured.
+
+    Declared and observed in the same two halves as everything else. The plane
+    writes the top half once at creation — which deployment, which harness, what
+    load, and the provenance columns that say what was running at the time — and
+    ingestion writes `phase`, `summary`, `artifacts_uri`, `harness_version` and
+    the timestamps from `benchmark.observed` thereafter. Neither writer touches
+    the other's columns after creation.
+
+    `summary` is the harness's own output shape, stored verbatim. There is no
+    normalised metric schema here on purpose: comparing AIPerf to vLLM's
+    benchmark script is a question nobody has asked yet, and inventing the union
+    of two result formats before either has been read in anger would fix the
+    wrong shape permanently. What makes the rows comparable is `harness` and
+    `harness_version` — a percentile definition that changed between releases is
+    exactly what a same-tool comparison gets wrong without them.
+
+    The provenance columns are the reason this table is worth keeping. A run
+    without `deployment_generation`, `recipe_id`, `recipe_version` and
+    `engine_args` is a number with nothing to attribute it to; with them the
+    table is the parameter-tuning record. They are snapshotted rather than
+    joined because the recipe they name is mutable and the deployment is
+    disposable, and a run must still describe what it measured after both have
+    moved on.
+
+    `operation_id` is nullable and `ON DELETE SET NULL`: the operation is how the
+    run was carried out and the run is the record of it, so the record outlives
+    the errand.
+    """
+
+    __tablename__ = "ops_benchmark_run"
+    __table_args__ = (Index("ix_ops_benchmark_run_deployment_seq", "deployment_id", "seq"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    deployment_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    operation_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("ops_operation.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    harness: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    harness_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    parameters: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    deployment_generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    recipe_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_recipe.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    recipe_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+    phase: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", index=True)
+    summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    artifacts_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class Event(BaseMixin):
     """Observed, append-only: node joined, device degraded, load failed, OOM, preemption.
 

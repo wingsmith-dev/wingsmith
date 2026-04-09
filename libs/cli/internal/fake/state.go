@@ -34,6 +34,7 @@ type state struct {
 	Policies        []api.Policy             `json:"policies"`
 	Allocations     []api.Allocation         `json:"allocations"`
 	Operations      []api.Operation          `json:"operations"`
+	Benchmarks      []api.BenchmarkRun       `json:"benchmarks"`
 	Components      []api.Component          `json:"components"`
 	Events          []api.Event              `json:"events"`
 }

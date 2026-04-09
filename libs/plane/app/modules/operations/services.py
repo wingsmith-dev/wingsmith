@@ -41,6 +41,7 @@ TYPES: dict[str, tuple[str, str]] = {
     "device.reset": (DEVICE, "device_reset"),
     "cache.warm": (ARTIFACT, "cache_warm"),
     "deployment.roll": (DEPLOYMENT, "roll"),
+    "deployment.benchmark": (DEPLOYMENT, "benchmark"),
     "component.upgrade": (COMPONENT, "upgrade"),
 }
 """Every operation type, the id prefix its target must carry, and the wire kind.

@@ -11,7 +11,17 @@ export type PageFetcher<T> = (cursor?: string) => Promise<ListResponse<T>>
 export function useCursorList<T>(
   queryKey: readonly unknown[],
   fetchPage: PageFetcher<T>,
-  options: { enabled?: boolean; refetchInterval?: number } = {}
+  options: {
+    enabled?: boolean
+    refetchInterval?: number
+    /**
+     * Poll only while the rows loaded so far say there is something to wait
+     * for. A fixed interval keeps asking a question whose answer has stopped
+     * changing; this stops on its own once nothing is in flight.
+     */
+    pollWhile?: (items: T[]) => boolean
+    pollMs?: number
+  } = {}
 ) {
   const query = useInfiniteQuery({
     queryKey,
@@ -19,7 +29,13 @@ export function useCursorList<T>(
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last: ListResponse<T>) => last.next_cursor ?? undefined,
     enabled: options.enabled,
-    refetchInterval: options.refetchInterval,
+    refetchInterval: options.pollWhile
+      ? (q) => {
+          const pages = q.state.data?.pages as ListResponse<T>[] | undefined
+          const loaded = pages?.flatMap((p) => p.items) ?? []
+          return options.pollWhile!(loaded) ? (options.pollMs ?? 5000) : false
+        }
+      : options.refetchInterval,
   })
 
   const items = query.data?.pages.flatMap((p) => p.items) ?? undefined

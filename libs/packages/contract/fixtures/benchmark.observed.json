@@ -1,0 +1,76 @@
+{
+  "v": 1,
+  "type": "benchmark.observed",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc7f",
+  "ts": "2026-08-20T09:41:52.310Z",
+  "seq": 9107,
+  "ack": 4519,
+  "payload": {
+    "benchmark_id": "bmk_01j9x2mmmmmmmmmmmmmmmmmmmm",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+    "deployment_id": "dep_01j9x2ccccccccccccccccccc1",
+    "harness": "aiperf",
+    "harness_version": "0.4.1",
+    "phase": "failed",
+    "summary": {
+      "time_to_first_token": {
+        "unit": "ms",
+        "avg": 182.4,
+        "min": 96.2,
+        "max": 741.8,
+        "p50": 171.3,
+        "p90": 268.9,
+        "p95": 331.6,
+        "p99": 512.4,
+        "std": 64.1
+      },
+      "inter_token_latency": {
+        "unit": "ms",
+        "avg": 11.7,
+        "min": 8.9,
+        "max": 44.2,
+        "p50": 11.2,
+        "p90": 14.8,
+        "p95": 16.9,
+        "p99": 23.4,
+        "std": 3.2
+      },
+      "request_latency": {
+        "unit": "ms",
+        "avg": 3178.6,
+        "min": 2410.7,
+        "max": 6902.1,
+        "p50": 3094.2,
+        "p90": 3811.5,
+        "p95": 4180.3,
+        "p99": 5522.8,
+        "std": 512.7
+      },
+      "output_token_throughput": {
+        "unit": "tokens/sec",
+        "avg": 812.4
+      },
+      "request_throughput": {
+        "unit": "requests/sec",
+        "avg": 3.14
+      },
+      "input_sequence_length": {
+        "unit": "tokens",
+        "avg": 2001.3,
+        "p50": 2000.0
+      },
+      "output_sequence_length": {
+        "unit": "tokens",
+        "avg": 255.7,
+        "p50": 256.0
+      },
+      "request_count": 62,
+      "error_count": 0
+    },
+    "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9x2mmmmmmmmmmmmmmmmmmmm/",
+    "error": "the job hit its deadline after 62 of 100 requests; the summary covers those 62",
+    "started_at": "2026-08-20T09:38:04.000Z",
+    "completed_at": "2026-08-20T09:41:50.900Z",
+    "observed_at": "2026-08-20T09:41:52.200Z"
+  }
+}

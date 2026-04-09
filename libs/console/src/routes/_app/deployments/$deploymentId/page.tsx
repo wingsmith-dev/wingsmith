@@ -4,6 +4,10 @@ import { MetricsSection } from "@/components/metrics/metrics-section"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { NewOperationDialog } from "@/components/machinery/new-operation"
+import { NewBenchmarkDialog } from "@/components/benchmarks/new-benchmark"
+import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useDeploymentBenchmarks } from "@/modules/benchmarks/queries"
 import { DataTable } from "@/components/layout/data-table"
 import { operationColumns } from "@/components/machinery/operation-columns"
 import { Button } from "@/components/ui/button"
@@ -32,10 +36,12 @@ export function DeploymentDetailPage() {
   const { data: deployment, isLoading, error } = useDeployment(deploymentId)
   const { data: recipe } = useRecipe(deployment?.recipe_id ?? "")
   const operations = useOperations({ target: deployment?.id })
+  const benchmarks = useDeploymentBenchmarks(deployment?.id)
   const remove = useDeleteDeployment()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
   const [doomed, setDoomed] = useState(false)
+  const [tab, setTab] = useState("overview")
 
   if (error) {
     return (
@@ -74,6 +80,17 @@ export function DeploymentDetailPage() {
                   Delete
                 </Button>
               </>
+            )}
+            {deployment && (
+              <NewBenchmarkDialog
+                deployment={deployment.id}
+                stayOnPage
+                trigger={
+                  <Button size="sm" variant="outline">
+                    Run benchmark
+                  </Button>
+                }
+              />
             )}
             {deployment && (
               <NewOperationDialog
@@ -153,157 +170,188 @@ export function DeploymentDetailPage() {
               <Labels labels={deployment.labels} />
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-3">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Declared spec</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <FieldGrid>
-                    <Field label="Cluster">
-                      <Link
-                        to="/clusters/$clusterId"
-                        params={{ clusterId: deployment.cluster_id }}
-                        className="hover:underline"
-                      >
-                        {deployment.cluster_id}
-                      </Link>
-                    </Field>
-                    <Field label="Recipe">
-                      <Link to="/recipes" className="hover:underline">
-                        {recipe?.name ?? deployment.recipe_id}
-                      </Link>
-                    </Field>
-                    <Field label="Replicas">
-                      {deployment.min_replicas}–{deployment.max_replicas},
-                      desired {deployment.desired_replicas}
-                    </Field>
-                    <Field label="Enabled">
-                      {deployment.enabled ? "yes" : "no"}
-                    </Field>
-                    <Field label="Adapters">
-                      {deployment.adapter_artifact_ids.length || "none"}
-                    </Field>
-                    <Field label="Revision">{deployment.revision}</Field>
-                  </FieldGrid>
-                </CardContent>
-              </Card>
+            <Tabs value={tab} onValueChange={setTab}>
+              <TabsList>
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="benchmarks">Benchmarks</TabsTrigger>
+              </TabsList>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Workload</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <FieldGrid>
-                    <Field label="Type">{deployment.workload.type}</Field>
-                    <Field label="Phase">{deployment.workload.phase}</Field>
-                    <Field label="Priority class">
-                      {deployment.workload.priority_class}
-                    </Field>
-                    <Field label="Preemptible">
-                      {deployment.workload.preemptible ? "yes" : "no"}
-                    </Field>
-                    <Field label="Gang size">
-                      {deployment.workload.gang_size}
-                    </Field>
-                    <Field label="Project">
-                      {deployment.workload.project_id}
-                    </Field>
-                    <Field label="Queued">
-                      {formatRelative(deployment.workload.queued_at)}
-                    </Field>
-                    <Field label="Started">
-                      {formatRelative(deployment.workload.started_at)}
-                    </Field>
-                    <Field label="Reason" className="sm:col-span-2">
-                      <Dash>{deployment.workload.reason}</Dash>
-                    </Field>
-                    <Field label="Deadline" className="sm:col-span-2">
-                      {deployment.workload.deadline_at
-                        ? formatAbsolute(deployment.workload.deadline_at)
-                        : "none"}
-                    </Field>
-                  </FieldGrid>
-                </CardContent>
-              </Card>
+              <TabsContent value="overview" className="mt-3 space-y-4">
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Declared spec</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <FieldGrid>
+                        <Field label="Cluster">
+                          <Link
+                            to="/clusters/$clusterId"
+                            params={{ clusterId: deployment.cluster_id }}
+                            className="hover:underline"
+                          >
+                            {deployment.cluster_id}
+                          </Link>
+                        </Field>
+                        <Field label="Recipe">
+                          <Link to="/recipes" className="hover:underline">
+                            {recipe?.name ?? deployment.recipe_id}
+                          </Link>
+                        </Field>
+                        <Field label="Replicas">
+                          {deployment.min_replicas}–{deployment.max_replicas},
+                          desired {deployment.desired_replicas}
+                        </Field>
+                        <Field label="Enabled">
+                          {deployment.enabled ? "yes" : "no"}
+                        </Field>
+                        <Field label="Adapters">
+                          {deployment.adapter_artifact_ids.length || "none"}
+                        </Field>
+                        <Field label="Revision">{deployment.revision}</Field>
+                      </FieldGrid>
+                    </CardContent>
+                  </Card>
 
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Observed replicas</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between font-mono text-2xs text-muted-foreground/60">
-                      <span>ready</span>
-                      <span>
-                        {replicas.ready}/{deployment.desired_replicas}
-                      </span>
-                    </div>
-                    <Progress
-                      value={
-                        deployment.desired_replicas === 0
-                          ? 0
-                          : (replicas.ready / deployment.desired_replicas) * 100
-                      }
-                      className="h-1.5"
-                    />
-                  </div>
-                  <FieldGrid>
-                    <Field label="Total">{replicas.total}</Field>
-                    <Field label="Running">{replicas.running}</Field>
-                    <Field label="Pending">{replicas.pending}</Field>
-                    <Field label="Failed">{replicas.failed}</Field>
-                    <Field label="At generation" className="sm:col-span-2">
-                      {replicas.at_current_generation}/{replicas.total}
-                    </Field>
-                  </FieldGrid>
-                </CardContent>
-              </Card>
-            </div>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Workload</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <FieldGrid>
+                        <Field label="Type">{deployment.workload.type}</Field>
+                        <Field label="Phase">{deployment.workload.phase}</Field>
+                        <Field label="Priority class">
+                          {deployment.workload.priority_class}
+                        </Field>
+                        <Field label="Preemptible">
+                          {deployment.workload.preemptible ? "yes" : "no"}
+                        </Field>
+                        <Field label="Gang size">
+                          {deployment.workload.gang_size}
+                        </Field>
+                        <Field label="Project">
+                          {deployment.workload.project_id}
+                        </Field>
+                        <Field label="Queued">
+                          {formatRelative(deployment.workload.queued_at)}
+                        </Field>
+                        <Field label="Started">
+                          {formatRelative(deployment.workload.started_at)}
+                        </Field>
+                        <Field label="Reason" className="sm:col-span-2">
+                          <Dash>{deployment.workload.reason}</Dash>
+                        </Field>
+                        <Field label="Deadline" className="sm:col-span-2">
+                          {deployment.workload.deadline_at
+                            ? formatAbsolute(deployment.workload.deadline_at)
+                            : "none"}
+                        </Field>
+                      </FieldGrid>
+                    </CardContent>
+                  </Card>
 
-            {recipe && (
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm">Recipe</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <FieldGrid>
-                    <Field label="Name">
-                      {recipe.name} v{recipe.version}
-                    </Field>
-                    <Field label="Engine">
-                      {recipe.engine} {recipe.engine_version}
-                    </Field>
-                    <Field label="Shape">
-                      {recipe.shape.device_count}× {recipe.shape.device_class}
-                    </Field>
-                    <Field label="Parallelism">
-                      {parallelismLabel(recipe.parallelism)}
-                    </Field>
-                    <Field label="Context length">
-                      {recipe.context_length}
-                    </Field>
-                    <Field label="Single domain">
-                      {recipe.shape.requires_single_topology_domain
-                        ? (recipe.shape.topology_domain_kind ?? "yes")
-                        : "not required"}
-                    </Field>
-                  </FieldGrid>
-                </CardContent>
-              </Card>
-            )}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        Observed replicas
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between font-mono text-2xs text-muted-foreground/60">
+                          <span>ready</span>
+                          <span>
+                            {replicas.ready}/{deployment.desired_replicas}
+                          </span>
+                        </div>
+                        <Progress
+                          value={
+                            deployment.desired_replicas === 0
+                              ? 0
+                              : (replicas.ready / deployment.desired_replicas) *
+                                100
+                          }
+                          className="h-1.5"
+                        />
+                      </div>
+                      <FieldGrid>
+                        <Field label="Total">{replicas.total}</Field>
+                        <Field label="Running">{replicas.running}</Field>
+                        <Field label="Pending">{replicas.pending}</Field>
+                        <Field label="Failed">{replicas.failed}</Field>
+                        <Field label="At generation" className="sm:col-span-2">
+                          {replicas.at_current_generation}/{replicas.total}
+                        </Field>
+                      </FieldGrid>
+                    </CardContent>
+                  </Card>
+                </div>
 
-            <div>
-              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-                Operations
-              </h2>
-              <DataTable
-                columns={operationColumns()}
-                list={operations}
-                rowKey={(operation) => operation.id}
-                empty="Nothing has been asked of this deployment."
-              />
-            </div>
+                {recipe && (
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Recipe</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <FieldGrid>
+                        <Field label="Name">
+                          {recipe.name} v{recipe.version}
+                        </Field>
+                        <Field label="Engine">
+                          {recipe.engine} {recipe.engine_version}
+                        </Field>
+                        <Field label="Shape">
+                          {recipe.shape.device_count}×{" "}
+                          {recipe.shape.device_class}
+                        </Field>
+                        <Field label="Parallelism">
+                          {parallelismLabel(recipe.parallelism)}
+                        </Field>
+                        <Field label="Context length">
+                          {recipe.context_length}
+                        </Field>
+                        <Field label="Single domain">
+                          {recipe.shape.requires_single_topology_domain
+                            ? (recipe.shape.topology_domain_kind ?? "yes")
+                            : "not required"}
+                        </Field>
+                      </FieldGrid>
+                    </CardContent>
+                  </Card>
+                )}
+
+                <div>
+                  <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+                    Operations
+                  </h2>
+                  <DataTable
+                    columns={operationColumns()}
+                    list={operations}
+                    rowKey={(operation) => operation.id}
+                    empty="Nothing has been asked of this deployment."
+                  />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="benchmarks" className="mt-3 space-y-3">
+                <div className="flex items-start justify-between gap-4">
+                  <p className="max-w-2xl text-xs text-muted-foreground">
+                    Load is generated inside the cluster and aimed at its own
+                    frontend — no inference traffic crosses the control plane.
+                    Results are kept in the harness's own shape, so two runs
+                    compare when their harness and version match.
+                  </p>
+                  <NewBenchmarkDialog deployment={deployment.id} stayOnPage />
+                </div>
+                <DataTable
+                  columns={benchmarkColumns()}
+                  list={benchmarks}
+                  rowKey={(run) => run.id}
+                  empty="This deployment has never been measured."
+                />
+              </TabsContent>
+            </Tabs>
           </>
         )}
       </div>

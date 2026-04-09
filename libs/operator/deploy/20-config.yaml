@@ -34,3 +34,16 @@ data:
   # needed: this is an ordinary HTTP GET to a Service DNS name, not a Kubernetes API call.
   HANGAR_DCGM_ENDPOINT: http://dcgm-exporter.platform.svc.cluster.local:9400/metrics
   HANGAR_DCGM_TIMEOUT: 5s
+  # Where a benchmark aims its load: this cluster's own OpenAI-compatible frontend. It is a
+  # cluster-local address by construction, and that is the point — a benchmark generates real
+  # inference traffic, and rule 4 says none of that crosses the control plane. The plane names
+  # the deployment and the model; how this cluster exposes its frontend is a local fact.
+  HANGAR_INFERENCE_ENDPOINT: http://dynamo-frontend.dynamo.svc.cluster.local:8000
+  # A run that wedged against an endpoint which stopped answering would otherwise hold its
+  # operation open forever. This bounds one whose request carried no deadline of its own.
+  HANGAR_BENCHMARK_TIMEOUT: 30m
+  # Where a run's raw per-request records go. Those are telemetry — one row per request, never
+  # joined — so they belong in object storage and not in the sync stream. Left empty because
+  # nothing uploads them yet: reporting a URI with nothing at it would be worse than reporting
+  # none. See docs/wip.md.
+  HANGAR_BENCHMARK_ARTIFACT_BASE: ""

@@ -25,6 +25,7 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/internal/observe"
 	"github.com/hangar-dev/hangar/libs/operator/internal/operate"
 	"github.com/hangar-dev/hangar/libs/operator/internal/reconcile"
+	"github.com/hangar-dev/hangar/libs/operator/internal/render"
 	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
 )
 
@@ -101,11 +102,28 @@ func run() error {
 		Log:      log,
 	})
 
+	// Benchmarks are the one thing this operator does that needs a pod's log read back, and logs
+	// are a subresource controller-runtime does not serve. A cluster whose credentials cannot
+	// read them still runs everything else; only benchmarks refuse, and they say so.
+	// Declared as the interface and left nil on failure. Assigning a typed nil pointer into it
+	// would produce a non-nil interface holding nothing, and the executor's guard would wave it
+	// through to a nil dereference instead of refusing.
+	var logs operate.LogReader
+	if reader, err := operate.NewPodLogs(restCfg); err != nil {
+		log.Warn("no log client; benchmarks will refuse to run", "error", err)
+	} else {
+		logs = reader
+	}
+
 	executor := operate.New(&operate.Executor{
-		Client:    directClient,
-		ClusterID: cfg.ClusterID,
-		Log:       log,
-		ReadOnly:  cfg.ReadOnly,
+		Client:           directClient,
+		ClusterID:        cfg.ClusterID,
+		Log:              log,
+		ReadOnly:         cfg.ReadOnly,
+		Render:           reconcile.RenderOptions(cfg),
+		Benchmark:        render.BenchmarkOptions{Endpoint: cfg.InferenceEndpoint, ArtifactBase: cfg.BenchmarkArtifactBase},
+		Logs:             logs,
+		BenchmarkTimeout: cfg.BenchmarkTimeout,
 	})
 
 	client := syncpkg.NewClient(syncpkg.Options{

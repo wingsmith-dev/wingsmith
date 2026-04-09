@@ -1,6 +1,7 @@
 package fake
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -462,6 +463,62 @@ func seed() *state {
 			CreatedAt: now.Add(-26 * time.Hour), Phase: api.OpFailed, Attempts: 3,
 			Error: strptr("device did not come back after reset"), StartedAt: ptr(now.Add(-26 * time.Hour)),
 			FinishedAt: ptr(now.Add(-25 * time.Hour)),
+		},
+	)
+
+	// Two runs against one deployment at different concurrencies, so that the
+	// comparison the table exists for is visible offline, and one failure, so
+	// that the empty-result path is too. The summaries are AIPerf's own shape
+	// rather than anything tidier: a fixture with an invented schema would make
+	// the generic renderer look better than it is against a real harness.
+	benchDeployment := st.Deployments[0]
+	st.Benchmarks = append(st.Benchmarks,
+		api.BenchmarkRun{
+			ID: uid("bmk_"), DeploymentID: benchDeployment.ID, ClusterID: benchDeployment.ClusterID,
+			Harness: "aiperf", HarnessVersion: strptr("0.4.1"), RequestedBy: "operator",
+			Reason: strptr("concurrency sweep, step 3"),
+			Parameters: map[string]any{
+				"concurrency": 64, "request_count": 500, "input_tokens_mean": 2000,
+				"output_tokens_mean": 256, "endpoint_type": "chat", "streaming": true,
+			},
+			Provenance: api.BenchmarkProvenance{
+				Model: benchDeployment.Name, DeploymentGeneration: int64(benchDeployment.Generation),
+				EngineArgs: map[string]any{"--max-num-seqs": 256},
+			},
+			Phase: api.OpSucceeded, CreatedAt: now.Add(-4 * time.Hour),
+			StartedAt: ptr(now.Add(-4 * time.Hour)), FinishedAt: ptr(now.Add(-3*time.Hour - 50*time.Minute)),
+			Summary: json.RawMessage(`{"time_to_first_token":{"unit":"ms","avg":412.7,"min":188.4,"max":1904.2,"p50":388.1,"p90":671.5,"p99":1402.6},"inter_token_latency":{"unit":"ms","avg":18.4,"p50":17.6,"p90":24.1,"p99":41.3},"output_token_throughput":{"unit":"tokens/sec","avg":3208.1},"request_count":500,"error_count":0}`),
+		},
+		api.BenchmarkRun{
+			ID: uid("bmk_"), DeploymentID: benchDeployment.ID, ClusterID: benchDeployment.ClusterID,
+			Harness: "aiperf", HarnessVersion: strptr("0.4.1"), RequestedBy: "operator",
+			Reason: strptr("concurrency sweep, step 1"),
+			Parameters: map[string]any{
+				"concurrency": 16, "request_count": 500, "input_tokens_mean": 2000,
+				"output_tokens_mean": 256, "endpoint_type": "chat", "streaming": true,
+			},
+			Provenance: api.BenchmarkProvenance{
+				Model: benchDeployment.Name, DeploymentGeneration: int64(benchDeployment.Generation),
+				EngineArgs: map[string]any{"--max-num-seqs": 256},
+			},
+			Phase: api.OpSucceeded, CreatedAt: now.Add(-5 * time.Hour),
+			StartedAt: ptr(now.Add(-5 * time.Hour)), FinishedAt: ptr(now.Add(-4*time.Hour - 52*time.Minute)),
+			Summary: json.RawMessage(`{"time_to_first_token":{"unit":"ms","avg":174.2,"min":92.8,"max":611.4,"p50":166.9,"p90":248.3,"p99":448.1},"inter_token_latency":{"unit":"ms","avg":11.1,"p50":10.8,"p90":13.9,"p99":21.7},"output_token_throughput":{"unit":"tokens/sec","avg":1412.6},"request_count":500,"error_count":0}`),
+		},
+		api.BenchmarkRun{
+			ID: uid("bmk_"), DeploymentID: benchDeployment.ID, ClusterID: benchDeployment.ClusterID,
+			Harness: "aiperf", RequestedBy: "operator", Reason: strptr("long-context saturation"),
+			Parameters: map[string]any{
+				"concurrency": 128, "request_count": 1000, "input_tokens_mean": 8000,
+				"output_tokens_mean": 512, "endpoint_type": "chat", "streaming": true,
+			},
+			Provenance: api.BenchmarkProvenance{
+				Model: benchDeployment.Name, DeploymentGeneration: int64(benchDeployment.Generation),
+				EngineArgs: map[string]any{},
+			},
+			Phase: api.OpFailed, CreatedAt: now.Add(-90 * time.Minute),
+			StartedAt: ptr(now.Add(-89 * time.Minute)), FinishedAt: ptr(now.Add(-58 * time.Minute)),
+			Error: strptr("the benchmark job hit its deadline before reporting a result"),
 		},
 	)
 

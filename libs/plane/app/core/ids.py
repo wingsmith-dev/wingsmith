@@ -26,6 +26,7 @@ EVENT = "evt_"
 DISCOVERED_WORKLOAD = "dsw_"
 ALERT = "alr_"
 NOTIFICATION_CHANNEL = "nch_"
+BENCHMARK_RUN = "bmk_"
 
 PREFIXES = frozenset(
     {
@@ -52,6 +53,7 @@ PREFIXES = frozenset(
         DISCOVERED_WORKLOAD,
         ALERT,
         NOTIFICATION_CHANNEL,
+        BENCHMARK_RUN,
     }
 )
 

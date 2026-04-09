@@ -45,6 +45,7 @@ MACHINERY = {
     "ops_component",
     "ops_component_status",
     "ops_operation",
+    "ops_benchmark_run",
     "ops_event",
     "ops_cache_entry",
     "ops_credential",

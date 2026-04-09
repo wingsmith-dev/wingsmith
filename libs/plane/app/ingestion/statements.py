@@ -42,6 +42,7 @@ from app.db.models import Component
 from app.db.models import Operation
 from app.db.models import Allocation
 from app.db.models import CacheEntry
+from app.db.models import BenchmarkRun
 from app.db.models import TopologyDomain
 from app.db.models import ComponentStatus
 from app.db.models import AllocationDevice
@@ -57,6 +58,7 @@ from app.hub.messages import CacheObserved
 from app.hub.messages import DeviceObserved
 from app.hub.messages import ReplicaObserved
 from app.hub.messages import TopologyObserved
+from app.hub.messages import BenchmarkObserved
 from app.hub.messages import ComponentObserved
 from app.hub.messages import OperationObserved
 from app.hub.messages import AllocationObserved
@@ -575,6 +577,41 @@ def update_operation(cluster_id: UUID, payload: OperationObserved) -> Update:
         update(Operation)
         .where(Operation.uid == payload.operation_id, Operation.cluster_id == cluster_id)
         .values(**{key: value for key, value in values.items() if value is not None})
+    )
+
+
+def update_benchmark_run(cluster_id: UUID, payload: BenchmarkObserved) -> Update:
+    """Applies a harness's report to the run the plane declared.
+
+    An `UPDATE` for the same reason `update_operation` is one: a run is asked for
+    by somebody, and ingestion reports on one rather than inventing one.
+
+    `summary` is written through untouched. It is the harness's output shape and
+    this seam has no opinion about it — parsing it here to fill normalised
+    columns is exactly the thing this design defers until two harnesses have been
+    read in anger.
+
+    Unlike the operation update, a null is written where the payload carries one
+    for `summary`, `error` and `artifacts_uri`: a run that failed reports no
+    summary, and the filter that protects `started_at` from being cleared by a
+    progress frame would otherwise leave a stale summary from a previous attempt
+    beside a failed phase.
+    """
+    values: dict[str, Any] = {
+        "phase": payload.phase,
+        "harness_version": payload.harness_version,
+        "started_at": parse_ts(payload.started_at),
+        "finished_at": parse_ts(payload.completed_at),
+    }
+    always: dict[str, Any] = {
+        "summary": payload.summary,
+        "artifacts_uri": payload.artifacts_uri,
+        "error": payload.error,
+    }
+    return (
+        update(BenchmarkRun)
+        .where(BenchmarkRun.uid == payload.benchmark_id, BenchmarkRun.cluster_id == cluster_id)
+        .values(**{key: value for key, value in values.items() if value is not None}, **always)
     )
 
 
