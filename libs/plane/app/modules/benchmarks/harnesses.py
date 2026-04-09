@@ -50,6 +50,12 @@ AIPERF = Harness(
         Parameter("input_tokens_stddev", int, 0, "Spread of the prompt length."),
         Parameter("output_tokens_mean", int, 256, "Mean generation length, in tokens."),
         Parameter("output_tokens_stddev", int, 0, "Spread of the generation length."),
+        Parameter(
+            "tokenizer",
+            str,
+            "",
+            "HF tokenizer id used for client-side token counting; the model's own repository when empty.",
+        ),
         Parameter("endpoint_type", str, "chat", "AIPerf endpoint type: chat, completions, embeddings."),
         Parameter("streaming", bool, True, "Measure TTFT and ITL, which needs a streamed response."),
         Parameter("warmup_request_count", int, 10, "Requests sent and discarded before measuring."),

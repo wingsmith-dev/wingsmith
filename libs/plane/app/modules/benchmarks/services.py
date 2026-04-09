@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ids import OPERATION
 from app.core.ids import BENCHMARK_RUN
 from app.core.ids import new_uid
+from app.db.models import Recipe
+from app.db.models import Artifact
 from app.db.models import Operation
 from app.db.models import BenchmarkRun
 from app.db.notify import OPERATION as OPERATION_KIND
@@ -202,6 +204,8 @@ class BenchmarkService:
             )
 
         model = served_model(recipe, artifact)
+        if not parameters.get("tokenizer"):
+            parameters["tokenizer"] = tokenizer_for(recipe, artifact)
         run_uid = new_uid(BENCHMARK_RUN)
 
         operation = Operation(
@@ -258,3 +262,50 @@ class BenchmarkService:
                 DeclaredChange(cluster_id=cluster_uid, kind=OPERATION_KIND, uid=operation.uid),
             )
         return await self.get(run_uid)
+
+
+def tokenizer_for(recipe: Recipe, artifact: Artifact) -> str:
+    """The repository AIPerf should load a tokenizer from, or nothing if we cannot say.
+
+    Most authoritative first, and the served model name is nowhere in the list —
+    it is what AIPerf falls back to on its own and it is the wrong answer: a
+    deployment served as `qwen3.8-27b` is not a Hugging Face repository and the
+    lookup fails before a single request is sent.
+
+    An explicit `--tokenizer` wins, whether it reached the recipe hyphenated the
+    way discovery writes engine arguments or bare the way a hand-written recipe
+    does, because it is the engine being told which tokenizer it is using. The
+    artifact's metadata carries the same argument when discovery read it off a
+    running workload.
+
+    Failing that, the artifact's `hf://` location, because that is the same value
+    the operator resolves `--model` to when it renders the engine — the tokenizer
+    the engine loaded by default is the one in the repository it pulled from, and
+    reading it from the same field keeps the two from drifting. The `hf:` digest
+    is the last resort, for an artifact adopted by reference that never had its
+    bytes resolved to a location.
+
+    An empty string when nothing names a repository, which leaves AIPerf on its
+    own default rather than inventing an id — a run that fails on a missing
+    tokenizer is clearer than one that silently counted tokens with the wrong one.
+    """
+    engine_args = recipe.engine_args or {}
+    metadata = artifact.metadata_ or {}
+    for declared in (
+        engine_args.get("tokenizer"),
+        engine_args.get("--tokenizer"),
+        metadata.get("tokenizer"),
+    ):
+        if declared and str(declared).strip():
+            return str(declared).strip()
+
+    for location in artifact.locations or []:
+        uri = str(location.uri or "")
+        if uri.startswith("hf://"):
+            return uri[len("hf://") :].split("@", 1)[0]
+
+    digest = str(artifact.digest or "")
+    if digest.startswith("hf:"):
+        return digest[3:].split("@", 1)[0]
+    name = str(artifact.name or "")
+    return name if "/" in name else ""

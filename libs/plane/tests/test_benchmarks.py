@@ -1,5 +1,7 @@
 import datetime as dt
 
+from types import SimpleNamespace
+
 import pytest
 import msgspec
 
@@ -17,6 +19,7 @@ from app.modules.benchmarks.schemas import BenchmarkProvenanceSchema
 from app.modules.benchmarks.schemas import BenchmarkRunCreateRequest
 from app.modules.benchmarks.services import OPERATION_TYPE
 from app.modules.benchmarks.services import BenchmarkService
+from app.modules.benchmarks.services import tokenizer_for
 from app.modules.operations.services import TYPES as OPERATION_TYPES
 from app.modules.benchmarks.repository import BenchmarkRepository
 
@@ -250,3 +253,59 @@ def test_a_failure_message_from_the_cluster_wins_over_the_default():
     """The cluster said why. The default exists for when nothing did."""
     query = follows_operation("opr_x", "failed", "this operator is read-only")
     assert query.compile().params["error"] == "this operator is read-only"
+
+
+# ---------------------------------------------------------------- tokenizer
+
+
+def _recipe(**engine_args):
+    return SimpleNamespace(name="qwen3.8-27b", engine_args=engine_args)
+
+
+def _artifact(digest="", name="", metadata=None, locations=()):
+    return SimpleNamespace(
+        digest=digest,
+        name=name,
+        metadata_=metadata or {},
+        locations=[SimpleNamespace(uri=uri) for uri in locations],
+    )
+
+
+def test_the_tokenizer_comes_off_the_artifact_and_not_the_served_name():
+    resolved = tokenizer_for(_recipe(), _artifact(digest="hf:Qwen/Qwen3-32B"))
+    assert resolved == "Qwen/Qwen3-32B"
+
+
+def test_a_pinned_revision_is_stripped_from_the_tokenizer_reference():
+    resolved = tokenizer_for(_recipe(), _artifact(digest="hf:Qwen/Qwen3-32B@main"))
+    assert resolved == "Qwen/Qwen3-32B"
+
+
+def test_the_recipe_wins_over_the_artifact_when_it_names_a_tokenizer():
+    recipe = _recipe(tokenizer="org/other-tokenizer")
+    assert tokenizer_for(recipe, _artifact(digest="hf:Qwen/Qwen3-32B")) == "org/other-tokenizer"
+
+
+def test_a_content_addressed_artifact_falls_back_to_its_repository_shaped_name():
+    assert tokenizer_for(_recipe(), _artifact(digest="sha256:abc", name="Qwen/Qwen3-32B")) == "Qwen/Qwen3-32B"
+
+
+def test_nothing_repository_shaped_resolves_to_nothing_rather_than_a_guess():
+    assert tokenizer_for(_recipe(), _artifact(digest="sha256:abc", name="qwen3.8-27b")) == ""
+
+
+def test_a_tokenizer_discovery_read_off_the_running_workload_is_used():
+    artifact = _artifact(digest="hf:Qwen/Qwen3.8-27B", metadata={"tokenizer": "org/other"})
+    assert tokenizer_for(_recipe(), artifact) == "org/other"
+
+
+def test_an_engine_argument_written_the_way_discovery_writes_them_is_read():
+    recipe = SimpleNamespace(name="qwen3.8-27b", engine_args={"--tokenizer": "org/other"})
+    assert tokenizer_for(recipe, _artifact(digest="hf:Qwen/Qwen3.8-27B")) == "org/other"
+
+
+# The operator points `--model` at the artifact's `hf://` source, so that is the repository whose
+# tokenizer the engine actually loaded. Reading it from anywhere else is how the two drift.
+def test_the_hf_location_the_engine_pulled_from_is_the_tokenizer():
+    artifact = _artifact(digest="sha256:abc", locations=["s3://weights/x", "hf://Qwen/Qwen3.8-27B"])
+    assert tokenizer_for(_recipe(), artifact) == "Qwen/Qwen3.8-27B"

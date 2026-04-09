@@ -7,6 +7,7 @@ from uuid import UUID
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import BENCHMARK_RUN
@@ -101,13 +102,17 @@ class BenchmarkRepository:
         the same way an operation target is. The recipe and artifact come along
         because the served model name is derived from both, and deriving it at
         creation is what lets the run record what it pointed at rather than
-        leaving the operator to guess.
+        leaving the operator to guess. The artifact's locations come with it
+        because one of them is the `hf://` source the engine resolved `--model`
+        against, which is the only place the model's repository survives for an
+        artifact registered by digest.
         """
         column = Deployment.uid if is_uid(ref) else Deployment.name
         query = (
             select(Deployment, Recipe, Artifact)
             .join(Recipe, Deployment.recipe_id == Recipe.id)
             .join(Artifact, Recipe.artifact_id == Artifact.id)
+            .options(selectinload(Artifact.locations))
             .where(column == ref)
         )
         if cluster is not None:
