@@ -24,6 +24,8 @@ ALLOCATION = "alc_"
 WORKLOAD = "wkl_"
 EVENT = "evt_"
 DISCOVERED_WORKLOAD = "dsw_"
+ALERT = "alr_"
+NOTIFICATION_CHANNEL = "nch_"
 
 PREFIXES = frozenset(
     {
@@ -48,6 +50,8 @@ PREFIXES = frozenset(
         WORKLOAD,
         EVENT,
         DISCOVERED_WORKLOAD,
+        ALERT,
+        NOTIFICATION_CHANNEL,
     }
 )
 

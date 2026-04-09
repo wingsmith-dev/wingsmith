@@ -154,10 +154,52 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/placement` | one dry-run verb, writes nothing — see below |
 | `/v1/operations` | see §7 |
 | `/v1/events` | observed, read-only, append-only |
+| `/v1/alerts` | derived, read-only apart from two lifecycle verbs — see below |
+| `/v1/notification-channels` | declared, plus a `test` verb |
 
 Sub-resources are addressed by filter, not by nesting: `GET /v1/devices?cluster=iad-1`, not
 `/v1/clusters/iad-1/devices`. One collection per object type keeps filtering, pagination and
 permissions in one place instead of N.
+
+**`/v1/alerts` is derived, which is a third kind alongside declared and observed.** Nothing on a
+cluster reports an alert and nothing declares one: the reactor computes them by reading observed
+state back against declared state, and by matching `/v1/events`. So there is no `POST /v1/alerts`
+and no `DELETE` — resolving is how an alert ends, and deleting one would erase the record that it
+happened. Two verbs write the one part a machine cannot know: `POST /v1/alerts/{ref}/acknowledge`
+(optional `note`; the acknowledger is the request principal and is never taken from the body) and
+`POST /v1/alerts/{ref}/resolve`.
+
+An alert carries two independent axes. `severity` is how bad it is; `state` is where it is in its
+life — `pending` (true, but not for long enough to be worth telling anyone), `firing`,
+`acknowledged`, `resolved`. Conditions are level-triggered and resolve themselves when they stop
+being true; alerts derived from an event never do, because an event log does not retract. Filters:
+`state`, `severity`, `rule`, `cluster`, `subject`, `since`.
+
+**Alerting is tuned with labels, not with a field of its own.** `labels` is already an editable
+dict on a deployment, a cluster and a discovered workload, so the reactor reads a reserved namespace
+out of it rather than adding a column that would need its own migration, form field and CLI flag —
+and that would only work for the one object it was added to:
+
+| Label | Values | Effect |
+|---|---|---|
+| `hangar.io/alert` | `off` / `on` | `off` mutes every condition about this object |
+| `hangar.io/alert.severity` | `info` `warning` `error` `critical` | overrides the rule's severity |
+| `hangar.io/alert.for` | `45m` `2h` `900s` `900` | overrides how long it must hold before firing |
+
+Set them on the **deployment**, not the recipe: a recipe is shared and versioned, so muting there
+would quieten every deployment of that model at once. Cluster conditions read the cluster's labels,
+and a workload nobody has imported yet reads the labels the cluster reports for it — which makes the
+manifest the only place that knob exists before promotion. An unparseable value is ignored rather
+than obeyed, and a tuned alert records what changed it under `details.tuned_by`. Muting an alert
+that is already firing resolves it on the next tick, because absence from the evaluated set is what
+closes a condition.
+
+**`/v1/notification-channels` never returns a webhook URL.** A Slack incoming webhook is a bearer
+credential in URL form, so `webhook_url` is write-only and reads back as `webhook_hint` — the host
+and the last few characters, enough to tell two apart and not enough to use. `POST
+/v1/notification-channels/{ref}/test` posts a sample message and answers `200` with
+`{"delivered": false, "detail": "..."}` when the webhook rejects it: the failure is Slack's, not the
+plane's, and the reason is the useful part.
 
 **`/v1/discovered` is the one observed collection that accepts a `POST`**, and the exception proves
 the rule: `POST /v1/discovered/{ref}/track` and `.../ignore` do not write the sighting, which stays

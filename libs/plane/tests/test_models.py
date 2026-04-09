@@ -48,6 +48,9 @@ MACHINERY = {
     "ops_event",
     "ops_cache_entry",
     "ops_credential",
+    "ops_alert",
+    "ops_notification_channel",
+    "ops_reactor_state",
     "hub_cluster_claim",
 }
 

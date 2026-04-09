@@ -7,6 +7,7 @@ from app.core.routes import HealthRoutes
 from app.core.auth_routes import AuthRoutes
 from app.modules.nodes.routes import NodeRoutes
 from app.modules.pools.routes import PoolRoutes
+from app.modules.alerts.routes import AlertRoutes
 from app.modules.events.routes import EventRoutes
 from app.modules.quotas.routes import QuotaRoutes
 from app.modules.devices.routes import DeviceRoutes
@@ -24,6 +25,7 @@ from app.modules.discovered.routes import DiscoveredWorkloadRoutes
 from app.modules.operations.routes import OperationRoutes
 from app.modules.allocations.routes import AllocationRoutes
 from app.modules.deployments.routes import DeploymentRoutes
+from app.modules.notifications.routes import NotificationChannelRoutes
 from app.modules.priority_classes.routes import PriorityClassRoutes
 from app.modules.topology_domains.routes import TopologyDomainRoutes
 
@@ -49,6 +51,8 @@ V1_ROUTES = [
     OperationRoutes,
     ComponentRoutes,
     EventRoutes,
+    AlertRoutes,
+    NotificationChannelRoutes,
     MetricsRoutes,
 ]
 

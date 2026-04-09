@@ -1,0 +1,221 @@
+"""The reactor's judgement, exercised with no database.
+
+Everything here is a pure function by design — `app.reactor.rules` decides what is
+worth alerting on and `app.reactor.notify` decides what that looks like in Slack,
+and neither needs a session to be wrong in an interesting way.
+"""
+
+import datetime as dt
+
+from app.reactor import rules
+from app.reactor import notify
+from app.reactor import tuning
+from app.reactor.alerts import FIRING
+from app.reactor.alerts import PENDING
+from app.reactor.alerts import RESOLVED
+from app.reactor.alerts import should_send
+from app.reactor.conditions import overdue
+
+
+class FakeAlert:
+    """Enough of an `Alert` for the pure helpers. Deliberately not the model."""
+
+    def __init__(self, state: str, notified_state: str | None, severity: str = "error") -> None:
+        self.state = state
+        self.notified_state = notified_state
+        self.severity = severity
+
+
+def test_severity_floor_orders_and_defaults():
+    assert rules.at_least(rules.ERROR, rules.WARNING)
+    assert not rules.at_least(rules.INFO, rules.WARNING)
+    assert rules.at_least(rules.CRITICAL, rules.CRITICAL)
+    assert rules.at_least("something-new", rules.WARNING)
+
+
+def test_named_event_alerts_regardless_of_the_severity_it_arrived_with():
+    """`node.left` at `warning` still opens an alert — that override is the point of the table."""
+    intent = rules.event_intent(
+        event_type="node.left",
+        severity=rules.WARNING,
+        subject_type="node",
+        message="node gpu-1 left the cluster",
+        details={"reason": "preempted"},
+        event_uid="evt_1",
+        cluster_id=None,
+        cluster_name="us",
+    )
+    assert intent is not None
+    assert intent.severity == rules.ERROR
+    assert intent.source == rules.EVENT
+    assert intent.for_seconds == 0
+
+
+def test_unremarkable_events_are_dropped_and_errors_are_not():
+    common = {"subject_type": "node", "message": "m", "details": {}, "cluster_id": None, "cluster_name": None}
+    assert rules.event_intent(event_type="node.joined", severity=rules.INFO, event_uid="evt_2", **common) is None
+    assert rules.event_intent(event_type="thing.exploded", severity=rules.ERROR, event_uid="evt_3", **common)
+
+
+def test_event_alerts_key_on_the_event_so_two_occurrences_stay_two_alerts():
+    """Conditions collapse onto one row; events must not, or the second OOM hides behind the first."""
+    common = {
+        "event_type": "replica.oom",
+        "severity": rules.ERROR,
+        "subject_type": "replica",
+        "message": "killed",
+        "details": {},
+        "cluster_id": None,
+        "cluster_name": None,
+    }
+    first = rules.event_intent(event_uid="evt_a", **common)
+    second = rules.event_intent(event_uid="evt_b", **common)
+    assert first.dedupe_key != second.dedupe_key
+
+
+def test_condition_keys_are_stable_across_evaluations():
+    """The same ongoing problem must key identically however often it is evaluated."""
+    args = (None, "us", "dep_1", "llama", 0, 2)
+    assert rules.deployment_behind(*args).dedupe_key == rules.deployment_behind(*args).dedupe_key
+    assert (
+        rules.deployment_behind(*args).dedupe_key != rules.deployment_behind(None, "us", "dep_2", "x", 0, 2).dedupe_key
+    )
+
+
+def test_a_deployment_with_nothing_ready_is_worse_than_one_merely_behind():
+    assert rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2).severity == rules.ERROR
+    assert rules.deployment_behind(None, "us", "dep_1", "llama", 1, 2).severity == rules.WARNING
+
+
+def test_stalled_workload_says_whether_anyone_imported_it():
+    """The founding scenario: nobody had promoted it, and that belongs in the message."""
+    intent = rules.workload_stalled(None, "us", "dsw_1", "serving/llama", 0, 1, promoted=False)
+    assert "not imported" in intent.title
+    assert intent.details["promoted"] is False
+    assert rules.workload_stalled(None, "us", "dsw_1", "serving/llama", 0, 1, promoted=True).title.endswith("ready")
+
+
+def test_pending_becomes_overdue_only_after_the_window():
+    start = dt.datetime(2026, 8, 20, 12, 0, tzinfo=dt.UTC)
+    assert not overdue(start, start + dt.timedelta(minutes=14), 900)
+    assert overdue(start, start + dt.timedelta(minutes=15), 900)
+    assert overdue(start, start + dt.timedelta(hours=17), 900)
+
+
+def test_recovery_is_only_announced_to_people_who_heard_the_alarm():
+    assert should_send(FakeAlert(FIRING, None))
+    assert should_send(FakeAlert(RESOLVED, FIRING))
+    assert not should_send(FakeAlert(RESOLVED, None))
+    assert not should_send(FakeAlert(RESOLVED, PENDING))
+
+
+def test_slack_payload_carries_a_text_fallback_for_the_push_notification():
+    message = notify.Message(
+        severity="error",
+        state=FIRING,
+        title="cluster us reports no devices",
+        rule=rules.CLUSTER_NO_CAPACITY,
+        cluster="us",
+        subject="clu_1",
+        details={"nodes": 0},
+    )
+    payload = notify.slack_payload(message)
+    assert "cluster us reports no devices" in payload["text"]
+    assert payload["blocks"]
+    assert "clu_1" in payload["blocks"][1]["elements"][0]["text"]
+
+
+def test_a_resolution_reads_as_a_resolution_not_as_a_quieter_alarm():
+    message = notify.Message(
+        severity="error",
+        state=RESOLVED,
+        title="cluster us recovered",
+        rule="r",
+        cluster="us",
+        subject=None,
+        details={},
+    )
+    assert "Resolved" in notify.slack_payload(message)["text"]
+
+
+def test_channels_below_the_floor_are_not_written_to():
+    class Channel:
+        def __init__(self, min_severity, enabled=True, kind="slack"):
+            self.min_severity = min_severity
+            self.enabled = enabled
+            self.kind = kind
+            self.name = min_severity
+
+    channels = [Channel("critical"), Channel("warning"), Channel("info", enabled=False)]
+    routed = notify.routed_to(channels, FakeAlert(FIRING, None, severity="error"))
+    assert [c.min_severity for c in routed] == ["warning"]
+
+
+# --------------------------------------------------------------------------- tuning
+
+
+def test_durations_are_readable_in_the_units_people_write_them_in():
+    assert tuning.parse_duration("45m") == 2700
+    assert tuning.parse_duration("2h") == 7200
+    assert tuning.parse_duration("900s") == 900
+    assert tuning.parse_duration("900") == 900
+    assert tuning.parse_duration("1d") == 86400
+
+
+def test_a_typo_in_a_label_is_ignored_rather_than_obeyed_or_raised():
+    """A bad label must not stop the tick that would have said the cluster is down."""
+    assert tuning.parse_duration("soon") is None
+    assert tuning.parse_duration("") is None
+    assert tuning.read({"hangar.io/alert.severity": "extremely"}).severity is None
+    assert tuning.read({"hangar.io/alert.for": "later"}).for_seconds is None
+
+
+def test_an_object_with_no_opinion_leaves_the_intent_exactly_as_it_was():
+    intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
+    assert tuning.apply(intent, {}) is intent
+    assert tuning.apply(intent, None) is intent
+    assert tuning.apply(intent, {"team": "inference"}) is intent
+
+
+def test_a_deployment_can_be_muted_from_its_labels():
+    intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
+    assert tuning.apply(intent, {"hangar.io/alert": "off"}) is None
+    assert tuning.apply(intent, {"hangar.io/alert": "on"}) is intent
+
+
+def test_severity_and_window_can_be_overridden_independently():
+    intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
+    quieter = tuning.apply(intent, {"hangar.io/alert.severity": "warning"})
+    assert quieter.severity == rules.WARNING
+    assert quieter.for_seconds == intent.for_seconds
+
+    patient = tuning.apply(intent, {"hangar.io/alert.for": "2h"})
+    assert patient.for_seconds == 7200
+    assert patient.severity == intent.severity
+
+
+def test_a_tuned_alert_says_what_tuned_it():
+    """Otherwise "why did this fire as a warning" has no answer short of guessing."""
+    intent = rules.workload_stalled(None, "us", "dsw_1", "serving/llama", 0, 1, promoted=False)
+    tuned = tuning.apply(intent, {"hangar.io/alert.severity": "info", "hangar.io/alert.for": "30m"})
+    assert tuned.details["tuned_by"] == {"severity": "info", "for": 1800}
+    assert tuned.details["replicas_ready"] == 0
+
+
+def test_tuning_never_changes_the_identity_of_an_alert():
+    """A dedupe key that moved when someone edited a label would fork one problem into two."""
+    intent = rules.deployment_behind(None, "us", "dep_1", "llama", 0, 2)
+    tuned = tuning.apply(intent, {"hangar.io/alert.severity": "info"})
+    assert tuned.dedupe_key == intent.dedupe_key
+
+
+def test_more_specific_labels_win_field_by_field():
+    """A deployment setting only the window still inherits the severity from above it."""
+    resolved = tuning.resolve({"hangar.io/alert.for": "10m"}, {"hangar.io/alert.severity": "critical"})
+    assert resolved.for_seconds == 600
+    assert resolved.severity == rules.CRITICAL
+
+
+def test_a_mute_anywhere_in_the_chain_mutes():
+    assert tuning.resolve({}, {"hangar.io/alert": "off"}).muted
+    assert tuning.resolve({"hangar.io/alert": "off"}, {}).muted

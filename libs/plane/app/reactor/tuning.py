@@ -1,0 +1,152 @@
+"""Per-object alerting overrides, read from labels that already exist.
+
+The ask this answers is "let us adjust what alerts without shipping code", and the
+tempting shape for it is a `monitoring_label` column on the recipe. That column is
+not here on purpose: `labels` is already a `JSONB` dict on `Recipe`, `Deployment`,
+`Cluster`, `Pool`, `Node`, `Endpoint` and `DiscoveredWorkload`, already declared,
+already editable through `PATCH` and already rendered in the console. A dedicated
+column would be a second place to say the same thing, needing its own migration,
+its own form field and its own CLI flag — and it would only ever work for the one
+object it was added to.
+
+So the reactor reads a reserved namespace out of the labels it already has:
+
+    hangar.io/alert            off | on
+    hangar.io/alert.severity   info | warning | error | critical
+    hangar.io/alert.for        45m | 2h | 900s | 900
+
+The knob lives on the **deployment**, not the recipe. A recipe is shared and
+versioned, so muting there would quieten every deployment built from that model at
+once — a much bigger hammer than "this one is noisy". `resolve` takes any number of
+label dicts most-specific-first, so a recipe-level default is a one-line change if
+it turns out to be wanted; nothing reads recipe labels today.
+
+Cluster conditions read `Cluster.labels` and stalled workloads read
+`DiscoveredWorkload.labels`. The latter come from the cluster rather than from us,
+which makes the manifest the place to mute a workload nobody has imported — the
+same knob, at the only altitude that exists before promotion.
+
+Muting is `off` and nothing else. There is no "lower the severity until it stops
+appearing" spelling, because that is what `severity` is for and conflating them
+gives you an alert that is quiet in a way nobody can find later.
+"""
+
+from typing import Any
+from dataclasses import dataclass
+
+from .rules import SEVERITY_ORDER
+from .rules import AlertIntent
+
+
+PREFIX = "hangar.io/alert"
+SEVERITY_KEY = f"{PREFIX}.severity"
+FOR_KEY = f"{PREFIX}.for"
+
+OFF = {"off", "false", "no", "none", "0", "mute", "muted", "silence", "silenced"}
+
+UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+
+
+def parse_duration(raw: str) -> int | None:
+    """`45m`, `2h`, `900s`, or a bare number of seconds. None if it is not any of those.
+
+    Returns None rather than raising on nonsense. A typo in a label must not stop
+    the tick that would have told someone their cluster is down — the override is
+    ignored, the rule's own window applies, and the alert still happens.
+    """
+    value = raw.strip().lower()
+    if not value:
+        return None
+    unit = UNITS.get(value[-1])
+    if unit is not None:
+        value = value[:-1]
+    else:
+        unit = 1
+    try:
+        seconds = int(float(value) * unit)
+    except ValueError:
+        return None
+    return seconds if seconds >= 0 else None
+
+
+@dataclass(frozen=True)
+class Override:
+    """What one object's labels ask for. Every field optional — absent means "no opinion"."""
+
+    muted: bool = False
+    severity: str | None = None
+    for_seconds: int | None = None
+
+    @property
+    def empty(self) -> bool:
+        return not self.muted and self.severity is None and self.for_seconds is None
+
+
+EMPTY = Override()
+
+
+def read(labels: Any) -> Override:
+    """Parses the reserved keys out of one label dict."""
+    if not isinstance(labels, dict) or not labels:
+        return EMPTY
+    switch = str(labels.get(PREFIX, "")).strip().lower()
+    severity = str(labels.get(SEVERITY_KEY, "")).strip().lower()
+    window = labels.get(FOR_KEY)
+    return Override(
+        muted=switch in OFF and switch != "",
+        severity=severity if severity in SEVERITY_ORDER else None,
+        for_seconds=parse_duration(str(window)) if window is not None else None,
+    )
+
+
+def resolve(*label_sources: Any) -> Override:
+    """Merges label dicts most-specific-first, field by field.
+
+    Field by field rather than whole-dict, so a deployment that only sets
+    `hangar.io/alert.for` still inherits the severity its recipe chose. Whole-dict
+    precedence would make every override an all-or-nothing copy of the parent's.
+    """
+    muted = False
+    severity: str | None = None
+    for_seconds: int | None = None
+    for labels in label_sources:
+        current = read(labels)
+        muted = muted or current.muted
+        if severity is None:
+            severity = current.severity
+        if for_seconds is None:
+            for_seconds = current.for_seconds
+    return Override(muted=muted, severity=severity, for_seconds=for_seconds)
+
+
+def apply(intent: AlertIntent, *label_sources: Any) -> AlertIntent | None:
+    """The tuned intent, or None if the labels muted it.
+
+    Records what was applied in `details` under `tuned_by`, so an alert that fired
+    at an unexpected severity — or a condition someone is wondering why they never
+    hear about — can be traced back to the label that did it without anyone having
+    to guess which object carried it.
+    """
+    override = resolve(*label_sources)
+    if override.muted:
+        return None
+    if override.empty:
+        return intent
+    applied = {}
+    if override.severity is not None:
+        applied["severity"] = override.severity
+    if override.for_seconds is not None:
+        applied["for"] = override.for_seconds
+    return AlertIntent(
+        dedupe_key=intent.dedupe_key,
+        rule=intent.rule,
+        source=intent.source,
+        severity=override.severity or intent.severity,
+        subject_type=intent.subject_type,
+        title=intent.title,
+        subject_uid=intent.subject_uid,
+        cluster_id=intent.cluster_id,
+        cluster_name=intent.cluster_name,
+        details={**intent.details, "tuned_by": applied},
+        for_seconds=intent.for_seconds if override.for_seconds is None else override.for_seconds,
+    )

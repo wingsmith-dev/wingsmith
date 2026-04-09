@@ -1206,3 +1206,151 @@ class HubClusterClaim(BaseMixin):
     heartbeat_at: Mapped[dt.datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("now()")
     )
+
+
+# =========================
+# Reactor
+# =========================
+
+
+class Alert(BaseMixin):
+    """A condition worth waking someone for, and the record of who has seen it.
+
+    Derived rather than observed: nothing on a cluster reports an alert, and
+    nothing declares one. The reactor writes every column here except the
+    acknowledgement, which is the one field a human writes, and it is the reason
+    this is a table at all — an alert that cannot be acknowledged is a log line.
+
+    `dedupe_key` is the identity. One key is one ongoing problem however many
+    times it is evaluated or re-reported, so a deployment that has been behind
+    for seventeen hours is one row with a rising `occurrences`, not a row per
+    tick. It is unique, and a re-fire after a resolve reopens the same row rather
+    than starting a second history of the same fact.
+
+    `state` is a lifecycle, not a severity:
+
+    - `pending` — the condition is true but has not been true for long enough to
+      be worth a notification. This is where flapping goes to die, and where an
+      alert with a `for` window waits. Nothing is sent for a pending alert.
+    - `firing` — true for longer than the rule's window. Notified once on entry.
+    - `acknowledged` — a human has seen it. Still true, still listed, silent.
+    - `resolved` — no longer true. Auto-set for condition-sourced alerts when the
+      evaluator stops seeing them; set by hand for event-sourced ones, which have
+      no way to know that whatever happened has stopped being a problem.
+
+    `source` is what makes that split work. A `condition` alert is level-triggered
+    — the evaluator recomputes the whole firing set every tick, so absence is
+    evidence and auto-resolution is sound. An `event` alert is edge-triggered off
+    a row in `ops_event`, where absence means nothing at all: the event happened,
+    and the log will never say it un-happened.
+    """
+
+    __tablename__ = "ops_alert"
+    __table_args__ = (
+        Index("ix_ops_alert_state_seq", "state", "seq"),
+        Index("ix_ops_alert_cluster", "cluster_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(256), unique=True, nullable=False)
+    rule: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, server_default="condition")
+    severity: Mapped[str] = mapped_column(String(16), nullable=False, server_default="warning", index=True)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", index=True)
+
+    cluster_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True
+    )
+    subject_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject_uid: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    """The subject's public id, not its primary key — unlike `Event.subject_id`.
+
+    A deliberate departure. An alert outlives the row it is about: the node that
+    triggered it may have been pruned by the next snapshot, which is frequently
+    the whole point of the alert, and a foreign key would have deleted the alert
+    along with the evidence. A string that no longer resolves is the correct
+    outcome here and a dangling one everywhere else.
+    """
+
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    details: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+    first_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_seen_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fired_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    occurrences: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
+    acknowledged_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    acknowledged_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolved_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    notified_state: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    notify_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """The last delivery failure, kept so a silently broken webhook is visible.
+
+    `notified_state` is what was last successfully announced, and the pair is the
+    whole delivery ledger: an alert is due for a notification when its current
+    `state` is notifiable and differs from `notified_state`. There is no delivery
+    table because there is one writer — only the reactor lease holder notifies —
+    and a second table would record, per channel, a fact this pair already
+    settles. The cost, stated plainly: adding a second channel later means either
+    a delivery table or accepting that one channel failing marks the alert
+    notified for both.
+    """
+
+
+class NotificationChannel(BaseMixin):
+    """Where a firing alert is sent. Declared configuration, written through the API.
+
+    `config` is per-kind and holds the credential: for `slack`, a webhook URL,
+    which is a bearer secret in URL form. It is never returned by the API — the
+    schema sends a redacted hint instead — because a console that displays it
+    turns every screenshot into a credential leak.
+
+    `min_severity` is the filter, and it is per-channel rather than global so that
+    a channel can be added for `critical` only without changing what anything else
+    receives.
+    """
+
+    __tablename__ = "ops_notification_channel"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    min_severity: Mapped[str] = mapped_column(String(16), nullable=False, server_default="warning")
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+
+class ReactorState(BaseMixin):
+    """The reactor's lease and its cursor, in one row because they are one fact.
+
+    Named rather than keyed by instance: there is one row, `default`, and holding
+    it is what entitles a process to evaluate conditions and notify. Two hubs
+    evaluating at once would each open the same alerts — idempotent, by
+    `dedupe_key` — but would also each send the notification, which is not.
+
+    The lease is a compare-and-swap on `holder` and `lease_expires_at` rather than
+    a Postgres advisory lock, for the same reason `hub_cluster_claim` is a table:
+    a lock is invisible to everything that is not currently holding a connection,
+    and "which process is reacting, and since when" is a question worth being able
+    to answer with a select.
+
+    `last_event_seq` is the cursor into `ops_event.seq`. Events are matched into
+    alerts from there forward, so a reactor that has been down comes back and
+    works through what it missed instead of skipping to now — the seventeen-hour
+    outage this was built for is exactly the case where the backlog is the story.
+    """
+
+    __tablename__ = "ops_reactor_state"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    holder: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    lease_expires_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_event_seq: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    last_tick_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

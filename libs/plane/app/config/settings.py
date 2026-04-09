@@ -57,6 +57,37 @@ class Settings:
     displaced pod stops writing within roughly one liveness cycle of losing the claim.
     """
 
+    REACTOR_ENABLED: bool = True
+    """Whether the hub process also runs the reactor loop. Turn off to run
+    `python -m app.reactor` as its own Deployment instead; the lease makes either
+    arrangement safe, and running both is a waste rather than a hazard.
+    """
+
+    REACTOR_INTERVAL_SECONDS: float = 60.0
+    """How often conditions are re-evaluated and the event log is drained.
+
+    A minute because every condition here has a `for` window measured in minutes:
+    ticking faster would not make anything fire sooner, it would only re-run four
+    fleet-wide queries for a set of alerts that cannot have changed state yet.
+    """
+
+    REACTOR_LEASE_SECONDS: float = 180.0
+    """How long a reactor's claim survives without renewal. Three ticks, so a slow
+    tick or a single failed one does not hand the lease to another process
+    mid-evaluation; a genuinely dead reactor costs at most this much silence.
+    """
+
+    REACTOR_EVENT_BATCH: int = 500
+    """Events matched per tick. Bounds the catch-up after downtime: a reactor that
+    has been off for a day works through the backlog over several ticks rather than
+    holding one transaction open across all of it.
+    """
+
+    REACTOR_NOTIFY_TIMEOUT: float = 5.0
+    """Per-webhook timeout. Short: a hung Slack must not stall the tick, and the
+    alert is durable and visible in the console whether or not the message lands.
+    """
+
     DATABASE_URL: str = "postgresql+psycopg://hangar:hangar@localhost:5442/hangar"
     DB_ECHO: bool = False
     DB_POOL_SIZE: int = 10

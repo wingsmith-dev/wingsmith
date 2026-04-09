@@ -23,6 +23,7 @@ dependencies = [
 [project.scripts]
 hangar-api = "app.api.__main__:main"
 hangar-hub = "app.hub.__main__:main"
+hangar-reactor = "app.reactor.__main__:main"
 
 [build-system]
 requires = ["hatchling"]

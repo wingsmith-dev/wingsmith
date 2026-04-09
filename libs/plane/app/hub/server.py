@@ -23,6 +23,7 @@ from app.hub.session import OperatorSession
 from app.hub.dispatch import LiveSessions
 from app.hub.dispatch import listen_loop
 from app.hub.identity import instance_id
+from app.reactor.loop import reactor_loop
 from app.hub.ownership import DatabaseClaimStore
 from app.config.settings import validate
 
@@ -92,7 +93,14 @@ async def _handler(connection: ServerConnection) -> None:
 
 
 async def serve_forever(stop: asyncio.Future[None] | None = None) -> None:
-    """Runs the hub until `stop` resolves, then closes every session and the pool."""
+    """Runs the hub until `stop` resolves, then closes every session and the pool.
+
+    The reactor is started here as a co-tenant rather than as a process of its own.
+    Its lease already allows exactly one worker fleet-wide, so every replica may
+    start one and only the holder does any work — which makes a separate Deployment
+    for a loop that ticks once a minute infrastructure nobody asked for.
+    `python -m app.reactor` and `HANGAR_REACTOR_ENABLED=false` are the escape hatch.
+    """
     loop = asyncio.get_running_loop()
     if stop is None:
         stop = loop.create_future()
@@ -104,6 +112,10 @@ async def serve_forever(stop: asyncio.Future[None] | None = None) -> None:
         name="hub-reaper",
     )
     listener = asyncio.create_task(listen_loop(LIVE), name="hub-dispatch")
+
+    tasks = [reaper, listener]
+    if settings.REACTOR_ENABLED:
+        tasks.append(asyncio.create_task(reactor_loop(INSTANCE), name="hub-reactor"))
 
     server: Server
     async with serve(
@@ -124,9 +136,9 @@ async def serve_forever(stop: asyncio.Future[None] | None = None) -> None:
         await stop
         server.close()
 
-    reaper.cancel()
-    listener.cancel()
-    await asyncio.gather(reaper, listener, return_exceptions=True)
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
     await engine.dispose()
     logger.info("hub.shutdown")
 

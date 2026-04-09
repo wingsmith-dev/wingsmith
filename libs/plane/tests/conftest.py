@@ -61,6 +61,9 @@ async def sessions(database: str):
     async with engine.begin() as connection:
         await connection.execute(text("TRUNCATE supply_cluster RESTART IDENTITY CASCADE"))
         await connection.execute(text("TRUNCATE ops_event, ops_operation RESTART IDENTITY CASCADE"))
+        await connection.execute(
+            text("TRUNCATE ops_alert, ops_notification_channel, ops_reactor_state RESTART IDENTITY CASCADE")
+        )
     try:
         yield async_sessionmaker(engine, expire_on_commit=False)
     finally:
