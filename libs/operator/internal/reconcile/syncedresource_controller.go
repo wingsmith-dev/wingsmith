@@ -48,6 +48,7 @@ type SyncedResourceReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch;patch;update
 // +kubebuilder:rbac:groups="",resources=pods/eviction,verbs=create
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch
 // +kubebuilder:rbac:groups=nvidia.com,resources=dynamographdeployments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=nvidia.com,resources=dynamographdeployments/status,verbs=get
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;delete
