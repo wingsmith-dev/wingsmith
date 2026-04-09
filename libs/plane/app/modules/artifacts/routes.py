@@ -12,6 +12,7 @@ from app.core.filters import parse_labels
 from app.core.schemas import ListResponse
 
 from .depends import artifact_svc_generator
+from .resolve import ResolvedArtifact
 from .schemas import ArtifactSchema
 from .schemas import ArtifactCreateRequest
 from .schemas import ArtifactUpdateRequest
@@ -52,6 +53,13 @@ class ArtifactRoutes(Controller):
         self, context: RequestContext, svc: ArtifactService, data: ArtifactCreateRequest
     ) -> Response[ArtifactSchema]:
         return Response(await svc.create(data), status_code=201)
+
+    @get("/resolve")
+    async def resolve_artifact(
+        self, context: RequestContext, svc: ArtifactService, source: str
+    ) -> Response[ResolvedArtifact]:
+        """Registered ahead of `/{ref}` so the literal path cannot be read as a ref."""
+        return Response(await svc.resolve(source))
 
     @get("/{ref:str}")
     async def get_artifact(self, context: RequestContext, svc: ArtifactService, ref: str) -> Response[ArtifactSchema]:

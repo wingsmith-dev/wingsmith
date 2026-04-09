@@ -122,6 +122,114 @@ collection({
     bool(q.bool("enabled"), p.enabled),
 })
 
+/**
+ * The offline stand-in for the plane's HuggingFace resolve. It is registered
+ * ahead of the artifact collection because the fixture router takes the first
+ * matching route, and `/artifacts/:ref` would otherwise swallow `/resolve` the
+ * same way the plane's route order would.
+ *
+ * The digest here is fabricated, not derived — there is no Hub offline. What it
+ * does reproduce faithfully is the three answers a console has to render apart:
+ * resolved, gated, and no such repo.
+ */
+const HF_FIXTURES: Record<
+  string,
+  { format: string; size: number; parameters: number; licence: string }
+> = {
+  "openai/gpt-oss-20b": {
+    format: "safetensors",
+    size: 41_231_686_042,
+    parameters: 20_900_000_000,
+    licence: "apache-2.0",
+  },
+  "Qwen/Qwen3-32B": {
+    format: "safetensors",
+    size: 65_527_486_976,
+    parameters: 32_800_000_000,
+    licence: "apache-2.0",
+  },
+}
+
+const HF_GATED = ["meta-llama/Llama-3.1-70B-Instruct"]
+
+function hfSlug(source: string): string {
+  const value = source
+    .trim()
+    .replace(/^hf:\/\//i, "")
+    .replace(/^hf:/i, "")
+  const parts = value.split("/").filter(Boolean)
+  return parts.length === 2 ? parts.join("/") : ""
+}
+
+registerFixtures([
+  {
+    method: "GET",
+    path: "/artifacts/resolve",
+    handler: ({ query }: FixtureContext) => {
+      const source = query.get("source") ?? ""
+      const slug = hfSlug(source)
+      if (!slug)
+        throw new ConflictError(
+          "invalid",
+          `'${source}' is not a HuggingFace repo — expected owner/name`
+        )
+      if (HF_GATED.includes(slug))
+        throw new ConflictError(
+          "invalid",
+          `'${slug}' is gated on HuggingFace and the plane has no accepted licence for it`,
+          { source, token: "HANGAR_HF_TOKEN" }
+        )
+      const found = HF_FIXTURES[slug]
+      if (!found) throw new NotFoundError(`no HuggingFace repo '${slug}'`)
+
+      const sha = commitOf(slug)
+      const digest = `sha256:${sha.repeat(2).slice(0, 64)}`
+      const uri = `hf://${slug}@${sha}`
+      return {
+        reference: `hf:${slug}@${sha}`,
+        digest,
+        name: slug.split("/")[1],
+        kind: "weights",
+        format: found.format,
+        revision: sha,
+        size_bytes: found.size,
+        licence: found.licence,
+        parameter_count: found.parameters,
+        source_scheme: "hf",
+        source_uri: uri,
+        verified: true,
+        metadata: {
+          source: "huggingface",
+          huggingface_id: slug,
+          revision: sha,
+          quantization: null,
+          dtype: "bfloat16",
+          architecture: null,
+          is_moe: slug.includes("oss"),
+          active_parameter_count: null,
+          context_length: 131072,
+        },
+        locations: [{ scheme: "hf", uri, region: null, preferred: true }],
+        recipe: {
+          device_count: 1,
+          device_memory_mib_min: 81920,
+          context_length: 131072,
+          quantization: null,
+          dtype: "bfloat16",
+        },
+        existing_id: artifacts.find((a) => a.digest === digest)?.id ?? null,
+        notes: ["Sized from config.json — a suggestion, not a measurement."],
+      }
+    },
+  },
+])
+
+function commitOf(slug: string): string {
+  let hash = 0
+  for (const char of slug) hash = (hash * 31 + char.charCodeAt(0)) >>> 0
+  return hash.toString(16).padStart(8, "0").repeat(5).slice(0, 40)
+}
+
 collection({
   path: "/artifacts",
   singular: "artifact",

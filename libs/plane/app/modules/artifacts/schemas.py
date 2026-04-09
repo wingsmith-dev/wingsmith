@@ -56,14 +56,20 @@ class ArtifactLocationRequest(Struct):
 class ArtifactCreateRequest(Struct):
     """`verified` defaults true because registering a digest is a claim about bytes.
 
+    `source` is the alternative to `digest`, never a companion to it: give a
+    `hf://owner/name` and the plane derives the digest from the Hub manifest, which
+    is the only way two callers registering the same weights land on one artifact.
+    Everything else the caller passes explicitly still wins over what was resolved.
+
     It is false only for weights adopted by reference — a `--model` read off a
     workload that was already running, where the digest is a name and nothing has
     hashed anything. There is no update field for it: verification is resolving
     the bytes, which is an operation, not an edit.
     """
 
-    digest: str
-    name: str
+    digest: str = ""
+    source: str | None = None
+    name: str = ""
     kind: str = "weights"
     format: str | None = None
     size_bytes: int = 0

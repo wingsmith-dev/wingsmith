@@ -12,6 +12,7 @@ import type {
   Recipe,
   RecipeCreateRequest,
   RecipeUpdateRequest,
+  ResolvedArtifact,
 } from "./types"
 
 export interface ArtifactFilters {
@@ -58,6 +59,14 @@ export function fetchArtifacts(
 
 export function fetchArtifact(ref: string): Promise<Artifact> {
   return api.get<Artifact>(`/artifacts/${encodeURIComponent(ref)}`)
+}
+
+/**
+ * Reads a source slug as a proposed artifact. Writes nothing, so it is safe to
+ * call while someone is still typing into the form.
+ */
+export function resolveArtifact(source: string): Promise<ResolvedArtifact> {
+  return api.get<ResolvedArtifact>("/artifacts/resolve", { source })
 }
 
 export function createArtifact(body: ArtifactCreateRequest): Promise<Artifact> {

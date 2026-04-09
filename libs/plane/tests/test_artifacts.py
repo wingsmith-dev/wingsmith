@@ -7,13 +7,25 @@ from app.core.ids import ARTIFACT
 from app.core.ids import new_uid
 from app.db.models import Artifact
 from app.core.exceptions import Invalid
+from app.core.exceptions import NotFound
+from app.core.exceptions import PlaneError
+from app.integrations.huggingface import HuggingFaceGated
+from app.integrations.huggingface import HuggingFaceModel
+from app.integrations.huggingface import HuggingFaceNotFound
+from app.integrations.huggingface import HuggingFaceWeightFile
+from app.integrations.huggingface import HuggingFaceUnavailable
+from app.integrations.huggingface import content_digest
 from app.modules.artifacts.routes import ArtifactRoutes
+from app.modules.artifacts.resolve import RecipeDefaults
+from app.modules.artifacts.resolve import slug_of
+from app.modules.artifacts.resolve import normalise_source
 from app.modules.artifacts.schemas import ArtifactSchema
 from app.modules.artifacts.schemas import ArtifactCreateRequest
 from app.modules.artifacts.schemas import ArtifactUpdateRequest
 from app.modules.artifacts.schemas import ArtifactLocationSchema
 from app.modules.artifacts.schemas import ArtifactLocationRequest
 from app.modules.artifacts.services import KINDS
+from app.modules.artifacts.services import ArtifactService
 from app.modules.artifacts.services import _revision
 from app.modules.artifacts.services import check_locations
 from app.modules.artifacts.repository import ArtifactRepository
@@ -152,6 +164,7 @@ def test_controller_exposes_full_crud():
         "get_artifact",
         "update_artifact",
         "delete_artifact",
+        "resolve_artifact",
     }
 
 
@@ -169,3 +182,261 @@ def test_delete_refuses_while_a_recipe_still_names_the_artifact():
     from app.modules.artifacts.services import ArtifactService
 
     assert "Refuses" in (ArtifactService.delete.__doc__ or "")
+
+
+GPT_OSS_CONFIG = {
+    "architectures": ["GptOssForCausalLM"],
+    "model_type": "gpt_oss",
+    "torch_dtype": "bfloat16",
+    "num_hidden_layers": 24,
+    "num_attention_heads": 64,
+    "num_key_value_heads": 8,
+    "head_dim": 64,
+    "hidden_size": 2880,
+    "max_position_embeddings": 131072,
+    "num_local_experts": 32,
+    "num_experts_per_tok": 4,
+    "intermediate_size": 2880,
+    "quantization_config": {"quant_method": "mxfp4"},
+}
+
+
+def hf_model(**kwargs) -> HuggingFaceModel:
+    weights = [
+        HuggingFaceWeightFile(path="model-00001-of-00002.safetensors", size=8_000_000_000, oid="a" * 64),
+        HuggingFaceWeightFile(path="model-00002-of-00002.safetensors", size=2_400_000_000, oid="b" * 64),
+    ]
+    defaults = {
+        "slug": "openai/gpt-oss-20b",
+        "revision": "c" * 40,
+        "digest": content_digest(weights),
+        "content_addressable": True,
+        "size_bytes": sum(w.size for w in weights),
+        "parameter_count": 20_914_757_632,
+        "format": "safetensors",
+        "licence": "apache-2.0",
+        "gated": False,
+        "config": GPT_OSS_CONFIG,
+        "weight_files": tuple(weights),
+        "unaddressable_files": (),
+    }
+    return HuggingFaceModel(**{**defaults, **kwargs})
+
+
+class FakeHub:
+    """Stands in for the Hub so no test touches the network."""
+
+    def __init__(self, model=None, error=None):
+        self.model = model
+        self.error = error
+        self.slugs = []
+
+    async def inspect(self, slug: str):
+        self.slugs.append(slug)
+        if self.error is not None:
+            raise self.error
+        return self.model or hf_model()
+
+
+class FakeRow:
+    def __init__(self, artifact):
+        self._artifact = artifact
+        self.base_uid = None
+        self.project_uid = None
+
+    def __getitem__(self, index):
+        return self._artifact
+
+
+class FakeRepo:
+    def __init__(self, existing_digest: str | None = None):
+        self.existing_digest = existing_digest
+        self.added = None
+
+    async def artifact_by_digest(self, digest: str):
+        if digest == self.existing_digest:
+            return Artifact(uid="art_01jexistingexistingexisti", digest=digest)
+        return None
+
+    async def add(self, artifact):
+        artifact.created_at = EPOCH
+        artifact.updated_at = None
+        self.added = artifact
+        return artifact
+
+    async def get(self, ref: str):
+        return FakeRow(self.added)
+
+
+class FakeSession:
+    async def commit(self):
+        return None
+
+    async def rollback(self):
+        return None
+
+    async def flush(self):
+        return None
+
+
+def service(hub=None, repo=None) -> ArtifactService:
+    svc = ArtifactService(db=FakeSession(), hub=hub or FakeHub())
+    svc.repo = repo or FakeRepo()
+    return svc
+
+
+def test_a_source_is_accepted_bare_or_schemed_and_normalises_to_one_form():
+    assert normalise_source("openai/gpt-oss-20b") == "hf://openai/gpt-oss-20b"
+    assert normalise_source("hf:openai/gpt-oss-20b") == "hf://openai/gpt-oss-20b"
+    assert normalise_source(" hf://openai/gpt-oss-20b ") == "hf://openai/gpt-oss-20b"
+    assert slug_of("hf://openai/gpt-oss-20b") == "openai/gpt-oss-20b"
+    assert slug_of("gpt-oss-20b") == ""
+
+
+async def test_resolve_returns_a_populated_draft():
+    draft = await service().resolve("hf://openai/gpt-oss-20b")
+    assert draft.digest.startswith("sha256:")
+    assert draft.verified is True
+    assert draft.name == "gpt-oss-20b"
+    assert draft.kind == "weights"
+    assert draft.format == "safetensors"
+    assert draft.licence == "apache-2.0"
+    assert draft.revision == "c" * 40
+    assert draft.size_bytes == 10_400_000_000
+    assert draft.parameter_count == 20_914_757_632
+    assert draft.source_scheme == "hf"
+    assert draft.source_uri == f"hf://openai/gpt-oss-20b@{'c' * 40}"
+    assert draft.locations == [ArtifactLocationRequest(scheme="hf", uri=draft.source_uri, region=None, preferred=True)]
+    assert draft.existing_id is None
+
+
+async def test_the_draft_carries_the_shape_read_out_of_the_config():
+    draft = await service().resolve("openai/gpt-oss-20b")
+    assert draft.metadata["quantization"] == "mxfp4"
+    assert draft.metadata["dtype"] == "bfloat16"
+    assert draft.metadata["architecture"] == "GptOssForCausalLM"
+    assert draft.metadata["is_moe"] is True
+    assert draft.metadata["active_parameter_count"] < draft.parameter_count
+    assert draft.metadata["context_length"] == 131072
+
+
+async def test_a_prequantized_repo_is_sized_at_its_native_quantization():
+    draft = await service().resolve("openai/gpt-oss-20b")
+    assert draft.recipe.quantization == "mxfp4"
+    assert draft.recipe.dtype == "bfloat16"
+    assert draft.recipe.device_count == 1
+    assert 0 < draft.recipe.device_memory_mib_min < 40 * 1024
+    assert draft.recipe.context_length >= 4096
+
+
+async def test_a_recipe_suggestion_is_offered_and_never_applied():
+    draft = await service().resolve("openai/gpt-oss-20b")
+    assert isinstance(draft.recipe, RecipeDefaults)
+    assert "recipe" not in ArtifactCreateRequest.__struct_fields__
+
+
+async def test_weights_the_hub_cannot_address_are_a_named_digest_and_unverified():
+    model = hf_model(
+        content_addressable=False,
+        digest="hf:openai/gpt-oss-20b@" + "c" * 40,
+        unaddressable_files=("model.bin",),
+    )
+    draft = await service(hub=FakeHub(model)).resolve("openai/gpt-oss-20b")
+    assert draft.verified is False
+    assert draft.digest.startswith("hf:")
+    assert any("not content-addressable" in note for note in draft.notes)
+    assert any("model.bin" in note for note in draft.notes)
+
+
+async def test_resolve_surfaces_an_artifact_the_catalogue_already_holds():
+    digest = hf_model().digest
+    draft = await service(repo=FakeRepo(existing_digest=digest)).resolve("openai/gpt-oss-20b")
+    assert draft.existing_id == "art_01jexistingexistingexisti"
+
+
+async def test_an_unknown_model_is_not_found():
+    with pytest.raises(NotFound):
+        await service(hub=FakeHub(error=HuggingFaceNotFound("nope"))).resolve("openai/nope")
+
+
+async def test_a_gated_model_names_the_token_problem():
+    with pytest.raises(Invalid) as caught:
+        await service(hub=FakeHub(error=HuggingFaceGated("gated"))).resolve("meta-llama/Llama-3-70B")
+    assert "token" in caught.value.message
+    assert caught.value.detail["token"] == "HANGAR_HF_TOKEN"
+
+
+async def test_the_hub_being_down_is_not_the_callers_fault():
+    with pytest.raises(PlaneError) as caught:
+        await service(hub=FakeHub(error=HuggingFaceUnavailable("down"))).resolve("openai/gpt-oss-20b")
+    assert caught.value.status == 500
+
+
+async def test_a_source_that_is_not_a_slug_is_rejected():
+    with pytest.raises(Invalid):
+        await service().resolve("hf://gpt-oss-20b")
+
+
+async def test_creating_from_a_source_alone_derives_the_digest():
+    svc = service()
+    result = await svc.create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b"))
+    assert result.digest == hf_model().digest
+    assert result.name == "gpt-oss-20b"
+    assert result.verified is True
+    assert result.size_bytes == 10_400_000_000
+    assert result.licence == "apache-2.0"
+    assert result.format == "safetensors"
+    assert [loc.uri for loc in result.locations] == [f"hf://openai/gpt-oss-20b@{'c' * 40}"]
+
+
+async def test_a_source_and_a_digest_are_two_ways_to_disagree():
+    with pytest.raises(Invalid):
+        await service().create(ArtifactCreateRequest(source="openai/gpt-oss-20b", digest="sha256:abc", name="x"))
+
+
+async def test_what_the_caller_stated_wins_over_what_was_resolved():
+    svc = service()
+    result = await svc.create(
+        ArtifactCreateRequest(
+            source="openai/gpt-oss-20b",
+            name="house-gpt-oss",
+            kind="adapter",
+            metadata={"team": "inference"},
+        )
+    )
+    assert result.name == "house-gpt-oss"
+    assert result.kind == "adapter"
+    assert result.metadata["team"] == "inference"
+    assert result.metadata["huggingface_id"] == "openai/gpt-oss-20b"
+
+
+async def test_an_artifact_with_neither_a_source_nor_a_digest_has_no_identity():
+    with pytest.raises(Invalid) as caught:
+        await service().create(ArtifactCreateRequest(name="mystery"))
+    assert "identity" in caught.value.message
+
+
+def test_the_resolve_path_is_registered_before_the_ref_path():
+    paths = [
+        path
+        for handler in ArtifactRoutes.__dict__.values()
+        if hasattr(handler, "handler_name")
+        for path in handler.paths
+    ]
+    assert paths.index("/resolve") < paths.index("/{ref:str}")
+
+
+def test_resolve_is_matched_as_a_literal_path_not_as_a_ref():
+    """The router must dispatch the literal path to `resolve_artifact`, not to `get_artifact`.
+
+    Asserting the path merely exists proves nothing: `/artifacts/{ref}` would
+    also answer it. This reads the handler the router actually bound to GET.
+    """
+    from litestar import Litestar
+
+    app = Litestar(route_handlers=[ArtifactRoutes], openapi_config=None)
+    by_path = {route.path: route for route in app.routes}
+
+    assert "/artifacts/resolve" in by_path
+    assert by_path["/artifacts/resolve"].route_handler_map["GET"][0].handler_name == "resolve_artifact"
+    assert by_path["/artifacts/{ref:str}"].route_handler_map["GET"][0].handler_name == "get_artifact"

@@ -87,6 +87,16 @@ class ArtifactRepository:
         result = await self.db.execute(select(Artifact).where(column == ref).limit(1))
         return result.scalar_one_or_none()
 
+    async def artifact_by_digest(self, digest: str) -> Artifact | None:
+        """Answers whether the catalogue already holds these exact bytes.
+
+        Separate from `artifact_by_ref` because a digest is not a public ref: the
+        contract resolves an artifact by uid or name, and the digest is what a
+        resolved source produces before any of those are known.
+        """
+        result = await self.db.execute(select(Artifact).where(Artifact.digest == digest).limit(1))
+        return result.scalar_one_or_none()
+
     async def add(self, artifact: Artifact) -> Artifact:
         self.db.add(artifact)
         await self.db.flush()

@@ -146,7 +146,8 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/clusters` | declared registry, observed body |
 | `/v1/nodes`, `/v1/devices`, `/v1/topology-domains` | observed, read-only |
 | `/v1/pools` | declared, with observed membership |
-| `/v1/artifacts`, `/v1/recipes`, `/v1/deployments`, `/v1/endpoints` | declared |
+| `/v1/artifacts` | declared, plus one read-only resolve verb — see below |
+| `/v1/recipes`, `/v1/deployments`, `/v1/endpoints` | declared |
 | `/v1/discovered` | observed, read-only, plus two decision verbs — see below |
 | `/v1/replicas`, `/v1/allocations` | observed, read-only |
 | `/v1/tenants`, `/v1/projects`, `/v1/quotas`, `/v1/priority-classes`, `/v1/policies` | declared |
@@ -243,10 +244,48 @@ those weights, which makes adopting one a confirmation instead of a duplicate. N
 writes; `POST /v1/artifacts` and `POST /v1/recipes` do, on their own modules' endpoints, so there is
 one way to create each object rather than two that must agree.
 
-**`verified` on an artifact is provenance, not identity.** True for anything registered digest-first
-— someone had the bytes, or a hash of them. False for weights adopted by reference from a running
-workload. It is settable at creation and absent from `PATCH`: verifying an artifact means resolving
-the bytes, which is an operation, not an edit.
+**`GET /v1/artifacts/resolve?source=hf://org/model` answers what an artifact would be.** A `GET`
+for the same reason `recipe-draft` is one: the same source resolves to the same answer every time,
+and asking changes nothing — no row is written, no id is minted, and calling it twice costs nothing
+but a Hub round trip. It returns the draft the create would have built: the derived digest, the
+name, format, size, licence and parameter count, the source locations, a `recipe` block of suggested
+device count and context length that is a suggestion and is never applied by anything, and
+`existing_id` when the catalogue already holds that digest. It is a preview endpoint and not a
+second door into the catalogue: `POST /v1/artifacts` remains the only way to create one, so the
+claim above — one way to create each object rather than two that must agree — still holds. Unknown
+slug is `404 not found`; a gated repository is `409 invalid` naming the gate and the token variable
+to set, because the fix is a credential and not a retry; a malformed source is `409 invalid`; the
+Hub being down or refusing is `500`, since the failure is upstream of us and the caller's request
+was fine.
+
+**`POST /v1/artifacts` takes a `source` instead of a `digest`.** Identity is still the digest and
+the digest is still immutable — what changed is who computes it. A caller who has to assert the hash
+of seventy billion parameters either downloads them first or invents one, and the second is what
+actually happened: `hf:org/model` written into the digest field as a name. So the plane derives it.
+The caller sends `source`, the plane resolves the manifest, computes the digest, and overlays the
+resolved draft underneath whatever the caller stated — `name`, `kind` and `project` win where given,
+`metadata` merges with the caller's keys on top, and `digest` and `verified` always come from the
+draft, because those two are the plane's answer and not the caller's. Sending both `source` and
+`digest` is `409 invalid` rather than a precedence rule: the two disagree or they are redundant, and
+neither is worth guessing at. Sending neither is refused too — an artifact without a digest has no
+identity — as is a request that resolves to no name, since an artifact nobody can name cannot be
+found again.
+
+**The digest is derived from the manifest, not from the bytes.** For a HuggingFace source it is
+`sha256` over the newline-joined, sorted `path:oid` lines of the weight files, where `oid` is the
+per-file LFS sha256 the Hub already publishes in its file tree. Two properties follow, and both are
+why it is defined this way. It costs one API call and not a terabyte of transfer, so registering an
+artifact does not mean staging it. And it covers weights only, so a README edit, a retokenized
+`tokenizer.json` or a generation-config tweak does not mint a new artifact for the same weights — a
+digest that moved every time the repository was touched would fragment the catalogue and defeat the
+`existing_id` match it exists to enable.
+
+**`verified` on an artifact is provenance, not identity.** It records that the bytes were resolvable
+and content-addressed when the artifact was created: true when every weight file carried an LFS oid
+and the digest is therefore a hash of content, false when one did not — an unhashed weight file
+means the reference names the weights rather than fixing them, which is also the case for weights
+adopted by reference from a running workload. It is set at creation and absent from `PATCH`:
+re-verifying an artifact means resolving the bytes again, which is an operation, not an edit.
 
 **`cluster` is optional on `POST /v1/deployments`**, and leaving it out is the normal path: the
 plane picks the cluster from the recipe's device shape, the project's quota, and what the clusters

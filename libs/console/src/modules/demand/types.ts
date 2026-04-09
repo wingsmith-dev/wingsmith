@@ -35,7 +35,10 @@ export interface ArtifactLocationRequest {
 }
 
 export interface ArtifactCreateRequest {
-  digest: string
+  /** Omitted when `source` is set: the plane derives identity, the client never asserts it. */
+  digest?: string
+  /** `owner/name`, `hf:owner/name` or `hf://owner/name`. Mutually exclusive with `digest`. */
+  source?: string
   name: string
   verified?: boolean
   kind?: string
@@ -60,6 +63,44 @@ export interface ArtifactUpdateRequest {
   project?: string | null
   metadata?: Record<string, unknown>
   locations?: ArtifactLocationRequest[]
+}
+
+/**
+ * `RecipeDefaults` — serving parameters implied by the weights. A suggestion the
+ * plane never applies: a recipe is declared state someone owns, so these are
+ * carried into the recipe form and nowhere else.
+ */
+export interface RecipeDefaults {
+  device_count: number
+  device_memory_mib_min: number
+  context_length: number | null
+  quantization: string | null
+  dtype: string | null
+}
+
+/**
+ * `ResolvedArtifact` — a source manifest read as an artifact. Nothing is written.
+ * `digest` is derived by the plane from the source's per-file oids, which is why
+ * the form shows it read-only: a digest a person typed is a claim nobody checked.
+ */
+export interface ResolvedArtifact {
+  reference: string
+  digest: string
+  name: string
+  kind: string
+  format: string | null
+  revision: string | null
+  size_bytes: number
+  licence: string | null
+  parameter_count: number | null
+  source_scheme: string
+  source_uri: string
+  verified: boolean
+  metadata: Record<string, unknown>
+  locations: ArtifactLocationRequest[]
+  recipe: RecipeDefaults
+  existing_id: string | null
+  notes: string[]
 }
 
 /** The four kinds the plane accepts. Anything else is `409 invalid`. */

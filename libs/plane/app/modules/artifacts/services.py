@@ -1,3 +1,5 @@
+import msgspec
+
 from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,10 +12,20 @@ from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
+from app.core.exceptions import PlaneError
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.integrations.huggingface import HuggingFaceError
+from app.integrations.huggingface import HuggingFaceGated
+from app.integrations.huggingface import HuggingFaceClient
+from app.integrations.huggingface import HuggingFaceNotFound
+from app.integrations.huggingface import HuggingFaceUnavailable
 
+from .resolve import ResolvedArtifact
+from .resolve import slug_of
+from .resolve import resolved
+from .resolve import normalise_source
 from .schemas import ArtifactSchema
 from .schemas import ArtifactCreateRequest
 from .schemas import ArtifactUpdateRequest
@@ -40,6 +52,28 @@ def _location(row: ArtifactLocation) -> ArtifactLocationSchema:
     )
 
 
+def _apply(data: ArtifactCreateRequest, draft: ResolvedArtifact) -> ArtifactCreateRequest:
+    """Overlays a resolved draft under whatever the caller stated.
+
+    Only the fields the request still leaves at their default are filled. `kind`,
+    `name`, `project` and `metadata` are the caller's opinion about what these
+    weights are for, and resolving a manifest says nothing about that.
+    """
+    metadata = {**draft.metadata, **data.metadata}
+    return msgspec.structs.replace(
+        data,
+        digest=draft.digest,
+        name=data.name or draft.name,
+        format=data.format or draft.format,
+        size_bytes=data.size_bytes or draft.size_bytes,
+        licence=data.licence or draft.licence,
+        parameter_count=data.parameter_count if data.parameter_count is not None else draft.parameter_count,
+        locations=data.locations or list(draft.locations),
+        verified=draft.verified,
+        metadata=metadata,
+    )
+
+
 def check_locations(locations: list[ArtifactLocationRequest]) -> None:
     """Rejects a location set that cannot be satisfied.
 
@@ -58,9 +92,46 @@ def check_locations(locations: list[ArtifactLocationRequest]) -> None:
 
 
 class ArtifactService:
-    def __init__(self, db: AsyncSession) -> None:
+    def __init__(self, db: AsyncSession, hub: HuggingFaceClient | None = None) -> None:
+        """`hub` is injected rather than built here so a test can substitute a fake.
+
+        Constructing an `httpx` client inside the service would make every create
+        path a network path, and the only way to test registration would be to
+        reach the real Hub.
+        """
         self.db = db
+        self.hub = hub or HuggingFaceClient()
         self.repo = ArtifactRepository(db)
+
+    async def resolve(self, source: str) -> ResolvedArtifact:
+        """Reads a source manifest as a proposed artifact. Writes nothing.
+
+        The Hub's failures are typed here rather than leaking: an unknown slug is a
+        404 because the thing named does not exist, a gated repo is `Invalid`
+        because the request is coherent but this plane holds no token that may read
+        it, and the Hub being down is the base `PlaneError` — the contract has no
+        502-shaped class, and a 500 saying the upstream failed is closer than
+        claiming the caller asked for something wrong.
+        """
+        slug = slug_of(source)
+        if not slug:
+            raise Invalid(f"{source!r} is not a huggingface source", {"expected": "hf://owner/name"})
+        try:
+            model = await self.hub.inspect(slug)
+        except HuggingFaceNotFound as exc:
+            raise NotFound(f"no such model on huggingface: {slug}") from exc
+        except HuggingFaceGated as exc:
+            raise Invalid(
+                f"huggingface repo {slug!r} is gated and the configured token cannot read it",
+                {"source": normalise_source(source), "token": "HANGAR_HF_TOKEN"},
+            ) from exc
+        except HuggingFaceUnavailable as exc:
+            raise PlaneError(f"huggingface did not answer for {slug!r}") from exc
+        except HuggingFaceError as exc:
+            raise PlaneError(f"huggingface refused the request for {slug!r}") from exc
+
+        existing = await self.repo.artifact_by_digest(model.digest)
+        return resolved(model, existing_id=existing.uid if existing is not None else None)
 
     def schema(self, artifact: Artifact, base_uid: str | None, project_uid: str | None) -> ArtifactSchema:
         return ArtifactSchema(
@@ -116,12 +187,29 @@ class ArtifactService:
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def create(self, data: ArtifactCreateRequest) -> ArtifactSchema:
+        """`source` and `digest` are alternatives, and the draft only ever fills blanks.
+
+        Both given is refused rather than reconciled: two ways to state identity is
+        two ways to disagree, and picking a winner would silently register bytes the
+        caller did not name. Everything the caller passed explicitly survives the
+        draft, which is a default and not an override.
+        """
+        if data.source and data.digest.strip():
+            raise Invalid(
+                "an artifact is identified by a source or by a digest, not both",
+                {"digest": data.digest, "source": data.source},
+            )
+        if data.source:
+            data = _apply(data, await self.resolve(data.source))
+
         if data.kind not in KINDS:
             raise Invalid(f"unknown kind {data.kind!r}", {"allowed": sorted(KINDS)})
         if data.size_bytes < 0:
             raise Invalid("size_bytes cannot be negative")
         if not data.digest.strip():
             raise Invalid("an artifact without a digest has no identity")
+        if not data.name.strip():
+            raise Invalid("an artifact without a name cannot be found again")
         check_locations(data.locations)
 
         base_id = None

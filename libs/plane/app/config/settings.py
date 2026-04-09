@@ -115,6 +115,14 @@ class Settings:
     still runs without any configuration.
     """
 
+    HF_TOKEN: str = ""
+    """Token presented to the HuggingFace Hub when resolving a model slug.
+
+    Empty is a working state: public repos need no credential, and an unset token
+    surfaces a gated repo as an authorization error the caller can report rather
+    than a boot failure.
+    """
+
     ADMIN_AUTH: str = ""
     """`enabled` or `disabled`. Empty means "not explicitly set", which resolves
     to `disabled` when `APP_ENV == "local"` and `enabled` everywhere else — see

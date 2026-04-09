@@ -17,6 +17,7 @@ import {
   fetchEndpoints,
   fetchRecipe,
   fetchRecipes,
+  resolveArtifact,
   updateArtifact,
   updateDeployment,
   updateEndpoint,
@@ -56,6 +57,17 @@ export function useArtifactOptions() {
   return useAllPages(["artifacts", "options"], (cursor) =>
     fetchArtifacts({}, cursor, 200)
   )
+}
+
+/**
+ * A mutation rather than a query even though it only reads: resolving walks a
+ * whole repo tree, so it happens when someone asks for it and its `isPending`
+ * and `error` belong to that one press, not to a cache key.
+ */
+export function useResolveArtifact() {
+  return useMutation({
+    mutationFn: (source: string) => resolveArtifact(source),
+  })
 }
 
 export function useCreateArtifact() {
