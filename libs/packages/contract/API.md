@@ -311,8 +311,14 @@ emits nested JSON. So the numbers land on the run, and stopping a run in flight 
 **`DELETE /v1/operations/{id}`** against the operation it names in `operation_id` — there is no
 second way to cancel.
 
+**`image` is the harness image the run actually pulled**, recorded on the run and echoed back on
+reads. It resolves from the named harness's pinned default unless the creation body overrides it,
+which is the escape hatch for reaching a release this plane has not pinned yet. Only the shape of
+the reference is validated here — whether it exists is the registry's answer, and a wrong one
+surfaces as a pull failure on the run.
+
 **A run's `summary` is the harness's own output and is not normalised.** Two runs are comparable
-when their `harness` and `harness_version` match; across harnesses, or across a release that
+when their `harness`, `harness_version` and `image` match; across harnesses, or across a release that
 redefined a percentile, they are not, and this API does not flatten them into shared columns to
 pretend otherwise. A client that reads `summary` has to cope with not recognising it.
 

@@ -304,7 +304,7 @@ const benchmarksCollection = collection({
 const HARNESSES: BenchmarkHarness[] = [
   {
     name: "aiperf",
-    image: "nvcr.io/nvidia/ai-dynamo/aiperf:latest",
+    image: "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
     description:
       "NVIDIA AIPerf, the successor to GenAI-Perf. Closed-loop, concurrency-first.",
     parameters: [
@@ -440,6 +440,7 @@ registerFixtures([
         cluster_id: deployment.cluster_id,
         operation_id: null,
         harness: harness.name,
+        image: "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
         harness_version: null,
         parameters,
         requested_by: "operator",

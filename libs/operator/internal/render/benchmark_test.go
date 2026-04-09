@@ -10,7 +10,7 @@ import (
 func benchParams(overrides map[string]string) map[string]string {
 	params := map[string]string{
 		"harness":            "aiperf",
-		"image":              "nvcr.io/nvidia/ai-dynamo/aiperf:latest",
+		"image":              "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
 		"model":              "Qwen/Qwen3-32B-FP8",
 		"benchmark_id":       "bmk_01j9x2mmmmmmmmmmmmmmmmmmmm",
 		"deployment_id":      "dep_01j9x2cccccccccccccccccccc",

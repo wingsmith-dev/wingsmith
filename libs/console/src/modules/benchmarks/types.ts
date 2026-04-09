@@ -45,6 +45,7 @@ export interface BenchmarkRun {
   operation_id: string | null
   harness: string
   harness_version: string | null
+  image: string
   parameters: Record<string, unknown>
   requested_by: string
   reason: string | null
@@ -62,6 +63,7 @@ export interface BenchmarkRun {
 export interface BenchmarkCreateRequest {
   deployment: string
   harness: string
+  image?: string | null
   reason?: string | null
   parameters?: Record<string, unknown>
 }
@@ -76,11 +78,13 @@ export function isOpen(phase: string): boolean {
 /**
  * Whether two runs may be compared.
  *
- * The plane's guarantee is narrow and this is it: same harness, same version.
- * A release that redefined a percentile is exactly what a same-tool comparison
- * gets wrong without this check, and across harnesses there is no shared
- * definition to compare against at all.
+ * The plane's guarantee is narrow and this is it: same harness, same version,
+ * same image. A release that redefined a percentile is exactly what a same-tool
+ * comparison gets wrong without this check, and across harnesses there is no
+ * shared definition to compare against at all. The image is part of it because
+ * a run may override the harness's pinned one, and two runs that pulled
+ * different bytes are not the same tool however their versions read.
  */
 export function comparable(a: BenchmarkRun, b: BenchmarkRun): boolean {
-  return a.harness === b.harness && a.harness_version === b.harness_version
+  return a.harness === b.harness && a.harness_version === b.harness_version && a.image === b.image
 }

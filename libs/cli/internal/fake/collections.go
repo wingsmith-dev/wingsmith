@@ -13,6 +13,9 @@ import (
 // filter the server does not implement is a filter the fake must not honour,
 // or the fake becomes a place where wrong client behaviour looks right.
 
+// fakeAiperfImage is the harness image the seeded runs were taken with.
+const fakeAiperfImage = "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0"
+
 func (b *Backend) Clusters(ctx context.Context, o api.ListOpts) (api.Page[api.Cluster], error) {
 	return collect(b, b.state.Clusters, o, func(c api.Cluster) bool {
 		return eqFold(o.Region, c.Region) && eqFold(o.Phase, c.Phase) &&
@@ -444,7 +447,7 @@ func (b *Backend) replaceOperation(op api.Operation) {
 // which is a bug in the fake and not in the design.
 var fakeHarnesses = []api.BenchmarkHarness{{
 	Name:        "aiperf",
-	Image:       "nvcr.io/nvidia/ai-dynamo/aiperf:latest",
+	Image:       fakeAiperfImage,
 	Description: "NVIDIA AIPerf, the successor to GenAI-Perf. Closed-loop, concurrency-first.",
 	Parameters: []api.BenchmarkParameter{
 		{Name: "concurrency", Type: "int", Default: 10, Description: "Requests in flight at once."},

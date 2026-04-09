@@ -41,7 +41,7 @@ class Harness(NamedTuple):
 AIPERF = Harness(
     name="aiperf",
     wire="aiperf",
-    image="nvcr.io/nvidia/ai-dynamo/aiperf:latest",
+    image="nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
     description="NVIDIA AIPerf, the successor to GenAI-Perf. Closed-loop, concurrency-first.",
     parameters=(
         Parameter("concurrency", int, 10, "Requests in flight at once."),
@@ -125,7 +125,29 @@ def _coerce(harness: Harness, parameter: Parameter, value: Any) -> Any:
         ) from exc
 
 
-def wire_parameters(harness: Harness, parameters: dict) -> dict[str, str]:
+def resolve_image(harness: Harness, supplied: str | None) -> str:
+    """The image a run will actually pull, which is the harness default unless asked otherwise.
+
+    The default here is a pin, not a floating tag, so a table of runs stays
+    comparable and a harness release cannot change what a rerun measures. An
+    override exists because that pin will always trail the registry, and waiting
+    for a plane deploy to try a newer AIPerf is a poor reason not to measure.
+
+    Only the reference's shape is checked. Whether the image exists is the
+    registry's answer and the plane cannot have it; a wrong one surfaces as a
+    pull failure on the run, which is where a wrong image belongs.
+    """
+    if supplied is None:
+        return harness.image
+    image = supplied.strip()
+    if not image:
+        return harness.image
+    if len(image) > 512 or any(c.isspace() for c in image):
+        raise Invalid("benchmark image is not a valid image reference", {"image": supplied})
+    return image
+
+
+def wire_parameters(harness: Harness, parameters: dict, image: str | None = None) -> dict[str, str]:
     """The run, flattened to the string map `operation.desired` carries.
 
     Every value goes as a string because that is what the parameters map is; the
@@ -133,7 +155,7 @@ def wire_parameters(harness: Harness, parameters: dict) -> dict[str, str]:
     `false` rather than Python's capitalised repr, which `strconv.ParseBool` on
     the other side would not read.
     """
-    flattened = {"harness": harness.name, "image": harness.image}
+    flattened = {"harness": harness.name, "image": image or harness.image}
     for key, value in parameters.items():
         flattened[key] = "true" if value is True else "false" if value is False else str(value)
     return flattened

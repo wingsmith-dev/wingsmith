@@ -102,6 +102,7 @@ func benchmarkDetail(app *App, w io.Writer, s ui.Style, r api.BenchmarkRun) {
 	kv.Add("deployment", r.DeploymentID)
 	kv.Add("cluster", r.ClusterID)
 	kv.Add("harness", r.Harness)
+	kv.Add("image", r.Image)
 	kv.Add("reason", orDash(str(r.Reason)))
 	kv.Add("requested by", r.RequestedBy)
 	kv.Add("operation", orDash(str(r.OperationID)))
@@ -289,6 +290,7 @@ func newBenchmarkCmd(app *App) *cobra.Command {
 func newBenchmarkRunCmd(app *App) *cobra.Command {
 	var (
 		harness  string
+		image    string
 		reason   string
 		deadline string
 		params   []string
@@ -309,7 +311,11 @@ here.
 --param takes whatever the named harness accepts; 'hgr benchmark harnesses'
 lists them with their defaults. A parameter the harness does not accept is
 refused here rather than becoming a job that fails in a cluster ten minutes from
-now.`,
+now.
+
+--image overrides the harness's pinned image for this run alone. Leave it alone
+unless you are reaching for a release the plane has not pinned yet: runs that
+did not use the same image are not the same comparison group.`,
 		Example: `  hgr benchmark run llama-70b-prod
   hgr benchmark run llama-70b-prod --param concurrency=64 --param request_count=500 --wait
   hgr benchmark run dep_01m0dj… --param output_tokens_mean=1024 --reason "long-generation check"`,
@@ -328,7 +334,7 @@ now.`,
 			defer cancel()
 
 			req := api.BenchmarkRequest{
-				Deployment: args[0], Harness: harness, Reason: reason, Parameters: parameters,
+				Deployment: args[0], Harness: harness, Image: image, Reason: reason, Parameters: parameters,
 			}
 			if deadline != "" {
 				at, err := parseTime(deadline, "deadline")
@@ -353,6 +359,7 @@ now.`,
 	}
 	fl := cmd.Flags()
 	fl.StringVar(&harness, "harness", "aiperf", "which load generator to run")
+	fl.StringVar(&image, "image", "", "override the harness image for this run (default: the harness's pinned image)")
 	fl.StringVar(&reason, "reason", "", "why this measurement is being taken — it outlives the person who ran it")
 	fl.StringVar(&deadline, "deadline", "", "give up after a duration or at an RFC 3339 time")
 	fl.StringArrayVar(&params, "param", nil, "harness parameter (KEY=VALUE, repeatable)")

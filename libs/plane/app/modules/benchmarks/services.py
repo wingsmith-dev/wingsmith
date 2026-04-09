@@ -103,6 +103,7 @@ class BenchmarkService:
             operation_id=operation_uid,
             harness=run.harness,
             harness_version=run.harness_version,
+            image=run.image,
             parameters=run.parameters or {},
             requested_by=run.requested_by,
             reason=run.reason,
@@ -191,6 +192,7 @@ class BenchmarkService:
         """
         harness = harnesses.resolve(data.harness)
         parameters = harnesses.normalise(harness, data.parameters or {})
+        image = harnesses.resolve_image(harness, data.image)
 
         deployment, recipe, artifact = await self._deployment(data)
         if not deployment.enabled:
@@ -213,7 +215,7 @@ class BenchmarkService:
             reason=data.reason,
             payload={
                 "parameters": {
-                    **harnesses.wire_parameters(harness, parameters),
+                    **harnesses.wire_parameters(harness, parameters, image),
                     "benchmark_id": run_uid,
                     "deployment_id": deployment.uid,
                     "model": model,
@@ -227,6 +229,7 @@ class BenchmarkService:
             deployment_id=deployment.id,
             cluster_id=deployment.cluster_id,
             harness=harness.name,
+            image=image,
             parameters=parameters,
             requested_by=self.actor,
             reason=data.reason,

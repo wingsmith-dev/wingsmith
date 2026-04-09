@@ -1074,6 +1074,12 @@ class BenchmarkRun(BaseMixin):
     the timestamps from `benchmark.observed` thereafter. Neither writer touches
     the other's columns after creation.
 
+    `image` is what the run actually pulled, resolved at creation from the harness
+    default or from a per-run override. It is a provenance column like the others:
+    the default is a pin that moves between releases of this plane, so a run that
+    did not record its own image could not say afterwards what produced its
+    numbers.
+
     `summary` is the harness's own output shape, stored verbatim. There is no
     normalised metric schema here on purpose: comparing AIPerf to vLLM's
     benchmark script is a question nobody has asked yet, and inventing the union
@@ -1111,6 +1117,7 @@ class BenchmarkRun(BaseMixin):
     )
     harness: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     harness_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    image: Mapped[str] = mapped_column(String(512), nullable=False, server_default="")
     parameters: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)

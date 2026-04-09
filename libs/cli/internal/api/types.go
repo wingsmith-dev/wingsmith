@@ -693,6 +693,7 @@ type BenchmarkRun struct {
 	OperationID    *string             `json:"operation_id"`
 	Harness        string              `json:"harness"`
 	HarnessVersion *string             `json:"harness_version"`
+	Image          string              `json:"image"`
 	Parameters     map[string]any      `json:"parameters"`
 	RequestedBy    string              `json:"requested_by"`
 	Reason         *string             `json:"reason"`
@@ -736,6 +737,7 @@ type BenchmarkHarness struct {
 type BenchmarkRequest struct {
 	Deployment string         `json:"deployment"`
 	Harness    string         `json:"harness"`
+	Image      string         `json:"image,omitempty"`
 	Reason     string         `json:"reason,omitempty"`
 	Parameters map[string]any `json:"parameters,omitempty"`
 	Deadline   *time.Time     `json:"deadline,omitempty"`

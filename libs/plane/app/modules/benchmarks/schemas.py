@@ -55,6 +55,7 @@ class BenchmarkRunSchema(Struct):
     operation_id: str | None
     harness: str
     harness_version: str | None
+    image: str
     parameters: dict
     requested_by: str
     reason: str | None
@@ -80,10 +81,17 @@ class BenchmarkRunCreateRequest(Struct):
     `parameters` is whatever the named harness accepts. Anything omitted takes
     the harness default, and anything it does not accept is a 400 here rather
     than a job that fails in a cluster ten minutes from now.
+
+    `image` overrides the pinned harness image for this run alone. Omitted, the
+    run takes the harness default, which is what almost every run should do —
+    a table of runs is comparable because the tool that produced them did not
+    move. Set it to reach a newer release without waiting on a plane deploy, and
+    accept that a run pinned elsewhere is its own comparison group.
     """
 
     deployment: str
     harness: str = "aiperf"
+    image: str | None = None
     reason: str | None = None
     parameters: dict = {}
     deadline: dt.datetime | None = None

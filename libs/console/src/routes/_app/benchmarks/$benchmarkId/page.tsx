@@ -100,6 +100,9 @@ export function BenchmarkDetailPage() {
                       <Dash>{run.harness_version}</Dash>
                     </Field>
                     <Field label="Requested by">{run.requested_by}</Field>
+                    <Field label="Image" className="sm:col-span-2">
+                      <Dash>{run.image}</Dash>
+                    </Field>
                     <Field label="Started">
                       {formatRelative(run.started_at)}
                     </Field>

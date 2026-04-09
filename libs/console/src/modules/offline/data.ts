@@ -1373,6 +1373,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
     cluster_id: clusters[0].id,
     operation_id: null,
     harness: "aiperf",
+    image: "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
     harness_version: "0.4.1",
     parameters: {
       concurrency: 64,
@@ -1448,6 +1449,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
     cluster_id: clusters[0].id,
     operation_id: null,
     harness: "aiperf",
+    image: "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
     harness_version: "0.4.1",
     parameters: {
       concurrency: 16,
@@ -1523,6 +1525,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
     cluster_id: deployments[1].cluster_id,
     operation_id: null,
     harness: "aiperf",
+    image: "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
     harness_version: null,
     parameters: {
       concurrency: 128,

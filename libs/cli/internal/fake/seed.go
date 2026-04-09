@@ -475,7 +475,7 @@ func seed() *state {
 	st.Benchmarks = append(st.Benchmarks,
 		api.BenchmarkRun{
 			ID: uid("bmk_"), DeploymentID: benchDeployment.ID, ClusterID: benchDeployment.ClusterID,
-			Harness: "aiperf", HarnessVersion: strptr("0.4.1"), RequestedBy: "operator",
+			Harness: "aiperf", HarnessVersion: strptr("0.4.1"), Image: fakeAiperfImage, RequestedBy: "operator",
 			Reason: strptr("concurrency sweep, step 3"),
 			Parameters: map[string]any{
 				"concurrency": 64, "request_count": 500, "input_tokens_mean": 2000,
@@ -491,7 +491,7 @@ func seed() *state {
 		},
 		api.BenchmarkRun{
 			ID: uid("bmk_"), DeploymentID: benchDeployment.ID, ClusterID: benchDeployment.ClusterID,
-			Harness: "aiperf", HarnessVersion: strptr("0.4.1"), RequestedBy: "operator",
+			Harness: "aiperf", HarnessVersion: strptr("0.4.1"), Image: fakeAiperfImage, RequestedBy: "operator",
 			Reason: strptr("concurrency sweep, step 1"),
 			Parameters: map[string]any{
 				"concurrency": 16, "request_count": 500, "input_tokens_mean": 2000,
@@ -507,7 +507,7 @@ func seed() *state {
 		},
 		api.BenchmarkRun{
 			ID: uid("bmk_"), DeploymentID: benchDeployment.ID, ClusterID: benchDeployment.ClusterID,
-			Harness: "aiperf", RequestedBy: "operator", Reason: strptr("long-context saturation"),
+			Harness: "aiperf", Image: fakeAiperfImage, RequestedBy: "operator", Reason: strptr("long-context saturation"),
 			Parameters: map[string]any{
 				"concurrency": 128, "request_count": 1000, "input_tokens_mean": 8000,
 				"output_tokens_mean": 512, "endpoint_type": "chat", "streaming": true,

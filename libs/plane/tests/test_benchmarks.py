@@ -83,6 +83,37 @@ def test_every_harness_declares_the_image_that_carries_it():
         assert harness.parameters, harness.name
 
 
+def test_every_harness_image_is_pinned_rather_than_floating():
+    """A run whose tool moves under it is not comparable to the run before it."""
+    for harness in harnesses.HARNESSES.values():
+        assert not harness.image.endswith(":latest"), harness.name
+        assert ":" in harness.image.rsplit("/", 1)[-1], harness.name
+
+
+def test_an_omitted_image_falls_back_to_the_harness_pin():
+    assert harnesses.resolve_image(harnesses.AIPERF, None) == harnesses.AIPERF.image
+    assert harnesses.resolve_image(harnesses.AIPERF, "") == harnesses.AIPERF.image
+    assert harnesses.resolve_image(harnesses.AIPERF, "   ") == harnesses.AIPERF.image
+
+
+def test_a_supplied_image_overrides_the_harness_pin():
+    override = "nvcr.io/nvidia/ai-dynamo/aiperf:0.11.0"
+    assert harnesses.resolve_image(harnesses.AIPERF, f"  {override} ") == override
+
+
+def test_an_image_that_cannot_be_a_reference_is_refused_here():
+    with pytest.raises(Invalid):
+        harnesses.resolve_image(harnesses.AIPERF, "aiperf latest")
+    with pytest.raises(Invalid):
+        harnesses.resolve_image(harnesses.AIPERF, "x" * 513)
+
+
+def test_the_overridden_image_is_what_reaches_the_wire():
+    override = "nvcr.io/nvidia/ai-dynamo/aiperf:0.11.0"
+    flattened = harnesses.wire_parameters(harnesses.AIPERF, harnesses.normalise(harnesses.AIPERF, {}), override)
+    assert flattened["image"] == override
+
+
 # ---------------------------------------------------------------- the operation behind a run
 
 
