@@ -426,12 +426,22 @@ def test_a_whole_snapshot_prunes() -> None:
 
 
 class FakeResult:
+    """Answers the two shapes the sink reads: a scalar lookup and a row set.
+
+    `all()` returns nothing, which is the honest stand-in here — this fake records
+    statements rather than executing them, so a prune it never ran has no rows to
+    have deleted and therefore no removal events to raise.
+    """
+
     def __init__(self, scalar: Any = None) -> None:
         self._scalar = scalar
         self.rowcount = 0
 
     def scalar_one_or_none(self) -> Any:
         return self._scalar
+
+    def all(self) -> list:
+        return []
 
 
 class FakeSession:

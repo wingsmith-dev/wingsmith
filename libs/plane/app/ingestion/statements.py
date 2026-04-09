@@ -13,6 +13,7 @@ import msgspec
 
 from sqlalchemy import Delete
 from sqlalchemy import Insert
+from sqlalchemy import Select
 from sqlalchemy import Update
 from sqlalchemy import func
 from sqlalchemy import delete
@@ -668,6 +669,47 @@ def insert_replica_event(cluster_id: UUID, payload: ReplicaEvent) -> Insert:
         payload.message,
         {"reason": payload.reason, "replica_id": payload.replica_id, "deployment_id": payload.deployment_id},
         parse_ts(payload.occurred_at),
+    )
+
+
+def doomed_nodes(cluster_id: UUID, keep: set[str]) -> Select:
+    """The nodes a prune is about to delete, read before they are gone.
+
+    Read first and deleted second because the event has to outlive its subject.
+    A node that vanishes from a complete snapshot is a node that left the cluster
+    — a reclaimed spot instance, most often — and that is exactly the fact worth
+    keeping once the row that carried it is deleted. The event therefore records
+    the node's uid in `details` and leaves `subject_id` null: pointing a foreign
+    key at a row this statement is about to remove would take the event with it.
+    """
+    return select(Node.uid, Node.name).where(Node.cluster_id == cluster_id, Node.uid.notin_(keep or {""}))
+
+
+def doomed_workloads(cluster_id: UUID, keep: set[str]) -> Select:
+    """The sightings a prune is about to forget. Same reasoning as `doomed_nodes`."""
+    return select(DiscoveredWorkload.uid, DiscoveredWorkload.namespace, DiscoveredWorkload.name).where(
+        DiscoveredWorkload.cluster_id == cluster_id, DiscoveredWorkload.uid.notin_(keep or {""})
+    )
+
+
+def insert_prune_event(cluster_id: UUID, subject_type: str, subject_uid: str, label: str, moment: Any) -> Insert:
+    """Records that a complete snapshot stopped mentioning something.
+
+    Raised by the plane rather than by a cluster, which is why the message says
+    what the plane actually knows: the snapshot did not include it. The operator
+    may well have sent a `node.left` too, and the two are not duplicates — that
+    one is the cluster reporting an event, this one is the plane noticing an
+    absence, and an incident where only the second exists is the interesting one.
+    """
+    return _insert_event(
+        cluster_id,
+        f"{subject_type}.removed",
+        EVENT_SEVERITY.get("left", "warning"),
+        subject_type,
+        None,
+        f"{label} is no longer reported by its cluster",
+        {"reason": "absent_from_snapshot", f"{subject_type}_id": subject_uid},
+        moment,
     )
 
 

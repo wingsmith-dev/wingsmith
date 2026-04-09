@@ -351,11 +351,20 @@ class DatabaseSink:
 
         async with self.sessions.begin() as db:
             resolved = await self._cluster_id(db, cluster_id)
+            moment = now()
+            going = (await db.execute(statements.doomed_nodes(resolved, epoch.present[NODE]))).all()
+            leaving = (await db.execute(statements.doomed_workloads(resolved, epoch.present[WORKLOAD]))).all()
             devices = await db.execute(statements.prune_devices(resolved, epoch.present[DEVICE]))
             domains = await db.execute(statements.prune_topology_domains(resolved, epoch.present[TOPOLOGY]))
             workloads = await db.execute(statements.prune_discovered_workloads(resolved, epoch.present[WORKLOAD]))
             nodes = await db.execute(statements.prune_nodes(resolved, epoch.present[NODE]))
-            await db.execute(statements.upsert_sync_state(resolved, {"last_sync_at": now()}))
+            for uid, name in going:
+                await db.execute(statements.insert_prune_event(resolved, "node", uid, f"node {name}", moment))
+            for uid, namespace, name in leaving:
+                await db.execute(
+                    statements.insert_prune_event(resolved, "workload", uid, f"workload {namespace}/{name}", moment)
+                )
+            await db.execute(statements.upsert_sync_state(resolved, {"last_sync_at": moment}))
         logger.info(
             "ingestion.resync.pruned cluster=%s received=%d nodes=%d devices=%d domains=%d workloads=%d",
             cluster_id,

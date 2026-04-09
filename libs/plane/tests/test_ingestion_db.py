@@ -546,6 +546,44 @@ async def test_a_complete_empty_snapshot_prunes_the_whole_inventory(sessions, cl
     assert await fetch(sessions, "SELECT count(*) FROM supply_device WHERE cluster_id = :id", {"id": other}) == [(2,)]
 
 
+async def test_a_pruned_node_leaves_an_event_behind(sessions, cluster) -> None:
+    """Deleting the row must not delete the fact. The spot-instance case depends on this.
+
+    A node that vanishes from a complete snapshot used to be removed in silence,
+    which meant the single most informative moment in an outage — the only GPU node
+    going away — produced nothing anyone could read afterwards. `subject_id` stays
+    null because the subject is being deleted in the same transaction; the uid is in
+    `details`, where nothing can cascade it away.
+    """
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+
+    request = new_id()
+    await sink.begin_resync(CLUSTER, "supply", request)
+    await sink.end_resync(CLUSTER, request, 0, True)
+
+    events = await fetch(
+        sessions,
+        "SELECT type, severity, message, details FROM ops_event WHERE type = 'node.removed'",
+    )
+    assert len(events) == 1
+    assert events[0][1] == "warning"
+    assert events[0][3]["reason"] == "absent_from_snapshot"
+    assert events[0][3]["node_id"] == NODE
+
+
+async def test_an_incomplete_snapshot_leaves_no_removal_event_either(sessions, cluster) -> None:
+    """No prune, no event. A truncated snapshot must not be reported as things leaving."""
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+
+    request = new_id()
+    await sink.begin_resync(CLUSTER, "supply", request)
+    await sink.end_resync(CLUSTER, request, 1, False)
+
+    assert await fetch(sessions, "SELECT count(*) FROM ops_event WHERE type = 'node.removed'") == [(0,)]
+
+
 async def test_an_incomplete_snapshot_prunes_nothing(sessions, cluster) -> None:
     sink = DatabaseSink(sessions)
     await apply_supply(sink)
