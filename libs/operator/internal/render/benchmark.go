@@ -65,6 +65,7 @@ const (
 // most of its requests still measured those requests, and throwing that away because the process
 // failed would discard the only evidence about what happened.
 const aiperfScript = `set -e
+%s
 aiperf profile %s || rc=$?
 echo "%s"
 aiperf --version 2>/dev/null || echo "unknown"
@@ -88,6 +89,41 @@ const benchmarkShell = "sh"
 
 // artifactDir is where the harness is told to write, inside the pod.
 const artifactDir = "/benchmark-artifacts"
+
+// runCacheDir is a writable Hugging Face cache private to one run, used only when the shared one
+// cannot answer. It is an emptyDir, so it dies with the pod and nothing accumulates.
+const runCacheDir = "/benchmark-cache"
+
+// sharedCacheDir is the shared model cache's Hugging Face root, mounted read-only.
+const sharedCacheDir = "/models/hf"
+
+// hfCachePreamble decides which Hugging Face cache the harness reads its tokenizer from.
+//
+// The shared cache is mounted read-only, and huggingface_hub does not treat a cache it cannot
+// write as a cache: asked for a repository it does not already hold, it creates the repository
+// directory before it checks anything, and the run dies on `[Errno 30] Read-only file system`
+// rather than on a missing file. Which is exactly what happened on the cluster whose cache held
+// three other models and not this one.
+//
+// So the choice is made before the harness starts, on whether the shared cache already holds the
+// repository. It does: read it offline, which is also the only path that works on a cluster with
+// no egress. It does not: fall back to a writable cache private to this run and let the download
+// happen. A tokenizer is a few megabytes, so the fallback costs seconds and the shared cache is
+// still never written to by a benchmark.
+//
+// With no tokenizer resolved at all there is nothing to look for, and the private cache is the
+// only safe answer — the harness will default the tokenizer to the served model name and needs
+// somewhere writable to fail or succeed on its own terms.
+func hfCachePreamble(tokenizer string) string {
+	if tokenizer == "" {
+		return "export HF_HOME=" + runCacheDir
+	}
+	dir := sharedCacheDir + "/hub/models--" + strings.ReplaceAll(tokenizer, "/", "--")
+	return fmt.Sprintf(
+		"if [ -d %s ]; then export HF_HUB_OFFLINE=1; else export HF_HOME=%s; fi",
+		shellQuote(dir), runCacheDir,
+	)
+}
 
 // BenchmarkJob renders one benchmark run as a one-shot job.
 //
@@ -136,6 +172,7 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 
 	script := fmt.Sprintf(
 		aiperfScript,
+		hfCachePreamble(strings.TrimSpace(parameters["tokenizer"])),
 		strings.Join(aiperfArgs(model, bench.Endpoint, parameters), " "),
 		VersionLine, artifactDir, SummaryBegin, SummaryEnd,
 	)
@@ -184,6 +221,10 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 							Name:         "artifacts",
 							VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
 						},
+						{
+							Name:         "hf-cache",
+							VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+						},
 					},
 					Containers: []corev1.Container{{
 						Name:    "benchmark",
@@ -191,7 +232,7 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 						Command: []string{benchmarkShell, "-c"},
 						Args:    []string{script},
 						Env: []corev1.EnvVar{
-							{Name: "HF_HOME", Value: "/models/hf"},
+							{Name: "HF_HOME", Value: sharedCacheDir},
 							{Name: "HF_HUB_DISABLE_PROGRESS_BARS", Value: "1"},
 							{Name: "HANGAR_BENCHMARK_ID", Value: benchmarkID},
 							{Name: "HANGAR_ARTIFACT_BASE", Value: bench.ArtifactBase},
@@ -205,6 +246,7 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 						VolumeMounts: []corev1.VolumeMount{
 							{Name: "model-cache", MountPath: "/models", ReadOnly: true},
 							{Name: "artifacts", MountPath: artifactDir},
+							{Name: "hf-cache", MountPath: runCacheDir},
 						},
 						Resources: resources,
 					}},
@@ -230,6 +272,10 @@ func BenchmarkJobName(benchmarkID string) string {
 // stddev knobs — asking for zero spread is a real request — so they are always written, while
 // warmup is omitted at zero because AIPerf's own default there is what "no warmup" means.
 //
+// `--tokenizer` is emitted only when the plane resolved one. AIPerf otherwise defaults it to
+// `--model`, which is the name the engine serves under and not a Hugging Face repository, so a
+// deployment served as `qwen3.8-27b` fails the tokenizer load before it sends a request.
+//
 // `extra` goes on last and unquoted, which makes it both the escape hatch for the long tail of
 // flags and the caller's problem if what they put in it is wrong. The alternative is enumerating
 // every flag AIPerf has, in two languages, forever.
@@ -245,6 +291,9 @@ func aiperfArgs(model, endpoint string, parameters map[string]string) []string {
 		"--synthetic-input-tokens-stddev", strconv.Itoa(numberParam(parameters, "input_tokens_stddev", 0)),
 		"--output-tokens-mean", strconv.Itoa(numberParam(parameters, "output_tokens_mean", 256)),
 		"--output-tokens-stddev", strconv.Itoa(numberParam(parameters, "output_tokens_stddev", 0)),
+	}
+	if tokenizer := strings.TrimSpace(parameters["tokenizer"]); tokenizer != "" {
+		args = append(args, "--tokenizer", shellQuote(tokenizer))
 	}
 	if warmup := numberParam(parameters, "warmup_request_count", 0); warmup > 0 {
 		args = append(args, "--warmup-request-count", strconv.Itoa(warmup))

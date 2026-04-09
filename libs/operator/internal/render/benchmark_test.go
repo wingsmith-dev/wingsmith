@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -41,12 +42,17 @@ func benchOpts() (Options, BenchmarkOptions) {
 
 func script(t *testing.T, params map[string]string) string {
 	t.Helper()
+	return mustBenchmarkJob(t, params).Spec.Template.Spec.Containers[0].Args[0]
+}
+
+func mustBenchmarkJob(t *testing.T, params map[string]string) *batchv1.Job {
+	t.Helper()
 	opts, bench := benchOpts()
 	job, err := BenchmarkJob(params["benchmark_id"], params, opts, bench)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	return job.Spec.Template.Spec.Containers[0].Args[0]
+	return job
 }
 
 // The load must be aimed at the cluster's own frontend. A benchmark that dialled anything outside
@@ -254,5 +260,69 @@ func TestBenchmarkShellIsResolvedFromTheImagePath(t *testing.T) {
 	}
 	if strings.Contains(command[0], "/") {
 		t.Errorf("command[0] = %q, want a bare name the runtime resolves against the image PATH", command[0])
+	}
+}
+
+// The served model name is not a Hugging Face repository, and AIPerf defaults its tokenizer to
+// whatever `--model` says. When the plane resolved a repository, it has to reach the flag.
+func TestBenchmarkCarriesTheResolvedTokenizer(t *testing.T) {
+	body := script(t, benchParams(map[string]string{"tokenizer": "Qwen/Qwen3-32B"}))
+	if !strings.Contains(body, "--tokenizer 'Qwen/Qwen3-32B'") {
+		t.Errorf("the resolved tokenizer did not reach the command line:\n%s", body)
+	}
+}
+
+// And when the plane could not resolve one, the flag must be absent rather than empty: an empty
+// `--tokenizer ”` is a repository named the empty string, not a request to use the default.
+func TestBenchmarkOmitsAnUnresolvedTokenizer(t *testing.T) {
+	body := script(t, benchParams(map[string]string{"tokenizer": ""}))
+	if strings.Contains(body, "--tokenizer") {
+		t.Errorf("no tokenizer was resolved and the flag is still there:\n%s", body)
+	}
+}
+
+// The shared model cache is mounted read-only, and huggingface_hub creates a repository directory
+// before it checks whether it needs to download. Asked for a tokenizer the cache already holds,
+// the run must read it offline and never reach for the network.
+func TestBenchmarkReadsACachedTokenizerOffline(t *testing.T) {
+	body := script(t, benchParams(map[string]string{"tokenizer": "Qwen/Qwen3.8-27B"}))
+	if !strings.Contains(body, "/models/hf/hub/models--Qwen--Qwen3.8-27B") {
+		t.Errorf("the run does not look for the tokenizer in the shared cache:\n%s", body)
+	}
+	if !strings.Contains(body, "export HF_HUB_OFFLINE=1") {
+		t.Errorf("a cached tokenizer must be read without reaching the hub:\n%s", body)
+	}
+}
+
+// And asked for one it does not hold, it must download into a cache it can write to rather than
+// die on `[Errno 30] Read-only file system` inside the shared one.
+func TestBenchmarkFallsBackToAWritableCache(t *testing.T) {
+	body := script(t, benchParams(map[string]string{"tokenizer": "Qwen/Qwen3.8-27B"}))
+	if !strings.Contains(body, "export HF_HOME=/benchmark-cache") {
+		t.Errorf("there is no writable cache to fall back to:\n%s", body)
+	}
+
+	job := mustBenchmarkJob(t, benchParams(nil))
+	container := job.Spec.Template.Spec.Containers[0]
+	mounted := false
+	for _, mount := range container.VolumeMounts {
+		if mount.MountPath == "/benchmark-cache" && !mount.ReadOnly {
+			mounted = true
+		}
+	}
+	if !mounted {
+		t.Error("the fallback cache is written to and must be mounted writable")
+	}
+}
+
+// With no tokenizer resolved there is nothing to look for in the shared cache, and the harness
+// still needs somewhere writable to land.
+func TestBenchmarkWithNoTokenizerUsesTheWritableCacheOutright(t *testing.T) {
+	body := script(t, benchParams(map[string]string{"tokenizer": ""}))
+	if strings.Contains(body, "HF_HUB_OFFLINE") {
+		t.Errorf("nothing was resolved, so there is no cached repository to read:\n%s", body)
+	}
+	if !strings.Contains(body, "export HF_HOME=/benchmark-cache") {
+		t.Errorf("the harness has nowhere writable to put a tokenizer:\n%s", body)
 	}
 }
