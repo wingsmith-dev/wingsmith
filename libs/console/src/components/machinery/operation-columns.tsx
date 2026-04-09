@@ -3,7 +3,7 @@ import { Dash, Id } from "@/components/layout/mono"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Badge } from "@/components/ui/badge"
-import { formatRelative } from "@/lib/format"
+import { formatRelative, shortenId } from "@/lib/format"
 import { operationPhaseTone } from "@/modules/machinery/display"
 import type { Operation } from "@/modules/machinery/types"
 import { Link } from "@tanstack/react-router"
@@ -25,7 +25,7 @@ export function operationColumns(): Column<Operation>[] {
             className="block font-mono text-xs hover:underline"
           >
             {operation.type}
-            <Id value={operation.id} className="ml-2" />
+            <Id value={shortenId(operation.id)} className="ml-2" />
           </Link>
         </ResourceCell>
       ),

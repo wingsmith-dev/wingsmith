@@ -38,3 +38,19 @@ export function formatError(
 ): string {
   return error instanceof Error ? error.message : fallback
 }
+
+/**
+ * The readable head of an opaque identifier. Prefixed ids keep their prefix so
+ * `dev_` still reads as a device, tagged vendor ids (`GPU-…`) keep their tag,
+ * and everything else is cut to the same width. Enough to tell two rows apart,
+ * which is all a table ever needs; the full value is a copy away.
+ */
+export function shortenId(value: string, chars = 6): string {
+  const prefixed = /^([a-z]{2,4})_(.+)$/.exec(value)
+  if (prefixed) return `${prefixed[1]}_${prefixed[2].slice(0, chars)}`
+
+  const tagged = /^([A-Za-z]{2,4})-(.+)$/.exec(value)
+  if (tagged) return `${tagged[1]}-${tagged[2].slice(0, chars)}`
+
+  return value.length > chars + 4 ? value.slice(0, chars + 4) : value
+}

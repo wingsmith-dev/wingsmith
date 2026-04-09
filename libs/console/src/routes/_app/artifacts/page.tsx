@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { formatBytes, formatParameters } from "@/modules/demand/display"
 import { useArtifacts, useDeleteArtifact } from "@/modules/demand/queries"
 import type { Artifact } from "@/modules/demand/types"
-import { formatError } from "@/lib/format"
+import { formatError, shortenId } from "@/lib/format"
 import { ArtifactForm } from "./ArtifactForm"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -31,7 +31,7 @@ function columns(
             className="block"
           >
             <span className="font-mono text-xs">{artifact.name}</span>
-            <Id value={artifact.id} className="ml-2" />
+            <Id value={shortenId(artifact.id)} className="ml-2" />
           </Link>
         </ResourceCell>
       ),

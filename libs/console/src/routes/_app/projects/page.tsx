@@ -5,7 +5,7 @@ import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Button } from "@/components/ui/button"
-import { formatError } from "@/lib/format"
+import { formatError, shortenId } from "@/lib/format"
 import { useDeleteProject, useProjects } from "@/modules/binding/queries"
 import type { Project } from "@/modules/binding/types"
 import { ProjectForm } from "./ProjectForm"
@@ -25,7 +25,7 @@ function columns(
         <ResourceCell kind="project">
           <span className="block">
             <span className="font-mono text-xs">{project.slug}</span>
-            <Id value={project.id} className="ml-2" />
+            <Id value={shortenId(project.id)} className="ml-2" />
           </span>
         </ResourceCell>
       ),

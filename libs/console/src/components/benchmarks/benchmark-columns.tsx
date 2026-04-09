@@ -3,7 +3,7 @@ import { Dash, Id } from "@/components/layout/mono"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Badge } from "@/components/ui/badge"
-import { formatRelative } from "@/lib/format"
+import { formatRelative, shortenId } from "@/lib/format"
 import {
   asStatBlock,
   benchmarkPhaseTone,
@@ -52,7 +52,7 @@ export function benchmarkColumns(
                 {run.harness_version}
               </span>
             )}
-            <Id value={run.id} className="ml-2" />
+            <Id value={shortenId(run.id)} className="ml-2" />
           </Link>
         </ResourceCell>
       ),

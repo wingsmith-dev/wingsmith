@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/layout/page-header"
 import { Badge } from "@/components/ui/badge"
 import { useProjectOptions } from "@/modules/binding/queries"
 import { Button } from "@/components/ui/button"
-import { formatError } from "@/lib/format"
+import { formatError, shortenId } from "@/lib/format"
 import { useDeleteEndpoint, useEndpoints } from "@/modules/demand/queries"
 import type { Endpoint } from "@/modules/demand/types"
 import { EndpointForm } from "./EndpointForm"
@@ -31,7 +31,7 @@ function columns(
             className="block"
           >
             <span className="font-mono text-xs">{endpoint.name}</span>
-            <Id value={endpoint.id} className="ml-2" />
+            <Id value={shortenId(endpoint.id)} className="ml-2" />
           </Link>
         </ResourceCell>
       ),

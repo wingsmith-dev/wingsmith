@@ -1,5 +1,5 @@
 import { Field, FieldGrid } from "@/components/layout/field"
-import { Dash, Id, Labels } from "@/components/layout/mono"
+import { CopyableId, Dash, Labels } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { DeleteDialog } from "@/components/layout/destructive"
 import { Badge } from "@/components/ui/badge"
@@ -144,7 +144,10 @@ export function RecipeDetailPage() {
                     <Field label="Name">{recipe.name}</Field>
                     <Field label="Version">v{recipe.version}</Field>
                     <Field label="Id" className="sm:col-span-2">
-                      <Id value={recipe.id} />
+                      <CopyableId
+                        value={recipe.id}
+                        className="text-2xs text-muted-foreground/60"
+                      />
                     </Field>
                     <Field label="Artifact" className="sm:col-span-2">
                       <Link

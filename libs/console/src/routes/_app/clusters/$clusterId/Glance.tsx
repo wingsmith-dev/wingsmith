@@ -1,5 +1,5 @@
 import { Field, FieldGrid } from "@/components/layout/field"
-import { Dash, Id, Labels } from "@/components/layout/mono"
+import { CopyableId, Dash, Labels } from "@/components/layout/mono"
 import {
   ResourceIcon,
   type ResourceKind,
@@ -288,7 +288,10 @@ export function ClusterIdentity({ cluster }: { cluster: Cluster }) {
       <FieldGrid>
         <Field label="Cluster">
           {cluster.name}
-          <Id value={cluster.id} className="ml-2" />
+          <CopyableId
+            value={cluster.id}
+            className="ml-2 text-2xs text-muted-foreground/60"
+          />
         </Field>
         <Field label="Region">
           {cluster.region}

@@ -1,5 +1,14 @@
+import * as React from "react"
+
 import { Badge } from "@/components/ui/badge"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { shortenId } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { IconCheck, IconCopy } from "@tabler/icons-react"
 
 /** A prefixed id, rendered as the opaque string it is. */
 export function Id({
@@ -63,6 +72,66 @@ export function VersionPair({
         {observed ?? "—"}
       </span>
       <span className="text-muted-foreground/40"> / {desired}</span>
+    </span>
+  )
+}
+
+/**
+ * A shortened identifier with the whole thing on hover and a copy button that
+ * appears with it. `children` replaces the rendered text — pass a `Link` when
+ * the id should navigate, and the copy button stays outside it so clicking one
+ * never triggers the other.
+ */
+export function CopyableId({
+  value,
+  chars,
+  className,
+  children,
+}: {
+  value: string
+  chars?: number
+  className?: string
+  children?: React.ReactNode
+}) {
+  const [copied, setCopied] = React.useState(false)
+  const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  )
+
+  React.useEffect(() => () => clearTimeout(timer.current), [])
+
+  const copy = (event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    void navigator.clipboard.writeText(value).then(() => {
+      setCopied(true)
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => setCopied(false), 1200)
+    })
+  }
+
+  return (
+    <span className="group/id inline-flex items-center gap-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className={cn("font-mono", className)}>
+            {children ?? shortenId(value, chars)}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="font-mono text-2xs">{value}</TooltipContent>
+      </Tooltip>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={copied ? `Copied ${value}` : `Copy ${value}`}
+        className="shrink-0 text-muted-foreground/50 opacity-0 transition-opacity group-hover/id:opacity-100 hover:text-foreground focus-visible:opacity-100"
+      >
+        {copied ? (
+          <IconCheck className="size-3 text-emerald-500" />
+        ) : (
+          <IconCopy className="size-3" />
+        )}
+      </button>
     </span>
   )
 }

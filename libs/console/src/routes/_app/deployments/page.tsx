@@ -14,7 +14,7 @@ import {
   workloadPhaseTone,
 } from "@/modules/demand/display"
 import { Button } from "@/components/ui/button"
-import { formatError } from "@/lib/format"
+import { formatError, shortenId } from "@/lib/format"
 import { useDeleteDeployment, useDeployments } from "@/modules/demand/queries"
 import type { Deployment } from "@/modules/demand/types"
 import { DeploymentForm } from "./DeploymentForm"
@@ -38,7 +38,7 @@ function columns(
             className="block"
           >
             <span className="font-mono text-xs">{deployment.name}</span>
-            <Id value={deployment.id} className="ml-2" />
+            <Id value={shortenId(deployment.id)} className="ml-2" />
           </Link>
         </ResourceCell>
       ),

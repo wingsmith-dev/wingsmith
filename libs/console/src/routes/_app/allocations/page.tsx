@@ -5,7 +5,7 @@ import { Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Badge } from "@/components/ui/badge"
-import { formatRelative } from "@/lib/format"
+import { formatRelative, shortenId } from "@/lib/format"
 import { useProjectOptions } from "@/modules/binding/queries"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
@@ -27,7 +27,7 @@ const columns: Column<Allocation>[] = [
       <ResourceCell kind="allocation">
         <span className="block font-mono text-xs">
           {allocation.workload}
-          <Id value={allocation.id} className="ml-2" />
+          <Id value={shortenId(allocation.id)} className="ml-2" />
         </span>
       </ResourceCell>
     ),

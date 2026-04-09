@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/layout/page-header"
 import { Badge } from "@/components/ui/badge"
 import { parallelismLabel } from "@/modules/demand/display"
 import { Button } from "@/components/ui/button"
-import { formatError } from "@/lib/format"
+import { formatError, shortenId } from "@/lib/format"
 import { useDeleteRecipe, useRecipes } from "@/modules/demand/queries"
 import type { Recipe } from "@/modules/demand/types"
 import { RecipeForm } from "./RecipeForm"
@@ -33,7 +33,7 @@ function columns(
             <span className="ml-2 font-mono text-2xs text-muted-foreground/60">
               v{recipe.version}
             </span>
-            <Id value={recipe.id} className="ml-2" />
+            <Id value={shortenId(recipe.id)} className="ml-2" />
           </Link>
         </ResourceCell>
       ),

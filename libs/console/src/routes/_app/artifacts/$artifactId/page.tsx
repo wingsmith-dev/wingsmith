@@ -1,5 +1,5 @@
 import { Field, FieldGrid } from "@/components/layout/field"
-import { Dash, Id } from "@/components/layout/mono"
+import { CopyableId, Dash } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { DeleteDialog } from "@/components/layout/destructive"
 import { NewOperationDialog } from "@/components/machinery/new-operation"
@@ -156,7 +156,10 @@ export function ArtifactDetailPage() {
                   <FieldGrid>
                     <Field label="Name">{artifact.name}</Field>
                     <Field label="Id">
-                      <Id value={artifact.id} />
+                      <CopyableId
+                        value={artifact.id}
+                        className="text-2xs text-muted-foreground/60"
+                      />
                     </Field>
                     <Field label="Digest" className="sm:col-span-2">
                       <span className="break-all">{artifact.digest}</span>

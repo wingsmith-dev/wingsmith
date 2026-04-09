@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/layout/page-header"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Button } from "@/components/ui/button"
-import { formatError } from "@/lib/format"
+import { formatError, shortenId } from "@/lib/format"
 import { useDeleteTenant, useTenants } from "@/modules/binding/queries"
 import type { Tenant } from "@/modules/binding/types"
 import { Link } from "@tanstack/react-router"
@@ -25,7 +25,7 @@ function columns(
         <ResourceCell kind="tenant">
           <span className="block">
             <span className="font-mono text-xs">{tenant.slug}</span>
-            <Id value={tenant.id} className="ml-2" />
+            <Id value={shortenId(tenant.id)} className="ml-2" />
           </span>
         </ResourceCell>
       ),
