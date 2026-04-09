@@ -11,15 +11,22 @@ The three scoping joins, and how much each can be trusted:
 * **device** — labelled with `UUID`, against `Device.device_uuid`. This is an
   identity the hardware itself issues, so it is the strongest join in the module
   and the reason per-card panels are trustworthy.
-* **deployment** — vLLM labels by `model_name`, which is the served model, not
-  the deployment. Two deployments of the same model in one cluster share a
-  series set and will read as one. `Recipe.engine_args["served_model_name"]` is
-  honoured first because that is the operator's chance to disambiguate, then
-  `Recipe.name`, and only then the artifact name. The artifact is last because
-  it holds the repository path a model is fetched from — `google/gemma-4-31B-it`
-  — while the engine is served under the bare name, so preferring it selected
-  nothing at all for every deployment in the fleet. This join is the weak one and
-  the schema says so by carrying the scope back to the client.
+* **deployment** — two joins, strongest first.
+
+  Dynamo stamps every vLLM series with `dynamo_namespace`, which identifies the
+  serving process rather than the model it serves, and the labels it is composed
+  from ride along on the deployment. When they are there the join is exact, and
+  two deployments of one model no longer read as one.
+
+  When they are not — a deployment the plane declared, whose worker hash Dynamo
+  has not minted yet — it falls back to `model_name`, which is the served model
+  and not the deployment. `Recipe.engine_args["served_model_name"]` names it
+  first, then `Recipe.name`, and only then the artifact, which holds the
+  repository a model is fetched from — `google/gemma-4-31B-it` against a
+  `model_name` of `gemma-4-31b-it` — and so selects nothing on its own.
+
+  Both are reported to the client as scope `deployment`; which one answered is
+  visible in the selector, not the schema.
 
 Every one of them is narrowed by cluster first. The fleet remote-writes into one
 store holding four clusters, two of which are databases, so an unscoped query
@@ -45,6 +52,7 @@ from app.config.settings import settings
 from app.core.exceptions import NotFound
 
 from .client import MetricsUnavailable
+from .promql import worker_identity
 from .backend import Scope
 from .backend import Window
 from .backend import Request
@@ -334,7 +342,11 @@ class MetricsService:
             )
             answer.unavailable = f"no metric dialect registered for engine {recipe.engine!r}"
             return answer
-        scope = self._scope("deployment", source, deployment=(served,))
+        worker = worker_identity(deployment.labels or {})
+        if worker:
+            scope = self._scope("deployment", source, worker=(worker,))
+        else:
+            scope = self._scope("deployment", source, deployment=(served,))
         return await self._answer(
             cluster, scope, deployment.uid, engine.metrics, window, step, span, with_series=series
         )

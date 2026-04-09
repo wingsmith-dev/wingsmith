@@ -28,11 +28,17 @@ from dataclasses import dataclass
 Unit = Literal["percent", "celsius", "watts", "mib", "mhz", "seconds", "per_second", "count"]
 Family = Literal["gpu", "inference"]
 
-SCOPES: tuple[str, ...] = ("cluster", "node", "pool", "device", "device_class", "deployment")
+SCOPES: tuple[str, ...] = ("cluster", "node", "pool", "device", "device_class", "deployment", "worker")
 """The dimensions a measurement can be narrowed by, in Hangar's words.
 
 `pool` is not a dimension a store knows: a pool is measured as the set of nodes
 in it, which is why it never reaches a backend under its own name.
+
+`deployment` and `worker` are both ways of asking about one deployment and they
+are not the same question. `deployment` selects the served model, so two
+deployments of one model answer as one. `worker` selects the serving process the
+engine registered itself as, which is exact. The service prefers `worker` and
+falls back, because only the second is always knowable.
 """
 
 

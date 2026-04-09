@@ -11,6 +11,7 @@ from app.modules.metrics.promql import DIALECT
 from app.modules.metrics.promql import render
 from app.modules.metrics.promql import matcher
 from app.modules.metrics.promql import selector
+from app.modules.metrics.promql import worker_identity
 from app.modules.metrics.routes import MetricsRoutes
 from app.modules.metrics.backend import Scope
 from app.modules.metrics.backend import Window
@@ -358,3 +359,44 @@ def test_served_model_falls_back_to_the_recipe_before_the_artifact():
 
 def test_served_model_uses_the_artifact_only_when_nothing_else_names_it():
     assert served_model(FakeRecipe(""), FakeArtifact("Qwen/Qwen3.8-27B")) == "Qwen/Qwen3.8-27B"
+
+
+DYNAMO_LABELS = {
+    "dynamo-component": "VllmDecodeWorker",
+    "dynamo-namespace": "dynamo",
+    "dynamo-worker-hash": "891b8dda",
+    "dynamo-graph-deployment-name": "gemma-4-31b-it",
+}
+
+
+def test_worker_identity_composes_the_namespace_dynamo_reports_under():
+    assert worker_identity(DYNAMO_LABELS) == "dynamo-891b8dda"
+
+
+def test_worker_identity_keeps_a_graphs_own_namespace():
+    """One deployment in the fleet sets `DYN_NAMESPACE` on its graph, so the hash is not enough.
+
+    `dynamo-<hash>` and `dynamo-<graph>-<hash>` both occur, which is why the
+    value is read from the labels rather than rebuilt from the deployment name.
+    """
+    labels = {"dynamo-namespace": "dynamo-qwen3-8-27b-agg", "dynamo-worker-hash": "b16ef7d1"}
+    assert worker_identity(labels) == "dynamo-qwen3-8-27b-agg-b16ef7d1"
+
+
+def test_worker_identity_is_empty_when_either_half_is_missing():
+    """Empty means "not observed yet", which must fall back rather than select nothing."""
+    assert worker_identity({"dynamo-namespace": "dynamo"}) == ""
+    assert worker_identity({"dynamo-worker-hash": "891b8dda"}) == ""
+    assert worker_identity({}) == ""
+
+
+def test_the_worker_dimension_selects_on_the_dynamo_namespace():
+    scope = Scope(kind="deployment", cluster="cluster-ap", match={"worker": ("dynamo-891b8dda",)})
+    assert selector(scope) == 'cluster="cluster-ap",dynamo_namespace="dynamo-891b8dda"'
+
+
+def test_the_worker_join_separates_two_deployments_of_one_model():
+    """The whole point: `model_name` cannot tell them apart and `dynamo_namespace` can."""
+    one = Scope(kind="deployment", cluster="c", match={"worker": ("dynamo-aaaa",)})
+    two = Scope(kind="deployment", cluster="c", match={"worker": ("dynamo-bbbb",)})
+    assert selector(one) != selector(two)

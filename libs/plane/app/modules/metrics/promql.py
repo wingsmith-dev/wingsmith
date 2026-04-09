@@ -41,8 +41,39 @@ LABELS: dict[str, str] = {
     "device": "UUID",
     "device_class": "modelName",
     "deployment": "model_name",
+    "worker": "dynamo_namespace",
 }
-"""The label each Hangar dimension is selected by. Verified against the fleet's store."""
+"""The label each Hangar dimension is selected by. Verified against the fleet's store.
+
+`dynamo_namespace` is not a namespace in the Kubernetes sense and is not the
+`dynamo-namespace` pod label either. Dynamo composes it at runtime from
+`DYN_NAMESPACE` and `DYN_NAMESPACE_WORKER_SUFFIX`, which reach the plane as the
+`dynamo-namespace` and `dynamo-worker-hash` labels — see `worker_identity`. It is
+the only label on a vLLM series that distinguishes one deployment of a model from
+another.
+"""
+
+
+WORKER_NAMESPACE = "dynamo-namespace"
+WORKER_HASH = "dynamo-worker-hash"
+
+
+def worker_identity(labels: dict) -> str:
+    """The `dynamo_namespace` a deployment's engine reports itself under, or empty.
+
+    Dynamo joins the graph's namespace to the worker's hash with a hyphen, and
+    the result cannot be rebuilt from the deployment's name: three of the fleet's
+    four deployments render `dynamo-<hash>` while one whose graph sets its own
+    `DYN_NAMESPACE` renders `dynamo-<graph>-<hash>`. Both halves arrive as pod
+    labels, so this reads them rather than guessing.
+
+    Empty when either half is missing, which is the honest answer for a
+    deployment the plane declared itself: Dynamo mints the hash after the fact,
+    so there is nothing to know until it has been observed.
+    """
+    namespace = str(labels.get(WORKER_NAMESPACE) or "").strip()
+    worker = str(labels.get(WORKER_HASH) or "").strip()
+    return f"{namespace}-{worker}" if namespace and worker else ""
 
 
 @dataclass(frozen=True)
