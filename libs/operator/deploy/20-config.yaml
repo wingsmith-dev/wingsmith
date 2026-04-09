@@ -56,3 +56,11 @@ data:
   # nothing uploads them yet: reporting a URI with nothing at it would be worse than reporting
   # none. See docs/wip.md.
   HANGAR_BENCHMARK_ARTIFACT_BASE: ""
+  # What one run's load generator requests. A load generator is an HTTP client: it opens
+  # connections, reads streamed tokens, and counts. No CPU limit is set anywhere, so this is a
+  # scheduling floor rather than a cap and a run bursts into whatever the node has idle. Raise it
+  # on a cluster where a high-concurrency run would otherwise be co-scheduled with work that
+  # starves it — a generator short of CPU does not fail, it reports its own latency as the
+  # engine's.
+  HANGAR_BENCHMARK_CPU: 500m
+  HANGAR_BENCHMARK_MEMORY: 1Gi

@@ -3,6 +3,8 @@ package render
 import (
 	"strings"
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 func benchParams(overrides map[string]string) map[string]string {
@@ -146,6 +148,52 @@ func TestBenchmarkRunsOffTheAcceleratorPool(t *testing.T) {
 		if q, ok := container.Resources.Limits["nvidia.com/gpu"]; ok && !q.IsZero() {
 			t.Error("the load generator asked for a GPU")
 		}
+	}
+}
+
+// An HTTP client's request must fit on an ordinary node. The failure this guards against is not
+// subtle — a request larger than a small pool's spare capacity is a run that never schedules.
+func TestBenchmarkRequestsFitAModestNode(t *testing.T) {
+	opts, bench := benchOpts()
+	params := benchParams(nil)
+	job, err := BenchmarkJob(params["benchmark_id"], params, opts, bench)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	container := job.Spec.Template.Spec.Containers[0]
+
+	if cpu := container.Resources.Requests.Cpu(); cpu.MilliValue() > 1000 {
+		t.Errorf("requested %s of CPU to drive HTTP requests", cpu)
+	}
+	if _, capped := container.Resources.Limits[corev1.ResourceCPU]; capped {
+		t.Error("capped the CPU of the thing doing the measuring")
+	}
+}
+
+func TestBenchmarkResourcesAreConfigurable(t *testing.T) {
+	opts, bench := benchOpts()
+	bench.CPU, bench.Memory = "3", "6Gi"
+	params := benchParams(nil)
+	job, err := BenchmarkJob(params["benchmark_id"], params, opts, bench)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	requests := job.Spec.Template.Spec.Containers[0].Resources.Requests
+
+	if cpu := requests.Cpu(); cpu.MilliValue() != 3000 {
+		t.Errorf("requested %s of CPU, not the configured 3", cpu)
+	}
+	if memory := requests.Memory(); memory.String() != "6Gi" {
+		t.Errorf("requested %s of memory, not the configured 6Gi", memory)
+	}
+}
+
+func TestBenchmarkRefusesAnUnreadableResourceRequest(t *testing.T) {
+	opts, bench := benchOpts()
+	bench.CPU = "loads"
+	params := benchParams(nil)
+	if _, err := BenchmarkJob(params["benchmark_id"], params, opts, bench); err == nil {
+		t.Fatal("rendered a job with an unparseable CPU request")
 	}
 }
 

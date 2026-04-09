@@ -116,13 +116,18 @@ func run() error {
 	}
 
 	executor := operate.New(&operate.Executor{
-		Client:           directClient,
-		ClusterID:        cfg.ClusterID,
-		Log:              log,
-		ReadOnly:         cfg.ReadOnly,
-		Allowed:          cfg.AllowedOperations,
-		Render:           reconcile.RenderOptions(cfg),
-		Benchmark:        render.BenchmarkOptions{Endpoint: cfg.InferenceEndpoint, ArtifactBase: cfg.BenchmarkArtifactBase},
+		Client:    directClient,
+		ClusterID: cfg.ClusterID,
+		Log:       log,
+		ReadOnly:  cfg.ReadOnly,
+		Allowed:   cfg.AllowedOperations,
+		Render:    reconcile.RenderOptions(cfg),
+		Benchmark: render.BenchmarkOptions{
+			Endpoint:     cfg.InferenceEndpoint,
+			ArtifactBase: cfg.BenchmarkArtifactBase,
+			CPU:          cfg.BenchmarkCPU,
+			Memory:       cfg.BenchmarkMemory,
+		},
 		Logs:             logs,
 		BenchmarkTimeout: cfg.BenchmarkTimeout,
 	})

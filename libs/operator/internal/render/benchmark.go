@@ -37,7 +37,21 @@ type BenchmarkOptions struct {
 	// ArtifactBase is a URI prefix for the raw per-request records, or empty to leave them in
 	// the pod. Those records are telemetry and do not travel the sync stream either way.
 	ArtifactBase string
+
+	// CPU and Memory are what the load generator requests. Empty falls back to a request small
+	// enough to land on a modest node, because a benchmark that cannot be scheduled measures
+	// nothing at all.
+	CPU    string
+	Memory string
 }
+
+// Defaults for a load generator's request. Deliberately modest: no CPU limit is set anywhere
+// here, so this is a scheduling floor a run bursts above, and a floor set higher than a cluster's
+// spare capacity is a run that never starts.
+const (
+	defaultBenchmarkCPU    = "500m"
+	defaultBenchmarkMemory = "1Gi"
+)
 
 // aiperfScript runs the harness and then hands its export back through the log.
 //
@@ -116,6 +130,11 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 		VersionLine, artifactDir, SummaryBegin, SummaryEnd,
 	)
 
+	resources, err := benchmarkResources(bench)
+	if err != nil {
+		return nil, err
+	}
+
 	labels := map[string]string{
 		"hangar.dev/benchmark":  benchmarkID,
 		"hangar.dev/managed-by": "hangar-operator",
@@ -177,15 +196,7 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 							{Name: "model-cache", MountPath: "/models", ReadOnly: true},
 							{Name: "artifacts", MountPath: artifactDir},
 						},
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("4"),
-								corev1.ResourceMemory: resource.MustParse("8Gi"),
-							},
-							Limits: corev1.ResourceList{
-								corev1.ResourceMemory: resource.MustParse("16Gi"),
-							},
-						},
+						Resources: resources,
 					}},
 				},
 			},
@@ -265,4 +276,38 @@ func flagParam(parameters map[string]string, key string, def bool) bool {
 		}
 	}
 	return def
+}
+
+// benchmarkResources is what one load generator asks the scheduler for.
+//
+// Requests only, and no CPU limit: throttling the thing doing the measuring would put the
+// throttle's own latency into the numbers. The memory limit is a backstop against a harness that
+// buffers every response rather than a budget, and is derived from the request so that raising
+// one raises the other.
+func benchmarkResources(bench BenchmarkOptions) (corev1.ResourceRequirements, error) {
+	cpuText := bench.CPU
+	if cpuText == "" {
+		cpuText = defaultBenchmarkCPU
+	}
+	memoryText := bench.Memory
+	if memoryText == "" {
+		memoryText = defaultBenchmarkMemory
+	}
+
+	cpu, err := resource.ParseQuantity(cpuText)
+	if err != nil {
+		return corev1.ResourceRequirements{}, fmt.Errorf("benchmark cpu request %q is not a quantity: %w", cpuText, err)
+	}
+	memory, err := resource.ParseQuantity(memoryText)
+	if err != nil {
+		return corev1.ResourceRequirements{}, fmt.Errorf("benchmark memory request %q is not a quantity: %w", memoryText, err)
+	}
+
+	ceiling := memory.DeepCopy()
+	ceiling.Add(memory)
+
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{corev1.ResourceCPU: cpu, corev1.ResourceMemory: memory},
+		Limits:   corev1.ResourceList{corev1.ResourceMemory: ceiling},
+	}, nil
 }

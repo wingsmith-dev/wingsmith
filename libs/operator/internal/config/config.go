@@ -160,6 +160,18 @@ type Config struct {
 	// wedged against an endpoint which stopped answering would otherwise hold its operation open
 	// forever.
 	BenchmarkTimeout time.Duration
+
+	// BenchmarkCPU and BenchmarkMemory are what one run's load generator requests. They are
+	// per-cluster because the right answer depends on what the cluster has spare: the defaults
+	// are small enough to schedule onto a modest node pool, which is the behaviour a cluster
+	// that has never thought about this should get.
+	//
+	// No CPU limit is ever set, so the request is a floor and not a cap — a run bursts into
+	// whatever the node has idle. Raising the request is how you stop a high-concurrency run
+	// from being co-scheduled with work that starves it, which matters because a load generator
+	// short of CPU does not fail, it reports latency that is its own rather than the engine's.
+	BenchmarkCPU    string
+	BenchmarkMemory string
 }
 
 // Load reads configuration from the environment, applying defaults and validating the result.
@@ -192,6 +204,8 @@ func Load() (*Config, error) {
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", "http://dynamo-frontend.dynamo.svc.cluster.local:8000"),
 		BenchmarkArtifactBase: env("HANGAR_BENCHMARK_ARTIFACT_BASE", ""),
 		BenchmarkTimeout:      envDuration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),
+		BenchmarkCPU:          env("HANGAR_BENCHMARK_CPU", "500m"),
+		BenchmarkMemory:       env("HANGAR_BENCHMARK_MEMORY", "1Gi"),
 		DCGMEndpoint:          env("HANGAR_DCGM_ENDPOINT", "http://dcgm-exporter.platform.svc.cluster.local:9400/metrics"),
 		DCGMSelector:          env("HANGAR_DCGM_SELECTOR", ""),
 		DCGMTimeout:           envDuration("HANGAR_DCGM_TIMEOUT", 5*time.Second),
