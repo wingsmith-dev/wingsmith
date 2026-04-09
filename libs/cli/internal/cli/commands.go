@@ -21,6 +21,7 @@ func register(app *App, root *cobra.Command) {
 		newDiscoveredCmd(app),
 		endpointNoun().command(app),
 
+		tenantNoun().command(app),
 		projectNoun().command(app),
 		quotaNoun().command(app),
 		priorityClassNoun().command(app),

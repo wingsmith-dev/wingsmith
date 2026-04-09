@@ -67,6 +67,7 @@ const fleetItems: NavItem[] = [
 ]
 
 const accessItems: NavItem[] = [
+  { label: "Tenants", to: "/tenants", kind: "tenant" },
   { label: "Projects", to: "/projects", kind: "project" },
   { label: "Quotas", to: "/quotas", kind: "quota" },
   {

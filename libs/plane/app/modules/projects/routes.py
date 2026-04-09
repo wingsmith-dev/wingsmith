@@ -1,8 +1,9 @@
 """Projects: the tenancy unit `X-Hangar-Project` names.
 
-There is no tenant collection in `libs/packages/contract/API.md` §6, so a project carries its
-tenant as an embedded field. A path segment takes the project id or its slug; the
-slug is unique only within a tenant, so `tenant` narrows an ambiguous one.
+A project carries its tenant as an embedded field rather than a link, so no reader
+has to join for it; `/v1/tenants` is where one is made. A path segment takes the
+project id or its slug; the slug is unique only within a tenant, so `tenant`
+narrows an ambiguous one.
 
 There is no `label` filter: projects carry no labels, and a selector that is
 accepted and ignored hands back the unfiltered set to a caller who asked for a

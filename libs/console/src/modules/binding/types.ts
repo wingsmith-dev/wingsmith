@@ -1,7 +1,36 @@
 /**
- * `ProjectTenantSchema` — embedded rather than linked. There is no
- * `/v1/tenants` collection, so the tenant is a field on the project.
+ * `ProjectTenantSchema` — embedded rather than linked: a project always carries
+ * the tenant it belongs to, even though `/v1/tenants` now exists to make one.
  */
+/**
+ * `TenantSchema` — the billing and isolation root a project hangs off.
+ *
+ * `project_count` is on the read shape because the only destructive question
+ * anyone asks of a tenant is what deleting it would take with it.
+ */
+export interface Tenant {
+  id: string
+  slug: string
+  name: string
+  enabled: boolean
+  project_count: number
+  created_at: string
+  updated_at: string | null
+  revision: string
+}
+
+export interface TenantCreateRequest {
+  slug: string
+  name: string
+  enabled?: boolean
+}
+
+/** The slug namespaces every project beneath it, so it is not patchable. */
+export interface TenantUpdateRequest {
+  name?: string
+  enabled?: boolean
+}
+
 export interface ProjectTenant {
   id: string
   slug: string
@@ -24,7 +53,7 @@ export interface Project {
   revision: string
 }
 
-/** The tenant is a slug or id; there is no `/v1/tenants` collection to pick from. */
+/** The tenant is a slug or id, picked from `/v1/tenants`. */
 export interface ProjectCreateRequest {
   tenant: string
   slug: string

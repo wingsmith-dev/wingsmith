@@ -9,6 +9,7 @@ import { formatError } from "@/lib/format"
 import {
   useCreateProject,
   usePriorityClassOptions,
+  useTenantOptions,
   useUpdateProject,
 } from "@/modules/binding/queries"
 import type { Project } from "@/modules/binding/types"
@@ -18,8 +19,12 @@ import { toast } from "sonner"
 const UNSET = "__none__"
 
 /**
- * The tenant is typed rather than picked: there is no `/v1/tenants` collection
- * to enumerate, so the plane resolves the slug on write.
+ * The tenant is picked, and the form says so when there is nothing to pick.
+ *
+ * It used to be a free-text slug resolved on write, from when the API had no
+ * tenant collection: on an empty plane every value anyone could type was a
+ * `404`, so the first project could not be created and nothing downstream that
+ * needs one — promoting a discovered workload, most of all — could be either.
  */
 export function ProjectForm({
   open,
@@ -34,6 +39,7 @@ export function ProjectForm({
   const create = useCreateProject()
   const update = useUpdateProject()
   const { data: priorities } = usePriorityClassOptions()
+  const { data: tenants } = useTenantOptions()
 
   const [tenant, setTenant] = useState(project?.tenant.slug ?? "")
   const [slug, setSlug] = useState(project?.slug ?? "")
@@ -90,14 +96,26 @@ export function ProjectForm({
       disabled={!name || (!editing && (!tenant || !slug))}
       onSubmit={submit}
     >
+      {!editing && tenants?.length === 0 && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3">
+          <p className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+            there are no tenants yet — a project hangs off one, so make a tenant
+            first
+          </p>
+        </div>
+      )}
+
       {!editing && (
         <FormGrid>
-          <TextField
+          <SelectField
             label="Tenant"
             value={tenant}
             onChange={setTenant}
-            placeholder="acme"
-            hint="Slug or id of an existing tenant."
+            hint="The billing root this project hangs off."
+            options={(tenants ?? []).map((t) => ({
+              value: t.slug,
+              label: t.name,
+            }))}
           />
           <TextField
             label="Slug"

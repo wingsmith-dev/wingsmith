@@ -294,6 +294,15 @@ func (c *Client) Endpoint(ctx context.Context, ref string) (Endpoint, error) {
 
 // --- binding ---------------------------------------------------------------
 
+func (c *Client) Tenants(ctx context.Context, o ListOpts) (Page[Tenant], error) {
+	q := newQuery(o).boolean("enabled", o.Enabled).str("search", o.Search)
+	return list[Tenant](ctx, c, "/v1/tenants", q.values(), o)
+}
+
+func (c *Client) Tenant(ctx context.Context, ref string) (Tenant, error) {
+	return one[Tenant](ctx, c, "/v1/tenants", ref, nil)
+}
+
 func (c *Client) Projects(ctx context.Context, o ListOpts) (Page[Project], error) {
 	q := newQuery(o).str("tenant", o.Tenant).boolean("enabled", o.Enabled).str("search", o.Search)
 	return list[Project](ctx, c, "/v1/projects", q.values(), o)

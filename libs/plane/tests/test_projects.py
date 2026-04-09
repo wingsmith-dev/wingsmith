@@ -21,7 +21,7 @@ def sql(query) -> str:
     return str(query)
 
 
-def test_tenant_is_a_field_on_the_project_not_a_collection():
+def test_tenant_travels_with_the_project_even_though_it_has_a_collection():
     assert "tenant" in ProjectSchema.__struct_fields__
     assert set(ProjectTenantSchema.__struct_fields__) == {"id", "slug", "name", "enabled"}
 

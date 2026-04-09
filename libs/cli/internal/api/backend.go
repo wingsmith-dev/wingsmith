@@ -36,6 +36,8 @@ type Backend interface {
 	Endpoints(ctx context.Context, opts ListOpts) (Page[Endpoint], error)
 	Endpoint(ctx context.Context, ref string) (Endpoint, error)
 
+	Tenants(ctx context.Context, opts ListOpts) (Page[Tenant], error)
+	Tenant(ctx context.Context, ref string) (Tenant, error)
 	Projects(ctx context.Context, opts ListOpts) (Page[Project], error)
 	Project(ctx context.Context, ref string) (Project, error)
 	Quotas(ctx context.Context, opts ListOpts) (Page[Quota], error)

@@ -27,6 +27,7 @@ type state struct {
 	Deployments     []api.Deployment         `json:"deployments"`
 	Discovered      []api.DiscoveredWorkload `json:"discovered"`
 	Endpoints       []api.Endpoint           `json:"endpoints"`
+	Tenants         []api.Tenant             `json:"tenants"`
 	Projects        []api.Project            `json:"projects"`
 	Quotas          []api.Quota              `json:"quotas"`
 	PriorityClasses []api.PriorityClass      `json:"priority_classes"`

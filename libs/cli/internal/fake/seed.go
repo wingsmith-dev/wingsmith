@@ -245,6 +245,15 @@ func seed() *state {
 	tenant := api.ProjectTenant{ID: uid("ten_"), Slug: "acme", Name: "Acme", Enabled: true}
 	projectID := uid("prj_")
 	created := now.Add(-90 * 24 * time.Hour)
+	st.Tenants = append(st.Tenants, api.Tenant{
+		ID:           tenant.ID,
+		Slug:         tenant.Slug,
+		Name:         tenant.Name,
+		Enabled:      tenant.Enabled,
+		ProjectCount: 1,
+		CreatedAt:    now.Add(-90 * 24 * time.Hour),
+		Revision:     revision(now.Add(-90 * 24 * time.Hour)),
+	})
 	st.Projects = append(st.Projects, api.Project{
 		Tenant:               tenant,
 		ID:                   projectID,

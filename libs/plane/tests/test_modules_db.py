@@ -46,6 +46,8 @@ from app.modules.quotas.schemas import QuotaUpdateRequest
 from app.modules.quotas.services import QuotaService
 from app.modules.recipes.schemas import RecipeCreateRequest
 from app.modules.recipes.schemas import RecipeUpdateRequest
+from app.modules.tenants.schemas import TenantCreateRequest
+from app.modules.tenants.schemas import TenantUpdateRequest
 from app.modules.clusters.schemas import ClusterCreateRequest
 from app.modules.clusters.schemas import ClusterUpdateRequest
 from app.modules.policies.schemas import PolicyCreateRequest
@@ -54,6 +56,7 @@ from app.modules.policies.schemas import PolicyAttachmentRequest
 from app.modules.projects.schemas import ProjectCreateRequest
 from app.modules.projects.schemas import ProjectUpdateRequest
 from app.modules.recipes.services import RecipeService
+from app.modules.tenants.services import TenantService
 from app.modules.artifacts.schemas import ArtifactCreateRequest
 from app.modules.artifacts.schemas import ArtifactUpdateRequest
 from app.modules.artifacts.schemas import ArtifactLocationRequest
@@ -233,6 +236,30 @@ async def test_clusters_lifecycle(db: AsyncSession) -> None:
 
     await service.delete(created.id)
     assert (await service.list()).count == 0
+
+
+async def test_tenants_lifecycle(db: AsyncSession) -> None:
+    service = TenantService(db)
+    created = await service.create(TenantCreateRequest(slug="acme", name="Acme"))
+
+    assert (await service.get("acme")).id == created.id
+    assert (await service.list()).count == 1
+
+    patched = await service.update(created.id, TenantUpdateRequest(name="Acme Inc"))
+    assert patched.name == "Acme Inc"
+    assert_patched(created, patched)
+
+    await service.delete(created.id)
+    assert (await service.list()).count == 0
+
+
+async def test_a_tenant_holding_projects_refuses_to_be_deleted(db: AsyncSession) -> None:
+    tenant = await TenantService(db).create(TenantCreateRequest(slug="acme", name="Acme"))
+    await ProjectService(db).create(ProjectCreateRequest(tenant="acme", slug="search", name="Search"))
+
+    assert (await TenantService(db).get(tenant.id)).project_count == 1
+    with pytest.raises(Conflict):
+        await TenantService(db).delete(tenant.id)
 
 
 async def test_projects_lifecycle(db: AsyncSession) -> None:

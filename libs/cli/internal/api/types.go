@@ -502,6 +502,20 @@ type ProjectTenant struct {
 }
 
 // Project is the tenancy unit `X-Hangar-Project` names.
+// Tenant is the billing and isolation root a project hangs off. ProjectCount is
+// on the read shape because the only destructive question anyone asks of a
+// tenant is what deleting it would take with it.
+type Tenant struct {
+	ID           string     `json:"id"`
+	Slug         string     `json:"slug"`
+	Name         string     `json:"name"`
+	Enabled      bool       `json:"enabled"`
+	ProjectCount int        `json:"project_count"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    *time.Time `json:"updated_at"`
+	Revision     string     `json:"revision"`
+}
+
 type Project struct {
 	Tenant               ProjectTenant `json:"tenant"`
 	ID                   string        `json:"id"`

@@ -10,6 +10,7 @@ import type {
   PriorityClass,
   Project,
   Quota,
+  Tenant,
 } from "@/modules/binding/types"
 import type {
   Allocation,
@@ -460,6 +461,16 @@ const tenant = {
   name: "Acme",
   enabled: true,
 }
+
+export const tenants: Tenant[] = [
+  {
+    ...tenant,
+    project_count: 2,
+    created_at: CREATED,
+    updated_at: null,
+    revision: REV,
+  },
+]
 
 export const priorityClasses: PriorityClass[] = [
   {

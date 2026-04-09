@@ -12,6 +12,7 @@ from app.modules.quotas.routes import QuotaRoutes
 from app.modules.devices.routes import DeviceRoutes
 from app.modules.metrics.routes import MetricsRoutes
 from app.modules.recipes.routes import RecipeRoutes
+from app.modules.tenants.routes import TenantRoutes
 from app.modules.clusters.routes import ClusterRoutes
 from app.modules.policies.routes import PolicyRoutes
 from app.modules.projects.routes import ProjectRoutes
@@ -39,6 +40,7 @@ V1_ROUTES = [
     PlacementRoutes,
     DiscoveredWorkloadRoutes,
     EndpointRoutes,
+    TenantRoutes,
     ProjectRoutes,
     QuotaRoutes,
     PriorityClassRoutes,

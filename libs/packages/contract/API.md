@@ -149,7 +149,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/artifacts`, `/v1/recipes`, `/v1/deployments`, `/v1/endpoints` | declared |
 | `/v1/discovered` | observed, read-only, plus two decision verbs — see below |
 | `/v1/replicas`, `/v1/allocations` | observed, read-only |
-| `/v1/projects`, `/v1/quotas`, `/v1/priority-classes`, `/v1/policies` | declared |
+| `/v1/tenants`, `/v1/projects`, `/v1/quotas`, `/v1/priority-classes`, `/v1/policies` | declared |
 | `/v1/components` | declared version, observed rollout |
 | `/v1/placement` | one dry-run verb, writes nothing — see below |
 | `/v1/operations` | see §7 |
@@ -174,6 +174,18 @@ promotion is refused if the workload changed since; the digest is then recorded 
 anything else. Scale is not a parameter — the bounds are taken from what the workload is already
 running, because a promotion that also set the replica count would scale a live workload as a side
 effect of cataloguing it. From there the object is managed through `/v1/deployments` like any other.
+
+**`/v1/tenants` exists because a project cannot be created without one.** This document used to say
+there was no tenant collection and that a project carries its tenant as an embedded field. The
+second half still holds — a project always carries the tenant it hangs off, so no reader has to
+join — but the first half made an empty plane unusable: `POST /v1/projects` resolves `tenant` to an
+existing row, nothing in the API could create that row, and so the first project could never be
+made, and with it no quota, no deployment and no promotion. The collection is deliberately thin: a
+slug, a name and a switch. `slug` is absent from `PATCH` because it namespaces every project slug
+beneath it, and `DELETE` is refused with `409` while any project still hangs off the tenant — the
+foreign key cascades, and a delete that silently took quotas and allocations with it is not a delete
+anyone asked for. `project_count` is on the read shape so a caller can see what a delete would
+refuse over.
 
 **`GET /v1/discovered/{ref}/recipe-draft` reads a sighting as the objects needed to adopt it.** A
 `GET` because it is one: the same sighting derives the same draft every time, and asking changes

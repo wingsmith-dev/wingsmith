@@ -13,6 +13,61 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func tenantNoun() noun[api.Tenant] {
+	return noun[api.Tenant]{
+		name:    "tenant",
+		aliases: []string{"tenants"},
+		group:   "binding",
+		short:   "Tenancy — the billing root",
+		long: `A tenant is the billing and isolation root. Projects hang off it, quota
+attaches below them, and nothing can be deployed or promoted until one exists.
+
+It is deliberately three fields. Access control, billing accounts and contacts
+are their own objects when they exist, not columns smuggled onto this one.`,
+		example: `  hgr tenant ls
+  hgr tenant get acme`,
+		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Tenant], error) {
+			return b.Tenants(ctx, o)
+		},
+		get:   func(ctx context.Context, b api.Backend, ref string) (api.Tenant, error) { return b.Tenant(ctx, ref) },
+		keys:  func(t api.Tenant) []string { return []string{t.Slug, t.ID} },
+		empty: "no tenants",
+		columns: []ui.Column{
+			{Title: "slug"},
+			{Title: "id", Wide: true},
+			{Title: "name"},
+			{Title: "projects", Align: ui.AlignRight},
+			{Title: "enabled"},
+			{Title: "age", Align: ui.AlignRight},
+		},
+		row: func(s ui.Style, t api.Tenant) []string {
+			return []string{
+				t.Slug, t.ID, t.Name, strconv.Itoa(t.ProjectCount),
+				yesNo(s, t.Enabled), agoAt(t.CreatedAt),
+			}
+		},
+		bind: func(f *filters, cmd *cobra.Command) {
+			cmd.Flags().BoolVar(&f.enabled, "enabled", false, "only enabled tenants (--enabled=false for the rest)")
+			f.bindSearch(cmd, "substring match on slug or name")
+		},
+		detail: func(app *App, w io.Writer, s ui.Style, t api.Tenant) {
+			fmt.Fprintf(w, "%s %s\n", s.Bold(t.Slug), s.Dim(t.ID))
+			kv := app.KV()
+			kv.Add("name", t.Name)
+			kv.Add("enabled", yesNo(s, t.Enabled))
+			kv.Add("projects", strconv.Itoa(t.ProjectCount))
+			kv.Add("created", agoAt(t.CreatedAt))
+			kv.Add("revision", t.Revision)
+			kv.Render(w)
+		},
+		next: func(t api.Tenant) []errs.Action {
+			return []errs.Action{
+				{Description: "Its projects", Command: "hgr project ls --tenant " + t.Slug},
+			}
+		},
+	}
+}
+
 func projectNoun() noun[api.Project] {
 	return noun[api.Project]{
 		name:    "project",
@@ -22,10 +77,10 @@ func projectNoun() noun[api.Project] {
 		long: `A project is the unit X-Hangar-Project names, and the thing quota and
 priority hang off.
 
-Its tenant is embedded rather than linked, because there is no tenants
-collection. enabled and effective_enabled are both shown: a project inside a
-disabled tenant is still a project someone enabled, and the two switches
-answer different questions.`,
+Its tenant is embedded rather than linked, so a project always carries the root
+it hangs off; hgr tenant lists them. enabled and effective_enabled are both
+shown: a project inside a disabled tenant is still a project someone enabled,
+and the two switches answer different questions.`,
 		example: `  hgr project ls
   hgr project ls --tenant acme
   hgr project get core`,

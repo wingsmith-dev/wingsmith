@@ -4,10 +4,12 @@ import {
   createPolicy,
   createPriorityClass,
   createProject,
+  createTenant,
   createQuota,
   deletePolicy,
   deletePriorityClass,
   deleteProject,
+  deleteTenant,
   deleteQuota,
   fetchPolicies,
   fetchPolicy,
@@ -15,16 +17,20 @@ import {
   fetchPriorityClasses,
   fetchProject,
   fetchProjects,
+  fetchTenant,
+  fetchTenants,
   fetchQuota,
   fetchQuotas,
   updatePolicy,
   updatePriorityClass,
   updateProject,
+  updateTenant,
   updateQuota,
   type PolicyFilters,
   type PriorityClassFilters,
   type ProjectFilters,
   type QuotaFilters,
+  type TenantFilters,
 } from "./api"
 import type {
   PolicyCreateRequest,
@@ -35,7 +41,66 @@ import type {
   ProjectUpdateRequest,
   QuotaCreateRequest,
   QuotaUpdateRequest,
+  TenantCreateRequest,
+  TenantUpdateRequest,
 } from "./types"
+
+export function useTenants(filters: TenantFilters = {}) {
+  return useCursorList(["tenants", filters], (cursor) =>
+    fetchTenants(filters, cursor)
+  )
+}
+
+/** Every tenant, drained — the project form picks one from this. */
+export function useTenantOptions() {
+  return useAllPages(["tenants", "options"], (cursor) =>
+    fetchTenants({}, cursor, 200)
+  )
+}
+
+export function useTenant(ref: string) {
+  return useQuery({
+    queryKey: ["tenants", "detail", ref],
+    queryFn: () => fetchTenant(ref),
+    enabled: !!ref,
+  })
+}
+
+export function useCreateTenant() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: TenantCreateRequest) => createTenant(body),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["tenants"] }),
+  })
+}
+
+/**
+ * Carries the tenant's `revision` as `If-Match`, so an edit written against a
+ * stale read is rejected by the plane rather than silently overwriting it.
+ */
+export function useUpdateTenant() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: {
+      ref: string
+      body: TenantUpdateRequest
+      revision?: string
+    }) => updateTenant(vars.ref, vars.body, vars.revision),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["tenants"] }),
+  })
+}
+
+/** Invalidates projects too: the plane refuses while any still hang off it. */
+export function useDeleteTenant() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) => deleteTenant(ref),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["tenants"] })
+      client.invalidateQueries({ queryKey: ["projects"] })
+    },
+  })
+}
 
 export function useProjects(filters: ProjectFilters = {}) {
   return useCursorList(["projects", filters], (cursor) =>

@@ -289,6 +289,18 @@ func (b *Backend) Endpoint(ctx context.Context, ref string) (api.Endpoint, error
 	})
 }
 
+func (b *Backend) Tenants(ctx context.Context, o api.ListOpts) (api.Page[api.Tenant], error) {
+	return collect(b, b.state.Tenants, o, func(t api.Tenant) bool {
+		return boolEq(o.Enabled, t.Enabled) && contains(o.Search, t.Slug, t.Name, t.ID)
+	})
+}
+
+func (b *Backend) Tenant(ctx context.Context, ref string) (api.Tenant, error) {
+	return find(b, "tenant", b.state.Tenants, ref, func(t api.Tenant) []string {
+		return []string{t.Slug, t.ID}
+	})
+}
+
 func (b *Backend) Projects(ctx context.Context, o api.ListOpts) (api.Page[api.Project], error) {
 	return collect(b, b.state.Projects, o, func(p api.Project) bool {
 		return refEq(o.Tenant, p.Tenant.ID, p.Tenant.Slug) && boolEq(o.Enabled, p.Enabled) &&

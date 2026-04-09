@@ -12,7 +12,15 @@ import type {
   Quota,
   QuotaCreateRequest,
   QuotaUpdateRequest,
+  Tenant,
+  TenantCreateRequest,
+  TenantUpdateRequest,
 } from "./types"
+
+export interface TenantFilters {
+  enabled?: boolean
+  search?: string
+}
 
 export interface ProjectFilters {
   tenant?: string
@@ -41,6 +49,36 @@ export interface PolicyFilters {
   search?: string
   subject_type?: string
   subject?: string
+}
+
+export function fetchTenants(
+  filters: TenantFilters = {},
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<Tenant>> {
+  return api.list<Tenant>("/tenants", { ...filters, cursor, limit })
+}
+
+export function fetchTenant(ref: string): Promise<Tenant> {
+  return api.get<Tenant>(`/tenants/${encodeURIComponent(ref)}`)
+}
+
+export function createTenant(body: TenantCreateRequest): Promise<Tenant> {
+  return api.post<Tenant>("/tenants", body)
+}
+
+export function updateTenant(
+  ref: string,
+  body: TenantUpdateRequest,
+  revision?: string
+): Promise<Tenant> {
+  return api.patch<Tenant>(`/tenants/${encodeURIComponent(ref)}`, body, {
+    ifMatch: revision,
+  })
+}
+
+export function deleteTenant(ref: string): Promise<void> {
+  return api.delete<void>(`/tenants/${encodeURIComponent(ref)}`)
 }
 
 export function fetchProjects(

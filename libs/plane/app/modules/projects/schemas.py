@@ -8,9 +8,9 @@ from app.core.schemas import UnsetType
 class ProjectTenantSchema(Struct):
     """The tenant a project belongs to, embedded rather than linked.
 
-    `libs/packages/contract/API.md` §6 has no `/v1/tenants` collection, so the tenant is a field
-    on the project instead of a resource of its own. Inventing the collection here
-    would put a shape in the API that no client was promised.
+    Embedded so that no reader of a project has to join for the two facts it always
+    needs — which tenant, and whether that tenant is switched on. `/v1/tenants` is
+    the collection; this is the copy that travels with the project.
     """
 
     id: str

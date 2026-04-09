@@ -1,6 +1,7 @@
 import {
   IconActivity,
   IconBinaryTree,
+  IconBuildingBank,
   IconBolt,
   IconBox,
   IconCpu,
@@ -30,6 +31,7 @@ export type ResourceKind =
   | "recipe"
   | "deployment"
   | "endpoint"
+  | "tenant"
   | "project"
   | "quota"
   | "priority-class"
@@ -55,6 +57,7 @@ export const RESOURCE_ICONS: Record<ResourceKind, React.ElementType> = {
   recipe: IconBinaryTree,
   deployment: IconBox,
   endpoint: IconBolt,
+  tenant: IconBuildingBank,
   project: IconFolders,
   quota: IconGauge,
   "priority-class": IconSortDescending,

@@ -23,6 +23,7 @@ import {
   pools,
   priorityClasses,
   projects,
+  tenants,
   quotas,
   recipes,
 } from "./data"
@@ -162,6 +163,15 @@ collection({
   searchable: (e) => [e.name, e.display_name],
   labels: (e) => e.labels,
   filter: (e, q) => eq(q.get("project"), e.project_id),
+})
+
+collection({
+  path: "/tenants",
+  singular: "tenant",
+  rows: () => tenants,
+  names: (t) => [t.slug],
+  searchable: (t) => [t.slug, t.name],
+  filter: (t, q) => bool(q.bool("enabled"), t.enabled),
 })
 
 collection({
