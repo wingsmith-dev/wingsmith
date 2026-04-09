@@ -67,12 +67,21 @@ const artifactDir = "/benchmark-artifacts"
 
 // BenchmarkJob renders one benchmark run as a one-shot job.
 //
-// It runs on the cache pool rather than the accelerator pool. A load generator is CPU and network
-// work, and holding a GPU idle to drive requests at other GPUs would take capacity away from the
-// thing being measured — which would also change the measurement. The cost is that the load
-// originates a node hop away from the engine, so the reported TTFT carries that hop; that is both
-// unavoidable without burning an accelerator and closer to what a real client sees than
-// co-scheduling would be.
+// It is scheduled unconstrained: no node selector and no toleration. A load generator is CPU and
+// network work with no placement requirement of its own — the tokenizer it needs comes off an RWX
+// volume that mounts from anywhere, and the endpoint it drives is a Service. What it must not do
+// is land on the accelerator pool, where it would hold a GPU idle to drive requests at other GPUs
+// and take capacity away from the thing being measured; the taint that pool already carries
+// achieves that on its own, without this job having to know how any given cluster names its pools.
+//
+// An earlier version pinned this to the cache pool, reasoning by analogy with the weight prefetch.
+// That was wrong: the cache pool exists to hold the weights volume and is not a general home for
+// non-accelerator work, and a cluster is under no obligation to have one — the two that do not
+// could not schedule a benchmark at all.
+//
+// The cost of running off the accelerator pool is that load originates a node hop away from the
+// engine, so the reported TTFT carries that hop. That is unavoidable without burning an
+// accelerator, and closer to what a real client sees than co-scheduling would be.
 //
 // BackoffLimit is zero. Every other job this operator renders is idempotent work that should be
 // retried, and a benchmark is the opposite: a second attempt is a second measurement under
@@ -132,13 +141,6 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyNever,
-					NodeSelector:  map[string]string{opts.PoolLabelKey: opts.CachePoolValue},
-					Tolerations: []corev1.Toleration{{
-						Key:      opts.CacheTaintKey,
-						Operator: corev1.TolerationOpEqual,
-						Value:    "true",
-						Effect:   corev1.TaintEffectNoSchedule,
-					}},
 					Volumes: []corev1.Volume{
 						{
 							Name: "model-cache",

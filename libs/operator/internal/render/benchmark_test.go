@@ -136,8 +136,11 @@ func TestBenchmarkRunsOffTheAcceleratorPool(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	spec := job.Spec.Template.Spec
-	if spec.NodeSelector[opts.PoolLabelKey] != opts.CachePoolValue {
-		t.Errorf("scheduled onto %q, not the cache pool", spec.NodeSelector[opts.PoolLabelKey])
+	if len(spec.NodeSelector) != 0 {
+		t.Errorf("pinned to %v; a load generator has no placement requirement of its own", spec.NodeSelector)
+	}
+	if len(spec.Tolerations) != 0 {
+		t.Errorf("tolerates %v; the accelerator taint is what keeps this off a GPU node", spec.Tolerations)
 	}
 	for _, container := range spec.Containers {
 		if q, ok := container.Resources.Limits["nvidia.com/gpu"]; ok && !q.IsZero() {
