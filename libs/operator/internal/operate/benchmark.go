@@ -87,7 +87,16 @@ func (e *Executor) benchmark(ctx context.Context, op wire.OperationDesired) (res
 		return nil, fmt.Errorf("this operator cannot read job logs and so cannot collect a benchmark result")
 	}
 
-	job, renderErr := render.BenchmarkJob(benchmarkID, op.Parameters, e.Render, e.Benchmark)
+	bench := e.Benchmark
+	if bench.Endpoint == "" {
+		endpoint, lookupErr := e.frontendEndpoint(ctx)
+		if lookupErr != nil {
+			return nil, lookupErr
+		}
+		bench.Endpoint = endpoint
+	}
+
+	job, renderErr := render.BenchmarkJob(benchmarkID, op.Parameters, e.Render, bench)
 	if renderErr != nil {
 		return nil, renderErr
 	}
@@ -139,6 +148,69 @@ func (e *Executor) benchmark(ctx context.Context, op wire.OperationDesired) (res
 		return result, fmt.Errorf("the benchmark job finished but wrote no result this operator could find")
 	}
 	return result, nil
+}
+
+// frontendComponentLabel is how Dynamo's operator marks the Service in front of a graph.
+const frontendComponentLabel = "nvidia.com/dynamo-component"
+
+// frontendEndpoint finds the OpenAI-compatible frontend to aim a run at.
+//
+// Configuration used to carry this, with a default of `dynamo-frontend`, and that default was
+// wrong on every cluster we run: one names its frontend after the graph it serves
+// (`qwen3-8-27b-agg-frontend`), another after the shared graph that fronts three models
+// (`inference-frontend-frontend`). A name nobody has is worse than no name, because it fails as a
+// DNS error inside the load generator — `Name or service not known` — which reads like a broken
+// cluster rather than a setting nobody set.
+//
+// So the operator asks the cluster instead, which is the one thing it is for. The selector is
+// Dynamo's own component label, and it is a selector rather than a name because the name is the
+// part that varies. `HANGAR_INFERENCE_ENDPOINT` still wins when it is set: a cluster that fronts
+// its models with something Dynamo did not label has said so, and this lookup is not entitled to
+// overrule it.
+//
+// Two frontends is an error and not a guess. Picking one would attribute a measurement to a
+// deployment the load never reached.
+func (e *Executor) frontendEndpoint(ctx context.Context) (string, error) {
+	var services corev1.ServiceList
+	if err := e.Client.List(ctx, &services, client.InNamespace(e.Render.Namespace)); err != nil {
+		return "", fmt.Errorf("look for the inference frontend in %s: %w", e.Render.Namespace, err)
+	}
+
+	var found []corev1.Service
+	for _, service := range services.Items {
+		if service.Spec.Selector[frontendComponentLabel] == "Frontend" {
+			found = append(found, service)
+		}
+	}
+
+	switch len(found) {
+	case 0:
+		return "", fmt.Errorf(
+			"no service in %s selects %s=Frontend, so there is nothing to benchmark against; "+
+				"set HANGAR_INFERENCE_ENDPOINT if this cluster fronts its models with something else",
+			e.Render.Namespace, frontendComponentLabel,
+		)
+	case 1:
+		service := found[0]
+		port := int32(8000)
+		for _, declared := range service.Spec.Ports {
+			if declared.Name == "http" || len(service.Spec.Ports) == 1 {
+				port = declared.Port
+				break
+			}
+		}
+		return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", service.Name, service.Namespace, port), nil
+	default:
+		names := make([]string, 0, len(found))
+		for _, service := range found {
+			names = append(names, service.Name)
+		}
+		return "", fmt.Errorf(
+			"%s holds %d inference frontends (%s) and nothing here can tell which one serves the "+
+				"deployment under test; set HANGAR_INFERENCE_ENDPOINT",
+			e.Render.Namespace, len(found), strings.Join(names, ", "),
+		)
+	}
 }
 
 // startJob creates the run's job, or adopts the one already there.

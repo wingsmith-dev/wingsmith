@@ -47,7 +47,9 @@ data:
   # cluster-local address by construction, and that is the point — a benchmark generates real
   # inference traffic, and rule 4 says none of that crosses the control plane. The plane names
   # the deployment and the model; how this cluster exposes its frontend is a local fact.
-  HANGAR_INFERENCE_ENDPOINT: http://dynamo-frontend.dynamo.svc.cluster.local:8000
+  # Empty: the operator finds the frontend by asking for the Service that selects Dynamo's
+  # Frontend component. Set it only on a cluster whose frontend Dynamo did not label.
+  HANGAR_INFERENCE_ENDPOINT: ""
   # A run that wedged against an endpoint which stopped answering would otherwise hold its
   # operation open forever. This bounds one whose request carried no deadline of its own.
   HANGAR_BENCHMARK_TIMEOUT: 30m

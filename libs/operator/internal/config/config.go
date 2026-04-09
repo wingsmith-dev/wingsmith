@@ -148,6 +148,12 @@ type Config struct {
 	// and how this cluster happens to expose its frontend is a local fact. It is also the line
 	// rule 4 draws — the load is generated inside the cluster and aimed at a cluster-local
 	// address, so no inference traffic crosses the control plane even while it is being measured.
+	//
+	// Empty is the normal setting, and it means the operator finds the frontend by asking the
+	// cluster for the Service that selects Dynamo's Frontend component. This used to default to
+	// `dynamo-frontend`, a name no cluster we run actually uses, so every benchmark failed on a
+	// DNS error that named the address and not the setting behind it. Set this only when a
+	// cluster fronts its models with something Dynamo did not label.
 	InferenceEndpoint string
 
 	// BenchmarkArtifactBase is where a run's raw per-request records are written, as a URI
@@ -201,7 +207,7 @@ func Load() (*Config, error) {
 		CachePoolValue:        env("HANGAR_CACHE_POOL_VALUE", "cache"),
 		CacheTaintKey:         env("HANGAR_CACHE_TAINT_KEY", "hangar.io/cache"),
 		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
-		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", "http://dynamo-frontend.dynamo.svc.cluster.local:8000"),
+		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		BenchmarkArtifactBase: env("HANGAR_BENCHMARK_ARTIFACT_BASE", ""),
 		BenchmarkTimeout:      envDuration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),
 		BenchmarkCPU:          env("HANGAR_BENCHMARK_CPU", "500m"),
