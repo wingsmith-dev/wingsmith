@@ -456,6 +456,10 @@ class FakeSession:
             raise RuntimeError("write failed")
         return FakeResult(self.owner.cluster_id)
 
+    async def scalar(self, statement) -> Any:
+        self.owner.executed.append(statement)
+        return self.owner.cluster_uid
+
 
 class FakeTransaction:
     def __init__(self, owner: "FakeSessions") -> None:
@@ -471,10 +475,11 @@ class FakeTransaction:
 
 
 class FakeSessions:
-    def __init__(self, cluster_id: Any = CLUSTER_ID, fail: bool = False) -> None:
+    def __init__(self, cluster_id: Any = CLUSTER_ID, fail: bool = False, cluster_uid: str = CLUSTER) -> None:
         self.executed: list[Any] = []
         self.commits = 0
         self.cluster_id = cluster_id
+        self.cluster_uid = cluster_uid
         self.fail = fail
 
     def begin(self) -> FakeTransaction:

@@ -428,10 +428,15 @@ class DatabaseSink:
 
     # ----------------------------------------------------------------- liveness
 
-    async def mark_connected(self, cluster_uid: str, agent_version: str) -> None:
-        """The observed half of a cluster coming up. Never touches `Cluster.phase`."""
+    async def mark_connected(self, cluster_uid: str, agent_version: str) -> str | None:
+        """The observed half of a cluster coming up. Never touches `Cluster.phase`.
+
+        Returns the cluster's canonical uid, which the session needs and only a
+        database can supply: an operator names itself however it was configured,
+        and live dispatch is keyed by what writers hold, which is always the uid.
+        """
         moment = now()
-        await self._sync_state(
+        return await self._sync_state(
             cluster_uid,
             {
                 "reachable": True,
@@ -452,10 +457,17 @@ class DatabaseSink:
     async def touch(self, cluster_uid: str) -> None:
         await self._sync_state(cluster_uid, {"last_seen_at": now()})
 
-    async def _sync_state(self, cluster_uid: str, values: dict[str, Any]) -> None:
+    async def _sync_state(self, cluster_uid: str, values: dict[str, Any]) -> str | None:
+        """Writes one cluster's sync state and reports the uid of the row it wrote.
+
+        The uid is returned rather than assumed because `cluster_uid` is a
+        reference and may be either identity; callers that already hold a uid pay
+        nothing for it beyond the row they were reading anyway.
+        """
         async with self.sessions.begin() as db:
             cluster_id = await self._cluster_id(db, cluster_uid)
             await db.execute(statements.upsert_sync_state(cluster_id, values))
+            return await db.scalar(select(Cluster.uid).where(Cluster.id == cluster_id))
 
 
 class DatabaseDesiredSource:

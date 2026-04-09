@@ -261,3 +261,50 @@ async def test_an_operation_hint_is_rendered_by_the_operations_renderer(monkeypa
 
     assert seen == [OPERATION]
     assert rendered is not None and rendered[0] == "operation.desired"
+
+
+CLUSTER_NAME = "cluster-us"
+
+
+async def test_a_session_that_named_itself_is_reachable_by_uid() -> None:
+    """The bug this pair exists for: writers hold a uid, an operator announces a name.
+
+    Every other cluster lookup in the plane accepts either identity, so a hint
+    carrying the uid must reach a session that introduced itself as a name.
+    """
+    live = LiveSessions()
+    session = FakeSession()
+    live.register(CLUSTER_NAME, session)
+    live.alias(CLUSTER, session)
+
+    sent = await dispatch(change(cluster_id=CLUSTER), live, FakeRenderer(("deployment.desired", desired())))
+
+    assert sent is True
+    assert live.get(CLUSTER_NAME) is session
+
+
+async def test_closing_drops_every_identity_a_session_answered_to() -> None:
+    """An alias that outlived its session would send the next hint into a dead socket."""
+    live = LiveSessions()
+    session = FakeSession()
+    live.register(CLUSTER_NAME, session)
+    live.alias(CLUSTER, session)
+
+    live.unregister(CLUSTER_NAME, session)
+
+    assert live.get(CLUSTER) is None
+    assert live.get(CLUSTER_NAME) is None
+
+
+async def test_a_displaced_session_takes_only_its_own_aliases() -> None:
+    live = LiveSessions()
+    old, new = FakeSession(), FakeSession()
+    live.register(CLUSTER_NAME, old)
+    live.alias(CLUSTER, old)
+    live.register(CLUSTER_NAME, new)
+    live.alias(CLUSTER, new)
+
+    live.unregister(CLUSTER_NAME, old)
+
+    assert live.get(CLUSTER) is new
+    assert live.get(CLUSTER_NAME) is new

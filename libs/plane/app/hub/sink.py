@@ -73,8 +73,13 @@ class Liveness(Protocol):
     one fact about a cluster that no frame carries.
     """
 
-    async def mark_connected(self, cluster_uid: str, agent_version: str) -> None:
-        """The peer completed a handshake. `agent_version` comes off `hello`."""
+    async def mark_connected(self, cluster_uid: str, agent_version: str) -> str | None:
+        """The peer completed a handshake. `agent_version` comes off `hello`.
+
+        Returns the cluster's canonical uid when it can, so a session can make
+        itself reachable under the identity writers announce changes with. `None`
+        is allowed and costs only dispatch latency, which a reconnect repairs.
+        """
         ...
 
     async def mark_disconnected(self, cluster_uid: str, error: str | None = None) -> None:
@@ -148,8 +153,9 @@ class MemorySink:
     async def end_resync(self, cluster_id: str, request_id: str, count: int, complete: bool) -> None:
         self.resyncs.append(("end", cluster_id, request_id, count, complete))
 
-    async def mark_connected(self, cluster_uid: str, agent_version: str) -> None:
+    async def mark_connected(self, cluster_uid: str, agent_version: str) -> str | None:
         self.connections.append((cluster_uid, agent_version))
+        return cluster_uid
 
     async def mark_disconnected(self, cluster_uid: str, error: str | None = None) -> None:
         self.disconnections.append((cluster_uid, error))
@@ -172,7 +178,7 @@ class NullSink:
 
     async def end_resync(self, cluster_id: str, request_id: str, count: int, complete: bool) -> None: ...
 
-    async def mark_connected(self, cluster_uid: str, agent_version: str) -> None: ...
+    async def mark_connected(self, cluster_uid: str, agent_version: str) -> str | None: ...
 
     async def mark_disconnected(self, cluster_uid: str, error: str | None = None) -> None: ...
 

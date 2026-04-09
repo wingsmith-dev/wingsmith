@@ -22,6 +22,7 @@ from app.hub.state import new_id
 from app.hub.session import Backpressure
 from app.hub.session import SessionConfig
 from app.hub.session import OperatorSession
+from app.hub.dispatch import LiveSessions
 from app.hub.messages import DeviceObserved
 from app.hub.messages import OperationTarget
 from app.hub.messages import OperationDesired
@@ -126,8 +127,10 @@ class Harness:
         claims: ClaimStore | None = None,
         instance: str | None = None,
         desired: Any | None = None,
+        live: Any | None = None,
     ) -> None:
         self.connection = FakeConnection(send_gate=send_gate)
+        self.live = live
         self.sink = sink or MemorySink()
         self.registry = SessionRegistry(replay_capacity=16) if registry is None else registry
         self.claims = claims or MemoryClaimStore()
@@ -140,6 +143,7 @@ class Harness:
             claims=self.claims,
             instance=instance or "hub-test",
             desired=desired,
+            live=live,
         )
         self.task: asyncio.Task[None] | None = None
 
@@ -729,3 +733,33 @@ async def test_operations_that_cannot_be_read_do_not_cost_the_connection() -> No
     harness.connection.push(frame("ping", {}))
     await harness.connection.next_of_type("pong")
     await harness.stop()
+
+
+# --------------------------------------------------------------------------- live dispatch keys
+
+
+class NamingSink(MemorySink):
+    """A sink whose cluster answers to a uid the operator has never heard of."""
+
+    async def mark_connected(self, cluster_uid: str, agent_version: str) -> str | None:
+        await super().mark_connected(cluster_uid, agent_version)
+        return CLUSTER
+
+
+async def test_a_session_that_said_its_name_is_dispatchable_by_uid() -> None:
+    """An operator is configured with a name; every writer announces changes by uid.
+
+    Without the alias the hint finds no session and the operation waits for a
+    reconnect, which for an operation is the only thing that would ever carry it.
+    """
+    live = LiveSessions()
+    harness = Harness(sink=NamingSink(), live=live)
+    await harness.start()
+    await harness.hello(cluster_id="cluster-us")
+    await until(lambda: live.get(CLUSTER) is not None)
+
+    assert live.get("cluster-us") is harness.session
+    assert live.get(CLUSTER) is harness.session
+
+    await harness.stop()
+    assert live.get(CLUSTER) is None

@@ -312,13 +312,22 @@ class OperatorSession:
         await self._replay_open_operations()
 
     async def _mark_connected(self, hello: Hello) -> None:
-        """Reports the peer as reachable. A sink that cannot record it must not fail the session."""
+        """Reports the peer as reachable, and learns the cluster's canonical uid.
+
+        A sink that cannot record it must not fail the session. The uid is what
+        makes this session reachable by live dispatch: a writer announcing a
+        change holds the uid, and `hello` carries whichever identity the operator
+        was configured with. Missing it costs dispatch latency and nothing else.
+        """
         if not isinstance(self.sink, Liveness):
             return
         try:
-            await self.sink.mark_connected(hello.cluster_id, hello.agent_version)
+            canonical = await self.sink.mark_connected(hello.cluster_id, hello.agent_version)
         except Exception:
             logger.warning("hub.session.sync_state_failed phase=connect cluster=%s", hello.cluster_id, exc_info=True)
+            return
+        if canonical and canonical != hello.cluster_id:
+            self.live.alias(canonical, self)
 
     async def _mark_disconnected(self) -> None:
         if self.state is None or not isinstance(self.sink, Liveness):

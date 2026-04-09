@@ -847,6 +847,17 @@ async def test_connect_and_disconnect_are_written_to_sync_state(sessions, cluste
     assert rows == [(False, "0.4.2", True, "peer went away")]
 
 
+async def test_connecting_by_name_reports_back_the_canonical_uid(sessions, cluster) -> None:
+    """What live dispatch is keyed by, for an operator that only knows its own name.
+
+    Writers announce a change by uid, so a session registered under the name the
+    operator was configured with is unreachable until it learns this.
+    """
+    sink = DatabaseSink(sessions)
+
+    assert await sink.mark_connected("alpha", "0.4.2") == CLUSTER
+
+
 async def test_applying_frames_bumps_the_observed_generation(sessions, cluster) -> None:
     sink = DatabaseSink(sessions)
     await sink.apply_observed(observed("node.observed"))

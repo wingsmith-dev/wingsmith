@@ -61,6 +61,17 @@ class LiveSessions:
     One session per cluster, because the claim table already guarantees at most
     one anywhere in the fleet. `unregister` is identity-checked so a session
     closing after it was displaced cannot evict the one that displaced it.
+
+    A session is reachable under **every identity its cluster answers to**, not
+    only the one the operator introduced itself with. Everywhere else in the
+    plane a cluster reference is a uid or a name and `cluster_ref_clause` accepts
+    either; this index is the one cluster lookup that is an exact string match,
+    and a writer announcing a change holds the uid while an operator configured
+    by hand announces a name. Keyed by the handshake identity alone, every
+    notification for a cluster that named itself would find no session and be
+    dropped in silence — invisible for declared state, which the next resync
+    repairs, and fatal for an operation, which is deliberately outside that
+    snapshot and would then wait for a reconnect that may never come.
     """
 
     __slots__ = ("_sessions",)
@@ -71,9 +82,24 @@ class LiveSessions:
     def register(self, cluster_id: str, session: Dispatchable) -> None:
         self._sessions[cluster_id] = session
 
+    def alias(self, cluster_id: str, session: Dispatchable) -> None:
+        """Makes an already-registered session reachable under a second identity.
+
+        Separate from `register` only so the call site reads as what it is. A
+        session that arrives later under the same key wins, which is the same
+        rule displacement follows everywhere else.
+        """
+        self._sessions[cluster_id] = session
+
     def unregister(self, cluster_id: str, session: Dispatchable) -> None:
-        if self._sessions.get(cluster_id) is session:
-            self._sessions.pop(cluster_id, None)
+        """Drops every identity this session is reachable under.
+
+        Identity-checked per key rather than per call: a session that was
+        displaced between its own registration and its close must take its own
+        keys with it and none of its successor's.
+        """
+        for key in [key for key, held in self._sessions.items() if held is session]:
+            self._sessions.pop(key, None)
 
     def get(self, cluster_id: str) -> Dispatchable | None:
         return self._sessions.get(cluster_id)
