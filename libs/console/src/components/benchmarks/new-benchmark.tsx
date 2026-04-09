@@ -33,6 +33,12 @@ import { toast } from "sonner"
  * so a field this console does not know about is one it renders anyway, and a
  * flag the plane dropped stops being offered without a console release.
  *
+ * `image` is the one field not built from that table. It is left empty to mean
+ * "whatever the harness is pinned to", with the pin shown as the placeholder, so
+ * the run follows the plane's default unless somebody deliberately types over it
+ * — a run started from here should not be pinned to whatever the pin happened to
+ * be on the day this dialog was opened.
+ *
  * `extra` is rendered as a plain text field and sent verbatim. It is the escape
  * hatch for the long tail of flags, and it is deliberately not validated —
  * enumerating everything a harness accepts, in three languages, is the thing
@@ -49,6 +55,7 @@ export function NewBenchmarkDialog({
 }) {
   const [open, setOpen] = useState(false)
   const [harness, setHarness] = useState("aiperf")
+  const [image, setImage] = useState("")
   const [reason, setReason] = useState("")
   const [values, setValues] = useState<Record<string, string | boolean>>({})
   const { data: catalogue, isLoading } = useHarnesses()
@@ -84,6 +91,7 @@ export function NewBenchmarkDialog({
       {
         deployment,
         harness: selected.name,
+        image: image.trim() || null,
         reason: reason || null,
         parameters,
       },
@@ -118,7 +126,7 @@ export function NewBenchmarkDialog({
           <DialogDescription>
             The load is generated inside the cluster and aimed at its own
             frontend. Results are stored in the harness's own shape — two runs
-            compare when the harness and its version match.
+            compare when the harness, its version and its image match.
           </DialogDescription>
         </DialogHeader>
 
@@ -192,6 +200,22 @@ export function NewBenchmarkDialog({
               ))}
             </div>
           )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="benchmark-image">Image</Label>
+            <Input
+              id="benchmark-image"
+              className="font-mono text-xs"
+              value={image}
+              onChange={(e) => setImage(e.target.value)}
+              placeholder={selected?.image ?? "the harness's pinned image"}
+            />
+            <p className="text-2xs text-muted-foreground/60">
+              Leave empty to use the pinned image above. Override it only to
+              reach a release the plane has not pinned yet — a run on a different
+              image is its own comparison group.
+            </p>
+          </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="benchmark-reason">Reason</Label>

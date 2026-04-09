@@ -440,7 +440,7 @@ registerFixtures([
         cluster_id: deployment.cluster_id,
         operation_id: null,
         harness: harness.name,
-        image: "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
+        image: data.image?.trim() || harness.image,
         harness_version: null,
         parameters,
         requested_by: "operator",
