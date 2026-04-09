@@ -67,7 +67,11 @@ function LoginPage() {
           </p>
         ) : null}
 
-        <Button className="w-full" type="submit" disabled={pending || !password}>
+        <Button
+          className="w-full"
+          type="submit"
+          disabled={pending || !password}
+        >
           {pending ? "Signing in…" : "Sign in"}
         </Button>
       </form>
