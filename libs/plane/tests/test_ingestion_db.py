@@ -479,6 +479,105 @@ async def test_a_failed_run_clears_a_summary_from_an_earlier_report(sessions, cl
     assert await fetch(sessions, "SELECT summary, artifacts_uri FROM ops_benchmark_run") == [(None, None)]
 
 
+async def test_a_cancelled_operation_closes_the_run_it_was_carrying(sessions, cluster) -> None:
+    """The bug this exists for: a run whose operation ended without one reporting.
+
+    A benchmark's phase is written from `benchmark.observed`, and everything that
+    fails before the executor reaches the harness sends none — a refused kind, an
+    operator too old to know it, a cancellation while still pending. The run sat
+    `pending` for ever with nothing on it saying why.
+    """
+    await seed_deployment(sessions, cluster)
+    await seed_benchmark(sessions, cluster)
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "INSERT INTO ops_operation (uid, cluster_id, type, target_type, target_id, requested_by)"
+                " SELECT :uid, :cluster, 'deployment.benchmark', 'deployment', d.id, 'staff'"
+                " FROM demand_deployment d WHERE d.uid = :deployment"
+            ),
+            {"uid": OPERATION, "cluster": cluster, "deployment": DEPLOYMENT},
+        )
+        await db.execute(
+            text("UPDATE ops_benchmark_run SET operation_id = (SELECT id FROM ops_operation WHERE uid = :uid)"),
+            {"uid": OPERATION},
+        )
+
+    sink = DatabaseSink(sessions)
+    await sink.record_operation(
+        SinkFrame(
+            cluster_id=CLUSTER,
+            type="operation.observed",
+            payload=payload("operation.observed", operation_id=OPERATION),
+            seq=1,
+            id=new_id(),
+        )
+    )
+
+    rows = await fetch(sessions, "SELECT phase, error, finished_at IS NOT NULL FROM ops_benchmark_run")
+    assert rows == [("failed", payload("operation.observed").failure.message, True)]
+
+
+async def test_a_run_that_already_reported_outlives_its_operation_frame(sessions, cluster) -> None:
+    """The run was written by the thing that did the work. It is the authority."""
+    await seed_deployment(sessions, cluster)
+    await seed_benchmark(sessions, cluster, phase="succeeded")
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "INSERT INTO ops_operation (uid, cluster_id, type, target_type, target_id, requested_by)"
+                " SELECT :uid, :cluster, 'deployment.benchmark', 'deployment', d.id, 'staff'"
+                " FROM demand_deployment d WHERE d.uid = :deployment"
+            ),
+            {"uid": OPERATION, "cluster": cluster, "deployment": DEPLOYMENT},
+        )
+        await db.execute(
+            text("UPDATE ops_benchmark_run SET operation_id = (SELECT id FROM ops_operation WHERE uid = :uid)"),
+            {"uid": OPERATION},
+        )
+
+    sink = DatabaseSink(sessions)
+    await sink.record_operation(
+        SinkFrame(
+            cluster_id=CLUSTER,
+            type="operation.observed",
+            payload=payload("operation.observed", operation_id=OPERATION),
+            seq=1,
+            id=new_id(),
+        )
+    )
+
+    assert await fetch(sessions, "SELECT phase, error FROM ops_benchmark_run") == [("succeeded", None)]
+
+
+async def test_an_operation_carrying_no_run_closes_nothing(sessions, cluster) -> None:
+    """Most operations have no run. The join must simply match nothing."""
+    await seed_deployment(sessions, cluster)
+    await seed_benchmark(sessions, cluster)
+
+    async with sessions.begin() as db:
+        await db.execute(
+            text(
+                "INSERT INTO ops_operation (uid, cluster_id, type, target_type, target_id, requested_by)"
+                " VALUES (:uid, :cluster, 'node.drain', 'node', gen_random_uuid(), 'staff')"
+            ),
+            {"uid": OPERATION, "cluster": cluster},
+        )
+
+    sink = DatabaseSink(sessions)
+    await sink.record_operation(
+        SinkFrame(
+            cluster_id=CLUSTER,
+            type="operation.observed",
+            payload=payload("operation.observed", operation_id=OPERATION),
+            seq=1,
+            id=new_id(),
+        )
+    )
+
+    assert await fetch(sessions, "SELECT phase FROM ops_benchmark_run") == [("pending",)]
+
+
 # --------------------------------------------------------------------------- operations and components
 
 

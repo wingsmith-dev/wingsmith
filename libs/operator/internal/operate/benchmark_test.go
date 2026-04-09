@@ -1,10 +1,18 @@
 package operate
 
 import (
+	"io"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/hangar-dev/hangar/libs/operator/internal/render"
+	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
 
 func framed(version, summary string) string {
 	return "aiperf: starting profile\n" +
@@ -62,5 +70,64 @@ func TestExtractVersionStopsAtTheSummaryMarker(t *testing.T) {
 	logs := render.VersionLine + "\n" + render.SummaryBegin + "\nnull\n" + render.SummaryEnd + "\n"
 	if _, version := parseBenchmarkLog(logs); version != "" {
 		t.Errorf("version is %q; nothing was printed between the markers", version)
+	}
+}
+
+// --------------------------------------------------------------------- read-only, and its exceptions
+
+func readOnlyExecutor(allowed ...string) *Executor {
+	return New(&Executor{Log: discardLogger(), ReadOnly: true, Allowed: allowed})
+}
+
+// The default is unchanged by the split. A cluster that was refusing everything before this
+// existed must still refuse everything after it, or the change quietly granted it more than it had.
+func TestAReadOnlyOperatorWithNoAllowlistStillRefusesEverything(t *testing.T) {
+	e := readOnlyExecutor()
+	for _, kind := range []string{"drain", "cordon", "benchmark"} {
+		if _, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: kind}); err == nil {
+			t.Errorf("a read-only operator performed %q", kind)
+		}
+	}
+}
+
+// The case the split exists for: the plane may not own what runs here, and may still be asked to
+// measure it.
+func TestAReadOnlyOperatorPerformsAnAllowedKind(t *testing.T) {
+	e := readOnlyExecutor("benchmark")
+	_, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: "benchmark"})
+	if err != nil && strings.Contains(err.Error(), "read-only") {
+		t.Errorf("benchmark was allowed and still refused as read-only: %v", err)
+	}
+}
+
+// Allowing one kind must not allow the rest. A benchmark is additive and disposable; a drain on a
+// cluster this plane does not manage is destructive, and a boolean would have conflated them.
+func TestAllowingOneKindDoesNotAllowTheOthers(t *testing.T) {
+	e := readOnlyExecutor("benchmark")
+	for _, kind := range []string{"drain", "cordon"} {
+		_, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: kind})
+		if err == nil || !strings.Contains(err.Error(), "read-only") {
+			t.Errorf("%q was performed by a read-only operator allowing only benchmark: %v", kind, err)
+		}
+	}
+}
+
+// A refusal has to say what this operator would have done instead, because the alternative is an
+// operator that looks broken rather than configured.
+func TestARefusalNamesWhatIsAllowed(t *testing.T) {
+	e := readOnlyExecutor("benchmark")
+	_, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: "drain"})
+	if err == nil || !strings.Contains(err.Error(), "benchmark") {
+		t.Errorf("the refusal does not name what is allowed: %v", err)
+	}
+}
+
+// An operator that is not read-only performs every kind it implements. A second gate there would
+// be a second meaning for one flag, which is the thing this split undid.
+func TestTheAllowlistDoesNotConstrainAWritingOperator(t *testing.T) {
+	e := New(&Executor{Log: discardLogger(), ReadOnly: false, Allowed: []string{"benchmark"}})
+	_, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: "cordon"})
+	if err != nil && strings.Contains(err.Error(), "read-only") {
+		t.Errorf("a writing operator was gated by the read-only allowlist: %v", err)
 	}
 }

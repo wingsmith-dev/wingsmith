@@ -120,6 +120,7 @@ func run() error {
 		ClusterID:        cfg.ClusterID,
 		Log:              log,
 		ReadOnly:         cfg.ReadOnly,
+		Allowed:          cfg.AllowedOperations,
 		Render:           reconcile.RenderOptions(cfg),
 		Benchmark:        render.BenchmarkOptions{Endpoint: cfg.InferenceEndpoint, ArtifactBase: cfg.BenchmarkArtifactBase},
 		Logs:             logs,

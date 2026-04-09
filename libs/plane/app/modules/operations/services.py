@@ -24,6 +24,7 @@ from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.modules.benchmarks.follow import follows_operation
 
 from .schemas import OperationSchema
 from .schemas import OperationTargetSchema
@@ -300,5 +301,10 @@ class OperationService:
         if operation.phase == PENDING:
             operation.phase = "cancelled"
             operation.finished_at = operation.cancel_requested_at
+            # This path never reaches a cluster — the operation was still pending, so nothing was
+            # ever told to do it — which means nothing downstream will report on whatever the
+            # operation was carrying. A benchmark run is the case that has its own row to leave
+            # open, and it is left open for ever unless the cancellation is carried across here.
+            await self.db.execute(follows_operation(operation.uid, "cancelled"))
         await self.db.commit()
         return await self.get(operation.uid)

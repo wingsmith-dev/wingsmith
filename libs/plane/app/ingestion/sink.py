@@ -50,10 +50,15 @@ from app.ingestion.resync import WORKLOAD
 from app.ingestion.resync import ResyncEpoch
 from app.ingestion.resync import decide
 from app.ingestion.statements import MalformedObservation
+from app.modules.benchmarks.follow import follows_operation
 
 
 logger = getLogger(__name__)
 
+
+TERMINAL_OPERATION_PHASES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
+"""Restated rather than imported from `app.modules.operations`: ingestion must not depend on a
+module's service layer, and this is the one fact it needs from it."""
 
 SUPPLY_SCOPES = frozenset({"supply", "all"})
 DEMAND_SCOPES = frozenset({"demand", "all"})
@@ -326,6 +331,18 @@ class DatabaseSink:
             if result.rowcount == 0:
                 logger.info(
                     "ingestion.operation.unknown operation=%s cluster=%s", payload.operation_id, frame.cluster_id
+                )
+            elif payload.phase in TERMINAL_OPERATION_PHASES:
+                # A benchmark reports its own result on `benchmark.observed`, and everything that
+                # fails before the executor gets that far reports nothing at all — a refused kind,
+                # an operator too old to know it, a cluster that never came back. Without this the
+                # run stays open for ever with nothing saying why.
+                await db.execute(
+                    follows_operation(
+                        payload.operation_id,
+                        payload.phase,
+                        payload.failure.message if payload.failure else None,
+                    )
                 )
             await db.execute(statements.upsert_sync_state(cluster_id, {"last_sync_at": now()}, bump=True))
 

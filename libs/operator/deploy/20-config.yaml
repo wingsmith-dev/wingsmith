@@ -28,6 +28,15 @@ data:
   # behavioural switch, not a permission one, and narrowing the role would mean two bundles to
   # keep in step. Set to "false" when the cluster should start serving what the plane declares.
   HANGAR_READ_ONLY: "true"
+  # The exceptions to the line above: operation kinds a read-only operator will still perform,
+  # comma-separated. Empty means none, which is what read-only meant when it was one word for
+  # two guarantees — the plane does not own what runs here, and the plane may not be asked for
+  # anything either. Those turned out to be separate questions: benchmarking writes to the
+  # cluster, so refusing it under a blanket read-only was right, but the alternative was turning
+  # on reconciliation to get it. An allowlist and not a second boolean because the kinds are not
+  # interchangeable — a benchmark is additive and disposable, a drain on an unmanaged cluster is
+  # not. Widen it per cluster in overlays/, never here.
+  HANGAR_ALLOWED_OPERATIONS: ""
   # The in-cluster DCGM exporter, scraped for device identity only (ADR 0007). Point this at
   # whatever Service the cluster runs it under; empty disables the scrape and device ids fall
   # back to the hangar.dev/device-uuids annotation and then to <node>-gpu<index>. No RBAC is

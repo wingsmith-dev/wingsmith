@@ -62,19 +62,41 @@ type Config struct {
 	BackoffMin time.Duration
 	BackoffMax time.Duration
 
-	// ReadOnly runs the operator as an observer and nothing else: it reports what the cluster
-	// has, and declines every path that would write to it.
+	// ReadOnly runs the operator as an observer: it reports what the cluster has, and declines
+	// every path that would write to it.
 	//
 	// This is how a cluster is first pointed at a plane. Without it, nothing writes either —
 	// but only because no deployment has been declared yet, which is safety by emptiness and
 	// lasts exactly until someone declares one. The two write paths are the reconciler, which
 	// renders declared state into Kubernetes objects, and the operations executor, which
-	// cordons and drains; both are refused here.
+	// cordons, drains and benchmarks; both are refused here unless AllowedOperations names one.
 	//
 	// Declared state still arrives and is still stored in its CRDs. The local copy is inert
 	// without the controller that reads it, and keeping it means turning this off later starts
 	// from a complete view rather than waiting for the next resync.
 	ReadOnly bool
+
+	// AllowedOperations are the operation kinds a read-only operator will still perform.
+	//
+	// It exists because "read-only" was one word for two different guarantees, and a cluster
+	// turned out to want them separately: the plane may not *own* what runs here — no
+	// reconciler, nothing converged, nothing taken over — and may still be asked for specific,
+	// bounded things. Benchmarking is the case that forced the split. It writes to the cluster,
+	// so refusing it under a blanket read-only was right, but the alternative was turning on
+	// reconciliation to get it, which is a far larger decision than "measure this".
+	//
+	// An allowlist and not a second boolean, because the kinds are not interchangeable. A
+	// benchmark is additive, self-limiting and disposable; a drain on a cluster this plane does
+	// not manage is destructive and hard to undo. A boolean would have repeated exactly the
+	// mistake ReadOnly made, one level down.
+	//
+	// Empty is the default and preserves the old behaviour precisely: a read-only operator that
+	// refuses everything. Widening is opt-in per kind and per cluster, which is what keeps this
+	// from quietly granting an existing cluster more than it had.
+	//
+	// Ignored when ReadOnly is false — an operator that is not read-only performs every kind it
+	// implements, and a second gate there would be a second meaning again.
+	AllowedOperations []string
 
 	// LeaderElection enables controller-runtime leader election.
 	LeaderElection bool
@@ -158,6 +180,7 @@ func Load() (*Config, error) {
 		BackoffMin:            envDuration("HANGAR_BACKOFF_MIN", time.Second),
 		BackoffMax:            envDuration("HANGAR_BACKOFF_MAX", 30*time.Second),
 		ReadOnly:              envBool("HANGAR_READ_ONLY", false),
+		AllowedOperations:     envList("HANGAR_ALLOWED_OPERATIONS"),
 		LeaderElection:        envBool("HANGAR_LEADER_ELECTION", true),
 		Namespace:             env("HANGAR_NAMESPACE", "hangar-system"),
 		WorkloadNamespace:     env("HANGAR_WORKLOAD_NAMESPACE", "dynamo"),
@@ -244,6 +267,22 @@ func env(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// envList reads a comma-separated list, dropping blanks and surrounding space so that a
+// ConfigMap value written across a line, or with a trailing comma, means what it looks like.
+func envList(key string) []string {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func envBool(key string, def bool) bool {

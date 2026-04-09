@@ -9,6 +9,8 @@ from app.core.ids import BENCHMARK_RUN
 from app.core.ids import new_uid
 from app.core.exceptions import Invalid
 from app.modules.benchmarks import harnesses
+from app.modules.benchmarks.follow import DEFAULT_MESSAGES
+from app.modules.benchmarks.follow import follows_operation
 from app.modules.benchmarks.routes import BenchmarkRoutes
 from app.modules.benchmarks.schemas import BenchmarkRunSchema
 from app.modules.benchmarks.schemas import BenchmarkProvenanceSchema
@@ -181,3 +183,39 @@ def test_provenance_is_snapshotted_onto_the_run():
     assert fields["provenance"] is BenchmarkProvenanceSchema
     snapshot = {field.name for field in msgspec.structs.fields(BenchmarkProvenanceSchema)}
     assert snapshot == {"model", "deployment_generation", "recipe_id", "recipe_version", "engine_args"}
+
+
+# ---------------------------------------------------------------- a run whose operation ended
+
+
+def test_a_terminal_operation_only_touches_a_run_that_is_still_open():
+    """A run that already reported was written by the thing that did the work.
+
+    Its answer has to survive an operation frame arriving after it, which is why
+    the update is guarded on the open phases rather than on the phase differing.
+    """
+    query = str(follows_operation("opr_x", "failed"))
+    assert "ops_benchmark_run.phase IN" in query
+    assert "ops_benchmark_run.operation_id IN" in query
+
+
+def test_a_run_is_matched_through_its_operation_and_not_passed_down():
+    """Most operations carry no run, and neither caller has one in hand to name."""
+    assert "ops_operation.uid" in str(follows_operation("opr_x", "cancelled"))
+
+
+@pytest.mark.parametrize("phase", ["cancelled", "failed", "timed_out", "succeeded"])
+def test_every_terminal_phase_leaves_a_reason_on_the_run(phase):
+    """`succeeded` reads like a contradiction and is the point.
+
+    An operation that succeeded while its run never reported means the executor
+    finished and sent nothing; a run left saying `succeeded` with an empty
+    summary would be indistinguishable from a measurement of nothing.
+    """
+    assert DEFAULT_MESSAGES[phase]
+
+
+def test_a_failure_message_from_the_cluster_wins_over_the_default():
+    """The cluster said why. The default exists for when nothing did."""
+    query = follows_operation("opr_x", "failed", "this operator is read-only")
+    assert query.compile().params["error"] == "this operator is read-only"

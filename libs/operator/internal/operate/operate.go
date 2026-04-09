@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	stdsync "sync"
 	"time"
 
@@ -53,8 +54,13 @@ type Executor struct {
 	ClusterID string
 	Log       *slog.Logger
 
-	// ReadOnly refuses every operation instead of performing it. See config.Config.ReadOnly.
+	// ReadOnly refuses every operation instead of performing it, except the kinds Allowed
+	// names. See config.Config.ReadOnly and config.Config.AllowedOperations.
 	ReadOnly bool
+
+	// Allowed are the operation kinds a read-only operator will still perform. Empty means
+	// none, which is what read-only meant before the two were separable.
+	Allowed []string
 
 	// Render and Benchmark are what a benchmark run needs to become a job: the cluster's local
 	// scheduling conventions, and the endpoint the load is aimed at. Both are per-cluster facts
@@ -171,8 +177,14 @@ func (e *Executor) run(ctx context.Context, op wire.OperationDesired) {
 // the silence this function exists to avoid, and the plane would read a cluster that declines to
 // act as one that never answered.
 func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[string]string, error) {
-	if e.ReadOnly {
-		return nil, fmt.Errorf("this operator is read-only and will not perform %q", op.Kind)
+	if e.ReadOnly && !e.permits(op.Kind) {
+		if len(e.Allowed) == 0 {
+			return nil, fmt.Errorf("this operator is read-only and will not perform %q", op.Kind)
+		}
+		return nil, fmt.Errorf(
+			"this operator is read-only and performs only %s, not %q",
+			strings.Join(e.Allowed, ", "), op.Kind,
+		)
 	}
 	switch op.Kind {
 	case "cordon":
@@ -184,6 +196,21 @@ func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[
 	default:
 		return nil, fmt.Errorf("this operator cannot perform %q", op.Kind)
 	}
+}
+
+// permits reports whether a read-only operator will still perform this kind.
+//
+// The refusal it guards is deliberately a failure and not silence: an operation the cluster
+// declines still travels back as an `operation.observed` saying why, because a plane that reads a
+// refusal as a timeout learns the cluster was slow rather than that it was asked for something it
+// is not configured to do.
+func (e *Executor) permits(kind string) bool {
+	for _, allowed := range e.Allowed {
+		if allowed == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // cordon marks a node schedulable or not.
