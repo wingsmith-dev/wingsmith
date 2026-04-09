@@ -14,9 +14,12 @@ The three scoping joins, and how much each can be trusted:
 * **deployment** — vLLM labels by `model_name`, which is the served model, not
   the deployment. Two deployments of the same model in one cluster share a
   series set and will read as one. `Recipe.engine_args["served_model_name"]` is
-  honoured when present because that is the operator's chance to disambiguate;
-  the fallback is the artifact name. This join is the weak one and the schema
-  says so by carrying the scope back to the client.
+  honoured first because that is the operator's chance to disambiguate, then
+  `Recipe.name`, and only then the artifact name. The artifact is last because
+  it holds the repository path a model is fetched from — `google/gemma-4-31B-it`
+  — while the engine is served under the bare name, so preferring it selected
+  nothing at all for every deployment in the fleet. This join is the weak one and
+  the schema says so by carrying the scope back to the client.
 
 Every one of them is narrowed by cluster first. The fleet remote-writes into one
 store holding four clusters, two of which are databases, so an unscoped query
@@ -322,7 +325,7 @@ class MetricsService:
             raise NotFound(f"no deployment {ref!r}")
         deployment, recipe, artifact = row
         cluster = await self._cluster(deployment.cluster_id)
-        served = recipe.engine_args.get("served_model_name") or artifact.name
+        served = served_model(recipe, artifact)
         engine = ENGINES.get(recipe.engine)
         source = self._source(cluster)
         if engine is None or not engine.metrics:
@@ -331,10 +334,23 @@ class MetricsService:
             )
             answer.unavailable = f"no metric dialect registered for engine {recipe.engine!r}"
             return answer
-        scope = self._scope("deployment", source, deployment=(str(served),))
+        scope = self._scope("deployment", source, deployment=(served,))
         return await self._answer(
             cluster, scope, deployment.uid, engine.metrics, window, step, span, with_series=series
         )
+
+
+def served_model(recipe: Recipe, artifact: Artifact) -> str:
+    """The `model_name` the engine reports itself under, most authoritative first.
+
+    An explicit `served_model_name` wins because it is the operator saying so.
+    `Recipe.name` comes next: it is the name the deployment is built and served
+    under, and it is what the engine emits. The artifact is the last resort
+    because it holds the repository a model is fetched from rather than the name
+    it serves under — `google/gemma-4-31B-it` against a `model_name` of
+    `gemma-4-31b-it` — so reaching it usually means matching no series at all.
+    """
+    return str(recipe.engine_args.get("served_model_name") or recipe.name or artifact.name)
 
 
 def _samples(values: dict[str, float | None], metrics: dict[str, Metric]) -> list[SampleSchema]:

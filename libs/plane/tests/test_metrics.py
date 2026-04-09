@@ -24,6 +24,7 @@ from app.modules.metrics.registry import ENGINES
 from app.modules.metrics.registry import Metric
 from app.modules.metrics.registry import family
 from app.modules.metrics.services import MetricsService
+from app.modules.metrics.services import served_model
 from app.modules.metrics.prometheus import PrometheusBackend
 
 
@@ -326,3 +327,34 @@ def test_answer_distinguishes_absent_from_zero():
     assert answer.unavailable is None
     assert SampleSchema(metric="gpu.utilization", title="t", unit="percent", value=None).value is None
     assert "unavailable" in MetricsSchema.__struct_fields__
+
+
+class FakeRecipe:
+    def __init__(self, name: str, engine_args: dict | None = None) -> None:
+        self.name = name
+        self.engine_args = engine_args or {}
+
+
+class FakeArtifact:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+def test_served_model_prefers_the_operators_explicit_name():
+    recipe = FakeRecipe("gemma-4-31b-it", {"served_model_name": "gemma-canary"})
+    assert served_model(recipe, FakeArtifact("google/gemma-4-31B-it")) == "gemma-canary"
+
+
+def test_served_model_falls_back_to_the_recipe_before_the_artifact():
+    """The artifact is a repository path and the engine serves under the bare name.
+
+    Reaching for `google/gemma-4-31B-it` built `model_name="google/gemma-4-31B-it"`,
+    which matched no series in the fleet's store and emptied every serving panel
+    while the data was sitting there under `gemma-4-31b-it`.
+    """
+    recipe = FakeRecipe("gemma-4-31b-it")
+    assert served_model(recipe, FakeArtifact("google/gemma-4-31B-it")) == "gemma-4-31b-it"
+
+
+def test_served_model_uses_the_artifact_only_when_nothing_else_names_it():
+    assert served_model(FakeRecipe(""), FakeArtifact("Qwen/Qwen3.8-27B")) == "Qwen/Qwen3.8-27B"
