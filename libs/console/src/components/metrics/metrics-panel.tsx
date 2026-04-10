@@ -112,11 +112,18 @@ export function MetricsPanel({
   refId,
   family = "gpu",
   series = true,
+  lead,
 }: {
   scope: MetricScope
   refId: string | undefined
   family?: "gpu" | "inference"
   series?: boolean
+  /**
+   * Metric names to promote to full-size charts above the rest. A page that is
+   * mostly about how a thing is performing names the two or three numbers that
+   * mean that, and they stop competing with everything else for the same tile.
+   */
+  lead?: string[]
 }) {
   const { data, isLoading, error } = useMetrics(scope, refId, { series })
 
@@ -144,21 +151,44 @@ export function MetricsPanel({
     )
   }
 
+  const promoted = lead ?? []
+  const led = promoted
+    .map((name) => tiles.find((t) => t.metric === name))
+    .filter((s): s is NonNullable<typeof s> => Boolean(s))
+  const rest = tiles.filter((t) => !led.includes(t))
+
+  const tile = (sample: (typeof tiles)[number], size: "sm" | "lg") => (
+    <MetricTile
+      key={sample.metric}
+      sample={sample}
+      size={size}
+      tone={
+        sample.metric === "gpu.temperature"
+          ? temperatureTone(sample.value)
+          : "ok"
+      }
+      points={data.series.find((s) => s.metric === sample.metric)?.points}
+    />
+  )
+
   return (
     <div className="flex flex-col gap-2">
+      {led.length > 0 && (
+        <div
+          className={cn(
+            "grid gap-2",
+            led.length === 1
+              ? "grid-cols-1"
+              : led.length === 2
+                ? "sm:grid-cols-2"
+                : "sm:grid-cols-2 lg:grid-cols-3"
+          )}
+        >
+          {led.map((sample) => tile(sample, "lg"))}
+        </div>
+      )}
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {tiles.map((sample) => (
-          <MetricTile
-            key={sample.metric}
-            sample={sample}
-            tone={
-              sample.metric === "gpu.temperature"
-                ? temperatureTone(sample.value)
-                : "ok"
-            }
-            points={data.series.find((s) => s.metric === sample.metric)?.points}
-          />
-        ))}
+        {rest.map((sample) => tile(sample, "sm"))}
       </div>
       <Breakdown data={data} />
       {data.source ? (

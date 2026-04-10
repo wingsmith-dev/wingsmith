@@ -18,29 +18,38 @@ export function MetricTile({
   tone = "ok",
   points,
   footnote,
+  size = "sm",
 }: {
   sample: MetricSample | undefined
   tone?: MetricTone
   points?: MetricSeriesPoint[]
   footnote?: string
+  /** `lg` is for the handful of metrics a page is actually about. */
+  size?: "sm" | "lg"
 }) {
   if (!sample) return null
   const absent = sample.value === null
+  const large = size === "lg"
   return (
-    <Card size="sm" className="gap-1.5 px-3">
+    <Card size="sm" className={cn("gap-1.5 px-3", large && "gap-2 py-4")}>
       <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
         {sample.title}
       </div>
       <div
         className={cn(
-          "font-mono text-lg leading-none tabular-nums",
+          "font-mono leading-none tabular-nums",
+          large ? "text-3xl" : "text-lg",
           absent ? "text-muted-foreground/40" : TONE[tone]
         )}
       >
         {formatMetric(sample.value, sample.unit)}
       </div>
       {points && points.length > 1 ? (
-        <Sparkline points={points} tone={tone === "ok" ? "primary" : tone} />
+        <Sparkline
+          points={points}
+          size={size}
+          tone={tone === "ok" ? "primary" : tone}
+        />
       ) : null}
       {footnote ? (
         <div className="text-2xs text-muted-foreground/60">{footnote}</div>

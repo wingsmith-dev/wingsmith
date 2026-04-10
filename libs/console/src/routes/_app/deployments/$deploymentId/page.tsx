@@ -29,6 +29,16 @@ import { useOperations } from "@/modules/machinery/queries"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
 
+/**
+ * The three numbers a serving deployment is judged on. They lead the panel at
+ * full size; everything else in the family stays a tile.
+ */
+const LEAD_METRICS = [
+  "inference.ttft",
+  "inference.tpot",
+  "inference.output_tokens_per_second",
+]
+
 export function DeploymentDetailPage() {
   const { deploymentId } = useParams({
     from: "/_app/deployments/$deploymentId",
@@ -41,7 +51,7 @@ export function DeploymentDetailPage() {
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
   const [doomed, setDoomed] = useState(false)
-  const [tab, setTab] = useState("overview")
+  const [tab, setTab] = useState("state")
 
   if (error) {
     return (
@@ -155,6 +165,7 @@ export function DeploymentDetailPage() {
             scope="deployment"
             refId={deployment.id}
             family="inference"
+            lead={LEAD_METRICS}
           />
         )}
 
@@ -172,12 +183,64 @@ export function DeploymentDetailPage() {
 
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList>
-                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="state">State</TabsTrigger>
+                <TabsTrigger value="spec">Spec</TabsTrigger>
                 <TabsTrigger value="benchmarks">Benchmarks</TabsTrigger>
               </TabsList>
 
-              <TabsContent value="overview" className="mt-3 space-y-4">
-                <div className="grid gap-4 lg:grid-cols-3">
+              <TabsContent value="state" className="mt-3 space-y-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Observed replicas</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between font-mono text-2xs text-muted-foreground/60">
+                        <span>ready</span>
+                        <span>
+                          {replicas.ready}/{deployment.desired_replicas}
+                        </span>
+                      </div>
+                      <Progress
+                        value={
+                          deployment.desired_replicas === 0
+                            ? 0
+                            : (replicas.ready / deployment.desired_replicas) *
+                              100
+                        }
+                        className="h-1.5"
+                      />
+                    </div>
+                    <FieldGrid>
+                      <Field label="Total">{replicas.total}</Field>
+                      <Field label="Running">{replicas.running}</Field>
+                      <Field label="Pending">{replicas.pending}</Field>
+                      <Field label="Failed">{replicas.failed}</Field>
+                      <Field label="At generation">
+                        {replicas.at_current_generation}/{replicas.total}
+                      </Field>
+                      <Field label="Reason">
+                        <Dash>{deployment.workload.reason}</Dash>
+                      </Field>
+                    </FieldGrid>
+                  </CardContent>
+                </Card>
+
+                <div>
+                  <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+                    Operations
+                  </h2>
+                  <DataTable
+                    columns={operationColumns()}
+                    list={operations}
+                    rowKey={(operation) => operation.id}
+                    empty="Nothing has been asked of this deployment."
+                  />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="spec" className="mt-3 space-y-4">
+                <div className="grid gap-4 lg:grid-cols-2">
                   <Card>
                     <CardHeader className="pb-2">
                       <CardTitle className="text-sm">Declared spec</CardTitle>
@@ -250,42 +313,6 @@ export function DeploymentDetailPage() {
                       </FieldGrid>
                     </CardContent>
                   </Card>
-
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">
-                        Observed replicas
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="space-y-1.5">
-                        <div className="flex justify-between font-mono text-2xs text-muted-foreground/60">
-                          <span>ready</span>
-                          <span>
-                            {replicas.ready}/{deployment.desired_replicas}
-                          </span>
-                        </div>
-                        <Progress
-                          value={
-                            deployment.desired_replicas === 0
-                              ? 0
-                              : (replicas.ready / deployment.desired_replicas) *
-                                100
-                          }
-                          className="h-1.5"
-                        />
-                      </div>
-                      <FieldGrid>
-                        <Field label="Total">{replicas.total}</Field>
-                        <Field label="Running">{replicas.running}</Field>
-                        <Field label="Pending">{replicas.pending}</Field>
-                        <Field label="Failed">{replicas.failed}</Field>
-                        <Field label="At generation" className="sm:col-span-2">
-                          {replicas.at_current_generation}/{replicas.total}
-                        </Field>
-                      </FieldGrid>
-                    </CardContent>
-                  </Card>
                 </div>
 
                 {recipe && (
@@ -320,18 +347,6 @@ export function DeploymentDetailPage() {
                     </CardContent>
                   </Card>
                 )}
-
-                <div>
-                  <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-                    Operations
-                  </h2>
-                  <DataTable
-                    columns={operationColumns()}
-                    list={operations}
-                    rowKey={(operation) => operation.id}
-                    empty="Nothing has been asked of this deployment."
-                  />
-                </div>
               </TabsContent>
 
               <TabsContent value="benchmarks" className="mt-3 space-y-3">

@@ -15,10 +15,13 @@ export function Sparkline({
   points,
   className,
   tone = "primary",
+  size = "sm",
 }: {
   points: MetricSeriesPoint[]
   className?: string
   tone?: "primary" | "warn" | "danger"
+  /** `lg` fills under the line and is tall enough to read a shape off. */
+  size?: "sm" | "lg"
 }) {
   if (points.length < 2) return null
 
@@ -27,7 +30,7 @@ export function Sparkline({
   const max = Math.max(...values)
   const span = max - min || 1
   const width = 100
-  const height = 28
+  const height = size === "lg" ? 56 : 28
 
   const coords = points.map((point, index) => {
     const x = (index / (points.length - 1)) * width
@@ -41,13 +44,25 @@ export function Sparkline({
     danger: "stroke-destructive",
   }[tone]
 
+  const fill = {
+    primary: "fill-primary",
+    warn: "fill-amber-500",
+    danger: "fill-destructive",
+  }[tone]
+
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
       preserveAspectRatio="none"
-      className={cn("h-7 w-full", className)}
+      className={cn(size === "lg" ? "h-24 w-full" : "h-7 w-full", className)}
       aria-hidden
     >
+      {size === "lg" && (
+        <polygon
+          points={`0,${height} ${coords.join(" ")} ${width},${height}`}
+          className={cn(fill, "opacity-10")}
+        />
+      )}
       <polyline
         points={coords.join(" ")}
         fill="none"
