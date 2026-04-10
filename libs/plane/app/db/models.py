@@ -366,6 +366,15 @@ class Recipe(BaseMixin):
     Context length lives here rather than on any catalog entry because it
     determines the footprint.
 
+    `engine_args` and `imported_args` are the same shape and different in kind.
+    `engine_args` is declared: somebody asserted it, and it renders onto the
+    command line. `imported_args` is observed: it was read off a running process
+    by the discovery path, it is recorded in full, and it is never rendered. The
+    split is provenance, and provenance is what makes taking management of an
+    adopted workload reviewable — folded into one map there is no way to tell
+    intent from incidental capture, and the first render is a guess about which
+    values somebody meant (ADR 0009).
+
     `overlay` is the one opaque field on an otherwise fully-modelled object.
     Engines and the Kubernetes operators that run them carry far more
     configuration than a control plane wants to mirror field by field, and
@@ -387,6 +396,7 @@ class Recipe(BaseMixin):
     engine_version: Mapped[str] = mapped_column(String(64), nullable=False)
     engine_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
     engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    imported_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     quantization: Mapped[str | None] = mapped_column(String(32), nullable=True)
     dtype: Mapped[str | None] = mapped_column(String(32), nullable=True)
     tensor_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
@@ -469,6 +479,15 @@ class Deployment(BaseMixin):
     is refused in the cluster and reported, never converged — closing that gap
     means restarting a model to match a spec nobody asked to change.
 
+    `authority` is the one word that answers who owns this: `observed` means the
+    plane records and verifies it and writes nothing to the cluster, `managed`
+    means the plane renders and converges it. It is deliberately not derived from
+    `adopted_workload_uid` — where an object came from is a historical fact and
+    whether we run it is a decision somebody makes and may reverse, and ADR 0006
+    conflated the two into a standing prohibition (ADR 0009). There is no partial
+    authority: a deployment with some fields enforced and others drifting cannot
+    be reasoned about at the moment it matters.
+
     `requires_single_topology_domain` and `topology_domain_kind` are nullable
     because null means "whatever the recipe says". The recipe's answer is the
     right one for a serving replica, but a gang is a shape of its own — the same
@@ -502,6 +521,7 @@ class Deployment(BaseMixin):
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     adopted_workload_uid: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     adopted_fingerprint: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    authority: Mapped[str] = mapped_column(String(16), nullable=False, server_default="observed", index=True)
     requires_single_topology_domain: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     topology_domain_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
 

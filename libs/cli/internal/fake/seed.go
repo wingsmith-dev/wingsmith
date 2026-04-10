@@ -319,7 +319,8 @@ func seed() *state {
 		Version:        1,
 		Engine:         "vllm",
 		EngineVersion:  "0.6.3",
-		EngineArgs:     map[string]any{"max_num_seqs": 256},
+		EngineArgs:     map[string]any{},
+		ImportedArgs:   map[string]any{"--max-num-seqs": "256"},
 		Dtype:          strptr("bfloat16"),
 		Parallelism:    api.RecipeParallelism{Tensor: 8, Pipeline: 1, Expert: 1},
 		ContextLength:  131072,
@@ -349,7 +350,7 @@ func seed() *state {
 	st.Deployments = append(st.Deployments,
 		api.Deployment{
 			ID: depRunning, Name: "chat-iad", ClusterID: iad, RecipeID: recipeID,
-			MinReplicas: 2, MaxReplicas: 6, DesiredReplicas: 4, Generation: 7, Enabled: true,
+			MinReplicas: 2, MaxReplicas: 6, DesiredReplicas: 4, Generation: 7, Enabled: true, Authority: "managed",
 			AdapterArtifactIDs: []string{}, Overrides: map[string]any{}, Labels: map[string]any{"tier": "prod"},
 			CreatedAt: created, Revision: revision(created),
 			Workload: api.DeploymentWorkload{
@@ -360,7 +361,7 @@ func seed() *state {
 		},
 		api.Deployment{
 			ID: depPending, Name: "chat-sjc", ClusterID: sjc, RecipeID: recipeID,
-			MinReplicas: 1, MaxReplicas: 2, DesiredReplicas: 1, Generation: 1, Enabled: true,
+			MinReplicas: 1, MaxReplicas: 2, DesiredReplicas: 1, Generation: 1, Enabled: true, Authority: "managed",
 			AdapterArtifactIDs: []string{}, Overrides: map[string]any{}, Labels: map[string]any{},
 			CreatedAt: now.Add(-2 * time.Hour), Revision: revision(now.Add(-2 * time.Hour)),
 			Workload: api.DeploymentWorkload{

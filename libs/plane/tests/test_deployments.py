@@ -199,6 +199,7 @@ def test_controller_exposes_full_crud():
         "create_deployment",
         "get_deployment",
         "update_deployment",
+        "set_deployment_authority",
         "delete_deployment",
     }
 

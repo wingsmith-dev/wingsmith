@@ -23,16 +23,34 @@ type SyncedResourceSpec struct {
 	// +optional
 	Payload *apiextensionsv1.JSON `json:"payload,omitempty"`
 
-	// Adopt names a cluster object that already exists and is already running, promoted from a
-	// discovered workload. Its presence forbids applying a rendered spec: the reconciler takes
-	// ownership in place, and only after the live object still digests to AdoptFingerprint.
+	// Authority is who owns this object: "observed" or "managed". Observed means record and
+	// verify and write nothing to the cluster; managed means render and converge. Empty reads as
+	// observed, so an object from a plane that predates the field is never managed by accident.
 	//
-	// The field is on the durable copy rather than read out of the payload each time because it
-	// is a safety gate. A gate that depends on parsing the domain schema is a gate that opens
-	// when the parse fails.
+	// This is the gate, and it is deliberately not the presence of Adopt. Where an object came
+	// from is a historical fact; whether this operator may act on it is a decision the plane
+	// makes and can reverse (ADR 0009).
+	// +kubebuilder:validation:Enum=observed;managed
+	// +optional
+	Authority string `json:"authority,omitempty"`
+
+	// Adopt names a cluster object that already exists and is already running, promoted from a
+	// discovered workload. It is provenance and a drift check: the reconciler takes ownership in
+	// place rather than applying a rendered spec over it, and only while the live object still
+	// digests to SpecFingerprint.
+	//
+	// Both fields are on the durable copy rather than read out of the payload each time because
+	// they are safety gates. A gate that depends on parsing the domain schema is a gate that
+	// opens when the parse fails.
 	// +optional
 	Adopt *AdoptRef `json:"adopt,omitempty"`
 }
+
+// Authority values. Observed is the zero value on purpose: nothing acquires management by omission.
+const (
+	AuthorityObserved = "observed"
+	AuthorityManaged  = "managed"
+)
 
 // AdoptRef identifies an already-running object this desired state was promoted from.
 type AdoptRef struct {

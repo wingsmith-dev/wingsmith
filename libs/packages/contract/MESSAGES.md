@@ -80,13 +80,22 @@ secret. Values would be copied into the plane's database and into every backup o
 purpose: the names already tell a reader what the workload expects to find. A secret or config-map
 reference appears as `secretRef:<name>`, naming the source without reading it.
 
-**`deployment.desired` carries `adopt` when it was promoted from one of those sightings.** Its
-presence changes what the frame asks for: the named object already exists and is already serving, so
-the operator takes ownership in place rather than applying a rendered spec over it. `spec_fingerprint`
-digests the pod template — what is running, deliberately not how much of it, so scaling never reads
-as redefinition. A reconciler that finds the live object digesting to anything else must refuse and
-report it, never converge; closing that gap means restarting a model to match a spec nobody asked to
-change.
+**`deployment.desired` carries `authority`, and it is the only thing that decides whether the
+operator may write.** `observed` means record and verify and touch nothing; `managed` means render
+and converge. An absent value reads as `observed`, so a frame from a plane that predates the field
+never acquires management by omission. The two are a state a person moves a deployment between, in
+both directions, and there is deliberately no third value — a deployment with some fields enforced
+and others drifting cannot be reasoned about at the moment somebody needs to.
+
+**`deployment.desired` carries `adopt` when it was promoted from a sighting.** It names an object
+that already exists and is already serving, so a managed deployment takes ownership in place rather
+than applying a rendered spec over it. `spec_fingerprint` digests the pod template — what is
+running, deliberately not how much of it, so scaling never reads as redefinition. An operator that
+finds the live object digesting to anything else must refuse and report it, never converge; closing
+that gap means restarting a model to match a spec nobody asked to change. `adopt` is provenance and
+a drift check and is **not** itself a prohibition: whether the plane may act is `authority`'s
+question, because where an object came from is a historical fact and whether we run it is a decision
+(ADR 0009).
 
 **A topology domain names nodes, plural.** `topology.observed` carries `node_ids` and
 `spans_nodes`, not a single `node_id`. An NVLink domain over an NVSwitch fabric or a GB200 rack
@@ -105,7 +114,7 @@ when a node came back, which is the inference `.event` frames exist to avoid.
 |---|---|
 | `deployment.desired` | recipe reference, scale bounds, priority, placement constraints |
 | `deployment.deleted` | id |
-| `recipe.desired` | how to serve an artifact: engine, image, args, parallelism, cache settings |
+| `recipe.desired` | how to serve an artifact: engine, image, declared args, parallelism, cache settings |
 | `artifact.desired` | what weights should be resident, and where they come from |
 | `component.desired` | what is installed and at what version |
 | `cache.desired` | the artifact warm-set for this cluster |

@@ -18,6 +18,7 @@ from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
 from app.modules.deployments.schemas import DeploymentSchema
+from app.modules.deployments.services import OBSERVED
 from app.modules.deployments.services import DeploymentService
 
 from .derive import RecipeDraft
@@ -251,6 +252,7 @@ class DiscoveredWorkloadService:
             labels=dict(workload.labels or {}),
             adopted_workload_uid=workload.uid,
             adopted_fingerprint=workload.spec_fingerprint,
+            authority=OBSERVED,
         )
         try:
             await self.repo.add(deployment_workload, deployment)

@@ -64,11 +64,21 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
-	// The adoption gate runs before the staleness check, not after. A resource whose revision
+	// The authority gate runs before the staleness check, not after. A resource whose revision
 	// has already been observed still has to be re-examined, because the thing that drifts is
 	// the cluster object and not the desired state describing it.
-	if res.Spec.Adopt != nil {
-		return r.reconcileAdopted(ctx, &res)
+	//
+	// Observed is the closed direction and it is checked by value, not by absence: an empty
+	// Authority is observed, so a plane that predates the field — or a payload that failed to
+	// decode into one — writes nothing to this cluster. Managed is the only value that opens the
+	// gate, and it has to be said out loud (ADR 0009).
+	if res.Spec.Authority != v1alpha1.AuthorityManaged {
+		if res.Spec.Adopt != nil {
+			return r.reconcileAdopted(ctx, &res)
+		}
+		if res.Spec.Kind == "deployment" {
+			return r.observed(ctx, &res)
+		}
 	}
 
 	// Every kind is re-examined on every pass rather than skipped once its revision has been

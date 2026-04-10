@@ -378,6 +378,7 @@ type Recipe struct {
 	EngineVersion  string            `json:"engine_version"`
 	EngineImage    *string           `json:"engine_image"`
 	EngineArgs     map[string]any    `json:"engine_args"`
+	ImportedArgs   map[string]any    `json:"imported_args"`
 	Quantization   *string           `json:"quantization"`
 	Dtype          *string           `json:"dtype"`
 	Parallelism    RecipeParallelism `json:"parallelism"`
@@ -439,6 +440,7 @@ type Deployment struct {
 	Revision           string                  `json:"revision"`
 	AdoptedWorkloadID  *string                 `json:"adopted_workload_id"`
 	AdoptedFingerprint *string                 `json:"adopted_fingerprint"`
+	Authority          string                  `json:"authority"`
 	Workload           DeploymentWorkload      `json:"workload"`
 	Replicas           DeploymentReplicaRollup `json:"replicas"`
 }

@@ -51,6 +51,7 @@ func decodeDesired(e *syncpkg.Envelope) (desiredState, error) {
 			return d, fmt.Errorf("decode %s: %w", e.Type, err)
 		}
 		d.Kind, d.Name, d.Revision = "deployment", resourceName(p.DeploymentID), p.Generation
+		d.Authority = p.Authority
 		if p.Adopt != nil {
 			d.Adopt = &v1alpha1.AdoptRef{
 				Namespace:       p.Adopt.Namespace,

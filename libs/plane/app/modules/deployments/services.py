@@ -32,12 +32,23 @@ from .schemas import DeploymentSchema
 from .schemas import DeploymentCreateRequest
 from .schemas import DeploymentUpdateRequest
 from .schemas import DeploymentWorkloadSchema
+from .schemas import DeploymentAuthorityRequest
 from .schemas import DeploymentReplicaRollupSchema
 from .repository import DeploymentRepository
 
 
 TYPES = frozenset({"service", "task", "gang"})
 PHASES = frozenset({"pending", "admitted", "placed", "running", "succeeded", "failed"})
+
+OBSERVED = "observed"
+MANAGED = "managed"
+AUTHORITIES = frozenset({OBSERVED, MANAGED})
+"""Who owns a deployment, and the only two answers there are.
+
+Binary on purpose. A deployment with some fields enforced and others left to drift
+cannot be reasoned about at the moment somebody needs to, so the object answers in
+one word (ADR 0009).
+"""
 
 EMPTY = DeploymentReplicaRollupSchema(
     total=0,
@@ -159,6 +170,7 @@ class DeploymentService:
             revision=_revision(deployment, workload),
             adopted_workload_id=deployment.adopted_workload_uid,
             adopted_fingerprint=deployment.adopted_fingerprint,
+            authority=deployment.authority,
             requires_single_topology_domain=deployment.requires_single_topology_domain,
             topology_domain_kind=deployment.topology_domain_kind,
             workload=DeploymentWorkloadSchema(
@@ -370,6 +382,7 @@ class DeploymentService:
             desired_replicas=data.desired_replicas,
             generation=1,
             enabled=data.enabled,
+            authority=MANAGED,
             adapter_artifact_ids=await self._adapter_ids(data.adapter_artifacts),
             overrides=data.overrides,
             labels=data.labels,
@@ -383,6 +396,54 @@ class DeploymentService:
             await self.db.rollback()
             raise Conflict(f"deployment {data.name!r} already exists in {cluster.name!r}") from exc
         await self._announce(cluster.uid, deployment.uid, deployment.generation)
+        return await self.get(deployment.uid)
+
+    async def set_authority(self, ref: str, data: DeploymentAuthorityRequest) -> DeploymentSchema:
+        """Takes management of a deployment, or gives it back.
+
+        The two directions are not symmetric and are not written as though they
+        were. `managed` is the direction that can write to a cluster, so an adopted
+        deployment has to prove the caller was looking at what is running now: the
+        fingerprint they send is compared against the current sighting, not against
+        `adopted_fingerprint`, which is a record of what was true when it was
+        promoted. `observed` is the plane letting go and needs nothing.
+
+        A deployment the plane created itself has no sighting and no fingerprint to
+        check, and taking management of it is not a change of ownership — it is the
+        ownership it was created with, made explicit (ADR 0009).
+        """
+        if data.authority not in AUTHORITIES:
+            raise Invalid(f"unknown authority {data.authority!r}", {"allowed": sorted(AUTHORITIES)})
+
+        row = await self._one(ref)
+        deployment = row[0]
+        if deployment.authority == data.authority:
+            return await self._render(row)
+
+        if data.authority == MANAGED and deployment.adopted_workload_uid:
+            live = await self.repo.sighting_fingerprint(deployment.cluster_id, deployment.adopted_workload_uid)
+            if live is None:
+                raise Conflict(
+                    "this cluster is no longer reporting the adopted workload, so there is nothing "
+                    "to check the digest against",
+                    {"workload": deployment.adopted_workload_uid},
+                )
+            if not data.fingerprint:
+                raise Invalid(
+                    "taking management of an adopted workload needs the fingerprint you were shown",
+                    {"observed": live},
+                )
+            if data.fingerprint != live:
+                raise Conflict(
+                    "the workload changed since it was read; re-read it and try again",
+                    {"observed": live, "sent": data.fingerprint},
+                )
+            deployment.adopted_fingerprint = live
+
+        deployment.authority = data.authority
+        deployment.generation += 1
+        await self.db.commit()
+        await self._announce(row.cluster_uid, deployment.uid, deployment.generation)
         return await self.get(deployment.uid)
 
     async def update(self, ref: str, data: DeploymentUpdateRequest, if_match: str | None = None) -> DeploymentSchema:

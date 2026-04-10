@@ -240,6 +240,18 @@ anything else. Scale is not a parameter — the bounds are taken from what the w
 running, because a promotion that also set the replica count would scale a live workload as a side
 effect of cataloguing it. From there the object is managed through `/v1/deployments` like any other.
 
+A promoted deployment is created `observed`: recorded and verified, with the plane writing nothing
+to the cluster.
+
+**`PUT /v1/deployments/{ref}/authority`** moves it between `observed` and `managed`, and is the only
+thing that decides whether the operator may act (ADR 0009). The two directions are not symmetric.
+Taking management of an adopted workload requires the `fingerprint` the caller was shown, compared
+against the *current* sighting rather than against `adopted_fingerprint` — that field records what
+was true at promotion, and the question here is whether you are looking at what is running now.
+Releasing back to `observed` needs nothing and is always allowed: the plane letting go never writes
+to a cluster, so there is no gap to fail closed on. A deployment the plane created is `managed` from
+birth, having never been anything else.
+
 **`/v1/tenants` exists because a project cannot be created without one.** This document used to say
 there was no tenant collection and that a project carries its tenant as an embedded field. The
 second half still holds — a project always carries the tenant it hangs off, so no reader has to
@@ -256,7 +268,10 @@ refuse over.
 `GET` because it is one: the same sighting derives the same draft every time, and asking changes
 nothing. It returns the proposed recipe — engine and version from the image tag, context length and
 parallelism from the container's argv — and, under `artifact`, the weights that recipe would point
-at. The artifact half exists because a recipe cannot be written without one and a workload the plane
+at. The draft's `imported_args` is the whole argv as flag/value pairs, including arguments that also
+populated a first-class field, because a record that keeps only what it has columns for cannot be
+checked against the cluster by the person confirming it. Its `engine_args` is always empty: reading a
+flag off a running pod records it, and asserting it is a separate act by a person. The artifact half exists because a recipe cannot be written without one and a workload the plane
 never declared has no artifact anywhere: `--model org/model` becomes an `hf://` source and a
 `digest` of `hf:org/model`, with the revision appended when `--revision` was given. That digest is a
 name, not a hash, so the artifact is written with `verified: false` and stays that way until

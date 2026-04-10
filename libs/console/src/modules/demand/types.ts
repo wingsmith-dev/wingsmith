@@ -148,6 +148,8 @@ export interface Recipe {
   engine_version: string
   engine_image: string | null
   engine_args: Record<string, unknown>
+  /** Read off a running process. Recorded, never rendered, never enforced. */
+  imported_args: Record<string, unknown>
   quantization: string | null
   dtype: string | null
   parallelism: RecipeParallelism
@@ -272,6 +274,8 @@ export interface Deployment {
   desired_replicas: number
   generation: number
   enabled: boolean
+  /** Who owns this: `observed` records and verifies, `managed` renders and converges. */
+  authority: DeploymentAuthority
   adapter_artifact_ids: string[]
   overrides: Record<string, unknown>
   labels: Record<string, string>
@@ -280,6 +284,20 @@ export interface Deployment {
   revision: string
   workload: DeploymentWorkload
   replicas: DeploymentReplicaRollup
+}
+
+/**
+ * The two answers to who owns a deployment, and there is deliberately no third.
+ *
+ * A deployment with some fields enforced and others drifting cannot be reasoned
+ * about at the moment somebody needs to (ADR 0009).
+ */
+export type DeploymentAuthority = "observed" | "managed"
+
+/** Taking management, or giving it back. `fingerprint` is required only when taking it. */
+export interface DeploymentAuthorityRequest {
+  authority: DeploymentAuthority
+  fingerprint?: string | null
 }
 
 /**

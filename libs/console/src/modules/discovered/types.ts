@@ -99,6 +99,8 @@ export interface RecipeDraft {
   engine_version: string | null
   engine_image: string | null
   engine_args: Record<string, string>
+  /** The whole argv, including what also populated a field above. Always a superset. */
+  imported_args: Record<string, string>
   context_length: number | null
   tensor_parallel: number
   pipeline_parallel: number

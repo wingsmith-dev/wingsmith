@@ -28,8 +28,9 @@ type desiredState struct {
 	Name     string
 	Revision int64
 	Deleted  bool
-	Object   json.RawMessage
-	Adopt    *v1alpha1.AdoptRef
+	Object    json.RawMessage
+	Authority string
+	Adopt     *v1alpha1.AdoptRef
 }
 
 // resyncEpoch accumulates a full-resync snapshot as it streams in.
@@ -111,8 +112,9 @@ func (s *Store) apply(ctx context.Context, d desiredState) error {
 			Spec: v1alpha1.SyncedResourceSpec{
 				Kind:     d.Kind,
 				Revision: d.Revision,
-				Payload:  rawOrNil(d.Object),
-				Adopt:    d.Adopt,
+				Payload:   rawOrNil(d.Object),
+				Authority: d.Authority,
+				Adopt:     d.Adopt,
 			},
 		}
 		return s.Client.Create(ctx, obj)
@@ -129,6 +131,7 @@ func (s *Store) apply(ctx context.Context, d desiredState) error {
 	existing.Spec.Kind = d.Kind
 	existing.Spec.Revision = d.Revision
 	existing.Spec.Payload = rawOrNil(d.Object)
+	existing.Spec.Authority = d.Authority
 	existing.Spec.Adopt = d.Adopt
 	return s.Client.Patch(ctx, &existing, patch)
 }

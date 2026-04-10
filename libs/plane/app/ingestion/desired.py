@@ -343,6 +343,7 @@ async def _deployments(
                 artifact_ids=artifact_ids,
                 generation=deployment.generation,
                 updated_at=format_ts(deployment.updated_at or deployment.created_at),
+                authority=deployment.authority if deployment.authority in ("observed", "managed") else "observed",
                 adopt=_adopt(deployment, row[6], row[7], row[8]),
             )
         )

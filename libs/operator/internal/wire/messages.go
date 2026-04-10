@@ -326,6 +326,7 @@ type DeploymentDesired struct {
 	ArtifactIDs    []string             `json:"artifact_ids"`
 	Generation     int64                `json:"generation"`
 	UpdatedAt      string               `json:"updated_at"`
+	Authority      string               `json:"authority,omitempty"`
 	Adopt          *Adopt               `json:"adopt,omitempty"`
 }
 

@@ -122,6 +122,7 @@ class RecipeService:
             engine_version=recipe.engine_version,
             engine_image=recipe.engine_image,
             engine_args=recipe.engine_args,
+            imported_args=recipe.imported_args,
             quantization=recipe.quantization,
             dtype=recipe.dtype,
             parallelism=RecipeParallelismSchema(
@@ -224,6 +225,7 @@ class RecipeService:
             engine_version=data.engine_version,
             engine_image=data.engine_image,
             engine_args=data.engine_args,
+            imported_args=data.imported_args,
             quantization=data.quantization,
             dtype=data.dtype,
             tensor_parallel=data.tensor_parallel,

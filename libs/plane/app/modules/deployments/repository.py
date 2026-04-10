@@ -18,6 +18,7 @@ from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import PriorityClass
+from app.db.models import DiscoveredWorkload
 from app.core.filters import ref_ids
 
 
@@ -126,6 +127,23 @@ class DeploymentRepository:
     async def get(self, ref: str, cluster: str | None = None) -> Row | None:
         result = await self.db.execute(self.get_query(ref, cluster).limit(1))
         return result.first()
+
+    async def sighting_fingerprint(self, cluster_id: UUID, workload_uid: str) -> str | None:
+        """What the cluster currently reports the adopted object is running.
+
+        Read from the sighting rather than from `adopted_fingerprint`, because the
+        point of the check is to compare the caller's view against what is live
+        now. A sighting that has been pruned returns None, which is a refusal: an
+        adopted object the cluster is no longer reporting is not one to take
+        management of on the strength of a digest recorded days ago.
+        """
+        result = await self.db.execute(
+            select(DiscoveredWorkload.spec_fingerprint).where(
+                DiscoveredWorkload.cluster_id == cluster_id,
+                DiscoveredWorkload.uid == workload_uid,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def list(self, **kwargs) -> list[Row]:
         result = await self.db.execute(self.list_query(**kwargs))

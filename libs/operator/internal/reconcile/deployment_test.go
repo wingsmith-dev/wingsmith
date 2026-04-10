@@ -46,13 +46,19 @@ func declared(t *testing.T, kind, id string, payload any) *v1alpha1.SyncedResour
 	if err != nil {
 		t.Fatalf("marshal %s: %v", kind, err)
 	}
+	spec := v1alpha1.SyncedResourceSpec{
+		Kind:     kind,
+		Revision: 1,
+		Payload:  &apiextensionsv1.JSON{Raw: raw},
+	}
+	// These tests are about what a managed deployment converges to. Observed is the default
+	// everywhere else and has its own test below, because the gate is the interesting part.
+	if kind == "deployment" {
+		spec.Authority = v1alpha1.AuthorityManaged
+	}
 	return &v1alpha1.SyncedResource{
 		ObjectMeta: metav1.ObjectMeta{Name: render.Name(id), Namespace: "hangar-system"},
-		Spec: v1alpha1.SyncedResourceSpec{
-			Kind:     kind,
-			Revision: 1,
-			Payload:  &apiextensionsv1.JSON{Raw: raw},
-		},
+		Spec:       spec,
 	}
 }
 
@@ -313,5 +319,44 @@ func TestNodesOutsideThePlacementSelectorAreNotCounted(t *testing.T) {
 
 	if got := readyCondition(t, out).Reason; got != "NoSchedulableCapacity" {
 		t.Errorf("reason = %q, want NoSchedulableCapacity: the only usable node is in another region", got)
+	}
+}
+
+// TestObservedDeploymentIsNeverApplied is the gate ADR 0009 turns on. Everything a managed
+// deployment needs in order to render is present here — recipe, artifact, resident weights, a node
+// with room — so if anything is written it is the authority mark that failed and not a missing
+// input.
+func TestObservedDeploymentIsNeverApplied(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	dep.Spec.Authority = v1alpha1.AuthorityObserved
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+
+	graph := &unstructured.Unstructured{}
+	graph.SetGroupVersionKind(render.GVK)
+	key := types.NamespacedName{Namespace: "dynamo", Name: render.Name(testDeploymentID)}
+	if err := r.Client.Get(context.Background(), key, graph); err == nil {
+		t.Fatal("an observed deployment was rendered into the cluster")
+	}
+	if out.Status.Phase == "Failed" {
+		t.Errorf("declining to act is not a failure, got phase %q", out.Status.Phase)
+	}
+}
+
+// TestAnEmptyAuthorityIsObserved covers the upgrade path: desired state written by a plane that
+// predates the field must not acquire management by omission.
+func TestAnEmptyAuthorityIsObserved(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	dep.Spec.Authority = ""
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	r, _, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+
+	graph := &unstructured.Unstructured{}
+	graph.SetGroupVersionKind(render.GVK)
+	key := types.NamespacedName{Namespace: "dynamo", Name: render.Name(testDeploymentID)}
+	if err := r.Client.Get(context.Background(), key, graph); err == nil {
+		t.Fatal("an unmarked deployment was rendered into the cluster")
 	}
 }

@@ -17,7 +17,9 @@ from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.ingestion.desired import stream_desired
 from app.modules.discovered.schemas import PromoteRequest
+from app.modules.deployments.schemas import DeploymentAuthorityRequest
 from app.modules.discovered.services import DiscoveredWorkloadService
+from app.modules.deployments.services import DeploymentService
 
 from tests.conftest import CLUSTER
 from tests.conftest import fetch
@@ -196,3 +198,81 @@ async def test_an_ordinary_deployment_carries_no_adoption(sessions, cluster) -> 
         frames = [item async for item in stream_desired(db, CLUSTER, "demand")]
     desired = [payload for kind, payload in frames if kind == "deployment.desired"]
     assert desired and desired[0].adopt is None
+
+
+async def test_a_promoted_deployment_is_observed_not_managed(sessions, cluster) -> None:
+    """Promotion catalogues. It does not hand the plane the wheel (ADR 0009)."""
+    await seed_demand(sessions)
+    await sighted(sessions)
+
+    async with sessions() as db:
+        deployment = await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+
+    assert deployment.authority == "observed"
+
+
+async def test_taking_management_needs_the_digest_of_what_is_running(sessions, cluster) -> None:
+    """The same gate promotion uses, at the moment it starts to matter.
+
+    Promotion is free; taking management is the act that can render over a live
+    pod template, so it re-asks the question rather than trusting an answer given
+    when the deployment was catalogued.
+    """
+    await seed_demand(sessions)
+    await sighted(sessions)
+
+    async with sessions() as db:
+        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+
+    async with sessions() as db:
+        svc = DeploymentService(db)
+        with pytest.raises(Invalid):
+            await svc.set_authority("llama-70b-vllm", DeploymentAuthorityRequest(authority="managed"))
+        with pytest.raises(Conflict):
+            await svc.set_authority(
+                "llama-70b-vllm",
+                DeploymentAuthorityRequest(authority="managed", fingerprint="sha256:not-what-is-running"),
+            )
+
+    assert await fetch(sessions, "select authority from demand_deployment") == [("observed",)]
+
+
+async def test_management_is_taken_and_given_back(sessions, cluster) -> None:
+    await seed_demand(sessions)
+    await sighted(sessions)
+
+    async with sessions() as db:
+        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+
+    async with sessions() as db:
+        taken = await DeploymentService(db).set_authority(
+            "llama-70b-vllm", DeploymentAuthorityRequest(authority="managed", fingerprint=FINGERPRINT)
+        )
+    assert taken.authority == "managed"
+
+    async with sessions() as db:
+        released = await DeploymentService(db).set_authority(
+            "llama-70b-vllm", DeploymentAuthorityRequest(authority="observed")
+        )
+    assert released.authority == "observed", "letting go writes nothing and needs nothing"
+
+
+async def test_authority_reaches_the_cluster_on_the_desired_stream(sessions, cluster) -> None:
+    """The operator gates on this field, so a transition nobody streams is a no-op."""
+    await seed_demand(sessions)
+    await sighted(sessions)
+
+    async with sessions() as db:
+        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+    async with sessions() as db:
+        await DeploymentService(db).set_authority(
+            "llama-70b-vllm", DeploymentAuthorityRequest(authority="managed", fingerprint=FINGERPRINT)
+        )
+
+    async with sessions() as db:
+        frames = [
+            payload async for kind, payload in stream_desired(db, CLUSTER, "demand") if kind == "deployment.desired"
+        ]
+
+    assert [f.authority for f in frames] == ["managed"]
+    assert frames[0].adopt is not None, "provenance survives taking management"

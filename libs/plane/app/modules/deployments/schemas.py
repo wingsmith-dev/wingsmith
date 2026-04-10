@@ -55,6 +55,12 @@ class DeploymentSchema(Struct):
     template digested to at the time. The cluster refuses to reconcile the
     deployment while the live object digests to anything else, so the pair is worth
     reading before assuming a change here will take effect.
+
+    `authority` is who owns it: `observed` means the plane records and verifies and
+    writes nothing to the cluster, `managed` means the plane renders and converges.
+    It is the field the operator gates on, and it is not implied by
+    `adopted_workload_id` — how the object arrived and whether we run it are
+    different questions (ADR 0009).
     """
 
     id: str
@@ -74,6 +80,7 @@ class DeploymentSchema(Struct):
     revision: str
     adopted_workload_id: str | None
     adopted_fingerprint: str | None
+    authority: str
     requires_single_topology_domain: bool | None
     topology_domain_kind: str | None
     workload: DeploymentWorkloadSchema
@@ -138,3 +145,20 @@ class DeploymentUpdateRequest(Struct):
     deadline_at: dt.datetime | None | UnsetType = UNSET
     requires_single_topology_domain: bool | None | UnsetType = UNSET
     topology_domain_kind: str | None | UnsetType = UNSET
+
+
+class DeploymentAuthorityRequest(Struct):
+    """Take management of a deployment, or give it back.
+
+    `fingerprint` is required only when taking management of an adopted workload,
+    and it is the same gate promotion uses: the caller sends back the digest they
+    were shown, and a workload that moved since refuses. Going to `managed` is the
+    direction that can cost a restart, so it is the direction that has to prove the
+    caller was looking at what is actually running.
+
+    Releasing to `observed` needs nothing. The plane letting go never writes to a
+    cluster, so there is no gap to fail closed on.
+    """
+
+    authority: str
+    fingerprint: str | None = None

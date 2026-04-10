@@ -430,6 +430,7 @@ class DeploymentDesired(Struct):
     artifact_ids: list[str]
     generation: int
     updated_at: str
+    authority: Literal["observed", "managed"] = "observed"
     adopt: Adopt | None = None
 
 

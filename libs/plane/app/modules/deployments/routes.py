@@ -1,6 +1,7 @@
 from litestar import Response
 from litestar import Controller
 from litestar import get
+from litestar import put
 from litestar import post
 from litestar import patch
 from litestar import delete
@@ -15,6 +16,7 @@ from .depends import deployment_svc_generator
 from .schemas import DeploymentSchema
 from .schemas import DeploymentCreateRequest
 from .schemas import DeploymentUpdateRequest
+from .schemas import DeploymentAuthorityRequest
 from .services import DeploymentService
 
 
@@ -75,6 +77,16 @@ class DeploymentRoutes(Controller):
         if_match: str | None = Parameter(header="If-Match", default=None),
     ) -> Response[DeploymentSchema]:
         return Response(await svc.update(ref, data, if_match=if_match))
+
+    @put("/{ref:str}/authority")
+    async def set_deployment_authority(
+        self,
+        context: RequestContext,
+        svc: DeploymentService,
+        ref: str,
+        data: DeploymentAuthorityRequest,
+    ) -> Response[DeploymentSchema]:
+        return Response(await svc.set_authority(ref, data))
 
     @delete("/{ref:str}", status_code=204)
     async def delete_deployment(self, context: RequestContext, svc: DeploymentService, ref: str) -> None:

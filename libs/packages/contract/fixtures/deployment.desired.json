@@ -32,6 +32,7 @@
     ],
     "generation": 14,
     "updated_at": "2026-08-19T13:58:02.000Z",
+    "authority": "managed",
     "adopt": {
       "namespace": "serving",
       "kind": "deployment",

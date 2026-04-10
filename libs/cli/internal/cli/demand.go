@@ -207,6 +207,19 @@ not a shape.`,
 	}
 }
 
+// authorityWord renders who owns a deployment, and leans on colour to make the difference
+// impossible to skim past: managed means this plane writes to the cluster.
+//
+// An empty value reads as observed rather than as unknown, matching the operator's own gate — a
+// deployment from before the field existed is not managed, and showing a dash here would suggest
+// the question is open when it is not.
+func authorityWord(s ui.Style, v string) string {
+	if v == "managed" {
+		return s.Bold("managed")
+	}
+	return s.Dim("observed")
+}
+
 func fraction(v *float64) string {
 	if v == nil {
 		return "-"
@@ -256,6 +269,7 @@ replicas is a rollup of what is actually running.`,
 			{Title: "desired", Align: ui.AlignRight},
 			{Title: "bounds", Align: ui.AlignRight},
 			{Title: "gen", Align: ui.AlignRight},
+			{Title: "authority"},
 			{Title: "adopted"},
 			{Title: "enabled"},
 			{Title: "age", Align: ui.AlignRight},
@@ -267,7 +281,8 @@ replicas is a rollup of what is actually running.`,
 				fmt.Sprintf("%d/%d", d.Replicas.Ready, d.Replicas.Total),
 				strconv.Itoa(d.DesiredReplicas),
 				fmt.Sprintf("%d-%d", d.MinReplicas, d.MaxReplicas),
-				strconv.Itoa(d.Generation), boolWord(d.AdoptedWorkloadID != nil),
+				strconv.Itoa(d.Generation), authorityWord(s, d.Authority),
+				boolWord(d.AdoptedWorkloadID != nil),
 				boolWord(d.Enabled), agoAt(d.CreatedAt),
 			}
 		},
@@ -289,6 +304,7 @@ replicas is a rollup of what is actually running.`,
 			kv.Addf("replicas", "%d desired · bounds %d-%d", d.DesiredReplicas, d.MinReplicas, d.MaxReplicas)
 			kv.Addf("generation", "%d", d.Generation)
 			kv.Add("enabled", yesNo(s, d.Enabled))
+			kv.Add("authority", authorityWord(s, d.Authority))
 			kv.Add("adapters", orDash(strings.Join(d.AdapterArtifactIDs, " ")))
 			kv.Add("overrides", labelString(d.Overrides))
 			kv.Add("labels", labelString(d.Labels))
