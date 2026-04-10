@@ -145,6 +145,7 @@ not created. Writing to an observed resource is a category error and returns `40
 |---|---|
 | `/v1/clusters` | declared registry, observed body |
 | `/v1/nodes`, `/v1/devices`, `/v1/topology-domains` | observed, read-only |
+| `/v1/device-classes` | the shared dictionary, read-only — see below |
 | `/v1/pools` | declared, with observed membership |
 | `/v1/artifacts` | declared, plus one read-only resolve verb — see below |
 | `/v1/recipes`, `/v1/deployments`, `/v1/endpoints` | declared |
@@ -162,6 +163,26 @@ not created. Writing to an observed resource is a category error and returns `40
 Sub-resources are addressed by filter, not by nesting: `GET /v1/devices?cluster=iad-1`, not
 `/v1/clusters/iad-1/devices`. One collection per object type keeps filtering, pagination and
 permissions in one place instead of N.
+
+**`/v1/device-classes` is a dictionary, which is a fourth kind alongside declared, observed and
+derived.** A device class is the identity a GPU model is placed against — `h100-80gb-sxm` on a
+pool, a recipe shape, a quota and a device — and it is defined in `devices.json` in this package,
+read by the plane and embedded in the operator. Nothing declares one and no cluster reports one, so
+there is no `POST` and no `PATCH`: adding hardware is a change to the contract table and a release
+of both halves. Editing it over the API would leave the plane and the operator resolving vendor
+strings against different dictionaries, which is the one thing a shared table exists to prevent.
+
+Each entry carries `name` — the identifier, and the only string that travels on the wire — and
+`label`, the only string to put in front of a person. Alongside them is `inventory`: how many
+devices of that class the fleet holds, how many are healthy, how many are allocatable, and which
+clusters they are in. Counted from observed state on read, never stored.
+
+The collection is the union of two sets, and a client must expect both. A class in the table with
+no devices is hardware we could take delivery of tomorrow. A class in the fleet with no table entry
+is hardware nobody has named yet — it resolved to the slug of its vendor string, it is being
+scheduled onto, and it comes back with `in_catalog` false and no vendor metadata. The second is the
+one to act on. Filters: `cluster`, `architecture`, `present`. Not paginated — the dictionary is
+bounded by the hardware that exists, not by use.
 
 **`/v1/alerts` is derived, which is a third kind alongside declared and observed.** Nothing on a
 cluster reports an alert and nothing declares one: the reactor computes them by reading observed

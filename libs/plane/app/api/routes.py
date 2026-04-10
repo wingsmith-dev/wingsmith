@@ -27,6 +27,7 @@ from app.modules.operations.routes import OperationRoutes
 from app.modules.allocations.routes import AllocationRoutes
 from app.modules.deployments.routes import DeploymentRoutes
 from app.modules.notifications.routes import NotificationChannelRoutes
+from app.modules.device_classes.routes import DeviceClassRoutes
 from app.modules.priority_classes.routes import PriorityClassRoutes
 from app.modules.topology_domains.routes import TopologyDomainRoutes
 
@@ -35,6 +36,7 @@ V1_ROUTES = [
     ClusterRoutes,
     NodeRoutes,
     DeviceRoutes,
+    DeviceClassRoutes,
     TopologyDomainRoutes,
     PoolRoutes,
     ArtifactRoutes,
