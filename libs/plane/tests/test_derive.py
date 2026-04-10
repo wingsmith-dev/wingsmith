@@ -57,7 +57,8 @@ def test_a_dynamo_vllm_worker_reads_as_a_complete_recipe() -> None:
     assert draft.context_length == 262144
     assert draft.tensor_parallel == 2
     assert draft.device_count == 2
-    assert draft.max_batch_tokens == 256
+    assert draft.max_batch_tokens is None, "--max-num-seqs is not --max-num-batched-tokens"
+    assert draft.imported_args["--max-num-seqs"] == "256"
     assert draft.kv_cache_fraction == 0.90
     assert draft.cpu_cores == 16
     assert draft.memory_mib == 96 * 1024
@@ -87,13 +88,29 @@ def test_an_explicit_quantisation_argument_wins_over_the_name() -> None:
     assert draft.quantization == "fp8"
 
 
-def test_settings_without_a_column_survive_as_engine_args() -> None:
+def test_every_argument_read_survives_as_an_imported_one() -> None:
     spec = dict(QWEN)
     spec["args"] = QWEN["args"] + ["--enforce-eager", "--swap-space", "8"]
     draft = derive(spec=spec, labels={}, name="w", devices_per_replica=2)
-    assert draft.engine_args["--enforce-eager"] == ""
-    assert draft.engine_args["--swap-space"] == "8"
-    assert "--model" not in draft.engine_args, "fields with a column are not repeated here"
+    assert draft.imported_args["--enforce-eager"] == ""
+    assert draft.imported_args["--swap-space"] == "8"
+    assert draft.imported_args["--model"] == "Qwen/Qwen3.8-27B", (
+        "arguments with a column are repeated here too — the record is of what was read, "
+        "and a partial one cannot be checked against the cluster"
+    )
+
+
+def test_reading_a_workload_declares_nothing() -> None:
+    """A draft proposes no engine_args at all.
+
+    Reading a flag off a running pod records it; asserting it is a separate act by
+    a person. Only engine_args renders onto a command line (ADR 0009).
+    """
+    spec = dict(QWEN)
+    spec["args"] = QWEN["args"] + ["--enforce-eager"]
+    draft = derive(spec=spec, labels={}, name="w", devices_per_replica=2)
+    assert draft.engine_args == {}
+    assert draft.imported_args
 
 
 def test_an_unreadable_engine_is_reported_rather_than_guessed() -> None:

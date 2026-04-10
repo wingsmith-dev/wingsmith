@@ -66,6 +66,12 @@ class RecipeDraft(Struct):
     field below it is then a guess dressed as a reading. `notes` names what could
     not be determined so the person confirming knows where to look rather than
     having to diff the draft against the cluster themselves.
+
+    `imported_args` is the whole argv as flag/value pairs, including arguments that
+    also populated a field above. `engine_args` is empty in a draft and always
+    will be: reading a flag off a pod records it, and asserting it is a separate
+    act by a person (ADR 0009). The duplication is deliberate — the draft has to
+    be checkable against the cluster without re-reading the pod.
     """
 
     artifact_ref: str | None
@@ -75,6 +81,7 @@ class RecipeDraft(Struct):
     engine_version: str | None
     engine_image: str | None
     engine_args: dict
+    imported_args: dict
     context_length: int | None
     tensor_parallel: int
     pipeline_parallel: int
@@ -385,22 +392,15 @@ def derive(
 
     requests = dict(spec.get("requests") or {})
 
-    # Everything vLLM was told that is not already a first-class recipe field. Kept so the
-    # rendered spec matches what is running rather than silently dropping settings we have
-    # no column for.
-    consumed = {
-        "model",
-        "served-model-name",
-        "max-model-len",
-        "tensor-parallel-size",
-        "pipeline-parallel-size",
-        "expert-parallel-size",
-        "max-num-seqs",
-        "gpu-memory-utilization",
-        "quantization",
-        "dtype",
-    }
-    engine_args = {f"--{k}": v for k, v in values.items() if k not in consumed}
+    # Every argument the workload was actually running with, verbatim and in full, including
+    # the ones that also landed in a first-class field above. This is a record of what was
+    # read and not a proposal to render it — a draft that keeps only what it has columns for
+    # cannot be checked against the cluster by the person confirming it (ADR 0009).
+    imported_args = {f"--{k}": v for k, v in values.items()}
+
+    # Nothing is declared by reading. A draft proposes no engine_args at all: asserting a flag
+    # is somebody's decision, and the whole point of the split is that it stays visible as one.
+    engine_args: dict[str, str] = {}
 
     return RecipeDraft(
         artifact_ref=f"hf:{model_ref}" if model_ref else None,
@@ -410,11 +410,12 @@ def derive(
         engine_version=engine_version,
         engine_image=image,
         engine_args=engine_args,
+        imported_args=imported_args,
         context_length=context_length,
         tensor_parallel=tensor_parallel,
         pipeline_parallel=pipeline_parallel,
         expert_parallel=expert_parallel,
-        max_batch_tokens=_int(values, "max-num-seqs"),
+        max_batch_tokens=_int(values, "max-num-batched-tokens"),
         kv_cache_fraction=_float(values, "gpu-memory-utilization"),
         quantization=_quantization(model_ref, values),
         dtype=values.get("dtype"),
