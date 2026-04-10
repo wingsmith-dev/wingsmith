@@ -515,6 +515,26 @@ async def test_live_dispatch_renders_what_a_resync_would_have_sent(db: AsyncSess
     assert from_dispatch == from_resync[0]
 
 
+async def test_a_deployment_makes_its_own_weights_warm(db: AsyncSession) -> None:
+    """Deploying a model is a statement that its weights must be resident.
+
+    The warm set has no writer and never had one, so residency declared only from
+    that table meant every deployment of an uncached artifact waited on a download
+    nothing had started. A derived entry is unpinned and at priority zero: warm
+    because something deploys it, and evictable once nothing does.
+    """
+    cluster, _, recipe, _ = await a_deployment(db)
+
+    frames = [item async for item in stream_desired(db, cluster.id, "demand")]
+    caches = [payload for kind, payload in frames if kind == "cache.desired"]
+
+    assert caches, "a cluster running a deployment declares a cache"
+    served = {entry.artifact_id for entry in caches[0].entries}
+    assert recipe.artifact_id in served
+    entry = next(e for e in caches[0].entries if e.artifact_id == recipe.artifact_id)
+    assert (entry.pin, entry.priority) == (False, 0)
+
+
 async def test_a_deployment_that_is_gone_dispatches_as_a_deletion(db: AsyncSession) -> None:
     """Absence is the answer, and it has to be the *deleted* answer.
 

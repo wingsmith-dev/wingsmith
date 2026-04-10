@@ -370,7 +370,21 @@ def _adopt(deployment: Deployment, namespace: str | None, kind: str | None, name
 
 
 async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheDesired | None:
-    """The cluster's warm set as one frame.
+    """What this cluster must have on disk: its warm set, plus what its deployments serve.
+
+    The union is the same one `_artifact_ids_query` applies, and for the same
+    reason. Deploying a model is a statement that its weights must be resident —
+    the operator will not start a replica against a cold cache, and it has no
+    other way to be told to fetch them. A warm set that was the only source made
+    residency a second thing somebody had to declare by hand, in a table with no
+    writer, so every deployment of an uncached artifact waited forever on a
+    download nothing had started.
+
+    A derived entry is unpinned and at priority zero: it is warm because
+    something deploys it, so it should stop being warm when nothing does. A warm
+    set row for the same artifact wins, which is what makes the warm set still
+    worth having — it is how weights are pre-fetched before a deployment exists
+    and how a model is pinned against eviction once it is.
 
     `capacity_bytes` is zero because the plane declares no cache size: the size
     of a cluster's disk is the cluster's business, and inventing a number here
@@ -384,12 +398,27 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
             .order_by(WarmSet.priority.desc(), WarmSet.seq)
         )
     ).all()
-    if not rows:
+    entries = [CacheWarmEntry(artifact_id=uid, priority=warm.priority, pin=warm.pinned) for warm, uid in rows]
+    declared = {entry.artifact_id for entry in entries}
+
+    served = (
+        await db.execute(
+            select(Artifact.seq, Artifact.uid)
+            .join(Recipe, Recipe.artifact_id == Artifact.id)
+            .join(Deployment, Deployment.recipe_id == Recipe.id)
+            .where(Deployment.cluster_id == cluster_id, Deployment.enabled.is_(True))
+            .order_by(Artifact.seq)
+            .distinct()
+        )
+    ).all()
+    entries.extend(CacheWarmEntry(artifact_id=uid, priority=0, pin=False) for _, uid in served if uid not in declared)
+
+    if not entries:
         return None
-    policy: Any = rows[0][0].eviction_policy
+    policy: Any = rows[0][0].eviction_policy if rows else "lru"
     return CacheDesired(
         cluster_id=cluster_uid,
-        entries=[CacheWarmEntry(artifact_id=uid, priority=warm.priority, pin=warm.pinned) for warm, uid in rows],
+        entries=entries,
         eviction_policy=policy if policy in {"lru", "lfu", "none"} else "lru",
         capacity_bytes=0,
         updated_at=format_ts(None),
