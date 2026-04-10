@@ -198,6 +198,16 @@ func (c *Client) Device(ctx context.Context, ref string) (Device, error) {
 	return one[Device](ctx, c, "/v1/devices", ref, nil)
 }
 
+func (c *Client) DeviceClasses(ctx context.Context, o ListOpts) (Page[DeviceClass], error) {
+	q := newQuery(o).str("cluster", o.Cluster).str("architecture", o.Architecture).
+		boolean("present", o.Present)
+	return list[DeviceClass](ctx, c, "/v1/device-classes", q.values(), o)
+}
+
+func (c *Client) DeviceClass(ctx context.Context, ref string) (DeviceClass, error) {
+	return one[DeviceClass](ctx, c, "/v1/device-classes", ref, nil)
+}
+
 func (c *Client) TopologyDomains(ctx context.Context, o ListOpts) (Page[TopologyDomain], error) {
 	q := newQuery(o).str("cluster", o.Cluster).str("node", o.Node).str("kind", o.Kind).
 		boolean("spans_nodes", o.SpansNodes)

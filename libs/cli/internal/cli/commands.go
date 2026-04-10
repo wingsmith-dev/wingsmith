@@ -12,6 +12,7 @@ func register(app *App, root *cobra.Command) {
 		clusterNoun().command(app),
 		nodeNoun().command(app),
 		deviceNoun().command(app),
+		deviceClassNoun().command(app),
 		topologyNoun().command(app),
 		poolNoun().command(app),
 

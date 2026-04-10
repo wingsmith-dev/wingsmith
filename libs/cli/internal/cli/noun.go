@@ -347,6 +347,7 @@ type filters struct {
 	pool       string
 	node       string
 	class      string
+	arch       string
 	health     string
 	phase      string
 	region     string
@@ -383,6 +384,7 @@ type filters struct {
 	preemptible      bool
 	preempts         bool
 	overQuotaEnabled bool
+	present          bool
 
 	since string
 	until string
@@ -421,7 +423,8 @@ func (f *filters) opts(cmd *cobra.Command) (api.ListOpts, error) {
 	return api.ListOpts{
 		Limit: f.limit, Cursor: f.cursor, All: f.all, Search: f.search, Labels: labels,
 		Cluster: f.cluster, Pool: f.pool, Node: f.node, Class: f.class, Health: f.health,
-		Phase: f.phase, Region: f.region, Project: f.project, Tenant: f.tenant, Kind: f.kind,
+		Architecture: f.arch,
+		Phase:        f.phase, Region: f.region, Project: f.project, Tenant: f.tenant, Kind: f.kind,
 		Type: f.typ, Name: f.name, Engine: f.engine, Artifact: f.artifact, Recipe: f.recipe,
 		Condition: f.condition, TopologyDomain: f.domain, Target: f.target, Actor: f.actor,
 		Subject: f.subject, Severity: f.severity, Device: f.device, Replica: f.replica,
@@ -438,6 +441,7 @@ func (f *filters) opts(cmd *cobra.Command) (api.ListOpts, error) {
 		Live:             optBool(cmd, "live", f.live),
 		Preemptible:      optBool(cmd, "preemptible", f.preemptible),
 		Preempts:         optBool(cmd, "preempts", f.preempts),
+		Present:          optBool(cmd, "present", f.present),
 		OverQuotaEnabled: optBool(cmd, "over-quota-enabled", f.overQuotaEnabled),
 
 		Since: since,

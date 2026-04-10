@@ -31,6 +31,7 @@ type ListOpts struct {
 	Pool           string
 	Node           string
 	Class          string
+	Architecture   string
 	Health         string
 	Phase          string
 	Region         string
@@ -67,6 +68,7 @@ type ListOpts struct {
 	Preemptible      *bool
 	Preempts         *bool
 	OverQuotaEnabled *bool
+	Present          *bool
 
 	Since *time.Time
 	Until *time.Time
@@ -242,6 +244,33 @@ type PoolMembership struct {
 	DevicesTotal       int `json:"devices_total"`
 	DevicesHealthy     int `json:"devices_healthy"`
 	DevicesAllocatable int `json:"devices_allocatable"`
+}
+
+// DeviceClass is one GPU model as the plane names it: a dictionary entry, not a declared or an
+// observed object. Class is the identifier and the only string that goes on the wire; Label is the
+// only one meant for a person.
+//
+// InCatalog false means the fleet holds hardware the contract table does not name — it resolved to
+// the slug of its vendor string and is being scheduled onto anyway. That is the row to act on.
+type DeviceClass struct {
+	Class        string               `json:"name"`
+	Label        string               `json:"label"`
+	Architecture string               `json:"architecture"`
+	Vendor       string               `json:"vendor"`
+	MemoryMiB    int                  `json:"memory_mib"`
+	FormFactor   string               `json:"form_factor"`
+	InCatalog    bool                 `json:"in_catalog"`
+	Aliases      map[string][]string  `json:"aliases"`
+	Inventory    DeviceClassInventory `json:"inventory"`
+}
+
+// DeviceClassInventory is what the fleet holds of one class, counted on read from observed state.
+type DeviceClassInventory struct {
+	Devices     int      `json:"devices"`
+	Healthy     int      `json:"healthy"`
+	Allocatable int      `json:"allocatable"`
+	Nodes       int      `json:"nodes"`
+	Clusters    []string `json:"clusters"`
 }
 
 // Pool is a declared provisioning spec beside its observed membership.

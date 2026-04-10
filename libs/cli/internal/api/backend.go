@@ -18,6 +18,8 @@ type Backend interface {
 	Node(ctx context.Context, ref string) (Node, error)
 	Devices(ctx context.Context, opts ListOpts) (Page[Device], error)
 	Device(ctx context.Context, ref string) (Device, error)
+	DeviceClasses(ctx context.Context, opts ListOpts) (Page[DeviceClass], error)
+	DeviceClass(ctx context.Context, ref string) (DeviceClass, error)
 	TopologyDomains(ctx context.Context, opts ListOpts) (Page[TopologyDomain], error)
 	TopologyDomain(ctx context.Context, ref string) (TopologyDomain, error)
 	Pools(ctx context.Context, opts ListOpts) (Page[Pool], error)

@@ -2,6 +2,7 @@ package fake
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -65,6 +66,79 @@ func (b *Backend) Device(ctx context.Context, ref string) (api.Device, error) {
 	return find(b, "device", b.state.Devices, ref, func(d api.Device) []string {
 		return []string{d.ID, d.DeviceUUID}
 	})
+}
+
+// DeviceClasses derives the catalog from the seeded devices rather than carrying a table of its
+// own. The contract dictionary is embedded in the plane and in the operator, and a third copy here
+// would be a third thing to keep in step — so every class the fake reports is one it can see
+// hardware for, and none of them claim a catalog entry.
+func (b *Backend) DeviceClasses(ctx context.Context, o api.ListOpts) (api.Page[api.DeviceClass], error) {
+	classes := b.deviceClasses(o.Cluster)
+	return collect(b, classes, o, func(c api.DeviceClass) bool {
+		return eqFold(o.Architecture, c.Architecture) && boolEq(o.Present, c.Inventory.Devices > 0)
+	})
+}
+
+func (b *Backend) DeviceClass(ctx context.Context, ref string) (api.DeviceClass, error) {
+	return find(b, "device class", b.deviceClasses(""), ref, func(c api.DeviceClass) []string {
+		return []string{c.Class}
+	})
+}
+
+func (b *Backend) deviceClasses(cluster string) []api.DeviceClass {
+	ref := b.clusterRef(cluster)
+	byClass := map[string]*api.DeviceClass{}
+	nodes := map[string]map[string]bool{}
+	clusters := map[string]map[string]bool{}
+	order := []string{}
+
+	for _, d := range b.state.Devices {
+		if !refEq(ref, d.Cluster, d.ClusterName) {
+			continue
+		}
+		entry, seen := byClass[d.DeviceClass]
+		if !seen {
+			entry = &api.DeviceClass{
+				Class:     d.DeviceClass,
+				Label:     d.DeviceClass,
+				Vendor:    d.Vendor,
+				MemoryMiB: d.MemoryMiB,
+				Aliases:   map[string][]string{},
+				Inventory: api.DeviceClassInventory{Clusters: []string{}},
+			}
+			byClass[d.DeviceClass] = entry
+			nodes[d.DeviceClass] = map[string]bool{}
+			clusters[d.DeviceClass] = map[string]bool{}
+			order = append(order, d.DeviceClass)
+		}
+		entry.Inventory.Devices++
+		if d.Health == api.HealthHealthy {
+			entry.Inventory.Healthy++
+		}
+		if d.Allocatable {
+			entry.Inventory.Allocatable++
+		}
+		nodes[d.DeviceClass][d.Node] = true
+		clusters[d.DeviceClass][d.ClusterName] = true
+	}
+
+	out := make([]api.DeviceClass, 0, len(order))
+	for _, name := range order {
+		entry := byClass[name]
+		entry.Inventory.Nodes = len(nodes[name])
+		for c := range clusters[name] {
+			entry.Inventory.Clusters = append(entry.Inventory.Clusters, c)
+		}
+		sort.Strings(entry.Inventory.Clusters)
+		out = append(out, *entry)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Inventory.Devices != out[j].Inventory.Devices {
+			return out[i].Inventory.Devices > out[j].Inventory.Devices
+		}
+		return out[i].Class < out[j].Class
+	})
+	return out
 }
 
 func (b *Backend) TopologyDomains(ctx context.Context, o api.ListOpts) (api.Page[api.TopologyDomain], error) {

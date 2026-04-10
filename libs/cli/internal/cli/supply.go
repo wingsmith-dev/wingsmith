@@ -315,6 +315,92 @@ here — they go to the observability stack directly.`,
 	}
 }
 
+func deviceClassNoun() noun[api.DeviceClass] {
+	return noun[api.DeviceClass]{
+		name:     "device-class",
+		aliases:  []string{"device-classes", "class", "classes", "gpu-model"},
+		plurally: "device classes",
+		group:    "supply",
+		short:    "The GPU model catalog, and how much of each we own",
+		long: `A device class is the identity a GPU model is placed against.
+
+It is the string on a pool, a recipe shape, a quota and a device — and it is a
+dictionary entry, not something anyone declares or any cluster reports. The
+table lives in libs/packages/contract/devices.json and is shared with the
+operator, so a class is added by releasing both halves, never over the API.
+
+The listing is the union of two sets. A class with no devices is hardware we
+could take delivery of tomorrow. A class with "catalog no" is hardware nobody
+has named yet: it resolved to the slug of whatever the vendor called it, it is
+being scheduled onto, and it is the row to act on.`,
+		example: `  hgr device-class ls
+  hgr device-class ls --present
+  hgr device-class ls --cluster iad-1
+  hgr device-class get h100-80gb-sxm`,
+		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.DeviceClass], error) {
+			return b.DeviceClasses(ctx, o)
+		},
+		get: func(ctx context.Context, b api.Backend, ref string) (api.DeviceClass, error) {
+			return b.DeviceClass(ctx, ref)
+		},
+		keys:   func(c api.DeviceClass) []string { return []string{c.Class} },
+		empty:  "no device classes match",
+		getArg: "<class>",
+		columns: []ui.Column{
+			{Title: "class"},
+			{Title: "label"},
+			{Title: "arch"},
+			{Title: "mem", Align: ui.AlignRight},
+			{Title: "form", Wide: true},
+			{Title: "devices", Align: ui.AlignRight},
+			{Title: "impaired", Align: ui.AlignRight},
+			{Title: "free", Align: ui.AlignRight},
+			{Title: "nodes", Align: ui.AlignRight},
+			{Title: "clusters"},
+			{Title: "catalog"},
+		},
+		row: func(s ui.Style, c api.DeviceClass) []string {
+			return []string{
+				c.Class, orDash(c.Label), orDash(c.Architecture), mib(c.MemoryMiB), orDash(c.FormFactor),
+				strconv.Itoa(c.Inventory.Devices), countCell(s, c.Inventory.Devices-c.Inventory.Healthy),
+				strconv.Itoa(c.Inventory.Allocatable), strconv.Itoa(c.Inventory.Nodes),
+				orDash(strings.Join(c.Inventory.Clusters, ",")), yesNo(s, c.InCatalog),
+			}
+		},
+		bind: func(f *filters, cmd *cobra.Command) {
+			cmd.Flags().StringVar(&f.cluster, "cluster", "", "count only one cluster's devices")
+			cmd.Flags().StringVar(&f.arch, "architecture", "", "filter by vendor generation, e.g. hopper")
+			cmd.Flags().BoolVar(&f.present, "present", false, "only classes the fleet holds (--present=false for the rest)")
+		},
+		detail: func(app *App, w io.Writer, s ui.Style, c api.DeviceClass) {
+			fmt.Fprintf(w, "%s %s\n", s.Bold(c.Class), s.Dim(c.Label))
+			kv := app.KV()
+			kv.Add("architecture", orDash(c.Architecture))
+			kv.Add("vendor", orDash(c.Vendor))
+			kv.Add("memory", mib(c.MemoryMiB))
+			kv.Add("form factor", orDash(c.FormFactor))
+			kv.Add("in catalog", yesNo(s, c.InCatalog))
+			if !c.InCatalog {
+				kv.Add("", s.Dim("not in devices.json — add it there and release both halves"))
+			}
+			kv.Addf("devices", "%d total · %d healthy · %d allocatable",
+				c.Inventory.Devices, c.Inventory.Healthy, c.Inventory.Allocatable)
+			kv.Addf("spread", "%d nodes · %s", c.Inventory.Nodes, orDash(strings.Join(c.Inventory.Clusters, ", ")))
+			for dialect, names := range c.Aliases {
+				kv.Addf("alias "+dialect, "%s", strings.Join(names, ", "))
+			}
+			kv.Render(w)
+		},
+		next: func(c api.DeviceClass) []errs.Action {
+			return []errs.Action{
+				{Description: "Devices of this class", Command: "hgr device ls --class " + c.Class},
+				{Description: "Pools that provision it", Command: "hgr pool ls --class " + c.Class},
+				{Description: "Recipes that ask for it", Command: "hgr recipe ls --class " + c.Class},
+			}
+		},
+	}
+}
+
 func domainCell(d api.Device) string {
 	if d.Topology == nil {
 		return "-"
