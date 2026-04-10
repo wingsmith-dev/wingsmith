@@ -7,7 +7,11 @@ import { Switch } from "@/components/ui/switch"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
 import { DEVICE_HEALTHS } from "@/modules/supply/display"
-import { useAllTopologyDomains, useDevices } from "@/modules/supply/queries"
+import {
+  useAllTopologyDomains,
+  useDeviceClasses,
+  useDevices,
+} from "@/modules/supply/queries"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { GroupedDevices } from "./GroupedDevices"
 import { TopologySummary } from "./TopologySummary"
@@ -46,9 +50,16 @@ export function DevicesPage() {
         }),
       })
 
-  const classes = [
-    ...new Set((list.items ?? []).map((d) => d.device_class)),
-  ].sort()
+  /**
+   * From the catalog scoped to what this fleet holds, not from the loaded page.
+   * Deriving it from `list.items` made the filter depend on which classes
+   * happened to be in the first page — narrowing to a class could remove it
+   * from its own dropdown.
+   */
+  const { data: classes } = useDeviceClasses({
+    cluster: search.cluster,
+    present: true,
+  })
 
   return (
     <div className="flex flex-col">
@@ -77,7 +88,10 @@ export function DevicesPage() {
             label="Class"
             value={search.class ?? ALL}
             onChange={set("class")}
-            options={classes.map((c) => ({ value: c, label: c }))}
+            options={(classes ?? []).map((c) => ({
+              value: c.name,
+              label: c.label,
+            }))}
           />
           <FilterSelect
             label="Health"

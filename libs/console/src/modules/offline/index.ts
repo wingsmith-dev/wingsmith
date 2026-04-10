@@ -13,6 +13,7 @@ import {
   clusters,
   components,
   deployments,
+  deviceClasses,
   devices,
   discoveredWorkloads,
   domains,
@@ -96,6 +97,41 @@ collection({
     eq(q.get("topology_domain"), d.topology?.id ?? null) &&
     bool(q.bool("allocatable"), d.allocatable),
 })
+
+/**
+ * The catalog is keyed by name and is not paginated, so it is registered by
+ * hand rather than through `collection` — which assumes an id and a cursor,
+ * and a device class has neither.
+ */
+registerFixtures([
+  {
+    method: "GET",
+    path: "/device-classes",
+    handler: ({ query }: FixtureContext) => {
+      const architecture = query.get("architecture")
+      const present = query.bool("present")
+      const cluster = clusterRef(query.get("cluster")) ?? query.get("cluster")
+
+      const items = deviceClasses(cluster)
+        .filter(
+          (c) => architecture === undefined || c.architecture === architecture
+        )
+        .filter(
+          (c) => present === undefined || c.inventory.devices > 0 === present
+        )
+      return { items, count: items.length, next_cursor: null }
+    },
+  },
+  {
+    method: "GET",
+    path: "/device-classes/:name",
+    handler: ({ params }: FixtureContext) => {
+      const found = deviceClasses().find((c) => c.name === params.name)
+      if (!found) throw new NotFoundError(`no device class '${params.name}'`)
+      return found
+    },
+  },
+])
 
 collection({
   path: "/topology-domains",

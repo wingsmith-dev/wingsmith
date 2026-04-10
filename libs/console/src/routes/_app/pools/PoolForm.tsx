@@ -1,3 +1,4 @@
+import { DeviceClassField } from "@/components/supply/device-class"
 import {
   FormDialog,
   FormGrid,
@@ -133,12 +134,7 @@ export function PoolForm({
             />
           </>
         )}
-        <TextField
-          label="Device class"
-          value={deviceClass}
-          onChange={setDeviceClass}
-          placeholder="h100-80gb-sxm"
-        />
+        <DeviceClassField value={deviceClass} onChange={setDeviceClass} />
         <NumberField
           label="Devices per node"
           value={devicesPerNode}

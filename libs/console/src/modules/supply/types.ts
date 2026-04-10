@@ -119,6 +119,38 @@ export interface Device {
   updated_at: string | null
 }
 
+/** `DeviceClassInventorySchema` — what the fleet holds of one class, counted on read. */
+export interface DeviceClassInventory {
+  devices: number
+  healthy: number
+  allocatable: number
+  nodes: number
+  clusters: string[]
+}
+
+/**
+ * `DeviceClassSchema` — one GPU model, as the plane names it.
+ *
+ * `name` is the identifier: the string that appears on a pool, a recipe shape,
+ * a quota and a device, and the only one that goes back over the wire. `label`
+ * is the only one to put in front of a person.
+ *
+ * `in_catalog` false means the fleet is running hardware the contract table
+ * does not name — it resolved to the slug of its vendor string and is being
+ * scheduled onto regardless. Those rows are the ones worth acting on.
+ */
+export interface DeviceClass {
+  name: string
+  label: string
+  architecture: string
+  vendor: string
+  memory_mib: number
+  form_factor: string
+  in_catalog: boolean
+  aliases: Record<string, string[]>
+  inventory: DeviceClassInventory
+}
+
 /** `PoolMembershipSchema` — the observed half of a pool, as a rollup. */
 export interface PoolMembership {
   nodes_total: number

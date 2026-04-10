@@ -1,6 +1,7 @@
 import { api, type ListResponse } from "@/lib/api"
 import type {
   Device,
+  DeviceClass,
   Pool,
   PoolCreateRequest,
   PoolUpdateRequest,
@@ -33,6 +34,13 @@ export interface DeviceFilters {
   health?: string
   allocatable?: boolean
   topology_domain?: string
+}
+
+export interface DeviceClassFilters {
+  cluster?: string
+  architecture?: string
+  /** Only classes the fleet actually holds. */
+  present?: boolean
 }
 
 export interface TopologyFilters {
@@ -72,6 +80,21 @@ export function fetchDevices(
 
 export function fetchDevice(ref: string): Promise<Device> {
   return api.get<Device>(`/devices/${encodeURIComponent(ref)}`)
+}
+
+/**
+ * The catalog is not paginated — it is bounded by the hardware that exists —
+ * so this returns the array rather than a cursor page.
+ */
+export async function fetchDeviceClasses(
+  filters: DeviceClassFilters = {}
+): Promise<DeviceClass[]> {
+  const result = await api.list<DeviceClass>("/device-classes", { ...filters })
+  return result.items
+}
+
+export function fetchDeviceClass(name: string): Promise<DeviceClass> {
+  return api.get<DeviceClass>(`/device-classes/${encodeURIComponent(name)}`)
 }
 
 export function fetchTopologyDomains(

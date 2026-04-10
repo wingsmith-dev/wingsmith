@@ -64,6 +64,7 @@ const fleetItems: NavItem[] = [
   { label: "Pools", to: "/pools", kind: "pool" },
   { label: "Nodes", to: "/nodes", kind: "node" },
   { label: "Devices", to: "/devices", kind: "device" },
+  { label: "GPU models", to: "/device-classes", kind: "device-class" },
 ]
 
 const accessItems: NavItem[] = [

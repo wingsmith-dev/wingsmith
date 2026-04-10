@@ -1,8 +1,13 @@
 import type { Column } from "@/components/layout/data-table"
-import { Dash, Id } from "@/components/layout/mono"
+import { CopyableId, Dash, Id } from "@/components/layout/mono"
 import { ResourceCell } from "@/components/layout/resource-cell"
-import { Badge } from "@/components/ui/badge"
-import { formatRelative } from "@/lib/format"
+import { DeviceClassBadge } from "@/components/supply/device-class"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { formatRelative, shortenId } from "@/lib/format"
 import {
   gibibytes,
   topologyKindLabel,
@@ -153,16 +158,18 @@ export function deviceColumns(
       header: "Device",
       cell: (device) => (
         <ResourceCell kind="device">
-          <Link
-            to="/devices/$deviceId"
-            params={{ deviceId: device.id }}
-            className="block font-mono text-xs hover:underline"
-          >
-            {device.device_uuid}
-            <span className="ml-2 text-muted-foreground/50">
-              #{device.device_index}
-            </span>
-          </Link>
+          <CopyableId value={device.device_uuid}>
+            <Link
+              to="/devices/$deviceId"
+              params={{ deviceId: device.id }}
+              className="font-mono text-xs hover:underline"
+            >
+              {shortenId(device.device_uuid)}
+              <span className="ml-2 text-muted-foreground/50">
+                #{device.device_index}
+              </span>
+            </Link>
+          </CopyableId>
         </ResourceCell>
       ),
     },
@@ -173,13 +180,20 @@ export function deviceColumns(
       key: "node",
       header: "Node",
       cell: (device) => (
-        <Link
-          to="/nodes/$nodeId"
-          params={{ nodeId: device.node }}
-          className="font-mono text-2xs text-muted-foreground hover:underline"
-        >
-          {device.node_name}
-        </Link>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              to="/nodes/$nodeId"
+              params={{ nodeId: device.node }}
+              className="block max-w-[14rem] truncate font-mono text-2xs text-muted-foreground hover:underline"
+            >
+              {device.node_name}
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent className="font-mono text-2xs">
+            {device.node_name}
+          </TooltipContent>
+        </Tooltip>
       ),
     })
   }
@@ -188,11 +202,7 @@ export function deviceColumns(
     {
       key: "class",
       header: "Class",
-      cell: (device) => (
-        <Badge variant="secondary" className="font-mono text-2xs">
-          {device.device_class}
-        </Badge>
-      ),
+      cell: (device) => <DeviceClassBadge name={device.device_class} />,
     },
     {
       key: "memory",
@@ -274,7 +284,7 @@ export function topologyColumns(): Column<TopologyDomain>[] {
             className="block font-mono text-xs hover:underline"
           >
             {domain.identifier}
-            <Id value={domain.id} className="ml-2" />
+            <Id value={shortenId(domain.id)} className="ml-2" />
           </Link>
         </ResourceCell>
       ),

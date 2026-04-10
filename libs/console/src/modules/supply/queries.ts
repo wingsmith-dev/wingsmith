@@ -4,6 +4,8 @@ import {
   createPool,
   deletePool,
   fetchDevice,
+  fetchDeviceClass,
+  fetchDeviceClasses,
   fetchDevices,
   fetchNode,
   fetchNodes,
@@ -11,12 +13,13 @@ import {
   fetchPools,
   fetchTopologyDomains,
   updatePool,
+  type DeviceClassFilters,
   type DeviceFilters,
   type NodeFilters,
   type PoolFilters,
   type TopologyFilters,
 } from "./api"
-import type { PoolCreateRequest, PoolUpdateRequest } from "./types"
+import type { DeviceClass, PoolCreateRequest, PoolUpdateRequest } from "./types"
 
 export function useNodes(filters: NodeFilters = {}) {
   return useCursorList(["nodes", filters], (cursor) =>
@@ -43,6 +46,27 @@ export function useDevice(ref: string) {
     queryKey: ["devices", "detail", ref],
     queryFn: () => fetchDevice(ref),
     enabled: !!ref,
+  })
+}
+
+/**
+ * The device catalog. Cached hard and for a long time: it changes when a
+ * release changes the contract table, not when the fleet does anything, and
+ * every select on every form reads it.
+ */
+export function useDeviceClasses(filters: DeviceClassFilters = {}) {
+  return useQuery({
+    queryKey: ["device-classes", filters],
+    queryFn: () => fetchDeviceClasses(filters),
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useDeviceClass(name: string) {
+  return useQuery({
+    queryKey: ["device-classes", "detail", name],
+    queryFn: () => fetchDeviceClass(name),
+    enabled: !!name,
   })
 }
 
@@ -104,4 +128,46 @@ export function useDeletePool() {
     mutationFn: (ref: string) => deletePool(ref),
     onSuccess: () => client.invalidateQueries({ queryKey: ["pools"] }),
   })
+}
+
+/**
+ * The identifier of a class, and the name a person reads for it.
+ *
+ * `name` is what is stored, sent and filtered on; the label is display only and
+ * is never round-tripped. Keeping them in one component is what stops a form
+ * from posting "NVIDIA H100 80GB SXM" as a device class.
+ */
+export function useDeviceClassLabel(): (name: string) => string {
+  const { data } = useDeviceClasses()
+  return (name: string) =>
+    data?.find((entry) => entry.name === name)?.label ?? name
+}
+
+/**
+ * The options for a class picker, with `current` guaranteed present.
+ *
+ * A pool or a recipe can carry a class the catalog does not list — hardware
+ * nobody has named yet still resolves and still gets scheduled onto. Dropping
+ * it from the list would mean opening the edit form and silently changing the
+ * value, so it is always offered, marked as the unlisted thing it is.
+ */
+export function useDeviceClassOptions(current?: string) {
+  const { data, isLoading } = useDeviceClasses()
+  const classes = data ?? []
+
+  const options = classes.map((entry) => ({
+    value: entry.name,
+    label: optionLabel(entry),
+  }))
+
+  if (current && !classes.some((entry) => entry.name === current)) {
+    options.unshift({ value: current, label: `${current} · not in catalog` })
+  }
+  return { options, isLoading }
+}
+
+function optionLabel(entry: DeviceClass): string {
+  const held = entry.inventory.devices
+  const owned = held > 0 ? `${held} in fleet` : "none in fleet"
+  return `${entry.label} · ${owned}`
 }

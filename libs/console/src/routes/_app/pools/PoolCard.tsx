@@ -1,3 +1,4 @@
+import { DeviceClassLabel } from "@/components/supply/device-class"
 import { RowActions } from "@/components/layout/destructive"
 import { Field } from "@/components/layout/field"
 import { Labels } from "@/components/layout/mono"
@@ -100,7 +101,9 @@ export function PoolCard({
         <div className="p-4">
           <PanelHeading kind="declared" />
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Device class">{pool.device_class}</Field>
+            <Field label="Device class">
+              <DeviceClassLabel name={pool.device_class} />
+            </Field>
             <Field label="Node shape">{shapeLabel(pool.node_shape)}</Field>
             <Field label="Devices per node">{pool.devices_per_node}</Field>
             <Field label="Bounds">

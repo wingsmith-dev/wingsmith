@@ -20,6 +20,7 @@ import type {
 } from "@/modules/machinery/types"
 import type {
   Device,
+  DeviceClass,
   Pool,
   SupplyNode,
   TopologyDomain,
@@ -99,7 +100,7 @@ const SPECS: ClusterSpec[] = [
     pools: [
       {
         name: "h100-prod",
-        deviceClass: "h100-80",
+        deviceClass: "h100-80gb-sxm",
         devicesPerNode: 8,
         minNodes: 4,
         maxNodes: 16,
@@ -163,7 +164,7 @@ const SPECS: ClusterSpec[] = [
     pools: [
       {
         name: "l40s-serving",
-        deviceClass: "l40s-48",
+        deviceClass: "l40s-48gb-pcie",
         devicesPerNode: 4,
         minNodes: 1,
         maxNodes: 4,
@@ -213,7 +214,7 @@ const SPECS: ClusterSpec[] = [
     pools: [
       {
         name: "a100-batch",
-        deviceClass: "a100-80",
+        deviceClass: "a100-80gb-sxm",
         devicesPerNode: 8,
         minNodes: 2,
         maxNodes: 6,
@@ -256,7 +257,7 @@ const SPECS: ClusterSpec[] = [
     pools: [
       {
         name: "h200-staging",
-        deviceClass: "h200-141",
+        deviceClass: "h200-141gb-sxm",
         devicesPerNode: 8,
         minNodes: 2,
         maxNodes: 8,
@@ -269,11 +270,124 @@ const SPECS: ClusterSpec[] = [
   },
 ]
 
-const DEVICE_MEMORY_MIB: Record<string, number> = {
-  "h100-80": 81_920,
-  "l40s-48": 49_152,
-  "a100-80": 81_920,
-  "h200-141": 144_384,
+/**
+ * The catalog half of `/device-classes`, copied from
+ * `libs/packages/contract/devices.json` for the classes this fixture seeds.
+ *
+ * Values are the contract's, not invented ones: the fixture exists so the
+ * console can be worked on without a plane, and a fixture that disagrees with
+ * the contract makes a broken console look right. `rtx-6000-ada-48gb-pcie`
+ * carries no devices on purpose — hardware we could take delivery of but do not
+ * own is half of what the catalog is for.
+ */
+const CATALOG: Omit<DeviceClass, "inventory">[] = [
+  {
+    name: "h100-80gb-sxm",
+    label: "NVIDIA H100 80GB SXM",
+    architecture: "hopper",
+    vendor: "nvidia",
+    memory_mib: 81_559,
+    form_factor: "sxm",
+    in_catalog: true,
+    aliases: {
+      gfd: ["NVIDIA-H100-80GB-HBM3"],
+      dcgm: ["NVIDIA H100 80GB HBM3"],
+    },
+  },
+  {
+    name: "h200-141gb-sxm",
+    label: "NVIDIA H200 141GB SXM",
+    architecture: "hopper",
+    vendor: "nvidia",
+    memory_mib: 143_771,
+    form_factor: "sxm",
+    in_catalog: true,
+    aliases: { gfd: ["NVIDIA-H200"], dcgm: ["NVIDIA H200"] },
+  },
+  {
+    name: "a100-80gb-sxm",
+    label: "NVIDIA A100 80GB SXM",
+    architecture: "ampere",
+    vendor: "nvidia",
+    memory_mib: 81_920,
+    form_factor: "sxm",
+    in_catalog: true,
+    aliases: {
+      gfd: ["NVIDIA-A100-SXM4-80GB"],
+      dcgm: ["NVIDIA A100-SXM4-80GB"],
+    },
+  },
+  {
+    name: "l40s-48gb-pcie",
+    label: "NVIDIA L40S 48GB",
+    architecture: "ada",
+    vendor: "nvidia",
+    memory_mib: 46_068,
+    form_factor: "pcie",
+    in_catalog: true,
+    aliases: { gfd: ["NVIDIA-L40S"], dcgm: ["NVIDIA L40S"] },
+  },
+  {
+    name: "rtx-6000-ada-48gb-pcie",
+    label: "NVIDIA RTX 6000 Ada 48GB",
+    architecture: "ada",
+    vendor: "nvidia",
+    memory_mib: 49_140,
+    form_factor: "pcie",
+    in_catalog: true,
+    aliases: { gfd: ["NVIDIA-RTX-6000-Ada-Generation"] },
+  },
+]
+
+const DEVICE_MEMORY_MIB: Record<string, number> = Object.fromEntries(
+  CATALOG.map((entry) => [entry.name, entry.memory_mib])
+)
+
+/**
+ * The catalog joined to the seeded fleet, the way the plane joins it on read.
+ *
+ * `sm-9000` is here and is not in the catalog: it stands for hardware the
+ * contract table has never heard of, which resolved to the slug of its vendor
+ * string and is being scheduled onto anyway. The console has to render that
+ * case, so the fixture has to produce it.
+ */
+export function deviceClasses(cluster?: string): DeviceClass[] {
+  const scoped =
+    cluster === undefined
+      ? devices
+      : devices.filter((device) => device.cluster === cluster)
+  const names = new Set([
+    ...CATALOG.map((entry) => entry.name),
+    ...scoped.map((device) => device.device_class),
+  ])
+
+  return [...names]
+    .map((name) => {
+      const entry = CATALOG.find((c) => c.name === name)
+      const owned = scoped.filter((device) => device.device_class === name)
+      return {
+        name,
+        label: entry?.label ?? name,
+        architecture: entry?.architecture ?? "",
+        vendor: entry?.vendor ?? "",
+        memory_mib: entry?.memory_mib ?? 0,
+        form_factor: entry?.form_factor ?? "",
+        in_catalog: entry !== undefined,
+        aliases: entry?.aliases ?? {},
+        inventory: {
+          devices: owned.length,
+          healthy: owned.filter((d) => d.health === "healthy").length,
+          allocatable: owned.filter((d) => d.allocatable).length,
+          nodes: new Set(owned.map((d) => d.node)).size,
+          clusters: [...new Set(owned.map((d) => d.cluster_name))].sort(),
+        },
+      }
+    })
+    .sort(
+      (a, b) =>
+        b.inventory.devices - a.inventory.devices ||
+        a.name.localeCompare(b.name)
+    )
 }
 
 export const clusters: Cluster[] = []
@@ -603,7 +717,7 @@ export const recipes: Recipe[] = [
       prefix_cache_config: { blocks: 4096 },
     },
     shape: {
-      device_class: "h100-80",
+      device_class: "h100-80gb-sxm",
       device_count: 8,
       device_memory_mib_min: 81_920,
       requires_single_topology_domain: true,
@@ -636,7 +750,7 @@ export const recipes: Recipe[] = [
       prefix_cache_config: {},
     },
     shape: {
-      device_class: "l40s-48",
+      device_class: "l40s-48gb-pcie",
       device_count: 1,
       device_memory_mib_min: 0,
       requires_single_topology_domain: false,
@@ -830,7 +944,7 @@ export const quotas: Quota[] = [
     project_slug: "core",
     cluster: clusters[0].id,
     cluster_name: clusters[0].name,
-    device_class: "h100-80",
+    device_class: "h100-80gb-sxm",
     guaranteed_devices: 16,
     limit_devices: 32,
     over_quota_weight: 2,
@@ -852,7 +966,7 @@ export const quotas: Quota[] = [
     project_slug: "research",
     cluster: null,
     cluster_name: null,
-    device_class: "a100-80",
+    device_class: "a100-80gb-sxm",
     guaranteed_devices: 8,
     limit_devices: 8,
     over_quota_weight: 1,
@@ -907,7 +1021,7 @@ export const allocations: Allocation[] = [
     project_slug: "core",
     workload: uid("wkl_"),
     replica: uid("rep_"),
-    device_class: "h100-80",
+    device_class: "h100-80gb-sxm",
     device_count: 8,
     over_quota: false,
     phase: "held",
@@ -934,7 +1048,7 @@ export const allocations: Allocation[] = [
     project_slug: "core",
     workload: uid("wkl_"),
     replica: null,
-    device_class: "l40s-48",
+    device_class: "l40s-48gb-pcie",
     device_count: 4,
     over_quota: true,
     phase: "held",
@@ -961,7 +1075,7 @@ export const allocations: Allocation[] = [
     project_slug: "research",
     workload: uid("wkl_"),
     replica: null,
-    device_class: "a100-80",
+    device_class: "a100-80gb-sxm",
     device_count: 8,
     over_quota: false,
     phase: "released",

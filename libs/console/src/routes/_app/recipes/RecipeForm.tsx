@@ -1,3 +1,4 @@
+import { DeviceClassField } from "@/components/supply/device-class"
 import {
   FormDialog,
   FormGrid,
@@ -241,12 +242,7 @@ export function RecipeForm({
           onChange={setEngineImage}
           placeholder="registry/image:tag"
         />
-        <TextField
-          label="Device class"
-          value={deviceClass}
-          onChange={setDeviceClass}
-          placeholder="h100-80gb"
-        />
+        <DeviceClassField value={deviceClass} onChange={setDeviceClass} />
         <NumberField
           label="Device count"
           value={deviceCount}

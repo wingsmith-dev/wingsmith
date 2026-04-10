@@ -17,6 +17,7 @@ import { Route as AppArtifactsRouteRouteImport } from './routes/_app/artifacts/r
 import { Route as AppBenchmarksRouteRouteImport } from './routes/_app/benchmarks/route'
 import { Route as AppClustersRouteRouteImport } from './routes/_app/clusters/route'
 import { Route as AppDeploymentsRouteRouteImport } from './routes/_app/deployments/route'
+import { Route as AppDeviceClassesRouteRouteImport } from './routes/_app/device-classes/route'
 import { Route as AppDevicesRouteRouteImport } from './routes/_app/devices/route'
 import { Route as AppDiscoveredRouteRouteImport } from './routes/_app/discovered/route'
 import { Route as AppEndpointsRouteRouteImport } from './routes/_app/endpoints/route'
@@ -80,6 +81,11 @@ const AppClustersRouteRoute = AppClustersRouteRouteImport.update({
 const AppDeploymentsRouteRoute = AppDeploymentsRouteRouteImport.update({
   id: '/deployments',
   path: '/deployments',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDeviceClassesRouteRoute = AppDeviceClassesRouteRouteImport.update({
+  id: '/device-classes',
+  path: '/device-classes',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDevicesRouteRoute = AppDevicesRouteRouteImport.update({
@@ -222,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/benchmarks': typeof AppBenchmarksRouteRouteWithChildren
   '/clusters': typeof AppClustersRouteRouteWithChildren
   '/deployments': typeof AppDeploymentsRouteRouteWithChildren
+  '/device-classes': typeof AppDeviceClassesRouteRoute
   '/devices': typeof AppDevicesRouteRouteWithChildren
   '/discovered': typeof AppDiscoveredRouteRoute
   '/endpoints': typeof AppEndpointsRouteRouteWithChildren
@@ -256,6 +263,7 @@ export interface FileRoutesByTo {
   '/benchmarks': typeof AppBenchmarksRouteRouteWithChildren
   '/clusters': typeof AppClustersRouteRouteWithChildren
   '/deployments': typeof AppDeploymentsRouteRouteWithChildren
+  '/device-classes': typeof AppDeviceClassesRouteRoute
   '/devices': typeof AppDevicesRouteRouteWithChildren
   '/discovered': typeof AppDiscoveredRouteRoute
   '/endpoints': typeof AppEndpointsRouteRouteWithChildren
@@ -292,6 +300,7 @@ export interface FileRoutesById {
   '/_app/benchmarks': typeof AppBenchmarksRouteRouteWithChildren
   '/_app/clusters': typeof AppClustersRouteRouteWithChildren
   '/_app/deployments': typeof AppDeploymentsRouteRouteWithChildren
+  '/_app/device-classes': typeof AppDeviceClassesRouteRoute
   '/_app/devices': typeof AppDevicesRouteRouteWithChildren
   '/_app/discovered': typeof AppDiscoveredRouteRoute
   '/_app/endpoints': typeof AppEndpointsRouteRouteWithChildren
@@ -328,6 +337,7 @@ export interface FileRouteTypes {
     | '/benchmarks'
     | '/clusters'
     | '/deployments'
+    | '/device-classes'
     | '/devices'
     | '/discovered'
     | '/endpoints'
@@ -362,6 +372,7 @@ export interface FileRouteTypes {
     | '/benchmarks'
     | '/clusters'
     | '/deployments'
+    | '/device-classes'
     | '/devices'
     | '/discovered'
     | '/endpoints'
@@ -397,6 +408,7 @@ export interface FileRouteTypes {
     | '/_app/benchmarks'
     | '/_app/clusters'
     | '/_app/deployments'
+    | '/_app/device-classes'
     | '/_app/devices'
     | '/_app/discovered'
     | '/_app/endpoints'
@@ -486,6 +498,13 @@ declare module '@tanstack/react-router' {
       path: '/deployments'
       fullPath: '/deployments'
       preLoaderRoute: typeof AppDeploymentsRouteRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/device-classes': {
+      id: '/_app/device-classes'
+      path: '/device-classes'
+      fullPath: '/device-classes'
+      preLoaderRoute: typeof AppDeviceClassesRouteRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/devices': {
@@ -786,6 +805,7 @@ interface AppRouteChildren {
   AppBenchmarksRouteRoute: typeof AppBenchmarksRouteRouteWithChildren
   AppClustersRouteRoute: typeof AppClustersRouteRouteWithChildren
   AppDeploymentsRouteRoute: typeof AppDeploymentsRouteRouteWithChildren
+  AppDeviceClassesRouteRoute: typeof AppDeviceClassesRouteRoute
   AppDevicesRouteRoute: typeof AppDevicesRouteRouteWithChildren
   AppDiscoveredRouteRoute: typeof AppDiscoveredRouteRoute
   AppEndpointsRouteRoute: typeof AppEndpointsRouteRouteWithChildren
@@ -809,6 +829,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppBenchmarksRouteRoute: AppBenchmarksRouteRouteWithChildren,
   AppClustersRouteRoute: AppClustersRouteRouteWithChildren,
   AppDeploymentsRouteRoute: AppDeploymentsRouteRouteWithChildren,
+  AppDeviceClassesRouteRoute: AppDeviceClassesRouteRoute,
   AppDevicesRouteRoute: AppDevicesRouteRouteWithChildren,
   AppDiscoveredRouteRoute: AppDiscoveredRouteRoute,
   AppEndpointsRouteRoute: AppEndpointsRouteRouteWithChildren,

@@ -1,3 +1,4 @@
+import { DeviceClassMultiField } from "@/components/supply/device-class"
 import {
   FormDialog,
   FormGrid,
@@ -44,8 +45,8 @@ export function PolicyForm({
   const [residencies, setResidencies] = useState(
     (policy?.allowed_residencies ?? []).join(", ")
   )
-  const [deviceClasses, setDeviceClasses] = useState(
-    (policy?.allowed_device_classes ?? []).join(", ")
+  const [deviceClasses, setDeviceClasses] = useState<string[]>(
+    policy?.allowed_device_classes ?? []
   )
   const [allowedClusters, setAllowedClusters] = useState(
     (policy?.allowed_clusters ?? []).join(", ")
@@ -72,7 +73,7 @@ export function PolicyForm({
     description: description || null,
     allowed_regions: split(regions),
     allowed_residencies: split(residencies),
-    allowed_device_classes: split(deviceClasses),
+    allowed_device_classes: deviceClasses,
     allowed_clusters: split(allowedClusters),
     denied_clusters: split(deniedClusters),
     rules: (rules as Record<string, unknown>) ?? {},
@@ -139,13 +140,6 @@ export function PolicyForm({
           hint="Comma separated. Empty means no opinion."
         />
         <TextField
-          label="Allowed device classes"
-          value={deviceClasses}
-          onChange={setDeviceClasses}
-          placeholder="h100-80gb"
-          hint="Comma separated. Empty means no opinion."
-        />
-        <TextField
           label="Allowed clusters"
           value={allowedClusters}
           onChange={setAllowedClusters}
@@ -158,6 +152,11 @@ export function PolicyForm({
           hint="A denial outlives somebody widening the allow-list."
         />
       </FormGrid>
+
+      <DeviceClassMultiField
+        values={deviceClasses}
+        onChange={setDeviceClasses}
+      />
 
       <SwitchField label="Enabled" checked={enabled} onChange={setEnabled} />
 

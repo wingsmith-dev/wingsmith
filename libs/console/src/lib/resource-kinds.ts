@@ -6,6 +6,7 @@ import {
   IconBolt,
   IconBox,
   IconCpu,
+  IconDeviceDesktopAnalytics,
   IconFolders,
   IconGauge,
   IconLayoutDashboard,
@@ -26,6 +27,7 @@ export type ResourceKind =
   | "cluster"
   | "node"
   | "device"
+  | "device-class"
   | "pool"
   | "topology-domain"
   | "artifact"
@@ -53,6 +55,7 @@ export const RESOURCE_ICONS: Record<ResourceKind, React.ElementType> = {
   cluster: IconServer2,
   node: IconServer,
   device: IconCpu,
+  "device-class": IconDeviceDesktopAnalytics,
   pool: IconStack2,
   "topology-domain": IconTopologyStar3,
   artifact: IconPackages,

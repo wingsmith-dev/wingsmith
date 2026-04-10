@@ -1,10 +1,10 @@
+import { DeviceClassField } from "@/components/supply/device-class"
 import {
   FormDialog,
   FormGrid,
   NumberField,
   SelectField,
   SwitchField,
-  TextField,
 } from "@/components/layout/form"
 import { formatError } from "@/lib/format"
 import {
@@ -130,12 +130,7 @@ export function QuotaForm({
               })),
             ]}
           />
-          <TextField
-            label="Device class"
-            value={deviceClass}
-            onChange={setDeviceClass}
-            placeholder="h100-80gb"
-          />
+          <DeviceClassField value={deviceClass} onChange={setDeviceClass} />
         </FormGrid>
       )}
 
