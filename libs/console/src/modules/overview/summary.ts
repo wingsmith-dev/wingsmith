@@ -176,6 +176,13 @@ export interface ClusterActionableInput {
 
 const STALE_SYNC_MS = 5 * 60 * 1000
 
+/**
+ * How long a deployment may sit in a non-running phase before it is worth
+ * chasing. Placement takes time, and a rollout that is two seconds into
+ * `admitted` is working, not stuck.
+ */
+const SETTLING_MS = 10 * 60 * 1000
+
 const TONE_RANK: Record<StatusTone, number> = {
   danger: 0,
   warn: 1,
@@ -187,6 +194,11 @@ const TONE_RANK: Record<StatusTone, number> = {
 /** A deployment phase nobody has to chase. Everything else is still moving. */
 const SETTLED_PHASES = ["running"]
 
+/**
+ * One fault, one row. An unreachable cluster also has a broken sync link and a
+ * stale last sync, and saying so three times does not make it three problems —
+ * the downstream rows only appear where the cluster is otherwise reachable.
+ */
 function syncActionables(cluster: Cluster): Actionable[] {
   const out: Actionable[] = []
   const link: LinkProps = {
@@ -195,14 +207,16 @@ function syncActionables(cluster: Cluster): Actionable[] {
   }
 
   if (!cluster.reachable) {
-    out.push({
-      id: "cluster:unreachable",
-      tone: "danger",
-      kind: "cluster",
-      title: "Cluster is unreachable",
-      detail: `last seen ${formatRelative(cluster.sync.last_seen_at)}`,
-      link,
-    })
+    return [
+      {
+        id: "cluster:unreachable",
+        tone: "danger",
+        kind: "cluster",
+        title: "Cluster is unreachable",
+        detail: `last seen ${formatRelative(cluster.sync.last_seen_at)}`,
+        link,
+      },
+    ]
   }
 
   if (cluster.sync.state !== "connected") {
@@ -220,7 +234,11 @@ function syncActionables(cluster: Cluster): Actionable[] {
   }
 
   const lastSync = cluster.sync.last_sync_at
-  if (lastSync && Date.now() - new Date(lastSync).getTime() > STALE_SYNC_MS) {
+  if (
+    out.length === 0 &&
+    lastSync &&
+    Date.now() - new Date(lastSync).getTime() > STALE_SYNC_MS
+  ) {
     out.push({
       id: "cluster:stale",
       tone: "warn",
@@ -323,7 +341,7 @@ function nodeActionables(nodes: SupplyNode[]): Actionable[] {
     if (node.cordoned) {
       out.push({
         id: `node:cordoned:${node.id}`,
-        tone: "warn",
+        tone: "info",
         kind: "node",
         title: `${node.name} is cordoned`,
         detail: "nothing new will be scheduled onto it until it is uncordoned",
@@ -336,6 +354,21 @@ function nodeActionables(nodes: SupplyNode[]): Actionable[] {
   return out
 }
 
+/** How long a deployment has been in the phase it is in, where we can tell. */
+function settlingFor(deployment: Deployment): number | null {
+  const stamp =
+    deployment.workload.placed_at ??
+    deployment.workload.admitted_at ??
+    deployment.workload.queued_at
+  return stamp ? Date.now() - new Date(stamp).getTime() : null
+}
+
+/**
+ * A rollout in flight is not a thing to do. Only a deployment that has been
+ * mid-flight long enough to look stuck earns a row, and it earns one row: the
+ * phase and the replica shortfall are the same fact told twice while placement
+ * is still running.
+ */
 function deploymentActionables(deployments: Deployment[]): Actionable[] {
   const out: Actionable[] = []
 
@@ -345,19 +378,36 @@ function deploymentActionables(deployments: Deployment[]): Actionable[] {
       params: { deploymentId: deployment.id },
     }
 
-    if (!SETTLED_PHASES.includes(deployment.workload.phase)) {
+    const settling = !SETTLED_PHASES.includes(deployment.workload.phase)
+    const elapsed = settlingFor(deployment)
+    const stuck = settling && (elapsed === null || elapsed > SETTLING_MS)
+
+    if (stuck) {
       out.push({
         id: `deployment:phase:${deployment.id}`,
         tone: deployment.workload.phase === "pending" ? "warn" : "info",
         kind: "deployment",
-        title: `${deployment.name} is ${deployment.workload.phase}`,
+        title: `${deployment.name} has been ${deployment.workload.phase}${
+          elapsed === null
+            ? ""
+            : ` since ${formatRelative(
+                deployment.workload.placed_at ??
+                  deployment.workload.admitted_at ??
+                  deployment.workload.queued_at
+              )}`
+        }`,
         detail: deployment.workload.reason ?? undefined,
         badges: [deployment.workload.type],
         link,
       })
     }
 
-    if (deployment.replicas.ready < deployment.desired_replicas) {
+    if (
+      !settling &&
+      deployment.enabled &&
+      deployment.desired_replicas > 0 &&
+      deployment.replicas.ready < deployment.desired_replicas
+    ) {
       out.push({
         id: `deployment:replicas:${deployment.id}`,
         tone: deployment.replicas.ready === 0 ? "danger" : "warn",
