@@ -24,10 +24,10 @@ import (
 // than re-encoded, because the CRD is a durable copy of what the hub said, not this operator's
 // reading of it.
 type desiredState struct {
-	Kind     string
-	Name     string
-	Revision int64
-	Deleted  bool
+	Kind      string
+	Name      string
+	Revision  int64
+	Deleted   bool
 	Object    json.RawMessage
 	Authority string
 	Adopt     *v1alpha1.AdoptRef
@@ -110,8 +110,8 @@ func (s *Store) apply(ctx context.Context, d desiredState) error {
 		obj := &v1alpha1.SyncedResource{
 			ObjectMeta: metav1.ObjectMeta{Namespace: key.Namespace, Name: key.Name},
 			Spec: v1alpha1.SyncedResourceSpec{
-				Kind:     d.Kind,
-				Revision: d.Revision,
+				Kind:      d.Kind,
+				Revision:  d.Revision,
 				Payload:   rawOrNil(d.Object),
 				Authority: d.Authority,
 				Adopt:     d.Adopt,

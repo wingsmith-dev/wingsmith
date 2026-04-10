@@ -86,5 +86,9 @@ export function isOpen(phase: string): boolean {
  * different bytes are not the same tool however their versions read.
  */
 export function comparable(a: BenchmarkRun, b: BenchmarkRun): boolean {
-  return a.harness === b.harness && a.harness_version === b.harness_version && a.image === b.image
+  return (
+    a.harness === b.harness &&
+    a.harness_version === b.harness_version &&
+    a.image === b.image
+  )
 }

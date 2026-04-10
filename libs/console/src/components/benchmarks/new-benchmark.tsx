@@ -212,8 +212,8 @@ export function NewBenchmarkDialog({
             />
             <p className="text-2xs text-muted-foreground/60">
               Leave empty to use the pinned image above. Override it only to
-              reach a release the plane has not pinned yet — a run on a different
-              image is its own comparison group.
+              reach a release the plane has not pinned yet — a run on a
+              different image is its own comparison group.
             </p>
           </div>
 
