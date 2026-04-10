@@ -114,6 +114,9 @@ async def desired_object(
     Returns `None` only when there is nothing this seam can say — an unknown
     cluster, a recipe this cluster no longer runs, or a kind live dispatch does
     not carry yet.
+
+    This renders the changed object alone. `desired_frames` is what dispatch
+    calls, because an object is not always sendable on its own.
     """
     cluster_id = await db.scalar(select(Cluster.id).where(cluster_ref_clause(cluster_uid)))
     if cluster_id is None:
@@ -135,6 +138,72 @@ async def desired_object(
         generation=generation,
         deleted_at=format_ts(None),
     )
+
+
+async def desired_frames(
+    db: AsyncSession, cluster_uid: str, kind: str, uid: str, generation: int = 0
+) -> list[tuple[str, Struct]]:
+    """One changed object, preceded by whatever it cannot be understood without.
+
+    A deployment names a recipe, which names an artifact, whose weights have to be
+    resident before a replica may start. A resync sends all four in that order and
+    says why in `snapshot`; live dispatch used to send the deployment alone, on the
+    reasoning that everything else was already there. It is not, and the first
+    deployment of a new recipe is exactly when it is not: the recipe was announced
+    to no cluster when it was created, because no deployment yet named it, and
+    nothing re-announces it once one does. The cluster then holds a deployment
+    pointing at a recipe it has never been sent and waits for it forever.
+
+    So a hint about a deployment resolves to the whole dependency chain, in the
+    same order and from the same queries the snapshot uses. Re-sending an object
+    the cluster already has is free — the stream is full-object and idempotent by
+    construction (PROTOCOL §6) — and is the cheap side of the trade against a
+    deployment stranded until the next reconnect.
+
+    A `deployment.deleted` travels alone. Its dependencies are exactly what the
+    cluster is being told to stop needing.
+    """
+    cluster_id = await db.scalar(select(Cluster.id).where(cluster_ref_clause(cluster_uid)))
+    if cluster_id is None:
+        return []
+
+    if kind != "deployment":
+        one = await desired_object(db, cluster_uid, kind, uid, generation)
+        return [one] if one else []
+
+    found = await _deployments(db, cluster_uid, cluster_id, only=uid)
+    if not found:
+        return [
+            (
+                "deployment.deleted",
+                DeploymentDeleted(
+                    deployment_id=uid,
+                    cluster_id=cluster_uid,
+                    generation=generation,
+                    deleted_at=format_ts(None),
+                ),
+            )
+        ]
+
+    deployment = found[0]
+    frames: list[tuple[str, Struct]] = []
+
+    recipes = await _recipes(db, cluster_uid, cluster_id, only=deployment.recipe_id)
+    artifact_uid = recipes[0].artifact_id if recipes else None
+    if artifact_uid is not None:
+        for artifact in await _artifacts(db, cluster_uid, cluster_id):
+            if artifact.artifact_id == artifact_uid:
+                frames.append(("artifact.desired", artifact))
+                break
+    if recipes:
+        frames.append(("recipe.desired", recipes[0]))
+
+    cache = await _cache(db, cluster_uid, cluster_id)
+    if cache is not None:
+        frames.append(("cache.desired", cache))
+
+    frames.append(("deployment.desired", deployment))
+    return frames
 
 
 async def _components(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> list[ComponentDesired]:

@@ -50,11 +50,19 @@ class FakeSession:
 
 
 class FakeRenderer:
-    def __init__(self, rendered: tuple[str, Struct] | None) -> None:
-        self.rendered = rendered
+    """Renders a fixed answer. A single frame is accepted and wrapped, because most
+    of these tests are about the dispatch loop rather than about dependency order."""
+
+    def __init__(self, rendered: tuple[str, Struct] | list[tuple[str, Struct]] | None) -> None:
+        if rendered is None:
+            self.rendered: list[tuple[str, Struct]] = []
+        elif isinstance(rendered, list):
+            self.rendered = rendered
+        else:
+            self.rendered = [rendered]
         self.calls: list[DeclaredChange] = []
 
-    async def render(self, change: DeclaredChange) -> tuple[str, Struct] | None:
+    async def render(self, change: DeclaredChange) -> list[tuple[str, Struct]]:
         self.calls.append(change)
         return self.rendered
 
@@ -260,7 +268,7 @@ async def test_an_operation_hint_is_rendered_by_the_operations_renderer(monkeypa
     rendered = await DatabaseRenderer(FakeFactory()).render(change(kind="operation", uid=OPERATION))
 
     assert seen == [OPERATION]
-    assert rendered is not None and rendered[0] == "operation.desired"
+    assert [type_name for type_name, _ in rendered] == ["operation.desired"]
 
 
 CLUSTER_NAME = "cluster-us"

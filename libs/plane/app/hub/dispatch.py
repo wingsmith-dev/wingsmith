@@ -30,7 +30,7 @@ from app.db.notify import OPERATION
 from app.db.notify import DeclaredChange
 from app.db.notify import decode
 from app.db.notify import listen_dsn
-from app.ingestion.desired import desired_object
+from app.ingestion.desired import desired_frames
 from app.ingestion.operations import operation_desired
 
 
@@ -109,9 +109,14 @@ class LiveSessions:
 
 
 class Renderer(Protocol):
-    """Turns a hint back into the frame a resync would have sent for the same object."""
+    """Turns a hint back into the frames a resync would have sent for the same object.
 
-    async def render(self, change: DeclaredChange) -> tuple[str, Struct] | None: ...
+    Plural because an object is not always sendable alone: a deployment is
+    preceded by the recipe, artifact and cache entry it cannot be reconciled
+    without. The order is the snapshot's order and the receiver depends on it.
+    """
+
+    async def render(self, change: DeclaredChange) -> list[tuple[str, Struct]]: ...
 
 
 class DatabaseRenderer:
@@ -128,12 +133,13 @@ class DatabaseRenderer:
     def __init__(self, factory: Any | None = None) -> None:
         self._factory = factory
 
-    async def render(self, change: DeclaredChange) -> tuple[str, Struct] | None:
+    async def render(self, change: DeclaredChange) -> list[tuple[str, Struct]]:
         factory = self._factory or session_factory()
         async with factory() as db:
             if change.kind == OPERATION:
-                return await operation_desired(db, change.uid)
-            return await desired_object(db, change.cluster_id, change.kind, change.uid, change.generation)
+                one = await operation_desired(db, change.uid)
+                return [one] if one else []
+            return await desired_frames(db, change.cluster_id, change.kind, change.uid, change.generation)
 
 
 async def dispatch(change: DeclaredChange, live: LiveSessions, renderer: Renderer) -> bool:
@@ -147,13 +153,13 @@ async def dispatch(change: DeclaredChange, live: LiveSessions, renderer: Rendere
         return False
 
     rendered = await renderer.render(change)
-    if rendered is None:
+    if not rendered:
         logger.debug("hub.dispatch.unrenderable kind=%s uid=%s", change.kind, change.uid)
         return False
 
-    type_name, payload = rendered
-    await session.send_desired(type_name, payload)
-    logger.info("hub.dispatch.sent cluster=%s type=%s uid=%s", change.cluster_id, type_name, change.uid)
+    for type_name, payload in rendered:
+        await session.send_desired(type_name, payload)
+        logger.info("hub.dispatch.sent cluster=%s type=%s uid=%s", change.cluster_id, type_name, change.uid)
     return True
 
 

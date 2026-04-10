@@ -34,6 +34,7 @@ from app.db.notify import MemoryNotifier
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
+from app.ingestion.desired import desired_frames
 from app.ingestion.desired import desired_object
 from app.ingestion.desired import stream_desired
 from app.ingestion.operations import open_operations
@@ -513,6 +514,31 @@ async def test_live_dispatch_renders_what_a_resync_would_have_sent(db: AsyncSess
 
     assert kind == "deployment.desired"
     assert from_dispatch == from_resync[0]
+
+
+async def test_live_dispatch_sends_the_dependencies_a_deployment_cannot_reconcile_without(
+    db: AsyncSession,
+) -> None:
+    """The bug: the first deployment of a recipe stranded itself.
+
+    A recipe announces to every cluster with a deployment naming it, which at the
+    moment it is created is none. Nothing re-announces it when one finally does, so
+    the cluster received a deployment pointing at a recipe it had never been sent
+    and waited for it forever — `RecipeNotDeclared`, every fifteen seconds, until
+    somebody restarted the operator and a full resync fixed it by accident.
+
+    The artifact and the cache entry are here for the same reason and are not
+    hypothetical: the operator will not start a replica against a cold cache, so a
+    deployment whose weights nothing has declared warm never gets past residency.
+    """
+    cluster, _, _, created = await a_deployment(db)
+
+    frames = await desired_frames(db, cluster.id, "deployment", created.id)
+    kinds = [kind for kind, _ in frames]
+
+    assert kinds == ["artifact.desired", "recipe.desired", "cache.desired", "deployment.desired"]
+    assert kinds.index("recipe.desired") < kinds.index("deployment.desired")
+    assert kinds.index("artifact.desired") < kinds.index("recipe.desired")
 
 
 async def test_a_deployment_makes_its_own_weights_warm(db: AsyncSession) -> None:
