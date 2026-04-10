@@ -443,6 +443,34 @@ type Deployment struct {
 	Authority          string                  `json:"authority"`
 	Workload           DeploymentWorkload      `json:"workload"`
 	Replicas           DeploymentReplicaRollup `json:"replicas"`
+	Status             *DeploymentStatus       `json:"status"`
+
+	// The deployment's own topology requirement, which overrides the recipe's when set. Null
+	// means the recipe's answer stands rather than "no requirement".
+	RequiresSingleTopologyDomain *bool   `json:"requires_single_topology_domain"`
+	TopologyDomainKind           *string `json:"topology_domain_kind"`
+}
+
+// DeploymentStatus is what the cluster reports the deployment is doing, and why.
+//
+// Reason and Message are the sub-state within Phase and are deliberately not errors: a deployment
+// waiting for its weights to download is in a normal state that happens to take a while, and the
+// only thing worse than not saying so is saying it in a field called last_error. Nil until a
+// cluster has reported at all, which is the first seconds of every deployment's life and the
+// permanent state of one whose cluster cannot reach the hub.
+type DeploymentStatus struct {
+	ObservedGeneration  int        `json:"observed_generation"`
+	Phase               string     `json:"phase"`
+	Reason              *string    `json:"reason"`
+	Message             *string    `json:"message"`
+	DesiredReplicas     int        `json:"desired_replicas"`
+	ReadyReplicas       int        `json:"ready_replicas"`
+	UpdatedReplicas     int        `json:"updated_replicas"`
+	UnavailableReplicas int        `json:"unavailable_replicas"`
+	LastErrorCode       *string    `json:"last_error_code"`
+	LastErrorMessage    *string    `json:"last_error_message"`
+	LastErrorAt         *time.Time `json:"last_error_at"`
+	ObservedAt          *time.Time `json:"observed_at"`
 }
 
 // DiscoveredWorkload is something already running in a cluster that the plane

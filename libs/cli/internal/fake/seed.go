@@ -358,6 +358,11 @@ func seed() *state {
 				GangSize: 8, QueuedAt: ptr(created), AdmittedAt: ptr(created), PlacedAt: ptr(created), StartedAt: ptr(created),
 			},
 			Replicas: api.DeploymentReplicaRollup{Total: 4, Ready: 3, Running: 4, AtCurrentGeneration: 3},
+			Status: &api.DeploymentStatus{
+				ObservedGeneration: 7, Phase: "running", DesiredReplicas: 4, ReadyReplicas: 3,
+				UpdatedReplicas: 3, UnavailableReplicas: 1, ObservedAt: ptr(now.Add(-30 * time.Second)),
+			},
+			RequiresSingleTopologyDomain: boolptr(true), TopologyDomainKind: strptr("nvlink"),
 		},
 		api.Deployment{
 			ID: depPending, Name: "chat-sjc", ClusterID: sjc, RecipeID: recipeID,
@@ -370,6 +375,15 @@ func seed() *state {
 				QueuedAt: ptr(now.Add(-2 * time.Hour)),
 			},
 			Replicas: api.DeploymentReplicaRollup{},
+			// The state a deployment is actually in for most of the time somebody is watching it:
+			// declared, reached its cluster, and waiting on an ordering that is nobody's fault.
+			Status: &api.DeploymentStatus{
+				ObservedGeneration: 1, Phase: "pending",
+				Reason:          strptr("WeightsNotResident"),
+				Message:         strptr("waiting for art_01j9x2aaaaaaaaaaaaaaaaaaaa to finish downloading"),
+				DesiredReplicas: 1, UnavailableReplicas: 1,
+				ObservedAt: ptr(now.Add(-45 * time.Second)),
+			},
 		},
 	)
 
@@ -553,6 +567,8 @@ func revision(t time.Time) string {
 }
 
 func ptr(t time.Time) *time.Time { return &t }
+
+func boolptr(b bool) *bool { return &b }
 
 func strptr(s string) *string {
 	if s == "" {
