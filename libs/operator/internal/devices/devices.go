@@ -27,11 +27,15 @@ const (
 // Class is one card variant. Memory and form factor are part of the identity: an h100-80gb-sxm
 // and an h100-80gb-pcie are different things to place against.
 type Class struct {
-	Class      string              `json:"class"`
-	Vendor     string              `json:"vendor"`
-	MemoryMiB  int64               `json:"memory_mib"`
-	FormFactor string              `json:"form_factor"`
-	Aliases    map[string][]string `json:"aliases"`
+	Class string `json:"class"`
+	// Label is the human name for the class and the only one to print to a person; Class is the
+	// identifier and the only one that goes on the wire.
+	Label        string              `json:"label"`
+	Architecture string              `json:"architecture"`
+	Vendor       string              `json:"vendor"`
+	MemoryMiB    int64               `json:"memory_mib"`
+	FormFactor   string              `json:"form_factor"`
+	Aliases      map[string][]string `json:"aliases"`
 }
 
 // Table is the loaded dictionary, indexed by dialect and normalized alias.

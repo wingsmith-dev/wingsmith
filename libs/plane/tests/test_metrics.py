@@ -243,6 +243,8 @@ def test_device_class_selector_alternates_when_a_class_has_several_names():
         [
             DeviceClass(
                 name="h100-80gb-sxm",
+                label="NVIDIA H100 80GB SXM",
+                architecture="hopper",
                 vendor="nvidia",
                 memory_mib=81559,
                 form_factor="sxm",

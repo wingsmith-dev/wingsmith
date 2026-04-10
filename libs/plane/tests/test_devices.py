@@ -170,9 +170,11 @@ def test_every_class_is_a_slug_and_names_its_memory():
         assert entry.name == normalize(entry.name)
         assert entry.memory_mib > 0
         assert entry.form_factor
+        assert entry.label
+        assert entry.architecture
         assert set(entry.aliases) <= {DIALECT_GFD, DIALECT_DCGM}
 
 
 def test_aliases_of_an_unknown_class_are_empty():
     assert DeviceTable([]).aliases("h100-80gb-sxm", DIALECT_DCGM) == ()
-    assert DeviceClass("x", "nvidia", 1, "pcie", {}).aliases == {}
+    assert DeviceClass("x", "X", "ada", "nvidia", 1, "pcie", {}).aliases == {}

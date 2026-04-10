@@ -59,9 +59,15 @@ class DeviceClass:
 
     Memory and form factor are part of the identity: `h100-80gb-sxm` and
     `h100-80gb-pcie` are different things to place against.
+
+    `name` is the identifier and the only form that travels on the wire; `label`
+    is the one to show a person. A class the table does not carry has no label
+    of its own, and callers fall back to the name — see `label_for`.
     """
 
     name: str
+    label: str
+    architecture: str
     vendor: str
     memory_mib: int
     form_factor: str
@@ -120,6 +126,16 @@ class DeviceTable:
     def get(self, name: str) -> DeviceClass | None:
         return self._by_name.get(name)
 
+    def label_for(self, name: str) -> str:
+        """The name to show a person, falling back to the class itself.
+
+        Hardware the table does not list still resolves to a slug and is still
+        placed against, so this never returns empty — an unlabelled class reads
+        as its own identifier rather than as nothing.
+        """
+        entry = self._by_name.get(name)
+        return entry.label if entry is not None else name
+
     def aliases(self, name: str, dialect: str) -> tuple[str, ...]:
         """The vendor strings a hangar class is emitted under in one dialect."""
         entry = self._by_name.get(name)
@@ -146,6 +162,8 @@ def load(path: Path | None = None) -> DeviceTable:
     classes = [
         DeviceClass(
             name=entry["class"],
+            label=entry.get("label") or entry["class"],
+            architecture=entry.get("architecture", ""),
             vendor=entry["vendor"],
             memory_mib=int(entry["memory_mib"]),
             form_factor=entry["form_factor"],

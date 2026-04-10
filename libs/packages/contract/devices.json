@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "normalization": "lowercase; strip a leading vendor token; map every run of non-alphanumeric characters to a single hyphen; trim hyphens. A vendor string matches an alias when their normalized forms are equal, so `NVIDIA-H100-80GB-HBM3` and `NVIDIA H100 80GB HBM3` are the same alias.",
   "dialects": {
     "gfd": "GPU Feature Discovery node label nvidia.com/gpu.product",
@@ -8,173 +8,276 @@
   "classes": [
     {
       "class": "h100-80gb-sxm",
+      "label": "NVIDIA H100 80GB SXM",
+      "architecture": "hopper",
       "vendor": "nvidia",
       "memory_mib": 81559,
       "form_factor": "sxm",
       "aliases": {
-        "gfd": ["NVIDIA-H100-80GB-HBM3"],
-        "dcgm": ["NVIDIA H100 80GB HBM3"]
+        "gfd": [
+          "NVIDIA-H100-80GB-HBM3"
+        ],
+        "dcgm": [
+          "NVIDIA H100 80GB HBM3"
+        ]
       }
     },
     {
       "class": "h100-80gb-pcie",
+      "label": "NVIDIA H100 80GB PCIe",
+      "architecture": "hopper",
       "vendor": "nvidia",
       "memory_mib": 81559,
       "form_factor": "pcie",
       "aliases": {
-        "gfd": ["NVIDIA-H100-PCIe"],
-        "dcgm": ["NVIDIA H100 PCIe"]
+        "gfd": [
+          "NVIDIA-H100-PCIe"
+        ],
+        "dcgm": [
+          "NVIDIA H100 PCIe"
+        ]
       }
     },
     {
       "class": "h100-94gb-nvl",
+      "label": "NVIDIA H100 NVL 94GB",
+      "architecture": "hopper",
       "vendor": "nvidia",
       "memory_mib": 95830,
       "form_factor": "nvl",
       "aliases": {
-        "gfd": ["NVIDIA-H100-NVL"],
-        "dcgm": ["NVIDIA H100 NVL"]
+        "gfd": [
+          "NVIDIA-H100-NVL"
+        ],
+        "dcgm": [
+          "NVIDIA H100 NVL"
+        ]
       }
     },
     {
       "class": "h200-141gb-sxm",
+      "label": "NVIDIA H200 141GB SXM",
+      "architecture": "hopper",
       "vendor": "nvidia",
       "memory_mib": 143771,
       "form_factor": "sxm",
       "aliases": {
-        "gfd": ["NVIDIA-H200"],
-        "dcgm": ["NVIDIA H200"]
+        "gfd": [
+          "NVIDIA-H200"
+        ],
+        "dcgm": [
+          "NVIDIA H200"
+        ]
       }
     },
     {
       "class": "h200-141gb-nvl",
+      "label": "NVIDIA H200 NVL 141GB",
+      "architecture": "hopper",
       "vendor": "nvidia",
       "memory_mib": 143771,
       "form_factor": "nvl",
       "aliases": {
-        "gfd": ["NVIDIA-H200-NVL"],
-        "dcgm": ["NVIDIA H200 NVL"]
+        "gfd": [
+          "NVIDIA-H200-NVL"
+        ],
+        "dcgm": [
+          "NVIDIA H200 NVL"
+        ]
       }
     },
     {
       "class": "a100-40gb-sxm",
+      "label": "NVIDIA A100 40GB SXM",
+      "architecture": "ampere",
       "vendor": "nvidia",
       "memory_mib": 40960,
       "form_factor": "sxm",
       "aliases": {
-        "gfd": ["NVIDIA-A100-SXM4-40GB"],
-        "dcgm": ["NVIDIA A100-SXM4-40GB"]
+        "gfd": [
+          "NVIDIA-A100-SXM4-40GB"
+        ],
+        "dcgm": [
+          "NVIDIA A100-SXM4-40GB"
+        ]
       }
     },
     {
       "class": "a100-40gb-pcie",
+      "label": "NVIDIA A100 40GB PCIe",
+      "architecture": "ampere",
       "vendor": "nvidia",
       "memory_mib": 40960,
       "form_factor": "pcie",
       "aliases": {
-        "gfd": ["NVIDIA-A100-PCIE-40GB"],
-        "dcgm": ["NVIDIA A100-PCIE-40GB"]
+        "gfd": [
+          "NVIDIA-A100-PCIE-40GB"
+        ],
+        "dcgm": [
+          "NVIDIA A100-PCIE-40GB"
+        ]
       }
     },
     {
       "class": "a100-80gb-sxm",
+      "label": "NVIDIA A100 80GB SXM",
+      "architecture": "ampere",
       "vendor": "nvidia",
       "memory_mib": 81920,
       "form_factor": "sxm",
       "aliases": {
-        "gfd": ["NVIDIA-A100-SXM4-80GB"],
-        "dcgm": ["NVIDIA A100-SXM4-80GB"]
+        "gfd": [
+          "NVIDIA-A100-SXM4-80GB"
+        ],
+        "dcgm": [
+          "NVIDIA A100-SXM4-80GB"
+        ]
       }
     },
     {
       "class": "a100-80gb-pcie",
+      "label": "NVIDIA A100 80GB PCIe",
+      "architecture": "ampere",
       "vendor": "nvidia",
       "memory_mib": 81920,
       "form_factor": "pcie",
       "aliases": {
-        "gfd": ["NVIDIA-A100-80GB-PCIe"],
-        "dcgm": ["NVIDIA A100 80GB PCIe"]
+        "gfd": [
+          "NVIDIA-A100-80GB-PCIe"
+        ],
+        "dcgm": [
+          "NVIDIA A100 80GB PCIe"
+        ]
       }
     },
     {
       "class": "l40s-48gb-pcie",
+      "label": "NVIDIA L40S 48GB",
+      "architecture": "ada",
       "vendor": "nvidia",
       "memory_mib": 46068,
       "form_factor": "pcie",
       "aliases": {
-        "gfd": ["NVIDIA-L40S"],
-        "dcgm": ["NVIDIA L40S"]
+        "gfd": [
+          "NVIDIA-L40S"
+        ],
+        "dcgm": [
+          "NVIDIA L40S"
+        ]
       }
     },
     {
       "class": "l4-24gb-pcie",
+      "label": "NVIDIA L4 24GB",
+      "architecture": "ada",
       "vendor": "nvidia",
       "memory_mib": 23034,
       "form_factor": "pcie",
       "aliases": {
-        "gfd": ["NVIDIA-L4"],
-        "dcgm": ["NVIDIA L4"]
+        "gfd": [
+          "NVIDIA-L4"
+        ],
+        "dcgm": [
+          "NVIDIA L4"
+        ]
       }
     },
     {
       "class": "b200-180gb-sxm",
+      "label": "NVIDIA B200 180GB SXM",
+      "architecture": "blackwell",
       "vendor": "nvidia",
       "memory_mib": 183359,
       "form_factor": "sxm",
       "aliases": {
-        "gfd": ["NVIDIA-B200"],
-        "dcgm": ["NVIDIA B200"]
+        "gfd": [
+          "NVIDIA-B200"
+        ],
+        "dcgm": [
+          "NVIDIA B200"
+        ]
       }
     },
     {
       "class": "b300-288gb-sxm",
+      "label": "NVIDIA B300 288GB SXM",
+      "architecture": "blackwell",
       "vendor": "nvidia",
       "memory_mib": 294912,
       "form_factor": "sxm",
       "aliases": {
-        "gfd": ["NVIDIA-B300-SXM6-AC"],
-        "dcgm": ["NVIDIA B300 SXM6 AC"]
+        "gfd": [
+          "NVIDIA-B300-SXM6-AC"
+        ],
+        "dcgm": [
+          "NVIDIA B300 SXM6 AC"
+        ]
       }
     },
     {
       "class": "rtx-pro-6000-96gb-server-edition",
+      "label": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
+      "architecture": "blackwell",
       "vendor": "nvidia",
       "memory_mib": 97249,
       "form_factor": "server-edition",
       "aliases": {
-        "gfd": ["NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"],
-        "dcgm": ["NVIDIA RTX PRO 6000 Blackwell Server Edition"]
+        "gfd": [
+          "NVIDIA-RTX-PRO-6000-Blackwell-Server-Edition"
+        ],
+        "dcgm": [
+          "NVIDIA RTX PRO 6000 Blackwell Server Edition"
+        ]
       }
     },
     {
       "class": "rtx-pro-6000-96gb-workstation-edition",
+      "label": "NVIDIA RTX PRO 6000 Blackwell Workstation Edition",
+      "architecture": "blackwell",
       "vendor": "nvidia",
       "memory_mib": 97249,
       "form_factor": "workstation-edition",
       "aliases": {
-        "gfd": ["NVIDIA-RTX-PRO-6000-Blackwell-Workstation-Edition"],
-        "dcgm": ["NVIDIA RTX PRO 6000 Blackwell Workstation Edition"]
+        "gfd": [
+          "NVIDIA-RTX-PRO-6000-Blackwell-Workstation-Edition"
+        ],
+        "dcgm": [
+          "NVIDIA RTX PRO 6000 Blackwell Workstation Edition"
+        ]
       }
     },
     {
       "class": "rtx-pro-6000-96gb-max-q-workstation-edition",
+      "label": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+      "architecture": "blackwell",
       "vendor": "nvidia",
       "memory_mib": 97249,
       "form_factor": "max-q-workstation-edition",
       "aliases": {
-        "gfd": ["NVIDIA-RTX-PRO-6000-Blackwell-Max-Q-Workstation-Edition"],
-        "dcgm": ["NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"]
+        "gfd": [
+          "NVIDIA-RTX-PRO-6000-Blackwell-Max-Q-Workstation-Edition"
+        ],
+        "dcgm": [
+          "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+        ]
       }
     },
     {
       "class": "rtx-6000-ada-48gb-pcie",
+      "label": "NVIDIA RTX 6000 Ada 48GB",
+      "architecture": "ada",
       "vendor": "nvidia",
       "memory_mib": 49140,
       "form_factor": "pcie",
       "aliases": {
-        "gfd": ["NVIDIA-RTX-6000-Ada-Generation"],
-        "dcgm": ["NVIDIA RTX 6000 Ada Generation"]
+        "gfd": [
+          "NVIDIA-RTX-6000-Ada-Generation"
+        ],
+        "dcgm": [
+          "NVIDIA RTX 6000 Ada Generation"
+        ]
       }
     }
-  ]
+  ],
+  "label": "`label` is the human name for a class and the only string a console or CLI should print to a person; `class` is the identifier and the only string that travels on the wire. `architecture` groups a vendor generation for display and is never placed against."
 }
