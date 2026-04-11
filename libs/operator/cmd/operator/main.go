@@ -57,8 +57,10 @@ func run() error {
 	// The manager runs either way. Its cached client is what the desired-state store reads and
 	// writes, and that store keeps working read-only — what stops is the controller that would
 	// turn those CRDs into Kubernetes objects, which is simply never registered.
+	var reconciler *reconcile.SyncedResourceReconciler
 	if !cfg.ReadOnly {
-		if err := reconcile.SetupWithManager(mgr, cfg, log); err != nil {
+		reconciler, err = reconcile.SetupWithManager(mgr, cfg, log)
+		if err != nil {
 			return err
 		}
 	}
@@ -150,6 +152,9 @@ func run() error {
 
 	observer.Bind(client)
 	executor.Bind(client)
+	if reconciler != nil {
+		reconciler.Bind(client)
+	}
 
 	healthSrv := health.New(cfg.HealthAddr, log, map[string]health.Check{
 		"hub": func() error {

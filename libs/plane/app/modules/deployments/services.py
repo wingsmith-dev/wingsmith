@@ -29,6 +29,7 @@ from app.core.pagination import decode_cursor
 from app.modules.placement.services import PlacementService
 
 from .schemas import DeploymentSchema
+from .schemas import DeploymentStatusSchema
 from .schemas import DeploymentCreateRequest
 from .schemas import DeploymentUpdateRequest
 from .schemas import DeploymentWorkloadSchema
@@ -107,6 +108,26 @@ def _revision(deployment: Deployment, workload: Workload) -> str:
     return str(int(max(stamps).timestamp() * 1_000_000))
 
 
+def _status(row) -> DeploymentStatusSchema | None:
+    """The observed half, or nothing if no cluster has reported on it yet."""
+    if row is None:
+        return None
+    return DeploymentStatusSchema(
+        observed_generation=row.observed_generation,
+        phase=row.phase,
+        reason=row.reason,
+        message=row.message,
+        desired_replicas=row.desired_replicas,
+        ready_replicas=row.ready_replicas,
+        updated_replicas=row.updated_replicas,
+        unavailable_replicas=row.unavailable_replicas,
+        last_error_code=row.last_error_code,
+        last_error_message=row.last_error_message,
+        last_error_at=row.last_error_at,
+        observed_at=row.observed_at,
+    )
+
+
 def _rollup(row: dict | None) -> DeploymentReplicaRollupSchema:
     if not row:
         return EMPTY
@@ -151,6 +172,7 @@ class DeploymentService:
         priority_class: str,
         adapter_uids: list[str],
         replicas: DeploymentReplicaRollupSchema,
+        status: DeploymentStatusSchema | None = None,
     ) -> DeploymentSchema:
         return DeploymentSchema(
             id=deployment.uid,
@@ -188,6 +210,7 @@ class DeploymentService:
                 deadline_at=workload.deadline_at,
             ),
             replicas=replicas,
+            status=status,
         )
 
     async def _one(self, ref: str, cluster: str | None = None):
@@ -211,6 +234,7 @@ class DeploymentService:
             priority_class=row.priority_class,
             adapter_uids=[adapters[i] for i in deployment.adapter_artifact_ids if i in adapters],
             replicas=replicas,
+            status=_status(row.DeploymentStatus),
         )
 
     async def get(self, ref: str, cluster: str | None = None) -> DeploymentSchema:
@@ -255,6 +279,7 @@ class DeploymentService:
                 priority_class=r.priority_class,
                 adapter_uids=[adapters[i] for i in r[0].adapter_artifact_ids if i in adapters],
                 replicas=_rollup(rollup.get(r[0].id)),
+                status=_status(r.DeploymentStatus),
             )
             for r in kept
         ]

@@ -270,6 +270,7 @@ replicas is a rollup of what is actually running.`,
 			{Title: "bounds", Align: ui.AlignRight},
 			{Title: "gen", Align: ui.AlignRight},
 			{Title: "authority"},
+			{Title: "waiting on", Wide: true},
 			{Title: "adopted"},
 			{Title: "enabled"},
 			{Title: "age", Align: ui.AlignRight},
@@ -281,7 +282,7 @@ replicas is a rollup of what is actually running.`,
 				fmt.Sprintf("%d/%d", d.Replicas.Ready, d.Replicas.Total),
 				strconv.Itoa(d.DesiredReplicas),
 				fmt.Sprintf("%d-%d", d.MinReplicas, d.MaxReplicas),
-				strconv.Itoa(d.Generation), authorityWord(s, d.Authority),
+				strconv.Itoa(d.Generation), authorityWord(s, d.Authority), waitingOn(s, d),
 				boolWord(d.AdoptedWorkloadID != nil),
 				boolWord(d.Enabled), agoAt(d.CreatedAt),
 			}
@@ -335,6 +336,24 @@ replicas is a rollup of what is actually running.`,
 			wkv.Add("started", ago(d.Workload.StartedAt))
 			wkv.Add("deadline", ago(d.Workload.DeadlineAt))
 			wkv.Render(w)
+
+			fmt.Fprintf(w, "\n%s\n", s.Dim("observed"))
+			if d.Status == nil {
+				fmt.Fprintf(w, "  %s\n", s.Dim("no cluster has reported on this deployment yet"))
+			} else {
+				okv := app.KV()
+				okv.Add("phase", phaseColor(s, d.Status.Phase))
+				okv.Add("reason", orDash(str(d.Status.Reason)))
+				okv.Add("detail", orDash(str(d.Status.Message)))
+				okv.Addf("replicas", "%d/%d ready · %d unavailable",
+					d.Status.ReadyReplicas, d.Status.DesiredReplicas, d.Status.UnavailableReplicas)
+				okv.Addf("generation", "%d observed · %d declared", d.Status.ObservedGeneration, d.Generation)
+				if d.Status.LastErrorCode != nil {
+					okv.Add("last error", s.Red(str(d.Status.LastErrorCode)+": "+str(d.Status.LastErrorMessage)))
+				}
+				okv.Add("reported", ago(d.Status.ObservedAt))
+				okv.Render(w)
+			}
 
 			fmt.Fprintf(w, "\n%s\n", s.Dim("replicas"))
 			r := d.Replicas
@@ -458,4 +477,26 @@ func failoverPosition(e api.Endpoint, deployment string) string {
 		}
 	}
 	return "-"
+}
+
+// waitingOn is the one-cell answer to why a deployment is not serving yet.
+//
+// The cluster's reason rather than the plane's phase, because the plane's phase says "placed" for
+// everything between the decision and the first replica and the reason says which of six orderings
+// is actually outstanding. Empty when there is nothing to say: no report yet reads as a dash, and a
+// deployment whose replicas are up has no reason at all.
+func waitingOn(s ui.Style, d api.Deployment) string {
+	if d.Status == nil {
+		return "-"
+	}
+	if d.Status.Reason == nil || *d.Status.Reason == "" {
+		return "-"
+	}
+	if d.Status.Phase == "failed" {
+		return s.Red(*d.Status.Reason)
+	}
+	if d.Status.ReadyReplicas > 0 {
+		return "-"
+	}
+	return s.Amber(*d.Status.Reason)
 }

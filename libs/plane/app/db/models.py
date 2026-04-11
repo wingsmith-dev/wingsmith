@@ -542,6 +542,13 @@ class DeploymentStatus(BaseMixin):
     top of a cluster's. The pair read together is what "the deployment is behind"
     means.
 
+    `reason` and `message` are the cluster's sub-state within `phase`, and are
+    deliberately not `last_error`: waiting for weights to download is neither an
+    error nor a thing that should survive into the next observation the way an
+    error does. `reason` is a closed set the operator owns and this column does
+    not constrain — an unrecognised value is stored and displayed rather than
+    rejected, so a new sub-state does not need a plane deploy to become visible.
+
     The replica counts here are the cluster's own accounting and are deliberately
     redundant with the rollup over `demand_replica`. They arrive in one frame and
     are internally consistent at the instant the cluster took them, which a rollup
@@ -564,6 +571,8 @@ class DeploymentStatus(BaseMixin):
     ready_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     updated_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     unavailable_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

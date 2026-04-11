@@ -22,6 +22,7 @@ import {
   useDeployment,
   useRecipe,
 } from "@/modules/demand/queries"
+import { DeploymentLifecycle } from "@/components/demand/deployment-lifecycle"
 import { DeploymentForm } from "../DeploymentForm"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -180,6 +181,8 @@ export function DeploymentDetailPage() {
               </span>
               <Labels labels={deployment.labels} />
             </div>
+
+            <DeploymentLifecycle deployment={deployment} />
 
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList>

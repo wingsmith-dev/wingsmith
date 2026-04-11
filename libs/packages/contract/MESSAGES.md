@@ -139,12 +139,46 @@ things that can disagree, and the placement copy is the one placement already re
 
 | Type | Payload |
 |---|---|
-| `deployment.observed` | phase, replica counts, last error |
+| `deployment.observed` | phase, `reason`, `message`, replica counts, last error |
 | `replica.observed` | which devices, readiness, engine version, restart count, observed generation |
 | `replica.event` | started, ready, failed, OOM, preempted |
 | `allocation.observed` | devices currently committed, and to what |
 | `cache.observed` | artifact residency, per node, and eviction pressure |
 | `component.observed` | rollout status per component |
+
+**`deployment.observed` carries `reason` and `message`, and the operator sends one on every
+outcome — including the ones that are not errors.** A deployment spends most of its life before it
+serves waiting for orderings to be satisfied: the recipe has not arrived, the weights are still
+downloading, no node advertises enough accelerators. Each of those is a correct, expected state and
+none of them is a failure, so none of them belongs in `last_error`. Without them the plane sees a
+deployment at `pending` for twenty minutes and can say nothing about which of six things it is
+waiting on, while the operator knows exactly and says so in a log line in another cluster.
+
+`reason` is a closed set owned by the operator, because a set the plane also writes into is a set
+nobody can enumerate. `message` is free text for a person and is never parsed. Both are optional:
+absent means the cluster is not distinguishing a sub-state, not that it is healthy.
+
+| `reason` | Phase | Means |
+|---|---|---|
+| `RecipeNotDeclared` | `pending` | The recipe this deployment names has not reached the cluster |
+| `ArtifactNotDeclared` | `pending` | The artifact that recipe serves has not reached the cluster |
+| `WeightsNotResident` | `pending` | The weights are not yet cached on this cluster |
+| `WarmSetIncomplete` | `pending` | The cache is fetching, and this artifact is not done |
+| `NoSchedulableCapacity` | `pending` | No node advertises enough accelerators of the class |
+| `NoClusterWork` | `pending` | Held as declared state; `authority` is `observed` |
+| `Applied` | `placed` | Rendered and applied; replicas not yet reported ready |
+| `PayloadUndecodable` | `failed` | The desired frame did not decode |
+| `RenderFailed` | `failed` | The frame decoded and describes nothing renderable |
+
+A `reason` the plane does not recognise is displayed, never rejected — the operator rolls
+independently and a new sub-state must not need a plane deploy to be visible. The phase column is
+what each reason means today and not a constraint the receiver enforces; the two travel together
+and the phase is the one anything computes on.
+
+**A waiting frame repeats only when it changes.** The reconciler re-examines a waiting deployment
+every fifteen seconds, and sending each pass would spend the stream on a fact that has not moved.
+The operator holds the last `(phase, reason, message)` it sent per deployment and sends only on
+difference, which is the same rule the supply loop already applies to nodes.
 
 **`replica.observed` carries the replica's `name`.** The cluster-local name — the pod name under
 Kubernetes — alongside the `rep_` identifier. They are not redundant: the identifier is what other

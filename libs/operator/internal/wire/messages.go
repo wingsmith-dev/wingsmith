@@ -408,6 +408,14 @@ type DeploymentObserved struct {
 	UnavailableReplicas int        `json:"unavailable_replicas"`
 	LastError           *LastError `json:"last_error,omitempty"`
 	ObservedAt          string     `json:"observed_at"`
+
+	// Reason is the cluster's sub-state within Phase, from the closed set in MESSAGES.md.
+	// It is not an error: most of what it reports is an ordering that has not been satisfied
+	// yet, which is the normal way a deployment spends its first minutes.
+	Reason string `json:"reason,omitempty"`
+
+	// Message is the same fact written for a person, and is never parsed.
+	Message string `json:"message,omitempty"`
 }
 
 // ReplicaObserved is one running instance on named devices.

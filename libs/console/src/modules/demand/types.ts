@@ -284,6 +284,41 @@ export interface Deployment {
   revision: string
   workload: DeploymentWorkload
   replicas: DeploymentReplicaRollup
+  /** What the cluster reports it is doing. Null until a cluster has reported at all. */
+  status: DeploymentStatus | null
+  /**
+   * The deployment's own topology requirement, overriding the recipe's when set.
+   * Null means the recipe's answer stands, not that there is no requirement.
+   */
+  requires_single_topology_domain: boolean | null
+  topology_domain_kind: string | null
+}
+
+/**
+ * The observed half: where the deployment is, and what is holding it there.
+ *
+ * `reason` and `message` are deliberately not errors. Most of a deployment's life
+ * before it serves is spent waiting on an ordering — the recipe has to arrive, the
+ * weights have to be resident, a node has to advertise enough accelerators — and
+ * every one of those is expected. `last_error_*` is for the things that went wrong.
+ *
+ * `reason` is a closed set the operator owns and is typed as a string on purpose: a
+ * cluster runs its own build and may report a sub-state this console has never heard
+ * of, and showing it beats hiding it.
+ */
+export interface DeploymentStatus {
+  observed_generation: number
+  phase: string
+  reason: string | null
+  message: string | null
+  desired_replicas: number
+  ready_replicas: number
+  updated_replicas: number
+  unavailable_replicas: number
+  last_error_code: string | null
+  last_error_message: string | null
+  last_error_at: string | null
+  observed_at: string | null
 }
 
 /**

@@ -330,6 +330,19 @@ operator who names a cluster has said something the scheduler is not entitled to
 nothing can hold the deployment the create is `409 conflict` and the body carries a verdict per
 cluster, each with the numbers it was rejected on, so "no capacity" is never the whole answer.
 
+**A deployment carries `status`, which is the cluster's answer rather than the plane's.** `workload`
+holds the admission phase — what the plane decided — and `status` holds what the cluster reports it
+actually did, including `reason` and `message`: the recipe has not arrived, the weights are still
+downloading, no node advertises enough accelerators. They are separate objects because they have
+separate writers, and reading `workload.phase` alone is how a deployment appears to be `placed` for
+the twenty minutes it spends waiting for its weights.
+
+`status` is null until a cluster has reported at all, which is every deployment's first seconds and
+the permanent state of one whose cluster cannot reach the hub. Null is therefore an answer — nobody
+has said anything — and is not the same as a deployment that is idle. `reason` is a closed set the
+operator owns and this API does not narrow: a cluster runs its own build, and a sub-state this plane
+predates must reach the screen rather than be rejected on the way in. The set is in `MESSAGES.md`.
+
 **`POST /v1/placement/preview`** asks the same question and writes nothing. It takes a recipe, a
 project, an optional priority class and a replica count, and returns the decision the create would
 have made. It exists because "why did it not land in iad-1" is asked before anything is created,

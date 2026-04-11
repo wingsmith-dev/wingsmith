@@ -504,6 +504,8 @@ class DeploymentObserved(Struct):
     unavailable_replicas: int
     observed_at: str
     last_error: LastError | None = None
+    reason: str | None = None
+    message: str | None = None
 
 
 class ReplicaObserved(Struct):

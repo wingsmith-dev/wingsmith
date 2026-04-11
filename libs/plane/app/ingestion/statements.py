@@ -310,6 +310,8 @@ def upsert_deployment_status(cluster_id: UUID, deployment_id: UUID, payload: Dep
         "ready_replicas": payload.ready_replicas,
         "updated_replicas": payload.updated_replicas,
         "unavailable_replicas": payload.unavailable_replicas,
+        "reason": payload.reason,
+        "message": payload.message,
         "last_error_code": error.code if error else None,
         "last_error_message": error.message if error else None,
         "last_error_at": parse_ts(error.at) if error else None,

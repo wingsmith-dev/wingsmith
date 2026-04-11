@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -40,6 +41,17 @@ type SyncedResourceReconciler struct {
 
 	// Render carries the per-cluster conventions a render needs and the plane does not declare.
 	Render render.Options
+
+	// ClusterID is this cluster's identity in the plane, carried on every frame reported upward.
+	ClusterID string
+
+	// Report sends this loop's own conclusions to the hub. Optional: a nil Reporter reconciles
+	// exactly as before and tells the plane nothing, which is what the tests and any read-only
+	// deployment want.
+	Report Reporter
+
+	reportMu sync.Mutex
+	reported map[string]reportKey
 }
 
 // +kubebuilder:rbac:groups=placeholder.hangar.dev,resources=syncedresources,verbs=get;list;watch;create;update;patch;delete
@@ -59,6 +71,9 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	var res v1alpha1.SyncedResource
 	if err := r.Client.Get(ctx, req.NamespacedName, &res); err != nil {
 		if apierrors.IsNotFound(err) {
+			// Gone. Drop what was last reported for it, so an object recreated at the same id
+			// is not mistaken for a repeat of the state it was in before it was deleted.
+			r.forgetReported(nameToID(req.Name))
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -116,6 +131,7 @@ func (r *SyncedResourceReconciler) observed(ctx context.Context, res *v1alpha1.S
 	res.Status.ObservedRevision = res.Spec.Revision
 	res.Status.Phase = "Accepted"
 	setCondition(res, metav1.ConditionTrue, "NoClusterWork", "held as declared state; nothing to apply")
+	r.report(res, phasePending, "NoClusterWork", "held as declared state; nothing to apply")
 	return ctrl.Result{}, r.Client.Status().Patch(ctx, res, patch)
 }
 

@@ -14,6 +14,8 @@
     "ready_replicas": 3,
     "updated_replicas": 4,
     "unavailable_replicas": 1,
+    "reason": "NoSchedulableCapacity",
+    "message": "one replica needs 2 accelerators of class h100-80gb-sxm and the largest usable node advertises 1",
     "last_error": {
       "code": "insufficient_capacity",
       "message": "no single nvlink domain with 2 free h100-80gb-sxm devices",

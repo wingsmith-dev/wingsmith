@@ -872,6 +872,23 @@ registerFixtures([
           started_at: now,
           deadline_at: null,
         },
+        requires_single_topology_domain: null,
+        topology_domain_kind: null,
+        status: {
+          observed_generation: 1,
+          phase: "running",
+          reason: null,
+          message: null,
+          desired_replicas: workload.replicas_desired,
+          ready_replicas: workload.replicas_ready,
+          updated_replicas: workload.replicas_ready,
+          unavailable_replicas:
+            workload.replicas_desired - workload.replicas_ready,
+          last_error_code: null,
+          last_error_message: null,
+          last_error_at: null,
+          observed_at: now,
+        },
         replicas: {
           total: workload.replicas_desired,
           ready: workload.replicas_ready,

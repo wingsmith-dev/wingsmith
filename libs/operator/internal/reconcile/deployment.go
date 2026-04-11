@@ -182,7 +182,11 @@ func (r *SyncedResourceReconciler) ready(ctx context.Context, res *v1alpha1.Sync
 	res.Status.ObservedRevision = res.Spec.Revision
 	res.Status.Phase = "Ready"
 	setCondition(res, metav1.ConditionTrue, reason, message)
-	return ctrl.Result{}, r.Client.Status().Patch(ctx, res, patch)
+	if err := r.Client.Status().Patch(ctx, res, patch); err != nil {
+		return ctrl.Result{}, err
+	}
+	r.report(res, phasePlaced, reason, message)
+	return ctrl.Result{}, nil
 }
 
 // wait records that a precondition has not been met and asks to be called again.
@@ -197,6 +201,7 @@ func (r *SyncedResourceReconciler) wait(ctx context.Context, res *v1alpha1.Synce
 		return ctrl.Result{}, err
 	}
 	r.Log.Info("waiting", "name", res.Name, "reason", reason, "message", message)
+	r.report(res, phasePending, reason, message)
 	return ctrl.Result{RequeueAfter: waitForDependency}, nil
 }
 
@@ -211,7 +216,11 @@ func (r *SyncedResourceReconciler) fail(ctx context.Context, res *v1alpha1.Synce
 	res.Status.Phase = "Failed"
 	setCondition(res, metav1.ConditionFalse, reason, message)
 	r.Log.Error("reconcile failed", "name", res.Name, "reason", reason, "message", message)
-	return ctrl.Result{}, r.Client.Status().Patch(ctx, res, patch)
+	if err := r.Client.Status().Patch(ctx, res, patch); err != nil {
+		return ctrl.Result{}, err
+	}
+	r.report(res, phaseFailed, reason, message)
+	return ctrl.Result{}, nil
 }
 
 func setCondition(res *v1alpha1.SyncedResource, status metav1.ConditionStatus, reason, message string) {

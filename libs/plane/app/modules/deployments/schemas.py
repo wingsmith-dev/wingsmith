@@ -44,6 +44,40 @@ class DeploymentReplicaRollupSchema(Struct):
     at_current_generation: int
 
 
+class DeploymentStatusSchema(Struct):
+    """What the cluster reports the deployment is doing, and why.
+
+    `phase` is where it is; `reason` and `message` are what is holding it there.
+    Most of a deployment's life before it serves is spent waiting on an ordering —
+    the recipe has to arrive, the weights have to be resident, a node has to
+    advertise enough accelerators — and every one of those is an expected state
+    rather than an error. They are kept apart from `last_error` for that reason:
+    an error is a thing that went wrong and should be read as one, and folding a
+    normal wait into it makes both unreadable.
+
+    `reason` is a closed set the operator owns (`MESSAGES.md`) and this schema
+    deliberately does not narrow it to a `Literal`. A cluster runs its own build
+    and may report a sub-state this plane has never heard of; showing it beats
+    rejecting the frame that carries it.
+
+    Absent entirely when no cluster has reported yet, which is not the same as a
+    deployment that is doing nothing.
+    """
+
+    observed_generation: int
+    phase: str
+    reason: str | None
+    message: str | None
+    desired_replicas: int
+    ready_replicas: int
+    updated_replicas: int
+    unavailable_replicas: int
+    last_error_code: str | None
+    last_error_message: str | None
+    last_error_at: dt.datetime | None
+    observed_at: dt.datetime | None
+
+
 class DeploymentSchema(Struct):
     """Declared spec, the workload it is a specialisation of, and observed replicas.
 
@@ -85,6 +119,7 @@ class DeploymentSchema(Struct):
     topology_domain_kind: str | None
     workload: DeploymentWorkloadSchema
     replicas: DeploymentReplicaRollupSchema
+    status: DeploymentStatusSchema | None
 
 
 class DeploymentCreateRequest(Struct):

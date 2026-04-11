@@ -18,6 +18,7 @@ from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import PriorityClass
+from app.db.models import DeploymentStatus
 from app.db.models import DiscoveredWorkload
 from app.core.filters import ref_ids
 
@@ -39,6 +40,13 @@ class DeploymentRepository:
     The join is always present rather than optional: priority, project, and the
     admission phase live on the supertype, and a deployment read without them is
     half an answer.
+
+    The observed status is an outer join because it is written by the cluster and
+    a deployment that no cluster has reported on yet is the normal state for the
+    first seconds of its life — and the permanent state of one whose cluster is
+    unreachable. An inner join would make those deployments vanish from the list
+    rather than show up without a status, which is the opposite of what somebody
+    looking for a stuck deployment needs.
     """
 
     def __init__(self, db: AsyncSession) -> None:
@@ -53,8 +61,10 @@ class DeploymentRepository:
                 Recipe.uid.label("recipe_uid"),
                 Project.uid.label("project_uid"),
                 PriorityClass.name.label("priority_class"),
+                DeploymentStatus,
             )
             .join(Workload, Deployment.workload_id == Workload.id)
+            .outerjoin(DeploymentStatus, DeploymentStatus.deployment_id == Deployment.id)
             .join(Cluster, Deployment.cluster_id == Cluster.id)
             .join(Recipe, Deployment.recipe_id == Recipe.id)
             .join(Project, Workload.project_id == Project.id)

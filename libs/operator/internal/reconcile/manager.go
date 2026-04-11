@@ -78,16 +78,25 @@ func NewManager(cfg *config.Config, logger *slog.Logger) (ctrl.Manager, error) {
 	return mgr, nil
 }
 
-// SetupWithManager registers every controller this operator runs.
-func SetupWithManager(mgr ctrl.Manager, cfg *config.Config, logger *slog.Logger) error {
+// SetupWithManager registers every controller this operator runs and returns the reconciler.
+//
+// The reconciler is returned rather than kept private because it reports upward as well as
+// reconciling downward, and the sync client it reports through does not exist yet at this point —
+// it takes the store and the observer as its own options. Binding after construction is how the
+// observe loop resolves the same cycle.
+func SetupWithManager(mgr ctrl.Manager, cfg *config.Config, logger *slog.Logger) (*SyncedResourceReconciler, error) {
 	r := &SyncedResourceReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		Log:       logger.With("controller", "syncedresource"),
 		Namespace: cfg.Namespace,
 		Render:    RenderOptions(cfg),
+		ClusterID: cfg.ClusterID,
 	}
-	return r.SetupWithManager(mgr)
+	if err := r.SetupWithManager(mgr); err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 // RenderOptions lifts the per-cluster rendering conventions out of configuration.
