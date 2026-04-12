@@ -35,7 +35,8 @@ const maxObjectName = 63
 // max_workers=8 is enough parallelism to saturate the link without tripping HuggingFace rate
 // limiting on an unauthenticated pull.
 const hfScript = `from huggingface_hub import snapshot_download
-p = snapshot_download(%q, max_workers=8)
+revision = %q or None
+p = snapshot_download(%q, revision=revision, max_workers=8)
 print("cached at", p)
 `
 
@@ -229,7 +230,8 @@ func prefetchCommand(art wire.ArtifactDesired) (string, error) {
 	}
 
 	if hf != nil {
-		return fmt.Sprintf(hfScript, strings.TrimPrefix(hf.URI, "hf://")), nil
+		repo, revision := SplitHFRef(hf.URI)
+		return fmt.Sprintf(hfScript, revision, repo), nil
 	}
 	if other != nil {
 		if art.ArtifactID == "" {

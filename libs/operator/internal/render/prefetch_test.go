@@ -276,3 +276,48 @@ func TestAnUnparseableQuantityIsRefusedAtRender(t *testing.T) {
 		t.Error("a quantity the scheduler cannot read must fail the render, not the pod")
 	}
 }
+
+// The plane pins an artifact as hf://owner/name@<sha>, and huggingface_hub rejects an '@' in a repo
+// id outright — so the whole URI as a repo id is a failed pull, not a resolved pin.
+func TestAPinnedRevisionIsNotPartOfTheRepoID(t *testing.T) {
+	art := wire.ArtifactDesired{
+		ArtifactID: "art_01J9X2AAAAAAAAAAAAAAAAAAAA",
+		Sources: []wire.ArtifactSource{
+			{Kind: "hf", URI: "hf://openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee"},
+		},
+	}
+
+	command, err := prefetchCommand(art)
+	if err != nil {
+		t.Fatalf("command: %v", err)
+	}
+	if !strings.Contains(command, `"openai/gpt-oss-20b"`) {
+		t.Errorf("repo id still carries the pin:\n%s", command)
+	}
+	if !strings.Contains(command, `"6cee5e81ee83917806bbde320786a8fb61efebee"`) {
+		t.Errorf("the pin is dropped rather than resolved:\n%s", command)
+	}
+}
+
+func TestAnUnpinnedSourceDownloadsTheBranchHead(t *testing.T) {
+	command, err := prefetchCommand(hfArtifact())
+	if err != nil {
+		t.Fatalf("command: %v", err)
+	}
+	if !strings.Contains(command, `revision = "" or None`) {
+		t.Errorf("an unpinned source must resolve normally:\n%s", command)
+	}
+}
+
+func TestSplitHFRef(t *testing.T) {
+	for _, c := range []struct{ uri, repo, revision string }{
+		{"hf://Qwen/Qwen3-8B", "Qwen/Qwen3-8B", ""},
+		{"hf://Qwen/Qwen3-8B@main", "Qwen/Qwen3-8B", "main"},
+		{"hf://openai/gpt-oss-20b@6cee5e8", "openai/gpt-oss-20b", "6cee5e8"},
+	} {
+		repo, revision := SplitHFRef(c.uri)
+		if repo != c.repo || revision != c.revision {
+			t.Errorf("SplitHFRef(%q) = %q, %q; want %q, %q", c.uri, repo, revision, c.repo, c.revision)
+		}
+	}
+}

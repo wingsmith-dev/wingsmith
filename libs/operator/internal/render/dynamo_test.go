@@ -246,3 +246,27 @@ func TestDynamoGraphDeploymentRequiresEngineImage(t *testing.T) {
 		}
 	}
 }
+
+// The engine must resolve the same commit the prefetch downloaded, or it re-resolves the branch
+// head against the shared cache and pulls a second copy of the weights.
+func TestTheEngineIsPointedAtThePinnedRevision(t *testing.T) {
+	in := testInputs()
+	in.Artifact.Sources = []wire.ArtifactSource{
+		{Kind: "hf", URI: "hf://openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee"},
+	}
+
+	args, err := engineArgs(in)
+	if err != nil {
+		t.Fatalf("args: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--model openai/gpt-oss-20b ") && !strings.Contains(joined, "--model openai/gpt-oss-20b") {
+		t.Errorf("--model still carries the pin: %s", joined)
+	}
+	if strings.Contains(joined, "@6cee5e") && !strings.Contains(joined, "--revision") {
+		t.Errorf("the pin leaked into the model id: %s", joined)
+	}
+	if !strings.Contains(joined, "--revision 6cee5e81ee83917806bbde320786a8fb61efebee") {
+		t.Errorf("no --revision: %s", joined)
+	}
+}

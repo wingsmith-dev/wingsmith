@@ -260,6 +260,9 @@ func engineArgs(in Inputs) ([]string, error) {
 		"served-model-name": in.Recipe.Name,
 		"max-model-len":     strconv.Itoa(in.Recipe.ContextLength),
 	}
+	if rev := hfRevision(in.Artifact); rev != "" {
+		derived["revision"] = rev
+	}
 	if tp := in.Recipe.Parallelism.Tensor; tp > 1 {
 		derived["tensor-parallel-size"] = strconv.Itoa(tp)
 	}
@@ -316,7 +319,7 @@ func modelRef(art wire.ArtifactDesired) (string, error) {
 	for _, source := range art.Sources {
 		if strings.HasPrefix(source.URI, "hf://") {
 			if best == "" {
-				best = strings.TrimPrefix(source.URI, "hf://")
+				best, _ = SplitHFRef(source.URI)
 			}
 		}
 	}
@@ -410,3 +413,33 @@ func Owned(obj *unstructured.Unstructured, owner metav1.Object, gvk schema.Group
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// SplitHFRef separates a HuggingFace URI into the repo id and the revision pinned onto it.
+//
+// The plane writes a pinned artifact as hf://owner/name@<sha>, and huggingface_hub validates the
+// repo id against a character set that does not include '@' — so passing the whole thing through
+// fails the pull outright rather than resolving the pin. The separator is the last '@' because a
+// repo id may not contain one and a revision may not either, but splitting from the right is the
+// reading that survives a source that acquires one later.
+func SplitHFRef(uri string) (repo, revision string) {
+	repo = strings.TrimPrefix(uri, "hf://")
+	if i := strings.LastIndex(repo, "@"); i >= 0 {
+		return repo[:i], repo[i+1:]
+	}
+	return repo, ""
+}
+
+// hfRevision is the revision the preferred HuggingFace source pins, if it pins one.
+//
+// Handed to the engine as --revision so that it resolves the same commit the prefetch downloaded.
+// Without it the engine resolves the branch head against the shared cache, which is a second copy
+// of the weights at best and a different model at worst.
+func hfRevision(art wire.ArtifactDesired) string {
+	for _, source := range art.Sources {
+		if strings.HasPrefix(source.URI, "hf://") {
+			_, revision := SplitHFRef(source.URI)
+			return revision
+		}
+	}
+	return ""
+}
