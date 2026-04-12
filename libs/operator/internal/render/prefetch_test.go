@@ -232,3 +232,47 @@ func TestPrefetchJobName(t *testing.T) {
 		}
 	}
 }
+
+// The figures this replaced — four CPUs and eight gigabytes — were larger than an m7i.large has
+// allocatable at all, so the job could not be placed on a system node however many were added.
+func TestAPrefetchAsksForLittleEnoughToBePlaced(t *testing.T) {
+	job, err := PrefetchJob(hfArtifact(), "runtime:latest", Options{Namespace: "dynamo"})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	req := job.Spec.Template.Spec.Containers[0].Resources.Requests
+	if got := req.Cpu().String(); got != "500m" {
+		t.Errorf("cpu request = %q, want 500m", got)
+	}
+	if got := req.Memory().String(); got != "2Gi" {
+		t.Errorf("memory request = %q, want 2Gi", got)
+	}
+	if got := job.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String(); got != "4Gi" {
+		t.Errorf("memory limit = %q, want twice the request", got)
+	}
+}
+
+// A cluster with a dedicated cache pool should be able to spend more on the download.
+func TestAClusterCanRaiseWhatAPrefetchAsksFor(t *testing.T) {
+	job, err := PrefetchJob(hfArtifact(), "runtime:latest", Options{
+		Namespace: "dynamo", PrefetchCPU: "4", PrefetchMemory: "8Gi",
+	})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	req := job.Spec.Template.Spec.Containers[0].Resources.Requests
+	if got := req.Cpu().String(); got != "4" {
+		t.Errorf("cpu request = %q, want the cluster's own", got)
+	}
+	if got := req.Memory().String(); got != "8Gi" {
+		t.Errorf("memory request = %q, want the cluster's own", got)
+	}
+}
+
+func TestAnUnparseableQuantityIsRefusedAtRender(t *testing.T) {
+	if _, err := PrefetchJob(hfArtifact(), "runtime:latest", Options{PrefetchCPU: "a lot"}); err == nil {
+		t.Error("a quantity the scheduler cannot read must fail the render, not the pod")
+	}
+}

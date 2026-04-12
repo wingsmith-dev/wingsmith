@@ -108,5 +108,7 @@ func RenderOptions(cfg *config.Config) render.Options {
 		ModelCachePVC:  cfg.ModelCachePVC,
 		CachePoolValue: cfg.CachePoolValue,
 		CacheTaintKey:  cfg.CacheTaintKey,
+		PrefetchCPU:    cfg.PrefetchCPU,
+		PrefetchMemory: cfg.PrefetchMemory,
 	}
 }

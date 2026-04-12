@@ -40,6 +40,8 @@ type Options struct {
 	CachePoolValue string
 	CacheTaintKey  string
 	ModelCachePVC  string
+	PrefetchCPU    string
+	PrefetchMemory string
 }
 
 // Inputs is everything one render reads. Grouping them makes the dependency explicit: a

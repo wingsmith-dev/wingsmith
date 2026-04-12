@@ -15,6 +15,17 @@ import (
 // prefetchNamePrefix distinguishes the download job from anything else rendered for an artifact.
 const prefetchNamePrefix = "prefetch-"
 
+// What one download asks the scheduler for, when the cluster does not say.
+//
+// Deliberately small. Pulling weights is bound by the link and by the write to the shared volume,
+// not by cores, and the earlier figures — four CPUs and eight gigabytes — were large enough that
+// the job could not be placed on an ordinary node at all. A cluster with a dedicated cache pool
+// can raise them; a cluster running this beside its system workloads should not have to.
+const (
+	defaultPrefetchCPU    = "500m"
+	defaultPrefetchMemory = "2Gi"
+)
+
 // maxObjectName is the DNS-1123 label limit the API server enforces on an object name.
 const maxObjectName = 63
 
@@ -82,6 +93,11 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 		return nil, err
 	}
 
+	resources, err := prefetchResources(opts)
+	if err != nil {
+		return nil, err
+	}
+
 	return &batchv1.Job{
 		TypeMeta: metav1.TypeMeta{APIVersion: "batch/v1", Kind: "Job"},
 		ObjectMeta: metav1.ObjectMeta{
@@ -136,19 +152,44 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 							},
 						}},
 						VolumeMounts: []corev1.VolumeMount{{Name: "model-cache", MountPath: "/models"}},
-						Resources: corev1.ResourceRequirements{
-							Requests: corev1.ResourceList{
-								corev1.ResourceCPU:    resource.MustParse("4"),
-								corev1.ResourceMemory: resource.MustParse("8Gi"),
-							},
-							Limits: corev1.ResourceList{
-								corev1.ResourceMemory: resource.MustParse("16Gi"),
-							},
-						},
+						Resources:    resources,
 					}},
 				},
 			},
 		},
+	}, nil
+}
+
+// prefetchResources is what one download asks the scheduler for.
+//
+// Requests only for CPU, because a throttled download is a slower download and nothing else. The
+// memory limit is a backstop against a fetch that buffers rather than streams, and is derived from
+// the request so that raising one raises the other.
+func prefetchResources(opts Options) (corev1.ResourceRequirements, error) {
+	cpuText := opts.PrefetchCPU
+	if cpuText == "" {
+		cpuText = defaultPrefetchCPU
+	}
+	memoryText := opts.PrefetchMemory
+	if memoryText == "" {
+		memoryText = defaultPrefetchMemory
+	}
+
+	cpu, err := resource.ParseQuantity(cpuText)
+	if err != nil {
+		return corev1.ResourceRequirements{}, fmt.Errorf("prefetch cpu request %q is not a quantity: %w", cpuText, err)
+	}
+	memory, err := resource.ParseQuantity(memoryText)
+	if err != nil {
+		return corev1.ResourceRequirements{}, fmt.Errorf("prefetch memory request %q is not a quantity: %w", memoryText, err)
+	}
+
+	ceiling := memory.DeepCopy()
+	ceiling.Add(memory)
+
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{corev1.ResourceCPU: cpu, corev1.ResourceMemory: memory},
+		Limits:   corev1.ResourceList{corev1.ResourceMemory: ceiling},
 	}, nil
 }
 
