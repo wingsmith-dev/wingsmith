@@ -455,6 +455,14 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
     worth having — it is how weights are pre-fetched before a deployment exists
     and how a model is pinned against eviction once it is.
 
+    Only `managed` deployments derive one. An `observed` deployment is one the
+    plane has explicitly said it does not run, so declaring what its weights
+    should do is the plane acting on a workload it does not own — and pointless
+    besides, because something is already serving those weights and they are
+    already on the node. The first version of this union left authority out and
+    put three adopted models into a cluster's warm set, which downloaded a second
+    copy of what was running on it.
+
     `capacity_bytes` is zero because the plane declares no cache size: the size
     of a cluster's disk is the cluster's business, and inventing a number here
     would be the plane declaring something it does not know.
@@ -475,7 +483,11 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
             select(Artifact.seq, Artifact.uid)
             .join(Recipe, Recipe.artifact_id == Artifact.id)
             .join(Deployment, Deployment.recipe_id == Recipe.id)
-            .where(Deployment.cluster_id == cluster_id, Deployment.enabled.is_(True))
+            .where(
+                Deployment.cluster_id == cluster_id,
+                Deployment.enabled.is_(True),
+                Deployment.authority == "managed",
+            )
             .order_by(Artifact.seq)
             .distinct()
         )

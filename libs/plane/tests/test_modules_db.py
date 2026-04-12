@@ -75,6 +75,7 @@ from app.modules.operations.schemas import OperationCreateRequest
 from app.modules.components.services import ComponentService
 from app.modules.deployments.schemas import DeploymentCreateRequest
 from app.modules.deployments.schemas import DeploymentUpdateRequest
+from app.modules.deployments.schemas import DeploymentAuthorityRequest
 from app.modules.operations.services import TERMINAL_PHASES
 from app.modules.operations.services import OperationService
 from app.modules.deployments.services import DeploymentService
@@ -559,6 +560,25 @@ async def test_a_deployment_makes_its_own_weights_warm(db: AsyncSession) -> None
     assert recipe.artifact_id in served
     entry = next(e for e in caches[0].entries if e.artifact_id == recipe.artifact_id)
     assert (entry.pin, entry.priority) == (False, 0)
+
+
+async def test_an_observed_deployment_does_not_make_its_weights_warm(db: AsyncSession) -> None:
+    """The plane does not declare cache policy for a workload it does not run.
+
+    An adopted deployment is `observed` by definition: something is already
+    serving those weights and they are already on the node. Deriving a warm entry
+    from it made the cluster download a second copy of what was running on it, and
+    the first version of this union did exactly that to three production models.
+    """
+    cluster, _, recipe, created = await a_deployment(db)
+    service = DeploymentService(db, notifier=MemoryNotifier())
+    await service.set_authority(created.id, DeploymentAuthorityRequest(authority="observed"))
+
+    frames = [item async for item in stream_desired(db, cluster.id, "demand")]
+    caches = [payload for kind, payload in frames if kind == "cache.desired"]
+
+    served = {entry.artifact_id for cache in caches for entry in cache.entries}
+    assert recipe.artifact_id not in served
 
 
 async def test_a_deployment_that_is_gone_dispatches_as_a_deletion(db: AsyncSession) -> None:

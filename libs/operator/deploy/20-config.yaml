@@ -66,3 +66,12 @@ data:
   # engine's.
   HANGAR_BENCHMARK_CPU: 500m
   HANGAR_BENCHMARK_MEMORY: 1Gi
+  # Which node pool downloads weights, and the taint it tolerates to get there. The prefetch job
+  # is a network and disk job with no accelerator in it, so it belongs anywhere but a GPU node —
+  # a pool of its own where one exists, and the general-purpose pool where one does not. Both are
+  # here rather than left to the binary's defaults because a value that exists only in Go is one
+  # nobody finds until a job sits Pending: the scheduler's answer to a pool that does not exist
+  # is silence, and the deployment waiting on those weights reports only that they are not
+  # resident.
+  HANGAR_CACHE_POOL_VALUE: cache
+  HANGAR_CACHE_TAINT_KEY: hangar.io/cache
