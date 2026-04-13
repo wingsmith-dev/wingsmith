@@ -55,6 +55,7 @@ from app.hub.messages import DeviceEvent
 from app.hub.messages import NodeObserved
 from app.hub.messages import ReplicaEvent
 from app.hub.messages import CacheObserved
+from app.hub.messages import ClusterObserved
 from app.hub.messages import DeviceObserved
 from app.hub.messages import ReplicaObserved
 from app.hub.messages import TopologyObserved
@@ -201,9 +202,20 @@ def upsert_node(cluster_id: UUID, payload: NodeObserved) -> Insert:
 
     `runtime_version` is on the wire and deliberately not written: `Node` has no
     orchestrator- or runtime-specific version column, because the plane does not
-    know a cluster is Kubernetes. CPU, memory, arch, os image and taints are not
-    on the wire at all and so are absent from the statement entirely rather than
-    written as nulls — an upsert must not erase what a later frame supplied.
+    know a cluster is Kubernetes.
+
+    The machine's shape — instance type, cloud, zone, region, cores, memory,
+    architecture, os image — is written only when the frame carries it. An older
+    operator omits these fields entirely, and an upsert that wrote them as nulls
+    would erase what a newer one had already supplied every time an old agent
+    reconnected.
+
+    For the scalars an empty string and a zero stand in for absent, which costs
+    nothing real: a node with no architecture and a node with zero cores are both
+    nodes nobody has described yet. `taints` cannot borrow that trick — an empty
+    taint list is a fact, and a node that has just had its last taint removed
+    must be able to say so — so it defaults to None on the wire and is written
+    only when the key was actually present.
     """
     values: dict[str, Any] = {
         "uid": observed_uid(payload.node_id, NODE),
@@ -219,7 +231,41 @@ def upsert_node(cluster_id: UUID, payload: NodeObserved) -> Insert:
         "labels": payload.labels,
         "observed_at": parse_ts(payload.observed_at),
     }
+    if payload.taints is not None:
+        values["taints"] = [msgspec.structs.asdict(t) for t in payload.taints]
+    optional = {
+        "instance_type": payload.instance_type,
+        "cloud": payload.cloud,
+        "zone": payload.zone,
+        "region": payload.region,
+        "cpu_arch": payload.cpu_arch,
+        "os_image": payload.os_image,
+        "cpu_cores": payload.cpu_cores,
+        "memory_mib": payload.memory_mib,
+    }
+    values.update({column: value for column, value in optional.items() if value})
     return _upsert(Node, values, NODE_CONSTRAINT)
+
+
+def upsert_cluster_observed(cluster_id: UUID, payload: ClusterObserved) -> Insert:
+    """Writes what a cluster reported about itself.
+
+    Lands on the sync state and never on the registry row: this is observed, and
+    `Cluster` has exactly one writer that is not ingestion. `region` is stored as
+    `observed_region` beside the declared one rather than over it — a cluster
+    enrolled as `eu-west-1` whose machines are all in `us-east-2` is a fact
+    somebody needs to see, not a field to quietly correct.
+    """
+    return upsert_sync_state(
+        cluster_id,
+        {
+            "distribution": payload.distribution or None,
+            "cloud": payload.cloud or None,
+            "observed_region": payload.region or None,
+            "last_sync_at": parse_ts(payload.observed_at),
+        },
+        bump=True,
+    )
 
 
 def upsert_device(cluster_id: UUID, payload: DeviceObserved) -> Insert:
@@ -685,6 +731,47 @@ def insert_node_event(cluster_id: UUID, payload: NodeEvent) -> Insert:
     )
 
 
+def mark_node_left(cluster_id: UUID, node_uid: str, moment: Any) -> Update:
+    """Records that a node the cluster reported as gone is gone.
+
+    The operator diffs consecutive projections and says so the moment a node
+    disappears, but until this existed the plane filed that as an event and left
+    the row claiming the node was ready. The only thing that could correct it was
+    a prune, and a prune needs a completed resync — so a departed node stayed
+    placeable for as long as the session happened to last.
+
+    Marked rather than deleted, because removal is the prune's job and doing it
+    twice in two ways invites the two to disagree. `condition` already carries
+    membership for exactly this: `node_condition` maps any membership that is not
+    `joined` onto the condition, so `left` is a value this column was built to
+    hold. The row survives until the next complete snapshot retires it, but it
+    stops claiming to be somewhere to put work.
+    """
+    return (
+        update(Node)
+        .where(Node.cluster_id == cluster_id, Node.uid == observed_uid(node_uid, NODE))
+        .values(condition="left", ready=False, observed_at=moment)
+    )
+
+
+def orphan_devices(cluster_id: UUID, node_uid: str, moment: Any) -> Update:
+    """Stops a departed node's devices claiming health they cannot still have.
+
+    A device is only observable through its node. Once the node is gone nothing
+    can report on the device again, so leaving it `healthy` states a fact whose
+    only source has disappeared — and `healthy` is half of what makes a device
+    free to place on.
+    """
+    return (
+        update(Device)
+        .where(
+            Device.cluster_id == cluster_id,
+            Device.node_id == _node_ref(cluster_id, node_uid),
+        )
+        .values(health="unknown", allocatable=False, observed_at=moment)
+    )
+
+
 def insert_device_event(cluster_id: UUID, payload: DeviceEvent) -> Insert:
     return _insert_event(
         cluster_id,
@@ -708,6 +795,116 @@ def insert_replica_event(cluster_id: UUID, payload: ReplicaEvent) -> Insert:
         payload.message,
         {"reason": payload.reason, "replica_id": payload.replica_id, "deployment_id": payload.deployment_id},
         parse_ts(payload.occurred_at),
+    )
+
+
+DEPLOYMENT_PHASE_SEVERITY = {
+    "pending": "info",
+    "admitted": "info",
+    "placed": "info",
+    "running": "info",
+    "succeeded": "info",
+    "degraded": "warning",
+    "failed": "error",
+    "terminating": "info",
+}
+
+
+DEPLOYMENT_REASON_SEVERITY = {
+    "NoSchedulableCapacity": "warning",
+    "RenderFailed": "error",
+    "PayloadUndecodable": "error",
+    "FingerprintMismatch": "warning",
+    "LiveObjectUnreadable": "warning",
+}
+"""Reasons whose severity is not the one their phase implies.
+
+A reconcile that concluded `pending` because the cluster has nowhere to put the
+work is not the same news as one that concluded `pending` because weights are
+still downloading, and the phase alone cannot tell them apart.
+"""
+
+
+def deployment_status_before(deployment_id: UUID) -> Select:
+    """What was last observed about a deployment, read before the new frame overwrites it.
+
+    The status row is last-writer-wins by design, so the only place a transition
+    exists is between this read and the upsert that follows it. Everything the
+    console draws as history is derived here or nowhere.
+    """
+    return select(
+        DeploymentStatus.phase,
+        DeploymentStatus.reason,
+        DeploymentStatus.message,
+        DeploymentStatus.ready_replicas,
+    ).where(DeploymentStatus.deployment_id == deployment_id)
+
+
+def deployment_progressed(
+    cluster_id: UUID,
+    deployment_id: UUID,
+    payload: DeploymentObserved,
+) -> Insert:
+    """Records one reconcile conclusion as an event.
+
+    The operator already suppresses a report that would repeat its last one, so a
+    frame arriving here is a transition rather than a heartbeat, and filing each
+    one is what turns a status row that only ever shows the present into the
+    history of how a deployment got there. Before this, a deployment that spent
+    forty-seven minutes on `WeightsNotResident` and then landed left no trace of
+    the forty-seven minutes anywhere the plane could show.
+
+    `subject_id` is the deployment rather than null: unlike a pruned node, the row
+    this points at outlives the event.
+    """
+    severity = DEPLOYMENT_REASON_SEVERITY.get(
+        payload.reason or "",
+        DEPLOYMENT_PHASE_SEVERITY.get(payload.phase, "info"),
+    )
+    return _insert_event(
+        cluster_id,
+        f"deployment.{payload.phase}",
+        severity,
+        "deployment",
+        deployment_id,
+        payload.message or payload.reason or f"deployment is {payload.phase}",
+        {
+            "reason": payload.reason or "",
+            "phase": payload.phase,
+            "generation": str(payload.generation),
+            "ready_replicas": str(payload.ready_replicas),
+            "desired_replicas": str(payload.desired_replicas),
+        },
+        parse_ts(payload.observed_at),
+    )
+
+
+def deployment_lifecycle(
+    cluster_id: UUID | None,
+    deployment_id: UUID,
+    event: str,
+    message: str,
+    details: dict[str, str],
+    occurred_at: Any,
+    severity: str = "info",
+) -> Insert:
+    """Records something the plane itself did to a deployment.
+
+    The other half of the same timeline. `deployment_progressed` covers what the
+    cluster concluded; this covers what an operator of the product asked for —
+    created, scaled, dispatched, deleted — so that a single query answers "what
+    happened to this deployment" without the reader having to know that the two
+    facts have different writers.
+    """
+    return _insert_event(
+        cluster_id,
+        f"deployment.{event}",
+        severity,
+        "deployment",
+        deployment_id,
+        message,
+        details,
+        occurred_at,
     )
 
 

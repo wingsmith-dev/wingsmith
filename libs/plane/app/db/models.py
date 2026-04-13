@@ -73,6 +73,14 @@ class ClusterSyncState(BaseMixin):
     connect, heartbeat, and disconnect. Folding `reachable` into `Cluster.phase`
     would give one record two writers and make "declared draining" and "observed
     unreachable" indistinguishable.
+
+    `distribution`, `cloud` and `observed_region` are what the cluster turned out
+    to be. They live here rather than on `Cluster` for the same reason
+    `reachable` does — they are observed, and writing them onto the registry row
+    would give it a second writer. `observed_region` is deliberately not merged
+    into `Cluster.region`: the declared region is what placement matches policies
+    against, and the two disagreeing is a misconfiguration worth being able to
+    see rather than one silently overwriting the other.
     """
 
     __tablename__ = "supply_cluster_sync_state"
@@ -83,6 +91,9 @@ class ClusterSyncState(BaseMixin):
     )
     reachable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    distribution: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    cloud: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    observed_region: Mapped[str | None] = mapped_column(String(64), nullable=True)
     connected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disconnected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -118,6 +129,10 @@ class Node(BaseMixin):
     condition: Mapped[str] = mapped_column(String(32), nullable=False, server_default="unknown", index=True)
     cordoned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     ready: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    instance_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    cloud: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    zone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(64), nullable=True)
     cpu_cores: Mapped[int | None] = mapped_column(Integer, nullable=True)
     memory_mib: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     cpu_arch: Mapped[str | None] = mapped_column(String(32), nullable=True)

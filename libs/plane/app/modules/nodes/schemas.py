@@ -38,6 +38,10 @@ class NodeSchema(Struct):
     condition: str
     cordoned: bool
     ready: bool
+    instance_type: str | None
+    cloud: str | None
+    zone: str | None
+    region: str | None
     cpu_cores: int | None
     memory_mib: int | None
     cpu_arch: str | None

@@ -30,6 +30,7 @@ from app.db.models import Deployment
 from app.ingestion import statements
 from app.hub.messages import NodeEvent
 from app.hub.messages import DeviceEvent
+from app.hub.messages import ClusterObserved
 from app.hub.messages import NodeObserved
 from app.hub.messages import ReplicaEvent
 from app.hub.messages import CacheObserved
@@ -43,6 +44,7 @@ from app.hub.messages import AllocationObserved
 from app.hub.messages import DeploymentObserved
 from app.hub.messages import WorkloadDiscovered
 from app.ingestion.time import now
+from app.ingestion.time import parse_ts
 from app.ingestion.resync import NODE
 from app.ingestion.resync import DEVICE
 from app.ingestion.resync import TOPOLOGY
@@ -62,6 +64,29 @@ module's service layer, and this is the one fact it needs from it."""
 
 SUPPLY_SCOPES = frozenset({"supply", "all"})
 DEMAND_SCOPES = frozenset({"demand", "all"})
+
+
+def _moved(before: Any, payload: DeploymentObserved) -> bool:
+    """Whether this frame says anything the last one did not.
+
+    The operator already suppresses a report identical to its own previous one,
+    but that memory is per process and does not survive a restart or a failover
+    — after either, the first frame for every deployment restates whatever was
+    already true. Comparing against the stored row instead is what keeps a hub
+    reconnect from filing a page of events that record nothing having happened.
+
+    Replica counts are part of the comparison because a rollout moves them
+    without moving the phase, and "two of four ready" becoming "four of four" is
+    the transition somebody watching a deploy is actually waiting on.
+    """
+    if before is None:
+        return True
+    return (
+        before.phase != payload.phase
+        or (before.reason or "") != (payload.reason or "")
+        or (before.message or "") != (payload.message or "")
+        or before.ready_replicas != payload.ready_replicas
+    )
 
 
 class UnknownCluster(Exception):
@@ -251,6 +276,12 @@ class DatabaseSink:
                         frame.cluster_id,
                     )
                     return None
+                # Read, then file, then overwrite. The status row is last-writer-wins, so the
+                # transition only exists in the gap between the read and the upsert — after it
+                # there is nothing left to compare against.
+                before = (await db.execute(statements.deployment_status_before(deployment[0]))).first()
+                if _moved(before, payload):
+                    await db.execute(statements.deployment_progressed(cluster_id, deployment[0], payload))
                 await db.execute(statements.upsert_deployment_status(cluster_id, deployment[0], payload))
                 return None
             case "replica.observed":
@@ -293,6 +324,10 @@ class DatabaseSink:
                         frame.cluster_id,
                     )
                 return None
+            case "cluster.observed":
+                assert isinstance(payload, ClusterObserved)
+                await db.execute(statements.upsert_cluster_observed(cluster_id, payload))
+                return None
             case "capacity.observed":
                 return None
             case _:
@@ -309,6 +344,18 @@ class DatabaseSink:
                 case "node.event":
                     assert isinstance(payload, NodeEvent)
                     await db.execute(statements.insert_node_event(cluster_id, payload))
+                    # The event is inserted first so its subject still resolves: the statements
+                    # below change what the node is, and one of them takes its devices with it.
+                    if payload.event == "left":
+                        moment = parse_ts(payload.occurred_at)
+                        await db.execute(statements.orphan_devices(cluster_id, payload.node_id, moment))
+                        await db.execute(statements.mark_node_left(cluster_id, payload.node_id, moment))
+                        logger.info(
+                            "ingestion.node.left cluster=%s node=%s reason=%s",
+                            frame.cluster_id,
+                            payload.node_id,
+                            payload.reason,
+                        )
                 case "device.event":
                     assert isinstance(payload, DeviceEvent)
                     await db.execute(statements.insert_device_event(cluster_id, payload))

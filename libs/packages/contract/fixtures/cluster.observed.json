@@ -1,0 +1,17 @@
+{
+  "v": 1,
+  "type": "cluster.observed",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc70",
+  "ts": "2026-08-19T14:02:11.482Z",
+  "seq": 8800,
+  "ack": 4412,
+  "payload": {
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+    "distribution": "eks",
+    "cloud": "aws",
+    "region": "eu-west-1",
+    "nodes": 12,
+    "devices": 96,
+    "observed_at": "2026-08-19T14:02:11.400Z"
+  }
+}

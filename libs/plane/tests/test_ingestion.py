@@ -9,6 +9,7 @@ one decision in this package that can delete a cluster's whole inventory.
 
 import json
 import uuid
+import datetime as dt
 import logging
 
 from typing import Any
@@ -28,6 +29,7 @@ from app.hub.sink import OperationSource
 from app.ingestion import statements
 from app.hub.messages import MESSAGE_TYPES
 from app.ingestion.sink import DatabaseSink
+from app.ingestion.sink import _moved
 from app.ingestion.sink import UnknownCluster
 from app.ingestion.sink import DatabaseDesiredSource
 from app.ingestion.time import parse_ts
@@ -42,6 +44,8 @@ FIXTURES = Path(__file__).resolve().parents[2] / "packages" / "contract" / "fixt
 
 CLUSTER = "clu_01J9X2AAAAAAAAAAAAAAAAAAAA"
 CLUSTER_ID = uuid.UUID("11111111-1111-1111-1111-111111111111")
+MOMENT = dt.datetime(2026, 8, 23, 12, 0, tzinfo=dt.UTC)
+NODE_UID = "nod_01j9x2bbbbbbbbbbbbbbbbbbbc"
 
 
 def payload(type_name: str):
@@ -348,8 +352,49 @@ def test_operation_is_updated_and_never_created() -> None:
 def test_node_upsert_omits_columns_the_wire_does_not_carry() -> None:
     """Absent is not the same as null: an upsert must not erase a later frame's work."""
     sql, _ = compile_sql(statements.upsert_node(CLUSTER_ID, payload("node.observed")))
-    for column in ("cpu_cores", "memory_mib", "os_image", "taints", "joined_at", "runtime_version"):
+    for column in ("joined_at", "runtime_version"):
         assert column not in sql
+
+
+def test_node_upsert_writes_the_machine_shape_when_the_frame_carries_it() -> None:
+    sql, params = compile_sql(statements.upsert_node(CLUSTER_ID, payload("node.observed")))
+    for column in ("instance_type", "cloud", "cpu_cores", "memory_mib", "cpu_arch", "os_image", "taints"):
+        assert column in sql
+    assert "p5.48xlarge" in params.values()
+    assert 192 in params.values()
+
+
+def test_node_upsert_leaves_the_machine_shape_alone_when_the_frame_omits_it() -> None:
+    """An operator too old to describe the machine must not blank what a newer one wrote."""
+    older = structs.replace(
+        payload("node.observed"),
+        instance_type="",
+        cloud="",
+        zone="",
+        region="",
+        cpu_cores=0,
+        memory_mib=0,
+        cpu_arch="",
+        os_image="",
+        taints=None,
+    )
+    sql, _ = compile_sql(statements.upsert_node(CLUSTER_ID, older))
+    for column in ("instance_type", "cloud", "cpu_cores", "memory_mib", "cpu_arch", "os_image", "taints"):
+        assert column not in sql
+
+
+def test_cluster_observed_lands_on_the_sync_state_and_never_the_registry_row() -> None:
+    """Observed cluster attributes have one writer, and it is not the API."""
+    sql, params = compile_sql(statements.upsert_cluster_observed(CLUSTER_ID, payload("cluster.observed")))
+    assert "INSERT INTO supply_cluster_sync_state" in sql
+    assert "supply_cluster " not in sql
+    assert "eks" in params.values()
+    assert "aws" in params.values()
+
+
+def test_cluster_observed_does_not_overwrite_the_declared_region() -> None:
+    sql, _ = compile_sql(statements.upsert_cluster_observed(CLUSTER_ID, payload("cluster.observed")))
+    assert "observed_region" in sql
 
 
 # --------------------------------------------------------------------------- events
@@ -372,6 +417,32 @@ def test_event_insert_mints_a_public_id() -> None:
 def test_device_event_resolves_its_subject() -> None:
     sql, _ = compile_sql(statements.insert_device_event(CLUSTER_ID, payload("device.event")))
     assert "SELECT supply_device.id" in sql
+
+
+def test_a_departed_node_stops_claiming_to_be_ready() -> None:
+    """A `left` event has to change the node, not just be filed next to it.
+
+    Until this existed the plane recorded the departure and left the row saying
+    the node was ready, so it stayed a placement candidate until a completed
+    resync happened to prune it — which, on a session that never dropped, was
+    never.
+    """
+    sql, params = compile_sql(statements.mark_node_left(CLUSTER_ID, NODE_UID, MOMENT))
+    assert "UPDATE supply_node SET" in sql
+    assert "condition" in sql
+    assert "ready" in sql
+    assert "left" in params.values()
+    assert False in params.values()
+
+
+def test_a_departed_node_takes_its_devices_health_with_it() -> None:
+    """A device is only observable through its node; once the node is gone, nothing
+    can still vouch for the device."""
+    sql, params = compile_sql(statements.orphan_devices(CLUSTER_ID, NODE_UID, MOMENT))
+    assert "UPDATE supply_device SET" in sql
+    assert "unknown" in params.values()
+    assert False in params.values()
+    assert "SELECT supply_node.id" in sql
 
 
 def test_prune_statements_are_scoped_to_one_cluster() -> None:
@@ -661,3 +732,61 @@ def test_wire_timestamps_round_trip_to_the_millisecond() -> None:
 def test_an_unparseable_timestamp_is_dropped_not_raised() -> None:
     assert parse_ts("not a time") is None
     assert parse_ts(None) is None
+
+
+# --------------------------------------------------------------- deployment history
+
+
+def test_a_reconcile_conclusion_is_filed_as_an_event() -> None:
+    """The status row is last-writer-wins, so it is the only record of how a deployment got there."""
+    observed = payload("deployment.observed")
+    sql, params = compile_sql(statements.deployment_progressed(CLUSTER_ID, DEPLOYMENT_ID, observed))
+    assert "INSERT INTO ops_event" in sql
+    values = scalar_params(params)
+    assert f"deployment.{observed.phase}" in values
+    assert DEPLOYMENT_ID in values
+
+
+def test_a_deployment_event_survives_being_replayed() -> None:
+    """The stream is at-least-once, so a repeated frame must land on the row it already wrote."""
+    sql, _ = compile_sql(statements.deployment_progressed(CLUSTER_ID, DEPLOYMENT_ID, payload("deployment.observed")))
+    assert "ON CONFLICT (cluster_id, type, subject_type, occurred_at, md5(message)) DO NOTHING" in sql
+
+
+def test_a_capacity_refusal_outranks_the_severity_of_its_phase() -> None:
+    """Waiting for a download and having nowhere to put the work are both `pending`."""
+    observed = structs.replace(payload("deployment.observed"), phase="pending", reason="NoSchedulableCapacity")
+    _, params = compile_sql(statements.deployment_progressed(CLUSTER_ID, DEPLOYMENT_ID, observed))
+    assert "warning" in scalar_params(params)
+
+    waiting = structs.replace(payload("deployment.observed"), phase="pending", reason="WeightsNotResident")
+    _, params = compile_sql(statements.deployment_progressed(CLUSTER_ID, DEPLOYMENT_ID, waiting))
+    assert "warning" not in scalar_params(params)
+
+
+def test_a_frame_that_restates_the_stored_row_is_not_filed_again() -> None:
+    """A hub failover replays the current state of every deployment; none of it is news."""
+    observed = payload("deployment.observed")
+    same = _Stored(observed.phase, observed.reason, observed.message, observed.ready_replicas)
+    assert not _moved(same, observed)
+
+
+def test_a_rollout_that_only_moves_replica_counts_is_still_news() -> None:
+    """Two of four ready becoming four of four is the transition somebody is waiting on."""
+    observed = payload("deployment.observed")
+    before = _Stored(observed.phase, observed.reason, observed.message, observed.ready_replicas - 1)
+    assert _moved(before, observed)
+
+
+def test_the_first_frame_for_a_deployment_is_always_news() -> None:
+    assert _moved(None, payload("deployment.observed"))
+
+
+class _Stored:
+    """The four columns `deployment_status_before` reads back."""
+
+    def __init__(self, phase: str, reason: str | None, message: str | None, ready_replicas: int) -> None:
+        self.phase = phase
+        self.reason = reason
+        self.message = message
+        self.ready_replicas = ready_replicas

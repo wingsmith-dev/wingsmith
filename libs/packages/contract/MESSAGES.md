@@ -45,7 +45,8 @@ bandwidth we do not care about at this scale.
 
 | Type | Payload |
 |---|---|
-| `node.observed` | identity, membership, conditions, cordon state, kernel / driver / container-runtime / agent versions |
+| `cluster.observed` | what the cluster turned out to be: distribution, cloud, region, and its node and device counts |
+| `node.observed` | identity, membership, conditions, cordon state, machine shape (instance type, cloud, zone, region, cores, memory, architecture, os image), taints, kernel / driver / container-runtime / agent versions |
 | `node.event` | joined, left, cordoned, uncordoned, degraded |
 | `device.observed` | per-accelerator: uuid, model, memory capacity, health, ECC and throttle state, MIG profile, current allocation |
 | `device.event` | degraded, recovered, reset, fell off the bus |
@@ -56,6 +57,22 @@ bandwidth we do not care about at this scale.
 Device metrics — utilization, temperature, throughput, memory in use — are **not** here. Device
 memory appears only as `memory_total_mb`: capacity is state, occupancy is measurement. See
 PROTOCOL §7.
+
+**`distribution` is the one orchestrator name on the wire.** Every other field is deliberately
+neutral, and this one is not: `eks`, `rke2`, `gke` name a Kubernetes flavour. It is carried because
+an operator needs to know what they are running and there is no neutral way to say it, and it is
+bounded by being inert — the plane stores it and displays it and nothing branches on it. A plane
+that reads `distribution` to decide what to send has broken rule 2.
+
+**The machine shape is stated in neutral units.** `cpu_cores` is a count and `memory_mib` is
+mebibytes, resolved by the operator, rather than the orchestrator's own quantity strings. The plane
+must never have to parse `"128974848Ki"` to learn how big a node is.
+
+**Absent is not empty.** A field the operator omits leaves the plane's value alone; it is not
+written as null. This is what lets an operator predating a field roll alongside one that carries it
+without the older one blanking what the newer wrote. `taints` is therefore genuinely optional
+rather than defaulting to `[]` — an empty taint list is a fact worth recording, and it has to be
+distinguishable from a frame that never mentioned taints.
 
 **A discovered workload is a sighting, not a deployment.** `workload.discovered` reports what was
 already running when the operator arrived — the pods holding GPUs that the plane did not put

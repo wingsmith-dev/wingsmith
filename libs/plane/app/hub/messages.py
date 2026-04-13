@@ -138,12 +138,35 @@ class ResyncBegin(Struct):
 # --------------------------------------------------------------------------- supply
 
 
+class ClusterObserved(Struct):
+    """What a cluster turned out to be, as opposed to what it was declared to be.
+
+    `distribution` is the only orchestrator name anywhere in the plane, and it is
+    stored and displayed rather than read: the moment something branches on it,
+    the plane knows what Kubernetes is and rule 2 is gone.
+    """
+
+    cluster_id: str
+    nodes: int
+    devices: int
+    observed_at: str
+    distribution: str = ""
+    cloud: str = ""
+    region: str = ""
+
+
 class NodeCondition(Struct):
     type: str
     status: Literal["true", "false", "unknown"]
     reason: str
     message: str
     since: str
+
+
+class NodeTaint(Struct):
+    key: str
+    effect: str
+    value: str = ""
 
 
 class NodeObserved(Struct):
@@ -162,6 +185,15 @@ class NodeObserved(Struct):
     device_ids: list[str]
     labels: dict[str, str]
     observed_at: str
+    instance_type: str = ""
+    cloud: str = ""
+    zone: str = ""
+    region: str = ""
+    cpu_cores: int = 0
+    memory_mib: int = 0
+    cpu_arch: str = ""
+    os_image: str = ""
+    taints: list[NodeTaint] | None = None
 
 
 class NodeEvent(Struct):
@@ -674,6 +706,7 @@ MESSAGE_TYPES: dict[str, type[Struct]] = {
     "ack": Ack,
     "stream.end": StreamEnd,
     "resync.begin": ResyncBegin,
+    "cluster.observed": ClusterObserved,
     "node.observed": NodeObserved,
     "node.event": NodeEvent,
     "device.observed": DeviceObserved,

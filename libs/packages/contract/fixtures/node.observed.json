@@ -29,10 +29,25 @@
         "since": "2026-08-18T09:12:03.000Z"
       }
     ],
+    "instance_type": "p5.48xlarge",
+    "cloud": "aws",
+    "zone": "eu-west-1b",
+    "region": "eu-west-1",
+    "cpu_cores": 192,
+    "memory_mib": 2097152,
+    "cpu_arch": "amd64",
+    "os_image": "Ubuntu 22.04.4 LTS",
     "kernel_version": "6.8.0-45-generic",
     "driver_version": "570.86.15",
     "runtime_version": "containerd://1.7.27",
     "agent_version": "0.4.2",
+    "taints": [
+      {
+        "key": "nvidia.com/gpu",
+        "value": "present",
+        "effect": "no_schedule"
+      }
+    ],
     "device_ids": [
       "dev_01j9x2cccccccccccccccccccc",
       "dev_01j9x2cccccccccccccccccccd"

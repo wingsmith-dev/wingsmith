@@ -56,6 +56,27 @@ type ResyncBegin struct {
 
 // ---------------------------------------------------------------------------- supply
 
+// ClusterObserved is what the cluster reports about itself as a whole.
+//
+// Everything here is observed and none of it is declared. A cluster's registry entry says what we
+// decided about it — its name, its region, whether it is draining. This says what it turned out to
+// be: which cloud its machines are actually on and which Kubernetes distribution is actually
+// running. The two disagreeing is a fact worth being able to see, which is exactly why the
+// observed answer does not overwrite the declared one.
+//
+// Distribution is the one string on the wire that names an orchestrator. That is deliberate and
+// bounded: it is an opaque label the plane stores and displays, never something it branches on.
+// The moment the plane reads it to decide what to send, rule 2 is broken.
+type ClusterObserved struct {
+	ClusterID    string `json:"cluster_id"`
+	Distribution string `json:"distribution"`
+	Cloud        string `json:"cloud"`
+	Region       string `json:"region"`
+	Nodes        int    `json:"nodes"`
+	Devices      int    `json:"devices"`
+	ObservedAt   string `json:"observed_at"`
+}
+
 // NodeCondition is one observed condition on a node. Cordon state is not a condition; it is the
 // separate observed boolean NodeObserved.Cordoned.
 type NodeCondition struct {
@@ -66,7 +87,24 @@ type NodeCondition struct {
 	Since   string `json:"since"`
 }
 
+// NodeTaint is one scheduling repellent on a node, in the orchestrator-neutral form: a key, an
+// optional value, and how hard it pushes back.
+type NodeTaint struct {
+	Key    string `json:"key"`
+	Value  string `json:"value,omitempty"`
+	Effect string `json:"effect"`
+}
+
 // NodeObserved is the full observed state of one node.
+//
+// InstanceType, CPUCores, MemoryMiB, CPUArch and OSImage are what the machine *is*, as opposed to
+// how it is currently doing. They are stated in neutral units — cores and mebibytes — rather than
+// forwarded as the orchestrator's own quantity strings, because the plane does not know a cluster
+// is Kubernetes and must not learn to parse its resource grammar to read a number.
+//
+// Cloud is the provider the machine belongs to, taken from the node's provider reference. It is
+// observed per node rather than declared per cluster: a cluster can be told it is in one place and
+// be wrong, and a hybrid cluster would make the cluster-level answer a lie for some of its nodes.
 type NodeObserved struct {
 	NodeID         string            `json:"node_id"`
 	ClusterID      string            `json:"cluster_id"`
@@ -76,10 +114,19 @@ type NodeObserved struct {
 	Ready          bool              `json:"ready"`
 	Cordoned       bool              `json:"cordoned"`
 	Conditions     []NodeCondition   `json:"conditions"`
+	InstanceType   string            `json:"instance_type"`
+	Cloud          string            `json:"cloud"`
+	Zone           string            `json:"zone"`
+	Region         string            `json:"region"`
+	CPUCores       int               `json:"cpu_cores"`
+	MemoryMiB      int64             `json:"memory_mib"`
+	CPUArch        string            `json:"cpu_arch"`
+	OSImage        string            `json:"os_image"`
 	KernelVersion  string            `json:"kernel_version"`
 	DriverVersion  string            `json:"driver_version"`
 	RuntimeVersion string            `json:"runtime_version"`
 	AgentVersion   string            `json:"agent_version"`
+	Taints         []NodeTaint       `json:"taints"`
 	DeviceIDs      []string          `json:"device_ids"`
 	Labels         map[string]string `json:"labels"`
 	ObservedAt     string            `json:"observed_at"`
@@ -208,8 +255,8 @@ type RecipeParallelism struct {
 
 // RecipeResources is the non-accelerator footprint of one replica.
 type RecipeResources struct {
-	CPUCores  *int   `json:"cpu_cores,omitempty"`
-	MemoryMiB *int64 `json:"memory_mib,omitempty"`
+	CPUCores  *int   `json:"cpu_cores"`
+	MemoryMiB *int64 `json:"memory_mib"`
 	DiskGiB   *int   `json:"disk_gib,omitempty"`
 }
 
@@ -576,6 +623,7 @@ var MessageTypes = map[string]func() any{
 	"ack":                 func() any { return &Ack{} },
 	"stream.end":          func() any { return &StreamEnd{} },
 	"resync.begin":        func() any { return &ResyncBegin{} },
+	"cluster.observed":    func() any { return &ClusterObserved{} },
 	"node.observed":       func() any { return &NodeObserved{} },
 	"node.event":          func() any { return &NodeEvent{} },
 	"device.observed":     func() any { return &DeviceObserved{} },
