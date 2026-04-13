@@ -3,6 +3,8 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -37,6 +39,10 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 		}
 		if artifact == nil {
 			pending++
+			// Reported even so. "The cluster was told to hold weights it has never heard
+			// described" is the answer to why a deployment is not starting, and it is only an
+			// answer if it leaves the operator.
+			r.reportResidency(ctx, entry.ArtifactID, 0)
 			continue
 		}
 		image, err := r.runtimeImage(ctx, entry.ArtifactID)
@@ -45,11 +51,13 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 		}
 		if image == "" {
 			pending++
+			r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes)
 			continue
 		}
 		if err := r.ensurePrefetch(ctx, res, *artifact, image); err != nil {
 			return ctrl.Result{}, err
 		}
+		r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes)
 	}
 
 	if pending > 0 {
@@ -81,6 +89,10 @@ func (r *SyncedResourceReconciler) ensurePrefetch(ctx context.Context, owner *v1
 	if err != nil {
 		return fmt.Errorf("render prefetch job for %s: %w", art.ArtifactID, err)
 	}
+	// Labelled with its declared origin for the same reason the graph deployment is: the Job is
+	// created in the workload namespace and the warm-set that asked for it is not, so the watch
+	// that wakes this loop when the download finishes has nothing else to follow back.
+	render.OwnedMeta(job, owner)
 	if err := r.Client.Create(ctx, job); err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("create prefetch job for %s: %w", art.ArtifactID, err)
 	}
@@ -117,4 +129,59 @@ func (r *SyncedResourceReconciler) runtimeImage(ctx context.Context, artifactID 
 		}
 	}
 	return "", nil
+}
+
+// reportResidency tells the plane whether one artifact's weights are on this cluster yet.
+//
+// Read from the prefetch Job, which is the same source the deployment path gates on. A count kept
+// alongside it would be a second copy of a fact the API server already holds, and the two would
+// disagree the first time a Job was deleted by hand — so residency has one reading here, whoever
+// is asking.
+//
+// Reported at the cluster tier with no per-node rows, because the fetch lands on one shared
+// volume: there is no node this is true of and not true of. bytesResident is the artifact's
+// declared size once the Job has completed, which is what "the whole thing is on disk" means for
+// a download that either finishes or does not.
+//
+// Failures are swallowed for the same reason the deployment report's are: this is a progress
+// report, and losing one must never turn a reconcile that otherwise succeeded into a retry.
+func (r *SyncedResourceReconciler) reportResidency(ctx context.Context, artifactID string, size int64) {
+	reporter := r.reporter()
+	if reporter == nil {
+		return
+	}
+
+	state, bytes := "absent", int64(0)
+	var job batchv1.Job
+	key := types.NamespacedName{Namespace: r.Render.Namespace, Name: render.PrefetchJobName(artifactID)}
+	switch err := r.Client.Get(ctx, key, &job); {
+	case apierrors.IsNotFound(err):
+	case err != nil:
+		r.Log.Warn("could not read prefetch job for residency", "artifact", artifactID, "error", err)
+		return
+	case job.Status.Succeeded > 0:
+		state, bytes = "resident", size
+	case job.Status.Active > 0 || job.Status.Failed > 0:
+		state = "fetching"
+	}
+
+	key2 := reportKey{phase: state, message: strconv.FormatInt(bytes, 10)}
+	if r.lastReported(artifactID) == key2 {
+		return
+	}
+
+	payload := wire.CacheObserved{
+		ClusterID:     r.ClusterID,
+		ArtifactID:    artifactID,
+		State:         state,
+		Resident:      state == "resident",
+		BytesResident: bytes,
+		Nodes:         []wire.CacheNodeResidency{},
+		ObservedAt:    time.Now().UTC().Format(time.RFC3339Nano),
+	}
+	if err := reporter.Send(TypeCacheObserved, artifactID, payload); err != nil {
+		r.Log.Warn("could not report cache residency", "artifact", artifactID, "error", err)
+		return
+	}
+	r.markReported(artifactID, key2)
 }

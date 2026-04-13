@@ -10,8 +10,11 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
-// TypeDeploymentObserved is the frame this reconciler reports its own progress on.
-const TypeDeploymentObserved = "deployment.observed"
+// The frames this reconciler reports its own progress on.
+const (
+	TypeDeploymentObserved = "deployment.observed"
+	TypeCacheObserved      = "cache.observed"
+)
 
 // Reporter is the upward half of the reconcile loop: what this operator decided, sent to the hub.
 //

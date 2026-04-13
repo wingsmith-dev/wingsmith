@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/render"
@@ -79,6 +80,14 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return ctrl.Result{}, err
 	}
 
+	// Teardown runs before every other branch, including the authority gate. A resource being
+	// deleted has no desired state left to converge on, and the one thing still owed to it is
+	// the removal of what it rendered — which is this operator's job now that the rendered
+	// object no longer carries an owner reference back to it.
+	if !res.DeletionTimestamp.IsZero() {
+		return r.teardown(ctx, &res)
+	}
+
 	// The authority gate runs before the staleness check, not after. A resource whose revision
 	// has already been observed still has to be re-examined, because the thing that drifts is
 	// the cluster object and not the desired state describing it.
@@ -137,19 +146,43 @@ func (r *SyncedResourceReconciler) observed(ctx context.Context, res *v1alpha1.S
 
 // SetupWithManager wires the reconciler to the manager.
 //
-// Owning the rendered objects is what closes the loop in the other direction: a graph deployment
+// Watching the rendered objects is what closes the loop in the other direction: a graph deployment
 // whose status changes, or a prefetch job that finishes downloading, wakes the declared object it
 // came from without anything having to poll for it.
+//
+// By label rather than by ownership. Both rendered kinds live in the workload namespace and the
+// declared copies live in this operator's own, and controller-runtime's ownership handler — like
+// the garbage collector it mirrors — resolves an owner within the dependent's namespace. Owning
+// them across that boundary linked nothing in this direction and actively destroyed the objects
+// in the other.
 func (r *SyncedResourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	graph := &unstructured.Unstructured{}
 	graph.SetGroupVersionKind(render.GVK)
 
+	back := handler.EnqueueRequestsFromMapFunc(r.declaredFor)
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.SyncedResource{}).
-		Owns(&batchv1.Job{}).
-		Owns(graph).
+		Watches(&batchv1.Job{}, back).
+		Watches(graph, back).
 		Named("syncedresource").
 		Complete(r)
+}
+
+// declaredFor maps a rendered object back to the declared one it came from.
+//
+// The owner labels are the only link across the namespace boundary, and an object carrying neither
+// is not ours — something else in the workload namespace, or one rendered before these labels
+// existed. Either way the answer is to enqueue nothing rather than to guess a name from the
+// object's own.
+func (r *SyncedResourceReconciler) declaredFor(_ context.Context, obj client.Object) []ctrl.Request {
+	labels := obj.GetLabels()
+	name := labels[render.OwnerNameLabel]
+	namespace := labels[render.OwnerNamespaceLabel]
+	if name == "" || namespace != r.Namespace {
+		return nil
+	}
+	return []ctrl.Request{{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}}}
 }
 
 // reconcileAdopted handles desired state promoted from a workload that was already running.

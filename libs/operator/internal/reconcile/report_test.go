@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"testing"
 
@@ -191,3 +192,99 @@ type noopHandler struct{}
 
 func (noopHandler) Handle(context.Context, *syncpkg.Envelope) error { return nil }
 func (noopHandler) Resync(context.Context) error                    { return nil }
+
+// chainSpy stands in for the store below the reporting handler.
+type chainSpy struct {
+	handled  int
+	resyncs  int
+	handleEr error
+	resyncEr error
+}
+
+func (s *chainSpy) Handle(_ context.Context, _ *syncpkg.Envelope) error {
+	s.handled++
+	return s.handleEr
+}
+
+func (s *chainSpy) Resync(_ context.Context) error {
+	s.resyncs++
+	return s.resyncEr
+}
+
+// TestWithReporterIsAPassThroughForOrdinaryFrames — it exists for the Resync hook and must not
+// otherwise change how declared state is handled.
+func TestWithReporterIsAPassThroughForOrdinaryFrames(t *testing.T) {
+	inner := &chainSpy{}
+	r := &SyncedResourceReconciler{reported: map[string]reportKey{}}
+	h := WithReporter(inner, r)
+
+	if err := h.Handle(context.Background(), &syncpkg.Envelope{Type: wireDeploymentDesired}); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+	if inner.handled != 1 {
+		t.Errorf("the store saw %d frames, want 1", inner.handled)
+	}
+}
+
+func TestWithReporterDoesNotSwallowTheStoresError(t *testing.T) {
+	inner := &chainSpy{handleEr: errors.New("write failed")}
+	h := WithReporter(inner, &SyncedResourceReconciler{reported: map[string]reportKey{}})
+	if err := h.Handle(context.Background(), &syncpkg.Envelope{Type: wireDeploymentDesired}); err == nil {
+		t.Fatal("the error was swallowed; the hub would not replay the frame")
+	}
+}
+
+// TestAFreshSessionForgetsWhatWasAlreadySaid is the bug this handler was added for: the dedupe in
+// report assumes the frame it skipped was delivered, and a session the hub could not resume is one
+// where that assumption does not hold.
+func TestAFreshSessionForgetsWhatWasAlreadySaid(t *testing.T) {
+	inner := &chainSpy{}
+	r := &SyncedResourceReconciler{reported: map[string]reportKey{
+		"dep-01j9x2gggggggggggggggggggg": {},
+	}}
+	h := WithReporter(inner, r)
+
+	if err := h.Resync(context.Background()); err != nil {
+		t.Fatalf("resync: %v", err)
+	}
+	if inner.resyncs != 1 {
+		t.Errorf("the store saw %d resyncs, want 1", inner.resyncs)
+	}
+	if len(r.reported) != 0 {
+		t.Error("a fresh session kept the conclusions it had already sent; they will never be restated")
+	}
+}
+
+// TestAFailedResyncKeepsWhatWasSaid — forgetting after a resync the store refused would restate
+// everything against a stream that is not ready for it.
+func TestAFailedResyncKeepsWhatWasSaid(t *testing.T) {
+	inner := &chainSpy{resyncEr: errors.New("prune failed")}
+	r := &SyncedResourceReconciler{reported: map[string]reportKey{"dep-x": {}}}
+	h := WithReporter(inner, r)
+
+	if err := h.Resync(context.Background()); err == nil {
+		t.Fatal("a failing resync was reported as successful")
+	}
+	if len(r.reported) != 1 {
+		t.Error("state was forgotten even though the resync failed")
+	}
+}
+
+// TestWithReporterOnANilReconcilerIsTheStoreItself — the operator can run without the reconciler,
+// and wrapping nil must not introduce a handler that dereferences it.
+func TestWithReporterOnANilReconcilerIsTheStoreItself(t *testing.T) {
+	inner := &chainSpy{}
+	if got := WithReporter(inner, nil); got != syncpkg.Handler(inner) {
+		t.Fatal("wrapping a nil reconciler did not return the store unchanged")
+	}
+}
+
+// TestForgetAllIsSafeToCallTwice — a hub that opens two fresh sessions in a row must not panic.
+func TestForgetAllIsSafeToCallTwice(t *testing.T) {
+	r := &SyncedResourceReconciler{reported: map[string]reportKey{"dep-x": {}}}
+	r.ForgetAll()
+	r.ForgetAll()
+	if len(r.reported) != 0 {
+		t.Error("ForgetAll left state behind")
+	}
+}

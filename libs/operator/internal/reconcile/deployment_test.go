@@ -10,6 +10,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -18,6 +19,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/render"
@@ -222,9 +224,73 @@ func TestDeploymentRendersOnceWeightsAreResident(t *testing.T) {
 		t.Fatalf("graph deployment was not applied: %v", err)
 	}
 
-	owners := graph.GetOwnerReferences()
-	if len(owners) != 1 || owners[0].Kind != "SyncedResource" {
-		t.Errorf("owner references = %v, want one SyncedResource so teardown is garbage collection", owners)
+	// The declared copy is in hangar-system and this is in dynamo, so an owner reference here is
+	// not a link — Kubernetes resolves one within the dependent's own namespace, finds nothing,
+	// and deletes the object it is stamped on. This is the regression that made a deployment
+	// report Applied and then quietly not exist.
+	if owners := graph.GetOwnerReferences(); len(owners) != 0 {
+		t.Errorf("owner references = %v, want none across a namespace boundary", owners)
+	}
+	labels := graph.GetLabels()
+	if got := labels[render.OwnerNameLabel]; got != render.Name(testDeploymentID) {
+		t.Errorf("%s = %q, want %q", render.OwnerNameLabel, got, render.Name(testDeploymentID))
+	}
+	if got := labels[render.OwnerNamespaceLabel]; got != "hangar-system" {
+		t.Errorf("%s = %q, want hangar-system", render.OwnerNamespaceLabel, got)
+	}
+
+	// Nothing else will delete it now, so the declared copy has to be held open until this
+	// operator has.
+	if !controllerutil.ContainsFinalizer(out, renderedFinalizer) {
+		t.Errorf("finalizers = %v, want %s", out.Finalizers, renderedFinalizer)
+	}
+}
+
+// A rendered object can go away without desired state changing — someone deletes it, or an
+// earlier version of this operator left one that the garbage collector took. The watch is the
+// fast path back; this is the floor under it.
+func TestAnAppliedDeploymentIsLookedAtAgainWithoutBeingWrittenTo(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	_, _, result := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+
+	if result.RequeueAfter != resyncAfterApply {
+		t.Errorf("RequeueAfter = %s, want %s", result.RequeueAfter, resyncAfterApply)
+	}
+}
+
+// Teardown is a code path rather than the API server's job, because the owner reference that used
+// to do it cannot cross the namespace boundary this render puts the two objects on.
+func TestDeletingADeclaredDeploymentRemovesWhatItRendered(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+
+	ctx := context.Background()
+	key := types.NamespacedName{Namespace: "dynamo", Name: render.Name(testDeploymentID)}
+	graph := &unstructured.Unstructured{}
+	graph.SetGroupVersionKind(render.GVK)
+	if err := r.Client.Get(ctx, key, graph); err != nil {
+		t.Fatalf("nothing was rendered to tear down: %v", err)
+	}
+
+	if err := r.Client.Delete(ctx, out); err != nil {
+		t.Fatalf("delete declared copy: %v", err)
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: out.Namespace, Name: out.Name}}
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("reconcile after delete: %v", err)
+	}
+
+	if err := r.Client.Get(ctx, key, graph); !apierrors.IsNotFound(err) {
+		t.Errorf("graph deployment survived its declared copy: %v", err)
+	}
+	var left v1alpha1.SyncedResource
+	err := r.Client.Get(ctx, types.NamespacedName{Namespace: out.Namespace, Name: out.Name}, &left)
+	if !apierrors.IsNotFound(err) {
+		t.Errorf("declared copy still held by a finalizer: %v (%v)", err, left.Finalizers)
 	}
 }
 

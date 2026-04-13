@@ -399,10 +399,33 @@ func mergeMaps(base, over map[string]any) map[string]any {
 	return out
 }
 
-// Owned stamps an owner reference so that deleting the declared copy garbage-collects what was
-// rendered from it. Teardown is therefore the API server's job and not a code path here — there
-// is no delete branch in the reconciler to get wrong.
+// Label keys that record which declared object a rendered one came from.
+//
+// They exist because an owner reference often cannot. Kubernetes resolves an ownerReference in the
+// dependent's own namespace, so a namespaced owner in a different namespace does not merely fail
+// to link the two — the garbage collector reads it as an owner that has been deleted and removes
+// the dependent, seconds after it was applied. Declared state lives in Options.Namespace and
+// rendered workloads live in the workload namespace, so that is the ordinary case here, not an
+// edge one.
+const (
+	OwnerNameLabel      = "hangar.dev/owner"
+	OwnerNamespaceLabel = "hangar.dev/owner-namespace"
+)
+
+// Owned records which declared object a rendered one came from.
+//
+// An owner reference is stamped only when the two share a namespace, where it is both valid and
+// useful. Across namespaces the labels are the only link, and teardown becomes a real code path —
+// the finalizer in the reconciler — rather than the API server's job. That is the cost of
+// rendering into a namespace of its own, and it is paid explicitly here instead of being written
+// as a reference that Kubernetes will act on in the one way nobody wants.
 func Owned(obj *unstructured.Unstructured, owner metav1.Object, gvk schema.GroupVersionKind) {
+	OwnedMeta(obj, owner)
+
+	if obj.GetNamespace() != owner.GetNamespace() {
+		obj.SetOwnerReferences(nil)
+		return
+	}
 	obj.SetOwnerReferences([]metav1.OwnerReference{{
 		APIVersion:         gvk.GroupVersion().String(),
 		Kind:               gvk.Kind,
@@ -411,6 +434,19 @@ func Owned(obj *unstructured.Unstructured, owner metav1.Object, gvk schema.Group
 		Controller:         ptr(true),
 		BlockOwnerDeletion: ptr(true),
 	}})
+}
+
+// OwnedMeta stamps the owner labels alone, for a rendered object that never takes an owner
+// reference — a prefetch Job, whose pod template is immutable and which is therefore created once
+// and left alone rather than applied on every pass.
+func OwnedMeta(obj metav1.Object, owner metav1.Object) {
+	labels := obj.GetLabels()
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels[OwnerNameLabel] = owner.GetName()
+	labels[OwnerNamespaceLabel] = owner.GetNamespace()
+	obj.SetLabels(labels)
 }
 
 func ptr[T any](v T) *T { return &v }
