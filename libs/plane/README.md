@@ -2,8 +2,9 @@
 
 Python control plane. Three concerns, deliberately kept apart:
 
-- **Registry / intent** (`app/registry/`) — CRUD over declared objects. Should stay boring.
-- **Placement** (`app/placement/`) — which cluster a workload goes to. A pure function over
+- **Modules / intent** (`app/modules/`) — one package per object in the model. CRUD over declared
+  objects. Should stay boring.
+- **Placement** (`app/modules/placement/`) — which cluster a workload goes to. A pure function over
   observed state, so it is testable without a cluster.
 - **Ingestion** (`app/ingestion/`) — writes arriving from the hub. High frequency, idempotent,
   last-writer-wins per cluster.
@@ -11,9 +12,8 @@ Python control plane. Three concerns, deliberately kept apart:
 Runs as two processes sharing one package and one database: the HTTP API, and the **hub** that
 terminates the long-lived bidirectional operator streams. They are separate because they have
 different lifecycles and different failure modes — the API is request/response, the hub holds N
-persistent sessions with resumption and backpressure.
-
-This is the skeleton. No domain objects yet; the object model lands on top of it.
+persistent sessions with resumption and backpressure. A third, the **reactor**, derives alerts on
+its own loop under a lease.
 
 ## Layout
 
@@ -21,20 +21,22 @@ This is the skeleton. No domain objects yet; the object model lands on top of it
 app/
 ├── api/            HTTP process — Litestar app, route registration, __main__
 ├── hub/            WebSocket process — operator sessions, __main__
-├── registry/       declared-object CRUD modules (empty)
-├── placement/      cluster selection, pure, no I/O (empty)
-├── ingestion/      observed-state writes from the hub (empty)
+├── reactor/        derived alerts, leased loop, notification channels, __main__
+├── modules/        one package per object in the model; placement lives here too
+├── ingestion/      observed-state writes from the hub
+├── integrations/   outbound third parties — Hugging Face artifact resolution
 ├── core/           auth seam, request context, exceptions, health routes
-├── db/             engine, declarative base, session provider
+├── db/             engine, declarative base, session provider, LISTEN/NOTIFY
 ├── config/         typed settings loaded from the environment
 └── utils/          msgspec Struct base, logging setup
-migrations/         alembic, async env, empty revision history
+migrations/         alembic, async env
 tests/
 ```
 
-`app/registry/` is the only package allowed to write declared state; `app/ingestion/` is the only
-one allowed to write observed state. `app/placement/` writes nothing and reads nothing — it takes
-a snapshot and returns a decision.
+`app/modules/` is the only place allowed to write declared state; `app/ingestion/` is the only one
+allowed to write observed state. `app/modules/placement/` writes nothing — it takes a snapshot and
+returns a decision. A module whose object is **observed** (nodes, devices, topology domains,
+replicas, allocations, events) is read-only: its service has no write methods at all.
 
 ## Running
 
@@ -80,6 +82,7 @@ then the bare `<NAME>`, so `DATABASE_URL` works unprefixed.
 | Variable | Default |
 |---|---|
 | `APP_ENV` | `local` |
+| `APP_DEBUG` | `false` |
 | `APP_LOG_LEVEL` / `APP_LOG_FORMAT` | `INFO` / `console` (`json` in production) |
 | `API_HOST` / `API_PORT` | `0.0.0.0` / `8000` |
 | `HUB_HOST` / `HUB_PORT` / `HUB_PATH` | `0.0.0.0` / `8001` / `/v1/hub/sync` |
@@ -87,13 +90,20 @@ then the bare `<NAME>`, so `DATABASE_URL` works unprefixed.
 | `HUB_SESSION_TTL_SECONDS` | `600` |
 | `HUB_REAPER_INTERVAL_SECONDS` | `60` |
 | `HUB_OWNERSHIP_CHECK_SECONDS` | `10` |
-| `DATABASE_URL` | `postgresql+asyncpg://hangar:hangar@localhost:5442/hangar` |
+| `DATABASE_URL` | `postgresql+psycopg://hangar:hangar@localhost:5442/hangar` |
+| `DB_ECHO` / `DB_POOL_SIZE` / `DB_POOL_MAX_OVERFLOW` / `DB_POOL_PRE_PING` | `false` / `10` / `10` / `true` |
+| `REACTOR_ENABLED` | `true` |
+| `REACTOR_INTERVAL_SECONDS` / `REACTOR_LEASE_SECONDS` | `60` / `180` |
+| `REACTOR_EVENT_BATCH` / `REACTOR_NOTIFY_TIMEOUT` | `500` / `5` |
+| `METRICS_SOURCES` | unset — `default=<url>,<cluster>\|label=<name>,...` |
+| `METRICS_TIMEOUT` / `METRICS_WINDOW` / `METRICS_STEP` | `5` / `5m` / `60s` |
+| `HF_TOKEN` | unset |
 | `OPERATOR_TOKEN` | unset — falls back to `hangar-local-operator-token` only when `APP_ENV=local` |
 | `ADMIN_AUTH` | unset — resolves to `disabled` when `APP_ENV=local`, `enabled` otherwise |
 | `ADMIN_PASSWORD_HASH` | unset |
 | `SESSION_SIGNING_SECRET` | unset — required outside `local` when admin auth is enabled |
 | `SESSION_TTL_SECONDS` | `900` |
-| `ALLOWED_ORIGINS` | `http://localhost:5173` |
+| `ALLOWED_ORIGINS` | `http://localhost:5273,http://127.0.0.1:5273` |
 
 The default database URL matches `compose.yml` at the repo root.
 
@@ -126,8 +136,7 @@ uv run alembic revision --autogenerate -m "..."
 uv run alembic upgrade head
 ```
 
-The revision history is intentionally empty. The initial schema migration belongs with the object
-model, not with the skeleton. `migrations/env.py` imports `app.db.models` only if it exists.
+`migrations/env.py` imports `app.db.models` only if it exists.
 
 ## Checks
 
@@ -135,5 +144,6 @@ model, not with the skeleton. `migrations/env.py` imports `app.db.models` only i
 uv run ruff check .
 uv run ruff format .
 uv run mypy app
-uv run pytest
+uv run pytest                       # the default suite
+uv run pytest -m database           # needs Postgres; `just test-db` starts one
 ```

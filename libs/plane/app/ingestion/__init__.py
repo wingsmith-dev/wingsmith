@@ -6,7 +6,7 @@ placement never fan out across clusters.
 
 Two rules this package exists to enforce:
 
-- It writes observed state only. Declared state belongs to `app.registry`.
+- It writes observed state only. Declared state belongs to `app.modules`.
 - Telemetry does not come through here. Utilisation, temperature, throughput and
   token counts go from the cluster to the observability stack directly.
 """

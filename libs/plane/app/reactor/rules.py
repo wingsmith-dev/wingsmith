@@ -1,6 +1,6 @@
 """What counts as worth waking someone for. Pure, and the only place that decides.
 
-Kept free of I/O on the same principle as `app/placement`: the interesting part
+Kept free of I/O on the same principle as `app/modules/placement`: the interesting part
 of an alerting system is the judgement, and judgement that needs a database to
 exercise does not get exercised. Everything here takes plain values and returns
 `AlertIntent`, which `app.reactor.alerts` is then responsible for turning into a
