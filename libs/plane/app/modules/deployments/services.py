@@ -26,6 +26,7 @@ from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.ingestion import statements
 from app.modules.placement.services import PlacementService
 
 from .schemas import DeploymentSchema
@@ -141,11 +142,59 @@ def _rollup(row: dict | None) -> DeploymentReplicaRollupSchema:
     )
 
 
+def _changed(deployment: Deployment, fields: dict, bumped: bool) -> str:
+    """A one-line account of what a patch actually moved.
+
+    Written from the applied values rather than the request, so that a field sent
+    with the value it already had reads as what it was — nothing.
+    """
+    if "desired_replicas" in fields:
+        return f"{deployment.name} was scaled to {deployment.desired_replicas} replicas"
+    if bumped:
+        return f"{deployment.name} was changed in a way the cluster has to reconcile"
+    return f"{deployment.name} was updated"
+
+
 class DeploymentService:
     def __init__(self, db: AsyncSession, notifier: Notifier | None = None) -> None:
         self.db = db
         self.repo = DeploymentRepository(db)
         self.notifier: Notifier = DatabaseNotifier() if notifier is None else notifier
+
+    async def _record(
+        self,
+        deployment: Deployment,
+        event: str,
+        message: str,
+        details: dict[str, str] | None = None,
+        severity: str = "info",
+    ) -> None:
+        """Files what the plane just did to a deployment, in the caller's transaction.
+
+        Before the caller's `commit()` on purpose. The event and the write it
+        describes are one fact, and committing them separately would allow the
+        pair where a deployment exists and nothing records it being asked for —
+        the exact gap that made a deployment's first minutes unreadable.
+
+        This is a declared-state module writing to an observed table, which the
+        layout otherwise forbids. It is allowed here because the event is not an
+        observation of a cluster: it is the record of an intent this service is
+        the only writer of, and `ops_event` is the one timeline a reader should
+        have to consult. The distinction is kept visible in the event type —
+        `deployment.created` is something a human did, `deployment.placed` is
+        something a cluster concluded.
+        """
+        await self.db.execute(
+            statements.deployment_lifecycle(
+                deployment.cluster_id,
+                deployment.id,
+                event,
+                message,
+                {"deployment_id": deployment.uid, "name": deployment.name, **(details or {})},
+                dt.datetime.now(dt.UTC),
+                severity,
+            )
+        )
 
     async def _announce(self, cluster_uid: str, uid: str, generation: int) -> None:
         """Wakes whichever hub holds this cluster's stream, after the write is committed.
@@ -416,6 +465,17 @@ class DeploymentService:
         )
         try:
             await self.repo.add(workload, deployment)
+            await self._record(
+                deployment,
+                "created",
+                f"{data.name} was created on {cluster.name} from recipe {recipe.name}",
+                {
+                    "cluster": cluster.name,
+                    "recipe": recipe.uid,
+                    "desired_replicas": str(data.desired_replicas),
+                    "placement_reason": reason or "",
+                },
+            )
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
@@ -467,6 +527,12 @@ class DeploymentService:
 
         deployment.authority = data.authority
         deployment.generation += 1
+        await self._record(
+            deployment,
+            "authority_changed",
+            f"{deployment.name} is now {data.authority}",
+            {"authority": data.authority, "generation": str(deployment.generation)},
+        )
         await self.db.commit()
         await self._announce(row.cluster_uid, deployment.uid, deployment.generation)
         return await self.get(deployment.uid)
@@ -504,6 +570,16 @@ class DeploymentService:
             deployment.generation = deployment.generation + 1
 
         try:
+            await self._record(
+                deployment,
+                "scaled" if "desired_replicas" in fields else "updated",
+                _changed(deployment, fields, bumped),
+                {
+                    "fields": ", ".join(sorted(data.to_dict(exclude_unset=True))),
+                    "desired_replicas": str(deployment.desired_replicas),
+                    "generation": str(deployment.generation),
+                },
+            )
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
@@ -521,6 +597,10 @@ class DeploymentService:
         """
         row = await self._one(ref)
         uid, generation, cluster_uid = row[0].uid, row[0].generation, row.cluster_uid
+        # Filed before the delete, while the row it describes is still readable. `subject_id`
+        # carries no foreign key precisely so that this outlives its subject — the record of a
+        # deployment having been removed is worth more than the row ever was.
+        await self._record(row[0], "deleted", f"{row[0].name} was deleted")
         await self.repo.delete(row[1], row[0])
         await self.db.commit()
         await self._announce(cluster_uid, uid, generation)

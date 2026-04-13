@@ -26,12 +26,14 @@ from msgspec import Struct
 
 from app.db.engine import session_factory
 from app.db.notify import CHANNEL
+from app.db.notify import DEPLOYMENT
 from app.db.notify import OPERATION
 from app.db.notify import DeclaredChange
 from app.db.notify import decode
 from app.db.notify import listen_dsn
 from app.ingestion.desired import desired_frames
 from app.ingestion.operations import operation_desired
+from app.hub.record import record_dispatch
 
 
 logger = getLogger(__name__)
@@ -142,7 +144,51 @@ class DatabaseRenderer:
             return await desired_frames(db, change.cluster_id, change.kind, change.uid, change.generation)
 
 
-async def dispatch(change: DeclaredChange, live: LiveSessions, renderer: Renderer) -> bool:
+class Recorder(Protocol):
+    """Files the fact that a cluster was told about a change.
+
+    Optional throughout. A hub with no recorder dispatches exactly as before and
+    writes nothing, which is what the tests want and what a hub whose database is
+    momentarily unwritable should still do.
+    """
+
+    async def dispatched(self, change: DeclaredChange, frames: int) -> None: ...
+
+
+class DatabaseRecorder:
+    """Writes a dispatch to the event log, in a session of its own.
+
+    Only deployments. Every kind travels this path, but a recipe or an artifact
+    reaching a cluster is not a thing anybody is waiting on — a deployment is,
+    and "the plane sent it and the cluster has not answered" is the one state
+    that used to be indistinguishable from "the plane never sent it".
+
+    Failures are swallowed. This is a record of a send that has already happened;
+    losing it must never make the caller think the send did not.
+    """
+
+    __slots__ = ("_factory",)
+
+    def __init__(self, factory: Any | None = None) -> None:
+        self._factory = factory
+
+    async def dispatched(self, change: DeclaredChange, frames: int) -> None:
+        if change.kind != DEPLOYMENT:
+            return
+        try:
+            factory = self._factory or session_factory()
+            async with factory() as db:
+                await record_dispatch(db, change, frames)
+        except Exception:
+            logger.warning("hub.dispatch.unrecorded uid=%s", change.uid, exc_info=True)
+
+
+async def dispatch(
+    change: DeclaredChange,
+    live: LiveSessions,
+    renderer: Renderer,
+    recorder: Recorder | None = None,
+) -> bool:
     """Sends the current state of one changed object down this process's session for its cluster.
 
     Returns whether anything was sent. False is the ordinary case on all but one
@@ -160,6 +206,8 @@ async def dispatch(change: DeclaredChange, live: LiveSessions, renderer: Rendere
     for type_name, payload in rendered:
         await session.send_desired(type_name, payload)
         logger.info("hub.dispatch.sent cluster=%s type=%s uid=%s", change.cluster_id, type_name, change.uid)
+    if recorder is not None:
+        await recorder.dispatched(change, len(rendered))
     return True
 
 
@@ -167,7 +215,7 @@ async def _connect(dsn: str) -> Any:
     return await psycopg.AsyncConnection.connect(dsn, autocommit=True)
 
 
-async def _handle(payload: str, live: LiveSessions, renderer: Renderer) -> None:
+async def _handle(payload: str, live: LiveSessions, renderer: Renderer, recorder: Recorder | None = None) -> None:
     """Applies one notification. Nothing a single bad payload does may end the loop."""
     try:
         change = decode(payload)
@@ -175,7 +223,7 @@ async def _handle(payload: str, live: LiveSessions, renderer: Renderer) -> None:
         logger.warning("hub.dispatch.undecodable payload=%r", payload[:256])
         return
     try:
-        await dispatch(change, live, renderer)
+        await dispatch(change, live, renderer, recorder)
     except Exception:
         logger.warning("hub.dispatch.failed cluster=%s uid=%s", change.cluster_id, change.uid, exc_info=True)
 
@@ -186,6 +234,7 @@ async def listen_loop(
     dsn: str | None = None,
     connect: Any | None = None,
     retry_delay: float = RETRY_DELAY_SECONDS,
+    recorder: Recorder | None = None,
 ) -> None:
     """Holds a `LISTEN` for the life of the process, reconnecting for as long as it takes.
 
@@ -201,6 +250,7 @@ async def listen_loop(
     missed: there is nothing to replay from, and nothing that needs it.
     """
     renderer = DatabaseRenderer() if renderer is None else renderer
+    recorder = DatabaseRecorder() if recorder is None else recorder
     opener = _connect if connect is None else connect
     target = listen_dsn() if dsn is None else dsn
 
@@ -211,7 +261,7 @@ async def listen_loop(
                 await connection.execute(f"LISTEN {CHANNEL}")
                 logger.info("hub.dispatch.listening channel=%s", CHANNEL)
                 async for note in connection.notifies():
-                    await _handle(note.payload, live, renderer)
+                    await _handle(note.payload, live, renderer, recorder)
         except asyncio.CancelledError:
             raise
         except Exception:

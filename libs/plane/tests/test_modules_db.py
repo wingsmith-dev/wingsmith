@@ -78,6 +78,7 @@ from app.modules.deployments.schemas import DeploymentUpdateRequest
 from app.modules.deployments.schemas import DeploymentAuthorityRequest
 from app.modules.operations.services import TERMINAL_PHASES
 from app.modules.operations.services import OperationService
+from app.modules.events.services import EventService
 from app.modules.deployments.services import DeploymentService
 from app.modules.priority_classes.schemas import PriorityClassCreateRequest
 from app.modules.priority_classes.schemas import PriorityClassUpdateRequest
@@ -977,3 +978,55 @@ async def test_a_deployment_without_a_topology_requirement_leaves_it_null(db: As
     _, _, _, created = await a_deployment(db, name="plain")
     assert created.requires_single_topology_domain is None
     assert created.topology_domain_kind is None
+
+
+# ------------------------------------------------------- the deployment timeline
+
+
+async def _timeline(db: AsyncSession, deployment_uid: str) -> list[tuple[str, str]]:
+    """Every event filed against one deployment, oldest first, as `(type, message)`."""
+    listed = await EventService(db).list(subject=deployment_uid, limit=100)
+    return [(e.kind, e.message) for e in reversed(listed.items)]
+
+
+async def test_creating_a_deployment_leaves_a_record_of_it_having_been_asked_for(db: AsyncSession) -> None:
+    """The first minutes of a deployment used to be unreadable: a row, and nothing about it."""
+    cluster, _, recipe, created = await a_deployment(db)
+
+    timeline = await _timeline(db, created.id)
+    assert [kind for kind, _ in timeline] == ["deployment.created"]
+    assert cluster.name in timeline[0][1]
+
+
+async def test_the_creation_event_is_committed_with_the_deployment_and_not_after_it(
+    db: AsyncSession,
+) -> None:
+    """One fact, one transaction.
+
+    Rolling back afterwards is the check: an event written in a transaction of
+    its own would not survive it, and the pair it would leave behind — a
+    deployment that exists with nothing recording it having been asked for — is
+    exactly the gap this event closes.
+    """
+    _, _, _, created = await a_deployment(db)
+    await db.rollback()
+
+    assert [kind for kind, _ in await _timeline(db, created.id)] == ["deployment.created"]
+
+
+async def test_scaling_a_deployment_says_what_it_was_scaled_to(db: AsyncSession) -> None:
+    _, _, _, created = await a_deployment(db, min_replicas=0, desired_replicas=1, max_replicas=4)
+    await DeploymentService(db).update(created.id, DeploymentUpdateRequest(desired_replicas=3))
+
+    timeline = await _timeline(db, created.id)
+    assert [kind for kind, _ in timeline] == ["deployment.created", "deployment.scaled"]
+    assert "3 replicas" in timeline[-1][1]
+
+
+async def test_a_deleted_deployment_keeps_its_timeline(db: AsyncSession) -> None:
+    """`subject_id` carries no foreign key precisely so the record outlives its subject."""
+    _, _, _, created = await a_deployment(db)
+    await DeploymentService(db, notifier=MemoryNotifier()).delete(created.id)
+
+    kinds = [kind for kind, _ in await _timeline(db, created.id)]
+    assert kinds == ["deployment.created", "deployment.deleted"]

@@ -32,7 +32,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.dialects.postgresql import insert
 
 from app.db.engine import session_factory
+from app.db.models import Cluster
 from app.db.models import HubClusterClaim
+from app.ingestion.statements import cluster_ref_clause
 
 
 logger = getLogger(__name__)
@@ -88,14 +90,35 @@ class ClusterClaimService:
         self.db = db
         self.repo = ClusterClaimRepository(db)
 
+    async def _canonical(self, ref: str) -> str:
+        """The one identity a cluster is claimed under, whatever identity it arrived as.
+
+        This is what makes the claim mean anything. A cluster answers to both its
+        uid and its name — `cluster_ref_clause` accepts either everywhere else in
+        the plane — and an operator is configured by hand, so which of the two it
+        introduces itself with is a deployment detail. Keyed by the raw string,
+        one cluster whose two operators were configured differently gets two rows
+        that never conflict, and both hubs conclude they hold the claim: the
+        mutual exclusion ADR 0005 exists to provide silently stops existing, and
+        two pods interleave writes to the same ingestion rows.
+
+        An unknown reference is claimed under itself rather than rejected. The
+        handshake has already validated the cluster by the time anything claims
+        it, so this cannot normally miss; and if it somehow does, claiming under
+        the literal is the behaviour that was there before and keeps a hub that
+        cannot resolve a name from failing to claim at all.
+        """
+        found = await self.db.scalar(select(Cluster.uid).where(cluster_ref_clause(ref)))
+        return found or ref
+
     async def claim(self, cluster_id: str, session_id: str, instance: str) -> None:
         """Claims `cluster_id` for `session_id`, unconditionally displacing any prior owner."""
-        await self.repo.upsert(cluster_id, session_id, instance)
+        await self.repo.upsert(await self._canonical(cluster_id), session_id, instance)
         await self.db.commit()
 
     async def owns(self, cluster_id: str, session_id: str) -> bool:
         """Whether `session_id` is still the row's current owner."""
-        row = await self.repo.get(cluster_id)
+        row = await self.repo.get(await self._canonical(cluster_id))
         await self.db.commit()
         return row is not None and row.session_id == session_id
 

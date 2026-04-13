@@ -2,6 +2,7 @@ import datetime as dt
 
 from sqlalchemy import Row
 from sqlalchemy import Select
+from sqlalchemy import or_
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -47,6 +48,21 @@ SUBJECT_TABLES = {
 }
 
 
+SUBJECT_DETAIL_KEYS = {
+    DEPLOYMENT: "deployment_id",
+}
+"""Where an event records its subject's public id as well as its row id.
+
+`subject_id` holds a primary key, so a subject that has been deleted can no
+longer be found by the identifier a reader holds — the join that resolves
+`dep_...` to a uuid returns nothing once the row is gone. For the kinds listed
+here the public id is also written into `details`, and the filter falls back to
+it, which is what makes "what happened to the deployment I just deleted"
+answerable. It is the timeline of a thing that no longer exists that is worth
+keeping; the row never was.
+"""
+
+
 def subject_subquery(ref: str):
     """Turns a public id into the row id `Event.subject_id` actually holds.
 
@@ -61,6 +77,15 @@ def subject_subquery(ref: str):
     if model is None:
         raise Invalid(f"subject {ref!r} is not a kind events are written about", {"subject": ref})
     return select(model.id).where(model.uid == ref)
+
+
+def subject_clause(ref: str):
+    """Matches events about one subject, whether or not the subject still exists."""
+    matched = Event.subject_id.in_(subject_subquery(ref))
+    key = SUBJECT_DETAIL_KEYS.get(ref[:4])
+    if key is None:
+        return matched
+    return or_(matched, Event.details[key].astext == ref)
 
 
 class EventRepository:
@@ -106,7 +131,7 @@ class EventRepository:
             column = Cluster.uid if is_uid(cluster) else Cluster.name
             query = query.where(column == cluster)
         if subject is not None:
-            query = query.where(Event.subject_id.in_(subject_subquery(subject)))
+            query = query.where(subject_clause(subject))
         if kind is not None:
             query = query.where(Event.type == kind)
         if severity is not None:
