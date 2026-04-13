@@ -457,12 +457,22 @@ class OperatorSession:
         if envelope.sequenced:
             if envelope.seq is None:
                 raise ProtocolViolation(f"{envelope.type} must carry a seq")
+            if state.adopt_inbound:
+                if envelope.seq != state.expected_seq:
+                    logger.info(
+                        "hub.stream.adopted cluster=%s seq=%s expected=%s",
+                        state.cluster_id,
+                        envelope.seq,
+                        state.expected_seq,
+                    )
+                state.adopt(envelope.seq)
             if envelope.seq < state.expected_seq:
                 logger.debug("hub.frame.duplicate seq=%s expected=%s", envelope.seq, state.expected_seq)
                 return False
             if envelope.seq > state.expected_seq:
                 raise ProtocolViolation(f"sequence gap: expected {state.expected_seq}, got {envelope.seq}")
             state.expected_seq = envelope.seq + 1
+            state.adopt_inbound = False
         elif envelope.seq is not None:
             raise ProtocolViolation(f"{envelope.type} must not carry a seq")
         return True

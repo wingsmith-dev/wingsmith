@@ -85,6 +85,7 @@ class SessionState:
     __slots__ = (
         "_applied",
         "ack_cursor",
+        "adopt_inbound",
         "cluster_id",
         "connection_count",
         "expected_seq",
@@ -99,6 +100,7 @@ class SessionState:
         self.cluster_id = cluster_id
         self.next_seq = 1
         self.expected_seq = 1
+        self.adopt_inbound = False
         self.ack_cursor = 0
         self._applied: set[int] = set()
         self.replay = ReplayBuffer(replay_capacity)
@@ -117,14 +119,28 @@ class SessionState:
         return seq
 
     def rewind_inbound(self) -> None:
-        """Re-arms the inbound cursor at the last acknowledged frame, for a resumed connection.
+        """Re-arms the inbound cursor for a resumed connection.
 
         A resuming peer replays from `ack_seq + 1`, so every frame received but not applied on the
         previous connection arrives again. Carrying the old expectation across the reconnect would
         read those frames as duplicates and drop them — and since their ack was withheld precisely
         because they were not applied, the stream would never advance past the hole.
+
+        The expectation is a guess, though, not a fact: the operator holds no durable counter,
+        because it is stateless by design — it is started on a cluster, reads what is declared, and
+        says what it sees. A restarted process resumes the session it checkpointed and numbers its
+        own stream from one again, which under a remembered expectation is silently below it, and
+        every observation it pushes is dropped as a duplicate. So the first sequenced frame of a
+        resumed connection sets the expectation instead of being judged by it.
         """
         self.expected_seq = self.ack_cursor + 1
+        self.adopt_inbound = True
+        self._applied.clear()
+
+    def adopt(self, seq: int) -> None:
+        """Takes the peer's numbering as the expectation, for the first frame after a reconnect."""
+        self.expected_seq = seq
+        self.adopt_inbound = False
         self._applied.clear()
 
     def mark_applied(self, seq: int) -> None:

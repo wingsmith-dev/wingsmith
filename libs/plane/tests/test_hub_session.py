@@ -17,6 +17,7 @@ from msgspec import json as msgjson
 
 from app.hub.sink import MemorySink
 from app.core.auth import STATIC_OPERATOR
+from app.hub.state import SessionState
 from app.hub.state import SessionRegistry
 from app.hub.state import new_id
 from app.hub.session import Backpressure
@@ -763,3 +764,35 @@ async def test_a_session_that_said_its_name_is_dispatchable_by_uid() -> None:
 
     await harness.stop()
     assert live.get(CLUSTER) is None
+
+
+def test_a_restarted_operator_is_not_read_as_a_duplicate() -> None:
+    """The operator holds no durable counter, so a restart numbers its stream from one again.
+
+    Judged against the expectation the hub remembers, every frame it pushes is below the cursor
+    and silently dropped — which is how a deployment could report `WeightsNotResident` every
+    fifteen seconds while the console showed nothing at all.
+    """
+    state = SessionState("ses_1", "clu_1", replay_capacity=16)
+    state.mark_applied(1)
+    state.mark_applied(2)
+    assert state.ack_cursor == 2
+
+    state.rewind_inbound()
+    assert state.expected_seq == 3
+    assert state.adopt_inbound is True
+
+    state.adopt(1)
+    assert state.expected_seq == 1
+    assert state.adopt_inbound is False
+
+
+def test_an_operator_that_did_not_restart_keeps_its_place() -> None:
+    """Adoption is for the first frame after a reconnect and must not loosen the gap check."""
+    state = SessionState("ses_1", "clu_1", replay_capacity=16)
+    state.mark_applied(1)
+    state.rewind_inbound()
+
+    state.adopt(2)
+    assert state.expected_seq == 2
+    assert state.adopt_inbound is False
