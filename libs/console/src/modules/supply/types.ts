@@ -64,6 +64,14 @@ export interface SupplyNode {
    */
   cordoned: boolean
   ready: boolean
+  /**
+   * What the machine is, as its provider names it — `p5.48xlarge`. The answer to
+   * "what kind of node is this", which a node count never gives.
+   */
+  instance_type: string | null
+  cloud: string | null
+  zone: string | null
+  region: string | null
   cpu_cores: number | null
   memory_mib: number | null
   cpu_arch: string | null

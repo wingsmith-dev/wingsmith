@@ -12,7 +12,12 @@ export type ClusterPhase = "pending" | "active" | "draining" | "disabled"
  * been taught about yet.
  */
 export type SyncState =
-  "connected" | "disconnected" | "never_connected" | (string & {})
+  | "connected"
+  | "disconnected"
+  | "never_connected"
+  /** Link up, cluster silent. Reachable says nothing about whether it still reports. */
+  | "stale"
+  | (string & {})
 
 /** Observed liveness of a cluster's agent link. */
 export interface ClusterSync {
@@ -22,6 +27,10 @@ export interface ClusterSync {
   agent_version: string | null
   lag_ms: number | null
   last_error: string | null
+  /** What the cluster turned out to be, as opposed to how it was enrolled. */
+  distribution: string | null
+  cloud: string | null
+  observed_region: string | null
 }
 
 export interface Cluster {

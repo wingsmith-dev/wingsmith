@@ -84,6 +84,32 @@ export function nodeColumns(
 
   columns.push(
     {
+      key: "instance_type",
+      header: "Machine",
+      cell: (node) =>
+        node.instance_type ? (
+          <div className="min-w-0">
+            <span className="block truncate font-mono text-2xs">
+              {node.instance_type}
+            </span>
+            <span className="block truncate text-2xs text-muted-foreground/60">
+              {[
+                node.cpu_cores ? `${node.cpu_cores} vCPU` : null,
+                node.memory_mib
+                  ? `${Math.round(node.memory_mib / 1024)} GiB`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ") || "—"}
+            </span>
+          </div>
+        ) : (
+          <span className="font-mono text-2xs text-muted-foreground/50">
+            unknown
+          </span>
+        ),
+    },
+    {
       key: "condition",
       header: "Condition",
       cell: (node) => <NodeConditionLabel condition={node.condition} />,

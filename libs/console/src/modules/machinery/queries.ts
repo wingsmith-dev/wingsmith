@@ -97,6 +97,34 @@ export function useEvents(filters: EventFilters = {}) {
   )
 }
 
+/**
+ * Everything that has happened to one deployment, newest first.
+ *
+ * Both halves of the timeline come back from this one call, because both are
+ * written to the same log: what a person asked for (`deployment.created`,
+ * `deployment.scaled`, `deployment.dispatched`) and what a cluster concluded
+ * (`deployment.pending`, `deployment.placed`, `deployment.failed`). A reader
+ * should not have to know that those facts have different writers.
+ *
+ * Polled while the deployment is not yet serving. That is when the timeline is
+ * being watched and when it is still moving; once replicas are ready the
+ * interesting events have already happened.
+ */
+export function useDeploymentEvents(
+  deployment: string | undefined,
+  settled: boolean
+) {
+  return useCursorList(
+    ["events", "deployment", deployment],
+    (cursor) => fetchEvents({ subject: deployment! }, cursor),
+    {
+      enabled: !!deployment,
+      pollWhile: () => !settled,
+      pollMs: 5000,
+    }
+  )
+}
+
 export function useAllocations(filters: AllocationFilters = {}) {
   return useCursorList(["allocations", filters], (cursor) =>
     fetchAllocations(filters, cursor)

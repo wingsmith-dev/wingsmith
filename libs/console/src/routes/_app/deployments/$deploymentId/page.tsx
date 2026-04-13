@@ -8,6 +8,8 @@ import { NewBenchmarkDialog } from "@/components/benchmarks/new-benchmark"
 import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useDeploymentBenchmarks } from "@/modules/benchmarks/queries"
+import { useDeploymentEvents } from "@/modules/machinery/queries"
+import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
 import { DataTable } from "@/components/layout/data-table"
 import { operationColumns } from "@/components/machinery/operation-columns"
 import { Button } from "@/components/ui/button"
@@ -48,6 +50,14 @@ export function DeploymentDetailPage() {
   const { data: recipe } = useRecipe(deployment?.recipe_id ?? "")
   const operations = useOperations({ target: deployment?.id })
   const benchmarks = useDeploymentBenchmarks(deployment?.id)
+  // Settled means "stop polling", not "healthy": a failed deployment has
+  // finished moving too, and re-reading its log every five seconds forever
+  // would ask the plane a question with a fixed answer.
+  const events = useDeploymentEvents(
+    deployment?.id,
+    (deployment?.status?.ready_replicas ?? 0) > 0 ||
+      deployment?.status?.phase === "failed"
+  )
   const remove = useDeleteDeployment()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -187,6 +197,7 @@ export function DeploymentDetailPage() {
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList>
                 <TabsTrigger value="state">State</TabsTrigger>
+                <TabsTrigger value="activity">Activity</TabsTrigger>
                 <TabsTrigger value="spec">Spec</TabsTrigger>
                 <TabsTrigger value="benchmarks">Benchmarks</TabsTrigger>
               </TabsList>
@@ -240,6 +251,23 @@ export function DeploymentDetailPage() {
                     empty="Nothing has been asked of this deployment."
                   />
                 </div>
+              </TabsContent>
+
+              <TabsContent value="activity" className="mt-3 space-y-3">
+                <DeploymentTimeline
+                  events={events.items}
+                  loading={events.isLoading}
+                />
+                {events.hasNextPage && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => events.fetchNextPage()}
+                    disabled={events.isFetchingNextPage}
+                  >
+                    {events.isFetchingNextPage ? "Loading…" : "Show older"}
+                  </Button>
+                )}
               </TabsContent>
 
               <TabsContent value="spec" className="mt-3 space-y-4">

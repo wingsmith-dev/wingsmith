@@ -417,6 +417,9 @@ for (const spec of SPECS) {
       state: spec.syncState,
       last_sync_at: spec.enrolled ? iso(spec.reachable ? 0.2 : 47) : null,
       last_seen_at: spec.enrolled ? iso(spec.reachable ? 0.1 : 46) : null,
+      distribution: spec.enrolled ? "eks" : null,
+      cloud: spec.enrolled ? "aws" : null,
+      observed_region: spec.enrolled ? spec.region : null,
       agent_version: spec.agentVersion,
       lag_ms: spec.reachable ? 340 : null,
       last_error: spec.lastError,
@@ -475,6 +478,10 @@ for (const spec of SPECS) {
         condition: node.condition,
         cordoned: node.cordoned,
         ready: node.condition === "ready",
+        instance_type: pool.topologyKind === "nvswitch" ? "p5.48xlarge" : "g6e.12xlarge",
+        cloud: "aws",
+        zone: spec.zone ?? null,
+        region: spec.region,
         cpu_cores: 192,
         memory_mib: 2_097_152,
         cpu_arch: "amd64",
@@ -1287,7 +1294,102 @@ export const operations: Operation[] = [
   },
 ]
 
+/**
+ * One deployment's timeline, so the Activity tab has something to show offline.
+ *
+ * Written as the awkward case rather than the happy one: weights that took a
+ * while, a rollout that filled in one replica at a time. A fixture where
+ * everything worked immediately would not exercise the thing the tab exists to
+ * make visible.
+ */
+const deploymentTimeline: PlaneEvent[] = [
+  {
+    id: uid("evt_"),
+    cluster_id: clusters[0].id,
+    kind: "deployment.created",
+    severity: "info",
+    subject: { type: "deployment", id: deployments[0].id },
+    operation_id: null,
+    message: "llama-70b-prod was created on iad-1 from recipe llama-70b",
+    details: {
+      deployment_id: deployments[0].id,
+      name: "llama-70b-prod",
+      cluster: "iad-1",
+      desired_replicas: "4",
+    },
+    occurred_at: iso(5400),
+    recorded_at: iso(5400),
+  },
+  {
+    id: uid("evt_"),
+    cluster_id: clusters[0].id,
+    kind: "deployment.dispatched",
+    severity: "info",
+    subject: { type: "deployment", id: deployments[0].id },
+    operation_id: null,
+    message: "llama-70b-prod was sent to iad-1",
+    details: { deployment_id: deployments[0].id, name: "llama-70b-prod", frames: "4" },
+    occurred_at: iso(5399),
+    recorded_at: iso(5399),
+  },
+  {
+    id: uid("evt_"),
+    cluster_id: clusters[0].id,
+    kind: "deployment.pending",
+    severity: "info",
+    subject: { type: "deployment", id: deployments[0].id },
+    operation_id: null,
+    message: "waiting for art_01j9x2eeeeeeeeeeeeeeeeeeee to finish downloading",
+    details: {
+      deployment_id: deployments[0].id,
+      name: "llama-70b-prod",
+      reason: "WeightsNotResident",
+      ready_replicas: "0",
+      desired_replicas: "4",
+    },
+    occurred_at: iso(5380),
+    recorded_at: iso(5380),
+  },
+  {
+    id: uid("evt_"),
+    cluster_id: clusters[0].id,
+    kind: "deployment.placed",
+    severity: "info",
+    subject: { type: "deployment", id: deployments[0].id },
+    operation_id: null,
+    message: "serving llama-70b at revision 3",
+    details: {
+      deployment_id: deployments[0].id,
+      name: "llama-70b-prod",
+      reason: "Applied",
+      ready_replicas: "0",
+      desired_replicas: "4",
+    },
+    occurred_at: iso(2700),
+    recorded_at: iso(2700),
+  },
+  {
+    id: uid("evt_"),
+    cluster_id: clusters[0].id,
+    kind: "deployment.running",
+    severity: "info",
+    subject: { type: "deployment", id: deployments[0].id },
+    operation_id: null,
+    message: "serving llama-70b at revision 3",
+    details: {
+      deployment_id: deployments[0].id,
+      name: "llama-70b-prod",
+      reason: "Applied",
+      ready_replicas: "4",
+      desired_replicas: "4",
+    },
+    occurred_at: iso(1800),
+    recorded_at: iso(1800),
+  },
+]
+
 export const events: PlaneEvent[] = [
+  ...deploymentTimeline,
   {
     id: uid("evt_"),
     cluster_id: null,

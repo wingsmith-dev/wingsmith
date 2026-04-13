@@ -1,5 +1,6 @@
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { PageHeader } from "@/components/layout/page-header"
+import { ResourceIcon } from "@/components/layout/resource-icon"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -197,21 +198,29 @@ function Row({ entry, cluster }: { entry: DeviceClass; cluster?: string }) {
   return (
     <TableRow>
       <TableCell>
-        <Link
-          to="/devices"
-          search={{ class: entry.name, cluster }}
-          className="block hover:underline"
-        >
-          <span className="text-xs">{entry.label}</span>
-          <span className="ml-2 font-mono text-2xs text-muted-foreground/60">
-            {entry.name}
-          </span>
-        </Link>
-        {!entry.in_catalog && (
-          <span className="font-mono text-2xs text-amber-600 dark:text-amber-400">
-            not in the catalog
-          </span>
-        )}
+        <div className="flex items-start gap-2">
+          <ResourceIcon
+            kind="device-class"
+            className="mt-0.5 size-3.5 text-muted-foreground"
+          />
+          <div className="min-w-0">
+            <Link
+              to="/devices"
+              search={{ class: entry.name, cluster }}
+              className="block hover:underline"
+            >
+              <span className="text-xs">{entry.label}</span>
+              <span className="block truncate font-mono text-2xs text-muted-foreground/60">
+                {entry.name}
+              </span>
+            </Link>
+            {!entry.in_catalog && (
+              <span className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+                not in the catalog
+              </span>
+            )}
+          </div>
+        </div>
       </TableCell>
       <TableCell className="font-mono text-2xs text-muted-foreground">
         {entry.architecture || "—"}

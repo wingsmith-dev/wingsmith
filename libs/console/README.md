@@ -18,7 +18,19 @@ pnpm build        # production build + type-check
 pnpm typecheck    # type-check only
 pnpm lint         # ESLint
 pnpm format       # Prettier
+pnpm test         # Vitest, once
+pnpm test:watch   # Vitest, watching
+pnpm test:coverage
 ```
+
+Tests are `*.test.ts` / `*.test.tsx` beside the code they cover. `vitest.config.ts` is
+deliberately separate from `vite.config.ts`: the dev server's config carries the router
+plugin, which regenerates `routeTree.gen.ts` on every run, and a test run that rewrote a
+checked-in file would make `just fmt --check` depend on whether the suite had been run.
+
+Render components through `src/test/render.tsx` rather than testing-library directly — it
+supplies the providers the app mounts at its root, and a component that reaches for one
+through context (a tooltip, a query) throws without them.
 
 ## Stack
 
