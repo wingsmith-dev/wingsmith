@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar/cli/internal/api"
-	"github.com/hangar/cli/internal/ui"
+	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 )
 
 // Rendering helpers shared by every noun. Nothing here decides anything: the

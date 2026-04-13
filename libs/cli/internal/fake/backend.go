@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar/cli/internal/api"
-	"github.com/hangar/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
 )
 
 // defaultLimit and maxLimit mirror the plane's pagination, so a listing that

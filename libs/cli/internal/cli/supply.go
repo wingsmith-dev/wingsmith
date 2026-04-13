@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hangar/cli/internal/api"
-	"github.com/hangar/cli/internal/errs"
-	"github.com/hangar/cli/internal/ui"
+	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -167,6 +167,9 @@ Capacity questions are answered per device; the counts here are a rollup.`,
 			kv.Add("condition", conditionColor(s, n.Condition))
 			kv.Add("ready", yesNo(s, n.Ready))
 			kv.Add("cordoned", warnIf(s, n.Cordoned))
+			kv.Add("machine", orDash(str(n.InstanceType)))
+			kv.Add("cloud", orDash(str(n.Cloud)))
+			kv.Add("zone", orDash(str(n.Zone)))
 			kv.Add("cpu", num(n.CPUCores)+" cores "+orDash(str(n.CPUArch)))
 			kv.Add("memory", mibPtr(n.MemoryMiB))
 			kv.Add("os image", orDash(str(n.OSImage)))

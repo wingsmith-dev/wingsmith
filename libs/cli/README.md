@@ -7,10 +7,11 @@ the same rule the console follows, for the same reason.
 Every command is noun–verb (`hgr cluster ls`, `hgr cluster get iad-1`), and every command has a
 machine contract: humans read a table, scripts read `-o json`, agents read a stable envelope.
 
-> **Status: every collection is implemented.** All seventeen `/v1` collections have `ls` and
-> `get`, and `operation` additionally has `create`, `cancel`, and `wait`. The wire types are
-> reconciled field-for-field against the plane's `schemas.py` and pinned by a corpus captured
-> from a running server; nothing here is a guess.
+> **Status: 21 of the 24 `/v1` collections are implemented.** Each has `ls` and `get`, and
+> `operation` additionally has `create`, `cancel`, and `wait`. Not yet covered: `alerts`,
+> `notification-channels`, `replicas`. The wire types are reconciled field-for-field against the
+> plane's `schemas.py` and pinned by a corpus captured from a running server; nothing here is a
+> guess.
 
 ---
 

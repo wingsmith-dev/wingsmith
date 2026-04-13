@@ -10,8 +10,8 @@ import (
 	"encoding/json"
 	"os"
 
-	"github.com/hangar/cli/internal/api"
-	"github.com/hangar/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
 )
 
 // state is the whole simulated control plane, persisted as one JSON document

@@ -97,6 +97,11 @@ type ClusterSync struct {
 	AgentVersion *string    `json:"agent_version"`
 	LagMS        *int       `json:"lag_ms"`
 	LastError    *string    `json:"last_error"`
+	// Distribution, Cloud and ObservedRegion are what the cluster turned out to be, beside the
+	// region it was enrolled as. The two disagreeing is a misconfiguration worth seeing.
+	Distribution   *string `json:"distribution"`
+	Cloud          *string `json:"cloud"`
+	ObservedRegion *string `json:"observed_region"`
 }
 
 // Cluster is the declared enrolment record and the observed link state,
@@ -155,6 +160,10 @@ type Node struct {
 	Condition     string           `json:"condition"`
 	Cordoned      bool             `json:"cordoned"`
 	Ready         bool             `json:"ready"`
+	InstanceType  *string          `json:"instance_type"`
+	Cloud         *string          `json:"cloud"`
+	Zone          *string          `json:"zone"`
+	Region        *string          `json:"region"`
 	CPUCores      *int             `json:"cpu_cores"`
 	MemoryMiB     *int             `json:"memory_mib"`
 	CPUArch       *string          `json:"cpu_arch"`

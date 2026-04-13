@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar/cli/internal/api"
-	"github.com/hangar/cli/internal/errs"
-	"github.com/hangar/cli/internal/output"
-	"github.com/hangar/cli/internal/ui"
+	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/output"
+	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -51,6 +51,11 @@ type noun[T any] struct {
 	tally    func(g *listGroup, item T)
 	// getArg names the argument in help, e.g. "<node>".
 	getArg string
+	// extra are subcommands beyond ls and get. A noun whose object has a
+	// second question worth asking about one instance — not a different
+	// listing of many — hangs it here rather than becoming a bespoke command
+	// tree and losing the shared flags, output modes and reference resolution.
+	extra func(app *App) []*cobra.Command
 }
 
 func (n noun[T]) command(app *App) *cobra.Command {
@@ -62,6 +67,9 @@ func (n noun[T]) command(app *App) *cobra.Command {
 	}
 	group(cmd, n.group)
 	cmd.AddCommand(n.listCmd(app), n.getCmd(app))
+	if n.extra != nil {
+		cmd.AddCommand(n.extra(app)...)
+	}
 	return cmd
 }
 

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hangar/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
 )
 
 // These run against a real plane when one is pointed at, and are skipped

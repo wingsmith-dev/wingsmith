@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hangar/cli/internal/api"
+	"github.com/hangar-dev/hangar/libs/cli/internal/api"
 	"strings"
 )
 
@@ -554,6 +554,60 @@ func seed() *state {
 			Severity: "warning", Subject: api.EventSubject{Type: "cluster", ID: strptr("fb690d40-2fe5-448a-b92c-7a33d14552c9")},
 			Message: "sjc-1 stream closed by peer", Details: map[string]any{},
 			OccurredAt: now.Add(-11 * time.Minute), RecordedAt: now.Add(-11 * time.Minute),
+		},
+	)
+
+	// One deployment's whole timeline, so `hgr deployment events` has something to
+	// show offline. Seeded as the awkward case — weights that took most of an hour,
+	// then a rollout that filled in one replica at a time — because a deployment
+	// that came up instantly would not exercise what the command exists to reveal.
+	st.Events = append(st.Events,
+		api.Event{
+			ID: "evt_01j9x2e0000000000000000010", ClusterID: strptr(iad), Kind: "deployment.created",
+			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
+			Message: "chat-iad was created on iad-1 from recipe llama-70b",
+			Details: map[string]any{
+				"deployment_id": depRunning, "name": "chat-iad",
+				"cluster": "iad-1", "desired_replicas": "4",
+			},
+			OccurredAt: now.Add(-100 * time.Minute), RecordedAt: now.Add(-100 * time.Minute),
+		},
+		api.Event{
+			ID: "evt_01j9x2e0000000000000000011", ClusterID: strptr(iad), Kind: "deployment.dispatched",
+			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
+			Message: "chat-iad was sent to iad-1",
+			Details: map[string]any{"deployment_id": depRunning, "name": "chat-iad", "frames": "4"},
+			OccurredAt: now.Add(-100 * time.Minute), RecordedAt: now.Add(-100 * time.Minute),
+		},
+		api.Event{
+			ID: "evt_01j9x2e0000000000000000012", ClusterID: strptr(iad), Kind: "deployment.pending",
+			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
+			Message: "waiting for art_01j9x2eeeeeeeeeeeeeeeeeeee to finish downloading",
+			Details: map[string]any{
+				"deployment_id": depRunning, "name": "chat-iad", "reason": "WeightsNotResident",
+				"ready_replicas": "0", "desired_replicas": "4",
+			},
+			OccurredAt: now.Add(-99 * time.Minute), RecordedAt: now.Add(-99 * time.Minute),
+		},
+		api.Event{
+			ID: "evt_01j9x2e0000000000000000013", ClusterID: strptr(iad), Kind: "deployment.placed",
+			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
+			Message: "serving llama-70b at revision 3",
+			Details: map[string]any{
+				"deployment_id": depRunning, "name": "chat-iad", "reason": "Applied",
+				"ready_replicas": "0", "desired_replicas": "4",
+			},
+			OccurredAt: now.Add(-52 * time.Minute), RecordedAt: now.Add(-52 * time.Minute),
+		},
+		api.Event{
+			ID: "evt_01j9x2e0000000000000000014", ClusterID: strptr(iad), Kind: "deployment.running",
+			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
+			Message: "serving llama-70b at revision 3",
+			Details: map[string]any{
+				"deployment_id": depRunning, "name": "chat-iad", "reason": "Applied",
+				"ready_replicas": "4", "desired_replicas": "4",
+			},
+			OccurredAt: now.Add(-30 * time.Minute), RecordedAt: now.Add(-30 * time.Minute),
 		},
 	)
 

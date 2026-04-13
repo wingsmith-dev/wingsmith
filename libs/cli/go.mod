@@ -1,4 +1,4 @@
-module github.com/hangar/cli
+module github.com/hangar-dev/hangar/libs/cli
 
 go 1.25.0
 

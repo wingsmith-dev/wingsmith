@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 
-	"github.com/hangar/cli/internal/api"
-	"github.com/hangar/cli/internal/errs"
-	"github.com/hangar/cli/internal/ui"
+	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/output"
+	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -371,11 +373,123 @@ replicas is a rollup of what is actually running.`,
 		},
 		next: func(d api.Deployment) []errs.Action {
 			return []errs.Action{
+				{Description: "What happened to it", Command: "hgr deployment events " + d.Name},
 				{Description: "What holds its devices", Command: "hgr allocation ls --cluster " + d.ClusterID},
 				{Description: "Roll it", Command: "hgr operation create deployment.roll " + d.Name},
 			}
 		},
+		extra: func(app *App) []*cobra.Command {
+			return []*cobra.Command{newDeploymentEventsCmd(app)}
+		},
 	}
+}
+
+// newDeploymentEventsCmd renders one deployment's whole history, oldest first.
+//
+// Its own subcommand rather than a section of `get`, because `get` answers "what is
+// true now" in a fixed amount of space and this is unbounded. It is also the one
+// listing in the CLI that is deliberately oldest-first: every other listing is a set
+// where the newest row matters most, and this is a sequence that only reads correctly
+// in the order it happened.
+func newDeploymentEventsCmd(app *App) *cobra.Command {
+	var (
+		since    string
+		severity string
+	)
+	cmd := &cobra.Command{
+		Use:     "events <deployment>",
+		Aliases: []string{"timeline", "history"},
+		Short:   "What has happened to one deployment",
+		Long: `The whole story of a deployment, from being asked for to serving.
+
+Both halves of it. deployment.created, deployment.scaled and deployment.deleted
+are things a person did; deployment.dispatched is the plane saying it delivered
+the declared state to a cluster; deployment.pending, deployment.placed and
+deployment.failed are what that cluster concluded when it tried to reconcile it.
+
+This is the answer to "it says placed and nothing is happening". The status on
+` + "`hgr deployment get`" + ` only ever shows the latest conclusion, so a deployment that
+waited an hour on cold weights and one that came up instantly look identical
+once they are up.`,
+		Example: `  hgr deployment events chat-iad
+  hgr deployment events chat-iad --since 1h
+  hgr deployment events chat-iad --severity error`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+
+			// Resolved through the noun so that a prefix or a name works here exactly
+			// as it does on `get`. The events endpoint filters on the deployment's own
+			// id and would simply return nothing for anything else.
+			d, err := deploymentNoun().resolve(ctx, app, args[0])
+			if err != nil {
+				return err
+			}
+
+			at, err := parseTime(since, "since")
+			if err != nil {
+				return err
+			}
+			opts := api.ListOpts{All: true, Subject: d.ID, Since: at, Severity: severity}
+			page, err := app.Backend.Events(ctx, opts)
+			if err != nil {
+				return err
+			}
+
+			items := page.Items
+			slices.Reverse(items)
+
+			rows := make([][]string, 0, len(items))
+			for _, e := range items {
+				rows = append(rows, []string{
+					agoAt(e.OccurredAt), e.Kind, eventReason(e), e.Message,
+				})
+			}
+
+			return app.Emit(&output.Result{
+				Command: cmdPath(cmd),
+				Data:    items,
+				Names:   []string{d.Name},
+				Columns: []string{"when", "event", "reason", "detail"},
+				Rows:    rows,
+				Human: func(w io.Writer, s ui.Style, width int) {
+					if len(items) == 0 {
+						fmt.Fprintf(w, "%s\n", s.Dim("nothing has been recorded against "+d.Name))
+						return
+					}
+					t := app.Table(
+						ui.Column{Title: "when", Align: ui.AlignRight},
+						ui.Column{Title: "event"},
+						ui.Column{Title: "reason"},
+						ui.Column{Title: "detail"},
+					)
+					for _, e := range items {
+						t.Row(agoAt(e.OccurredAt), severityColor(s, e.Kind), eventReason(e), e.Message)
+					}
+					t.Render(w)
+				},
+				Next: []errs.Action{
+					{Description: "The deployment itself", Command: "hgr deployment get " + d.Name},
+				},
+			})
+		},
+	}
+	cmd.Flags().StringVar(&since, "since", "", "only events after a duration ago or an RFC 3339 time")
+	cmd.Flags().StringVar(&severity, "severity", "", "filter by severity: info|warning|error")
+	return cmd
+}
+
+// eventReason is the machine-readable half of why a reconcile concluded what it did.
+//
+// Read off details rather than parsed out of the message, because it is the field the
+// operator sets deliberately — WeightsNotResident, NoSchedulableCapacity, Applied —
+// and the message around it is prose that may be reworded.
+func eventReason(e api.Event) string {
+	if reason, ok := e.Details["reason"].(string); ok && reason != "" {
+		return reason
+	}
+	return "-"
 }
 
 func endpointNoun() noun[api.Endpoint] {

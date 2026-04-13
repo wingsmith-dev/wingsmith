@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/hangar/cli/internal/api"
+	"github.com/hangar-dev/hangar/libs/cli/internal/api"
 )
 
 // run executes the CLI in-process and returns stdout, stderr, and the exit

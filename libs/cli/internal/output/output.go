@@ -12,8 +12,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/hangar/cli/internal/errs"
-	"github.com/hangar/cli/internal/ui"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	yaml "go.yaml.in/yaml/v2"
 )
 
@@ -400,12 +400,23 @@ func toGeneric(v any) (any, error) {
 // jsonPath supports the dotted subset that covers CLI use: `.a.b`, `.a[0].b`,
 // and `.a[*].b` to project a field across a list.
 func jsonPath(v any, path string) (any, error) {
-	cur := v
+	segs := make([]string, 0, 4)
 	p := strings.TrimPrefix(strings.TrimSpace(path), "$")
 	for _, seg := range strings.Split(strings.TrimPrefix(p, "."), ".") {
-		if seg == "" {
-			continue
+		if seg != "" {
+			segs = append(segs, seg)
 		}
+	}
+	return walk(v, segs, path)
+}
+
+// walk resolves the remaining segments against cur.
+//
+// `[*]` recurses rather than returning, because the wildcard is the projection: `.items[*].name`
+// has to answer with the names, not with the items. Returning the list there would silently ignore
+// everything after the wildcard and print whole objects where a column was asked for.
+func walk(cur any, segs []string, path string) (any, error) {
+	for i, seg := range segs {
 		name, idxs := parseSeg(seg)
 		if name != "" {
 			m, ok := cur.(map[string]any)
@@ -417,13 +428,30 @@ func jsonPath(v any, path string) (any, error) {
 				return nil, errs.New(errs.CodeNotFound, "jsonpath %q: no field %q", path, name)
 			}
 		}
-		for _, idx := range idxs {
+		for j, idx := range idxs {
 			list, ok := cur.([]any)
 			if !ok {
 				return nil, errs.New(errs.CodeUsage, "jsonpath %q: not a list", path)
 			}
 			if idx == -1 {
-				return list, nil
+				rest := segs[i+1:]
+				if j+1 < len(idxs) {
+					// A trailing index after the wildcard, e.g. `[*][0]`, is not
+					// something this subset expresses.
+					return nil, errs.New(errs.CodeUsage, "jsonpath %q: cannot index into a projection", path)
+				}
+				if len(rest) == 0 {
+					return list, nil
+				}
+				out := make([]any, 0, len(list))
+				for _, item := range list {
+					got, err := walk(item, rest, path)
+					if err != nil {
+						return nil, err
+					}
+					out = append(out, got)
+				}
+				return out, nil
 			}
 			if idx < 0 || idx >= len(list) {
 				return nil, errs.New(errs.CodeNotFound, "jsonpath %q: index %d out of range", path, idx)

@@ -4,7 +4,7 @@ package main
 import (
 	"os"
 
-	"github.com/hangar/cli/internal/cli"
+	"github.com/hangar-dev/hangar/libs/cli/internal/cli"
 )
 
 func main() {

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/hangar/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
 	yaml "go.yaml.in/yaml/v2"
 )
 

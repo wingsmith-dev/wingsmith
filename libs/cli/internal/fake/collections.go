@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar/cli/internal/api"
-	"github.com/hangar/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
 )
 
 // The filters here are the ones the plane's routes declare, and only those. A

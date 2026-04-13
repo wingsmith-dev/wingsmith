@@ -16,7 +16,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/hangar/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
 )
 
 // Client is the live control plane transport.

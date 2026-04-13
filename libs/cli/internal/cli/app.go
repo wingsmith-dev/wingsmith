@@ -12,12 +12,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hangar/cli/internal/api"
-	"github.com/hangar/cli/internal/config"
-	"github.com/hangar/cli/internal/errs"
-	"github.com/hangar/cli/internal/fake"
-	"github.com/hangar/cli/internal/output"
-	"github.com/hangar/cli/internal/ui"
+	"github.com/hangar-dev/hangar/libs/cli/internal/api"
+	"github.com/hangar-dev/hangar/libs/cli/internal/config"
+	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"github.com/hangar-dev/hangar/libs/cli/internal/fake"
+	"github.com/hangar-dev/hangar/libs/cli/internal/output"
+	"github.com/hangar-dev/hangar/libs/cli/internal/ui"
 	"github.com/spf13/cobra"
 )
 
