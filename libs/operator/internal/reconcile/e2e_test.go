@@ -1,0 +1,587 @@
+//go:build e2e
+
+// The reconciler against a real API server, with a real garbage collector running.
+//
+// This file exists because of a bug that every other test in this package agreed was not
+// happening. The rendered workload was applied with an owner reference to a declared object in
+// another namespace; the fake client stores whatever it is given and has no garbage collector,
+// so the unit test asserted the reference was present and passed, while a real cluster read the
+// same reference as an owner that had been deleted and removed the workload seconds later. The
+// operator reported "Applied" and the object was already gone.
+//
+// The lesson is narrow and worth stating: a fake API server is a fine model of the API and no
+// model at all of the controllers behind it. Anything whose correctness depends on what
+// Kubernetes *does* to an object after it is written — garbage collection, finalizers, defaulting
+// — has to be tested somewhere the controller-manager is running.
+//
+// Run with: go test -tags e2e ./internal/reconcile/ -run E2E -v
+// It needs a cluster in the current kubecontext (any local one — kind, orbstack, k3s), the
+// SyncedResource CRD from deploy/crd/, and deploy/crd/testing_dynamographdeployments.yaml.
+// It creates and deletes its own namespaces and never touches anything outside them.
+package reconcile
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
+	"github.com/hangar-dev/hangar/libs/operator/internal/render"
+	syncpkg "github.com/hangar-dev/hangar/libs/operator/internal/sync"
+	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+)
+
+// settleFor is how long a rendered object is watched before it is called survived.
+//
+// The garbage collector acts within a couple of seconds — the reproduction of this bug on a
+// local cluster deleted a cross-namespace dependent in under five — so this is generous on
+// purpose. A test that asserted the object existed immediately after the apply would have
+// passed against the broken code too, which is the whole failure being guarded against.
+const settleFor = 20 * time.Second
+
+// reported is one frame the reconciler sent upward.
+type reported struct {
+	Type    string
+	Subject string
+	Phase   string
+	Reason  string
+	Message string
+}
+
+// capture is a Reporter that keeps what it was given, so a test can assert on what the plane
+// would have been told rather than on what the reconciler wrote locally.
+type capture struct {
+	frames []reported
+}
+
+func (c *capture) Send(t syncpkg.MessageType, subject string, payload any) error {
+	f := reported{Type: string(t), Subject: subject}
+	switch p := payload.(type) {
+	case wire.DeploymentObserved:
+		f.Phase, f.Reason, f.Message = p.Phase, p.Reason, p.Message
+	case wire.CacheObserved:
+		f.Phase = p.State
+	}
+	c.frames = append(c.frames, f)
+	return nil
+}
+
+func (c *capture) reasons() []string {
+	out := make([]string, 0, len(c.frames))
+	for _, f := range c.frames {
+		out = append(out, f.Reason)
+	}
+	return out
+}
+
+func (c *capture) sawReason(reason string) bool {
+	for _, f := range c.frames {
+		if f.Reason == reason {
+			return true
+		}
+	}
+	return false
+}
+
+// live is one test's cluster: two namespaces, a client, and a reconciler pointed at them.
+type live struct {
+	client     client.Client
+	reconciler *SyncedResourceReconciler
+	reports    *capture
+	declaredNS string
+	workloadNS string
+}
+
+func newLive(t *testing.T) *live {
+	t.Helper()
+
+	config, err := ctrl.GetConfig()
+	if err != nil {
+		t.Skipf("no kubecontext available: %v", err)
+	}
+
+	scheme := clientgoscheme.Scheme
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("scheme: %v", err)
+	}
+	c, err := client.New(config, client.Options{Scheme: scheme})
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+
+	// A namespace pair per test, so the tests are independent and so that a rendered object
+	// landing in the wrong namespace fails loudly instead of colliding with a sibling's.
+	stamp := time.Now().UnixNano()
+	l := &live{
+		client:     c,
+		reports:    &capture{},
+		declaredNS: fmt.Sprintf("hgr-e2e-sys-%d", stamp),
+		workloadNS: fmt.Sprintf("hgr-e2e-wl-%d", stamp),
+	}
+	for _, name := range []string{l.declaredNS, l.workloadNS} {
+		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
+		if err := c.Create(context.Background(), ns); err != nil {
+			t.Fatalf("create namespace %s: %v", name, err)
+		}
+		t.Cleanup(func() {
+			_ = c.Delete(context.Background(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}})
+		})
+	}
+
+	options := testRender
+	options.Namespace = l.workloadNS
+	l.reconciler = &SyncedResourceReconciler{
+		Client:    c,
+		Scheme:    scheme,
+		Log:       slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})),
+		Namespace: l.declaredNS,
+		Render:    options,
+		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+		Report:    l.reports,
+	}
+	return l
+}
+
+// declare writes one declared object into the cluster, in this test's namespace.
+func (l *live) declare(t *testing.T, kind, id string, payload any) *v1alpha1.SyncedResource {
+	t.Helper()
+	res := declared(t, kind, id, payload)
+	res.Namespace = l.declaredNS
+	if err := l.client.Create(context.Background(), res); err != nil {
+		t.Fatalf("declare %s: %v", kind, err)
+	}
+	return res
+}
+
+// reconcile runs one pass over a declared object and returns it as the cluster now holds it.
+func (l *live) reconcile(t *testing.T, name string) (*v1alpha1.SyncedResource, ctrl.Result) {
+	t.Helper()
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: l.declaredNS, Name: name}}
+	result, err := l.reconciler.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("reconcile %s: %v", name, err)
+	}
+	var out v1alpha1.SyncedResource
+	if err := l.client.Get(context.Background(), req.NamespacedName, &out); err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil, result
+		}
+		t.Fatalf("read back %s: %v", name, err)
+	}
+	return &out, result
+}
+
+func (l *live) graph() *unstructured.Unstructured {
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(render.GVK)
+	return obj
+}
+
+func (l *live) getGraph(ctx context.Context) (*unstructured.Unstructured, error) {
+	obj := l.graph()
+	key := types.NamespacedName{Namespace: l.workloadNS, Name: render.Name(testDeploymentID)}
+	return obj, l.client.Get(ctx, key, obj)
+}
+
+// prefetchDone writes a completed prefetch Job, which is how residency is reported.
+func (l *live) prefetchDone(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	job := &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      render.PrefetchJobName(testArtifactID),
+			Namespace: l.workloadNS,
+		},
+		Spec: batchv1.JobSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					RestartPolicy: corev1.RestartPolicyNever,
+					Containers:    []corev1.Container{{Name: "fetch", Image: "busybox"}},
+				},
+			},
+		},
+	}
+	if err := l.client.Create(ctx, job); err != nil {
+		t.Fatalf("create prefetch job: %v", err)
+	}
+	job.Status.Succeeded = 1
+	if err := l.client.Status().Update(ctx, job); err != nil {
+		t.Fatalf("mark prefetch complete: %v", err)
+	}
+}
+
+// withCapacity makes at least one node in the cluster look like it can run the replica.
+//
+// The local cluster has no accelerators, so its node is labelled and its allocatable is patched.
+// Restored on cleanup so the cluster is left as it was found.
+func (l *live) withCapacity(t *testing.T, devices int64) {
+	t.Helper()
+	ctx := context.Background()
+
+	var nodes corev1.NodeList
+	if err := l.client.List(ctx, &nodes); err != nil {
+		t.Fatalf("list nodes: %v", err)
+	}
+	if len(nodes.Items) == 0 {
+		t.Skip("no nodes in this cluster to advertise capacity on")
+	}
+	node := &nodes.Items[0]
+	original := node.DeepCopy()
+
+	patch := client.MergeFrom(node.DeepCopy())
+	if node.Labels == nil {
+		node.Labels = map[string]string{}
+	}
+	node.Labels[testRender.PoolLabelKey] = testRender.GPUPoolValue
+	if err := l.client.Patch(ctx, node, patch); err != nil {
+		t.Fatalf("label node: %v", err)
+	}
+
+	statusPatch := client.MergeFrom(node.DeepCopy())
+	node.Status.Allocatable[acceleratorResource] = *resource.NewQuantity(devices, resource.DecimalSI)
+	if err := l.client.Status().Patch(ctx, node, statusPatch); err != nil {
+		t.Fatalf("advertise accelerators: %v", err)
+	}
+
+	t.Cleanup(func() {
+		var current corev1.Node
+		if err := l.client.Get(ctx, types.NamespacedName{Name: original.Name}, &current); err != nil {
+			return
+		}
+		p := client.MergeFrom(current.DeepCopy())
+		delete(current.Labels, testRender.PoolLabelKey)
+		_ = l.client.Patch(ctx, &current, p)
+
+		sp := client.MergeFrom(current.DeepCopy())
+		delete(current.Status.Allocatable, acceleratorResource)
+		_ = l.client.Status().Patch(ctx, &current, sp)
+	})
+}
+
+// ready declares the recipe, the artifact, the resident weights and the capacity a deployment
+// needs, so that a test about anything else starts from the case that should work.
+func (l *live) ready(t *testing.T) *v1alpha1.SyncedResource {
+	t.Helper()
+	dep := l.declare(t, "deployment", testDeploymentID, testDeploymentDesired())
+	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
+	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
+	l.prefetchDone(t)
+	l.withCapacity(t, 8)
+	return dep
+}
+
+// ---------------------------------------------------------------- the regression
+
+// The bug, stated as a test. Applying is not the thing that was broken; surviving is.
+func TestE2EARenderedDeploymentSurvivesTheGarbageCollector(t *testing.T) {
+	l := newLive(t)
+	dep := l.ready(t)
+
+	out, result := l.reconcile(t, dep.Name)
+	if got := readyCondition(t, out).Reason; got != "Applied" {
+		t.Fatalf("reason = %q (%s), want Applied", got, readyCondition(t, out).Message)
+	}
+	if result.RequeueAfter != resyncAfterApply {
+		t.Errorf("RequeueAfter = %s, want %s", result.RequeueAfter, resyncAfterApply)
+	}
+
+	ctx := context.Background()
+	if _, err := l.getGraph(ctx); err != nil {
+		t.Fatalf("nothing was applied: %v", err)
+	}
+
+	deadline := time.Now().Add(settleFor)
+	for time.Now().Before(deadline) {
+		time.Sleep(2 * time.Second)
+		if _, err := l.getGraph(ctx); err != nil {
+			t.Fatalf("the workload was deleted %s after it was applied: %v",
+				settleFor-time.Until(deadline), err)
+		}
+	}
+
+	obj, err := l.getGraph(ctx)
+	if err != nil {
+		t.Fatalf("workload gone: %v", err)
+	}
+	if owners := obj.GetOwnerReferences(); len(owners) != 0 {
+		t.Errorf("owner references = %v, want none across a namespace boundary", owners)
+	}
+	if got := obj.GetLabels()[render.OwnerNamespaceLabel]; got != l.declaredNS {
+		t.Errorf("owner-namespace label = %q, want %q", got, l.declaredNS)
+	}
+}
+
+// ---------------------------------------------------------------- what it reports
+
+// The second half of "did the operator do its job": it has to say so, in order.
+func TestE2EProgressIsReportedAsItHappens(t *testing.T) {
+	l := newLive(t)
+	dep := l.declare(t, "deployment", testDeploymentID, testDeploymentDesired())
+
+	l.reconcile(t, dep.Name)
+	if !l.reports.sawReason("RecipeNotDeclared") {
+		t.Fatalf("reasons = %v, want RecipeNotDeclared first", l.reports.reasons())
+	}
+
+	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
+	l.reconcile(t, dep.Name)
+	if !l.reports.sawReason("ArtifactNotDeclared") {
+		t.Fatalf("reasons = %v, want ArtifactNotDeclared", l.reports.reasons())
+	}
+
+	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
+	l.reconcile(t, dep.Name)
+	if !l.reports.sawReason("WeightsNotResident") {
+		t.Fatalf("reasons = %v, want WeightsNotResident", l.reports.reasons())
+	}
+
+	l.prefetchDone(t)
+	l.withCapacity(t, 8)
+	l.reconcile(t, dep.Name)
+	if !l.reports.sawReason("Applied") {
+		t.Fatalf("reasons = %v, want Applied", l.reports.reasons())
+	}
+
+	// Every frame is about this deployment and none is a repeat of the one before it.
+	for i, f := range l.reports.frames {
+		if f.Type != TypeDeploymentObserved || f.Subject != testDeploymentID {
+			t.Errorf("frame %d = %+v, want a deployment.observed about %s", i, f, testDeploymentID)
+		}
+		if i > 0 && f.Reason == l.reports.frames[i-1].Reason {
+			t.Errorf("frame %d repeats the previous reason %q", i, f.Reason)
+		}
+	}
+}
+
+// A reconcile that concludes the same thing twice reports once. The stream is not free.
+func TestE2EAnUnchangedConclusionIsNotReportedTwice(t *testing.T) {
+	l := newLive(t)
+	dep := l.ready(t)
+
+	l.reconcile(t, dep.Name)
+	first := len(l.reports.frames)
+	l.reconcile(t, dep.Name)
+
+	if len(l.reports.frames) != first {
+		t.Errorf("frames = %d after a second identical pass, want %d: %v",
+			len(l.reports.frames), first, l.reports.reasons())
+	}
+}
+
+// ---------------------------------------------------------------- the awkward cases
+
+// The admin asks for a deployment on a cluster with no accelerators at all. The most common
+// cause is not "no GPUs" but "the device plugin is not installed", which looks identical.
+func TestE2ENoDevicesAtAllIsStatedRatherThanLeftPending(t *testing.T) {
+	l := newLive(t)
+	dep := l.declare(t, "deployment", testDeploymentID, testDeploymentDesired())
+	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
+	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
+	l.prefetchDone(t)
+
+	out, result := l.reconcile(t, dep.Name)
+
+	condition := readyCondition(t, out)
+	if condition.Reason != "NoSchedulableCapacity" {
+		t.Fatalf("reason = %q, want NoSchedulableCapacity", condition.Reason)
+	}
+	if !strings.Contains(condition.Message, "device plugin") {
+		t.Errorf("message = %q, want it to raise the device plugin", condition.Message)
+	}
+	if result.RequeueAfter != waitForDependency {
+		t.Errorf("RequeueAfter = %s, want %s — capacity can arrive", result.RequeueAfter, waitForDependency)
+	}
+	if _, err := l.getGraph(context.Background()); !apierrors.IsNotFound(err) {
+		t.Error("a workload was applied against a cluster that cannot run it")
+	}
+}
+
+// Devices exist, but not enough of them on any one node. A tensor-parallel replica cannot be
+// split across machines, so cluster-wide capacity is the wrong number to compare against.
+func TestE2ECapacitySpreadAcrossNodesDoesNotSatisfyOneReplica(t *testing.T) {
+	l := newLive(t)
+	dep := l.declare(t, "deployment", testDeploymentID, testDeploymentDesired())
+	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
+	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
+	l.prefetchDone(t)
+	l.withCapacity(t, 1) // the deployment asks for 2 per replica
+
+	out, _ := l.reconcile(t, dep.Name)
+
+	condition := readyCondition(t, out)
+	if condition.Reason != "NoSchedulableCapacity" {
+		t.Fatalf("reason = %q, want NoSchedulableCapacity", condition.Reason)
+	}
+	if !strings.Contains(condition.Message, "advertises 1") {
+		t.Errorf("message = %q, want it to name what the largest node actually has", condition.Message)
+	}
+}
+
+// The cluster is there and refusing work: every node cordoned, which is what a drain looks
+// like. The accelerators are still allocatable and still reported.
+func TestE2EACordonedClusterIsNotCapacity(t *testing.T) {
+	l := newLive(t)
+	dep := l.declare(t, "deployment", testDeploymentID, testDeploymentDesired())
+	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
+	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
+	l.prefetchDone(t)
+	l.withCapacity(t, 8)
+	l.cordonAll(t)
+
+	out, _ := l.reconcile(t, dep.Name)
+
+	if got := readyCondition(t, out).Reason; got != "NoSchedulableCapacity" {
+		t.Errorf("reason = %q, want NoSchedulableCapacity while draining", got)
+	}
+}
+
+// A payload that cannot be decoded is not fixed by being retried, and must not spin.
+func TestE2EAnUndecodablePayloadFailsWithoutRetrying(t *testing.T) {
+	l := newLive(t)
+	dep := l.declare(t, "deployment", testDeploymentID, map[string]any{"min_replicas": "two"})
+
+	out, result := l.reconcile(t, dep.Name)
+
+	if out.Status.Phase != "Failed" {
+		t.Errorf("phase = %q, want Failed", out.Status.Phase)
+	}
+	if result.RequeueAfter != 0 || result.Requeue {
+		t.Error("a payload that does not decode was queued for another attempt")
+	}
+	if !l.reports.sawReason("PayloadUndecodable") {
+		t.Errorf("reasons = %v, want the plane told why", l.reports.reasons())
+	}
+}
+
+// Authority is the gate. An observed deployment is one the plane has promised not to write.
+func TestE2EAnObservedDeploymentIsNeverApplied(t *testing.T) {
+	l := newLive(t)
+	res := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	res.Namespace = l.declaredNS
+	res.Spec.Authority = ""
+	if err := l.client.Create(context.Background(), res); err != nil {
+		t.Fatalf("declare: %v", err)
+	}
+	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
+	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
+	l.prefetchDone(t)
+	l.withCapacity(t, 8)
+
+	l.reconcile(t, res.Name)
+
+	if _, err := l.getGraph(context.Background()); !apierrors.IsNotFound(err) {
+		t.Error("an observed deployment was written to the cluster")
+	}
+}
+
+// ---------------------------------------------------------------- teardown
+
+// Deleting the declared copy has to remove the workload. This never once worked: it was the
+// garbage collector's job through the reference that could not cross a namespace.
+func TestE2EDeletingTheDeclaredCopyRemovesTheWorkload(t *testing.T) {
+	l := newLive(t)
+	dep := l.ready(t)
+	ctx := context.Background()
+
+	out, _ := l.reconcile(t, dep.Name)
+	if _, err := l.getGraph(ctx); err != nil {
+		t.Fatalf("nothing to tear down: %v", err)
+	}
+
+	if err := l.client.Delete(ctx, out); err != nil {
+		t.Fatalf("delete declared copy: %v", err)
+	}
+
+	// The finalizer holds it: it is still readable, and marked for deletion.
+	var held v1alpha1.SyncedResource
+	key := types.NamespacedName{Namespace: l.declaredNS, Name: dep.Name}
+	if err := l.client.Get(ctx, key, &held); err != nil {
+		t.Fatalf("the finalizer did not hold the object open: %v", err)
+	}
+	if held.DeletionTimestamp.IsZero() {
+		t.Error("no deletion timestamp on a deleted object")
+	}
+
+	// The teardown pass: this is the code path the owner reference used to stand in for.
+	l.reconcile(t, dep.Name)
+
+	if _, err := l.getGraph(ctx); !apierrors.IsNotFound(err) {
+		t.Errorf("the workload outlived its declared copy: %v", err)
+	}
+	if err := l.client.Get(ctx, key, &held); !apierrors.IsNotFound(err) {
+		t.Errorf("the declared copy is still held: %v (%v)", err, held.Finalizers)
+	}
+}
+
+// ---------------------------------------------------------------- drift
+
+// A workload deleted out of band comes back. Nothing rewrites desired state to make it happen.
+func TestE2EAWorkloadDeletedOutOfBandIsRestored(t *testing.T) {
+	l := newLive(t)
+	dep := l.ready(t)
+	ctx := context.Background()
+
+	l.reconcile(t, dep.Name)
+	obj, err := l.getGraph(ctx)
+	if err != nil {
+		t.Fatalf("nothing was applied: %v", err)
+	}
+	if err := l.client.Delete(ctx, obj); err != nil {
+		t.Fatalf("delete workload: %v", err)
+	}
+	if _, err := l.getGraph(ctx); !apierrors.IsNotFound(err) {
+		t.Fatalf("workload not actually deleted: %v", err)
+	}
+
+	l.reconcile(t, dep.Name)
+
+	if _, err := l.getGraph(ctx); err != nil {
+		t.Errorf("the workload was not restored: %v", err)
+	}
+}
+
+// cordonAll marks every node unschedulable, and puts them back afterwards.
+func (l *live) cordonAll(t *testing.T) {
+	t.Helper()
+	ctx := context.Background()
+	var nodes corev1.NodeList
+	if err := l.client.List(ctx, &nodes); err != nil {
+		t.Fatalf("list nodes: %v", err)
+	}
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+		if node.Spec.Unschedulable {
+			continue
+		}
+		patch := client.MergeFrom(node.DeepCopy())
+		node.Spec.Unschedulable = true
+		if err := l.client.Patch(ctx, node, patch); err != nil {
+			t.Fatalf("cordon %s: %v", node.Name, err)
+		}
+		name := node.Name
+		t.Cleanup(func() {
+			var current corev1.Node
+			if err := l.client.Get(ctx, types.NamespacedName{Name: name}, &current); err != nil {
+				return
+			}
+			p := client.MergeFrom(current.DeepCopy())
+			current.Spec.Unschedulable = false
+			_ = l.client.Patch(ctx, &current, p)
+		})
+	}
+}
