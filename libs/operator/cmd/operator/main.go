@@ -145,7 +145,7 @@ func run() error {
 		BackoffMin:        cfg.BackoffMin,
 		BackoffMax:        cfg.BackoffMax,
 		SendQueueSize:     cfg.SendQueueSize,
-		Handler:           operate.WithExecutor(observe.WithObserver(store, observer), executor),
+		Handler:           reconcile.WithReporter(operate.WithExecutor(observe.WithObserver(store, observer), executor), reconciler),
 		Checkpointer:      checkpoint.Adapt(cursor),
 		Logger:            log,
 	})

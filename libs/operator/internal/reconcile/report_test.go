@@ -155,3 +155,39 @@ func TestNameToIDInvertsResourceName(t *testing.T) {
 		t.Errorf("nameToID(resourceName(%q)) = %q", testDeploymentID, got)
 	}
 }
+
+// A session the hub could not resume is one where the dedupe's assumption — that a skipped frame
+// was delivered — does not hold: the hub prunes what it had and expects it restated.
+func TestAFreshSessionForgetsWhatWasReported(t *testing.T) {
+	rep := &recordingReporter{}
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	r, _ := runReconcileReporting(t, rep, dep)
+
+	if err := WithReporter(noopHandler{}, r).Resync(context.Background()); err != nil {
+		t.Fatalf("resync: %v", err)
+	}
+	if got := r.lastReported(testDeploymentID); got != (reportKey{}) {
+		t.Errorf("last reported = %+v, want it forgotten", got)
+	}
+
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.GetNamespace(), Name: dep.GetName()}}
+	if _, err := r.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if len(rep.sent) != 2 {
+		t.Fatalf("sent %d frames, want the conclusion restated after the resync", len(rep.sent))
+	}
+}
+
+// A read-only operator has no reconciler, and the chain must still be usable.
+func TestWithReporterIsANoOpWithoutAReconciler(t *testing.T) {
+	inner := noopHandler{}
+	if got := WithReporter(inner, nil); got != syncpkg.Handler(inner) {
+		t.Error("a nil reconciler must leave the chain untouched")
+	}
+}
+
+type noopHandler struct{}
+
+func (noopHandler) Handle(context.Context, *syncpkg.Envelope) error { return nil }
+func (noopHandler) Resync(context.Context) error                    { return nil }

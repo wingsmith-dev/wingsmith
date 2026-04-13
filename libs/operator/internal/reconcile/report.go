@@ -1,6 +1,7 @@
 package reconcile
 
 import (
+	"context"
 	"strings"
 	"time"
 
@@ -149,4 +150,46 @@ func nameToID(name string) string {
 		return ""
 	}
 	return name[:i] + "_" + name[i+1:]
+}
+
+// ForgetAll drops every deployment's last-sent state.
+//
+// Called when the hub opens a fresh session. The dedupe in report assumes the frame it skipped was
+// delivered, and a session the hub could not resume is one where that assumption does not hold:
+// the hub prunes what it had and expects the cluster to restate it. Nothing else the operator
+// sends has this problem, because the observe loop restates its whole view on Resync — the
+// reconciler had no such hook, so its conclusions were the one thing a new session lost for good.
+func (r *SyncedResourceReconciler) ForgetAll() {
+	r.reportMu.Lock()
+	defer r.reportMu.Unlock()
+	clear(r.reported)
+}
+
+// reportingHandler restates the reconciler's conclusions when the hub could not honour a resume.
+type reportingHandler struct {
+	inner      syncpkg.Handler
+	reconciler *SyncedResourceReconciler
+}
+
+// WithReporter joins the reconciler to the handler chain, so that a fresh session forgets what it
+// last told the hub and says it again.
+func WithReporter(inner syncpkg.Handler, r *SyncedResourceReconciler) syncpkg.Handler {
+	if r == nil {
+		return inner
+	}
+	return &reportingHandler{inner: inner, reconciler: r}
+}
+
+// Handle implements sync.Handler.
+func (h *reportingHandler) Handle(ctx context.Context, e *syncpkg.Envelope) error {
+	return h.inner.Handle(ctx, e)
+}
+
+// Resync implements sync.Handler.
+func (h *reportingHandler) Resync(ctx context.Context) error {
+	if err := h.inner.Resync(ctx); err != nil {
+		return err
+	}
+	h.reconciler.ForgetAll()
+	return nil
 }
