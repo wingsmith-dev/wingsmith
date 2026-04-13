@@ -124,8 +124,9 @@ type Config struct {
 	// PrefetchCPU and PrefetchMemory are what one weight download asks the scheduler for. Empty
 	// takes the render's own default, which is sized to fit an ordinary node rather than a
 	// dedicated cache one.
-	PrefetchCPU    string
-	PrefetchMemory string
+	PrefetchCPU         string
+	PrefetchMemory      string
+	PrefetchMemoryLimit string
 
 	// DCGMEndpoint is the in-cluster DCGM exporter's metrics URL, which the observation loop
 	// scrapes for device identity — the true accelerator UUID, which Kubernetes does not carry
@@ -214,6 +215,7 @@ func Load() (*Config, error) {
 		CacheTaintKey:         env("HANGAR_CACHE_TAINT_KEY", "hangar.io/cache"),
 		PrefetchCPU:           env("HANGAR_PREFETCH_CPU", ""),
 		PrefetchMemory:        env("HANGAR_PREFETCH_MEMORY", ""),
+		PrefetchMemoryLimit:   env("HANGAR_PREFETCH_MEMORY_LIMIT", ""),
 		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		BenchmarkArtifactBase: env("HANGAR_BENCHMARK_ARTIFACT_BASE", ""),

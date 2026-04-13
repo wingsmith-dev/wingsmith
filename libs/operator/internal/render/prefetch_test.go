@@ -93,7 +93,7 @@ func TestPrefetchJobHuggingFace(t *testing.T) {
 	if !strings.Contains(c.Args[0], `"Qwen/Qwen3-8B"`) {
 		t.Fatalf("args do not name the repo id: %v", c.Args)
 	}
-	if !strings.Contains(c.Args[0], "max_workers=8") {
+	if !strings.Contains(c.Args[0], "max_workers=4") {
 		t.Fatalf("args do not bound parallelism: %v", c.Args)
 	}
 	if v, ok := envValue(c, "HF_HOME"); !ok || v != "/models/hf" {
@@ -248,15 +248,15 @@ func TestAPrefetchAsksForLittleEnoughToBePlaced(t *testing.T) {
 	if got := req.Memory().String(); got != "2Gi" {
 		t.Errorf("memory request = %q, want 2Gi", got)
 	}
-	if got := job.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String(); got != "4Gi" {
-		t.Errorf("memory limit = %q, want twice the request", got)
+	if got := job.Spec.Template.Spec.Containers[0].Resources.Limits.Memory().String(); got != "6Gi" {
+		t.Errorf("memory limit = %q, want the ceiling in its own right", got)
 	}
 }
 
 // A cluster with a dedicated cache pool should be able to spend more on the download.
 func TestAClusterCanRaiseWhatAPrefetchAsksFor(t *testing.T) {
 	job, err := PrefetchJob(hfArtifact(), "runtime:latest", Options{
-		Namespace: "dynamo", PrefetchCPU: "4", PrefetchMemory: "8Gi",
+		Namespace: "dynamo", PrefetchCPU: "4", PrefetchMemory: "8Gi", PrefetchMemoryLimit: "16Gi",
 	})
 	if err != nil {
 		t.Fatalf("render: %v", err)
@@ -319,5 +319,29 @@ func TestSplitHFRef(t *testing.T) {
 		if repo != c.repo || revision != c.revision {
 			t.Errorf("SplitHFRef(%q) = %q, %q; want %q, %q", c.uri, repo, revision, c.repo, c.revision)
 		}
+	}
+}
+
+// The ceiling must not follow the request down. It did, and a large model was OOM killed part-way
+// through: pages written to the shared NFS volume are charged to the cgroup until EFS writeback
+// takes them, and that backlog is far larger than anything the job holds on purpose.
+func TestTheMemoryCeilingIsNotDerivedFromTheRequest(t *testing.T) {
+	job, err := PrefetchJob(hfArtifact(), "runtime:latest", Options{PrefetchMemory: "1Gi"})
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	limit := job.Spec.Template.Spec.Containers[0].Resources.Limits.Memory()
+	if limit.String() != "6Gi" {
+		t.Errorf("memory limit = %q, want the default ceiling regardless of the request", limit)
+	}
+}
+
+func TestACeilingBelowTheRequestIsRefused(t *testing.T) {
+	_, err := PrefetchJob(hfArtifact(), "runtime:latest", Options{
+		PrefetchMemory: "8Gi", PrefetchMemoryLimit: "2Gi",
+	})
+	if err == nil {
+		t.Error("a ceiling under the request is unschedulable and must fail the render")
 	}
 }

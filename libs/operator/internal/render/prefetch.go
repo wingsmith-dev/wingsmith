@@ -21,9 +21,16 @@ const prefetchNamePrefix = "prefetch-"
 // not by cores, and the earlier figures — four CPUs and eight gigabytes — were large enough that
 // the job could not be placed on an ordinary node at all. A cluster with a dedicated cache pool
 // can raise them; a cluster running this beside its system workloads should not have to.
+// The ceiling is deliberately not derived from the request. What a download needs reserved and
+// what it may peak at are different facts: it is placed on how little it needs to start, and it
+// peaks on dirty page cache, because pages written to the shared NFS volume are charged to this
+// cgroup until writeback flushes them to EFS — and EFS writeback is slower than the pull filling
+// it. Deriving one from the other made the ceiling follow the request down and the job was OOM
+// killed part-way through a large model.
 const (
-	defaultPrefetchCPU    = "500m"
-	defaultPrefetchMemory = "2Gi"
+	defaultPrefetchCPU         = "500m"
+	defaultPrefetchMemory      = "2Gi"
+	defaultPrefetchMemoryLimit = "6Gi"
 )
 
 // maxObjectName is the DNS-1123 label limit the API server enforces on an object name.
@@ -32,11 +39,12 @@ const maxObjectName = 63
 // hfScript downloads a HuggingFace repo into HF_HOME, held as a constant so the rendered job is a
 // pure function of its inputs and can be applied repeatedly without churning the object.
 //
-// max_workers=8 is enough parallelism to saturate the link without tripping HuggingFace rate
-// limiting on an unauthenticated pull.
+// max_workers=4 is enough parallelism to saturate the link without tripping HuggingFace rate
+// limiting on an unauthenticated pull. It was 8, which also multiplied by four the dirty page
+// cache waiting on writeback to the shared NFS volume — memory this job is charged for.
 const hfScript = `from huggingface_hub import snapshot_download
 revision = %q or None
-p = snapshot_download(%q, revision=revision, max_workers=8)
+p = snapshot_download(%q, revision=revision, max_workers=4)
 print("cached at", p)
 `
 
@@ -164,8 +172,8 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 // prefetchResources is what one download asks the scheduler for.
 //
 // Requests only for CPU, because a throttled download is a slower download and nothing else. The
-// memory limit is a backstop against a fetch that buffers rather than streams, and is derived from
-// the request so that raising one raises the other.
+// memory ceiling is set on its own rather than derived from the request, for the reason given on
+// defaultPrefetchMemoryLimit.
 func prefetchResources(opts Options) (corev1.ResourceRequirements, error) {
 	cpuText := opts.PrefetchCPU
 	if cpuText == "" {
@@ -185,8 +193,17 @@ func prefetchResources(opts Options) (corev1.ResourceRequirements, error) {
 		return corev1.ResourceRequirements{}, fmt.Errorf("prefetch memory request %q is not a quantity: %w", memoryText, err)
 	}
 
-	ceiling := memory.DeepCopy()
-	ceiling.Add(memory)
+	ceilingText := opts.PrefetchMemoryLimit
+	if ceilingText == "" {
+		ceilingText = defaultPrefetchMemoryLimit
+	}
+	ceiling, err := resource.ParseQuantity(ceilingText)
+	if err != nil {
+		return corev1.ResourceRequirements{}, fmt.Errorf("prefetch memory limit %q is not a quantity: %w", ceilingText, err)
+	}
+	if ceiling.Cmp(memory) < 0 {
+		return corev1.ResourceRequirements{}, fmt.Errorf("prefetch memory limit %s is below the request %s", ceilingText, memoryText)
+	}
 
 	return corev1.ResourceRequirements{
 		Requests: corev1.ResourceList{corev1.ResourceCPU: cpu, corev1.ResourceMemory: memory},

@@ -102,13 +102,14 @@ func SetupWithManager(mgr ctrl.Manager, cfg *config.Config, logger *slog.Logger)
 // RenderOptions lifts the per-cluster rendering conventions out of configuration.
 func RenderOptions(cfg *config.Config) render.Options {
 	return render.Options{
-		Namespace:      cfg.WorkloadNamespace,
-		PoolLabelKey:   cfg.PoolLabelKey,
-		GPUPoolValue:   cfg.GPUPoolValue,
-		ModelCachePVC:  cfg.ModelCachePVC,
-		CachePoolValue: cfg.CachePoolValue,
-		CacheTaintKey:  cfg.CacheTaintKey,
-		PrefetchCPU:    cfg.PrefetchCPU,
-		PrefetchMemory: cfg.PrefetchMemory,
+		Namespace:           cfg.WorkloadNamespace,
+		PoolLabelKey:        cfg.PoolLabelKey,
+		GPUPoolValue:        cfg.GPUPoolValue,
+		ModelCachePVC:       cfg.ModelCachePVC,
+		CachePoolValue:      cfg.CachePoolValue,
+		CacheTaintKey:       cfg.CacheTaintKey,
+		PrefetchCPU:         cfg.PrefetchCPU,
+		PrefetchMemory:      cfg.PrefetchMemory,
+		PrefetchMemoryLimit: cfg.PrefetchMemoryLimit,
 	}
 }

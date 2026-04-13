@@ -34,14 +34,15 @@ var GVK = schema.GroupVersionKind{Group: "nvidia.com", Version: "v1beta1", Kind:
 
 // Options are the per-cluster conventions the render needs and the plane does not declare.
 type Options struct {
-	Namespace      string
-	PoolLabelKey   string
-	GPUPoolValue   string
-	CachePoolValue string
-	CacheTaintKey  string
-	ModelCachePVC  string
-	PrefetchCPU    string
-	PrefetchMemory string
+	Namespace           string
+	PoolLabelKey        string
+	GPUPoolValue        string
+	CachePoolValue      string
+	CacheTaintKey       string
+	ModelCachePVC       string
+	PrefetchCPU         string
+	PrefetchMemory      string
+	PrefetchMemoryLimit string
 }
 
 // Inputs is everything one render reads. Grouping them makes the dependency explicit: a
