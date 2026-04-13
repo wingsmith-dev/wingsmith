@@ -452,13 +452,15 @@ func TestResyncStreamsTheWholeInventory(t *testing.T) {
 	if end.Count != body {
 		t.Fatalf("stream.end counted %d, but %d frames were sent", end.Count, body)
 	}
-	if body != 5 {
-		t.Fatalf("resync streamed %d objects, want 5 (1 node, 2 devices, 1 domain, 1 pool)", body)
+	if body != 6 {
+		t.Fatalf("resync streamed %d objects, want 6 (1 cluster, 1 node, 2 devices, 1 domain, 1 pool)", body)
 	}
 }
 
 // TestResyncSurvivesAFailedDiscovery: the resync is the hub's only repair, so it streams the last
-// known projection rather than declining to answer.
+// known projection rather than declining to answer — but it does not call that snapshot complete.
+// Completeness is the plane's sole permission to delete everything absent from the stream, and a
+// projection nothing just confirmed is not evidence that anything is absent.
 func TestResyncSurvivesAFailedDiscovery(t *testing.T) {
 	fake := NewFake(sampleSnapshot())
 	o := newTestObserver(t, fake)
@@ -472,8 +474,30 @@ func TestResyncSurvivesAFailedDiscovery(t *testing.T) {
 	if err := o.Resync(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if end := r.frames[len(r.frames)-1].payload.(wire.StreamEnd); end.Count != 5 || !end.Complete {
-		t.Fatalf("degraded resync ended %+v", end)
+	end := r.frames[len(r.frames)-1].payload.(wire.StreamEnd)
+	if end.Count != 6 {
+		t.Fatalf("degraded resync streamed %d frames, want the 6 it last knew about", end.Count)
+	}
+	if end.Complete {
+		t.Fatal("a snapshot built on a failed discovery must not claim to be whole: the hub would prune against it")
+	}
+}
+
+// TestResyncRefusesBeforeAnythingIsObserved: the empty projection is the dangerous one. An operator
+// whose very first discovery fails knows of no nodes at all, and a complete snapshot of nothing is
+// a valid instruction to delete the cluster's entire inventory.
+func TestResyncRefusesBeforeAnythingIsObserved(t *testing.T) {
+	fake := NewFake(sampleSnapshot())
+	fake.SetError(errors.New("apiserver unreachable"))
+	o := newTestObserver(t, fake)
+
+	if err := o.Resync(t.Context()); err == nil {
+		t.Fatal("a resync with nothing ever observed must fail, not stream an empty snapshot")
+	}
+	for _, f := range o.recorder(t).frames {
+		if end, ok := f.payload.(wire.StreamEnd); ok && end.Complete {
+			t.Fatalf("streamed a complete snapshot of nothing: %+v", end)
+		}
 	}
 }
 

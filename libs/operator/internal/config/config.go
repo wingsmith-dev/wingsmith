@@ -58,6 +58,24 @@ type Config struct {
 	// full-object and resync fills any hole, so a slower interval only ages the hub's view.
 	ObserveInterval time.Duration
 
+	// ObserveTimeout bounds a single discovery. It must exceed nothing in particular, but a
+	// value below ObserveInterval means a slow cluster read is reported as a failure rather
+	// than simply arriving late.
+	ObserveTimeout time.Duration
+
+	// ObserveStaleAfter is how long the readiness probe tolerates a loop that has stopped
+	// observing before it reports the operator unready.
+	//
+	// A wedged observation loop is otherwise undetectable from outside: the process does not
+	// exit, the hub session stays up on its own goroutine, and the plane keeps serving the last
+	// projection as current. Failing readiness is what turns that into a restart.
+	ObserveStaleAfter time.Duration
+
+	// ResyncInterval is how often the operator restates its whole observed inventory unprompted.
+	// It is the only thing that retires an object the cluster has stopped reporting, so it is
+	// the upper bound on how long a departed node lingers in the plane.
+	ResyncInterval time.Duration
+
 	// BackoffMin and BackoffMax bound the reconnect backoff.
 	BackoffMin time.Duration
 	BackoffMax time.Duration
@@ -202,6 +220,9 @@ func Load() (*Config, error) {
 		HeartbeatInterval:     envDuration("HANGAR_HEARTBEAT_INTERVAL", 10*time.Second),
 		LivenessTimeout:       envDuration("HANGAR_LIVENESS_TIMEOUT", 30*time.Second),
 		ObserveInterval:       envDuration("HANGAR_OBSERVE_INTERVAL", 30*time.Second),
+		ObserveTimeout:        envDuration("HANGAR_OBSERVE_TIMEOUT", 60*time.Second),
+		ObserveStaleAfter:     envDuration("HANGAR_OBSERVE_STALE_AFTER", 5*time.Minute),
+		ResyncInterval:        envDuration("HANGAR_RESYNC_INTERVAL", 15*time.Minute),
 		BackoffMin:            envDuration("HANGAR_BACKOFF_MIN", time.Second),
 		BackoffMax:            envDuration("HANGAR_BACKOFF_MAX", 30*time.Second),
 		ReadOnly:              envBool("HANGAR_READ_ONLY", false),
@@ -261,6 +282,15 @@ func (c *Config) validate() error {
 	}
 	if c.ObserveInterval <= 0 {
 		return fmt.Errorf("HANGAR_OBSERVE_INTERVAL must be positive")
+	}
+	if c.ObserveTimeout <= 0 {
+		return fmt.Errorf("HANGAR_OBSERVE_TIMEOUT must be positive")
+	}
+	if c.ResyncInterval <= 0 {
+		return fmt.Errorf("HANGAR_RESYNC_INTERVAL must be positive")
+	}
+	if c.ObserveStaleAfter <= c.ObserveInterval {
+		return fmt.Errorf("HANGAR_OBSERVE_STALE_AFTER (%s) must exceed HANGAR_OBSERVE_INTERVAL (%s)", c.ObserveStaleAfter, c.ObserveInterval)
 	}
 	if c.BackoffMax < c.BackoffMin {
 		return fmt.Errorf("HANGAR_BACKOFF_MAX must be >= HANGAR_BACKOFF_MIN")

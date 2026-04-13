@@ -75,6 +75,13 @@ type Device struct {
 	Allocation *Allocation
 }
 
+// Taint is one scheduling repellent on a node.
+type Taint struct {
+	Key    string
+	Value  string
+	Effect string
+}
+
 // Node is one machine as discovered, together with the devices attached to it.
 type Node struct {
 	Name           string
@@ -85,8 +92,30 @@ type Node struct {
 	KernelVersion  string
 	DriverVersion  string
 	RuntimeVersion string
-	Labels         map[string]string
-	Devices        []Device
+	// InstanceType is the machine's shape as its provider names it — `g5.12xlarge`, `a2-highgpu-8g`.
+	// It is the answer to "what kind of node is this", which node counts alone never give.
+	InstanceType string
+	// Cloud is the provider this machine belongs to, derived from its provider reference rather
+	// than from a label, because the reference is set by the cloud controller and a label is set
+	// by whoever last edited it.
+	Cloud     string
+	Region    string
+	Zone      string
+	CPUCores  int
+	MemoryMiB int64
+	CPUArch   string
+	OSImage   string
+	Taints    []Taint
+	Labels    map[string]string
+	Devices   []Device
+	// Distribution is the Kubernetes flavour this machine runs, resolved at discovery because
+	// the labels that identify it are raw cluster labels and never survive into Labels, which is
+	// filtered down to what the plane is meant to see.
+	//
+	// Per node rather than per cluster for the same reason Cloud is: it is read off the machine,
+	// and a cluster mid-migration genuinely has two answers. The cluster-wide value is the
+	// plurality of these.
+	Distribution string
 	// AllocatedDevices is how many of this node's accelerators are committed to work, counted
 	// from the cluster's own accounting rather than asked of the hardware.
 	AllocatedDevices int
@@ -145,6 +174,54 @@ type Snapshot struct {
 	Nodes     []Node
 	Workloads []Workload
 	At        time.Time
+}
+
+// Fleet is what a snapshot says about the cluster as a whole rather than about any one machine.
+//
+// Derived from the nodes rather than discovered separately, because every source for it is a node
+// attribute: the cloud is on each machine's provider reference and the distribution is stamped in
+// each kubelet's version. Taking the majority answer means a cluster keeps reporting sensibly
+// while a single odd node joins or a migration is half done.
+type Fleet struct {
+	Distribution string
+	Cloud        string
+	Region       string
+}
+
+// fleet reduces a snapshot's nodes to the cluster-wide answer, by plurality.
+//
+// A tie breaks toward the lexicographically smaller value, so that two equally popular answers
+// settle on one instead of flapping between them and putting a frame on the wire each time.
+func (s *Snapshot) fleet() Fleet {
+	distributions, clouds, regions := map[string]int{}, map[string]int{}, map[string]int{}
+	for i := range s.Nodes {
+		n := &s.Nodes[i]
+		if n.Distribution != "" {
+			distributions[n.Distribution]++
+		}
+		if n.Cloud != "" {
+			clouds[n.Cloud]++
+		}
+		if n.Region != "" {
+			regions[n.Region]++
+		}
+	}
+	return Fleet{
+		Distribution: plurality(distributions),
+		Cloud:        plurality(clouds),
+		Region:       plurality(regions),
+	}
+}
+
+// plurality returns the most common key, or empty when there is nothing to count.
+func plurality(counts map[string]int) string {
+	best, bestCount := "", 0
+	for value, count := range counts {
+		if count > bestCount || (count == bestCount && value < best) {
+			best, bestCount = value, count
+		}
+	}
+	return best
 }
 
 // Discoverer produces a Snapshot. The interface exists so the loop can be driven without a

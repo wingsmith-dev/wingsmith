@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"golang.org/x/sync/errgroup"
 
@@ -100,8 +101,10 @@ func run() error {
 			},
 			Log: log,
 		},
-		Interval: cfg.ObserveInterval,
-		Log:      log,
+		Interval:       cfg.ObserveInterval,
+		Timeout:        cfg.ObserveTimeout,
+		ResyncInterval: cfg.ResyncInterval,
+		Log:            log,
 	})
 
 	// Benchmarks are the one thing this operator does that needs a pod's log read back, and logs
@@ -160,6 +163,19 @@ func run() error {
 		"hub": func() error {
 			if !client.Connected() {
 				return errors.New("no hub session")
+			}
+			return nil
+		},
+		// A connected operator that has stopped observing is worse than a disconnected one:
+		// the plane goes on presenting its last projection as current, with nothing to
+		// suggest the cluster stopped answering. Readiness is the only place that can notice.
+		"observe": func() error {
+			since, ever := observer.Since(time.Now())
+			if !ever {
+				return errors.New("no observation completed yet")
+			}
+			if since > cfg.ObserveStaleAfter {
+				return fmt.Errorf("last observation was %s ago", since.Truncate(time.Second))
 			}
 			return nil
 		},

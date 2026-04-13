@@ -15,6 +15,7 @@ func formatTime(t time.Time) string { return t.UTC().Format(timestampLayout) }
 // projection is one snapshot expressed entirely in contract types. It is what gets compared,
 // sent, and re-streamed on resync; the Kubernetes objects it came from do not survive this far.
 type projection struct {
+	cluster   wire.ClusterObserved
 	nodes     []wire.NodeObserved
 	devices   []wire.DeviceObserved
 	domains   []wire.TopologyObserved
@@ -189,14 +190,34 @@ func (o *Observer) project(s Snapshot) projection {
 			Ready:          n.Ready,
 			Cordoned:       n.Cordoned,
 			Conditions:     conditions,
+			InstanceType:   n.InstanceType,
+			Cloud:          n.Cloud,
+			Region:         n.Region,
+			Zone:           n.Zone,
+			CPUCores:       n.CPUCores,
+			MemoryMiB:      n.MemoryMiB,
+			CPUArch:        n.CPUArch,
+			OSImage:        n.OSImage,
 			KernelVersion:  n.KernelVersion,
 			DriverVersion:  n.DriverVersion,
 			RuntimeVersion: n.RuntimeVersion,
 			AgentVersion:   o.AgentVersion,
+			Taints:         taints(n.Taints),
 			DeviceIDs:      deviceIDs,
 			Labels:         labels,
 			ObservedAt:     observedAt,
 		})
+	}
+
+	fleet := s.fleet()
+	p.cluster = wire.ClusterObserved{
+		ClusterID:    o.ClusterID,
+		Distribution: fleet.Distribution,
+		Cloud:        fleet.Cloud,
+		Region:       fleet.Region,
+		Nodes:        len(p.nodes),
+		Devices:      len(p.devices),
+		ObservedAt:   observedAt,
 	}
 
 	for _, key := range acc.order {

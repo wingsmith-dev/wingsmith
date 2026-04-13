@@ -14,6 +14,7 @@ import (
 
 // Wire types this loop produces.
 const (
+	TypeClusterObserved    = "cluster.observed"
 	TypeNodeObserved       = "node.observed"
 	TypeNodeEvent          = "node.event"
 	TypeDeviceObserved     = "device.observed"
@@ -51,10 +52,31 @@ type Observer struct {
 	Interval     time.Duration
 	Log          *slog.Logger
 
-	mu     stdsync.Mutex
-	sender Sender
-	last   projection
-	seen   bool
+	// Timeout bounds a single discovery. Without it a discoverer that blocks forever takes the
+	// whole loop with it silently: the process stays up, the hub session stays healthy because
+	// heartbeats run on another goroutine, and the plane goes on serving the last projection as
+	// though it were current. A tick that cannot finish must fail loudly instead of hanging.
+	Timeout time.Duration
+
+	// ResyncInterval is how often the loop restates its whole inventory even though nothing
+	// asked it to.
+	//
+	// Incremental observation cannot express a removal — a node that is gone is absent from the
+	// projection, and absence is only evidence against a complete snapshot. That makes resync
+	// the only thing that can retire a departed node from the plane, and until this existed the
+	// only trigger for one was a reconnect the hub declared fresh. An operator that stayed
+	// connected therefore accumulated ghosts indefinitely. This bounds that to one interval.
+	ResyncInterval time.Duration
+
+	mu       stdsync.Mutex
+	sender   Sender
+	last     projection
+	seen     bool
+	lastTick time.Time
+
+	// resyncMu serialises resyncs. The hub opens one epoch per cluster, so two overlapping
+	// snapshots would interleave into it and the count check would reject the pair.
+	resyncMu stdsync.Mutex
 }
 
 // New fills in an Observer's defaults and returns it.
@@ -62,12 +84,31 @@ func New(o *Observer) *Observer {
 	if o.Interval <= 0 {
 		o.Interval = 30 * time.Second
 	}
+	if o.Timeout <= 0 {
+		o.Timeout = 2 * o.Interval
+	}
+	if o.ResyncInterval <= 0 {
+		o.ResyncInterval = 15 * time.Minute
+	}
 	if o.Log == nil {
 		o.Log = slog.Default()
 	}
 	o.Log = o.Log.With("component", "observe")
 	o.sender = o.Sender
 	return o
+}
+
+// Since reports how long ago a discovery last completed, and whether one ever has.
+//
+// Exposed so the readiness probe can fail on a loop that has stopped observing. A wedged loop is
+// invisible from outside the process — it neither exits nor logs — so something has to ask.
+func (o *Observer) Since(now time.Time) (time.Duration, bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.lastTick.IsZero() {
+		return 0, false
+	}
+	return now.Sub(o.lastTick), true
 }
 
 // Bind supplies the Sender after construction, which the wiring needs because the sync client
@@ -95,6 +136,8 @@ func (o *Observer) send() (Sender, error) {
 func (o *Observer) Run(ctx context.Context) error {
 	ticker := time.NewTicker(o.Interval)
 	defer ticker.Stop()
+	resync := time.NewTicker(o.ResyncInterval)
+	defer resync.Stop()
 	for {
 		if err := o.Tick(ctx); err != nil {
 			if ctx.Err() != nil {
@@ -105,14 +148,31 @@ func (o *Observer) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-resync.C:
+			if err := o.Resync(ctx); err != nil {
+				if ctx.Err() != nil {
+					return nil
+				}
+				o.Log.Error("periodic resync failed", "error", err)
+			}
 		case <-ticker.C:
 		}
 	}
 }
 
+// discover runs one discovery under Timeout.
+//
+// The deadline is the whole point: every discoverer this has ever had reaches the network, and a
+// read with no bound is a loop with no bound.
+func (o *Observer) discover(ctx context.Context) (Snapshot, error) {
+	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
+	defer cancel()
+	return o.Discoverer.Discover(ctx)
+}
+
 // Tick performs one discovery and sends whatever it changed.
 func (o *Observer) Tick(ctx context.Context) error {
-	snapshot, err := o.Discoverer.Discover(ctx)
+	snapshot, err := o.discover(ctx)
 	if err != nil {
 		return fmt.Errorf("discover: %w", err)
 	}
@@ -122,6 +182,7 @@ func (o *Observer) Tick(ctx context.Context) error {
 	o.mu.Lock()
 	prev, seen := o.last, o.seen
 	o.last, o.seen = next, true
+	o.lastTick = time.Now()
 	o.mu.Unlock()
 
 	if err := o.sendChanged(prev, next, seen); err != nil {
@@ -134,7 +195,10 @@ func (o *Observer) Tick(ctx context.Context) error {
 // It is called by the sync client whenever the hub grants a fresh session, and the count in
 // stream.end is the number of frames actually sent.
 func (o *Observer) Resync(ctx context.Context) error {
-	snapshot, err := o.Discoverer.Discover(ctx)
+	o.resyncMu.Lock()
+	defer o.resyncMu.Unlock()
+
+	snapshot, err := o.discover(ctx)
 	if err != nil {
 		o.Log.Error("resync discovery failed; streaming the last known projection", "error", err)
 	} else {
@@ -142,12 +206,23 @@ func (o *Observer) Resync(ctx context.Context) error {
 		next := o.project(snapshot)
 		o.mu.Lock()
 		o.last, o.seen = next, true
+		o.lastTick = time.Now()
 		o.mu.Unlock()
 	}
 
 	o.mu.Lock()
-	current := o.last
+	current, seen := o.last, o.seen
 	o.mu.Unlock()
+
+	// A snapshot is only complete if it came from a discovery that worked. Saying otherwise is
+	// not a white lie: `complete` is the sole permission the plane needs to delete everything
+	// absent from the stream, so a failed discovery that still claimed completeness would prune
+	// this cluster's entire inventory — and before the loop has ever seen anything, the
+	// projection is empty and that is exactly what would happen.
+	complete := err == nil && seen
+	if !complete && !seen {
+		return fmt.Errorf("resync: nothing observed yet: %w", err)
+	}
 
 	requestID, err := o.openStream(wire.ResyncBegin{Scope: resyncScope})
 	if err != nil {
@@ -161,6 +236,9 @@ func (o *Observer) Resync(ctx context.Context) error {
 		}
 		count++
 		return nil
+	}
+	if err := send(TypeClusterObserved, current.cluster.ClusterID, current.cluster); err != nil {
+		return err
 	}
 	for _, n := range current.nodes {
 		if err := send(TypeNodeObserved, n.NodeID, n); err != nil {
@@ -188,14 +266,19 @@ func (o *Observer) Resync(ctx context.Context) error {
 		}
 	}
 
-	if err := o.pushCorrelated(syncpkg.TypeStreamEnd, "", wire.StreamEnd{Count: count, Complete: true}, requestID); err != nil {
+	if err := o.pushCorrelated(syncpkg.TypeStreamEnd, "", wire.StreamEnd{Count: count, Complete: complete}, requestID); err != nil {
 		return fmt.Errorf("close resync: %w", err)
 	}
-	o.Log.Info("streamed observed inventory", "frames", count)
+	o.Log.Info("streamed observed inventory", "frames", count, "complete", complete)
 	return nil
 }
 
 func (o *Observer) sendChanged(prev, next projection, seen bool) error {
+	if !seen || !sameCluster(prev.cluster, next.cluster) {
+		if err := o.push(TypeClusterObserved, next.cluster.ClusterID, next.cluster); err != nil {
+			return err
+		}
+	}
 	prevNodes := indexNodes(prev.nodes)
 	for _, n := range next.nodes {
 		if seen {
@@ -435,6 +518,13 @@ func indexCapacity(in []wire.CapacityObserved) map[string]wire.CapacityObserved 
 
 // The observed_at stamp is excluded from every comparison below: it moves on every tick, and a
 // clock reading is not an observation changing.
+// sameCluster ignores the observation timestamp, like every other comparison here: the stamp moves
+// on every tick, and comparing it would put a frame on the wire for a cluster nothing changed on.
+func sameCluster(a, b wire.ClusterObserved) bool {
+	a.ObservedAt, b.ObservedAt = "", ""
+	return a == b
+}
+
 func sameNode(a, b wire.NodeObserved) bool {
 	a.ObservedAt, b.ObservedAt = "", ""
 	return reflect.DeepEqual(a, b)

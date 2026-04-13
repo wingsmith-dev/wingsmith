@@ -30,6 +30,8 @@ const (
 	labelZone         = "topology.kubernetes.io/zone"
 	labelPool         = "hangar.dev/pool"
 	labelDeviceClass  = "hangar.dev/device-class"
+	labelInstanceType = "node.kubernetes.io/instance-type"
+	labelInstanceBeta = "beta.kubernetes.io/instance-type"
 
 	// annotationDeviceUUIDs carries the node's accelerator UUIDs in index order. Device UUIDs
 	// are not published as labels — a label value cannot hold eight of them — and Kubernetes
@@ -134,6 +136,16 @@ func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, log *slog.Logger)
 		KernelVersion:  n.Status.NodeInfo.KernelVersion,
 		RuntimeVersion: n.Status.NodeInfo.ContainerRuntimeVersion,
 		DriverVersion:  firstNonEmpty(labels[labelDriverFull], labels[labelDriverLegacy]),
+		InstanceType:   firstNonEmpty(labels[labelInstanceType], labels[labelInstanceBeta]),
+		Cloud:          cloudOf(n.Spec.ProviderID),
+		Region:         labels[labelRegion],
+		Zone:           labels[labelZone],
+		Distribution:   distributionOf(labels, n.Status.NodeInfo.KubeletVersion, n.Status.NodeInfo.OSImage),
+		CPUArch:        n.Status.NodeInfo.Architecture,
+		OSImage:        n.Status.NodeInfo.OSImage,
+		CPUCores:       int(n.Status.Capacity.Cpu().Value()),
+		MemoryMiB:      n.Status.Capacity.Memory().Value() / (1024 * 1024),
+		Taints:         taintsOf(n.Spec.Taints),
 		Labels:         exportedLabels(labels),
 	}
 	for _, c := range n.Status.Conditions {
