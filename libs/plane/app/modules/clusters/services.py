@@ -37,6 +37,18 @@ def _revision(cluster: Cluster) -> str:
     return str(int(stamp.timestamp() * 1_000_000))
 
 
+STALE_AFTER = dt.timedelta(minutes=10)
+"""How long a connected cluster may go without sending anything before its link
+is reported `stale` rather than `connected`.
+
+Long enough to sit well clear of the operator's own observe and resync intervals,
+short enough that nobody reads two-day-old inventory as current. The failure this
+exists for is an operator whose observation loop stopped while its socket stayed
+up: `reachable` is true, because the socket is the only thing it ever measured,
+and every number the console draws from that cluster is frozen with nothing
+saying so."""
+
+
 def _sync(state: ClusterSyncState | None) -> ClusterSyncSchema:
     if state is None or state.connected_at is None:
         return ClusterSyncSchema(
@@ -46,18 +58,35 @@ def _sync(state: ClusterSyncState | None) -> ClusterSyncSchema:
             agent_version=state.agent_version if state else None,
             lag_ms=None,
             last_error=state.last_error if state else None,
+            distribution=state.distribution if state else None,
+            cloud=state.cloud if state else None,
+            observed_region=state.observed_region if state else None,
         )
     lag = None
+    stale = False
     if state.last_sync_at is not None:
         now = dt.datetime.now(dt.UTC)
-        lag = max(0, int((now - state.last_sync_at).total_seconds() * 1000))
+        since = now - state.last_sync_at
+        lag = max(0, int(since.total_seconds() * 1000))
+        stale = since > STALE_AFTER
+
+    if not state.reachable:
+        link = "disconnected"
+    elif stale:
+        link = "stale"
+    else:
+        link = "connected"
+
     return ClusterSyncSchema(
-        state="connected" if state.reachable else "disconnected",
+        state=link,
         last_sync_at=state.last_sync_at,
         last_seen_at=state.last_seen_at,
         agent_version=state.agent_version,
         lag_ms=lag,
         last_error=state.last_error,
+        distribution=state.distribution,
+        cloud=state.cloud,
+        observed_region=state.observed_region,
     )
 
 

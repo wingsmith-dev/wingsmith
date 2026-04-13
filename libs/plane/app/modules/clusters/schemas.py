@@ -11,6 +11,11 @@ class ClusterSyncSchema(Struct):
     `state` is derived, not stored: a cluster that has never connected is not the
     same as one that connected and dropped, and neither is a value anybody
     declared.
+
+    One of `never`, `disconnected`, `stale` or `connected`. `stale` is the one
+    that is not about the socket — it means the link is up and the cluster has
+    stopped saying anything through it, which reads as healthy everywhere that
+    only checks whether it is reachable.
     """
 
     state: str
@@ -19,6 +24,9 @@ class ClusterSyncSchema(Struct):
     agent_version: str | None
     lag_ms: int | None
     last_error: str | None
+    distribution: str | None = None
+    cloud: str | None = None
+    observed_region: str | None = None
 
 
 class ClusterSchema(Struct):

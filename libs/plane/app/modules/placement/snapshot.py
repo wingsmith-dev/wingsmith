@@ -30,8 +30,16 @@ class DeviceHold(Snap):
 class DeviceSnapshot(Snap):
     """One accelerator, as observed. The unit every capacity number is counted in.
 
-    A device is free when it is healthy, allocatable, and unheld — three separate
-    facts, because a device can be idle and still unusable.
+    A device is free when its node will take work, and it is healthy, allocatable,
+    and unheld — four separate facts, because a device can be idle and still
+    unusable.
+
+    `schedulable` is the node's fact, carried down onto the device because
+    placement counts devices and never looks at a node directly. It is the same
+    judgement the in-cluster scheduler makes in `reconcile.nodeUsable`, and it
+    has to be made in both places: rule 3 leaves device selection to the cluster,
+    but a plane that ignores it picks a cluster on capacity that cluster will
+    refuse, and the workload bounces instead of landing somewhere it fits.
     """
 
     uid: str
@@ -40,12 +48,13 @@ class DeviceSnapshot(Snap):
     memory_mib: int = 0
     healthy: bool = True
     allocatable: bool = True
+    schedulable: bool = True
     domain: str | None = None
     held_by: DeviceHold | None = None
 
     @property
     def free(self) -> bool:
-        return self.healthy and self.allocatable and self.held_by is None
+        return self.schedulable and self.healthy and self.allocatable and self.held_by is None
 
 
 class TopologyDomainSnapshot(Snap):

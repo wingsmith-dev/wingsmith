@@ -114,6 +114,8 @@ class PlacementRepository:
                 select(
                     Device,
                     Node.name,
+                    Node.cordoned,
+                    Node.ready,
                     TopologyDomain.uid,
                     Workload.uid,
                     Project.uid,
@@ -138,7 +140,17 @@ class PlacementRepository:
         ).all()
 
         by_cluster: dict[UUID, list[DeviceSnapshot]] = {}
-        for device, node_name, domain_uid, workload_uid, project_uid, value, preemptible in rows:
+        for (
+            device,
+            node_name,
+            cordoned,
+            node_ready,
+            domain_uid,
+            workload_uid,
+            project_uid,
+            value,
+            preemptible,
+        ) in rows:
             hold = None
             if workload_uid is not None and project_uid is not None:
                 hold = DeviceHold(
@@ -155,6 +167,7 @@ class PlacementRepository:
                     memory_mib=device.memory_mib,
                     healthy=device.health == HEALTHY and not device.throttled,
                     allocatable=device.allocatable,
+                    schedulable=bool(node_ready) and not cordoned,
                     domain=domain_uid,
                     held_by=hold,
                 )

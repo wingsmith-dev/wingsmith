@@ -96,7 +96,10 @@ async def seed_supply(sessions, name: str, devices: int, phase: str = "active", 
         )
         node = (
             await db.execute(
-                text("insert into supply_node (uid, cluster_id, name) values (:uid, :cluster, :name) returning id"),
+                text(
+                    "insert into supply_node (uid, cluster_id, name, ready, condition, cordoned) "
+                    "values (:uid, :cluster, :name, true, 'ready', false) returning id"
+                ),
                 {"uid": ids.new_uid(ids.NODE), "cluster": cluster, "name": f"{name}-node-0"},
             )
         ).scalar_one()
@@ -286,3 +289,41 @@ async def test_a_quota_ceiling_rules_out_a_cluster_that_has_the_devices(sessions
 
     codes = {r["code"] for v in raised.value.detail["verdicts"] for r in v["reasons"]}
     assert "quota_exhausted" in codes
+
+
+async def test_a_cordoned_node_offers_no_capacity(sessions) -> None:
+    """The cluster will not schedule onto a cordoned node, so neither may the plane.
+
+    The failure this guards is quiet: an autoscaler cordons an instance moments
+    before terminating it, and until placement read the flag those devices stayed
+    candidates. The plane would pick the cluster on capacity the cluster had
+    already withdrawn, and the workload would bounce off the local scheduler.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "cordoned", devices=8)
+    async with sessions.begin() as db:
+        await db.execute(text("update supply_node set cordoned = true"))
+
+    async with sessions() as db:
+        decision = await PlacementService(db).preview(
+            PlacementPreviewRequest(recipe="llama-70b-vllm", project="core")
+        )
+
+    assert not decision.placed
+    assert decision.verdicts[0].free_devices == 0
+
+
+async def test_a_not_ready_node_offers_no_capacity(sessions) -> None:
+    """Cordon and readiness are different facts, and either one is disqualifying."""
+    await seed_demand(sessions)
+    await seed_supply(sessions, "sick", devices=8)
+    async with sessions.begin() as db:
+        await db.execute(text("update supply_node set ready = false, condition = 'not_ready'"))
+
+    async with sessions() as db:
+        decision = await PlacementService(db).preview(
+            PlacementPreviewRequest(recipe="llama-70b-vllm", project="core")
+        )
+
+    assert not decision.placed
+    assert decision.verdicts[0].free_devices == 0
