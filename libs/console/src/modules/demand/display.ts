@@ -45,21 +45,19 @@ export function parallelismLabel(p: {
 
 /**
  * The steps a deployment passes through between being declared and serving, and
- * which one a reported `reason` places it at.
+ * which one an observed `(phase, reason)` places it at.
  *
  * The reasons are the operator's closed set (`MESSAGES.md`). They are mapped here
  * rather than rendered raw because a person watching a deployment come up wants to
  * know how far along it is, and `WeightsNotResident` answers that only if you
  * already know what the operator does in what order.
- *
- * An unrecognised reason leaves the strip at the phase's own step and is shown as
- * itself: a cluster runs its own build, and a sub-state this console predates must
- * be visible rather than swallowed.
  */
 export const LIFECYCLE_STEPS = [
   { key: "declared", label: "Declared" },
+  { key: "accepted", label: "Accepted" },
   { key: "dependencies", label: "Recipe & weights" },
   { key: "capacity", label: "Capacity" },
+  { key: "rendering", label: "Rendering" },
   { key: "applied", label: "Applied" },
   { key: "serving", label: "Serving" },
 ] as const
@@ -67,22 +65,53 @@ export const LIFECYCLE_STEPS = [
 export type LifecycleStep = (typeof LIFECYCLE_STEPS)[number]["key"]
 
 const REASON_STEPS: Record<string, LifecycleStep> = {
+  Accepted: "accepted",
   RecipeNotDeclared: "dependencies",
   ArtifactNotDeclared: "dependencies",
   WeightsNotResident: "dependencies",
   WarmSetIncomplete: "dependencies",
   NoSchedulableCapacity: "capacity",
+  Rendering: "rendering",
   Applied: "applied",
+  Progressing: "serving",
+  Serving: "serving",
   PayloadUndecodable: "declared",
-  RenderFailed: "applied",
+  RenderFailed: "rendering",
   NoClusterWork: "declared",
 }
 
+/**
+ * Where a phase alone puts the strip, for a `reason` this console has never heard of.
+ *
+ * The fallback is the phase and not `declared`. A cluster runs its own build and may
+ * report a sub-state that postdates this console, and answering "declared" for it
+ * would walk a serving deployment back to the first step — worse than the raw name,
+ * which is at least true. The phase is the field the contract says to compute on.
+ */
+const PHASE_STEPS: Record<string, LifecycleStep> = {
+  pending: "accepted",
+  admitted: "accepted",
+  placed: "applied",
+  degraded: "serving",
+  running: "serving",
+  terminating: "serving",
+  failed: "declared",
+}
+
+/**
+ * Both halves, because neither answers alone.
+ *
+ * `reason` is the precise one and is preferred, but it goes stale in one direction the
+ * phase does not: everything the operator reports after applying used to carry
+ * `Applied`, so a reason-only reading pinned a serving deployment to "Applied" while
+ * the counts underneath it said otherwise.
+ */
 export function lifecycleStepFor(
+  phase: string,
   reason: string | null | undefined
 ): LifecycleStep {
-  if (!reason) return "declared"
-  return REASON_STEPS[reason] ?? "declared"
+  const byReason = reason ? REASON_STEPS[reason] : undefined
+  return byReason ?? PHASE_STEPS[phase] ?? "declared"
 }
 
 /**
@@ -92,12 +121,16 @@ export function lifecycleStepFor(
  * name is what they will search the operator logs for.
  */
 const REASON_TEXT: Record<string, string> = {
+  Accepted: "The cluster has the instruction and is working on it",
   RecipeNotDeclared: "Waiting for the recipe to reach the cluster",
   ArtifactNotDeclared: "Waiting for the artifact to reach the cluster",
   WeightsNotResident: "Downloading the weights onto the cluster",
   WarmSetIncomplete: "Weights are still being fetched",
   NoSchedulableCapacity: "No node has enough accelerators free",
-  Applied: "Applied to the cluster; waiting for replicas",
+  Rendering: "Building the objects that will run this",
+  Applied: "Applied to the cluster; waiting for the first replica",
+  Progressing: "Replicas are still coming up",
+  Serving: "Every replica is ready",
   PayloadUndecodable: "The cluster could not read this deployment",
   RenderFailed: "The cluster could not turn this into anything runnable",
   NoClusterWork: "Held as declared state — authority is observed",

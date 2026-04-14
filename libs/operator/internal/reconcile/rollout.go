@@ -45,13 +45,29 @@ type rollout struct {
 func (r rollout) phase() string {
 	switch {
 	case r.desired == 0:
-		return "placed"
+		return phasePlaced
 	case r.ready == 0:
-		return "placed"
+		return phasePlaced
 	case r.ready < r.desired:
-		return "degraded"
+		return phaseDegraded
 	default:
-		return "running"
+		return phaseRunning
+	}
+}
+
+// reason is the closed-set name for what these counts amount to (MESSAGES.md).
+//
+// Derived here rather than carried over from the apply, because "applied" answers a different
+// question and answering it again once replicas are up is how the plane came to describe a serving
+// deployment as one still waiting for replicas.
+func (r rollout) reason() string {
+	switch r.phase() {
+	case phaseRunning:
+		return "Serving"
+	case phaseDegraded:
+		return "Progressing"
+	default:
+		return "Applied"
 	}
 }
 

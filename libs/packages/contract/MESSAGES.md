@@ -182,17 +182,38 @@ waiting on, while the operator knows exactly and says so in a log line in anothe
 nobody can enumerate. `message` is free text for a person and is never parsed. Both are optional:
 absent means the cluster is not distinguishing a sub-state, not that it is healthy.
 
+The set is ordered: it is the sequence one revision of a deployment passes through, and a reader
+who takes them in this order is reading the deployment coming up.
+
 | `reason` | Phase | Means |
 |---|---|---|
+| `Accepted` | `pending` | The desired frame decoded and this cluster has begun reconciling it |
 | `RecipeNotDeclared` | `pending` | The recipe this deployment names has not reached the cluster |
 | `ArtifactNotDeclared` | `pending` | The artifact that recipe serves has not reached the cluster |
 | `WeightsNotResident` | `pending` | The weights are not yet cached on this cluster |
 | `WarmSetIncomplete` | `pending` | The cache is fetching, and this artifact is not done |
 | `NoSchedulableCapacity` | `pending` | No node advertises enough accelerators of the class |
 | `NoClusterWork` | `pending` | Held as declared state; `authority` is `observed` |
-| `Applied` | `placed` | Rendered and applied; replicas not yet reported ready |
+| `Rendering` | `pending` | Every ordering is satisfied; building the objects that will run it |
+| `Applied` | `placed` | Rendered and applied; no replica has reported ready yet |
+| `Progressing` | `degraded` | Some replicas are ready and some are not — filling in, or rolling |
+| `Serving` | `running` | Every desired replica is ready |
 | `PayloadUndecodable` | `failed` | The desired frame did not decode |
 | `RenderFailed` | `failed` | The frame decoded and describes nothing renderable |
+
+**`Accepted` and `Rendering` are sent once per revision, not once per pass.** Both are true for the
+few milliseconds between one check and the next, while a reconcile re-runs every fifteen seconds
+until it applies and every five minutes after. Sent on every pass they would alternate against
+whatever the loop concluded next, and since the receiver files an event per transition, a healthy
+deployment would accumulate a timeline of the same two rows forever. They are facts about an
+instruction arriving, and a revision is what an instruction is — so the operator remembers how far
+into this set it has reported for the current revision and never goes backwards within one.
+
+**`Applied`, `Progressing` and `Serving` are three answers, not one.** `Applied` is a statement
+about a write to the cluster's API and says nothing about whether a worker ever started; the other
+two are read back off the running replicas. Collapsing them — reporting `Applied` for everything
+after the apply — leaves a deployment that is serving indistinguishable from one that was written
+and never came up.
 
 A `reason` the plane does not recognise is displayed, never rejected — the operator rolls
 independently and a new sub-state must not need a plane deploy to be visible. The phase column is

@@ -53,6 +53,7 @@ type SyncedResourceReconciler struct {
 
 	reportMu sync.Mutex
 	reported map[string]reportKey
+	staged   map[string]stageState
 }
 
 // +kubebuilder:rbac:groups=placeholder.hangar.dev,resources=syncedresources,verbs=get;list;watch;create;update;patch;delete

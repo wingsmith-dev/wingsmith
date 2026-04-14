@@ -37,9 +37,15 @@ export function DeploymentLifecycle({
   }
 
   const failed = status.phase === "failed"
-  const serving = status.ready_replicas > 0
-  const current = serving ? "serving" : lifecycleStepFor(status.reason)
+  const degraded = status.phase === "degraded"
+  const current = lifecycleStepFor(status.phase, status.reason)
   const currentIndex = LIFECYCLE_STEPS.findIndex((s) => s.key === current)
+
+  // A step is settled only when the deployment is resting on it. `Serving` reached while
+  // replicas are still filling in is the state a rolling update passes through and the one a
+  // crash-looping replica sits in, and drawing it the same green as a finished rollout is how
+  // the strip used to report a half-dead deployment as healthy.
+  const settled = current === "serving" && !degraded && !failed
 
   return (
     <div className="space-y-2 rounded-md border p-3">
@@ -53,7 +59,13 @@ export function DeploymentLifecycle({
                 className={cn(
                   "flex items-center gap-1.5 rounded px-2 py-1 text-2xs",
                   done && "text-muted-foreground",
-                  here && !failed && "bg-primary/10 font-medium text-primary",
+                  here &&
+                    !failed &&
+                    !degraded &&
+                    "bg-primary/10 font-medium text-primary",
+                  here &&
+                    degraded &&
+                    "bg-amber-500/10 font-medium text-amber-600 dark:text-amber-400",
                   here &&
                     failed &&
                     "bg-destructive/10 font-medium text-destructive",
@@ -62,17 +74,19 @@ export function DeploymentLifecycle({
               >
                 <StatusDot
                   tone={
-                    failed && here
-                      ? "danger"
-                      : done
+                    !here
+                      ? done
                         ? "ok"
-                        : here
-                          ? step.key === "serving"
+                        : "neutral"
+                      : failed
+                        ? "danger"
+                        : degraded
+                          ? "warn"
+                          : settled
                             ? "ok"
                             : "info"
-                          : "neutral"
                   }
-                  pulse={here && !failed && step.key !== "serving"}
+                  pulse={here && !failed && !settled}
                 />
                 {step.label}
               </span>

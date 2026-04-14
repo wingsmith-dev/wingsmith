@@ -68,6 +68,11 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 		return r.fail(ctx, res, "PayloadUndecodable", err.Error())
 	}
 
+	// The instruction arrived and decoded. Reported before anything is checked, because the gap
+	// this closes is the one at the very front: a deployment whose recipe is slow to arrive spent
+	// its first minutes with the plane unable to say whether any cluster had even received it.
+	r.stage(res, dep, "Accepted", fmt.Sprintf("reconciling revision %d", res.Spec.Revision))
+
 	recipe, err := r.recipe(ctx, dep.RecipeID)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -111,6 +116,10 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 				"if the nodes are present, the device plugin may not be installed",
 			dep.Placement.DevicesPerReplica, dep.Placement.DeviceClass, most))
 	}
+
+	// Every ordering is satisfied and the capacity is there. What is left is turning the recipe
+	// into objects, which is the last step before the cluster has something to run.
+	r.stage(res, dep, "Rendering", fmt.Sprintf("building %s from %s", dep.DeploymentID, recipe.Name))
 
 	obj, err := render.DynamoGraphDeployment(render.Inputs{
 		Deployment: dep,

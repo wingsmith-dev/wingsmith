@@ -39,10 +39,29 @@ func (r *SyncedResourceReconciler) Bind(rep Reporter) {
 // and terminating describe replicas actually serving, which is the Dynamo object's status to
 // report and not this loop's.
 const (
-	phasePending = "pending"
-	phasePlaced  = "placed"
-	phaseFailed  = "failed"
+	phasePending  = "pending"
+	phasePlaced   = "placed"
+	phaseDegraded = "degraded"
+	phaseRunning  = "running"
+	phaseFailed   = "failed"
 )
+
+// stageRank orders the steps a reconcile passes through on its way to applying, as opposed to the
+// ones it comes to rest in.
+//
+// A pass that has already reported a later step does not report an earlier one again for the same
+// revision. Without the ordering, `Accepted` would be re-sent on the pass after `Rendering` and the
+// two would alternate for the life of the deployment (MESSAGES.md).
+var stageRank = map[string]int{
+	"Accepted":  1,
+	"Rendering": 2,
+}
+
+// stageState is how far into `stageRank` this loop has reported for one revision of one deployment.
+type stageState struct {
+	revision int64
+	rank     int
+}
 
 // reportKey is the tuple a repeat is judged against.
 //
@@ -107,8 +126,11 @@ func (r *SyncedResourceReconciler) report(res *v1alpha1.SyncedResource, phase, r
 // says what this loop concluded about a write; this says what came of it, read back off the pods.
 // They share the frame and the suppression rule, and nothing else.
 //
-// The reason is kept from the reconcile that applied it — `Applied` — because it is still true and
-// still the answer to "why is it in this state". What moves is the phase and the counts.
+// The reason comes from the counts rather than from the reconcile that applied them. `Applied` is a
+// statement about a write and stays true forever once it has happened, so keeping it here made it
+// the reason on every frame a deployment ever sent after its first — which is why a serving
+// deployment read "Applied to the cluster; waiting for replicas" underneath a strip that already
+// said it was serving. `Progressing` and `Serving` are what the pods actually say.
 func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, dep wire.DeploymentDesired, out rollout) {
 	reporter := r.reporter()
 	if reporter == nil {
@@ -128,7 +150,7 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 		ReadyReplicas:       out.ready,
 		UpdatedReplicas:     out.updated,
 		UnavailableReplicas: out.unavailable,
-		Reason:              "Applied",
+		Reason:              out.reason(),
 		Message:             out.message(),
 		ObservedAt:          time.Now().UTC().Format(time.RFC3339Nano),
 	})
@@ -163,6 +185,36 @@ func (r *SyncedResourceReconciler) send(reporter Reporter, id string, payload wi
 	r.markReported(id, key)
 }
 
+// stage reports a step the reconcile passes through, at most once per revision.
+//
+// The plain suppression rule is not enough for these. It compares against the last frame sent, and
+// a waiting deployment reports `Accepted` then a wait reason then `Accepted` again on the next
+// pass — each one news against the one before it. What makes a stage a stage is that it is true
+// once per instruction rather than for an interval, so it is remembered per revision instead.
+func (r *SyncedResourceReconciler) stage(res *v1alpha1.SyncedResource, dep wire.DeploymentDesired, reason, message string) {
+	if dep.DeploymentID == "" || !r.markStaged(dep.DeploymentID, res.Spec.Revision, reason) {
+		return
+	}
+	r.report(res, phasePending, reason, message)
+}
+
+// markStaged records that `reason` has been reported for this revision, and answers whether it had
+// not been already. A revision it has not seen resets the progress, which is what makes a bumped
+// generation report its own arrival.
+func (r *SyncedResourceReconciler) markStaged(id string, revision int64, reason string) bool {
+	r.reportMu.Lock()
+	defer r.reportMu.Unlock()
+	if r.staged == nil {
+		r.staged = make(map[string]stageState)
+	}
+	rank := stageRank[reason]
+	if current, ok := r.staged[id]; ok && current.revision == revision && current.rank >= rank {
+		return false
+	}
+	r.staged[id] = stageState{revision: revision, rank: rank}
+	return true
+}
+
 func (r *SyncedResourceReconciler) reporter() Reporter {
 	r.reportMu.Lock()
 	defer r.reportMu.Unlock()
@@ -193,6 +245,7 @@ func (r *SyncedResourceReconciler) forgetReported(id string) {
 	r.reportMu.Lock()
 	defer r.reportMu.Unlock()
 	delete(r.reported, id)
+	delete(r.staged, id)
 }
 
 // deploymentID recovers the plane's id from the object name, for the one case that cannot read it
@@ -221,6 +274,11 @@ func nameToID(name string) string {
 // the hub prunes what it had and expects the cluster to restate it. Nothing else the operator
 // sends has this problem, because the observe loop restates its whole view on Resync — the
 // reconciler had no such hook, so its conclusions were the one thing a new session lost for good.
+//
+// The stages are deliberately not cleared with it. They are transitions rather than state, and the
+// state they preceded is restated by the conclusion that follows on the next pass. Replaying
+// `Accepted` for a deployment that has been serving for a week would file a step backwards into
+// its timeline and describe a reconnect as a redeploy.
 func (r *SyncedResourceReconciler) ForgetAll() {
 	r.reportMu.Lock()
 	defer r.reportMu.Unlock()

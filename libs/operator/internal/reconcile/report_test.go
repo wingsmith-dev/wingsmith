@@ -75,10 +75,14 @@ func TestWaitingIsReportedToTheHub(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	runReconcileReporting(t, rep, dep)
 
-	if len(rep.sent) != 1 {
-		t.Fatalf("sent %d frames, want 1", len(rep.sent))
+	// Two: the instruction arriving, then what the reconcile concluded about it.
+	if len(rep.sent) != 2 {
+		t.Fatalf("sent %d frames, want 2", len(rep.sent))
 	}
-	got := rep.sent[0]
+	if got := rep.sent[0].Reason; got != "Accepted" {
+		t.Errorf("first reason = %q, want Accepted", got)
+	}
+	got := rep.sent[1]
 	if got.Reason != "RecipeNotDeclared" {
 		t.Errorf("reason = %q, want RecipeNotDeclared", got.Reason)
 	}
@@ -110,8 +114,44 @@ func TestAnUnchangedConclusionIsNotResent(t *testing.T) {
 		}
 	}
 
-	if len(rep.sent) != 1 {
-		t.Fatalf("sent %d frames over four passes, want 1", len(rep.sent))
+	// `Accepted` once and the conclusion once, over four passes. `Accepted` is true on every one
+	// of them, and reporting it each time would alternate with the wait reason forever.
+	if len(rep.sent) != 2 {
+		t.Fatalf("sent %d frames over four passes, want 2", len(rep.sent))
+	}
+	if rep.sent[0].Reason != "Accepted" || rep.sent[1].Reason != "RecipeNotDeclared" {
+		t.Fatalf("frames = %q, %q", rep.sent[0].Reason, rep.sent[1].Reason)
+	}
+}
+
+// A bumped revision is a new instruction, and the cluster receiving it is the fact the strip's
+// first step shows. Remembering `Accepted` across revisions would report it only for the first
+// version of a deployment a process ever saw.
+func TestANewRevisionReportsItsArrival(t *testing.T) {
+	rep := &recordingReporter{}
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	r, _ := runReconcileReporting(t, rep, dep)
+
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.GetNamespace(), Name: dep.GetName()}}
+	if err := r.Client.Get(context.Background(), req.NamespacedName, dep); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	dep.Spec.Revision++
+	if err := r.Client.Update(context.Background(), dep); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if _, err := r.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+
+	var accepted int
+	for _, frame := range rep.sent {
+		if frame.Reason == "Accepted" {
+			accepted++
+		}
+	}
+	if accepted != 2 {
+		t.Fatalf("reported Accepted %d times over two revisions, want 2", accepted)
 	}
 }
 
@@ -189,8 +229,13 @@ func TestAFreshSessionForgetsWhatWasReported(t *testing.T) {
 	if _, err := r.Reconcile(context.Background(), req); err != nil {
 		t.Fatalf("reconcile: %v", err)
 	}
-	if len(rep.sent) != 2 {
+	// The conclusion again, and only it: `Accepted` is a transition this revision already
+	// passed, and replaying it would file a step backwards for a deployment that had moved on.
+	if len(rep.sent) != 3 {
 		t.Fatalf("sent %d frames, want the conclusion restated after the resync", len(rep.sent))
+	}
+	if got := rep.sent[2].Reason; got != "RecipeNotDeclared" {
+		t.Errorf("restated reason = %q, want RecipeNotDeclared", got)
 	}
 }
 
