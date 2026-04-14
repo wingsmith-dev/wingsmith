@@ -38,6 +38,7 @@ from app.db.models import Event
 from app.db.models import Device
 from app.db.models import Cluster
 from app.db.models import Replica
+from app.db.models import Workload
 from app.db.models import Component
 from app.db.models import Operation
 from app.db.models import Allocation
@@ -368,6 +369,52 @@ def upsert_deployment_status(cluster_id: UUID, deployment_id: UUID, payload: Dep
         index_elements=[DeploymentStatus.deployment_id],
         set_={key: statement.excluded[key] for key in values if key not in {"deployment_id", "cluster_id"}},
     )
+
+
+ADMISSION_PHASE_FOR_OBSERVED = {
+    "pending": "placed",
+    "admitted": "placed",
+    "placed": "placed",
+    "degraded": "running",
+    "running": "running",
+    "failed": "failed",
+}
+"""What a cluster's observed phase means for the workload's admission phase.
+
+The two enums overlap in spelling and not in meaning, which is why the mapping is
+written out rather than passed through. Admission is about how far through the
+scheduler the work got; the observed phase is about what the cluster is doing
+with it. So `degraded` maps to `running` — a deployment missing one of four
+replicas is running, just badly, and admission has no opinion on health — while
+an observed `pending` maps to `placed` rather than back to `pending`, because
+placement already chose a cluster and waiting for weights does not un-choose it.
+
+`terminating` is absent on purpose. A workload being torn down is between phases
+rather than in a new one, and the delete that follows is what ends it.
+"""
+
+
+def advance_admission_phase(workload_id: UUID, payload: DeploymentObserved) -> Update | None:
+    """Moves the workload supertype to match what the cluster reports.
+
+    The gap this closes: `admission_phase` was written once, as `placed`, when the
+    deployment was created, and nothing ever wrote it again. Every deployment this
+    plane created therefore read `placed` for its entire life — including while it
+    was serving — and the only thing that ever reported `running` was a workload
+    adopted from a cluster that was already running one.
+
+    Derived rather than latched, so a deployment whose replicas all die reads
+    `placed` again instead of claiming a `running` that stopped being true.
+    `started_at` is the exception and is kept: it is when this workload first ran,
+    and a workload that ran and stopped still ran.
+    """
+    phase = ADMISSION_PHASE_FOR_OBSERVED.get(payload.phase)
+    if phase is None:
+        return None
+    values: dict[str, Any] = {"admission_phase": phase, "admission_reason": payload.reason}
+    if phase == "running":
+        values["started_at"] = func.coalesce(Workload.started_at, parse_ts(payload.observed_at))
+    return update(Workload).where(Workload.id == workload_id).values(**values)
 
 
 def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserved) -> Insert:

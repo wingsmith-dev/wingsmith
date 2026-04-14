@@ -246,6 +246,54 @@ def test_deployment_status_flattens_the_last_error() -> None:
     assert observed.last_error.message in values
 
 
+def test_the_workload_supertype_moves_with_the_observed_deployment() -> None:
+    """`admission_phase` was written once, as `placed`, and never again.
+
+    Every deployment this plane created therefore read `placed` for its whole
+    life, serving included, and only an adopted workload ever read `running`.
+    """
+    observed = structs.replace(payload("deployment.observed"), phase="running")
+    statement = statements.advance_admission_phase(WORKLOAD_ID, observed)
+    assert statement is not None
+    sql, params = compile_sql(statement)
+    assert "UPDATE demand_workload" in sql
+    assert "running" in scalar_params(params)
+
+
+def test_a_degraded_deployment_is_still_a_running_workload() -> None:
+    """Admission says how far through the scheduler it got, not how healthy it is."""
+    observed = structs.replace(payload("deployment.observed"), phase="degraded")
+    statement = statements.advance_admission_phase(WORKLOAD_ID, observed)
+    assert statement is not None
+    _, params = compile_sql(statement)
+    assert "running" in scalar_params(params)
+
+
+def test_waiting_on_a_dependency_does_not_unplace_a_workload() -> None:
+    """Placement already chose a cluster, and cold weights do not un-choose it."""
+    observed = structs.replace(payload("deployment.observed"), phase="pending", reason="WeightsNotResident")
+    statement = statements.advance_admission_phase(WORKLOAD_ID, observed)
+    assert statement is not None
+    _, params = compile_sql(statement)
+    values = scalar_params(params)
+    assert "placed" in values and "pending" not in values
+
+
+def test_a_workload_that_ran_keeps_when_it_started() -> None:
+    """Derived phases go backwards; the first time it ran is a fact that does not."""
+    observed = structs.replace(payload("deployment.observed"), phase="running")
+    statement = statements.advance_admission_phase(WORKLOAD_ID, observed)
+    assert statement is not None
+    sql, _ = compile_sql(statement)
+    assert "coalesce" in sql.lower()
+
+
+def test_a_terminating_deployment_leaves_the_workload_alone() -> None:
+    """Being torn down is between phases, and the delete that follows is what ends it."""
+    observed = structs.replace(payload("deployment.observed"), phase="terminating")
+    assert statements.advance_admission_phase(WORKLOAD_ID, observed) is None
+
+
 def test_replica_upsert_targets_the_natural_key() -> None:
     sql, _ = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, payload("replica.observed")))
     assert "ON CONFLICT ON CONSTRAINT uq_demand_replica_cluster_name DO UPDATE" in sql

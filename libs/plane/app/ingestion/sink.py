@@ -283,6 +283,12 @@ class DatabaseSink:
                 if _moved(before, payload):
                     await db.execute(statements.deployment_progressed(cluster_id, deployment[0], payload))
                 await db.execute(statements.upsert_deployment_status(cluster_id, deployment[0], payload))
+                # The supertype moves with it. A deployment is the `service` specialisation of a
+                # workload, and leaving the two to disagree is what made every deployment this
+                # plane created read `placed` for as long as it existed.
+                advance = statements.advance_admission_phase(deployment[1], payload)
+                if advance is not None:
+                    await db.execute(advance)
                 return None
             case "replica.observed":
                 assert isinstance(payload, ReplicaObserved)
