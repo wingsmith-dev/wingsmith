@@ -117,6 +117,25 @@ func TestDiscoverySkipsWhatThePlaneDeclared(t *testing.T) {
 	}
 }
 
+// TestDiscoverySkipsAnythingThisOperatorRendered: the deployment id only ever lands on what a
+// deployment rendered, and Dynamo names the pods it derives after the graph rather than after us.
+// `managed-by` is on everything this operator writes, which is what makes the test complete.
+func TestDiscoverySkipsAnythingThisOperatorRendered(t *testing.T) {
+	rendered := map[string]string{labelManagedBy: managedByOperator}
+	d := newKubeDiscoverer(t,
+		servingDeployment("mistral-7b", 1, 1, rendered),
+		ownedGPUPod("mistral-7b-abc12-aaaaa", "gpu-a", "mistral-7b-abc12", "abc12", 1, rendered),
+	)
+
+	snapshot, err := d.Discover(context.Background())
+	if err != nil {
+		t.Fatalf("discover: %v", err)
+	}
+	if len(snapshot.Workloads) != 0 {
+		t.Fatalf("something this operator rendered was reported as discovered: %+v", snapshot.Workloads)
+	}
+}
+
 // TestDiscoveryIgnoresWorkloadsHoldingNoDevices: this is a GPU control plane's inventory, not a
 // listing of everything running in the cluster.
 func TestDiscoveryIgnoresWorkloadsHoldingNoDevices(t *testing.T) {

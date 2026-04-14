@@ -15,11 +15,19 @@ import (
 
 // Labels and annotations the workload discoverer reads.
 const (
-	// labelManaged marks a workload this plane declared. Its presence is the whole test for
-	// "we put this here": anything carrying it is already a deployment we know about, and
-	// reporting it as a discovery would offer an operator the chance to adopt something they
-	// already own.
-	labelManaged = "hangar.dev/deployment-id"
+	// labelManaged and labelManagedBy mark a workload this plane declared. Their presence is
+	// the whole test for "we put this here": anything carrying either is already something we
+	// rendered, and reporting it as a discovery would offer an operator the chance to adopt
+	// what they already own.
+	//
+	// Two keys because the deployment id is only on what a deployment renders, while
+	// `managed-by` is on everything this operator writes — a prefetch job, a benchmark run —
+	// none of which is a workload anybody discovered.
+	labelManaged   = "hangar.dev/deployment-id"
+	labelManagedBy = "hangar.dev/managed-by"
+
+	// managedByOperator is the value this operator stamps on what it renders.
+	managedByOperator = "hangar-operator"
 
 	// labelModel and annotationModel are where a workload says which model it serves, when it
 	// says so at all. A hint for the human reading the list, never an input to placement.
@@ -261,7 +269,7 @@ func podDevices(p *corev1.Pod) int {
 }
 
 func managed(labels map[string]string) bool {
-	return labels[labelManaged] != ""
+	return labels[labelManaged] != "" || labels[labelManagedBy] == managedByOperator
 }
 
 func templateImages(t *corev1.PodTemplateSpec) []string {
