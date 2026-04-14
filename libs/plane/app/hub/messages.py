@@ -449,7 +449,16 @@ class Adopt(Struct):
 
 
 class DeploymentDesired(Struct):
+    """What one deployment asks a cluster for.
+
+    `name` is on the wire because the operator names what it renders after it, and
+    every Kubernetes object below that one inherits the name. Sending only the id
+    put `dep-01m0sktt1s3vszhp5rkdp925dh-...` on every pod, which is unreadable to
+    the person running `kubectl get pods` and to the console showing them.
+    """
+
     deployment_id: str
+    name: str
     cluster_id: str
     project_id: str
     recipe_id: str

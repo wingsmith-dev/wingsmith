@@ -400,6 +400,7 @@ async def _deployments(
         out.append(
             DeploymentDesired(
                 deployment_id=deployment.uid,
+                name=deployment.name,
                 cluster_id=cluster_uid,
                 project_id=project_uid,
                 recipe_id=recipe.uid,

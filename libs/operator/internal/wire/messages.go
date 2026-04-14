@@ -361,6 +361,7 @@ type Adopt struct {
 
 type DeploymentDesired struct {
 	DeploymentID   string               `json:"deployment_id"`
+	Name           string               `json:"name,omitempty"`
 	ClusterID      string               `json:"cluster_id"`
 	ProjectID      string               `json:"project_id"`
 	RecipeID       string               `json:"recipe_id"`

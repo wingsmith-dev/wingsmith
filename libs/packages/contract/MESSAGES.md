@@ -129,12 +129,19 @@ when a node came back, which is the inference `.event` frames exist to avoid.
 
 | Type | Payload |
 |---|---|
-| `deployment.desired` | recipe reference, scale bounds, priority, placement constraints |
+| `deployment.desired` | name, recipe reference, scale bounds, priority, placement constraints |
 | `deployment.deleted` | id |
 | `recipe.desired` | how to serve an artifact: engine, image, declared args, parallelism, cache settings |
 | `artifact.desired` | what weights should be resident, and where they come from |
 | `component.desired` | what is installed and at what version |
 | `cache.desired` | the artifact warm-set for this cluster |
+
+**`deployment.desired` carries the deployment's `name`, and the operator renders under it.**
+The id is what everything is keyed by and the name is what everything is called: the objects an
+operator creates inherit their names from the workload's, so an id there reaches all the way down
+to `dep-01m0sktt1s3vszhp5rkdp925dh-vllmdecodeworker-fadcdb6d-7zgd5s` on a pod. A name is unique
+within a cluster, which is what makes it usable as an object name; a receiver that finds it empty
+or unrenderable falls back to the id.
 
 **A recipe travels as its own declared object, not inlined on the deployments that name it.**
 `deployment.desired` references it by `recipe_id` and `recipe_revision`, the way it already

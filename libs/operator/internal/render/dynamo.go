@@ -83,14 +83,9 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 		"apiVersion": GVK.GroupVersion().String(),
 		"kind":       GVK.Kind,
 		"metadata": map[string]any{
-			"name":      Name(in.Deployment.DeploymentID),
+			"name":      WorkloadName(in.Deployment),
 			"namespace": opts.Namespace,
-			"labels": map[string]any{
-				"hangar.dev/deployment": in.Deployment.DeploymentID,
-				"hangar.dev/recipe":     in.Recipe.RecipeID,
-				"hangar.dev/project":    in.Deployment.ProjectID,
-				"hangar.dev/managed-by": "hangar-operator",
-			},
+			"labels":    ownershipLabels(in),
 			"annotations": map[string]any{
 				"hangar.dev/generation":      strconv.FormatInt(in.Deployment.Generation, 10),
 				"hangar.dev/recipe-revision": strconv.Itoa(in.Recipe.Version),
@@ -103,7 +98,10 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 					"type":                  "decode",
 					"replicas":              int64(Replicas(in.Deployment)),
 					"globalDynamoNamespace": true,
-					"podTemplate":           map[string]any{"spec": podMap},
+					"podTemplate": map[string]any{
+						"metadata": map[string]any{"labels": ownershipLabels(in)},
+						"spec":     podMap,
+					},
 				},
 			},
 		},
@@ -118,6 +116,64 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 // Name renders a prefixed entity id as a Kubernetes object name.
 func Name(id string) string {
 	return strings.ToLower(strings.ReplaceAll(id, "_", "-"))
+}
+
+// maxWorkloadName bounds the rendered name so the objects Dynamo derives from it — a Deployment
+// per component, then a ReplicaSet, then pods, each appending a suffix — stay inside the 63
+// character limit their own names are held to.
+const maxWorkloadName = 40
+
+// WorkloadName is the object name one deployment renders under.
+//
+// The deployment's own name rather than its id, because every Kubernetes object underneath is
+// named after this one: the id put `dep-01m0sktt1s3vszhp5rkdp925dh-vllmdecodeworker-...` on every
+// pod, which tells a person reading `kubectl get pods` nothing they came to find out. The name is
+// unique per cluster, which is the property that makes it usable as an object name at all.
+//
+// The id remains the fallback for a deployment that names itself nothing renderable, because a
+// workload with no name is still a workload that has to be applied somewhere.
+func WorkloadName(dep wire.DeploymentDesired) string {
+	if slug := slugify(dep.Name); slug != "" {
+		return slug
+	}
+	return Name(dep.DeploymentID)
+}
+
+// slugify reduces a human's name to something RFC 1123 accepts, or to empty when nothing survives.
+func slugify(in string) string {
+	var b strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(in) {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			dash = false
+		case b.Len() > 0 && !dash:
+			b.WriteByte('-')
+			dash = true
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if len(out) > maxWorkloadName {
+		out = strings.Trim(out[:maxWorkloadName], "-")
+	}
+	return out
+}
+
+// ownershipLabels mark everything this operator renders for a deployment as ours.
+//
+// They go on the pod template as well as on the graph deployment, and that is what makes them
+// load-bearing rather than decorative: discovery reads pod labels to decide whether a running
+// workload is one the plane put there, and Dynamo does not copy a graph deployment's labels onto
+// the pods it derives from it. Without them on the template, every deployment this operator
+// created came back up the wire as a sighting to be adopted.
+func ownershipLabels(in Inputs) map[string]any {
+	return map[string]any{
+		"hangar.dev/deployment-id": in.Deployment.DeploymentID,
+		"hangar.dev/recipe":        in.Recipe.RecipeID,
+		"hangar.dev/project":       in.Deployment.ProjectID,
+		"hangar.dev/managed-by":    "hangar-operator",
+	}
 }
 
 // Replicas is what the deployment asks to run right now.

@@ -51,6 +51,11 @@ const resyncAfterApply = 5 * time.Minute
 // namespaces, so teardown is a code path now and this is the hook it hangs on.
 const renderedFinalizer = "hangar.dev/rendered"
 
+// deploymentIDLabel is the label the render stamps the plane's deployment id with. It is how a
+// rendered object is found without knowing what it was named, which matters because the name
+// follows the deployment's name and the name can change.
+const deploymentIDLabel = "hangar.dev/deployment-id"
+
 // reconcileDeployment renders one deployment into the objects that serve it.
 //
 // Three things have to be true before anything is applied: the recipe it names has arrived, the
@@ -132,6 +137,13 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	r.Log.Info("applied", "deployment", dep.DeploymentID, "generation", dep.Generation,
 		"replicas", dep.MinReplicas, "namespace", obj.GetNamespace())
 
+	// A rename renders under a new object name, and the object the old name created is still
+	// serving. Nothing else would ever collect it: the declared copy is not being deleted, so
+	// teardown never runs, and the apply above only ever touches the current name.
+	if err := r.pruneRendered(ctx, dep.DeploymentID, obj.GetName()); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	applied := fmt.Sprintf("serving %s at revision %d", recipe.Name, recipe.Version)
 	if err := r.markReady(ctx, res, "Applied", applied); err != nil {
 		return ctrl.Result{}, err
@@ -175,26 +187,19 @@ func (r *SyncedResourceReconciler) holdOpen(ctx context.Context, res *v1alpha1.S
 
 // teardown removes what a declared deployment rendered, then lets it go.
 //
-// Deleting by name rather than by label, because the name is derived from the deployment id and is
-// therefore the same answer the render would give — a label selector would also match a workload
-// some future render put under the same deployment for a different purpose. Absent is success:
-// the point is that nothing is left behind, not that this call is the one that removed it.
+// By label rather than by name, because the rendered name is the deployment's name and a
+// deployment can be renamed: deleting the name the payload carries now would leave whatever the
+// previous name rendered running forever. The label is the id, which nothing renames. Absent is
+// success: the point is that nothing is left behind, not that this call is the one that removed
+// it.
 func (r *SyncedResourceReconciler) teardown(ctx context.Context, res *v1alpha1.SyncedResource) (ctrl.Result, error) {
 	if !controllerutil.ContainsFinalizer(res, renderedFinalizer) {
 		return ctrl.Result{}, nil
 	}
 
 	if id := deploymentID(res); id != "" {
-		obj := &unstructured.Unstructured{}
-		obj.SetGroupVersionKind(render.GVK)
-		obj.SetNamespace(r.Render.Namespace)
-		obj.SetName(render.Name(id))
-		switch err := r.Client.Delete(ctx, obj); {
-		case err == nil:
-			r.Log.Info("removed rendered workload", "deployment", id, "namespace", r.Render.Namespace)
-		case apierrors.IsNotFound(err) || apimeta.IsNoMatchError(err):
-		default:
-			return ctrl.Result{}, fmt.Errorf("delete rendered workload for %s: %w", id, err)
+		if err := r.pruneRendered(ctx, id, ""); err != nil {
+			return ctrl.Result{}, err
 		}
 	}
 
@@ -205,6 +210,41 @@ func (r *SyncedResourceReconciler) teardown(ctx context.Context, res *v1alpha1.S
 	}
 	r.forgetReported(deploymentID(res))
 	return ctrl.Result{}, nil
+}
+
+// pruneRendered deletes every graph deployment rendered for one deployment id except `keep`.
+//
+// An empty `keep` removes all of them, which is what teardown wants. A missing CRD or a namespace
+// with nothing in it are both success — the postcondition is that nothing rendered for this
+// deployment survives under another name, not that this call did the removing.
+func (r *SyncedResourceReconciler) pruneRendered(ctx context.Context, id, keep string) error {
+	list := &unstructured.UnstructuredList{}
+	list.SetGroupVersionKind(render.GVK)
+	err := r.Client.List(ctx, list,
+		client.InNamespace(r.Render.Namespace),
+		client.MatchingLabels{deploymentIDLabel: id},
+	)
+	switch {
+	case apimeta.IsNoMatchError(err):
+		return nil
+	case err != nil:
+		return fmt.Errorf("list rendered workloads for %s: %w", id, err)
+	}
+	for i := range list.Items {
+		obj := &list.Items[i]
+		if obj.GetName() == keep {
+			continue
+		}
+		switch err := r.Client.Delete(ctx, obj); {
+		case err == nil:
+			r.Log.Info("removed rendered workload", "deployment", id,
+				"name", obj.GetName(), "namespace", obj.GetNamespace())
+		case apierrors.IsNotFound(err):
+		default:
+			return fmt.Errorf("delete rendered workload %s: %w", obj.GetName(), err)
+		}
+	}
+	return nil
 }
 
 // weightsResident reports whether an artifact's prefetch has run to completion on this cluster.

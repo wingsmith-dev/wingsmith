@@ -18,8 +18,7 @@ import (
 // Its label, not ours. The labels this operator renders sit on the graph deployment, and Dynamo
 // does not copy them onto the pod templates it derives — so the only reliable link from a running
 // pod back to the deployment that asked for it is the one Dynamo itself writes, keyed by the
-// graph's name. That name is `render.Name(deploymentID)`, which is how the plane's id is
-// recovered from it.
+// graph's name. That name is `render.WorkloadName(dep)`, which is the deployment's own name.
 const graphDeploymentLabel = "nvidia.com/dynamo-graph-deployment-name"
 
 // rollout is what is actually running for one deployment, as opposed to what was applied.
@@ -74,7 +73,7 @@ func (r *SyncedResourceReconciler) observeRollout(
 	var pods corev1.PodList
 	err := r.Client.List(ctx, &pods,
 		client.InNamespace(r.Render.Namespace),
-		client.MatchingLabels{graphDeploymentLabel: render.Name(dep.DeploymentID)},
+		client.MatchingLabels{graphDeploymentLabel: render.WorkloadName(dep)},
 	)
 	if err != nil {
 		return rollout{}, fmt.Errorf("list pods for %s: %w", dep.DeploymentID, err)

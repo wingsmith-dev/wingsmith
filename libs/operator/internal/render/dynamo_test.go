@@ -15,6 +15,7 @@ func testInputs() Inputs {
 	return Inputs{
 		Deployment: wire.DeploymentDesired{
 			DeploymentID: "dep_01J9X2",
+			Name:         "chat-iad",
 			ProjectID:    "prj_01J9X2",
 			RecipeID:     "rec_01J9X2",
 			MinReplicas:  2,
@@ -71,7 +72,9 @@ func TestDynamoGraphDeploymentShape(t *testing.T) {
 	if obj.GroupVersionKind() != GVK {
 		t.Fatalf("gvk = %v, want %v", obj.GroupVersionKind(), GVK)
 	}
-	if obj.GetName() != "dep-01j9x2" {
+	// The deployment's name, not its id: everything Dynamo derives is named after this one,
+	// so an id here reaches all the way down to the pods.
+	if obj.GetName() != "chat-iad" {
 		t.Fatalf("name = %q", obj.GetName())
 	}
 	if obj.GetNamespace() != "dynamo" {
@@ -268,5 +271,45 @@ func TestTheEngineIsPointedAtThePinnedRevision(t *testing.T) {
 	}
 	if !strings.Contains(joined, "--revision 6cee5e81ee83917806bbde320786a8fb61efebee") {
 		t.Errorf("no --revision: %s", joined)
+	}
+}
+
+func TestTheObjectIsNamedAfterTheDeploymentAndFallsBackToItsID(t *testing.T) {
+	cases := []struct{ name, want string }{
+		{"chat-iad", "chat-iad"},
+		{"Chat IAD (eu)", "chat-iad-eu"},
+		{"", "dep-01j9x2"},
+		{"!!!", "dep-01j9x2"},
+		{strings.Repeat("a", 80), strings.Repeat("a", maxWorkloadName)},
+	}
+	for _, tc := range cases {
+		in := testInputs()
+		in.Deployment.Name = tc.name
+		if got := WorkloadName(in.Deployment); got != tc.want {
+			t.Fatalf("WorkloadName(%q) = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The pods Dynamo derives carry our labels only if they are on the template it derives them
+// from — and without them every deployment this operator created came back as a sighting to
+// adopt, because discovery reads pod labels to decide what it did not put there.
+func TestTheOwnershipLabelsReachThePodTemplate(t *testing.T) {
+	obj, err := DynamoGraphDeployment(testInputs(), testOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	labels, found, err := unstructured.NestedStringMap(component(t, obj), "podTemplate", "metadata", "labels")
+	if err != nil || !found {
+		t.Fatalf("podTemplate.metadata.labels missing: found %v, err %v", found, err)
+	}
+	if labels["hangar.dev/deployment-id"] != "dep_01J9X2" {
+		t.Fatalf("deployment-id label = %q", labels["hangar.dev/deployment-id"])
+	}
+	if labels["hangar.dev/managed-by"] != "hangar-operator" {
+		t.Fatalf("managed-by label = %q", labels["hangar.dev/managed-by"])
+	}
+	if obj.GetLabels()["hangar.dev/deployment-id"] != "dep_01J9X2" {
+		t.Fatalf("graph labels = %v", obj.GetLabels())
 	}
 }

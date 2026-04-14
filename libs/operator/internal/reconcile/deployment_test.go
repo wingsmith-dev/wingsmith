@@ -425,6 +425,49 @@ func TestDeletingADeclaredDeploymentRemovesWhatItRendered(t *testing.T) {
 	}
 }
 
+// A rename renders under a new object name, and nothing else would ever collect what the old
+// name created: the declared copy is not being deleted, so teardown never runs, and the apply
+// only touches the name it was given.
+func TestRenamingADeploymentRemovesWhatTheOldNameRendered(t *testing.T) {
+	desired := testDeploymentDesired()
+	desired.Name = "chat-iad"
+	dep := declared(t, "deployment", testDeploymentID, desired)
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+
+	ctx := context.Background()
+	graph := &unstructured.Unstructured{}
+	graph.SetGroupVersionKind(render.GVK)
+	old := types.NamespacedName{Namespace: "dynamo", Name: "chat-iad"}
+	if err := r.Client.Get(ctx, old, graph); err != nil {
+		t.Fatalf("nothing rendered under the first name: %v", err)
+	}
+
+	desired.Name = "chat-iad-2"
+	desired.Generation++
+	raw, err := json.Marshal(desired)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	out.Spec.Payload = &apiextensionsv1.JSON{Raw: raw}
+	out.Spec.Revision = 2
+	if err := r.Client.Update(ctx, out); err != nil {
+		t.Fatalf("update declared copy: %v", err)
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: out.Namespace, Name: out.Name}}
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("reconcile after rename: %v", err)
+	}
+
+	if err := r.Client.Get(ctx, types.NamespacedName{Namespace: "dynamo", Name: "chat-iad-2"}, graph); err != nil {
+		t.Fatalf("nothing rendered under the new name: %v", err)
+	}
+	if err := r.Client.Get(ctx, old, graph); !apierrors.IsNotFound(err) {
+		t.Errorf("the old name is still serving: %v", err)
+	}
+}
+
 func TestDeploymentFailsWithoutRetryOnAnUndecodablePayload(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	dep.Spec.Payload = &apiextensionsv1.JSON{Raw: []byte(`{"min_replicas":"two"}`)}
