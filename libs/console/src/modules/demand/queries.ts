@@ -30,6 +30,7 @@ import {
 import type {
   ArtifactCreateRequest,
   ArtifactUpdateRequest,
+  Deployment,
   DeploymentCreateRequest,
   DeploymentUpdateRequest,
   EndpointCreateRequest,
@@ -37,6 +38,9 @@ import type {
   RecipeCreateRequest,
   RecipeUpdateRequest,
 } from "./types"
+
+/** Fast enough to watch a deployment come up, slow enough not to poll the plane for sport. */
+const POLL_MS = 5000
 
 export function useArtifacts(filters: ArtifactFilters = {}) {
   return useCursorList(["artifacts", filters], (cursor) =>
@@ -162,11 +166,35 @@ export function useDeployments(filters: DeploymentFilters = {}) {
   )
 }
 
+/**
+ * The phases a deployment has stopped moving in.
+ *
+ * `degraded` is deliberately absent: it is what a rolling update and a crash-looping replica
+ * both look like, and both are mid-flight.
+ */
+const SETTLED_PHASES = new Set(["running", "failed"])
+
+/**
+ * One deployment, polled while it is still coming up and left alone once it is not.
+ *
+ * Without the interval the page reads once and then sits on a cache for as long as it is open,
+ * which is exactly the window somebody watching a deploy is looking at it — so a deployment that
+ * reached `Serving` a minute ago still showed the `Applied` it was fetched at, and the only way
+ * to see the truth was a browser reload. The manual refresh in the header covers the rest of the
+ * page; this covers the part that moves on its own.
+ */
 export function useDeployment(ref: string, cluster?: string) {
   return useQuery({
     queryKey: ["deployments", "detail", ref, cluster],
     queryFn: () => fetchDeployment(ref, cluster),
     enabled: !!ref,
+    refetchInterval: (query) => {
+      const data = query.state.data as Deployment | undefined
+      // No report yet is the least settled a deployment gets, not the most: it means no
+      // cluster has said anything, which is the state most worth watching.
+      if (!data?.status) return POLL_MS
+      return SETTLED_PHASES.has(data.status.phase) ? false : POLL_MS
+    },
   })
 }
 

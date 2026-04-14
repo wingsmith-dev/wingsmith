@@ -2,6 +2,7 @@ import { Field, FieldGrid } from "@/components/layout/field"
 import { Dash, Labels } from "@/components/layout/mono"
 import { MetricsSection } from "@/components/metrics/metrics-section"
 import { PageHeader } from "@/components/layout/page-header"
+import { RefreshButton } from "@/components/layout/refresh-button"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { NewOperationDialog } from "@/components/machinery/new-operation"
 import { NewBenchmarkDialog } from "@/components/benchmarks/new-benchmark"
@@ -82,6 +83,17 @@ export function DeploymentDetailPage() {
       <PageHeader
         title={deployment?.name ?? "Deployment"}
         description={deployment?.id}
+        readActions={
+          <RefreshButton
+            keys={[
+              ["deployments"],
+              ["events"],
+              ["operations"],
+              ["benchmarks"],
+              ["metrics"],
+            ]}
+          />
+        }
         actions={
           <div className="flex gap-2">
             {deployment && (
