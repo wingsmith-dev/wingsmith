@@ -333,6 +333,34 @@ func TestWhatIsRunningIsReportedAndNotOnlyWhatWasApplied(t *testing.T) {
 	}
 }
 
+// A nil slice marshals to `null`, and `device_ids` is required on the wire — so every replica
+// frame this loop sent was rejected by the plane as invalid and the replica rollup sat at zero
+// for deployments that were plainly serving. The encoding is asserted rather than the field,
+// because the field being non-nil is only interesting for what JSON it produces.
+func TestAReplicaFrameCarriesDeviceIDsAsAnArrayAndNeverNull(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	for _, pod := range readyPods(1) {
+		objects = append(objects, pod)
+	}
+
+	reporter := &recordingReporter{}
+	runReconcileReporting(t, reporter, objects...)
+
+	if len(reporter.replicaFrames) == 0 {
+		t.Fatal("no replica frame was reported")
+	}
+	encoded, err := json.Marshal(reporter.replicaFrames[0])
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(encoded), `"device_ids":[]`) {
+		t.Errorf("device_ids did not encode as an empty array: %s", encoded)
+	}
+}
+
 // A shortfall while something is still serving is degraded, which is what a rolling update and a
 // crash-looping replica both look like.
 func TestAPartialRolloutIsDegradedRatherThanRunning(t *testing.T) {

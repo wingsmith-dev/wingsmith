@@ -117,11 +117,18 @@ func (r *SyncedResourceReconciler) observeRollout(
 		}
 
 		out.replicas = append(out.replicas, wire.ReplicaObserved{
-			ReplicaID:          observe.ReplicaID(r.ClusterID, pod.Namespace, pod.Name),
-			Name:               pod.Name,
-			DeploymentID:       dep.DeploymentID,
-			ClusterID:          r.ClusterID,
-			NodeID:             nodeIDFor(r.ClusterID, pod.Spec.NodeName),
+			ReplicaID:    observe.ReplicaID(r.ClusterID, pod.Namespace, pod.Name),
+			Name:         pod.Name,
+			DeploymentID: dep.DeploymentID,
+			ClusterID:    r.ClusterID,
+			NodeID:       nodeIDFor(r.ClusterID, pod.Spec.NodeName),
+			// Empty, never nil. The field is required on the wire and a nil slice marshals to
+			// `null`, which the plane refuses — so every replica frame this loop sent was
+			// rejected as invalid and the replica rollup stayed at zero for deployments that
+			// were plainly serving. Empty is also the truthful value: which devices a replica
+			// holds is an Allocation, reported by the observe loop, and a pod spec carries a
+			// count rather than the ids.
+			DeviceIDs:          []string{},
 			Phase:              replicaPhase(pod, ready),
 			Ready:              ready,
 			Engine:             recipe.Engine,
