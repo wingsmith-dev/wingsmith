@@ -37,16 +37,25 @@ def _revision(cluster: Cluster) -> str:
     return str(int(stamp.timestamp() * 1_000_000))
 
 
-STALE_AFTER = dt.timedelta(minutes=10)
+STALE_AFTER = dt.timedelta(minutes=40)
 """How long a connected cluster may go without sending anything before its link
 is reported `stale` rather than `connected`.
 
-Long enough to sit well clear of the operator's own observe and resync intervals,
-short enough that nobody reads two-day-old inventory as current. The failure this
-exists for is an operator whose observation loop stopped while its socket stayed
-up: `reachable` is true, because the socket is the only thing it ever measured,
-and every number the console draws from that cluster is frozen with nothing
-saying so."""
+The failure this exists for is an operator whose observation loop stopped while
+its socket stayed up: `reachable` is true, because the socket is the only thing
+it ever measured, and every number the console draws from that cluster is frozen
+with nothing saying so.
+
+The threshold is tied to the operator's resync interval and must stay above it.
+`last_sync_at` moves only when a frame is *ingested*, and the observation loop
+deliberately sends nothing when nothing has changed — so on a quiet cluster the
+only thing that reliably bumps it is the periodic resync, currently 15 minutes
+(`HANGAR_RESYNC_INTERVAL`). Forty minutes is two missed resyncs plus room for a
+slow one. A threshold below the resync interval would mark every healthy idle
+cluster stale, which is worse than the silence it is meant to catch: an
+indicator that cries wolf on a working fleet is one nobody reads when it is
+right. Heartbeats are deliberately not counted — `last_seen_at` tracks those,
+and a live socket carrying no observations is precisely the state this reports."""
 
 
 def _sync(state: ClusterSyncState | None) -> ClusterSyncSchema:
