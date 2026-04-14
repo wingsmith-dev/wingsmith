@@ -2,6 +2,7 @@ from litestar import Response
 from litestar import Controller
 from litestar import get
 from litestar import post
+from litestar import delete
 from litestar.di import Provide
 
 from app.core.context import RequestContext
@@ -90,6 +91,28 @@ class DiscoveredWorkloadRoutes(Controller):
         self, context: RequestContext, svc: DiscoveredWorkloadService, ref: str, data: PromoteRequest
     ) -> Response[DeploymentSchema]:
         return Response(await svc.promote(ref, data), status_code=201)
+
+    @delete("/{ref:str}", status_code=204)
+    async def dismiss_discovered(
+        self, context: RequestContext, svc: DiscoveredWorkloadService, ref: str, data: DecisionRequest | None = None
+    ) -> None:
+        """Takes a workload off the list for good.
+
+        A DELETE even though nothing observed is deleted, because what a caller is
+        removing is the entry in front of them and the sighting underneath it is
+        not theirs to remove — ingestion owns it and would write it back within an
+        observation interval anyway. The decision is recorded, the list honours it,
+        and `POST /restore` undoes it. Nothing here reaches a cluster: the workload
+        goes on running exactly as it was.
+        """
+        await svc.dismiss(ref, data or DecisionRequest())
+
+    @post("/{ref:str}/restore")
+    async def restore_discovered(
+        self, context: RequestContext, svc: DiscoveredWorkloadService, ref: str
+    ) -> Response[DiscoveredWorkloadSchema]:
+        """Un-dismisses a workload, putting it back on the list."""
+        return Response(await svc.restore(ref))
 
     @post("/{ref:str}/ignore")
     async def ignore_discovered(

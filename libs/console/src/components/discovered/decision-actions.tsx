@@ -3,7 +3,9 @@ import { Button } from "@/components/ui/button"
 import { formatError } from "@/lib/format"
 import { workloadLabel } from "@/modules/discovered/display"
 import {
+  useDismissWorkload,
   useIgnoreWorkload,
+  useRestoreWorkload,
   useTrackWorkload,
 } from "@/modules/discovered/queries"
 import type { DiscoveredWorkload } from "@/modules/discovered/types"
@@ -12,9 +14,13 @@ import { RecipeDraftDialog } from "./recipe-draft-dialog"
 import { toast } from "sonner"
 
 /**
- * Track, ignore, promote. The first two record a decision beside the sighting
- * and send nothing to a cluster; only promote produces declared state, which is
- * why it is the one that opens a dialog rather than firing on click.
+ * Track, ignore, remove, promote. All but the last record a decision beside the
+ * sighting and send nothing to a cluster; only promote produces declared state,
+ * which is why it is the one that opens a dialog rather than firing on click.
+ *
+ * Remove is offered on anything not yet promoted and is undone by Restore, which
+ * is the only action a removed sighting shows — it is still running, and the
+ * workload underneath was never touched.
  */
 export function DecisionActions({
   workload,
@@ -23,8 +29,14 @@ export function DecisionActions({
 }) {
   const track = useTrackWorkload()
   const ignore = useIgnoreWorkload()
+  const dismiss = useDismissWorkload()
+  const restore = useRestoreWorkload()
   const label = workloadLabel(workload)
-  const busy = track.isPending || ignore.isPending
+  const busy =
+    track.isPending ||
+    ignore.isPending ||
+    dismiss.isPending ||
+    restore.isPending
 
   const decide =
     (mutation: typeof track, verb: string): (() => void) =>
@@ -43,7 +55,17 @@ export function DecisionActions({
   return (
     <WriteAction>
       <div className="flex items-center justify-end gap-1.5">
-        {workload.status !== "promoted" && (
+        {workload.status === "dismissed" && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={decide(restore, "restored")}
+          >
+            Restore
+          </Button>
+        )}
+        {workload.status !== "promoted" && workload.status !== "dismissed" && (
           <>
             {workload.status !== "tracked" && (
               <Button
@@ -65,6 +87,14 @@ export function DecisionActions({
                 Ignore
               </Button>
             )}
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              onClick={decide(dismiss, "removed")}
+            >
+              Remove
+            </Button>
             <RecipeDraftDialog workload={workload} />
             <PromoteDialog workload={workload} />
           </>

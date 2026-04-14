@@ -283,6 +283,24 @@ func (c *Client) DecideWorkload(ctx context.Context, ref, decision string, req D
 	return out, err
 }
 
+// RemoveWorkload takes a sighting off the list and keeps it off.
+//
+// A DELETE that deletes nothing observed: the row belongs to ingestion and would be written back
+// on the next observation anyway, because the workload is still running. What it writes is the
+// decision, and RestoreWorkload undoes it.
+func (c *Client) RemoveWorkload(ctx context.Context, ref string) error {
+	path := "/v1/discovered/" + url.PathEscape(ref)
+	return c.send(ctx, http.MethodDelete, path, nil, nil, nil, nil)
+}
+
+// RestoreWorkload puts a removed sighting back on the list, with no decision on it.
+func (c *Client) RestoreWorkload(ctx context.Context, ref string) (DiscoveredWorkload, error) {
+	var out DiscoveredWorkload
+	path := "/v1/discovered/" + url.PathEscape(ref) + "/restore"
+	err := c.send(ctx, http.MethodPost, path, nil, nil, nil, &out)
+	return out, err
+}
+
 // PromoteWorkload returns a Deployment, not a workload, because that is what it made. From here
 // the object is managed through /v1/deployments like any other.
 func (c *Client) PromoteWorkload(ctx context.Context, ref string, req PromoteRequest) (Deployment, error) {

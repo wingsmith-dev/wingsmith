@@ -2,6 +2,7 @@ from collections.abc import Sequence
 
 from sqlalchemy import Row
 from sqlalchemy import Select
+from sqlalchemy import delete
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -23,6 +24,8 @@ from app.core.filters import ref_ids
 
 
 ADOPTION_CONSTRAINT = "uq_demand_workload_adoption_identity"
+
+DISMISSED = "dismissed"
 
 
 class DiscoveredWorkloadRepository:
@@ -77,6 +80,13 @@ class DiscoveredWorkloadRepository:
         search: str | None = None,
     ) -> Select:
         query = self._base().order_by(DiscoveredWorkload.seq.asc()).limit(limit + 1)
+        if status is None:
+            # A dismissed sighting is one somebody has already looked at and does not want to
+            # see again. The row stays — ingestion owns it and goes on refreshing it — and the
+            # list is where the decision is honoured, so `?status=dismissed` still shows them.
+            query = query.where(
+                (WorkloadAdoption.id.is_(None)) | (WorkloadAdoption.decision != DISMISSED)
+            )
         if after_seq is not None:
             query = query.where(DiscoveredWorkload.seq > after_seq)
         if cluster is not None:
@@ -110,6 +120,15 @@ class DiscoveredWorkloadRepository:
                 set_={key: statement.excluded[key] for key in values if key not in {"cluster_id", "workload_uid"}},
             )
         )
+        await self.db.flush()
+
+    async def adoption(self, uid: str) -> WorkloadAdoption | None:
+        """The decision recorded about a workload uid, sighting or no sighting."""
+        result = await self.db.execute(select(WorkloadAdoption).where(WorkloadAdoption.workload_uid == uid).limit(1))
+        return result.scalar_one_or_none()
+
+    async def undecide(self, uid: str) -> None:
+        await self.db.execute(delete(WorkloadAdoption).where(WorkloadAdoption.workload_uid == uid))
         await self.db.flush()
 
     async def recipe_by_ref(self, ref: str) -> Row | None:

@@ -5,6 +5,7 @@ const STATUS_TONES: Record<DiscoveryStatus, StatusTone> = {
   new: "warn",
   tracked: "info",
   ignored: "neutral",
+  dismissed: "neutral",
   promoted: "ok",
 }
 
@@ -17,6 +18,7 @@ export const STATUS_MEANING: Record<DiscoveryStatus, string> = {
   new: "seen, nobody has decided",
   tracked: "in the inventory, still not ours to reconcile",
   ignored: "deliberately left alone",
+  dismissed: "removed from the list; still running, never touched",
   promoted: "declared — managed as a deployment",
 }
 

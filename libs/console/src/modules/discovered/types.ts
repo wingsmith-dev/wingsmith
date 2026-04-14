@@ -31,16 +31,23 @@ export interface DiscoveredWorkload {
   observed_at: string | null
 }
 
-export type DiscoveryStatus = "new" | "tracked" | "ignored" | "promoted"
+export type DiscoveryStatus =
+  "new" | "tracked" | "ignored" | "dismissed" | "promoted"
 
 export const DISCOVERY_STATUSES: DiscoveryStatus[] = [
   "new",
   "tracked",
   "ignored",
+  "dismissed",
   "promoted",
 ]
 
-/** Tracking and ignoring record a decision. Neither reaches a cluster. */
+/**
+ * Tracking, ignoring and removing record a decision. None reaches a cluster.
+ * A removed sighting is filtered out of the default listing rather than deleted:
+ * the row is observed and ingestion goes on refreshing it, which is what makes
+ * removal undoable.
+ */
 export interface DecisionRequest {
   project?: string | null
   note?: string | null

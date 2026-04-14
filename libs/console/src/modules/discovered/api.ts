@@ -57,6 +57,24 @@ export function ignoreDiscoveredWorkload(
 }
 
 /**
+ * Takes a sighting off the list for good. A DELETE even though nothing observed
+ * is deleted: what goes is the entry, the sighting under it belongs to ingestion,
+ * and `restoreDiscoveredWorkload` puts it back.
+ */
+export function dismissDiscoveredWorkload(ref: string): Promise<void> {
+  return api.delete<void>(`/discovered/${encodeURIComponent(ref)}`)
+}
+
+export function restoreDiscoveredWorkload(
+  ref: string
+): Promise<DiscoveredWorkload> {
+  return api.post<DiscoveredWorkload>(
+    `/discovered/${encodeURIComponent(ref)}/restore`,
+    {}
+  )
+}
+
+/**
  * The only call here that produces declared state. What comes back is a
  * deployment, and from that point the object is managed through `/v1/deployments`
  * like any other.

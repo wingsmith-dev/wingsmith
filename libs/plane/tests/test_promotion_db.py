@@ -17,6 +17,7 @@ from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.ingestion.desired import stream_desired
 from app.modules.discovered.schemas import PromoteRequest
+from app.modules.discovered.schemas import DecisionRequest
 from app.modules.deployments.schemas import DeploymentAuthorityRequest
 from app.modules.discovered.services import DiscoveredWorkloadService
 from app.modules.deployments.services import DeploymentService
@@ -276,3 +277,47 @@ async def test_authority_reaches_the_cluster_on_the_desired_stream(sessions, clu
 
     assert [f.authority for f in frames] == ["managed"]
     assert frames[0].adopt is not None, "provenance survives taking management"
+
+
+async def test_a_dismissed_sighting_leaves_the_list_and_survives_the_next_observation(sessions, cluster) -> None:
+    """The row stays and the entry goes. Ingestion is still the only thing writing sightings."""
+    sink = await sighted(sessions)
+
+    async with sessions() as db:
+        await DiscoveredWorkloadService(db, principal="admin").dismiss("llama-70b-vllm", DecisionRequest())
+
+    async with sessions() as db:
+        assert (await DiscoveredWorkloadService(db).list()).items == []
+
+    await sink.apply_observed(observed("workload.discovered", spec_fingerprint=FINGERPRINT))
+    async with sessions() as db:
+        svc = DiscoveredWorkloadService(db)
+        assert (await svc.list()).items == [], "an observation does not undo a dismissal"
+        listed = (await svc.list(status="dismissed")).items
+    assert [w.name for w in listed] == ["llama-70b-vllm"]
+    assert (await fetch(sessions, "select count(*) from demand_discovered_workload"))[0][0] == 1
+
+
+async def test_restoring_puts_it_back_with_no_decision_on_it(sessions, cluster) -> None:
+    await sighted(sessions)
+
+    async with sessions() as db:
+        await DiscoveredWorkloadService(db).dismiss("llama-70b-vllm", DecisionRequest())
+    async with sessions() as db:
+        restored = await DiscoveredWorkloadService(db).restore("llama-70b-vllm")
+    assert restored.status == "new"
+
+    async with sessions() as db:
+        assert [w.name for w in (await DiscoveredWorkloadService(db).list()).items] == ["llama-70b-vllm"]
+
+
+async def test_a_promoted_sighting_cannot_be_dismissed(sessions, cluster) -> None:
+    await seed_demand(sessions)
+    await sighted(sessions)
+
+    async with sessions() as db:
+        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+
+    async with sessions() as db:
+        with pytest.raises(Conflict):
+            await DiscoveredWorkloadService(db).dismiss("llama-70b-vllm", DecisionRequest())

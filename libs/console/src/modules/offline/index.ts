@@ -704,7 +704,10 @@ collection({
   filter: (w, q) =>
     eq(clusterRef(q.get("cluster")) ?? q.get("cluster"), w.cluster_id) &&
     eq(q.get("namespace"), w.namespace) &&
-    eq(q.get("status"), w.status),
+    eq(q.get("status"), w.status) &&
+    // Removed sightings leave the default listing and stay reachable by asking
+    // for them, exactly as the plane filters them.
+    (!!q.get("status") || w.status !== "dismissed"),
 })
 
 function sighting(ref: string): DiscoveredWorkload {
@@ -719,7 +722,11 @@ function sighting(ref: string): DiscoveredWorkload {
  * stale fingerprint the way the plane does — that check is the whole safety of
  * adopting a spec we do not own.
  */
-function decide(ref: string, decision: "tracked" | "ignored", body: unknown) {
+function decide(
+  ref: string,
+  decision: "tracked" | "ignored" | "dismissed",
+  body: unknown
+) {
   const workload = sighting(ref)
   if (workload.status === "promoted") {
     throw new ConflictError(
@@ -816,6 +823,24 @@ registerFixtures([
     path: "/discovered/:ref/ignore",
     handler: ({ params, body }: FixtureContext) =>
       decide(params.ref, "ignored", body),
+  },
+  {
+    method: "DELETE",
+    path: "/discovered/:ref",
+    handler: ({ params }: FixtureContext) =>
+      decide(params.ref, "dismissed", {}),
+  },
+  {
+    method: "POST",
+    path: "/discovered/:ref/restore",
+    handler: ({ params }: FixtureContext) => {
+      const workload = sighting(params.ref)
+      workload.status = "new"
+      workload.decided_by = null
+      workload.decided_at = null
+      workload.note = null
+      return workload
+    },
   },
   {
     method: "POST",

@@ -26,6 +26,7 @@ from .derive import derive
 from .schemas import PromoteRequest
 from .schemas import DecisionRequest
 from .schemas import DiscoveredWorkloadSchema
+from .repository import DISMISSED
 from .repository import DiscoveredWorkloadRepository
 
 
@@ -34,7 +35,7 @@ IGNORED = "ignored"
 PROMOTED = "promoted"
 NEW = "new"
 
-STATUSES = frozenset({NEW, TRACKED, IGNORED, PROMOTED})
+STATUSES = frozenset({NEW, TRACKED, IGNORED, DISMISSED, PROMOTED})
 
 
 class DiscoveredWorkloadService:
@@ -152,6 +153,57 @@ class DiscoveredWorkloadService:
                 "decided_at": dt.datetime.now(dt.UTC),
             }
         )
+        await self.db.commit()
+        return await self.get(workload.uid)
+
+    async def dismiss(self, ref: str, data: DecisionRequest) -> None:
+        """Takes a sighting off the list for good, without touching the sighting.
+
+        The row is not deleted and could not be: it is observed state, ingestion is
+        its only writer, and a row deleted here would be written straight back on
+        the next observation because the workload is still running. What is
+        recorded instead is the decision, and the listing honours it — which is
+        also what makes it reversible, where a delete racing an observation would
+        not be.
+
+        Refused once the sighting has been promoted. There is a deployment
+        pointing at it by then, and hiding what it adopted would leave nobody able
+        to see what the deployment took ownership of.
+        """
+        row = await self._one(ref)
+        workload: DiscoveredWorkload = row[0]
+        if row[5] is not None:
+            raise Conflict(
+                f"{workload.name!r} was promoted and is managed as a deployment now",
+                {"deployment": row[5]},
+            )
+        await self.repo.decide(
+            {
+                "cluster_id": workload.cluster_id,
+                "workload_uid": workload.uid,
+                "decision": DISMISSED,
+                "project_id": None,
+                "note": data.note,
+                "decided_by": self.principal,
+                "decided_at": dt.datetime.now(dt.UTC),
+            }
+        )
+        await self.db.commit()
+
+    async def restore(self, ref: str) -> DiscoveredWorkloadSchema:
+        """Undoes a dismissal, so the workload is listed again as it was.
+
+        The decision is dropped rather than replaced. A dismissal that had been
+        recorded as `new` would be a decision nobody made, and the sighting has
+        been sitting there the whole time — putting it back means having no
+        opinion about it again.
+        """
+        row = await self._one(ref)
+        workload: DiscoveredWorkload = row[0]
+        adoption = row[3]
+        if adoption is None or adoption.decision != DISMISSED:
+            raise Invalid(f"{workload.name!r} was not dismissed", {"status": self._status(adoption, row[5])})
+        await self.repo.undecide(workload.uid)
         await self.db.commit()
         return await self.get(workload.uid)
 

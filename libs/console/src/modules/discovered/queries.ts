@@ -4,7 +4,9 @@ import {
   fetchDiscoveredWorkload,
   fetchRecipeDraft,
   fetchDiscoveredWorkloads,
+  dismissDiscoveredWorkload,
   ignoreDiscoveredWorkload,
+  restoreDiscoveredWorkload,
   promoteDiscoveredWorkload,
   trackDiscoveredWorkload,
   type DiscoveredFilters,
@@ -54,6 +56,27 @@ export function useTrackWorkload() {
 
 export function useIgnoreWorkload() {
   return useDecision(ignoreDiscoveredWorkload)
+}
+
+/**
+ * Removing a sighting from the list. Nothing reaches a cluster and nothing
+ * observed is deleted — the workload goes on running, and `useRestoreWorkload`
+ * brings the entry back.
+ */
+export function useDismissWorkload() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ref }: { ref: string }) => dismissDiscoveredWorkload(ref),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["discovered"] }),
+  })
+}
+
+export function useRestoreWorkload() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: ({ ref }: { ref: string }) => restoreDiscoveredWorkload(ref),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["discovered"] }),
+  })
 }
 
 /**

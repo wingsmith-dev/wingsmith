@@ -149,7 +149,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/pools` | declared, with observed membership |
 | `/v1/artifacts` | declared, plus one read-only resolve verb — see below |
 | `/v1/recipes`, `/v1/deployments`, `/v1/endpoints` | declared |
-| `/v1/discovered` | observed, read-only, plus two decision verbs — see below |
+| `/v1/discovered` | observed, read-only, plus the decision verbs — see below |
 | `/v1/replicas`, `/v1/allocations` | observed, read-only |
 | `/v1/tenants`, `/v1/projects`, `/v1/quotas`, `/v1/priority-classes`, `/v1/policies` | declared |
 | `/v1/components` | declared version, observed rollout |
@@ -230,7 +230,16 @@ ingestion's alone. They write a decision beside it — one row saying we looked 
 the inventory, or do not. Neither produces a `deployment.desired`, and that is the guarantee the two
 verbs exist to make: declaring a workload that is already running is how a control plane restarts
 it, and reloading a model into VRAM costs minutes of served traffic. Adoption is a decision to
-observe, never a decision to declare. `?status=new|tracked|ignored|promoted` filters on the decision.
+observe, never a decision to declare. `?status=new|tracked|ignored|dismissed|promoted` filters on
+the decision.
+
+**`DELETE /v1/discovered/{ref}` deletes nothing**, and is a DELETE anyway. What a caller removes is
+the entry in front of them; the sighting under it is observed, ingestion is its only writer, and a
+row deleted here would be written straight back within an observation interval because the workload
+is still running. So the removal is recorded as a decision and the listing honours it — which is
+also what makes it undoable, where a delete racing an observation would not be. `POST
+/v1/discovered/{ref}/restore` drops the decision and the entry returns; `?status=dismissed` lists
+what has been removed. A promoted sighting cannot be removed: a deployment names it.
 
 **`POST /v1/discovered/{ref}/promote`** is the one that does declare, and it returns a Deployment
 because that is what it made. The caller sends back the `spec_fingerprint` they were shown and the

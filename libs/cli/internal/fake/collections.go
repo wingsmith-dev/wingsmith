@@ -263,10 +263,46 @@ func (b *Backend) DecideWorkload(ctx context.Context, ref, decision string, req 
 // decided turns the verb the caller used into the state it leaves behind, which
 // is what the plane stores and what every reader compares against.
 func decided(decision string) string {
-	if decision == "ignore" {
+	switch decision {
+	case "ignore":
 		return "ignored"
+	case "remove":
+		return "dismissed"
+	default:
+		return "tracked"
 	}
-	return "tracked"
+}
+
+// RemoveWorkload records the removal. Nothing is deleted here either, for the reason nothing is
+// deleted in the plane: the sighting is observed, and a fake that removed the row would model a
+// removal the real thing cannot perform.
+func (b *Backend) RemoveWorkload(ctx context.Context, ref string) error {
+	_, err := b.DecideWorkload(ctx, ref, "remove", api.DecisionRequest{})
+	return err
+}
+
+// RestoreWorkload drops the decision, leaving the sighting as though nobody had looked at it.
+func (b *Backend) RestoreWorkload(ctx context.Context, ref string) (api.DiscoveredWorkload, error) {
+	found, err := b.DiscoveredWorkload(ctx, ref)
+	if err != nil {
+		return api.DiscoveredWorkload{}, err
+	}
+	for i := range b.state.Discovered {
+		d := &b.state.Discovered[i]
+		if d.ID != found.ID {
+			continue
+		}
+		if d.Status != "dismissed" {
+			return api.DiscoveredWorkload{}, errs.New(errs.CodeInvalidState, "%q was not removed", d.Name)
+		}
+		d.Status = "new"
+		d.DecidedAt, d.DecidedBy, d.Note = nil, nil, nil
+		if err := b.persist(); err != nil {
+			return api.DiscoveredWorkload{}, err
+		}
+		return *d, nil
+	}
+	return api.DiscoveredWorkload{}, errs.New(errs.CodeNotFound, "no discovered workload %q", ref)
 }
 
 // PromoteWorkload mirrors the plane's gate, refusals included. A fake that promoted anything it

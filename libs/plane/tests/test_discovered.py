@@ -202,7 +202,7 @@ def test_a_prune_is_scoped_to_one_cluster() -> None:
 
 def test_an_undecided_sighting_reads_as_new() -> None:
     assert services.NEW == "new"
-    assert services.STATUSES == {"new", "tracked", "ignored", "promoted"}
+    assert services.STATUSES == {"new", "tracked", "ignored", "dismissed", "promoted"}
 
 
 def test_promotion_outranks_the_decision_that_led_to_it() -> None:
@@ -230,14 +230,19 @@ def test_the_decision_request_carries_nothing_a_cluster_could_obey() -> None:
 
 
 def test_the_controller_reads_and_decides_and_does_nothing_else() -> None:
+    """DELETE is here, and it still writes nothing but a decision.
+
+    It removes an entry from the list rather than the sighting under it, which is
+    why it is allowed to exist beside a rule that gives observed state one writer.
+    """
     handlers = [h for h in vars(DiscoveredWorkloadRoutes).values() if hasattr(h, "http_methods")]
     assert handlers
     methods = {m for h in handlers for m in h.http_methods}
-    assert methods == {"GET", "POST"}
+    assert methods == {"GET", "POST", "DELETE"}
 
 
 def test_the_repository_writes_only_the_decision_table() -> None:
     source = inspect.getsource(DiscoveredWorkloadRepository)
     assert "insert(WorkloadAdoption)" in source
     assert "insert(DiscoveredWorkload)" not in source
-    assert "delete(" not in source
+    assert "delete(DiscoveredWorkload)" not in source

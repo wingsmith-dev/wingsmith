@@ -24,6 +24,8 @@ func newDiscoveredCmd(app *App) *cobra.Command {
 	cmd.AddCommand(
 		newDecisionCmd(app, decisionTracked),
 		newDecisionCmd(app, decisionIgnored),
+		newRemoveWorkloadCmd(app),
+		newRestoreWorkloadCmd(app),
 		newPromoteCmd(app),
 	)
 	return cmd
@@ -47,6 +49,7 @@ whose weights are already loaded stays loaded.`,
   hgr discovered ls --status new
   hgr discovered ls --cluster iad-1 -o wide
   hgr discovered track llama-70b-vllm --project core
+  hgr discovered rm llama-70b-vllm
   hgr discovered promote llama-70b-vllm --recipe llama-70b-vllm --project core`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.DiscoveredWorkload], error) {
 			return b.DiscoveredWorkloads(ctx, o)
@@ -83,7 +86,7 @@ whose weights are already loaded stays loaded.`,
 		bind: func(f *filters, cmd *cobra.Command) {
 			cmd.Flags().StringVar(&f.cluster, "cluster", "", "limit to one cluster")
 			cmd.Flags().StringVar(&f.namespace, "namespace", "", "limit to one namespace")
-			cmd.Flags().StringVar(&f.status, "status", "", "filter by decision: new|tracked|ignored")
+			cmd.Flags().StringVar(&f.status, "status", "", "filter by decision: new|tracked|ignored|dismissed")
 			cmd.Flags().StringVar(&f.search, "search", "", "match against the name")
 		},
 		groupKey: func(by string, d api.DiscoveredWorkload) (string, string, error) {
@@ -133,6 +136,10 @@ whose weights are already loaded stays loaded.`,
 				return []errs.Action{
 					{Description: "Manage it", Command: "hgr deployment get " + str(d.DeploymentID)},
 				}
+			case "dismissed":
+				return []errs.Action{
+					{Description: "Put it back on the list", Command: "hgr discovered restore " + d.Name},
+				}
 			case "tracked":
 				return []errs.Action{
 					{Description: "Let the plane manage it",
@@ -144,6 +151,7 @@ whose weights are already loaded stays loaded.`,
 				{Description: "Track it — nothing is declared and nothing restarts",
 					Command: "hgr discovered track " + d.Name + " --project <project>"},
 				{Description: "Stop showing it", Command: "hgr discovered ignore " + d.Name},
+				{Description: "Take it off the list for good", Command: "hgr discovered rm " + d.Name},
 			}
 		},
 	}
@@ -215,10 +223,89 @@ func statusColor(s ui.Style, status string) string {
 	switch status {
 	case "tracked":
 		return s.Green(status)
-	case "ignored":
+	case "ignored", "dismissed":
 		return s.Dim(status)
 	default:
 		return s.Amber(status)
+	}
+}
+
+// newRemoveWorkloadCmd takes a sighting off the list.
+//
+// It deletes nothing. The sighting is observed state with one writer, and the cluster reports the
+// workload on every observation because it is still running — so what is recorded is the decision,
+// and the listing is where it is honoured. `restore` undoes it.
+func newRemoveWorkloadCmd(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "rm <workload>",
+		Aliases: []string{"remove", "dismiss"},
+		Short:   "Take a discovered workload off the list for good",
+		Long: `Remove a workload the operator found running from the discovered list.
+
+Nothing reaches the cluster and nothing observed is deleted: the workload keeps
+running exactly as it is, and the plane keeps seeing it. What is recorded is that
+you have dealt with it, so it stops appearing.
+
+` + "`hgr discovered ls --status dismissed`" + ` shows what has been removed, and
+` + "`hgr discovered restore`" + ` puts one back.`,
+		Example: `  hgr discovered rm llama-70b-vllm`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+
+			found, err := app.Backend.DiscoveredWorkload(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			if err := app.Backend.RemoveWorkload(ctx, found.ID); err != nil {
+				return err
+			}
+			return app.Emit(&output.Result{
+				Command: cmdPath(cmd),
+				Names:   []string{found.ID},
+				Human: func(w io.Writer, s ui.Style, width int) {
+					fmt.Fprintf(w, "%s removed — still running, never touched\n", s.Bold(found.Name))
+				},
+				Next: []errs.Action{
+					{Description: "Put it back", Command: "hgr discovered restore " + found.Name},
+				},
+			})
+		},
+	}
+	return cmd
+}
+
+// newRestoreWorkloadCmd undoes a removal by forgetting it was made.
+func newRestoreWorkloadCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:     "restore <workload>",
+		Short:   "Put a removed discovered workload back on the list",
+		Example: `  hgr discovered restore llama-70b-vllm`,
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+
+			found, err := app.Backend.DiscoveredWorkload(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			out, err := app.Backend.RestoreWorkload(ctx, found.ID)
+			if err != nil {
+				return err
+			}
+			n := discoveredNoun()
+			return app.Emit(&output.Result{
+				Command: cmdPath(cmd),
+				Data:    out,
+				Names:   []string{out.ID},
+				Human: func(w io.Writer, s ui.Style, width int) {
+					n.detail(app, w, s, out)
+				},
+				Next: n.nextFor(out),
+			})
+		},
 	}
 }
 
