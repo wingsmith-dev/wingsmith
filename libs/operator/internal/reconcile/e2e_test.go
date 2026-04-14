@@ -138,9 +138,7 @@ func newLive(t *testing.T) *live {
 		if err := c.Create(context.Background(), ns); err != nil {
 			t.Fatalf("create namespace %s: %v", name, err)
 		}
-		t.Cleanup(func() {
-			_ = c.Delete(context.Background(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}})
-		})
+		t.Cleanup(func() { l.dropNamespace(name) })
 	}
 
 	options := testRender
@@ -155,6 +153,35 @@ func newLive(t *testing.T) *live {
 		Report:    l.reports,
 	}
 	return l
+}
+
+// dropNamespace deletes a test namespace, releasing anything holding it open first.
+//
+// The finalizer is why this cannot be a plain delete. A namespace will not finish terminating
+// while a resource in it still carries one, and the only thing that removes `hangar.dev/rendered`
+// is a running reconciler — which a finished test no longer has. Deleting the namespace and
+// walking away leaves it Terminating forever, and the next run adds another.
+//
+// The same shape is true in production, and is worth knowing: uninstalling the operator from a
+// cluster without first letting it drain its own finalizers leaves every declared deployment
+// holding its namespace open.
+func (l *live) dropNamespace(name string) {
+	ctx := context.Background()
+
+	var declared v1alpha1.SyncedResourceList
+	if err := l.client.List(ctx, &declared, client.InNamespace(name)); err == nil {
+		for i := range declared.Items {
+			item := &declared.Items[i]
+			if len(item.Finalizers) == 0 {
+				continue
+			}
+			patch := client.MergeFrom(item.DeepCopy())
+			item.Finalizers = nil
+			_ = l.client.Patch(ctx, item, patch)
+		}
+	}
+
+	_ = l.client.Delete(ctx, &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}})
 }
 
 // declare writes one declared object into the cluster, in this test's namespace.
