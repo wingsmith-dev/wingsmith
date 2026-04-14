@@ -132,12 +132,32 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	r.Log.Info("applied", "deployment", dep.DeploymentID, "generation", dep.Generation,
 		"replicas", dep.MinReplicas, "namespace", obj.GetNamespace())
 
-	result, err := r.ready(ctx, res, "Applied", fmt.Sprintf("serving %s at revision %d", recipe.Name, recipe.Version))
-	if err != nil {
-		return result, err
+	applied := fmt.Sprintf("serving %s at revision %d", recipe.Name, recipe.Version)
+	if err := r.markReady(ctx, res, "Applied", applied); err != nil {
+		return ctrl.Result{}, err
 	}
-	result.RequeueAfter = resyncAfterApply
-	return result, nil
+
+	// Applied is a statement about a write, and the plane had nothing else — so a deployment
+	// that was serving read `placed · 0/0 ready` forever, which looks exactly like one that
+	// never came up. What is actually running is read back here and reported instead.
+	//
+	// A failure to read it is not a failure to reconcile: the apply succeeded. The plain
+	// conclusion is reported in its place, which is what the plane used to get every time.
+	out, err := r.observeRollout(ctx, dep, *recipe)
+	if err != nil {
+		r.Log.Warn("could not read back what is running", "deployment", dep.DeploymentID, "error", err)
+		r.report(res, phasePlaced, "Applied", applied)
+		return ctrl.Result{RequeueAfter: resyncAfterApply}, nil
+	}
+
+	r.reportRollout(res, dep, out)
+
+	if out.ready < out.desired {
+		// Still filling in. The drift floor is far too slow to watch a rollout with, and pods
+		// are not watched — only the graph deployment is.
+		return ctrl.Result{RequeueAfter: waitForDependency}, nil
+	}
+	return ctrl.Result{RequeueAfter: resyncAfterApply}, nil
 }
 
 // holdOpen adds the teardown finalizer if it is not already there.
@@ -257,17 +277,27 @@ func decodePayload(res *v1alpha1.SyncedResource, into any) error {
 	return nil
 }
 
-// ready records a successful reconcile and marks the revision observed.
+// ready records a successful reconcile, marks the revision observed, and tells the plane.
 func (r *SyncedResourceReconciler) ready(ctx context.Context, res *v1alpha1.SyncedResource, reason, message string) (ctrl.Result, error) {
-	patch := client.MergeFrom(res.DeepCopy())
-	res.Status.ObservedRevision = res.Spec.Revision
-	res.Status.Phase = "Ready"
-	setCondition(res, metav1.ConditionTrue, reason, message)
-	if err := r.Client.Status().Patch(ctx, res, patch); err != nil {
+	if err := r.markReady(ctx, res, reason, message); err != nil {
 		return ctrl.Result{}, err
 	}
 	r.report(res, phasePlaced, reason, message)
 	return ctrl.Result{}, nil
+}
+
+// markReady is the local half of `ready`, for the one caller that reports something better.
+//
+// The deployment path reads back what is actually running and reports that instead. Doing both
+// would not merely be redundant: the two frames carry different replica counts, so each would
+// look like news against the other's remembered key and the pair would re-send on every single
+// pass, forever. Splitting the write from the report is what keeps the suppression rule honest.
+func (r *SyncedResourceReconciler) markReady(ctx context.Context, res *v1alpha1.SyncedResource, reason, message string) error {
+	patch := client.MergeFrom(res.DeepCopy())
+	res.Status.ObservedRevision = res.Spec.Revision
+	res.Status.Phase = "Ready"
+	setCondition(res, metav1.ConditionTrue, reason, message)
+	return r.Client.Status().Patch(ctx, res, patch)
 }
 
 // wait records that a precondition has not been met and asks to be called again.

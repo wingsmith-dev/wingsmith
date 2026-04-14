@@ -323,8 +323,11 @@ func TestE2EARenderedDeploymentSurvivesTheGarbageCollector(t *testing.T) {
 	if got := readyCondition(t, out).Reason; got != "Applied" {
 		t.Fatalf("reason = %q (%s), want Applied", got, readyCondition(t, out).Message)
 	}
-	if result.RequeueAfter != resyncAfterApply {
-		t.Errorf("RequeueAfter = %s, want %s", result.RequeueAfter, resyncAfterApply)
+	// Nothing is serving in this cluster — there is no Dynamo operator to turn the graph into
+	// pods — so a rollout that has not filled in is watched at the rollout's pace, not the
+	// drift floor's.
+	if result.RequeueAfter != waitForDependency {
+		t.Errorf("RequeueAfter = %s, want %s while nothing is ready", result.RequeueAfter, waitForDependency)
 	}
 
 	ctx := context.Background()
@@ -384,13 +387,13 @@ func TestE2EProgressIsReportedAsItHappens(t *testing.T) {
 		t.Fatalf("reasons = %v, want Applied", l.reports.reasons())
 	}
 
-	// Every frame is about this deployment and none is a repeat of the one before it.
+	// Every frame is about this deployment, and each says something the one before it did not.
 	for i, f := range l.reports.frames {
 		if f.Type != TypeDeploymentObserved || f.Subject != testDeploymentID {
 			t.Errorf("frame %d = %+v, want a deployment.observed about %s", i, f, testDeploymentID)
 		}
-		if i > 0 && f.Reason == l.reports.frames[i-1].Reason {
-			t.Errorf("frame %d repeats the previous reason %q", i, f.Reason)
+		if i > 0 && f == l.reports.frames[i-1] {
+			t.Errorf("frame %d is identical to the one before it: %+v", i, f)
 		}
 	}
 }

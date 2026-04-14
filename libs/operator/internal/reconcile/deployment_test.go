@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -121,7 +123,34 @@ func completedPrefetch() *batchv1.Job {
 	}
 }
 
+// readyPods builds n pods labelled the way the Dynamo operator labels the ones it creates.
+func readyPods(n int) []*corev1.Pod {
+	out := make([]*corev1.Pod, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-vllmdecodeworker-abc-%d", render.Name(testDeploymentID), i),
+				Namespace: "dynamo",
+				Labels: map[string]string{
+					graphDeploymentLabel: render.Name(testDeploymentID),
+					"pod-template-hash":  "abc",
+				},
+			},
+			Spec: corev1.PodSpec{NodeName: "gpu-0"},
+			Status: corev1.PodStatus{
+				Phase:      corev1.PodRunning,
+				Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
+			},
+		})
+	}
+	return out
+}
+
 func runReconcile(t *testing.T, objects ...client.Object) (*SyncedResourceReconciler, *v1alpha1.SyncedResource, ctrl.Result) {
+	return runReconcileWith(t, nil, objects...)
+}
+
+func runReconcileWith(t *testing.T, reporter Reporter, objects ...client.Object) (*SyncedResourceReconciler, *v1alpha1.SyncedResource, ctrl.Result) {
 	t.Helper()
 	scheme := clientgoscheme.Scheme
 	if err := v1alpha1.AddToScheme(scheme); err != nil {
@@ -133,6 +162,7 @@ func runReconcile(t *testing.T, objects ...client.Object) (*SyncedResourceReconc
 	r := &SyncedResourceReconciler{
 		Client: c, Scheme: scheme, Log: slog.Default(),
 		Namespace: "hangar-system", Render: testRender,
+		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa", Report: reporter,
 	}
 
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: subject.GetNamespace(), Name: subject.GetName()}}
@@ -249,14 +279,115 @@ func TestDeploymentRendersOnceWeightsAreResident(t *testing.T) {
 // A rendered object can go away without desired state changing — someone deletes it, or an
 // earlier version of this operator left one that the garbage collector took. The watch is the
 // fast path back; this is the floor under it.
-func TestAnAppliedDeploymentIsLookedAtAgainWithoutBeingWrittenTo(t *testing.T) {
+func TestAFullyServingDeploymentIsLookedAtAgainWithoutBeingWrittenTo(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	for _, pod := range readyPods(2) {
+		objects = append(objects, pod)
+	}
+	_, _, result := runReconcile(t, objects...)
+
+	if result.RequeueAfter != resyncAfterApply {
+		t.Errorf("RequeueAfter = %s, want the drift floor %s", result.RequeueAfter, resyncAfterApply)
+	}
+}
+
+// A rollout that has not finished is watched at the pace of a rollout. Pods are not watched —
+// only the graph deployment is — so the drift floor is far too slow to fill a progress bar with.
+func TestARolloutStillFillingInIsLookedAtSoon(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
 	_, _, result := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
-	if result.RequeueAfter != resyncAfterApply {
-		t.Errorf("RequeueAfter = %s, want %s", result.RequeueAfter, resyncAfterApply)
+	if result.RequeueAfter != waitForDependency {
+		t.Errorf("RequeueAfter = %s, want %s while nothing is ready yet", result.RequeueAfter, waitForDependency)
+	}
+}
+
+// What is running is reported, not what was applied. This is the difference between a console
+// that says a deployment is serving and one that says `placed · 0/0` while it serves.
+func TestWhatIsRunningIsReportedAndNotOnlyWhatWasApplied(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	for _, pod := range readyPods(2) {
+		objects = append(objects, pod)
+	}
+
+	reporter := &recordingReporter{}
+	runReconcileReporting(t, reporter, objects...)
+
+	last := lastSent(t, reporter)
+	if last.Phase != "running" {
+		t.Errorf("phase = %q, want running", last.Phase)
+	}
+	if last.ReadyReplicas != 2 || last.DesiredReplicas != 2 {
+		t.Errorf("replicas = %d/%d, want 2/2", last.ReadyReplicas, last.DesiredReplicas)
+	}
+	if got := len(reporter.replicaFrames); got != 2 {
+		t.Errorf("replica frames = %d, want one per pod", got)
+	}
+}
+
+// A shortfall while something is still serving is degraded, which is what a rolling update and a
+// crash-looping replica both look like.
+func TestAPartialRolloutIsDegradedRatherThanRunning(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	for _, pod := range readyPods(1) {
+		objects = append(objects, pod)
+	}
+
+	reporter := &recordingReporter{}
+	runReconcileReporting(t, reporter, objects...)
+
+	if got := lastSent(t, reporter).Phase; got != "degraded" {
+		t.Errorf("phase = %q, want degraded with 1 of 2 ready", got)
+	}
+}
+
+// The suppression rule has to survive there being two things that report a deployment.
+//
+// The regression: the reconcile conclusion and the read-back rollout carry different replica
+// counts, so when both were sent each looked like news against the other's remembered key and the
+// pair re-sent on every pass — forever, for every deployment in the fleet.
+func TestAServingDeploymentIsNotReportedAgainOnAnUnchangedPass(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	for _, pod := range readyPods(2) {
+		objects = append(objects, pod)
+	}
+
+	reporter := &recordingReporter{}
+	r, _ := runReconcileReporting(t, reporter, objects...)
+	first := len(reporter.sent)
+
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "hangar-system", Name: dep.Name}}
+	if _, err := r.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("second pass: %v", err)
+	}
+
+	if len(reporter.sent) != first {
+		t.Errorf("sent %d frames after an unchanged second pass, want %d", len(reporter.sent), first)
+	}
+}
+
+// A pod that is Running but not Ready is starting, and for an inference worker that is most of
+// the wait — the container is up while tens of gigabytes load into VRAM.
+func TestAWorkerLoadingWeightsIsStartingRatherThanRunning(t *testing.T) {
+	pod := readyPods(1)[0]
+	pod.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse}}
+
+	if got := replicaPhase(pod, false); got != "starting" {
+		t.Errorf("phase = %q, want starting", got)
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 const (
 	TypeDeploymentObserved = "deployment.observed"
 	TypeCacheObserved      = "cache.observed"
+	TypeReplicaObserved    = "replica.observed"
 )
 
 // Reporter is the upward half of the reconcile loop: what this operator decided, sent to the hub.
@@ -44,10 +45,16 @@ const (
 )
 
 // reportKey is the tuple a repeat is judged against.
+//
+// Replica counts are part of it because a rollout moves them without moving the phase: four of
+// four ready and two of four ready are both `degraded`, and suppressing the second as a repeat
+// would hide the only thing that changed.
 type reportKey struct {
 	phase   string
 	reason  string
 	message string
+	ready   int
+	desired int
 }
 
 // report sends one deployment.observed, unless it would say exactly what the last one said.
@@ -83,12 +90,7 @@ func (r *SyncedResourceReconciler) report(res *v1alpha1.SyncedResource, phase, r
 		return
 	}
 
-	key := reportKey{phase: phase, reason: reason, message: message}
-	if r.lastReported(id) == key {
-		return
-	}
-
-	payload := wire.DeploymentObserved{
+	r.send(reporter, id, wire.DeploymentObserved{
 		DeploymentID: id,
 		ClusterID:    r.ClusterID,
 		Generation:   generation,
@@ -96,9 +98,66 @@ func (r *SyncedResourceReconciler) report(res *v1alpha1.SyncedResource, phase, r
 		Reason:       reason,
 		Message:      message,
 		ObservedAt:   time.Now().UTC().Format(time.RFC3339Nano),
+	})
+}
+
+// reportRollout tells the plane what is actually running, as opposed to what was applied.
+//
+// Separate from `report` because it carries a different fact from a different source. `report`
+// says what this loop concluded about a write; this says what came of it, read back off the pods.
+// They share the frame and the suppression rule, and nothing else.
+//
+// The reason is kept from the reconcile that applied it — `Applied` — because it is still true and
+// still the answer to "why is it in this state". What moves is the phase and the counts.
+func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, dep wire.DeploymentDesired, out rollout) {
+	reporter := r.reporter()
+	if reporter == nil {
+		return
+	}
+	id := dep.DeploymentID
+	if id == "" {
+		return
+	}
+
+	r.send(reporter, id, wire.DeploymentObserved{
+		DeploymentID:        id,
+		ClusterID:           r.ClusterID,
+		Generation:          dep.Generation,
+		Phase:               out.phase(),
+		DesiredReplicas:     out.desired,
+		ReadyReplicas:       out.ready,
+		UpdatedReplicas:     out.updated,
+		UnavailableReplicas: out.unavailable,
+		Reason:              "Applied",
+		Message:             out.message(),
+		ObservedAt:          time.Now().UTC().Format(time.RFC3339Nano),
+	})
+
+	// The replicas themselves, each under its own id. Not suppressed against a previous
+	// report: a replica frame carries a restart count and a readiness that move on their own,
+	// and the set is small — one frame per running pod per reconcile, not per pod per second.
+	for _, replica := range out.replicas {
+		if err := reporter.Send(TypeReplicaObserved, replica.ReplicaID, replica); err != nil {
+			r.Log.Warn("could not report replica", "replica", replica.Name, "error", err)
+			return
+		}
+	}
+}
+
+// send ships one deployment.observed, unless it would say exactly what the last one said.
+func (r *SyncedResourceReconciler) send(reporter Reporter, id string, payload wire.DeploymentObserved) {
+	key := reportKey{
+		phase:   payload.Phase,
+		reason:  payload.Reason,
+		message: payload.Message,
+		ready:   payload.ReadyReplicas,
+		desired: payload.DesiredReplicas,
+	}
+	if r.lastReported(id) == key {
+		return
 	}
 	if err := reporter.Send(TypeDeploymentObserved, id, payload); err != nil {
-		r.Log.Warn("could not report deployment state", "deployment", id, "reason", reason, "error", err)
+		r.Log.Warn("could not report deployment state", "deployment", id, "reason", payload.Reason, "error", err)
 		return
 	}
 	r.markReported(id, key)

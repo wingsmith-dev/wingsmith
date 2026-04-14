@@ -20,14 +20,28 @@ import (
 
 // recordingReporter keeps what the reconciler tried to tell the hub.
 type recordingReporter struct {
-	sent []wire.DeploymentObserved
+	sent          []wire.DeploymentObserved
+	replicaFrames []wire.ReplicaObserved
 }
 
 func (r *recordingReporter) Send(_ syncpkg.MessageType, _ string, payload any) error {
-	if obs, ok := payload.(wire.DeploymentObserved); ok {
-		r.sent = append(r.sent, obs)
+	switch p := payload.(type) {
+	case wire.DeploymentObserved:
+		r.sent = append(r.sent, p)
+	case wire.ReplicaObserved:
+		r.replicaFrames = append(r.replicaFrames, p)
 	}
 	return nil
+}
+
+// lastSent is the most recent thing said about the deployment, which is what a reader of the
+// console would be looking at.
+func lastSent(t *testing.T, r *recordingReporter) wire.DeploymentObserved {
+	t.Helper()
+	if len(r.sent) == 0 {
+		t.Fatal("nothing was reported about the deployment")
+	}
+	return r.sent[len(r.sent)-1]
 }
 
 func runReconcileReporting(t *testing.T, rep Reporter, objects ...client.Object) (*SyncedResourceReconciler, ctrl.Result) {

@@ -101,7 +101,7 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 				map[string]any{
 					"name":                  workerComponent,
 					"type":                  "decode",
-					"replicas":              int64(replicas(in.Deployment)),
+					"replicas":              int64(Replicas(in.Deployment)),
 					"globalDynamoNamespace": true,
 					"podTemplate":           map[string]any{"spec": podMap},
 				},
@@ -120,12 +120,16 @@ func Name(id string) string {
 	return strings.ToLower(strings.ReplaceAll(id, "_", "-"))
 }
 
-// replicas is what the deployment asks to run right now.
+// Replicas is what the deployment asks to run right now.
 //
 // MinReplicas, not MaxReplicas: the maximum is the ceiling an autoscaler is allowed to reach, and
 // nothing in this operator autoscales yet. Rendering the ceiling would run every deployment at its
 // most expensive configuration from the moment it is created.
-func replicas(dep wire.DeploymentDesired) int {
+//
+// Exported because the reconciler compares what is running against it. Two definitions of how
+// many replicas ought to exist would eventually disagree, and the one that decides what is
+// rendered has to be the one that decides whether the result is complete.
+func Replicas(dep wire.DeploymentDesired) int {
 	if dep.MinReplicas < 0 {
 		return 0
 	}

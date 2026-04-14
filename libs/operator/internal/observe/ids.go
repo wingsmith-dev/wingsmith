@@ -12,6 +12,7 @@ const (
 	devicePrefix   = "dev_"
 	topologyPrefix = "tpd_"
 	workloadPrefix = "dsw_"
+	replicaPrefix  = "rep_"
 )
 
 // mintID derives a stable observed id from a cluster-local natural key.
@@ -50,6 +51,16 @@ func DeviceID(clusterID, uuid string) string {
 // TopologyDomainID is the id this cluster gives a topology domain, keyed by kind and identifier.
 func TopologyDomainID(clusterID, kind, identifier string) string {
 	return mintID(topologyPrefix, clusterID, "topology:"+kind, identifier)
+}
+
+// ReplicaID is the id this cluster gives one running instance of a deployment. The natural key is
+// the pod's namespaced name, which is unique within a cluster for as long as the pod exists.
+//
+// A replica is mortal in a way the other observed objects are not: a restarted pod is a new name
+// and therefore a new replica, which is the honest reading. What survives a restart is the
+// deployment, and that is the plane's own id, carried on the frame.
+func ReplicaID(clusterID, namespace, name string) string {
+	return mintID(replicaPrefix, clusterID, "replica", namespace+"/"+name)
 }
 
 // DiscoveredWorkloadID is the id this cluster gives a workload it found already running. The
