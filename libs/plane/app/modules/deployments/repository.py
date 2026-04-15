@@ -10,14 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
-from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Replica
-from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import Deployment
-from app.db.models import PriorityClass
 from app.db.models import DeploymentStatus
 from app.db.models import DiscoveredWorkload
 from app.core.filters import ref_ids
@@ -35,11 +32,13 @@ draining is still serving what it already accepted, which is why it is here and
 
 
 class DeploymentRepository:
-    """Reads deployments joined to the workload they specialise.
+    """Reads deployments joined to the workload they belong to.
 
-    The join is always present rather than optional: priority, project, and the
-    admission phase live on the supertype, and a deployment read without them is
-    half an answer.
+    The join is many-to-one now rather than one-to-one: a workload has one
+    deployment per cluster it was expanded onto, and this module reads a single
+    one of them. It is still always present, because a deployment carries only
+    this cluster's share and its admission — what was actually asked for is on
+    the parent, and a deployment read without at least its name is half an answer.
 
     The observed status is an outer join because it is written by the cluster and
     a deployment that no cluster has reported on yet is the normal state for the
@@ -56,23 +55,23 @@ class DeploymentRepository:
         return (
             select(
                 Deployment,
-                Workload,
+                Workload.uid.label("workload_uid"),
+                Workload.name.label("workload_name"),
                 Cluster.uid.label("cluster_uid"),
-                Recipe.uid.label("recipe_uid"),
-                Project.uid.label("project_uid"),
-                PriorityClass.name.label("priority_class"),
                 DeploymentStatus,
             )
             .join(Workload, Deployment.workload_id == Workload.id)
             .outerjoin(DeploymentStatus, DeploymentStatus.deployment_id == Deployment.id)
             .join(Cluster, Deployment.cluster_id == Cluster.id)
-            .join(Recipe, Deployment.recipe_id == Recipe.id)
-            .join(Project, Workload.project_id == Project.id)
-            .join(PriorityClass, Workload.priority_class_id == PriorityClass.id)
         )
 
     def get_query(self, ref: str, cluster: str | None = None) -> Select:
-        """An id or a name; a name is unique only within its cluster."""
+        """An id or a name; a name is unique only within its cluster.
+
+        A workload expanded onto three clusters has three deployments sharing one
+        name, so a bare name is ambiguous across clusters by construction and the
+        `cluster` filter is what makes it an answer.
+        """
         column = Deployment.uid if is_uid(ref) else Deployment.name
         query = self._base().where(column == ref)
         if cluster is not None:
@@ -84,27 +83,21 @@ class DeploymentRepository:
         limit: int,
         after_seq: int | None = None,
         cluster: str | None = None,
-        recipe: str | None = None,
+        workload: str | None = None,
         project: str | None = None,
         phase: str | None = None,
-        type: str | None = None,
-        labels: dict[str, str] | None = None,
     ) -> Select:
         query = self._base().order_by(Deployment.seq.asc()).limit(limit + 1)
         if after_seq is not None:
             query = query.where(Deployment.seq > after_seq)
         if cluster is not None:
             query = query.where(Deployment.cluster_id.in_(ref_ids(Cluster, cluster)))
-        if recipe is not None:
-            query = query.where(Deployment.recipe_id.in_(ref_ids(Recipe, recipe)))
+        if workload is not None:
+            query = query.where(Deployment.workload_id.in_(ref_ids(Workload, workload)))
         if project is not None:
             query = query.where(Workload.project_id.in_(ref_ids(Project, project, "slug")))
         if phase is not None:
-            query = query.where(Workload.admission_phase == phase)
-        if type is not None:
-            query = query.where(Workload.kind == type)
-        for key, value in (labels or {}).items():
-            query = query.where(Deployment.labels[key].astext == value)
+            query = query.where(Deployment.admission_phase == phase)
         return query
 
     def replica_rollup_query(self, deployment_ids: list) -> Select:
@@ -130,9 +123,6 @@ class DeploymentRepository:
             .where(Replica.deployment_id.in_(deployment_ids))
             .group_by(Replica.deployment_id)
         )
-
-    def adapter_query(self, artifact_ids: list) -> Select:
-        return select(Artifact.id, Artifact.uid).where(Artifact.id.in_(artifact_ids))
 
     async def get(self, ref: str, cluster: str | None = None) -> Row | None:
         result = await self.db.execute(self.get_query(ref, cluster).limit(1))
@@ -175,72 +165,7 @@ class DeploymentRepository:
             }
         return rollup
 
-    async def adapter_uids(self, artifact_ids: list) -> dict[UUID, str]:
-        if not artifact_ids:
-            return {}
-        result = await self.db.execute(self.adapter_query(artifact_ids))
-        return {row.id: row.uid for row in result.all()}
-
     async def cluster_by_ref(self, ref: str) -> Cluster | None:
         column = Cluster.uid if is_uid(ref) else Cluster.name
         result = await self.db.execute(select(Cluster).where(column == ref).limit(1))
         return result.scalar_one_or_none()
-
-    async def recipe_by_ref(self, ref: str) -> Recipe | None:
-        column = Recipe.uid if is_uid(ref) else Recipe.name
-        result = await self.db.execute(select(Recipe).where(column == ref).order_by(Recipe.version.desc()).limit(1))
-        return result.scalar_one_or_none()
-
-    async def project_by_ref(self, ref: str) -> Project | None:
-        column = Project.uid if is_uid(ref) else Project.slug
-        result = await self.db.execute(select(Project).where(column == ref).limit(1))
-        return result.scalar_one_or_none()
-
-    async def priority_class_by_name(self, name: str) -> PriorityClass | None:
-        result = await self.db.execute(select(PriorityClass).where(PriorityClass.name == name).limit(1))
-        return result.scalar_one_or_none()
-
-    async def default_priority_class(self) -> PriorityClass | None:
-        result = await self.db.execute(
-            select(PriorityClass)
-            .where(PriorityClass.is_default.is_(True))
-            .order_by(PriorityClass.value.desc())
-            .limit(1)
-        )
-        return result.scalar_one_or_none()
-
-    async def priority_class_name(self, priority_class_id: UUID) -> str | None:
-        result = await self.db.execute(select(PriorityClass.name).where(PriorityClass.id == priority_class_id))
-        return result.scalar_one_or_none()
-
-    async def artifacts_by_ref(self, refs: list[str]) -> list[Artifact]:
-        found: list[Artifact] = []
-        for ref in refs:
-            column = Artifact.uid if is_uid(ref) else Artifact.name
-            result = await self.db.execute(select(Artifact).where(column == ref).limit(1))
-            artifact = result.scalar_one_or_none()
-            if artifact is not None:
-                found.append(artifact)
-        return found
-
-    async def add(self, workload: Workload, deployment: Deployment) -> Deployment:
-        self.db.add(workload)
-        self.db.add(deployment)
-        await self.db.flush()
-        return deployment
-
-    async def delete(self, workload: Workload, deployment: Deployment) -> None:
-        """Deletes the specialisation and then the supertype it hangs off.
-
-        Deleting the workload alone would leave the ORM holding a loaded
-        `Workload.deployment`, which it detaches by nulling `workload_id` before
-        issuing the delete — a not-null column, so the delete fails on its way
-        out. The database would cascade either way; the order is what keeps the
-        unit of work from writing an impossible row first.
-        """
-        await self.db.delete(deployment)
-        await self.db.delete(workload)
-        await self.db.flush()
-
-    async def priority_class(self, priority_class_id: UUID) -> PriorityClass | None:
-        return await self.db.get(PriorityClass, priority_class_id)
