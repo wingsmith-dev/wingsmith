@@ -2,8 +2,11 @@ package reconcile
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
+
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -133,4 +136,159 @@ func conditionOf(res *v1alpha1.SyncedResource, name string) *metav1.Condition {
 		}
 	}
 	return nil
+}
+
+// adoptedWithPayload is an adopted deployment the plane can be told about: the fingerprint gate
+// plus the payload the report is built from. The bare `adoptedResource` carries no payload, which
+// is enough to exercise the gate and not enough to exercise the reporting.
+func adoptedWithPayload(t *testing.T, f string) *v1alpha1.SyncedResource {
+	t.Helper()
+	raw, err := json.Marshal(testDeploymentDesired())
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	res := adoptedResource(f)
+	res.Spec.Payload = &apiextensionsv1.JSON{Raw: raw}
+	return res
+}
+
+// selectedDeployment is a live adopted Deployment with a real selector and replica count, which is
+// what the adopted rollout has to read its pods by — it has none of this operator's render labels.
+func selectedDeployment(image string, replicas int32) *appsv1.Deployment {
+	d := servingDeployment(image)
+	d.Spec.Replicas = &replicas
+	d.Spec.Selector = &metav1.LabelSelector{MatchLabels: map[string]string{"app": "llama-70b-vllm"}}
+	return d
+}
+
+func servingPod(name string, ready bool) *corev1.Pod {
+	status := corev1.ConditionFalse
+	if ready {
+		status = corev1.ConditionTrue
+	}
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "serving",
+			Labels:    map[string]string{"app": "llama-70b-vllm"},
+		},
+		Spec: corev1.PodSpec{NodeName: "node-a"},
+		Status: corev1.PodStatus{
+			Phase:      corev1.PodRunning,
+			Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: status}},
+		},
+	}
+}
+
+// reconcileAdoptedWith runs one pass over an adopted resource with a reporter bound, and hands back
+// what it tried to tell the plane along with the requeue it asked for.
+func reconcileAdoptedWith(
+	t *testing.T,
+	res *v1alpha1.SyncedResource,
+	live *appsv1.Deployment,
+	pods ...*corev1.Pod,
+) (*recordingReporter, ctrl.Result) {
+	t.Helper()
+	scheme := clientgoscheme.Scheme
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("scheme: %v", err)
+	}
+	builder := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(res).WithStatusSubresource(res)
+	if live != nil {
+		builder = builder.WithObjects(live)
+	}
+	for _, p := range pods {
+		builder = builder.WithObjects(p)
+	}
+	c := builder.Build()
+	r := &SyncedResourceReconciler{Client: c, Scheme: scheme, Log: slog.Default(), ClusterID: "clu_1"}
+	rep := &recordingReporter{}
+	r.Bind(rep)
+
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: res.Namespace, Name: res.Name}}
+	got, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	return rep, got
+}
+
+// TestAnAdoptedWorkloadReportsWhatItIsRunning is the bug this path had in production: four adopted
+// deployments were serving and every one of them read `0/1` in the console, because not applying
+// anything was taken to mean there was nothing to say.
+func TestAnAdoptedWorkloadReportsWhatItIsRunning(t *testing.T) {
+	live := selectedDeployment("ghcr.io/acme/vllm:0.9.1", 2)
+	digest := workload.Fingerprint(&live.Spec.Template.Spec)
+
+	rep, _ := reconcileAdoptedWith(t, adoptedWithPayload(t, digest), live,
+		servingPod("llama-70b-vllm-a", true),
+		servingPod("llama-70b-vllm-b", true),
+	)
+
+	got := lastSent(t, rep)
+	if got.ReadyReplicas != 2 || got.DesiredReplicas != 2 {
+		t.Fatalf("reported %d/%d ready, want 2/2", got.ReadyReplicas, got.DesiredReplicas)
+	}
+	if got.Phase != phaseRunning || got.Reason != "Serving" {
+		t.Fatalf("reported %s/%s, want running/Serving", got.Phase, got.Reason)
+	}
+	if len(rep.replicaFrames) != 2 {
+		t.Fatalf("sent %d replica frames, want 2 — the rollup is counted from these",
+			len(rep.replicaFrames))
+	}
+}
+
+// TestAnAdoptedRolloutCountsOnlyReadyPods: a replica loading weights is not serving, and reporting
+// it as ready tells the plane a model is reachable when nothing can reach it.
+func TestAnAdoptedRolloutCountsOnlyReadyPods(t *testing.T) {
+	live := selectedDeployment("ghcr.io/acme/vllm:0.9.1", 2)
+	digest := workload.Fingerprint(&live.Spec.Template.Spec)
+
+	rep, _ := reconcileAdoptedWith(t, adoptedWithPayload(t, digest), live,
+		servingPod("llama-70b-vllm-a", true),
+		servingPod("llama-70b-vllm-b", false),
+	)
+
+	got := lastSent(t, rep)
+	if got.ReadyReplicas != 1 || got.UnavailableReplicas != 1 {
+		t.Fatalf("reported %d ready / %d unavailable, want 1/1",
+			got.ReadyReplicas, got.UnavailableReplicas)
+	}
+	if got.Phase != phaseDegraded {
+		t.Fatalf("phase is %q, want degraded", got.Phase)
+	}
+}
+
+// TestAnAdoptedWorkloadIsRequeued: neither watch can wake an adopted object — it carries none of
+// the owner labels `declaredFor` maps back from — so without a requeue the fingerprint check runs
+// once at startup and a workload that drifts afterwards is never noticed.
+func TestAnAdoptedWorkloadIsRequeued(t *testing.T) {
+	live := selectedDeployment("ghcr.io/acme/vllm:0.9.1", 1)
+	digest := workload.Fingerprint(&live.Spec.Template.Spec)
+
+	_, got := reconcileAdoptedWith(t, adoptedWithPayload(t, digest), live,
+		servingPod("llama-70b-vllm-a", true))
+
+	if got.RequeueAfter != resyncAfterApply {
+		t.Fatalf("requeued after %v, want %v — a drift check that never runs again is not a check",
+			got.RequeueAfter, resyncAfterApply)
+	}
+}
+
+// TestADriftedAdoptedWorkloadIsRequeuedAndNotReported: the refusal is the fact that matters, and
+// putting `Serving` on the plane's copy off counts read from a drifted object would bury it. It
+// still has to come back, or the drift can never clear.
+func TestADriftedAdoptedWorkloadIsRequeuedAndNotReported(t *testing.T) {
+	live := selectedDeployment("ghcr.io/acme/vllm:0.9.1", 1)
+
+	rep, got := reconcileAdoptedWith(t, adoptedWithPayload(t, "sha256:something-else"), live,
+		servingPod("llama-70b-vllm-a", true))
+
+	if len(rep.sent) != 0 {
+		t.Fatalf("reported %+v about a drifted workload, want silence", rep.sent)
+	}
+	if got.RequeueAfter != resyncAfterApply {
+		t.Fatalf("requeued after %v, want %v", got.RequeueAfter, resyncAfterApply)
+	}
 }

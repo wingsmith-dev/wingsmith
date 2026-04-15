@@ -23,6 +23,7 @@ import (
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/render"
+	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 	"github.com/hangar-dev/hangar/libs/operator/internal/workload"
 )
 
@@ -228,9 +229,57 @@ func (r *SyncedResourceReconciler) reconcileAdopted(ctx context.Context, res *v1
 		condition.Status = metav1.ConditionTrue
 		condition.Reason = "MatchesAdoptedFingerprint"
 		condition.Message = "running as adopted; no cluster work performed"
+		r.reportAdopted(ctx, res, adopt)
 	}
 	apimeta.SetStatusCondition(&res.Status.Conditions, condition)
-	return ctrl.Result{}, r.Client.Status().Patch(ctx, res, patch)
+	if err := r.Client.Status().Patch(ctx, res, patch); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// Requeued on the same floor a managed deployment gets, and for a stronger reason. Neither
+	// watch below can ever wake an adopted object: `declaredFor` maps back from the owner labels
+	// this operator's render stamps, and an adopted object was put there by something else and
+	// carries none — nor is it the rendered kind being watched. So without a requeue the
+	// fingerprint check, which is the whole reason this path exists, runs once at startup and
+	// then never again, and a workload that drifts afterwards is never noticed.
+	return ctrl.Result{RequeueAfter: resyncAfterApply}, nil
+}
+
+// reportAdopted tells the plane what an adopted deployment is actually running.
+//
+// The adopted path applies nothing, which was taken to mean it had nothing to say — so it said
+// nothing, and a deployment the plane had enrolled and that was serving normally reported no
+// replicas and no counts for as long as it lived. Not applying is not the same as not observing:
+// the pods are there to be read, and they are the only thing that makes an adopted deployment
+// distinguishable from one that never came up.
+//
+// Only on the branch where the fingerprint matches. A drifted object is one this operator has
+// refused, and reporting counts off it would put `Serving` on the plane's copy of a deployment
+// whose refusal is the fact that actually matters.
+//
+// A failure to read or send is swallowed for the same reason the rendered path swallows it: this
+// is a progress report, the reconcile itself succeeded, and the next pass restates it.
+func (r *SyncedResourceReconciler) reportAdopted(ctx context.Context, res *v1alpha1.SyncedResource, adopt *v1alpha1.AdoptRef) {
+	if r.reporter() == nil || res.Spec.Kind != "deployment" {
+		return
+	}
+
+	var dep wire.DeploymentDesired
+	if err := decodePayload(res, &dep); err != nil {
+		r.Log.Warn("could not decode an adopted deployment to report it", "resource", res.Name, "error", err)
+		return
+	}
+	if dep.DeploymentID == "" {
+		return
+	}
+
+	out, err := r.observeAdoptedRollout(ctx, adopt, dep)
+	if err != nil {
+		r.Log.Warn("could not read what an adopted deployment is running",
+			"deployment", dep.DeploymentID, "namespace", adopt.Namespace, "name", adopt.Name, "error", err)
+		return
+	}
+	r.reportRollout(res, dep, out)
 }
 
 // liveFingerprint digests the pod template of the object named by an adoption, as it is right now.
