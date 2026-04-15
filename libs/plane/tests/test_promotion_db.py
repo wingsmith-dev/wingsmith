@@ -98,14 +98,22 @@ def request(**overrides) -> PromoteRequest:
     return PromoteRequest(**fields)
 
 
-async def test_promotion_creates_a_deployment_pinned_to_what_is_running(sessions, cluster) -> None:
+async def test_promotion_creates_a_workload_pinned_to_what_is_running(sessions, cluster) -> None:
+    """One Workload and its one Deployment, minted together and pinned to the cluster.
+
+    Capped at one cluster because an adopted object records something that already
+    exists in one place; expanding it elsewhere would start a second copy.
+    """
     await seed_demand(sessions)
     await sighted(sessions)
 
     async with sessions() as db:
-        deployment = await DiscoveredWorkloadService(db, principal="admin").promote("llama-70b-vllm", request())
+        workload = await DiscoveredWorkloadService(db, principal="admin").promote("llama-70b-vllm", request())
 
-    assert deployment.name == "llama-70b-vllm"
+    assert workload.name == "llama-70b-vllm"
+    assert workload.max_clusters == 1
+    assert workload.pinned_cluster_id == CLUSTER
+    assert [d.name for d in workload.deployments] == ["llama-70b-vllm"]
     rows = await fetch(sessions, "select adopted_workload_uid, adopted_fingerprint, generation from demand_deployment")
     assert rows == [("dsw_01j9x2ffffffffffffffffffff", FINGERPRINT, 1)]
 
@@ -120,9 +128,11 @@ async def test_promotion_adopts_the_replica_count_it_found(sessions, cluster) ->
     await sighted(sessions)
 
     async with sessions() as db:
-        deployment = await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        workload = await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
 
-    assert (deployment.min_replicas, deployment.desired_replicas, deployment.max_replicas) == (2, 2, 2)
+    assert (workload.scale.min, workload.scale.desired, workload.scale.max) == (2, 2, 2)
+    share = workload.deployments[0]
+    assert (share.min_replicas, share.desired_replicas, share.max_replicas) == (2, 2, 2)
 
 
 async def test_promotion_is_refused_when_the_workload_changed(sessions, cluster) -> None:
@@ -207,9 +217,9 @@ async def test_a_promoted_deployment_is_observed_not_managed(sessions, cluster) 
     await sighted(sessions)
 
     async with sessions() as db:
-        deployment = await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
+        workload = await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request())
 
-    assert deployment.authority == "observed"
+    assert [d.authority for d in workload.deployments] == ["observed"]
 
 
 async def test_taking_management_needs_the_digest_of_what_is_running(sessions, cluster) -> None:

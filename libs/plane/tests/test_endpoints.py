@@ -175,11 +175,13 @@ def test_list_query_filters_compile_into_one_statement(repo):
     assert "ORDER BY demand_endpoint.seq ASC" in text
 
 
-def test_artifact_filter_walks_targets_to_deployments_to_recipes_as_a_subquery(repo):
+def test_artifact_filter_walks_targets_to_deployments_to_workloads_to_recipes_as_a_subquery(repo):
+    """The recipe is the workload's; a deployment is that workload on one cluster."""
     text = sql(repo.list_query(limit=10, artifact="llama-70b"))
     assert "demand_endpoint.id IN (SELECT demand_endpoint_target.endpoint_id" in text
     assert "JOIN demand_deployment ON demand_endpoint_target.deployment_id = demand_deployment.id" in text
-    assert "JOIN demand_recipe ON demand_deployment.recipe_id = demand_recipe.id" in text
+    assert "JOIN demand_workload ON demand_deployment.workload_id = demand_workload.id" in text
+    assert "JOIN demand_recipe ON demand_workload.recipe_id = demand_recipe.id" in text
     assert "demand_artifact.name = " in text
 
 

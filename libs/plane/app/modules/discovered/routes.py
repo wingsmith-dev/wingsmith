@@ -7,7 +7,7 @@ from litestar.di import Provide
 
 from app.core.context import RequestContext
 from app.core.schemas import ListResponse
-from app.modules.deployments.schemas import DeploymentSchema
+from app.modules.workloads.schemas import WorkloadSchema
 
 from .derive import RecipeDraft
 from .depends import discovered_svc_generator
@@ -89,7 +89,7 @@ class DiscoveredWorkloadRoutes(Controller):
     @post("/{ref:str}/promote", status_code=201)
     async def promote_discovered(
         self, context: RequestContext, svc: DiscoveredWorkloadService, ref: str, data: PromoteRequest
-    ) -> Response[DeploymentSchema]:
+    ) -> Response[WorkloadSchema]:
         return Response(await svc.promote(ref, data), status_code=201)
 
     @delete("/{ref:str}", status_code=204)

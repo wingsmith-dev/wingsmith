@@ -44,6 +44,7 @@ from app.modules.pools.schemas import PoolUpdateRequest
 from app.modules.pools.services import PoolService
 from app.modules.quotas.schemas import QuotaCreateRequest
 from app.modules.quotas.schemas import QuotaUpdateRequest
+from app.modules.events.services import EventService
 from app.modules.quotas.services import QuotaService
 from app.modules.recipes.schemas import RecipeCreateRequest
 from app.modules.recipes.schemas import RecipeUpdateRequest
@@ -67,18 +68,19 @@ from app.modules.endpoints.schemas import EndpointTargetRequest
 from app.modules.endpoints.schemas import EndpointUpdateRequest
 from app.modules.policies.services import PolicyService
 from app.modules.projects.services import ProjectService
+from app.modules.workloads.schemas import WorkloadCreateRequest
+from app.modules.workloads.schemas import WorkloadUpdateRequest
 from app.modules.artifacts.services import ArtifactService
 from app.modules.components.schemas import ComponentCreateRequest
 from app.modules.components.schemas import ComponentUpdateRequest
 from app.modules.endpoints.services import EndpointService
 from app.modules.operations.schemas import OperationCreateRequest
+from app.modules.workloads.services import WorkloadService
 from app.modules.components.services import ComponentService
-from app.modules.deployments.schemas import DeploymentCreateRequest
 from app.modules.deployments.schemas import DeploymentUpdateRequest
 from app.modules.deployments.schemas import DeploymentAuthorityRequest
 from app.modules.operations.services import TERMINAL_PHASES
 from app.modules.operations.services import OperationService
-from app.modules.events.services import EventService
 from app.modules.deployments.services import DeploymentService
 from app.modules.priority_classes.schemas import PriorityClassCreateRequest
 from app.modules.priority_classes.schemas import PriorityClassUpdateRequest
@@ -193,7 +195,13 @@ async def a_recipe(db: AsyncSession, artifact_id: str, name: str = "llama-vllm")
     )
 
 
-async def a_deployment(db: AsyncSession, name: str = "llama-prod", **extra):
+async def a_workload(db: AsyncSession, name: str = "llama-prod", **extra):
+    """A workload pinned to one cluster, which is the shape every deployment test wants.
+
+    Pinning is placement's declared escape hatch, and it is what these fixtures
+    need: there is no supply seeded here, so an unpinned workload would expand to
+    nothing and there would be no per-cluster copy to assert on.
+    """
     cluster = await a_cluster(db)
     project = await a_project(db)
     artifact = await an_artifact(db)
@@ -201,9 +209,16 @@ async def a_deployment(db: AsyncSession, name: str = "llama-prod", **extra):
     await PriorityClassService(db).create(
         PriorityClassCreateRequest(name="standard", value=100, is_default=True),
     )
-    deployment = await DeploymentService(db).create(
-        DeploymentCreateRequest(cluster=cluster.id, recipe=recipe.id, name=name, project=project.id, **extra)
+    workload = await WorkloadService(db).create(
+        WorkloadCreateRequest(cluster=cluster.id, recipe=recipe.id, name=name, project=project.id, **extra)
     )
+    return cluster, project, recipe, workload
+
+
+async def a_deployment(db: AsyncSession, name: str = "llama-prod", **extra):
+    """The one per-cluster copy a pinned workload expands into."""
+    cluster, project, recipe, workload = await a_workload(db, name=name, **extra)
+    deployment = await DeploymentService(db).get(workload.deployments[0].id)
     return cluster, project, recipe, deployment
 
 
@@ -492,8 +507,8 @@ async def test_a_deployment_write_announces_itself_to_the_hub(db: AsyncSession) 
     cluster, _, _, created = await a_deployment(db)
     service = DeploymentService(db, notifier=notifier)
 
-    await service.update(created.id, DeploymentUpdateRequest(desired_replicas=1, max_replicas=3))
-    await service.delete(created.id)
+    await service.update(created.id, DeploymentUpdateRequest(enabled=False))
+    await WorkloadService(db, notifier=notifier).delete(created.workload_id)
 
     assert [(c.cluster_id, c.kind, c.uid) for c in notifier.changes] == [
         (cluster.id, "deployment", created.id),
@@ -590,7 +605,7 @@ async def test_a_deployment_that_is_gone_dispatches_as_a_deletion(db: AsyncSessi
     any more.
     """
     cluster, _, _, created = await a_deployment(db)
-    await DeploymentService(db, notifier=MemoryNotifier()).delete(created.id)
+    await WorkloadService(db, notifier=MemoryNotifier()).delete(created.workload_id)
 
     kind, payload = await desired_object(db, cluster.id, "deployment", created.id, generation=7)
 
@@ -599,21 +614,43 @@ async def test_a_deployment_that_is_gone_dispatches_as_a_deletion(db: AsyncSessi
 
 
 async def test_deployments_lifecycle(db: AsyncSession) -> None:
-    cluster, project, recipe, created = await a_deployment(db)
+    """Read, flip, and disappear with the workload — a deployment has no life of its own."""
+    cluster, _, _, created = await a_deployment(db)
     service = DeploymentService(db)
-    assert created.workload.project_id == project.id
-    assert created.recipe_id == recipe.id
     assert created.cluster_id == cluster.id
+    assert created.workload_name == "llama-prod"
 
     assert (await service.get(created.id)).name == "llama-prod"
     assert (await service.list()).count == 1
 
-    patched = await service.update(created.id, DeploymentUpdateRequest(desired_replicas=1, max_replicas=3))
-    assert patched.max_replicas == 3
+    patched = await service.update(created.id, DeploymentUpdateRequest(enabled=False))
+    assert patched.enabled is False
+    assert_patched(created, patched)
+
+    await WorkloadService(db).delete(created.workload_id)
+    assert (await service.list()).count == 0
+
+
+async def test_workloads_lifecycle(db: AsyncSession) -> None:
+    """The object a user actually declares, and the expansion it owns."""
+    cluster, project, recipe, created = await a_workload(db)
+    service = WorkloadService(db)
+    assert created.project_id == project.id
+    assert created.recipe_id == recipe.id
+    assert [d.cluster_id for d in created.deployments] == [cluster.id]
+    assert created.scale.unit == "replicas"
+    assert created.scale.placed == 1
+
+    assert (await service.get(created.id)).name == "llama-prod"
+    assert (await service.list()).count == 1
+
+    patched = await service.update(created.id, WorkloadUpdateRequest(labels={"tier": "gold"}))
+    assert patched.labels == {"tier": "gold"}
     assert_patched(created, patched)
 
     await service.delete(created.id)
     assert (await service.list()).count == 0
+    assert (await DeploymentService(db).list()).count == 0
 
 
 async def test_endpoints_lifecycle(db: AsyncSession) -> None:
@@ -906,11 +943,11 @@ async def test_a_recipe_write_announces_to_every_cluster_running_it(db: AsyncSes
     notifier = MemoryNotifier()
     alpha, project, recipe, _ = await a_deployment(db)
     beta = await ClusterService(db).create(ClusterCreateRequest(name="beta", region="eu-west-1"))
-    await DeploymentService(db, notifier=MemoryNotifier()).create(
-        DeploymentCreateRequest(cluster=beta.id, recipe=recipe.id, name="llama-prod-beta", project=project.id)
+    await WorkloadService(db, notifier=MemoryNotifier()).create(
+        WorkloadCreateRequest(cluster=beta.id, recipe=recipe.id, name="llama-prod-beta", project=project.id)
     )
-    await DeploymentService(db, notifier=MemoryNotifier()).create(
-        DeploymentCreateRequest(cluster=beta.id, recipe=recipe.id, name="llama-canary", project=project.id)
+    await WorkloadService(db, notifier=MemoryNotifier()).create(
+        WorkloadCreateRequest(cluster=beta.id, recipe=recipe.id, name="llama-canary", project=project.id)
     )
 
     await RecipeService(db, notifier=notifier).update(recipe.id, RecipeUpdateRequest(engine_version="0.7.0"))
@@ -958,9 +995,14 @@ async def test_a_recipe_this_cluster_does_not_run_dispatches_nothing(db: AsyncSe
     assert await desired_object(db, cluster.id, "recipe", unrelated.id) is None
 
 
-async def test_a_deployments_topology_requirement_round_trips(db: AsyncSession) -> None:
-    """Declared on the deployment, not inherited from the recipe, and readable back."""
-    _, _, _, created = await a_deployment(
+async def test_a_workloads_topology_requirement_round_trips(db: AsyncSession) -> None:
+    """Declared on the workload, not inherited from the recipe, and readable back.
+
+    It moved up with `kind`: the justification for keeping it per-cluster was that
+    the deployment was the only object that knew whether it was served or ganged,
+    and that stopped being true.
+    """
+    _, _, _, created = await a_workload(
         db,
         name="gang-8",
         requires_single_topology_domain=True,
@@ -969,13 +1011,13 @@ async def test_a_deployments_topology_requirement_round_trips(db: AsyncSession) 
     assert created.requires_single_topology_domain is True
     assert created.topology_domain_kind == "nvswitch"
 
-    read = await DeploymentService(db).get(created.id)
+    read = await WorkloadService(db).get(created.id)
     assert read.requires_single_topology_domain is True
     assert read.topology_domain_kind == "nvswitch"
 
 
-async def test_a_deployment_without_a_topology_requirement_leaves_it_null(db: AsyncSession) -> None:
-    _, _, _, created = await a_deployment(db, name="plain")
+async def test_a_workload_without_a_topology_requirement_leaves_it_null(db: AsyncSession) -> None:
+    _, _, _, created = await a_workload(db, name="plain")
     assert created.requires_single_topology_domain is None
     assert created.topology_domain_kind is None
 
@@ -991,7 +1033,7 @@ async def _timeline(db: AsyncSession, deployment_uid: str) -> list[tuple[str, st
 
 async def test_creating_a_deployment_leaves_a_record_of_it_having_been_asked_for(db: AsyncSession) -> None:
     """The first minutes of a deployment used to be unreadable: a row, and nothing about it."""
-    cluster, _, recipe, created = await a_deployment(db)
+    cluster, _, _recipe, created = await a_deployment(db)
 
     timeline = await _timeline(db, created.id)
     assert [kind for kind, _ in timeline] == ["deployment.created"]
@@ -1014,19 +1056,22 @@ async def test_the_creation_event_is_committed_with_the_deployment_and_not_after
     assert [kind for kind, _ in await _timeline(db, created.id)] == ["deployment.created"]
 
 
-async def test_scaling_a_deployment_says_what_it_was_scaled_to(db: AsyncSession) -> None:
-    _, _, _, created = await a_deployment(db, min_replicas=0, desired_replicas=1, max_replicas=4)
-    await DeploymentService(db).update(created.id, DeploymentUpdateRequest(desired_replicas=3))
+async def test_updating_a_workload_is_recorded_against_every_cluster_it_runs_on(db: AsyncSession) -> None:
+    """The timeline is keyed by deployment, so a global change files one entry per cluster."""
+    _, _, _, created = await a_workload(db)
+    await WorkloadService(db, notifier=MemoryNotifier()).update(
+        created.id, WorkloadUpdateRequest(labels={"tier": "gold"})
+    )
 
-    timeline = await _timeline(db, created.id)
-    assert [kind for kind, _ in timeline] == ["deployment.created", "deployment.scaled"]
-    assert "3 replicas" in timeline[-1][1]
+    timeline = await _timeline(db, created.deployments[0].id)
+    assert [kind for kind, _ in timeline] == ["deployment.created", "deployment.updated"]
+    assert "llama-prod" in timeline[-1][1]
 
 
 async def test_a_deleted_deployment_keeps_its_timeline(db: AsyncSession) -> None:
     """`subject_id` carries no foreign key precisely so the record outlives its subject."""
     _, _, _, created = await a_deployment(db)
-    await DeploymentService(db, notifier=MemoryNotifier()).delete(created.id)
+    await WorkloadService(db, notifier=MemoryNotifier()).delete(created.workload_id)
 
     kinds = [kind for kind, _ in await _timeline(db, created.id)]
     assert kinds == ["deployment.created", "deployment.deleted"]

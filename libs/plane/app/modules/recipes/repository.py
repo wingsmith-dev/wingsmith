@@ -9,6 +9,7 @@ from app.core.ids import is_uid
 from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Artifact
+from app.db.models import Workload
 from app.db.models import Deployment
 from app.core.filters import ref_ids
 
@@ -80,7 +81,8 @@ class RecipeRepository:
         query = (
             select(Cluster.uid)
             .join(Deployment, Deployment.cluster_id == Cluster.id)
-            .where(Deployment.recipe_id == recipe.id, Deployment.enabled == True)
+            .join(Workload, Deployment.workload_id == Workload.id)
+            .where(Workload.recipe_id == recipe.id, Deployment.enabled == True)
             .distinct()
         )
         result = await self.db.execute(query)

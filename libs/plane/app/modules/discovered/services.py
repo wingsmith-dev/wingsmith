@@ -17,9 +17,9 @@ from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
-from app.modules.deployments.schemas import DeploymentSchema
+from app.modules.workloads.schemas import WorkloadSchema
+from app.modules.workloads.services import WorkloadService
 from app.modules.deployments.services import OBSERVED
-from app.modules.deployments.services import DeploymentService
 
 from .derive import RecipeDraft
 from .derive import derive
@@ -230,8 +230,14 @@ class DiscoveredWorkloadService:
         )
         return draft
 
-    async def promote(self, ref: str, data: PromoteRequest) -> DeploymentSchema:
-        """Turns a sighting into a deployment the plane manages, or refuses to.
+    async def promote(self, ref: str, data: PromoteRequest) -> WorkloadSchema:
+        """Turns a sighting into a workload the plane declares, or refuses to.
+
+        The pair is minted together: one Workload pinned to the cluster the sighting
+        is running in, and its one Deployment there. Pinned and capped at one cluster
+        because an adopted object is a record of something that already exists in one
+        place — expanding it elsewhere would be starting a second copy, which is the
+        opposite of cataloguing.
 
         This is the one call in this module that writes declared state, and every
         guard on it exists because the failure mode is a restart of a model that is
@@ -277,31 +283,43 @@ class DiscoveredWorkloadService:
         priority_class_id = await self._priority_class_id(data.priority_class, project)
 
         replicas = max(workload.replicas_desired, 0)
+        now = dt.datetime.now(dt.UTC)
+        name = data.name or workload.name
         deployment_workload = Workload(
             uid=new_uid(WORKLOAD),
+            name=name,
             kind="service",
             project_id=project.id,
-            cluster_id=workload.cluster_id,
+            recipe_id=recipe[0],
             priority_class_id=priority_class_id,
-            admission_phase="running",
+            pinned_cluster_id=workload.cluster_id,
+            max_clusters=1,
+            strategy="pack",
+            min_scale=replicas,
+            max_scale=replicas,
+            desired_scale=replicas,
             gang_size=1,
             preemptible=False,
-            queued_at=dt.datetime.now(dt.UTC),
+            paused=False,
+            adapter_artifact_ids=[],
+            overrides={},
+            labels=dict(workload.labels or {}),
         )
         deployment = Deployment(
             uid=new_uid(DEPLOYMENT),
             workload=deployment_workload,
-            recipe_id=recipe[0],
             cluster_id=workload.cluster_id,
-            name=data.name or workload.name,
+            name=name,
             min_replicas=replicas,
             max_replicas=replicas,
             desired_replicas=replicas,
+            admission_phase="running",
+            admission_reason=f"adopted from what {workload.uid} is already running",
+            queued_at=now,
+            admitted_at=now,
+            placed_at=now,
             generation=1,
             enabled=True,
-            adapter_artifact_ids=[],
-            overrides={},
-            labels=dict(workload.labels or {}),
             adopted_workload_uid=workload.uid,
             adopted_fingerprint=workload.spec_fingerprint,
             authority=OBSERVED,
@@ -322,8 +340,8 @@ class DiscoveredWorkloadService:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
-            raise Conflict(f"a deployment named {data.name or workload.name!r} already exists in this cluster") from exc
-        return await DeploymentService(self.db).get(deployment.uid)
+            raise Conflict(f"a workload named {name!r} already exists in this project") from exc
+        return await WorkloadService(self.db).get(deployment_workload.uid)
 
     async def _priority_class_id(self, ref: str | None, project):
         """The project's default answers when the caller does not, as elsewhere."""

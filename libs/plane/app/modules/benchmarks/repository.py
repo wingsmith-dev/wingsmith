@@ -15,6 +15,7 @@ from app.core.ids import is_uid
 from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Artifact
+from app.db.models import Workload
 from app.db.models import Operation
 from app.db.models import Deployment
 from app.db.models import BenchmarkRun
@@ -110,7 +111,8 @@ class BenchmarkRepository:
         column = Deployment.uid if is_uid(ref) else Deployment.name
         query = (
             select(Deployment, Recipe, Artifact)
-            .join(Recipe, Deployment.recipe_id == Recipe.id)
+            .join(Workload, Deployment.workload_id == Workload.id)
+            .join(Recipe, Workload.recipe_id == Recipe.id)
             .join(Artifact, Recipe.artifact_id == Artifact.id)
             .options(selectinload(Artifact.locations))
             .where(column == ref)

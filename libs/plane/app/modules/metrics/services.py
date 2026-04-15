@@ -47,6 +47,7 @@ from app.db.models import Device
 from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Artifact
+from app.db.models import Workload
 from app.db.models import Deployment
 from app.config.settings import settings
 from app.core.exceptions import NotFound
@@ -324,7 +325,8 @@ class MetricsService:
     ) -> MetricsSchema:
         query = (
             select(Deployment, Recipe, Artifact)
-            .join(Recipe, Deployment.recipe_id == Recipe.id)
+            .join(Workload, Deployment.workload_id == Workload.id)
+            .join(Recipe, Workload.recipe_id == Recipe.id)
             .join(Artifact, Recipe.artifact_id == Artifact.id)
             .where(Deployment.uid == ref if is_uid(ref) else Deployment.name == ref)
         )

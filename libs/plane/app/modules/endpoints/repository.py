@@ -13,6 +13,7 @@ from app.db.models import Recipe
 from app.db.models import Project
 from app.db.models import Artifact
 from app.db.models import Endpoint
+from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import EndpointTarget
 from app.core.filters import ref_ids
@@ -44,14 +45,17 @@ class EndpointRepository:
     def serving_artifact_query(self, artifact: str) -> Select:
         """The endpoints whose targets run a recipe over one artifact.
 
-        Two hops — target to deployment to recipe — expressed as a subquery so
-        that filtering by model stays one round trip rather than a fan-out over
-        every endpoint's target list.
+        Three hops — target to deployment to workload to recipe — expressed as a
+        subquery so that filtering by model stays one round trip rather than a
+        fan-out over every endpoint's target list. The recipe is the workload's:
+        a deployment is that workload on one cluster and declares no recipe of
+        its own.
         """
         return (
             select(EndpointTarget.endpoint_id)
             .join(Deployment, EndpointTarget.deployment_id == Deployment.id)
-            .join(Recipe, Deployment.recipe_id == Recipe.id)
+            .join(Workload, Deployment.workload_id == Workload.id)
+            .join(Recipe, Workload.recipe_id == Recipe.id)
             .where(Recipe.artifact_id.in_(ref_ids(Artifact, artifact)))
         )
 
