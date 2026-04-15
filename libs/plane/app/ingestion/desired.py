@@ -14,6 +14,7 @@ import datetime as dt
 
 from uuid import UUID
 from typing import Any
+from logging import getLogger
 from collections.abc import AsyncIterator
 
 from msgspec import Struct
@@ -31,7 +32,6 @@ from app.db.models import Component
 from app.db.models import Deployment
 from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
-from app.db.models import DiscoveredWorkload
 from app.hub.messages import Adopt
 from app.hub.messages import CacheDesired
 from app.hub.messages import RecipeDesired
@@ -47,6 +47,9 @@ from app.hub.messages import RecipeParallelism
 from app.hub.messages import PlacementConstraints
 from app.ingestion.time import now
 from app.ingestion.statements import cluster_ref_clause
+
+
+logger = getLogger(__name__)
 
 
 SUPPLY_SCOPES = frozenset({"supply", "all"})
@@ -382,20 +385,12 @@ async def _deployments(
             Project.uid,
             PriorityClass.name,
             Artifact.uid,
-            DiscoveredWorkload.namespace,
-            DiscoveredWorkload.kind,
-            DiscoveredWorkload.name,
         )
         .join(Workload, Deployment.workload_id == Workload.id)
         .join(Recipe, Workload.recipe_id == Recipe.id)
         .join(Project, Workload.project_id == Project.id)
         .join(PriorityClass, Workload.priority_class_id == PriorityClass.id)
         .join(Artifact, Recipe.artifact_id == Artifact.id)
-        .outerjoin(
-            DiscoveredWorkload,
-            (DiscoveredWorkload.cluster_id == Deployment.cluster_id)
-            & (DiscoveredWorkload.uid == Deployment.adopted_workload_uid),
-        )
         .where(Deployment.cluster_id == cluster_id, Deployment.enabled == True)
         .order_by(Deployment.seq)
     )
@@ -440,27 +435,44 @@ async def _deployments(
                 generation=deployment.generation,
                 updated_at=format_ts(deployment.updated_at or deployment.created_at),
                 authority=deployment.authority if deployment.authority in ("observed", "managed") else "observed",
-                adopt=_adopt(deployment, row[6], row[7], row[8]),
+                adopt=_adopt(deployment),
             )
         )
     return out
 
 
-def _adopt(deployment: Deployment, namespace: str | None, kind: str | None, name: str | None) -> Adopt | None:
+def _adopt(deployment: Deployment) -> Adopt | None:
     """The adoption block, when this deployment was promoted from a running workload.
 
-    Both halves have to be present. The deployment carries the digest it was
-    pinned to, and the sighting carries where the object lives; without the
-    sighting there is nothing to name, and the frame goes down as an ordinary
-    deployment — which is the safe direction only because a deployment the
-    operator cannot identify as adopted is one it has no rendered spec for either.
+    Read entirely off the deployment. It used to be assembled from an outer join
+    onto the `DiscoveredWorkload` the promotion came from, and that made a
+    declared fact depend on an observed row: the supply snapshot prunes a sighting
+    the moment a cluster stops mentioning it, so any frame rendered inside that
+    window carried no `adopt` block at all. An operator receiving one stops
+    recognising the deployment as adopted, takes the `NoClusterWork` branch, and
+    never reads a rollout for it again — which reads in the console as a serving
+    workload stuck at `placed · 0/1` forever, because nothing re-dispatches the
+    deployment when the sighting comes back.
+
+    Absence now means one thing only: this deployment was never promoted. A row
+    that carries `adopted_workload_uid` and nothing to name it with is a promotion
+    that predates those columns and could not be backfilled, and it is logged
+    rather than silently rendered as an ordinary deployment — silence is what let
+    the failure above run for hours without a line anywhere saying so.
     """
-    if not deployment.adopted_workload_uid or namespace is None:
+    if not deployment.adopted_workload_uid:
+        return None
+    if not deployment.adopted_namespace:
+        logger.warning(
+            "deployment %s is adopted from %s but names no object; rendering it without an adopt block",
+            deployment.uid,
+            deployment.adopted_workload_uid,
+        )
         return None
     return Adopt(
-        namespace=namespace,
-        kind=kind or "deployment",
-        name=name or deployment.name,
+        namespace=deployment.adopted_namespace,
+        kind=deployment.adopted_kind or "deployment",
+        name=deployment.adopted_name or deployment.name,
         spec_fingerprint=deployment.adopted_fingerprint or "",
     )
 

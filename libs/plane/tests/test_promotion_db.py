@@ -197,6 +197,37 @@ async def test_a_promoted_deployment_streams_down_as_an_adoption(sessions, clust
     assert adopt.spec_fingerprint == FINGERPRINT
 
 
+async def test_an_adoption_survives_its_sighting_being_pruned(sessions, cluster) -> None:
+    """The sighting is observed state and the adoption is not.
+
+    A supply snapshot that stops mentioning a workload prunes the sighting row, and
+    for as long as the wire's adopt block was joined onto that row every frame
+    rendered inside the window went down without one. An operator receiving one
+    stops recognising the deployment as adopted and never reads a rollout for it
+    again — and nothing re-dispatches when the sighting returns, so a serving
+    workload reads `placed · 0/1` until somebody writes to it by hand.
+    """
+    await seed_demand(sessions)
+    await sighted(sessions)
+    async with sessions() as db:
+        await DiscoveredWorkloadService(db).promote("llama-70b-vllm", request(name="renamed-on-purpose"))
+        await db.execute(text("delete from demand_discovered_workload"))
+        await db.commit()
+
+    async with sessions() as db:
+        frames = [item async for item in stream_desired(db, CLUSTER, "demand")]
+    desired = [payload for kind, payload in frames if kind == "deployment.desired"]
+    assert len(desired) == 1
+    adopt = desired[0].adopt
+    assert adopt is not None
+    assert (adopt.namespace, adopt.kind) == ("serving", "deployment")
+    assert adopt.spec_fingerprint == FINGERPRINT
+    # The live object's name, not the deployment's. Promotion accepts a rename and the
+    # operator still has to be pointed at the object that actually exists.
+    assert adopt.name == "llama-70b-vllm"
+    assert desired[0].name == "renamed-on-purpose"
+
+
 async def test_an_ordinary_deployment_carries_no_adoption(sessions, cluster) -> None:
     await seed_demand(sessions)
     await sighted(sessions)

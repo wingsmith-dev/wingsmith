@@ -526,6 +526,19 @@ class Deployment(BaseMixin):
     takes ownership rather than applying, and only while the live object still digests to
     `adopted_fingerprint`. A mismatch is refused in the cluster and reported, never converged.
 
+    `adopted_namespace` and `adopted_kind` name that object, and they are copied here at
+    promotion rather than read back off the `DiscoveredWorkload` they came from. The sighting is
+    observed state and the snapshot prunes it the moment a cluster stops mentioning it; the
+    adoption is declared state and outlives that. Deriving the wire's `adopt` block from the
+    sighting made a deployment's declared identity depend on a row that comes and goes, and a
+    prune window was enough to send `adopt: null` to a cluster that then dropped an adopted
+    deployment to one it had nothing to do with — permanently, since nothing re-dispatches when
+    the sighting returns.
+
+    `adopted_name` is stored beside them rather than taken from `name`, because promotion accepts
+    a name and only defaults it to the workload's. A renamed adoption still has to point the
+    operator at the object that actually exists in the cluster.
+
     `authority` is the one word that answers who owns this: `observed` means the plane records
     and verifies it and writes nothing to the cluster, `managed` means the plane renders and
     converges it. It is deliberately not derived from `adopted_workload_uid` (ADR 0009).
@@ -558,6 +571,9 @@ class Deployment(BaseMixin):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     adopted_workload_uid: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     adopted_fingerprint: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    adopted_namespace: Mapped[str | None] = mapped_column(String(253), nullable=True)
+    adopted_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    adopted_name: Mapped[str | None] = mapped_column(String(253), nullable=True)
     authority: Mapped[str] = mapped_column(String(16), nullable=False, server_default="observed", index=True)
 
     workload: Mapped[Workload] = relationship("Workload", back_populates="deployments", lazy="noload")

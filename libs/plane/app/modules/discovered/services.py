@@ -322,6 +322,9 @@ class DiscoveredWorkloadService:
             enabled=True,
             adopted_workload_uid=workload.uid,
             adopted_fingerprint=workload.spec_fingerprint,
+            adopted_namespace=workload.namespace,
+            adopted_kind=workload.kind,
+            adopted_name=workload.name,
             authority=OBSERVED,
         )
         try:
