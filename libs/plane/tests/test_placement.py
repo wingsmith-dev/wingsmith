@@ -9,11 +9,13 @@ from app.modules.placement import DeviceHold
 from app.modules.placement import QuotaSnapshot
 from app.modules.placement import DeviceSnapshot
 from app.modules.placement import PolicySnapshot
+from app.modules.placement import WorkloadDemand
 from app.modules.placement import ClusterSnapshot
 from app.modules.placement import CapacitySnapshot
 from app.modules.placement import PlacementRequest
 from app.modules.placement import TopologyDomainSnapshot
 from app.modules.placement import place
+from app.modules.placement import expand
 from app.modules.placement import decision as codes
 from app.modules.placement.services import PlacementService
 
@@ -455,3 +457,165 @@ def test_a_deployment_can_relax_a_requirement_the_recipe_asserts():
     )
     assert request.requires_single_domain is False
     assert request.domain_kind == "nvlink"
+
+
+def demand(**kw):
+    return WorkloadDemand(
+        workload=kw.pop("workload", "wkl_1"),
+        project=kw.pop("project", "proj_a"),
+        name=kw.pop("name", "serve"),
+        device_class=kw.pop("device_class", "h100"),
+        unit_device_count=kw.pop("unit_device_count", 2),
+        **kw,
+    )
+
+
+def supply(*clusters):
+    return CapacitySnapshot(clusters=tuple(clusters))
+
+
+def shares_of(decision):
+    return {s.cluster_name: s.replicas for s in decision.shares}
+
+
+def test_pack_keeps_a_workload_in_one_cluster_when_one_cluster_holds_it():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(desired_scale=3), snapshot)
+    assert len(decision.shares) == 1
+    assert decision.placed == 3
+    assert decision.shortfall == 0
+
+
+def test_pack_spills_into_a_second_cluster_only_once_the_first_is_full():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(desired_scale=6), snapshot)
+    assert sorted(shares_of(decision).values()) == [2, 4]
+    assert decision.placed == 6
+
+
+def test_spread_divides_a_workload_as_evenly_as_the_clusters_allow():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(desired_scale=6, strategy="spread"), snapshot)
+    assert shares_of(decision) == {"iad-1": 3, "sfo-1": 3}
+
+
+def test_a_gang_that_fits_nowhere_whole_is_rejected_rather_than_split():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=4)),
+        cluster("clu_b", "sfo-1", devices("b", count=4)),
+    )
+    decision = expand(demand(kind="gang", gang_size=4, desired_scale=4), snapshot)
+    assert decision.shares == ()
+    assert decision.shortfall == 4
+    assert decision.splittable is False
+    assert "cannot be split" in decision.summary
+
+
+def test_a_gang_that_fits_in_one_cluster_gets_exactly_one_share():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=4)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(kind="gang", gang_size=4, desired_scale=4), snapshot)
+    assert shares_of(decision) == {"sfo-1": 4}
+
+
+def test_a_floor_is_honoured_before_anything_is_ranked():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(desired_scale=4, cluster_floors={"clu_b": 3}), snapshot)
+    assert shares_of(decision) == {"iad-1": 1, "sfo-1": 3}
+
+
+def test_a_floor_that_the_cluster_cannot_meet_leaves_the_rest_to_the_fill():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8)),
+        cluster("clu_b", "sfo-1", devices("b", count=2)),
+    )
+    decision = expand(demand(desired_scale=4, cluster_floors={"clu_b": 3}), snapshot)
+    assert shares_of(decision) == {"iad-1": 3, "sfo-1": 1}
+
+
+def test_the_fan_out_cap_leaves_the_overflow_as_a_shortfall():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=4)),
+        cluster("clu_b", "sfo-1", devices("b", count=4)),
+    )
+    decision = expand(demand(desired_scale=4, max_clusters=1), snapshot)
+    assert len(decision.shares) == 1
+    assert decision.placed == 2
+    assert decision.shortfall == 2
+
+
+def test_a_partial_placement_reports_what_it_could_not_place():
+    snapshot = supply(cluster("clu_a", "iad-1", devices("a", count=4)))
+    decision = expand(demand(desired_scale=5), snapshot)
+    assert decision.placed == 2
+    assert decision.shortfall == 3
+
+
+def test_a_scale_up_fills_the_cluster_already_running_before_reaching_for_another():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(desired_scale=3, existing={"clu_b": 1}), snapshot)
+    assert shares_of(decision) == {"sfo-1": 3}
+
+
+def test_a_pinned_cluster_is_the_only_candidate_and_is_not_checked_for_capacity():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=0)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(desired_scale=4, pinned_cluster="clu_a"), snapshot)
+    assert shares_of(decision) == {"iad-1": 4}
+
+
+def test_a_paused_workload_keeps_its_deployments_at_a_share_of_zero():
+    snapshot = supply(cluster("clu_a", "iad-1", devices("a", count=8)))
+    decision = expand(demand(desired_scale=4, paused=True, existing={"clu_a": 4}), snapshot)
+    assert shares_of(decision) == {"iad-1": 0}
+
+
+def test_a_cluster_whose_name_is_taken_by_another_workload_is_not_a_candidate():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8), taken_names={"serve": "wkl_other"}),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(desired_scale=2), snapshot)
+    assert shares_of(decision) == {"sfo-1": 2}
+    assert codes.NAME_TAKEN in codes_for(decision, "iad-1")
+
+
+def test_quota_caps_a_cluster_share_below_what_is_free():
+    snapshot = CapacitySnapshot(
+        clusters=(cluster("clu_a", "iad-1", devices("a", count=8)), cluster("clu_b", "sfo-1", devices("b", count=8))),
+        quotas=(
+            QuotaSnapshot(project="proj_a", device_class="h100", cluster="clu_a", limit_devices=4),
+            QuotaSnapshot(project="proj_a", device_class="h100", cluster="clu_b", limit_devices=8),
+        ),
+    )
+    decision = expand(demand(desired_scale=6), snapshot)
+    assert shares_of(decision) == {"iad-1": 2, "sfo-1": 4}
+
+
+def test_expansion_is_deterministic():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    first = expand(demand(desired_scale=5, strategy="spread"), snapshot)
+    second = expand(demand(desired_scale=5, strategy="spread"), snapshot)
+    assert first.shares == second.shares

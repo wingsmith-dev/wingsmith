@@ -24,6 +24,7 @@ QUOTA_EXHAUSTED = "quota_exhausted"
 NO_SUCH_DEVICE_CLASS = "no_such_device_class"
 INSUFFICIENT_CAPACITY = "insufficient_capacity"
 INSUFFICIENT_TOPOLOGY = "insufficient_topology"
+NAME_TAKEN = "name_taken"
 
 
 class Rejection(Verdict):
@@ -37,6 +38,10 @@ class Rejection(Verdict):
 class PreemptionVictim(Verdict):
     """A workload that would have to go for this placement to fit.
 
+    Preemption reasons per-cluster, so `deployment` names the victim's copy in this
+    cluster and `workload` the global object it belongs to. Evicting "a workload"
+    from a cluster is always evicting its deployment there.
+
     `devices_in_scope` is what preempting it contributes here; `devices_released`
     is everything it holds in the cluster. They differ when a workload straddles
     topology domains, and the difference is the honest cost of the eviction —
@@ -48,6 +53,7 @@ class PreemptionVictim(Verdict):
     priority_value: int
     devices_in_scope: int
     devices_released: int
+    deployment: str | None = None
 
 
 class PreemptionPlan(Verdict):
@@ -107,3 +113,42 @@ class PlacementDecision(Verdict):
     @property
     def requires_preemption(self) -> bool:
         return self.preemption is not None and not self.preemption.empty
+
+
+class Share(Verdict):
+    """One cluster's slice of a workload's total scale.
+
+    `replicas` is counted in the workload's own unit — replicas for a service, ranks
+    for a gang, completions for a task — and is always whole. It is this cluster's
+    share and never the total; summing a share against a total is always a bug.
+    """
+
+    cluster: str
+    cluster_name: str
+    replicas: int
+
+
+class ExpansionDecision(Verdict):
+    """How a workload's total scale was spread over clusters, and why.
+
+    `shares` is the answer, `verdicts` is the reasoning for every cluster considered,
+    and `shortfall` is what could not be placed anywhere. A shortfall is a partial
+    placement rather than a failure: the shares that were found are real, and the
+    workload's rollup shows placed below desired until capacity appears.
+
+    `splittable` is false for a gang, whose ranks are co-scheduled. A gang that fits
+    nowhere whole comes back with no shares and `shortfall == gang_size`; there is no
+    degraded answer to fall back on, and the caller turns that into a hard rejection.
+    """
+
+    workload: str
+    shares: tuple[Share, ...]
+    verdicts: tuple[ClusterVerdict, ...]
+    desired: int
+    shortfall: int
+    splittable: bool = True
+    summary: str = ""
+
+    @property
+    def placed(self) -> int:
+        return sum(s.replicas for s in self.shares)

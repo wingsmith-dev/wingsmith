@@ -6,6 +6,9 @@ answer, not an error — and it never touches anything but its two arguments.
 
 import logging
 
+from msgspec import structs
+
+from .decision import NAME_TAKEN
 from .decision import CLUSTER_PHASE
 from .decision import POLICY_REGION
 from .decision import QUOTA_EXHAUSTED
@@ -17,15 +20,18 @@ from .decision import INSUFFICIENT_CAPACITY
 from .decision import INSUFFICIENT_TOPOLOGY
 from .decision import POLICY_CLUSTER_DENIED
 from .decision import POLICY_CLUSTER_NOT_ALLOWED
+from .decision import Share
 from .decision import Rejection
 from .decision import ClusterVerdict
 from .decision import PreemptionPlan
 from .decision import PreemptionVictim
+from .decision import ExpansionDecision
 from .decision import PlacementDecision
 from .snapshot import DeviceHold
 from .snapshot import QuotaSnapshot
 from .snapshot import DeviceSnapshot
 from .snapshot import PolicySnapshot
+from .snapshot import WorkloadDemand
 from .snapshot import ClusterSnapshot
 from .snapshot import CapacitySnapshot
 from .snapshot import PlacementRequest
@@ -93,6 +99,7 @@ def _evaluate(request: PlacementRequest, cluster: ClusterSnapshot, snapshot: Cap
     reasons: list[Rejection] = []
     reasons.extend(_health_reasons(cluster))
     reasons.extend(_policy_reasons(request, cluster, snapshot.policies))
+    reasons.extend(_name_reasons(request, cluster))
 
     candidates = tuple(
         d
@@ -146,6 +153,27 @@ def _evaluate(request: PlacementRequest, cluster: ClusterSnapshot, snapshot: Cap
         quota_headroom=headroom,
         preemption=fit.plan,
     )
+
+
+def _name_reasons(request: PlacementRequest, cluster: ClusterSnapshot) -> list[Rejection]:
+    """A deployment name is unique per cluster, so a taken one rules the cluster out.
+
+    Two deployments of the same workload in two clusters share a name and do not
+    collide; a name held by a *different* workload does, and placement rejects the
+    cluster rather than inventing a suffix that would then be the name nobody typed.
+    """
+    if request.deployment_name is None:
+        return []
+    owner = cluster.taken_names.get(request.deployment_name)
+    if owner is None or owner == request.workload:
+        return []
+    return [
+        Rejection(
+            code=NAME_TAKEN,
+            message=f"cluster {cluster.name} already has a deployment named {request.deployment_name!r}",
+            detail={"name": request.deployment_name, "held_by": owner},
+        )
+    ]
 
 
 def _health_reasons(cluster: ClusterSnapshot) -> list[Rejection]:
@@ -442,16 +470,17 @@ def _plan_preemption(
         hold = device.held_by
         if hold is None:
             continue
-        in_scope.setdefault(hold.workload, (hold, []))[1].append(device)
+        in_scope.setdefault(hold.deployment or hold.workload, (hold, []))[1].append(device)
     ordered = sorted(in_scope.items(), key=lambda item: (item[1][0].priority_value, len(item[1][1]), item[0]))
     victims: list[PreemptionVictim] = []
     reclaimed = 0
-    for workload, (hold, held) in ordered:
+    for _, (hold, held) in ordered:
         if reclaimed >= shortfall:
             break
         victims.append(
             PreemptionVictim(
-                workload=workload,
+                workload=hold.workload,
+                deployment=hold.deployment,
                 project=hold.project,
                 priority_value=hold.priority_value,
                 devices_in_scope=len(held),
@@ -486,3 +515,282 @@ def _no_fit_summary(request: PlacementRequest, verdicts: tuple[ClusterVerdict, .
         return f"{request.workload} not placed: no clusters in the snapshot"
     parts = [f"{v.cluster_name}: {v.reasons[0].message}" for v in verdicts if v.reasons]
     return f"{request.workload} not placed; " + "; ".join(parts)
+
+
+def expand(demand: WorkloadDemand, snapshot: CapacitySnapshot) -> ExpansionDecision:
+    """Spread a workload's total scale over the clusters that can take it.
+
+    The multi-cluster half of placement, and pure for the same reason `place()` is:
+    it reads a snapshot and returns an answer, and the caller persists it. Every
+    cluster is evaluated with the existing policy, health, quota and topology rules
+    against ONE unit of the workload, and the split is then a question of how many
+    whole units each surviving cluster can hold.
+
+    Splittability is a property of `kind` and is the one thing this branches on:
+    `service` and `task` fan out, `gang` is atomic and comes back with a single
+    share or with none at all. Nothing below a workload is entitled to read `kind`
+    (`CLAUDE.md` rule on the supertype); expansion is above it.
+
+    `pack` is the default because it makes an existing single-cluster workload
+    re-expand onto the same single cluster: spreading is a thing you ask for, not
+    something a control plane does to a running service on its own.
+    """
+    if demand.kind == "gang":
+        return _expand_gang(demand, snapshot)
+
+    unit = _unit_request(demand)
+    verdicts = tuple(sorted((_evaluate(unit, c, snapshot) for c in snapshot.clusters), key=lambda v: v.cluster_name))
+    by_uid = {v.cluster: v for v in verdicts}
+    desired = max(demand.desired_scale, 0)
+
+    if demand.paused:
+        held = tuple(
+            Share(cluster=v.cluster, cluster_name=v.cluster_name, replicas=0) for v in _existing(demand, by_uid)
+        )
+        return ExpansionDecision(
+            workload=demand.workload,
+            shares=held,
+            verdicts=verdicts,
+            desired=0,
+            shortfall=0,
+            summary=f"{demand.workload} is paused; every share is 0 and no deployment is removed",
+        )
+
+    capacity = _capacity(demand, verdicts)
+    assigned: dict[str, int] = {}
+    remaining = _assign_floors(demand, by_uid, capacity, assigned, desired)
+    remaining = _fill(demand, by_uid, capacity, assigned, remaining)
+
+    shares = tuple(
+        Share(cluster=uid, cluster_name=by_uid[uid].cluster_name, replicas=count)
+        for uid, count in sorted(assigned.items(), key=lambda item: by_uid[item[0]].cluster_name)
+    )
+    return ExpansionDecision(
+        workload=demand.workload,
+        shares=shares,
+        verdicts=verdicts,
+        desired=desired,
+        shortfall=remaining,
+        summary=_expansion_summary(demand, shares, remaining, verdicts),
+    )
+
+
+def _expand_gang(demand: WorkloadDemand, snapshot: CapacitySnapshot) -> ExpansionDecision:
+    """A gang lands whole in one cluster or it does not land.
+
+    Its ranks are co-scheduled, so a split gang is broken rather than degraded and
+    there is no second-best answer to return. The decision carries no share and a
+    shortfall of the whole gang; the caller raises on it.
+    """
+    ranks = max(demand.gang_size, 1)
+    request = structs.replace(
+        _unit_request(demand),
+        device_count=max(demand.unit_device_count, 1) * ranks,
+        atomic=True,
+    )
+    decision = place(request, snapshot)
+    if decision.placed and decision.cluster is not None:
+        share = Share(cluster=decision.cluster, cluster_name=decision.cluster_name or decision.cluster, replicas=ranks)
+        return ExpansionDecision(
+            workload=demand.workload,
+            shares=(share,),
+            verdicts=decision.verdicts,
+            desired=ranks,
+            shortfall=0,
+            splittable=False,
+            summary=decision.summary,
+        )
+    return ExpansionDecision(
+        workload=demand.workload,
+        shares=(),
+        verdicts=decision.verdicts,
+        desired=ranks,
+        shortfall=ranks,
+        splittable=False,
+        summary=_gang_summary(demand, ranks, decision.verdicts),
+    )
+
+
+def _unit_request(demand: WorkloadDemand) -> PlacementRequest:
+    """One unit of the workload — the thing a share is counted in, placed whole."""
+    return PlacementRequest(
+        workload=demand.workload,
+        project=demand.project,
+        device_class=demand.device_class,
+        device_count=max(demand.unit_device_count, 1),
+        kind=demand.kind,
+        priority_value=demand.priority_value,
+        preempts=demand.preempts,
+        device_memory_mib_min=demand.device_memory_mib_min,
+        requires_single_domain=demand.requires_single_domain,
+        domain_kind=demand.domain_kind,
+        deployment_name=demand.name,
+        atomic=True,
+    )
+
+
+def _existing(demand: WorkloadDemand, by_uid: dict[str, ClusterVerdict]) -> list[ClusterVerdict]:
+    return [by_uid[uid] for uid in sorted(demand.existing) if uid in by_uid]
+
+
+def _capacity(demand: WorkloadDemand, verdicts: tuple[ClusterVerdict, ...]) -> dict[str, int]:
+    """How many whole units each candidate cluster can take.
+
+    A pin is an instruction rather than a hint: the named cluster is the only
+    candidate and it is not checked for capacity, which is the whole point of the
+    escape. Otherwise a candidate is a feasible verdict, and its ceiling is the
+    lower of what is free — counting anything a preemption plan would reclaim — and
+    what the project has left under quota in that cluster.
+    """
+    unit = max(demand.unit_device_count, 1)
+    if demand.pinned_cluster is not None:
+        return {v.cluster: UNBOUNDED for v in verdicts if v.cluster == demand.pinned_cluster}
+
+    capacity: dict[str, int] = {}
+    for verdict in verdicts:
+        if not verdict.feasible:
+            continue
+        reclaimable = verdict.preemption.devices_reclaimed if verdict.preemption is not None else 0
+        fits = (verdict.free_devices + reclaimable) // unit
+        if verdict.quota_headroom is not None:
+            fits = min(fits, verdict.quota_headroom // unit)
+        if fits > 0:
+            capacity[verdict.cluster] = fits
+    return capacity
+
+
+def _assign_floors(
+    demand: WorkloadDemand,
+    by_uid: dict[str, ClusterVerdict],
+    capacity: dict[str, int],
+    assigned: dict[str, int],
+    desired: int,
+) -> int:
+    """Per-cluster minimums, honoured before anything is ranked.
+
+    A floor that cannot be met is not an error — the shortfall stays in the remainder
+    and shows up as the deployment's admission reason — and floors that add up to more
+    than the total are honoured in cluster-name order until the total runs out, because
+    silently scaling them down would answer a question the operator did not ask.
+    """
+    remaining = desired
+    floors = [(uid, count) for uid, count in demand.cluster_floors.items() if uid in by_uid and count > 0]
+    for uid, floor in sorted(floors, key=lambda item: by_uid[item[0]].cluster_name):
+        if remaining <= 0:
+            break
+        take = min(floor, capacity.get(uid, 0), remaining)
+        if take <= 0:
+            continue
+        if not _admits(demand, assigned, uid):
+            continue
+        assigned[uid] = assigned.get(uid, 0) + take
+        remaining -= take
+    return remaining
+
+
+def _fill(
+    demand: WorkloadDemand,
+    by_uid: dict[str, ClusterVerdict],
+    capacity: dict[str, int],
+    assigned: dict[str, int],
+    remaining: int,
+) -> int:
+    """The remainder, packed or spread, in whole units and in a fixed order."""
+    if remaining <= 0:
+        return max(remaining, 0)
+    ordered = _fill_order(demand, by_uid, capacity)
+    if demand.strategy == "spread":
+        return _fill_spread(demand, capacity, assigned, ordered, remaining)
+    return _fill_pack(demand, capacity, assigned, ordered, remaining)
+
+
+def _fill_order(demand: WorkloadDemand, by_uid: dict[str, ClusterVerdict], capacity: dict[str, int]) -> list[str]:
+    """Clusters already running this workload first, then the rest by the tiebreak.
+
+    This is what makes re-expansion stable. A scale-up must not reshuffle a workload
+    that is serving traffic, so a new cluster is reached for only once the ones
+    already holding a share cannot absorb the increase.
+    """
+    ranked = sorted((by_uid[uid] for uid in capacity), key=_rank)
+    running = [v.cluster for v in ranked if v.cluster in demand.existing]
+    fresh = [v.cluster for v in ranked if v.cluster not in demand.existing]
+    return running + fresh
+
+
+def _fill_pack(
+    demand: WorkloadDemand,
+    capacity: dict[str, int],
+    assigned: dict[str, int],
+    ordered: list[str],
+    remaining: int,
+) -> int:
+    for uid in ordered:
+        if remaining <= 0:
+            break
+        if not _admits(demand, assigned, uid):
+            continue
+        take = min(remaining, capacity[uid] - assigned.get(uid, 0))
+        if take <= 0:
+            continue
+        assigned[uid] = assigned.get(uid, 0) + take
+        remaining -= take
+    return remaining
+
+
+def _fill_spread(
+    demand: WorkloadDemand,
+    capacity: dict[str, int],
+    assigned: dict[str, int],
+    ordered: list[str],
+    remaining: int,
+) -> int:
+    """One unit at a time to whoever has the most room left, ties by the tiebreak.
+
+    Deliberately not a proportional division: replicas are whole, and rounding a
+    fraction produces a cluster holding a share nobody asked for. Handing them out
+    one at a time gives the evenest integer split there is.
+    """
+    order = {uid: i for i, uid in enumerate(ordered)}
+    while remaining > 0:
+        eligible = [
+            uid for uid in ordered if capacity[uid] - assigned.get(uid, 0) > 0 and _admits(demand, assigned, uid)
+        ]
+        if not eligible:
+            break
+        uid = min(eligible, key=lambda u: (-(capacity[u] - assigned.get(u, 0)), order[u]))
+        assigned[uid] = assigned.get(uid, 0) + 1
+        remaining -= 1
+    return remaining
+
+
+def _admits(demand: WorkloadDemand, assigned: dict[str, int], uid: str) -> bool:
+    """The fan-out cap, applied to clusters that would newly hold a share.
+
+    A cap is a limit on how many clusters this workload may straddle, so it bites
+    when a share is about to open a new one; anything beyond it stays in the
+    remainder and is reported as a shortfall rather than quietly dropped.
+    """
+    if uid in assigned:
+        return True
+    if demand.max_clusters is None:
+        return True
+    return len(assigned) < max(demand.max_clusters, 0)
+
+
+def _expansion_summary(
+    demand: WorkloadDemand, shares: tuple[Share, ...], shortfall: int, verdicts: tuple[ClusterVerdict, ...]
+) -> str:
+    if not shares:
+        return _no_fit_summary(_unit_request(demand), verdicts)
+    spread = ", ".join(f"{s.cluster_name}:{s.replicas}" for s in shares)
+    placed = sum(s.replicas for s in shares)
+    summary = f"{demand.workload} spread {placed} of {demand.desired_scale} over {len(shares)} cluster(s): {spread}"
+    if shortfall > 0:
+        summary += f"; {shortfall} unplaced"
+    return summary
+
+
+def _gang_summary(demand: WorkloadDemand, ranks: int, verdicts: tuple[ClusterVerdict, ...]) -> str:
+    parts = [f"{v.cluster_name}: {v.reasons[0].message}" for v in verdicts if v.reasons]
+    detail = "; ".join(parts) if parts else "no clusters in the snapshot"
+    return f"gang of {ranks} does not fit in any single cluster; a gang cannot be split ({detail})"

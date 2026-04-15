@@ -13,3 +13,14 @@ class PlacementPreviewRequest(Struct):
     project: str
     priority_class: str | None = None
     replicas: int = 1
+
+
+class PlacementExpandRequest(Struct):
+    """The split an existing workload would get, asked without writing a row.
+
+    Takes a workload rather than a recipe because a split is a workload question:
+    the totals, the strategy, the floors and the fan-out cap all live there, and a
+    preview built from anything less would answer about a different workload.
+    """
+
+    workload: str

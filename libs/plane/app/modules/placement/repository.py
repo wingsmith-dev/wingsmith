@@ -28,6 +28,7 @@ from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Workload
 from app.db.models import Allocation
+from app.db.models import Deployment
 from app.db.models import PriorityClass
 from app.db.models import TopologyDomain
 from app.db.models import AllocationDevice
@@ -85,6 +86,7 @@ class PlacementRepository:
         ).all()
         devices = await self._devices(device_class)
         domains = await self._domains()
+        taken = await self._taken_names()
         return tuple(
             ClusterSnapshot(
                 uid=cluster.uid,
@@ -97,6 +99,7 @@ class PlacementRepository:
                 devices=tuple(devices.get(cluster.id, ())),
                 domains=tuple(domains.get(cluster.id, ())),
                 labels=dict(cluster.labels),
+                taken_names=taken.get(cluster.id, {}),
             )
             for cluster, reachable in rows
         )
@@ -118,6 +121,7 @@ class PlacementRepository:
                     Node.ready,
                     TopologyDomain.uid,
                     Workload.uid,
+                    Deployment.uid,
                     Project.uid,
                     PriorityClass.value,
                     PriorityClass.preemptible,
@@ -133,6 +137,7 @@ class PlacementRepository:
                     (Allocation.id == AllocationDevice.allocation_id) & Allocation.released_at.is_(None),
                 )
                 .outerjoin(Workload, Allocation.workload_id == Workload.id)
+                .outerjoin(Deployment, Allocation.deployment_id == Deployment.id)
                 .outerjoin(Project, Allocation.project_id == Project.id)
                 .outerjoin(PriorityClass, Workload.priority_class_id == PriorityClass.id)
                 .where(Device.device_class == device_class)
@@ -147,6 +152,7 @@ class PlacementRepository:
             node_ready,
             domain_uid,
             workload_uid,
+            deployment_uid,
             project_uid,
             value,
             preemptible,
@@ -155,6 +161,7 @@ class PlacementRepository:
             if workload_uid is not None and project_uid is not None:
                 hold = DeviceHold(
                     workload=workload_uid,
+                    deployment=deployment_uid,
                     project=project_uid,
                     priority_value=value or 0,
                     preemptible=bool(preemptible),
@@ -173,6 +180,26 @@ class PlacementRepository:
                 )
             )
         return by_cluster
+
+    async def _taken_names(self) -> dict[UUID, dict[str, str]]:
+        """Which deployment name is spoken for in which cluster, and by whom.
+
+        A deployment name is unique per cluster, so expanding a workload onto a
+        cluster where a *different* workload already holds that name cannot succeed.
+        The map is carried into the snapshot so the check costs the engine a
+        dictionary lookup instead of a query.
+        """
+        rows = (
+            await self.db.execute(
+                select(Deployment.cluster_id, Deployment.name, Workload.uid).join(
+                    Workload, Deployment.workload_id == Workload.id
+                )
+            )
+        ).all()
+        taken: dict[UUID, dict[str, str]] = {}
+        for cluster_id, name, workload_uid in rows:
+            taken.setdefault(cluster_id, {})[name] = workload_uid
+        return taken
 
     async def _domains(self) -> dict[UUID, list[TopologyDomainSnapshot]]:
         rows = (
@@ -302,6 +329,36 @@ class PlacementRepository:
             return {}
         rows = (await self.db.execute(select(Cluster.id, Cluster.uid).where(Cluster.id.in_(ids)))).all()
         return {i: uid for i, uid in rows}
+
+    async def workload_by_ref(self, ref: str) -> Workload | None:
+        result = await self.db.execute(
+            select(Workload).where((Workload.uid if is_uid(ref) else Workload.name) == ref).limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def recipe(self, recipe_id: UUID) -> Recipe | None:
+        return await self.db.get(Recipe, recipe_id)
+
+    async def project(self, project_id: UUID) -> Project | None:
+        return await self.db.get(Project, project_id)
+
+    async def cluster_uid(self, cluster_id: UUID) -> str | None:
+        return await self.db.scalar(select(Cluster.uid).where(Cluster.id == cluster_id))
+
+    async def shares(self, workload_id: UUID) -> dict[str, int]:
+        """This workload's current per-cluster shares, keyed by cluster uid.
+
+        Re-expansion is stable only if it can see what is already running, which is
+        what keeps a scale-up from reshuffling a workload that is serving traffic.
+        """
+        rows = (
+            await self.db.execute(
+                select(Cluster.uid, Deployment.desired_replicas)
+                .join(Cluster, Deployment.cluster_id == Cluster.id)
+                .where(Deployment.workload_id == workload_id)
+            )
+        ).all()
+        return {uid: replicas for uid, replicas in rows}
 
     async def recipe_by_ref(self, ref: str) -> Recipe | None:
         """Newest version wins, matching how a deployment resolves the same reference."""

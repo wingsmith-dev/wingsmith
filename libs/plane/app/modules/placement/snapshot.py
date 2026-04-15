@@ -25,6 +25,7 @@ class DeviceHold(Snap):
     project: str
     priority_value: int
     preemptible: bool
+    deployment: str | None = None
 
 
 class DeviceSnapshot(Snap):
@@ -91,6 +92,14 @@ class ClusterSnapshot(Snap):
     devices: tuple[DeviceSnapshot, ...] = ()
     domains: tuple[TopologyDomainSnapshot, ...] = ()
     labels: dict[str, str] = {}
+    taken_names: dict[str, str] = {}
+    """Deployment name -> the uid of the workload that owns it, in this cluster.
+
+    A deployment name is unique per cluster, so expanding a workload onto a cluster
+    where its name already belongs to someone else cannot succeed. Placement rejects
+    that cluster as a candidate rather than inventing a suffix, and carries the map
+    in the snapshot so the check stays a pure comparison.
+    """
 
 
 class QuotaSnapshot(Snap):
@@ -138,9 +147,9 @@ class CapacitySnapshot(Snap):
 class PlacementRequest(Snap):
     """What is being placed, expressed as a device shape rather than a node count.
 
-    `kind` carries the `service | task | gang` discriminator. Atomicity is not
-    derived from it: a tensor-parallel service is every bit as all-or-nothing as a
-    gang job, so `atomic` defaults true and `kind` only forces it.
+    `kind` carries the `service | task | gang` discriminator, and `device_count` is
+    the whole indivisible unit this request stands for: one replica, one share of a
+    split, or a gang's every rank.
     """
 
     workload: str
@@ -153,8 +162,52 @@ class PlacementRequest(Snap):
     device_memory_mib_min: int = 0
     requires_single_domain: bool = False
     domain_kind: str | None = None
-    atomic: bool = True
+    deployment_name: str | None = None
+    atomic: bool = False
 
     @property
     def all_or_nothing(self) -> bool:
+        """Whether this request must land whole in one cluster.
+
+        A gang always must: its ranks are co-scheduled and a split gang is broken,
+        not degraded. A tensor-parallel service replica is all-or-nothing too, but at
+        the granularity of one replica — which is what a share is made of — so a
+        service or task request is splittable across clusters and each resulting share
+        is placed whole.
+        """
         return self.atomic or self.kind == "gang"
+
+
+class WorkloadDemand(Snap):
+    """A workload's expansion inputs, with no ORM row anywhere in sight.
+
+    `expand()` is the multi-cluster half of placement and has the same purity rule as
+    `place()`, so the workload arrives here already resolved: the recipe's device shape
+    per unit, the priority's numbers, and the declared totals. `unit_device_count` is
+    what one replica (or one gang rank set, once multiplied by `gang_size`) costs, and
+    every share is a whole number of units.
+
+    `existing` is the current per-cluster shares keyed by cluster uid. It is what makes
+    re-expansion stable: a scale-up fills the clusters already running before it reaches
+    for a new one, so nothing reshuffles under a workload that is serving traffic.
+    """
+
+    workload: str
+    project: str
+    name: str
+    device_class: str
+    unit_device_count: int
+    kind: str = "service"
+    priority_value: int = 0
+    preempts: bool = False
+    device_memory_mib_min: int = 0
+    requires_single_domain: bool = False
+    domain_kind: str | None = None
+    desired_scale: int = 1
+    gang_size: int = 1
+    strategy: str = "pack"
+    cluster_floors: dict[str, int] = {}
+    max_clusters: int | None = None
+    pinned_cluster: str | None = None
+    paused: bool = False
+    existing: dict[str, int] = {}

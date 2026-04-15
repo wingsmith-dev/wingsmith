@@ -15,15 +15,19 @@ back. Nothing in this package's public surface touches a session.
 """
 
 from .engine import place
+from .engine import expand
+from .decision import Share
 from .decision import Rejection
 from .decision import ClusterVerdict
 from .decision import PreemptionPlan
 from .decision import PreemptionVictim
+from .decision import ExpansionDecision
 from .decision import PlacementDecision
 from .snapshot import DeviceHold
 from .snapshot import QuotaSnapshot
 from .snapshot import DeviceSnapshot
 from .snapshot import PolicySnapshot
+from .snapshot import WorkloadDemand
 from .snapshot import ClusterSnapshot
 from .snapshot import CapacitySnapshot
 from .snapshot import PlacementRequest
@@ -36,6 +40,7 @@ __all__ = [
     "ClusterVerdict",
     "DeviceHold",
     "DeviceSnapshot",
+    "ExpansionDecision",
     "PlacementDecision",
     "PlacementRequest",
     "PolicySnapshot",
@@ -43,6 +48,9 @@ __all__ = [
     "PreemptionVictim",
     "QuotaSnapshot",
     "Rejection",
+    "Share",
     "TopologyDomainSnapshot",
+    "WorkloadDemand",
+    "expand",
     "place",
 ]

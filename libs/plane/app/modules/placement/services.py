@@ -16,13 +16,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Recipe
 from app.db.models import Project
+from app.db.models import Workload
 from app.db.models import PriorityClass
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
 
 from .engine import place
+from .engine import expand
+from .schemas import PlacementExpandRequest
 from .schemas import PlacementPreviewRequest
+from .decision import ExpansionDecision
 from .decision import PlacementDecision
+from .snapshot import WorkloadDemand
+from .snapshot import CapacitySnapshot
 from .snapshot import PlacementRequest
 from .repository import PlacementRepository
 
@@ -47,6 +53,7 @@ class PlacementService:
         replicas: int = 1,
         requires_single_domain: bool | None = None,
         domain_kind: str | None = None,
+        deployment_name: str | None = None,
     ) -> PlacementRequest:
         """The recipe's device shape, scaled by how many replicas are wanted.
 
@@ -59,6 +66,10 @@ class PlacementService:
         of one replica's collective — the replicas do not talk to each other over
         NVLink — so requiring all thirty-two in one NVLink domain would reject
         clusters that can run the deployment perfectly well.
+
+        `atomic` is set because this call places one indivisible unit — one share,
+        already sized by the expansion — and a share lands in one cluster whole or
+        not at all. Splitting is a decision taken above this, in `expand()`.
 
         The topology requirement is the recipe's unless the caller states its
         own. A recipe describes one replica of one engine; a gang deployment is
@@ -78,7 +89,85 @@ class PlacementService:
                 recipe.requires_single_topology_domain if requires_single_domain is None else requires_single_domain
             ),
             domain_kind=recipe.topology_domain_kind if domain_kind is None else domain_kind,
+            deployment_name=deployment_name,
+            atomic=True,
         )
+
+    async def expand(self, workload: Workload, snapshot: CapacitySnapshot | None = None) -> ExpansionDecision:
+        """Spread one workload's total scale over the clusters it may use.
+
+        This is the call that turns "run gpt-20b on asia and europe" into shares.
+        It resolves the workload's recipe and priority, reads capacity once, and
+        hands both to the pure expansion; persisting the shares — creating,
+        resizing and removing the per-cluster deployments — belongs to whoever
+        asked, inside its own write, exactly as `decide()` does.
+
+        A gang that fits in no single cluster raises. Its ranks are co-scheduled, so
+        a split gang is broken rather than degraded and there is no partial answer
+        worth returning; the engine stays total and the rejection is raised here.
+        """
+        demand = await self.demand(workload)
+        capacity = snapshot
+        if capacity is None:
+            capacity = await self.repo.capacity(workload.project_id, demand.device_class)
+        decision = expand(demand, capacity)
+        if not decision.splittable and not decision.shares:
+            raise Invalid(decision.summary)
+        return decision
+
+    async def demand(self, workload: Workload) -> WorkloadDemand:
+        """A workload as the expansion sees it: device shape, totals, and constraints.
+
+        The recipe answers what one unit costs and the priority class answers what
+        this workload may take from others; both are resolved here so nothing an ORM
+        row could lazily load reaches the engine.
+        """
+        recipe = await self.repo.recipe(workload.recipe_id)
+        if recipe is None:
+            raise NotFound(f"workload {workload.uid} has no recipe")
+        project = await self.repo.project(workload.project_id)
+        if project is None:
+            raise NotFound(f"workload {workload.uid} has no project")
+        priority = await self.repo.priority_class(workload.priority_class_id)
+        if priority is None:
+            raise Invalid(f"workload {workload.uid} has no priority class")
+        pinned = (
+            await self.repo.cluster_uid(workload.pinned_cluster_id) if workload.pinned_cluster_id is not None else None
+        )
+        return WorkloadDemand(
+            workload=workload.uid,
+            project=project.uid,
+            name=workload.name,
+            device_class=recipe.device_class,
+            unit_device_count=max(recipe.device_count, 1),
+            kind=workload.kind,
+            priority_value=priority.value,
+            preempts=priority.preempts,
+            device_memory_mib_min=recipe.device_memory_mib_min,
+            requires_single_domain=(
+                recipe.requires_single_topology_domain
+                if workload.requires_single_topology_domain is None
+                else workload.requires_single_topology_domain
+            ),
+            domain_kind=(
+                recipe.topology_domain_kind if workload.topology_domain_kind is None else workload.topology_domain_kind
+            ),
+            desired_scale=workload.desired_scale,
+            gang_size=max(workload.gang_size, 1),
+            strategy=workload.strategy,
+            cluster_floors={str(k): int(v) for k, v in (workload.cluster_floors or {}).items()},
+            max_clusters=workload.max_clusters,
+            pinned_cluster=pinned,
+            paused=workload.paused,
+            existing=await self.repo.shares(workload.id),
+        )
+
+    async def preview_expansion(self, data: PlacementExpandRequest) -> ExpansionDecision:
+        """The split a workload would get, asked without writing a row."""
+        workload = await self.repo.workload_by_ref(data.workload)
+        if workload is None:
+            raise NotFound(f"no workload {data.workload!r}")
+        return await self.expand(workload)
 
     async def preview(self, data: PlacementPreviewRequest) -> PlacementDecision:
         """Answers the question without writing a row.
