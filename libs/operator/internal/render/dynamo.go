@@ -178,6 +178,12 @@ func ownershipLabels(in Inputs) map[string]any {
 
 // Replicas is what the deployment asks to run right now.
 //
+// The number is this cluster's share of a total the operator never sees. A workload declares a
+// total across every cluster it is allowed to use and the plane divides it; a deployment carries
+// one portion of that division. This operator sees one cluster and cannot tell a whole workload
+// from a fragment of one, which is the point — it renders exactly the number it is sent, and must
+// never sum, scale, or re-derive it against anything else.
+//
 // MinReplicas, not MaxReplicas: the maximum is the ceiling an autoscaler is allowed to reach, and
 // nothing in this operator autoscales yet. Rendering the ceiling would run every deployment at its
 // most expensive configuration from the moment it is created.

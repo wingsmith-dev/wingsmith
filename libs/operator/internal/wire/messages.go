@@ -360,22 +360,26 @@ type Adopt struct {
 }
 
 type DeploymentDesired struct {
-	DeploymentID   string               `json:"deployment_id"`
-	Name           string               `json:"name,omitempty"`
-	ClusterID      string               `json:"cluster_id"`
-	ProjectID      string               `json:"project_id"`
-	RecipeID       string               `json:"recipe_id"`
-	RecipeRevision int                  `json:"recipe_revision"`
-	Lifecycle      string               `json:"lifecycle"`
-	PriorityClass  string               `json:"priority_class"`
-	MinReplicas    int                  `json:"min_replicas"`
-	MaxReplicas    int                  `json:"max_replicas"`
-	Placement      PlacementConstraints `json:"placement"`
-	ArtifactIDs    []string             `json:"artifact_ids"`
-	Generation     int64                `json:"generation"`
-	UpdatedAt      string               `json:"updated_at"`
-	Authority      string               `json:"authority,omitempty"`
-	Adopt          *Adopt               `json:"adopt,omitempty"`
+	DeploymentID   string `json:"deployment_id"`
+	Name           string `json:"name,omitempty"`
+	ClusterID      string `json:"cluster_id"`
+	ProjectID      string `json:"project_id"`
+	RecipeID       string `json:"recipe_id"`
+	RecipeRevision int    `json:"recipe_revision"`
+	Lifecycle      string `json:"lifecycle"`
+	PriorityClass  string `json:"priority_class"`
+	// MinReplicas is this cluster's share of the workload's total scale, never the total, and
+	// it is the number that is actually rendered. MaxReplicas is a ceiling for an autoscaler
+	// that does not exist yet and nothing reads it. Neither may be summed with, or derived
+	// from, anything outside this frame.
+	MinReplicas int                  `json:"min_replicas"`
+	MaxReplicas int                  `json:"max_replicas"`
+	Placement   PlacementConstraints `json:"placement"`
+	ArtifactIDs []string             `json:"artifact_ids"`
+	Generation  int64                `json:"generation"`
+	UpdatedAt   string               `json:"updated_at"`
+	Authority   string               `json:"authority,omitempty"`
+	Adopt       *Adopt               `json:"adopt,omitempty"`
 }
 
 // DeploymentDeleted withdraws a deployment.
