@@ -148,7 +148,8 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/device-classes` | the shared dictionary, read-only — see below |
 | `/v1/pools` | declared, with observed membership |
 | `/v1/artifacts` | declared, plus one read-only resolve verb — see below |
-| `/v1/recipes`, `/v1/deployments`, `/v1/endpoints` | declared |
+| `/v1/recipes`, `/v1/workloads`, `/v1/endpoints` | declared |
+| `/v1/deployments` | declared, per-cluster, read-mostly — see below |
 | `/v1/discovered` | observed, read-only, plus the decision verbs — see below |
 | `/v1/replicas`, `/v1/allocations` | observed, read-only |
 | `/v1/tenants`, `/v1/projects`, `/v1/quotas`, `/v1/priority-classes`, `/v1/policies` | declared |
@@ -199,7 +200,7 @@ being true; alerts derived from an event never do, because an event log does not
 `state`, `severity`, `rule`, `cluster`, `subject`, `since`.
 
 **Alerting is tuned with labels, not with a field of its own.** `labels` is already an editable
-dict on a deployment, a cluster and a discovered workload, so the reactor reads a reserved namespace
+dict on a workload, a cluster and a discovered workload, so the reactor reads a reserved namespace
 out of it rather than adding a column that would need its own migration, form field and CLI flag —
 and that would only work for the one object it was added to:
 
@@ -209,8 +210,10 @@ and that would only work for the one object it was added to:
 | `hangar.io/alert.severity` | `info` `warning` `error` `critical` | overrides the rule's severity |
 | `hangar.io/alert.for` | `45m` `2h` `900s` `900` | overrides how long it must hold before firing |
 
-Set them on the **deployment**, not the recipe: a recipe is shared and versioned, so muting there
-would quieten every deployment of that model at once. Cluster conditions read the cluster's labels,
+Set them on the **workload**, not the recipe: a recipe is shared and versioned, so muting there
+would quieten every workload of that model at once. Labels are a workload fact and there is no
+per-cluster override of them; muting a workload mutes it in every cluster it runs in, which is what
+a workload-level knob should mean. Cluster conditions read the cluster's labels,
 and a workload nobody has imported yet reads the labels the cluster reports for it — which makes the
 manifest the only place that knob exists before promotion. An unparseable value is ignored rather
 than obeyed, and a tuned alert records what changed it under `details.tuned_by`. Muting an alert
@@ -223,6 +226,59 @@ and the last few characters, enough to tell two apart and not enough to use. `PO
 /v1/notification-channels/{ref}/test` posts a sample message and answers `200` with
 `{"delivered": false, "detail": "..."}` when the webhook rejects it: the failure is Slack's, not the
 plane's, and the reason is the useful part.
+
+**`/v1/workloads` is what you create; `/v1/deployments` is what that became.** A Workload is the
+global declaration — a recipe, a total scale, a kind, a priority, and the regions or clusters it may
+use. A Deployment is that workload on **one** cluster, and it is still exactly what the operator
+reconciles. "Run gpt-20b on asia and europe" is one workload, two deployments, one replica each.
+Nothing about a Deployment's meaning changed; a layer was added above it.
+
+The split follows the fact, not the object: what is true of the whole workload (recipe, adapters,
+overrides, labels, kind, priority class, preemptible, gang size, deadline, the topology-domain pair,
+and the min/max/desired totals) lives on the Workload, and what is true of one cluster (admission
+phase and reason, the queued/admitted/placed timestamps, generation, enabled, authority, adoption)
+lives on the Deployment.
+
+**Scale is declared as a total and read as a share.** `min`, `max` and `desired` on a workload count
+across every cluster it may use; each deployment's `min_replicas` / `max_replicas` /
+`desired_replicas` are **that cluster's share of the total, never the total**. The plane divides;
+nothing else sums, scales, or re-derives. Summing a share against a total, or dividing one out of
+the other, is always a bug. The only legal summing is on the workload's own `scale.placed` and
+`scale.ready`, which the plane computes from its deployments.
+
+The unit of those three numbers is named by `kind`, because they count different things: `replicas`
+for `service`, `ranks` for `gang`, `completions` for `task`. A bare integer without the unit is
+unreadable, so `scale.unit` is on the read shape.
+
+**Kind also decides whether a workload may be split.** `service` and `task` are splittable —
+`8 = 5 + 3` is fine, and for a task splitting is the point. **`gang` is atomic**: its ranks must be
+co-scheduled, so a gang workload has exactly one Deployment, always. A gang that cannot fit in one
+cluster is a hard rejection with a per-cluster verdict, not a lower-ranked spread; a split gang is
+broken rather than degraded. The schema permits many deployments and the kind constrains gang to
+one.
+
+`strategy` is `pack` (default) or `spread`. `pack` fills one cluster before opening another, which
+is why every existing single-cluster deployment is unchanged by this layering and why fanning out is
+opt-in. `cluster_floors` sets a per-cluster minimum share, `max_clusters` caps the fan-out, and a
+named `cluster` pins the whole workload to one — a deliberate escape from the scheduler, checked for
+existence and not for capacity.
+
+**Where a workload may run is a Policy, not a field.** `allowed_regions`, `allowed_residencies`,
+`allowed_device_classes`, `allowed_clusters` and `denied_clusters` already exist on
+`/v1/policies`, which now accepts `workload` as a subject. A second copy of those five lists on the
+workload would be a second answer to a question that already has one.
+
+**Nothing below a Workload branches on `kind`.** The per-cluster noun is singular across all three
+kinds — a task workload gets Deployments too, and there is no Job or Run type — because the
+supertype exists so that preemption and quota stay one code path instead of three. The only
+component entitled to read `kind` is the operator, deciding what to render.
+
+**`/v1/deployments` is read-mostly.** `POST /v1/deployments` and `DELETE /v1/deployments/{ref}` do
+not exist: placement creates a deployment when it expands a workload and removes it when it stops
+placing there. Taking a workload off one cluster is a `workload.drain` operation naming that
+cluster, or a scale change — not a DELETE of the per-cluster row. What remains is `GET` list and
+detail, a `PATCH` narrow enough to hold only per-cluster switches, and the authority verb below.
+Filters: `cluster`, `workload`, `project`, `phase` (which reads the deployment's admission phase).
 
 **`/v1/discovered` is the one observed collection that accepts a `POST`**, and the exception proves
 the rule: `POST /v1/discovered/{ref}/track` and `.../ignore` do not write the sighting, which stays
@@ -241,18 +297,20 @@ also what makes it undoable, where a delete racing an observation would not be. 
 /v1/discovered/{ref}/restore` drops the decision and the entry returns; `?status=dismissed` lists
 what has been removed. A promoted sighting cannot be removed: a deployment names it.
 
-**`POST /v1/discovered/{ref}/promote`** is the one that does declare, and it returns a Deployment
-because that is what it made. The caller sends back the `spec_fingerprint` they were shown and the
+**`POST /v1/discovered/{ref}/promote`** is the one that does declare, and it returns a Workload
+because that is what it made — a workload pinned to the cluster the sighting was seen on, with the
+single Deployment under it that the sighting became. The caller sends back the `spec_fingerprint` they were shown and the
 promotion is refused if the workload changed since; the digest is then recorded on the deployment as
 `adopted_fingerprint`, and the cluster refuses to reconcile it while the live object digests to
 anything else. Scale is not a parameter — the bounds are taken from what the workload is already
 running, because a promotion that also set the replica count would scale a live workload as a side
-effect of cataloguing it. From there the object is managed through `/v1/deployments` like any other.
+effect of cataloguing it. From there the object is managed through `/v1/workloads` like any other, and its one per-cluster
+row through `/v1/deployments`.
 
 A promoted deployment is created `observed`: recorded and verified, with the plane writing nothing
 to the cluster.
 
-**`PUT /v1/deployments/{ref}/authority`** moves it between `observed` and `managed`, and is the only
+**`POST /v1/deployments/{ref}/authority`** moves it between `observed` and `managed`, and is the only
 thing that decides whether the operator may act (ADR 0009). The two directions are not symmetric.
 Taking management of an adopted workload requires the `fingerprint` the caller was shown, compared
 against the *current* sighting rather than against `adopted_fingerprint` — that field records what
@@ -332,19 +390,30 @@ means the reference names the weights rather than fixing them, which is also the
 adopted by reference from a running workload. It is set at creation and absent from `PATCH`:
 re-verifying an artifact means resolving the bytes again, which is an operation, not an edit.
 
-**`cluster` is optional on `POST /v1/deployments`**, and leaving it out is the normal path: the
-plane picks the cluster from the recipe's device shape, the project's quota, and what the clusters
-report free. Naming one is an override — it is checked for existence and nothing else, because an
-operator who names a cluster has said something the scheduler is not entitled to overrule. When
-nothing can hold the deployment the create is `409 conflict` and the body carries a verdict per
-cluster, each with the numbers it was rejected on, so "no capacity" is never the whole answer.
+**`cluster` is optional on `POST /v1/workloads`**, and leaving it out is the normal path: the
+plane picks the clusters from the recipe's device shape, the project's quota, the policies attached
+to the workload, and what the clusters report free. Naming one is an override — it is checked for
+existence and nothing else, because an operator who names a cluster has said something the scheduler
+is not entitled to overrule — and it forces a single deployment. When nothing can hold the workload
+the create is `409 conflict` and the body carries a verdict per cluster, each with the numbers it
+was rejected on, so "no capacity" is never the whole answer.
 
-**A deployment carries `status`, which is the cluster's answer rather than the plane's.** `workload`
-holds the admission phase — what the plane decided — and `status` holds what the cluster reports it
-actually did, including `reason` and `message`: the recipe has not arrived, the weights are still
-downloading, no node advertises enough accelerators. They are separate objects because they have
-separate writers, and reading `workload.phase` alone is how a deployment appears to be `placed` for
-the twenty minutes it spends waiting for its weights.
+A create that lands returns the workload with its `deployments` already expanded — one row per
+cluster placement chose, each carrying that cluster's share. When the clusters together can hold
+only part of the total, the placed shares are returned with the shortfall named rather than the
+whole request refused; a partly-running workload is a state the object can express, and refusing it
+outright would be the plane deciding that half of what you asked for is worth nothing.
+
+**A deployment carries `status`, which is the cluster's answer rather than the plane's.**
+`admission_phase` on the deployment is what the plane decided for this cluster, and `status` holds
+what the cluster reports it actually did, including `reason` and `message`: the recipe has not
+arrived, the weights are still downloading, no node advertises enough accelerators. They are
+separate objects because they have separate writers, and reading `admission_phase` alone is how a
+deployment appears to be `placed` for the twenty minutes it spends waiting for its weights.
+Admission is per-cluster for the same reason: one workload can be running in one region and queued
+on quota in another, and a single global phase could not say so. A workload's own `phase` is derived
+from its deployments and stored nowhere — `running` when all of them are, `failed` if any is,
+otherwise the least advanced among them.
 
 `status` is null until a cluster has reported at all, which is every deployment's first seconds and
 the permanent state of one whose cluster cannot reach the hub. Null is therefore an answer — nobody
@@ -353,8 +422,9 @@ operator owns and this API does not narrow: a cluster runs its own build, and a 
 predates must reach the screen rather than be rejected on the way in. The set is in `MESSAGES.md`.
 
 **`POST /v1/placement/preview`** asks the same question and writes nothing. It takes a recipe, a
-project, an optional priority class and a replica count, and returns the decision the create would
-have made. It exists because "why did it not land in iad-1" is asked before anything is created,
+project, an optional priority class, a kind, a strategy and a total scale — or an existing workload
+reference — and returns the decision the create would have made, including the shares it would give
+each cluster. It exists because "why did it not land in iad-1" is asked before anything is created,
 and the decision already carries the reason per cluster.
 
 Common query params: `limit`, `cursor`, `search`, `label` (repeatable, `k=v`), plus the object's
@@ -371,8 +441,8 @@ type and a target — never `POST /v1/nodes/{id}/drain`.
 ```
 
 A target is written one of two ways: a prefixed id, or a kind-qualified name — `node:gpu-node-04`,
-`device:GPU-8f3c...`, `cluster:iad-1`, `deployment:llama-70b`, `component:operator`,
-`artifact:llama-3-70b`. The bare name every other path segment accepts is deliberately not a form
+`device:GPU-8f3c...`, `cluster:iad-1`, `workload:llama-70b`, `deployment:llama-70b`,
+`component:operator`, `artifact:llama-3-70b`. The bare name every other path segment accepts is deliberately not a form
 here. Elsewhere the path says what kind of object it is addressing; a target does not, and the kind
 has to be answerable at creation — `node.drain` against a `dev_...` is a category error caught here
 rather than three hops downstream in the operator — so a target reference carries its own kind
@@ -382,6 +452,19 @@ filter on `GET /v1/operations`.
 Names are unique inside a cluster and not above it. A qualified name matching more than one object
 is `400 invalid` listing the candidates, never a guess; `cluster` on the create body narrows it
 first, and a name matching none is `404 not found`.
+
+**Scaling, pausing and draining a workload are operations.** `workload.scale`
+(`{"desired": n, "min": n, "max": n}`), `workload.pause` (`{"paused": bool}`) and `workload.drain`
+(`{"cluster": "clu_..."}`) target a workload rather than a cluster's copy of it. Scale is an
+operation and not a field write for the reason rule 1 gives: it is long-running and it can fail —
+it sits pending for as long as quota withholds the capacity, and "still waiting" is a thing only an
+operation can say. `deployment.roll` and `deployment.benchmark` keep targeting a single Deployment,
+because rolling and measuring are per-cluster acts.
+
+These three are **plane-local**: they change declared state and re-run the expansion, and they are
+never dispatched to a cluster. `cluster` is therefore absent from a workload-targeted operation
+rather than required, and what reaches the clusters is ordinary declared state with different
+shares. Every other operation type still needs the cluster its target belongs to.
 
 Returns an Operation with an id and a phase, polled at `GET /v1/operations/{id}`. This follows from
 the object model: an operation is long-running, can fail, has an actor and a reason, and needs a

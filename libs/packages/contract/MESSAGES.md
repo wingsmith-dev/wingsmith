@@ -129,7 +129,7 @@ when a node came back, which is the inference `.event` frames exist to avoid.
 
 | Type | Payload |
 |---|---|
-| `deployment.desired` | name, recipe reference, scale bounds, priority, placement constraints |
+| `deployment.desired` | name, recipe reference, this cluster's scale bounds, priority, placement constraints |
 | `deployment.deleted` | id |
 | `recipe.desired` | how to serve an artifact: engine, image, declared args, parallelism, cache settings |
 | `artifact.desired` | what weights should be resident, and where they come from |
@@ -142,6 +142,20 @@ operator creates inherit their names from the workload's, so an id there reaches
 to `dep-01m0sktt1s3vszhp5rkdp925dh-vllmdecodeworker-fadcdb6d-7zgd5s` on a pod. A name is unique
 within a cluster, which is what makes it usable as an object name; a receiver that finds it empty
 or unrenderable falls back to the id.
+
+**The scale bounds on `deployment.desired` are this cluster's share, never a workload total.**
+A workload declares totals across every cluster it may use; the plane divides them and each operator
+receives only its own portion. An operator sees one cluster and cannot tell a whole workload from a
+fragment of one, which is the point — nothing in a cluster ever needs to know it is one of several.
+A receiver renders exactly the number it is sent and must never sum, scale, or re-derive it against
+anything else.
+
+`min_replicas` is what is rendered; `max_replicas` is a ceiling for an autoscaler that does not
+exist yet, and nothing reads it.
+
+`deployment.observed.desired_replicas` reports what this cluster rendered — the operator's own
+`min_replicas`, echoed back so the plane can see that render and declaration agree. The plane sums
+it across a workload's deployments; the operator never does.
 
 **A recipe travels as its own declared object, not inlined on the deployments that name it.**
 `deployment.desired` references it by `recipe_id` and `recipe_revision`, the way it already
