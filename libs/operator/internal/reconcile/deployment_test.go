@@ -333,6 +333,40 @@ func TestWhatIsRunningIsReportedAndNotOnlyWhatWasApplied(t *testing.T) {
 	}
 }
 
+// Kubernetes' pod phases and the contract's replica phases overlap enough to be mistaken for each
+// other and disagree on the two that matter. Emitting the Kubernetes spelling had the plane reject
+// every replica frame as an invalid enum value, which is indistinguishable — from the console —
+// from a deployment with no replicas at all.
+func TestAReplicaPhaseIsAlwaysOneTheContractDefines(t *testing.T) {
+	// MESSAGES.md, and the `Literal` the plane decodes against.
+	allowed := map[string]bool{
+		"pending": true, "starting": true, "ready": true,
+		"draining": true, "terminated": true, "failed": true,
+	}
+	cases := []struct {
+		phase corev1.PodPhase
+		ready bool
+		want  string
+	}{
+		{corev1.PodPending, false, "pending"},
+		{corev1.PodRunning, false, "starting"},
+		{corev1.PodRunning, true, "ready"},
+		{corev1.PodSucceeded, false, "terminated"},
+		{corev1.PodFailed, false, "failed"},
+		{corev1.PodUnknown, false, "pending"},
+	}
+	for _, c := range cases {
+		pod := &corev1.Pod{Status: corev1.PodStatus{Phase: c.phase}}
+		got := replicaPhase(pod, c.ready)
+		if !allowed[got] {
+			t.Errorf("pod %s ready=%v -> %q, which the contract does not define", c.phase, c.ready, got)
+		}
+		if got != c.want {
+			t.Errorf("pod %s ready=%v -> %q, want %q", c.phase, c.ready, got, c.want)
+		}
+	}
+}
+
 // A nil slice marshals to `null`, and `device_ids` is required on the wire — so every replica
 // frame this loop sent was rejected by the plane as invalid and the replica rollup sat at zero
 // for deployments that were plainly serving. The encoding is asserted rather than the field,

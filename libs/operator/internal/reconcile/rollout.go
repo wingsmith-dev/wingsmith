@@ -168,21 +168,27 @@ func podReady(pod *corev1.Pod) bool {
 
 // replicaPhase maps a pod onto the phase enum the contract defines for a replica.
 //
-// A pod that is Running but not Ready is `starting`, not `running`. For an inference worker that
+// A pod that is Running but not Ready is `starting`, not `ready`. For an inference worker that
 // distinction is most of the wait: the container is up for as long as it takes to load tens of
-// gigabytes of weights into VRAM, and reporting it as running would tell the plane a replica is
+// gigabytes of weights into VRAM, and reporting it as ready would tell the plane a replica is
 // serving when nothing can reach it yet.
+//
+// The enum is the contract's — `pending | starting | ready | draining | terminated | failed`
+// (MESSAGES.md) — and not Kubernetes'. They overlap enough to be mistaken for each other and
+// disagree on the two that matter: a pod's `Running` is the contract's `ready`, and a pod's
+// `Succeeded` is the contract's `terminated`. Emitting the Kubernetes spelling had the plane
+// reject every replica frame from this loop as an invalid enum value.
 func replicaPhase(pod *corev1.Pod, ready bool) string {
 	switch pod.Status.Phase {
 	case corev1.PodPending:
 		return "pending"
 	case corev1.PodSucceeded:
-		return "succeeded"
+		return "terminated"
 	case corev1.PodFailed:
 		return "failed"
 	case corev1.PodRunning:
 		if ready {
-			return "running"
+			return "ready"
 		}
 		return "starting"
 	default:
