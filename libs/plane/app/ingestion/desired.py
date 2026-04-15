@@ -227,7 +227,8 @@ def _artifact_ids_query(cluster_id: UUID):
     warm = select(WarmSet.artifact_id).where(WarmSet.cluster_id == cluster_id)
     served = (
         select(Recipe.artifact_id)
-        .join(Deployment, Deployment.recipe_id == Recipe.id)
+        .join(Workload, Workload.recipe_id == Recipe.id)
+        .join(Deployment, Deployment.workload_id == Workload.id)
         .where(Deployment.cluster_id == cluster_id)
     )
     return warm.union(served)
@@ -280,11 +281,14 @@ async def _recipes(
 
     Recipes are global and deployments are per-cluster, so what a cluster is told
     about is the reachable set rather than the table: a cluster has no business
-    knowing how to serve a model it was never asked to run.
+    knowing how to serve a model it was never asked to run. The recipe hangs off
+    the workload now, so reachability is a two-hop walk — deployment to its
+    workload, workload to the recipe every cluster it was expanded onto shares.
     """
     query = (
         select(Recipe, Artifact.uid)
-        .join(Deployment, Deployment.recipe_id == Recipe.id)
+        .join(Workload, Workload.recipe_id == Recipe.id)
+        .join(Deployment, Deployment.workload_id == Workload.id)
         .join(Artifact, Recipe.artifact_id == Artifact.id)
         .where(Deployment.cluster_id == cluster_id, Deployment.enabled == True)
         .distinct()
@@ -333,8 +337,18 @@ def _recipe(recipe: Recipe, cluster_uid: str, artifact_uid: str) -> RecipeDesire
     )
 
 
-def _placement(recipe: Recipe, pools: list[str]) -> PlacementConstraints:
-    topology = "single_domain" if recipe.requires_single_topology_domain else "none"
+def _placement(workload: Workload, recipe: Recipe, pools: list[str]) -> PlacementConstraints:
+    """The constraints one cluster is told to honour when it places replicas.
+
+    Topology has two declarers and the workload wins where it has an opinion:
+    the columns moved up from `Deployment` unchanged, so their precedence over
+    the recipe moves with them. A null there is not a "no" — it is the workload
+    declining to override, and the recipe's own requirement stands.
+    """
+    requires = workload.requires_single_topology_domain
+    if requires is None:
+        requires = recipe.requires_single_topology_domain
+    topology = "single_domain" if requires else "none"
     return PlacementConstraints(
         device_class=recipe.device_class,
         devices_per_replica=recipe.device_count,
@@ -348,6 +362,18 @@ def _placement(recipe: Recipe, pools: list[str]) -> PlacementConstraints:
 async def _deployments(
     db: AsyncSession, cluster_uid: str, cluster_id: UUID, only: str | None = None
 ) -> list[DeploymentDesired]:
+    """The deployments one cluster owns, each carrying only that cluster's share.
+
+    Recipe, adapters, lifecycle, project and priority are facts about what was
+    asked for and now live on the parent `Workload`, so every one of them is a
+    join away rather than a column here. The frame is byte-identical to the one
+    this rendered when they sat on the deployment row.
+
+    `min_replicas` and `max_replicas` are read straight off the deployment and
+    are THIS CLUSTER'S SHARE of the workload's total. The total is never on the
+    wire and must not become derivable from it: a cluster sees one deployment
+    and cannot tell a whole workload from a fragment of one, which is the point.
+    """
     query = (
         select(
             Deployment,
@@ -361,7 +387,7 @@ async def _deployments(
             DiscoveredWorkload.name,
         )
         .join(Workload, Deployment.workload_id == Workload.id)
-        .join(Recipe, Deployment.recipe_id == Recipe.id)
+        .join(Recipe, Workload.recipe_id == Recipe.id)
         .join(Project, Workload.project_id == Project.id)
         .join(PriorityClass, Workload.priority_class_id == PriorityClass.id)
         .join(Artifact, Recipe.artifact_id == Artifact.id)
@@ -387,7 +413,7 @@ async def _deployments(
         for artifact_id, uid in (
             await db.execute(
                 select(Artifact.id, Artifact.uid).where(
-                    Artifact.id.in_({a for row in rows for a in (row[0].adapter_artifact_ids or [])})
+                    Artifact.id.in_({a for row in rows for a in (row[1].adapter_artifact_ids or [])})
                 )
             )
         ).all()
@@ -396,7 +422,7 @@ async def _deployments(
     out: list[DeploymentDesired] = []
     for row in rows:
         deployment, workload, recipe, project_uid, priority, artifact_uid = row[:6]
-        artifact_ids = [artifact_uid] + [adapters[a] for a in (deployment.adapter_artifact_ids or []) if a in adapters]
+        artifact_ids = [artifact_uid] + [adapters[a] for a in (workload.adapter_artifact_ids or []) if a in adapters]
         out.append(
             DeploymentDesired(
                 deployment_id=deployment.uid,
@@ -409,7 +435,7 @@ async def _deployments(
                 priority_class=priority,
                 min_replicas=deployment.min_replicas,
                 max_replicas=deployment.max_replicas,
-                placement=_placement(recipe, allowed),
+                placement=_placement(workload, recipe, allowed),
                 artifact_ids=artifact_ids,
                 generation=deployment.generation,
                 updated_at=format_ts(deployment.updated_at or deployment.created_at),
@@ -483,7 +509,8 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
         await db.execute(
             select(Artifact.seq, Artifact.uid)
             .join(Recipe, Recipe.artifact_id == Artifact.id)
-            .join(Deployment, Deployment.recipe_id == Recipe.id)
+            .join(Workload, Workload.recipe_id == Recipe.id)
+            .join(Deployment, Deployment.workload_id == Workload.id)
             .where(
                 Deployment.cluster_id == cluster_id,
                 Deployment.enabled.is_(True),

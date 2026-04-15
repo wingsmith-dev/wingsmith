@@ -26,14 +26,14 @@ from msgspec import Struct
 
 from app.db.engine import session_factory
 from app.db.notify import CHANNEL
-from app.db.notify import DEPLOYMENT
 from app.db.notify import OPERATION
+from app.db.notify import DEPLOYMENT
 from app.db.notify import DeclaredChange
 from app.db.notify import decode
 from app.db.notify import listen_dsn
+from app.hub.record import record_dispatch
 from app.ingestion.desired import desired_frames
 from app.ingestion.operations import operation_desired
-from app.hub.record import record_dispatch
 
 
 logger = getLogger(__name__)

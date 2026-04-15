@@ -2,7 +2,7 @@
 
 The ask this answers is "let us adjust what alerts without shipping code", and the
 tempting shape for it is a `monitoring_label` column on the recipe. That column is
-not here on purpose: `labels` is already a `JSONB` dict on `Recipe`, `Deployment`,
+not here on purpose: `labels` is already a `JSONB` dict on `Recipe`, `Workload`,
 `Cluster`, `Pool`, `Node`, `Endpoint` and `DiscoveredWorkload`, already declared,
 already editable through `PATCH` and already rendered in the console. A dedicated
 column would be a second place to say the same thing, needing its own migration,
@@ -15,11 +15,13 @@ So the reactor reads a reserved namespace out of the labels it already has:
     hangar.io/alert.severity   info | warning | error | critical
     hangar.io/alert.for        45m | 2h | 900s | 900
 
-The knob lives on the **deployment**, not the recipe. A recipe is shared and
-versioned, so muting there would quieten every deployment built from that model at
-once — a much bigger hammer than "this one is noisy". `resolve` takes any number of
-label dicts most-specific-first, so a recipe-level default is a one-line change if
-it turns out to be wanted; nothing reads recipe labels today.
+The knob lives on the **workload**, not the recipe. A recipe is shared and
+versioned, so muting there would quieten every workload built from that model at
+once — a much bigger hammer than "this one is noisy". It is not on the deployment
+either: labels moved up when `Workload` became the umbrella, and per-cluster muting
+would mean the same noisy model had to be quietened once per region. `resolve`
+takes any number of label dicts most-specific-first, so a recipe-level default is a
+one-line change if it turns out to be wanted; nothing reads recipe labels today.
 
 Cluster conditions read `Cluster.labels` and stalled workloads read
 `DiscoveredWorkload.labels`. The latter come from the cluster rather than from us,

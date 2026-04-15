@@ -9,8 +9,8 @@ one decision in this package that can delete a cluster's whole inventory.
 
 import json
 import uuid
-import datetime as dt
 import logging
+import datetime as dt
 
 from typing import Any
 from pathlib import Path
@@ -29,9 +29,9 @@ from app.hub.sink import OperationSource
 from app.ingestion import statements
 from app.hub.messages import MESSAGE_TYPES
 from app.ingestion.sink import DatabaseSink
-from app.ingestion.sink import _moved
 from app.ingestion.sink import UnknownCluster
 from app.ingestion.sink import DatabaseDesiredSource
+from app.ingestion.sink import _moved
 from app.ingestion.time import parse_ts
 from app.ingestion.resync import NODE
 from app.ingestion.resync import DEVICE
@@ -246,24 +246,28 @@ def test_deployment_status_flattens_the_last_error() -> None:
     assert observed.last_error.message in values
 
 
-def test_the_workload_supertype_moves_with_the_observed_deployment() -> None:
+def test_admission_lands_on_the_deployment_and_not_the_workload() -> None:
     """`admission_phase` was written once, as `placed`, and never again.
 
     Every deployment this plane created therefore read `placed` for its whole
     life, serving included, and only an adopted workload ever read `running`.
+    It is written per-cluster: one workload has N of these and they disagree, so
+    a write aimed at the workload would let the last cluster to report stomp the
+    rest.
     """
     observed = structs.replace(payload("deployment.observed"), phase="running")
-    statement = statements.advance_admission_phase(WORKLOAD_ID, observed)
+    statement = statements.advance_admission_phase(DEPLOYMENT_ID, observed)
     assert statement is not None
     sql, params = compile_sql(statement)
-    assert "UPDATE demand_workload" in sql
+    assert "UPDATE demand_deployment" in sql
+    assert "UPDATE demand_workload" not in sql
     assert "running" in scalar_params(params)
 
 
 def test_a_degraded_deployment_is_still_a_running_workload() -> None:
     """Admission says how far through the scheduler it got, not how healthy it is."""
     observed = structs.replace(payload("deployment.observed"), phase="degraded")
-    statement = statements.advance_admission_phase(WORKLOAD_ID, observed)
+    statement = statements.advance_admission_phase(DEPLOYMENT_ID, observed)
     assert statement is not None
     _, params = compile_sql(statement)
     assert "running" in scalar_params(params)
@@ -272,26 +276,38 @@ def test_a_degraded_deployment_is_still_a_running_workload() -> None:
 def test_waiting_on_a_dependency_does_not_unplace_a_workload() -> None:
     """Placement already chose a cluster, and cold weights do not un-choose it."""
     observed = structs.replace(payload("deployment.observed"), phase="pending", reason="WeightsNotResident")
-    statement = statements.advance_admission_phase(WORKLOAD_ID, observed)
+    statement = statements.advance_admission_phase(DEPLOYMENT_ID, observed)
     assert statement is not None
     _, params = compile_sql(statement)
     values = scalar_params(params)
     assert "placed" in values and "pending" not in values
 
 
-def test_a_workload_that_ran_keeps_when_it_started() -> None:
-    """Derived phases go backwards; the first time it ran is a fact that does not."""
+def test_a_workload_that_ran_keeps_the_earliest_time_any_cluster_started() -> None:
+    """Derived phases go backwards; the first time it ran is a fact that does not.
+
+    The rollup is a `min()` and not a latch, because N clusters report in no
+    order and every one of them may only move the moment backwards.
+    """
     observed = structs.replace(payload("deployment.observed"), phase="running")
-    statement = statements.advance_admission_phase(WORKLOAD_ID, observed)
+    sql, _ = compile_sql(statements.roll_up_workload_started(WORKLOAD_ID, observed))
+    assert "UPDATE demand_workload" in sql
+    assert "least" in sql.lower() and "coalesce" in sql.lower()
+
+
+def test_admission_never_writes_when_it_started() -> None:
+    """Phase is per-cluster and `started_at` is global; they are two statements."""
+    observed = structs.replace(payload("deployment.observed"), phase="running")
+    statement = statements.advance_admission_phase(DEPLOYMENT_ID, observed)
     assert statement is not None
     sql, _ = compile_sql(statement)
-    assert "coalesce" in sql.lower()
+    assert "started_at" not in sql
 
 
 def test_a_terminating_deployment_leaves_the_workload_alone() -> None:
     """Being torn down is between phases, and the delete that follows is what ends it."""
     observed = structs.replace(payload("deployment.observed"), phase="terminating")
-    assert statements.advance_admission_phase(WORKLOAD_ID, observed) is None
+    assert statements.advance_admission_phase(DEPLOYMENT_ID, observed) is None
 
 
 def test_replica_upsert_targets_the_natural_key() -> None:
@@ -317,7 +333,9 @@ def test_replica_does_not_write_the_devices_it_holds() -> None:
 def test_allocation_uses_the_cluster_minted_id() -> None:
     """An observed row is named by the cluster that discovered it (ADR 0002)."""
     observed = payload("allocation.observed")
-    sql, params = compile_sql(statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, PROJECT_ID, REPLICA_ID, observed))
+    sql, params = compile_sql(
+        statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, DEPLOYMENT_ID, PROJECT_ID, REPLICA_ID, observed)
+    )
     assert observed.allocation_id in scalar_params(params)
     assert "uid = excluded.uid" not in sql
 
@@ -325,9 +343,21 @@ def test_allocation_uses_the_cluster_minted_id() -> None:
 def test_allocation_reads_its_device_class_back_from_the_devices() -> None:
     """Having the cluster restate it would create a second place for it to be wrong."""
     observed = payload("allocation.observed")
-    sql, params = compile_sql(statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, PROJECT_ID, REPLICA_ID, observed))
+    sql, params = compile_sql(
+        statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, DEPLOYMENT_ID, PROJECT_ID, REPLICA_ID, observed)
+    )
     assert "SELECT supply_device.device_class" in sql
     assert len(observed.device_ids) in scalar_params(params)
+
+
+def test_allocation_records_which_cluster_copy_holds_the_devices() -> None:
+    """A workload fanned out across regions holds accelerators in each of them."""
+    observed = payload("allocation.observed")
+    sql, _ = compile_sql(
+        statements.upsert_allocation(CLUSTER_ID, WORKLOAD_ID, DEPLOYMENT_ID, PROJECT_ID, REPLICA_ID, observed)
+    )
+    assert "deployment_id" in sql
+    assert "workload_id" in sql
 
 
 def test_dropping_a_device_releases_it_rather_than_deleting_the_row() -> None:

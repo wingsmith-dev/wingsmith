@@ -30,11 +30,11 @@ from app.db.models import Deployment
 from app.ingestion import statements
 from app.hub.messages import NodeEvent
 from app.hub.messages import DeviceEvent
-from app.hub.messages import ClusterObserved
 from app.hub.messages import NodeObserved
 from app.hub.messages import ReplicaEvent
 from app.hub.messages import CacheObserved
 from app.hub.messages import DeviceObserved
+from app.hub.messages import ClusterObserved
 from app.hub.messages import ReplicaObserved
 from app.hub.messages import TopologyObserved
 from app.hub.messages import BenchmarkObserved
@@ -189,9 +189,9 @@ class DatabaseSink:
             return
 
         replica_id = await self._uid_ref(db, Replica, payload.replica_id)
-        statement = statements.upsert_allocation(cluster_id, deployment[1], project_id, replica_id, payload).returning(
-            Allocation.id
-        )
+        statement = statements.upsert_allocation(
+            cluster_id, deployment[1], deployment[0], project_id, replica_id, payload
+        ).returning(Allocation.id)
         allocation_id = (await db.execute(statement)).scalar_one()
         await db.execute(statements.release_allocation_devices(allocation_id, cluster_id, payload))
         if payload.device_ids:
@@ -283,12 +283,15 @@ class DatabaseSink:
                 if _moved(before, payload):
                     await db.execute(statements.deployment_progressed(cluster_id, deployment[0], payload))
                 await db.execute(statements.upsert_deployment_status(cluster_id, deployment[0], payload))
-                # The supertype moves with it. A deployment is the `service` specialisation of a
-                # workload, and leaving the two to disagree is what made every deployment this
-                # plane created read `placed` for as long as it existed.
-                advance = statements.advance_admission_phase(deployment[1], payload)
+                # Admission moves with it, on this deployment alone. A workload has one of these
+                # per cluster and they do not agree — one region can be running while another sits
+                # queued on quota — so the phase is written here and the workload only takes the
+                # rollup that is genuinely global: when the first of its clusters started.
+                advance = statements.advance_admission_phase(deployment[0], payload)
                 if advance is not None:
                     await db.execute(advance)
+                    if statements.ADMISSION_PHASE_FOR_OBSERVED.get(payload.phase) == "running":
+                        await db.execute(statements.roll_up_workload_started(deployment[1], payload))
                 return None
             case "replica.observed":
                 assert isinstance(payload, ReplicaObserved)

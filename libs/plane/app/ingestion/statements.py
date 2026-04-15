@@ -43,6 +43,7 @@ from app.db.models import Component
 from app.db.models import Operation
 from app.db.models import Allocation
 from app.db.models import CacheEntry
+from app.db.models import Deployment
 from app.db.models import BenchmarkRun
 from app.db.models import TopologyDomain
 from app.db.models import ComponentStatus
@@ -56,8 +57,8 @@ from app.hub.messages import DeviceEvent
 from app.hub.messages import NodeObserved
 from app.hub.messages import ReplicaEvent
 from app.hub.messages import CacheObserved
-from app.hub.messages import ClusterObserved
 from app.hub.messages import DeviceObserved
+from app.hub.messages import ClusterObserved
 from app.hub.messages import ReplicaObserved
 from app.hub.messages import TopologyObserved
 from app.hub.messages import BenchmarkObserved
@@ -379,7 +380,7 @@ ADMISSION_PHASE_FOR_OBSERVED = {
     "running": "running",
     "failed": "failed",
 }
-"""What a cluster's observed phase means for the workload's admission phase.
+"""What a cluster's observed phase means for that cluster's admission phase.
 
 The two enums overlap in spelling and not in meaning, which is why the mapping is
 written out rather than passed through. Admission is about how far through the
@@ -389,13 +390,13 @@ replicas is running, just badly, and admission has no opinion on health — whil
 an observed `pending` maps to `placed` rather than back to `pending`, because
 placement already chose a cluster and waiting for weights does not un-choose it.
 
-`terminating` is absent on purpose. A workload being torn down is between phases
-rather than in a new one, and the delete that follows is what ends it.
+`terminating` is absent on purpose. A deployment being torn down is between
+phases rather than in a new one, and the delete that follows is what ends it.
 """
 
 
-def advance_admission_phase(workload_id: UUID, payload: DeploymentObserved) -> Update | None:
-    """Moves the workload supertype to match what the cluster reports.
+def advance_admission_phase(deployment_id: UUID, payload: DeploymentObserved) -> Update | None:
+    """Moves one deployment's admission phase to match what its cluster reports.
 
     The gap this closes: `admission_phase` was written once, as `placed`, when the
     deployment was created, and nothing ever wrote it again. Every deployment this
@@ -403,18 +404,40 @@ def advance_admission_phase(workload_id: UUID, payload: DeploymentObserved) -> U
     was serving — and the only thing that ever reported `running` was a workload
     adopted from a cluster that was already running one.
 
+    Admission is per-cluster, so this lands on the `Deployment` rather than on the
+    workload above it. A workload fanned out across two regions can be running in
+    one and queued on quota in the other, and there is no single phase that is true
+    of both; writing the workload from here would let whichever cluster reported
+    last stomp every other cluster's answer.
+
     Derived rather than latched, so a deployment whose replicas all die reads
     `placed` again instead of claiming a `running` that stopped being true.
-    `started_at` is the exception and is kept: it is when this workload first ran,
-    and a workload that ran and stopped still ran.
     """
     phase = ADMISSION_PHASE_FOR_OBSERVED.get(payload.phase)
     if phase is None:
         return None
     values: dict[str, Any] = {"admission_phase": phase, "admission_reason": payload.reason}
-    if phase == "running":
-        values["started_at"] = func.coalesce(Workload.started_at, parse_ts(payload.observed_at))
-    return update(Workload).where(Workload.id == workload_id).values(**values)
+    return update(Deployment).where(Deployment.id == deployment_id).values(**values)
+
+
+def roll_up_workload_started(workload_id: UUID, payload: DeploymentObserved) -> Update:
+    """Stamps the workload with the first moment any of its clusters ran.
+
+    The rollup half of the statement above. `started_at` is global where the phase
+    is not: a workload started when the earliest of its deployments started, and it
+    is that earliest moment for the rest of its life. `coalesce` with `least` is
+    what makes the write a `min()` rather than a race — frames from N clusters
+    arrive in no particular order, and every one of them may only move the value
+    backwards, never forwards.
+
+    A workload that ran and stopped still ran, so nothing ever clears this.
+    """
+    moment = parse_ts(payload.observed_at)
+    return (
+        update(Workload)
+        .where(Workload.id == workload_id)
+        .values(started_at=func.least(func.coalesce(Workload.started_at, moment), moment))
+    )
 
 
 def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserved) -> Insert:
@@ -446,13 +469,22 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
 
 
 def upsert_allocation(
-    cluster_id: UUID, workload_id: UUID, project_id: UUID, replica_id: UUID | None, payload: AllocationObserved
+    cluster_id: UUID,
+    workload_id: UUID,
+    deployment_id: UUID,
+    project_id: UUID,
+    replica_id: UUID | None,
+    payload: AllocationObserved,
 ) -> Insert:
     """Writes one observed allocation — the devices committed together to a replica.
 
     `device_class` is not on the wire and is read back from the devices named,
     because the class is a property of the accelerator and having the cluster
-    restate it would create a second place for it to be wrong. `phase` is `held`:
+    restate it would create a second place for it to be wrong. `deployment_id` is
+    recorded beside `workload_id` because devices are held per-cluster: a workload
+    fanned out across regions holds accelerators in each of them, and preemption
+    has to be able to name which cluster's copy it is taking devices from.
+    `phase` is `held`:
     an allocation the cluster is still reporting is one it is still holding, and
     release is expressed by the allocation ceasing to be reported rather than by
     a phase the plane could assert on its own.
@@ -461,6 +493,7 @@ def upsert_allocation(
         "uid": observed_uid(payload.allocation_id, ALLOCATION),
         "cluster_id": cluster_id,
         "workload_id": workload_id,
+        "deployment_id": deployment_id,
         "replica_id": replica_id,
         "project_id": project_id,
         "device_class": _device_class_ref(cluster_id, payload.device_ids),

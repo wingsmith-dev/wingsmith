@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Node
 from app.db.models import Device
 from app.db.models import Cluster
+from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import ClusterSyncState
 from app.db.models import DeploymentStatus
@@ -103,15 +104,21 @@ async def behind_deployments(db: AsyncSession) -> list[AlertIntent]:
     problem. Present but short means it reached the cluster and the cluster cannot
     satisfy it — `deployment.behind`, a capacity problem. Reporting both as one
     alert would send people to the wrong half of the system.
+
+    One alert per deployment, never per workload. A workload spread over two
+    clusters that is short in one of them is short in that one cluster, and
+    rolling the two into a single alert would name no cluster to go and look at.
+    The counts compared here are the deployment's share, not the workload total.
     """
     rows = await db.execute(
-        select(Deployment, DeploymentStatus, Cluster.name)
+        select(Deployment, DeploymentStatus, Cluster.name, Workload.labels)
         .outerjoin(DeploymentStatus, DeploymentStatus.deployment_id == Deployment.id)
         .join(Cluster, Cluster.id == Deployment.cluster_id)
+        .join(Workload, Workload.id == Deployment.workload_id)
         .where(Deployment.enabled.is_(True), Deployment.desired_replicas > 0)
     )
     intents = []
-    for deployment, status, cluster_name in rows.all():
+    for deployment, status, cluster_name, labels in rows.all():
         if status is None:
             intent = rules.deployment_unobserved(
                 deployment.cluster_id, cluster_name, deployment.uid, deployment.name, deployment.desired_replicas
@@ -127,7 +134,7 @@ async def behind_deployments(db: AsyncSession) -> list[AlertIntent]:
             )
         else:
             continue
-        tuned = tuning.apply(intent, deployment.labels)
+        tuned = tuning.apply(intent, labels)
         if tuned is not None:
             intents.append(tuned)
     return intents

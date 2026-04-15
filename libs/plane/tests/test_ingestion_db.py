@@ -400,12 +400,12 @@ async def seed_deployment(sessions, cluster) -> None:
                   FROM a
                   ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
                 ), w AS (
-                  INSERT INTO demand_workload (uid, kind, project_id, priority_class_id)
-                  SELECT 'wkl_bench', 'service', p.id, c.id FROM p, c
+                  INSERT INTO demand_workload (uid, name, kind, project_id, priority_class_id, recipe_id)
+                  SELECT 'wkl_bench', 'llama-70b-prod', 'service', p.id, c.id, r.id FROM p, c, r
                   ON CONFLICT (uid) DO UPDATE SET kind = excluded.kind RETURNING id
                 )
-                INSERT INTO demand_deployment (uid, workload_id, recipe_id, cluster_id, name, generation)
-                SELECT :deployment, w.id, r.id, :cluster, 'llama-70b-prod', 7 FROM w, r
+                INSERT INTO demand_deployment (uid, workload_id, cluster_id, name, generation)
+                SELECT :deployment, w.id, :cluster, 'llama-70b-prod', 7 FROM w
                 ON CONFLICT (uid) DO UPDATE SET cluster_id = excluded.cluster_id
                 """
             ),
