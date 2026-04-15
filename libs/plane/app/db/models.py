@@ -438,89 +438,109 @@ class Recipe(BaseMixin):
 
 
 class Workload(BaseMixin):
-    """The schedulable supertype. Everything that is placed is a workload first.
+    """What you asked to run, globally. The object a user creates, scales, and deletes.
 
-    `kind` discriminates `service | task | gang`; `admission_phase` runs
-    `pending → admitted → placed → running` (plus terminal `succeeded | failed`)
-    for all three. Serving admits instantly, which makes the phase feel redundant
-    today and makes it free — adding a queue later changes no consumer's state
-    machine. Priority, project, and cluster live here so that preemption and quota
-    are one code path across serving, batch, and gang jobs rather than three.
+    A workload is not tied to a cluster. It declares a recipe, a kind, a priority, and TOTAL
+    scale across every cluster it is allowed to use; placement expands it into one `Deployment`
+    per cluster, and each deployment carries that cluster's share of the total. `kind`
+    discriminates `service | task | gang`, and nothing below this object is allowed to branch on
+    it — preemption and quota stay one code path across serving and batch. The only component
+    entitled to read `kind` is the operator, when it decides what Kubernetes object to render.
+
+    Splittability is a property of `kind`, not a field: `service` and `task` may fan out,
+    `gang` is atomic and always has exactly one deployment. The schema permits N; placement
+    constrains a gang to 1.
+
+    Admission is per-cluster and therefore lives on `Deployment`, not here. `started_at` and
+    `finished_at` are rollups the plane derives from its deployments, never written by a cluster.
+
+    `cluster_floors` is `{cluster_uid: int}`, a per-cluster minimum share keyed by `clu_...` uid
+    rather than by database id; an unknown uid is ignored, never an error. `pinned_cluster_id` is
+    the deliberate scheduler escape: checked for existence, never for capacity, and it forces a
+    single deployment. `paused` is declared state that placement reads, not an operation status —
+    `workload.pause` is the operation that sets it.
     """
 
     __tablename__ = "demand_workload"
+    __table_args__ = (UniqueConstraint("project_id", "name", name="uq_demand_workload_project_name"),)
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
     kind: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
     project_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    cluster_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("supply_cluster.id", ondelete="SET NULL"), nullable=True, index=True
-    )
     priority_class_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("bind_priority_class.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    admission_phase: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", index=True)
-    admission_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recipe_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_recipe.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    min_scale: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    max_scale: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    desired_scale: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    strategy: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pack")
+    cluster_floors: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    max_clusters: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    pinned_cluster_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     gang_size: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     preemptible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    queued_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    admitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    placed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paused: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    adapter_artifact_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
+    overrides: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    requires_single_topology_domain: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    topology_domain_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    deployment: Mapped[Deployment | None] = relationship(
-        "Deployment", back_populates="workload", lazy="noload", uselist=False
-    )
+    deployments: Mapped[list[Deployment]] = relationship("Deployment", back_populates="workload", lazy="noload")
+    recipe: Mapped[Recipe] = relationship("Recipe", lazy="noload")
 
 
 class Deployment(BaseMixin):
-    """A recipe reconciled onto one cluster, with scale bounds. The unit the agent obeys.
+    """One workload's share on one cluster. The unit the agent obeys.
 
-    Deployment is the `service` specialisation of `Workload`, joined one-to-one:
-    scale bounds and the recipe live here, while admission phase, priority, and
-    project stay on the supertype so a task or gang uses the same placement path.
-    Deployments are disposable — recreated on every recipe bump, engine upgrade,
-    and drain — which is why the public name lives on `Endpoint` instead.
+    A deployment is recipe x cluster, and that has not changed. What changed is what sits above
+    it: a `Workload` is now its parent rather than its supertype, and one workload has many
+    deployments — one per cluster it was expanded onto. `min_replicas` / `max_replicas` /
+    `desired_replicas` are THIS CLUSTER'S SHARE of the workload total, never the total. Nothing
+    anywhere may sum a share against a total or re-derive one from the other.
 
-    `adopted_workload_uid` is set when this deployment was promoted from a workload
-    that was already running. It changes what the cluster is being asked to do:
-    the object exists, so the operator takes ownership rather than applying, and
-    only while the live object still digests to `adopted_fingerprint`. A mismatch
-    is refused in the cluster and reported, never converged — closing that gap
-    means restarting a model to match a spec nobody asked to change.
+    Recipe, adapters, overrides, labels and the topology pair live on the workload: they are
+    facts about what was asked for, and a cluster does not get its own answer to them. Admission
+    is per-cluster and lives here, because a workload can be running in one region and queued on
+    quota in another and there is no single phase that is true of both.
 
-    `authority` is the one word that answers who owns this: `observed` means the
-    plane records and verifies it and writes nothing to the cluster, `managed`
-    means the plane renders and converges it. It is deliberately not derived from
-    `adopted_workload_uid` — where an object came from is a historical fact and
-    whether we run it is a decision somebody makes and may reverse, and ADR 0006
-    conflated the two into a standing prohibition (ADR 0009). There is no partial
-    authority: a deployment with some fields enforced and others drifting cannot
-    be reasoned about at the moment it matters.
+    Deployments are disposable — recreated on every recipe bump, engine upgrade, and drain —
+    which is why the public name lives on `Endpoint` instead. You do not create one: placement
+    creates it when it expands a workload.
 
-    `requires_single_topology_domain` and `topology_domain_kind` are nullable
-    because null means "whatever the recipe says". The recipe's answer is the
-    right one for a serving replica, but a gang is a shape of its own — the same
-    recipe run as eight ranks that must share one NVLink fabric is a different
-    placement question from the same recipe served — and the deployment is the
-    only object that knows which it is.
+    `adopted_workload_uid` is set when this deployment was promoted from a workload that was
+    already running in the cluster (a `DiscoveredWorkload`, unrelated to the parent `Workload`
+    above). It changes what the cluster is being asked to do: the object exists, so the operator
+    takes ownership rather than applying, and only while the live object still digests to
+    `adopted_fingerprint`. A mismatch is refused in the cluster and reported, never converged.
+
+    `authority` is the one word that answers who owns this: `observed` means the plane records
+    and verifies it and writes nothing to the cluster, `managed` means the plane renders and
+    converges it. It is deliberately not derived from `adopted_workload_uid` (ADR 0009).
     """
 
     __tablename__ = "demand_deployment"
-    __table_args__ = (UniqueConstraint("cluster_id", "name", name="uq_demand_deployment_cluster_name"),)
+    __table_args__ = (
+        UniqueConstraint("cluster_id", "name", name="uq_demand_deployment_cluster_name"),
+        UniqueConstraint("workload_id", "cluster_id", name="uq_demand_deployment_workload_cluster"),
+    )
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     workload_id: Mapped[UUID] = mapped_column(
-        DBUUID, ForeignKey("demand_workload.id", ondelete="CASCADE"), unique=True, nullable=False
-    )
-    recipe_id: Mapped[UUID] = mapped_column(
-        DBUUID, ForeignKey("demand_recipe.id", ondelete="RESTRICT"), nullable=False, index=True
+        DBUUID, ForeignKey("demand_workload.id", ondelete="CASCADE"), nullable=False, index=True
     )
     cluster_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
@@ -529,19 +549,18 @@ class Deployment(BaseMixin):
     min_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     max_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     desired_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    admission_phase: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", index=True)
+    admission_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    queued_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    admitted_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    placed_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="1")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    adapter_artifact_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
-    overrides: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     adopted_workload_uid: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     adopted_fingerprint: Mapped[str | None] = mapped_column(String(80), nullable=True)
     authority: Mapped[str] = mapped_column(String(16), nullable=False, server_default="observed", index=True)
-    requires_single_topology_domain: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    topology_domain_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
-    workload: Mapped[Workload] = relationship("Workload", back_populates="deployment", lazy="noload")
-    recipe: Mapped[Recipe] = relationship("Recipe", lazy="noload")
+    workload: Mapped[Workload] = relationship("Workload", back_populates="deployments", lazy="noload")
     replicas: Mapped[list[Replica]] = relationship("Replica", back_populates="deployment", lazy="noload")
     status: Mapped[DeploymentStatus | None] = relationship(
         "DeploymentStatus", back_populates="deployment", lazy="noload", uselist=False
@@ -939,6 +958,11 @@ class Allocation(BaseMixin):
     N devices or none, so the atomicity has to live on a row that can be created
     once. Members are rows in `AllocationDevice`, whose unique constraint on
     device is what stops two live allocations claiming the same accelerator.
+
+    `workload_id` names the global workload and `deployment_id` names its share in
+    this cluster. Preemption reasons about deployments — evicting "a workload" from
+    a cluster means evicting the deployment it has there — so the per-cluster
+    identity is carried alongside the global one.
     """
 
     __tablename__ = "bind_allocation"
@@ -950,6 +974,9 @@ class Allocation(BaseMixin):
     )
     workload_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("demand_workload.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    deployment_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=True, index=True
     )
     replica_id: Mapped[UUID | None] = mapped_column(
         DBUUID, ForeignKey("demand_replica.id", ondelete="CASCADE"), nullable=True, index=True

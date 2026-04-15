@@ -114,8 +114,28 @@ def test_recipe_requires_a_device_class() -> None:
     assert inspect(Recipe).columns["context_length"].nullable is False
 
 
-def test_workload_carries_the_discriminator_and_admission_phase() -> None:
+def test_workload_carries_the_discriminator_and_the_global_declaration() -> None:
+    """Admission is not here: it is per-cluster and lives on the deployment."""
     from app.db.models import Workload
 
     columns = set(inspect(Workload).columns.keys())
-    assert {"kind", "admission_phase", "priority_class_id", "gang_size"} <= columns
+    assert {"kind", "priority_class_id", "gang_size", "recipe_id"} <= columns
+    assert {"min_scale", "max_scale", "desired_scale", "strategy", "max_clusters"} <= columns
+    assert not columns & {"admission_phase", "admission_reason", "cluster_id", "queued_at", "placed_at"}
+
+
+def test_a_deployment_carries_the_per_cluster_facts() -> None:
+    from app.db.models import Deployment
+
+    columns = set(inspect(Deployment).columns.keys())
+    assert {"cluster_id", "admission_phase", "admission_reason", "queued_at", "admitted_at", "placed_at"} <= columns
+    assert not columns & {"recipe_id", "overrides", "labels", "adapter_artifact_ids"}
+
+
+def test_a_workload_has_many_deployments_and_not_one() -> None:
+    """The FK flip: `workload_id` lost its unique constraint, which is the whole change."""
+    from app.db.models import Deployment
+
+    column = inspect(Deployment).columns["workload_id"]
+    assert column.unique is not True
+    assert column.index is True
