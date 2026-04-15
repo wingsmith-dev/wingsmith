@@ -6,6 +6,7 @@ import pytest
 from app.core.ids import POLICY
 from app.core.ids import CLUSTER
 from app.core.ids import PROJECT
+from app.core.ids import WORKLOAD
 from app.core.ids import new_uid
 from app.core.exceptions import Invalid
 from app.modules.policies.routes import PolicyRoutes
@@ -69,13 +70,13 @@ def test_what_constrains_this_subject_is_a_filter_not_a_nested_route(repo):
 
 
 def test_subject_types_cover_the_model_docstring_and_nothing_else():
-    assert SUBJECT_TYPES == frozenset({"tenant", "project", "cluster", "endpoint"})
+    assert SUBJECT_TYPES == frozenset({"tenant", "project", "cluster", "endpoint", "workload"})
     assert set(SUBJECTS) == SUBJECT_TYPES
 
 
 def test_unknown_subject_type_is_refused_before_it_reaches_sql():
     with pytest.raises(Invalid):
-        check_subject_type("workload")
+        check_subject_type("replica")
 
 
 def test_subject_query_resolves_a_project_by_slug_or_by_prefixed_id(repo):
@@ -92,8 +93,13 @@ def test_subject_query_resolves_a_cluster_by_name_or_id(repo):
     assert "supply_cluster.uid = " in sql(repo.subject_query("cluster", new_uid(CLUSTER)))
 
 
+def test_subject_query_resolves_a_workload_by_name_or_id(repo):
+    assert "demand_workload.name = " in sql(repo.subject_query("workload", "gpt-20b"))
+    assert "demand_workload.uid = " in sql(repo.subject_query("workload", new_uid(WORKLOAD)))
+
+
 def test_subject_query_for_an_unknown_type_is_none_rather_than_a_guess(repo):
-    assert repo.subject_query("workload", "anything") is None
+    assert repo.subject_query("replica", "anything") is None
 
 
 def test_a_cluster_cannot_be_both_allowed_and_denied():

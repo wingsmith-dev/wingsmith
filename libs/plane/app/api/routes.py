@@ -20,6 +20,7 @@ from app.modules.projects.routes import ProjectRoutes
 from app.modules.artifacts.routes import ArtifactRoutes
 from app.modules.endpoints.routes import EndpointRoutes
 from app.modules.placement.routes import PlacementRoutes
+from app.modules.workloads.routes import WorkloadRoutes
 from app.modules.benchmarks.routes import BenchmarkRoutes
 from app.modules.components.routes import ComponentRoutes
 from app.modules.discovered.routes import DiscoveredWorkloadRoutes
@@ -41,6 +42,7 @@ V1_ROUTES = [
     PoolRoutes,
     ArtifactRoutes,
     RecipeRoutes,
+    WorkloadRoutes,
     DeploymentRoutes,
     PlacementRoutes,
     DiscoveredWorkloadRoutes,

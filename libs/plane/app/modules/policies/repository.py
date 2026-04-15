@@ -10,6 +10,7 @@ from app.db.models import Tenant
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Endpoint
+from app.db.models import Workload
 from app.db.models import PolicyAttachment
 from app.core.filters import ref_ids
 
@@ -19,6 +20,7 @@ SUBJECTS = {
     "project": (Project, "slug", "uid"),
     "cluster": (Cluster, "name", "uid"),
     "endpoint": (Endpoint, "name", "uid"),
+    "workload": (Workload, "name", "uid"),
 }
 
 
