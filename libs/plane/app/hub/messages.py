@@ -455,6 +455,17 @@ class DeploymentDesired(Struct):
     every Kubernetes object below that one inherits the name. Sending only the id
     put `dep-01m0sktt1s3vszhp5rkdp925dh-...` on every pod, which is unreadable to
     the person running `kubectl get pods` and to the console showing them.
+
+    `min_replicas` and `max_replicas` are THIS CLUSTER'S SHARE, never a workload
+    total. A workload declares totals across every cluster it may use and the
+    plane divides them before they reach the wire; an operator sees one cluster
+    and cannot tell a whole workload from a fragment of one, which is the point.
+    A receiver renders exactly the number it is sent and must never sum, scale or
+    re-derive it against anything else. `min_replicas` is what is rendered;
+    `max_replicas` is a ceiling for an autoscaler that does not exist yet.
+
+    There is deliberately no workload id here and no total-versus-share field of
+    any kind. Nothing in a cluster ever needs to know it is one of several.
     """
 
     deployment_id: str
@@ -535,6 +546,14 @@ class LastError(Struct):
 
 
 class DeploymentObserved(Struct):
+    """What one cluster reports about the deployment it was handed.
+
+    `desired_replicas` is what this cluster rendered — its own `min_replicas`,
+    echoed back so the plane can see that render and declaration agree. Summing
+    it across a workload's deployments is the plane's job and only the plane's;
+    the operator never does.
+    """
+
     deployment_id: str
     cluster_id: str
     generation: int
@@ -635,7 +654,7 @@ class ComponentObserved(Struct):
 
 
 class OperationTarget(Struct):
-    kind: Literal["cluster", "node", "device", "deployment", "component", "artifact"]
+    kind: Literal["cluster", "node", "device", "deployment", "workload", "component", "artifact"]
     id: str
 
 

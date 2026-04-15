@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ids import NODE
 from app.core.ids import DEVICE
 from app.core.ids import ARTIFACT
+from app.core.ids import WORKLOAD
 from app.core.ids import COMPONENT
 from app.core.ids import OPERATION
 from app.core.ids import DEPLOYMENT
@@ -41,6 +42,9 @@ TYPES: dict[str, tuple[str, str]] = {
     "node.reboot": (NODE, "reboot"),
     "device.reset": (DEVICE, "device_reset"),
     "cache.warm": (ARTIFACT, "cache_warm"),
+    "workload.scale": (WORKLOAD, "scale"),
+    "workload.pause": (WORKLOAD, "pause"),
+    "workload.drain": (WORKLOAD, "drain"),
     "deployment.roll": (DEPLOYMENT, "roll"),
     "deployment.benchmark": (DEPLOYMENT, "benchmark"),
     "component.upgrade": (COMPONENT, "upgrade"),
@@ -53,6 +57,21 @@ is a category error at creation and not a failure discovered inside the cluster
 an hour later. The third is the `operation.desired` kind the dispatcher will
 send; `uncordon` shares `cordon` because the wire kind names the mechanism and
 the parameters say which direction.
+"""
+
+PLANE_EXECUTED = frozenset({"workload.scale", "workload.pause", "workload.drain"})
+"""Operations the plane carries out itself, rather than handing to a cluster.
+
+A workload spans clusters, so there is no single agent to dispatch these to. What
+they actually change is declared state the plane owns — the per-cluster shares —
+and the clusters converge on that afterwards through the ordinary `deployment.desired`
+path. They are still operations rather than field writes because they are imperative
+and they can fail: a scale-up that no cluster has the quota for fails here, with a
+reason, instead of silently sitting in a spec nobody can satisfy.
+
+They reach a terminal phase inside the request that created them. The plane's half is
+synchronous — re-expansion either finds room or does not — and how far the clusters
+have got with the result is a question the deployments already answer.
 """
 
 PENDING = "pending"
@@ -241,7 +260,7 @@ class OperationService:
                     {"target": data.target, "cluster": data.cluster},
                 )
             cluster_id = cluster.id
-        if cluster_id is None:
+        if cluster_id is None and data.type not in PLANE_EXECUTED:
             raise Invalid(
                 f"{data.type} needs a cluster: its target does not belong to one",
                 {"type": data.type, "target": data.target},
@@ -260,6 +279,11 @@ class OperationService:
             payload={"parameters": data.parameters},
             deadline_at=data.deadline,
         )
+        if data.type in PLANE_EXECUTED:
+            await self.repo.add(operation)
+            await self._execute(operation, target, data.parameters)
+            return await self.get(operation.uid)
+
         try:
             await self.repo.add(operation)
             await self.db.commit()
@@ -274,6 +298,44 @@ class OperationService:
         if cluster_uid is not None:
             await self._announce(cluster_uid, operation.uid)
         return await self.get(operation.uid)
+
+    async def _execute(self, operation: Operation, target, parameters: dict) -> None:
+        """Carries out a plane-executed operation and closes it in the same write.
+
+        The operation row and the shares it moves are committed together on purpose:
+        a scale that succeeded but left no record of having been asked for, or a
+        record of a scale that never landed, are both worse than either outcome on
+        its own.
+
+        A refusal from placement — no cluster with the quota, a gang that fits
+        nowhere whole — is the operation failing, not the request being malformed.
+        It is caught and written to `error` so it reads back as a failed operation
+        with a reason, which is what a caller polling this is waiting for.
+        """
+        from app.modules.workloads.services import WorkloadService
+
+        now = dt.datetime.now(dt.UTC)
+        operation.started_at = now
+        service = WorkloadService(self.db, notifier=self.notifier)
+        try:
+            if operation.type == "workload.scale":
+                result = await service.rescale(target.uid, parameters)
+            elif operation.type == "workload.pause":
+                result = await service.set_paused(target.uid, bool(parameters.get("paused", True)))
+            else:
+                result = await service.drain(target.uid, parameters.get("cluster"))
+        except (Invalid, NotFound, Conflict) as exc:
+            await self.db.rollback()
+            await self.repo.add(operation)
+            operation.phase = "failed"
+            operation.error = str(exc)
+            operation.finished_at = dt.datetime.now(dt.UTC)
+            await self.db.commit()
+            return
+        operation.phase = "succeeded"
+        operation.result = result
+        operation.finished_at = dt.datetime.now(dt.UTC)
+        await self.db.commit()
 
     async def cancel(self, ref: str) -> OperationSchema:
         """Records that the plane wants the operation stopped.

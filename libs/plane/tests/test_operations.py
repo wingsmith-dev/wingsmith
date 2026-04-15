@@ -7,6 +7,7 @@ from app.core.ids import POOL
 from app.core.ids import DEVICE
 from app.core.ids import CLUSTER
 from app.core.ids import ARTIFACT
+from app.core.ids import WORKLOAD
 from app.core.ids import COMPONENT
 from app.core.ids import OPERATION
 from app.core.ids import DEPLOYMENT
@@ -42,7 +43,7 @@ def prefix_matches(type_name: str, target: str) -> bool:
 
 # ---------------------------------------------------------------- type/target
 
-EVERY_PREFIX = [CLUSTER, NODE, DEVICE, DEPLOYMENT, COMPONENT, ARTIFACT]
+EVERY_PREFIX = [CLUSTER, NODE, DEVICE, DEPLOYMENT, WORKLOAD, COMPONENT, ARTIFACT]
 
 MATRIX = [
     ("node.drain", NODE, True),
@@ -67,6 +68,13 @@ MATRIX = [
     ("deployment.benchmark", ARTIFACT, False),
     ("deployment.roll", COMPONENT, False),
     ("deployment.roll", NODE, False),
+    ("workload.scale", WORKLOAD, True),
+    ("workload.scale", DEPLOYMENT, False),
+    ("workload.scale", CLUSTER, False),
+    ("workload.pause", WORKLOAD, True),
+    ("workload.pause", DEPLOYMENT, False),
+    ("workload.drain", WORKLOAD, True),
+    ("workload.drain", NODE, False),
     ("component.upgrade", COMPONENT, True),
     ("component.upgrade", DEPLOYMENT, False),
     ("component.upgrade", CLUSTER, False),

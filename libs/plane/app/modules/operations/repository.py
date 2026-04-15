@@ -13,6 +13,7 @@ from app.core.ids import NODE
 from app.core.ids import DEVICE
 from app.core.ids import CLUSTER
 from app.core.ids import ARTIFACT
+from app.core.ids import WORKLOAD
 from app.core.ids import COMPONENT
 from app.core.ids import OPERATION
 from app.core.ids import DEPLOYMENT
@@ -21,6 +22,7 @@ from app.db.models import Node
 from app.db.models import Device
 from app.db.models import Cluster
 from app.db.models import Artifact
+from app.db.models import Workload
 from app.db.models import Component
 from app.db.models import Operation
 from app.db.models import Deployment
@@ -33,6 +35,7 @@ TARGET_TABLES = {
     NODE: Node,
     DEVICE: Device,
     DEPLOYMENT: Deployment,
+    WORKLOAD: Workload,
     COMPONENT: Component,
     ARTIFACT: Artifact,
 }
@@ -42,6 +45,7 @@ TARGET_KINDS = {
     NODE: "node",
     DEVICE: "device",
     DEPLOYMENT: "deployment",
+    WORKLOAD: "workload",
     COMPONENT: "component",
     ARTIFACT: "artifact",
 }
@@ -53,6 +57,7 @@ TARGET_NAME_COLUMNS = {
     NODE: "name",
     DEVICE: "device_uuid",
     DEPLOYMENT: "name",
+    WORKLOAD: "name",
     COMPONENT: "name",
     ARTIFACT: "name",
 }
