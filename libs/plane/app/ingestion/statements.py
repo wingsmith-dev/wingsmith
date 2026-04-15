@@ -917,6 +917,7 @@ def deployment_status_before(deployment_id: UUID) -> Select:
         DeploymentStatus.reason,
         DeploymentStatus.message,
         DeploymentStatus.ready_replicas,
+        DeploymentStatus.observed_generation,
     ).where(DeploymentStatus.deployment_id == deployment_id)
 
 

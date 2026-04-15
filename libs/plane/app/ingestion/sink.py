@@ -89,6 +89,39 @@ def _moved(before: Any, payload: DeploymentObserved) -> bool:
     )
 
 
+#: Phases a deployment reaches only after its work has been handed to the cluster. Reaching one of
+#: them is what makes an earlier stage of the same generation impossible rather than merely old.
+SETTLED_PHASES = frozenset({"placed", "running", "degraded"})
+
+
+def _regressed(before, payload) -> bool:
+    """Whether this frame describes a step the deployment has already moved past.
+
+    The operator suppresses a stage it has already sent, but that memory is per
+    process: a restart, a failover or a fresh hub session leaves it empty, and the
+    next pass replays `Accepted` and `Rendering` for a deployment that has been
+    serving for a week. The frames are not wrong — they are what the loop does on
+    its first pass — they are simply about a moment that has passed.
+
+    Applied blindly they cost more than a noisy timeline. The status row is
+    last-writer-wins, so a replayed `pending` overwrites `running 1/1` and the
+    console shows a healthy deployment as waiting for its recipe until the next
+    pass puts it back. Every hub reconnect produced that flicker.
+
+    The stage set is ordered by contract (MESSAGES.md) and a deployment walks it
+    once per generation, so an earlier stage arriving for a generation already
+    past it is stale by definition. Narrow on purpose: only `pending` is refused,
+    and only against a generation that has already been placed. A genuine
+    regression — degraded, failed, a redeploy — either is not `pending` or
+    carries a new generation, and lands normally.
+    """
+    if before is None or payload.phase != "pending":
+        return False
+    if before.observed_generation != payload.generation:
+        return False
+    return before.phase in SETTLED_PHASES
+
+
 class UnknownCluster(Exception):
     """A frame arrived for a cluster with no registry entry.
 
@@ -280,6 +313,16 @@ class DatabaseSink:
                 # transition only exists in the gap between the read and the upsert — after it
                 # there is nothing left to compare against.
                 before = (await db.execute(statements.deployment_status_before(deployment[0]))).first()
+                if _regressed(before, payload):
+                    logger.debug(
+                        "ingestion.deployment.stale_stage deployment=%s generation=%s phase=%s reason=%s cluster=%s",
+                        payload.deployment_id,
+                        payload.generation,
+                        before.phase,
+                        payload.reason,
+                        frame.cluster_id,
+                    )
+                    return None
                 if _moved(before, payload):
                     await db.execute(statements.deployment_progressed(cluster_id, deployment[0], payload))
                 await db.execute(statements.upsert_deployment_status(cluster_id, deployment[0], payload))

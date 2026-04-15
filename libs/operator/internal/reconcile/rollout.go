@@ -41,6 +41,7 @@ type rollout struct {
 	updated     int
 	unavailable int
 	replicas    []wire.ReplicaObserved
+	allocations []wire.AllocationObserved
 }
 
 // phase is the observed phase these counts amount to.
@@ -182,6 +183,53 @@ func (r *SyncedResourceReconciler) adoptedSelector(
 	}
 }
 
+// allocate records what one replica is holding, if the binding is known.
+//
+// A pod with no binding contributes no allocation rather than an empty one. The two are not the
+// same claim: an empty allocation says this replica holds no accelerators, which for an inference
+// worker is always false and would hand every card it is actually using back to the placement
+// engine as free.
+//
+// `exclusive` is true because the cards come from the device plugin under `nvidia.com/gpu`, which
+// hands out whole devices — a MIG partition is advertised as a device in its own right, so a
+// shared physical card is still an exclusive hold on the partition that was granted.
+func (out *rollout) allocate(
+	r *SyncedResourceReconciler,
+	dep wire.DeploymentDesired,
+	pod *corev1.Pod,
+	replicaID string,
+	now string,
+) {
+	if r.Devices == nil {
+		return
+	}
+	uuids := r.Devices.DevicesForPod(pod.Namespace, pod.Name)
+	if len(uuids) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(uuids))
+	for _, uuid := range uuids {
+		ids = append(ids, observe.DeviceID(r.ClusterID, uuid))
+	}
+
+	granted := now
+	if at := startedAt(pod); at != nil {
+		granted = *at
+	}
+	out.allocations = append(out.allocations, wire.AllocationObserved{
+		AllocationID: observe.AllocationID(r.ClusterID, pod.Namespace, pod.Name),
+		ClusterID:    r.ClusterID,
+		ReplicaID:    replicaID,
+		DeploymentID: dep.DeploymentID,
+		ProjectID:    dep.ProjectID,
+		NodeID:       nodeIDFor(r.ClusterID, pod.Spec.NodeName),
+		DeviceIDs:    ids,
+		Exclusive:    true,
+		GrantedAt:    granted,
+		ObservedAt:   now,
+	})
+}
+
 func replicaCount(replicas *int32) int {
 	if replicas == nil {
 		return 1
@@ -223,8 +271,11 @@ func (r *SyncedResourceReconciler) rolloutFrom(
 			out.updated++
 		}
 
+		replicaID := observe.ReplicaID(r.ClusterID, pod.Namespace, pod.Name)
+		out.allocate(r, dep, pod, replicaID, now)
+
 		out.replicas = append(out.replicas, wire.ReplicaObserved{
-			ReplicaID:    observe.ReplicaID(r.ClusterID, pod.Namespace, pod.Name),
+			ReplicaID:    replicaID,
 			Name:         pod.Name,
 			DeploymentID: dep.DeploymentID,
 			ClusterID:    r.ClusterID,

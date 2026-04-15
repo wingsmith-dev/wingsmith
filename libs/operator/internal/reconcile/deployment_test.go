@@ -16,6 +16,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -660,5 +661,96 @@ func TestAnEmptyAuthorityIsObserved(t *testing.T) {
 	key := types.NamespacedName{Namespace: "dynamo", Name: render.Name(testDeploymentID)}
 	if err := r.Client.Get(context.Background(), key, graph); err == nil {
 		t.Fatal("an unmarked deployment was rendered into the cluster")
+	}
+}
+
+// legacyRendered is a graph deployment rendered under the id-derived name, from before this
+// operator stamped the deployment-id label on what it rendered.
+func legacyRendered(t *testing.T, name string, labels map[string]string) *unstructured.Unstructured {
+	t.Helper()
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(render.GVK)
+	obj.SetNamespace(testRender.Namespace)
+	obj.SetName(name)
+	if labels != nil {
+		obj.SetLabels(labels)
+	}
+	return obj
+}
+
+func testScheme(t *testing.T) *runtime.Scheme {
+	t.Helper()
+	scheme := clientgoscheme.Scheme
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("scheme: %v", err)
+	}
+	return scheme
+}
+
+func rendered(t *testing.T, r *SyncedResourceReconciler, name string) bool {
+	t.Helper()
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(render.GVK)
+	err := r.Client.Get(context.Background(), types.NamespacedName{
+		Namespace: testRender.Namespace, Name: name,
+	}, obj)
+	if err != nil && !apierrors.IsNotFound(err) {
+		t.Fatalf("get %s: %v", name, err)
+	}
+	return err == nil
+}
+
+// TestARenamedWorkloadFromBeforeTheLabelIsCollected: the label is how a rendered object is found,
+// so one rendered before the label existed is invisible to the prune and nothing else would ever
+// collect it. In production one outlived a rename by days, holding a GPU and serving a duplicate
+// of the live model into the same namespace.
+func TestARenamedWorkloadFromBeforeTheLabelIsCollected(t *testing.T) {
+	legacy := legacyRendered(t, render.Name(testDeploymentID), nil)
+	r := &SyncedResourceReconciler{
+		Client: fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(legacy).Build(),
+		Log:    slog.Default(), Render: testRender, ClusterID: "cluster-ap",
+	}
+
+	if err := r.pruneRendered(context.Background(), testDeploymentID, "gpt-oss-20b"); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if rendered(t, r, render.Name(testDeploymentID)) {
+		t.Fatal("the unlabelled object survived; nothing else will ever collect it")
+	}
+}
+
+// TestTheCurrentRenderIsNeverCollectedByName: a deployment with no renderable name renders under
+// exactly the id-derived name, and collecting it would delete the workload on every pass.
+func TestTheCurrentRenderIsNeverCollectedByName(t *testing.T) {
+	name := render.Name(testDeploymentID)
+	current := legacyRendered(t, name, nil)
+	r := &SyncedResourceReconciler{
+		Client: fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(current).Build(),
+		Log:    slog.Default(), Render: testRender, ClusterID: "cluster-ap",
+	}
+
+	if err := r.pruneRendered(context.Background(), testDeploymentID, name); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if !rendered(t, r, name) {
+		t.Fatal("the object being kept was deleted")
+	}
+}
+
+// TestAnObjectLabelledForAnotherDeploymentIsLeftAlone: a label that disagrees is evidence, and the
+// only reading of it is that the object is somebody else's.
+func TestAnObjectLabelledForAnotherDeploymentIsLeftAlone(t *testing.T) {
+	name := render.Name(testDeploymentID)
+	theirs := legacyRendered(t, name, map[string]string{deploymentIDLabel: "dep_01someoneelse"})
+	r := &SyncedResourceReconciler{
+		Client: fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(theirs).Build(),
+		Log:    slog.Default(), Render: testRender, ClusterID: "cluster-ap",
+	}
+
+	if err := r.pruneRendered(context.Background(), testDeploymentID, "gpt-oss-20b"); err != nil {
+		t.Fatalf("prune: %v", err)
+	}
+	if !rendered(t, r, name) {
+		t.Fatal("an object belonging to another deployment was deleted")
 	}
 }

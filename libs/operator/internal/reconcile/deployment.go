@@ -181,6 +181,52 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	return ctrl.Result{RequeueAfter: resyncAfterApply}, nil
 }
 
+// pruneUnlabelled collects an object this operator rendered before it stamped the label that finds
+// one.
+//
+// The label is how a rendered object is normally found, precisely because the name follows the
+// deployment's name and the name can change. That works for everything rendered since the label
+// existed and for nothing rendered before it: an unlabelled object matches no selector, so the
+// listing above cannot see it, and the apply only ever touches the current name. Nothing else in
+// this operator would ever collect it, and in production one such object outlived a rename by days
+// — holding an accelerator and serving a second copy of the same model into the same namespace as
+// the live one.
+//
+// It is found by name instead, and only by the one name that is safe to assume: `render.Name(id)`
+// is what `WorkloadName` falls back to for a deployment with no renderable name, so an object
+// sitting there is one this operator rendered or would render. An object carrying somebody else's
+// deployment id is left alone even so — a label that disagrees is evidence, and the only reading of
+// it is that the object is not this deployment's.
+func (r *SyncedResourceReconciler) pruneUnlabelled(ctx context.Context, id, keep string) error {
+	name := render.Name(id)
+	if name == "" || name == keep {
+		return nil
+	}
+
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(render.GVK)
+	err := r.Client.Get(ctx, types.NamespacedName{Namespace: r.Render.Namespace, Name: name}, obj)
+	switch {
+	case apierrors.IsNotFound(err), apimeta.IsNoMatchError(err):
+		return nil
+	case err != nil:
+		return fmt.Errorf("get rendered workload %s: %w", name, err)
+	}
+	if owner := obj.GetLabels()[deploymentIDLabel]; owner != "" && owner != id {
+		return nil
+	}
+
+	switch err := r.Client.Delete(ctx, obj); {
+	case err == nil:
+		r.Log.Info("removed a rendered workload that predates the deployment-id label",
+			"deployment", id, "name", name, "namespace", r.Render.Namespace)
+	case apierrors.IsNotFound(err):
+	default:
+		return fmt.Errorf("prune unlabelled %s: %w", name, err)
+	}
+	return nil
+}
+
 // holdOpen adds the teardown finalizer if it is not already there.
 func (r *SyncedResourceReconciler) holdOpen(ctx context.Context, res *v1alpha1.SyncedResource) error {
 	if controllerutil.ContainsFinalizer(res, renderedFinalizer) {
@@ -238,6 +284,9 @@ func (r *SyncedResourceReconciler) pruneRendered(ctx context.Context, id, keep s
 		return nil
 	case err != nil:
 		return fmt.Errorf("list rendered workloads for %s: %w", id, err)
+	}
+	if err := r.pruneUnlabelled(ctx, id, keep); err != nil {
+		return err
 	}
 	for i := range list.Items {
 		obj := &list.Items[i]

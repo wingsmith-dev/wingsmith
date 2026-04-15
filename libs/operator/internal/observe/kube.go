@@ -93,7 +93,12 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 		k.log().Debug("scraped device identity", "devices", inventory.Devices, "hosts", inventory.Hosts)
 	}
 
-	out := Snapshot{At: time.Now().UTC(), Nodes: make([]Node, 0, len(nodes.Items)), Workloads: workloads}
+	out := Snapshot{
+		At:        time.Now().UTC(),
+		Nodes:     make([]Node, 0, len(nodes.Items)),
+		Workloads: workloads,
+		Devices:   podDevicesFrom(inventory),
+	}
 	for i := range nodes.Items {
 		n := projectKubeNode(&nodes.Items[i], inventory, k.log())
 		n.AllocatedDevices = allocated[n.Name]

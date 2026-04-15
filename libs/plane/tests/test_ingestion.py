@@ -32,6 +32,7 @@ from app.ingestion.sink import DatabaseSink
 from app.ingestion.sink import UnknownCluster
 from app.ingestion.sink import DatabaseDesiredSource
 from app.ingestion.sink import _moved
+from app.ingestion.sink import _regressed
 from app.ingestion.time import parse_ts
 from app.ingestion.resync import NODE
 from app.ingestion.resync import DEVICE
@@ -860,11 +861,58 @@ def test_the_first_frame_for_a_deployment_is_always_news() -> None:
     assert _moved(None, payload("deployment.observed"))
 
 
-class _Stored:
-    """The four columns `deployment_status_before` reads back."""
+def test_a_replayed_stage_does_not_drag_a_serving_deployment_back_to_pending() -> None:
+    """The operator's stage memory is per process, so a restart or a fresh hub session replays
+    `Accepted` for a deployment that has been serving for a week. The status row is
+    last-writer-wins, so applying it overwrote `running 1/1` and the console showed a healthy
+    deployment as waiting for its recipe until the next pass put it back."""
+    observed = payload("deployment.observed")
+    stage = structs.replace(observed, phase="pending", reason="Accepted", ready_replicas=0)
+    serving = _Stored("running", "Serving", "1 of 1 replicas ready", 1, stage.generation)
+    assert _regressed(serving, stage)
 
-    def __init__(self, phase: str, reason: str | None, message: str | None, ready_replicas: int) -> None:
+
+def test_a_stage_for_a_new_generation_is_not_stale() -> None:
+    """A redeploy walks the stages again, and every one of them is news."""
+    observed = payload("deployment.observed")
+    stage = structs.replace(observed, phase="pending", reason="Accepted")
+    serving = _Stored("running", "Serving", "ready", 1, stage.generation - 1)
+    assert not _regressed(serving, stage)
+
+
+def test_a_deployment_that_genuinely_fails_is_never_refused() -> None:
+    """Only `pending` is refused. A failure is not a stage and must always land."""
+    observed = payload("deployment.observed")
+    failed = structs.replace(observed, phase="failed", reason="RenderFailed")
+    serving = _Stored("running", "Serving", "ready", 1, failed.generation)
+    assert not _regressed(serving, failed)
+
+
+def test_a_deployment_still_coming_up_accepts_its_next_stage() -> None:
+    """Pending to pending is the normal walk; nothing has been placed yet to be dragged back."""
+    observed = payload("deployment.observed")
+    stage = structs.replace(observed, phase="pending", reason="Rendering")
+    waiting = _Stored("pending", "Accepted", "reconciling", 0, stage.generation)
+    assert not _regressed(waiting, stage)
+
+
+def test_the_first_frame_for_a_deployment_is_never_stale() -> None:
+    assert not _regressed(None, payload("deployment.observed"))
+
+
+class _Stored:
+    """The columns `deployment_status_before` reads back."""
+
+    def __init__(
+        self,
+        phase: str,
+        reason: str | None,
+        message: str | None,
+        ready_replicas: int,
+        observed_generation: int = 0,
+    ) -> None:
         self.phase = phase
         self.reason = reason
         self.message = message
         self.ready_replicas = ready_replicas
+        self.observed_generation = observed_generation

@@ -20,19 +20,41 @@ import (
 // Labels the DCGM exporter puts on every series. They are read for identity only: the sample
 // value on the line is telemetry and is never looked at, let alone forwarded (ADR 0007).
 //
-// `pod` and `namespace` describe the exporter's own pod. The workload holding the card is
-// `exported_pod` / `exported_namespace`, because the exporter's pod labels win the collision and
-// Prometheus renames the scraped ones.
+// The workload holding a card is spelled two different ways depending on who scraped the exporter,
+// and both have to be read. Scraped through Prometheus, the scraper stamps its own `pod` and
+// `namespace` on every series and the exporter's own values are renamed out of the collision to
+// `exported_pod` / `exported_namespace`. Scraped directly — which is what this operator does — no
+// collision happens, nothing is renamed, and the workload is in plain `pod` / `namespace`.
+//
+// Reading only the `exported_` spelling is why the binding was empty on every real cluster: the
+// prefix appears precisely when something else has already claimed the plain name, so it is the
+// exception and not the rule. `exported_` still wins where present, because when both exist the
+// plain one is the scraper's own pod and the prefixed one is the card's.
 const (
-	dcgmLabelUUID      = "uuid"
-	dcgmLabelIndex     = "gpu"
-	dcgmLabelModel     = "modelname"
-	dcgmLabelHost      = "hostname"
-	dcgmLabelPod       = "exported_pod"
-	dcgmLabelNamespace = "exported_namespace"
+	dcgmLabelUUID            = "uuid"
+	dcgmLabelIndex           = "gpu"
+	dcgmLabelModel           = "modelname"
+	dcgmLabelHost            = "hostname"
+	dcgmLabelPod             = "exported_pod"
+	dcgmLabelNamespace       = "exported_namespace"
+	dcgmLabelDirectPod       = "pod"
+	dcgmLabelDirectNamespace = "namespace"
 
 	labelKubeHostname = "kubernetes.io/hostname"
 )
+
+// boundPod is the workload pod a series attributes its card to.
+//
+// Which label holds it is a property of the whole scrape, never of the line, which is why
+// `renamed` is decided once over the body and passed in. Deciding per line looks equivalent and is
+// not: in a renamed body an idle card carries no `exported_pod` at all, and falling back to the
+// plain one there would attribute every unused accelerator in the fleet to the exporter's own pod.
+func boundPod(labels map[string]string, renamed bool) (string, string) {
+	if renamed {
+		return labels[dcgmLabelPod], labels[dcgmLabelNamespace]
+	}
+	return labels[dcgmLabelDirectPod], labels[dcgmLabelDirectNamespace]
+}
 
 // DCGMDevice is one accelerator as the exporter names it.
 type DCGMDevice struct {
@@ -250,6 +272,11 @@ func parseSelector(spec, service string) (map[string]string, error) {
 // same identity labels, so the first line mentioning a UUID settles that device and the rest are
 // only consulted for a workload binding the first line happened not to carry.
 func ParseDCGM(body string) *DCGMInventory {
+	// Whether this body came through a scraper that stamped its own pod on every series. The
+	// prefixed spelling exists only as the loser of that collision, so one occurrence anywhere
+	// settles it for the whole body — and its absence settles the other way just as firmly.
+	renamed := strings.Contains(body, dcgmLabelPod+"=")
+
 	seen := map[string]*DCGMDevice{}
 	order := []string{}
 	for _, line := range strings.Split(body, "\n") {
@@ -283,7 +310,7 @@ func ParseDCGM(body string) *DCGMInventory {
 			order = append(order, uuid)
 		}
 		if d.Pod == "" {
-			d.Pod, d.Namespace = labels[dcgmLabelPod], labels[dcgmLabelNamespace]
+			d.Pod, d.Namespace = boundPod(labels, renamed)
 		}
 	}
 

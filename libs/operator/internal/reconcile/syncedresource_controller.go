@@ -52,9 +52,24 @@ type SyncedResourceReconciler struct {
 	// deployment want.
 	Report Reporter
 
+	// Devices says which accelerators a pod holds. Optional: left nil, no allocation is ever
+	// reported, which is the honest answer — the binding comes from the exporters and a loop
+	// that cannot read them does not know what any replica is holding.
+	Devices DeviceIndex
+
 	reportMu sync.Mutex
 	reported map[string]reportKey
 	staged   map[string]stageState
+	holding  map[string]map[string]wire.AllocationObserved
+}
+
+// DeviceIndex is the half of the observation loop's device binding this loop needs.
+//
+// Narrowed to one method for the same reason Reporter is narrowed: this loop needs an answer, not
+// a scraper, and taking the interface keeps the exporter's scheduling out of the reconcile path.
+type DeviceIndex interface {
+	// DevicesForPod is the UUIDs of the accelerators one pod holds, or nil when unknown.
+	DevicesForPod(namespace, name string) []string
 }
 
 // +kubebuilder:rbac:groups=placeholder.hangar.dev,resources=syncedresources,verbs=get;list;watch;create;update;patch;delete

@@ -8,11 +8,12 @@ import (
 
 // Id prefixes for the objects this cluster observes and therefore names (ADR 0002).
 const (
-	nodePrefix     = "nod_"
-	devicePrefix   = "dev_"
-	topologyPrefix = "tpd_"
-	workloadPrefix = "dsw_"
-	replicaPrefix  = "rep_"
+	nodePrefix       = "nod_"
+	devicePrefix     = "dev_"
+	topologyPrefix   = "tpd_"
+	workloadPrefix   = "dsw_"
+	replicaPrefix    = "rep_"
+	allocationPrefix = "alc_"
 )
 
 // mintID derives a stable observed id from a cluster-local natural key.
@@ -61,6 +62,19 @@ func TopologyDomainID(clusterID, kind, identifier string) string {
 // deployment, and that is the plane's own id, carried on the frame.
 func ReplicaID(clusterID, namespace, name string) string {
 	return mintID(replicaPrefix, clusterID, "replica", namespace+"/"+name)
+}
+
+// AllocationID is the id this cluster gives one replica's hold on a set of accelerators.
+//
+// Keyed by the pod, not by the devices. Which cards a replica holds can change under it — a device
+// is reset, a card falls off the bus and the pod is rescheduled onto others — and keying on the set
+// would make every such change a new allocation rather than a change to the one that exists. What
+// ends an allocation is the replica going away, so the replica's natural key is the allocation's.
+//
+// The contract requires the cluster to name it (ADR 0002) for the same reason it names replicas:
+// keying on `replica_id` instead would work only while the two stay one-to-one.
+func AllocationID(clusterID, namespace, name string) string {
+	return mintID(allocationPrefix, clusterID, "allocation", namespace+"/"+name)
 }
 
 // DiscoveredWorkloadID is the id this cluster gives a workload it found already running. The

@@ -15,6 +15,7 @@ const (
 	TypeDeploymentObserved = "deployment.observed"
 	TypeCacheObserved      = "cache.observed"
 	TypeReplicaObserved    = "replica.observed"
+	TypeAllocationObserved = "allocation.observed"
 )
 
 // Reporter is the upward half of the reconcile loop: what this operator decided, sent to the hub.
@@ -164,6 +165,90 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 			return
 		}
 	}
+
+	r.reportAllocations(reporter, id, out)
+}
+
+// reportAllocations says which accelerators this deployment's replicas are holding, and hands back
+// the ones they have stopped holding.
+//
+// The releases are the half that is easy to leave out and cannot be. The plane treats an allocation
+// as held for as long as it is reported and expects release to be "the allocation ceasing to be
+// reported" — but nothing on the receiving side acts on a frame that does not arrive, and demand
+// state is never pruned against a resync the way supply is. So an allocation that simply stopped
+// being sent stayed held forever, and a deployment that rolled ten times would have marked ten
+// pods' worth of cards permanently committed. Reporting the departure explicitly, as an allocation
+// holding nothing, is what actually frees them: the plane releases every device the frame no longer
+// names, and a frame naming none releases all of them.
+//
+// The set is remembered per deployment and only in memory, which bounds what this can repair. A
+// pod that goes away while this operator is down is never reported as departed, because nothing
+// here knows it existed. Those rows stay held until the plane learns to prune demand state on
+// resync, which is the real fix and is not this loop's to make.
+func (r *SyncedResourceReconciler) reportAllocations(reporter Reporter, id string, out rollout) {
+	if r.Devices == nil {
+		return
+	}
+
+	held := make(map[string]wire.AllocationObserved, len(out.allocations))
+	for _, allocation := range out.allocations {
+		held[allocation.AllocationID] = allocation
+		if err := reporter.Send(TypeAllocationObserved, allocation.AllocationID, allocation); err != nil {
+			r.Log.Warn("could not report allocation",
+				"deployment", allocation.DeploymentID, "allocation", allocation.AllocationID, "error", err)
+			return
+		}
+	}
+
+	for _, released := range r.departed(id, held) {
+		if err := reporter.Send(TypeAllocationObserved, released.AllocationID, released); err != nil {
+			r.Log.Warn("could not release allocation",
+				"deployment", released.DeploymentID, "allocation", released.AllocationID, "error", err)
+			return
+		}
+	}
+	r.markHolding(id, held)
+}
+
+// departed is the allocations this deployment held on the last pass and does not hold now, each
+// restated as the frame that granted it with its devices taken away.
+//
+// The whole frame is kept and replayed rather than a bare id being sent, because the receiving side
+// resolves a deployment *and* a project before it will apply anything and drops the frame when
+// either is missing. A release built from the id alone carries no project, so it would be discarded
+// on arrival and the devices it was sent to free would stay held — the exact failure it exists to
+// prevent, and a silent one.
+func (r *SyncedResourceReconciler) departed(id string, held map[string]wire.AllocationObserved) []wire.AllocationObserved {
+	r.reportMu.Lock()
+	previous := r.holding[id]
+	r.reportMu.Unlock()
+
+	var out []wire.AllocationObserved
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	for allocationID, last := range previous {
+		if _, still := held[allocationID]; still {
+			continue
+		}
+		released := last
+		// Empty, never nil: the field is required and the emptiness is the message.
+		released.DeviceIDs = []string{}
+		released.ObservedAt = now
+		out = append(out, released)
+	}
+	return out
+}
+
+func (r *SyncedResourceReconciler) markHolding(id string, held map[string]wire.AllocationObserved) {
+	r.reportMu.Lock()
+	defer r.reportMu.Unlock()
+	if r.holding == nil {
+		r.holding = make(map[string]map[string]wire.AllocationObserved)
+	}
+	if len(held) == 0 {
+		delete(r.holding, id)
+		return
+	}
+	r.holding[id] = held
 }
 
 // send ships one deployment.observed, unless it would say exactly what the last one said.
@@ -246,6 +331,7 @@ func (r *SyncedResourceReconciler) forgetReported(id string) {
 	defer r.reportMu.Unlock()
 	delete(r.reported, id)
 	delete(r.staged, id)
+	delete(r.holding, id)
 }
 
 // deploymentID recovers the plane's id from the object name, for the one case that cannot read it

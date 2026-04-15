@@ -20,8 +20,9 @@ import (
 
 // recordingReporter keeps what the reconciler tried to tell the hub.
 type recordingReporter struct {
-	sent          []wire.DeploymentObserved
-	replicaFrames []wire.ReplicaObserved
+	sent             []wire.DeploymentObserved
+	replicaFrames    []wire.ReplicaObserved
+	allocationFrames []wire.AllocationObserved
 }
 
 func (r *recordingReporter) Send(_ syncpkg.MessageType, _ string, payload any) error {
@@ -30,6 +31,8 @@ func (r *recordingReporter) Send(_ syncpkg.MessageType, _ string, payload any) e
 		r.sent = append(r.sent, p)
 	case wire.ReplicaObserved:
 		r.replicaFrames = append(r.replicaFrames, p)
+	case wire.AllocationObserved:
+		r.allocationFrames = append(r.allocationFrames, p)
 	}
 	return nil
 }

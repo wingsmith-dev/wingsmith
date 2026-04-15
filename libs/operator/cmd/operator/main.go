@@ -58,12 +58,19 @@ func run() error {
 	// The manager runs either way. Its cached client is what the desired-state store reads and
 	// writes, and that store keeps working read-only — what stops is the controller that would
 	// turn those CRDs into Kubernetes objects, which is simply never registered.
+	// One scrape of the exporters, read by both loops. The observation loop publishes the
+	// pod-to-accelerator binding it already read; the reconcile loop uses it to say which cards
+	// each replica holds. Scraping twice would double the load on every exporter in the cluster
+	// and still give two readings that disagree.
+	deviceIndex := &observe.DeviceIndex{}
+
 	var reconciler *reconcile.SyncedResourceReconciler
 	if !cfg.ReadOnly {
 		reconciler, err = reconcile.SetupWithManager(mgr, cfg, log)
 		if err != nil {
 			return err
 		}
+		reconciler.Devices = deviceIndex
 	}
 
 	tlsCfg, err := tlsConfig(cfg)
@@ -101,6 +108,7 @@ func run() error {
 			},
 			Log: log,
 		},
+		Devices:        deviceIndex,
 		Interval:       cfg.ObserveInterval,
 		Timeout:        cfg.ObserveTimeout,
 		ResyncInterval: cfg.ResyncInterval,

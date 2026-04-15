@@ -173,7 +173,14 @@ type WorkloadSpec struct {
 type Snapshot struct {
 	Nodes     []Node
 	Workloads []Workload
-	At        time.Time
+
+	// Devices is which pod holds which accelerator, from the same scrape the nodes were built
+	// from. Carried on the snapshot rather than fetched again by whoever needs it, for the
+	// reason every other pairing in this file is read once: two scrapes a moment apart let a
+	// card's owner and the workload holding it disagree.
+	Devices PodDevices
+
+	At time.Time
 }
 
 // Fleet is what a snapshot says about the cluster as a whole rather than about any one machine.

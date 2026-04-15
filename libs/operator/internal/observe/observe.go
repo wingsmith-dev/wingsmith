@@ -52,6 +52,11 @@ type Observer struct {
 	Interval     time.Duration
 	Log          *slog.Logger
 
+	// Devices is where each tick publishes which pod holds which accelerator, for the reconcile
+	// loop to read. Optional: left nil, this loop behaves exactly as it did before and the
+	// reconcile loop reports no allocations rather than guessing at them.
+	Devices *DeviceIndex
+
 	// Timeout bounds a single discovery. Without it a discoverer that blocks forever takes the
 	// whole loop with it silently: the process stays up, the hub session stays healthy because
 	// heartbeats run on another goroutine, and the plane goes on serving the last projection as
@@ -177,6 +182,7 @@ func (o *Observer) Tick(ctx context.Context) error {
 		return fmt.Errorf("discover: %w", err)
 	}
 	snapshot.normalise()
+	o.Devices.Publish(snapshot.Devices)
 	next := o.project(snapshot)
 
 	o.mu.Lock()
@@ -203,6 +209,7 @@ func (o *Observer) Resync(ctx context.Context) error {
 		o.Log.Error("resync discovery failed; streaming the last known projection", "error", err)
 	} else {
 		snapshot.normalise()
+		o.Devices.Publish(snapshot.Devices)
 		next := o.project(snapshot)
 		o.mu.Lock()
 		o.last, o.seen = next, true
