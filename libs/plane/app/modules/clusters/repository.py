@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from sqlalchemy import Select
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -5,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
 from app.db.models import Cluster
+from app.db.models import Credential
+from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
 
 
@@ -13,7 +17,7 @@ class ClusterRepository:
         self.db = db
 
     def _base(self) -> Select:
-        return select(Cluster).options(selectinload(Cluster.sync_state))
+        return select(Cluster).options(selectinload(Cluster.sync_state), selectinload(Cluster.serving))
 
     async def get(self, ref: str) -> Cluster | None:
         """Resolves either an id or a name. Prefixes are the client's problem."""
@@ -49,6 +53,19 @@ class ClusterRepository:
         self.db.add(ClusterSyncState(cluster=cluster))
         await self.db.flush()
         return cluster
+
+    async def credential(self, credential_id: UUID) -> Credential | None:
+        result = await self.db.execute(select(Credential).where(Credential.id == credential_id))
+        return result.scalar_one_or_none()
+
+    async def set_serving(self, cluster: Cluster, serving: ClusterServing) -> ClusterServing:
+        self.db.add(serving)
+        await self.db.flush()
+        return serving
+
+    async def clear_serving(self, serving: ClusterServing) -> None:
+        await self.db.delete(serving)
+        await self.db.flush()
 
     async def delete(self, cluster: Cluster) -> None:
         await self.db.delete(cluster)

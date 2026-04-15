@@ -1,5 +1,7 @@
 import datetime as dt
 
+from uuid import UUID
+
 from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
 from app.db.models import Cluster
+from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
 from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
@@ -19,7 +22,9 @@ from app.core.pagination import decode_cursor
 from .schemas import ClusterSchema
 from .schemas import ClusterSyncSchema
 from .schemas import ClusterCreateRequest
+from .schemas import ClusterServingSchema
 from .schemas import ClusterUpdateRequest
+from .schemas import ClusterServingRequest
 from .repository import ClusterRepository
 
 
@@ -99,6 +104,16 @@ def _sync(state: ClusterSyncState | None) -> ClusterSyncSchema:
     )
 
 
+def _serving(row: ClusterServing | None) -> ClusterServingSchema | None:
+    if row is None:
+        return None
+    return ClusterServingSchema(
+        url=row.url,
+        credential_id=str(row.credential_id) if row.credential_id else None,
+        enabled=row.enabled,
+    )
+
+
 class ClusterService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -122,6 +137,7 @@ class ClusterService:
             revision=_revision(cluster),
             reachable=bool(state and state.reachable),
             sync=_sync(state),
+            serving=_serving(cluster.serving),
         )
 
     async def get(self, ref: str) -> ClusterSchema:
@@ -199,4 +215,48 @@ class ClusterService:
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
         await self.repo.delete(cluster)
+        await self.db.commit()
+
+    async def set_serving(self, ref: str, data: ClusterServingRequest) -> ClusterSchema:
+        cluster = await self.repo.get(ref)
+        if cluster is None:
+            raise NotFound(f"no cluster {ref!r}")
+
+        url = data.url.strip()
+        if not url:
+            raise Invalid("serving url is required")
+
+        credential_id = None
+        if data.credential_id is not None:
+            try:
+                credential_id = UUID(data.credential_id)
+            except ValueError as exc:
+                raise Invalid(f"malformed credential id {data.credential_id!r}") from exc
+            credential = await self.repo.credential(credential_id)
+            if credential is None:
+                raise Invalid(f"no credential {data.credential_id!r}")
+            if credential.revoked_at is not None:
+                raise Invalid(f"credential {data.credential_id!r} is revoked")
+
+        row = cluster.serving
+        if row is None:
+            row = ClusterServing(cluster_id=cluster.id, url=url, credential_id=credential_id, enabled=data.enabled)
+            cluster.serving = row
+            await self.repo.set_serving(cluster, row)
+        else:
+            row.url = url
+            row.credential_id = credential_id
+            row.enabled = data.enabled
+
+        await self.db.commit()
+        return await self.get(cluster.uid)
+
+    async def clear_serving(self, ref: str) -> None:
+        cluster = await self.repo.get(ref)
+        if cluster is None:
+            raise NotFound(f"no cluster {ref!r}")
+        if cluster.serving is None:
+            return
+        await self.repo.clear_serving(cluster.serving)
+        cluster.serving = None
         await self.db.commit()

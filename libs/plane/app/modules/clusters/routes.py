@@ -1,6 +1,7 @@
 from litestar import Response
 from litestar import Controller
 from litestar import get
+from litestar import put
 from litestar import post
 from litestar import patch
 from litestar import delete
@@ -15,6 +16,7 @@ from .depends import cluster_svc_generator
 from .schemas import ClusterSchema
 from .schemas import ClusterCreateRequest
 from .schemas import ClusterUpdateRequest
+from .schemas import ClusterServingRequest
 from .services import ClusterService
 
 
@@ -69,3 +71,13 @@ class ClusterRoutes(Controller):
     @delete("/{ref:str}", status_code=204)
     async def delete_cluster(self, context: RequestContext, svc: ClusterService, ref: str) -> None:
         await svc.delete(ref)
+
+    @put("/{ref:str}/serving")
+    async def set_serving(
+        self, context: RequestContext, svc: ClusterService, ref: str, data: ClusterServingRequest
+    ) -> Response[ClusterSchema]:
+        return Response(await svc.set_serving(ref, data))
+
+    @delete("/{ref:str}/serving", status_code=204)
+    async def clear_serving(self, context: RequestContext, svc: ClusterService, ref: str) -> None:
+        await svc.clear_serving(ref)

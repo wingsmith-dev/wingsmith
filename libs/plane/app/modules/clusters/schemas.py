@@ -29,6 +29,18 @@ class ClusterSyncSchema(Struct):
     observed_region: str | None = None
 
 
+class ClusterServingSchema(Struct):
+    """The cluster's data-plane address, as configuration — never resolved here.
+
+    `credential_id` is a reference, never the secret: the plane hands out the
+    pointer and the gateway is what redeems it.
+    """
+
+    url: str
+    credential_id: str | None
+    enabled: bool
+
+
 class ClusterSchema(Struct):
     """Declared and observed returned together, never merged.
 
@@ -52,6 +64,7 @@ class ClusterSchema(Struct):
     revision: str
     reachable: bool
     sync: ClusterSyncSchema
+    serving: ClusterServingSchema | None
 
 
 class ClusterCreateRequest(Struct):
@@ -75,3 +88,11 @@ class ClusterUpdateRequest(Struct):
     phase: str | UnsetType = UNSET
     labels: dict | UnsetType = UNSET
     capabilities: dict | UnsetType = UNSET
+
+
+class ClusterServingRequest(Struct):
+    """A full replacement. Serving config is small enough that partial updates buy nothing."""
+
+    url: str
+    credential_id: str | None = None
+    enabled: bool = True

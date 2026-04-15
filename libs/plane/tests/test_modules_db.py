@@ -52,6 +52,7 @@ from app.modules.tenants.schemas import TenantCreateRequest
 from app.modules.tenants.schemas import TenantUpdateRequest
 from app.modules.clusters.schemas import ClusterCreateRequest
 from app.modules.clusters.schemas import ClusterUpdateRequest
+from app.modules.clusters.schemas import ClusterServingRequest
 from app.modules.policies.schemas import PolicyCreateRequest
 from app.modules.policies.schemas import PolicyUpdateRequest
 from app.modules.policies.schemas import PolicyAttachmentRequest
@@ -254,6 +255,45 @@ async def test_clusters_lifecycle(db: AsyncSession) -> None:
 
     await service.delete(created.id)
     assert (await service.list()).count == 0
+
+
+async def test_cluster_serving_is_set_replaced_and_cleared(db: AsyncSession) -> None:
+    service = ClusterService(db)
+    created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
+    assert created.serving is None
+
+    set_once = await service.set_serving(created.id, ClusterServingRequest(url="http://dynamo.alpha.svc:8000"))
+    assert set_once.serving is not None
+    assert set_once.serving.url == "http://dynamo.alpha.svc:8000"
+    assert set_once.serving.credential_id is None
+    assert set_once.serving.enabled is True
+
+    replaced = await service.set_serving(
+        created.id, ClusterServingRequest(url="https://alpha.example.com", enabled=False)
+    )
+    assert replaced.serving.url == "https://alpha.example.com"
+    assert replaced.serving.enabled is False
+    assert (await service.get(created.id)).serving.url == "https://alpha.example.com"
+
+    with pytest.raises(Invalid):
+        await service.set_serving(created.id, ClusterServingRequest(url="   "))
+    with pytest.raises(Invalid):
+        await service.set_serving(
+            created.id, ClusterServingRequest(url="https://alpha.example.com", credential_id="not-a-uuid")
+        )
+    with pytest.raises(Invalid):
+        await service.set_serving(
+            created.id,
+            ClusterServingRequest(
+                url="https://alpha.example.com", credential_id="00000000-0000-0000-0000-000000000000"
+            ),
+        )
+
+    await service.clear_serving(created.id)
+    assert (await service.get(created.id)).serving is None
+
+    with pytest.raises(NotFound):
+        await service.set_serving("clu_missing", ClusterServingRequest(url="https://nowhere.example.com"))
 
 
 async def test_tenants_lifecycle(db: AsyncSession) -> None:

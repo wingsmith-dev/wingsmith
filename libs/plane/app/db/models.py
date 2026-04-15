@@ -41,7 +41,8 @@ class Cluster(BaseMixin):
     cluster `draining` — and is deliberately not the same axis as reachability,
     which is observed and lives on `ClusterSyncState`. There is no address column:
     the plane never dials a cluster, so a cluster's identity is the credential its
-    agent presents, not a URL the plane could call.
+    agent presents, not a URL the plane could call. The one address a cluster
+    can carry is its data-plane serving address, and it lives on `ClusterServing`.
     """
 
     __tablename__ = "supply_cluster"
@@ -60,6 +61,9 @@ class Cluster(BaseMixin):
 
     sync_state: Mapped[ClusterSyncState | None] = relationship(
         "ClusterSyncState", back_populates="cluster", lazy="noload", uselist=False, cascade="all, delete-orphan"
+    )
+    serving: Mapped[ClusterServing | None] = relationship(
+        "ClusterServing", back_populates="cluster", lazy="noload", uselist=False, cascade="all, delete-orphan"
     )
     nodes: Mapped[list[Node]] = relationship("Node", back_populates="cluster", lazy="noload")
     pools: Mapped[list[Pool]] = relationship("Pool", back_populates="cluster", lazy="noload")
@@ -102,6 +106,36 @@ class ClusterSyncState(BaseMixin):
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     cluster: Mapped[Cluster] = relationship("Cluster", back_populates="sync_state", lazy="noload")
+
+
+class ClusterServing(BaseMixin):
+    """Where the data plane reaches a cluster's serving runtime, and with what.
+
+    Deliberately not a column on `Cluster`. The plane still never dials a cluster
+    — this row is configuration the plane stores and hands out, and the gateway is
+    the only thing that ever resolves it into a connection. Keeping it separate
+    keeps the registry row free of an address that would read as one the control
+    plane could use.
+
+    `url` is opaque: a public ingress, an in-cluster service name, anything the
+    gateway can dial. `credential_id` points at whatever the address is fronted
+    by — an access token, a signed header, mTLS material — and is nullable
+    because a private in-cluster address is fronted by nothing.
+    """
+
+    __tablename__ = "supply_cluster_serving"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    cluster_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), unique=True, nullable=False
+    )
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    credential_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("ops_credential.id", ondelete="SET NULL"), nullable=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+
+    cluster: Mapped[Cluster] = relationship("Cluster", back_populates="serving", lazy="noload")
 
 
 class Node(BaseMixin):

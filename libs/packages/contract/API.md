@@ -127,6 +127,9 @@ state it leaves behind.
 
 - **No `api_endpoint` on a cluster.** The plane never needs the address — the operator dials out
   and identity is its credential, so an address would be decoration that looks like configuration.
+  The one address a cluster carries is `serving` (`PUT /clusters/{ref}/serving`): where the *data*
+  plane reaches its serving runtime, and a credential reference for whatever fronts it. The plane
+  stores and hands it out; only the gateway ever dials it.
 - **No Kubernetes-specific fields.** No `kubelet_version`, no manifest fragments, no object
   references. Generic observed attributes (os image, kernel version, driver version, agent version)
   are fine. The operator is the only thing that knows Kubernetes exists; leaking it here would make
