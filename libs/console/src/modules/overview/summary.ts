@@ -143,7 +143,7 @@ export function summariseDemand(
   return {
     deployments: deployments.length,
     deploymentsPending: deployments.filter(
-      (d) => d.workload.phase === "pending"
+      (d) => d.admission_phase === "pending"
     ).length,
     replicasReady: deployments.reduce((sum, d) => sum + d.replicas.ready, 0),
     replicasDesired: deployments.reduce(
@@ -354,12 +354,15 @@ function nodeActionables(nodes: SupplyNode[]): Actionable[] {
   return out
 }
 
-/** How long a deployment has been in the phase it is in, where we can tell. */
+/**
+ * How long a deployment has been in the phase it is in, where we can tell.
+ *
+ * Admission is per-cluster, so the three stamps are the deployment's own: a
+ * workload queued on quota in one region says nothing about another.
+ */
 function settlingFor(deployment: Deployment): number | null {
   const stamp =
-    deployment.workload.placed_at ??
-    deployment.workload.admitted_at ??
-    deployment.workload.queued_at
+    deployment.placed_at ?? deployment.admitted_at ?? deployment.queued_at
   return stamp ? Date.now() - new Date(stamp).getTime() : null
 }
 
@@ -378,26 +381,26 @@ function deploymentActionables(deployments: Deployment[]): Actionable[] {
       params: { deploymentId: deployment.id },
     }
 
-    const settling = !SETTLED_PHASES.includes(deployment.workload.phase)
+    const settling = !SETTLED_PHASES.includes(deployment.admission_phase)
     const elapsed = settlingFor(deployment)
     const stuck = settling && (elapsed === null || elapsed > SETTLING_MS)
 
     if (stuck) {
       out.push({
         id: `deployment:phase:${deployment.id}`,
-        tone: deployment.workload.phase === "pending" ? "warn" : "info",
+        tone: deployment.admission_phase === "pending" ? "warn" : "info",
         kind: "deployment",
-        title: `${deployment.name} has been ${deployment.workload.phase}${
+        title: `${deployment.name} has been ${deployment.admission_phase}${
           elapsed === null
             ? ""
             : ` since ${formatRelative(
-                deployment.workload.placed_at ??
-                  deployment.workload.admitted_at ??
-                  deployment.workload.queued_at
+                deployment.placed_at ??
+                  deployment.admitted_at ??
+                  deployment.queued_at
               )}`
         }`,
-        detail: deployment.workload.reason ?? undefined,
-        badges: [deployment.workload.type],
+        detail: deployment.admission_reason ?? undefined,
+        badges: [deployment.workload_name],
         link,
       })
     }

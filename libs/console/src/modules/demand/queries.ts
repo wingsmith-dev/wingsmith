@@ -2,13 +2,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
   createArtifact,
-  createDeployment,
   createEndpoint,
   createRecipe,
+  createWorkload,
   deleteArtifact,
-  deleteDeployment,
   deleteEndpoint,
   deleteRecipe,
+  deleteWorkload,
   fetchArtifact,
   fetchArtifacts,
   fetchDeployment,
@@ -17,26 +17,32 @@ import {
   fetchEndpoints,
   fetchRecipe,
   fetchRecipes,
+  fetchWorkload,
+  fetchWorkloads,
   resolveArtifact,
   updateArtifact,
   updateDeployment,
   updateEndpoint,
   updateRecipe,
+  updateWorkload,
   type ArtifactFilters,
   type DeploymentFilters,
   type EndpointFilters,
   type RecipeFilters,
+  type WorkloadFilters,
 } from "./api"
 import type {
   ArtifactCreateRequest,
   ArtifactUpdateRequest,
   Deployment,
-  DeploymentCreateRequest,
   DeploymentUpdateRequest,
   EndpointCreateRequest,
   EndpointUpdateRequest,
   RecipeCreateRequest,
   RecipeUpdateRequest,
+  Workload,
+  WorkloadCreateRequest,
+  WorkloadUpdateRequest,
 } from "./types"
 
 /** Fast enough to watch a deployment come up, slow enough not to poll the plane for sport. */
@@ -155,7 +161,79 @@ export function useDeleteRecipe() {
     mutationFn: (ref: string) => deleteRecipe(ref),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["recipes"] })
+      client.invalidateQueries({ queryKey: ["workloads"] })
+    },
+  })
+}
+
+/**
+ * The phases a workload or deployment has stopped moving in.
+ *
+ * `degraded` is deliberately absent: it is what a rolling update and a crash-looping replica
+ * both look like, and both are mid-flight.
+ */
+const SETTLED_PHASES = new Set(["running", "failed"])
+
+export function useWorkloads(filters: WorkloadFilters = {}) {
+  return useCursorList(["workloads", filters], (cursor) =>
+    fetchWorkloads(filters, cursor)
+  )
+}
+
+/**
+ * One workload, polled while any of its clusters is still coming up.
+ *
+ * The rollup on a workload moves for as long as any of its deployments does, so
+ * the interval follows the derived phase rather than one cluster's report.
+ */
+export function useWorkload(ref: string, project?: string) {
+  return useQuery({
+    queryKey: ["workloads", "detail", ref, project],
+    queryFn: () => fetchWorkload(ref, project),
+    enabled: !!ref,
+    refetchInterval: (query) => {
+      const data = query.state.data as Workload | undefined
+      if (!data) return POLL_MS
+      return SETTLED_PHASES.has(data.phase) ? false : POLL_MS
+    },
+  })
+}
+
+export function useCreateWorkload() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: WorkloadCreateRequest) => createWorkload(body),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["workloads"] })
       client.invalidateQueries({ queryKey: ["deployments"] })
+    },
+  })
+}
+
+export function useUpdateWorkload() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: {
+      ref: string
+      body: WorkloadUpdateRequest
+      revision?: string
+    }) => updateWorkload(vars.ref, vars.body, vars.revision),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["workloads"] })
+      client.invalidateQueries({ queryKey: ["deployments"] })
+    },
+  })
+}
+
+/** Deleting a workload takes every deployment it expanded into with it. */
+export function useDeleteWorkload() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) => deleteWorkload(ref),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["workloads"] })
+      client.invalidateQueries({ queryKey: ["deployments"] })
+      client.invalidateQueries({ queryKey: ["endpoints"] })
     },
   })
 }
@@ -165,14 +243,6 @@ export function useDeployments(filters: DeploymentFilters = {}) {
     fetchDeployments(filters, cursor)
   )
 }
-
-/**
- * The phases a deployment has stopped moving in.
- *
- * `degraded` is deliberately absent: it is what a rolling update and a crash-looping replica
- * both look like, and both are mid-flight.
- */
-const SETTLED_PHASES = new Set(["running", "failed"])
 
 /**
  * One deployment, polled while it is still coming up and left alone once it is not.
@@ -205,14 +275,7 @@ export function useDeploymentOptions() {
   )
 }
 
-export function useCreateDeployment() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (body: DeploymentCreateRequest) => createDeployment(body),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["deployments"] }),
-  })
-}
-
+/** Enabling or disabling one cluster's copy. The only write a deployment takes. */
 export function useUpdateDeployment() {
   const client = useQueryClient()
   return useMutation({
@@ -221,17 +284,9 @@ export function useUpdateDeployment() {
       body: DeploymentUpdateRequest
       revision?: string
     }) => updateDeployment(vars.ref, vars.body, vars.revision),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["deployments"] }),
-  })
-}
-
-export function useDeleteDeployment() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (ref: string) => deleteDeployment(ref),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["deployments"] })
-      client.invalidateQueries({ queryKey: ["endpoints"] })
+      client.invalidateQueries({ queryKey: ["workloads"] })
     },
   })
 }

@@ -19,19 +19,16 @@ import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { parallelismLabel, workloadPhaseTone } from "@/modules/demand/display"
-import { DeleteDialog } from "@/components/layout/destructive"
 import {
-  useDeleteDeployment,
   useDeployment,
   useRecipe,
+  useWorkload,
 } from "@/modules/demand/queries"
 import { DeploymentLifecycle } from "@/components/demand/deployment-lifecycle"
-import { DeploymentForm } from "../DeploymentForm"
 import { useState } from "react"
-import { toast } from "sonner"
 import { useOperations } from "@/modules/machinery/queries"
 import { IconArrowLeft } from "@tabler/icons-react"
-import { Link, useNavigate, useParams } from "@tanstack/react-router"
+import { Link, useParams } from "@tanstack/react-router"
 
 /**
  * The three numbers a serving deployment is judged on. They lead the panel at
@@ -48,7 +45,8 @@ export function DeploymentDetailPage() {
     from: "/_app/deployments/$deploymentId",
   })
   const { data: deployment, isLoading, error } = useDeployment(deploymentId)
-  const { data: recipe } = useRecipe(deployment?.recipe_id ?? "")
+  const { data: workload } = useWorkload(deployment?.workload_id ?? "")
+  const { data: recipe } = useRecipe(workload?.recipe_id ?? "")
   const operations = useOperations({ target: deployment?.id })
   const benchmarks = useDeploymentBenchmarks(deployment?.id)
   // Settled means "stop polling", not "healthy": a failed deployment has
@@ -59,10 +57,6 @@ export function DeploymentDetailPage() {
     (deployment?.status?.ready_replicas ?? 0) > 0 ||
       deployment?.status?.phase === "failed"
   )
-  const remove = useDeleteDeployment()
-  const navigate = useNavigate()
-  const [editing, setEditing] = useState(false)
-  const [doomed, setDoomed] = useState(false)
   const [tab, setTab] = useState("state")
 
   if (error) {
@@ -97,22 +91,14 @@ export function DeploymentDetailPage() {
         actions={
           <div className="flex gap-2">
             {deployment && (
-              <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setEditing(true)}
+              <Button asChild size="sm" variant="outline">
+                <Link
+                  to="/workloads/$workloadId"
+                  params={{ workloadId: deployment.workload_id }}
                 >
-                  Edit
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDoomed(true)}
-                >
-                  Delete
-                </Button>
-              </>
+                  Edit workload
+                </Link>
+              </Button>
             )}
             {deployment && (
               <NewBenchmarkDialog
@@ -146,39 +132,6 @@ export function DeploymentDetailPage() {
         }
       />
 
-      {deployment && editing && (
-        <DeploymentForm
-          key={deployment.revision}
-          open
-          deployment={deployment}
-          onOpenChange={(open) => !open && setEditing(false)}
-        />
-      )}
-      {deployment && (
-        <DeleteDialog
-          icon="deployment"
-          open={doomed}
-          onOpenChange={setDoomed}
-          kind="deployment"
-          name={deployment.name}
-          note="Its replicas are torn down and any endpoint target pointing at it stops routing."
-          error={remove.error}
-          pending={remove.isPending}
-          onConfirm={() =>
-            remove.mutate(deployment.id, {
-              onSuccess: () => {
-                setDoomed(false)
-                toast.success("Deployment deleted", {
-                  description: deployment.name,
-                })
-                navigate({ to: "/deployments" })
-              },
-              onError: (e) =>
-                toast.error(formatError(e, "Could not delete deployment")),
-            })
-          }
-        />
-      )}
 
       <div className="space-y-4 p-4">
         {isLoading && <Skeleton className="h-40 w-full" />}
@@ -195,13 +148,13 @@ export function DeploymentDetailPage() {
         {deployment && replicas && (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <StatusLabel tone={workloadPhaseTone(deployment.workload.phase)}>
-                {deployment.workload.phase}
+              <StatusLabel tone={workloadPhaseTone(deployment.admission_phase)}>
+                {deployment.admission_phase}
               </StatusLabel>
               <span className="font-mono text-2xs text-muted-foreground/60">
                 generation {deployment.generation}
               </span>
-              <Labels labels={deployment.labels} />
+              <Labels labels={workload?.labels ?? {}} />
             </div>
 
             <DeploymentLifecycle deployment={deployment} />
@@ -246,7 +199,7 @@ export function DeploymentDetailPage() {
                         {replicas.at_current_generation}/{replicas.total}
                       </Field>
                       <Field label="Reason">
-                        <Dash>{deployment.workload.reason}</Dash>
+                        <Dash>{deployment.admission_reason}</Dash>
                       </Field>
                     </FieldGrid>
                   </CardContent>
@@ -286,7 +239,7 @@ export function DeploymentDetailPage() {
                 <div className="grid gap-4 lg:grid-cols-2">
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Declared spec</CardTitle>
+                      <CardTitle className="text-sm">Placement</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <FieldGrid>
@@ -299,20 +252,22 @@ export function DeploymentDetailPage() {
                             {deployment.cluster_id}
                           </Link>
                         </Field>
-                        <Field label="Recipe">
-                          <Link to="/recipes" className="hover:underline">
-                            {recipe?.name ?? deployment.recipe_id}
-                          </Link>
+                        <Field label="Share">
+                          {deployment.desired_replicas} of{" "}
+                          {workload?.scale.desired ?? "?"}
                         </Field>
-                        <Field label="Replicas">
-                          {deployment.min_replicas}–{deployment.max_replicas},
-                          desired {deployment.desired_replicas}
+                        <Field label="Admission">
+                          {deployment.admission_phase}
                         </Field>
+                        <Field label="Authority">{deployment.authority}</Field>
                         <Field label="Enabled">
                           {deployment.enabled ? "yes" : "no"}
                         </Field>
-                        <Field label="Adapters">
-                          {deployment.adapter_artifact_ids.length || "none"}
+                        <Field label="Queued">
+                          {formatRelative(deployment.queued_at)}
+                        </Field>
+                        <Field label="Placed">
+                          {formatRelative(deployment.placed_at)}
                         </Field>
                         <Field label="Revision">{deployment.revision}</Field>
                       </FieldGrid>
@@ -325,32 +280,42 @@ export function DeploymentDetailPage() {
                     </CardHeader>
                     <CardContent>
                       <FieldGrid>
-                        <Field label="Type">{deployment.workload.type}</Field>
-                        <Field label="Phase">{deployment.workload.phase}</Field>
+                        <Field label="Name">
+                          <Link
+                            to="/workloads/$workloadId"
+                            params={{ workloadId: deployment.workload_id }}
+                            className="hover:underline"
+                          >
+                            {deployment.workload_name}
+                          </Link>
+                        </Field>
+                        <Field label="Kind">{workload?.kind}</Field>
+                        <Field label="Phase">{workload?.phase}</Field>
                         <Field label="Priority class">
-                          {deployment.workload.priority_class}
+                          {workload?.priority_class}
                         </Field>
                         <Field label="Preemptible">
-                          {deployment.workload.preemptible ? "yes" : "no"}
+                          {workload?.preemptible ? "yes" : "no"}
                         </Field>
-                        <Field label="Gang size">
-                          {deployment.workload.gang_size}
+                        <Field label="Gang size">{workload?.gang_size}</Field>
+                        <Field label="Project">{workload?.project_id}</Field>
+                        <Field label="Recipe">
+                          <Link to="/recipes" className="hover:underline">
+                            {recipe?.name ?? workload?.recipe_id}
+                          </Link>
                         </Field>
-                        <Field label="Project">
-                          {deployment.workload.project_id}
-                        </Field>
-                        <Field label="Queued">
-                          {formatRelative(deployment.workload.queued_at)}
+                        <Field label="Adapters">
+                          {workload?.adapter_artifact_ids.length || "none"}
                         </Field>
                         <Field label="Started">
-                          {formatRelative(deployment.workload.started_at)}
+                          {formatRelative(workload?.started_at ?? null)}
                         </Field>
                         <Field label="Reason" className="sm:col-span-2">
-                          <Dash>{deployment.workload.reason}</Dash>
+                          <Dash>{deployment.admission_reason}</Dash>
                         </Field>
                         <Field label="Deadline" className="sm:col-span-2">
-                          {deployment.workload.deadline_at
-                            ? formatAbsolute(deployment.workload.deadline_at)
+                          {workload?.deadline_at
+                            ? formatAbsolute(workload.deadline_at)
                             : "none"}
                         </Field>
                       </FieldGrid>

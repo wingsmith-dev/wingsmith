@@ -103,17 +103,15 @@ function deployment(over: Partial<Deployment> = {}): Deployment {
     id: "dep_1",
     name: "qwen3-8b",
     cluster_id: "clu_1",
+    workload_name: "qwen3-8b",
     enabled: true,
     desired_replicas: 2,
     replicas: replicas(),
-    workload: {
-      phase: "running",
-      type: "inference",
-      reason: null,
-      placed_at: new Date(NOW.getTime() - 60 * MINUTES).toISOString(),
-      admitted_at: null,
-      queued_at: null,
-    },
+    admission_phase: "running",
+    admission_reason: null,
+    placed_at: new Date(NOW.getTime() - 60 * MINUTES).toISOString(),
+    admitted_at: null,
+    queued_at: null,
     ...over,
   } as Deployment
 }
@@ -302,7 +300,7 @@ describe("summariseDemand", () => {
           id: "dep_2",
           desired_replicas: 4,
           replicas: replicas({ ready: 1, pending: 3, failed: 0 }),
-          workload: { ...deployment().workload, phase: "pending" },
+          admission_phase: "pending",
         }),
       ],
       [
@@ -507,11 +505,8 @@ describe("deriveClusterActionables", () => {
       deployments: [
         deployment({
           replicas: replicas({ ready: 0, pending: 2, failed: 0 }),
-          workload: {
-            ...deployment().workload,
-            phase: "placing",
-            placed_at: new Date(NOW.getTime() - 2 * MINUTES).toISOString(),
-          },
+          admission_phase: "placing",
+          placed_at: new Date(NOW.getTime() - 2 * MINUTES).toISOString(),
         }),
       ],
     })
@@ -524,12 +519,9 @@ describe("deriveClusterActionables", () => {
       deployments: [
         deployment({
           replicas: replicas({ ready: 0, pending: 2, failed: 0 }),
-          workload: {
-            ...deployment().workload,
-            phase: "pending",
-            reason: "no cluster has capacity",
-            placed_at: new Date(NOW.getTime() - 20 * MINUTES).toISOString(),
-          },
+          admission_phase: "pending",
+          admission_reason: "no cluster has capacity",
+          placed_at: new Date(NOW.getTime() - 20 * MINUTES).toISOString(),
         }),
       ],
     })
@@ -544,11 +536,8 @@ describe("deriveClusterActionables", () => {
       deployments: [
         deployment({
           replicas: replicas({ ready: 0, pending: 2, failed: 0 }),
-          workload: {
-            ...deployment().workload,
-            phase: "placing",
-            placed_at: new Date(NOW.getTime() - 20 * MINUTES).toISOString(),
-          },
+          admission_phase: "placing",
+          placed_at: new Date(NOW.getTime() - 20 * MINUTES).toISOString(),
         }),
       ],
     })

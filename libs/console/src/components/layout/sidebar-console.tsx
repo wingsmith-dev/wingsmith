@@ -45,6 +45,7 @@ const overviewItems: NavItem[] = [
  */
 const servingItems: NavItem[] = [
   { label: "Endpoints", to: "/endpoints", kind: "endpoint" },
+  { label: "Workloads", to: "/workloads", kind: "workload" },
   { label: "Deployments", to: "/deployments", kind: "deployment" },
   {
     label: "Discovered",

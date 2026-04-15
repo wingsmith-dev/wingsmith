@@ -4,7 +4,6 @@ import type {
   ArtifactCreateRequest,
   ArtifactUpdateRequest,
   Deployment,
-  DeploymentCreateRequest,
   DeploymentUpdateRequest,
   Endpoint,
   EndpointCreateRequest,
@@ -13,6 +12,9 @@ import type {
   RecipeCreateRequest,
   RecipeUpdateRequest,
   ResolvedArtifact,
+  Workload,
+  WorkloadCreateRequest,
+  WorkloadUpdateRequest,
 } from "./types"
 
 export interface ArtifactFilters {
@@ -32,13 +34,22 @@ export interface RecipeFilters {
   label?: string[]
 }
 
+export interface WorkloadFilters {
+  project?: string
+  kind?: string
+  phase?: string
+  recipe?: string
+  /** Workloads with a share on this cluster. Global object, per-cluster question. */
+  cluster?: string
+  label?: string[]
+}
+
+/** No `type`: kind is a workload fact and a deployment no longer carries it. */
 export interface DeploymentFilters {
   cluster?: string
-  recipe?: string
+  workload?: string
   project?: string
   phase?: string
-  /** The workload type, sent as `type`. */
-  type?: string
   label?: string[]
 }
 
@@ -118,6 +129,37 @@ export function deleteRecipe(ref: string): Promise<void> {
   return api.delete<void>(`/recipes/${encodeURIComponent(ref)}`)
 }
 
+export function fetchWorkloads(
+  filters: WorkloadFilters = {},
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<Workload>> {
+  return api.list<Workload>("/workloads", { ...filters, cursor, limit })
+}
+
+/** `{ref}` is a `wkl_` uid or a name; a bare name needs `?project=` beside it. */
+export function fetchWorkload(ref: string, project?: string): Promise<Workload> {
+  return api.get<Workload>(`/workloads/${encodeURIComponent(ref)}`, { project })
+}
+
+export function createWorkload(body: WorkloadCreateRequest): Promise<Workload> {
+  return api.post<Workload>("/workloads", body)
+}
+
+export function updateWorkload(
+  ref: string,
+  body: WorkloadUpdateRequest,
+  revision?: string
+): Promise<Workload> {
+  return api.patch<Workload>(`/workloads/${encodeURIComponent(ref)}`, body, {
+    ifMatch: revision,
+  })
+}
+
+export function deleteWorkload(ref: string): Promise<void> {
+  return api.delete<void>(`/workloads/${encodeURIComponent(ref)}`)
+}
+
 export function fetchDeployments(
   filters: DeploymentFilters = {},
   cursor?: string,
@@ -139,12 +181,11 @@ export function fetchDeployment(
   })
 }
 
-export function createDeployment(
-  body: DeploymentCreateRequest
-): Promise<Deployment> {
-  return api.post<Deployment>("/deployments", body)
-}
-
+/**
+ * The only write a deployment takes on its own. There is no create and no
+ * delete: placement creates a deployment when it expands a workload, and
+ * removing one is a `workload.drain` or a scale change.
+ */
 export function updateDeployment(
   ref: string,
   body: DeploymentUpdateRequest,
@@ -157,10 +198,6 @@ export function updateDeployment(
       ifMatch: revision,
     }
   )
-}
-
-export function deleteDeployment(ref: string): Promise<void> {
-  return api.delete<void>(`/deployments/${encodeURIComponent(ref)}`)
 }
 
 export function fetchEndpoints(

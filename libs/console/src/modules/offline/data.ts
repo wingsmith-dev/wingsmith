@@ -4,6 +4,9 @@ import type {
   Deployment,
   Endpoint,
   Recipe,
+  Workload,
+  WorkloadDeployment,
+  WorkloadScale,
 } from "@/modules/demand/types"
 import type {
   Policy,
@@ -774,40 +777,40 @@ export const recipes: Recipe[] = [
   },
 ]
 
+/**
+ * Workload ids are minted before the deployments so a deployment can name its
+ * parent and the parent can list its shares. The workload is the object a user
+ * creates; the deployments underneath it are what placement expanded it into.
+ */
+const workloadIds = {
+  llama: uid("wkl_"),
+  bge: uid("wkl_"),
+  eval: uid("wkl_"),
+}
+
 export const deployments: Deployment[] = [
   {
     id: uid("dep_"),
     name: "llama-70b-prod",
+    workload_id: workloadIds.llama,
+    workload_name: "llama-70b-prod",
     cluster_id: clusters[0].id,
-    recipe_id: recipes[0].id,
-    min_replicas: 2,
-    max_replicas: 6,
+    min_replicas: 4,
+    max_replicas: 4,
     desired_replicas: 4,
+    admission_phase: "running",
+    admission_reason: null,
+    queued_at: iso(2880),
+    admitted_at: iso(2879),
+    placed_at: iso(2878),
     generation: 7,
     enabled: true,
-    authority: "managed",
-    adapter_artifact_ids: [],
-    overrides: { "--max-num-seqs": 256 },
-    labels: { tier: "prod" },
     created_at: CREATED,
     updated_at: iso(12),
     revision: REV,
-    workload: {
-      type: "service",
-      phase: "running",
-      reason: null,
-      project_id: projects[0].id,
-      priority_class: "production",
-      preemptible: false,
-      gang_size: 8,
-      queued_at: iso(2880),
-      admitted_at: iso(2879),
-      placed_at: iso(2878),
-      started_at: iso(2875),
-      deadline_at: null,
-    },
-    requires_single_topology_domain: true,
-    topology_domain_kind: "nvlink",
+    adopted_workload_id: null,
+    adopted_fingerprint: null,
+    authority: "managed",
     status: {
       observed_generation: 7,
       phase: "degraded",
@@ -833,37 +836,71 @@ export const deployments: Deployment[] = [
   },
   {
     id: uid("dep_"),
-    name: "bge-embed",
-    cluster_id: clusters[1].id,
-    recipe_id: recipes[1].id,
-    min_replicas: 1,
-    max_replicas: 3,
+    name: "llama-70b-prod",
+    workload_id: workloadIds.llama,
+    workload_name: "llama-70b-prod",
+    cluster_id: clusters[2].id,
+    min_replicas: 2,
+    max_replicas: 2,
     desired_replicas: 2,
+    admission_phase: "placed",
+    admission_reason: null,
+    queued_at: iso(120),
+    admitted_at: iso(119),
+    placed_at: iso(118),
+    generation: 2,
+    enabled: true,
+    created_at: iso(120),
+    updated_at: iso(8),
+    revision: revision(iso(120)),
+    adopted_workload_id: null,
+    adopted_fingerprint: null,
+    authority: "managed",
+    status: {
+      observed_generation: 2,
+      phase: "progressing",
+      reason: "WeightsNotResident",
+      message: "waiting for art_01j9x2eeee to finish downloading",
+      desired_replicas: 2,
+      ready_replicas: 1,
+      updated_replicas: 1,
+      unavailable_replicas: 1,
+      last_error_code: null,
+      last_error_message: null,
+      last_error_at: null,
+      observed_at: iso(1),
+    },
+    replicas: {
+      total: 2,
+      ready: 1,
+      running: 2,
+      pending: 0,
+      failed: 0,
+      at_current_generation: 1,
+    },
+  },
+  {
+    id: uid("dep_"),
+    name: "bge-embed",
+    workload_id: workloadIds.bge,
+    workload_name: "bge-embed",
+    cluster_id: clusters[1].id,
+    min_replicas: 2,
+    max_replicas: 2,
+    desired_replicas: 2,
+    admission_phase: "placed",
+    admission_reason: null,
+    queued_at: iso(90),
+    admitted_at: iso(89),
+    placed_at: iso(88),
     generation: 1,
     enabled: true,
-    authority: "managed",
-    adapter_artifact_ids: [],
-    overrides: {},
-    labels: {},
     created_at: CREATED,
     updated_at: null,
     revision: REV,
-    workload: {
-      type: "service",
-      phase: "placed",
-      reason: null,
-      project_id: projects[0].id,
-      priority_class: "production",
-      preemptible: false,
-      gang_size: 1,
-      queued_at: iso(90),
-      admitted_at: iso(89),
-      placed_at: iso(88),
-      started_at: null,
-      deadline_at: null,
-    },
-    requires_single_topology_domain: null,
-    topology_domain_kind: null,
+    adopted_workload_id: null,
+    adopted_fingerprint: null,
+    authority: "managed",
     status: {
       observed_generation: 2,
       phase: "pending",
@@ -890,36 +927,25 @@ export const deployments: Deployment[] = [
   {
     id: uid("dep_"),
     name: "nightly-eval",
+    workload_id: workloadIds.eval,
+    workload_name: "nightly-eval",
     cluster_id: clusters[2].id,
-    recipe_id: recipes[0].id,
     min_replicas: 1,
     max_replicas: 1,
     desired_replicas: 1,
+    admission_phase: "pending",
+    admission_reason: "no topology domain with 8 free devices",
+    queued_at: iso(30),
+    admitted_at: null,
+    placed_at: null,
     generation: 2,
     enabled: false,
-    authority: "managed",
-    adapter_artifact_ids: [artifacts[1].id],
-    overrides: {},
-    labels: { tier: "batch" },
     created_at: CREATED,
     updated_at: null,
     revision: REV,
-    workload: {
-      type: "gang",
-      phase: "pending",
-      reason: "no topology domain with 8 free devices",
-      project_id: projects[1].id,
-      priority_class: "batch",
-      preemptible: true,
-      gang_size: 8,
-      queued_at: iso(30),
-      admitted_at: null,
-      placed_at: null,
-      started_at: null,
-      deadline_at: iso(-360),
-    },
-    requires_single_topology_domain: null,
-    topology_domain_kind: null,
+    adopted_workload_id: null,
+    adopted_fingerprint: null,
+    authority: "managed",
     status: {
       observed_generation: 2,
       phase: "pending",
@@ -945,6 +971,162 @@ export const deployments: Deployment[] = [
   },
 ]
 
+/** The unit the three scale numbers count, named by kind. */
+const SCALE_UNIT: Record<string, string> = {
+  service: "replicas",
+  task: "completions",
+  gang: "ranks",
+}
+
+/**
+ * Projects a deployment into the row the workload carries for it, so the
+ * per-cluster table and the deployment page cannot drift apart.
+ */
+function share(deployment: Deployment): WorkloadDeployment {
+  const cluster = clusters.find((c) => c.id === deployment.cluster_id)!
+  return {
+    id: deployment.id,
+    name: deployment.name,
+    cluster_id: cluster.id,
+    cluster_name: cluster.name,
+    region: cluster.region,
+    min_replicas: deployment.min_replicas,
+    max_replicas: deployment.max_replicas,
+    desired_replicas: deployment.desired_replicas,
+    admission_phase: deployment.admission_phase,
+    admission_reason: deployment.admission_reason,
+    generation: deployment.generation,
+    enabled: deployment.enabled,
+    authority: deployment.authority,
+    queued_at: deployment.queued_at,
+    admitted_at: deployment.admitted_at,
+    placed_at: deployment.placed_at,
+    replicas: deployment.replicas,
+    status: deployment.status,
+  }
+}
+
+/**
+ * `placed` and `ready` are sums over the shares — the one place summing is
+ * legal, because it is the workload asking what its own expansion adds up to.
+ */
+function scale(
+  kind: string,
+  bounds: { min: number; max: number; desired: number },
+  shares: WorkloadDeployment[]
+): WorkloadScale {
+  return {
+    unit: SCALE_UNIT[kind] ?? "replicas",
+    min: bounds.min,
+    max: bounds.max,
+    desired: bounds.desired,
+    placed: shares.reduce((sum, s) => sum + s.desired_replicas, 0),
+    ready: shares.reduce((sum, s) => sum + s.replicas.ready, 0),
+  }
+}
+
+function workload(
+  id: string,
+  fields: Omit<Workload, "id" | "scale" | "deployments"> & {
+    bounds: { min: number; max: number; desired: number }
+  }
+): Workload {
+  const { bounds, ...rest } = fields
+  const shares = deployments
+    .filter((d) => d.workload_id === id)
+    .map((d) => share(d))
+  return {
+    ...rest,
+    id,
+    scale: scale(rest.kind, bounds, shares),
+    deployments: shares,
+  }
+}
+
+export const workloads: Workload[] = [
+  workload(workloadIds.llama, {
+    name: "llama-70b-prod",
+    kind: "service",
+    phase: "placed",
+    project_id: projects[0].id,
+    priority_class: "production",
+    preemptible: false,
+    paused: false,
+    gang_size: 1,
+    recipe_id: recipes[0].id,
+    adapter_artifact_ids: [],
+    overrides: { "--max-num-seqs": 256 },
+    labels: { tier: "prod" },
+    requires_single_topology_domain: true,
+    topology_domain_kind: "nvlink",
+    strategy: "spread",
+    cluster_floors: { [clusters[2].id]: 2 },
+    max_clusters: 2,
+    pinned_cluster_id: null,
+    bounds: { min: 2, max: 8, desired: 6 },
+    started_at: iso(2875),
+    finished_at: null,
+    deadline_at: null,
+    created_at: CREATED,
+    updated_at: iso(12),
+    revision: REV,
+  }),
+  workload(workloadIds.bge, {
+    name: "bge-embed",
+    kind: "service",
+    phase: "placed",
+    project_id: projects[0].id,
+    priority_class: "production",
+    preemptible: false,
+    paused: false,
+    gang_size: 1,
+    recipe_id: recipes[1].id,
+    adapter_artifact_ids: [],
+    overrides: {},
+    labels: {},
+    requires_single_topology_domain: null,
+    topology_domain_kind: null,
+    strategy: "pack",
+    cluster_floors: {},
+    max_clusters: null,
+    pinned_cluster_id: null,
+    bounds: { min: 1, max: 3, desired: 2 },
+    started_at: null,
+    finished_at: null,
+    deadline_at: null,
+    created_at: CREATED,
+    updated_at: null,
+    revision: REV,
+  }),
+  workload(workloadIds.eval, {
+    name: "nightly-eval",
+    kind: "gang",
+    phase: "pending",
+    project_id: projects[1].id,
+    priority_class: "batch",
+    preemptible: true,
+    paused: false,
+    gang_size: 8,
+    recipe_id: recipes[0].id,
+    adapter_artifact_ids: [artifacts[1].id],
+    overrides: {},
+    labels: { tier: "batch" },
+    requires_single_topology_domain: null,
+    topology_domain_kind: null,
+    strategy: "pack",
+    cluster_floors: {},
+    max_clusters: 1,
+    pinned_cluster_id: clusters[2].id,
+    bounds: { min: 8, max: 8, desired: 8 },
+    started_at: null,
+    finished_at: null,
+    deadline_at: iso(-360),
+    created_at: CREATED,
+    updated_at: null,
+    revision: REV,
+  }),
+]
+
 export const endpoints: Endpoint[] = [
   {
     id: uid("end_"),
@@ -957,14 +1139,14 @@ export const endpoints: Endpoint[] = [
     targets: [
       {
         deployment_id: deployments[0].id,
-        weight: 90,
+        weight: 70,
         role: "primary",
         enabled: true,
       },
       {
         deployment_id: deployments[1].id,
-        weight: 10,
-        role: "canary",
+        weight: 30,
+        role: "primary",
         enabled: true,
       },
     ],
@@ -984,7 +1166,7 @@ export const endpoints: Endpoint[] = [
     enabled: true,
     targets: [
       {
-        deployment_id: deployments[1].id,
+        deployment_id: deployments[2].id,
         weight: 100,
         role: "primary",
         enabled: true,
@@ -1080,7 +1262,7 @@ export const allocations: Allocation[] = [
     cluster_name: clusters[0].name,
     project: projects[0].id,
     project_slug: "core",
-    workload: uid("wkl_"),
+    workload: workloadIds.llama,
     replica: uid("rep_"),
     device_class: "h100-80gb-sxm",
     device_count: 8,
@@ -1107,7 +1289,7 @@ export const allocations: Allocation[] = [
     cluster_name: clusters[1].name,
     project: projects[0].id,
     project_slug: "core",
-    workload: uid("wkl_"),
+    workload: workloadIds.bge,
     replica: null,
     device_class: "l40s-48gb-pcie",
     device_count: 4,
@@ -1134,7 +1316,7 @@ export const allocations: Allocation[] = [
     cluster_name: clusters[2].name,
     project: projects[1].id,
     project_slug: "research",
-    workload: uid("wkl_"),
+    workload: workloadIds.eval,
     replica: null,
     device_class: "a100-80gb-sxm",
     device_count: 8,
@@ -1640,7 +1822,7 @@ export const discoveredWorkloads: DiscoveredWorkload[] = [
     node_ids: [],
     labels: { app: "bge" },
     status: "promoted",
-    deployment_id: deployments[1].id,
+    deployment_id: deployments[2].id,
     spec_fingerprint: "sha256:9ae10bd7",
     spec: {
       image: "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1",
@@ -1831,8 +2013,8 @@ export const benchmarkRuns: BenchmarkRun[] = [
   },
   {
     id: uid("bmk_"),
-    deployment_id: deployments[1].id,
-    cluster_id: deployments[1].cluster_id,
+    deployment_id: deployments[2].id,
+    cluster_id: deployments[2].cluster_id,
     operation_id: null,
     harness: "aiperf",
     image: "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",

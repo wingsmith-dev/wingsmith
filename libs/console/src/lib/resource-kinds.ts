@@ -13,6 +13,7 @@ import {
   IconLayoutGrid,
   IconPackages,
   IconRadar2,
+  IconRocket,
   IconServer,
   IconServer2,
   IconShieldLock,
@@ -32,6 +33,7 @@ export type ResourceKind =
   | "topology-domain"
   | "artifact"
   | "recipe"
+  | "workload"
   | "deployment"
   | "endpoint"
   | "tenant"
@@ -60,6 +62,7 @@ export const RESOURCE_ICONS: Record<ResourceKind, React.ElementType> = {
   "topology-domain": IconTopologyStar3,
   artifact: IconPackages,
   recipe: IconBinaryTree,
+  workload: IconRocket,
   deployment: IconBox,
   endpoint: IconBolt,
   tenant: IconBuildingBank,

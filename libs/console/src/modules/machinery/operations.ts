@@ -10,6 +10,7 @@ export interface OperationContext {
   open?: readonly string[]
   cordoned?: boolean
   allocated?: boolean
+  paused?: boolean
 }
 
 /** Returns why the operation does not apply, or null when it does. */
@@ -19,6 +20,9 @@ const LABELS: Partial<Record<OperationType, string>> = {
   "cache.warm": "Warm cache",
   "component.upgrade": "Upgrade",
   "deployment.roll": "Roll",
+  "workload.scale": "Scale",
+  "workload.pause": "Pause",
+  "workload.drain": "Drain a cluster",
 }
 
 const PREDICATES: Partial<Record<OperationType, Predicate>> = {
@@ -30,6 +34,7 @@ const PREDICATES: Partial<Record<OperationType, Predicate>> = {
     context.cordoned === false ? "cordon the node first" : null,
   "device.reset": (context) =>
     context.allocated ? "a live allocation holds this device" : null,
+  "workload.pause": (context) => (context.paused ? "already paused" : null),
 }
 
 function derivedLabel(type: string): string {

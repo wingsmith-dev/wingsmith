@@ -1,31 +1,19 @@
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { DataTable, type Column } from "@/components/layout/data-table"
 import { ResourceCell } from "@/components/layout/resource-cell"
-import { DeleteDialog, RowActions } from "@/components/layout/destructive"
 import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusLabel } from "@/components/layout/status-dot"
-import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
-import {
-  WORKLOAD_PHASES,
-  WORKLOAD_TYPES,
-  workloadPhaseTone,
-} from "@/modules/demand/display"
-import { Button } from "@/components/ui/button"
-import { formatError, shortenId } from "@/lib/format"
-import { useDeleteDeployment, useDeployments } from "@/modules/demand/queries"
+import { WORKLOAD_PHASES, workloadPhaseTone } from "@/modules/demand/display"
+import { shortenId } from "@/lib/format"
+import { useDeployments } from "@/modules/demand/queries"
 import type { Deployment } from "@/modules/demand/types"
-import { DeploymentForm } from "./DeploymentForm"
-import { useState } from "react"
-import { toast } from "sonner"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 
-function columns(
-  onEdit: (deployment: Deployment) => void,
-  onDelete: (deployment: Deployment) => void
-): Column<Deployment>[] {
+function columns(clusterName: (id: string) => string): Column<Deployment>[] {
   return [
     {
       key: "name",
@@ -44,6 +32,19 @@ function columns(
       ),
     },
     {
+      key: "workload",
+      header: "Workload",
+      cell: (deployment) => (
+        <Link
+          to="/workloads/$workloadId"
+          params={{ workloadId: deployment.workload_id }}
+          className="font-mono text-xs hover:underline"
+        >
+          {deployment.workload_name}
+        </Link>
+      ),
+    },
+    {
       key: "cluster",
       header: "Cluster",
       cell: (deployment) => (
@@ -52,26 +53,16 @@ function columns(
           params={{ clusterId: deployment.cluster_id }}
           className="font-mono text-2xs text-muted-foreground hover:underline"
         >
-          {deployment.cluster_id}
+          {clusterName(deployment.cluster_id)}
         </Link>
       ),
     },
     {
-      key: "type",
-      header: "Type",
+      key: "share",
+      header: "Share",
+      align: "right",
       cell: (deployment) => (
-        <Badge variant="secondary" className="font-mono text-2xs">
-          {deployment.workload.type}
-        </Badge>
-      ),
-    },
-    {
-      key: "phase",
-      header: "Phase",
-      cell: (deployment) => (
-        <StatusLabel tone={workloadPhaseTone(deployment.workload.phase)}>
-          {deployment.workload.phase}
-        </StatusLabel>
+        <span className="font-mono text-xs">{deployment.desired_replicas}</span>
       ),
     },
     {
@@ -85,28 +76,12 @@ function columns(
       ),
     },
     {
-      key: "generation",
-      header: "At generation",
-      align: "right",
-      secondary: true,
+      key: "phase",
+      header: "Admission",
       cell: (deployment) => (
-        <span className="font-mono text-2xs text-muted-foreground">
-          {deployment.replicas.at_current_generation}/
-          {deployment.replicas.total} · gen {deployment.generation}
-        </span>
-      ),
-    },
-    {
-      key: "priority",
-      header: "Priority",
-      secondary: true,
-      cell: (deployment) => (
-        <span className="font-mono text-2xs text-muted-foreground">
-          {deployment.workload.priority_class}
-          {deployment.workload.preemptible && (
-            <span className="text-muted-foreground/50"> · preemptible</span>
-          )}
-        </span>
+        <StatusLabel tone={workloadPhaseTone(deployment.admission_phase)}>
+          {deployment.admission_phase}
+        </StatusLabel>
       ),
     },
     {
@@ -114,7 +89,19 @@ function columns(
       header: "Reason",
       cell: (deployment) => (
         <span className="font-mono text-2xs text-muted-foreground">
-          <Dash>{deployment.workload.reason}</Dash>
+          <Dash>{deployment.admission_reason}</Dash>
+        </span>
+      ),
+    },
+    {
+      key: "generation",
+      header: "At generation",
+      align: "right",
+      secondary: true,
+      cell: (deployment) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {deployment.replicas.at_current_generation}/{deployment.replicas.total}{" "}
+          · gen {deployment.generation}
         </span>
       ),
     },
@@ -122,55 +109,43 @@ function columns(
       key: "enabled",
       header: "Enabled",
       align: "right",
+      secondary: true,
       cell: (deployment) => (
         <span className="font-mono text-2xs">
           {deployment.enabled ? "yes" : "no"}
         </span>
       ),
     },
-    {
-      key: "actions",
-      header: "",
-      align: "right",
-      cell: (deployment) => (
-        <RowActions
-          actions={[
-            { label: "Edit", onSelect: () => onEdit(deployment) },
-            {
-              label: "Delete",
-              destructive: true,
-              onSelect: () => onDelete(deployment),
-            },
-          ]}
-        />
-      ),
-    },
   ]
 }
 
 /**
- * Spec, scheduling supertype and observed replicas are three different things,
- * and the columns keep them apart: `desired_replicas` is what we asked for,
- * `replicas.ready` is what the cluster reports, and `workload.phase` is what
- * placement decided.
+ * Every cluster's copy of every workload, flat.
+ *
+ * This page is a drill-down, not a place you create anything: you do not make a
+ * deployment, placement makes one when it expands a workload onto a cluster. It
+ * is here for the per-cluster question — what is this cluster carrying, and
+ * what is stuck admitting on it — which the workload page cannot answer without
+ * making the reader open every workload in turn.
+ *
+ * `desired_replicas` is this cluster's SHARE of its workload's total. It must
+ * never be summed against a total or divided out of one.
  */
 export function DeploymentsPage() {
   const search = useSearch({ from: "/_app/deployments" })
   const navigate = useNavigate({ from: "/deployments" })
   const { data: clusters } = useClusterOptions()
-  const remove = useDeleteDeployment()
-  const [creating, setCreating] = useState(false)
-  const [editing, setEditing] = useState<Deployment | undefined>()
-  const [doomed, setDoomed] = useState<Deployment | undefined>()
   const list = useDeployments({
     cluster: search.cluster,
+    workload: search.workload,
     project: search.project,
     phase: search.phase,
-    type: search.type,
-    recipe: search.recipe,
   })
 
-  const set = (key: "cluster" | "phase" | "type") => (value: string) =>
+  const clusterName = (id: string) =>
+    clusters?.find((cluster) => cluster.id === id)?.name ?? id
+
+  const set = (key: "cluster" | "phase") => (value: string) =>
     navigate({
       search: (prev) => ({ ...prev, [key]: value === ALL ? undefined : value }),
     })
@@ -179,10 +154,10 @@ export function DeploymentsPage() {
     <div className="flex flex-col">
       <PageHeader
         title="Deployments"
-        description="declared · recipe × cluster, with observed replicas beside it"
+        description="declared · one workload's share on one cluster, with observed replicas beside it"
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            New deployment
+          <Button asChild size="sm" variant="outline">
+            <Link to="/workloads">All workloads</Link>
           </Button>
         }
       />
@@ -199,62 +174,20 @@ export function DeploymentsPage() {
             }))}
           />
           <FilterSelect
-            label="Phase"
+            label="Admission"
             value={search.phase ?? ALL}
             onChange={set("phase")}
             options={WORKLOAD_PHASES.map((p) => ({ value: p, label: p }))}
           />
-          <FilterSelect
-            label="Type"
-            value={search.type ?? ALL}
-            onChange={set("type")}
-            options={WORKLOAD_TYPES.map((t) => ({ value: t, label: t }))}
-          />
         </div>
 
         <DataTable
-          columns={columns(setEditing, setDoomed)}
+          columns={columns(clusterName)}
           list={list}
           rowKey={(deployment) => deployment.id}
-          empty="Nothing is deployed."
+          empty="No cluster is carrying anything."
         />
       </div>
-
-      {creating && (
-        <DeploymentForm
-          open
-          onOpenChange={(open) => !open && setCreating(false)}
-        />
-      )}
-      {editing && (
-        <DeploymentForm
-          key={editing.revision}
-          open
-          deployment={editing}
-          onOpenChange={(open) => !open && setEditing(undefined)}
-        />
-      )}
-      <DeleteDialog
-        icon="deployment"
-        open={!!doomed}
-        onOpenChange={(open) => !open && setDoomed(undefined)}
-        kind="deployment"
-        name={doomed?.name ?? ""}
-        note="Its replicas are torn down and any endpoint target pointing at it stops routing."
-        error={remove.error}
-        pending={remove.isPending}
-        onConfirm={() =>
-          doomed &&
-          remove.mutate(doomed.id, {
-            onSuccess: () => {
-              setDoomed(undefined)
-              toast.success("Deployment deleted", { description: doomed.name })
-            },
-            onError: (e) =>
-              toast.error(formatError(e, "Could not delete deployment")),
-          })
-        }
-      />
     </div>
   )
 }

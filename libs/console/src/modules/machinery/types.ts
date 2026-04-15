@@ -17,6 +17,9 @@ export const OPERATION_TYPES = {
   "device.reset": "dev_",
   "cache.warm": "art_",
   "deployment.roll": "dep_",
+  "workload.scale": "wkl_",
+  "workload.pause": "wkl_",
+  "workload.drain": "wkl_",
   "component.upgrade": "cmp_",
 } as const
 
@@ -31,6 +34,9 @@ export const OPERATION_TARGET_KINDS = {
   "device.reset": "device",
   "cache.warm": "artifact",
   "deployment.roll": "deployment",
+  "workload.scale": "workload",
+  "workload.pause": "workload",
+  "workload.drain": "workload",
   "component.upgrade": "component",
 } as const satisfies Record<OperationType, string>
 

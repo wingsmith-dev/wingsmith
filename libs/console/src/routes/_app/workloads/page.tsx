@@ -1,0 +1,246 @@
+import { ALL, FilterSelect } from "@/components/layout/filter-select"
+import { DataTable, type Column } from "@/components/layout/data-table"
+import { DeleteDialog, RowActions } from "@/components/layout/destructive"
+import { Dash, Id } from "@/components/layout/mono"
+import { PageHeader } from "@/components/layout/page-header"
+import { ResourceCell } from "@/components/layout/resource-cell"
+import { StatusLabel } from "@/components/layout/status-dot"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { formatError, shortenId } from "@/lib/format"
+import { clusterLabel } from "@/modules/clusters/display"
+import { useClusterOptions } from "@/modules/clusters/queries"
+import {
+  WORKLOAD_KINDS,
+  WORKLOAD_PHASES,
+  workloadPhaseTone,
+} from "@/modules/demand/display"
+import { useDeleteWorkload, useWorkloads } from "@/modules/demand/queries"
+import type { Workload } from "@/modules/demand/types"
+import { WorkloadForm } from "./WorkloadForm"
+import { useState } from "react"
+import { toast } from "sonner"
+import { Link, useNavigate, useSearch } from "@tanstack/react-router"
+
+function columns(
+  onEdit: (workload: Workload) => void,
+  onDelete: (workload: Workload) => void
+): Column<Workload>[] {
+  return [
+    {
+      key: "name",
+      header: "Workload",
+      cell: (workload) => (
+        <ResourceCell kind="workload">
+          <Link
+            to="/workloads/$workloadId"
+            params={{ workloadId: workload.id }}
+            className="block"
+          >
+            <span className="font-mono text-xs">{workload.name}</span>
+            <Id value={shortenId(workload.id)} className="ml-2" />
+          </Link>
+        </ResourceCell>
+      ),
+    },
+    {
+      key: "kind",
+      header: "Kind",
+      cell: (workload) => (
+        <Badge variant="secondary" className="font-mono text-2xs">
+          {workload.kind}
+        </Badge>
+      ),
+    },
+    {
+      key: "phase",
+      header: "Phase",
+      cell: (workload) => (
+        <StatusLabel tone={workloadPhaseTone(workload.phase)}>
+          {workload.paused ? "paused" : workload.phase}
+        </StatusLabel>
+      ),
+    },
+    {
+      key: "scale",
+      header: "Scale",
+      align: "right",
+      cell: (workload) => (
+        <span className="font-mono text-xs">
+          {workload.scale.ready}/{workload.scale.desired}
+          <span className="ml-1 text-2xs text-muted-foreground">
+            {workload.scale.unit}
+          </span>
+        </span>
+      ),
+    },
+    {
+      key: "clusters",
+      header: "Clusters",
+      cell: (workload) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {workload.deployments.length === 0 ? (
+            <Dash>{null}</Dash>
+          ) : (
+            workload.deployments
+              .map((d) => d.region ?? d.cluster_name)
+              .join(" · ")
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "placed",
+      header: "Placed",
+      align: "right",
+      secondary: true,
+      cell: (workload) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {workload.scale.placed}/{workload.scale.desired} · {workload.strategy}
+        </span>
+      ),
+    },
+    {
+      key: "priority",
+      header: "Priority",
+      secondary: true,
+      cell: (workload) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {workload.priority_class}
+          {workload.preemptible && (
+            <span className="text-muted-foreground/50"> · preemptible</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (workload) => (
+        <RowActions
+          actions={[
+            { label: "Edit", onSelect: () => onEdit(workload) },
+            {
+              label: "Delete",
+              destructive: true,
+              onSelect: () => onDelete(workload),
+            },
+          ]}
+        />
+      ),
+    },
+  ]
+}
+
+/**
+ * What was asked to run, globally. A workload names no cluster: it declares a
+ * recipe, a kind and a total, and the clusters column shows where placement put
+ * it — which is a list, and sometimes an empty one.
+ *
+ * The three kinds of thing stay apart here as they do everywhere else.
+ * `scale.desired` is declared, `scale.ready` is what the clusters report,
+ * `phase` is derived from the deployments, and scaling is an operation on the
+ * detail page rather than a number to type in a table.
+ */
+export function WorkloadsPage() {
+  const search = useSearch({ from: "/_app/workloads" })
+  const navigate = useNavigate({ from: "/workloads" })
+  const { data: clusters } = useClusterOptions()
+  const remove = useDeleteWorkload()
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<Workload | undefined>()
+  const [doomed, setDoomed] = useState<Workload | undefined>()
+  const list = useWorkloads({
+    project: search.project,
+    kind: search.kind,
+    phase: search.phase,
+    recipe: search.recipe,
+    cluster: search.cluster,
+  })
+
+  const set = (key: "cluster" | "phase" | "kind") => (value: string) =>
+    navigate({
+      search: (prev) => ({ ...prev, [key]: value === ALL ? undefined : value }),
+    })
+
+  return (
+    <div className="flex flex-col">
+      <PageHeader
+        title="Workloads"
+        description="declared · what you asked to run, and every cluster it landed on"
+        actions={
+          <Button size="sm" onClick={() => setCreating(true)}>
+            New workload
+          </Button>
+        }
+      />
+
+      <div className="space-y-4 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterSelect
+            label="Cluster"
+            value={search.cluster ?? ALL}
+            onChange={set("cluster")}
+            options={(clusters ?? []).map((cluster) => ({
+              value: cluster.id,
+              label: clusterLabel(cluster),
+            }))}
+          />
+          <FilterSelect
+            label="Phase"
+            value={search.phase ?? ALL}
+            onChange={set("phase")}
+            options={WORKLOAD_PHASES.map((p) => ({ value: p, label: p }))}
+          />
+          <FilterSelect
+            label="Kind"
+            value={search.kind ?? ALL}
+            onChange={set("kind")}
+            options={WORKLOAD_KINDS.map((k) => ({ value: k, label: k }))}
+          />
+        </div>
+
+        <DataTable
+          columns={columns(setEditing, setDoomed)}
+          list={list}
+          rowKey={(workload) => workload.id}
+          empty="Nothing has been asked to run."
+        />
+      </div>
+
+      {creating && (
+        <WorkloadForm open onOpenChange={(open) => !open && setCreating(false)} />
+      )}
+      {editing && (
+        <WorkloadForm
+          key={editing.revision}
+          open
+          workload={editing}
+          onOpenChange={(open) => !open && setEditing(undefined)}
+        />
+      )}
+      <DeleteDialog
+        icon="workload"
+        open={!!doomed}
+        onOpenChange={(open) => !open && setDoomed(undefined)}
+        kind="workload"
+        name={doomed?.name ?? ""}
+        note="Every cluster it was expanded onto loses its deployment, and any endpoint target pointing at one stops routing."
+        error={remove.error}
+        pending={remove.isPending}
+        onConfirm={() =>
+          doomed &&
+          remove.mutate(doomed.id, {
+            onSuccess: () => {
+              setDoomed(undefined)
+              toast.success("Workload deleted", { description: doomed.name })
+            },
+            onError: (e) =>
+              toast.error(formatError(e, "Could not delete workload")),
+          })
+        }
+      />
+    </div>
+  )
+}

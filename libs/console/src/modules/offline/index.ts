@@ -28,10 +28,11 @@ import {
   tenants,
   quotas,
   recipes,
+  workloads,
 } from "./data"
 import { revision, uid } from "./ids"
 import { collection } from "./registry"
-import type { Deployment } from "@/modules/demand/types"
+import type { Deployment, Workload } from "@/modules/demand/types"
 import type {
   BenchmarkCreateRequest,
   BenchmarkHarness,
@@ -291,18 +292,45 @@ collection({
     eq(q.get("class"), r.shape.device_class),
 })
 
+/** The parent of a deployment, or undefined if the corpus is inconsistent. */
+const parentOf = (deployment: Deployment) =>
+  workloads.find((w) => w.id === deployment.workload_id)
+
+collection({
+  path: "/workloads",
+  singular: "workload",
+  rows: () => workloads,
+  names: (w) => [w.name],
+  searchable: (w) => [w.name],
+  labels: (w) => w.labels,
+  filter: (w, q) =>
+    eq(q.get("project"), w.project_id) &&
+    eq(q.get("kind"), w.kind) &&
+    eq(q.get("phase"), w.phase) &&
+    eq(q.get("recipe"), w.recipe_id) &&
+    (q.get("cluster") === undefined ||
+      w.deployments.some((d) =>
+        [d.cluster_id, d.cluster_name].includes(
+          clusterRef(q.get("cluster")) ?? q.get("cluster")!
+        )
+      )),
+})
+
+/**
+ * Project, phase and labels are workload facts read through the parent: a
+ * deployment carries its own admission phase, and `?phase=` asks about that.
+ */
 collection({
   path: "/deployments",
   singular: "deployment",
   rows: () => deployments,
   names: (d) => [d.name],
-  labels: (d) => d.labels,
+  labels: (d) => parentOf(d)?.labels ?? {},
   filter: (d, q) =>
     eq(clusterRef(q.get("cluster")) ?? q.get("cluster"), d.cluster_id) &&
-    eq(q.get("recipe"), d.recipe_id) &&
-    eq(q.get("project"), d.workload.project_id) &&
-    eq(q.get("phase"), d.workload.phase) &&
-    eq(q.get("type"), d.workload.type),
+    eq(q.get("workload"), d.workload_id, d.workload_name) &&
+    eq(q.get("project"), parentOf(d)?.project_id ?? null) &&
+    eq(q.get("phase"), d.admission_phase),
 })
 
 collection({
@@ -521,8 +549,12 @@ const TARGET_KINDS: Record<string, string> = {
   dev_: "device",
   art_: "artifact",
   dep_: "deployment",
+  wkl_: "workload",
   cmp_: "component",
 }
+
+/** Workload operations are plane-local: they name no cluster and never dispatch. */
+const PLANE_LOCAL_PREFIXES = ["wkl_"]
 
 function clusterOf(target: string): string | null {
   return (
@@ -592,7 +624,7 @@ registerFixtures([
         provenance: {
           model: deployment.name,
           deployment_generation: deployment.generation,
-          recipe_id: deployment.recipe_id,
+          recipe_id: parentOf(deployment)?.recipe_id ?? "",
           recipe_version: null,
           engine_args: {},
         },
@@ -636,9 +668,11 @@ registerFixtures([
         const replay = operations.find((o) => o.parameters.__key === key)
         if (replay) return replay
       }
-      const cluster =
-        clusterOf(data.target) ?? clusterRef(data.cluster ?? undefined) ?? null
-      if (cluster === null) {
+      const planeLocal = PLANE_LOCAL_PREFIXES.includes(prefix)
+      const cluster = planeLocal
+        ? null
+        : (clusterOf(data.target) ?? clusterRef(data.cluster ?? undefined) ?? null)
+      if (!planeLocal && cluster === null) {
         throw new ConflictError(
           "invalid",
           `${data.type} needs a cluster: its target does not belong to one`,
@@ -865,40 +899,31 @@ registerFixtures([
       if (!project) throw new NotFoundError(`no project '${data.project}'`)
 
       const now = new Date().toISOString()
+      const name = data.name || workload.name
+      const parentId = uid("wkl_")
+      const cluster = clusters.find((c) => c.id === workload.cluster_id)
       const created: Deployment = {
         id: uid("dep_"),
-        name: data.name || workload.name,
+        name,
+        workload_id: parentId,
+        workload_name: name,
         cluster_id: workload.cluster_id,
-        recipe_id: recipe.id,
         min_replicas: workload.replicas_desired,
         max_replicas: workload.replicas_desired,
         desired_replicas: workload.replicas_desired,
+        admission_phase: "running",
+        admission_reason: null,
+        queued_at: now,
+        admitted_at: now,
+        placed_at: now,
         generation: 1,
         enabled: true,
-        authority: "managed",
-        adapter_artifact_ids: [],
-        overrides: {},
-        labels: workload.labels,
         created_at: now,
         updated_at: null,
         revision: revision(now),
-        workload: {
-          type: "service",
-          phase: "running",
-          reason: null,
-          project_id: project.id,
-          priority_class:
-            data.priority_class ?? project.default_priority_class ?? "default",
-          preemptible: false,
-          gang_size: workload.devices_per_replica,
-          queued_at: now,
-          admitted_at: now,
-          placed_at: now,
-          started_at: now,
-          deadline_at: null,
-        },
-        requires_single_topology_domain: null,
-        topology_domain_kind: null,
+        adopted_workload_id: workload.id,
+        adopted_fingerprint: workload.spec_fingerprint,
+        authority: "managed",
         status: {
           observed_generation: 1,
           phase: "running",
@@ -923,6 +948,65 @@ registerFixtures([
           at_current_generation: workload.replicas_ready,
         },
       }
+      const parent: Workload = {
+        id: parentId,
+        name,
+        kind: "service",
+        phase: "running",
+        project_id: project.id,
+        priority_class:
+          data.priority_class ?? project.default_priority_class ?? "default",
+        preemptible: false,
+        paused: false,
+        gang_size: 1,
+        recipe_id: recipe.id,
+        adapter_artifact_ids: [],
+        overrides: {},
+        labels: workload.labels,
+        requires_single_topology_domain: null,
+        topology_domain_kind: null,
+        strategy: "pack",
+        cluster_floors: {},
+        max_clusters: 1,
+        pinned_cluster_id: workload.cluster_id,
+        scale: {
+          unit: "replicas",
+          min: workload.replicas_desired,
+          max: workload.replicas_desired,
+          desired: workload.replicas_desired,
+          placed: workload.replicas_desired,
+          ready: workload.replicas_ready,
+        },
+        started_at: now,
+        finished_at: null,
+        deadline_at: null,
+        created_at: now,
+        updated_at: null,
+        revision: revision(now),
+        deployments: [
+          {
+            id: created.id,
+            name: created.name,
+            cluster_id: created.cluster_id,
+            cluster_name: cluster?.name ?? created.cluster_id,
+            region: cluster?.region ?? null,
+            min_replicas: created.min_replicas,
+            max_replicas: created.max_replicas,
+            desired_replicas: created.desired_replicas,
+            admission_phase: created.admission_phase,
+            admission_reason: created.admission_reason,
+            generation: created.generation,
+            enabled: created.enabled,
+            authority: created.authority,
+            queued_at: created.queued_at,
+            admitted_at: created.admitted_at,
+            placed_at: created.placed_at,
+            replicas: created.replicas,
+            status: created.status,
+          },
+        ],
+      }
+      workloads.unshift(parent)
       deployments.unshift(created)
       workload.status = "promoted"
       workload.deployment_id = created.id

@@ -8,12 +8,42 @@ const WORKLOAD_PHASE_TONES: Record<string, StatusTone> = {
   failed: "danger",
 }
 
+/**
+ * The same tones answer for a workload's derived phase and for a deployment's
+ * `admission_phase`: they are the same closed set read at two altitudes.
+ */
 export function workloadPhaseTone(phase: string): StatusTone {
   return WORKLOAD_PHASE_TONES[phase] ?? "warn"
 }
 
 export const WORKLOAD_PHASES = ["pending", "admitted", "placed", "running"]
-export const WORKLOAD_TYPES = ["service", "task", "gang"]
+export const WORKLOAD_KINDS = ["service", "task", "gang"]
+export const WORKLOAD_STRATEGIES = ["pack", "spread"]
+
+const SCALE_UNITS: Record<string, string> = {
+  service: "replicas",
+  task: "completions",
+  gang: "ranks",
+}
+
+/**
+ * What a workload's three scale numbers count. The plane sends this on
+ * `scale.unit`; this is the answer for a form that has no workload yet.
+ */
+export function scaleUnit(kind: string): string {
+  return SCALE_UNITS[kind] ?? "replicas"
+}
+
+/**
+ * Whether a workload may hold a share on more than one cluster.
+ *
+ * A property of the kind, not a field. A gang's ranks are co-scheduled, so a
+ * split gang is broken rather than degraded and placement rejects it outright —
+ * which is why the form hides fan-out for one instead of letting it be asked for.
+ */
+export function splittable(kind: string): boolean {
+  return kind !== "gang"
+}
 
 export function formatBytes(bytes: number): string {
   if (bytes <= 0) return "—"
