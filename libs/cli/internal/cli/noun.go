@@ -371,6 +371,7 @@ type filters struct {
 	domain     string
 	target     string
 	deployment string
+	workload   string
 	harness    string
 	actor      string
 	subject    string
@@ -437,7 +438,7 @@ func (f *filters) opts(cmd *cobra.Command) (api.ListOpts, error) {
 		Condition: f.condition, TopologyDomain: f.domain, Target: f.target, Actor: f.actor,
 		Subject: f.subject, Severity: f.severity, Device: f.device, Replica: f.replica,
 		Namespace: f.namespace, Status: f.status, Format: f.format,
-		Deployment: f.deployment, Harness: f.harness,
+		Deployment: f.deployment, Workload: f.workload, Harness: f.harness,
 
 		Ready:            optBool(cmd, "ready", f.ready),
 		Cordoned:         optBool(cmd, "cordoned", f.cordoned),

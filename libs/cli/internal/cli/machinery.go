@@ -606,6 +606,9 @@ var operationTargetKinds = map[string]string{
 	"device.reset":      "device",
 	"cache.warm":        "artifact",
 	"deployment.roll":   "deployment",
+	"workload.scale":    "workload",
+	"workload.pause":    "workload",
+	"workload.drain":    "workload",
 	"component.upgrade": "component",
 }
 

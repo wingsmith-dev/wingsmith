@@ -28,6 +28,7 @@ func TestSeedMatchesServerShape(t *testing.T) {
 	check(t, "pools.json", func() (any, error) { return b.Pools(ctx, api.ListOpts{}) })
 	check(t, "artifacts.json", func() (any, error) { return b.Artifacts(ctx, api.ListOpts{}) })
 	check(t, "recipes.json", func() (any, error) { return b.Recipes(ctx, api.ListOpts{}) })
+	check(t, "workloads.json", func() (any, error) { return b.Workloads(ctx, api.ListOpts{}) })
 	check(t, "deployments.json", func() (any, error) { return b.Deployments(ctx, api.ListOpts{}) })
 	check(t, "discovered.json", func() (any, error) { return b.DiscoveredWorkloads(ctx, api.ListOpts{}) })
 	check(t, "endpoints.json", func() (any, error) { return b.Endpoints(ctx, api.ListOpts{}) })
@@ -79,7 +80,7 @@ var freeform = map[string]bool{
 	"labels": true, "metadata": true, "capabilities": true, "engine_args": true,
 	"parameters": true, "config": true, "rules": true, "node_shape": true,
 	"attributes": true, "details": true, "overrides": true, "result": true,
-	"prefix_cache_config": true,
+	"prefix_cache_config": true, "cluster_floors": true,
 }
 
 func diff(path string, want, got any) []string {

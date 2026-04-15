@@ -202,20 +202,342 @@ func (b *Backend) Recipe(ctx context.Context, ref string) (api.Recipe, error) {
 	})
 }
 
+// Workloads answers with the deployments and the rollup filled in from the
+// per-cluster rows, rather than from a copy stored beside them. A workload's
+// scale is a sum of its shares, and a fake that kept its own answer to that
+// would be the one place in the system where the two could disagree.
+func (b *Backend) Workloads(ctx context.Context, o api.ListOpts) (api.Page[api.Workload], error) {
+	cluster := b.clusterRef(o.Cluster)
+	hydrated := make([]api.Workload, 0, len(b.state.Workloads))
+	for _, wl := range b.state.Workloads {
+		hydrated = append(hydrated, b.hydrateWorkload(wl))
+	}
+	return collect(b, hydrated, o, func(wl api.Workload) bool {
+		return refEq(o.Project, wl.ProjectID) && eqFold(o.Kind, wl.Kind) &&
+			eqFold(o.Phase, wl.Phase) && refEq(o.Recipe, wl.RecipeID) &&
+			workloadOnCluster(wl, cluster) &&
+			contains(o.Search, wl.Name, wl.ID) &&
+			labelsMatch(wl.Labels, o.Labels)
+	})
+}
+
+func (b *Backend) Workload(ctx context.Context, ref string) (api.Workload, error) {
+	wl, err := find(b, "workload", b.state.Workloads, ref, func(wl api.Workload) []string {
+		return []string{wl.Name, wl.ID}
+	})
+	if err != nil {
+		return wl, err
+	}
+	return b.hydrateWorkload(wl), nil
+}
+
+func workloadOnCluster(wl api.Workload, cluster string) bool {
+	if cluster == "" {
+		return true
+	}
+	for _, d := range wl.Deployments {
+		if refEq(cluster, d.ClusterID, d.ClusterName) {
+			return true
+		}
+	}
+	return false
+}
+
+// hydrateWorkload derives everything a workload only knows through its
+// deployments: the per-cluster table, the placed and ready sums, and the phase.
+func (b *Backend) hydrateWorkload(wl api.Workload) api.Workload {
+	wl.Deployments = []api.WorkloadDeployment{}
+	placed, ready := 0, 0
+	for _, d := range b.state.Deployments {
+		if d.WorkloadID != wl.ID {
+			continue
+		}
+		clusterName, region := b.clusterIdentity(d.ClusterID)
+		wl.Deployments = append(wl.Deployments, api.WorkloadDeployment{
+			ID: d.ID, Name: d.Name, ClusterID: d.ClusterID, ClusterName: clusterName, Region: region,
+			MinReplicas: d.MinReplicas, MaxReplicas: d.MaxReplicas, DesiredReplicas: d.DesiredReplicas,
+			AdmissionPhase: d.AdmissionPhase, AdmissionReason: d.AdmissionReason,
+			Generation: d.Generation, Enabled: d.Enabled, Authority: d.Authority,
+			QueuedAt: d.QueuedAt, AdmittedAt: d.AdmittedAt, PlacedAt: d.PlacedAt,
+			Replicas: d.Replicas, Status: d.Status,
+		})
+		placed += d.DesiredReplicas
+		ready += d.Replicas.Ready
+	}
+	wl.Scale.Unit = scaleUnit(wl.Kind)
+	wl.Scale.Placed = placed
+	wl.Scale.Ready = ready
+	wl.Phase = workloadPhase(wl.Deployments)
+	return wl
+}
+
+// scaleUnit names what the three numbers count. The plane derives it from kind
+// for the same reason: a bare integer in a listing is unreadable without it.
+func scaleUnit(kind string) string {
+	switch kind {
+	case "gang":
+		return "ranks"
+	case "task":
+		return "completions"
+	}
+	return "replicas"
+}
+
+// workloadPhase is the least advanced phase among the deployments, with failure
+// winning outright. Nothing writes it — a workload running in one region and
+// queued on quota in another is not running.
+func workloadPhase(deployments []api.WorkloadDeployment) string {
+	if len(deployments) == 0 {
+		return "pending"
+	}
+	order := map[string]int{"pending": 0, "admitted": 1, "placed": 2, "running": 3}
+	least := "running"
+	for _, d := range deployments {
+		if d.AdmissionPhase == "failed" {
+			return "failed"
+		}
+		if order[d.AdmissionPhase] < order[least] {
+			least = d.AdmissionPhase
+		}
+	}
+	return least
+}
+
+func (b *Backend) clusterIdentity(id string) (string, *string) {
+	for _, c := range b.state.Clusters {
+		if c.ID == id {
+			region := c.Region
+			return c.Name, &region
+		}
+	}
+	return id, nil
+}
+
+// CreateWorkload expands the workload the way placement would, which for the
+// fake means the pinned cluster or the first placeable one: `pack` puts
+// everything in one cluster whenever one cluster can hold it, and that is the
+// default precisely so a workload that fits stays where it is.
+func (b *Backend) CreateWorkload(ctx context.Context, req api.WorkloadCreateRequest) (api.Workload, error) {
+	if strings.TrimSpace(req.Name) == "" {
+		return api.Workload{}, errs.New(errs.CodeInputRequired, "a workload needs a name")
+	}
+	recipe, err := b.Recipe(ctx, req.Recipe)
+	if err != nil {
+		return api.Workload{}, err
+	}
+	project, err := b.Project(ctx, req.Project)
+	if err != nil {
+		return api.Workload{}, err
+	}
+	for _, wl := range b.state.Workloads {
+		if wl.ProjectID == project.ID && strings.EqualFold(wl.Name, req.Name) {
+			return api.Workload{}, errs.New(errs.CodeConflict, "%q already exists in this project", req.Name)
+		}
+	}
+	kind := orElse(req.Kind, "service")
+	if kind == "gang" && req.MaxClusters != nil && *req.MaxClusters > 1 {
+		return api.Workload{}, errs.New(errs.CodeUsage,
+			"a gang cannot be split across clusters, so --max-clusters above 1 is not a thing it can do")
+	}
+
+	target := ""
+	if req.Cluster != "" {
+		c, err := b.Cluster(ctx, req.Cluster)
+		if err != nil {
+			return api.Workload{}, err
+		}
+		target = c.ID
+	} else if len(b.state.Clusters) > 0 {
+		target = b.state.Clusters[0].ID
+	}
+
+	now := time.Now().UTC()
+	floors := map[string]any{}
+	for k, v := range req.ClusterFloors {
+		floors[k] = v
+	}
+	pinned := optional(target)
+	if req.Cluster == "" {
+		pinned = nil
+	}
+	workload := api.Workload{
+		ID: b.newUID("wkl_"), Name: req.Name, Kind: kind, ProjectID: project.ID,
+		PriorityClass: orElse(req.PriorityClass, "production"),
+		Preemptible:   req.Preemptible, GangSize: max(req.GangSize, 1), RecipeID: recipe.ID,
+		AdapterArtifactIDs: req.AdapterArtifacts,
+		Overrides:          req.Overrides, Labels: req.Labels,
+		RequiresSingleTopologyDomain: req.RequiresSingleTopologyDomain,
+		TopologyDomainKind:           optional(req.TopologyDomainKind),
+		Strategy:                     orElse(req.Strategy, "pack"),
+		ClusterFloors:                floors, MaxClusters: req.MaxClusters, PinnedClusterID: pinned,
+		Scale: api.WorkloadScale{
+			Unit: scaleUnit(kind), Min: req.MinScale, Max: req.MaxScale, Desired: req.DesiredScale,
+		},
+		DeadlineAt: req.DeadlineAt, CreatedAt: now, Revision: revision(now),
+		Deployments: []api.WorkloadDeployment{},
+	}
+	if workload.AdapterArtifactIDs == nil {
+		workload.AdapterArtifactIDs = []string{}
+	}
+	if workload.Overrides == nil {
+		workload.Overrides = map[string]any{}
+	}
+	if workload.Labels == nil {
+		workload.Labels = map[string]any{}
+	}
+	b.state.Workloads = append(b.state.Workloads, workload)
+
+	if target != "" {
+		b.state.Deployments = append(b.state.Deployments, api.Deployment{
+			ID: b.newUID("dep_"), Name: workload.Name, WorkloadID: workload.ID,
+			WorkloadName: workload.Name, ClusterID: target,
+			MinReplicas: req.DesiredScale, MaxReplicas: req.DesiredScale, DesiredReplicas: req.DesiredScale,
+			AdmissionPhase: "pending", QueuedAt: &now,
+			Generation: 1, Enabled: req.Enabled, Authority: "managed",
+			CreatedAt: now, Revision: revision(now),
+			Replicas: api.DeploymentReplicaRollup{},
+		})
+	}
+	if err := b.persist(); err != nil {
+		return api.Workload{}, err
+	}
+	return b.hydrateWorkload(workload), nil
+}
+
+// UpdateWorkload writes only what was sent. Scale is absent on purpose: it is
+// the workload.scale operation, because it is long-running and can fail.
+func (b *Backend) UpdateWorkload(ctx context.Context, ref string, req api.WorkloadUpdateRequest) (api.Workload, error) {
+	found, err := b.Workload(ctx, ref)
+	if err != nil {
+		return api.Workload{}, err
+	}
+	for i := range b.state.Workloads {
+		wl := &b.state.Workloads[i]
+		if wl.ID != found.ID {
+			continue
+		}
+		if req.Name != nil {
+			wl.Name = *req.Name
+		}
+		if req.AdapterArtifacts != nil {
+			wl.AdapterArtifactIDs = *req.AdapterArtifacts
+		}
+		if req.Overrides != nil {
+			wl.Overrides = *req.Overrides
+		}
+		if req.Labels != nil {
+			wl.Labels = *req.Labels
+		}
+		if req.PriorityClass != nil {
+			wl.PriorityClass = *req.PriorityClass
+		}
+		if req.Preemptible != nil {
+			wl.Preemptible = *req.Preemptible
+		}
+		if req.Strategy != nil {
+			wl.Strategy = *req.Strategy
+		}
+		if req.ClusterFloors != nil {
+			floors := map[string]any{}
+			for k, v := range *req.ClusterFloors {
+				floors[k] = v
+			}
+			wl.ClusterFloors = floors
+		}
+		if req.MaxClusters != nil {
+			wl.MaxClusters = req.MaxClusters
+		}
+		if req.RequiresSingleTopologyDomain != nil {
+			wl.RequiresSingleTopologyDomain = req.RequiresSingleTopologyDomain
+		}
+		if req.TopologyDomainKind != nil {
+			wl.TopologyDomainKind = req.TopologyDomainKind
+		}
+		now := time.Now().UTC()
+		wl.UpdatedAt = &now
+		wl.Revision = revision(now)
+		if err := b.persist(); err != nil {
+			return api.Workload{}, err
+		}
+		return b.hydrateWorkload(*wl), nil
+	}
+	return api.Workload{}, errs.New(errs.CodeNotFound, "no workload %q", ref)
+}
+
+// DeleteWorkload takes the workload and every cluster's share of it. Removing
+// one cluster is workload.drain; there is no delete on a deployment.
+func (b *Backend) DeleteWorkload(ctx context.Context, ref string) error {
+	found, err := b.Workload(ctx, ref)
+	if err != nil {
+		return err
+	}
+	workloads := make([]api.Workload, 0, len(b.state.Workloads))
+	for _, wl := range b.state.Workloads {
+		if wl.ID != found.ID {
+			workloads = append(workloads, wl)
+		}
+	}
+	deployments := make([]api.Deployment, 0, len(b.state.Deployments))
+	for _, d := range b.state.Deployments {
+		if d.WorkloadID != found.ID {
+			deployments = append(deployments, d)
+		}
+	}
+	b.state.Workloads = workloads
+	b.state.Deployments = deployments
+	return b.persist()
+}
+
 func (b *Backend) Deployments(ctx context.Context, o api.ListOpts) (api.Page[api.Deployment], error) {
 	cluster := b.clusterRef(o.Cluster)
 	return collect(b, b.state.Deployments, o, func(d api.Deployment) bool {
-		return refEq(cluster, d.ClusterID) && refEq(o.Recipe, d.RecipeID) &&
-			refEq(o.Project, d.Workload.ProjectID) &&
-			eqFold(o.Phase, d.Workload.Phase) && eqFold(o.Type, d.Workload.Type) &&
-			labelsMatch(d.Labels, o.Labels)
+		return refEq(cluster, d.ClusterID) &&
+			refEq(o.Workload, d.WorkloadID, d.WorkloadName) &&
+			refEq(o.Project, b.workloadProject(d.WorkloadID)) &&
+			eqFold(o.Phase, d.AdmissionPhase)
 	})
+}
+
+func (b *Backend) workloadProject(workloadID string) string {
+	for _, wl := range b.state.Workloads {
+		if wl.ID == workloadID {
+			return wl.ProjectID
+		}
+	}
+	return ""
 }
 
 func (b *Backend) Deployment(ctx context.Context, ref string) (api.Deployment, error) {
 	return find(b, "deployment", b.state.Deployments, ref, func(d api.Deployment) []string {
 		return []string{d.Name, d.ID}
 	})
+}
+
+// UpdateDeployment writes the one per-cluster field a caller owns. Everything a
+// workload declares is declared once, globally, and a share is placement's
+// answer rather than something asserted per cluster.
+func (b *Backend) UpdateDeployment(ctx context.Context, ref string, req api.DeploymentUpdateRequest) (api.Deployment, error) {
+	found, err := b.Deployment(ctx, ref)
+	if err != nil {
+		return api.Deployment{}, err
+	}
+	for i := range b.state.Deployments {
+		d := &b.state.Deployments[i]
+		if d.ID != found.ID {
+			continue
+		}
+		if req.Enabled != nil {
+			d.Enabled = *req.Enabled
+		}
+		now := time.Now().UTC()
+		d.UpdatedAt = &now
+		d.Revision = revision(now)
+		if err := b.persist(); err != nil {
+			return api.Deployment{}, err
+		}
+		return *d, nil
+	}
+	return api.Deployment{}, errs.New(errs.CodeNotFound, "no deployment %q", ref)
 }
 
 func (b *Backend) DiscoveredWorkloads(ctx context.Context, o api.ListOpts) (api.Page[api.DiscoveredWorkload], error) {
@@ -307,29 +629,33 @@ func (b *Backend) RestoreWorkload(ctx context.Context, ref string) (api.Discover
 
 // PromoteWorkload mirrors the plane's gate, refusals included. A fake that promoted anything it
 // was asked to would let a command that cannot work in production pass its tests.
-func (b *Backend) PromoteWorkload(ctx context.Context, ref string, req api.PromoteRequest) (api.Deployment, error) {
+//
+// It mints the pair: a workload pinned to the one cluster the sighting runs in, and the single
+// deployment that is that cluster's copy. The scale is what the workload is already running, so
+// cataloguing it cannot scale it as a side effect.
+func (b *Backend) PromoteWorkload(ctx context.Context, ref string, req api.PromoteRequest) (api.Workload, error) {
 	found, err := b.DiscoveredWorkload(ctx, ref)
 	if err != nil {
-		return api.Deployment{}, err
+		return api.Workload{}, err
 	}
 	if found.DeploymentID != nil {
-		return api.Deployment{}, errs.New(errs.CodeConflict, "%q was already promoted", found.Name)
+		return api.Workload{}, errs.New(errs.CodeConflict, "%q was already promoted", found.Name)
 	}
 	if found.SpecFingerprint == nil || *found.SpecFingerprint == "" {
-		return api.Deployment{}, errs.New(errs.CodeInvalidState,
+		return api.Workload{}, errs.New(errs.CodeInvalidState,
 			"this cluster has not reported what %q is running, so there is nothing to pin the adoption to", found.Name)
 	}
 	if req.Fingerprint != *found.SpecFingerprint {
-		return api.Deployment{}, errs.New(errs.CodeConflict,
+		return api.Workload{}, errs.New(errs.CodeConflict,
 			"%q changed since it was read; re-read it and promote again", found.Name)
 	}
 	recipe, err := b.Recipe(ctx, req.Recipe)
 	if err != nil {
-		return api.Deployment{}, err
+		return api.Workload{}, err
 	}
 	project, err := b.Project(ctx, req.Project)
 	if err != nil {
-		return api.Deployment{}, err
+		return api.Workload{}, err
 	}
 
 	now := time.Now().UTC()
@@ -337,29 +663,42 @@ func (b *Backend) PromoteWorkload(ctx context.Context, ref string, req api.Promo
 	if name == "" {
 		name = found.Name
 	}
-	deployment := api.Deployment{
-		ID: b.newUID("dep_"), Name: name, ClusterID: found.ClusterID, RecipeID: recipe.ID,
-		MinReplicas:     found.ReplicasDesired,
-		MaxReplicas:     found.ReplicasDesired,
-		DesiredReplicas: found.ReplicasDesired,
-		Generation:      1, Enabled: true,
+	workload := api.Workload{
+		ID: b.newUID("wkl_"), Name: name, Kind: "service", ProjectID: project.ID,
+		PriorityClass: orElse(req.PriorityClass, "production"),
+		GangSize:      1, RecipeID: recipe.ID,
 		AdapterArtifactIDs: []string{},
 		Overrides:          map[string]any{},
 		Labels:             found.Labels,
-		CreatedAt:          now,
-		Revision:           revision(now),
-		AdoptedWorkloadID:  &found.ID,
-		AdoptedFingerprint: found.SpecFingerprint,
-		Workload: api.DeploymentWorkload{
-			Type: "service", Phase: "running", ProjectID: project.ID,
-			PriorityClass: orElse(req.PriorityClass, "production"),
-			GangSize:      1, QueuedAt: &now, StartedAt: &now,
+		Strategy:           "pack",
+		ClusterFloors:      map[string]any{},
+		PinnedClusterID:    &found.ClusterID,
+		Scale: api.WorkloadScale{
+			Unit: "replicas", Min: found.ReplicasDesired, Max: found.ReplicasDesired,
+			Desired: found.ReplicasDesired,
 		},
+		StartedAt: &now, CreatedAt: now, Revision: revision(now),
+		Deployments: []api.WorkloadDeployment{},
+	}
+	deployment := api.Deployment{
+		ID: b.newUID("dep_"), Name: name, WorkloadID: workload.ID, WorkloadName: workload.Name,
+		ClusterID:       found.ClusterID,
+		MinReplicas:     found.ReplicasDesired,
+		MaxReplicas:     found.ReplicasDesired,
+		DesiredReplicas: found.ReplicasDesired,
+		AdmissionPhase:  "running",
+		QueuedAt:        &now, AdmittedAt: &now, PlacedAt: &now,
+		Generation: 1, Enabled: true, Authority: "observed",
+		CreatedAt:           now,
+		Revision:            revision(now),
+		AdoptedDiscoveredID: &found.ID,
+		AdoptedFingerprint:  found.SpecFingerprint,
 		Replicas: api.DeploymentReplicaRollup{
 			Total: found.ReplicasDesired, Ready: found.ReplicasReady, Running: found.ReplicasReady,
 			AtCurrentGeneration: found.ReplicasReady,
 		},
 	}
+	b.state.Workloads = append(b.state.Workloads, workload)
 	b.state.Deployments = append(b.state.Deployments, deployment)
 	for i := range b.state.Discovered {
 		if b.state.Discovered[i].ID == found.ID {
@@ -369,9 +708,9 @@ func (b *Backend) PromoteWorkload(ctx context.Context, ref string, req api.Promo
 		}
 	}
 	if err := b.persist(); err != nil {
-		return api.Deployment{}, err
+		return api.Workload{}, err
 	}
-	return deployment, nil
+	return b.hydrateWorkload(workload), nil
 }
 
 func orElse(v, fallback string) string {
@@ -741,6 +1080,15 @@ func (b *Backend) resolveTarget(req api.OperationRequest) (api.OperationTarget, 
 		}
 		cluster := d.ClusterID
 		return api.OperationTarget{Type: "deployment", ID: d.ID}, &cluster, nil
+	case "workload":
+		// No cluster. scale, pause and drain are plane-local: they rewrite the
+		// expansion and let the shares reach the clusters as declared state,
+		// rather than being dispatched to one.
+		wl, err := b.Workload(context.Background(), req.Target)
+		if err != nil {
+			return api.OperationTarget{}, nil, err
+		}
+		return api.OperationTarget{Type: "workload", ID: wl.ID}, nil, nil
 	}
 	var cluster *string
 	if req.Cluster != "" {

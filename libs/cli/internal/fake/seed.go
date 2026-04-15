@@ -347,33 +347,47 @@ func seed() *state {
 	sjc := st.Clusters[1].ID
 	depRunning := uid("dep_")
 	depPending := uid("dep_")
+	// One workload across two clusters, which is the shape the whole model exists
+	// for: a total of 5 replicas that placement split 4/1, so the console and the
+	// CLI both have something whose scale is a sum rather than a copy.
+	workloadID := uid("wkl_")
+	st.Workloads = append(st.Workloads, api.Workload{
+		ID: workloadID, Name: "chat", Kind: "service", ProjectID: projectID,
+		PriorityClass: "production", GangSize: 1, RecipeID: recipeID,
+		AdapterArtifactIDs: []string{}, Overrides: map[string]any{},
+		Labels:                       map[string]any{"tier": "prod"},
+		RequiresSingleTopologyDomain: boolptr(true), TopologyDomainKind: strptr("nvlink"),
+		Strategy:      "spread",
+		ClusterFloors: map[string]any{},
+		Scale: api.WorkloadScale{
+			Unit: "replicas", Min: 5, Max: 5, Desired: 5,
+		},
+		StartedAt: ptr(created), CreatedAt: created, Revision: revision(created),
+		Deployments: []api.WorkloadDeployment{},
+	})
+
 	st.Deployments = append(st.Deployments,
 		api.Deployment{
-			ID: depRunning, Name: "chat-iad", ClusterID: iad, RecipeID: recipeID,
-			MinReplicas: 2, MaxReplicas: 6, DesiredReplicas: 4, Generation: 7, Enabled: true, Authority: "managed",
-			AdapterArtifactIDs: []string{}, Overrides: map[string]any{}, Labels: map[string]any{"tier": "prod"},
+			ID: depRunning, Name: "chat", WorkloadID: workloadID, WorkloadName: "chat", ClusterID: iad,
+			MinReplicas: 4, MaxReplicas: 4, DesiredReplicas: 4,
+			AdmissionPhase: "running",
+			QueuedAt:       ptr(created), AdmittedAt: ptr(created), PlacedAt: ptr(created),
+			Generation: 7, Enabled: true, Authority: "managed",
 			CreatedAt: created, Revision: revision(created),
-			Workload: api.DeploymentWorkload{
-				Type: "service", Phase: "running", ProjectID: projectID, PriorityClass: "production",
-				GangSize: 8, QueuedAt: ptr(created), AdmittedAt: ptr(created), PlacedAt: ptr(created), StartedAt: ptr(created),
-			},
 			Replicas: api.DeploymentReplicaRollup{Total: 4, Ready: 3, Running: 4, AtCurrentGeneration: 3},
 			Status: &api.DeploymentStatus{
 				ObservedGeneration: 7, Phase: "running", DesiredReplicas: 4, ReadyReplicas: 3,
 				UpdatedReplicas: 3, UnavailableReplicas: 1, ObservedAt: ptr(now.Add(-30 * time.Second)),
 			},
-			RequiresSingleTopologyDomain: boolptr(true), TopologyDomainKind: strptr("nvlink"),
 		},
 		api.Deployment{
-			ID: depPending, Name: "chat-sjc", ClusterID: sjc, RecipeID: recipeID,
-			MinReplicas: 1, MaxReplicas: 2, DesiredReplicas: 1, Generation: 1, Enabled: true, Authority: "managed",
-			AdapterArtifactIDs: []string{}, Overrides: map[string]any{}, Labels: map[string]any{},
+			ID: depPending, Name: "chat", WorkloadID: workloadID, WorkloadName: "chat", ClusterID: sjc,
+			MinReplicas: 1, MaxReplicas: 1, DesiredReplicas: 1,
+			AdmissionPhase:  "pending",
+			AdmissionReason: strptr("no device class in this cluster satisfies the recipe shape"),
+			QueuedAt:        ptr(now.Add(-2 * time.Hour)),
+			Generation:      1, Enabled: true, Authority: "managed",
 			CreatedAt: now.Add(-2 * time.Hour), Revision: revision(now.Add(-2 * time.Hour)),
-			Workload: api.DeploymentWorkload{
-				Type: "service", Phase: "pending", Reason: strptr("no cluster satisfies the recipe shape"),
-				ProjectID: projectID, PriorityClass: "batch", Preemptible: true, GangSize: 8,
-				QueuedAt: ptr(now.Add(-2 * time.Hour)),
-			},
 			Replicas: api.DeploymentReplicaRollup{},
 			// The state a deployment is actually in for most of the time somebody is watching it:
 			// declared, reached its cluster, and waiting on an ordering that is nobody's fault.
@@ -565,9 +579,9 @@ func seed() *state {
 		api.Event{
 			ID: "evt_01j9x2e0000000000000000010", ClusterID: strptr(iad), Kind: "deployment.created",
 			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
-			Message: "chat-iad was created on iad-1 from recipe llama-70b",
+			Message: "chat was created on iad-1 from recipe llama-70b",
 			Details: map[string]any{
-				"deployment_id": depRunning, "name": "chat-iad",
+				"deployment_id": depRunning, "name": "chat",
 				"cluster": "iad-1", "desired_replicas": "4",
 			},
 			OccurredAt: now.Add(-100 * time.Minute), RecordedAt: now.Add(-100 * time.Minute),
@@ -575,8 +589,8 @@ func seed() *state {
 		api.Event{
 			ID: "evt_01j9x2e0000000000000000011", ClusterID: strptr(iad), Kind: "deployment.dispatched",
 			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
-			Message: "chat-iad was sent to iad-1",
-			Details: map[string]any{"deployment_id": depRunning, "name": "chat-iad", "frames": "4"},
+			Message:    "chat was sent to iad-1",
+			Details:    map[string]any{"deployment_id": depRunning, "name": "chat", "frames": "4"},
 			OccurredAt: now.Add(-100 * time.Minute), RecordedAt: now.Add(-100 * time.Minute),
 		},
 		api.Event{
@@ -584,7 +598,7 @@ func seed() *state {
 			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
 			Message: "waiting for art_01j9x2eeeeeeeeeeeeeeeeeeee to finish downloading",
 			Details: map[string]any{
-				"deployment_id": depRunning, "name": "chat-iad", "reason": "WeightsNotResident",
+				"deployment_id": depRunning, "name": "chat", "reason": "WeightsNotResident",
 				"ready_replicas": "0", "desired_replicas": "4",
 			},
 			OccurredAt: now.Add(-99 * time.Minute), RecordedAt: now.Add(-99 * time.Minute),
@@ -594,7 +608,7 @@ func seed() *state {
 			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
 			Message: "serving llama-70b at revision 3",
 			Details: map[string]any{
-				"deployment_id": depRunning, "name": "chat-iad", "reason": "Applied",
+				"deployment_id": depRunning, "name": "chat", "reason": "Applied",
 				"ready_replicas": "0", "desired_replicas": "4",
 			},
 			OccurredAt: now.Add(-52 * time.Minute), RecordedAt: now.Add(-52 * time.Minute),
@@ -604,7 +618,7 @@ func seed() *state {
 			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
 			Message: "serving llama-70b at revision 3",
 			Details: map[string]any{
-				"deployment_id": depRunning, "name": "chat-iad", "reason": "Applied",
+				"deployment_id": depRunning, "name": "chat", "reason": "Applied",
 				"ready_replicas": "4", "desired_replicas": "4",
 			},
 			OccurredAt: now.Add(-30 * time.Minute), RecordedAt: now.Add(-30 * time.Minute),

@@ -250,17 +250,55 @@ func (c *Client) Recipe(ctx context.Context, ref string) (Recipe, error) {
 	return one[Recipe](ctx, c, "/v1/recipes", ref, nil)
 }
 
+func (c *Client) Workloads(ctx context.Context, o ListOpts) (Page[Workload], error) {
+	q := newQuery(o).str("project", o.Project).str("kind", o.Kind).str("phase", o.Phase).
+		str("recipe", o.Recipe).str("cluster", o.Cluster).labels(o.Labels)
+	return list[Workload](ctx, c, "/v1/workloads", q.values(), o)
+}
+
+// Workload resolves by id or by name. A name is unique within a project and not
+// globally, so a bare name outside one project is ambiguous and the plane says
+// so rather than picking.
+func (c *Client) Workload(ctx context.Context, ref string) (Workload, error) {
+	return one[Workload](ctx, c, "/v1/workloads", ref, nil)
+}
+
+func (c *Client) CreateWorkload(ctx context.Context, req WorkloadCreateRequest) (Workload, error) {
+	var out Workload
+	err := c.send(ctx, http.MethodPost, "/v1/workloads", nil, req, nil, &out)
+	return out, err
+}
+
+func (c *Client) UpdateWorkload(ctx context.Context, ref string, req WorkloadUpdateRequest) (Workload, error) {
+	var out Workload
+	err := c.send(ctx, http.MethodPatch, "/v1/workloads/"+url.PathEscape(ref), nil, req, nil, &out)
+	return out, err
+}
+
+func (c *Client) DeleteWorkload(ctx context.Context, ref string) error {
+	return c.send(ctx, http.MethodDelete, "/v1/workloads/"+url.PathEscape(ref), nil, nil, nil, nil)
+}
+
+// Deployments lists the per-cluster shares. There is no POST and no DELETE here:
+// placement creates a deployment when it expands a workload, and taking a
+// workload out of one cluster is `workload.drain` or a scale change.
 func (c *Client) Deployments(ctx context.Context, o ListOpts) (Page[Deployment], error) {
-	q := newQuery(o).str("cluster", o.Cluster).str("recipe", o.Recipe).str("project", o.Project).
-		str("phase", o.Phase).str("type", o.Type).labels(o.Labels)
+	q := newQuery(o).str("cluster", o.Cluster).str("workload", o.Workload).
+		str("project", o.Project).str("phase", o.Phase)
 	return list[Deployment](ctx, c, "/v1/deployments", q.values(), o)
 }
 
 // Deployment resolves by id, or by name within a cluster: a deployment name
-// is unique per cluster and not globally, so `--cluster` is how a name is
-// made unambiguous.
+// is unique per cluster and not globally — two clusters holding shares of one
+// workload share a name — so `--cluster` is how a name is made unambiguous.
 func (c *Client) Deployment(ctx context.Context, ref string) (Deployment, error) {
 	return one[Deployment](ctx, c, "/v1/deployments", ref, nil)
+}
+
+func (c *Client) UpdateDeployment(ctx context.Context, ref string, req DeploymentUpdateRequest) (Deployment, error) {
+	var out Deployment
+	err := c.send(ctx, http.MethodPatch, "/v1/deployments/"+url.PathEscape(ref), nil, req, nil, &out)
+	return out, err
 }
 
 func (c *Client) DiscoveredWorkloads(ctx context.Context, o ListOpts) (Page[DiscoveredWorkload], error) {
@@ -301,10 +339,11 @@ func (c *Client) RestoreWorkload(ctx context.Context, ref string) (DiscoveredWor
 	return out, err
 }
 
-// PromoteWorkload returns a Deployment, not a workload, because that is what it made. From here
-// the object is managed through /v1/deployments like any other.
-func (c *Client) PromoteWorkload(ctx context.Context, ref string, req PromoteRequest) (Deployment, error) {
-	var out Deployment
+// PromoteWorkload returns the Workload it made, pinned to the one cluster the sighting is running
+// in. From here the object is managed through /v1/workloads like any other, and its single
+// deployment is the cluster's copy.
+func (c *Client) PromoteWorkload(ctx context.Context, ref string, req PromoteRequest) (Workload, error) {
+	var out Workload
 	path := "/v1/discovered/" + url.PathEscape(ref) + "/promote"
 	err := c.send(ctx, http.MethodPost, path, nil, req, nil, &out)
 	return out, err

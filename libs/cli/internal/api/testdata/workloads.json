@@ -1,0 +1,203 @@
+{
+  "items": [
+    {
+      "id": "wkl_01m0dsfegh7fk4meb5jqnptc3c",
+      "name": "llama-70b-prod",
+      "kind": "service",
+      "phase": "pending",
+      "project_id": "prj_01m0dsfeeeejnzba17d528hc2x",
+      "priority_class": "standard",
+      "preemptible": false,
+      "paused": false,
+      "gang_size": 1,
+      "recipe_id": "rec_01m0dsda4ajr5xyjw40ppn0bfd",
+      "adapter_artifact_ids": [],
+      "overrides": {},
+      "labels": {
+        "env": "prod"
+      },
+      "requires_single_topology_domain": null,
+      "topology_domain_kind": null,
+      "strategy": "pack",
+      "cluster_floors": {},
+      "max_clusters": null,
+      "pinned_cluster_id": null,
+      "scale": {
+        "unit": "replicas",
+        "min": 1,
+        "max": 4,
+        "desired": 2,
+        "placed": 2,
+        "ready": 0
+      },
+      "started_at": null,
+      "finished_at": null,
+      "deadline_at": null,
+      "created_at": "2026-08-19T19:55:23.437043Z",
+      "updated_at": null,
+      "revision": "1787169323437043",
+      "deployments": [
+        {
+          "id": "dep_01m0dsfegh7fk4meb5jqnptc3c",
+          "name": "llama-70b-prod",
+          "cluster_id": "clu_01m0dsda0dasate7fg6rrptvx2",
+          "cluster_name": "iad-1",
+          "region": "us-east-1",
+          "min_replicas": 2,
+          "max_replicas": 2,
+          "desired_replicas": 2,
+          "admission_phase": "pending",
+          "admission_reason": null,
+          "generation": 1,
+          "enabled": true,
+          "authority": "managed",
+          "queued_at": "2026-08-19T19:55:23.537023Z",
+          "admitted_at": null,
+          "placed_at": null,
+          "replicas": {
+            "total": 0,
+            "ready": 0,
+            "running": 0,
+            "pending": 0,
+            "failed": 0,
+            "at_current_generation": 0
+          },
+          "status": null
+        }
+      ]
+    },
+    {
+      "id": "wkl_01m0dsfeh294c34fkb2wfgzx6g",
+      "name": "mixtral-prod",
+      "kind": "service",
+      "phase": "pending",
+      "project_id": "prj_01m0dsfeeeejnzba17d528hc2x",
+      "priority_class": "standard",
+      "preemptible": false,
+      "paused": false,
+      "gang_size": 1,
+      "recipe_id": "rec_01m0dsda4h3z3rn285f0j2z0vj",
+      "adapter_artifact_ids": [],
+      "overrides": {},
+      "labels": {
+        "env": "prod"
+      },
+      "requires_single_topology_domain": null,
+      "topology_domain_kind": null,
+      "strategy": "pack",
+      "cluster_floors": {},
+      "max_clusters": null,
+      "pinned_cluster_id": null,
+      "scale": {
+        "unit": "replicas",
+        "min": 1,
+        "max": 3,
+        "desired": 1,
+        "placed": 1,
+        "ready": 0
+      },
+      "started_at": null,
+      "finished_at": null,
+      "deadline_at": null,
+      "created_at": "2026-08-19T19:55:23.454565Z",
+      "updated_at": null,
+      "revision": "1787169323454565",
+      "deployments": [
+        {
+          "id": "dep_01m0dsfeh294c34fkb2wfgzx6g",
+          "name": "mixtral-prod",
+          "cluster_id": "clu_01m0dsda0sm476th7x7gk1bj8g",
+          "cluster_name": "iad-1",
+          "region": "us-east-1",
+          "min_replicas": 1,
+          "max_replicas": 1,
+          "desired_replicas": 1,
+          "admission_phase": "pending",
+          "admission_reason": null,
+          "generation": 1,
+          "enabled": true,
+          "authority": "managed",
+          "queued_at": "2026-08-19T19:55:23.554428Z",
+          "admitted_at": null,
+          "placed_at": null,
+          "replicas": {
+            "total": 0,
+            "ready": 0,
+            "running": 0,
+            "pending": 0,
+            "failed": 0,
+            "at_current_generation": 0
+          },
+          "status": null
+        }
+      ]
+    },
+    {
+      "id": "wkl_01m0dsfehd4m2jqemsjnvwj7r4",
+      "name": "qwen-dev",
+      "kind": "service",
+      "phase": "pending",
+      "project_id": "prj_01m0dsfee5ejdx86yy06rbdntk",
+      "priority_class": "interactive",
+      "preemptible": false,
+      "paused": false,
+      "gang_size": 1,
+      "recipe_id": "rec_01m0dsda4qfzh1qc29k8by77cq",
+      "adapter_artifact_ids": [],
+      "overrides": {},
+      "labels": {
+        "hangar.io/alert": "off"
+      },
+      "requires_single_topology_domain": null,
+      "topology_domain_kind": null,
+      "strategy": "pack",
+      "cluster_floors": {},
+      "max_clusters": null,
+      "pinned_cluster_id": null,
+      "scale": {
+        "unit": "replicas",
+        "min": 0,
+        "max": 2,
+        "desired": 1,
+        "placed": 1,
+        "ready": 0
+      },
+      "started_at": null,
+      "finished_at": null,
+      "deadline_at": null,
+      "created_at": "2026-08-19T19:55:23.465442Z",
+      "updated_at": null,
+      "revision": "1787169323465442",
+      "deployments": [
+        {
+          "id": "dep_01m0dsfehd4m2jqemsjnvwj7r4",
+          "name": "qwen-dev",
+          "cluster_id": "clu_01m0dsda0dasate7fg6rrptvx2",
+          "cluster_name": "iad-1",
+          "region": "us-east-1",
+          "min_replicas": 1,
+          "max_replicas": 1,
+          "desired_replicas": 1,
+          "admission_phase": "pending",
+          "admission_reason": null,
+          "generation": 1,
+          "enabled": true,
+          "authority": "managed",
+          "queued_at": "2026-08-19T19:55:23.565358Z",
+          "admitted_at": null,
+          "placed_at": null,
+          "replicas": {
+            "total": 0,
+            "ready": 0,
+            "running": 0,
+            "pending": 0,
+            "failed": 0,
+            "at_current_generation": 0
+          },
+          "status": null
+        }
+      ]
+    }
+  ],
+  "count": 3
+}

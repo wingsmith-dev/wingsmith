@@ -29,14 +29,20 @@ type Backend interface {
 	Artifact(ctx context.Context, ref string) (Artifact, error)
 	Recipes(ctx context.Context, opts ListOpts) (Page[Recipe], error)
 	Recipe(ctx context.Context, ref string) (Recipe, error)
+	Workloads(ctx context.Context, opts ListOpts) (Page[Workload], error)
+	Workload(ctx context.Context, ref string) (Workload, error)
+	CreateWorkload(ctx context.Context, req WorkloadCreateRequest) (Workload, error)
+	UpdateWorkload(ctx context.Context, ref string, req WorkloadUpdateRequest) (Workload, error)
+	DeleteWorkload(ctx context.Context, ref string) error
 	Deployments(ctx context.Context, opts ListOpts) (Page[Deployment], error)
 	Deployment(ctx context.Context, ref string) (Deployment, error)
+	UpdateDeployment(ctx context.Context, ref string, req DeploymentUpdateRequest) (Deployment, error)
 	DiscoveredWorkloads(ctx context.Context, opts ListOpts) (Page[DiscoveredWorkload], error)
 	DiscoveredWorkload(ctx context.Context, ref string) (DiscoveredWorkload, error)
 	DecideWorkload(ctx context.Context, ref, decision string, req DecisionRequest) (DiscoveredWorkload, error)
 	RemoveWorkload(ctx context.Context, ref string) error
 	RestoreWorkload(ctx context.Context, ref string) (DiscoveredWorkload, error)
-	PromoteWorkload(ctx context.Context, ref string, req PromoteRequest) (Deployment, error)
+	PromoteWorkload(ctx context.Context, ref string, req PromoteRequest) (Workload, error)
 	Endpoints(ctx context.Context, opts ListOpts) (Page[Endpoint], error)
 	Endpoint(ctx context.Context, ref string) (Endpoint, error)
 

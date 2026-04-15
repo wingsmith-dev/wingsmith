@@ -53,7 +53,7 @@ func drain(r *os.File) string {
 func TestEveryNounListsAndGets(t *testing.T) {
 	nouns := []string{
 		"cluster", "node", "device", "topology-domain", "pool",
-		"artifact", "recipe", "deployment", "endpoint",
+		"artifact", "recipe", "workload", "deployment", "endpoint",
 		"project", "quota", "priority-class", "policy",
 		"allocation", "operation", "component", "event",
 		"discovered",
@@ -410,6 +410,7 @@ func TestIgnoringAWorkloadKeepsTheSighting(t *testing.T) {
 // workload and sends back what it was just shown, so an adoption cannot be pinned to a spec
 // nobody looked at.
 func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
+	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	before, _, code := run(t, "discovered", "get", "llama-70b-vllm", "-o", "json")
 	if code != 0 {
 		t.Fatalf("get exit %d", code)
@@ -424,16 +425,17 @@ func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("promote exit %d: %s", code, out)
 	}
-	var deployment map[string]any
-	if err := json.Unmarshal([]byte(out), &deployment); err != nil {
-		t.Fatalf("promote is not a deployment: %v", err)
+	var workload map[string]any
+	if err := json.Unmarshal([]byte(out), &workload); err != nil {
+		t.Fatalf("promote is not a workload: %v", err)
 	}
+	deployment := promotedDeployment(t, workload)
 	if deployment["adopted_fingerprint"] != sighting["spec_fingerprint"] {
 		t.Fatalf("pinned to %v but the workload reported %v",
 			deployment["adopted_fingerprint"], sighting["spec_fingerprint"])
 	}
 	if deployment["adopted_workload_id"] != sighting["id"] {
-		t.Fatal("the deployment does not point back at the workload it was promoted from")
+		t.Fatal("the deployment does not point back at the sighting it was promoted from")
 	}
 }
 
@@ -441,15 +443,21 @@ func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
 // A promotion that scaled a live workload as a side effect of cataloguing it would be the same
 // class of accident as re-rendering its spec.
 func TestPromotionAdoptsTheScaleItFound(t *testing.T) {
+	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	out, _, code := run(t, "discovered", "promote", "qwen2-72b",
 		"--recipe", "llama-70b", "--project", "core", "-o", "json")
 	if code != 0 {
 		t.Fatalf("promote exit %d: %s", code, out)
 	}
-	var deployment map[string]any
-	if err := json.Unmarshal([]byte(out), &deployment); err != nil {
-		t.Fatalf("promote is not a deployment: %v", err)
+	var workload map[string]any
+	if err := json.Unmarshal([]byte(out), &workload); err != nil {
+		t.Fatalf("promote is not a workload: %v", err)
 	}
+	scale, _ := workload["scale"].(map[string]any)
+	if scale["desired"] != float64(2) {
+		t.Errorf("the workload total is %v, but the sighting runs 2 replicas", scale["desired"])
+	}
+	deployment := promotedDeployment(t, workload)
 	for _, field := range []string{"min_replicas", "desired_replicas", "max_replicas"} {
 		if deployment[field] != float64(2) {
 			t.Errorf("%s is %v, but the workload runs 2 replicas", field, deployment[field])
@@ -458,6 +466,27 @@ func TestPromotionAdoptsTheScaleItFound(t *testing.T) {
 	if deployment["generation"] != float64(1) {
 		t.Errorf("generation is %v, want 1 — an adoption starts where it is", deployment["generation"])
 	}
+}
+
+// promotedDeployment reads back the one cluster copy a promotion made. A promotion mints the pair
+// — a workload and the single deployment pinned to what is running — and the adoption fields are
+// per-cluster, so they are read where they live.
+func promotedDeployment(t *testing.T, workload map[string]any) map[string]any {
+	t.Helper()
+	deployments, _ := workload["deployments"].([]any)
+	if len(deployments) != 1 {
+		t.Fatalf("a promotion made %d deployments, want exactly 1", len(deployments))
+	}
+	share, _ := deployments[0].(map[string]any)
+	out, _, code := run(t, "deployment", "get", share["id"].(string), "-o", "json")
+	if code != 0 {
+		t.Fatalf("deployment get exit %d: %s", code, out)
+	}
+	var deployment map[string]any
+	if err := json.Unmarshal([]byte(out), &deployment); err != nil {
+		t.Fatalf("deployment get is not an object: %v", err)
+	}
+	return deployment
 }
 
 // TestPromotionNeedsToKnowWhatItIsAdopting: without a recipe and an owner the plane would be
@@ -496,6 +525,7 @@ func TestEveryOperationTypeNamesTheKindItActsUpon(t *testing.T) {
 	for _, typ := range []string{
 		"node.drain", "node.cordon", "node.uncordon", "node.reboot",
 		"device.reset", "cache.warm", "deployment.roll", "component.upgrade",
+		"workload.scale", "workload.pause", "workload.drain",
 	} {
 		if operationTargetKinds[typ] == "" {
 			t.Errorf("%s has no target kind, so a name typed for it would go bare", typ)

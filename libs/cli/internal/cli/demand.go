@@ -204,7 +204,7 @@ not a shape.`,
 			ckv.Render(w)
 		},
 		next: func(r api.Recipe) []errs.Action {
-			return []errs.Action{{Description: "Where it runs", Command: "hgr deployment ls --recipe " + r.ID}}
+			return []errs.Action{{Description: "What runs it", Command: "hgr workload ls --recipe " + r.ID}}
 		},
 	}
 }
@@ -241,16 +241,17 @@ func deploymentNoun() noun[api.Deployment] {
 		name:    "deployment",
 		aliases: []string{"deployments", "deploy"},
 		group:   "demand",
-		short:   "A recipe placed on a cluster, with scale bounds",
-		long: `A deployment is recipe × cluster: the declared spec, the workload it is a
-specialisation of, and the replicas the cluster reports.
+		short:   "One workload's share on one cluster",
+		long: `A deployment is recipe × cluster: the unit the operator reconciles.
 
-The three are kept apart on purpose. The spec is what we asked for, workload
-carries the scheduling phase and priority that preemption and quota read, and
-replicas is a rollup of what is actually running.`,
+You do not create one. Placement creates it when it expands a workload, one per
+cluster the workload landed on, and the replica bounds on it are THIS CLUSTER'S
+share of the workload total — never the total. Recipe, adapters, overrides and
+labels are workload facts and are read there; admission is here, because a
+workload can be running in one region and queued on quota in another.`,
 		example: `  hgr deployment ls
-  hgr deployment ls --cluster iad-1 --phase running
-  hgr deployment ls --project core -o wide
+  hgr deployment ls --cluster iad-1 --phase placed
+  hgr deployment ls --workload chat
   hgr deployment get chat-iad`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Deployment], error) {
 			return b.Deployments(ctx, o)
@@ -263,13 +264,11 @@ replicas is a rollup of what is actually running.`,
 		columns: []ui.Column{
 			{Title: "name"},
 			{Title: "id", Wide: true},
+			{Title: "workload"},
 			{Title: "cluster", Wide: true},
-			{Title: "type"},
-			{Title: "phase"},
-			{Title: "priority"},
+			{Title: "admission"},
+			{Title: "share", Align: ui.AlignRight},
 			{Title: "replicas", Align: ui.AlignRight},
-			{Title: "desired", Align: ui.AlignRight},
-			{Title: "bounds", Align: ui.AlignRight},
 			{Title: "gen", Align: ui.AlignRight},
 			{Title: "authority"},
 			{Title: "waiting on", Wide: true},
@@ -279,65 +278,64 @@ replicas is a rollup of what is actually running.`,
 		},
 		row: func(s ui.Style, d api.Deployment) []string {
 			return []string{
-				d.Name, d.ID, d.ClusterID, d.Workload.Type, phaseColor(s, d.Workload.Phase),
-				d.Workload.PriorityClass,
-				fmt.Sprintf("%d/%d", d.Replicas.Ready, d.Replicas.Total),
+				d.Name, d.ID, orDash(d.WorkloadName), d.ClusterID,
+				phaseColor(s, d.AdmissionPhase),
 				strconv.Itoa(d.DesiredReplicas),
-				fmt.Sprintf("%d-%d", d.MinReplicas, d.MaxReplicas),
+				fmt.Sprintf("%d/%d", d.Replicas.Ready, d.Replicas.Total),
 				strconv.Itoa(d.Generation), authorityWord(s, d.Authority), waitingOn(s, d),
-				boolWord(d.AdoptedWorkloadID != nil),
+				boolWord(d.AdoptedDiscoveredID != nil),
 				boolWord(d.Enabled), agoAt(d.CreatedAt),
 			}
 		},
 		bind: func(f *filters, cmd *cobra.Command) {
 			cmd.Flags().StringVar(&f.cluster, "cluster", "", "limit to one cluster")
-			cmd.Flags().StringVar(&f.recipe, "recipe", "", "limit to one recipe")
+			cmd.Flags().StringVar(&f.workload, "workload", "", "limit to one workload's shares")
 			cmd.Flags().StringVar(&f.project, "project", "", "limit to one project")
-			cmd.Flags().StringVar(&f.phase, "phase", "", "filter by workload phase: pending|admitted|placed|running")
-			cmd.Flags().StringVar(&f.typ, "type", "", "filter by workload type: service|task|gang")
-			f.bindLabels(cmd)
+			cmd.Flags().StringVar(&f.phase, "phase", "", "filter by admission phase: pending|admitted|placed|running")
+		},
+		groupKey: func(by string, d api.Deployment) (string, string, error) {
+			switch by {
+			case "cluster":
+				return d.ClusterID, "cluster", nil
+			case "workload":
+				return orDash(d.WorkloadName), "workload", nil
+			case "phase":
+				return d.AdmissionPhase, "phase", nil
+			}
+			return "", "", errs.New(errs.CodeUsage, "cannot group deployments by %q", by).
+				WithCause("valid groupings: cluster, workload, phase")
 		},
 		detail: func(app *App, w io.Writer, s ui.Style, d api.Deployment) {
 			fmt.Fprintf(w, "%s %s\n", s.Bold(d.Name), s.Dim(d.ID))
 
 			fmt.Fprintf(w, "\n%s\n", s.Dim("declared"))
 			kv := app.KV()
+			kv.Add("workload", orDash(d.WorkloadName)+" "+d.WorkloadID)
 			kv.Add("cluster", d.ClusterID)
-			kv.Add("recipe", d.RecipeID)
-			kv.Addf("replicas", "%d desired · bounds %d-%d", d.DesiredReplicas, d.MinReplicas, d.MaxReplicas)
+			kv.Addf("share", "%d of this workload's total", d.DesiredReplicas)
 			kv.Addf("generation", "%d", d.Generation)
 			kv.Add("enabled", yesNo(s, d.Enabled))
 			kv.Add("authority", authorityWord(s, d.Authority))
-			kv.Add("adapters", orDash(strings.Join(d.AdapterArtifactIDs, " ")))
-			kv.Add("overrides", labelString(d.Overrides))
-			kv.Add("labels", labelString(d.Labels))
 			kv.Add("revision", d.Revision)
 			kv.Render(w)
 
-			if d.AdoptedWorkloadID != nil {
-				fmt.Fprintf(w, "\n%s\n", s.Dim("adopted"))
-				akv := app.KV()
-				akv.Add("workload", str(d.AdoptedWorkloadID))
-				akv.Add("pinned to", shortDigest(str(d.AdoptedFingerprint)))
-				akv.Add("note", "the cluster refuses to reconcile this while what is running digests to anything else")
-				akv.Render(w)
-			}
+			fmt.Fprintf(w, "\n%s\n", s.Dim("admission"))
+			akv := app.KV()
+			akv.Add("phase", phaseColor(s, d.AdmissionPhase))
+			akv.Add("reason", orDash(str(d.AdmissionReason)))
+			akv.Add("queued", ago(d.QueuedAt))
+			akv.Add("admitted", ago(d.AdmittedAt))
+			akv.Add("placed", ago(d.PlacedAt))
+			akv.Render(w)
 
-			fmt.Fprintf(w, "\n%s\n", s.Dim("workload"))
-			wkv := app.KV()
-			wkv.Add("type", d.Workload.Type)
-			wkv.Add("phase", phaseColor(s, d.Workload.Phase))
-			wkv.Add("reason", orDash(str(d.Workload.Reason)))
-			wkv.Add("project", d.Workload.ProjectID)
-			wkv.Add("priority class", d.Workload.PriorityClass)
-			wkv.Add("preemptible", boolWord(d.Workload.Preemptible))
-			wkv.Addf("gang size", "%d", d.Workload.GangSize)
-			wkv.Add("queued", ago(d.Workload.QueuedAt))
-			wkv.Add("admitted", ago(d.Workload.AdmittedAt))
-			wkv.Add("placed", ago(d.Workload.PlacedAt))
-			wkv.Add("started", ago(d.Workload.StartedAt))
-			wkv.Add("deadline", ago(d.Workload.DeadlineAt))
-			wkv.Render(w)
+			if d.AdoptedDiscoveredID != nil {
+				fmt.Fprintf(w, "\n%s\n", s.Dim("adopted"))
+				dkv := app.KV()
+				dkv.Add("discovered", str(d.AdoptedDiscoveredID))
+				dkv.Add("pinned to", shortDigest(str(d.AdoptedFingerprint)))
+				dkv.Add("note", "the cluster refuses to reconcile this while what is running digests to anything else")
+				dkv.Render(w)
+			}
 
 			fmt.Fprintf(w, "\n%s\n", s.Dim("observed"))
 			if d.Status == nil {
@@ -373,6 +371,7 @@ replicas is a rollup of what is actually running.`,
 		},
 		next: func(d api.Deployment) []errs.Action {
 			return []errs.Action{
+				{Description: "The workload it is a share of", Command: "hgr workload get " + d.WorkloadID},
 				{Description: "What happened to it", Command: "hgr deployment events " + d.Name},
 				{Description: "What holds its devices", Command: "hgr allocation ls --cluster " + d.ClusterID},
 				{Description: "Roll it", Command: "hgr operation create deployment.roll " + d.Name},
@@ -382,6 +381,513 @@ replicas is a rollup of what is actually running.`,
 			return []*cobra.Command{newDeploymentEventsCmd(app)}
 		},
 	}
+}
+
+// newWorkloadCmd is the noun users actually create, scale and delete, with the
+// three long-running changes hung off it as verbs.
+//
+// Scale, pause and drain are operations rather than field writes: each can sit
+// pending on quota indefinitely and each can fail, so they get an id to poll
+// rather than a status field to misread.
+func newWorkloadCmd(app *App) *cobra.Command {
+	cmd := workloadNoun().command(app)
+	cmd.AddCommand(
+		newWorkloadCreateCmd(app),
+		newWorkloadDeleteCmd(app),
+		newWorkloadScaleCmd(app),
+		newWorkloadPauseCmd(app, true),
+		newWorkloadPauseCmd(app, false),
+		newWorkloadDrainCmd(app),
+	)
+	return cmd
+}
+
+func workloadNoun() noun[api.Workload] {
+	return noun[api.Workload]{
+		name:    "workload",
+		aliases: []string{"workloads", "wkl"},
+		group:   "demand",
+		short:   "What you asked to run, across every cluster it may use",
+		long: `A workload is a recipe, a kind, a priority and a total scale — and no cluster.
+
+Placement expands it into one deployment per cluster, and each of those carries
+that cluster's share of the total. "Run gpt-20b on asia and europe" is one
+workload, two deployments, one replica each.
+
+kind is what makes it splittable: service and task fan out across clusters, a
+gang is atomic and always has exactly one deployment, because ranks that are
+co-scheduled cannot straddle clusters. The scale numbers are counted in
+replicas for a service, ranks for a gang, completions for a task.`,
+		example: `  hgr workload ls
+  hgr workload ls --kind gang --phase pending
+  hgr workload get chat
+  hgr workload create chat --recipe llama-70b --project core --scale 8
+  hgr workload scale chat 12`,
+		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Workload], error) {
+			return b.Workloads(ctx, o)
+		},
+		get: func(ctx context.Context, b api.Backend, ref string) (api.Workload, error) {
+			return b.Workload(ctx, ref)
+		},
+		keys:  func(wl api.Workload) []string { return []string{wl.Name, wl.ID} },
+		empty: "nothing declared to run",
+		columns: []ui.Column{
+			{Title: "name"},
+			{Title: "id", Wide: true},
+			{Title: "kind"},
+			{Title: "phase"},
+			{Title: "project", Wide: true},
+			{Title: "priority"},
+			{Title: "clusters", Align: ui.AlignRight},
+			{Title: "scale", Align: ui.AlignRight},
+			{Title: "ready", Align: ui.AlignRight},
+			{Title: "strategy"},
+			{Title: "paused"},
+			{Title: "age", Align: ui.AlignRight},
+		},
+		row: func(s ui.Style, wl api.Workload) []string {
+			return []string{
+				wl.Name, wl.ID, wl.Kind, phaseColor(s, wl.Phase), wl.ProjectID, wl.PriorityClass,
+				strconv.Itoa(len(wl.Deployments)),
+				scaleCell(s, wl.Scale),
+				strconv.Itoa(wl.Scale.Ready),
+				wl.Strategy, warnIf(s, wl.Paused), agoAt(wl.CreatedAt),
+			}
+		},
+		bind: func(f *filters, cmd *cobra.Command) {
+			cmd.Flags().StringVar(&f.project, "project", "", "limit to one project")
+			cmd.Flags().StringVar(&f.kind, "kind", "", "filter by kind: service|task|gang")
+			cmd.Flags().StringVar(&f.phase, "phase", "", "filter by phase: pending|admitted|placed|running")
+			cmd.Flags().StringVar(&f.recipe, "recipe", "", "limit to one recipe")
+			cmd.Flags().StringVar(&f.cluster, "cluster", "", "workloads with a share on one cluster")
+			f.bindLabels(cmd)
+		},
+		groupKey: func(by string, wl api.Workload) (string, string, error) {
+			switch by {
+			case "kind":
+				return wl.Kind, "kind", nil
+			case "phase":
+				return wl.Phase, "phase", nil
+			case "project":
+				return wl.ProjectID, "project", nil
+			}
+			return "", "", errs.New(errs.CodeUsage, "cannot group workloads by %q", by).
+				WithCause("valid groupings: kind, phase, project")
+		},
+		detail: func(app *App, w io.Writer, s ui.Style, wl api.Workload) {
+			fmt.Fprintf(w, "%s %s\n", s.Bold(wl.Name), s.Dim(wl.ID))
+
+			fmt.Fprintf(w, "\n%s\n", s.Dim("declared"))
+			kv := app.KV()
+			kv.Add("kind", wl.Kind)
+			kv.Add("phase", phaseColor(s, wl.Phase))
+			kv.Add("recipe", wl.RecipeID)
+			kv.Add("project", wl.ProjectID)
+			kv.Add("priority class", wl.PriorityClass)
+			kv.Add("preemptible", boolWord(wl.Preemptible))
+			kv.Add("paused", warnIf(s, wl.Paused))
+			if wl.Kind == "gang" {
+				kv.Addf("gang size", "%d", wl.GangSize)
+			}
+			kv.Add("adapters", orDash(strings.Join(wl.AdapterArtifactIDs, " ")))
+			kv.Add("overrides", labelString(wl.Overrides))
+			kv.Add("labels", labelString(wl.Labels))
+			kv.Add("single topology domain", orDash(boolPtrWord(wl.RequiresSingleTopologyDomain)))
+			kv.Add("domain kind", orDash(str(wl.TopologyDomainKind)))
+			kv.Add("deadline", ago(wl.DeadlineAt))
+			kv.Add("revision", wl.Revision)
+			kv.Render(w)
+
+			fmt.Fprintf(w, "\n%s\n", s.Dim("scale"))
+			skv := app.KV()
+			skv.Addf("unit", "%s", wl.Scale.Unit)
+			skv.Addf("desired", "%d", wl.Scale.Desired)
+			skv.Addf("placed", "%d", wl.Scale.Placed)
+			skv.Addf("ready", "%d", wl.Scale.Ready)
+			skv.Addf("bounds", "%d-%d", wl.Scale.Min, wl.Scale.Max)
+			skv.Render(w)
+
+			fmt.Fprintf(w, "\n%s\n", s.Dim("placement"))
+			pkv := app.KV()
+			pkv.Add("strategy", wl.Strategy)
+			pkv.Add("cluster floors", labelString(wl.ClusterFloors))
+			pkv.Add("max clusters", num(wl.MaxClusters))
+			pkv.Add("pinned cluster", orDash(str(wl.PinnedClusterID)))
+			pkv.Render(w)
+
+			fmt.Fprintf(w, "\n%s\n", s.Dim("deployments"))
+			if len(wl.Deployments) == 0 {
+				fmt.Fprintf(w, "  %s\n", s.Dim("no cluster is holding a share of this yet"))
+				return
+			}
+			t := app.Table(
+				ui.Column{Title: "cluster"},
+				ui.Column{Title: "region"},
+				ui.Column{Title: "deployment"},
+				ui.Column{Title: "share", Align: ui.AlignRight},
+				ui.Column{Title: "replicas", Align: ui.AlignRight},
+				ui.Column{Title: "admission"},
+				ui.Column{Title: "reason", Wide: true},
+				ui.Column{Title: "authority"},
+				ui.Column{Title: "enabled"},
+			)
+			for _, d := range wl.Deployments {
+				t.Row(d.ClusterName, orDash(str(d.Region)), d.ID,
+					strconv.Itoa(d.DesiredReplicas),
+					fmt.Sprintf("%d/%d", d.Replicas.Ready, d.Replicas.Total),
+					phaseColor(s, d.AdmissionPhase), orDash(str(d.AdmissionReason)),
+					authorityWord(s, d.Authority), boolWord(d.Enabled))
+			}
+			t.Render(w)
+		},
+		next: func(wl api.Workload) []errs.Action {
+			out := []errs.Action{
+				{Description: "Its shares, per cluster", Command: "hgr deployment ls --workload " + wl.Name},
+			}
+			if wl.Paused {
+				return append(out, errs.Action{Description: "Let it run again", Command: "hgr workload resume " + wl.Name})
+			}
+			return append(out,
+				errs.Action{Description: "Change the total", Command: "hgr workload scale " + wl.Name + " <n>"},
+				errs.Action{Description: "Take it out of one cluster", Command: "hgr workload drain " + wl.Name + " --cluster <cluster>"},
+			)
+		},
+	}
+}
+
+// scaleCell shows what is placed against what was asked for, because the gap
+// between them is the whole question a partial placement raises.
+func scaleCell(s ui.Style, sc api.WorkloadScale) string {
+	cell := fmt.Sprintf("%d/%d", sc.Placed, sc.Desired)
+	if sc.Placed < sc.Desired {
+		return s.Amber(cell)
+	}
+	return cell
+}
+
+func boolPtrWord(v *bool) string {
+	if v == nil {
+		return ""
+	}
+	return boolWord(*v)
+}
+
+func newWorkloadCreateCmd(app *App) *cobra.Command {
+	var (
+		recipe        string
+		project       string
+		cluster       string
+		priorityClass string
+		kind          string
+		scale         int
+		minScale      int
+		maxScale      int
+		strategy      string
+		maxClusters   int
+		floors        []string
+		gangSize      int
+		preemptible   bool
+		adapters      []string
+		labels        []string
+	)
+	cmd := &cobra.Command{
+		Use:     "create <name>",
+		Aliases: []string{"new", "run"},
+		Short:   "Declare something to run, without saying where",
+		Long: `Create a workload. The cluster is not an argument.
+
+--scale is the TOTAL across every cluster this workload may use — replicas for a
+service, ranks for a gang, completions for a task — and placement divides it.
+--strategy pack fills one cluster before reaching for another, which is the
+default because it keeps a workload that fits in one cluster in one cluster;
+--strategy spread levels it across everything it is allowed.
+
+--cluster is the escape hatch, not the normal path: it pins the workload to one
+cluster, is never checked for capacity, and forces a single deployment. A gang is
+already single-cluster by construction, because its ranks are co-scheduled.`,
+		Example: `  hgr workload create chat --recipe llama-70b --project core --scale 8
+  hgr workload create chat --recipe llama-70b --project core --scale 8 --strategy spread
+  hgr workload create sweep --recipe llama-70b --project core --kind task --scale 200
+  hgr workload create train --recipe llama-70b --project core --kind gang --gang-size 64`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if recipe == "" || project == "" {
+				return errs.New(errs.CodeInputRequired, "a workload needs --recipe and --project").
+					WithCause("what to run, and who is charged for it")
+			}
+			parsedFloors, err := api.ParseKV(floors, "floor")
+			if err != nil {
+				return err
+			}
+			clusterFloors := map[string]int{}
+			for k, v := range parsedFloors {
+				n, err := strconv.Atoi(v)
+				if err != nil {
+					return errs.New(errs.CodeUsage, "--floor %s=%s is not a whole number of replicas", k, v)
+				}
+				clusterFloors[k] = n
+			}
+			parsedLabels, err := api.ParseKV(labels, "label")
+			if err != nil {
+				return err
+			}
+			labelMap := map[string]any{}
+			for k, v := range parsedLabels {
+				labelMap[k] = v
+			}
+
+			if kind == "gang" && !cmd.Flags().Changed("scale") {
+				scale = gangSize
+			}
+			if !cmd.Flags().Changed("min-scale") {
+				minScale = scale
+			}
+			if !cmd.Flags().Changed("max-scale") {
+				maxScale = scale
+			}
+
+			req := api.WorkloadCreateRequest{
+				Recipe: recipe, Name: args[0], Project: project, Cluster: cluster,
+				PriorityClass: priorityClass, Kind: kind,
+				MinScale: minScale, MaxScale: maxScale, DesiredScale: scale,
+				Strategy: strategy, ClusterFloors: clusterFloors,
+				Enabled: true, Preemptible: preemptible, GangSize: gangSize,
+				AdapterArtifacts: adapters, Labels: labelMap,
+			}
+			if cmd.Flags().Changed("max-clusters") {
+				req.MaxClusters = &maxClusters
+			}
+
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+			wl, err := app.Backend.CreateWorkload(ctx, req)
+			if err != nil {
+				return err
+			}
+			return emitWorkload(app, cmd, wl)
+		},
+	}
+	fl := cmd.Flags()
+	fl.StringVar(&recipe, "recipe", "", "the recipe to run")
+	fl.StringVar(&project, "project", "", "the project that owns it")
+	fl.StringVar(&cluster, "cluster", "", "pin to one cluster, overruling placement")
+	fl.StringVar(&priorityClass, "priority-class", "", "priority class, defaulting to the project's")
+	fl.StringVar(&kind, "kind", "service", "service|task|gang")
+	fl.IntVar(&scale, "scale", 1, "total across every cluster it may use")
+	fl.IntVar(&minScale, "min-scale", 1, "lower bound on the total (default: --scale)")
+	fl.IntVar(&maxScale, "max-scale", 1, "upper bound on the total (default: --scale)")
+	fl.StringVar(&strategy, "strategy", "pack", "pack|spread")
+	fl.IntVar(&maxClusters, "max-clusters", 0, "cap how many clusters may hold a share")
+	fl.StringArrayVar(&floors, "floor", nil, "per-cluster minimum share (CLUSTER=N, repeatable)")
+	fl.IntVar(&gangSize, "gang-size", 1, "ranks that must be co-scheduled, for --kind gang")
+	fl.BoolVar(&preemptible, "preemptible", false, "may be evicted for something of higher priority")
+	fl.StringArrayVar(&adapters, "adapter", nil, "adapter artifact to load (repeatable)")
+	fl.StringArrayVarP(&labels, "label", "l", nil, "label (KEY=VALUE, repeatable)")
+	return cmd
+}
+
+func newWorkloadDeleteCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:     "rm <workload>",
+		Aliases: []string{"delete", "destroy"},
+		Short:   "Stop running a workload everywhere",
+		Long: `Delete a workload and every cluster's share of it.
+
+This is the only delete in this part of the model. A deployment cannot be
+deleted on its own: taking a workload out of one cluster is ` + "`hgr workload drain`" + `,
+which drives that cluster's share to zero and removes the row once its replicas
+are gone.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+			wl, err := workloadNoun().resolve(ctx, app, args[0])
+			if err != nil {
+				return err
+			}
+			if err := app.Confirm(fmt.Sprintf("delete %s and its %d deployment(s)?", wl.Name, len(wl.Deployments))); err != nil {
+				return err
+			}
+			if err := app.Backend.DeleteWorkload(ctx, wl.ID); err != nil {
+				return err
+			}
+			return app.Emit(&output.Result{
+				Command: cmdPath(cmd),
+				Names:   []string{wl.ID},
+				Human: func(w io.Writer, s ui.Style, width int) {
+					fmt.Fprintf(w, "%s deleted\n", s.Bold(wl.Name))
+				},
+			})
+		},
+	}
+}
+
+// newWorkloadScaleCmd changes the total, never a cluster's share.
+//
+// The share is placement's answer and asserting one per cluster would be a
+// second answer to a question that already has one. --floor is how a caller says
+// something about where, and it is still a floor rather than a share.
+func newWorkloadScaleCmd(app *App) *cobra.Command {
+	var (
+		wait     bool
+		interval string
+		reason   string
+	)
+	cmd := &cobra.Command{
+		Use:   "scale <workload> <n>",
+		Short: "Change a workload's total scale",
+		Long: `Scale a workload to a new total across every cluster it may use.
+
+An operation rather than a field write, because it is long-running and can fail:
+the new total has to find quota and capacity, and it can sit pending on quota
+indefinitely. --wait polls it to a terminal phase.`,
+		Example: `  hgr workload scale chat 12
+  hgr workload scale chat 12 --wait`,
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			desired, err := strconv.Atoi(args[1])
+			if err != nil || desired < 0 {
+				return errs.New(errs.CodeUsage, "scale takes a whole number of units, not %q", args[1])
+			}
+			return app.runWorkloadOperation(cmd, "workload.scale", args[0],
+				map[string]any{"desired": desired}, reason, wait, interval)
+		},
+	}
+	fl := cmd.Flags()
+	fl.StringVar(&reason, "reason", "", "why — it outlives the person who ran it")
+	fl.BoolVar(&wait, "wait", false, "poll until the operation reaches a terminal phase")
+	fl.StringVar(&interval, "interval", "2s", "how often to poll while waiting")
+	return cmd
+}
+
+// newWorkloadPauseCmd builds pause and resume, which differ only in the value
+// they set. Paused is declared state that placement reads — the deployments stay
+// where they are with a share of zero, so resuming does not re-place anything.
+func newWorkloadPauseCmd(app *App, paused bool) *cobra.Command {
+	var (
+		wait     bool
+		interval string
+		reason   string
+	)
+	use, short := "pause <workload>", "Drive a workload's replicas to zero, keeping its placement"
+	long := `Pause a workload.
+
+Every cluster's share goes to zero and the deployment rows stay exactly where
+they are, so resuming restores the shares rather than replacing the workload
+somewhere else. Nothing is deleted and no endpoint target is removed.`
+	if !paused {
+		use, short = "resume <workload>", "Let a paused workload run again"
+		long = `Resume a paused workload.
+
+The shares come back from the totals, in the clusters that were already holding
+them. A workload that was paused for long enough that its clusters filled up can
+come back partially placed, which is what the placed count on ` + "`hgr workload get`" + `
+is for.`
+	}
+	cmd := &cobra.Command{
+		Use:   use,
+		Short: short,
+		Long:  long,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return app.runWorkloadOperation(cmd, "workload.pause", args[0],
+				map[string]any{"paused": paused}, reason, wait, interval)
+		},
+	}
+	fl := cmd.Flags()
+	fl.StringVar(&reason, "reason", "", "why — it outlives the person who ran it")
+	fl.BoolVar(&wait, "wait", false, "poll until the operation reaches a terminal phase")
+	fl.StringVar(&interval, "interval", "2s", "how often to poll while waiting")
+	return cmd
+}
+
+func newWorkloadDrainCmd(app *App) *cobra.Command {
+	var (
+		cluster  string
+		wait     bool
+		interval string
+		reason   string
+	)
+	cmd := &cobra.Command{
+		Use:   "drain <workload> --cluster <cluster>",
+		Short: "Take a workload out of one cluster",
+		Long: `Remove one cluster from a workload.
+
+That cluster's share goes to zero, its endpoint targets are removed, and once
+its replicas are gone the deployment row is deleted and the remaining clusters
+are re-expanded to absorb the total. This is the reason a deployment has no
+delete of its own.`,
+		Example: `  hgr workload drain chat --cluster sjc-1
+  hgr workload drain chat --cluster sjc-1 --wait`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if cluster == "" {
+				return errs.New(errs.CodeInputRequired, "drain needs --cluster").
+					WithCause("draining a workload everywhere is `hgr workload rm`")
+			}
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+			c, err := clusterNoun().resolve(ctx, app, cluster)
+			if err != nil {
+				return err
+			}
+			return app.runWorkloadOperation(cmd, "workload.drain", args[0],
+				map[string]any{"cluster": c.ID}, reason, wait, interval)
+		},
+	}
+	fl := cmd.Flags()
+	fl.StringVar(&cluster, "cluster", "", "the cluster to remove from the workload")
+	fl.StringVar(&reason, "reason", "", "why — it outlives the person who ran it")
+	fl.BoolVar(&wait, "wait", false, "poll until the operation reaches a terminal phase")
+	fl.StringVar(&interval, "interval", "2s", "how often to poll while waiting")
+	return cmd
+}
+
+// runWorkloadOperation is the one path scale, pause and drain share.
+//
+// The workload is resolved here so that a prefix or a name works the way it does
+// on `get`, and so the operation carries the id rather than a name the plane
+// would have to disambiguate a second time. No cluster is sent: these three are
+// plane-local and are never dispatched to one.
+func (a *App) runWorkloadOperation(cmd *cobra.Command, opType, ref string, params map[string]any, reason string, wait bool, interval string) error {
+	ctx, cancel := a.RequestContext()
+	defer cancel()
+
+	wl, err := workloadNoun().resolve(ctx, a, ref)
+	if err != nil {
+		return err
+	}
+	if err := a.Confirm(fmt.Sprintf("start %s on %s?", opType, wl.Name)); err != nil {
+		return err
+	}
+	op, err := a.Backend.CreateOperation(ctx, api.OperationRequest{
+		Type: opType, Target: qualifyOperationTarget(opType, wl.ID),
+		Reason: reason, Parameters: params,
+	}, "")
+	if err != nil {
+		return err
+	}
+	if !wait {
+		return a.emitOperation(cmd, op)
+	}
+	every, err := pollInterval(interval)
+	if err != nil {
+		return err
+	}
+	return a.waitForOperation(cmd, op.ID, every)
+}
+
+func emitWorkload(app *App, cmd *cobra.Command, wl api.Workload) error {
+	n := workloadNoun()
+	return app.Emit(&output.Result{
+		Command: cmdPath(cmd),
+		Data:    wl,
+		Names:   []string{wl.Name},
+		Human: func(w io.Writer, s ui.Style, width int) {
+			n.detail(app, w, s, wl)
+		},
+		Next: n.nextFor(wl),
+	})
 }
 
 // newDeploymentEventsCmd renders one deployment's whole history, oldest first.

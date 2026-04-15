@@ -48,6 +48,7 @@ type ListOpts struct {
 	TopologyDomain string
 	Target         string
 	Deployment     string
+	Workload       string
 	Harness        string
 	Actor          string
 	Subject        string
@@ -402,21 +403,139 @@ type Recipe struct {
 	Revision       string            `json:"revision"`
 }
 
-// DeploymentWorkload is the scheduling supertype half: what is scheduled, at
-// what priority, and how far it got.
-type DeploymentWorkload struct {
-	Type          string     `json:"type"`
-	Phase         string     `json:"phase"`
-	Reason        *string    `json:"reason"`
-	ProjectID     string     `json:"project_id"`
-	PriorityClass string     `json:"priority_class"`
-	Preemptible   bool       `json:"preemptible"`
-	GangSize      int        `json:"gang_size"`
-	QueuedAt      *time.Time `json:"queued_at"`
-	AdmittedAt    *time.Time `json:"admitted_at"`
-	PlacedAt      *time.Time `json:"placed_at"`
-	StartedAt     *time.Time `json:"started_at"`
-	DeadlineAt    *time.Time `json:"deadline_at"`
+// WorkloadScale is the declared total and what the shares actually add up to.
+//
+// Unit is named by kind — replicas for service, ranks for gang, completions for
+// task — because the three numbers count different things and a bare integer is
+// unreadable without it. Placed is the sum of the deployments' shares and Ready
+// the sum of their observed ready counts; the plane derives both, and summing a
+// share against a total anywhere else is always a bug.
+type WorkloadScale struct {
+	Unit    string `json:"unit"`
+	Min     int    `json:"min"`
+	Max     int    `json:"max"`
+	Desired int    `json:"desired"`
+	Placed  int    `json:"placed"`
+	Ready   int    `json:"ready"`
+}
+
+// WorkloadDeployment is one cluster's share of a workload, as seen from the
+// workload. Enough to draw the per-cluster table; the whole per-cluster object
+// is `hgr deployment get`.
+type WorkloadDeployment struct {
+	ID              string                  `json:"id"`
+	Name            string                  `json:"name"`
+	ClusterID       string                  `json:"cluster_id"`
+	ClusterName     string                  `json:"cluster_name"`
+	Region          *string                 `json:"region"`
+	MinReplicas     int                     `json:"min_replicas"`
+	MaxReplicas     int                     `json:"max_replicas"`
+	DesiredReplicas int                     `json:"desired_replicas"`
+	AdmissionPhase  string                  `json:"admission_phase"`
+	AdmissionReason *string                 `json:"admission_reason"`
+	Generation      int                     `json:"generation"`
+	Enabled         bool                    `json:"enabled"`
+	Authority       string                  `json:"authority"`
+	QueuedAt        *time.Time              `json:"queued_at"`
+	AdmittedAt      *time.Time              `json:"admitted_at"`
+	PlacedAt        *time.Time              `json:"placed_at"`
+	Replicas        DeploymentReplicaRollup `json:"replicas"`
+	Status          *DeploymentStatus       `json:"status"`
+}
+
+// Workload is what you asked to run, globally: a recipe, a kind, a priority and
+// a total scale across every cluster it may use.
+//
+// It carries no cluster. Placement expands it into one Deployment per cluster,
+// and each of those carries that cluster's share of the total — which is why
+// Scale is the only place in this package where anything is summed.
+//
+// Kind is service | task | gang, and it is also what makes a workload
+// splittable: service and task fan out, a gang is atomic and always has exactly
+// one deployment. Phase is derived from the deployments and nothing writes it.
+type Workload struct {
+	ID                           string               `json:"id"`
+	Name                         string               `json:"name"`
+	Kind                         string               `json:"kind"`
+	Phase                        string               `json:"phase"`
+	ProjectID                    string               `json:"project_id"`
+	PriorityClass                string               `json:"priority_class"`
+	Preemptible                  bool                 `json:"preemptible"`
+	Paused                       bool                 `json:"paused"`
+	GangSize                     int                  `json:"gang_size"`
+	RecipeID                     string               `json:"recipe_id"`
+	AdapterArtifactIDs           []string             `json:"adapter_artifact_ids"`
+	Overrides                    map[string]any       `json:"overrides"`
+	Labels                       map[string]any       `json:"labels"`
+	RequiresSingleTopologyDomain *bool                `json:"requires_single_topology_domain"`
+	TopologyDomainKind           *string              `json:"topology_domain_kind"`
+	Strategy                     string               `json:"strategy"`
+	ClusterFloors                map[string]any       `json:"cluster_floors"`
+	MaxClusters                  *int                 `json:"max_clusters"`
+	PinnedClusterID              *string              `json:"pinned_cluster_id"`
+	Scale                        WorkloadScale        `json:"scale"`
+	StartedAt                    *time.Time           `json:"started_at"`
+	FinishedAt                   *time.Time           `json:"finished_at"`
+	DeadlineAt                   *time.Time           `json:"deadline_at"`
+	CreatedAt                    time.Time            `json:"created_at"`
+	UpdatedAt                    *time.Time           `json:"updated_at"`
+	Revision                     string               `json:"revision"`
+	Deployments                  []WorkloadDeployment `json:"deployments"`
+}
+
+// WorkloadCreateRequest is what it takes to run something, without saying where.
+//
+// Cluster is an override rather than the normal path: absent, placement picks
+// from the recipe's shape, the project's quota, the policies on the workload and
+// what the clusters report free. Naming one is a deliberate escape from the
+// scheduler — it still has to exist, but it is never checked for capacity, and a
+// named cluster forces a single deployment.
+//
+// The three scale numbers are TOTALS across every cluster this workload may use,
+// counted in replicas for service, ranks for gang, completions for task.
+type WorkloadCreateRequest struct {
+	Recipe                       string         `json:"recipe"`
+	Name                         string         `json:"name"`
+	Project                      string         `json:"project"`
+	Cluster                      string         `json:"cluster,omitempty"`
+	PriorityClass                string         `json:"priority_class,omitempty"`
+	Kind                         string         `json:"kind,omitempty"`
+	MinScale                     int            `json:"min_scale"`
+	MaxScale                     int            `json:"max_scale"`
+	DesiredScale                 int            `json:"desired_scale"`
+	Strategy                     string         `json:"strategy,omitempty"`
+	ClusterFloors                map[string]int `json:"cluster_floors,omitempty"`
+	MaxClusters                  *int           `json:"max_clusters,omitempty"`
+	Enabled                      bool           `json:"enabled"`
+	Preemptible                  bool           `json:"preemptible"`
+	GangSize                     int            `json:"gang_size,omitempty"`
+	DeadlineAt                   *time.Time     `json:"deadline_at,omitempty"`
+	AdapterArtifacts             []string       `json:"adapter_artifacts,omitempty"`
+	Overrides                    map[string]any `json:"overrides,omitempty"`
+	Labels                       map[string]any `json:"labels,omitempty"`
+	RequiresSingleTopologyDomain *bool          `json:"requires_single_topology_domain,omitempty"`
+	TopologyDomainKind           string         `json:"topology_domain_kind,omitempty"`
+}
+
+// WorkloadUpdateRequest is a partial update: an absent field is untouched.
+//
+// Recipe and cluster are absent by design — a deployment is recipe × cluster, so
+// changing either is a new deployment, which is cheap because the endpoint in
+// front of it is the stable name. Scale is absent because changing it is
+// long-running and can sit pending on quota forever, so it is the workload.scale
+// operation rather than a field write.
+type WorkloadUpdateRequest struct {
+	Name                         *string         `json:"name,omitempty"`
+	AdapterArtifacts             *[]string       `json:"adapter_artifacts,omitempty"`
+	Overrides                    *map[string]any `json:"overrides,omitempty"`
+	Labels                       *map[string]any `json:"labels,omitempty"`
+	PriorityClass                *string         `json:"priority_class,omitempty"`
+	Preemptible                  *bool           `json:"preemptible,omitempty"`
+	Strategy                     *string         `json:"strategy,omitempty"`
+	ClusterFloors                *map[string]int `json:"cluster_floors,omitempty"`
+	MaxClusters                  *int            `json:"max_clusters,omitempty"`
+	RequiresSingleTopologyDomain *bool           `json:"requires_single_topology_domain,omitempty"`
+	TopologyDomainKind           *string         `json:"topology_domain_kind,omitempty"`
 }
 
 // DeploymentReplicaRollup counts observed replicas rather than listing them.
@@ -429,35 +548,56 @@ type DeploymentReplicaRollup struct {
 	AtCurrentGeneration int `json:"at_current_generation"`
 }
 
-// Deployment is a recipe placed on a cluster: declared spec, the workload it
-// specialises, and the replicas the cluster reports.
+// Deployment is one workload's share on one cluster: the unit the operator
+// reconciles, and the only object in the model that names a cluster.
+//
+// MinReplicas, MaxReplicas and DesiredReplicas are THIS CLUSTER'S SHARE of the
+// workload's total, never the total. Nothing here sums a share against a total
+// or re-derives one from the other.
+//
+// Recipe, adapters, overrides and labels are not on it: they are workload facts,
+// read through WorkloadID. Admission is on it, because it is per-cluster — a
+// workload can be running in one region and queued on quota in another, and
+// there is no single phase true of both.
+//
+// AdoptedDiscoveredID is the *discovered* workload this deployment was promoted
+// from and has nothing to do with WorkloadID; its JSON name is historical.
 type Deployment struct {
-	ID                 string                  `json:"id"`
-	Name               string                  `json:"name"`
-	ClusterID          string                  `json:"cluster_id"`
-	RecipeID           string                  `json:"recipe_id"`
-	MinReplicas        int                     `json:"min_replicas"`
-	MaxReplicas        int                     `json:"max_replicas"`
-	DesiredReplicas    int                     `json:"desired_replicas"`
-	Generation         int                     `json:"generation"`
-	Enabled            bool                    `json:"enabled"`
-	AdapterArtifactIDs []string                `json:"adapter_artifact_ids"`
-	Overrides          map[string]any          `json:"overrides"`
-	Labels             map[string]any          `json:"labels"`
-	CreatedAt          time.Time               `json:"created_at"`
-	UpdatedAt          *time.Time              `json:"updated_at"`
-	Revision           string                  `json:"revision"`
-	AdoptedWorkloadID  *string                 `json:"adopted_workload_id"`
-	AdoptedFingerprint *string                 `json:"adopted_fingerprint"`
-	Authority          string                  `json:"authority"`
-	Workload           DeploymentWorkload      `json:"workload"`
-	Replicas           DeploymentReplicaRollup `json:"replicas"`
-	Status             *DeploymentStatus       `json:"status"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	WorkloadID      string     `json:"workload_id"`
+	WorkloadName    string     `json:"workload_name"`
+	ClusterID       string     `json:"cluster_id"`
+	MinReplicas     int        `json:"min_replicas"`
+	MaxReplicas     int        `json:"max_replicas"`
+	DesiredReplicas int        `json:"desired_replicas"`
+	AdmissionPhase  string     `json:"admission_phase"`
+	AdmissionReason *string    `json:"admission_reason"`
+	QueuedAt        *time.Time `json:"queued_at"`
+	AdmittedAt      *time.Time `json:"admitted_at"`
+	PlacedAt        *time.Time `json:"placed_at"`
+	Generation      int        `json:"generation"`
+	Enabled         bool       `json:"enabled"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       *time.Time `json:"updated_at"`
+	Revision        string     `json:"revision"`
 
-	// The deployment's own topology requirement, which overrides the recipe's when set. Null
-	// means the recipe's answer stands rather than "no requirement".
-	RequiresSingleTopologyDomain *bool   `json:"requires_single_topology_domain"`
-	TopologyDomainKind           *string `json:"topology_domain_kind"`
+	AdoptedDiscoveredID *string `json:"adopted_workload_id"`
+	AdoptedFingerprint  *string `json:"adopted_fingerprint"`
+	Authority           string  `json:"authority"`
+
+	Replicas DeploymentReplicaRollup `json:"replicas"`
+	Status   *DeploymentStatus       `json:"status"`
+}
+
+// DeploymentUpdateRequest is a partial update of one cluster's copy.
+//
+// Everything a workload declares is absent: it is declared once, globally, and a
+// per-cluster override would be a second answer to a question that already has
+// one. Scale is absent because shares are derived by placement from the workload
+// total, never asserted per cluster.
+type DeploymentUpdateRequest struct {
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 // DeploymentStatus is what the cluster reports the deployment is doing, and why.
@@ -522,12 +662,15 @@ type DecisionRequest struct {
 	Note    string `json:"note,omitempty"`
 }
 
-// PromoteRequest turns a sighting into a deployment the plane manages.
+// PromoteRequest turns a sighting into a workload the plane manages.
 //
 // Fingerprint is the digest the caller was shown. The plane refuses the promotion if the workload
 // has changed since, so an adoption is never pinned to a spec nobody looked at. There is no field
 // here for the image, the overrides or the replica count: anything that could change what the
 // workload is running would make promotion capable of restarting it.
+//
+// Name names the workload, and the deployment placement pins to the running object takes the same
+// name in that one cluster.
 type PromoteRequest struct {
 	Recipe        string `json:"recipe"`
 	Project       string `json:"project"`

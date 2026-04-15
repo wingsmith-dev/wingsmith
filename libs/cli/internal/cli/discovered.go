@@ -135,6 +135,7 @@ whose weights are already loaded stays loaded.`,
 			case "promoted":
 				return []errs.Action{
 					{Description: "Manage it", Command: "hgr deployment get " + str(d.DeploymentID)},
+					{Description: "The workload it belongs to", Command: "hgr workload ls --cluster " + d.ClusterName},
 				}
 			case "dismissed":
 				return []errs.Action{
@@ -324,12 +325,14 @@ func newPromoteCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "promote <workload>",
 		Short: "Let the plane manage a workload it found running",
-		Long: `Promote a discovered workload into a deployment.
+		Long: `Promote a discovered workload into a workload the plane declares.
 
-The plane starts holding a deployment for it, so it appears under ` + "`hgr deployment`" + ` and
-is scaled and patched like any other. Nothing restarts to make that true: the
-deployment is pinned to the digest of what is running right now, and the cluster
-refuses to reconcile it while the live workload digests to anything else.
+What you get back is a workload pinned to the one cluster this is running in,
+with a single deployment that is that cluster's copy — so it appears under
+` + "`hgr workload`" + ` and is scaled and patched like any other. Nothing restarts to make
+that true: the deployment is pinned to the digest of what is running right now,
+and the cluster refuses to reconcile it while the live workload digests to
+anything else.
 
 Changing the recipe or the overrides afterwards will roll it, as it should — that
 is a change you asked for. Promotion itself is not.
@@ -356,7 +359,7 @@ running, so cataloguing it cannot scale it as a side effect.`,
 					"%q has no digest, so an adoption cannot be pinned to it", found.Name).
 					WithCause("the cluster's operator has not reported what this workload is running")
 			}
-			deployment, err := app.Backend.PromoteWorkload(ctx, found.ID, api.PromoteRequest{
+			workload, err := app.Backend.PromoteWorkload(ctx, found.ID, api.PromoteRequest{
 				Recipe:        recipe,
 				Project:       project,
 				Fingerprint:   *found.SpecFingerprint,
@@ -366,22 +369,13 @@ running, so cataloguing it cannot scale it as a side effect.`,
 			if err != nil {
 				return err
 			}
-			n := deploymentNoun()
-			return app.Emit(&output.Result{
-				Command: cmdPath(cmd),
-				Data:    deployment,
-				Names:   []string{deployment.ID},
-				Human: func(w io.Writer, s ui.Style, width int) {
-					n.detail(app, w, s, deployment)
-				},
-				Next: n.nextFor(deployment),
-			})
+			return emitWorkload(app, cmd, workload)
 		},
 	}
 	fl := cmd.Flags()
 	fl.StringVar(&recipe, "recipe", "", "the recipe this workload is an instance of")
 	fl.StringVar(&project, "project", "", "the project that owns it")
-	fl.StringVar(&name, "name", "", "deployment name, defaulting to the workload's own")
+	fl.StringVar(&name, "name", "", "workload name, defaulting to the discovered workload's own")
 	fl.StringVar(&priorityClass, "priority-class", "", "priority class, defaulting to the project's")
 	return cmd
 }

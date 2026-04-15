@@ -18,6 +18,7 @@ func register(app *App, root *cobra.Command) {
 
 		artifactNoun().command(app),
 		recipeNoun().command(app),
+		newWorkloadCmd(app),
 		deploymentNoun().command(app),
 		newDiscoveredCmd(app),
 		endpointNoun().command(app),
