@@ -151,7 +151,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/device-classes` | the shared dictionary, read-only — see below |
 | `/v1/pools` | declared, with observed membership |
 | `/v1/artifacts` | declared, plus one read-only resolve verb — see below |
-| `/v1/recipes`, `/v1/workloads`, `/v1/endpoints` | declared |
+| `/v1/recipes`, `/v1/workloads`, `/v1/endpoints` | declared, plus a read-only resolution — see below |
 | `/v1/deployments` | declared, per-cluster, read-mostly — see below |
 | `/v1/discovered` | observed, read-only, plus the decision verbs — see below |
 | `/v1/replicas`, `/v1/allocations` | observed, read-only |
@@ -163,6 +163,16 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/events` | observed, read-only, append-only |
 | `/v1/alerts` | derived, read-only apart from two lifecycle verbs — see below |
 | `/v1/notification-channels` | declared, plus a `test` verb |
+
+**`GET /v1/endpoints/resolved` is derived and belongs to no object.** An endpoint declares a name
+and a set of targets; the resolution is what that means right now — each enabled target followed
+to its deployment, that deployment's cluster, and the serving address the cluster carries. It is
+computed on read and stored nowhere, because a materialised copy is a second version of the same
+fact with its own way of being stale. The whole table comes back unpaginated: a caller that
+assembled half a routing table would route half its traffic into a hole. It is `ETag`ged by a
+revision covering all four tables it was built from, so polling it costs a `304` until one of them
+moves. An endpoint with no usable targets is returned with an empty upstream list rather than
+omitted — "no such model" and "this model has nowhere to go" are different answers.
 
 Sub-resources are addressed by filter, not by nesting: `GET /v1/devices?cluster=iad-1`, not
 `/v1/clusters/iad-1/devices`. One collection per object type keeps filtering, pagination and
