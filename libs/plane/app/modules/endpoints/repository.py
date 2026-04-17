@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
 from app.db.models import Recipe
+from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Artifact
 from app.db.models import Endpoint
 from app.db.models import Workload
 from app.db.models import Deployment
+from app.db.models import ClusterServing
 from app.db.models import EndpointTarget
 from app.core.filters import ref_ids
 
@@ -83,6 +85,32 @@ class EndpointRepository:
 
     def deployment_uid_query(self, deployment_ids: list) -> Select:
         return select(Deployment.id, Deployment.uid).where(Deployment.id.in_(deployment_ids))
+
+    def resolved_query(self, ref: str | None = None) -> Select:
+        """Endpoints joined out to the addresses their targets sit behind.
+
+        An outer join all the way down, deliberately: a target whose cluster has
+        declared no serving address still has to come back, because the caller
+        has to be able to tell a misconfigured endpoint from an absent one.
+        Filtering happens above, where it can say why.
+        """
+        query = (
+            select(Endpoint, EndpointTarget, Deployment, Cluster, ClusterServing)
+            .outerjoin(EndpointTarget, EndpointTarget.endpoint_id == Endpoint.id)
+            .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
+            .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)
+            .outerjoin(ClusterServing, ClusterServing.cluster_id == Cluster.id)
+            .where(Endpoint.enabled.is_(True))
+            .order_by(Endpoint.seq.asc())
+        )
+        if ref is not None:
+            column = Endpoint.uid if is_uid(ref) else Endpoint.name
+            query = query.where(column == ref)
+        return query
+
+    async def resolved(self, ref: str | None = None) -> list[Row]:
+        result = await self.db.execute(self.resolved_query(ref))
+        return list(result.all())
 
     async def get(self, ref: str) -> Row | None:
         result = await self.db.execute(self.get_query(ref).limit(1))

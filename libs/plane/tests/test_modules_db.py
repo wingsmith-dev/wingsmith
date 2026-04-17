@@ -693,6 +693,44 @@ async def test_workloads_lifecycle(db: AsyncSession) -> None:
     assert (await DeploymentService(db).list()).count == 0
 
 
+async def test_resolution_follows_targets_to_serving_addresses(db: AsyncSession) -> None:
+    cluster, project, _, deployment = await a_deployment(db)
+    clusters = ClusterService(db)
+    endpoints = EndpointService(db)
+    created = await endpoints.create(
+        EndpointCreateRequest(
+            name="chat",
+            project=project.id,
+            targets=[EndpointTargetRequest(deployment=deployment.id)],
+        )
+    )
+
+    bare = await endpoints.resolved()
+    assert [e.id for e in bare.endpoints] == [created.id]
+    assert bare.endpoints[0].upstreams == []
+
+    await clusters.set_serving(cluster.id, ClusterServingRequest(url="http://frontend.svc:8000"))
+    table = await endpoints.resolved()
+    assert table.revision != bare.revision
+    upstream = table.endpoints[0].upstreams[0]
+    assert upstream.url == "http://frontend.svc:8000"
+    assert upstream.cluster_id == cluster.id
+    assert upstream.deployment_id == deployment.id
+    assert upstream.weight == 100
+
+    assert (await endpoints.resolved(created.id)).endpoints[0].id == created.id
+    with pytest.raises(NotFound):
+        await endpoints.resolved("end_missing")
+
+    await clusters.set_serving(cluster.id, ClusterServingRequest(url="http://frontend.svc:8000", enabled=False))
+    disabled_address = await endpoints.resolved()
+    assert disabled_address.endpoints[0].upstreams == []
+
+    await clusters.set_serving(cluster.id, ClusterServingRequest(url="http://frontend.svc:8000"))
+    await endpoints.update(created.id, EndpointUpdateRequest(enabled=False))
+    assert (await endpoints.resolved()).endpoints == []
+
+
 async def test_endpoints_lifecycle(db: AsyncSession) -> None:
     _, project, _, deployment = await a_deployment(db)
     service = EndpointService(db)

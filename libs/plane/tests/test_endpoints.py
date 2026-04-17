@@ -208,7 +208,16 @@ def test_controller_exposes_full_crud():
         "get_endpoint",
         "update_endpoint",
         "delete_endpoint",
+        "resolve_all",
+        "resolve_one",
     }
+
+
+def test_resolution_is_unpaginated_and_conditional():
+    """The table is fetched whole, and the steady state of polling it is a 304."""
+    parameters = set(inspect.signature(EndpointRoutes.resolve_all.fn).parameters)
+    assert "if_none_match" in parameters
+    assert not parameters & {"limit", "cursor"}
 
 
 def test_list_handler_offers_every_declared_filter():

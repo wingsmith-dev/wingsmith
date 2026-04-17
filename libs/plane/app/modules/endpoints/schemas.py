@@ -84,3 +84,60 @@ class EndpointUpdateRequest(Struct):
     targets: list[EndpointTargetRequest] | UnsetType = UNSET
     failover_order: list[str] | UnsetType = UNSET
     labels: dict | UnsetType = UNSET
+
+
+class ResolvedUpstreamSchema(Struct):
+    """One dialable address behind an endpoint, with everything needed to dial it.
+
+    This is the one place a cluster appears next to an endpoint, and it is not a
+    contradiction: the endpoint still holds no cluster, and this object is not
+    the endpoint. It is the resolution of one, derived on read the way an
+    `EndpointSlice` is derived from a `Service` — flattened here so that a
+    gateway can hold the whole table in memory rather than re-walking four joins
+    per request.
+
+    `admission_phase` is passed through rather than filtered on. Whether a
+    deployment is running is observed, it can lag what the cluster is actually
+    doing, and a plane that silently drops targets on it would turn a stale
+    observation into an outage. The gateway is closer to the truth and decides.
+    """
+
+    deployment_id: str
+    deployment_name: str
+    admission_phase: str
+    cluster_id: str
+    cluster_name: str
+    url: str
+    credential_id: str | None
+    weight: int
+    role: str
+
+
+class ResolvedEndpointSchema(Struct):
+    """An endpoint with its targets resolved into addresses.
+
+    An endpoint with no upstreams is returned, not omitted. The two states a
+    caller must be able to tell apart are "no such model" and "this model has
+    nowhere to go right now", and dropping the row collapses them into a 404.
+    """
+
+    id: str
+    name: str
+    visibility: str
+    routing_strategy: str
+    upstreams: list[ResolvedUpstreamSchema]
+    failover_order: list[str]
+    revision: str
+
+
+class ResolvedTableSchema(Struct):
+    """Every enabled endpoint, resolved. The whole routing table in one read.
+
+    `revision` covers everything the table was built from — endpoints, their
+    targets, the deployments behind them and the serving addresses of the
+    clusters those sit on — so a caller that polls can send it back as
+    `If-None-Match` and get a `304` for as long as none of the four have moved.
+    """
+
+    revision: str
+    endpoints: list[ResolvedEndpointSchema]

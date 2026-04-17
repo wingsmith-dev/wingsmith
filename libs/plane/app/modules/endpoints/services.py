@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import datetime as dt
+
 from uuid import UUID
 
 from msgspec import UNSET
@@ -19,10 +21,13 @@ from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
 
 from .schemas import EndpointSchema
+from .schemas import ResolvedTableSchema
 from .schemas import EndpointTargetSchema
 from .schemas import EndpointCreateRequest
 from .schemas import EndpointTargetRequest
 from .schemas import EndpointUpdateRequest
+from .schemas import ResolvedEndpointSchema
+from .schemas import ResolvedUpstreamSchema
 from .repository import EndpointRepository
 
 
@@ -66,6 +71,26 @@ def _revision(endpoint: Endpoint) -> str:
     """The value `If-Match` is checked against, derived from the last write."""
     stamp = endpoint.updated_at or endpoint.created_at
     return str(int(stamp.timestamp() * 1_000_000))
+
+
+def _stamp(row) -> dt.datetime | None:
+    """When a row last moved, for the revision the whole table is versioned by."""
+    if row is None:
+        return None
+    return row.updated_at or row.created_at
+
+
+def _revision_of(stamps: list[dt.datetime | None]) -> str:
+    """The newest stamp among everything a resolution was built from, or `0`.
+
+    An empty table still needs a value a caller can send back as `If-None-Match`,
+    and it needs the value to change the moment the table stops being empty —
+    which it does, because the first row that appears carries a stamp.
+    """
+    live = [stamp for stamp in stamps if stamp is not None]
+    if not live:
+        return "0"
+    return str(int(max(live).timestamp() * 1_000_000))
 
 
 class EndpointService:
@@ -258,3 +283,77 @@ class EndpointService:
         row = await self._one(ref)
         await self.repo.delete(row[0])
         await self.db.commit()
+
+    async def resolved(self, ref: str | None = None) -> ResolvedTableSchema:
+        """The routing table: every enabled endpoint, with its targets as addresses.
+
+        Derived on every read and stored nowhere. The endpoint is what somebody
+        declared; this is what that currently means, and materialising it would
+        create a second copy of the same fact with its own way of being wrong.
+
+        A target is dropped when it is disabled, when its deployment is disabled,
+        or when the cluster it sits on has no serving address or has had one
+        turned off — each of those is somebody saying "not this one", and the
+        endpoint survives all of them with fewer upstreams.
+        """
+        rows = await self.repo.resolved(ref)
+        if ref is not None and not rows:
+            raise NotFound(f"no endpoint {ref!r}")
+
+        order: list[UUID] = []
+        grouped: dict[UUID, list] = {}
+        endpoints: dict[UUID, Endpoint] = {}
+        for row in rows:
+            endpoint = row[0]
+            if endpoint.id not in grouped:
+                order.append(endpoint.id)
+                grouped[endpoint.id] = []
+                endpoints[endpoint.id] = endpoint
+            grouped[endpoint.id].append(row)
+
+        stamps: list[dt.datetime | None] = []
+        items: list[ResolvedEndpointSchema] = []
+        for endpoint_id in order:
+            endpoint = endpoints[endpoint_id]
+            own: list[dt.datetime | None] = [_stamp(endpoint)]
+            upstreams: list[ResolvedUpstreamSchema] = []
+            uids: dict[UUID, str] = {}
+
+            for _, target, deployment, cluster, serving in grouped[endpoint_id]:
+                if target is None:
+                    continue
+                own.extend([_stamp(target), _stamp(deployment), _stamp(serving)])
+                if deployment is not None:
+                    uids[deployment.id] = deployment.uid
+                if not target.enabled or deployment is None or not deployment.enabled:
+                    continue
+                if serving is None or not serving.enabled:
+                    continue
+                upstreams.append(
+                    ResolvedUpstreamSchema(
+                        deployment_id=deployment.uid,
+                        deployment_name=deployment.name,
+                        admission_phase=deployment.admission_phase,
+                        cluster_id=cluster.uid,
+                        cluster_name=cluster.name,
+                        url=serving.url,
+                        credential_id=str(serving.credential_id) if serving.credential_id else None,
+                        weight=target.weight,
+                        role=target.role,
+                    )
+                )
+
+            stamps.extend(own)
+            items.append(
+                ResolvedEndpointSchema(
+                    id=endpoint.uid,
+                    name=endpoint.name,
+                    visibility=endpoint.visibility,
+                    routing_strategy=endpoint.routing_strategy,
+                    upstreams=upstreams,
+                    failover_order=[uids[d] for d in endpoint.failover_order if d in uids],
+                    revision=_revision_of(own),
+                )
+            )
+
+        return ResolvedTableSchema(revision=_revision_of(stamps), endpoints=items)
