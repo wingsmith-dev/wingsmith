@@ -1,14 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
+  clearClusterServing,
   createCluster,
   deleteCluster,
   fetchCluster,
   fetchClusters,
+  setClusterServing,
   updateCluster,
   type ClusterFilters,
 } from "./api"
-import type { ClusterCreateRequest, ClusterUpdateRequest } from "./types"
+import type {
+  ClusterCreateRequest,
+  ClusterServingRequest,
+  ClusterUpdateRequest,
+} from "./types"
 
 export function useClusters(filters: ClusterFilters = {}) {
   return useCursorList(["clusters", filters], (cursor) =>
@@ -51,6 +57,23 @@ export function useUpdateCluster() {
       body: ClusterUpdateRequest
       revision?: string
     }) => updateCluster(vars.ref, vars.body, vars.revision),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["clusters"] }),
+  })
+}
+
+export function useSetClusterServing() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { ref: string; body: ClusterServingRequest }) =>
+      setClusterServing(vars.ref, vars.body),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["clusters"] }),
+  })
+}
+
+export function useClearClusterServing() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) => clearClusterServing(ref),
     onSuccess: () => client.invalidateQueries({ queryKey: ["clusters"] }),
   })
 }

@@ -21,6 +21,7 @@ import { DeclaredCard } from "./HealthCard"
 import { ClusterNodesTable } from "./NodesTable"
 import { ClusterOverviewTab } from "./OverviewTab"
 import { ClusterPoolsPanel } from "./PoolsPanel"
+import { ServingCard } from "./ServingCard"
 import { SyncCard } from "./SyncCard"
 import { ClusterTopologyTable } from "./TopologyTable"
 
@@ -99,6 +100,8 @@ export function ClusterDetailPage() {
               <DeclaredCard cluster={cluster} />
               <SyncCard sync={cluster.sync} />
             </div>
+
+            <ServingCard cluster={cluster} />
 
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList>

@@ -416,6 +416,13 @@ for (const spec of SPECS) {
     updated_at: null,
     revision: REV,
     reachable: spec.reachable,
+    serving: spec.enrolled
+      ? {
+          url: `http://dynamo-frontend.${spec.name}.svc.cluster.local:8000`,
+          credential_id: null,
+          enabled: true,
+        }
+      : null,
     sync: {
       state: spec.syncState,
       last_sync_at: spec.enrolled ? iso(spec.reachable ? 0.2 : 47) : null,

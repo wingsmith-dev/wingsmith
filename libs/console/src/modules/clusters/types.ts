@@ -33,6 +33,26 @@ export interface ClusterSync {
   observed_region: string | null
 }
 
+/**
+ * Where the data plane reaches this cluster's serving runtime. Declared, and
+ * deliberately not part of the cluster patch body: the plane keeps it as its own
+ * sub-resource because nothing in the control plane ever dials it — only the
+ * gateway does.
+ */
+export interface ClusterServing {
+  /** Opaque to hangar: a public ingress, an in-cluster service name, anything dialable. */
+  url: string
+  /** A reference to whatever fronts the address, never the secret itself. */
+  credential_id: string | null
+  enabled: boolean
+}
+
+export interface ClusterServingRequest {
+  url: string
+  credential_id?: string | null
+  enabled?: boolean
+}
+
 export interface Cluster {
   id: string
   name: string
@@ -50,6 +70,8 @@ export interface Cluster {
   /** Observed. A cluster can be `active` and unreachable at the same time. */
   reachable: boolean
   sync: ClusterSync
+  /** Null until an address is declared. A cluster is schedulable without one. */
+  serving: ClusterServing | null
 }
 
 export interface ClusterCreateRequest {

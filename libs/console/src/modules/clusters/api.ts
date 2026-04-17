@@ -2,6 +2,7 @@ import { api, type ListResponse } from "@/lib/api"
 import type {
   Cluster,
   ClusterCreateRequest,
+  ClusterServingRequest,
   ClusterUpdateRequest,
 } from "./types"
 
@@ -39,6 +40,18 @@ export function updateCluster(
   return api.patch<Cluster>(`/clusters/${encodeURIComponent(ref)}`, body, {
     ifMatch: revision,
   })
+}
+
+/** A full replacement — the plane has no partial update for serving config. */
+export function setClusterServing(
+  ref: string,
+  body: ClusterServingRequest
+): Promise<Cluster> {
+  return api.put<Cluster>(`/clusters/${encodeURIComponent(ref)}/serving`, body)
+}
+
+export function clearClusterServing(ref: string): Promise<void> {
+  return api.delete<void>(`/clusters/${encodeURIComponent(ref)}/serving`)
 }
 
 export function deleteCluster(ref: string): Promise<void> {
