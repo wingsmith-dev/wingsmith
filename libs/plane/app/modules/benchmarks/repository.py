@@ -11,14 +11,19 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import BENCHMARK_RUN
+from app.core.ids import BENCHMARK_REQUEST
 from app.core.ids import is_uid
 from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Artifact
+from app.db.models import Endpoint
 from app.db.models import Workload
 from app.db.models import Operation
 from app.db.models import Deployment
 from app.db.models import BenchmarkRun
+from app.db.models import EndpointTarget
+from app.db.models import ArtifactBaseline
+from app.db.models import BenchmarkRequest
 from app.core.filters import ref_ids
 
 
@@ -34,18 +39,28 @@ class BenchmarkRepository:
         self.db = db
 
     def _base(self) -> Select:
+        """Every join is outer, because an endpoint-level run has neither of the two that were not.
+
+        A run against a public name has no deployment and no cluster — that is
+        the point of the level — so an inner join on either would make those
+        runs invisible to the list they belong in.
+        """
         return (
             select(
                 BenchmarkRun,
                 Deployment.uid.label("deployment_uid"),
                 Cluster.uid.label("cluster_uid"),
+                Endpoint.uid.label("endpoint_uid"),
                 Operation.uid.label("operation_uid"),
                 Recipe.uid.label("recipe_uid"),
+                BenchmarkRequest.uid.label("request_uid"),
             )
-            .join(Deployment, BenchmarkRun.deployment_id == Deployment.id)
-            .join(Cluster, BenchmarkRun.cluster_id == Cluster.id)
+            .outerjoin(Deployment, BenchmarkRun.deployment_id == Deployment.id)
+            .outerjoin(Cluster, BenchmarkRun.cluster_id == Cluster.id)
+            .outerjoin(Endpoint, BenchmarkRun.endpoint_id == Endpoint.id)
             .outerjoin(Operation, BenchmarkRun.operation_id == Operation.id)
             .outerjoin(Recipe, BenchmarkRun.recipe_id == Recipe.id)
+            .outerjoin(BenchmarkRequest, BenchmarkRun.request_id == BenchmarkRequest.id)
         )
 
     def get_query(self, ref: str) -> Select:
@@ -66,6 +81,7 @@ class BenchmarkRepository:
         harness: str | None = None,
         phase: str | None = None,
         actor: str | None = None,
+        request: str | None = None,
         since: dt.datetime | None = None,
     ) -> Select:
         """Newest first, which is the order a benchmark history is read in."""
@@ -82,6 +98,8 @@ class BenchmarkRepository:
             query = query.where(BenchmarkRun.phase == phase)
         if actor is not None:
             query = query.where(BenchmarkRun.requested_by == actor)
+        if request is not None:
+            query = query.where(BenchmarkRequest.uid == request)
         if since is not None:
             query = query.where(BenchmarkRun.created_at >= since)
         return query
@@ -110,16 +128,150 @@ class BenchmarkRepository:
         """
         column = Deployment.uid if is_uid(ref) else Deployment.name
         query = (
-            select(Deployment, Recipe, Artifact)
+            select(Deployment, Recipe, Artifact, Cluster.uid.label("cluster_uid"))
             .join(Workload, Deployment.workload_id == Workload.id)
             .join(Recipe, Workload.recipe_id == Recipe.id)
             .join(Artifact, Recipe.artifact_id == Artifact.id)
+            .join(Cluster, Deployment.cluster_id == Cluster.id)
             .options(selectinload(Artifact.locations))
             .where(column == ref)
         )
         if cluster is not None:
             query = query.where(Deployment.cluster_id.in_(ref_ids(Cluster, cluster)))
         return list((await self.db.execute(query)).all())
+
+    async def workload_targets(self, ref: str) -> list[Row]:
+        """Every deployment a workload has been placed on, with the recipe and artifact behind it.
+
+        A workload-level run is one run per placed deployment, and each of them
+        snapshots its own deployment's provenance. The recipe is the workload's
+        and is therefore the same across all of them — which is the reason
+        accuracy is a workload-level claim in the first place.
+        """
+        column = Workload.uid if is_uid(ref) else Workload.name
+        query = (
+            select(
+                Deployment,
+                Recipe,
+                Artifact,
+                Cluster.uid.label("cluster_uid"),
+                Workload.uid.label("workload_uid"),
+            )
+            .join(Workload, Deployment.workload_id == Workload.id)
+            .join(Recipe, Workload.recipe_id == Recipe.id)
+            .join(Artifact, Recipe.artifact_id == Artifact.id)
+            .join(Cluster, Deployment.cluster_id == Cluster.id)
+            .options(selectinload(Artifact.locations))
+            .where(column == ref)
+            .order_by(Deployment.seq)
+        )
+        return list((await self.db.execute(query)).all())
+
+    async def endpoint_targets(self, ref: str) -> list[Row]:
+        """The endpoint a reference names, and everything currently enabled behind it.
+
+        Plural rows for one endpoint: the endpoint repeats and each row carries
+        one upstream. The run itself is singular — a request to the public name
+        is routed by weight and measures whatever the gateway chose — so these
+        rows become the request's coverage snapshot rather than N runs.
+        """
+        column = Endpoint.uid if is_uid(ref) else Endpoint.name
+        query = (
+            select(Endpoint, Deployment, Recipe, Artifact, Cluster.uid.label("cluster_uid"))
+            .outerjoin(
+                EndpointTarget,
+                (EndpointTarget.endpoint_id == Endpoint.id) & EndpointTarget.enabled.is_(True),
+            )
+            .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
+            .outerjoin(Workload, Deployment.workload_id == Workload.id)
+            .outerjoin(Recipe, Workload.recipe_id == Recipe.id)
+            .outerjoin(Artifact, Recipe.artifact_id == Artifact.id)
+            .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)
+            .where(column == ref)
+        )
+        return list((await self.db.execute(query)).all())
+
+    def facts_query(self, ref: str) -> Select:
+        """One run with everything a verdict needs that is not on its own row.
+
+        The artifact's parameter count chooses which output-speed population the
+        run is held to, and the request carries the criteria version, the tier
+        and the coverage flag. Both are outer joins: a run whose recipe has since
+        been deleted still grades, on the checks that do not need it.
+        """
+        return (
+            select(
+                BenchmarkRun,
+                Artifact.id.label("artifact_id"),
+                Artifact.parameter_count.label("parameter_count"),
+                BenchmarkRequest.level.label("level"),
+                BenchmarkRequest.criteria_version.label("criteria_version"),
+                BenchmarkRequest.tier.label("tier"),
+                BenchmarkRequest.homogeneous.label("homogeneous"),
+                BenchmarkRequest.parameters.label("request_parameters"),
+            )
+            .outerjoin(Recipe, BenchmarkRun.recipe_id == Recipe.id)
+            .outerjoin(Artifact, Recipe.artifact_id == Artifact.id)
+            .outerjoin(BenchmarkRequest, BenchmarkRun.request_id == BenchmarkRequest.id)
+            .where(BenchmarkRun.uid == ref)
+        )
+
+    async def facts(self, ref: str) -> Row | None:
+        if not is_uid(ref) or not ref.startswith(BENCHMARK_RUN):
+            return None
+        return (await self.db.execute(self.facts_query(ref))).first()
+
+    async def baselines(self, artifact_id: UUID | None) -> list[ArtifactBaseline]:
+        """The quality floors declared for one artifact, or nothing when none are.
+
+        Nothing is not an empty grade. A dataset with no declared baseline is
+        `inconclusive`, which is the whole reason the floors are a table somebody
+        signs rather than a number the harness happens to have produced before.
+        """
+        if artifact_id is None:
+            return []
+        query = select(ArtifactBaseline).where(ArtifactBaseline.artifact_id == artifact_id)
+        return list((await self.db.execute(query)).scalars().all())
+
+    def request_query(self, ref: str) -> Select:
+        return (
+            select(
+                BenchmarkRequest,
+                Deployment.uid.label("deployment_uid"),
+                Workload.uid.label("workload_uid"),
+                Endpoint.uid.label("endpoint_uid"),
+            )
+            .outerjoin(Deployment, BenchmarkRequest.deployment_id == Deployment.id)
+            .outerjoin(Workload, BenchmarkRequest.workload_id == Workload.id)
+            .outerjoin(Endpoint, BenchmarkRequest.endpoint_id == Endpoint.id)
+            .where(BenchmarkRequest.uid == ref)
+        )
+
+    async def request(self, ref: str) -> Row | None:
+        if not is_uid(ref) or not ref.startswith(BENCHMARK_REQUEST):
+            return None
+        return (await self.db.execute(self.request_query(ref))).first()
+
+    def request_runs_query(self, ref: str) -> Select:
+        """Every run of one request, in the order the sweep declared them.
+
+        `step_index` and not `seq`: the steps of a ramp are ordered by the load
+        they applied, and creation order is only accidentally the same.
+        """
+        return (
+            select(BenchmarkRun)
+            .join(BenchmarkRequest, BenchmarkRun.request_id == BenchmarkRequest.id)
+            .where(BenchmarkRequest.uid == ref)
+            .order_by(BenchmarkRun.step_index, BenchmarkRun.seq)
+        )
+
+    async def request_runs(self, ref: str) -> list[BenchmarkRun]:
+        return list((await self.db.execute(self.request_runs_query(ref))).scalars().all())
+
+    async def add_request(self, request: BenchmarkRequest) -> BenchmarkRequest:
+        self.db.add(request)
+        await self.db.flush()
+        return request
 
     async def operation_row_id(self, uid: str) -> UUID | None:
         result = await self.db.execute(select(Operation.id).where(Operation.uid == uid))

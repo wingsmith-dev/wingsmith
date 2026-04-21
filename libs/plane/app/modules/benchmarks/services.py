@@ -1,4 +1,9 @@
+from __future__ import annotations
+
 import datetime as dt
+
+from typing import Any
+from typing import NamedTuple
 
 from sqlalchemy import Row
 from sqlalchemy.exc import IntegrityError
@@ -6,11 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import OPERATION
 from app.core.ids import BENCHMARK_RUN
+from app.core.ids import BENCHMARK_REQUEST
 from app.core.ids import new_uid
 from app.db.models import Recipe
 from app.db.models import Artifact
 from app.db.models import Operation
 from app.db.models import BenchmarkRun
+from app.db.models import BenchmarkRequest
 from app.db.notify import OPERATION as OPERATION_KIND
 from app.db.notify import Notifier
 from app.db.notify import DeclaredChange
@@ -26,12 +33,20 @@ from app.modules.metrics.services import served_model
 from app.modules.operations.services import PHASES
 from app.modules.operations.services import PENDING
 
+from . import buckets
+from . import verdicts
 from . import harnesses
 from .schemas import BenchmarkRunSchema
+from .schemas import BenchmarkBandSchema
+from .schemas import BenchmarkCheckSchema
 from .schemas import BenchmarkHarnessSchema
+from .schemas import BenchmarkRequestSchema
+from .schemas import BenchmarkVerdictSchema
+from .schemas import BenchmarkCoverageSchema
 from .schemas import BenchmarkParameterSchema
 from .schemas import BenchmarkProvenanceSchema
 from .schemas import BenchmarkRunCreateRequest
+from .schemas import BenchmarkRequestCreateRequest
 from .repository import BenchmarkRepository
 
 
@@ -44,16 +59,87 @@ to a cluster that reconnected mid-run. Building a second lifecycle beside it wou
 be building all of that again, worse. What `Operation` cannot hold is the result —
 its `result` is a flat string map on the wire and a harness emits nested JSON — so
 the run is its own object and the operation is how it gets done.
+
+The two new harness kinds ride this same operation and the same `benchmark.observed`
+frame, as new values of the `harness` parameter. A conformance suite and an accuracy
+eval are not new kinds of errand; they are different tools pointed at a serving
+surface, and giving each its own operation type would be three lifecycles where the
+difference between them is one string.
+"""
+
+SINGLE = "single"
+WARMUP = "warmup"
+RAMP = "ramp"
+SWEEP = "sweep"
+SOAK = "soak"
+
+MODES: tuple[str, ...] = (SINGLE, WARMUP, RAMP, SWEEP, SOAK)
+"""A shape of runs over one harness, and deliberately not a harness of its own.
+
+A `soak` harness and a `ramp` harness would put the same AIPerf parameters in three
+tables and make two runs of one tool incomparable for no reason. Modes do not compose
+either: a request has one, and a full acceptance pass is three requests rather than a
+fourth object grouping them.
+"""
+
+STEPPED: dict[str, str] = {RAMP: "concurrency", SWEEP: "input_tokens_mean"}
+"""Which harness parameter a stepped mode walks.
+
+A ramp walks load, which is what "hold each concurrency for ten minutes and collect
+after stabilisation" means. A sweep walks prompt length, which is what makes a
+per-band time-to-first-token claim evidenceable at all — the standard sets a separate
+target for each input-length band and one aggregate number answers none of them.
 """
 
 
-class BenchmarkService:
-    """Writes the declared half of a run and the operation that performs it, together.
+class RunNames(NamedTuple):
+    """The public ids a run is rendered with, resolved by join rather than by trip."""
 
-    One transaction for both rows, because a run with no operation is a
-    measurement nothing will ever take, and an operation with no run is a result
-    with nowhere to land. Everything after creation — phase, summary, the
-    timestamps — is ingestion's, applied from `benchmark.observed`.
+    deployment: str | None
+    cluster: str | None
+    endpoint: str | None
+    operation: str | None
+    recipe: str | None
+    request: str | None
+
+
+class Target(NamedTuple):
+    """One thing a request expands a run against, with the provenance it will snapshot."""
+
+    deployment: Any
+    recipe: Any
+    artifact: Any
+    cluster_uid: str | None = None
+
+
+class Expansion(NamedTuple):
+    """Everything one request settles before it knows how many runs it becomes."""
+
+    data: BenchmarkRequestCreateRequest
+    harness: harnesses.Harness
+    image: str
+    parameters: dict
+    endpoint: Any
+
+
+class Slot(NamedTuple):
+    """One run's place in an expansion: which target, at which step, in which order."""
+
+    target: Target
+    step: int | None
+    index: int
+
+
+class BenchmarkService:
+    """Writes the declared half of a request, its runs, and the operations that perform them.
+
+    One transaction for all of them, because a run with no operation is a
+    measurement nothing will ever take, an operation with no run is a result with
+    nowhere to land, and a run with no request is a band of a sweep that cannot be
+    re-aggregated with the others. Everything after creation — phase, summary, the
+    timestamps — is ingestion's, applied from `benchmark.observed`. The verdict is
+    neither writer's: it is derived at read against the criteria version the request
+    recorded.
     """
 
     def __init__(self, db: AsyncSession, actor: str = "unknown", notifier: Notifier | None = None) -> None:
@@ -65,22 +151,25 @@ class BenchmarkService:
     # ----------------------------------------------------------------- harnesses
 
     def harnesses(self) -> list[BenchmarkHarnessSchema]:
-        """The load generators and their knobs, so a client renders a form from the plane.
+        """The harnesses, the levels they grade at, and their knobs.
 
-        The console would otherwise carry a second copy of the parameter table,
-        and a second copy is a second answer to what AIPerf accepts.
+        The console would otherwise carry a second copy of both tables, and a
+        second copy is a second answer to what a probe suite may be pointed at.
         """
         return [
             BenchmarkHarnessSchema(
                 name=harness.name,
                 image=harness.image,
                 description=harness.description,
+                levels=list(harness.levels),
+                max_probes=harness.max_probes,
                 parameters=[
                     BenchmarkParameterSchema(
                         name=parameter.name,
                         type=parameter.type.__name__,
                         default=parameter.default,
                         description=parameter.description,
+                        levels=list(parameter.levels or harness.levels),
                     )
                     for parameter in harness.parameters
                 ],
@@ -90,31 +179,30 @@ class BenchmarkService:
 
     # ----------------------------------------------------------------- reads
 
-    def schema(
-        self,
-        run: BenchmarkRun,
-        deployment_uid: str,
-        cluster_uid: str,
-        operation_uid: str | None,
-        recipe_uid: str | None,
-    ) -> BenchmarkRunSchema:
+    def schema(self, run: BenchmarkRun, names: RunNames) -> BenchmarkRunSchema:
         return BenchmarkRunSchema(
             id=run.uid,
-            deployment_id=deployment_uid,
-            cluster_id=cluster_uid,
-            operation_id=operation_uid,
+            request_id=names.request,
+            deployment_id=names.deployment,
+            cluster_id=names.cluster,
+            endpoint_id=names.endpoint,
+            operation_id=names.operation,
             harness=run.harness,
             harness_version=run.harness_version,
             image=run.image,
             parameters=run.parameters or {},
+            step_index=run.step_index,
+            vantage=run.vantage,
+            discard=run.discard,
             requested_by=run.requested_by,
             reason=run.reason,
             provenance=BenchmarkProvenanceSchema(
                 model=run.model,
                 deployment_generation=run.deployment_generation,
-                recipe_id=recipe_uid,
+                recipe_id=names.recipe,
                 recipe_version=run.recipe_version,
                 engine_args=run.engine_args or {},
+                serving=run.serving or {},
             ),
             phase=run.phase,
             summary=run.summary,
@@ -127,7 +215,17 @@ class BenchmarkService:
         )
 
     def _row_schema(self, row: Row) -> BenchmarkRunSchema:
-        return self.schema(row[0], row.deployment_uid, row.cluster_uid, row.operation_uid, row.recipe_uid)
+        return self.schema(
+            row[0],
+            RunNames(
+                deployment=row.deployment_uid,
+                cluster=row.cluster_uid,
+                endpoint=row.endpoint_uid,
+                operation=row.operation_uid,
+                recipe=row.recipe_uid,
+                request=row.request_uid,
+            ),
+        )
 
     async def get(self, ref: str) -> BenchmarkRunSchema:
         row = await self.repo.get(ref)
@@ -144,6 +242,7 @@ class BenchmarkService:
         harness: str | None = None,
         phase: str | None = None,
         actor: str | None = None,
+        request: str | None = None,
         since: dt.datetime | None = None,
     ) -> ListResponse[BenchmarkRunSchema]:
         if harness is not None and harness not in harnesses.HARNESSES:
@@ -159,14 +258,295 @@ class BenchmarkService:
             harness=harness,
             phase=phase,
             actor=actor,
+            request=request,
             since=since,
         )
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
         return ListResponse(items=[self._row_schema(row) for row in kept], count=len(kept), next_cursor=next_cursor)
 
+    # ----------------------------------------------------------------- verdicts
+
+    async def verdict(self, ref: str, criteria: str | None = None) -> BenchmarkVerdictSchema:
+        """Whether one run met the standard, derived now and stored nowhere.
+
+        `criteria` defaults to the version the request was created under, which
+        is what makes the answer stable. Passing another asks the genuinely
+        useful question a stored verdict cannot answer at all — would this run
+        have passed under the revision that came later.
+        """
+        facts, recorded = await self._facts(ref)
+        entry = verdicts.resolve_criteria(criteria or recorded)
+        return _verdict_schema(verdicts.verdict(facts, entry))
+
+    async def request_verdict(self, ref: str, criteria: str | None = None) -> BenchmarkVerdictSchema:
+        """A request's verdict, which is the rollup of its runs' verdicts under one rule."""
+        request = await self.repo.request(ref)
+        if request is None:
+            raise NotFound(f"no benchmark request {ref!r}")
+        entry = verdicts.resolve_criteria(criteria or request[0].criteria_version)
+        runs = await self.repo.request_runs(ref)
+        graded: list[verdicts.Verdict] = []
+        for run in runs:
+            facts, _ = await self._facts(run.uid)
+            if facts.discard:
+                continue
+            graded.append(verdicts.verdict(facts, entry))
+        return BenchmarkVerdictSchema(
+            outcome=verdicts.rollup_verdicts(graded),
+            criteria_version=entry.version,
+            reason=None if graded else "the request has no run that grades",
+            checks=[check for one in graded for check in _check_schemas(one)],
+        )
+
+    async def bands(self, ref: str) -> ListResponse[BenchmarkBandSchema]:
+        """One request's runs, re-aggregated by the input-length band each landed in.
+
+        The band comes from each run's own declared prompt length and never from
+        its summary: the summary is verbatim and is under no obligation to name a
+        band, or to name it the same way twice.
+        """
+        request = await self.repo.request(ref)
+        if request is None:
+            raise NotFound(f"no benchmark request {ref!r}")
+        runs = await self.repo.request_runs(ref)
+        reports = buckets.reaggregate([buckets.sample(run) for run in runs])
+        items = [
+            BenchmarkBandSchema(
+                band=report.band,
+                runs=report.runs,
+                requests=report.requests,
+                ttft_p90_ms=report.ttft_p90_ms,
+                ttft_p50_ms=report.ttft_p50_ms,
+                ttft_avg_ms=report.ttft_avg_ms,
+                incomplete=list(report.incomplete),
+            )
+            for report in reports
+        ]
+        return ListResponse(items=items, count=len(items), next_cursor=None)
+
+    async def get_request(self, ref: str) -> BenchmarkRequestSchema:
+        row = await self.repo.request(ref)
+        if row is None:
+            raise NotFound(f"no benchmark request {ref!r}")
+        runs = await self.repo.request_runs(ref)
+        return _request_schema(row, runs)
+
+    async def _facts(self, ref: str) -> tuple[verdicts.RunFacts, str]:
+        row = await self.repo.facts(ref)
+        if row is None:
+            raise NotFound(f"no benchmark run {ref!r}")
+        run = row[0]
+        baselines = await self.repo.baselines(row.artifact_id)
+        parameters = run.parameters or {}
+        recorded = row.criteria_version or verdicts.DEFAULT_CRITERIA_VERSION
+        facts = verdicts.RunFacts(
+            run_id=run.uid,
+            harness=run.harness,
+            harness_version=run.harness_version,
+            level=row.level or harnesses.DEPLOYMENT,
+            phase=run.phase,
+            discard=bool(run.discard),
+            summary=run.summary,
+            input_tokens=_int_or_none(parameters.get("input_tokens_mean")),
+            parameter_count=_int_or_none(row.parameter_count),
+            tier=row.tier,
+            strict=bool(parameters.get("strict", True)),
+            datasets=harnesses.resolve_datasets(str(parameters.get("datasets") or "")),
+            baselines=tuple(
+                verdicts.Baseline(
+                    dataset=baseline.dataset,
+                    metric=baseline.metric,
+                    value=float(baseline.value),
+                    tolerance_pct=float(baseline.tolerance_pct),
+                )
+                for baseline in baselines
+            ),
+            homogeneous=True if row.homogeneous is None else bool(row.homogeneous),
+        )
+        return facts, recorded
+
     # ----------------------------------------------------------------- writes
 
-    async def _deployment(self, data: BenchmarkRunCreateRequest) -> Row:
+    async def create(self, data: BenchmarkRunCreateRequest) -> BenchmarkRunSchema:
+        """The deployment-level shortcut, which is what every existing caller posts.
+
+        It expands through the same path a levelled request does rather than
+        beside it: two creation paths would be two answers to what a run
+        snapshots.
+        """
+        created = await self.create_request(
+            BenchmarkRequestCreateRequest(
+                level=harnesses.DEPLOYMENT,
+                target=data.deployment,
+                harness=data.harness,
+                image=data.image,
+                criteria=data.criteria,
+                tier=data.tier,
+                reason=data.reason,
+                parameters=data.parameters,
+                deadline=data.deadline,
+            )
+        )
+        return await self.get(created.runs[0])
+
+    async def create_request(self, data: BenchmarkRequestCreateRequest) -> BenchmarkRequestSchema:
+        """Records what is to be measured, expands it into runs, and asks for each one.
+
+        The provenance snapshot is taken here and not by the operator. What a
+        deployment was running is a fact the plane already holds, and reading it
+        at creation is what pins a run to a generation rather than to whatever
+        the deployment happens to be by the time the job finishes.
+
+        Expansion is deterministic and happens once. A deployment-level request
+        is one run; a workload-level request is one run per deployment placement,
+        each snapshotting its own; an endpoint-level request is exactly one run
+        with an empty snapshot, because a request to a public name is routed by
+        weight across every enabled upstream and a run attributed to one of them
+        would be a confident wrong attribution rather than an honest absent one.
+        """
+        harness = harnesses.resolve(data.harness, data.level)
+        parameters = harnesses.normalise(harness, data.parameters or {}, data.level)
+        image = harnesses.resolve_image(harness, data.image)
+        criteria = verdicts.resolve_criteria(data.criteria)
+        tier = _tier(data.tier)
+        steps = _steps(harness, data)
+
+        targets, endpoint, coverage = await self._expand(data)
+        request = BenchmarkRequest(
+            uid=new_uid(BENCHMARK_REQUEST),
+            level=data.level,
+            deployment_id=targets[0].deployment.id if data.level == harnesses.DEPLOYMENT else None,
+            workload_id=targets[0].deployment.workload_id if data.level == harnesses.WORKLOAD else None,
+            endpoint_id=endpoint.id if endpoint is not None else None,
+            harness=harness.name,
+            image=image,
+            parameters=parameters,
+            mode=data.mode,
+            criteria_version=criteria.version,
+            tier=tier,
+            coverage=coverage,
+            homogeneous=_homogeneous(coverage),
+            requested_by=self.actor,
+            reason=data.reason,
+        )
+
+        plan = Expansion(data=data, harness=harness, image=image, parameters=parameters, endpoint=endpoint)
+        runs: list[BenchmarkRun] = []
+        operations: list[tuple[Operation, BenchmarkRun]] = []
+        for target in targets or [Target(None, None, None)]:
+            for index, step in enumerate(steps):
+                run, operation = self._expand_one(plan, Slot(target, step, index))
+                runs.append(run)
+                if operation is not None:
+                    operations.append((operation, run))
+
+        try:
+            await self.repo.add_request(request)
+            for operation, _ in operations:
+                self.db.add(operation)
+            await self.db.flush()
+            for operation, run in operations:
+                run.operation_id = operation.id
+            for run in runs:
+                run.request_id = request.id
+                await self.repo.add(run)
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise Conflict("benchmark request could not be recorded") from exc
+
+        announced: set[tuple[str, str]] = set()
+        for operation, _ in operations:
+            if operation.cluster_id is None:
+                continue
+            cluster_uid = await self.repo.cluster_uid(operation.cluster_id)
+            if cluster_uid is None or (cluster_uid, operation.uid) in announced:
+                continue
+            announced.add((cluster_uid, operation.uid))
+            await self.notifier.changed(
+                self.db,
+                DeclaredChange(cluster_id=cluster_uid, kind=OPERATION_KIND, uid=operation.uid),
+            )
+        return await self.get_request(request.uid)
+
+    def _expand_one(self, plan: Expansion, slot: Slot) -> tuple[BenchmarkRun, Operation | None]:
+        """One run of one target at one step, and the errand that carries it out.
+
+        An endpoint-level run gets no operation. The operator's benchmark job
+        reaches its own cluster's inference endpoint and never dials out, which
+        is the rule that keeps the data plane off this one — so a run against a
+        public name is not an errand any cluster can be handed. It is recorded
+        pending for the executor that owns the public surface.
+
+        TODO: dispatch endpoint-level runs once the probe runner exists. Until
+        then they sit pending, which is visible, rather than being refused,
+        which would take conformance away from the level it belongs at.
+        """
+        data, target, endpoint = plan.data, slot.target, plan.endpoint
+        resolved = dict(plan.parameters)
+        if slot.step is not None:
+            resolved[STEPPED[data.mode]] = slot.step
+
+        recipe: Recipe | None = target.recipe
+        artifact: Artifact | None = target.artifact
+        model = served_model(recipe, artifact) if recipe is not None and artifact is not None else ""
+        if recipe is not None and artifact is not None and "tokenizer" in resolved and not resolved.get("tokenizer"):
+            resolved["tokenizer"] = tokenizer_for(recipe, artifact)
+
+        run_uid = new_uid(BENCHMARK_RUN)
+        run = BenchmarkRun(
+            uid=run_uid,
+            deployment_id=target.deployment.id if target.deployment is not None else None,
+            endpoint_id=endpoint.id if endpoint is not None else None,
+            cluster_id=target.deployment.cluster_id if target.deployment is not None else None,
+            harness=plan.harness.name,
+            image=plan.image,
+            parameters=resolved,
+            requested_by=self.actor,
+            reason=data.reason,
+            model=model,
+            deployment_generation=target.deployment.generation if target.deployment is not None else 0,
+            recipe_id=recipe.id if recipe is not None else None,
+            recipe_version=recipe.version if recipe is not None else None,
+            engine_args=dict(recipe.engine_args or {}) if recipe is not None else {},
+            serving=dict(recipe.serving or {}) if recipe is not None else {},
+            step_index=slot.index,
+            discard=data.mode == WARMUP,
+            phase=PENDING,
+        )
+
+        if target.deployment is None:
+            return run, None
+
+        operation = Operation(
+            uid=new_uid(OPERATION),
+            cluster_id=target.deployment.cluster_id,
+            type=OPERATION_TYPE,
+            target_type="deployment",
+            target_id=target.deployment.id,
+            phase=PENDING,
+            requested_by=self.actor,
+            reason=data.reason,
+            payload={
+                "parameters": {
+                    **harnesses.wire_parameters(plan.harness, resolved, plan.image),
+                    "benchmark_id": run_uid,
+                    "deployment_id": target.deployment.uid,
+                    "model": model,
+                }
+            },
+            deadline_at=data.deadline,
+        )
+        return run, operation
+
+    async def _expand(self, data: BenchmarkRequestCreateRequest) -> tuple[list[Target], Any, list[dict]]:
+        if data.level == harnesses.DEPLOYMENT:
+            return await self._deployment_target(data.target)
+        if data.level == harnesses.WORKLOAD:
+            return await self._workload_targets(data.target)
+        return await self._endpoint_target(data.target)
+
+    async def _deployment_target(self, ref: str) -> tuple[list[Target], None, list[dict]]:
         """The one deployment a reference names, or an error saying which way it failed.
 
         Same rule as an operation target: a name is unique per cluster and not
@@ -174,94 +554,208 @@ class BenchmarkService:
         an arbitrary one of two deployments that share a name would produce a
         number attributed to the wrong thing, which is worse than no number.
         """
-        matches = await self.repo.deployment_targets(data.deployment)
+        matches = await self.repo.deployment_targets(ref)
         if not matches:
-            raise NotFound(f"no deployment {data.deployment!r}")
+            raise NotFound(f"no deployment {ref!r}")
         if len(matches) > 1:
             raise Invalid(
-                f"deployment {data.deployment!r} matches {len(matches)} objects; use its id",
-                {"deployment": data.deployment, "matches": sorted(row[0].uid for row in matches)},
+                f"deployment {ref!r} matches {len(matches)} objects; use its id",
+                {"deployment": ref, "matches": sorted(row[0].uid for row in matches)},
             )
-        return matches[0]
-
-    async def create(self, data: BenchmarkRunCreateRequest) -> BenchmarkRunSchema:
-        """Records what is to be measured, and asks the cluster to measure it.
-
-        The provenance snapshot is taken here and not by the operator. What the
-        deployment was running is a fact the plane already holds, and reading it
-        at creation is what pins the run to a generation rather than to whatever
-        the deployment happens to be by the time the job finishes.
-        """
-        harness = harnesses.resolve(data.harness)
-        parameters = harnesses.normalise(harness, data.parameters or {})
-        image = harnesses.resolve_image(harness, data.image)
-
-        deployment, recipe, artifact = await self._deployment(data)
+        row = matches[0]
+        deployment = row[0]
         if not deployment.enabled:
             raise Conflict(
                 f"deployment {deployment.uid} is disabled; there is nothing serving to measure",
                 {"deployment": deployment.uid},
             )
+        target = Target(deployment, row[1], row[2], row.cluster_uid)
+        return [target], None, [_coverage(target)]
 
-        model = served_model(recipe, artifact)
-        if not parameters.get("tokenizer"):
-            parameters["tokenizer"] = tokenizer_for(recipe, artifact)
-        run_uid = new_uid(BENCHMARK_RUN)
+    async def _workload_targets(self, ref: str) -> tuple[list[Target], None, list[dict]]:
+        """Every placement of one workload, each run snapshotting its own.
 
-        operation = Operation(
-            uid=new_uid(OPERATION),
-            cluster_id=deployment.cluster_id,
-            type=OPERATION_TYPE,
-            target_type="deployment",
-            target_id=deployment.id,
-            phase=PENDING,
-            requested_by=self.actor,
-            reason=data.reason,
-            payload={
-                "parameters": {
-                    **harnesses.wire_parameters(harness, parameters, image),
-                    "benchmark_id": run_uid,
-                    "deployment_id": deployment.uid,
-                    "model": model,
-                }
-            },
-            deadline_at=data.deadline,
-        )
-
-        run = BenchmarkRun(
-            uid=run_uid,
-            deployment_id=deployment.id,
-            cluster_id=deployment.cluster_id,
-            harness=harness.name,
-            image=image,
-            parameters=parameters,
-            requested_by=self.actor,
-            reason=data.reason,
-            model=model,
-            deployment_generation=deployment.generation,
-            recipe_id=recipe.id,
-            recipe_version=recipe.version,
-            engine_args=dict(recipe.engine_args or {}),
-            phase=PENDING,
-        )
-
-        try:
-            self.db.add(operation)
-            await self.db.flush()
-            run.operation_id = operation.id
-            await self.repo.add(run)
-            await self.db.commit()
-        except IntegrityError as exc:
-            await self.db.rollback()
-            raise Conflict("benchmark run could not be recorded") from exc
-
-        cluster_uid = await self.repo.cluster_uid(deployment.cluster_id)
-        if cluster_uid is not None:
-            await self.notifier.changed(
-                self.db,
-                DeclaredChange(cluster_id=cluster_uid, kind=OPERATION_KIND, uid=operation.uid),
+        A workload with no placement is refused rather than expanded to nothing:
+        a request that produced no runs would sit for ever looking pending, and
+        "placement has not run yet" is a different answer from "it failed".
+        """
+        matches = await self.repo.workload_targets(ref)
+        if not matches:
+            raise NotFound(f"no workload {ref!r}, or it has no placement to measure")
+        names = {row.workload_uid for row in matches}
+        if len(names) > 1:
+            raise Invalid(
+                f"workload {ref!r} matches {len(names)} objects; use its id",
+                {"workload": ref, "matches": sorted(names)},
             )
-        return await self.get(run_uid)
+        targets = [Target(row[0], row[1], row[2], row.cluster_uid) for row in matches if row[0].enabled]
+        if not targets:
+            raise Conflict(f"every deployment of workload {ref!r} is disabled", {"workload": ref})
+        return targets, None, [_coverage(target) for target in targets]
+
+    async def _endpoint_target(self, ref: str) -> tuple[list[Target], Any, list[dict]]:
+        """One run against the public name, and a snapshot of everything behind it.
+
+        The coverage list is where the per-upstream expansion went. A request to
+        a public name is routed by weight across every enabled upstream, so N
+        runs would be N times the intended concurrency and each would measure
+        whatever the gateway chose rather than the upstream it was dispatched
+        for. One run, and the coverage records what the name resolved to at the
+        moment it was asked.
+        """
+        rows = await self.repo.endpoint_targets(ref)
+        if not rows:
+            raise NotFound(f"no endpoint {ref!r}")
+        endpoint = rows[0][0]
+        if not endpoint.enabled:
+            raise Conflict(f"endpoint {endpoint.uid} is disabled", {"endpoint": endpoint.uid})
+        coverage = [_coverage(Target(row[1], row[2], row[3], row.cluster_uid)) for row in rows if row[1] is not None]
+        return [], endpoint, coverage
+
+
+def _coverage(target: Target) -> dict:
+    return {
+        "deployment_id": target.deployment.uid if target.deployment is not None else None,
+        "cluster_id": target.cluster_uid,
+        "recipe_id": target.recipe.uid if target.recipe is not None else None,
+        "recipe_version": target.recipe.version if target.recipe is not None else None,
+        "artifact_id": target.artifact.uid if target.artifact is not None else None,
+    }
+
+
+def _homogeneous(coverage: list[dict]) -> bool:
+    """True when every entry agrees on artifact, recipe and recipe version.
+
+    An accuracy verdict over a heterogeneous coverage is not attributable at
+    all — two upstreams running different quantizations produce one score
+    belonging to neither — so this boolean is what turns that into a stated
+    `inconclusive` rather than a number a reader is left to misuse.
+    """
+    keys = {(entry["artifact_id"], entry["recipe_id"], entry["recipe_version"]) for entry in coverage}
+    return len(keys) <= 1
+
+
+def _steps(harness: harnesses.Harness, data: BenchmarkRequestCreateRequest) -> list[int | None]:
+    """The load points a mode walks, or a single unstepped run.
+
+    A stepped mode over a harness with no such knob is refused here rather than
+    silently collapsing to one run: a caller who asked for a sweep and got one
+    point would have a verdict covering one band and a claim covering six.
+    """
+    if data.mode not in MODES:
+        raise Invalid(f"unknown benchmark mode {data.mode!r}", {"allowed": list(MODES)})
+    if data.mode not in STEPPED:
+        if data.steps:
+            raise Invalid(f"the {data.mode} mode is a single run and takes no steps", {"mode": data.mode})
+        return [None]
+
+    knob = STEPPED[data.mode]
+    if knob not in {parameter.name for parameter in harness.parameters}:
+        raise Invalid(
+            f"{harness.name} has no {knob!r} to step, so it cannot be run in {data.mode} mode",
+            {"harness": harness.name, "mode": data.mode},
+        )
+    if not data.steps:
+        raise Invalid(f"the {data.mode} mode needs at least one step", {"mode": data.mode, "parameter": knob})
+    if any(step <= 0 for step in data.steps):
+        raise Invalid(f"a {data.mode} step must be positive", {"mode": data.mode, "steps": data.steps})
+    ordered: list[int | None] = []
+    for step in data.steps:
+        if step not in ordered:
+            ordered.append(step)
+    return ordered
+
+
+def _tier(tier: str | None) -> str | None:
+    if tier is None or not str(tier).strip():
+        return None
+    normalised = str(tier).strip().upper()
+    if normalised not in verdicts.TIERS:
+        raise Invalid(f"unknown service tier {tier!r}", {"allowed": list(verdicts.TIERS)})
+    return normalised
+
+
+def _int_or_none(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _check_schemas(entry: verdicts.Verdict) -> list[BenchmarkCheckSchema]:
+    return [
+        BenchmarkCheckSchema(
+            id=check.id,
+            label=check.label,
+            outcome=check.outcome,
+            observed=check.observed,
+            threshold=check.threshold,
+            comparator=check.comparator,
+            detail=check.detail,
+        )
+        for check in entry.checks
+    ]
+
+
+def _verdict_schema(entry: verdicts.Verdict) -> BenchmarkVerdictSchema:
+    return BenchmarkVerdictSchema(
+        outcome=entry.outcome,
+        criteria_version=entry.criteria_version,
+        reason=entry.reason,
+        checks=_check_schemas(entry),
+    )
+
+
+def _request_schema(row: Row, runs: list[BenchmarkRun]) -> BenchmarkRequestSchema:
+    request = row[0]
+    target = row.deployment_uid or row.workload_uid or row.endpoint_uid or ""
+    return BenchmarkRequestSchema(
+        id=request.uid,
+        level=request.level,
+        target_id=target,
+        harness=request.harness,
+        image=request.image,
+        parameters=request.parameters or {},
+        mode=request.mode,
+        criteria_version=request.criteria_version,
+        tier=request.tier,
+        homogeneous=request.homogeneous,
+        coverage=[
+            BenchmarkCoverageSchema(
+                deployment_id=entry.get("deployment_id"),
+                cluster_id=entry.get("cluster_id"),
+                recipe_id=entry.get("recipe_id"),
+                recipe_version=entry.get("recipe_version"),
+                artifact_id=entry.get("artifact_id"),
+            )
+            for entry in request.coverage or []
+        ],
+        requested_by=request.requested_by,
+        reason=request.reason,
+        phase=request_phase([run.phase for run in runs]),
+        runs=[run.uid for run in runs],
+        created_at=request.created_at,
+        updated_at=request.updated_at,
+    )
+
+
+def request_phase(phases: list[str]) -> str:
+    """A request's phase, derived from its runs and stored nowhere.
+
+    Running while any run is still open, failed if any failed, succeeded when
+    every one of them did. A column here would be a third writer on a lifecycle
+    that already has two, and it would have no frame behind it.
+    """
+    if not phases:
+        return PENDING
+    if any(phase in ("pending", "running") for phase in phases):
+        return "running" if any(phase == "running" for phase in phases) else PENDING
+    for terminal in ("failed", "timed_out", "cancelled"):
+        if any(phase == terminal for phase in phases):
+            return terminal
+    return "succeeded"
 
 
 def tokenizer_for(recipe: Recipe, artifact: Artifact) -> str:

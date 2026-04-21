@@ -159,10 +159,19 @@ def test_the_cluster_filter_accepts_an_id_or_a_name(repo):
     assert "supply_cluster.name" in sql(repo.list_query(limit=10, cluster="iad-1"))
 
 
-def test_a_run_names_the_recipe_and_operation_by_outer_join(repo):
-    """Both outlive-able: a recipe may be deleted and an operation is only the errand."""
+def test_every_join_a_run_is_named_by_is_outer(repo):
+    """All six outlive-able, and two of them are absent by design.
+
+    A recipe may be deleted and an operation is only the errand, so both were
+    already outer. The deployment and the cluster joined the list when the
+    endpoint level arrived: a run against a public name has neither, and an
+    inner join on either would hide exactly the runs the level exists for.
+    """
     query = sql(repo.get_query(new_uid(BENCHMARK_RUN)))
-    assert query.count("LEFT OUTER JOIN") == 2
+    assert query.count("LEFT OUTER JOIN") == 6
+    assert "JOIN demand_deployment" in query
+    assert "JOIN demand_endpoint" in query
+    assert " JOIN " not in query.replace("LEFT OUTER JOIN", "")
 
 
 @pytest.mark.asyncio
@@ -216,7 +225,7 @@ def test_provenance_is_snapshotted_onto_the_run():
     fields = {field.name: field.type for field in msgspec.structs.fields(BenchmarkRunSchema)}
     assert fields["provenance"] is BenchmarkProvenanceSchema
     snapshot = {field.name for field in msgspec.structs.fields(BenchmarkProvenanceSchema)}
-    assert snapshot == {"model", "deployment_generation", "recipe_id", "recipe_version", "engine_args"}
+    assert snapshot == {"model", "deployment_generation", "recipe_id", "recipe_version", "engine_args", "serving"}
 
 
 # ---------------------------------------------------------------- a run whose operation ended

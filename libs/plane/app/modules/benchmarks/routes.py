@@ -11,8 +11,12 @@ from app.core.schemas import ListResponse
 
 from .depends import benchmark_svc_generator
 from .schemas import BenchmarkRunSchema
+from .schemas import BenchmarkBandSchema
 from .schemas import BenchmarkHarnessSchema
+from .schemas import BenchmarkRequestSchema
+from .schemas import BenchmarkVerdictSchema
 from .schemas import BenchmarkRunCreateRequest
+from .schemas import BenchmarkRequestCreateRequest
 from .services import BenchmarkService
 
 
@@ -46,6 +50,7 @@ class BenchmarkRoutes(Controller):
         harness: str | None = None,
         phase: str | None = None,
         actor: str | None = None,
+        request: str | None = None,
         since: dt.datetime | None = None,
     ) -> Response[ListResponse[BenchmarkRunSchema]]:
         result = await svc.list(
@@ -56,6 +61,7 @@ class BenchmarkRoutes(Controller):
             harness=harness,
             phase=phase,
             actor=actor,
+            request=request,
             since=since,
         )
         return Response(result)
@@ -78,6 +84,53 @@ class BenchmarkRoutes(Controller):
         items = svc.harnesses()
         return Response(ListResponse(items=items, count=len(items), next_cursor=None))
 
+    @post("/requests")
+    async def create_request(
+        self, context: RequestContext, svc: BenchmarkService, data: BenchmarkRequestCreateRequest
+    ) -> Response[BenchmarkRequestSchema]:
+        """What to measure and at which level, expanded into runs here.
+
+        A separate collection from `/benchmarks` because a request and a run are
+        different objects: one is the ask, the other is a single execution of it,
+        and a sweep has one of the first and six of the second.
+        """
+        return Response(await svc.create_request(data), status_code=201)
+
+    @get("/requests/{ref:str}")
+    async def get_request(
+        self, context: RequestContext, svc: BenchmarkService, ref: str
+    ) -> Response[BenchmarkRequestSchema]:
+        return Response(await svc.get_request(ref))
+
+    @get("/requests/{ref:str}/verdict")
+    async def get_request_verdict(
+        self, context: RequestContext, svc: BenchmarkService, ref: str, criteria: str | None = None
+    ) -> Response[BenchmarkVerdictSchema]:
+        return Response(await svc.request_verdict(ref, criteria))
+
+    @get("/requests/{ref:str}/bands")
+    async def get_request_bands(
+        self, context: RequestContext, svc: BenchmarkService, ref: str
+    ) -> Response[ListResponse[BenchmarkBandSchema]]:
+        """One request's runs, re-aggregated by the input-length band each landed in.
+
+        The standard sets a time-to-first-token target per band, and one
+        aggregate number over a whole sweep evidences none of them.
+        """
+        return Response(await svc.bands(ref))
+
     @get("/{ref:str}")
     async def get_run(self, context: RequestContext, svc: BenchmarkService, ref: str) -> Response[BenchmarkRunSchema]:
         return Response(await svc.get(ref))
+
+    @get("/{ref:str}/verdict")
+    async def get_verdict(
+        self, context: RequestContext, svc: BenchmarkService, ref: str, criteria: str | None = None
+    ) -> Response[BenchmarkVerdictSchema]:
+        """Whether the run met the standard, derived now and stored nowhere.
+
+        `?criteria=` grades against a version other than the one the request
+        recorded, which answers "would this have passed under the new rules" —
+        a question a stored verdict cannot answer at all.
+        """
+        return Response(await svc.verdict(ref, criteria))
