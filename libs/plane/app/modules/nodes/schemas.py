@@ -3,6 +3,21 @@ import datetime as dt
 from app.core.schemas import Struct
 
 
+class NodeConditionSchema(Struct):
+    """One observed node condition as the cluster reported it.
+
+    Generic health signals — memory or disk pressure, network availability — kept in full rather
+    than reduced to the single `condition` summary. The plane does not interpret `type`; it is
+    whatever the cluster named the signal.
+    """
+
+    type: str
+    status: str
+    reason: str
+    message: str
+    since: str
+
+
 class NodeDeviceRollupSchema(Struct):
     """How many devices this node has, and how they are split by health.
 
@@ -36,6 +51,7 @@ class NodeSchema(Struct):
     pool: str | None
     pool_name: str | None
     condition: str
+    conditions: list[NodeConditionSchema]
     cordoned: bool
     ready: bool
     instance_type: str | None

@@ -33,6 +33,18 @@ from .schemas import RecipeCapabilitiesSchema
 from .repository import RecipeRepository
 
 
+LIFECYCLE_VALUES = ("draft", "published", "deprecated")
+
+
+def check_lifecycle(value: str) -> None:
+    """Rejects a lifecycle that is not one of the declared publication states."""
+    if value not in LIFECYCLE_VALUES:
+        raise Invalid(
+            f"lifecycle must be one of {', '.join(LIFECYCLE_VALUES)}",
+            {"lifecycle": value},
+        )
+
+
 def check_footprint(**fields: int | None) -> None:
     """Rejects a negative resource request.
 
@@ -328,6 +340,7 @@ class RecipeService:
             artifact_id=artifact_uid,
             name=recipe.name,
             version=recipe.version,
+            lifecycle=recipe.lifecycle or "published",
             engine=recipe.engine,
             engine_version=recipe.engine_version,
             engine_image=recipe.engine_image,
@@ -389,6 +402,7 @@ class RecipeService:
         artifact: str | None = None,
         engine: str | None = None,
         device_class: str | None = None,
+        lifecycle: str | None = None,
         search: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> ListResponse[RecipeSchema]:
@@ -399,6 +413,7 @@ class RecipeService:
             artifact=artifact,
             engine=engine,
             device_class=device_class,
+            lifecycle=lifecycle,
             search=search,
             labels=labels,
         )
@@ -424,6 +439,7 @@ class RecipeService:
             disk_gib=data.disk_gib,
         )
         check_serving(data.serving, data.capabilities, data.prefix_cache_enabled)
+        check_lifecycle(data.lifecycle)
         if data.version < 1:
             raise Invalid("version must be at least 1", {"version": data.version})
         artifact = await self.repo.artifact_by_ref(data.artifact)
@@ -435,6 +451,7 @@ class RecipeService:
             artifact_id=artifact.id,
             name=data.name,
             version=data.version,
+            lifecycle=data.lifecycle,
             engine=data.engine,
             engine_version=data.engine_version,
             engine_image=data.engine_image,
@@ -486,6 +503,8 @@ class RecipeService:
             capabilities_block(recipe.capabilities) if declared_capabilities is None else declared_capabilities
         )
         check_serving(serving, capabilities, fields.get("prefix_cache_enabled", recipe.prefix_cache_enabled))
+        if "lifecycle" in fields:
+            check_lifecycle(fields["lifecycle"])
         check_shape(
             device_class=fields.get("device_class", recipe.device_class),
             device_count=fields.get("device_count", recipe.device_count),

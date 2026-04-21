@@ -33,6 +33,7 @@ class RecipeRoutes(Controller):
         artifact: str | None = None,
         engine: str | None = None,
         device_class: str | None = Parameter(query="class", default=None),
+        lifecycle: str | None = None,
         search: str | None = None,
         label: list[str] | None = None,
     ) -> Response[ListResponse[RecipeSchema]]:
@@ -42,6 +43,7 @@ class RecipeRoutes(Controller):
             artifact=artifact,
             engine=engine,
             device_class=device_class,
+            lifecycle=lifecycle,
             search=search,
             labels=parse_labels(label),
         )

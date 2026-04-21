@@ -140,6 +140,7 @@ class RecipeSchema(Struct):
     artifact_id: str
     name: str
     version: int
+    lifecycle: str
     engine: str
     engine_version: str
     engine_image: str | None
@@ -171,6 +172,7 @@ class RecipeCreateRequest(Struct):
     device_class: str
     context_length: int
     version: int = 1
+    lifecycle: str = "published"
     engine_image: str | None = None
     engine_args: dict = {}
     imported_args: dict = {}
@@ -207,6 +209,7 @@ class RecipeUpdateRequest(Struct):
     """
 
     name: str | UnsetType = UNSET
+    lifecycle: str | UnsetType = UNSET
     engine: str | UnsetType = UNSET
     engine_version: str | UnsetType = UNSET
     engine_image: str | None | UnsetType = UNSET

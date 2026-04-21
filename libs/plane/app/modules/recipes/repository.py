@@ -38,6 +38,7 @@ class RecipeRepository:
         artifact: str | None = None,
         engine: str | None = None,
         device_class: str | None = None,
+        lifecycle: str | None = None,
         search: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> Select:
@@ -50,6 +51,8 @@ class RecipeRepository:
             query = query.where(Recipe.engine == engine)
         if device_class is not None:
             query = query.where(Recipe.device_class == device_class)
+        if lifecycle is not None:
+            query = query.where(Recipe.lifecycle == lifecycle)
         if search is not None:
             query = query.where(Recipe.name.ilike(f"%{search}%"))
         for key, value in (labels or {}).items():

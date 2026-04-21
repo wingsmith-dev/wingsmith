@@ -162,6 +162,7 @@ class Node(BaseMixin):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     condition: Mapped[str] = mapped_column(String(32), nullable=False, server_default="unknown", index=True)
+    conditions: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     cordoned: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     ready: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     instance_type: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
@@ -497,6 +498,13 @@ class Recipe(BaseMixin):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    lifecycle: Mapped[str] = mapped_column(String(32), nullable=False, server_default="published", index=True)
+    """Declared publication state: `draft`, `published` or `deprecated`.
+
+    A plain writable field, not an operation: publishing a recipe changes nothing on any cluster,
+    it only governs whether the recipe is offered for new workloads. `deprecated` keeps existing
+    workloads running while steering new ones elsewhere.
+    """
     engine: Mapped[str] = mapped_column(String(64), nullable=False)
     engine_version: Mapped[str] = mapped_column(String(64), nullable=False)
     engine_image: Mapped[str | None] = mapped_column(String(512), nullable=True)

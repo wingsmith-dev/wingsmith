@@ -9,6 +9,7 @@ from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
 
 from .schemas import NodeSchema
+from .schemas import NodeConditionSchema
 from .schemas import NodeDeviceRollupSchema
 from .repository import NodeRepository
 
@@ -37,6 +38,7 @@ class NodeService:
             pool=row[3],
             pool_name=row[4],
             condition=node.condition,
+            conditions=[NodeConditionSchema(**c) for c in (node.conditions or [])],
             cordoned=node.cordoned,
             instance_type=node.instance_type,
             cloud=node.cloud,

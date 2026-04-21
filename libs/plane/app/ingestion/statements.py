@@ -225,6 +225,7 @@ def upsert_node(cluster_id: UUID, payload: NodeObserved) -> Insert:
         "name": payload.name,
         "pool_id": _pool_ref(cluster_id, payload.pool) if payload.pool else None,
         "condition": node_condition(payload),
+        "conditions": [msgspec.structs.asdict(c) for c in payload.conditions],
         "cordoned": payload.cordoned,
         "ready": payload.ready,
         "kernel_version": payload.kernel_version or None,
