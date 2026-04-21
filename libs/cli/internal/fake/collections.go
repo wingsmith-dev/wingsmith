@@ -781,6 +781,215 @@ func (b *Backend) Quota(ctx context.Context, ref string) (api.Quota, error) {
 	})
 }
 
+// ServingQuotas is its own collection because a serving quota is its own
+// object: a device quota is checked once by placement, this is checked on every
+// request by the gateway, and they share a word and nothing else.
+func (b *Backend) ServingQuotas(ctx context.Context, o api.ListOpts) (api.Page[api.ServingQuota], error) {
+	endpoint := b.endpointRef(o.Endpoint)
+	return collect(b, b.state.ServingQuotas, o, func(q api.ServingQuota) bool {
+		return refEq(endpoint, q.Endpoint, q.EndpointName) && refEq(o.Project, q.Project) &&
+			boolEq(o.Enforced, q.Enforced) && eqFold(o.Scope, q.LimitScope)
+	})
+}
+
+func (b *Backend) ServingQuota(ctx context.Context, ref string) (api.ServingQuota, error) {
+	return find(b, "serving-quota", b.state.ServingQuotas, ref, func(q api.ServingQuota) []string {
+		return []string{q.ID, q.EndpointName}
+	})
+}
+
+func (b *Backend) CreateServingQuota(ctx context.Context, req api.ServingQuotaCreate) (api.ServingQuota, error) {
+	if err := b.injected(); err != nil {
+		return api.ServingQuota{}, err
+	}
+	endpoint, err := b.Endpoint(ctx, req.Endpoint)
+	if err != nil {
+		return api.ServingQuota{}, err
+	}
+	for _, existing := range b.state.ServingQuotas {
+		if existing.Endpoint == endpoint.ID {
+			return api.ServingQuota{}, errs.New(errs.CodeConflict, "%s already carries a serving quota", endpoint.Name).
+				WithFix("Edit the one it has", "hgr serving-quota set "+existing.ID+" --committed-rpm N")
+		}
+	}
+	now := time.Now().UTC()
+	quota := api.ServingQuota{
+		ID:                     b.newUID("svq_"),
+		Endpoint:               endpoint.ID,
+		EndpointName:           endpoint.Name,
+		Project:                endpoint.ProjectID,
+		CommittedRPM:           req.CommittedRPM,
+		CommittedTPM:           req.CommittedTPM,
+		MaxConcurrentRequests:  req.MaxConcurrentRequests,
+		MaxOutputTokens:        req.MaxOutputTokens,
+		BurstRPM:               req.BurstRPM,
+		RampUpSeconds:          intOr(req.RampUpSeconds, 0),
+		OnExceed:               orElse(req.OnExceed, api.OnExceedReject),
+		QueueTimeoutMS:         req.QueueTimeoutMS,
+		LimitScope:             orElse(req.LimitScope, api.ScopePerReplica),
+		SuccessRateObjective:   req.SuccessRateObjective,
+		AvailabilityObjective:  orElse(req.AvailabilityObjective, defaultAvailabilityObjective),
+		ObjectiveWindowSeconds: intOr(req.ObjectiveWindowSeconds, 600),
+		Enforced:               req.Enforced != nil && *req.Enforced,
+		CreatedAt:              now,
+		Revision:               revision(now),
+	}
+	if err := checkServingQuota(quota); err != nil {
+		return api.ServingQuota{}, err
+	}
+	quota.Standard = standardOf(quota)
+	b.state.ServingQuotas = append(b.state.ServingQuotas, quota)
+	return quota, b.persist()
+}
+
+func (b *Backend) UpdateServingQuota(ctx context.Context, ref string, req api.ServingQuotaUpdate) (api.ServingQuota, error) {
+	quota, err := b.ServingQuota(ctx, ref)
+	if err != nil {
+		return quota, err
+	}
+	if req.CommittedRPM != nil {
+		quota.CommittedRPM = req.CommittedRPM
+	}
+	if req.CommittedTPM != nil {
+		quota.CommittedTPM = req.CommittedTPM
+	}
+	if req.MaxConcurrentRequests != nil {
+		quota.MaxConcurrentRequests = req.MaxConcurrentRequests
+	}
+	if req.MaxOutputTokens != nil {
+		quota.MaxOutputTokens = req.MaxOutputTokens
+	}
+	if req.BurstRPM != nil {
+		quota.BurstRPM = req.BurstRPM
+	}
+	if req.RampUpSeconds != nil {
+		quota.RampUpSeconds = *req.RampUpSeconds
+	}
+	if req.OnExceed != "" {
+		quota.OnExceed = req.OnExceed
+	}
+	if req.QueueTimeoutMS != nil {
+		quota.QueueTimeoutMS = req.QueueTimeoutMS
+	}
+	if req.LimitScope != "" {
+		quota.LimitScope = req.LimitScope
+	}
+	if req.SuccessRateObjective != nil {
+		quota.SuccessRateObjective = req.SuccessRateObjective
+	}
+	if req.AvailabilityObjective != "" {
+		quota.AvailabilityObjective = req.AvailabilityObjective
+	}
+	if req.ObjectiveWindowSeconds != nil {
+		quota.ObjectiveWindowSeconds = *req.ObjectiveWindowSeconds
+	}
+	if req.Enforced != nil {
+		quota.Enforced = *req.Enforced
+	}
+	if err := checkServingQuota(quota); err != nil {
+		return api.ServingQuota{}, err
+	}
+	now := time.Now().UTC()
+	quota.UpdatedAt = &now
+	quota.Revision = revision(now)
+	quota.Standard = standardOf(quota)
+	for i, existing := range b.state.ServingQuotas {
+		if existing.ID == quota.ID {
+			b.state.ServingQuotas[i] = quota
+		}
+	}
+	return quota, b.persist()
+}
+
+func (b *Backend) DeleteServingQuota(ctx context.Context, ref string) error {
+	quota, err := b.ServingQuota(ctx, ref)
+	if err != nil {
+		return err
+	}
+	kept := make([]api.ServingQuota, 0, len(b.state.ServingQuotas))
+	for _, existing := range b.state.ServingQuotas {
+		if existing.ID != quota.ID {
+			kept = append(kept, existing)
+		}
+	}
+	b.state.ServingQuotas = kept
+	return b.persist()
+}
+
+// ResolvedServingQuotas applies limit_scope to a fleet of a stated size. The
+// count comes from the caller here for the same reason it does on the plane:
+// nothing in a control plane may discover it by dialling a cluster.
+func (b *Backend) ResolvedServingQuotas(ctx context.Context, endpoint, workload string, replicas, index int) (api.ResolvedServingQuotaTable, error) {
+	if err := b.injected(); err != nil {
+		return api.ResolvedServingQuotaTable{}, err
+	}
+	if replicas < 1 {
+		return api.ResolvedServingQuotaTable{}, errs.New(errs.CodeUsage, "replicas must be at least 1")
+	}
+	if index < 0 || index >= replicas {
+		return api.ResolvedServingQuotaTable{}, errs.New(errs.CodeUsage, "replica_index %d is outside a fleet of %d", index, replicas)
+	}
+	ref := b.endpointRef(endpoint)
+	table := api.ResolvedServingQuotaTable{
+		Revision: revision(time.Now().UTC()), Replicas: replicas, ReplicaIndex: index,
+		Quotas: []api.ResolvedServingQuota{},
+	}
+	for _, quota := range b.state.ServingQuotas {
+		if !refEq(ref, quota.Endpoint, quota.EndpointName) {
+			continue
+		}
+		workloads := b.workloadsBehind(quota.Endpoint)
+		if workload != "" && !refEqAny(workload, workloads, workloads) {
+			continue
+		}
+		table.Quotas = append(table.Quotas, api.ResolvedServingQuota{
+			Endpoint: quota.Endpoint, EndpointName: quota.EndpointName, Project: quota.Project,
+			Workloads: workloads, Replicas: replicas, ReplicaIndex: index,
+			Declared:               declaredLimits(quota),
+			Effective:              effectiveLimits(quota, replicas, index),
+			StarvedReplicas:        starvedReplicas(quota, replicas),
+			SuccessRateObjective:   quota.SuccessRateObjective,
+			AvailabilityObjective:  quota.AvailabilityObjective,
+			ObjectiveWindowSeconds: quota.ObjectiveWindowSeconds,
+			Standard:               quota.Standard,
+			Revision:               quota.Revision,
+		})
+	}
+	return table, nil
+}
+
+// workloadsBehind is a lookup convenience and never a key: the commitment
+// belongs to the endpoint, and a workload appears because traffic reaching it
+// was admitted through this endpoint's name.
+func (b *Backend) workloadsBehind(endpoint string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, e := range b.state.Endpoints {
+		if e.ID != endpoint {
+			continue
+		}
+		for _, target := range e.Targets {
+			for _, d := range b.state.Deployments {
+				if d.ID == target.DeploymentID && !seen[d.WorkloadID] {
+					seen[d.WorkloadID] = true
+					out = append(out, d.WorkloadID)
+				}
+			}
+		}
+	}
+	return out
+}
+
+func (b *Backend) endpointRef(ref string) string {
+	if ref == "" {
+		return ""
+	}
+	if e, err := b.Endpoint(context.Background(), ref); err == nil {
+		return e.ID
+	}
+	return ref
+}
+
 func (b *Backend) PriorityClasses(ctx context.Context, o api.ListOpts) (api.Page[api.PriorityClass], error) {
 	return collect(b, b.state.PriorityClasses, o, func(p api.PriorityClass) bool {
 		return boolEq(o.Preemptible, p.Preemptible) && boolEq(o.Preempts, p.Preempts) &&
@@ -915,9 +1124,10 @@ var fakeHarnesses = []api.BenchmarkHarness{{
 func (b *Backend) Benchmarks(ctx context.Context, o api.ListOpts) (api.Page[api.BenchmarkRun], error) {
 	cluster := b.clusterRef(o.Cluster)
 	return collect(b, b.state.Benchmarks, o, func(run api.BenchmarkRun) bool {
-		return refEqPtr(cluster, &run.ClusterID, nil) &&
-			refEq(o.Deployment, run.DeploymentID) && eqFold(o.Harness, run.Harness) &&
+		return refEqPtr(cluster, run.ClusterID, nil) &&
+			refEqPtr(o.Deployment, run.DeploymentID, nil) && eqFold(o.Harness, run.Harness) &&
 			eqFold(o.Phase, run.Phase) && eqFold(o.Actor, run.RequestedBy) &&
+			refEqPtr(o.Request, run.RequestID, nil) &&
 			(o.Since == nil || !run.CreatedAt.Before(*o.Since))
 	})
 }
@@ -938,48 +1148,28 @@ func (b *Backend) BenchmarkHarnesses(ctx context.Context) ([]api.BenchmarkHarnes
 // CreateBenchmark refuses the same things the plane does: an unknown harness and
 // a parameter it does not accept. A fake that accepted everything would teach a
 // command line that the plane then rejects.
-func (b *Backend) CreateBenchmark(ctx context.Context, req api.BenchmarkRequest) (api.BenchmarkRun, error) {
+func (b *Backend) CreateBenchmark(ctx context.Context, req api.BenchmarkRunCreate) (api.BenchmarkRun, error) {
 	if err := b.injected(); err != nil {
 		return api.BenchmarkRun{}, err
 	}
 	if strings.TrimSpace(req.Deployment) == "" {
 		return api.BenchmarkRun{}, errs.New(errs.CodeInputRequired, "a benchmark needs a deployment")
 	}
-	var harness *api.BenchmarkHarness
-	for i := range fakeHarnesses {
-		if eqFold(req.Harness, fakeHarnesses[i].Name) || req.Harness == "" {
-			harness = &fakeHarnesses[i]
-			break
-		}
-	}
-	if harness == nil {
-		return api.BenchmarkRun{}, errs.New(errs.CodeUsage, "unknown benchmark harness %q", req.Harness)
-	}
-	known := map[string]bool{}
-	for _, parameter := range harness.Parameters {
-		known[parameter.Name] = true
-	}
-	for name := range req.Parameters {
-		if !known[name] {
-			return api.BenchmarkRun{}, errs.New(errs.CodeUsage, "%s does not accept %q", harness.Name, name)
-		}
+	harness, parameters, err := b.resolveHarness(req.Harness, req.Parameters)
+	if err != nil {
+		return api.BenchmarkRun{}, err
 	}
 	deployment, err := b.Deployment(ctx, req.Deployment)
 	if err != nil {
 		return api.BenchmarkRun{}, err
 	}
-	parameters := map[string]any{}
-	for _, parameter := range harness.Parameters {
-		parameters[parameter.Name] = parameter.Default
-	}
-	for name, value := range req.Parameters {
-		parameters[name] = value
-	}
+	deploymentID, clusterID := deployment.ID, deployment.ClusterID
 	run := api.BenchmarkRun{
 		ID:           b.newUID("bmk_"),
-		DeploymentID: deployment.ID,
-		ClusterID:    deployment.ClusterID,
+		DeploymentID: &deploymentID,
+		ClusterID:    &clusterID,
 		Harness:      harness.Name,
+		Image:        orElse(req.Image, harness.Image),
 		Parameters:   parameters,
 		RequestedBy:  "operator",
 		Provenance: api.BenchmarkProvenance{
@@ -996,6 +1186,216 @@ func (b *Backend) CreateBenchmark(ctx context.Context, req api.BenchmarkRequest)
 	}
 	b.state.Benchmarks = append([]api.BenchmarkRun{run}, b.state.Benchmarks...)
 	return run, b.persist()
+}
+
+// resolveHarness refuses the same things the plane does — an unknown harness and
+// a parameter it does not accept — and returns the harness with its defaults
+// laid under the parameters the caller named. A fake that accepted everything
+// would teach a command line the plane then rejects.
+func (b *Backend) resolveHarness(name string, params map[string]any) (*api.BenchmarkHarness, map[string]any, error) {
+	var harness *api.BenchmarkHarness
+	for i := range fakeHarnesses {
+		if eqFold(name, fakeHarnesses[i].Name) || name == "" {
+			harness = &fakeHarnesses[i]
+			break
+		}
+	}
+	if harness == nil {
+		return nil, nil, errs.New(errs.CodeUsage, "unknown benchmark harness %q", name)
+	}
+	known := map[string]bool{}
+	for _, parameter := range harness.Parameters {
+		known[parameter.Name] = true
+	}
+	for pname := range params {
+		if !known[pname] {
+			return nil, nil, errs.New(errs.CodeUsage, "%s does not accept %q", harness.Name, pname)
+		}
+	}
+	parameters := map[string]any{}
+	for _, parameter := range harness.Parameters {
+		parameters[parameter.Name] = parameter.Default
+	}
+	for pname, value := range params {
+		parameters[pname] = value
+	}
+	return harness, parameters, nil
+}
+
+// BenchmarkVerdict grades one run, now, against a pinned criteria version.
+// Nothing is stored: the grading is derived on read from the run's summary and
+// its artifact's parameter count, the same way the plane derives it.
+func (b *Backend) BenchmarkVerdict(ctx context.Context, ref, criteria string) (api.BenchmarkVerdict, error) {
+	run, err := b.Benchmark(ctx, ref)
+	if err != nil {
+		return api.BenchmarkVerdict{}, err
+	}
+	return verdictFor(run, b.parameterCountOf(run), nil, criteria), nil
+}
+
+// parameterCountOf reads the run's artifact through its provenance recipe, so a
+// run above the large-model threshold grades per service tier as the plane does.
+func (b *Backend) parameterCountOf(run api.BenchmarkRun) *int64 {
+	if run.Provenance.RecipeID == nil {
+		return nil
+	}
+	for _, recipe := range b.state.Recipes {
+		if recipe.ID != *run.Provenance.RecipeID {
+			continue
+		}
+		for _, artifact := range b.state.Artifacts {
+			if artifact.ID == recipe.ArtifactID {
+				return artifact.ParameterCount
+			}
+		}
+	}
+	return nil
+}
+
+func (b *Backend) BenchmarkRequest(ctx context.Context, ref string) (api.BenchmarkRequest, error) {
+	return find(b, "benchmark request", b.state.BenchmarkAsks, ref, func(r api.BenchmarkRequest) []string {
+		return []string{r.ID}
+	})
+}
+
+// CreateBenchmarkRequest expands one ask into its runs, mirroring the plane: a
+// stepped mode walks its load points and each step is one run, so a sweep is one
+// request and several runs rather than several requests.
+func (b *Backend) CreateBenchmarkRequest(ctx context.Context, req api.BenchmarkRequestCreate) (api.BenchmarkRequest, error) {
+	if err := b.injected(); err != nil {
+		return api.BenchmarkRequest{}, err
+	}
+	if strings.TrimSpace(req.Target) == "" {
+		return api.BenchmarkRequest{}, errs.New(errs.CodeInputRequired, "a benchmark request needs a target")
+	}
+	level := orElse(req.Level, api.LevelDeployment)
+	switch level {
+	case api.LevelDeployment, api.LevelWorkload, api.LevelEndpoint:
+	default:
+		return api.BenchmarkRequest{}, errs.New(errs.CodeUsage, "unknown level %q", level).
+			WithCause("deployment, workload or endpoint")
+	}
+	harness, baseParams, err := b.resolveHarness(req.Harness, req.Parameters)
+	if err != nil {
+		return api.BenchmarkRequest{}, err
+	}
+
+	now := time.Now().UTC()
+	ask := api.BenchmarkRequest{
+		ID:              b.newUID("bmr_"),
+		Level:           level,
+		TargetID:        req.Target,
+		Harness:         harness.Name,
+		Image:           orElse(req.Image, harness.Image),
+		Parameters:      baseParams,
+		Mode:            orElse(req.Mode, api.ModeSingle),
+		CriteriaVersion: orElse(req.Criteria, criteriaVersion),
+		RequestedBy:     "operator",
+		Phase:           api.OpPending,
+		Runs:            []string{},
+		Coverage:        []api.BenchmarkCoverage{},
+		CreatedAt:       now,
+	}
+	if req.Tier != "" {
+		tier := req.Tier
+		ask.Tier = &tier
+	}
+	if req.Reason != "" {
+		reason := req.Reason
+		ask.Reason = &reason
+	}
+
+	steps := req.Steps
+	if len(steps) == 0 {
+		steps = []int{0}
+	}
+	for i, step := range steps {
+		parameters := map[string]any{}
+		for name, value := range baseParams {
+			parameters[name] = value
+		}
+		if step > 0 {
+			parameters["input_tokens_mean"] = step
+		}
+		run := api.BenchmarkRun{
+			ID:          b.newUID("bmk_"),
+			RequestID:   &ask.ID,
+			Harness:     harness.Name,
+			Image:       ask.Image,
+			Parameters:  parameters,
+			StepIndex:   i,
+			RequestedBy: "operator",
+			Reason:      ask.Reason,
+			Phase:       api.OpPending,
+			CreatedAt:   now,
+		}
+		b.assignTarget(&run, level, req.Target)
+		b.state.Benchmarks = append([]api.BenchmarkRun{run}, b.state.Benchmarks...)
+		ask.Runs = append(ask.Runs, run.ID)
+	}
+	b.state.BenchmarkAsks = append([]api.BenchmarkRequest{ask}, b.state.BenchmarkAsks...)
+	return ask, b.persist()
+}
+
+// assignTarget records which object a run measured, off the request's level.
+// A deployment run carries a deployment and its cluster; an endpoint run carries
+// neither, because a call to a public name is routed across every upstream.
+func (b *Backend) assignTarget(run *api.BenchmarkRun, level, target string) {
+	switch level {
+	case api.LevelEndpoint:
+		if e, err := b.Endpoint(context.Background(), target); err == nil {
+			run.EndpointID = &e.ID
+		}
+	default:
+		if d, err := b.Deployment(context.Background(), target); err == nil {
+			id, cluster := d.ID, d.ClusterID
+			run.DeploymentID = &id
+			run.ClusterID = &cluster
+		}
+	}
+}
+
+// BenchmarkRequestVerdict rolls the request's runs up under one criteria
+// version, which is a request's outcome: its runs' outcomes under the same rule.
+func (b *Backend) BenchmarkRequestVerdict(ctx context.Context, ref, criteria string) (api.BenchmarkVerdict, error) {
+	ask, err := b.BenchmarkRequest(ctx, ref)
+	if err != nil {
+		return api.BenchmarkVerdict{}, err
+	}
+	if criteria == "" {
+		criteria = ask.CriteriaVersion
+	}
+	runs := b.runsOf(ask)
+	entries := make([]api.BenchmarkVerdict, 0, len(runs))
+	for _, run := range runs {
+		entries = append(entries, verdictFor(run, b.parameterCountOf(run), ask.Tier, criteria))
+	}
+	return api.BenchmarkVerdict{
+		Outcome: rollupVerdicts(entries), CriteriaVersion: criteria, Checks: []api.BenchmarkCheck{},
+	}, nil
+}
+
+// BenchmarkRequestBands re-aggregates a request's runs by input-length band.
+func (b *Backend) BenchmarkRequestBands(ctx context.Context, ref string) ([]api.BenchmarkBand, error) {
+	ask, err := b.BenchmarkRequest(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return bandsOf(b.runsOf(ask)), nil
+}
+
+// runsOf collects the runs a request expanded into, in the order it named them.
+func (b *Backend) runsOf(ask api.BenchmarkRequest) []api.BenchmarkRun {
+	out := make([]api.BenchmarkRun, 0, len(ask.Runs))
+	for _, id := range ask.Runs {
+		for _, run := range b.state.Benchmarks {
+			if run.ID == id {
+				out = append(out, run)
+				break
+			}
+		}
+	}
+	return out
 }
 
 // CreateOperation records an operation against a target the fake can resolve,
@@ -1161,6 +1561,151 @@ func (b *Backend) Event(ctx context.Context, ref string) (api.Event, error) {
 	return find(b, "event", b.state.Events, ref, func(e api.Event) []string {
 		return []string{e.ID}
 	})
+}
+
+// fakeMetricRules mirrors the plane's frozen catalogue of metric-backed rules a
+// threshold may name. A copy, and knowingly one: the fake exists to answer
+// offline, and there is no plane to ask. `suggested_value` is what a number
+// would be if nobody had said otherwise, never a default that fires — no rule
+// evaluates until a threshold row declares one.
+var fakeMetricRules = []api.MetricRule{
+	{Name: "deployment.ttft_high", Metric: "inference.ttft", Unit: "seconds", Comparison: "above", SubjectType: "deployment", Severity: "warning", Measures: "time to first token (p95)", SuggestedValue: 2.0, Lookback: "5m", ForSeconds: 900},
+	{Name: "deployment.ttft_p90_high", Metric: "inference.ttft_p90", Unit: "seconds", Comparison: "above", SubjectType: "deployment", Severity: "warning", Measures: "time to first token (p90)", SuggestedValue: 1.5, Lookback: "5m", ForSeconds: 900},
+	{Name: "deployment.latency_high", Metric: "inference.latency", Unit: "seconds", Comparison: "above", SubjectType: "deployment", Severity: "error", Measures: "end-to-end latency (p95)", SuggestedValue: 30.0, Lookback: "5m", ForSeconds: 900},
+	{Name: "deployment.queue_time_high", Metric: "inference.queue_time", Unit: "seconds", Comparison: "above", SubjectType: "deployment", Severity: "warning", Measures: "time waiting in queue (p95)", SuggestedValue: 1.0, Lookback: "5m", ForSeconds: 900},
+	{Name: "deployment.output_speed_below_floor", Metric: "inference.output_tokens_per_stream", Unit: "per_second", Comparison: "below", SubjectType: "deployment", Severity: "warning", Measures: "output speed for one stream", SuggestedValue: 30.0, Lookback: "5m", ForSeconds: 900},
+	{Name: "deployment.prefix_cache_hit_rate_low", Metric: "inference.prefix_cache_hit_rate", Unit: "percent", Comparison: "below", SubjectType: "deployment", Severity: "info", Measures: "prefix cache hit rate", SuggestedValue: 20.0, Lookback: "30m", ForSeconds: 3600},
+	{Name: "deployment.kv_cache_saturated", Metric: "inference.kv_cache_utilization", Unit: "percent", Comparison: "above", SubjectType: "deployment", Severity: "warning", Measures: "KV cache utilization", SuggestedValue: 95.0, Lookback: "5m", ForSeconds: 900},
+	{Name: "deployment.preemptions_high", Metric: "inference.preemptions", Unit: "per_second", Comparison: "above", SubjectType: "deployment", Severity: "warning", Measures: "preemptions per second", SuggestedValue: 0.5, Lookback: "5m", ForSeconds: 900},
+	{Name: "node.gpu_temperature_high", Metric: "gpu.temperature", Unit: "celsius", Comparison: "above", SubjectType: "node", Severity: "warning", Measures: "hottest GPU", SuggestedValue: 87.0, Lookback: "5m", ForSeconds: 600},
+	{Name: "node.ecc_uncorrectable", Metric: "gpu.ecc_uncorrectable", Unit: "count", Comparison: "above", SubjectType: "node", Severity: "error", Measures: "uncorrectable ECC errors", SuggestedValue: 0.0, Lookback: "5m", ForSeconds: 0},
+}
+
+// AlertRules is the catalogue a threshold may name, served rather than compiled
+// into a command, so a metric name never becomes a string somebody types.
+func (b *Backend) AlertRules(ctx context.Context) ([]api.MetricRule, error) {
+	if err := b.injected(); err != nil {
+		return nil, err
+	}
+	return fakeMetricRules, nil
+}
+
+func (b *Backend) metricRule(name string) *api.MetricRule {
+	for i := range fakeMetricRules {
+		if fakeMetricRules[i].Name == name {
+			return &fakeMetricRules[i]
+		}
+	}
+	return nil
+}
+
+func (b *Backend) AlertThresholds(ctx context.Context, o api.ListOpts) (api.Page[api.AlertThreshold], error) {
+	return collect(b, b.state.AlertThresholds, o, func(t api.AlertThreshold) bool {
+		return eqFold(o.Rule, t.Rule) && eqFold(o.Kind, t.Subject.Type) &&
+			refEqPtr(o.Subject, t.Subject.ID, nil) &&
+			boolEq(o.Enabled, t.Enabled) && boolEq(o.FleetDefault, t.FleetDefault())
+	})
+}
+
+func (b *Backend) AlertThreshold(ctx context.Context, ref string) (api.AlertThreshold, error) {
+	return find(b, "alert-threshold", b.state.AlertThresholds, ref, func(t api.AlertThreshold) []string {
+		return []string{t.ID}
+	})
+}
+
+// CreateAlertThreshold refuses what the plane refuses: an unknown rule, and a
+// comparison it will not take because which way a metric is wrong is the rule's
+// judgement and never declared. `metric` and `comparison` are copied off the
+// rule rather than read off the request for the same reason.
+func (b *Backend) CreateAlertThreshold(ctx context.Context, req api.AlertThresholdCreate) (api.AlertThreshold, error) {
+	if err := b.injected(); err != nil {
+		return api.AlertThreshold{}, err
+	}
+	rule := b.metricRule(req.Rule)
+	if rule == nil {
+		return api.AlertThreshold{}, errs.New(errs.CodeUsage, "unknown metric rule %q", req.Rule).
+			WithFix("List the catalogue", "hgr alert-threshold rules")
+	}
+	subjectType := orElse(req.SubjectType, rule.SubjectType)
+	if !strings.EqualFold(subjectType, rule.SubjectType) {
+		return api.AlertThreshold{}, errs.New(errs.CodeUsage, "%s watches a %s, not a %s", rule.Name, rule.SubjectType, subjectType)
+	}
+	now := time.Now().UTC()
+	threshold := api.AlertThreshold{
+		ID:         b.newUID("alt_"),
+		Rule:       rule.Name,
+		Metric:     rule.Metric,
+		Comparison: rule.Comparison,
+		Subject:    api.AlertSubject{Type: rule.SubjectType, ID: optional(req.SubjectID)},
+		Dimensions: req.Dimensions,
+		Value:      req.Value,
+		Objective:  req.Objective,
+		Lookback:   req.Lookback,
+		ForSeconds: req.ForSeconds,
+		Severity:   req.Severity,
+		Enabled:    req.Enabled == nil || *req.Enabled,
+		CreatedAt:  now,
+	}
+	if req.Reason != "" {
+		reason := req.Reason
+		threshold.Reason = &reason
+	}
+	b.state.AlertThresholds = append(b.state.AlertThresholds, threshold)
+	return threshold, b.persist()
+}
+
+func (b *Backend) UpdateAlertThreshold(ctx context.Context, ref string, req api.AlertThresholdUpdate) (api.AlertThreshold, error) {
+	threshold, err := b.AlertThreshold(ctx, ref)
+	if err != nil {
+		return threshold, err
+	}
+	if req.Value != nil {
+		threshold.Value = *req.Value
+	}
+	if req.Dimensions != nil {
+		threshold.Dimensions = req.Dimensions
+	}
+	if req.Objective != nil {
+		threshold.Objective = req.Objective
+	}
+	if req.Lookback != nil {
+		threshold.Lookback = req.Lookback
+	}
+	if req.ForSeconds != nil {
+		threshold.ForSeconds = req.ForSeconds
+	}
+	if req.Severity != nil {
+		threshold.Severity = req.Severity
+	}
+	if req.Enabled != nil {
+		threshold.Enabled = *req.Enabled
+	}
+	if req.Reason != nil {
+		threshold.Reason = req.Reason
+	}
+	now := time.Now().UTC()
+	threshold.UpdatedAt = &now
+	for i, existing := range b.state.AlertThresholds {
+		if existing.ID == threshold.ID {
+			b.state.AlertThresholds[i] = threshold
+		}
+	}
+	return threshold, b.persist()
+}
+
+func (b *Backend) DeleteAlertThreshold(ctx context.Context, ref string) error {
+	threshold, err := b.AlertThreshold(ctx, ref)
+	if err != nil {
+		return err
+	}
+	kept := make([]api.AlertThreshold, 0, len(b.state.AlertThresholds))
+	for _, existing := range b.state.AlertThresholds {
+		if existing.ID != threshold.ID {
+			kept = append(kept, existing)
+		}
+	}
+	b.state.AlertThresholds = kept
+	return b.persist()
 }
 
 // --- reference resolution --------------------------------------------------

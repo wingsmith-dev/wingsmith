@@ -54,9 +54,9 @@ func TestEveryNounListsAndGets(t *testing.T) {
 	nouns := []string{
 		"cluster", "node", "device", "topology-domain", "pool",
 		"artifact", "recipe", "workload", "deployment", "endpoint",
-		"project", "quota", "priority-class", "policy",
+		"project", "quota", "serving-quota", "priority-class", "policy",
 		"allocation", "operation", "component", "event",
-		"discovered",
+		"discovered", "alert-threshold",
 	}
 	for _, n := range nouns {
 		t.Run(n, func(t *testing.T) {

@@ -381,6 +381,10 @@ type filters struct {
 	namespace  string
 	status     string
 	format     string
+	endpoint   string
+	rule       string
+	request    string
+	scope      string
 
 	ready            bool
 	cordoned         bool
@@ -394,6 +398,8 @@ type filters struct {
 	preempts         bool
 	overQuotaEnabled bool
 	present          bool
+	enforced         bool
+	fleetDefault     bool
 
 	since string
 	until string
@@ -439,6 +445,7 @@ func (f *filters) opts(cmd *cobra.Command) (api.ListOpts, error) {
 		Subject: f.subject, Severity: f.severity, Device: f.device, Replica: f.replica,
 		Namespace: f.namespace, Status: f.status, Format: f.format,
 		Deployment: f.deployment, Workload: f.workload, Harness: f.harness,
+		Endpoint: f.endpoint, Rule: f.rule, Request: f.request, Scope: f.scope,
 
 		Ready:            optBool(cmd, "ready", f.ready),
 		Cordoned:         optBool(cmd, "cordoned", f.cordoned),
@@ -452,6 +459,8 @@ func (f *filters) opts(cmd *cobra.Command) (api.ListOpts, error) {
 		Preempts:         optBool(cmd, "preempts", f.preempts),
 		Present:          optBool(cmd, "present", f.present),
 		OverQuotaEnabled: optBool(cmd, "over-quota-enabled", f.overQuotaEnabled),
+		Enforced:         optBool(cmd, "enforced", f.enforced),
+		FleetDefault:     optBool(cmd, "fleet-default", f.fleetDefault),
 
 		Since: since,
 		Until: until,

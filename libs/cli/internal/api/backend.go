@@ -56,6 +56,12 @@ type Backend interface {
 	PriorityClass(ctx context.Context, ref string) (PriorityClass, error)
 	Policies(ctx context.Context, opts ListOpts) (Page[Policy], error)
 	Policy(ctx context.Context, ref string) (Policy, error)
+	ServingQuotas(ctx context.Context, opts ListOpts) (Page[ServingQuota], error)
+	ServingQuota(ctx context.Context, ref string) (ServingQuota, error)
+	CreateServingQuota(ctx context.Context, req ServingQuotaCreate) (ServingQuota, error)
+	UpdateServingQuota(ctx context.Context, ref string, req ServingQuotaUpdate) (ServingQuota, error)
+	DeleteServingQuota(ctx context.Context, ref string) error
+	ResolvedServingQuotas(ctx context.Context, endpoint, workload string, replicas, index int) (ResolvedServingQuotaTable, error)
 
 	Allocations(ctx context.Context, opts ListOpts) (Page[Allocation], error)
 	Allocation(ctx context.Context, ref string) (Allocation, error)
@@ -66,12 +72,23 @@ type Backend interface {
 
 	Benchmarks(ctx context.Context, opts ListOpts) (Page[BenchmarkRun], error)
 	Benchmark(ctx context.Context, ref string) (BenchmarkRun, error)
+	BenchmarkVerdict(ctx context.Context, ref, criteria string) (BenchmarkVerdict, error)
 	BenchmarkHarnesses(ctx context.Context) ([]BenchmarkHarness, error)
-	CreateBenchmark(ctx context.Context, req BenchmarkRequest) (BenchmarkRun, error)
+	CreateBenchmark(ctx context.Context, req BenchmarkRunCreate) (BenchmarkRun, error)
+	BenchmarkRequest(ctx context.Context, ref string) (BenchmarkRequest, error)
+	CreateBenchmarkRequest(ctx context.Context, req BenchmarkRequestCreate) (BenchmarkRequest, error)
+	BenchmarkRequestVerdict(ctx context.Context, ref, criteria string) (BenchmarkVerdict, error)
+	BenchmarkRequestBands(ctx context.Context, ref string) ([]BenchmarkBand, error)
 	Components(ctx context.Context, opts ListOpts) (Page[Component], error)
 	Component(ctx context.Context, ref string) (Component, error)
 	Events(ctx context.Context, opts ListOpts) (Page[Event], error)
 	Event(ctx context.Context, ref string) (Event, error)
+	AlertThresholds(ctx context.Context, opts ListOpts) (Page[AlertThreshold], error)
+	AlertThreshold(ctx context.Context, ref string) (AlertThreshold, error)
+	CreateAlertThreshold(ctx context.Context, req AlertThresholdCreate) (AlertThreshold, error)
+	UpdateAlertThreshold(ctx context.Context, ref string, req AlertThresholdUpdate) (AlertThreshold, error)
+	DeleteAlertThreshold(ctx context.Context, ref string) error
+	AlertRules(ctx context.Context) ([]MetricRule, error)
 
 	// Simulated reports whether the results are synthetic.
 	Simulated() bool

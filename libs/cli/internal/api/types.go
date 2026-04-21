@@ -57,6 +57,10 @@ type ListOpts struct {
 	Replica        string
 	Namespace      string
 	Status         string
+	Endpoint       string
+	Rule           string
+	Request        string
+	Scope          string
 
 	Ready            *bool
 	Cordoned         *bool
@@ -70,6 +74,8 @@ type ListOpts struct {
 	Preempts         *bool
 	OverQuotaEnabled *bool
 	Present          *bool
+	Enforced         *bool
+	FleetDefault     *bool
 
 	Since *time.Time
 	Until *time.Time
@@ -328,8 +334,11 @@ type ArtifactLocation struct {
 
 // Artifact is immutable, content-addressed bytes. Identity is the digest.
 type Artifact struct {
-	ID             string             `json:"id"`
-	Digest         string             `json:"digest"`
+	ID     string `json:"id"`
+	Digest string `json:"digest"`
+	// Verified is false for weights adopted by reference, where the digest is a
+	// name and nothing has hashed anything.
+	Verified       bool               `json:"verified"`
 	Name           string             `json:"name"`
 	Kind           string             `json:"kind"`
 	Format         *string            `json:"format"`
@@ -378,29 +387,85 @@ type RecipeResources struct {
 	DiskGiB   *int `json:"disk_gib"`
 }
 
+// RecipeReasoning is how a recipe thinks, as flags the engine is told. What it
+// *can* do is RecipeCapabilities; this is what it was asked to do.
+type RecipeReasoning struct {
+	DefaultOn                bool    `json:"default_on"`
+	Parser                   *string `json:"parser"`
+	Transport                string  `json:"transport"`
+	ThinkBeginToken          *string `json:"think_begin_token"`
+	ThinkEndToken            *string `json:"think_end_token"`
+	SuppressEOSUntilThinkEnd bool    `json:"suppress_eos_until_think_end"`
+}
+
+// RecipeServing is what the served API does, as the engine will actually be
+// told to behave. Every field renders to a flag, which is why it lives on the
+// recipe beside `cache` rather than on the endpoint: honouring any of it means
+// a replica restart.
+type RecipeServing struct {
+	Reasoning               RecipeReasoning `json:"reasoning"`
+	StreamUsage             string          `json:"stream_usage"`
+	ContextOverflow         string          `json:"context_overflow"`
+	StructuredOutputBackend *string         `json:"structured_output_backend"`
+	ToolCallParser          *string         `json:"tool_call_parser"`
+	MaxImagesPerRequest     *int            `json:"max_images_per_request"`
+}
+
+// RecipeCapabilities is what this engine × artifact is claimed to be able to
+// do. Asserted, never rendered: nothing here becomes a flag or reaches a
+// cluster, and a block that is internally consistent and entirely false is
+// accepted, stored, and falsified by the first conformance run.
+type RecipeCapabilities struct {
+	ReasoningSupported    bool       `json:"reasoning_supported"`
+	StreamingSupported    bool       `json:"streaming_supported"`
+	StructuredOutputModes []string   `json:"structured_output_modes"`
+	ToolCallingSupported  bool       `json:"tool_calling_supported"`
+	ToolChoiceModes       []string   `json:"tool_choice_modes"`
+	ParallelToolCalls     bool       `json:"parallel_tool_calls"`
+	InputModalities       []string   `json:"input_modalities"`
+	PromptCacheMode       string     `json:"prompt_cache_mode"`
+	PromptCacheTTLSeconds *int       `json:"prompt_cache_ttl_seconds"`
+	AssertedBy            *string    `json:"asserted_by"`
+	AssertedAt            *time.Time `json:"asserted_at"`
+	SourceURI             *string    `json:"source_uri"`
+}
+
+// RecipeOverlay is passthrough for what the plane deliberately does not model.
+type RecipeOverlay struct {
+	PodSpec map[string]any `json:"pod_spec"`
+	Dynamo  map[string]any `json:"dynamo"`
+}
+
 // Recipe is a reproducible way to serve one artifact.
 type Recipe struct {
-	ID             string            `json:"id"`
-	ArtifactID     string            `json:"artifact_id"`
-	Name           string            `json:"name"`
-	Version        int               `json:"version"`
-	Engine         string            `json:"engine"`
-	EngineVersion  string            `json:"engine_version"`
-	EngineImage    *string           `json:"engine_image"`
-	EngineArgs     map[string]any    `json:"engine_args"`
-	ImportedArgs   map[string]any    `json:"imported_args"`
-	Quantization   *string           `json:"quantization"`
-	Dtype          *string           `json:"dtype"`
-	Parallelism    RecipeParallelism `json:"parallelism"`
-	ContextLength  int               `json:"context_length"`
-	MaxBatchTokens *int              `json:"max_batch_tokens"`
-	Cache          RecipeCache       `json:"cache"`
-	Shape          RecipeShape       `json:"shape"`
-	Resources      RecipeResources   `json:"resources"`
-	Labels         map[string]any    `json:"labels"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      *time.Time        `json:"updated_at"`
-	Revision       string            `json:"revision"`
+	ID             string             `json:"id"`
+	ArtifactID     string             `json:"artifact_id"`
+	Name           string             `json:"name"`
+	Version        int                `json:"version"`
+	Engine         string             `json:"engine"`
+	EngineVersion  string             `json:"engine_version"`
+	EngineImage    *string            `json:"engine_image"`
+	EngineArgs     map[string]any     `json:"engine_args"`
+	ImportedArgs   map[string]any     `json:"imported_args"`
+	Quantization   *string            `json:"quantization"`
+	Dtype          *string            `json:"dtype"`
+	Parallelism    RecipeParallelism  `json:"parallelism"`
+	ContextLength  int                `json:"context_length"`
+	MaxBatchTokens *int               `json:"max_batch_tokens"`
+	Cache          RecipeCache        `json:"cache"`
+	Serving        RecipeServing      `json:"serving"`
+	Capabilities   RecipeCapabilities `json:"capabilities"`
+	// ResolvedEngineArgs is derived on every read and stored nowhere: the
+	// declared engine args with the flags `serving` dictates laid over them,
+	// keyed the way the operator keys them.
+	ResolvedEngineArgs map[string]any  `json:"resolved_engine_args"`
+	Shape              RecipeShape     `json:"shape"`
+	Resources          RecipeResources `json:"resources"`
+	Overlay            RecipeOverlay   `json:"overlay"`
+	Labels             map[string]any  `json:"labels"`
+	CreatedAt          time.Time       `json:"created_at"`
+	UpdatedAt          *time.Time      `json:"updated_at"`
+	Revision           string          `json:"revision"`
 }
 
 // WorkloadScale is the declared total and what the shares actually add up to.
@@ -773,6 +838,146 @@ type Quota struct {
 	OverLimit         bool       `json:"over_limit"`
 }
 
+// ServingQuotaStandard is whether a declared commitment clears the acceptance
+// standard's floors. Declared against declared: no part of it is a measurement,
+// and whether the endpoint then delivers is the gateway's to observe.
+//
+// An uncommitted field is a shortfall. The standard asks for a floor, and
+// declaring nothing is not clearing it.
+type ServingQuotaStandard struct {
+	Meets      bool     `json:"meets"`
+	Shortfalls []string `json:"shortfalls"`
+}
+
+// ServingQuota is one endpoint's committed request rate, token rate and
+// concurrency. It is not a variant of Quota: a device quota is checked once by
+// placement when a workload is admitted, and this is checked on every request
+// by the gateway, in front of the clusters. Different table, different
+// enforcer, different moment, no field in common.
+//
+// Every limit is nullable and null means UNCOMMITTED — never zero. There is no
+// `usage` here and there deliberately is no observed sibling of `Quota.Usage`:
+// a serving quota's usage is measured per request in the gateway and never
+// crosses into the control plane.
+type ServingQuota struct {
+	ID                     string               `json:"id"`
+	Endpoint               string               `json:"endpoint"`
+	EndpointName           string               `json:"endpoint_name"`
+	Project                string               `json:"project"`
+	CommittedRPM           *int                 `json:"committed_rpm"`
+	CommittedTPM           *int64               `json:"committed_tpm"`
+	MaxConcurrentRequests  *int                 `json:"max_concurrent_requests"`
+	MaxOutputTokens        *int                 `json:"max_output_tokens"`
+	BurstRPM               *int                 `json:"burst_rpm"`
+	RampUpSeconds          int                  `json:"ramp_up_seconds"`
+	OnExceed               string               `json:"on_exceed"`
+	QueueTimeoutMS         *int                 `json:"queue_timeout_ms"`
+	LimitScope             string               `json:"limit_scope"`
+	SuccessRateObjective   *float64             `json:"success_rate_objective"`
+	AvailabilityObjective  string               `json:"availability_objective"`
+	ObjectiveWindowSeconds int                  `json:"objective_window_seconds"`
+	Enforced               bool                 `json:"enforced"`
+	CreatedAt              time.Time            `json:"created_at"`
+	UpdatedAt              *time.Time           `json:"updated_at"`
+	Revision               string               `json:"revision"`
+	Standard               ServingQuotaStandard `json:"standard"`
+}
+
+// ResolvedLimits is the traffic ceiling for one endpoint, flattened for a hop
+// that holds it in memory. `limit_scope` is the one field that is not a number
+// the gateway enforces but an instruction for how to read the numbers beside
+// it, and it has to travel with them.
+type ResolvedLimits struct {
+	CommittedRPM          *int   `json:"committed_rpm"`
+	BurstRPM              *int   `json:"burst_rpm"`
+	RampUpSeconds         int    `json:"ramp_up_seconds"`
+	CommittedTPM          *int64 `json:"committed_tpm"`
+	MaxConcurrentRequests *int   `json:"max_concurrent_requests"`
+	MaxOutputTokens       *int   `json:"max_output_tokens"`
+	OnExceed              string `json:"on_exceed"`
+	QueueTimeoutMS        *int   `json:"queue_timeout_ms"`
+	LimitScope            string `json:"limit_scope"`
+	Enforced              bool   `json:"enforced"`
+}
+
+// ResolvedServingQuota is what one endpoint's commitment means for a fleet of a
+// stated size. `Declared` is what was sold across the whole gateway fleet;
+// `Effective` is what the replica at `ReplicaIndex` enforces once the scope is
+// applied. `Workloads` is a lookup convenience and never a key.
+type ResolvedServingQuota struct {
+	Endpoint               string               `json:"endpoint"`
+	EndpointName           string               `json:"endpoint_name"`
+	Project                string               `json:"project"`
+	Workloads              []string             `json:"workloads"`
+	Replicas               int                  `json:"replicas"`
+	ReplicaIndex           int                  `json:"replica_index"`
+	Declared               ResolvedLimits       `json:"declared"`
+	Effective              ResolvedLimits       `json:"effective"`
+	StarvedReplicas        int                  `json:"starved_replicas"`
+	SuccessRateObjective   *float64             `json:"success_rate_objective"`
+	AvailabilityObjective  string               `json:"availability_objective"`
+	ObjectiveWindowSeconds int                  `json:"objective_window_seconds"`
+	Standard               ServingQuotaStandard `json:"standard"`
+	Revision               string               `json:"revision"`
+}
+
+// ResolvedServingQuotaTable is every enabled endpoint that carries a
+// commitment, resolved for one fleet. Unpaginated, like the routing table it
+// sits beside.
+type ResolvedServingQuotaTable struct {
+	Revision     string                 `json:"revision"`
+	Replicas     int                    `json:"replicas"`
+	ReplicaIndex int                    `json:"replica_index"`
+	Quotas       []ResolvedServingQuota `json:"quotas"`
+}
+
+// ServingQuotaCreate declares a commitment. Never auto-created: a serving quota
+// is a number somebody sold.
+type ServingQuotaCreate struct {
+	Endpoint               string   `json:"endpoint"`
+	CommittedRPM           *int     `json:"committed_rpm,omitempty"`
+	CommittedTPM           *int64   `json:"committed_tpm,omitempty"`
+	MaxConcurrentRequests  *int     `json:"max_concurrent_requests,omitempty"`
+	MaxOutputTokens        *int     `json:"max_output_tokens,omitempty"`
+	BurstRPM               *int     `json:"burst_rpm,omitempty"`
+	RampUpSeconds          *int     `json:"ramp_up_seconds,omitempty"`
+	OnExceed               string   `json:"on_exceed,omitempty"`
+	QueueTimeoutMS         *int     `json:"queue_timeout_ms,omitempty"`
+	LimitScope             string   `json:"limit_scope,omitempty"`
+	SuccessRateObjective   *float64 `json:"success_rate_objective,omitempty"`
+	AvailabilityObjective  string   `json:"availability_objective,omitempty"`
+	ObjectiveWindowSeconds *int     `json:"objective_window_seconds,omitempty"`
+	Enforced               *bool    `json:"enforced,omitempty"`
+}
+
+// ServingQuotaUpdate is a partial update: an absent field is untouched. The
+// endpoint is absent by design — it is the row's whole scope, and moving one is
+// withdrawing a commitment from one contract and granting it to another.
+type ServingQuotaUpdate struct {
+	CommittedRPM           *int     `json:"committed_rpm,omitempty"`
+	CommittedTPM           *int64   `json:"committed_tpm,omitempty"`
+	MaxConcurrentRequests  *int     `json:"max_concurrent_requests,omitempty"`
+	MaxOutputTokens        *int     `json:"max_output_tokens,omitempty"`
+	BurstRPM               *int     `json:"burst_rpm,omitempty"`
+	RampUpSeconds          *int     `json:"ramp_up_seconds,omitempty"`
+	OnExceed               string   `json:"on_exceed,omitempty"`
+	QueueTimeoutMS         *int     `json:"queue_timeout_ms,omitempty"`
+	LimitScope             string   `json:"limit_scope,omitempty"`
+	SuccessRateObjective   *float64 `json:"success_rate_objective,omitempty"`
+	AvailabilityObjective  string   `json:"availability_objective,omitempty"`
+	ObjectiveWindowSeconds *int     `json:"objective_window_seconds,omitempty"`
+	Enforced               *bool    `json:"enforced,omitempty"`
+}
+
+// Serving quota vocabulary, as the plane spells it.
+const (
+	ScopePerReplica = "per_replica"
+	ScopeDivided    = "divided"
+
+	OnExceedReject = "reject"
+	OnExceedQueue  = "queue"
+)
+
 // PriorityClass is what preempts what. `preemptible` and `preempts` are two
 // switches and not one axis.
 type PriorityClass struct {
@@ -889,6 +1094,10 @@ type BenchmarkProvenance struct {
 	RecipeID             *string        `json:"recipe_id"`
 	RecipeVersion        *int           `json:"recipe_version"`
 	EngineArgs           map[string]any `json:"engine_args"`
+	// Serving is the recipe's declared serving block as it stood when the run
+	// was taken. Without it a conformance result cannot be attributed to what
+	// the surface claimed to be.
+	Serving map[string]any `json:"serving"`
 }
 
 // BenchmarkRun is one measurement of one deployment.
@@ -898,25 +1107,225 @@ type BenchmarkProvenance struct {
 // client asserting it knows a format nothing promised. `hgr benchmark get -o
 // json` hands it straight to jq, which is the tool for a shape you do not know.
 type BenchmarkRun struct {
-	ID             string              `json:"id"`
-	DeploymentID   string              `json:"deployment_id"`
-	ClusterID      string              `json:"cluster_id"`
-	OperationID    *string             `json:"operation_id"`
-	Harness        string              `json:"harness"`
-	HarnessVersion *string             `json:"harness_version"`
-	Image          string              `json:"image"`
-	Parameters     map[string]any      `json:"parameters"`
-	RequestedBy    string              `json:"requested_by"`
-	Reason         *string             `json:"reason"`
-	Provenance     BenchmarkProvenance `json:"provenance"`
-	Phase          string              `json:"phase"`
-	Summary        json.RawMessage     `json:"summary"`
-	ArtifactsURI   *string             `json:"artifacts_uri"`
-	Error          *string             `json:"error"`
-	CreatedAt      time.Time           `json:"created_at"`
-	UpdatedAt      *time.Time          `json:"updated_at"`
-	StartedAt      *time.Time          `json:"started_at"`
-	FinishedAt     *time.Time          `json:"finished_at"`
+	ID string `json:"id"`
+	// RequestID names the ask this run was expanded from. Null for a run taken
+	// before requests existed.
+	RequestID *string `json:"request_id"`
+	// DeploymentID and ClusterID are null for an endpoint-level run: a request
+	// to a public name is routed by weight across every enabled upstream, so
+	// the run measures whatever the gateway chose.
+	DeploymentID   *string        `json:"deployment_id"`
+	ClusterID      *string        `json:"cluster_id"`
+	EndpointID     *string        `json:"endpoint_id"`
+	OperationID    *string        `json:"operation_id"`
+	Harness        string         `json:"harness"`
+	HarnessVersion *string        `json:"harness_version"`
+	Image          string         `json:"image"`
+	Parameters     map[string]any `json:"parameters"`
+	// StepIndex orders the runs of one sweep or ramp; each one measures a
+	// single load point.
+	StepIndex int `json:"step_index"`
+	// Vantage is where the load was generated from. Observed, and null until
+	// something reports it.
+	Vantage *string `json:"vantage"`
+	// Discard marks a warm-up: a row that can be looked at when the warm-up was
+	// itself the thing that failed, and that no verdict rollup counts.
+	Discard      bool                `json:"discard"`
+	RequestedBy  string              `json:"requested_by"`
+	Reason       *string             `json:"reason"`
+	Provenance   BenchmarkProvenance `json:"provenance"`
+	Phase        string              `json:"phase"`
+	Summary      json.RawMessage     `json:"summary"`
+	ArtifactsURI *string             `json:"artifacts_uri"`
+	Error        *string             `json:"error"`
+	CreatedAt    time.Time           `json:"created_at"`
+	UpdatedAt    *time.Time          `json:"updated_at"`
+	StartedAt    *time.Time          `json:"started_at"`
+	FinishedAt   *time.Time          `json:"finished_at"`
+}
+
+// Level is which claim this run makes, read off which target it carries. A
+// deployment run measures one cluster's configuration and an endpoint run
+// measures what a caller actually gets; the two must never be averaged.
+func (b BenchmarkRun) Level() string {
+	switch {
+	case b.EndpointID != nil && *b.EndpointID != "":
+		return LevelEndpoint
+	case b.DeploymentID != nil && *b.DeploymentID != "":
+		return LevelDeployment
+	}
+	return ""
+}
+
+// Target is the id of whatever this run measured, endpoint first: an
+// endpoint-level run carries no deployment at all.
+func (b BenchmarkRun) Target() string {
+	if b.EndpointID != nil && *b.EndpointID != "" {
+		return *b.EndpointID
+	}
+	if b.DeploymentID != nil {
+		return *b.DeploymentID
+	}
+	return ""
+}
+
+// Band is the input-length band this run's declared prompt length lands in.
+// Empty when no prompt length was declared, which is a coverage gap rather than
+// a band of its own.
+func (b BenchmarkRun) Band() string {
+	value, ok := b.Parameters["input_tokens_mean"]
+	if !ok {
+		return ""
+	}
+	f, ok := value.(float64)
+	if !ok {
+		return ""
+	}
+	return BandFor(int(f))
+}
+
+// Testing levels, as the plane spells them.
+const (
+	LevelDeployment = "deployment"
+	LevelWorkload   = "workload"
+	LevelEndpoint   = "endpoint"
+)
+
+// Benchmark modes: a shape of runs over one harness, deliberately not a harness
+// of its own.
+const (
+	ModeSingle = "single"
+	ModeWarmup = "warmup"
+	ModeRamp   = "ramp"
+	ModeSweep  = "sweep"
+	ModeSoak   = "soak"
+)
+
+// Verdict outcomes. `inconclusive` is first-class and is what a missing
+// measurement produces; it is never a pass.
+const (
+	VerdictPass          = "pass"
+	VerdictFail          = "fail"
+	VerdictInconclusive  = "inconclusive"
+	VerdictNotApplicable = "not_applicable"
+)
+
+// BandUnknown is a run with no declared prompt length. Its own value rather
+// than a silent drop: a coverage gap belongs on the panel, not inside the
+// number.
+const BandUnknown = "unknown"
+
+// bandUppers are the input-length bands, upper bound inclusive, K being 1024
+// the way a context window is quoted. Duplicated from the plane on purpose:
+// the boundaries belong to a frozen criteria version, and a shared constant
+// would let an edit silently rewrite what an old verdict meant.
+var bandUppers = []struct {
+	label string
+	upper int
+}{
+	{"lt6k", 6 * 1024},
+	{"6k_16k", 16 * 1024},
+	{"16k_32k", 32 * 1024},
+	{"32k_64k", 64 * 1024},
+	{"64k_128k", 128 * 1024},
+	{"128k_256k", 256 * 1024},
+}
+
+// BandFor names the band a prompt length falls in. A length landing exactly on
+// a boundary takes the stricter band, which is always the lower one.
+func BandFor(inputTokens int) string {
+	for _, b := range bandUppers {
+		if inputTokens <= b.upper {
+			return b.label
+		}
+	}
+	return "gt256k"
+}
+
+// BenchmarkCoverage is one thing that was behind the target when a request
+// expanded. Snapshotted at expansion and allowed to go stale loudly: a workload
+// rescaled mid-run does not retroactively change what was measured.
+type BenchmarkCoverage struct {
+	DeploymentID  *string `json:"deployment_id"`
+	ClusterID     *string `json:"cluster_id"`
+	RecipeID      *string `json:"recipe_id"`
+	RecipeVersion *int    `json:"recipe_version"`
+	ArtifactID    *string `json:"artifact_id"`
+}
+
+// BenchmarkRequest is the ask: what to measure, at which level, and against
+// which frozen standard. It fans out into runs and is their parent.
+//
+// It carries no summary and no verdict of its own. Its phase is derived from
+// its runs and so is its verdict, because a stored verdict cannot answer "would
+// this have passed under the new rules".
+type BenchmarkRequest struct {
+	ID              string              `json:"id"`
+	Level           string              `json:"level"`
+	TargetID        string              `json:"target_id"`
+	Harness         string              `json:"harness"`
+	Image           string              `json:"image"`
+	Parameters      map[string]any      `json:"parameters"`
+	Mode            string              `json:"mode"`
+	CriteriaVersion string              `json:"criteria_version"`
+	Tier            *string             `json:"tier"`
+	Homogeneous     bool                `json:"homogeneous"`
+	Coverage        []BenchmarkCoverage `json:"coverage"`
+	RequestedBy     string              `json:"requested_by"`
+	Reason          *string             `json:"reason"`
+	Phase           string              `json:"phase"`
+	Runs            []string            `json:"runs"`
+	CreatedAt       time.Time           `json:"created_at"`
+	UpdatedAt       *time.Time          `json:"updated_at"`
+}
+
+// Terminal reports whether every run behind the request has stopped moving.
+func (b BenchmarkRequest) Terminal() bool {
+	switch b.Phase {
+	case OpPending, OpRunning:
+		return false
+	}
+	return true
+}
+
+// BenchmarkCheck is one graded assertion, with the number it graded and the
+// number it graded against. Both are carried so a reader can see how close a
+// pass was, which is the question asked immediately after a pass.
+type BenchmarkCheck struct {
+	ID         string   `json:"id"`
+	Label      string   `json:"label"`
+	Outcome    string   `json:"outcome"`
+	Observed   *float64 `json:"observed"`
+	Threshold  *float64 `json:"threshold"`
+	Comparator string   `json:"comparator"`
+	Detail     *string  `json:"detail"`
+}
+
+// BenchmarkVerdict is whether a run met the standard, derived at read against a
+// pinned criteria version and stored nowhere. The version is what makes
+// deriving it honest, so it is never shown without one.
+type BenchmarkVerdict struct {
+	Outcome         string           `json:"outcome"`
+	CriteriaVersion string           `json:"criteria_version"`
+	Reason          *string          `json:"reason"`
+	Checks          []BenchmarkCheck `json:"checks"`
+}
+
+// BenchmarkBand is one input-length band of a request, re-aggregated from the
+// runs that landed in it. The standard sets a time-to-first-token target per
+// band, so a single aggregate over a whole sweep evidences none of them.
+//
+// P90 and P50 are the worst of the band because percentiles do not average;
+// Avg is weighted by request count, which does. Incomplete names the runs that
+// reported no time to first token at all.
+type BenchmarkBand struct {
+	Band       string   `json:"band"`
+	Runs       int      `json:"runs"`
+	Requests   int      `json:"requests"`
+	TTFTP90MS  *float64 `json:"ttft_p90_ms"`
+	TTFTP50MS  *float64 `json:"ttft_p50_ms"`
+	TTFTAvgMS  *float64 `json:"ttft_avg_ms"`
+	Incomplete []string `json:"incomplete"`
 }
 
 // Terminal reports whether a run has stopped moving.
@@ -929,26 +1338,67 @@ func (b BenchmarkRun) Terminal() bool {
 }
 
 // BenchmarkParameter is one knob a harness accepts, as the plane describes it.
+// `Levels` narrows a knob to a subset of the harness's own; empty means every
+// level the harness runs at.
 type BenchmarkParameter struct {
-	Type        string `json:"type"`
-	Name        string `json:"name"`
-	Default     any    `json:"default"`
-	Description string `json:"description"`
+	Type        string   `json:"type"`
+	Name        string   `json:"name"`
+	Default     any      `json:"default"`
+	Description string   `json:"description"`
+	Levels      []string `json:"levels"`
 }
 
-// BenchmarkHarness is a load generator and what it takes.
+// BenchmarkHarness is a probe suite or load generator, the levels it grades at,
+// and what it takes. The levels are served rather than assumed, so there is no
+// second answer to what a harness may be pointed at.
 type BenchmarkHarness struct {
 	Name        string               `json:"name"`
 	Image       string               `json:"image"`
 	Description string               `json:"description"`
+	Levels      []string             `json:"levels"`
 	Parameters  []BenchmarkParameter `json:"parameters"`
+	MaxProbes   *int                 `json:"max_probes"`
 }
 
-// BenchmarkRequest starts a run.
-type BenchmarkRequest struct {
+// RunsAt reports whether this harness has anything to say at a level.
+func (h BenchmarkHarness) RunsAt(level string) bool {
+	for _, l := range h.Levels {
+		if l == level {
+			return true
+		}
+	}
+	return false
+}
+
+// BenchmarkRunCreate starts one run against one deployment. It is the
+// deployment-level shortcut and expands into the same request-and-runs pair a
+// levelled request does; there is one creation path, not two.
+type BenchmarkRunCreate struct {
 	Deployment string         `json:"deployment"`
 	Harness    string         `json:"harness"`
 	Image      string         `json:"image,omitempty"`
+	Reason     string         `json:"reason,omitempty"`
+	Parameters map[string]any `json:"parameters,omitempty"`
+	Criteria   string         `json:"criteria,omitempty"`
+	Tier       string         `json:"tier,omitempty"`
+	Deadline   *time.Time     `json:"deadline,omitempty"`
+}
+
+// BenchmarkRequestCreate is what to measure and at which level.
+//
+// `Steps` are the load points a stepped mode walks — concurrencies for a ramp,
+// prompt lengths for a sweep. A sweep is what makes a per-band
+// time-to-first-token claim evidenceable at all: one invocation measures one
+// load point, and the standard sets a target for each input-length band.
+type BenchmarkRequestCreate struct {
+	Level      string         `json:"level"`
+	Target     string         `json:"target"`
+	Harness    string         `json:"harness"`
+	Image      string         `json:"image,omitempty"`
+	Mode       string         `json:"mode,omitempty"`
+	Steps      []int          `json:"steps,omitempty"`
+	Criteria   string         `json:"criteria,omitempty"`
+	Tier       string         `json:"tier,omitempty"`
 	Reason     string         `json:"reason,omitempty"`
 	Parameters map[string]any `json:"parameters,omitempty"`
 	Deadline   *time.Time     `json:"deadline,omitempty"`
@@ -1009,6 +1459,100 @@ type Component struct {
 	Revision       string          `json:"revision"`
 	Status         ComponentStatus `json:"status"`
 	Behind         bool            `json:"behind"`
+}
+
+// AlertSubject is what an alert or a threshold is about, by public id. Unlike
+// EventSubject the id is resolvable — and it may name something that no longer
+// exists, because an alert about a node that went away has to outlive the node.
+//
+// A null id on a threshold is the fleet default for that rule.
+type AlertSubject struct {
+	Type string  `json:"type"`
+	ID   *string `json:"id"`
+}
+
+// MetricRule is one entry in the catalogue of rules a threshold may name.
+// Read-only and code rather than data: the metric and the comparison are
+// judgement the plane owns, and the only reason they are on the wire is that a
+// client declaring a threshold has to know which number it is being asked for
+// and in which unit.
+//
+// `SuggestedValue` is what the number would be if nobody had said otherwise. It
+// is not a default that fires: no metric rule evaluates until a threshold row
+// declares one.
+type MetricRule struct {
+	Name           string  `json:"name"`
+	Metric         string  `json:"metric"`
+	Unit           string  `json:"unit"`
+	Comparison     string  `json:"comparison"`
+	SubjectType    string  `json:"subject_type"`
+	Severity       string  `json:"severity"`
+	Measures       string  `json:"measures"`
+	SuggestedValue float64 `json:"suggested_value"`
+	Lookback       string  `json:"lookback"`
+	ForSeconds     int     `json:"for_seconds"`
+}
+
+// AlertThreshold is a number this plane has committed to, and the rule that
+// watches it. Declared: a threshold is editable, while the alerts it fires are
+// observed and are not.
+//
+// `Lookback`, `ForSeconds` and `Severity` are returned exactly as declared, null
+// included, because null means "whatever the rule says" — substituting the
+// rule's own value would make a row look like it had pinned something it
+// deliberately left alone.
+type AlertThreshold struct {
+	ID         string         `json:"id"`
+	Rule       string         `json:"rule"`
+	Metric     string         `json:"metric"`
+	Comparison string         `json:"comparison"`
+	Subject    AlertSubject   `json:"subject"`
+	Dimensions map[string]any `json:"dimensions"`
+	Value      float64        `json:"value"`
+	Objective  *string        `json:"objective"`
+	Lookback   *string        `json:"lookback"`
+	ForSeconds *int           `json:"for_seconds"`
+	Severity   *string        `json:"severity"`
+	Enabled    bool           `json:"enabled"`
+	Reason     *string        `json:"reason"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  *time.Time     `json:"updated_at"`
+}
+
+// FleetDefault reports whether this row is the one that covers every subject of
+// its rule's type, rather than overriding it for one subject.
+func (t AlertThreshold) FleetDefault() bool {
+	return t.Subject.ID == nil || *t.Subject.ID == ""
+}
+
+// AlertThresholdCreate declares a threshold. `comparison` is deliberately
+// absent: which way a metric is wrong is not declarable.
+type AlertThresholdCreate struct {
+	Rule        string         `json:"rule"`
+	Value       float64        `json:"value"`
+	SubjectType string         `json:"subject_type,omitempty"`
+	SubjectID   string         `json:"subject_id,omitempty"`
+	Dimensions  map[string]any `json:"dimensions,omitempty"`
+	Objective   *string        `json:"objective,omitempty"`
+	Lookback    *string        `json:"lookback,omitempty"`
+	ForSeconds  *int           `json:"for_seconds,omitempty"`
+	Severity    *string        `json:"severity,omitempty"`
+	Enabled     *bool          `json:"enabled,omitempty"`
+	Reason      string         `json:"reason,omitempty"`
+}
+
+// AlertThresholdUpdate is a partial update. `rule`, `subject_type` and
+// `subject_id` are not updatable: they are the row's identity, and moving a
+// commitment onto a different rule or subject is a different commitment.
+type AlertThresholdUpdate struct {
+	Value      *float64       `json:"value,omitempty"`
+	Dimensions map[string]any `json:"dimensions,omitempty"`
+	Objective  *string        `json:"objective,omitempty"`
+	Lookback   *string        `json:"lookback,omitempty"`
+	ForSeconds *int           `json:"for_seconds,omitempty"`
+	Severity   *string        `json:"severity,omitempty"`
+	Enabled    *bool          `json:"enabled,omitempty"`
+	Reason     *string        `json:"reason,omitempty"`
 }
 
 // EventSubject is what an event is about. `id` is the subject's row

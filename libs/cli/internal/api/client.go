@@ -408,6 +408,53 @@ func (c *Client) Policy(ctx context.Context, ref string) (Policy, error) {
 	return one[Policy](ctx, c, "/v1/policies", ref, nil)
 }
 
+// ServingQuotas is the traffic collection, and it is not /v1/quotas with a
+// filter. A device quota and a serving quota share a word and nothing else:
+// different table, different enforcer, different moment.
+func (c *Client) ServingQuotas(ctx context.Context, o ListOpts) (Page[ServingQuota], error) {
+	q := newQuery(o).str("endpoint", o.Endpoint).str("project", o.Project).
+		boolean("enforced", o.Enforced).str("scope", o.Scope)
+	return list[ServingQuota](ctx, c, "/v1/serving-quotas", q.values(), o)
+}
+
+func (c *Client) ServingQuota(ctx context.Context, ref string) (ServingQuota, error) {
+	return one[ServingQuota](ctx, c, "/v1/serving-quotas", ref, nil)
+}
+
+func (c *Client) CreateServingQuota(ctx context.Context, req ServingQuotaCreate) (ServingQuota, error) {
+	var out ServingQuota
+	err := c.send(ctx, http.MethodPost, "/v1/serving-quotas", nil, req, nil, &out)
+	return out, err
+}
+
+func (c *Client) UpdateServingQuota(ctx context.Context, ref string, req ServingQuotaUpdate) (ServingQuota, error) {
+	var out ServingQuota
+	err := c.send(ctx, http.MethodPatch, "/v1/serving-quotas/"+url.PathEscape(ref), nil, req, nil, &out)
+	return out, err
+}
+
+func (c *Client) DeleteServingQuota(ctx context.Context, ref string) error {
+	return c.send(ctx, http.MethodDelete, "/v1/serving-quotas/"+url.PathEscape(ref), nil, nil, nil, nil)
+}
+
+// ResolvedServingQuotas asks what a commitment means for a fleet of a stated
+// size. The replica count travels from the caller because the plane cannot
+// discover it without putting a Kubernetes client on the inference path.
+func (c *Client) ResolvedServingQuotas(ctx context.Context, endpoint, workload string, replicas, index int) (ResolvedServingQuotaTable, error) {
+	q := url.Values{}
+	if endpoint != "" {
+		q.Set("endpoint", endpoint)
+	}
+	if workload != "" {
+		q.Set("workload", workload)
+	}
+	q.Set("replicas", strconv.Itoa(replicas))
+	q.Set("replica_index", strconv.Itoa(index))
+	var out ResolvedServingQuotaTable
+	err := c.get(ctx, "/v1/serving-quotas/resolved", q, &out)
+	return out, err
+}
+
 // --- machinery -------------------------------------------------------------
 
 func (c *Client) Allocations(ctx context.Context, o ListOpts) (Page[Allocation], error) {
@@ -455,12 +502,60 @@ func (c *Client) CancelOperation(ctx context.Context, ref string) (Operation, er
 
 func (c *Client) Benchmarks(ctx context.Context, o ListOpts) (Page[BenchmarkRun], error) {
 	q := newQuery(o).str("deployment", o.Deployment).str("cluster", o.Cluster).
-		str("harness", o.Harness).str("phase", o.Phase).str("actor", o.Actor).at("since", o.Since)
+		str("harness", o.Harness).str("phase", o.Phase).str("actor", o.Actor).
+		str("request", o.Request).at("since", o.Since)
 	return list[BenchmarkRun](ctx, c, "/v1/benchmarks", q.values(), o)
 }
 
 func (c *Client) Benchmark(ctx context.Context, ref string) (BenchmarkRun, error) {
 	return one[BenchmarkRun](ctx, c, "/v1/benchmarks", ref, nil)
+}
+
+// BenchmarkVerdict grades one run, now, against a pinned criteria version.
+// Nothing is stored: `criteria` other than the run's own answers "would this
+// have passed under the new rules", which a stored verdict cannot answer at all.
+func (c *Client) BenchmarkVerdict(ctx context.Context, ref, criteria string) (BenchmarkVerdict, error) {
+	var out BenchmarkVerdict
+	q := url.Values{}
+	if criteria != "" {
+		q.Set("criteria", criteria)
+	}
+	err := c.get(ctx, "/v1/benchmarks/"+url.PathEscape(ref)+"/verdict", q, &out)
+	return out, err
+}
+
+// BenchmarkRequest reads one ask. There is deliberately no listing of requests
+// on the plane: the runs are the collection, and `--request` filters them.
+func (c *Client) BenchmarkRequest(ctx context.Context, ref string) (BenchmarkRequest, error) {
+	return one[BenchmarkRequest](ctx, c, "/v1/benchmarks/requests", ref, nil)
+}
+
+// CreateBenchmarkRequest posts what to measure and at which level. It is a
+// separate collection from /v1/benchmarks because a request and a run are
+// different objects: one is the ask, the other is a single execution of it, and
+// a sweep has one of the first and six of the second.
+func (c *Client) CreateBenchmarkRequest(ctx context.Context, req BenchmarkRequestCreate) (BenchmarkRequest, error) {
+	var out BenchmarkRequest
+	err := c.send(ctx, http.MethodPost, "/v1/benchmarks/requests", nil, req, nil, &out)
+	return out, err
+}
+
+func (c *Client) BenchmarkRequestVerdict(ctx context.Context, ref, criteria string) (BenchmarkVerdict, error) {
+	var out BenchmarkVerdict
+	q := url.Values{}
+	if criteria != "" {
+		q.Set("criteria", criteria)
+	}
+	err := c.get(ctx, "/v1/benchmarks/requests/"+url.PathEscape(ref)+"/verdict", q, &out)
+	return out, err
+}
+
+// BenchmarkRequestBands re-aggregates a request's runs by the input-length band
+// each landed in. The standard sets a time-to-first-token target per band, and
+// one aggregate over a whole sweep evidences none of them.
+func (c *Client) BenchmarkRequestBands(ctx context.Context, ref string) ([]BenchmarkBand, error) {
+	page, err := list[BenchmarkBand](ctx, c, "/v1/benchmarks/requests/"+url.PathEscape(ref)+"/bands", nil, ListOpts{})
+	return page.Items, err
 }
 
 // BenchmarkHarnesses is what can be run and what it accepts. Asked of the plane
@@ -474,7 +569,7 @@ func (c *Client) BenchmarkHarnesses(ctx context.Context) ([]BenchmarkHarness, er
 // CreateBenchmark starts a run. It creates two things on the plane — the record
 // and the operation that carries it out — and returns the record; the operation
 // is named on it and is where cancellation lives.
-func (c *Client) CreateBenchmark(ctx context.Context, req BenchmarkRequest) (BenchmarkRun, error) {
+func (c *Client) CreateBenchmark(ctx context.Context, req BenchmarkRunCreate) (BenchmarkRun, error) {
 	var out BenchmarkRun
 	err := c.send(ctx, http.MethodPost, "/v1/benchmarks", nil, req, nil, &out)
 	return out, err
@@ -498,6 +593,41 @@ func (c *Client) Events(ctx context.Context, o ListOpts) (Page[Event], error) {
 
 func (c *Client) Event(ctx context.Context, ref string) (Event, error) {
 	return one[Event](ctx, c, "/v1/events", ref, nil)
+}
+
+func (c *Client) AlertThresholds(ctx context.Context, o ListOpts) (Page[AlertThreshold], error) {
+	q := newQuery(o).str("rule", o.Rule).str("subject_type", o.Kind).str("subject", o.Subject).
+		boolean("enabled", o.Enabled).boolean("fleet_default", o.FleetDefault)
+	return list[AlertThreshold](ctx, c, "/v1/alert-thresholds", q.values(), o)
+}
+
+func (c *Client) AlertThreshold(ctx context.Context, ref string) (AlertThreshold, error) {
+	return one[AlertThreshold](ctx, c, "/v1/alert-thresholds", ref, nil)
+}
+
+func (c *Client) CreateAlertThreshold(ctx context.Context, req AlertThresholdCreate) (AlertThreshold, error) {
+	var out AlertThreshold
+	err := c.send(ctx, http.MethodPost, "/v1/alert-thresholds", nil, req, nil, &out)
+	return out, err
+}
+
+func (c *Client) UpdateAlertThreshold(ctx context.Context, ref string, req AlertThresholdUpdate) (AlertThreshold, error) {
+	var out AlertThreshold
+	err := c.send(ctx, http.MethodPatch, "/v1/alert-thresholds/"+url.PathEscape(ref), nil, req, nil, &out)
+	return out, err
+}
+
+func (c *Client) DeleteAlertThreshold(ctx context.Context, ref string) error {
+	return c.send(ctx, http.MethodDelete, "/v1/alert-thresholds/"+url.PathEscape(ref), nil, nil, nil, nil)
+}
+
+// AlertRules is the catalogue a threshold may name. Its own path rather than a
+// segment under /v1/alert-thresholds, so no literal has to win a race against
+// {ref}; asked of the plane rather than compiled in, so a metric name never
+// becomes a string somebody types.
+func (c *Client) AlertRules(ctx context.Context) ([]MetricRule, error) {
+	page, err := list[MetricRule](ctx, c, "/v1/alert-rules", nil, ListOpts{})
+	return page.Items, err
 }
 
 // --- transport -------------------------------------------------------------

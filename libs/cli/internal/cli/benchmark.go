@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -61,7 +62,7 @@ jq to read a summary whose shape you know.`,
 		},
 		row: func(s ui.Style, r api.BenchmarkRun) []string {
 			return []string{
-				r.ID, shorten(r.DeploymentID, 18), harnessCell(r), phaseColor(s, r.Phase),
+				r.ID, shorten(r.Target(), 18), harnessCell(r), phaseColor(s, r.Phase),
 				benchmarkLoad(r), headlineStat(r, "time_to_first_token"),
 				headlineStat(r, "inter_token_latency"),
 				fmt.Sprintf("%d", r.Provenance.DeploymentGeneration),
@@ -87,7 +88,7 @@ jq to read a summary whose shape you know.`,
 				}
 			}
 			return []errs.Action{
-				{Description: "Compare with earlier runs", Command: "hgr benchmark ls --deployment " + r.DeploymentID},
+				{Description: "Compare with earlier runs", Command: "hgr benchmark ls --deployment " + str(r.DeploymentID)},
 				{Description: "Read the full result", Command: "hgr benchmark get " + r.ID + " -o json | jq .summary"},
 			}
 		},
@@ -99,8 +100,8 @@ func benchmarkDetail(app *App, w io.Writer, s ui.Style, r api.BenchmarkRun) {
 
 	fmt.Fprintf(w, "\n%s\n", s.Dim("declared"))
 	kv := app.KV()
-	kv.Add("deployment", r.DeploymentID)
-	kv.Add("cluster", r.ClusterID)
+	kv.Add("deployment", orDash(str(r.DeploymentID)))
+	kv.Add("cluster", orDash(str(r.ClusterID)))
 	kv.Add("harness", r.Harness)
 	kv.Add("image", r.Image)
 	kv.Add("reason", orDash(str(r.Reason)))
@@ -280,11 +281,334 @@ func trimNumber(value any) any {
 	return value
 }
 
-// newBenchmarkCmd adds the one verb: starting a run.
+// newBenchmarkCmd adds the verbs a run and its request carry: starting a run,
+// listing the harnesses, deriving a verdict, and the request that fans out into
+// many runs at once.
 func newBenchmarkCmd(app *App) *cobra.Command {
 	cmd := benchmarkNoun().command(app)
-	cmd.AddCommand(newBenchmarkRunCmd(app), newBenchmarkHarnessCmd(app))
+	cmd.AddCommand(
+		newBenchmarkRunCmd(app),
+		newBenchmarkHarnessCmd(app),
+		newBenchmarkVerdictCmd(app),
+		newBenchmarkRequestCmd(app),
+	)
 	return cmd
+}
+
+// newBenchmarkVerdictCmd derives one run's verdict against a criteria version.
+//
+// The verdict is derived at read and stored nowhere, so a criteria version is
+// always part of the answer: the same run grades differently against a later
+// standard, and a verdict without the standard it was reached under is a number
+// with no meaning.
+func newBenchmarkVerdictCmd(app *App) *cobra.Command {
+	var criteria string
+	cmd := &cobra.Command{
+		Use:   "verdict <benchmark-id>",
+		Short: "Grade one run against the acceptance standard",
+		Long: `Derive a verdict for one benchmark run.
+
+Nothing is stored: the checks are recomputed against the criteria version named
+here, defaulting to whatever the plane currently publishes. Pass --criteria to
+grade against an older standard deliberately.`,
+		Example: `  hgr benchmark verdict bmk_01m…
+  hgr benchmark verdict bmk_01m… --criteria acceptance-2026.1`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+			run, err := benchmarkNoun().resolve(ctx, app, args[0])
+			if err != nil {
+				return err
+			}
+			verdict, err := app.Backend.BenchmarkVerdict(ctx, run.ID, criteria)
+			if err != nil {
+				return err
+			}
+			return app.Emit(&output.Result{
+				Command: cmdPath(cmd),
+				Data:    verdict,
+				Human: func(w io.Writer, s ui.Style, width int) {
+					benchmarkVerdict(app, w, s, verdict)
+				},
+			})
+		},
+	}
+	cmd.Flags().StringVar(&criteria, "criteria", "", "grade against a criteria version (default: the current one)")
+	return cmd
+}
+
+func newBenchmarkRequestCmd(app *App) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "request",
+		Aliases: []string{"requests", "req"},
+		Short:   "The ask that fans out into many runs",
+		Long: `A benchmark request is one ask — a level, a target, a harness and a mode —
+that the plane expands into a run per input-length band.
+
+Its verdict is the rollup of the runs behind it, and its bands are those runs
+grouped by the load they measured. Like a run's, both are derived at read
+against a criteria version and stored nowhere.`,
+	}
+	cmd.AddCommand(
+		newBenchmarkRequestCreateCmd(app),
+		newBenchmarkRequestGetCmd(app),
+		newBenchmarkRequestVerdictCmd(app),
+		newBenchmarkRequestBandsCmd(app),
+	)
+	return cmd
+}
+
+func newBenchmarkRequestCreateCmd(app *App) *cobra.Command {
+	var (
+		level    string
+		harness  string
+		image    string
+		mode     string
+		steps    []int
+		criteria string
+		tier     string
+		reason   string
+		params   []string
+	)
+	cmd := &cobra.Command{
+		Use:     "create <target>",
+		Aliases: []string{"new"},
+		Short:   "Ask for a measurement at a level, expanded into runs",
+		Long: `Create a benchmark request. The target is a deployment, a workload or an
+endpoint depending on --level, and the plane fans the ask out into one run per
+input-length band.
+
+--criteria is left blank to pin whatever standard the plane currently publishes;
+a mode of ramp or sweep walks the --steps load points in order.`,
+		Example: `  hgr benchmark request create dep_01m… --level deployment
+  hgr benchmark request create chat --level endpoint --mode sweep --steps 1000,8000,24000`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			kv, err := api.ParseKV(params, "param")
+			if err != nil {
+				return err
+			}
+			parameters := map[string]any{}
+			for k, v := range kv {
+				parameters[k] = v
+			}
+			req := api.BenchmarkRequestCreate{
+				Level: level, Target: args[0], Harness: harness, Image: image,
+				Mode: mode, Steps: steps, Criteria: criteria, Tier: tier,
+				Reason: reason, Parameters: parameters,
+			}
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+			request, err := app.Backend.CreateBenchmarkRequest(ctx, req)
+			if err != nil {
+				return err
+			}
+			return app.emitBenchmarkRequest(cmd, request)
+		},
+	}
+	fl := cmd.Flags()
+	fl.StringVar(&level, "level", "deployment", "what the target is: deployment|workload|endpoint")
+	fl.StringVar(&harness, "harness", "aiperf", "which load generator to run")
+	fl.StringVar(&image, "image", "", "override the harness image for these runs")
+	fl.StringVar(&mode, "mode", "single", "single|warmup|ramp|sweep")
+	fl.IntSliceVar(&steps, "steps", nil, "load points a ramp or sweep walks, in order")
+	fl.StringVar(&criteria, "criteria", "", "pin a criteria version (default: the current one)")
+	fl.StringVar(&tier, "tier", "", "service tier the standard grades against, e.g. L1")
+	fl.StringVar(&reason, "reason", "", "why this measurement is being taken")
+	fl.StringArrayVar(&params, "param", nil, "harness parameter (KEY=VALUE, repeatable)")
+	return cmd
+}
+
+func newBenchmarkRequestGetCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:     "get <request-id>",
+		Aliases: []string{"show", "describe"},
+		Short:   "Show one benchmark request and the runs it became",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+			request, err := app.Backend.BenchmarkRequest(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			return app.emitBenchmarkRequest(cmd, request)
+		},
+	}
+}
+
+func newBenchmarkRequestVerdictCmd(app *App) *cobra.Command {
+	var criteria string
+	cmd := &cobra.Command{
+		Use:   "verdict <request-id>",
+		Short: "The rollup verdict across a request's runs",
+		Long: `Derive the verdict for a whole request: the rollup of every run behind it,
+graded against a criteria version and stored nowhere.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+			verdict, err := app.Backend.BenchmarkRequestVerdict(ctx, args[0], criteria)
+			if err != nil {
+				return err
+			}
+			return app.Emit(&output.Result{
+				Command: cmdPath(cmd),
+				Data:    verdict,
+				Human: func(w io.Writer, s ui.Style, width int) {
+					benchmarkVerdict(app, w, s, verdict)
+				},
+			})
+		},
+	}
+	cmd.Flags().StringVar(&criteria, "criteria", "", "grade against a criteria version (default: the current one)")
+	return cmd
+}
+
+func newBenchmarkRequestBandsCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:     "bands <request-id>",
+		Aliases: []string{"band"},
+		Short:   "A request's runs grouped by the load they measured",
+		Long: `Show a request's runs as the input-length bands they cover, with the
+time-to-first-token each band reached and the ones a band is still missing. A
+band with incomplete runs is a coverage gap, not a pass.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := app.RequestContext()
+			defer cancel()
+			bands, err := app.Backend.BenchmarkRequestBands(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			return app.Emit(&output.Result{
+				Command: cmdPath(cmd),
+				Data:    bands,
+				Human: func(w io.Writer, s ui.Style, width int) {
+					benchmarkBands(app, w, s, bands)
+				},
+			})
+		},
+	}
+}
+
+func (a *App) emitBenchmarkRequest(cmd *cobra.Command, request api.BenchmarkRequest) error {
+	return a.Emit(&output.Result{
+		Command: cmdPath(cmd),
+		Data:    request,
+		Names:   []string{request.ID},
+		Human: func(w io.Writer, s ui.Style, width int) {
+			benchmarkRequestDetail(a, w, s, request)
+		},
+		Next: []errs.Action{
+			{Description: "Its verdict", Command: "hgr benchmark request verdict " + request.ID},
+			{Description: "Its bands", Command: "hgr benchmark request bands " + request.ID},
+		},
+	})
+}
+
+func benchmarkRequestDetail(app *App, w io.Writer, s ui.Style, r api.BenchmarkRequest) {
+	fmt.Fprintf(w, "%s %s\n", s.Bold(r.Level+" · "+r.Harness), s.Dim(r.ID))
+
+	kv := app.KV()
+	kv.Add("level", r.Level)
+	kv.Add("target", r.TargetID)
+	kv.Add("harness", r.Harness)
+	kv.Add("image", orDash(r.Image))
+	kv.Add("mode", r.Mode)
+	kv.Add("criteria version", r.CriteriaVersion)
+	kv.Add("tier", orDash(str(r.Tier)))
+	kv.Add("homogeneous", boolWord(r.Homogeneous))
+	kv.Add("phase", phaseColor(s, r.Phase))
+	kv.Addf("runs", "%d", len(r.Runs))
+	kv.Add("requested by", r.RequestedBy)
+	kv.Add("reason", orDash(str(r.Reason)))
+	kv.Add("created", agoAt(r.CreatedAt))
+	kv.Render(w)
+}
+
+// benchmarkVerdict draws a derived verdict: the outcome, the standard it was
+// reached under, and every graded check with the number it graded beside the
+// one it graded against.
+func benchmarkVerdict(app *App, w io.Writer, s ui.Style, v api.BenchmarkVerdict) {
+	fmt.Fprintf(w, "%s %s\n", verdictWord(s, v.Outcome), s.Dim("· "+v.CriteriaVersion))
+	if v.Reason != nil && *v.Reason != "" {
+		fmt.Fprintf(w, "%s\n", s.Dim(*v.Reason))
+	}
+	if len(v.Checks) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\n%s\n", s.Dim("checks"))
+	t := app.Table(
+		ui.Column{Title: "check"},
+		ui.Column{Title: "outcome"},
+		ui.Column{Title: "observed", Align: ui.AlignRight},
+		ui.Column{Title: "comparator"},
+		ui.Column{Title: "threshold", Align: ui.AlignRight},
+		ui.Column{Title: "detail"},
+	)
+	for _, c := range v.Checks {
+		t.Row(c.Label, verdictWord(s, c.Outcome), floatCell(c.Observed),
+			c.Comparator, floatCell(c.Threshold), orDash(str(c.Detail)))
+	}
+	t.Render(w)
+}
+
+func benchmarkBands(app *App, w io.Writer, s ui.Style, bands []api.BenchmarkBand) {
+	if len(bands) == 0 {
+		fmt.Fprintf(w, "%s\n", s.Dim("no runs to band"))
+		return
+	}
+	t := app.Table(
+		ui.Column{Title: "band"},
+		ui.Column{Title: "runs", Align: ui.AlignRight},
+		ui.Column{Title: "requests", Align: ui.AlignRight},
+		ui.Column{Title: "ttft p50", Align: ui.AlignRight},
+		ui.Column{Title: "ttft p90", Align: ui.AlignRight},
+		ui.Column{Title: "coverage"},
+	)
+	for _, b := range bands {
+		coverage := s.Green("complete")
+		if len(b.Incomplete) > 0 {
+			coverage = s.Amber(fmt.Sprintf("%d incomplete", len(b.Incomplete)))
+		}
+		t.Row(b.Band, strconv.Itoa(b.Runs), strconv.Itoa(b.Requests),
+			msCell(b.TTFTP50MS), msCell(b.TTFTP90MS), coverage)
+	}
+	t.Render(w)
+}
+
+// verdictWord colours an outcome the way the console does: a pass is green, a
+// fail is red, and inconclusive is warned rather than greyed — a missing
+// measurement is the outcome someone has to go and fix, not a nothing.
+func verdictWord(s ui.Style, outcome string) string {
+	switch outcome {
+	case "pass":
+		return s.Green(outcome)
+	case "fail":
+		return s.Red(outcome)
+	case "inconclusive":
+		return s.Amber(outcome)
+	case "not_applicable":
+		return s.Dim("not applicable")
+	default:
+		return outcome
+	}
+}
+
+func floatCell(p *float64) string {
+	if p == nil {
+		return "-"
+	}
+	return trimFloat(*p)
+}
+
+func msCell(p *float64) string {
+	if p == nil {
+		return "-"
+	}
+	return trimFloat(*p) + "ms"
 }
 
 func newBenchmarkRunCmd(app *App) *cobra.Command {
@@ -333,7 +657,7 @@ did not use the same image are not the same comparison group.`,
 			ctx, cancel := app.RequestContext()
 			defer cancel()
 
-			req := api.BenchmarkRequest{
+			req := api.BenchmarkRunCreate{
 				Deployment: args[0], Harness: harness, Image: image, Reason: reason, Parameters: parameters,
 			}
 			if deadline != "" {

@@ -26,11 +26,13 @@ func register(app *App, root *cobra.Command) {
 		tenantNoun().command(app),
 		projectNoun().command(app),
 		quotaNoun().command(app),
+		servingQuotaNoun().command(app),
 		priorityClassNoun().command(app),
 		policyNoun().command(app),
 
 		newOperationCmd(app),
 		newBenchmarkCmd(app),
+		alertThresholdNoun().command(app),
 		allocationNoun().command(app),
 		componentNoun().command(app),
 		eventNoun().command(app),

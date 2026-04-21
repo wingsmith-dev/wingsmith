@@ -27,6 +27,38 @@
         "prefix_cache_enabled": false,
         "prefix_cache_config": {}
       },
+      "serving": {
+        "reasoning": {
+          "default_on": false,
+          "parser": null,
+          "transport": "reasoning_content",
+          "think_begin_token": null,
+          "think_end_token": null,
+          "suppress_eos_until_think_end": false
+        },
+        "stream_usage": "final_chunk",
+        "context_overflow": "reject",
+        "structured_output_backend": null,
+        "tool_call_parser": null,
+        "max_images_per_request": null
+      },
+      "capabilities": {
+        "reasoning_supported": false,
+        "streaming_supported": true,
+        "structured_output_modes": ["text"],
+        "tool_calling_supported": false,
+        "tool_choice_modes": [],
+        "parallel_tool_calls": false,
+        "input_modalities": ["text"],
+        "prompt_cache_mode": "off",
+        "prompt_cache_ttl_seconds": null,
+        "asserted_by": null,
+        "asserted_at": null,
+        "source_uri": null
+      },
+      "resolved_engine_args": {
+        "--max-num-seqs": "256"
+      },
       "shape": {
         "device_class": "h100",
         "device_count": 1,
@@ -38,6 +70,10 @@
         "cpu_cores": null,
         "memory_mib": null,
         "disk_gib": null
+      },
+      "overlay": {
+        "pod_spec": {},
+        "dynamo": {}
       },
       "labels": {},
       "created_at": "2026-08-19T18:52:20.423630Z",

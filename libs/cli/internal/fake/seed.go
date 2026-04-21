@@ -401,8 +401,9 @@ func seed() *state {
 		},
 	)
 
+	chatEndpoint := uid("end_")
 	st.Endpoints = append(st.Endpoints, api.Endpoint{
-		ID: uid("end_"), Name: "chat", DisplayName: strptr("Chat"), ProjectID: projectID,
+		ID: chatEndpoint, Name: "chat", DisplayName: strptr("Chat"), ProjectID: projectID,
 		Visibility: "private", RoutingStrategy: "weighted", Enabled: true,
 		Targets: []api.EndpointTarget{
 			{DeploymentID: depRunning, Weight: 90, Role: "primary", Enabled: true},
@@ -446,6 +447,28 @@ func seed() *state {
 			Usage: api.QuotaUsage{AllocatedDevices: 2, LiveAllocations: 1},
 		},
 	)
+
+	servingQuota := api.ServingQuota{
+		ID: uid("svq_"), Endpoint: chatEndpoint, EndpointName: "chat", Project: projectID,
+		CommittedRPM: intptr(1_000), CommittedTPM: int64ptr(10_000_000),
+		MaxConcurrentRequests: intptr(256), MaxOutputTokens: intptr(4_096),
+		BurstRPM: intptr(1_500), RampUpSeconds: 30, OnExceed: api.OnExceedReject,
+		LimitScope: api.ScopePerReplica, SuccessRateObjective: floatptr(0.999),
+		AvailabilityObjective: defaultAvailabilityObjective, ObjectiveWindowSeconds: 600,
+		Enforced: true, CreatedAt: created, Revision: revision(created),
+	}
+	servingQuota.Standard = standardOf(servingQuota)
+	st.ServingQuotas = append(st.ServingQuotas, servingQuota)
+
+	st.AlertThresholds = append(st.AlertThresholds, api.AlertThreshold{
+		ID: uid("alt_"), Rule: "deployment.output_speed_below_floor",
+		Metric: "inference.output_tokens_per_stream", Comparison: "below",
+		Subject: api.AlertSubject{Type: "deployment", ID: strptr(depRunning)},
+		Value:   30, Severity: strptr("warning"), Lookback: strptr("5m"),
+		ForSeconds: intptr(900), Enabled: true,
+		Reason:    strptr("acceptance floor for a served model"),
+		CreatedAt: created,
+	})
 
 	firstNode := st.Nodes[0]
 	held := make([]api.AllocationDevice, 0, 4)
@@ -501,9 +524,10 @@ func seed() *state {
 	// rather than anything tidier: a fixture with an invented schema would make
 	// the generic renderer look better than it is against a real harness.
 	benchDeployment := st.Deployments[0]
+	benchDeploymentID, benchDeploymentCluster := benchDeployment.ID, benchDeployment.ClusterID
 	st.Benchmarks = append(st.Benchmarks,
 		api.BenchmarkRun{
-			ID: uid("bmk_"), DeploymentID: benchDeployment.ID, ClusterID: benchDeployment.ClusterID,
+			ID: uid("bmk_"), DeploymentID: &benchDeploymentID, ClusterID: &benchDeploymentCluster,
 			Harness: "aiperf", HarnessVersion: strptr("0.4.1"), Image: fakeAiperfImage, RequestedBy: "operator",
 			Reason: strptr("concurrency sweep, step 3"),
 			Parameters: map[string]any{
@@ -519,7 +543,7 @@ func seed() *state {
 			Summary: json.RawMessage(`{"time_to_first_token":{"unit":"ms","avg":412.7,"min":188.4,"max":1904.2,"p50":388.1,"p90":671.5,"p99":1402.6},"inter_token_latency":{"unit":"ms","avg":18.4,"p50":17.6,"p90":24.1,"p99":41.3},"output_token_throughput":{"unit":"tokens/sec","avg":3208.1},"request_count":500,"error_count":0}`),
 		},
 		api.BenchmarkRun{
-			ID: uid("bmk_"), DeploymentID: benchDeployment.ID, ClusterID: benchDeployment.ClusterID,
+			ID: uid("bmk_"), DeploymentID: &benchDeploymentID, ClusterID: &benchDeploymentCluster,
 			Harness: "aiperf", HarnessVersion: strptr("0.4.1"), Image: fakeAiperfImage, RequestedBy: "operator",
 			Reason: strptr("concurrency sweep, step 1"),
 			Parameters: map[string]any{
@@ -535,7 +559,7 @@ func seed() *state {
 			Summary: json.RawMessage(`{"time_to_first_token":{"unit":"ms","avg":174.2,"min":92.8,"max":611.4,"p50":166.9,"p90":248.3,"p99":448.1},"inter_token_latency":{"unit":"ms","avg":11.1,"p50":10.8,"p90":13.9,"p99":21.7},"output_token_throughput":{"unit":"tokens/sec","avg":1412.6},"request_count":500,"error_count":0}`),
 		},
 		api.BenchmarkRun{
-			ID: uid("bmk_"), DeploymentID: benchDeployment.ID, ClusterID: benchDeployment.ClusterID,
+			ID: uid("bmk_"), DeploymentID: &benchDeploymentID, ClusterID: &benchDeploymentCluster,
 			Harness: "aiperf", Image: fakeAiperfImage, RequestedBy: "operator", Reason: strptr("long-context saturation"),
 			Parameters: map[string]any{
 				"concurrency": 128, "request_count": 1000, "input_tokens_mean": 8000,

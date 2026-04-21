@@ -3,6 +3,7 @@
         {
             "id": "art_01j9x2aaaaaaaaaaaaaaaaaaaa",
             "digest": "sha256:abc",
+            "verified": true,
             "name": "llama",
             "kind": "weights",
             "format": null,

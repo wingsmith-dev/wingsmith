@@ -31,13 +31,16 @@ type state struct {
 	Tenants         []api.Tenant             `json:"tenants"`
 	Projects        []api.Project            `json:"projects"`
 	Quotas          []api.Quota              `json:"quotas"`
+	ServingQuotas   []api.ServingQuota       `json:"serving_quotas"`
 	PriorityClasses []api.PriorityClass      `json:"priority_classes"`
 	Policies        []api.Policy             `json:"policies"`
 	Allocations     []api.Allocation         `json:"allocations"`
 	Operations      []api.Operation          `json:"operations"`
 	Benchmarks      []api.BenchmarkRun       `json:"benchmarks"`
+	BenchmarkAsks   []api.BenchmarkRequest   `json:"benchmark_requests"`
 	Components      []api.Component          `json:"components"`
 	Events          []api.Event              `json:"events"`
+	AlertThresholds []api.AlertThreshold     `json:"alert_thresholds"`
 }
 
 // load reads a fixture document, falling back to the built-in seed. When a
