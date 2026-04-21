@@ -49,6 +49,14 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Assigned through a nil check rather than directly: a (*TokenGuard)(nil) stored in a Guard
+	// interface is not a nil interface, so a gateway with no token configured would reject every
+	// caller instead of trusting its network.
+	var callers gateway.Guard
+	if guard := gateway.NewTokenGuard(callerToken); guard != nil {
+		callers = guard
+	}
+
 	router := routing.New(
 		plane.New(*planeURL, planeToken, 5*time.Second),
 		func(upstream *url.URL, credentialID string) http.Handler {
@@ -69,7 +77,7 @@ func main() {
 		Addr: *listenAddr,
 		Handler: gateway.New(gateway.Config{
 			Router:  router,
-			Callers: gateway.NewTokenGuard(callerToken),
+			Callers: callers,
 		}),
 		// No WriteTimeout: it is absolute rather than idle-based, so any value
 		// would sever long generations and SSE streams mid-token.
