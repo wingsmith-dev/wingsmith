@@ -164,6 +164,36 @@ class RecipeSchema(Struct):
     revision: str
 
 
+class RecipeUsageSchema(Struct):
+    """How many workloads name this recipe, derived at read time.
+
+    A count rather than the workloads themselves: the question a recipe answers
+    here is whether anything depends on it, which is also the reason a delete is
+    refused. Nothing is stored — the number is a live count of
+    `Workload.recipe_id` against this recipe.
+    """
+
+    recipe_id: str
+    workload_count: int
+
+
+class RecipeBenchmarkSummarySchema(Struct):
+    """Offline benchmark measurement rolled up per recipe, computed at read time.
+
+    `peak_output_tokens_per_second` is the highest per-stream output-token
+    throughput any graded run of this recipe reported, read through the same
+    harness-and-version adapter the verdicts use and never through a normalised
+    metric schema. It is `None` when no run carried a reading this plane knows
+    how to find — a named absence, not a zero. This is held-in-plane offline
+    measurement, never live serving telemetry.
+    """
+
+    recipe_id: str
+    run_count: int
+    graded_run_count: int
+    peak_output_tokens_per_second: float | None
+
+
 class RecipeCreateRequest(Struct):
     artifact: str
     name: str

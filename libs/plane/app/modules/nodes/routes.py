@@ -17,6 +17,7 @@ from app.core.schemas import ListResponse
 
 from .depends import node_svc_generator
 from .schemas import NodeSchema
+from .schemas import NodesSummarySchema
 from .services import NodeService
 
 
@@ -52,6 +53,10 @@ class NodeRoutes(Controller):
             labels=parse_labels(label),
         )
         return Response(result)
+
+    @get("/summary")
+    async def nodes_summary(self, context: RequestContext, svc: NodeService) -> Response[NodesSummarySchema]:
+        return Response(await svc.summary())
 
     @get("/{ref:str}")
     async def get_node(self, context: RequestContext, svc: NodeService, ref: str) -> Response[NodeSchema]:

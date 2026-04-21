@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import Row
 from sqlalchemy import Select
+from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +12,7 @@ from app.db.models import Cluster
 from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import Deployment
+from app.db.models import BenchmarkRun
 from app.core.filters import ref_ids
 
 
@@ -90,6 +92,32 @@ class RecipeRepository:
         )
         result = await self.db.execute(query)
         return list(result.scalars())
+
+    def workload_usage_query(self, recipe: Recipe) -> Select:
+        """Counts the workloads that name this recipe."""
+        return select(func.count(Workload.id)).where(Workload.recipe_id == recipe.id)
+
+    async def workload_usage_count(self, recipe: Recipe) -> int:
+        result = await self.db.execute(self.workload_usage_query(recipe))
+        return int(result.scalar_one())
+
+    def benchmark_runs_query(self, recipe: Recipe) -> Select:
+        """The graded, non-discarded benchmark runs recorded against this recipe.
+
+        Only the columns a throughput rollup needs — `summary` is offline
+        measurement held in-plane, read through the harness-and-version adapter,
+        and a discarded run is a warm-up that must not colour the peak.
+        """
+        return (
+            select(BenchmarkRun.harness, BenchmarkRun.harness_version, BenchmarkRun.summary)
+            .where(BenchmarkRun.recipe_id == recipe.id)
+            .where(BenchmarkRun.discard == False)
+            .order_by(BenchmarkRun.seq.asc())
+        )
+
+    async def benchmark_runs(self, recipe: Recipe) -> list[Row]:
+        result = await self.db.execute(self.benchmark_runs_query(recipe))
+        return list(result.all())
 
     async def add(self, recipe: Recipe) -> Recipe:
         self.db.add(recipe)

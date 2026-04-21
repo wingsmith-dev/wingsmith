@@ -156,3 +156,40 @@ def test_routes_are_the_five_a_user_needs():
         "update_workload",
         "delete_workload",
     } <= names
+
+
+def test_list_enriches_workloads_with_recipe_name_and_served_artifact_tag(repo):
+    query = sql(repo.list_query(limit=10))
+    assert "demand_recipe.name" in query
+    assert "demand_artifact.name" in query
+
+
+def test_recipe_name_and_artifact_tag_are_nullable_additions_that_replace_nothing():
+    fields = WorkloadSchema.__struct_fields__
+    assert {"recipe_name", "artifact_tag"} <= set(fields)
+    assert "recipe_id" in fields
+    assert WorkloadSchema.__annotations__["recipe_name"] == (str | None)
+    assert WorkloadSchema.__annotations__["artifact_tag"] == (str | None)
+
+
+def test_placement_rollup_reads_only_live_allocations_and_devices(repo):
+    query = sql(repo.placement_query("some-id"))
+    assert "bind_allocation" in query
+    assert "bind_allocation_device" in query
+    assert "supply_node" in query
+    assert query.count("released_at IS NULL") == 2
+
+
+def test_placement_rollup_carries_no_serving_telemetry():
+    from app.modules.workloads.schemas import WorkloadPlacementSchema
+    from app.modules.workloads.schemas import WorkloadPlacementNodeSchema
+    from app.modules.workloads.schemas import WorkloadReplicaPlacementSchema
+
+    forbidden = {"latency", "throughput", "utilization", "tokens", "requests", "temperature", "memory"}
+    for struct in (WorkloadPlacementSchema, WorkloadPlacementNodeSchema, WorkloadReplicaPlacementSchema):
+        assert not [f for f in struct.__struct_fields__ if any(word in f for word in forbidden)], struct
+
+
+def test_placement_is_a_read_only_route():
+    names = {n for n, _ in inspect.getmembers(WorkloadRoutes)}
+    assert "workload_placement" in names

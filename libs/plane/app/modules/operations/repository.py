@@ -4,6 +4,7 @@ from typing import NamedTuple
 
 from sqlalchemy import Row
 from sqlalchemy import Select
+from sqlalchemy import func
 from sqlalchemy import null
 from sqlalchemy import select
 from sqlalchemy.orm import InstrumentedAttribute
@@ -255,6 +256,45 @@ class OperationRepository:
             return None
         result = await self.db.execute(select(Cluster.uid).where(Cluster.id == cluster_id))
         return result.scalar_one_or_none()
+
+    def phase_counts_query(self, cluster: str | None = None) -> Select:
+        """Every phase present in the collection and how many rows hold it.
+
+        One grouped aggregate rather than a count per phase: the set of phases is
+        read off the data, so a phase nobody is in simply does not appear and the
+        caller fills the rest.
+        """
+        query = select(Operation.phase, func.count().label("total")).group_by(Operation.phase)
+        if cluster is not None:
+            query = query.where(Operation.cluster_id.in_(ref_ids(Cluster, cluster)))
+        return query
+
+    def finished_since_query(self, phase: str, cluster: str | None = None) -> Select:
+        """Terminal-phase operations that finished inside the last 24 hours.
+
+        The window is closed by `func.now()` so it is the database that decides
+        what "now" is; a plane computing the boundary from its own clock would
+        give a different answer under test than in production and could not be
+        asserted deterministically.
+        """
+        query = (
+            select(func.count())
+            .select_from(Operation)
+            .where(Operation.phase == phase)
+            .where(Operation.finished_at.is_not(None))
+            .where(Operation.finished_at >= func.now() - dt.timedelta(days=1))
+        )
+        if cluster is not None:
+            query = query.where(Operation.cluster_id.in_(ref_ids(Cluster, cluster)))
+        return query
+
+    async def phase_counts(self, cluster: str | None = None) -> dict[str, int]:
+        result = await self.db.execute(self.phase_counts_query(cluster))
+        return {phase: total for phase, total in result.all()}
+
+    async def finished_since(self, phase: str, cluster: str | None = None) -> int:
+        result = await self.db.execute(self.finished_since_query(phase, cluster))
+        return result.scalar_one()
 
     async def add(self, operation: Operation) -> Operation:
         self.db.add(operation)

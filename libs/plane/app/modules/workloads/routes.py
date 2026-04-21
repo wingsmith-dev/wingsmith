@@ -15,6 +15,7 @@ from .depends import workload_svc_generator
 from .schemas import WorkloadSchema
 from .schemas import WorkloadCreateRequest
 from .schemas import WorkloadUpdateRequest
+from .schemas import WorkloadPlacementSchema
 from .services import WorkloadService
 
 
@@ -67,6 +68,13 @@ class WorkloadRoutes(Controller):
         self, context: RequestContext, svc: WorkloadService, ref: str, project: str | None = None
     ) -> Response[WorkloadSchema]:
         return Response(await svc.get(ref, project))
+
+    @get("/{ref:str}/placement")
+    async def workload_placement(
+        self, context: RequestContext, svc: WorkloadService, ref: str, project: str | None = None
+    ) -> Response[WorkloadPlacementSchema]:
+        """Where the workload physically landed, derived from its live allocations."""
+        return Response(await svc.placement(ref, project))
 
     @patch("/{ref:str}")
     async def update_workload(

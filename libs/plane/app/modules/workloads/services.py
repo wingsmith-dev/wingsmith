@@ -35,7 +35,10 @@ from .schemas import WorkloadSchema
 from .schemas import WorkloadScaleSchema
 from .schemas import WorkloadCreateRequest
 from .schemas import WorkloadUpdateRequest
+from .schemas import WorkloadPlacementSchema
 from .schemas import WorkloadDeploymentSchema
+from .schemas import WorkloadPlacementNodeSchema
+from .schemas import WorkloadReplicaPlacementSchema
 from .repository import WorkloadRepository
 
 
@@ -235,6 +238,8 @@ class WorkloadService:
         adapter_uids: list[str],
         deployments: list[WorkloadDeploymentSchema],
         rows: list[Deployment],
+        recipe_name: str | None = None,
+        artifact_tag: str | None = None,
     ) -> WorkloadSchema:
         return WorkloadSchema(
             id=workload.uid,
@@ -271,6 +276,8 @@ class WorkloadService:
             updated_at=workload.updated_at,
             revision=_revision(workload, rows),
             deployments=deployments,
+            recipe_name=recipe_name,
+            artifact_tag=artifact_tag,
         )
 
     def _deployment(self, row, replicas: DeploymentReplicaRollupSchema) -> WorkloadDeploymentSchema:
@@ -321,6 +328,8 @@ class WorkloadService:
                     adapter_uids=[adapters[i] for i in workload.adapter_artifact_ids if i in adapters],
                     deployments=[self._deployment(d, _rollup(rollup.get(d[0].id))) for d in group],
                     rows=[d[0] for d in group],
+                    recipe_name=row.recipe_name,
+                    artifact_tag=row.artifact_tag,
                 )
             )
         return items
@@ -370,6 +379,67 @@ class WorkloadService:
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
         items = await self._render(kept)
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
+
+    async def placement(self, ref: str, project: str | None = None) -> WorkloadPlacementSchema:
+        """Where a workload physically landed, derived from its live allocations.
+
+        Read-only over observed state: the allocation, its devices, and the nodes
+        they sit on are all written by ingestion, and nothing here writes. Only
+        membership and placement are reported — device counts, node occupancy, and
+        the per-replica assignment — never any serving telemetry about them.
+        """
+        row = await self._one(ref, project)
+        workload = row[0]
+        rows = await self.repo.placement(workload.id)
+
+        nodes: dict[str, WorkloadPlacementNodeSchema] = {}
+        allocations: dict[str, dict] = {}
+        devices: set[str] = set()
+        for member in rows:
+            devices.add(member.device_uid)
+            node = nodes.get(member.node_uid)
+            if node is None:
+                nodes[member.node_uid] = WorkloadPlacementNodeSchema(
+                    node=member.node_uid,
+                    cluster=member.cluster_uid,
+                    device_count=1,
+                )
+            else:
+                node.device_count += 1
+            allocation = allocations.get(member.allocation_uid)
+            if allocation is None:
+                allocations[member.allocation_uid] = {
+                    "replica": member.replica_uid,
+                    "cluster": member.cluster_uid,
+                    "device_count": member.device_count,
+                    "nodes": [member.node_uid],
+                    "devices": [member.device_uid],
+                }
+            else:
+                if member.node_uid not in allocation["nodes"]:
+                    allocation["nodes"].append(member.node_uid)
+                allocation["devices"].append(member.device_uid)
+
+        replicas = [
+            WorkloadReplicaPlacementSchema(
+                allocation=uid,
+                replica=allocation["replica"],
+                cluster=allocation["cluster"],
+                nodes=allocation["nodes"],
+                devices=allocation["devices"],
+                device_count=allocation["device_count"],
+                gang_complete=len(allocation["devices"]) >= allocation["device_count"],
+            )
+            for uid, allocation in allocations.items()
+        ]
+
+        return WorkloadPlacementSchema(
+            workload=workload.uid,
+            node_count=len(nodes),
+            gpu_count=len(devices),
+            nodes=list(nodes.values()),
+            replicas=replicas,
+        )
 
     async def _adapter_ids(self, refs: list[str]) -> list[UUID]:
         if not refs:

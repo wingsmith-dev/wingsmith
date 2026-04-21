@@ -15,12 +15,14 @@ from app.modules.recipes.routes import RecipeRoutes
 from app.modules.recipes.schemas import RecipeSchema
 from app.modules.recipes.schemas import RecipeCacheSchema
 from app.modules.recipes.schemas import RecipeShapeSchema
+from app.modules.recipes.schemas import RecipeUsageSchema
 from app.modules.recipes.schemas import RecipeCreateRequest
 from app.modules.recipes.schemas import RecipeOverlaySchema
 from app.modules.recipes.schemas import RecipeServingSchema
 from app.modules.recipes.schemas import RecipeUpdateRequest
 from app.modules.recipes.schemas import RecipeReasoningSchema
 from app.modules.recipes.schemas import RecipeCapabilitiesSchema
+from app.modules.recipes.schemas import RecipeBenchmarkSummarySchema
 from app.modules.recipes.services import RecipeService
 from app.modules.recipes.services import _revision
 from app.modules.recipes.services import check_shape
@@ -220,7 +222,99 @@ def test_a_bare_name_names_a_family_and_resolves_to_its_newest_version(repo):
 
 def test_controller_exposes_full_crud():
     handlers = {h.handler_name for h in RecipeRoutes.__dict__.values() if hasattr(h, "handler_name")}
-    assert handlers == {"list_recipes", "create_recipe", "get_recipe", "update_recipe", "delete_recipe"}
+    assert handlers == {
+        "list_recipes",
+        "create_recipe",
+        "get_recipe",
+        "update_recipe",
+        "delete_recipe",
+        "recipe_usage",
+        "recipe_benchmarks_summary",
+    }
+
+
+def test_workload_usage_counts_the_workloads_that_name_the_recipe(repo):
+    text = sql(repo.workload_usage_query(Recipe(uid=new_uid(RECIPE))))
+    assert "count(demand_workload.id)" in text
+    assert "FROM demand_workload" in text
+    assert "demand_workload.recipe_id" in text
+
+
+def test_benchmark_rollup_reads_only_graded_non_discarded_runs(repo):
+    text = sql(repo.benchmark_runs_query(Recipe(uid=new_uid(RECIPE))))
+    assert "ops_benchmark_run.recipe_id" in text
+    assert "ops_benchmark_run.discard = false" in text
+    assert "ops_benchmark_run.summary" in text
+    assert "ops_benchmark_run.harness" in text
+
+
+class _Row:
+    def __init__(self, harness, harness_version, summary):
+        self.harness = harness
+        self.harness_version = harness_version
+        self.summary = summary
+
+
+class _GetRow(tuple):
+    """Stands in for the SQLAlchemy Row the recipe repository returns: indexable
+    at [0] for the recipe and carrying the ``artifact_uid`` label as an attribute."""
+
+    @property
+    def artifact_uid(self):
+        return self[1]
+
+
+class _StubRepo:
+    def __init__(self, recipe, rows):
+        self._recipe = recipe
+        self._rows = rows
+
+    async def get(self, ref):
+        return _GetRow((self._recipe, new_uid(ARTIFACT)))
+
+    async def benchmark_runs(self, recipe):
+        return self._rows
+
+
+async def test_benchmark_summary_takes_the_peak_and_skips_unreadable_runs():
+    """Only runs whose harness-and-version adapter resolves a throughput contribute."""
+    recipe = a_recipe()
+    rows = [
+        _Row("aiperf", "0.4.0", {"output_token_throughput_per_user": {"avg": 120.0}}),
+        _Row("aiperf", "0.4.0", {"output_token_throughput_per_user": {"avg": 260.0}}),
+        _Row("aiperf", None, {"output_token_throughput_per_user": {"avg": 999.0}}),
+        _Row("aiperf", "0.4.0", {"nothing_here": True}),
+    ]
+    svc = RecipeService(db=None, notifier=MemoryNotifier())
+    svc.repo = _StubRepo(recipe, rows)
+    summary = await svc.benchmarks_summary(recipe.uid)
+    assert summary.run_count == 4
+    assert summary.graded_run_count == 2
+    assert summary.peak_output_tokens_per_second == 260.0
+
+
+async def test_benchmark_summary_peak_is_none_when_nothing_can_be_read():
+    recipe = a_recipe()
+    svc = RecipeService(db=None, notifier=MemoryNotifier())
+    svc.repo = _StubRepo(recipe, [_Row("unknown-harness", "1.0.0", {"x": 1})])
+    summary = await svc.benchmarks_summary(recipe.uid)
+    assert summary.graded_run_count == 0
+    assert summary.peak_output_tokens_per_second is None
+
+
+def test_usage_schema_is_a_count_not_the_workloads_themselves():
+    assert set(RecipeUsageSchema.__struct_fields__) == {"recipe_id", "workload_count"}
+
+
+def test_benchmark_summary_carries_a_peak_that_can_be_absent():
+    assert set(RecipeBenchmarkSummarySchema.__struct_fields__) == {
+        "recipe_id",
+        "run_count",
+        "graded_run_count",
+        "peak_output_tokens_per_second",
+    }
+    annotation = RecipeBenchmarkSummarySchema.__annotations__["peak_output_tokens_per_second"]
+    assert type(None) in annotation.__args__
 
 
 def test_class_filter_is_exposed_as_class_not_device_class():

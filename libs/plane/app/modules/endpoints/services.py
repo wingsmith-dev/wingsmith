@@ -163,6 +163,7 @@ class EndpointService:
         cursor: str | None = None,
         project: str | None = None,
         artifact: str | None = None,
+        workload: str | None = None,
         search: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> ListResponse[EndpointSchema]:
@@ -172,6 +173,7 @@ class EndpointService:
             after_seq=decode_cursor(cursor),
             project=project,
             artifact=artifact,
+            workload=workload,
             search=search,
             labels=labels,
         )

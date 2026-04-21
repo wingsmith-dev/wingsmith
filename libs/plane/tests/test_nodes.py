@@ -94,6 +94,65 @@ def test_rollup_is_one_aggregate_query_not_a_load_per_node():
     assert "GROUP BY supply_device.node_id, supply_device.health" in sql
 
 
+def test_class_rollup_groups_by_node_and_class():
+    from uuid import uuid4
+
+    sql = compiled(repo().class_rollup_query([uuid4()]))
+    assert "supply_device.device_class" in sql
+    assert "GROUP BY supply_device.node_id, supply_device.device_class" in sql
+
+
+def test_allocated_query_counts_only_live_members():
+    from uuid import uuid4
+
+    sql = compiled(repo().allocated_query([uuid4()]))
+    assert "bind_allocation_device" in sql
+    assert "released_at IS NULL" in sql
+    assert "GROUP BY supply_device.node_id" in sql
+
+
+def test_summary_counts_ready_and_cordoned_nodes():
+    sql = compiled(repo().summary_query())
+    assert "count(supply_node.id)" in sql
+    assert "supply_node.ready IS true" in sql
+    assert "supply_node.cordoned IS true" in sql
+
+
+def test_faulted_devices_query_is_non_healthy_devices():
+    sql = compiled(repo().faulted_devices_query())
+    assert "count(supply_device.id)" in sql
+    assert "supply_device.health != 'healthy'" in sql
+
+
+def test_schema_projection_carries_dominant_class_and_allocated():
+    now = dt.datetime.now(dt.UTC)
+    node = Node(
+        uid=ids.new_uid(ids.NODE),
+        name="node-2",
+        condition="ready",
+        cordoned=False,
+        ready=True,
+        labels={},
+        taints=[],
+        created_at=now,
+        updated_at=None,
+        cpu_cores=None,
+        memory_mib=None,
+        cpu_arch=None,
+        os_image=None,
+        kernel_version=None,
+        driver_version=None,
+        agent_version=None,
+        joined_at=None,
+        observed_at=None,
+    )
+    row = (node, "clu_x", "iad-1", None, None)
+    schema = NodeService.schema(object.__new__(NodeService), row, {"healthy": 8}, 3, "h100")
+    assert schema.devices.device_class == "h100"
+    assert schema.devices.allocated == 3
+    assert schema.devices.total == 8
+
+
 def test_malformed_label_is_rejected():
     with pytest.raises(Invalid):
         parse_labels(["tier"])

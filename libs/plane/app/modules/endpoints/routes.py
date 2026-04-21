@@ -35,6 +35,7 @@ class EndpointRoutes(Controller):
         cursor: str | None = None,
         project: str | None = None,
         artifact: str | None = None,
+        workload: str | None = None,
         search: str | None = None,
         label: list[str] | None = None,
     ) -> Response[ListResponse[EndpointSchema]]:
@@ -43,6 +44,7 @@ class EndpointRoutes(Controller):
             cursor=cursor,
             project=project,
             artifact=artifact,
+            workload=workload,
             search=search,
             labels=parse_labels(label),
         )

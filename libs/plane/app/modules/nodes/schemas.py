@@ -24,10 +24,31 @@ class NodeDeviceRollupSchema(Struct):
     Carried on the list payload so that "which nodes have unhealthy devices" is
     one aggregate query rather than a device fetch per row. It is a rollup of
     state only — no utilization, no temperature, no power.
+
+    `device_class` is the dominant GPU model on the node, derived at read time
+    from the node's devices rather than stored, and `None` when the node carries
+    no devices. `allocated` is how many of `total` are committed to a live
+    allocation right now.
     """
 
     total: int
     by_health: dict[str, int]
+    device_class: str | None = None
+    allocated: int = 0
+
+
+class NodesSummarySchema(Struct):
+    """Fleet-wide node rollup, computed server-side across every node.
+
+    A single figure for the list page header rather than a count derived from a
+    page. `faulted_devices` counts accelerators whose observed health is not
+    `healthy`, across all nodes; it is a health rollup, never telemetry.
+    """
+
+    total: int
+    ready: int
+    cordoned: int
+    faulted_devices: int
 
 
 class NodeSchema(Struct):

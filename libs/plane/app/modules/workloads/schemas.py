@@ -91,6 +91,55 @@ class WorkloadSchema(Struct):
     updated_at: dt.datetime | None
     revision: str
     deployments: list[WorkloadDeploymentSchema]
+    recipe_name: str | None
+    artifact_tag: str | None
+
+
+class WorkloadPlacementNodeSchema(Struct):
+    """One node a workload's live devices currently sit on, with its occupancy.
+
+    `device_count` is how many of the node's devices this workload holds right
+    now — the node's slot occupancy from the workload's point of view — derived
+    from the live allocation rows rather than declared anywhere.
+    """
+
+    node: str
+    cluster: str
+    device_count: int
+
+
+class WorkloadReplicaPlacementSchema(Struct):
+    """Where one live allocation of a workload landed, replica by replica.
+
+    `replica` is null for an allocation the cluster has not yet tied to a replica
+    — a held allocation is a commitment of devices that may precede the process
+    that runs on them. `gang_complete` says whether the allocation currently holds
+    every device it was granted, so a partially satisfied gang is visible here.
+    """
+
+    allocation: str
+    replica: str | None
+    cluster: str
+    nodes: list[str]
+    devices: list[str]
+    device_count: int
+    gang_complete: bool
+
+
+class WorkloadPlacementSchema(Struct):
+    """Where a workload physically is, derived from its live allocations.
+
+    Read-only and computed at read time from observed allocation, device and node
+    rows scoped to the workload. Only membership and placement facts appear —
+    no serving telemetry. `node_count` and `gpu_count` are the distinct live nodes
+    and devices the workload holds across every cluster it landed on.
+    """
+
+    workload: str
+    node_count: int
+    gpu_count: int
+    nodes: list[WorkloadPlacementNodeSchema]
+    replicas: list[WorkloadReplicaPlacementSchema]
 
 
 class WorkloadCreateRequest(Struct):

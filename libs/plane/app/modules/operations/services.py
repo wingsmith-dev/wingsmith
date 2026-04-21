@@ -30,6 +30,7 @@ from app.modules.benchmarks.follow import follows_operation
 from .schemas import OperationSchema
 from .schemas import OperationTargetSchema
 from .schemas import OperationCreateRequest
+from .schemas import OperationSummarySchema
 from .repository import TARGET_KINDS
 from .repository import OperationRepository
 from .repository import parse_target
@@ -189,6 +190,22 @@ class OperationService:
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
         items = [self._row_schema(row, await self._target_uid(row[0])) for row in kept]
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
+
+    async def summary(self, cluster: str | None = None) -> OperationSummarySchema:
+        """A read-time rollup of the collection by phase, no stored counters.
+
+        Every phase gets a key so a caller reads a zero rather than a gap, and
+        the two 24h fields are answered from the database's own clock through the
+        repository's `func.now()` window.
+        """
+        counts = await self.repo.phase_counts(cluster)
+        by_phase = {phase: counts.get(phase, 0) for phase in sorted(PHASES)}
+        return OperationSummarySchema(
+            total=sum(by_phase.values()),
+            by_phase=by_phase,
+            failed_24h=await self.repo.finished_since("failed", cluster),
+            succeeded_24h=await self.repo.finished_since("succeeded", cluster),
+        )
 
     async def _resolve(self, data: OperationCreateRequest, cluster: Cluster | None) -> Row:
         """The one row a target reference names, or an error saying which way it failed.

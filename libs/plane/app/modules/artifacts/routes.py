@@ -14,6 +14,7 @@ from app.core.schemas import ListResponse
 from .depends import artifact_svc_generator
 from .resolve import ResolvedArtifact
 from .schemas import ArtifactSchema
+from .schemas import ArtifactUsageSchema
 from .schemas import ArtifactCreateRequest
 from .schemas import ArtifactUpdateRequest
 from .services import ArtifactService
@@ -34,6 +35,7 @@ class ArtifactRoutes(Controller):
         kind: str | None = None,
         artifact_format: str | None = Parameter(query="format", default=None),
         project: str | None = None,
+        base_artifact: str | None = None,
         search: str | None = None,
         label: list[str] | None = None,
     ) -> Response[ListResponse[ArtifactSchema]]:
@@ -43,6 +45,7 @@ class ArtifactRoutes(Controller):
             kind=kind,
             format=artifact_format,
             project=project,
+            base_artifact=base_artifact,
             search=search,
             labels=parse_labels(label),
         )
@@ -64,6 +67,13 @@ class ArtifactRoutes(Controller):
     @get("/{ref:str}")
     async def get_artifact(self, context: RequestContext, svc: ArtifactService, ref: str) -> Response[ArtifactSchema]:
         return Response(await svc.get(ref))
+
+    @get("/{ref:str}/usage")
+    async def artifact_usage(
+        self, context: RequestContext, svc: ArtifactService, ref: str
+    ) -> Response[ArtifactUsageSchema]:
+        """Recipe, workload and downstream counts for this artifact. Derived, stored nowhere."""
+        return Response(await svc.usage(ref))
 
     @patch("/{ref:str}")
     async def update_artifact(

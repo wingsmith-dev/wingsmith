@@ -14,6 +14,7 @@ from app.core.schemas import ListResponse
 from .depends import operation_svc_generator
 from .schemas import OperationSchema
 from .schemas import OperationCreateRequest
+from .schemas import OperationSummarySchema
 from .services import OperationService
 
 
@@ -65,6 +66,21 @@ class OperationRoutes(Controller):
         idempotency_key: str | None = Parameter(header="Idempotency-Key", default=None),
     ) -> Response[OperationSchema]:
         return Response(await svc.create(data, idempotency_key=idempotency_key), status_code=201)
+
+    @get("/summary")
+    async def operations_summary(
+        self,
+        context: RequestContext,
+        svc: OperationService,
+        cluster: str | None = None,
+    ) -> Response[OperationSummarySchema]:
+        """Counts by phase, plus the last 24h of finished operations.
+
+        A read-time rollup over the operations collection, optionally narrowed to
+        one cluster. The window is closed by the database clock, never the
+        plane's.
+        """
+        return Response(await svc.summary(cluster=cluster))
 
     @get("/{ref:str}")
     async def get_operation(

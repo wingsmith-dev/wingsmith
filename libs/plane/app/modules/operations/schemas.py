@@ -45,6 +45,23 @@ class OperationSchema(Struct):
     finished_at: dt.datetime | None
 
 
+class OperationSummarySchema(Struct):
+    """A rollup of the operations collection by phase, computed at read time.
+
+    `by_phase` carries a count for every phase the fleet currently holds, so a
+    console can render the mix without paging the collection. `total` is their
+    sum. The two `_24h` fields are the terminal phases that matter for an
+    at-a-glance health read — how many finished badly or well in the last day —
+    and their window is closed by the database's own `now()`, not the plane's
+    wall clock, so the answer is the same regardless of which process asked.
+    """
+
+    total: int
+    by_phase: dict[str, int]
+    failed_24h: int
+    succeeded_24h: int
+
+
 class OperationCreateRequest(Struct):
     """`{ "type": ..., "target": ... }` — never a verb on the target's own path.
 

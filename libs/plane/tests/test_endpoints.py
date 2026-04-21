@@ -222,7 +222,20 @@ def test_resolution_is_unpaginated_and_conditional():
 
 def test_list_handler_offers_every_declared_filter():
     parameters = set(inspect.signature(EndpointRoutes.list_endpoints.fn).parameters)
-    assert {"project", "artifact", "search", "label", "limit", "cursor"} <= parameters
+    assert {"project", "artifact", "workload", "search", "label", "limit", "cursor"} <= parameters
+
+
+def test_workload_filter_walks_targets_to_deployments_as_a_reverse_index(repo):
+    text = sql(repo.serving_workload_query("wkl-1"))
+    assert text.startswith("SELECT demand_endpoint_target.endpoint_id")
+    assert "demand_deployment" in text
+    assert "demand_workload" in text.lower() or "workload_id" in text
+
+
+def test_workload_filter_compiles_into_one_statement_as_a_subquery(repo):
+    text = sql(repo.list_query(limit=10, workload="wkl-1"))
+    assert "demand_endpoint.id IN " in text
+    assert "demand_endpoint_target" in text
 
 
 def test_conditional_update_reads_if_match_from_the_header():

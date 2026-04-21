@@ -13,8 +13,10 @@ from app.core.schemas import ListResponse
 
 from .depends import recipe_svc_generator
 from .schemas import RecipeSchema
+from .schemas import RecipeUsageSchema
 from .schemas import RecipeCreateRequest
 from .schemas import RecipeUpdateRequest
+from .schemas import RecipeBenchmarkSummarySchema
 from .services import RecipeService
 
 
@@ -58,6 +60,20 @@ class RecipeRoutes(Controller):
     @get("/{ref:str}")
     async def get_recipe(self, context: RequestContext, svc: RecipeService, ref: str) -> Response[RecipeSchema]:
         return Response(await svc.get(ref))
+
+    @get("/{ref:str}/usage")
+    async def recipe_usage(
+        self, context: RequestContext, svc: RecipeService, ref: str
+    ) -> Response[RecipeUsageSchema]:
+        """How many workloads name this recipe. Derived, stored nowhere."""
+        return Response(await svc.usage(ref))
+
+    @get("/{ref:str}/benchmarks-summary")
+    async def recipe_benchmarks_summary(
+        self, context: RequestContext, svc: RecipeService, ref: str
+    ) -> Response[RecipeBenchmarkSummarySchema]:
+        """Peak offline per-stream output-token throughput across this recipe's runs."""
+        return Response(await svc.benchmarks_summary(ref))
 
     @patch("/{ref:str}")
     async def update_recipe(

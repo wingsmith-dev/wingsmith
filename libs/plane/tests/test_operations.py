@@ -278,7 +278,13 @@ def test_phases_cover_the_open_and_terminal_sets():
 def test_there_is_no_verb_endpoint_only_a_collection():
     assert OperationRoutes.path == "/operations"
     handlers = {h.handler_name for h in OperationRoutes.__dict__.values() if hasattr(h, "handler_name")}
-    assert handlers == {"list_operations", "create_operation", "get_operation", "cancel_operation"}
+    assert handlers == {
+        "list_operations",
+        "create_operation",
+        "get_operation",
+        "cancel_operation",
+        "operations_summary",
+    }
 
 
 def test_the_type_filter_is_exposed_as_type_not_kind():
@@ -315,3 +321,38 @@ def test_a_qualified_target_filter_compiles_to_the_name_column(repo):
     assert "ops_operation.target_type = " in text
     assert "ops_operation.target_id IN (SELECT supply_node.id" in text
     assert "supply_node.name = " in text
+
+
+# ------------------------------------------------------------------- summary
+
+
+def test_summary_groups_the_collection_by_phase(repo):
+    text = sql(repo.phase_counts_query())
+    assert "GROUP BY ops_operation.phase" in text
+    assert "count(" in text
+
+
+def test_summary_can_be_narrowed_to_one_cluster(repo):
+    text = sql(repo.phase_counts_query(cluster=new_uid(CLUSTER)))
+    assert "supply_cluster.uid = " in text
+
+
+def test_finished_window_is_closed_by_the_database_clock_not_the_plane(repo):
+    """The 24h boundary is `now()`, computed server-side, never the plane's clock."""
+    text = sql(repo.finished_since_query("failed"))
+    assert "now()" in text
+    assert "ops_operation.phase = " in text
+    assert "ops_operation.finished_at IS NOT NULL" in text
+
+
+@pytest.mark.parametrize("route", ["operations_summary"])
+def test_summary_is_exposed_as_a_read_route(route):
+    handlers = {h.handler_name for h in OperationRoutes.__dict__.values() if hasattr(h, "handler_name")}
+    assert route in handlers
+
+
+def test_summary_schema_covers_phase_mix_and_both_24h_terminals():
+    from app.modules.operations.schemas import OperationSummarySchema
+
+    fields = set(OperationSummarySchema.__struct_fields__)
+    assert fields == {"total", "by_phase", "failed_24h", "succeeded_24h"}

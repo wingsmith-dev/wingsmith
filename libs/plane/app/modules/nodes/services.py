@@ -9,6 +9,7 @@ from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
 
 from .schemas import NodeSchema
+from .schemas import NodesSummarySchema
 from .schemas import NodeConditionSchema
 from .schemas import NodeDeviceRollupSchema
 from .repository import NodeRepository
@@ -27,7 +28,13 @@ class NodeService:
         self.db = db
         self.repo = NodeRepository(db)
 
-    def schema(self, row: Row, rollup: dict[str, int] | None = None) -> NodeSchema:
+    def schema(
+        self,
+        row: Row,
+        rollup: dict[str, int] | None = None,
+        allocated: int = 0,
+        device_class: str | None = None,
+    ) -> NodeSchema:
         node: Node = row[0]
         counts = rollup or {}
         return NodeSchema(
@@ -54,7 +61,12 @@ class NodeService:
             agent_version=node.agent_version,
             labels=node.labels,
             taints=node.taints,
-            devices=NodeDeviceRollupSchema(total=sum(counts.values()), by_health=counts),
+            devices=NodeDeviceRollupSchema(
+                total=sum(counts.values()),
+                by_health=counts,
+                device_class=device_class,
+                allocated=allocated,
+            ),
             joined_at=node.joined_at,
             observed_at=node.observed_at,
             created_at=node.created_at,
@@ -65,8 +77,15 @@ class NodeService:
         row = await self.repo.get(ref)
         if row is None:
             raise NotFound(f"no node {ref!r}")
-        rollup = await self.repo.device_rollup([row[0].id])
-        return self.schema(row, rollup.get(row[0].id))
+        node_id = row[0].id
+        rollup = await self.repo.device_rollup([node_id])
+        allocated = await self.repo.allocated_rollup([node_id])
+        classes = await self.repo.class_rollup([node_id])
+        return self.schema(row, rollup.get(node_id), allocated.get(node_id, 0), classes.get(node_id))
+
+    async def summary(self) -> NodesSummarySchema:
+        total, ready, cordoned, faulted_devices = await self.repo.summary()
+        return NodesSummarySchema(total=total, ready=ready, cordoned=cordoned, faulted_devices=faulted_devices)
 
     async def list(
         self,
@@ -93,6 +112,11 @@ class NodeService:
             labels=labels,
         )
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
-        rollup = await self.repo.device_rollup([r[0].id for r in kept])
-        items = [self.schema(r, rollup.get(r[0].id)) for r in kept]
+        node_ids = [r[0].id for r in kept]
+        rollup = await self.repo.device_rollup(node_ids)
+        allocated = await self.repo.allocated_rollup(node_ids)
+        classes = await self.repo.class_rollup(node_ids)
+        items = [
+            self.schema(r, rollup.get(r[0].id), allocated.get(r[0].id, 0), classes.get(r[0].id)) for r in kept
+        ]
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)

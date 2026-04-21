@@ -62,12 +62,27 @@ class EndpointRepository:
             .where(Recipe.artifact_id.in_(ref_ids(Artifact, artifact)))
         )
 
+    def serving_workload_query(self, workload: str) -> Select:
+        """The endpoints whose targets point at a workload's deployments.
+
+        The reverse of "which deployments does this endpoint route to": one hop
+        from target to deployment, filtered to the deployments of the named
+        workload, expressed as a subquery so the reverse index stays one round
+        trip rather than a fan-out over every endpoint's target list.
+        """
+        return (
+            select(EndpointTarget.endpoint_id)
+            .join(Deployment, EndpointTarget.deployment_id == Deployment.id)
+            .where(Deployment.workload_id.in_(ref_ids(Workload, workload)))
+        )
+
     def list_query(
         self,
         limit: int,
         after_seq: int | None = None,
         project: str | None = None,
         artifact: str | None = None,
+        workload: str | None = None,
         search: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> Select:
@@ -78,6 +93,8 @@ class EndpointRepository:
             query = query.where(Endpoint.project_id.in_(ref_ids(Project, project, "slug")))
         if artifact is not None:
             query = query.where(Endpoint.id.in_(self.serving_artifact_query(artifact)))
+        if workload is not None:
+            query = query.where(Endpoint.id.in_(self.serving_workload_query(workload)))
         if search is not None:
             query = query.where(Endpoint.name.ilike(f"%{search}%"))
         for key, value in (labels or {}).items():

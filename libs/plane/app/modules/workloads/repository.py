@@ -10,14 +10,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
+from app.db.models import Node
+from app.db.models import Device
 from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Replica
 from app.db.models import Artifact
 from app.db.models import Workload
+from app.db.models import Allocation
 from app.db.models import Deployment
 from app.db.models import PriorityClass
+from app.db.models import AllocationDevice
 from app.db.models import DeploymentStatus
 from app.core.filters import ref_ids
 
@@ -55,6 +59,8 @@ class WorkloadRepository:
             select(
                 Workload,
                 Recipe.uid.label("recipe_uid"),
+                Recipe.name.label("recipe_name"),
+                Artifact.name.label("artifact_tag"),
                 Project.uid.label("project_uid"),
                 PriorityClass.name.label("priority_class"),
                 Cluster.uid.label("pinned_cluster_uid"),
@@ -62,8 +68,45 @@ class WorkloadRepository:
             .join(Recipe, Workload.recipe_id == Recipe.id)
             .join(Project, Workload.project_id == Project.id)
             .join(PriorityClass, Workload.priority_class_id == PriorityClass.id)
+            .outerjoin(Artifact, Recipe.artifact_id == Artifact.id)
             .outerjoin(Cluster, Workload.pinned_cluster_id == Cluster.id)
         )
+
+    def placement_query(self, workload_id) -> Select:
+        """Every live device a workload currently holds, with node and replica.
+
+        Scoped to live allocations and live members — `released_at IS NULL` on
+        both — because placement is where the workload is now, not where it has
+        been. One row per held device, joined out to the node it sits on and the
+        replica the allocation serves, so the rollup is assembled in one round
+        trip rather than one per allocation.
+        """
+        return (
+            select(
+                Allocation.uid.label("allocation_uid"),
+                Allocation.device_count.label("device_count"),
+                Cluster.uid.label("cluster_uid"),
+                Replica.uid.label("replica_uid"),
+                Device.uid.label("device_uid"),
+                Node.uid.label("node_uid"),
+            )
+            .select_from(Allocation)
+            .join(Cluster, Allocation.cluster_id == Cluster.id)
+            .outerjoin(Replica, Allocation.replica_id == Replica.id)
+            .join(AllocationDevice, AllocationDevice.allocation_id == Allocation.id)
+            .join(Device, AllocationDevice.device_id == Device.id)
+            .join(Node, Device.node_id == Node.id)
+            .where(
+                Allocation.workload_id == workload_id,
+                Allocation.released_at.is_(None),
+                AllocationDevice.released_at.is_(None),
+            )
+            .order_by(Allocation.seq.asc(), Node.name.asc())
+        )
+
+    async def placement(self, workload_id) -> list[Row]:
+        result = await self.db.execute(self.placement_query(workload_id))
+        return list(result.all())
 
     def get_query(self, ref: str, project: str | None = None) -> Select:
         """An id, or a name that is unique only within its project."""

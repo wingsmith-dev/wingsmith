@@ -20,6 +20,7 @@ from app.modules.artifacts.resolve import RecipeDefaults
 from app.modules.artifacts.resolve import slug_of
 from app.modules.artifacts.resolve import normalise_source
 from app.modules.artifacts.schemas import ArtifactSchema
+from app.modules.artifacts.schemas import ArtifactUsageSchema
 from app.modules.artifacts.schemas import ArtifactCreateRequest
 from app.modules.artifacts.schemas import ArtifactUpdateRequest
 from app.modules.artifacts.schemas import ArtifactLocationSchema
@@ -165,6 +166,41 @@ def test_controller_exposes_full_crud():
         "update_artifact",
         "delete_artifact",
         "resolve_artifact",
+        "artifact_usage",
+    }
+
+
+def test_base_artifact_filter_selects_the_derived_children(repo):
+    text = sql(repo.list_query(limit=10, base_artifact="llama-70b"))
+    assert "demand_artifact.base_artifact_id IN" in text
+
+
+def test_downstream_count_is_children_that_name_this_artifact_as_base(repo):
+    text = sql(repo.downstream_query(Artifact(uid=new_uid(ARTIFACT))))
+    assert "count(demand_artifact.id)" in text
+    assert "demand_artifact.base_artifact_id" in text
+
+
+def test_recipe_usage_counts_recipes_that_serve_these_weights(repo):
+    text = sql(repo.recipe_usage_query(Artifact(uid=new_uid(ARTIFACT))))
+    assert "count(demand_recipe.id)" in text
+    assert "demand_recipe.artifact_id" in text
+
+
+def test_workload_usage_unions_recipe_weights_and_adapter_set(repo):
+    text = sql(repo.workload_usage_query(Artifact(uid=new_uid(ARTIFACT))))
+    assert "count(distinct(demand_workload.id))" in text
+    assert "JOIN demand_recipe" in text
+    assert "demand_recipe.artifact_id" in text
+    assert "demand_workload.adapter_artifact_ids @>" in text
+
+
+def test_usage_schema_carries_the_three_derived_counts():
+    assert set(ArtifactUsageSchema.__struct_fields__) == {
+        "artifact_id",
+        "recipe_count",
+        "workload_count",
+        "downstream_count",
     }
 
 

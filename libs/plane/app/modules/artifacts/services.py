@@ -27,6 +27,7 @@ from .resolve import slug_of
 from .resolve import resolved
 from .resolve import normalise_source
 from .schemas import ArtifactSchema
+from .schemas import ArtifactUsageSchema
 from .schemas import ArtifactCreateRequest
 from .schemas import ArtifactUpdateRequest
 from .schemas import ArtifactLocationSchema
@@ -162,6 +163,17 @@ class ArtifactService:
     async def get(self, ref: str) -> ArtifactSchema:
         return self.schema(*await self._one(ref))
 
+    async def usage(self, ref: str) -> ArtifactUsageSchema:
+        """What depends on this artifact, counted at read time."""
+        artifact, _, _ = await self._one(ref)
+        recipes, workloads, downstream = await self.repo.usage_counts(artifact)
+        return ArtifactUsageSchema(
+            artifact_id=artifact.uid,
+            recipe_count=recipes,
+            workload_count=workloads,
+            downstream_count=downstream,
+        )
+
     async def list(
         self,
         limit: int | None = None,
@@ -169,6 +181,7 @@ class ArtifactService:
         kind: str | None = None,
         format: str | None = None,
         project: str | None = None,
+        base_artifact: str | None = None,
         search: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> ListResponse[ArtifactSchema]:
@@ -179,6 +192,7 @@ class ArtifactService:
             kind=kind,
             format=format,
             project=project,
+            base_artifact=base_artifact,
             search=search,
             labels=labels,
         )

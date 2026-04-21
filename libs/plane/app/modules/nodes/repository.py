@@ -3,6 +3,7 @@ from collections.abc import Sequence
 
 from sqlalchemy import Row
 from sqlalchemy import Select
+from sqlalchemy import case
 from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
@@ -13,6 +14,7 @@ from app.db.models import Node
 from app.db.models import Pool
 from app.db.models import Device
 from app.db.models import Cluster
+from app.db.models import AllocationDevice
 from app.core.filters import ref_ids
 
 
@@ -90,3 +92,67 @@ class NodeRepository:
         for node_id, health, total in result.all():
             rollup.setdefault(node_id, {})[health] = total
         return rollup
+
+    def class_rollup_query(self, node_ids: Sequence[UUID]) -> Select:
+        return (
+            select(Device.node_id, Device.device_class, func.count().label("total"))
+            .where(Device.node_id.in_(node_ids))
+            .group_by(Device.node_id, Device.device_class)
+        )
+
+    async def class_rollup(self, node_ids: Sequence[UUID]) -> dict[UUID, str]:
+        """Dominant device class per node, derived from the node's devices.
+
+        The class with the most devices wins; ties break on class name so the
+        result is stable. Returned per node so a mixed node still reports the
+        model that most of its accelerators are.
+        """
+        if not node_ids:
+            return {}
+        result = await self.db.execute(self.class_rollup_query(node_ids))
+        counts: dict[UUID, dict[str, int]] = {}
+        for node_id, device_class, total in result.all():
+            counts.setdefault(node_id, {})[device_class] = total
+        return {node_id: max(by_class, key=lambda c: (by_class[c], c)) for node_id, by_class in counts.items()}
+
+    def allocated_query(self, node_ids: Sequence[UUID]) -> Select:
+        return (
+            select(Device.node_id, func.count().label("allocated"))
+            .select_from(AllocationDevice)
+            .join(Device, AllocationDevice.device_id == Device.id)
+            .where(Device.node_id.in_(node_ids))
+            .where(AllocationDevice.released_at.is_(None))
+            .group_by(Device.node_id)
+        )
+
+    async def allocated_rollup(self, node_ids: Sequence[UUID]) -> dict[UUID, int]:
+        """Count of live-allocated devices per node, in one aggregate query.
+
+        Only allocation members with a null `released_at` count, so released
+        history never inflates the allocated-of-total figure on the list.
+        """
+        if not node_ids:
+            return {}
+        result = await self.db.execute(self.allocated_query(node_ids))
+        return {node_id: allocated for node_id, allocated in result.all()}
+
+    def summary_query(self) -> Select:
+        return select(
+            func.count(Node.id).label("total"),
+            func.sum(case((Node.ready.is_(True), 1), else_=0)).label("ready"),
+            func.sum(case((Node.cordoned.is_(True), 1), else_=0)).label("cordoned"),
+        )
+
+    def faulted_devices_query(self) -> Select:
+        return select(func.count(Device.id)).where(Device.health != "healthy")
+
+    async def summary(self) -> tuple[int, int, int, int]:
+        """Fleet-wide node counts and faulted-device count, computed server-side.
+
+        Two aggregates rather than a scan of a page: node membership from
+        `supply_node`, faulted accelerators from `supply_device` where observed
+        health is not `healthy`.
+        """
+        nodes = (await self.db.execute(self.summary_query())).one()
+        faulted = (await self.db.execute(self.faulted_devices_query())).scalar_one()
+        return (nodes.total or 0, nodes.ready or 0, nodes.cordoned or 0, faulted or 0)

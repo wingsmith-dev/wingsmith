@@ -18,10 +18,12 @@ from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.modules.benchmarks import summaries
 
 from .schemas import RecipeSchema
 from .schemas import RecipeCacheSchema
 from .schemas import RecipeShapeSchema
+from .schemas import RecipeUsageSchema
 from .schemas import RecipeCreateRequest
 from .schemas import RecipeOverlaySchema
 from .schemas import RecipeServingSchema
@@ -30,6 +32,7 @@ from .schemas import RecipeReasoningSchema
 from .schemas import RecipeResourcesSchema
 from .schemas import RecipeParallelismSchema
 from .schemas import RecipeCapabilitiesSchema
+from .schemas import RecipeBenchmarkSummarySchema
 from .repository import RecipeRepository
 
 
@@ -394,6 +397,43 @@ class RecipeService:
 
     async def get(self, ref: str) -> RecipeSchema:
         return self.schema(*await self._one(ref))
+
+    async def usage(self, ref: str) -> RecipeUsageSchema:
+        """How many workloads name this recipe, counted at read time."""
+        recipe, _ = await self._one(ref)
+        return RecipeUsageSchema(
+            recipe_id=recipe.uid,
+            workload_count=await self.repo.workload_usage_count(recipe),
+        )
+
+    async def benchmarks_summary(self, ref: str) -> RecipeBenchmarkSummarySchema:
+        """Peak per-stream output-token throughput across this recipe's runs.
+
+        Offline benchmark measurement, read through the same harness-and-version
+        adapter the verdicts use. A run whose harness or version has no adapter,
+        or whose summary lacks the throughput path, contributes no reading and is
+        left out of `graded_run_count` — the peak is the maximum of what could be
+        read, or `None` when nothing could.
+        """
+        recipe, _ = await self._one(ref)
+        rows = await self.repo.benchmark_runs(recipe)
+        peak: float | None = None
+        graded = 0
+        for row in rows:
+            adapter = summaries.adapter_for(row.harness, row.harness_version)
+            if adapter is None:
+                continue
+            reading = summaries.read(adapter, row.summary, summaries.OUTPUT_SPEED_PER_STREAM)
+            if reading.value is None:
+                continue
+            graded += 1
+            peak = reading.value if peak is None else max(peak, reading.value)
+        return RecipeBenchmarkSummarySchema(
+            recipe_id=recipe.uid,
+            run_count=len(rows),
+            graded_run_count=graded,
+            peak_output_tokens_per_second=peak,
+        )
 
     async def list(
         self,

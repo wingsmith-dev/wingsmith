@@ -46,6 +46,23 @@ class ArtifactSchema(Struct):
     locations: list[ArtifactLocationSchema]
 
 
+class ArtifactUsageSchema(Struct):
+    """What depends on this artifact, counted at read time and stored nowhere.
+
+    `recipe_count` is the recipes that serve these weights (`Recipe.artifact_id`).
+    `workload_count` is the distinct workloads reaching this artifact either
+    through their recipe's weights or through their adapter set
+    (`Workload.adapter_artifact_ids`). `downstream_count` is the artifacts
+    derived from this one (`base_artifact_id`) — the quantizations and fine-tunes
+    that name it as their base.
+    """
+
+    artifact_id: str
+    recipe_count: int
+    workload_count: int
+    downstream_count: int
+
+
 class ArtifactLocationRequest(Struct):
     scheme: str
     uri: str
