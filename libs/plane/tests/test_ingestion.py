@@ -22,6 +22,7 @@ from msgspec import structs
 from sqlalchemy import Delete
 from sqlalchemy.dialects import postgresql
 
+from app.core.ids import REPLICA
 from app.hub.sink import Sink
 from app.hub.sink import SinkFrame
 from app.hub.sink import DesiredSource
@@ -329,6 +330,30 @@ def test_replica_does_not_write_the_devices_it_holds() -> None:
     """A replica's commitment is an allocation, not a column on the replica."""
     sql, _ = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, payload("replica.observed")))
     assert "device" not in sql
+
+
+def _flat(params: dict) -> list:
+    """Bound values, with an `IN` expansion's tuple opened out."""
+    out: list = []
+    for value in params.values():
+        out.extend(value) if isinstance(value, (list, tuple, set)) else out.append(value)
+    return out
+
+
+def test_replicas_are_pruned_against_the_ids_the_deployment_frame_names() -> None:
+    """Scoped to one cluster and one deployment, because that is what the frame claims."""
+    observed = payload("replica.observed")
+    sql, params = compile_sql(statements.prune_deployment_replicas(CLUSTER_ID, DEPLOYMENT_ID, [observed.replica_id]))
+    assert sql.upper().startswith("DELETE FROM DEMAND_REPLICA")
+    assert "cluster_id" in sql and "deployment_id" in sql
+    assert observed.replica_id in _flat(params)
+
+
+def test_pruning_against_an_empty_set_removes_every_replica() -> None:
+    """A deployment scaled to zero says it has none, and none is a number."""
+    sql, params = compile_sql(statements.prune_deployment_replicas(CLUSTER_ID, DEPLOYMENT_ID, []))
+    assert sql.upper().startswith("DELETE FROM DEMAND_REPLICA")
+    assert not [v for v in _flat(params) if isinstance(v, str) and v.startswith(REPLICA)]
 
 
 def test_allocation_uses_the_cluster_minted_id() -> None:
@@ -744,11 +769,11 @@ async def test_a_truncated_snapshot_deletes_nothing() -> None:
 
 
 async def test_a_demand_resync_warns_that_nothing_on_that_side_was_pruned(caplog) -> None:
-    """Demand-side pruning does not exist yet, and silence would read as success.
+    """A `demand` snapshot closes cleanly and deletes nothing, and silence would read as success.
 
-    A `demand` snapshot closes cleanly and deletes nothing, so a replica the
-    cluster stopped reporting stays in the database forever. Until there is a
-    real prune, the log is the only thing that says so.
+    Replicas are reaped per deployment against `replica_ids` instead, outside
+    the resync entirely — so the snapshot really does delete nothing and the
+    log is the only thing that says which mechanism is responsible.
     """
     sink = DatabaseSink(FakeSessions())
     await sink.begin_resync(CLUSTER, "demand", "req-6")

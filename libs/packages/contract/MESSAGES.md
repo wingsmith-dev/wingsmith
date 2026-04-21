@@ -177,12 +177,28 @@ things that can disagree, and the placement copy is the one placement already re
 
 | Type | Payload |
 |---|---|
-| `deployment.observed` | phase, `reason`, `message`, replica counts, last error |
+| `deployment.observed` | phase, `reason`, `message`, replica counts, `replica_ids`, last error |
 | `replica.observed` | which devices, readiness, engine version, restart count, observed generation |
 | `replica.event` | started, ready, failed, OOM, preempted |
 | `allocation.observed` | devices currently committed, and to what |
 | `cache.observed` | artifact residency, per node, and eviction pressure |
 | `component.observed` | rollout status per component |
+
+**`deployment.observed` carries `replica_ids`, and it is the only thing that lets the plane forget
+a replica.** Demand-side observed state is not pruned against a resync the way supply is, so a
+replica that simply stops being reported — a rolled pod, a restarted one, a deployment scaled down
+— has nothing to remove its row. It stayed in the plane's database for ever and kept counting
+towards the rollup, which is how a deployment of one came to read three ready of one. The frame
+names this deployment's whole replica set on this cluster every time it is sent, and the plane
+deletes the ones it does not name; the allocations those replicas held cascade with them, which is
+the same leak on the device side.
+
+This is a per-deployment claim rather than a snapshot, and that is what makes it safe without the
+resync guard: absence from the list is evidence about one deployment on one cluster, and the frame
+either arrived whole or did not arrive at all. `null` is an operator that predates the field and
+prunes nothing; `[]` is a claim that there are none, which is what a scale to zero says. For the
+same reason the operator must not suppress a `deployment.observed` whose counts are unchanged but
+whose replica set is not — a pod replaced one-for-one changes no count and still needs the prune.
 
 **`deployment.observed` carries `reason` and `message`, and the operator sends one on every
 outcome — including the ones that are not errors.** A deployment spends most of its life before it

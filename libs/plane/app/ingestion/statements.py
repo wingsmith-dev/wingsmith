@@ -1030,6 +1030,31 @@ def insert_prune_event(cluster_id: UUID, subject_type: str, subject_uid: str, la
     )
 
 
+def prune_deployment_replicas(cluster_id: UUID, deployment_id: UUID, keep: list[str]) -> Delete:
+    """Forgets replicas one cluster no longer reports for one deployment.
+
+    Not a resync prune and deliberately narrower than one: `deployment.observed`
+    names the whole replica set of a single deployment on a single cluster every
+    time it is sent, so absence from that list is evidence about that deployment
+    alone and nothing else. A truncated snapshot cannot cost anything here the
+    way it could for nodes, because there is no snapshot — there is one frame,
+    which either arrived whole or did not arrive.
+
+    An empty `keep` deletes them all, which is what a deployment scaled to zero
+    means. The caller is the one that distinguishes that from an operator too
+    old to make the claim, and never calls this for the latter.
+
+    Allocations cascade with the replica, which is the other half of the leak:
+    the devices a departed pod held stop reading as committed.
+    """
+    keep_uids = {observed_uid(replica_id, REPLICA) for replica_id in keep}
+    return delete(Replica).where(
+        Replica.cluster_id == cluster_id,
+        Replica.deployment_id == deployment_id,
+        Replica.uid.notin_(keep_uids or {""}),
+    )
+
+
 def prune_nodes(cluster_id: UUID, keep: set[str]) -> Delete:
     return delete(Node).where(Node.cluster_id == cluster_id, Node.uid.notin_(keep or {""}))
 

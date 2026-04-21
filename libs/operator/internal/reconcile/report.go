@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"sort"
 	"strings"
 	"time"
 
@@ -70,11 +71,12 @@ type stageState struct {
 // four ready and two of four ready are both `degraded`, and suppressing the second as a repeat
 // would hide the only thing that changed.
 type reportKey struct {
-	phase   string
-	reason  string
-	message string
-	ready   int
-	desired int
+	phase    string
+	reason   string
+	message  string
+	ready    int
+	desired  int
+	replicas string
 }
 
 // report sends one deployment.observed, unless it would say exactly what the last one said.
@@ -110,6 +112,9 @@ func (r *SyncedResourceReconciler) report(res *v1alpha1.SyncedResource, phase, r
 		return
 	}
 
+	// ReplicaIDs is left nil deliberately. This frame is a conclusion about a write and never
+	// reads the pods, so it is not entitled to say which replicas exist; an empty set here
+	// would tell the plane to delete every replica of a deployment that is merely waiting.
 	r.send(reporter, id, wire.DeploymentObserved{
 		DeploymentID: id,
 		ClusterID:    r.ClusterID,
@@ -142,6 +147,12 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 		return
 	}
 
+	present := make([]string, 0, len(out.replicas))
+	for _, replica := range out.replicas {
+		present = append(present, replica.ReplicaID)
+	}
+	sort.Strings(present)
+
 	r.send(reporter, id, wire.DeploymentObserved{
 		DeploymentID:        id,
 		ClusterID:           r.ClusterID,
@@ -151,9 +162,12 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 		ReadyReplicas:       out.ready,
 		UpdatedReplicas:     out.updated,
 		UnavailableReplicas: out.unavailable,
-		Reason:              out.reason(),
-		Message:             out.message(),
-		ObservedAt:          time.Now().UTC().Format(time.RFC3339Nano),
+		// Empty, never nil: this loop always knows the whole set, so it always makes the
+		// claim. See wire.DeploymentObserved.ReplicaIDs for why the distinction matters.
+		ReplicaIDs: present,
+		Reason:     out.reason(),
+		Message:    out.message(),
+		ObservedAt: time.Now().UTC().Format(time.RFC3339Nano),
 	})
 
 	// The replicas themselves, each under its own id. Not suppressed against a previous
@@ -183,8 +197,9 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 //
 // The set is remembered per deployment and only in memory, which bounds what this can repair. A
 // pod that goes away while this operator is down is never reported as departed, because nothing
-// here knows it existed. Those rows stay held until the plane learns to prune demand state on
-// resync, which is the real fix and is not this loop's to make.
+// here knows it existed. Those rows are caught by the other half instead: the replicas they hang
+// off are pruned against `deployment.observed.replica_ids`, which is rebuilt from the live pods on
+// every reconcile and so survives a restart, and an allocation cascades with its replica.
 func (r *SyncedResourceReconciler) reportAllocations(reporter Reporter, id string, out rollout) {
 	if r.Devices == nil {
 		return
@@ -259,6 +274,17 @@ func (r *SyncedResourceReconciler) send(reporter Reporter, id string, payload wi
 		message: payload.Message,
 		ready:   payload.ReadyReplicas,
 		desired: payload.DesiredReplicas,
+		// Part of the key because the frame carries the replica set, and a rolled pod changes
+		// which replicas exist without changing any of the counts. Suppressing that frame
+		// would suppress the prune that goes with it.
+		replicas: strings.Join(payload.ReplicaIDs, ","),
+	}
+	// A frame that makes no claim about replicas inherits the last one's, so it compares on
+	// the fields it actually carries. Without this the two senders alternate — `report` with
+	// no set, `reportRollout` with one — each looks like news against the other's key, and the
+	// pair re-sends on every pass forever, which is the exact loop the key exists to stop.
+	if payload.ReplicaIDs == nil {
+		key.replicas = r.lastReported(id).replicas
 	}
 	if r.lastReported(id) == key {
 		return

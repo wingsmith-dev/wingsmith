@@ -461,6 +461,17 @@ type DeploymentObserved struct {
 	LastError           *LastError `json:"last_error,omitempty"`
 	ObservedAt          string     `json:"observed_at"`
 
+	// ReplicaIDs is every replica this deployment has on this cluster right now, and it is
+	// what lets the plane forget the ones it no longer has. Demand state is never pruned
+	// against a resync, so a replica that simply stopped being reported — a rolled pod, a
+	// restarted one, a node that moved — stayed in the plane's database for ever and kept
+	// counting towards the rollup, which is why a deployment of one read three ready of one.
+	//
+	// Nil and empty mean different things and the field is deliberately not `omitempty`: nil
+	// is a frame from an operator that predates this and makes no claim, empty is a claim
+	// that there are none. A scale to zero has to be able to say so.
+	ReplicaIDs []string `json:"replica_ids"`
+
 	// Reason is the cluster's sub-state within Phase, from the closed set in MESSAGES.md.
 	// It is not an error: most of what it reports is an ordering that has not been satisfied
 	// yet, which is the normal way a deployment spends its first minutes.

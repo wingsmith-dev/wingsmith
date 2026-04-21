@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"testing"
 
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -348,5 +349,79 @@ func TestForgetAllIsSafeToCallTwice(t *testing.T) {
 	r.ForgetAll()
 	if len(r.reported) != 0 {
 		t.Error("ForgetAll left state behind")
+	}
+}
+
+// The prune the plane performs is only as good as the set this frame carries, and there is one
+// failure mode that matters: a pod replaced one-for-one moves no count at all. Without the replica
+// set in the suppression key that frame is dropped as unchanged, the plane never hears that the
+// old replica is gone, and its row keeps counting towards the rollup for ever — which is how a
+// deployment of one came to read three ready of one.
+func TestAReplacedPodIsReportedEvenThoughNoCountMoved(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	for _, pod := range readyPods(2) {
+		objects = append(objects, pod)
+	}
+
+	reporter := &recordingReporter{}
+	r, _ := runReconcileReporting(t, reporter, objects...)
+	before := lastSent(t, reporter)
+	if len(before.ReplicaIDs) != 2 {
+		t.Fatalf("reported %d replica ids, want 2", len(before.ReplicaIDs))
+	}
+
+	ctx := context.Background()
+	gone := readyPods(2)[1]
+	if err := r.Client.Delete(ctx, gone); err != nil {
+		t.Fatalf("deleting the replaced pod: %v", err)
+	}
+	replacement := readyPods(2)[1]
+	replacement.Name += "-replaced"
+	replacement.ResourceVersion = ""
+	if err := r.Client.Create(ctx, replacement); err != nil {
+		t.Fatalf("creating the replacement pod: %v", err)
+	}
+
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: "hangar-system", Name: dep.Name}}
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("second pass: %v", err)
+	}
+
+	after := lastSent(t, reporter)
+	if after.ReadyReplicas != before.ReadyReplicas {
+		t.Fatalf("the counts moved, so this is not the case under test")
+	}
+	if slices.Equal(after.ReplicaIDs, before.ReplicaIDs) {
+		t.Error("the replaced pod was never reported: the plane cannot prune what it is not told about")
+	}
+}
+
+// A deployment with no pods yet has to be able to say so, because an empty claim and no claim at
+// all mean opposite things to the prune on the other end — and the frames that never looked at a
+// pod must make no claim, or a deployment waiting on its recipe would have its replicas deleted.
+func TestOnlyTheFrameReadBackFromPodsClaimsAReplicaSet(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+
+	waiting := &recordingReporter{}
+	runReconcileReporting(t, waiting, dep)
+	for _, sent := range waiting.sent {
+		if sent.ReplicaIDs != nil {
+			t.Errorf("a deployment waiting on its recipe claimed %v replicas", sent.ReplicaIDs)
+		}
+	}
+
+	rolled := &recordingReporter{}
+	runReconcileReporting(t, rolled, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	var claimed bool
+	for _, sent := range rolled.sent {
+		claimed = claimed || sent.ReplicaIDs != nil
+	}
+	if !claimed {
+		t.Error("nothing claimed a replica set, so the plane has nothing to prune against")
 	}
 }

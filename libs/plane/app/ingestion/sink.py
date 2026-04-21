@@ -326,6 +326,26 @@ class DatabaseSink:
                 if _moved(before, payload):
                     await db.execute(statements.deployment_progressed(cluster_id, deployment[0], payload))
                 await db.execute(statements.upsert_deployment_status(cluster_id, deployment[0], payload))
+                # The frame names this deployment's whole replica set on this cluster, so the
+                # replicas it does not name are gone. Nothing else ever removes one: demand
+                # state is not pruned against a resync, so a rolled or restarted pod left its
+                # row behind for ever and kept counting towards the rollup — which is how a
+                # deployment of one came to read three ready of one in the console.
+                #
+                # `None` is an operator too old to make the claim and prunes nothing; an empty
+                # list is a claim of none and deletes them all, which is a scale to zero.
+                if payload.replica_ids is not None:
+                    pruned = await db.execute(
+                        statements.prune_deployment_replicas(cluster_id, deployment[0], payload.replica_ids)
+                    )
+                    if pruned.rowcount:
+                        logger.info(
+                            "ingestion.deployment.replicas_pruned deployment=%s cluster=%s removed=%d kept=%d",
+                            payload.deployment_id,
+                            frame.cluster_id,
+                            pruned.rowcount,
+                            len(payload.replica_ids),
+                        )
                 # Admission moves with it, on this deployment alone. A workload has one of these
                 # per cluster and they do not agree — one region can be running while another sits
                 # queued on quota — so the phase is written here and the workload only takes the
@@ -462,11 +482,11 @@ class DatabaseSink:
         if epoch.scope in DEMAND_SCOPES:
             logger.warning(
                 "ingestion.resync.demand_not_pruned cluster=%s request=%s scope=%s received=%d "
-                "demand-side observed state (replicas, allocations) was applied as upserts and NOT pruned: "
-                "a replica or allocation this cluster has stopped reporting is still in the database and "
-                "will stay there until it is removed by hand. Only the supply side (nodes, devices, "
-                "topology domains, discovered workloads) is pruned against a snapshot. "
-                "Suspect stale demand rows here before trusting a replica count for this cluster.",
+                "demand-side observed state was applied as upserts and NOT pruned against this "
+                "snapshot: only the supply side (nodes, devices, topology domains, discovered "
+                "workloads) is. Replicas are reaped instead by `deployment.observed.replica_ids`, "
+                "per deployment and outside the resync, and allocations cascade with them — so a "
+                "cluster whose operator still sends that field leaves nothing stale here.",
                 cluster_id,
                 request_id,
                 epoch.scope,

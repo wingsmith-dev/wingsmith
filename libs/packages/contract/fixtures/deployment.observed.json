@@ -14,6 +14,12 @@
     "ready_replicas": 3,
     "updated_replicas": 4,
     "unavailable_replicas": 1,
+    "replica_ids": [
+      "rep_01j9x2hhhhhhhhhhhhhhhhhhhh",
+      "rep_01j9x2hhhhhhhhhhhhhhhhhhhj",
+      "rep_01j9x2hhhhhhhhhhhhhhhhhhhk",
+      "rep_01j9x2hhhhhhhhhhhhhhhhhhhm"
+    ],
     "reason": "NoSchedulableCapacity",
     "message": "one replica needs 2 accelerators of class h100-80gb-sxm and the largest usable node advertises 1",
     "last_error": {

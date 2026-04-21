@@ -552,6 +552,14 @@ class DeploymentObserved(Struct):
     echoed back so the plane can see that render and declaration agree. Summing
     it across a workload's deployments is the plane's job and only the plane's;
     the operator never does.
+
+    `replica_ids` is every replica this cluster has for this deployment, and it
+    is the only thing that lets the plane forget one. Demand state is not pruned
+    against a resync, so a replica that stopped being reported used to stay in
+    the database for ever and keep counting — a deployment of one reading three
+    ready of one. `None` is an operator that predates the field and makes no
+    claim; an empty list is a claim that there are none, which is what a scale
+    to zero says.
     """
 
     deployment_id: str
@@ -566,6 +574,7 @@ class DeploymentObserved(Struct):
     last_error: LastError | None = None
     reason: str | None = None
     message: str | None = None
+    replica_ids: list[str] | None = None
 
 
 class ReplicaObserved(Struct):
