@@ -1,0 +1,601 @@
+# GENERATED — do not edit by hand.
+# Source of truth: libs/operator/deploy/ (base kustomize manifests).
+# Regenerate with: just render-operator-template
+# Dollar-brace placeholders are substituted by app/hub/install.py at request time.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: hangar-system
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: syncedresources.placeholder.hangar.dev
+spec:
+  group: placeholder.hangar.dev
+  names:
+    kind: SyncedResource
+    listKind: SyncedResourceList
+    plural: syncedresources
+    shortNames:
+    - syncres
+    singular: syncedresource
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.kind
+      name: Kind
+      type: string
+    - jsonPath: .spec.revision
+      name: Revision
+      type: integer
+    - jsonPath: .status.observedRevision
+      name: Observed
+      type: integer
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: SyncedResource is the single placeholder CRD for this skeleton.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              SyncedResourceSpec is the durable local copy of one piece of desired state received from the
+              hub. The payload is held opaquely on purpose: the operator skeleton must persist and reconcile
+              desired state without knowing the domain schema, which another track defines.
+            properties:
+              adopt:
+                description: |-
+                  Adopt names a cluster object that already exists and is already running, promoted from a
+                  discovered workload. It is provenance and a drift check: the reconciler takes ownership in
+                  place rather than applying a rendered spec over it, and only while the live object still
+                  digests to SpecFingerprint.
+
+                  Both fields are on the durable copy rather than read out of the payload each time because
+                  they are safety gates. A gate that depends on parsing the domain schema is a gate that
+                  opens when the parse fails.
+                properties:
+                  kind:
+                    type: string
+                  name:
+                    type: string
+                  namespace:
+                    description: Namespace, Kind and Name locate the object in this
+                      cluster.
+                    type: string
+                  specFingerprint:
+                    description: |-
+                      SpecFingerprint is the digest of the pod template as it was when the plane accepted the
+                      promotion. A reconciler that finds anything else must refuse and report, never converge:
+                      closing that gap means restarting a model that nobody asked to have restarted.
+                    type: string
+                required:
+                - kind
+                - name
+                - namespace
+                - specFingerprint
+                type: object
+              authority:
+                description: |-
+                  Authority is who owns this object: "observed" or "managed". Observed means record and
+                  verify and write nothing to the cluster; managed means render and converge. Empty reads as
+                  observed, so an object from a plane that predates the field is never managed by accident.
+
+                  This is the gate, and it is deliberately not the presence of Adopt. Where an object came
+                  from is a historical fact; whether this operator may act on it is a decision the plane
+                  makes and can reverse (ADR 0009).
+                enum:
+                - observed
+                - managed
+                type: string
+              kind:
+                description: Kind is the domain object kind as named on the wire.
+                minLength: 1
+                type: string
+              payload:
+                description: Payload is the domain object exactly as it arrived on
+                  the wire.
+                x-kubernetes-preserve-unknown-fields: true
+              revision:
+                description: |-
+                  Revision is the plane-assigned revision of this desired state. It is monotonic per object
+                  and lets the reconciler ignore stale replays after a stream resume.
+                format: int64
+                minimum: 0
+                type: integer
+            required:
+            - kind
+            - revision
+            type: object
+          status:
+            description: SyncedResourceStatus is the observed half, shipped back up
+              the stream by the sync loop.
+            properties:
+              conditions:
+                description: Conditions carries standard reconcile conditions.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              observedRevision:
+                description: ObservedRevision is the spec revision the reconciler
+                  last acted on.
+                format: int64
+                type: integer
+              phase:
+                description: |-
+                  Phase is a coarse reconcile outcome. It is not an operation: long-running, failable work
+                  is modelled separately by the object-model track.
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: streamcheckpoints.sync.hangar.dev
+spec:
+  group: sync.hangar.dev
+  names:
+    kind: StreamCheckpoint
+    listKind: StreamCheckpointList
+    plural: streamcheckpoints
+    shortNames:
+    - streamcp
+    singular: streamcheckpoint
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.sessionID
+      name: Session
+      type: string
+    - jsonPath: .spec.appliedSeq
+      name: Applied
+      type: integer
+    - jsonPath: .spec.lossy
+      name: Lossy
+      type: boolean
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          StreamCheckpoint is the durable resume cursor, stored in the cluster so that it survives an
+          operator restart with no control-plane connectivity.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              StreamCheckpointSpec is the durable resume cursor for the operator's hub stream.
+
+              It is held in spec rather than status because it is written by the sync loop and read by
+              nothing else: it is neither declared state from the plane nor observed state from the cluster,
+              and a single spec write keeps the three fields mutually consistent in one atomic update.
+            properties:
+              appliedSeq:
+                description: |-
+                  AppliedSeq is the highest *contiguous* inbound sequence number the operator has durably
+                  applied. It is never advanced across a gap: a hole means every later frame is unapplied,
+                  whatever its sequence number.
+                format: int64
+                minimum: 0
+                type: integer
+              lossy:
+                description: |-
+                  Lossy records that the local replay buffer discarded an unacknowledged frame. Once set,
+                  the operator must ask for a fresh session rather than claim it can resume, and the flag
+                  survives a restart so that a crash cannot launder it away.
+                type: boolean
+              sessionID:
+                description: |-
+                  SessionID is the hub-issued session the cursor belongs to. A cursor is only meaningful
+                  within its session, so the two are never stored apart.
+                minLength: 1
+                type: string
+              updatedAt:
+                description: UpdatedAt is diagnostic only and is never used for ordering
+                  or comparison.
+                format: date-time
+                type: string
+            required:
+            - appliedSeq
+            - sessionID
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: hangar-operator
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - ""
+  resources:
+  - nodes
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - services
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods/eviction
+  verbs:
+  - create
+- apiGroups:
+  - ""
+  resources:
+  - pods/log
+  verbs:
+  - get
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - batch
+  resources:
+  - jobs/status
+  verbs:
+  - get
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - nvidia.com
+  resources:
+  - dynamographdeployments
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - nvidia.com
+  resources:
+  - dynamographdeployments/status
+  verbs:
+  - get
+- apiGroups:
+  - placeholder.hangar.dev
+  resources:
+  - syncedresources
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - placeholder.hangar.dev
+  resources:
+  - syncedresources/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - sync.hangar.dev
+  resources:
+  - streamcheckpoints
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - update
+  - watch
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hangar-operator
+  namespace: hangar-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: hangar-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: hangar-operator
+subjects:
+  - kind: ServiceAccount
+    name: hangar-operator
+    namespace: hangar-system
+---
+# The enrolment token is a credential and does not ship here. Auth is stubbed: a static bearer
+# token, no rotation — see docs/plans/01 §11.5. Before applying this bundle, create it out of
+# band, e.g.:
+#
+#   kubectl create secret generic hangar-operator -n hangar-system \
+#     --from-literal=enrolment-token=<real-token>
+#
+# 30-deployment.yaml reads it from this Secret's `enrolment-token` key. Without it, the Pod
+# fails to start rather than silently dialling the hub with a placeholder credential.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hangar-operator
+  namespace: hangar-system
+data:
+  HANGAR_CLUSTER_ID: ${CLUSTER_ID}
+  HANGAR_HUB_URL: ${HUB_URL}
+  HANGAR_LOG_LEVEL: info
+  HANGAR_LOG_FORMAT: json
+  HANGAR_NAMESPACE: hangar-system
+  HANGAR_HEARTBEAT_INTERVAL: 10s
+  HANGAR_LIVENESS_TIMEOUT: 30s
+  HANGAR_SEND_QUEUE_SIZE: "1024"
+  HANGAR_LEADER_ELECTION: "true"
+  # Observe and report, write nothing. This is what a cluster is pointed at a plane with the
+  # first time: the reconciler is never registered and every operation is refused, so the only
+  # traffic is outbound. The RBAC in rbac/role.yaml is deliberately unchanged — this is a
+  # behavioural switch, not a permission one, and narrowing the role would mean two bundles to
+  # keep in step. Set to "false" when the cluster should start serving what the plane declares.
+  HANGAR_READ_ONLY: "true"
+  # The exceptions to the line above: operation kinds a read-only operator will still perform,
+  # comma-separated. Empty means none, which is what read-only meant when it was one word for
+  # two guarantees — the plane does not own what runs here, and the plane may not be asked for
+  # anything either. Those turned out to be separate questions: benchmarking writes to the
+  # cluster, so refusing it under a blanket read-only was right, but the alternative was turning
+  # on reconciliation to get it. An allowlist and not a second boolean because the kinds are not
+  # interchangeable — a benchmark is additive and disposable, a drain on an unmanaged cluster is
+  # not. Widen it per cluster in overlays/, never here.
+  HANGAR_ALLOWED_OPERATIONS: ""
+  # The in-cluster DCGM exporter, scraped for device identity only (ADR 0007). Point this at
+  # whatever Service the cluster runs it under; empty disables the scrape and device ids fall
+  # back to the hangar.dev/device-uuids annotation and then to <node>-gpu<index>. No RBAC is
+  # needed: this is an ordinary HTTP GET to a Service DNS name, not a Kubernetes API call.
+  HANGAR_DCGM_ENDPOINT: http://dcgm-exporter.platform.svc.cluster.local:9400/metrics
+  HANGAR_DCGM_TIMEOUT: 5s
+  # Where a benchmark aims its load: this cluster's own OpenAI-compatible frontend. It is a
+  # cluster-local address by construction, and that is the point — a benchmark generates real
+  # inference traffic, and rule 4 says none of that crosses the control plane. The plane names
+  # the deployment and the model; how this cluster exposes its frontend is a local fact.
+  # Empty: the operator finds the frontend by asking for the Service that selects Dynamo's
+  # Frontend component. Set it only on a cluster whose frontend Dynamo did not label.
+  HANGAR_INFERENCE_ENDPOINT: ""
+  # A run that wedged against an endpoint which stopped answering would otherwise hold its
+  # operation open forever. This bounds one whose request carried no deadline of its own.
+  HANGAR_BENCHMARK_TIMEOUT: 30m
+  # Where a run's raw per-request records go. Those are telemetry — one row per request, never
+  # joined — so they belong in object storage and not in the sync stream. Left empty because
+  # nothing uploads them yet: reporting a URI with nothing at it would be worse than reporting
+  # none. See docs/wip.md.
+  HANGAR_BENCHMARK_ARTIFACT_BASE: ""
+  # What one run's load generator requests. A load generator is an HTTP client: it opens
+  # connections, reads streamed tokens, and counts. No CPU limit is set anywhere, so this is a
+  # scheduling floor rather than a cap and a run bursts into whatever the node has idle. Raise it
+  # on a cluster where a high-concurrency run would otherwise be co-scheduled with work that
+  # starves it — a generator short of CPU does not fail, it reports its own latency as the
+  # engine's.
+  HANGAR_BENCHMARK_CPU: 500m
+  HANGAR_BENCHMARK_MEMORY: 1Gi
+  # Which node pool downloads weights, and the taint it tolerates to get there. The prefetch job
+  # is a network and disk job with no accelerator in it, so it belongs anywhere but a GPU node —
+  # a pool of its own where one exists, and the general-purpose pool where one does not. Both are
+  # here rather than left to the binary's defaults because a value that exists only in Go is one
+  # nobody finds until a job sits Pending: the scheduler's answer to a pool that does not exist
+  # is silence, and the deployment waiting on those weights reports only that they are not
+  # resident.
+  HANGAR_CACHE_POOL_VALUE: cache
+  HANGAR_CACHE_TAINT_KEY: hangar.io/cache
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hangar-operator
+  namespace: hangar-system
+  labels:
+    app.kubernetes.io/name: hangar-operator
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hangar-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hangar-operator
+    spec:
+      serviceAccountName: hangar-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: operator
+          image: ${OPERATOR_IMAGE}
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: hangar-operator
+          env:
+            - name: HANGAR_ENROLMENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: hangar-operator
+                  key: enrolment-token
+          ports:
+            - name: health
+              containerPort: 8081
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      terminationGracePeriodSeconds: 30
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hangar-operator
+  namespace: hangar-system
+type: Opaque
+stringData:
+  enrolment-token: "${ENROLMENT_TOKEN}"

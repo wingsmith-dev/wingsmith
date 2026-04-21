@@ -6,8 +6,10 @@ from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
+from app.core.auth import issue_install_token
 from app.db.models import Cluster
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
@@ -23,6 +25,7 @@ from .schemas import ClusterSchema
 from .schemas import ClusterSyncSchema
 from .schemas import ClusterRollupSchema
 from .schemas import ClusterCreateRequest
+from .schemas import ClusterInstallSchema
 from .schemas import ClusterServingSchema
 from .schemas import ClusterUpdateRequest
 from .schemas import ClusterHeadroomSchema
@@ -178,6 +181,28 @@ class ClusterService:
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
         return self.schema(cluster)
+
+    async def install_command(self, ref: str, host: str) -> ClusterInstallSchema:
+        """A one-liner that installs the operator into `ref`, minted fresh.
+
+        Read-only despite minting a token: the token is signed and stateless, so
+        nothing is written. The cluster must already be declared — you cannot get
+        an install command for a cluster the plane has never heard of, which is
+        the same rule ingestion enforces on the wire. `host` is the request's own
+        host, used only when `PUBLIC_HOST` is unset (local, tests).
+        """
+        cluster = await self.repo.get(ref)
+        if cluster is None:
+            raise NotFound(f"no cluster {ref!r}")
+        token = issue_install_token(cluster.name)
+        public = settings.PUBLIC_HOST or host
+        script_url = f"https://{public}/install/{token}.sh"
+        manifest_url = f"https://{public}/install/{token}/operator.yaml"
+        return ClusterInstallSchema(
+            command=f"curl -fsSL {script_url} | sh",
+            manifest_url=manifest_url,
+            expires_in_seconds=settings.INSTALL_TOKEN_TTL_SECONDS,
+        )
 
     async def list(
         self,

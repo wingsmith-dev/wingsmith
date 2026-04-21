@@ -51,6 +51,7 @@ from app.hub.messages import RawEnvelope
 from app.hub.messages import ResyncBegin
 from app.hub.ownership import ClaimStore
 from app.hub.ownership import MemoryClaimStore
+from app.modules.clusters.enrolment import schedule_promote_on_enrolment
 
 
 logger = getLogger(__name__)
@@ -328,6 +329,8 @@ class OperatorSession:
             return
         if canonical and canonical != hello.cluster_id:
             self.live.alias(canonical, self)
+        if canonical:
+            schedule_promote_on_enrolment(canonical)
 
     async def _mark_disconnected(self) -> None:
         if self.state is None or not isinstance(self.sink, Liveness):

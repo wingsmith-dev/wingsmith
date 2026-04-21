@@ -6,6 +6,7 @@ import {
   deleteCluster,
   fetchCluster,
   fetchClusters,
+  mintClusterInstall,
   setClusterServing,
   updateCluster,
   type ClusterFilters,
@@ -75,6 +76,16 @@ export function useClearClusterServing() {
   return useMutation({
     mutationFn: (ref: string) => clearClusterServing(ref),
     onSuccess: () => client.invalidateQueries({ queryKey: ["clusters"] }),
+  })
+}
+
+/**
+ * Mints an install one-liner on demand. A mutation, not a query: each call
+ * returns a fresh short-lived token, so it is never cached or refetched.
+ */
+export function useClusterInstall() {
+  return useMutation({
+    mutationFn: (ref: string) => mintClusterInstall(ref),
   })
 }
 

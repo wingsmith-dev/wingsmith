@@ -19,6 +19,7 @@ import { ComponentsTable } from "./ComponentsTable"
 import { ClusterDevicesTable } from "./DevicesTable"
 import { ClusterNodesTable } from "./NodesTable"
 import { ClusterOverviewTab } from "./OverviewTab"
+import { ConnectClusterCard } from "./ConnectClusterCard"
 import { ClusterPoolsPanel } from "./PoolsPanel"
 import { ServingCard } from "./ServingCard"
 import { SyncCard } from "./SyncCard"
@@ -94,6 +95,11 @@ export function ClusterDetailPage() {
               </StatusLabel>
               <Labels labels={cluster.labels} />
             </div>
+
+            {(cluster.sync.state === "never_connected" ||
+              cluster.serving === null) && (
+              <ConnectClusterCard cluster={cluster} />
+            )}
 
             <div className="grid gap-4 lg:grid-cols-2">
               <SyncCard sync={cluster.sync} />

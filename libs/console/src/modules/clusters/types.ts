@@ -74,6 +74,17 @@ export interface Cluster {
   serving: ClusterServing | null
 }
 
+/**
+ * A one-time bootstrap command that installs the operator into a cluster. The
+ * `command` carries a short-lived, single-cluster token and no secret — the
+ * runtime credential is injected into the manifest the command fetches.
+ */
+export interface ClusterInstall {
+  command: string
+  manifest_url: string
+  expires_in_seconds: number
+}
+
 export interface ClusterCreateRequest {
   name: string
   region: string

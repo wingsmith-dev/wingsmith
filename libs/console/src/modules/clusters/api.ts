@@ -2,6 +2,7 @@ import { api, type ListResponse } from "@/lib/api"
 import type {
   Cluster,
   ClusterCreateRequest,
+  ClusterInstall,
   ClusterServingRequest,
   ClusterUpdateRequest,
 } from "./types"
@@ -56,4 +57,12 @@ export function clearClusterServing(ref: string): Promise<void> {
 
 export function deleteCluster(ref: string): Promise<void> {
   return api.delete<void>(`/clusters/${encodeURIComponent(ref)}`)
+}
+
+/** Mints a fresh, short-lived install one-liner for the cluster's operator. */
+export function mintClusterInstall(ref: string): Promise<ClusterInstall> {
+  return api.post<ClusterInstall>(
+    `/clusters/${encodeURIComponent(ref)}/install-token`,
+    {}
+  )
 }

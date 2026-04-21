@@ -1,3 +1,4 @@
+from litestar import Request
 from litestar import Response
 from litestar import Controller
 from litestar import get
@@ -16,6 +17,7 @@ from .depends import cluster_svc_generator
 from .schemas import ClusterSchema
 from .schemas import ClusterRollupSchema
 from .schemas import ClusterCreateRequest
+from .schemas import ClusterInstallSchema
 from .schemas import ClusterUpdateRequest
 from .schemas import ClusterHeadroomSchema
 from .schemas import ClusterServingRequest
@@ -76,6 +78,13 @@ class ClusterRoutes(Controller):
     @get("/{ref:str}")
     async def get_cluster(self, context: RequestContext, svc: ClusterService, ref: str) -> Response[ClusterSchema]:
         return Response(await svc.get(ref))
+
+    @post("/{ref:str}/install-token")
+    async def install_token(
+        self, request: Request, context: RequestContext, svc: ClusterService, ref: str
+    ) -> Response[ClusterInstallSchema]:
+        host = request.headers.get("host", "")
+        return Response(await svc.install_command(ref, host))
 
     @patch("/{ref:str}")
     async def update_cluster(

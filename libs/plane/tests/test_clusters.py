@@ -23,6 +23,11 @@ def test_rollup_endpoints_are_exposed():
     assert {"list_rollups", "get_rollup", "get_headroom"} <= handlers
 
 
+def test_install_token_endpoint_is_exposed():
+    handlers = {h.handler_name for h in ClusterRoutes.__dict__.values() if hasattr(h, "handler_name")}
+    assert "install_token" in handlers
+
+
 def test_node_rollup_counts_ready_in_the_database(repo):
     text = sql(repo.node_rollup_query([1, 2]))
     assert text.startswith("SELECT supply_node.cluster_id, count(supply_node.id)")

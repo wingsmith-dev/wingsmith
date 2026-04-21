@@ -62,7 +62,7 @@ export function ClustersPage() {
         description="declared enrolment · observed reachability and sync"
         actions={
           <Button size="sm" onClick={() => setCreating(true)}>
-            New cluster
+            Register cluster
           </Button>
         }
       />
@@ -130,9 +130,19 @@ export function ClustersPage() {
         )}
 
         {list.items && list.items.length === 0 && (
-          <p className="py-10 text-center text-sm text-muted-foreground">
-            No clusters enrolled.
-          </p>
+          <div className="flex flex-col items-center gap-3 py-14 text-center">
+            <p className="text-sm text-muted-foreground">
+              No clusters registered yet.
+            </p>
+            <p className="max-w-sm text-xs text-muted-foreground/60">
+              Registering declares a cluster in the plane; the operator is then
+              installed in it and dials home. The cluster page walks you through
+              connecting it.
+            </p>
+            <Button size="sm" onClick={() => setCreating(true)}>
+              Register cluster
+            </Button>
+          </div>
         )}
 
         {list.hasNextPage && (

@@ -67,6 +67,21 @@ class ClusterSchema(Struct):
     serving: ClusterServingSchema | None
 
 
+class ClusterInstallSchema(Struct):
+    """A one-time bootstrap command that installs the operator into a cluster.
+
+    `command` is the whole `curl … | sh` line, pre-filled with a short-lived,
+    single-cluster token. It carries no secret — the runtime credential is
+    injected into the manifest the script fetches, so it never reaches the
+    clipboard. `expires_in_seconds` is how long the token stays good; past that
+    a fresh command must be minted.
+    """
+
+    command: str
+    manifest_url: str
+    expires_in_seconds: int
+
+
 class ClusterHeadroomSchema(Struct):
     """How much of a cluster is free to place onto, derived from observed devices.
 

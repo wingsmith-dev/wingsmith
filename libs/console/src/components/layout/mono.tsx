@@ -77,6 +77,54 @@ export function VersionPair({
 }
 
 /**
+ * A multi-line command block with a copy button. Unlike {@link CopyableId} the
+ * whole snippet is always shown; the button copies it verbatim so an operator
+ * can paste a `kubectl` or `just` line without hand-retyping a cluster name.
+ */
+export function CopyableBlock({
+  value,
+  className,
+}: {
+  value: string
+  className?: string
+}) {
+  const [copied, setCopied] = React.useState(false)
+  const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  )
+
+  React.useEffect(() => () => clearTimeout(timer.current), [])
+
+  const copy = () => {
+    void navigator.clipboard.writeText(value).then(() => {
+      setCopied(true)
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => setCopied(false), 1200)
+    })
+  }
+
+  return (
+    <div className={cn("group/block relative", className)}>
+      <pre className="overflow-x-auto rounded-md bg-muted/50 p-3 pr-9 font-mono text-2xs leading-relaxed ring-1 ring-foreground/10">
+        {value}
+      </pre>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={copied ? "Copied" : "Copy"}
+        className="absolute top-2 right-2 text-muted-foreground/50 opacity-0 transition-opacity group-hover/block:opacity-100 hover:text-foreground focus-visible:opacity-100"
+      >
+        {copied ? (
+          <IconCheck className="size-3.5 text-emerald-500" />
+        ) : (
+          <IconCopy className="size-3.5" />
+        )}
+      </button>
+    </div>
+  )
+}
+
+/**
  * A shortened identifier with the whole thing on hover and a copy button that
  * appears with it. `children` replaces the rendered text — pass a `Link` when
  * the id should navigate, and the copy button stays outside it so clicking one
