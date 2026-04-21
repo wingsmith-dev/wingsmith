@@ -21,9 +21,11 @@ from app.core.pagination import decode_cursor
 
 from .schemas import ClusterSchema
 from .schemas import ClusterSyncSchema
+from .schemas import ClusterRollupSchema
 from .schemas import ClusterCreateRequest
 from .schemas import ClusterServingSchema
 from .schemas import ClusterUpdateRequest
+from .schemas import ClusterHeadroomSchema
 from .schemas import ClusterServingRequest
 from .repository import ClusterRepository
 
@@ -104,6 +106,37 @@ def _sync(state: ClusterSyncState | None) -> ClusterSyncSchema:
     )
 
 
+def _rollup(cluster_uid: str, row: dict | None) -> ClusterRollupSchema:
+    """Turns one keyed rollup dict into a schema, flooring the free block.
+
+    A cluster the repository never returned a row for has no observed supply, so
+    every number is zero. `largest_contiguous_block` is floored at one whenever a
+    cluster has any free device: a device outside every topology domain is still
+    a placeable block of one, which the domain-only query cannot see.
+    """
+    row = row or {}
+    total = row.get("devices_total", 0)
+    allocatable = row.get("devices_allocatable", 0)
+    block = row.get("largest_block", 0)
+    if block == 0 and allocatable > 0:
+        block = 1
+    return ClusterRollupSchema(
+        cluster_id=cluster_uid,
+        nodes_total=row.get("nodes_total", 0),
+        nodes_ready=row.get("nodes_ready", 0),
+        devices_total=total,
+        devices_allocatable=allocatable,
+        devices_allocated=total - allocatable,
+        pool_count=row.get("pool_count", 0),
+        deployment_count=row.get("deployment_count", 0),
+        headroom=ClusterHeadroomSchema(
+            free_devices=allocatable,
+            whole_nodes_free=row.get("whole_nodes_free", 0),
+            largest_contiguous_block=block,
+        ),
+    )
+
+
 def _serving(row: ClusterServing | None) -> ClusterServingSchema | None:
     if row is None:
         return None
@@ -167,6 +200,22 @@ class ClusterService:
         kept, next_cursor = page(rows, size, lambda c: c.seq)
         items = [self.schema(c) for c in kept]
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
+
+    async def rollup(self, ref: str) -> ClusterRollupSchema:
+        cluster = await self.repo.get(ref)
+        if cluster is None:
+            raise NotFound(f"no cluster {ref!r}")
+        rows = await self.repo.rollup([cluster.id])
+        return _rollup(cluster.uid, rows.get(cluster.id))
+
+    async def headroom(self, ref: str) -> ClusterHeadroomSchema:
+        return (await self.rollup(ref)).headroom
+
+    async def rollups(self) -> ListResponse[ClusterRollupSchema]:
+        pairs = await self.repo.all_ids()
+        rows = await self.repo.rollup([pair.id for pair in pairs])
+        items = [_rollup(pair.uid, rows.get(pair.id)) for pair in pairs]
+        return ListResponse(items=items, count=len(items), next_cursor=None)
 
     async def create(self, data: ClusterCreateRequest) -> ClusterSchema:
         if data.phase not in PHASES:

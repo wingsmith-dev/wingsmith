@@ -14,8 +14,10 @@ from app.core.schemas import ListResponse
 
 from .depends import cluster_svc_generator
 from .schemas import ClusterSchema
+from .schemas import ClusterRollupSchema
 from .schemas import ClusterCreateRequest
 from .schemas import ClusterUpdateRequest
+from .schemas import ClusterHeadroomSchema
 from .schemas import ClusterServingRequest
 from .services import ClusterService
 
@@ -46,6 +48,24 @@ class ClusterRoutes(Controller):
             labels=parse_labels(label),
         )
         return Response(result)
+
+    @get("/rollups")
+    async def list_rollups(
+        self, context: RequestContext, svc: ClusterService
+    ) -> Response[ListResponse[ClusterRollupSchema]]:
+        return Response(await svc.rollups())
+
+    @get("/{ref:str}/rollup")
+    async def get_rollup(
+        self, context: RequestContext, svc: ClusterService, ref: str
+    ) -> Response[ClusterRollupSchema]:
+        return Response(await svc.rollup(ref))
+
+    @get("/{ref:str}/headroom")
+    async def get_headroom(
+        self, context: RequestContext, svc: ClusterService, ref: str
+    ) -> Response[ClusterHeadroomSchema]:
+        return Response(await svc.headroom(ref))
 
     @post()
     async def create_cluster(

@@ -67,6 +67,44 @@ class ClusterSchema(Struct):
     serving: ClusterServingSchema | None
 
 
+class ClusterHeadroomSchema(Struct):
+    """How much of a cluster is free to place onto, derived from observed devices.
+
+    All three numbers are computed at read time from `supply_device` and
+    `supply_topology_domain`; nothing here is stored. `largest_contiguous_block`
+    is the biggest set of allocatable devices sharing a single topology domain —
+    what a job that wants one fabric can actually get — and is not the same as
+    `free_devices`, which is every allocatable device regardless of where it sits.
+    `whole_nodes_free` counts nodes on which every device is allocatable, the unit
+    a node-granular workload cares about.
+    """
+
+    free_devices: int
+    whole_nodes_free: int
+    largest_contiguous_block: int
+
+
+class ClusterRollupSchema(Struct):
+    """A cluster's observed footprint in aggregate, for the list and card views.
+
+    Every field is derived at read time and nothing is stored. `devices_allocated`
+    is `devices_total - devices_allocatable` rather than a counted column, because
+    allocation is the absence of allocatability and a second count is a second
+    thing that can disagree with it. `pool_count` and `deployment_count` are the
+    declared objects hanging off the cluster; the rest are observed.
+    """
+
+    cluster_id: str
+    nodes_total: int
+    nodes_ready: int
+    devices_total: int
+    devices_allocatable: int
+    devices_allocated: int
+    pool_count: int
+    deployment_count: int
+    headroom: ClusterHeadroomSchema
+
+
 class ClusterCreateRequest(Struct):
     name: str
     region: str
