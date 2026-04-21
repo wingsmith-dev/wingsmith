@@ -340,3 +340,56 @@ def test_the_source_listing_never_carries_a_token():
     for entry in listed:
         rendered = msgspec.json.encode(entry).decode()
         assert "secret" not in rendered, f"a token reached the listing: {rendered}"
+
+
+# --- the deployment join ----------------------------------------------------
+
+
+class OneRowSession:
+    """Enough session to answer the deployment lookup with a single row."""
+
+    def __init__(self, row):
+        self._row = row
+
+    async def execute(self, query):
+        return self
+
+    def first(self):
+        return self._row
+
+    def scalar_one_or_none(self):
+        return self._row
+
+
+DYNAMO_LABELS = {"dynamo-namespace": "dynamo", "dynamo-worker-hash": "891b8dda"}
+
+
+async def deployment_scope(labels: dict) -> Scope:
+    """The scope `deployment()` builds, with the store stubbed out."""
+    from app.db.models import Workload
+    from app.db.models import Deployment
+
+    deployment = Deployment(uid="dep_01j9x2aaaaaaaaaaaaaaaaaaaa", cluster_id=None)
+    workload = Workload(labels=labels)
+    recipe = Recipe(name="gemma-4-31b-it", engine="vllm", engine_args={})
+    artifact = Artifact(name="google/gemma-4-31B-it")
+    svc = MetricsService(db=OneRowSession((deployment, workload, recipe, artifact)))  # type: ignore[arg-type]
+    backend = StubBackend()
+    with patch.object(sources.settings, "METRICS_SOURCES", SOURCES):
+        with patch("app.modules.metrics.services.for_source", return_value=backend):
+            with patch.object(svc, "_cluster", return_value=cluster()):
+                await svc.deployment("dep_01j9x2aaaaaaaaaaaaaaaaaaaa")
+    return backend.requests[0].scope
+
+
+@pytest.mark.asyncio
+async def test_the_worker_join_reads_the_labels_off_the_workload():
+    """Labels live on the workload; reaching for `Deployment.labels` was a 500."""
+    scope = await deployment_scope(DYNAMO_LABELS)
+    assert scope.match == {"worker": ("dynamo-891b8dda",)}
+
+
+@pytest.mark.asyncio
+async def test_an_unobserved_worker_falls_back_to_the_served_model():
+    scope = await deployment_scope({})
+    assert scope.match == {"deployment": ("gemma-4-31b-it",)}

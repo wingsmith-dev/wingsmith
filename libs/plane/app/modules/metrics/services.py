@@ -324,7 +324,7 @@ class MetricsService:
         series: bool = False,
     ) -> MetricsSchema:
         query = (
-            select(Deployment, Recipe, Artifact)
+            select(Deployment, Workload, Recipe, Artifact)
             .join(Workload, Deployment.workload_id == Workload.id)
             .join(Recipe, Workload.recipe_id == Recipe.id)
             .join(Artifact, Recipe.artifact_id == Artifact.id)
@@ -333,7 +333,7 @@ class MetricsService:
         row = (await self.db.execute(query)).first()
         if row is None:
             raise NotFound(f"no deployment {ref!r}")
-        deployment, recipe, artifact = row
+        deployment, workload, recipe, artifact = row
         cluster = await self._cluster(deployment.cluster_id)
         served = served_model(recipe, artifact)
         engine = ENGINES.get(recipe.engine)
@@ -344,7 +344,7 @@ class MetricsService:
             )
             answer.unavailable = f"no metric dialect registered for engine {recipe.engine!r}"
             return answer
-        worker = worker_identity(deployment.labels or {})
+        worker = worker_identity(workload.labels or {})
         if worker:
             scope = self._scope("deployment", source, worker=(worker,))
         else:
