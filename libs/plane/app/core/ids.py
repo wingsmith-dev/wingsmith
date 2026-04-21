@@ -27,6 +27,10 @@ DISCOVERED_WORKLOAD = "dsw_"
 ALERT = "alr_"
 NOTIFICATION_CHANNEL = "nch_"
 BENCHMARK_RUN = "bmk_"
+BENCHMARK_REQUEST = "bmr_"
+ARTIFACT_BASELINE = "abl_"
+ALERT_THRESHOLD = "alt_"
+SERVING_QUOTA = "sqt_"
 
 PREFIXES = frozenset(
     {
@@ -54,6 +58,10 @@ PREFIXES = frozenset(
         ALERT,
         NOTIFICATION_CHANNEL,
         BENCHMARK_RUN,
+        BENCHMARK_REQUEST,
+        ARTIFACT_BASELINE,
+        ALERT_THRESHOLD,
+        SERVING_QUOTA,
     }
 )
 

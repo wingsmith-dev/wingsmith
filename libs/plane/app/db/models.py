@@ -14,6 +14,7 @@ from sqlalchemy import Numeric
 from sqlalchemy import DateTime
 from sqlalchemy import BigInteger
 from sqlalchemy import ForeignKey
+from sqlalchemy import CheckConstraint
 from sqlalchemy import UniqueConstraint
 from sqlalchemy import text
 from sqlalchemy.orm import Mapped
@@ -372,8 +373,21 @@ class Artifact(BaseMixin):
     project_id: Mapped[UUID | None] = mapped_column(
         DBUUID, ForeignKey("bind_project.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    upstream: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    """Reference facts about the model as published upstream, asserted and never observed.
+
+    Context window, multimodality, parameter count as the publisher states them, plus the
+    provenance triple that says who asserted it, from where, and when. It is `metadata`'s
+    opposite in exactly the way `Recipe.imported_args` is `Recipe.engine_args`: one is a claim
+    about the world that somebody signed, the other is a scratchpad. Nothing here reaches a
+    cluster, nothing here is checked by ingestion, and a wrong value changes only what we told
+    somebody.
+    """
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, server_default="{}")
 
+    baselines: Mapped[list[ArtifactBaseline]] = relationship(
+        "ArtifactBaseline", back_populates="artifact", lazy="noload", cascade="all, delete-orphan"
+    )
     locations: Mapped[list[ArtifactLocation]] = relationship(
         "ArtifactLocation", back_populates="artifact", lazy="noload", cascade="all, delete-orphan"
     )
@@ -402,6 +416,48 @@ class ArtifactLocation(BaseMixin):
     preferred: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     artifact: Mapped[Artifact] = relationship("Artifact", back_populates="locations", lazy="noload")
+
+
+class ArtifactBaseline(BaseMixin):
+    """The declared quality floor one artifact is held to, one row per dataset and metric.
+
+    Declared, not observed and not derived. Somebody asserts that this checkpoint scores this
+    number on this eval, records where the number came from, and signs it; an acceptance review
+    is then an argument about that assertion rather than about whichever number a harness
+    happened to produce last. A quantized derivative that regresses is only visible against a
+    baseline that was written down before the quantization was run.
+
+    `tolerance_pct` is the per-row slack, separate from the acceptance floor a verdict applies:
+    the floor is a property of the criteria version and is resolved at read, and burying it in a
+    column here would let two artifacts be graded against two silently different standards.
+
+    `source_uri`, `recorded_by` and `recorded_at` are spelled the same as the provenance triple
+    on `Artifact.upstream` on purpose. Two spellings of "who said this and when" is one argument
+    nobody can follow.
+    """
+
+    __tablename__ = "demand_artifact_baseline"
+    __table_args__ = (
+        UniqueConstraint("artifact_id", "dataset", "metric", name="uq_demand_artifact_baseline_dataset_metric"),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    artifact_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_artifact.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    dataset: Mapped[str] = mapped_column(String(64), nullable=False)
+    metric: Mapped[str] = mapped_column(String(32), nullable=False)
+    value: Mapped[float] = mapped_column(Numeric(12, 6), nullable=False)
+    tolerance_pct: Mapped[float] = mapped_column(Numeric(6, 3), nullable=False, server_default="3.0")
+    source_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recorded_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    recorded_at: Mapped[dt.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    artifact: Mapped[Artifact] = relationship("Artifact", back_populates="baselines", lazy="noload")
 
 
 class Recipe(BaseMixin):
@@ -467,6 +523,22 @@ class Recipe(BaseMixin):
     disk_gib: Mapped[int | None] = mapped_column(Integer, nullable=True)
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     overlay: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    serving: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    """How the served API behaves: thinking mode, the reasoning and tool-call parsers, streaming
+    defaults, structured-output support, EOS suppression.
+
+    Every field here renders to a flag or a rendered value, travels on `recipe.desired`, and is
+    obeyed by the cluster — which is the whole test for what belongs here rather than in
+    `capabilities`. Until this column existed these settings vanished into the `engine_args`
+    passthrough, where the plane could neither validate them nor say what it had asked for.
+    """
+    capabilities: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    """What this recipe's serving configuration can do, asserted and never rendered.
+
+    The same split as `engine_args` against `imported_args`, one level up: nothing here reaches a
+    cluster, because a cluster has no use for a claim about itself. A wrong value changes only
+    what we told somebody, and the only thing that can falsify it is a conformance run.
+    """
 
     artifact: Mapped[Artifact] = relationship("Artifact", lazy="noload")
 
@@ -802,6 +874,15 @@ class Endpoint(BaseMixin):
     routing_strategy: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weighted")
     failover_order: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    surface: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    """The terms on which the served API is exposed: which protocols answer at this name
+    (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`), how a caller authenticates, and the
+    rate-limit policy the gateway reads.
+
+    It sits here rather than on the recipe because honouring any of it needs no engine flag and an
+    endpoint never syncs to a cluster. Some of it the gateway acts on and some of it is a
+    disclosure the gateway only reports; the schema layer says which, per field.
+    """
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     targets: Mapped[list[EndpointTarget]] = relationship(
@@ -928,6 +1009,71 @@ class Quota(BaseMixin):
     over_quota_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
 
     project: Mapped[Project] = relationship("Project", back_populates="quotas", lazy="noload")
+
+
+class ServingQuota(BaseMixin):
+    """Committed request rate, token rate and concurrency for one endpoint.
+
+    The second kind of quota, and unrelated to `Quota` above: that one is devices, checked once by
+    placement at admission, and its usage is a join this database owns. This one is traffic,
+    checked on every request by the gateway, and its usage is a measurement the plane never sees.
+    No field is shared and none should be — "over quota" has to keep meaning exactly one thing.
+
+    Every limit is nullable and null means uncommitted, never zero. An endpoint with no row here
+    is not rate limited; an endpoint with a row and `committed_rpm` null is committed on tokens and
+    not on requests. Absent is not a limit of nothing.
+
+    `success_rate_objective` is declared and enforced by nothing. It sits here rather than on its
+    own object because a success rate is uninterpretable without the load ceiling it was promised
+    under: 99.9% is a commitment *within committed capacity*, and the committed capacity is the
+    three fields above it. It is a fraction in (0, 1].
+
+    `availability_objective` names an entry of the frozen objectives table, not a metric. The
+    entry decides which outcomes sit in the numerator and the denominator; this row declares the
+    interpretation and can never redefine the capture.
+
+    `enforced` is declared state and not a status: `false` is shadow mode, where the gateway counts
+    and reports but never refuses. Turning it on is a field write that takes effect on the
+    gateway's next resync, not an operation with phases.
+    """
+
+    __tablename__ = "bind_serving_quota"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    endpoint_id: Mapped[UUID] = mapped_column(
+        DBUUID,
+        ForeignKey("demand_endpoint.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
+    committed_rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    committed_tpm: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    max_concurrent_requests: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    burst_rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ramp_up_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    on_exceed: Mapped[str] = mapped_column(String(16), nullable=False, server_default="reject")
+    queue_timeout_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    limit_scope: Mapped[str] = mapped_column(String(16), nullable=False, server_default="per_replica")
+    """Whether each gateway replica enforces the whole declared number or its share of it.
+
+    `per_replica` has every replica enforce the full limit, so a fleet of R admits up to R times
+    what was sold; `divided` has each enforce `limit / replicas`, so an uneven connection balance
+    refuses callers who are inside the limit they were sold. There is no shared counter and no
+    coordination hop in the request path, so one of those two error directions has to be chosen
+    rather than avoided. `per_replica` is the default because over-admission is a commercial leak
+    that shows up in the usage panel, while a spurious 429 is a visible breach of what we sold.
+    """
+    success_rate_objective: Mapped[float | None] = mapped_column(Numeric(6, 5), nullable=True)
+    availability_objective: Mapped[str] = mapped_column(
+        String(40), nullable=False, server_default="availability-2026.1"
+    )
+    objective_window_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="600")
+    enforced: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
+    endpoint: Mapped[Endpoint] = relationship("Endpoint", lazy="noload")
 
 
 class PriorityClass(BaseMixin):
@@ -1185,6 +1331,61 @@ class Operation(BaseMixin):
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class BenchmarkRequest(BaseMixin):
+    """The ask: what was to be measured, at which level, and against which criteria version.
+
+    Declared state, and the parent of every `BenchmarkRun` it expands into. It exists because a
+    run is a single measurement at a single load point and an acceptance claim is not: the
+    standard sets a separate time-to-first-token target for each input-length band, so one request
+    in a sweeping `mode` fans out to one run per band and each run records its own `step_index`.
+    Without a parent row the bands are unrelated numbers and the claim cannot be re-aggregated
+    afterwards from anything.
+
+    `level` says which of the three targets is populated — a run against a deployment measures one
+    cluster's configuration, a run against an endpoint measures what a caller actually gets, and
+    the two are different claims that must not be averaged together. Exactly one target column is
+    non-null, which the check constraint enforces; that `level` agrees with which one is a service
+    check, because the constraint cannot see the string.
+
+    There is no `phase`, no `summary` and no `verdict` here, deliberately. A request is declared, a
+    run's phase is observed, and a verdict is derived at read against a pinned criteria version.
+    Any of the three on this table would be an operation modelled as a status field.
+    """
+
+    __tablename__ = "ops_benchmark_request"
+    __table_args__ = (
+        CheckConstraint(
+            "(deployment_id IS NOT NULL)::int + (workload_id IS NOT NULL)::int + (endpoint_id IS NOT NULL)::int = 1",
+            name="ck_ops_benchmark_request_one_target",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    level: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    deployment_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    workload_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_workload.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    endpoint_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_endpoint.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    harness: Mapped[str] = mapped_column(String(32), nullable=False)
+    image: Mapped[str] = mapped_column(String(512), nullable=False, server_default="")
+    parameters: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    mode: Mapped[str] = mapped_column(String(16), nullable=False, server_default="single")
+    criteria_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    tier: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    coverage: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    homogeneous: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    requested_by: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    runs: Mapped[list[BenchmarkRun]] = relationship("BenchmarkRun", back_populates="request", lazy="noload")
+
+
 class BenchmarkRun(BaseMixin):
     """One measurement of one deployment by one harness, and what it measured.
 
@@ -1223,15 +1424,27 @@ class BenchmarkRun(BaseMixin):
     """
 
     __tablename__ = "ops_benchmark_run"
-    __table_args__ = (Index("ix_ops_benchmark_run_deployment_seq", "deployment_id", "seq"),)
+    __table_args__ = (
+        Index("ix_ops_benchmark_run_deployment_seq", "deployment_id", "seq"),
+        CheckConstraint(
+            "deployment_id IS NOT NULL OR endpoint_id IS NOT NULL",
+            name="ck_ops_benchmark_run_owner",
+        ),
+    )
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
-    deployment_id: Mapped[UUID] = mapped_column(
-        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=False, index=True
+    request_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("ops_benchmark_request.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    cluster_id: Mapped[UUID] = mapped_column(
-        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=False, index=True
+    deployment_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_deployment.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    endpoint_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("demand_endpoint.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    cluster_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), nullable=True, index=True
     )
     operation_id: Mapped[UUID | None] = mapped_column(
         DBUUID, ForeignKey("ops_operation.id", ondelete="SET NULL"), nullable=True, index=True
@@ -1250,6 +1463,10 @@ class BenchmarkRun(BaseMixin):
     )
     recipe_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    serving: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    step_index: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    vantage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    discard: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
     phase: Mapped[str] = mapped_column(String(16), nullable=False, server_default="pending", index=True)
     summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
@@ -1257,6 +1474,8 @@ class BenchmarkRun(BaseMixin):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    request: Mapped[BenchmarkRequest | None] = relationship("BenchmarkRequest", back_populates="runs", lazy="noload")
 
 
 class Event(BaseMixin):
@@ -1495,6 +1714,54 @@ class Alert(BaseMixin):
     a delivery table or accepting that one channel failing marks the alert
     notified for both.
     """
+
+
+class AlertThreshold(BaseMixin):
+    """An operator-declared threshold on a named metric. Declared state, written through the API.
+
+    What makes an alert rule data rather than a constant compiled into `app/reactor/rules.py`. A
+    number that only exists in Python cannot be different for one endpoint than for the fleet,
+    cannot be raised at three in the morning without a release, and cannot be shown next to the
+    alert it produced.
+
+    `subject_uid` null is the fleet default for that rule, and a row with a uid overrides it for
+    that subject. That is exactly why the scope index is `NULLS NOT DISTINCT`: under the default
+    rule two NULLs are distinct, so two fleet defaults for one rule would both be admitted and
+    which one the evaluator read would be whichever the planner returned that day.
+
+    `subject_uid` carries no foreign key, the same departure `Alert.subject_uid` makes and for the
+    same reasons: a declared threshold outlives the endpoint or deployment it was written about,
+    and a `gateway` subject has no row in this database to point at at all.
+
+    `lookback` is named `lookback` and not `window` because `WINDOW` is reserved in Postgres.
+    """
+
+    __tablename__ = "ops_alert_threshold"
+    __table_args__ = (
+        Index(
+            "uq_ops_alert_threshold_scope",
+            "rule",
+            "subject_type",
+            "subject_uid",
+            "dimensions",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    rule: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    subject_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject_uid: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    dimensions: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    value: Mapped[float] = mapped_column(Numeric, nullable=False)
+    objective: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    lookback: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    for_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    severity: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class NotificationChannel(BaseMixin):
