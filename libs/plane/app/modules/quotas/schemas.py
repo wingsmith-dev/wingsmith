@@ -68,3 +68,172 @@ class QuotaUpdateRequest(Struct):
     limit_devices: int | None | UnsetType = UNSET
     over_quota_weight: float | UnsetType = UNSET
     over_quota_enabled: bool | UnsetType = UNSET
+
+
+class ResolvedLimitsSchema(Struct):
+    """The traffic ceiling for one endpoint, flattened for a hop that holds it in memory.
+
+    Declared only. There is no observed counterpart on this payload because its
+    reader is the thing doing the observing, and handing the gateway back its own
+    measurements would be a round trip whose only possible effect is to be stale.
+
+    Nothing about the availability objective is here either. The objective is how
+    the plane and the console interpret what the gateway measured; labelling an
+    outcome needs none of that arithmetic, and shipping it would let a gateway
+    version drift the definition of a commercial commitment.
+
+    `limit_scope` is the one field that is not a number the gateway enforces but
+    an instruction for how to read the numbers beside it, and it has to travel
+    with them: `per_replica` means the numbers are this replica's, `divided`
+    means they are the fleet's and this replica enforces its share.
+    """
+
+    committed_rpm: int | None
+    burst_rpm: int | None
+    ramp_up_seconds: int
+    committed_tpm: int | None
+    max_concurrent_requests: int | None
+    max_output_tokens: int | None
+    on_exceed: str
+    queue_timeout_ms: int | None
+    limit_scope: str
+    enforced: bool
+
+
+class ServingQuotaStandardSchema(Struct):
+    """Whether a declared commitment clears the acceptance standard's floors.
+
+    Declared against declared, and no part of it is a measurement: it compares
+    the numbers somebody promised against the numbers the standard asks to be
+    promised, which is a question this database can answer on its own. Whether
+    the endpoint then *delivers* them is the gateway's to measure and the metrics
+    surface's to report, and the two must never be spelled the same.
+
+    `shortfalls` names the fields, so a caller can point at the one that is short
+    rather than re-deriving the comparison. An uncommitted field is a shortfall:
+    the standard asks for a floor, and declaring nothing is not clearing it.
+    """
+
+    meets: bool
+    shortfalls: list[str]
+
+
+class ServingQuotaSchema(Struct):
+    """One endpoint's committed request rate, token rate and concurrency.
+
+    Every field here is declared. There is no `usage`, and there is deliberately
+    no observed sibling of the shape `QuotaSchema.usage` has: a device quota's
+    usage is a join this database owns, while a serving quota's usage is measured
+    per request in the gateway and never crosses into the control plane.
+    """
+
+    id: str
+    endpoint: str
+    endpoint_name: str
+    project: str
+    committed_rpm: int | None
+    committed_tpm: int | None
+    max_concurrent_requests: int | None
+    max_output_tokens: int | None
+    burst_rpm: int | None
+    ramp_up_seconds: int
+    on_exceed: str
+    queue_timeout_ms: int | None
+    limit_scope: str
+    success_rate_objective: float | None
+    availability_objective: str
+    objective_window_seconds: int
+    enforced: bool
+    created_at: dt.datetime
+    updated_at: dt.datetime | None
+    revision: str
+    standard: ServingQuotaStandardSchema
+
+
+class ServingQuotaCreateRequest(Struct):
+    """Never auto-created. A serving quota is a number somebody sold."""
+
+    endpoint: str
+    committed_rpm: int | None = None
+    committed_tpm: int | None = None
+    max_concurrent_requests: int | None = None
+    max_output_tokens: int | None = None
+    burst_rpm: int | None = None
+    ramp_up_seconds: int = 0
+    on_exceed: str = "reject"
+    queue_timeout_ms: int | None = None
+    limit_scope: str = "per_replica"
+    success_rate_objective: float | None = None
+    availability_objective: str = "availability-2026.1"
+    objective_window_seconds: int = 600
+    enforced: bool = False
+
+
+class ServingQuotaUpdateRequest(Struct):
+    """A partial update. An absent field is untouched; an explicit null clears.
+
+    `endpoint` is absent by design, exactly as `project` is on `QuotaUpdateRequest`:
+    the endpoint is this row's whole scope and the FK is unique, so moving one is
+    withdrawing a commitment from one contract and granting it to another.
+    """
+
+    committed_rpm: int | None | UnsetType = UNSET
+    committed_tpm: int | None | UnsetType = UNSET
+    max_concurrent_requests: int | None | UnsetType = UNSET
+    max_output_tokens: int | None | UnsetType = UNSET
+    burst_rpm: int | None | UnsetType = UNSET
+    ramp_up_seconds: int | UnsetType = UNSET
+    on_exceed: str | UnsetType = UNSET
+    queue_timeout_ms: int | None | UnsetType = UNSET
+    limit_scope: str | UnsetType = UNSET
+    success_rate_objective: float | None | UnsetType = UNSET
+    availability_objective: str | UnsetType = UNSET
+    objective_window_seconds: int | UnsetType = UNSET
+    enforced: bool | UnsetType = UNSET
+
+
+class ResolvedServingQuotaSchema(Struct):
+    """What one endpoint's commitment means for a fleet of a stated size.
+
+    `declared` is what was sold across the whole gateway fleet; `effective` is
+    what the replica at `replica_index` enforces once `limit_scope` is applied.
+    Under `per_replica` the two are equal by construction and every replica
+    admits the whole number, so a fleet of R admits up to R times what was sold.
+
+    `workloads` is a lookup convenience and never a key: the commitment belongs
+    to the endpoint, and a workload appears here because traffic reaching it was
+    admitted through this endpoint's name. A workload behind two endpoints has
+    two commitments and they are reported separately rather than summed — summing
+    them would invent a number nobody sold.
+    """
+
+    endpoint: str
+    endpoint_name: str
+    project: str
+    workloads: list[str]
+    replicas: int
+    replica_index: int
+    declared: ResolvedLimitsSchema
+    effective: ResolvedLimitsSchema
+    starved_replicas: int
+    success_rate_objective: float | None
+    availability_objective: str
+    objective_window_seconds: int
+    standard: ServingQuotaStandardSchema
+    revision: str
+
+
+class ResolvedServingQuotaTableSchema(Struct):
+    """Every enabled endpoint that carries a commitment, resolved for one fleet.
+
+    Unpaginated, like the routing table it sits beside: a caller that assembled
+    half of it would enforce half its commitments. `revision` covers the quota
+    rows, the endpoints they commit, the targets behind them and the fleet the
+    resolution was asked for, so a caller that polls can send it back as
+    `If-None-Match` and pay a `304` for as long as none of the four have moved.
+    """
+
+    revision: str
+    replicas: int
+    replica_index: int
+    quotas: list[ResolvedServingQuotaSchema]

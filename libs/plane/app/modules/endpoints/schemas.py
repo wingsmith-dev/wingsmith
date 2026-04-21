@@ -3,6 +3,7 @@ import datetime as dt
 from app.core.schemas import UNSET
 from app.core.schemas import Struct
 from app.core.schemas import UnsetType
+from app.modules.quotas.schemas import ResolvedLimitsSchema
 
 
 class EndpointTargetSchema(Struct):
@@ -119,6 +120,13 @@ class ResolvedEndpointSchema(Struct):
     An endpoint with no upstreams is returned, not omitted. The two states a
     caller must be able to tell apart are "no such model" and "this model has
     nowhere to go right now", and dropping the row collapses them into a 404.
+
+    `limits` is the endpoint's serving quota, flattened onto the payload the
+    gateway already polls rather than given a second poll of its own. It is null
+    when nothing has been sold on this endpoint, and null means unlimited — never
+    zeros. The commitment rides here because it is small, changes on the order of
+    weeks and is needed on every request, which is the shape of everything else
+    already on this object.
     """
 
     id: str
@@ -127,6 +135,7 @@ class ResolvedEndpointSchema(Struct):
     routing_strategy: str
     upstreams: list[ResolvedUpstreamSchema]
     failover_order: list[str]
+    limits: ResolvedLimitsSchema | None
     revision: str
 
 

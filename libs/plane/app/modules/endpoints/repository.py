@@ -16,6 +16,7 @@ from app.db.models import Artifact
 from app.db.models import Endpoint
 from app.db.models import Workload
 from app.db.models import Deployment
+from app.db.models import ServingQuota
 from app.db.models import ClusterServing
 from app.db.models import EndpointTarget
 from app.core.filters import ref_ids
@@ -93,13 +94,19 @@ class EndpointRepository:
         declared no serving address still has to come back, because the caller
         has to be able to tell a misconfigured endpoint from an absent one.
         Filtering happens above, where it can say why.
+
+        The serving quota is the sixth entity and joins 1:1 on its unique
+        endpoint FK, so it multiplies no rows and the per-endpoint grouping above
+        is unaffected. It is here rather than on a surface of its own because the
+        gateway enforces it on the request path and already polls this table.
         """
         query = (
-            select(Endpoint, EndpointTarget, Deployment, Cluster, ClusterServing)
+            select(Endpoint, EndpointTarget, Deployment, Cluster, ClusterServing, ServingQuota)
             .outerjoin(EndpointTarget, EndpointTarget.endpoint_id == Endpoint.id)
             .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)
             .outerjoin(ClusterServing, ClusterServing.cluster_id == Cluster.id)
+            .outerjoin(ServingQuota, ServingQuota.endpoint_id == Endpoint.id)
             .where(Endpoint.enabled.is_(True))
             .order_by(Endpoint.seq.asc())
         )

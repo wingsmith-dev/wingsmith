@@ -19,6 +19,7 @@ from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.modules.quotas.services import declared_limits
 
 from .schemas import EndpointSchema
 from .schemas import ResolvedTableSchema
@@ -81,16 +82,27 @@ def _stamp(row) -> dt.datetime | None:
 
 
 def _revision_of(stamps: list[dt.datetime | None]) -> str:
-    """The newest stamp among everything a resolution was built from, or `0`.
+    """The newest stamp a resolution was built from, and how many there were.
 
     An empty table still needs a value a caller can send back as `If-None-Match`,
     and it needs the value to change the moment the table stops being empty —
     which it does, because the first row that appears carries a stamp.
+
+    The second term is what makes the value sensitive to a *deletion*. A create
+    stamps a new row and an update fires `onupdate`, so both push the maximum
+    forward; a delete only removes a stamp, and unless that stamp happened to be
+    the maximum across the whole fleet the value does not move. The gateway would
+    then sit behind a `304` holding a route, or a rate limit, that no longer
+    exists — and the asymmetry is what makes it dangerous, because create and
+    update work and only delete silently does not. The count moves on any
+    disappearance; the maximum still catches a simultaneous add and delete,
+    because the added row is freshly stamped. The value stays opaque to its
+    readers, which compare it as a string.
     """
     live = [stamp for stamp in stamps if stamp is not None]
     if not live:
-        return "0"
-    return str(int(max(live).timestamp() * 1_000_000))
+        return "0-0"
+    return f"{int(max(live).timestamp() * 1_000_000)}-{len(live)}"
 
 
 class EndpointService:
@@ -295,6 +307,13 @@ class EndpointService:
         or when the cluster it sits on has no serving address or has had one
         turned off — each of those is somebody saying "not this one", and the
         endpoint survives all of them with fewer upstreams.
+
+        The serving quota is one row per endpoint rather than one per target, so
+        its stamp goes into `own` beside the endpoint's and not into the row loop.
+        Its limits are passed through undivided: how many gateway replicas are
+        running is a fact of the process reading this, not of the plane writing
+        it, so the fleet-wide numbers travel and `limit_scope` says how to read
+        them.
         """
         rows = await self.repo.resolved(ref)
         if ref is not None and not rows:
@@ -315,11 +334,12 @@ class EndpointService:
         items: list[ResolvedEndpointSchema] = []
         for endpoint_id in order:
             endpoint = endpoints[endpoint_id]
-            own: list[dt.datetime | None] = [_stamp(endpoint)]
+            quota = grouped[endpoint_id][0][5]
+            own: list[dt.datetime | None] = [_stamp(endpoint), _stamp(quota)]
             upstreams: list[ResolvedUpstreamSchema] = []
             uids: dict[UUID, str] = {}
 
-            for _, target, deployment, cluster, serving in grouped[endpoint_id]:
+            for _, target, deployment, cluster, serving, _ in grouped[endpoint_id]:
                 if target is None:
                     continue
                 own.extend([_stamp(target), _stamp(deployment), _stamp(serving)])
@@ -352,6 +372,7 @@ class EndpointService:
                     routing_strategy=endpoint.routing_strategy,
                     upstreams=upstreams,
                     failover_order=[uids[d] for d in endpoint.failover_order if d in uids],
+                    limits=declared_limits(quota) if quota is not None else None,
                     revision=_revision_of(own),
                 )
             )
