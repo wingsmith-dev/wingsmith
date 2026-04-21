@@ -90,6 +90,9 @@ class Expression:
 
 
 QUANTILE = "histogram_quantile(0.95, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
+P90 = "histogram_quantile(0.90, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
+P50 = "histogram_quantile(0.50, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
+RATE = "sum(rate($SERIES{$SELECTOR}[$WINDOW]))"
 
 DIALECT: dict[str, Expression] = {
     "gpu.utilization": Expression(("DCGM_FI_DEV_GPU_UTIL",)),
@@ -124,6 +127,19 @@ DIALECT: dict[str, Expression] = {
         ("vllm:prefix_cache_hits_total",),
         "sum(rate($SERIES{$SELECTOR}[$WINDOW])) / clamp_min(sum(rate(vllm:prefix_cache_queries_total{$SELECTOR}[$WINDOW])), 1) * 100",
     ),
+    "inference.ttft_p50": Expression(("vllm:time_to_first_token_seconds_bucket",), P50),
+    "inference.ttft_p90": Expression(("vllm:time_to_first_token_seconds_bucket",), P90),
+    "inference.queue_time": Expression(("vllm:request_queue_time_seconds_bucket",), QUANTILE),
+    "inference.prefill_time": Expression(("vllm:request_prefill_time_seconds_bucket",), QUANTILE),
+    "inference.decode_time": Expression(("vllm:request_decode_time_seconds_bucket",), QUANTILE),
+    "inference.output_tokens_per_stream": Expression(
+        ("vllm:time_per_output_token_seconds_bucket", "vllm:inter_token_latency_seconds_bucket"),
+        f"1 / clamp_min({QUANTILE}, 0.000001)",
+    ),
+    "inference.requests_finished": Expression(("vllm:request_success_total",), RATE),
+    "inference.preemptions": Expression(("vllm:num_preemptions_total",), RATE),
+    "inference.prompt_tokens_per_request": Expression(("vllm:request_prompt_tokens_bucket",), QUANTILE),
+    "inference.generation_tokens_per_request": Expression(("vllm:request_generation_tokens_bucket",), QUANTILE),
 }
 
 

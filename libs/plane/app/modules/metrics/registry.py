@@ -84,8 +84,36 @@ INFERENCE_METRICS: tuple[Metric, ...] = (
     Metric("inference.requests_waiting", "count", "inference", "Requests queued", aggregate="sum"),
     Metric("inference.kv_cache_utilization", "percent", "inference", "KV cache used"),
     Metric("inference.prefix_cache_hit_rate", "percent", "inference", "Prefix cache hit rate"),
+    Metric("inference.ttft_p50", "seconds", "inference", "Time to first token (p50)"),
+    Metric("inference.ttft_p90", "seconds", "inference", "Time to first token (p90)"),
+    Metric("inference.queue_time", "seconds", "inference", "Time waiting in queue (p95)"),
+    Metric("inference.prefill_time", "seconds", "inference", "Prefill time (p95)"),
+    Metric("inference.decode_time", "seconds", "inference", "Decode time (p95)"),
+    Metric("inference.output_tokens_per_stream", "per_second", "inference", "Output tokens/sec, one stream"),
+    Metric("inference.requests_finished", "per_second", "inference", "Requests completed/sec", aggregate="sum"),
+    Metric("inference.preemptions", "per_second", "inference", "Preemptions/sec", aggregate="sum"),
+    Metric("inference.prompt_tokens_per_request", "count", "inference", "Prompt tokens per request (p95)"),
+    Metric("inference.generation_tokens_per_request", "count", "inference", "Generated tokens per request (p95)"),
 )
-"""Serving behaviour. vLLM answers these, with Dynamo fronting it."""
+"""Serving behaviour. vLLM answers these, with Dynamo fronting it.
+
+Two throughput numbers are registered and they are different measurements, not two
+spellings of one. `output_tokens_per_second` sums across every replica in scope and
+therefore rises with scale; `output_tokens_per_stream` is what a single caller
+experiences and is scale-invariant. An acceptance floor of "30 tokens/second" means
+the second — thirty aggregate tokens a second on a serving GPU would be a fault —
+and reading the wrong one gives a check that passes under every condition.
+
+`ttft_p50` and `ttft_p90` sit beside the p95 `ttft` because they are named
+percentiles somebody is held to, not a query dimension. A percentile a caller can
+ask for is a name in this vocabulary; that is the cost of keeping PromQL out of it.
+
+There is no failure-rate metric here and its absence is deliberate. A request that
+never reached the cluster — refused at the front door, routed nowhere, timed out
+upstream — emits nothing an engine exporter can count, so a ratio built from these
+series reports a fully-broken cluster as "no traffic" rather than as an outage. The
+number an availability claim rests on has to come from the hop that saw the request.
+"""
 
 
 @dataclass(frozen=True)

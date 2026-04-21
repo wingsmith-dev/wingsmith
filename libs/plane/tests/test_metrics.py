@@ -1,3 +1,5 @@
+import re
+
 import pytest
 
 from app.core.devices import DIALECT_DCGM
@@ -205,6 +207,32 @@ def test_the_registry_is_vendor_neutral():
 
 def test_every_registry_metric_has_a_prometheus_expression():
     assert set(DIALECT) == set(BY_NAME)
+
+
+def test_only_real_substitution_tokens_appear_in_a_template():
+    """A token the renderer does not know survives into the query and matches nothing."""
+    known = {"$SERIES", "$SELECTOR", "$WINDOW"}
+    for name, expression in DIALECT.items():
+        tokens = set(re.findall(r"\$[A-Z_]+", expression.template))
+        assert tokens <= known, f"{name} uses {sorted(tokens - known)}"
+
+
+def test_the_two_throughput_metrics_are_different_measurements():
+    """Aggregate throughput rises with scale; per-stream speed does not.
+
+    An acceptance floor of "30 tokens/second" means the second one, and reading
+    the first gives a check that passes under every possible condition.
+    """
+    aggregate = BY_NAME["inference.output_tokens_per_second"]
+    per_stream = BY_NAME["inference.output_tokens_per_stream"]
+    assert aggregate.aggregate == "sum"
+    assert per_stream.aggregate == "avg"
+    assert DIALECT[aggregate.name].candidates != DIALECT[per_stream.name].candidates
+
+
+def test_named_ttft_percentiles_render_the_percentile_they_are_named_for():
+    for name, quantile in (("inference.ttft_p50", "0.50"), ("inference.ttft_p90", "0.90"), ("inference.ttft", "0.95")):
+        assert f"histogram_quantile({quantile}," in DIALECT[name].template
 
 
 def test_renamed_upstream_series_are_kept_as_candidates():
