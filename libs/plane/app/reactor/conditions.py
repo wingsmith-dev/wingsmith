@@ -16,8 +16,11 @@ wrong with it.
 
 import datetime as dt
 
+from logging import getLogger
+
 from sqlalchemy import func
 from sqlalchemy import select
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Node
@@ -25,6 +28,7 @@ from app.db.models import Device
 from app.db.models import Cluster
 from app.db.models import Workload
 from app.db.models import Deployment
+from app.db.models import AlertThreshold
 from app.db.models import ClusterSyncState
 from app.db.models import DeploymentStatus
 from app.db.models import WorkloadAdoption
@@ -32,7 +36,15 @@ from app.db.models import DiscoveredWorkload
 
 from . import rules
 from . import tuning
+from .rules import Threshold
 from .rules import AlertIntent
+from .rules import MetricSubject
+from .measures import MetricQuery
+from .measures import MetricReader
+from .measures import ServiceMetricReader
+
+
+logger = getLogger(__name__)
 
 
 LIVE_PHASES = ("active", "draining")
@@ -183,18 +195,164 @@ async def stalled_workloads(db: AsyncSession) -> list[AlertIntent]:
     )
 
 
-async def evaluate(db: AsyncSession) -> list[AlertIntent]:
+async def declared_thresholds(db: AsyncSession) -> list[Threshold]:
+    """Every enabled threshold naming a rule this reactor knows how to evaluate.
+
+    Rows for an unknown rule are left where they are rather than raising. A plane
+    that has been rolled back sees rows written against a newer catalogue, and the
+    right response to one is to evaluate the rules it does have — the write path
+    is where a rule name is checked, and it rejects there.
+
+    `value` is `Numeric` and arrives as `Decimal`; it is converted here, at the
+    edge, so that nothing downstream has to know that mixing a `Decimal` with a
+    float is an error in Python and a rounding decision in Postgres.
+
+    Read inside a savepoint, and a table this cannot read is not fatal. A tick is
+    one transaction — every condition, every event it drains and every notified
+    marker it moves — and in Postgres one failed statement aborts all of it. A
+    plane whose migration has not been applied yet would therefore lose its entire
+    alerting pass because of the least important query in it, which is exactly
+    backwards: the cluster that went away still needs someone told about it.
+    """
+    try:
+        async with db.begin_nested():
+            rows = await db.execute(
+                select(AlertThreshold).where(
+                    AlertThreshold.enabled.is_(True),
+                    AlertThreshold.rule.in_(tuple(rules.METRIC_RULES)),
+                )
+            )
+            declared = rows.scalars().all()
+    except ProgrammingError:
+        logger.warning("reactor.thresholds.unreadable", exc_info=True)
+        return []
+    return [
+        Threshold(
+            rule=row.rule,
+            subject_type=row.subject_type,
+            value=float(row.value),
+            subject_uid=row.subject_uid,
+            dimensions=dict(row.dimensions or {}),
+            objective=row.objective,
+            lookback=row.lookback,
+            for_seconds=row.for_seconds,
+            severity=row.severity,
+            reason=row.reason,
+        )
+        for row in declared
+    ]
+
+
+async def deployment_subjects(db: AsyncSession) -> list[tuple[MetricSubject, dict]]:
+    """Deployments a metric rule can be asked about, with the labels that tune them.
+
+    Enabled and wanting replicas, for the same reason `behind_deployments` scopes
+    that way: a deployment scaled to zero is serving nothing on purpose, and every
+    serving metric about it is legitimately empty.
+
+    The labels are the workload's, which is where `tuning` says the knob lives.
+    """
+    rows = await db.execute(
+        select(Deployment.uid, Deployment.name, Deployment.cluster_id, Cluster.name, Workload.labels)
+        .join(Cluster, Cluster.id == Deployment.cluster_id)
+        .join(Workload, Workload.id == Deployment.workload_id)
+        .where(Deployment.enabled.is_(True), Deployment.desired_replicas > 0)
+    )
+    return [
+        (MetricSubject(uid=uid, name=name, cluster_id=cluster_id, cluster_name=cluster_name), labels)
+        for uid, name, cluster_id, cluster_name, labels in rows.all()
+    ]
+
+
+async def node_subjects(db: AsyncSession) -> list[tuple[MetricSubject, dict]]:
+    """Nodes in clusters we expect to be carrying work, with their own labels."""
+    rows = await db.execute(
+        select(Node.uid, Node.name, Node.cluster_id, Cluster.name, Node.labels)
+        .join(Cluster, Cluster.id == Node.cluster_id)
+        .where(Cluster.phase.in_(LIVE_PHASES))
+    )
+    return [
+        (MetricSubject(uid=uid, name=name, cluster_id=cluster_id, cluster_name=cluster_name), labels)
+        for uid, name, cluster_id, cluster_name, labels in rows.all()
+    ]
+
+
+SUBJECTS = {"deployment": deployment_subjects, "node": node_subjects}
+"""How each subject type in `rules.METRIC_SUBJECTS` is enumerated."""
+
+
+async def metric_thresholds(db: AsyncSession, reader: MetricReader) -> list[AlertIntent]:
+    """Conditions from operator-declared numbers, one measurement at a time.
+
+    The threshold table is the work list. Nothing is measured for a rule nobody
+    declared a number for, so the cost of this pass is proportional to the
+    commitments made rather than to the size of the fleet — which is the argument
+    for a table of thresholds over a table of rules.
+
+    Reading and judging are separate on purpose. This function decides which
+    questions to ask and `reader` answers them; `rules.metric_breach` then decides
+    what the answer means and has never heard of a metrics backend. A reading with
+    no value produces no alert and no resolution either way — an unmeasurable
+    subject is not a healthy one, and the pass says nothing about it rather than
+    guessing in either direction.
+    """
+    declared = await declared_thresholds(db)
+    if not declared:
+        return []
+    intents: list[AlertIntent] = []
+    for subject_type in sorted({threshold.subject_type for threshold in declared}):
+        enumerate_subjects = SUBJECTS.get(subject_type)
+        if enumerate_subjects is None:
+            logger.warning("reactor.thresholds.unknown_subject_type type=%s", subject_type)
+            continue
+        scoped = [t for t in declared if rules.METRIC_RULES[t.rule].subject_type == subject_type]
+        wanted = sorted({t.rule for t in scoped})
+        if not wanted:
+            continue
+        for subject, labels in await enumerate_subjects(db):
+            for rule in wanted:
+                threshold = rules.resolve_threshold(scoped, rule, subject.uid)
+                if threshold is None:
+                    continue
+                definition = rules.METRIC_RULES[rule]
+                reading = await reader.read(
+                    MetricQuery(
+                        metric=definition.metric,
+                        subject_type=subject_type,
+                        subject_uid=subject.uid,
+                        lookback=threshold.lookback or definition.lookback,
+                        dimensions=threshold.dimensions,
+                    )
+                )
+                intent = rules.metric_breach(subject, threshold, reading.value)
+                if intent is None:
+                    continue
+                tuned = tuning.apply(intent, labels)
+                if tuned is not None:
+                    intents.append(tuned)
+    return intents
+
+
+async def evaluate(db: AsyncSession, reader: MetricReader | None = None) -> list[AlertIntent]:
     """Every condition currently true, across the whole fleet.
 
     The caller treats this as authoritative and resolves any condition-sourced
     alert whose key is absent, so a query that fails must raise rather than
     return a short list — a partial answer here reads as "everything recovered".
+
+    That is also why the metric pass is last and why it withholds rather than
+    reports zero: a threshold whose measurement could not be taken contributes no
+    key, which resolves its alert. Adding a metrics store to the fleet must not be
+    a way to make an unrelated condition disappear, so a reader that cannot answer
+    leaves the rest of the set untouched — but a store that is down does close the
+    alerts it opened, which is the honest reading of "we can no longer see this".
     """
     intents: list[AlertIntent] = []
     intents += await unreachable_clusters(db)
     intents += await empty_clusters(db)
     intents += await behind_deployments(db)
     intents += await stalled_workloads(db)
+    intents += await metric_thresholds(db, reader or ServiceMetricReader(db))
     return intents
 
 

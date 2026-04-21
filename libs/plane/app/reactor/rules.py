@@ -15,6 +15,12 @@ Two families, and the difference between them is not cosmetic:
   arrive. An event is a thing that happened; the log will never retract it, so
   nothing derived from one may ever auto-resolve.
 
+A condition may also come from a number an operator declared rather than from a
+constant here: `METRIC_RULES` names the metric and the direction, `ops_alert_threshold`
+carries the value, the window and the scope, and `app.reactor.conditions` reads both and
+hands this module plain floats. The measurement is fetched by the caller precisely so
+that the judgement stays exercisable without a metrics backend.
+
 `for_seconds` is why an alert has a `pending` state. A condition that is true for
 one tick is usually a reconcile in progress; one that is true for ten minutes is a
 problem. Waiting is the difference between an alerting system people read and one
@@ -269,4 +275,297 @@ def workload_stalled(
         title=f"workload {workload_name} has {ready}/{desired} replicas ready{note}",
         details={"replicas_ready": ready, "replicas_desired": desired, "promoted": promoted},
         for_seconds=CONDITION_WINDOWS[WORKLOAD_STALLED],
+    )
+
+
+ABOVE = "above"
+BELOW = "below"
+COMPARISONS = (ABOVE, BELOW)
+
+
+@dataclass(frozen=True)
+class MetricRule:
+    """One metric-backed check: which measurement, which way, and what it falls back to.
+
+    The predicate is code and the number is data. A rule names a metric by its
+    `app.modules.metrics.registry` name and never by a series or an expression —
+    an upstream rename is then a change to one dialect table and not to anything
+    an operator has declared.
+
+    `comparison` lives here rather than on the row because which way a metric is
+    wrong is judgement, not a commitment: nobody declares that a cache hit rate
+    being *high* is the problem. What is declared is the number, the window and
+    the scope, and those are the columns `ops_alert_threshold` has.
+
+    `suggested` is what the number would be if nobody had said otherwise. It is
+    not a default that fires: no metric rule evaluates until an operator declares
+    a threshold row for it, which is also what keeps the fan-out of the metric
+    pass proportional to the commitments rather than to the fleet.
+    """
+
+    rule: str
+    metric: str
+    comparison: str
+    subject_type: str
+    severity: str
+    noun: str
+    suggested: float
+    lookback: str = "5m"
+    for_seconds: int = 900
+
+
+METRIC_RULES: dict[str, MetricRule] = {
+    rule.rule: rule
+    for rule in (
+        MetricRule(
+            rule="deployment.ttft_high",
+            metric="inference.ttft",
+            comparison=ABOVE,
+            subject_type="deployment",
+            severity=WARNING,
+            noun="time to first token (p95)",
+            suggested=2.0,
+        ),
+        MetricRule(
+            rule="deployment.ttft_p90_high",
+            metric="inference.ttft_p90",
+            comparison=ABOVE,
+            subject_type="deployment",
+            severity=WARNING,
+            noun="time to first token (p90)",
+            suggested=1.5,
+        ),
+        MetricRule(
+            rule="deployment.latency_high",
+            metric="inference.latency",
+            comparison=ABOVE,
+            subject_type="deployment",
+            severity=ERROR,
+            noun="end-to-end latency (p95)",
+            suggested=30.0,
+        ),
+        MetricRule(
+            rule="deployment.queue_time_high",
+            metric="inference.queue_time",
+            comparison=ABOVE,
+            subject_type="deployment",
+            severity=WARNING,
+            noun="time waiting in queue (p95)",
+            suggested=1.0,
+        ),
+        MetricRule(
+            rule="deployment.output_speed_below_floor",
+            metric="inference.output_tokens_per_stream",
+            comparison=BELOW,
+            subject_type="deployment",
+            severity=WARNING,
+            noun="output speed for one stream",
+            suggested=30.0,
+        ),
+        MetricRule(
+            rule="deployment.prefix_cache_hit_rate_low",
+            metric="inference.prefix_cache_hit_rate",
+            comparison=BELOW,
+            subject_type="deployment",
+            severity=INFO,
+            noun="prefix cache hit rate",
+            suggested=20.0,
+            lookback="30m",
+            for_seconds=3600,
+        ),
+        MetricRule(
+            rule="deployment.kv_cache_saturated",
+            metric="inference.kv_cache_utilization",
+            comparison=ABOVE,
+            subject_type="deployment",
+            severity=WARNING,
+            noun="KV cache utilization",
+            suggested=95.0,
+        ),
+        MetricRule(
+            rule="deployment.preemptions_high",
+            metric="inference.preemptions",
+            comparison=ABOVE,
+            subject_type="deployment",
+            severity=WARNING,
+            noun="preemptions per second",
+            suggested=0.5,
+        ),
+        MetricRule(
+            rule="node.gpu_temperature_high",
+            metric="gpu.temperature",
+            comparison=ABOVE,
+            subject_type="node",
+            severity=WARNING,
+            noun="hottest GPU",
+            suggested=87.0,
+            for_seconds=600,
+        ),
+        MetricRule(
+            rule="node.ecc_uncorrectable",
+            metric="gpu.ecc_uncorrectable",
+            comparison=ABOVE,
+            subject_type="node",
+            severity=ERROR,
+            noun="uncorrectable ECC errors",
+            suggested=0.0,
+            for_seconds=0,
+        ),
+    )
+}
+"""Every metric-backed rule, by name. The registry of predicates a threshold row may name.
+
+Eight of these read the serving engine and two read the cards. **None of them reads
+an availability, failure-rate or error-ratio series, and that is a decision rather
+than an omission.** A request that never reached the cluster — refused at the front
+door, routed nowhere, timed out upstream — emits nothing an engine exporter can
+count, so a ratio built out of these series reports a fully-broken cluster as "no
+traffic" rather than as an outage, and the alert that matters most is the one
+guaranteed not to fire. Availability has to be measured at the hop that saw the
+request, which is not a cluster-side exporter and is not in
+`app.modules.metrics.registry`. A rule here that claimed otherwise would be worse
+than the absence of one: it would be a green light with nothing behind it.
+
+`METRIC_SUBJECTS` is derived from this table rather than declared beside it, so a
+rule for a new kind of subject cannot be added without the evaluator noticing.
+"""
+
+METRIC_SUBJECTS: tuple[str, ...] = tuple(sorted({rule.subject_type for rule in METRIC_RULES.values()}))
+
+
+@dataclass(frozen=True)
+class Threshold:
+    """One `ops_alert_threshold` row, flattened to plain values before it gets here.
+
+    `value` is `Numeric` in the database and therefore `Decimal` at runtime; the
+    caller converts. Rules compare and format plain floats, which is what keeps
+    them exercisable from a test that has never opened a session.
+
+    `subject_uid` of None is the fleet default for its rule — one row that covers
+    every subject of that type — and a row naming a subject overrides it for that
+    subject alone.
+    """
+
+    rule: str
+    subject_type: str
+    value: float
+    subject_uid: str | None = None
+    dimensions: dict = field(default_factory=dict)
+    objective: str | None = None
+    lookback: str | None = None
+    for_seconds: int | None = None
+    severity: str | None = None
+    reason: str | None = None
+
+
+@dataclass(frozen=True)
+class MetricSubject:
+    """The object one metric rule is being evaluated for, named the way an alert names it."""
+
+    uid: str
+    name: str
+    cluster_id: Any = None
+    cluster_name: str | None = None
+
+
+def _dimension_key(dimensions: dict) -> str:
+    """A stable suffix for the dedupe key, so two narrowings of one rule stay two alerts."""
+    if not dimensions:
+        return ""
+    return ":" + ",".join(f"{key}={dimensions[key]}" for key in sorted(dimensions))
+
+
+def _specificity(threshold: Threshold) -> tuple:
+    """Most specific first: a row about this subject, then the fewest narrowing dimensions.
+
+    Ordered rather than filtered, and total rather than partial, because the
+    alternative is letting the planner's row order decide which commitment applies
+    — the same failure `uq_ops_alert_threshold_scope` uses `NULLS NOT DISTINCT` to
+    keep out of the table in the first place.
+    """
+    return (
+        0 if threshold.subject_uid is not None else 1,
+        len(threshold.dimensions),
+        _dimension_key(threshold.dimensions),
+    )
+
+
+def resolve_threshold(thresholds: list[Threshold], rule: str, subject_uid: str) -> Threshold | None:
+    """The threshold that applies to one subject for one rule, or None if nobody declared one.
+
+    A scoped row beats the fleet default; among rows at the same scope the least
+    narrowed one wins, because a dimensioned row asks a question this evaluator
+    cannot put to the store yet and an undimensioned sibling can be answered
+    honestly today.
+    """
+    candidates = [t for t in thresholds if t.rule == rule and t.subject_uid in (None, subject_uid)]
+    if not candidates:
+        return None
+    return min(candidates, key=_specificity)
+
+
+def breached(comparison: str, observed: float, value: float) -> bool:
+    """Whether a measurement is on the wrong side of a declared number.
+
+    An unrecognised comparison is not a breach. The catalogue is code, so this is
+    only reachable mid-edit, and a rule that fires on a spelling mistake is a rule
+    nobody trusts afterwards.
+    """
+    if comparison == ABOVE:
+        return observed > value
+    if comparison == BELOW:
+        return observed < value
+    return False
+
+
+def _number(value: float) -> str:
+    return f"{value:g}"
+
+
+def metric_breach(subject: MetricSubject, threshold: Threshold, observed: float | None) -> AlertIntent | None:
+    """The alert one declared threshold produces for one subject, or None.
+
+    **`observed is None` never alerts.** None is "the store had no series", which
+    is not zero and is not a breach: an engine that has served nothing reports
+    nothing, and a rule that read that silence as a floor being missed would page
+    someone every night for every idle deployment. It is the same asymmetry that
+    keeps an availability rule out of `METRIC_RULES` — what a cluster-side
+    exporter does not say is not evidence of anything.
+
+    Everything the alert was decided by goes into `details`: the metric's registry
+    name, the comparison, both numbers, the window, and the `reason` the operator
+    wrote on the row. An alert whose threshold cannot be read next to it is one
+    somebody has to go and look up the commitment for, at the hour when that is
+    hardest.
+    """
+    definition = METRIC_RULES.get(threshold.rule)
+    if definition is None or observed is None:
+        return None
+    if not breached(definition.comparison, observed, threshold.value):
+        return None
+    window = threshold.lookback or definition.lookback
+    return AlertIntent(
+        dedupe_key=f"{threshold.rule}:{subject.uid}{_dimension_key(threshold.dimensions)}",
+        rule=threshold.rule,
+        source=CONDITION,
+        severity=threshold.severity or definition.severity,
+        subject_type=definition.subject_type,
+        subject_uid=subject.uid,
+        cluster_id=subject.cluster_id,
+        cluster_name=subject.cluster_name,
+        title=(
+            f"{subject.name}: {definition.noun} is {_number(observed)} {definition.comparison}"
+            f" the declared {_number(threshold.value)} over {window}"
+        ),
+        details={
+            "metric": definition.metric,
+            "comparison": definition.comparison,
+            "observed": observed,
+            "threshold": threshold.value,
+            "lookback": window,
+            "dimensions": threshold.dimensions,
+            "objective": threshold.objective,
+            "declared_reason": threshold.reason,
+        },
+        for_seconds=definition.for_seconds if threshold.for_seconds is None else threshold.for_seconds,
     )
