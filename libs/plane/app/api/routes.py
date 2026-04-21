@@ -8,8 +8,11 @@ from app.core.auth_routes import AuthRoutes
 from app.modules.nodes.routes import NodeRoutes
 from app.modules.pools.routes import PoolRoutes
 from app.modules.alerts.routes import AlertRoutes
+from app.modules.alerts.routes import AlertRuleRoutes
+from app.modules.alerts.routes import AlertThresholdRoutes
 from app.modules.events.routes import EventRoutes
 from app.modules.quotas.routes import QuotaRoutes
+from app.modules.quotas.routes import ServingQuotaRoutes
 from app.modules.devices.routes import DeviceRoutes
 from app.modules.metrics.routes import MetricsRoutes
 from app.modules.recipes.routes import RecipeRoutes
@@ -50,6 +53,7 @@ V1_ROUTES = [
     TenantRoutes,
     ProjectRoutes,
     QuotaRoutes,
+    ServingQuotaRoutes,
     PriorityClassRoutes,
     PolicyRoutes,
     AllocationRoutes,
@@ -58,6 +62,8 @@ V1_ROUTES = [
     ComponentRoutes,
     EventRoutes,
     AlertRoutes,
+    AlertThresholdRoutes,
+    AlertRuleRoutes,
     NotificationChannelRoutes,
     MetricsRoutes,
 ]
