@@ -7,6 +7,8 @@ export interface BenchmarksSearch {
   cluster?: string
   harness?: string
   phase?: string
+  /** The ask a run was expanded from, which is how a parent lists its children. */
+  request?: string
 }
 
 export const Route = createFileRoute("/_app/benchmarks")({
@@ -16,6 +18,7 @@ export const Route = createFileRoute("/_app/benchmarks")({
     cluster: typeof search.cluster === "string" ? search.cluster : undefined,
     harness: typeof search.harness === "string" ? search.harness : undefined,
     phase: typeof search.phase === "string" ? search.phase : undefined,
+    request: typeof search.request === "string" ? search.request : undefined,
   }),
   component: withPage(BenchmarksPage, "/_app/benchmarks"),
 })

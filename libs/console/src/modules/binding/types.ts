@@ -115,6 +115,154 @@ export interface QuotaUpdateRequest {
   over_quota_enabled?: boolean
 }
 
+export type LimitScope = "per_replica" | "divided"
+
+export type OnExceed = "reject" | "queue"
+
+/**
+ * `ServingQuotaStandardSchema` — whether a declared commitment clears the
+ * acceptance standard's floors. Declared against declared: it compares the
+ * numbers somebody promised with the numbers the standard asks to be promised,
+ * and says nothing about what the endpoint delivered. An uncommitted field is a
+ * shortfall, because declaring nothing does not clear a floor.
+ */
+export interface ServingQuotaStandard {
+  meets: boolean
+  shortfalls: string[]
+}
+
+/**
+ * `ServingQuotaSchema` — the traffic one endpoint is committed to carry.
+ *
+ * Not a `Quota`. That one is devices, checked once by placement when a workload
+ * is admitted; this one is requests and tokens, checked by the gateway on every
+ * request, in front of the clusters. Different enforcer, different moment, and
+ * no field in common.
+ *
+ * Every field is declared, and there is deliberately no observed sibling of
+ * `Quota.usage`: a serving quota is counted per request in the gateway, and that
+ * measurement never crosses into the control plane.
+ *
+ * A null limit is uncommitted and never zero. An endpoint with no row at all is
+ * not rate limited, and a row with a null `committed_rpm` is committed on tokens
+ * and not on requests.
+ */
+export interface ServingQuota {
+  id: string
+  endpoint: string
+  endpoint_name: string
+  project: string
+  committed_rpm: number | null
+  committed_tpm: number | null
+  max_concurrent_requests: number | null
+  max_output_tokens: number | null
+  burst_rpm: number | null
+  ramp_up_seconds: number
+  on_exceed: OnExceed
+  queue_timeout_ms: number | null
+  limit_scope: LimitScope
+  success_rate_objective: number | null
+  availability_objective: string
+  objective_window_seconds: number
+  /** False is shadow mode: the gateway counts and reports, and never refuses. */
+  enforced: boolean
+  created_at: string
+  updated_at: string | null
+  revision: string
+  standard: ServingQuotaStandard
+}
+
+/** Never auto-created: a serving quota is a number somebody sold. */
+export interface ServingQuotaCreateRequest {
+  endpoint: string
+  committed_rpm?: number | null
+  committed_tpm?: number | null
+  max_concurrent_requests?: number | null
+  max_output_tokens?: number | null
+  burst_rpm?: number | null
+  ramp_up_seconds?: number
+  on_exceed?: OnExceed
+  queue_timeout_ms?: number | null
+  limit_scope?: LimitScope
+  success_rate_objective?: number | null
+  availability_objective?: string
+  objective_window_seconds?: number
+  enforced?: boolean
+}
+
+/**
+ * An absent field is untouched and an explicit null clears it. `endpoint` is
+ * absent by design: the endpoint is this row's whole scope, so moving one would
+ * withdraw a commitment from one contract and grant it to another.
+ */
+export interface ServingQuotaUpdateRequest {
+  committed_rpm?: number | null
+  committed_tpm?: number | null
+  max_concurrent_requests?: number | null
+  max_output_tokens?: number | null
+  burst_rpm?: number | null
+  ramp_up_seconds?: number
+  on_exceed?: OnExceed
+  queue_timeout_ms?: number | null
+  limit_scope?: LimitScope
+  success_rate_objective?: number | null
+  availability_objective?: string
+  objective_window_seconds?: number
+  enforced?: boolean
+}
+
+/**
+ * `ResolvedLimitsSchema` — one endpoint's ceiling, flattened for the gateway.
+ * `limit_scope` travels with the numbers because it is how they are read:
+ * `per_replica` means they are this replica's, `divided` means they are the
+ * fleet's and this replica enforces its share.
+ */
+export interface ResolvedLimits {
+  committed_rpm: number | null
+  burst_rpm: number | null
+  ramp_up_seconds: number
+  committed_tpm: number | null
+  max_concurrent_requests: number | null
+  max_output_tokens: number | null
+  on_exceed: OnExceed
+  queue_timeout_ms: number | null
+  limit_scope: LimitScope
+  enforced: boolean
+}
+
+/**
+ * `ResolvedServingQuotaSchema` — what a commitment means for a fleet of a
+ * stated size. `declared` is what was sold across the whole gateway fleet;
+ * `effective` is what the replica at `replica_index` enforces once `limit_scope`
+ * is applied. The plane does this arithmetic, so the console never computes a
+ * second opinion of it.
+ */
+export interface ResolvedServingQuota {
+  endpoint: string
+  endpoint_name: string
+  project: string
+  workloads: string[]
+  replicas: number
+  replica_index: number
+  declared: ResolvedLimits
+  effective: ResolvedLimits
+  /** How many replicas would enforce a hard zero on some limit under `divided`. */
+  starved_replicas: number
+  success_rate_objective: number | null
+  availability_objective: string
+  objective_window_seconds: number
+  standard: ServingQuotaStandard
+  revision: string
+}
+
+/** Unpaginated, like the routing table it sits beside. */
+export interface ResolvedServingQuotaTable {
+  revision: string
+  replicas: number
+  replica_index: number
+  quotas: ResolvedServingQuota[]
+}
+
 /**
  * `PriorityClassSchema` — what preempts what. `preemptible` and `preempts` are
  * separate switches: a class can take capacity from others and still be safe

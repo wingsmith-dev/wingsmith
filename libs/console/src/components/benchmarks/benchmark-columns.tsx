@@ -2,7 +2,9 @@ import type { Column } from "@/components/layout/data-table"
 import { Dash, Id } from "@/components/layout/mono"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
+import { LevelBadge } from "@/components/benchmarks/level"
 import { Badge } from "@/components/ui/badge"
+import { DiscardBadge } from "@/components/benchmarks/discard"
 import { formatRelative, shortenId } from "@/lib/format"
 import {
   asStatBlock,
@@ -10,7 +12,7 @@ import {
   formatStat,
   loadSummary,
 } from "@/modules/benchmarks/display"
-import type { BenchmarkRun } from "@/modules/benchmarks/types"
+import type { BenchmarkLevel, BenchmarkRun } from "@/modules/benchmarks/types"
 import { Link } from "@tanstack/react-router"
 
 /**
@@ -31,8 +33,25 @@ function headline(run: BenchmarkRun, key: string): string {
   return value === undefined ? "—" : formatStat(value)
 }
 
+/**
+ * Columns over runs, which are observed and therefore carry no action column.
+ *
+ * There is no edit and no delete here and there never will be: a measurement is
+ * not editable, and an affordance that suggested it was would be offering to
+ * rewrite the record the table exists to be.
+ *
+ * `level` is passed in rather than read off the run, because a run does not
+ * carry one — the request does. A caller that knows which ask these rows came
+ * from says so and gets the claim drawn on every row; a caller listing the
+ * whole fleet does not, and shows the ids the run actually has instead.
+ */
 export function benchmarkColumns(
-  options: { showDeployment?: boolean } = {}
+  options: {
+    showDeployment?: boolean
+    showRequest?: boolean
+    showStep?: boolean
+    level?: BenchmarkLevel
+  } = {}
 ): Column<BenchmarkRun>[] {
   const columns: Column<BenchmarkRun>[] = [
     {
@@ -54,25 +73,85 @@ export function benchmarkColumns(
             )}
             <Id value={shortenId(run.id)} className="ml-2" />
           </Link>
+          {run.discard && <DiscardBadge />}
         </ResourceCell>
       ),
     },
   ]
 
+  if (options.level) {
+    columns.push({
+      key: "level",
+      header: "Level",
+      cell: () => <LevelBadge level={options.level!} />,
+    })
+  }
+
+  if (options.showStep) {
+    columns.push({
+      key: "step",
+      header: "Step",
+      align: "right",
+      cell: (run) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          #{run.step_index}
+        </span>
+      ),
+    })
+  }
+
+  if (options.showRequest) {
+    columns.push({
+      key: "request",
+      header: "Requested by",
+      secondary: true,
+      cell: (run) =>
+        run.request_id ? (
+          <Link
+            to="/benchmarks/requests/$requestId"
+            params={{ requestId: run.request_id }}
+            className="font-mono text-2xs hover:underline"
+          >
+            {shortenId(run.request_id)}
+          </Link>
+        ) : (
+          <span className="font-mono text-2xs text-muted-foreground/40">—</span>
+        ),
+    })
+  }
+
   if (options.showDeployment) {
     columns.push({
       key: "deployment",
-      header: "Deployment",
+      header: "Measured",
       secondary: true,
-      cell: (run) => (
-        <Link
-          to="/deployments/$deploymentId"
-          params={{ deploymentId: run.deployment_id }}
-          className="font-mono text-2xs hover:underline"
-        >
-          {run.deployment_id}
-        </Link>
-      ),
+      cell: (run) => {
+        if (run.endpoint_id)
+          return (
+            <Link
+              to="/endpoints/$endpointId"
+              params={{ endpointId: run.endpoint_id }}
+              className="font-mono text-2xs hover:underline"
+            >
+              {run.endpoint_id}
+            </Link>
+          )
+        if (run.deployment_id)
+          return (
+            <Link
+              to="/deployments/$deploymentId"
+              params={{ deploymentId: run.deployment_id }}
+              className="font-mono text-2xs hover:underline"
+            >
+              {run.deployment_id}
+            </Link>
+          )
+        return (
+          <span className="font-mono text-2xs">
+            <Dash>{null}</Dash>
+          </span>
+        )
+      },
     })
   }
 

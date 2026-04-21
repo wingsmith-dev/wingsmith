@@ -1,6 +1,9 @@
 import { api, type ListResponse } from "@/lib/api"
 import type {
   Artifact,
+  ArtifactBaseline,
+  ArtifactBaselineCreateRequest,
+  ArtifactBaselineUpdateRequest,
   ArtifactCreateRequest,
   ArtifactUpdateRequest,
   Deployment,
@@ -97,6 +100,54 @@ export function updateArtifact(
 
 export function deleteArtifact(ref: string): Promise<void> {
   return api.delete<void>(`/artifacts/${encodeURIComponent(ref)}`)
+}
+
+/**
+ * Baselines are a sub-resource rather than a field on the artifact: the set is
+ * genuinely plural, one row per dataset and metric, and each row carries its own
+ * tolerance and its own provenance. Editing one is not a rewrite of the rest.
+ */
+export function fetchArtifactBaselines(
+  ref: string,
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<ArtifactBaseline>> {
+  return api.list<ArtifactBaseline>(
+    `/artifacts/${encodeURIComponent(ref)}/baselines`,
+    { cursor, limit }
+  )
+}
+
+export function createArtifactBaseline(
+  ref: string,
+  body: ArtifactBaselineCreateRequest
+): Promise<ArtifactBaseline> {
+  return api.post<ArtifactBaseline>(
+    `/artifacts/${encodeURIComponent(ref)}/baselines`,
+    body
+  )
+}
+
+export function updateArtifactBaseline(
+  ref: string,
+  baseline: string,
+  body: ArtifactBaselineUpdateRequest,
+  revision?: string
+): Promise<ArtifactBaseline> {
+  return api.patch<ArtifactBaseline>(
+    `/artifacts/${encodeURIComponent(ref)}/baselines/${encodeURIComponent(baseline)}`,
+    body,
+    { ifMatch: revision }
+  )
+}
+
+export function deleteArtifactBaseline(
+  ref: string,
+  baseline: string
+): Promise<void> {
+  return api.delete<void>(
+    `/artifacts/${encodeURIComponent(ref)}/baselines/${encodeURIComponent(baseline)}`
+  )
 }
 
 export function fetchRecipes(

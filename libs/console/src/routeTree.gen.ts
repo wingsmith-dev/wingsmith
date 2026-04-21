@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteRouteImport } from './routes/login/route'
+import { Route as AppAlertsRouteRouteImport } from './routes/_app/alerts/route'
 import { Route as AppAllocationsRouteRouteImport } from './routes/_app/allocations/route'
 import { Route as AppArtifactsRouteRouteImport } from './routes/_app/artifacts/route'
 import { Route as AppBenchmarksRouteRouteImport } from './routes/_app/benchmarks/route'
@@ -45,6 +46,7 @@ import { Route as AppOperationsOperationIdRouteRouteImport } from './routes/_app
 import { Route as AppPoolsPoolIdRouteRouteImport } from './routes/_app/pools/$poolId/route'
 import { Route as AppRecipesRecipeIdRouteRouteImport } from './routes/_app/recipes/$recipeId/route'
 import { Route as AppWorkloadsWorkloadIdRouteRouteImport } from './routes/_app/workloads/$workloadId/route'
+import { Route as AppBenchmarksRequestsRequestIdRouteRouteImport } from './routes/_app/benchmarks/requests/$requestId/route'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -59,6 +61,11 @@ const LoginRouteRoute = LoginRouteRouteImport.update({
   id: '/login',
   path: '/login',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AppAlertsRouteRoute = AppAlertsRouteRouteImport.update({
+  id: '/alerts',
+  path: '/alerts',
+  getParentRoute: () => AppRoute,
 } as any)
 const AppAllocationsRouteRoute = AppAllocationsRouteRouteImport.update({
   id: '/allocations',
@@ -232,10 +239,17 @@ const AppWorkloadsWorkloadIdRouteRoute =
     path: '/$workloadId',
     getParentRoute: () => AppWorkloadsRouteRoute,
   } as any)
+const AppBenchmarksRequestsRequestIdRouteRoute =
+  AppBenchmarksRequestsRequestIdRouteRouteImport.update({
+    id: '/requests/$requestId',
+    path: '/requests/$requestId',
+    getParentRoute: () => AppBenchmarksRouteRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
+  '/alerts': typeof AppAlertsRouteRoute
   '/allocations': typeof AppAllocationsRouteRoute
   '/artifacts': typeof AppArtifactsRouteRouteWithChildren
   '/benchmarks': typeof AppBenchmarksRouteRouteWithChildren
@@ -269,10 +283,12 @@ export interface FileRoutesByFullPath {
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
   '/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
   '/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
+  '/benchmarks/requests/$requestId': typeof AppBenchmarksRequestsRequestIdRouteRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
+  '/alerts': typeof AppAlertsRouteRoute
   '/allocations': typeof AppAllocationsRouteRoute
   '/artifacts': typeof AppArtifactsRouteRouteWithChildren
   '/benchmarks': typeof AppBenchmarksRouteRouteWithChildren
@@ -306,12 +322,14 @@ export interface FileRoutesByTo {
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
   '/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
   '/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
+  '/benchmarks/requests/$requestId': typeof AppBenchmarksRequestsRequestIdRouteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
   '/_app': typeof AppRouteWithChildren
+  '/_app/alerts': typeof AppAlertsRouteRoute
   '/_app/allocations': typeof AppAllocationsRouteRoute
   '/_app/artifacts': typeof AppArtifactsRouteRouteWithChildren
   '/_app/benchmarks': typeof AppBenchmarksRouteRouteWithChildren
@@ -345,12 +363,14 @@ export interface FileRoutesById {
   '/_app/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
   '/_app/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
   '/_app/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
+  '/_app/benchmarks/requests/$requestId': typeof AppBenchmarksRequestsRequestIdRouteRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/login'
+    | '/alerts'
     | '/allocations'
     | '/artifacts'
     | '/benchmarks'
@@ -384,10 +404,12 @@ export interface FileRouteTypes {
     | '/pools/$poolId'
     | '/recipes/$recipeId'
     | '/workloads/$workloadId'
+    | '/benchmarks/requests/$requestId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
+    | '/alerts'
     | '/allocations'
     | '/artifacts'
     | '/benchmarks'
@@ -421,11 +443,13 @@ export interface FileRouteTypes {
     | '/pools/$poolId'
     | '/recipes/$recipeId'
     | '/workloads/$workloadId'
+    | '/benchmarks/requests/$requestId'
   id:
     | '__root__'
     | '/'
     | '/login'
     | '/_app'
+    | '/_app/alerts'
     | '/_app/allocations'
     | '/_app/artifacts'
     | '/_app/benchmarks'
@@ -459,6 +483,7 @@ export interface FileRouteTypes {
     | '/_app/pools/$poolId'
     | '/_app/recipes/$recipeId'
     | '/_app/workloads/$workloadId'
+    | '/_app/benchmarks/requests/$requestId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -489,6 +514,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_app/alerts': {
+      id: '/_app/alerts'
+      path: '/alerts'
+      fullPath: '/alerts'
+      preLoaderRoute: typeof AppAlertsRouteRouteImport
+      parentRoute: typeof AppRoute
     }
     '/_app/allocations': {
       id: '/_app/allocations'
@@ -721,6 +753,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkloadsWorkloadIdRouteRouteImport
       parentRoute: typeof AppWorkloadsRouteRoute
     }
+    '/_app/benchmarks/requests/$requestId': {
+      id: '/_app/benchmarks/requests/$requestId'
+      path: '/requests/$requestId'
+      fullPath: '/benchmarks/requests/$requestId'
+      preLoaderRoute: typeof AppBenchmarksRequestsRequestIdRouteRouteImport
+      parentRoute: typeof AppBenchmarksRouteRoute
+    }
   }
 }
 
@@ -737,10 +776,13 @@ const AppArtifactsRouteRouteWithChildren =
 
 interface AppBenchmarksRouteRouteChildren {
   AppBenchmarksBenchmarkIdRouteRoute: typeof AppBenchmarksBenchmarkIdRouteRoute
+  AppBenchmarksRequestsRequestIdRouteRoute: typeof AppBenchmarksRequestsRequestIdRouteRoute
 }
 
 const AppBenchmarksRouteRouteChildren: AppBenchmarksRouteRouteChildren = {
   AppBenchmarksBenchmarkIdRouteRoute: AppBenchmarksBenchmarkIdRouteRoute,
+  AppBenchmarksRequestsRequestIdRouteRoute:
+    AppBenchmarksRequestsRequestIdRouteRoute,
 }
 
 const AppBenchmarksRouteRouteWithChildren =
@@ -850,6 +892,7 @@ const AppWorkloadsRouteRouteWithChildren =
   AppWorkloadsRouteRoute._addFileChildren(AppWorkloadsRouteRouteChildren)
 
 interface AppRouteChildren {
+  AppAlertsRouteRoute: typeof AppAlertsRouteRoute
   AppAllocationsRouteRoute: typeof AppAllocationsRouteRoute
   AppArtifactsRouteRoute: typeof AppArtifactsRouteRouteWithChildren
   AppBenchmarksRouteRoute: typeof AppBenchmarksRouteRouteWithChildren
@@ -875,6 +918,7 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAlertsRouteRoute: AppAlertsRouteRoute,
   AppAllocationsRouteRoute: AppAllocationsRouteRoute,
   AppArtifactsRouteRoute: AppArtifactsRouteRouteWithChildren,
   AppBenchmarksRouteRoute: AppBenchmarksRouteRouteWithChildren,

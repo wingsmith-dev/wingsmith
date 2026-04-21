@@ -12,6 +12,10 @@ import type {
   Quota,
   QuotaCreateRequest,
   QuotaUpdateRequest,
+  ResolvedServingQuotaTable,
+  ServingQuota,
+  ServingQuotaCreateRequest,
+  ServingQuotaUpdateRequest,
   Tenant,
   TenantCreateRequest,
   TenantUpdateRequest,
@@ -34,6 +38,14 @@ export interface QuotaFilters {
   /** Sent as `class`. */
   class?: string
   over_quota_enabled?: boolean
+}
+
+export interface ServingQuotaFilters {
+  endpoint?: string
+  project?: string
+  enforced?: boolean
+  /** `limit_scope`, sent as `scope`. */
+  scope?: string
 }
 
 export interface PriorityClassFilters {
@@ -139,6 +151,65 @@ export function updateQuota(
 
 export function deleteQuota(ref: string): Promise<void> {
   return api.delete<void>(`/quotas/${encodeURIComponent(ref)}`)
+}
+
+export function fetchServingQuotas(
+  filters: ServingQuotaFilters = {},
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<ServingQuota>> {
+  return api.list<ServingQuota>("/serving-quotas", {
+    ...filters,
+    cursor,
+    limit,
+  })
+}
+
+export function fetchServingQuota(ref: string): Promise<ServingQuota> {
+  return api.get<ServingQuota>(`/serving-quotas/${encodeURIComponent(ref)}`)
+}
+
+export function createServingQuota(
+  body: ServingQuotaCreateRequest
+): Promise<ServingQuota> {
+  return api.post<ServingQuota>("/serving-quotas", body)
+}
+
+export function updateServingQuota(
+  ref: string,
+  body: ServingQuotaUpdateRequest,
+  revision?: string
+): Promise<ServingQuota> {
+  return api.patch<ServingQuota>(
+    `/serving-quotas/${encodeURIComponent(ref)}`,
+    body,
+    { ifMatch: revision }
+  )
+}
+
+export function deleteServingQuota(ref: string): Promise<void> {
+  return api.delete<void>(`/serving-quotas/${encodeURIComponent(ref)}`)
+}
+
+export interface ResolvedServingQuotaParams {
+  endpoint?: string
+  workload?: string
+  replicas?: number
+  replica_index?: number
+}
+
+/**
+ * What each gateway replica enforces for a fleet of a stated size. The plane
+ * cannot discover the replica count without putting a Kubernetes client on the
+ * inference path, so the caller states it and the share arithmetic happens
+ * there rather than here.
+ */
+export function fetchResolvedServingQuotas(
+  params: ResolvedServingQuotaParams = {}
+): Promise<ResolvedServingQuotaTable> {
+  return api.get<ResolvedServingQuotaTable>("/serving-quotas/resolved", {
+    ...params,
+  })
 }
 
 export function fetchPriorityClasses(

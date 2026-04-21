@@ -3,6 +3,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatError } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import {
+  AVAILABILITY_SOURCE,
+  DEFAULT_TILES,
+  metricGroups,
+  type MetricFamily,
+} from "@/modules/metrics/catalogue"
+import {
   formatMetric,
   sampleOf,
   temperatureTone,
@@ -11,28 +17,10 @@ import {
 import { useMetrics } from "@/modules/metrics/queries"
 import type { MetricScope, Metrics } from "@/modules/metrics/types"
 import { IconChartLine } from "@tabler/icons-react"
+import { useState } from "react"
 
+import { MetricPicker } from "./metric-picker"
 import { MetricTile } from "./metric-tile"
-
-const GPU_TILES = [
-  "gpu.utilization",
-  "gpu.memory_used",
-  "gpu.temperature",
-  "gpu.power",
-  "gpu.sm_clock",
-  "gpu.memory_utilization",
-]
-
-const INFERENCE_TILES = [
-  "inference.ttft",
-  "inference.tpot",
-  "inference.output_tokens_per_second",
-  "inference.input_tokens_per_second",
-  "inference.requests_running",
-  "inference.requests_waiting",
-  "inference.kv_cache_utilization",
-  "inference.latency",
-]
 
 function Empty({ reason }: { reason: string }) {
   /**
@@ -106,6 +94,9 @@ function Breakdown({ data }: { data: Metrics }) {
  * It has its own query, its own refresh and its own failure: a Prometheus that
  * is unreachable must not make a node page look broken, because everything else
  * on that page is still true.
+ *
+ * Everything it draws is observed, so nothing here edits anything. The picker
+ * changes what this reader looks at, which is not a change to the fleet.
  */
 export function MetricsPanel({
   scope,
@@ -116,7 +107,7 @@ export function MetricsPanel({
 }: {
   scope: MetricScope
   refId: string | undefined
-  family?: "gpu" | "inference"
+  family?: MetricFamily
   series?: boolean
   /**
    * Metric names to promote to full-size charts above the rest. A page that is
@@ -126,6 +117,7 @@ export function MetricsPanel({
   lead?: string[]
 }) {
   const { data, isLoading, error } = useMetrics(scope, refId, { series })
+  const [selected, setSelected] = useState<string[]>(DEFAULT_TILES[family])
 
   if (isLoading) {
     return (
@@ -140,24 +132,28 @@ export function MetricsPanel({
   if (!data) return null
   if (data.unavailable) return <Empty reason={data.unavailable} />
 
-  const wanted = family === "gpu" ? GPU_TILES : INFERENCE_TILES
-  const tiles = wanted
+  const promoted = new Set(lead ?? [])
+  const led = (lead ?? [])
     .map((name) => sampleOf(data.samples, name))
     .filter((s): s is NonNullable<typeof s> => Boolean(s))
 
-  if (!tiles.length) {
+  const groups = metricGroups(family, selected)
+    .map((group) => ({
+      ...group,
+      samples: group.metrics
+        .filter((metric) => !promoted.has(metric.name))
+        .map((metric) => sampleOf(data.samples, metric.name))
+        .filter((s): s is NonNullable<typeof s> => Boolean(s)),
+    }))
+    .filter((group) => group.samples.length > 0)
+
+  if (led.length === 0 && groups.length === 0) {
     return (
       <Empty reason="the metrics store returned no series for this object" />
     )
   }
 
-  const promoted = lead ?? []
-  const led = promoted
-    .map((name) => tiles.find((t) => t.metric === name))
-    .filter((s): s is NonNullable<typeof s> => Boolean(s))
-  const rest = tiles.filter((t) => !led.includes(t))
-
-  const tile = (sample: (typeof tiles)[number], size: "sm" | "lg") => (
+  const tile = (sample: (typeof data.samples)[number], size: "sm" | "lg") => (
     <MetricTile
       key={sample.metric}
       sample={sample}
@@ -173,6 +169,15 @@ export function MetricsPanel({
 
   return (
     <div className="flex flex-col gap-2">
+      <div className="flex justify-end">
+        <MetricPicker
+          family={family}
+          selected={selected}
+          available={data.samples.map((sample) => sample.metric)}
+          onChange={setSelected}
+        />
+      </div>
+
       {led.length > 0 && (
         <div
           className={cn(
@@ -187,14 +192,30 @@ export function MetricsPanel({
           {led.map((sample) => tile(sample, "lg"))}
         </div>
       )}
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {rest.map((sample) => tile(sample, "sm"))}
-      </div>
+
+      {groups.map((group) => (
+        <div key={group.group} className="flex flex-col gap-1.5">
+          {groups.length > 1 && (
+            <div className="font-mono text-2xs tracking-wider text-muted-foreground/50 uppercase">
+              {group.label}
+            </div>
+          )}
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {group.samples.map((sample) => tile(sample, "sm"))}
+          </div>
+        </div>
+      ))}
+
       <Breakdown data={data} />
       {data.source ? (
         <div className="font-mono text-2xs text-muted-foreground/50">
           {data.window} window · {data.source.kind} · {data.source.url}
         </div>
+      ) : null}
+      {family === "inference" ? (
+        <p className="max-w-3xl text-2xs text-muted-foreground/50">
+          {AVAILABILITY_SOURCE}
+        </p>
       ) : null}
     </div>
   )

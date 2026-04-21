@@ -15,8 +15,11 @@ import {
 import type { Quota } from "@/modules/binding/types"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { QuotaForm } from "./QuotaForm"
+import { ServingQuotas } from "./ServingQuotas"
+import type { QuotasTab } from "./route"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -154,7 +157,13 @@ function columns(
  * into one number. `over_limit` and `headroom_devices` are the plane's own
  * derivations, so this page never computes a second opinion.
  */
-export function QuotasPage() {
+function HardwareQuotas({
+  creating,
+  onCreatingChange,
+}: {
+  creating: boolean
+  onCreatingChange: (creating: boolean) => void
+}) {
   const search = useSearch({ from: "/_app/quotas" })
   const navigate = useNavigate({ from: "/quotas" })
   const { data: projects } = useProjectOptions()
@@ -166,7 +175,6 @@ export function QuotasPage() {
   })
 
   const remove = useDeleteQuota()
-  const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Quota | undefined>()
   const [doomed, setDoomed] = useState<Quota | undefined>()
 
@@ -176,49 +184,44 @@ export function QuotasPage() {
     })
 
   return (
-    <div className="flex flex-col">
-      <PageHeader
-        title="Quotas"
-        description="declared floor and fair share · observed usage beside it"
-        actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            New quota
-          </Button>
-        }
-      />
+    <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">
+        Devices, checked once by placement when a workload is admitted.
+      </p>
 
-      <div className="space-y-4 p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <FilterSelect
-            label="Project"
-            value={search.project ?? ALL}
-            onChange={set("project")}
-            options={(projects ?? []).map((project) => ({
-              value: project.id,
-              label: project.slug,
-            }))}
-          />
-          <FilterSelect
-            label="Cluster"
-            value={search.cluster ?? ALL}
-            onChange={set("cluster")}
-            options={(clusters ?? []).map((cluster) => ({
-              value: cluster.id,
-              label: clusterLabel(cluster),
-            }))}
-          />
-        </div>
-
-        <DataTable
-          columns={columns(setEditing, setDoomed)}
-          list={list}
-          rowKey={(quota) => quota.id}
-          empty="No quotas declared."
+      <div className="flex flex-wrap items-center gap-2">
+        <FilterSelect
+          label="Project"
+          value={search.project ?? ALL}
+          onChange={set("project")}
+          options={(projects ?? []).map((project) => ({
+            value: project.id,
+            label: project.slug,
+          }))}
+        />
+        <FilterSelect
+          label="Cluster"
+          value={search.cluster ?? ALL}
+          onChange={set("cluster")}
+          options={(clusters ?? []).map((cluster) => ({
+            value: cluster.id,
+            label: clusterLabel(cluster),
+          }))}
         />
       </div>
 
+      <DataTable
+        columns={columns(setEditing, setDoomed)}
+        list={list}
+        rowKey={(quota) => quota.id}
+        empty="No quotas declared."
+      />
+
       {creating && (
-        <QuotaForm open onOpenChange={(open) => !open && setCreating(false)} />
+        <QuotaForm
+          open
+          onOpenChange={(open) => !open && onCreatingChange(false)}
+        />
       )}
       {editing && (
         <QuotaForm
@@ -251,6 +254,76 @@ export function QuotasPage() {
           })
         }
       />
+    </div>
+  )
+}
+
+/**
+ * Two quotas that share a word and nothing else. Hardware quota is devices,
+ * settled once at admission by placement; serving quota is traffic, settled on
+ * every request by the gateway. They are kept on separate tabs rather than in
+ * one table, because a single "over quota" column across both would say two
+ * different things in the same place.
+ */
+export function QuotasPage() {
+  const search = useSearch({ from: "/_app/quotas" })
+  const navigate = useNavigate({ from: "/quotas" })
+  const tab: QuotasTab = search.tab ?? "hardware"
+
+  const [creatingQuota, setCreatingQuota] = useState(false)
+  const [creatingServing, setCreatingServing] = useState(false)
+
+  const serving = tab === "serving"
+
+  return (
+    <div className="flex flex-col">
+      <PageHeader
+        title="Quotas"
+        description="devices at admission · traffic on every request"
+        actions={
+          <Button
+            size="sm"
+            onClick={() =>
+              serving ? setCreatingServing(true) : setCreatingQuota(true)
+            }
+          >
+            {serving ? "New serving quota" : "New quota"}
+          </Button>
+        }
+      />
+
+      <div className="space-y-4 p-4">
+        <Tabs
+          value={tab}
+          onValueChange={(value) =>
+            navigate({
+              search: (prev) => ({
+                ...prev,
+                tab: value === "serving" ? "serving" : undefined,
+              }),
+            })
+          }
+        >
+          <TabsList>
+            <TabsTrigger value="hardware">Hardware · devices</TabsTrigger>
+            <TabsTrigger value="serving">Serving · traffic</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="hardware" className="mt-3">
+            <HardwareQuotas
+              creating={creatingQuota}
+              onCreatingChange={setCreatingQuota}
+            />
+          </TabsContent>
+
+          <TabsContent value="serving" className="mt-3">
+            <ServingQuotas
+              creating={creatingServing}
+              onCreatingChange={setCreatingServing}
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   )
 }

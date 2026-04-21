@@ -8,6 +8,12 @@ import type {
   WorkloadDeployment,
   WorkloadScale,
 } from "@/modules/demand/types"
+import {
+  emptyCapabilities,
+  emptyServing,
+  emptySurface,
+  emptyUpstream,
+} from "@/modules/demand/display"
 import type {
   Policy,
   PriorityClass,
@@ -673,6 +679,7 @@ export const artifacts: Artifact[] = [
     parameter_count: 70_000_000_000,
     base_artifact_id: null,
     project_id: null,
+    upstream: emptyUpstream(),
     metadata: { source: "huggingface" },
     created_at: CREATED,
     updated_at: null,
@@ -705,6 +712,7 @@ export const artifacts: Artifact[] = [
     parameter_count: 568_000_000,
     base_artifact_id: null,
     project_id: null,
+    upstream: emptyUpstream(),
     metadata: {},
     created_at: CREATED,
     updated_at: null,
@@ -735,6 +743,9 @@ export const recipes: Recipe[] = [
       prefix_cache_enabled: true,
       prefix_cache_config: { blocks: 4096 },
     },
+    serving: emptyServing(),
+    capabilities: emptyCapabilities(),
+    resolved_engine_args: {},
     shape: {
       device_class: "h100-80gb-sxm",
       device_count: 8,
@@ -769,6 +780,9 @@ export const recipes: Recipe[] = [
       prefix_cache_enabled: false,
       prefix_cache_config: {},
     },
+    serving: emptyServing(),
+    capabilities: emptyCapabilities(),
+    resolved_engine_args: {},
     shape: {
       device_class: "l40s-48gb-pcie",
       device_count: 1,
@@ -1158,6 +1172,7 @@ export const endpoints: Endpoint[] = [
       },
     ],
     failover_order: [deployments[0].id, deployments[1].id],
+    surface: emptySurface(),
     labels: { tier: "prod" },
     created_at: CREATED,
     updated_at: null,
@@ -1180,6 +1195,7 @@ export const endpoints: Endpoint[] = [
       },
     ],
     failover_order: [],
+    surface: emptySurface(),
     labels: {},
     created_at: CREATED,
     updated_at: null,
@@ -1868,8 +1884,10 @@ export const discoveredWorkloads: DiscoveredWorkload[] = [
 export const benchmarkRuns: BenchmarkRun[] = [
   {
     id: uid("bmk_"),
+    request_id: null,
     deployment_id: deployments[0].id,
     cluster_id: clusters[0].id,
+    endpoint_id: null,
     operation_id: null,
     harness: "aiperf",
     image: "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
@@ -1886,6 +1904,9 @@ export const benchmarkRuns: BenchmarkRun[] = [
       warmup_request_count: 10,
       extra: "",
     },
+    step_index: 0,
+    vantage: null,
+    discard: false,
     requested_by: "operator",
     reason: "concurrency sweep, step 3",
     provenance: {
@@ -1894,6 +1915,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
       recipe_id: recipes[0].id,
       recipe_version: 3,
       engine_args: { "--max-num-seqs": 256, "--kv-cache-dtype": "fp8" },
+      serving: {},
     },
     phase: "succeeded",
     summary: {
@@ -1944,8 +1966,10 @@ export const benchmarkRuns: BenchmarkRun[] = [
   },
   {
     id: uid("bmk_"),
+    request_id: null,
     deployment_id: deployments[0].id,
     cluster_id: clusters[0].id,
+    endpoint_id: null,
     operation_id: null,
     harness: "aiperf",
     image: "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
@@ -1962,6 +1986,9 @@ export const benchmarkRuns: BenchmarkRun[] = [
       warmup_request_count: 10,
       extra: "",
     },
+    step_index: 0,
+    vantage: null,
+    discard: false,
     requested_by: "operator",
     reason: "concurrency sweep, step 1",
     provenance: {
@@ -1970,6 +1997,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
       recipe_id: recipes[0].id,
       recipe_version: 3,
       engine_args: { "--max-num-seqs": 256, "--kv-cache-dtype": "fp8" },
+      serving: {},
     },
     phase: "succeeded",
     summary: {
@@ -2020,8 +2048,10 @@ export const benchmarkRuns: BenchmarkRun[] = [
   },
   {
     id: uid("bmk_"),
+    request_id: null,
     deployment_id: deployments[2].id,
     cluster_id: deployments[2].cluster_id,
+    endpoint_id: null,
     operation_id: null,
     harness: "aiperf",
     image: "nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
@@ -2038,6 +2068,9 @@ export const benchmarkRuns: BenchmarkRun[] = [
       warmup_request_count: 10,
       extra: "",
     },
+    step_index: 0,
+    vantage: null,
+    discard: false,
     requested_by: "operator",
     reason: "long-context saturation",
     provenance: {
@@ -2046,6 +2079,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
       recipe_id: recipes[1].id,
       recipe_version: 1,
       engine_args: {},
+      serving: {},
     },
     phase: "failed",
     summary: null,

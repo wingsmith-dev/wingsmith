@@ -1,4 +1,11 @@
 import type { StatusTone } from "@/components/layout/status-dot"
+import type {
+  ArtifactUpstream,
+  EndpointSurface,
+  RecipeCapabilities,
+  RecipeReasoning,
+  RecipeServing,
+} from "./types"
 
 const WORKLOAD_PHASE_TONES: Record<string, StatusTone> = {
   pending: "neutral",
@@ -168,4 +175,305 @@ const REASON_TEXT: Record<string, string> = {
 
 export function reasonText(reason: string): string {
   return REASON_TEXT[reason] ?? reason
+}
+
+/**
+ * The engine argument each typed `serving` field speaks for, keyed without the
+ * leading dashes — the same table the plane renders from.
+ *
+ * Only the fields that genuinely map to one flag are here. An engine this
+ * console has never heard of maps nothing, and neither `context_overflow` nor
+ * EOS suppression is a single flag on every engine.
+ */
+export const SERVING_FLAGS: Record<string, Record<string, string>> = {
+  vllm: {
+    parser: "reasoning-parser",
+    tool_call_parser: "tool-call-parser",
+    structured_output_backend: "guided-decoding-backend",
+    max_images_per_request: "limit-mm-per-prompt",
+  },
+  sglang: {
+    parser: "reasoning-parser",
+    tool_call_parser: "tool-call-parser",
+    structured_output_backend: "grammar-backend",
+  },
+}
+
+/** How a typed serving field reads back to somebody looking at engine args. */
+const SERVING_FIELD_LABELS: Record<string, string> = {
+  parser: "serving.reasoning.parser",
+  tool_call_parser: "serving.tool_call_parser",
+  structured_output_backend: "serving.structured_output_backend",
+  max_images_per_request: "serving.max_images_per_request",
+}
+
+export interface ServingOverride {
+  /** The engine flag both spellings set, keyed without its leading dashes. */
+  flag: string
+  /** The typed field that wins it. */
+  field: string
+  /** What `engine_args` asks for, and what the plane will not render. */
+  ignored: string
+  /** What the typed field renders instead. */
+  effective: string
+}
+
+/** The flags the typed serving block speaks for, on this engine. */
+export function servingArgs(
+  engine: string,
+  serving: RecipeServing
+): Record<string, string> {
+  const flags = SERVING_FLAGS[engine.trim().toLowerCase()] ?? {}
+  const args: Record<string, string> = {}
+  const typed: [string, string | null][] = [
+    ["parser", serving.reasoning.parser],
+    ["tool_call_parser", serving.tool_call_parser],
+    ["structured_output_backend", serving.structured_output_backend],
+  ]
+  for (const [field, value] of typed) {
+    if (value && flags[field]) args[flags[field]] = value
+  }
+  if (serving.max_images_per_request !== null && flags.max_images_per_request) {
+    args[flags.max_images_per_request] =
+      `image=${serving.max_images_per_request}`
+  }
+  return args
+}
+
+/**
+ * The collisions between hand-written `engine_args` and the typed block, so that
+ * a form can say which value will actually take effect.
+ *
+ * The typed field wins, because it is the one the plane can validate, display
+ * and verify. `engine_args` remains the escape hatch for a flag nothing models —
+ * but a flag that *is* modelled has one declared home, and silently dropping the
+ * other spelling is how somebody ends up debugging a value they can see.
+ */
+export function servingOverrides(
+  engine: string,
+  engineArgs: Record<string, unknown>,
+  serving: RecipeServing
+): ServingOverride[] {
+  const flags = SERVING_FLAGS[engine.trim().toLowerCase()] ?? {}
+  const derived = servingArgs(engine, serving)
+  const declared = new Map<string, string>()
+  for (const [key, value] of Object.entries(engineArgs ?? {})) {
+    declared.set(String(key).replace(/^--/, ""), String(value))
+  }
+  const out: ServingOverride[] = []
+  for (const [field, flag] of Object.entries(flags)) {
+    const ignored = declared.get(flag)
+    const effective = derived[flag]
+    if (ignored === undefined || effective === undefined) continue
+    if (ignored === effective) continue
+    out.push({
+      flag,
+      field: SERVING_FIELD_LABELS[field] ?? field,
+      ignored,
+      effective,
+    })
+  }
+  return out
+}
+
+/**
+ * `engine_args` with the typed serving flags laid over the top. The plane sends
+ * this as `resolved_engine_args` on every read; this is the same arithmetic for
+ * a form that has not saved yet.
+ */
+export function resolvedEngineArgs(
+  engine: string,
+  engineArgs: Record<string, unknown>,
+  serving: RecipeServing
+): Record<string, string> {
+  const resolved: Record<string, string> = {}
+  for (const [key, value] of Object.entries(engineArgs ?? {})) {
+    resolved[String(key).replace(/^--/, "")] = String(value)
+  }
+  return { ...resolved, ...servingArgs(engine, serving) }
+}
+
+/** Whether anything about reasoning was declared rather than left at its default. */
+export function reasoningDeclared(reasoning: RecipeReasoning): boolean {
+  return Boolean(
+    reasoning.default_on ||
+      reasoning.parser ||
+      reasoning.transport === "inline_tags" ||
+      reasoning.think_begin_token ||
+      reasoning.think_end_token ||
+      reasoning.suppress_eos_until_think_end
+  )
+}
+
+/**
+ * How much of a declared thing is actually honoured, and by what.
+ *
+ * `obeyed` is rendered to the cluster or acted on by the gateway. `asserted` is
+ * a claim nothing renders, falsifiable only by a conformance run. `disclosure`
+ * is documented and enforced by nothing, in any configuration. `conditional` is
+ * a term only while the gateway runs with its `enforce` capability on.
+ */
+export type Enforcement = "obeyed" | "asserted" | "disclosure" | "conditional"
+
+export interface SurfaceField {
+  enforcement: Enforcement
+  /** What honours it, or what it means where nothing does. */
+  note: string
+}
+
+/**
+ * Field by field, what the gateway does with an endpoint's surface.
+ *
+ * Four of the eight are terms and four are not, and the split is not cosmetic:
+ * three of the disclosures are structural and no capability changes them. A
+ * console that drew all eight the same way would let an operator promise a
+ * customer a per-endpoint request ceiling that nothing applies.
+ */
+export const SURFACE_ENFORCEMENT: Record<keyof EndpointSurface, SurfaceField> =
+  {
+    protocols: {
+      enforcement: "disclosure",
+      note: "The gateway routes on the model in the body and never branches on the path, so nothing checks this. A conformance run verifies it.",
+    },
+    auth_mode: {
+      enforcement: "disclosure",
+      note: "A fact about the system in front of us, under every capability. The gateway's identity mode is process-wide and cannot express a per-endpoint one.",
+    },
+    error_shape: {
+      enforcement: "disclosure",
+      note: "The gateway never reads an upstream response body. `passthrough` is the only value: you get what the engine said.",
+    },
+    max_request_bytes: {
+      enforcement: "disclosure",
+      note: "Advisory. The body is read before the endpoint is known, so the applied ceiling is the gateway's process-wide 32 MiB.",
+    },
+    request_timeout_seconds: {
+      enforcement: "obeyed",
+      note: "A per-route deadline on the proxied request. Null leaves the transport's own. Separate from a serving quota's queue timeout; the smaller wins.",
+    },
+    streaming_transport: {
+      enforcement: "obeyed",
+      note: "Whether the gateway passes SSE through or buffers to one response. Not the same claim as the recipe's `streaming_supported`.",
+    },
+    cors_enabled: {
+      enforcement: "obeyed",
+      note: "Whether the exposure answers a preflight.",
+    },
+    output_length_params: {
+      enforcement: "conditional",
+      note: "Read with the serving quota's `max_output_tokens` on every request that carries a length field — but only refused while the gateway runs with `enforce`.",
+    },
+  }
+
+/**
+ * The acceptance floor a verdict applies to a declared baseline.
+ *
+ * A property of the criteria version and not of the row: burying it in
+ * `tolerance_pct` would let two artifacts be graded against two silently
+ * different standards, and raising the standard would mean rewriting every
+ * baseline ever recorded.
+ */
+export const ACCEPTANCE_FLOOR = 0.85
+
+export function acceptanceFloor(value: number): number {
+  return value * ACCEPTANCE_FLOOR
+}
+
+/** Trims trailing zeros so 0.85 x 74.1 reads as 62.985 rather than 62.985000. */
+export function formatScore(value: number): string {
+  return String(Number(value.toFixed(4)))
+}
+
+/**
+ * The blocks a recipe that says nothing carries. Every default is the behaviour
+ * of an undeclared recipe, so filling a form with these changes nothing.
+ */
+export function emptyServing(): RecipeServing {
+  return {
+    reasoning: {
+      default_on: false,
+      parser: null,
+      transport: "reasoning_content",
+      think_begin_token: null,
+      think_end_token: null,
+      suppress_eos_until_think_end: false,
+    },
+    stream_usage: "final_chunk",
+    context_overflow: "reject",
+    structured_output_backend: null,
+    tool_call_parser: null,
+    max_images_per_request: null,
+  }
+}
+
+export function emptyCapabilities(): RecipeCapabilities {
+  return {
+    reasoning_supported: false,
+    streaming_supported: true,
+    structured_output_modes: ["text"],
+    tool_calling_supported: false,
+    tool_choice_modes: [],
+    parallel_tool_calls: false,
+    input_modalities: ["text"],
+    prompt_cache_mode: "off",
+    prompt_cache_ttl_seconds: null,
+    asserted_by: null,
+    asserted_at: null,
+    source_uri: null,
+  }
+}
+
+/** The surface an endpoint that says nothing is exposed on. */
+export function emptySurface(): EndpointSurface {
+  return {
+    protocols: ["openai.chat"],
+    auth_mode: "none",
+    error_shape: "passthrough",
+    max_request_bytes: null,
+    request_timeout_seconds: null,
+    streaming_transport: "sse",
+    cors_enabled: false,
+    output_length_params: ["max_tokens"],
+  }
+}
+
+/** An upstream block with nothing claimed and nobody having claimed it. */
+export function emptyUpstream(): ArtifactUpstream {
+  return {
+    provider: null,
+    provider_model_id: null,
+    context_length: null,
+    max_output_tokens: null,
+    input_modalities: ["text"],
+    reasoning: null,
+    tool_calling: null,
+    structured_output_modes: [],
+    licence: null,
+    released_at: null,
+    source_uri: null,
+    recorded_by: null,
+    recorded_at: null,
+  }
+}
+
+/**
+ * Whether the publisher's claim says anything at all.
+ *
+ * `input_modalities` defaulting to `["text"]` is not a claim — it is the shape
+ * of an empty block — so it does not count, and neither does an empty modes
+ * list. Without this a console would demand provenance for a block nobody
+ * touched.
+ */
+export function upstreamClaimed(upstream: ArtifactUpstream): boolean {
+  return Boolean(
+    upstream.provider ||
+      upstream.provider_model_id ||
+      upstream.context_length !== null ||
+      upstream.max_output_tokens !== null ||
+      upstream.reasoning !== null ||
+      upstream.tool_calling !== null ||
+      upstream.structured_output_modes.length > 0 ||
+      upstream.licence ||
+      upstream.released_at
+  )
 }

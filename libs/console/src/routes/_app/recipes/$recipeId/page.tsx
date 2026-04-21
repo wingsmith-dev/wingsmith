@@ -13,6 +13,7 @@ import {
   useDeleteRecipe,
   useRecipe,
 } from "@/modules/demand/queries"
+import { ServingCards } from "@/components/demand/recipe-serving"
 import { RecipeForm } from "../RecipeForm"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
@@ -274,7 +275,9 @@ export function RecipeDetailPage() {
 
             <Card>
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm">Engine args</CardTitle>
+                <CardTitle className="text-sm">
+                  Engine args as declared
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 {Object.keys(recipe.engine_args).length === 0 ? (
@@ -286,6 +289,13 @@ export function RecipeDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            <ServingCards
+              serving={recipe.serving}
+              capabilities={recipe.capabilities}
+              resolvedArgs={recipe.resolved_engine_args}
+              engineArgs={recipe.engine_args}
+            />
           </>
         )}
       </div>

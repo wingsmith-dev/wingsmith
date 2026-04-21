@@ -1,16 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAllPages, useCursorList } from "@/lib/paginate"
+import { fetchEndpoints } from "@/modules/demand/api"
 import {
   createPolicy,
   createPriorityClass,
   createProject,
   createTenant,
   createQuota,
+  createServingQuota,
   deletePolicy,
   deletePriorityClass,
   deleteProject,
   deleteTenant,
   deleteQuota,
+  deleteServingQuota,
   fetchPolicies,
   fetchPolicy,
   fetchPriorityClass,
@@ -21,15 +24,21 @@ import {
   fetchTenants,
   fetchQuota,
   fetchQuotas,
+  fetchResolvedServingQuotas,
+  fetchServingQuota,
+  fetchServingQuotas,
   updatePolicy,
   updatePriorityClass,
   updateProject,
   updateTenant,
   updateQuota,
+  updateServingQuota,
   type PolicyFilters,
   type PriorityClassFilters,
   type ProjectFilters,
   type QuotaFilters,
+  type ResolvedServingQuotaParams,
+  type ServingQuotaFilters,
   type TenantFilters,
 } from "./api"
 import type {
@@ -41,6 +50,8 @@ import type {
   ProjectUpdateRequest,
   QuotaCreateRequest,
   QuotaUpdateRequest,
+  ServingQuotaCreateRequest,
+  ServingQuotaUpdateRequest,
   TenantCreateRequest,
   TenantUpdateRequest,
 } from "./types"
@@ -197,6 +208,75 @@ export function useDeleteQuota() {
   return useMutation({
     mutationFn: (ref: string) => deleteQuota(ref),
     onSuccess: () => client.invalidateQueries({ queryKey: ["quotas"] }),
+  })
+}
+
+/**
+ * Traffic, not devices. Kept under its own query key so nothing invalidates one
+ * kind of quota by touching the other.
+ */
+export function useServingQuotas(filters: ServingQuotaFilters = {}) {
+  return useCursorList(["serving-quotas", filters], (cursor) =>
+    fetchServingQuotas(filters, cursor)
+  )
+}
+
+export function useServingQuota(ref: string) {
+  return useQuery({
+    queryKey: ["serving-quotas", "detail", ref],
+    queryFn: () => fetchServingQuota(ref),
+    enabled: !!ref,
+  })
+}
+
+/** Every endpoint, drained — a serving quota is declared against exactly one. */
+export function useServingEndpointOptions() {
+  return useAllPages(["endpoints", "options"], (cursor) =>
+    fetchEndpoints({}, cursor, 200)
+  )
+}
+
+export function useCreateServingQuota() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: ServingQuotaCreateRequest) => createServingQuota(body),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["serving-quotas"] }),
+  })
+}
+
+export function useUpdateServingQuota() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: {
+      ref: string
+      body: ServingQuotaUpdateRequest
+      revision?: string
+    }) => updateServingQuota(vars.ref, vars.body, vars.revision),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["serving-quotas"] }),
+  })
+}
+
+export function useDeleteServingQuota() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) => deleteServingQuota(ref),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["serving-quotas"] }),
+  })
+}
+
+/**
+ * The declared commitment resolved against a fleet the caller names. The share
+ * arithmetic belongs to the plane — the console asks rather than dividing, so
+ * the console and the gateway cannot disagree about what a replica enforces.
+ */
+export function useResolvedServingQuotas(
+  params: ResolvedServingQuotaParams,
+  options: { enabled?: boolean } = {}
+) {
+  return useQuery({
+    queryKey: ["serving-quotas", "resolved", params],
+    queryFn: () => fetchResolvedServingQuotas(params),
+    enabled: options.enabled ?? true,
   })
 }
 

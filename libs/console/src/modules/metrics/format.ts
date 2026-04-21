@@ -26,6 +26,22 @@ export function formatMetric(value: number | null, unit: MetricUnit): string {
   return `${value.toFixed(digits)}${SUFFIX[unit] ?? ""}`
 }
 
+const UNIT_LABEL: Record<string, string> = {
+  percent: "percent",
+  celsius: "°C",
+  watts: "watts",
+  mib: "MiB",
+  mhz: "MHz",
+  seconds: "seconds",
+  per_second: "per second",
+  count: "count",
+}
+
+/** The unit spelled out, for a list where there is no number beside it. */
+export function unitLabel(unit: MetricUnit): string {
+  return UNIT_LABEL[unit] ?? unit
+}
+
 export function sampleOf(
   samples: MetricSample[],
   metric: string

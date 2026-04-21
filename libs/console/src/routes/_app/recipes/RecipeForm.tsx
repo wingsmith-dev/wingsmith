@@ -1,3 +1,7 @@
+import {
+  CapabilityFields,
+  ServingFields,
+} from "@/components/demand/recipe-serving"
 import { DeviceClassField } from "@/components/supply/device-class"
 import {
   FormDialog,
@@ -10,6 +14,7 @@ import {
   TextField,
 } from "@/components/layout/form"
 import { formatError } from "@/lib/format"
+import { emptyCapabilities, emptyServing } from "@/modules/demand/display"
 import {
   useArtifactOptions,
   useCreateRecipe,
@@ -115,6 +120,10 @@ export function RecipeForm({
   const [labels, setLabels] = useState<Record<string, string>>(
     recipe?.labels ?? {}
   )
+  const [serving, setServing] = useState(recipe?.serving ?? emptyServing())
+  const [capabilities, setCapabilities] = useState(
+    recipe?.capabilities ?? emptyCapabilities()
+  )
 
   /**
    * A draft names its weights, it does not know their id. The caller resolves
@@ -159,6 +168,8 @@ export function RecipeForm({
     memory_mib: memoryMib,
     disk_gib: diskGib,
     labels,
+    serving,
+    capabilities,
   }
 
   const done = (verb: string) => {
@@ -349,11 +360,21 @@ export function RecipeForm({
         label="Engine args"
         value={engineArgs}
         rows={4}
+        hint="The escape hatch for a flag nothing below models. A flag that is modelled below is set there instead."
         onChange={(value, valid) => {
           setEngineArgs(value ?? {})
           setArgsValid(valid)
         }}
       />
+
+      <ServingFields
+        engine={engine}
+        value={serving}
+        onChange={setServing}
+        engineArgs={(engineArgs as Record<string, unknown>) ?? {}}
+      />
+
+      <CapabilityFields value={capabilities} onChange={setCapabilities} />
 
       <LabelsField value={labels} onChange={setLabels} />
     </FormDialog>

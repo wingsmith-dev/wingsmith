@@ -2,14 +2,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
   createArtifact,
+  createArtifactBaseline,
   createEndpoint,
   createRecipe,
   createWorkload,
   deleteArtifact,
+  deleteArtifactBaseline,
   deleteEndpoint,
   deleteRecipe,
   deleteWorkload,
   fetchArtifact,
+  fetchArtifactBaselines,
   fetchArtifacts,
   fetchDeployment,
   fetchDeployments,
@@ -21,6 +24,7 @@ import {
   fetchWorkloads,
   resolveArtifact,
   updateArtifact,
+  updateArtifactBaseline,
   updateDeployment,
   updateEndpoint,
   updateRecipe,
@@ -32,6 +36,8 @@ import {
   type WorkloadFilters,
 } from "./api"
 import type {
+  ArtifactBaselineCreateRequest,
+  ArtifactBaselineUpdateRequest,
   ArtifactCreateRequest,
   ArtifactUpdateRequest,
   Deployment,
@@ -111,6 +117,53 @@ export function useDeleteArtifact() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["artifacts"] })
       client.invalidateQueries({ queryKey: ["recipes"] })
+    },
+  })
+}
+
+/**
+ * One artifact's declared quality floors. Drained rather than paged: a set of
+ * baselines is a handful of rows and the table shows all of them at once.
+ */
+export function useArtifactBaselines(ref: string) {
+  return useAllPages(
+    ["artifacts", "baselines", ref],
+    (cursor) => fetchArtifactBaselines(ref, cursor, 200),
+    { enabled: !!ref }
+  )
+}
+
+export function useCreateArtifactBaseline(ref: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: ArtifactBaselineCreateRequest) =>
+      createArtifactBaseline(ref, body),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: ["artifacts", "baselines", ref] }),
+  })
+}
+
+export function useUpdateArtifactBaseline(ref: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: {
+      baseline: string
+      body: ArtifactBaselineUpdateRequest
+      revision?: string
+    }) => updateArtifactBaseline(ref, vars.baseline, vars.body, vars.revision),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: ["artifacts", "baselines", ref] }),
+  })
+}
+
+/** Invalidates benchmarks too: a verdict is graded against these rows. */
+export function useDeleteArtifactBaseline(ref: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (baseline: string) => deleteArtifactBaseline(ref, baseline),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["artifacts", "baselines", ref] })
+      client.invalidateQueries({ queryKey: ["benchmarks"] })
     },
   })
 }

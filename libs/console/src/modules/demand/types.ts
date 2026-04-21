@@ -6,6 +6,93 @@ export interface ArtifactLocation {
   preferred: boolean
 }
 
+/**
+ * `ArtifactUpstreamSchema` — what the publisher said this release does.
+ *
+ * The reference, never our configuration: a recipe's `context_length` is only a
+ * finding when there is something to compare it against. It is `metadata`'s
+ * opposite in the way `imported_args` is `engine_args` — one is a claim somebody
+ * signed, the other is a bag — which is why the provenance triple
+ * (`source_uri`, `recorded_by`, `recorded_at`) is part of the block and not
+ * optional decoration. Nothing here reaches a cluster.
+ *
+ * `licence` is deliberately a second spelling of `Artifact.licence`: that one is
+ * what we believe applies, this one is what the model card said, and a
+ * difference between them is a finding rather than a bug. `parameter_count` is
+ * not duplicated — it is already a field on the artifact.
+ */
+export interface ArtifactUpstream {
+  provider: string | null
+  provider_model_id: string | null
+  context_length: number | null
+  max_output_tokens: number | null
+  input_modalities: string[]
+  /** Null is "the publisher did not say", which is not the same as `false`. */
+  reasoning: boolean | null
+  tool_calling: boolean | null
+  structured_output_modes: string[]
+  licence: string | null
+  released_at: string | null
+  source_uri: string | null
+  recorded_by: string | null
+  recorded_at: string | null
+}
+
+/** The write shape of `upstream`. Replaced wholesale, the way locations are. */
+export type ArtifactUpstreamRequest = Partial<ArtifactUpstream>
+
+/**
+ * `ArtifactBaselineSchema` — one declared quality floor, per dataset and metric.
+ *
+ * Declared, not observed and not derived: somebody asserts that these weights
+ * score this number on this eval and signs it, so an acceptance review is an
+ * argument about the assertion rather than about whichever number a harness
+ * produced last.
+ *
+ * `tolerance_pct` is the recorder's own per-row slack and is **not** the
+ * acceptance floor — that is a property of the criteria version, resolved when a
+ * verdict is derived, and it is `ACCEPTANCE_FLOOR` x this value.
+ */
+export interface ArtifactBaseline {
+  id: string
+  artifact_id: string
+  dataset: string
+  metric: string
+  value: number
+  tolerance_pct: number
+  source_uri: string | null
+  recorded_by: string
+  recorded_at: string
+  note: string | null
+  created_at: string
+  updated_at: string | null
+  revision: string
+}
+
+export interface ArtifactBaselineCreateRequest {
+  dataset: string
+  metric: string
+  value: number
+  tolerance_pct?: number
+  source_uri?: string | null
+  recorded_by: string
+  recorded_at?: string | null
+  note?: string | null
+}
+
+/**
+ * Dataset and metric are absent: they are the row's identity, unique per
+ * artifact, so moving one is a different baseline and not an edit to this one.
+ */
+export interface ArtifactBaselineUpdateRequest {
+  value?: number
+  tolerance_pct?: number
+  source_uri?: string | null
+  recorded_by?: string
+  recorded_at?: string | null
+  note?: string | null
+}
+
 /** `ArtifactSchema` — immutable, content-addressed bytes. Identity is the digest. */
 export interface Artifact {
   id: string
@@ -19,6 +106,7 @@ export interface Artifact {
   parameter_count: number | null
   base_artifact_id: string | null
   project_id: string | null
+  upstream: ArtifactUpstream
   metadata: Record<string, unknown>
   created_at: string
   updated_at: string | null
@@ -48,6 +136,7 @@ export interface ArtifactCreateRequest {
   parameter_count?: number | null
   base_artifact?: string | null
   project?: string | null
+  upstream?: ArtifactUpstreamRequest
   metadata?: Record<string, unknown>
   locations?: ArtifactLocationRequest[]
 }
@@ -61,6 +150,7 @@ export interface ArtifactUpdateRequest {
   licence?: string | null
   parameter_count?: number | null
   project?: string | null
+  upstream?: ArtifactUpstreamRequest
   metadata?: Record<string, unknown>
   locations?: ArtifactLocationRequest[]
 }
@@ -139,6 +229,112 @@ export interface RecipeResources {
   disk_gib: number | null
 }
 
+/**
+ * `RecipeReasoningSchema` — how this recipe thinks, as rendered flags.
+ *
+ * Its own object for the reason `RecipeCache` is: the fields are meaningless
+ * individually and all of them are conditioned on the model being able to think
+ * at all. What the recipe *can* do is `capabilities.reasoning_supported`.
+ */
+export interface RecipeReasoning {
+  default_on: boolean
+  parser: string | null
+  transport: string
+  think_begin_token: string | null
+  think_end_token: string | null
+  suppress_eos_until_think_end: boolean
+}
+
+/**
+ * `RecipeServingSchema` — what the served API does, as the engine is told to do it.
+ *
+ * Every field renders to a flag or a rendered value, so honouring any of it
+ * means a replica restart — which is why it sits on the recipe beside `cache`
+ * rather than on the endpoint. Every default is the behaviour of a recipe that
+ * says nothing, so the block is inert until somebody fills it in.
+ */
+export interface RecipeServing {
+  reasoning: RecipeReasoning
+  stream_usage: string
+  context_overflow: string
+  structured_output_backend: string | null
+  tool_call_parser: string | null
+  max_images_per_request: number | null
+}
+
+/**
+ * `RecipeCapabilitiesSchema` — what this engine x artifact is *claimed* to do.
+ *
+ * The same split as `engine_args` against `imported_args`, one level up: nothing
+ * here becomes a flag or reaches a cluster, because a cluster has no use for a
+ * claim about itself. The plane holds no table of what an engine can do, so a
+ * block that is internally consistent and entirely false is accepted, stored,
+ * and falsified by the first conformance run.
+ */
+export interface RecipeCapabilities {
+  reasoning_supported: boolean
+  streaming_supported: boolean
+  structured_output_modes: string[]
+  tool_calling_supported: boolean
+  tool_choice_modes: string[]
+  parallel_tool_calls: boolean
+  input_modalities: string[]
+  prompt_cache_mode: string
+  prompt_cache_ttl_seconds: number | null
+  asserted_by: string | null
+  asserted_at: string | null
+  source_uri: string | null
+}
+
+export const REASONING_TRANSPORTS = ["reasoning_content", "inline_tags"] as const
+export const STREAM_USAGE_MODES = [
+  "final_chunk",
+  "every_chunk",
+  "on_request",
+] as const
+export const CONTEXT_OVERFLOW_MODES = [
+  "reject",
+  "truncate_input",
+  "clamp_output",
+] as const
+export const STRUCTURED_OUTPUT_MODES = [
+  "text",
+  "json_object",
+  "json_schema",
+] as const
+export const TOOL_CHOICE_MODES = ["auto", "none", "required", "named"] as const
+export const INPUT_MODALITIES = ["text", "image", "audio", "video"] as const
+export const PROMPT_CACHE_MODES = ["off", "automatic", "explicit"] as const
+
+/**
+ * Parsers we have run, offered so that the common case is a pick rather than a
+ * spelling test. The plane takes any string — an engine build knows parsers this
+ * console does not — so every one of these fields keeps a way to type one in.
+ */
+export const REASONING_PARSERS = [
+  "deepseek_r1",
+  "glm45",
+  "granite",
+  "mistral",
+  "qwen3",
+] as const
+export const TOOL_CALL_PARSERS = [
+  "deepseek_v3",
+  "granite",
+  "hermes",
+  "internlm",
+  "llama3_json",
+  "llama4_json",
+  "mistral",
+  "pythonic",
+  "qwen3_coder",
+] as const
+export const STRUCTURED_OUTPUT_BACKENDS = [
+  "guidance",
+  "outlines",
+  "xgrammar",
+] as const
+
 export interface Recipe {
   id: string
   artifact_id: string
@@ -156,6 +352,15 @@ export interface Recipe {
   context_length: number
   max_batch_tokens: number | null
   cache: RecipeCache
+  serving: RecipeServing
+  capabilities: RecipeCapabilities
+  /**
+   * `engine_args` with the flags the typed `serving` block dictates laid over
+   * the top, keyed the way the operator keys them — without the leading dashes.
+   * Derived on every read and stored nowhere, so that "which value actually took
+   * effect" is something to read rather than something to reconstruct.
+   */
+  resolved_engine_args: Record<string, string>
   shape: RecipeShape
   resources: RecipeResources
   labels: Record<string, string>
@@ -197,6 +402,8 @@ export interface RecipeCreateRequest {
   memory_mib?: number | null
   disk_gib?: number | null
   labels?: Record<string, string>
+  serving?: RecipeServing
+  capabilities?: RecipeCapabilities
 }
 
 /** The artifact is absent: repointing a recipe at other bytes is a new recipe. */
@@ -226,6 +433,8 @@ export interface RecipeUpdateRequest {
   memory_mib?: number | null
   disk_gib?: number | null
   labels?: Record<string, string>
+  serving?: RecipeServing
+  capabilities?: RecipeCapabilities
 }
 
 /** `Workload.kind` — one scheduling supertype across serving and batch. */
@@ -505,6 +714,50 @@ export interface EndpointTarget {
 }
 
 /**
+ * `EndpointSurfaceSchema` — the terms on which the served API is exposed.
+ *
+ * Global and read by the gateway; nothing here reaches a cluster. A field
+ * belongs here rather than on the recipe when honouring it needs no engine flag.
+ *
+ * Half of it the gateway acts on and half of it is a disclosure it only reports,
+ * which is why `SURFACE_ENFORCEMENT` exists and why nothing in this console
+ * draws the two the same way. A disclosure rendered as a term is a lie an
+ * operator repeats to a customer.
+ */
+export interface EndpointSurface {
+  protocols: string[]
+  auth_mode: string
+  error_shape: string
+  max_request_bytes: number | null
+  request_timeout_seconds: number | null
+  streaming_transport: string
+  cors_enabled: boolean
+  /**
+   * The request fields that control generation length, most significant first.
+   * Membership is support and position is precedence, which is why it is an
+   * ordered list and not three switches. It names the field the serving quota's
+   * `max_output_tokens` applies to; it states no number of its own.
+   */
+  output_length_params: string[]
+}
+
+export const ENDPOINT_PROTOCOLS = [
+  "openai.chat",
+  "openai.completions",
+  "openai.responses",
+  "openai.embeddings",
+] as const
+export const AUTH_MODES = ["none", "api_key", "mtls"] as const
+/** One member on purpose: the gateway never reads an upstream response body. */
+export const ERROR_SHAPES = ["passthrough"] as const
+export const STREAMING_TRANSPORTS = ["sse", "none"] as const
+export const OUTPUT_LENGTH_PARAMS = [
+  "max_tokens",
+  "max_completion_tokens",
+  "max_output_tokens",
+] as const
+
+/**
  * `EndpointSchema` — the stable public name clients call. Global and
  * plane-only: there is no cluster on this object at any depth, because an
  * endpoint spans clusters by construction.
@@ -517,6 +770,7 @@ export interface Endpoint {
   visibility: string
   routing_strategy: string
   enabled: boolean
+  surface: EndpointSurface
   targets: EndpointTarget[]
   failover_order: string[]
   labels: Record<string, string>
@@ -540,6 +794,7 @@ export interface EndpointCreateRequest {
   visibility?: string
   routing_strategy?: string
   enabled?: boolean
+  surface?: EndpointSurface
   targets?: EndpointTargetRequest[]
   failover_order?: string[]
   labels?: Record<string, string>
@@ -550,6 +805,7 @@ export interface EndpointUpdateRequest {
   visibility?: string
   routing_strategy?: string
   enabled?: boolean
+  surface?: EndpointSurface
   targets?: EndpointTargetRequest[]
   failover_order?: string[]
   labels?: Record<string, string>
