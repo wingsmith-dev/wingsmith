@@ -731,6 +731,145 @@ async def test_resolution_follows_targets_to_serving_addresses(db: AsyncSession)
     assert (await endpoints.resolved()).endpoints == []
 
 
+async def _two_serving_deployments(db: AsyncSession):
+    """Two per-cluster deployments of one project, both dialable, for one endpoint to front.
+
+    A single-target endpoint never exercises the part of resolution that matters —
+    the fan-out across clusters, the per-target weights and roles, and what
+    survives one cluster going quiet — so the routing scenarios below all start
+    from a workload that talks to two deployments in two clusters, both serving.
+    """
+    cluster_a, project, recipe, workload_a = await a_workload(db, name="chat-alpha")
+    deployment_a = await DeploymentService(db).get(workload_a.deployments[0].id)
+    cluster_b = await ClusterService(db).create(ClusterCreateRequest(name="beta", region="eu-west-1"))
+    workload_b = await WorkloadService(db, notifier=MemoryNotifier()).create(
+        WorkloadCreateRequest(cluster=cluster_b.id, recipe=recipe.id, name="chat-beta", project=project.id)
+    )
+    deployment_b = await DeploymentService(db).get(workload_b.deployments[0].id)
+    await ClusterService(db).set_serving(cluster_a.id, ClusterServingRequest(url="http://alpha.svc:8000"))
+    await ClusterService(db).set_serving(cluster_b.id, ClusterServingRequest(url="http://beta.svc:8000"))
+    return project, cluster_a, deployment_a, cluster_b, deployment_b
+
+
+async def test_an_endpoint_over_two_clusters_resolves_to_both_upstreams(db: AsyncSession) -> None:
+    """One public name, two deployments, two dialable addresses — with weights and roles intact."""
+    project, cluster_a, deployment_a, cluster_b, deployment_b = await _two_serving_deployments(db)
+    endpoints = EndpointService(db)
+    await endpoints.create(
+        EndpointCreateRequest(
+            name="chat",
+            project=project.id,
+            targets=[
+                EndpointTargetRequest(deployment=deployment_a.id, weight=70),
+                EndpointTargetRequest(deployment=deployment_b.id, weight=30, role="canary"),
+            ],
+        )
+    )
+
+    table = await endpoints.resolved()
+    upstreams = {u.cluster_id: u for u in table.endpoints[0].upstreams}
+    assert set(upstreams) == {cluster_a.id, cluster_b.id}
+    assert (upstreams[cluster_a.id].weight, upstreams[cluster_a.id].role) == (70, "primary")
+    assert (upstreams[cluster_b.id].weight, upstreams[cluster_b.id].role) == (30, "canary")
+    assert upstreams[cluster_a.id].url == "http://alpha.svc:8000"
+    assert upstreams[cluster_b.id].deployment_id == deployment_b.id
+
+
+async def test_one_cluster_going_quiet_drops_its_upstream_and_keeps_the_other(db: AsyncSession) -> None:
+    """Clearing one cluster's serving address removes its upstream; the endpoint survives."""
+    project, cluster_a, deployment_a, cluster_b, deployment_b = await _two_serving_deployments(db)
+    endpoints = EndpointService(db)
+    await endpoints.create(
+        EndpointCreateRequest(
+            name="chat",
+            project=project.id,
+            targets=[
+                EndpointTargetRequest(deployment=deployment_a.id),
+                EndpointTargetRequest(deployment=deployment_b.id),
+            ],
+        )
+    )
+    await ClusterService(db).clear_serving(cluster_b.id)
+
+    table = await endpoints.resolved()
+    assert len(table.endpoints) == 1
+    assert [u.cluster_id for u in table.endpoints[0].upstreams] == [cluster_a.id]
+
+
+async def test_a_deployment_that_is_not_running_still_appears_for_the_gateway_to_judge(db: AsyncSession) -> None:
+    """Admission phase is passed through, not filtered on.
+
+    Whether a deployment is running is observed and can lag what the cluster is
+    doing; the gateway is closer to the truth. A placed-but-not-yet-running
+    target is still a dialable upstream rather than silently dropped.
+    """
+    project, _, deployment_a, _, _ = await _two_serving_deployments(db)
+    endpoints = EndpointService(db)
+    await endpoints.create(
+        EndpointCreateRequest(
+            name="chat",
+            project=project.id,
+            targets=[EndpointTargetRequest(deployment=deployment_a.id)],
+        )
+    )
+
+    upstream = (await endpoints.resolved()).endpoints[0].upstreams[0]
+    assert upstream.admission_phase == "placed"
+    assert upstream.deployment_id == deployment_a.id
+
+
+async def test_removing_a_target_moves_the_table_revision_so_a_poller_refetches(db: AsyncSession) -> None:
+    """A deletion has to move the revision, or a gateway sits behind a 304 holding a dead route.
+
+    Create and update push the newest stamp forward; a delete only removes one,
+    so the table revision folds in a count of live rows to stay sensitive to a
+    target that went away.
+    """
+    project, cluster_a, deployment_a, _, deployment_b = await _two_serving_deployments(db)
+    endpoints = EndpointService(db)
+    created = await endpoints.create(
+        EndpointCreateRequest(
+            name="chat",
+            project=project.id,
+            targets=[
+                EndpointTargetRequest(deployment=deployment_a.id),
+                EndpointTargetRequest(deployment=deployment_b.id),
+            ],
+        )
+    )
+    before = (await endpoints.resolved()).revision
+
+    await endpoints.update(
+        created.id, EndpointUpdateRequest(targets=[EndpointTargetRequest(deployment=deployment_a.id)])
+    )
+    after = await endpoints.resolved()
+
+    assert [u.cluster_id for u in after.endpoints[0].upstreams] == [cluster_a.id]
+    assert after.revision != before
+
+
+async def test_failover_order_is_resolved_into_the_table(db: AsyncSession) -> None:
+    """The declared fallback order reaches the gateway, named by the same deployments it routes to."""
+    project, _, deployment_a, _, deployment_b = await _two_serving_deployments(db)
+    endpoints = EndpointService(db)
+    await endpoints.create(
+        EndpointCreateRequest(
+            name="chat",
+            project=project.id,
+            routing_strategy="failover",
+            targets=[
+                EndpointTargetRequest(deployment=deployment_a.id),
+                EndpointTargetRequest(deployment=deployment_b.id),
+            ],
+            failover_order=[deployment_b.id, deployment_a.id],
+        )
+    )
+
+    resolved = (await endpoints.resolved()).endpoints[0]
+    assert resolved.routing_strategy == "failover"
+    assert resolved.failover_order == [deployment_b.id, deployment_a.id]
+
+
 async def test_endpoints_lifecycle(db: AsyncSession) -> None:
     _, project, _, deployment = await a_deployment(db)
     service = EndpointService(db)

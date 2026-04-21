@@ -432,6 +432,57 @@ async def test_scaling_a_workload_moves_the_shares(sessions) -> None:
     assert sum(d.desired_replicas for d in after.deployments) == 4
 
 
+async def test_scaling_down_removes_a_clusters_share_rather_than_parking_it(sessions) -> None:
+    """A share that falls to zero is deleted, not left at zero.
+
+    Three replicas over two clusters that hold two each spill into both; scaling
+    back to two fits the first alone, and the second's deployment goes away. The
+    invariant is that "which clusters is this on" stays answerable by reading the
+    rows — a deployment parked at zero replicas would answer it wrongly.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "first", devices=8)
+    await seed_supply(sessions, "second", devices=8)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(**scale(3)))
+    assert len(workload.deployments) == 2
+
+    async with sessions() as db:
+        operation = await _scale_op(db, workload.id, min=2, desired=2, max=2)
+    assert operation.phase == "succeeded"
+
+    async with sessions() as db:
+        after = await WorkloadService(db).get(workload.id)
+    assert [d.cluster_name for d in after.deployments] == ["first"]
+    assert after.scale.placed == 2
+    assert await fetch(sessions, "select count(*) from demand_deployment") == [(1,)]
+
+
+async def test_re_expanding_onto_the_same_split_does_not_bump_a_generation(sessions) -> None:
+    """Re-placement that does not move must not restart the clusters.
+
+    Anything that touches a workload re-derives its placement, and a bumped
+    generation is a restart signal to the agent. Landing on the same split and
+    bumping anyway would have replicas bounce to arrive exactly where they were.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "first", devices=8)
+    await seed_supply(sessions, "second", devices=8)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(**scale(3)))
+    generations = {d.cluster_name: d.generation for d in workload.deployments}
+
+    async with sessions() as db:
+        operation = await _scale_op(db, workload.id, min=3, desired=3, max=3)
+    assert operation.phase == "succeeded"
+
+    async with sessions() as db:
+        after = await WorkloadService(db).get(workload.id)
+    assert {d.cluster_name: d.generation for d in after.deployments} == generations
+
+
 async def test_a_workload_operation_needs_no_cluster(sessions) -> None:
     """A workload spans clusters, so the plane executes these itself.
 
