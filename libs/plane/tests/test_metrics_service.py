@@ -375,10 +375,12 @@ async def deployment_scope(labels: dict) -> Scope:
     artifact = Artifact(name="google/gemma-4-31B-it")
     svc = MetricsService(db=OneRowSession((deployment, workload, recipe, artifact)))  # type: ignore[arg-type]
     backend = StubBackend()
-    with patch.object(sources.settings, "METRICS_SOURCES", SOURCES):
-        with patch("app.modules.metrics.services.for_source", return_value=backend):
-            with patch.object(svc, "_cluster", return_value=cluster()):
-                await svc.deployment("dep_01j9x2aaaaaaaaaaaaaaaaaaaa")
+    with (
+        patch.object(sources.settings, "METRICS_SOURCES", SOURCES),
+        patch("app.modules.metrics.services.for_source", return_value=backend),
+        patch.object(svc, "_cluster", return_value=cluster()),
+    ):
+        await svc.deployment("dep_01j9x2aaaaaaaaaaaaaaaaaaaa")
     return backend.requests[0].scope
 
 
