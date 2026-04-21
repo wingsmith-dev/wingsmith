@@ -15,6 +15,7 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -24,6 +25,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
 	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
 )
 
@@ -47,6 +49,14 @@ type Config struct {
 	// means the gateway trusts its network, which is the in-cluster case: a
 	// ClusterIP service with no ingress in front of it.
 	Callers Guard
+	// Metrics, when set, receives one observation per request. Nil means the
+	// handler behaves exactly as it did before there was a /metrics endpoint,
+	// which is what keeps every existing caller of New compiling and every
+	// existing test honest.
+	Metrics *metrics.Recorder
+	// Probes, when set, recognises the conformance suite's own traffic so it can
+	// be excluded from an availability ratio. Nil means every request is live.
+	Probes *ProbeMarker
 }
 
 // New builds the gateway handler.
@@ -68,7 +78,7 @@ func New(cfg Config) http.Handler {
 	}
 	mux.Handle("/", handler)
 
-	return logging(mux)
+	return observed(cfg.Metrics, cfg.Probes, mux)
 }
 
 // modelEnvelope picks the routing key out of an otherwise untouched body.
@@ -83,9 +93,15 @@ type modelEnvelope struct {
 func withRouting(resolver Resolver) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && r.URL.Path == "/v1/models" {
+			markEndpoint(r, metrics.EndpointCatalog, "")
 			writeModelList(w, resolver.Names())
 			return
 		}
+
+		// Before the endpoint is known a request has no endpoint label, and it
+		// is not given the model string it asked for: a free-text label is an
+		// unbounded axis handed to whoever is calling.
+		markEndpoint(r, metrics.EndpointUnknown, "")
 
 		body, ok := readBody(w, r)
 		if !ok {
@@ -94,10 +110,12 @@ func withRouting(resolver Resolver) http.Handler {
 
 		var envelope modelEnvelope
 		if err := json.Unmarshal(body, &envelope); err != nil {
+			MarkOutcome(r, metrics.OutcomeClientError)
 			writeError(w, http.StatusBadRequest, "invalid_json", "Request body is not valid JSON.")
 			return
 		}
 		if envelope.Model == "" {
+			MarkOutcome(r, metrics.OutcomeClientError)
 			writeError(w, http.StatusBadRequest, "missing_model", "You must provide a model identifier.")
 			return
 		}
@@ -105,17 +123,21 @@ func withRouting(resolver Resolver) http.Handler {
 		route, err := resolver.Resolve(envelope.Model)
 		if err != nil {
 			if errors.Is(err, routing.ErrUnknownEndpoint) {
+				MarkOutcome(r, metrics.OutcomeClientError)
 				writeError(w, http.StatusNotFound, "model_not_found",
 					"The model '"+envelope.Model+"' is not served here.")
 				return
 			}
+			MarkOutcome(r, metrics.OutcomeInternalError)
 			slog.Error("gateway: resolution failed", "model", envelope.Model, "err", err)
 			writeError(w, http.StatusInternalServerError, "routing_error", "Unable to route this request.")
 			return
 		}
+		markEndpoint(r, route.ID, route.Name)
 
 		upstream, err := route.Pick()
 		if err != nil {
+			MarkOutcome(r, metrics.OutcomeNoUpstream)
 			slog.Error("gateway: no upstream for endpoint", "model", envelope.Model, "err", err)
 			writeError(w, http.StatusServiceUnavailable, "no_capacity",
 				"The model '"+envelope.Model+"' is temporarily unavailable.")
@@ -127,6 +149,10 @@ func withRouting(resolver Resolver) http.Handler {
 		r.Header.Del("Content-Length")
 		r.TransferEncoding = nil
 
+		markUpstream(r, upstream.DeploymentID, upstream.ClusterName)
+		release := inFlight(r)
+		defer release()
+
 		upstream.Handler().ServeHTTP(w, r)
 	})
 }
@@ -134,6 +160,7 @@ func withRouting(resolver Resolver) http.Handler {
 // readBody buffers the request body under the size cap.
 func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	if r.Body == nil {
+		MarkOutcome(r, metrics.OutcomeClientError)
 		writeError(w, http.StatusBadRequest, "missing_body", "Request body is required.")
 		return nil, false
 	}
@@ -142,10 +169,12 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	if err != nil {
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
+			MarkOutcome(r, metrics.OutcomeClientError)
 			writeError(w, http.StatusRequestEntityTooLarge, "request_too_large",
 				"Request body exceeds the maximum supported size.")
 			return nil, false
 		}
+		MarkOutcome(r, metrics.OutcomeClientError)
 		writeError(w, http.StatusBadRequest, "unreadable_body", "Could not read the request body.")
 		return nil, false
 	}
@@ -172,6 +201,10 @@ func NewReverseProxy(upstream *url.URL, headers http.Header) *httputil.ReversePr
 		// default heuristic buffers a body with no known length — which turns a
 		// token-by-token stream into one long pause and then the whole answer.
 		FlushInterval: -1,
+		// Read the tail of every response for its usage object, which is where
+		// the token counts come from. Nothing is buffered: the window is fixed
+		// and it is filled after the bytes have gone out.
+		ModifyResponse: observeUsage,
 		// No round-trip timeout. Generation legitimately runs for minutes at
 		// long contexts, and a client that asked for 4k tokens is not hung.
 		Transport: &http.Transport{
@@ -182,6 +215,10 @@ func NewReverseProxy(upstream *url.URL, headers http.Header) *httputil.ReversePr
 			ExpectContinueTimeout: time.Second,
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			// A cluster that never answered, one that timed out, and a caller
+			// that hung up are three different failures wearing one status
+			// code, and only two of them are ours.
+			markProxyError(r, err)
 			slog.Error("gateway: upstream failed", "path", r.URL.Path, "err", err)
 			writeError(w, http.StatusBadGateway, "upstream_unavailable",
 				"The cluster serving this model did not respond.")
@@ -189,10 +226,18 @@ func NewReverseProxy(upstream *url.URL, headers http.Header) *httputil.ReversePr
 	}
 }
 
-// statusRecorder captures the status code for the access log.
+// statusRecorder captures the status code for the access log, and the moment
+// the first byte reached the caller for the metrics.
+//
+// It is extended rather than wrapped in a second recorder on purpose. The
+// Unwrap below is what keeps http.ResponseController reaching Flush, and
+// FlushInterval: -1 on the proxy is what makes a stream arrive token by token
+// instead of as one long pause — a wrapper that hides Flush destroys that
+// silently and only under load.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
+	obs    *observation
 }
 
 func (s *statusRecorder) WriteHeader(code int) {
@@ -200,23 +245,67 @@ func (s *statusRecorder) WriteHeader(code int) {
 	s.ResponseWriter.WriteHeader(code)
 }
 
+// Write stamps the first byte out. Headers arriving are not a token: an
+// upstream sends those as soon as it accepts the request, and time to first
+// token is what a caller actually waits for.
+func (s *statusRecorder) Write(b []byte) (int, error) {
+	if s.obs != nil && len(b) > 0 {
+		s.obs.stampFirstByte(time.Now())
+	}
+	return s.ResponseWriter.Write(b)
+}
+
 // Unwrap exposes the underlying writer so http.ResponseController can still
 // reach Flush, which streaming responses depend on.
 func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
-func logging(next http.Handler) http.Handler {
+// observed is the outermost wrapper: it carries the per-request observation,
+// writes the access log, and records the request once it is finished.
+//
+// One wrapper rather than two, for the reason stated on statusRecorder.
+//
+// GET /healthz is neither logged nor counted. A kubelet probe is not a request
+// against anyone's availability, and counting a few thousand of them a day
+// against an endpoint's failure budget would make the budget meaningless in the
+// helpful direction.
+func observed(recorder *metrics.Recorder, probes *ProbeMarker, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		obs := &observation{start: start, origin: probes.Origin(r), recorder: recorder}
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK, obs: obs}
+		r = r.WithContext(context.WithValue(r.Context(), observationKey{}, obs))
+
 		next.ServeHTTP(rec, r)
+
 		if r.URL.Path == "/healthz" {
 			return
 		}
+		elapsed := time.Since(start)
 		slog.Info("gateway: request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"status", rec.status,
-			"duration_ms", time.Since(start).Milliseconds(),
+			"duration_ms", elapsed.Milliseconds(),
 		)
+		if recorder != nil {
+			recorder.Observe(obs.sample(rec.status, elapsed))
+		}
 	})
+}
+
+// inFlight marks a request as being proxied for as long as it is, and returns
+// the release. A request with no recorder behind it releases nothing.
+func inFlight(r *http.Request) func() {
+	obs := observationFrom(r.Context())
+	if obs == nil || obs.recorder == nil {
+		return func() {}
+	}
+	obs.mu.Lock()
+	endpoint, name, origin := obs.endpoint, obs.endpointName, obs.origin
+	deployment, cluster := obs.deployment, obs.cluster
+	obs.mu.Unlock()
+	if endpoint == "" {
+		endpoint = metrics.EndpointUnknown
+	}
+	return obs.recorder.InFlight(endpoint, name, origin, deployment, cluster)
 }

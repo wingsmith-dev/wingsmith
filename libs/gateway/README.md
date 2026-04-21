@@ -28,10 +28,50 @@ a timer. Nothing is joined per request.
 | `-resync` | how often to re-read the table, default 30s |
 | `HANGAR_GATEWAY_TOKEN` | shared token callers must present; unset means the gateway trusts its network |
 | `-credentials` / `HANGAR_GATEWAY_CREDENTIALS` | JSON file of `{"<credential id>": {"<header>": "<value>"}}` |
+| `-metrics-listen` / `HANGAR_GATEWAY_METRICS_LISTEN` | where `/metrics` is served, default `:9090`, `off` to disable |
+| `-probe-token` / `HANGAR_GATEWAY_PROBE_TOKEN` | what the conformance runner presents to mark its traffic as a probe; a comma-separated pair while rotating |
+
+Neither of the last two is required and neither is fatal by its absence, which is a deploy
+constraint rather than a courtesy: `just deploy plane` runs `kubectl apply -k infra/`, and `infra/`
+carries this component's manifest, so a manifest naming a flag the running image does not know
+reaches the old binary and `flag.Parse` exits 2. Prefer the environment variable when adding either
+to a manifest — an unknown variable is inert, an unknown flag is a crashloop of the data plane
+caused by deploying the control plane.
 
 The credential file is how a reference on a cluster's serving address becomes headers on the wire.
 The plane stores the reference and never the secret, so the material is mounted next to the process
 that redeems it.
+
+## What it measures
+
+A request that fails before it reaches a cluster emits nothing a serving runtime can count. A model
+nobody serves, an endpoint with nowhere to route, a credential that has gone stale, a cluster that
+cannot be dialled — those are the requests that dominate an availability incident and none of them
+are visible from inside a cluster. This hop sees every request, including the ones that never land,
+so it is the only honest source of a failure rate.
+
+`/metrics` is Prometheus text on its own listener, `:9090` by default. It is observability and not a
+ledger: nothing here is metered or billed, and no caller identity, API key, client address or raw
+model string reaches a label. Those are unbounded, and an unbounded label is the same mistake as a
+shared counter in the request path.
+
+Every request is counted under one of ten outcomes, and the set is closed — an operator who can
+redefine failure produces an availability number that is not comparable between two deployments.
+What is declared elsewhere is which outcomes sit in the numerator and the denominator of a named
+objective. The distinction the whole endpoint turns on is that `rate_limited` and `shed` are both
+`429`: one is a caller over its own declared limit and is excused, the other is this hop refusing
+work and is a failure, and keying a failure rate off `status="429"` turns every capacity incident
+into a clean bill of health.
+
+`GET /healthz` is not counted — a kubelet probe is nobody's availability. `GET /v1/models` is
+counted under the reserved endpoint `_catalog`, and a request naming a model we do not serve under
+`_unknown` rather than under the string it asked for.
+
+`hangar_gateway_routing_table_age_seconds` is seconds since the plane last confirmed the loaded
+table, by sending a new one or by answering `304`. A failed refresh deliberately does not reset it:
+the gateway keeps serving what it has, and that gauge climbing beside
+`hangar_gateway_routing_table_refresh_success` at 0 is exactly the shape of a plane outage seen
+from the data plane.
 
 ## Failure behaviour
 

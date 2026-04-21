@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
 	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
 )
 
@@ -53,6 +54,10 @@ func (u Upstream) Handler() http.Handler { return u.handler }
 
 // Route is one public name and the upstreams behind it.
 type Route struct {
+	// ID is the endpoint's uid. It is carried for one reason: a metric
+	// labelled by a public model name is joined against a plane object that
+	// renames freely, and a rename would silently split a series in two.
+	ID        string
 	Name      string
 	Strategy  string
 	Upstreams []Upstream
@@ -144,10 +149,29 @@ type Source interface {
 // credential reference the plane attached to its address.
 type ProxyFactory func(upstream *url.URL, credentialID string) http.Handler
 
+// Observer is told what each refresh did, so the health of the table this hop
+// serves from is visible without asking the plane — which is the one thing that
+// cannot be asked when the plane is the thing that is down.
+type Observer interface {
+	TableApplied(endpoints int, upstreams []metrics.UpstreamSample)
+	TableUnchanged()
+	TableRefreshFailed()
+}
+
+// Option adjusts a Router at construction.
+type Option func(*Router)
+
+// WithObserver attaches a refresh observer. Absent, refreshes are unobserved
+// and everything else behaves identically.
+func WithObserver(observer Observer) Option {
+	return func(r *Router) { r.observer = observer }
+}
+
 // Router holds the current table.
 type Router struct {
-	source  Source
-	factory ProxyFactory
+	source   Source
+	factory  ProxyFactory
+	observer Observer
 
 	mu       sync.RWMutex
 	revision string
@@ -159,13 +183,17 @@ type Router struct {
 }
 
 // New builds an empty Router. Load must succeed once before it can serve.
-func New(source Source, factory ProxyFactory) *Router {
-	return &Router{
+func New(source Source, factory ProxyFactory, opts ...Option) *Router {
+	router := &Router{
 		source:  source,
 		factory: factory,
 		routes:  make(map[string]Route),
 		proxies: make(map[string]http.Handler),
 	}
+	for _, opt := range opts {
+		opt(router)
+	}
+	return router
 }
 
 // Load refreshes the table, or leaves it alone when the plane reports the
@@ -182,9 +210,13 @@ func (r *Router) Load(ctx context.Context) error {
 
 	table, err := r.source.Resolved(ctx, revision)
 	if errors.Is(err, plane.ErrNotModified) {
+		// The plane vouched for what is already loaded, which is as good a
+		// confirmation as a new table and is reported as one.
+		r.observe(func(o Observer) { o.TableUnchanged() })
 		return nil
 	}
 	if err != nil {
+		r.observe(func(o Observer) { o.TableRefreshFailed() })
 		return err
 	}
 
@@ -193,6 +225,7 @@ func (r *Router) Load(ctx context.Context) error {
 
 	for _, endpoint := range table.Endpoints {
 		route := Route{
+			ID:        endpoint.ID,
 			Name:      endpoint.Name,
 			Strategy:  endpoint.RoutingStrategy,
 			Upstreams: make([]Upstream, 0, len(endpoint.Upstreams)),
@@ -255,9 +288,39 @@ func (r *Router) Load(ctx context.Context) error {
 	r.proxies = pools
 	r.mu.Unlock()
 
+	r.observe(func(o Observer) { o.TableApplied(len(next), samples(next)) })
+
 	slog.Info("gateway: routing table loaded",
 		"revision", table.Revision, "endpoints", len(next), "upstreams", len(pools))
 	return nil
+}
+
+// observe calls the observer when there is one.
+func (r *Router) observe(fn func(Observer)) {
+	if r.observer != nil {
+		fn(r.observer)
+	}
+}
+
+// samples flattens a loaded table into what the observer reports on.
+func samples(routes map[string]Route) []metrics.UpstreamSample {
+	flat := make([]metrics.UpstreamSample, 0, len(routes))
+	for _, route := range routes {
+		endpoint := route.ID
+		if endpoint == "" {
+			endpoint = metrics.EndpointUnknown
+		}
+		for _, upstream := range route.Upstreams {
+			flat = append(flat, metrics.UpstreamSample{
+				Endpoint:     endpoint,
+				EndpointName: route.Name,
+				Deployment:   upstream.DeploymentID,
+				Cluster:      upstream.ClusterName,
+				Ready:        upstream.Ready,
+			})
+		}
+	}
+	return flat
 }
 
 // order sorts an endpoint's upstreams by its declared failover order, so a

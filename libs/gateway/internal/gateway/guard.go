@@ -4,6 +4,8 @@ import (
 	"crypto/subtle"
 	"net/http"
 	"strings"
+
+	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
 )
 
 // Guard decides whether a caller may use this gateway at all.
@@ -44,6 +46,9 @@ func (g *TokenGuard) Allow(r *http.Request) bool {
 func withGuard(guard Guard, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !guard.Allow(r) {
+			// The caller's, not ours: a rejected credential is outside every
+			// availability objective's ratio rather than inside its numerator.
+			MarkOutcome(r, metrics.OutcomeAuthRejected)
 			writeError(w, http.StatusUnauthorized, "unauthorized", "This gateway does not accept unidentified callers.")
 			return
 		}
