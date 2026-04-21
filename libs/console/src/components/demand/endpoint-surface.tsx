@@ -175,7 +175,21 @@ export function SurfaceFields({
 }
 
 /** The same split, read-only, on an endpoint's detail page. */
-export function SurfaceCard({ surface }: { surface: EndpointSurface }) {
+export function SurfaceCard({ surface }: { surface?: EndpointSurface }) {
+  if (!surface) {
+    return (
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Surface</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="font-mono text-2xs text-muted-foreground/60">
+            No surface declared for this endpoint.
+          </p>
+        </CardContent>
+      </Card>
+    )
+  }
   return (
     <Card>
       <CardHeader className="pb-2">

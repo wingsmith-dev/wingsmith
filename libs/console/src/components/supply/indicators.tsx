@@ -3,7 +3,31 @@ import { Badge } from "@/components/ui/badge"
 import { deviceHealthTone, nodeConditionTone } from "@/modules/supply/display"
 import type { Device } from "@/modules/supply/types"
 
-export function NodeConditionLabel({ condition }: { condition: string }) {
+/**
+ * Node condition, or `stale` when the node's cluster agent is unreachable. A
+ * cluster we cannot reach stopped reporting, so `ready` is only the last thing
+ * it said — presenting it as a live fact would claim knowledge the plane does
+ * not have. Stale wins over the stored condition and reads muted, not green.
+ */
+export function NodeConditionLabel({
+  condition,
+  stale = false,
+}: {
+  condition: string
+  stale?: boolean
+}) {
+  if (stale) {
+    return (
+      <span
+        title="This cluster's agent is unreachable; the last reported condition can no longer be confirmed."
+        className="text-muted-foreground"
+      >
+        <StatusLabel tone="neutral">
+          stale · {condition.replace(/_/g, " ")}
+        </StatusLabel>
+      </span>
+    )
+  }
   return (
     <StatusLabel tone={nodeConditionTone(condition)}>
       {condition.replace(/_/g, " ")}

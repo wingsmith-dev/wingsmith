@@ -3,7 +3,7 @@ import { WriteAction } from "@/components/layout/write-action"
 import { cn } from "@/lib/utils"
 
 interface PageHeaderProps {
-  title: string
+  title: React.ReactNode
   description?: string
   /** Suppressed in read-only mode: every header action starts a write. */
   actions?: React.ReactNode

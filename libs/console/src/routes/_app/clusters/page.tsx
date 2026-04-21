@@ -2,7 +2,9 @@ import { DeleteDialog } from "@/components/layout/destructive"
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { cn } from "@/lib/utils"
 import { formatError } from "@/lib/format"
 import { CLUSTER_PHASES, clusterLabel } from "@/modules/clusters/display"
 import { useClusters, useDeleteCluster } from "@/modules/clusters/queries"
@@ -29,7 +31,12 @@ export function ClustersPage() {
   const [editing, setEditing] = useState<Cluster | null>(null)
   const [deleting, setDeleting] = useState<Cluster | null>(null)
 
-  const regions = [...new Set((list.items ?? []).map((c) => c.region))].sort()
+  const clusters = list.items ?? []
+  const regions = [...new Set(clusters.map((c) => c.region))].sort()
+
+  const needsAttention = clusters.filter(
+    (c) => !c.reachable || c.phase === "draining" || c.sync.state === "stale"
+  ).length
 
   const set = (key: "phase" | "region") => (value: string) =>
     navigate({
@@ -61,6 +68,19 @@ export function ClustersPage() {
       />
 
       <div className="space-y-4 p-4">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <StatCard label="Clusters" value={String(clusters.length)} />
+          {/* TODO-API node ready/total is not on the clusters list; mocked. */}
+          <StatCard label="Nodes ready" value="116/128" />
+          {/* TODO-API GPU allocation totals are not on the clusters list; mocked. */}
+          <StatCard label="GPUs allocated" value="642/992" />
+          <StatCard
+            label="Needs attention"
+            value={String(needsAttention)}
+            tone={needsAttention > 0 ? "warn" : undefined}
+          />
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <FilterSelect
             label="Phase"
@@ -154,5 +174,31 @@ export function ClustersPage() {
         onConfirm={confirmDelete}
       />
     </div>
+  )
+}
+
+function StatCard({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: string
+  tone?: "warn"
+}) {
+  return (
+    <Card size="sm" className="gap-1.5 px-4">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "font-heading text-2xl leading-none font-semibold tabular-nums",
+          tone === "warn" && "text-amber-500"
+        )}
+      >
+        {value}
+      </span>
+    </Card>
   )
 }

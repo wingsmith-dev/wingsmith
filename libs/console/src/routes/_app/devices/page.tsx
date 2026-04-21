@@ -2,8 +2,7 @@ import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { DataTable } from "@/components/layout/data-table"
 import { PageHeader } from "@/components/layout/page-header"
 import { deviceColumns } from "@/components/supply/columns"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
 import { DEVICE_HEALTHS } from "@/modules/supply/display"
@@ -13,7 +12,9 @@ import {
   useDevices,
 } from "@/modules/supply/queries"
 import { useNavigate, useSearch } from "@tanstack/react-router"
-import { GroupedDevices } from "./GroupedDevices"
+import { useState } from "react"
+import { StatTile } from "../overview/StatTile"
+import { GroupedDevices, type GroupMode } from "./GroupedDevices"
 import { TopologySummary } from "./TopologySummary"
 
 const ALLOCATABLE = [
@@ -21,11 +22,14 @@ const ALLOCATABLE = [
   { value: "false", label: "Unschedulable" },
 ]
 
+type DeviceView = GroupMode | "individual"
+
 export function DevicesPage() {
   const search = useSearch({ from: "/_app/devices" })
   const navigate = useNavigate({ from: "/devices" })
   const { data: clusters } = useClusterOptions()
   const topology = useAllTopologyDomains({ cluster: search.cluster })
+  const [view, setView] = useState<DeviceView>("class")
 
   const list = useDevices({
     cluster: search.cluster,
@@ -56,10 +60,26 @@ export function DevicesPage() {
    * happened to be in the first page — narrowing to a class could remove it
    * from its own dropdown.
    */
-  const { data: classes } = useDeviceClasses({
+  const {
+    data: classes,
+    isLoading: classesLoading,
+    error: classesError,
+  } = useDeviceClasses({
     cluster: search.cluster,
     present: true,
   })
+
+  const totals = (classes ?? []).reduce(
+    (acc, c) => {
+      acc.devices += c.inventory.devices
+      acc.free += c.inventory.allocatable
+      acc.healthy += c.inventory.healthy
+      return acc
+    },
+    { devices: 0, free: 0, healthy: 0 }
+  )
+  const faulted = totals.devices - totals.healthy
+  const allocated = Math.max(0, totals.healthy - totals.free)
 
   return (
     <div className="flex flex-col">
@@ -69,6 +89,46 @@ export function DevicesPage() {
       />
 
       <div className="space-y-4 p-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatTile
+            kind="device"
+            label="Devices"
+            value={totals.devices}
+            to="/devices"
+            isLoading={classesLoading}
+            error={classesError}
+          />
+          <StatTile
+            kind="device"
+            label="Allocated"
+            value={allocated}
+            detail={`/ ${totals.devices}`}
+            to="/devices"
+            isLoading={classesLoading}
+            error={classesError}
+          />
+          <StatTile
+            kind="device"
+            label="Free"
+            value={totals.free}
+            to="/devices"
+            notes={[{ label: "allocatable", tone: "ok" }]}
+            isLoading={classesLoading}
+            error={classesError}
+          />
+          <StatTile
+            kind="device"
+            label="Faulted"
+            value={faulted}
+            to="/devices"
+            notes={
+              faulted > 0 ? [{ label: "not healthy", tone: "warn" }] : undefined
+            }
+            isLoading={classesLoading}
+            error={classesError}
+          />
+        </div>
+
         <TopologySummary
           domains={topology.data}
           isLoading={topology.isLoading}
@@ -115,31 +175,33 @@ export function DevicesPage() {
             }))}
           />
 
-          <div className="ml-auto flex items-center gap-2">
-            <Label
-              htmlFor="group-topology"
-              className="font-mono text-2xs text-muted-foreground/70"
-            >
-              Group by topology domain
-            </Label>
-            <Switch
-              id="group-topology"
-              checked={search.group === true}
-              onCheckedChange={(checked) =>
-                navigate({
-                  search: (prev) => ({
-                    ...prev,
-                    group: checked ? true : undefined,
-                  }),
-                })
-              }
-            />
-          </div>
         </div>
 
-        {search.group && list.items ? (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Tabs
+            value={view}
+            onValueChange={(value) => setView(value as DeviceView)}
+          >
+            <TabsList>
+              <TabsTrigger value="class">By model</TabsTrigger>
+              <TabsTrigger value="cluster">By cluster</TabsTrigger>
+              <TabsTrigger value="topology">By topology</TabsTrigger>
+              <TabsTrigger value="individual">Individual</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {view === "class" && (
+            <div className="flex flex-wrap items-center gap-3 font-mono text-2xs text-muted-foreground">
+              <Swatch className="bg-primary" label="allocated" />
+              <Swatch className="bg-destructive" label="fault" />
+              <Swatch className="bg-secondary" label="free" />
+            </div>
+          )}
+        </div>
+
+        {view !== "individual" && list.items ? (
           <>
-            <GroupedDevices devices={list.items} />
+            <GroupedDevices devices={list.items} by={view} />
             {list.hasNextPage && (
               <button
                 type="button"
@@ -162,5 +224,14 @@ export function DevicesPage() {
         )}
       </div>
     </div>
+  )
+}
+
+function Swatch({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`h-2.5 w-2 rounded-[2px] ${className}`} />
+      {label}
+    </span>
   )
 }

@@ -46,7 +46,6 @@ const overviewItems: NavItem[] = [
 const servingItems: NavItem[] = [
   { label: "Endpoints", to: "/endpoints", kind: "endpoint" },
   { label: "Workloads", to: "/workloads", kind: "workload" },
-  { label: "Deployments", to: "/deployments", kind: "deployment" },
   {
     label: "Discovered",
     to: "/discovered",
@@ -62,10 +61,8 @@ const catalogItems: NavItem[] = [
 
 const fleetItems: NavItem[] = [
   { label: "Clusters", to: "/clusters", kind: "cluster" },
-  { label: "Pools", to: "/pools", kind: "pool" },
   { label: "Nodes", to: "/nodes", kind: "node" },
   { label: "Devices", to: "/devices", kind: "device" },
-  { label: "GPU models", to: "/device-classes", kind: "device-class" },
 ]
 
 const accessItems: NavItem[] = [

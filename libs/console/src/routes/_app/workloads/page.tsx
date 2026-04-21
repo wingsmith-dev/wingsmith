@@ -5,9 +5,9 @@ import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { formatError, shortenId } from "@/lib/format"
+import { Card } from "@/components/ui/card"
+import { formatError, formatRelative, shortenId } from "@/lib/format"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
 import {
@@ -44,17 +44,8 @@ function columns(
       ),
     },
     {
-      key: "kind",
-      header: "Kind",
-      cell: (workload) => (
-        <Badge variant="secondary" className="font-mono text-2xs">
-          {workload.kind}
-        </Badge>
-      ),
-    },
-    {
       key: "phase",
-      header: "Phase",
+      header: "Status",
       cell: (workload) => (
         <StatusLabel tone={workloadPhaseTone(workload.phase)}>
           {workload.paused ? "paused" : workload.phase}
@@ -62,8 +53,23 @@ function columns(
       ),
     },
     {
+      key: "clusters",
+      header: "Deployments",
+      cell: (workload) => (
+        <span className="font-mono text-2xs text-muted-foreground">
+          {workload.deployments.length === 0 ? (
+            <Dash>{null}</Dash>
+          ) : (
+            `${workload.deployments.length} ${
+              workload.deployments.length === 1 ? "cluster" : "clusters"
+            }`
+          )}
+        </span>
+      ),
+    },
+    {
       key: "scale",
-      header: "Scale",
+      header: "Replicas",
       align: "right",
       cell: (workload) => (
         <span className="font-mono text-xs">
@@ -75,41 +81,39 @@ function columns(
       ),
     },
     {
-      key: "clusters",
-      header: "Clusters",
+      key: "recipe",
+      header: "Recipe / artifact",
       cell: (workload) => (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-mono text-xs">
+            <Id value={shortenId(workload.recipe_id)} />
+          </span>
+          {/* TODO-API Workload carries only recipe_id; recipe name + artifact tag are not on the list payload. */}
+          <span className="font-mono text-2xs text-muted-foreground/60">
+            {workload.kind}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: "endpoint",
+      header: "Endpoint",
+      secondary: true,
+      cell: () => (
+        // TODO-API No endpoint reference on the Workload object; the endpoint that targets it is not resolved here.
         <span className="font-mono text-2xs text-muted-foreground">
-          {workload.deployments.length === 0 ? (
-            <Dash>{null}</Dash>
-          ) : (
-            workload.deployments
-              .map((d) => d.region ?? d.cluster_name)
-              .join(" · ")
-          )}
+          <Dash>{null}</Dash>
         </span>
       ),
     },
     {
-      key: "placed",
-      header: "Placed",
+      key: "updated",
+      header: "Updated",
       align: "right",
       secondary: true,
       cell: (workload) => (
         <span className="font-mono text-2xs text-muted-foreground">
-          {workload.scale.placed}/{workload.scale.desired} · {workload.strategy}
-        </span>
-      ),
-    },
-    {
-      key: "priority",
-      header: "Priority",
-      secondary: true,
-      cell: (workload) => (
-        <span className="font-mono text-2xs text-muted-foreground">
-          {workload.priority_class}
-          {workload.preemptible && (
-            <span className="text-muted-foreground/50"> · preemptible</span>
-          )}
+          {formatRelative(workload.updated_at ?? workload.created_at)}
         </span>
       ),
     },
@@ -164,6 +168,13 @@ export function WorkloadsPage() {
       search: (prev) => ({ ...prev, [key]: value === ALL ? undefined : value }),
     })
 
+  const workloads = list.items ?? []
+  const readyReplicas = workloads.reduce((sum, w) => sum + w.scale.ready, 0)
+  const desiredReplicas = workloads.reduce((sum, w) => sum + w.scale.desired, 0)
+  const needsAttention = workloads.filter(
+    (w) => w.phase === "failed" || w.scale.ready < w.scale.desired
+  ).length
+
   return (
     <div className="flex flex-col">
       <PageHeader
@@ -177,6 +188,29 @@ export function WorkloadsPage() {
       />
 
       <div className="space-y-4 p-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <StatTile
+            label="Workloads"
+            value={list.isLoading ? "—" : list.loaded}
+          />
+          <StatTile
+            label="Replicas running"
+            value={
+              list.isLoading ? "—" : `${readyReplicas}/${desiredReplicas}`
+            }
+          />
+          {/* TODO-API No aggregate request-rate on the workloads list; this is a placeholder. */}
+          <StatTile
+            label="Requests / sec"
+            value={list.isLoading ? "—" : "—"}
+          />
+          <StatTile
+            label="Needs attention"
+            value={list.isLoading ? "—" : needsAttention}
+            tone={needsAttention > 0 ? "warn" : undefined}
+          />
+        </div>
+
         <div className="flex flex-wrap items-center gap-2">
           <FilterSelect
             label="Cluster"
@@ -242,5 +276,35 @@ export function WorkloadsPage() {
         }
       />
     </div>
+  )
+}
+
+/** One headline number from the workloads list — a summary tile, not a link. */
+function StatTile({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: React.ReactNode
+  tone?: "warn"
+}) {
+  return (
+    <Card size="sm" className="gap-2">
+      <div className="flex flex-col gap-2 px-3">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+          {label}
+        </span>
+        <span
+          className={
+            tone === "warn"
+              ? "font-heading text-2xl leading-none font-semibold tabular-nums text-amber-500"
+              : "font-heading text-2xl leading-none font-semibold tabular-nums"
+          }
+        >
+          {value}
+        </span>
+      </div>
+    </Card>
   )
 }

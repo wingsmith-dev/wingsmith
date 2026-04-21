@@ -252,6 +252,13 @@ export function useWorkload(ref: string, project?: string) {
   })
 }
 
+/** Every workload, drained — deployments and endpoint targets resolve recipe through them. */
+export function useWorkloadOptions() {
+  return useAllPages(["workloads", "options"], (cursor) =>
+    fetchWorkloads({}, cursor, 200)
+  )
+}
+
 export function useCreateWorkload() {
   const client = useQueryClient()
   return useMutation({

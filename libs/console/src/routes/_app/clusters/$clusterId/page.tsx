@@ -17,7 +17,6 @@ import { Link, useParams } from "@tanstack/react-router"
 import { useState } from "react"
 import { ComponentsTable } from "./ComponentsTable"
 import { ClusterDevicesTable } from "./DevicesTable"
-import { DeclaredCard } from "./HealthCard"
 import { ClusterNodesTable } from "./NodesTable"
 import { ClusterOverviewTab } from "./OverviewTab"
 import { ClusterPoolsPanel } from "./PoolsPanel"
@@ -97,11 +96,9 @@ export function ClusterDetailPage() {
             </div>
 
             <div className="grid gap-4 lg:grid-cols-2">
-              <DeclaredCard cluster={cluster} />
               <SyncCard sync={cluster.sync} />
+              <ServingCard cluster={cluster} />
             </div>
-
-            <ServingCard cluster={cluster} />
 
             <Tabs value={tab} onValueChange={setTab}>
               <TabsList>

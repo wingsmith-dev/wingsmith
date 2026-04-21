@@ -1,18 +1,49 @@
-import { Field } from "@/components/layout/field"
 import { RowActions } from "@/components/layout/destructive"
-import { Id, Labels } from "@/components/layout/mono"
-import { ResourceGlyph } from "@/components/layout/resource-icon"
-import { StatusLabel } from "@/components/layout/status-dot"
+import { StatusDot, type StatusTone } from "@/components/layout/status-dot"
 import { Card } from "@/components/ui/card"
 import { formatRelative } from "@/lib/format"
-import {
-  CLUSTER_PHASE_TONE,
-  clusterLabel,
-  humanize,
-  syncTone,
-} from "@/modules/clusters/display"
+import { cn } from "@/lib/utils"
+import { clusterLabel } from "@/modules/clusters/display"
 import type { Cluster } from "@/modules/clusters/types"
 import { Link } from "@tanstack/react-router"
+import { IconActivity, IconAlertTriangle } from "@tabler/icons-react"
+
+type ClusterHealth = "healthy" | "degraded" | "down" | "provisioning"
+
+const HEALTH_TONE: Record<ClusterHealth, StatusTone> = {
+  healthy: "ok",
+  degraded: "warn",
+  down: "danger",
+  provisioning: "neutral",
+}
+
+const HEALTH_RING: Record<ClusterHealth, string> = {
+  healthy: "ring-foreground/10",
+  degraded: "ring-amber-500/30",
+  down: "ring-destructive/35",
+  provisioning: "ring-foreground/10",
+}
+
+/**
+ * Collapses the declared phase and observed reachability/sync into a single
+ * at-a-glance health, only for the card's dot and border. Phase and
+ * reachability are still kept apart everywhere they carry a decision — a
+ * disabled cluster is somebody's choice, an unreachable one is a network fault.
+ */
+function clusterHealth(cluster: Cluster): ClusterHealth {
+  if (!cluster.reachable || cluster.sync.state === "disconnected") return "down"
+  if (cluster.phase === "pending") return "provisioning"
+  if (cluster.phase === "draining" || cluster.sync.state === "stale")
+    return "degraded"
+  return "healthy"
+}
+
+/** Deterministic pseudo-capacity so mocked cards differ until the API lands. */
+function seed(id: string): number {
+  let n = 0
+  for (const ch of id) n = (n * 31 + ch.charCodeAt(0)) % 997
+  return n
+}
 
 /**
  * Phase and reachability sit next to each other and are never folded into one
@@ -29,64 +60,148 @@ export function ClusterCard({
   onEdit: () => void
   onDelete: () => void
 }) {
+  const health = clusterHealth(cluster)
+  const tone = HEALTH_TONE[health]
+
+  const region = [cluster.region, cluster.sync.cloud, cluster.sync.distribution]
+    .filter(Boolean)
+    .join(" · ")
+
+  // TODO-API cluster GPU allocation is not on the Cluster object; mocked.
+  const gpuTotal = 32 + (seed(cluster.id) % 8) * 32
+  const gpuAllocated = health === "down" ? null : Math.round(gpuTotal * (0.2 + (seed(cluster.name) % 70) / 100))
+  const gpuPct = gpuAllocated != null ? Math.round((gpuAllocated / gpuTotal) * 100) : 0
+  const fillTone =
+    gpuPct >= 90 ? "bg-amber-500" : gpuPct <= 30 ? "bg-muted-foreground/70" : "bg-primary"
+
+  // TODO-API node ready/total, deployment and pool counts are not on the Cluster object; mocked.
+  const nodeTotal = 4 + (seed(cluster.id) % 8) * 2
+  const nodeReady = health === "degraded" ? nodeTotal - 3 : health === "down" ? null : nodeTotal
+  const deployments = health === "provisioning" ? null : 1 + (seed(cluster.name) % 9)
+  const pools = 1 + (seed(cluster.region) % 4)
+
+  const noteTone = health === "down" ? "down" : "warn"
+  const note =
+    cluster.sync.last_error ??
+    (health === "provisioning"
+      ? "Provisioning — nodes still joining. Not schedulable yet."
+      : health === "down"
+        ? "Agent unreachable. Last known state shown; replicas may still be serving."
+        : null)
+  const showNote = health === "down" || health === "degraded" || health === "provisioning"
+
   return (
-    <Card className="overflow-hidden p-0">
-      <div className="flex items-start gap-3 border-b bg-muted/30 px-4 py-3">
-        <ResourceGlyph kind="cluster" size="sm" />
-        <div className="min-w-0 flex-1">
-          <Link
-            to="/clusters/$clusterId"
-            params={{ clusterId: cluster.id }}
-            className="block truncate font-medium hover:underline"
-          >
-            {clusterLabel(cluster)}
-          </Link>
-          <Id value={cluster.name} className="block truncate" />
-        </div>
-        <RowActions
-          actions={[
-            { label: "Edit", onSelect: onEdit },
-            { label: "Delete", onSelect: onDelete, destructive: true },
-          ]}
-        />
-      </div>
-
-      <div className="space-y-4 p-4">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <StatusLabel tone={CLUSTER_PHASE_TONE[cluster.phase] ?? "neutral"}>
-            {humanize(cluster.phase)}
-          </StatusLabel>
-          <StatusLabel tone={cluster.reachable ? "ok" : "danger"}>
-            {cluster.reachable ? "reachable" : "unreachable"}
-          </StatusLabel>
-          <StatusLabel
-            tone={syncTone(cluster.sync.state)}
-            pulse={cluster.sync.state === "connected"}
-          >
-            {humanize(cluster.sync.state)}
-          </StatusLabel>
+    <Card size="sm" className={cn("gap-3 p-0", HEALTH_RING[health])}>
+      <div className="flex flex-col gap-3 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <Link
+              to="/clusters/$clusterId"
+              params={{ clusterId: cluster.id }}
+              className="flex items-center gap-2 truncate font-medium tracking-tight hover:text-primary"
+            >
+              <StatusDot tone={tone} pulse={cluster.sync.state === "connected"} />
+              {clusterLabel(cluster)}
+            </Link>
+            <span className="mt-1 block truncate font-mono text-2xs text-muted-foreground/60">
+              {region}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground",
+                !cluster.reachable && "text-amber-500"
+              )}
+            >
+              <IconActivity className="size-3" />
+              {formatRelative(cluster.sync.last_seen_at ?? cluster.sync.last_sync_at)}
+            </span>
+            <RowActions
+              actions={[
+                { label: "Edit", onSelect: onEdit },
+                { label: "Delete", onSelect: onDelete, destructive: true },
+              ]}
+            />
+          </div>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Region">
-            {cluster.region}
-            {cluster.zone && (
-              <span className="text-muted-foreground/50">
-                {" "}
-                · {cluster.zone}
-              </span>
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-baseline justify-between">
+            <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+              GPUs allocated
+            </span>
+            <span className="font-mono text-xs tabular-nums">
+              {gpuAllocated ?? "?"}
+              <span className="text-muted-foreground/60">/{gpuTotal}</span>
+            </span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-secondary">
+            <div
+              className={cn("h-full rounded-full", fillTone)}
+              style={{ width: `${gpuPct}%` }}
+            />
+          </div>
+        </div>
+
+        {showNote && note && (
+          <div
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-2xs leading-snug",
+              noteTone === "down"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-amber-500/10 text-amber-500"
             )}
-          </Field>
-          <Field label="Agent">{cluster.sync.agent_version ?? "—"}</Field>
-          <Field label="Last sync">
-            {formatRelative(cluster.sync.last_sync_at)}
-          </Field>
-          <Field label="Enrolled">{formatRelative(cluster.enrolled_at)}</Field>
-          <Field label="Labels" className="sm:col-span-2">
-            <Labels labels={cluster.labels} />
-          </Field>
+          >
+            <IconAlertTriangle className="size-3.5 shrink-0" />
+            <span>{note}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-2 border-t pt-3">
+          <Stat
+            label="Nodes"
+            value={nodeReady != null ? `${nodeReady}/${nodeTotal}` : "—"}
+            warn={nodeReady != null && nodeReady < nodeTotal}
+            muted={nodeReady == null}
+          />
+          <Stat
+            label="Deployments"
+            value={deployments != null ? String(deployments) : "—"}
+            muted={deployments == null}
+          />
+          <Stat label="Pools" value={String(pools)} />
         </div>
       </div>
     </Card>
+  )
+}
+
+function Stat({
+  label,
+  value,
+  warn,
+  muted,
+}: {
+  label: string
+  value: string
+  warn?: boolean
+  muted?: boolean
+}) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        {label}
+      </span>
+      <span
+        className={cn(
+          "font-mono text-xs tabular-nums",
+          warn && "text-amber-500",
+          muted && "text-muted-foreground/50"
+        )}
+      >
+        {value}
+      </span>
+    </div>
   )
 }
