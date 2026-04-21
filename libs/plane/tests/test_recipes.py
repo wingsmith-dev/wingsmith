@@ -8,6 +8,8 @@ from app.core.ids import RECIPE
 from app.core.ids import ARTIFACT
 from app.core.ids import new_uid
 from app.db.models import Recipe
+from app.db.notify import MemoryNotifier
+from app.hub.messages import RecipeDesired
 from app.core.exceptions import Invalid
 from app.modules.recipes.routes import RecipeRoutes
 from app.modules.recipes.schemas import RecipeSchema
@@ -15,10 +17,17 @@ from app.modules.recipes.schemas import RecipeCacheSchema
 from app.modules.recipes.schemas import RecipeShapeSchema
 from app.modules.recipes.schemas import RecipeCreateRequest
 from app.modules.recipes.schemas import RecipeOverlaySchema
+from app.modules.recipes.schemas import RecipeServingSchema
 from app.modules.recipes.schemas import RecipeUpdateRequest
+from app.modules.recipes.schemas import RecipeReasoningSchema
+from app.modules.recipes.schemas import RecipeCapabilitiesSchema
+from app.modules.recipes.services import RecipeService
 from app.modules.recipes.services import _revision
 from app.modules.recipes.services import check_shape
+from app.modules.recipes.services import serving_args
+from app.modules.recipes.services import check_serving
 from app.modules.recipes.services import check_footprint
+from app.modules.recipes.services import resolved_engine_args
 from app.modules.recipes.repository import RecipeRepository
 
 
@@ -228,3 +237,299 @@ def test_delete_refuses_while_a_deployment_still_names_the_recipe():
     from app.modules.recipes.services import RecipeService
 
     assert "Refuses" in (RecipeService.delete.__doc__ or "")
+
+
+def serving(**kwargs) -> RecipeServingSchema:
+    reasoning = kwargs.pop("reasoning", None)
+    block = RecipeServingSchema(**kwargs)
+    if reasoning is not None:
+        block.reasoning = RecipeReasoningSchema(**reasoning)
+    return block
+
+
+def capabilities(**kwargs) -> RecipeCapabilitiesSchema:
+    return RecipeCapabilitiesSchema(**kwargs)
+
+
+def a_recipe(**kwargs) -> Recipe:
+    """A Recipe row as SQLAlchemy hands one back, with no server defaults applied."""
+    base = {
+        "uid": new_uid(RECIPE),
+        "name": "llama-vllm",
+        "version": 1,
+        "engine": "vllm",
+        "engine_version": "0.6.0",
+        "engine_image": None,
+        "engine_args": {},
+        "imported_args": {},
+        "quantization": None,
+        "dtype": None,
+        "tensor_parallel": 1,
+        "pipeline_parallel": 1,
+        "expert_parallel": 1,
+        "context_length": 8192,
+        "max_batch_tokens": None,
+        "kv_cache_dtype": None,
+        "kv_cache_fraction": None,
+        "prefix_cache_enabled": False,
+        "prefix_cache_config": {},
+        "device_class": "h100",
+        "device_count": 1,
+        "device_memory_mib_min": 0,
+        "requires_single_topology_domain": False,
+        "topology_domain_kind": None,
+        "cpu_cores": None,
+        "memory_mib": None,
+        "disk_gib": None,
+        "labels": {},
+        "overlay": {},
+        "serving": {},
+        "capabilities": {},
+        "created_at": EPOCH,
+        "updated_at": None,
+    }
+    return Recipe(**(base | kwargs))
+
+
+def rendered(recipe: Recipe) -> RecipeSchema:
+    return RecipeService(db=None, notifier=MemoryNotifier()).schema(recipe, new_uid(ARTIFACT))
+
+
+def test_a_recipe_with_no_serving_block_still_round_trips():
+    """Every recipe written before the block existed reads back as the defaults."""
+    for stored in ({}, None):
+        schema = rendered(a_recipe(serving=stored, capabilities=stored))
+        assert schema.serving == RecipeServingSchema()
+        assert schema.capabilities == RecipeCapabilitiesSchema()
+        assert schema.serving.reasoning.parser is None
+        assert schema.serving.context_overflow == "reject"
+        assert schema.capabilities.input_modalities == ["text"]
+        decoded = msgspec.json.decode(msgspec.json.encode(schema), type=RecipeSchema)
+        assert decoded.serving == schema.serving
+        assert decoded.capabilities == schema.capabilities
+
+
+def test_an_absent_serving_block_is_the_defaults_at_the_request_boundary_too():
+    data = RecipeCreateRequest(
+        artifact="art_1",
+        name="llama-vllm",
+        engine="vllm",
+        engine_version="0.6.0",
+        device_class="h100",
+        context_length=8192,
+    )
+    assert data.serving == RecipeServingSchema()
+    assert data.capabilities == RecipeCapabilitiesSchema()
+    assert check_serving(data.serving, data.capabilities, prefix_cache_enabled=False) is None
+    assert RecipeUpdateRequest().to_dict(exclude_unset=True) == {}
+
+
+def test_a_serving_block_round_trips():
+    declared = serving(
+        reasoning={
+            "default_on": True,
+            "parser": "qwen3",
+            "transport": "inline_tags",
+            "think_begin_token": "<think>",
+            "think_end_token": "</think>",
+            "suppress_eos_until_think_end": True,
+        },
+        stream_usage="every_chunk",
+        context_overflow="clamp_output",
+        structured_output_backend="xgrammar",
+        tool_call_parser="hermes",
+        max_images_per_request=4,
+    )
+    claimed = capabilities(
+        reasoning_supported=True,
+        structured_output_modes=["text", "json_object", "json_schema"],
+        tool_calling_supported=True,
+        tool_choice_modes=["auto", "required"],
+        parallel_tool_calls=True,
+        input_modalities=["text", "image"],
+        prompt_cache_mode="automatic",
+        prompt_cache_ttl_seconds=300,
+        asserted_by="operator",
+        asserted_at=EPOCH,
+        source_uri="https://example.invalid/model-card",
+    )
+    assert check_serving(declared, claimed, prefix_cache_enabled=True) is None
+
+    schema = rendered(a_recipe(serving=msgspec.to_builtins(declared), capabilities=msgspec.to_builtins(claimed)))
+    assert schema.serving == declared
+    assert schema.capabilities == claimed
+
+    decoded = msgspec.json.decode(msgspec.json.encode(schema), type=RecipeSchema)
+    assert decoded.serving == declared
+    assert decoded.capabilities == claimed
+    assert decoded.capabilities.asserted_at == EPOCH
+
+
+def test_the_serving_block_is_typed_rather_than_another_free_dict():
+    assert RecipeSchema.__annotations__["serving"] is RecipeServingSchema
+    assert RecipeSchema.__annotations__["capabilities"] is RecipeCapabilitiesSchema
+    assert "reasoning" in RecipeServingSchema.__struct_fields__
+    with pytest.raises(msgspec.ValidationError):
+        msgspec.convert({"thinking": True}, RecipeServingSchema)
+
+
+def test_a_reasoning_parser_named_with_thinking_off_is_refused():
+    """The contradiction: how it reasons, declared on a recipe claiming it cannot."""
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(reasoning={"parser": "qwen3"}),
+            capabilities(reasoning_supported=False),
+            prefix_cache_enabled=False,
+        )
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(reasoning={"default_on": True}),
+            capabilities(reasoning_supported=False),
+            prefix_cache_enabled=False,
+        )
+    assert (
+        check_serving(
+            serving(reasoning={"parser": "qwen3"}),
+            capabilities(reasoning_supported=True),
+            prefix_cache_enabled=False,
+        )
+        is None
+    )
+
+
+def test_inline_traces_without_the_tokens_a_client_would_parse_are_refused():
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(reasoning={"transport": "inline_tags", "think_begin_token": "<think>"}),
+            capabilities(reasoning_supported=True),
+            prefix_cache_enabled=False,
+        )
+
+
+def test_suppressing_eos_needs_the_token_it_suppresses_until():
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(reasoning={"suppress_eos_until_think_end": True}),
+            capabilities(reasoning_supported=True),
+            prefix_cache_enabled=False,
+        )
+
+
+def test_a_tool_parser_on_a_recipe_that_does_not_claim_tool_calling_is_refused():
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(tool_call_parser="hermes"),
+            capabilities(tool_calling_supported=False),
+            prefix_cache_enabled=False,
+        )
+
+
+def test_tool_choice_modes_are_non_empty_exactly_when_tool_calling_is_supported():
+    with pytest.raises(Invalid):
+        check_serving(serving(), capabilities(tool_calling_supported=True), prefix_cache_enabled=False)
+    with pytest.raises(Invalid):
+        check_serving(serving(), capabilities(tool_choice_modes=["auto"]), prefix_cache_enabled=False)
+
+
+def test_a_structured_output_backend_without_json_schema_among_the_modes_is_refused():
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(structured_output_backend="xgrammar"),
+            capabilities(structured_output_modes=["text", "json_object"]),
+            prefix_cache_enabled=False,
+        )
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        {"structured_output_modes": ["text", "yaml"]},
+        {"structured_output_modes": ["text", "text"]},
+        {"tool_calling_supported": True, "tool_choice_modes": ["auto", "sometimes"]},
+        {"input_modalities": ["image"]},
+        {"input_modalities": ["text", "smell"]},
+        {"prompt_cache_mode": "sometimes"},
+        {"prompt_cache_ttl_seconds": -1},
+    ],
+)
+def test_an_unknown_or_repeated_member_of_a_claimed_set_is_refused(block):
+    with pytest.raises(Invalid):
+        check_serving(serving(), capabilities(**block), prefix_cache_enabled=True)
+
+
+def test_an_image_limit_needs_image_among_the_modalities():
+    with pytest.raises(Invalid):
+        check_serving(serving(max_images_per_request=4), capabilities(), prefix_cache_enabled=False)
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(max_images_per_request=0),
+            capabilities(input_modalities=["text", "image"]),
+            prefix_cache_enabled=False,
+        )
+
+
+def test_a_prompt_cache_contract_needs_the_mechanism_under_it():
+    """The contract is a claim to a caller; `prefix_cache_enabled` is the flag that makes it true."""
+    with pytest.raises(Invalid):
+        check_serving(serving(), capabilities(prompt_cache_mode="explicit"), prefix_cache_enabled=False)
+    assert check_serving(serving(), capabilities(prompt_cache_mode="explicit"), prefix_cache_enabled=True) is None
+
+
+@pytest.mark.parametrize(
+    "block",
+    [{"stream_usage": "sometimes"}, {"context_overflow": "shrug"}, {"reasoning": {"transport": "telepathy"}}],
+)
+def test_an_unknown_member_of_a_rendered_enum_is_refused(block):
+    with pytest.raises(Invalid):
+        check_serving(serving(**block), capabilities(reasoning_supported=True), prefix_cache_enabled=False)
+
+
+def test_a_typed_serving_field_beats_the_same_flag_in_engine_args():
+    """The escape hatch keeps the flags nothing models, and loses the ones it does."""
+    recipe = a_recipe(
+        engine_args={"--reasoning-parser": "deepseek_r1", "--tool-call-parser": "llama3_json", "max-num-seqs": "64"},
+        serving=msgspec.to_builtins(
+            serving(reasoning={"parser": "qwen3"}, tool_call_parser="hermes", structured_output_backend="xgrammar")
+        ),
+    )
+    schema = rendered(recipe)
+    assert schema.resolved_engine_args["reasoning-parser"] == "qwen3"
+    assert schema.resolved_engine_args["tool-call-parser"] == "hermes"
+    assert schema.resolved_engine_args["guided-decoding-backend"] == "xgrammar"
+    assert schema.resolved_engine_args["max-num-seqs"] == "64"
+    assert schema.engine_args == recipe.engine_args
+
+
+def test_engine_args_keeps_every_flag_the_serving_block_does_not_model():
+    recipe = a_recipe(engine_args={"--enforce-eager": "", "swap-space": "8"})
+    schema = rendered(recipe)
+    assert schema.engine_args == {"--enforce-eager": "", "swap-space": "8"}
+    assert schema.resolved_engine_args == {"enforce-eager": "", "swap-space": "8"}
+
+
+def test_the_flag_a_typed_field_speaks_for_is_the_engines_own_spelling():
+    block = serving(structured_output_backend="xgrammar")
+    assert serving_args("vllm", block) == {"guided-decoding-backend": "xgrammar"}
+    assert serving_args("sglang", block) == {"grammar-backend": "xgrammar"}
+    assert serving_args("trtllm", block) == {}
+    assert serving_args("vllm", serving(max_images_per_request=4)) == {"limit-mm-per-prompt": "image=4"}
+
+
+def test_a_default_serving_block_speaks_for_no_flag_at_all():
+    """Which is what keeps this additive on every recipe that already exists."""
+    assert serving_args("vllm", RecipeServingSchema()) == {}
+    assert resolved_engine_args("vllm", {"--dtype": "bfloat16"}, RecipeServingSchema()) == {"dtype": "bfloat16"}
+
+
+def test_a_capability_claim_never_reaches_a_cluster():
+    """A cluster has no use for a claim about itself, exactly as with `imported_args`."""
+    assert "capabilities" not in RecipeDesired.__struct_fields__
+    assert "imported_args" not in RecipeDesired.__struct_fields__
+
+
+def test_the_serving_block_is_declared_on_the_recipe_and_patchable():
+    assert "serving" in RecipeCreateRequest.__struct_fields__
+    assert "serving" in RecipeUpdateRequest.__struct_fields__
+    assert "capabilities" in RecipeCreateRequest.__struct_fields__
+    assert "capabilities" in RecipeUpdateRequest.__struct_fields__
+    assert RecipeUpdateRequest(serving=serving()).to_dict(exclude_unset=True) == {"serving": serving()}

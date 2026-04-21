@@ -1,3 +1,5 @@
+import msgspec
+
 from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,9 +24,12 @@ from .schemas import RecipeCacheSchema
 from .schemas import RecipeShapeSchema
 from .schemas import RecipeCreateRequest
 from .schemas import RecipeOverlaySchema
+from .schemas import RecipeServingSchema
 from .schemas import RecipeUpdateRequest
+from .schemas import RecipeReasoningSchema
 from .schemas import RecipeResourcesSchema
 from .schemas import RecipeParallelismSchema
+from .schemas import RecipeCapabilitiesSchema
 from .repository import RecipeRepository
 
 
@@ -83,6 +88,210 @@ def check_shape(
         raise Invalid("kv_cache_fraction must be within (0, 1]", {"kv_cache_fraction": kv_cache_fraction})
 
 
+TRANSPORTS = frozenset({"reasoning_content", "inline_tags"})
+STREAM_USAGE = frozenset({"final_chunk", "every_chunk", "on_request"})
+CONTEXT_OVERFLOW = frozenset({"reject", "truncate_input", "clamp_output"})
+STRUCTURED_OUTPUT_MODES = frozenset({"text", "json_object", "json_schema"})
+TOOL_CHOICE_MODES = frozenset({"auto", "none", "required", "named"})
+INPUT_MODALITIES = frozenset({"text", "image", "audio", "video"})
+PROMPT_CACHE_MODES = frozenset({"off", "automatic", "explicit"})
+
+SERVING_FLAGS: dict[str, dict[str, str]] = {
+    "vllm": {
+        "parser": "reasoning-parser",
+        "tool_call_parser": "tool-call-parser",
+        "structured_output_backend": "guided-decoding-backend",
+        "max_images_per_request": "limit-mm-per-prompt",
+    },
+    "sglang": {
+        "parser": "reasoning-parser",
+        "tool_call_parser": "tool-call-parser",
+        "structured_output_backend": "grammar-backend",
+    },
+}
+"""The engine argument each typed serving field speaks for, per engine.
+
+Keyed without the leading dashes, the way the operator keys them once it has
+trimmed them. Only the fields that genuinely map to one flag are here: an engine
+this plane has never heard of maps nothing, and neither `context_overflow` nor
+EOS suppression is a single flag on every engine — those are the operator's to
+render, and it is entitled to fail a reconcile rather than drop one silently."""
+
+
+def _members(name: str, values: list[str], allowed: frozenset[str]) -> None:
+    unknown = [v for v in values if v not in allowed]
+    if unknown:
+        raise Invalid(f"unknown {name}: {', '.join(sorted(unknown))}", {name: values, "allowed": sorted(allowed)})
+    if len(set(values)) != len(values):
+        raise Invalid(f"{name} is a set and repeats a member", {name: values})
+
+
+def _reasoning_declared(reasoning: RecipeReasoningSchema) -> bool:
+    """Whether anything about reasoning was declared rather than left at its default."""
+    return bool(
+        reasoning.default_on
+        or reasoning.parser
+        or reasoning.transport == "inline_tags"
+        or reasoning.think_begin_token
+        or reasoning.think_end_token
+        or reasoning.suppress_eos_until_think_end
+    )
+
+
+def check_serving(
+    serving: RecipeServingSchema,
+    capabilities: RecipeCapabilitiesSchema,
+    prefix_cache_enabled: bool,
+) -> None:
+    """Rejects a serving configuration that contradicts itself.
+
+    Every rule here is a consistency check between two things the recipe declares
+    — never a check that a capability claim is true. The plane holds no table of
+    what an engine can do and is not being given one: a block that is internally
+    consistent and entirely false is accepted, and a conformance run is the only
+    thing that can falsify it.
+    """
+    reasoning = serving.reasoning
+    if reasoning.transport not in TRANSPORTS:
+        raise Invalid(
+            f"unknown reasoning transport {reasoning.transport!r}",
+            {"transport": reasoning.transport, "allowed": sorted(TRANSPORTS)},
+        )
+    if serving.stream_usage not in STREAM_USAGE:
+        raise Invalid(
+            f"unknown stream_usage {serving.stream_usage!r}",
+            {"stream_usage": serving.stream_usage, "allowed": sorted(STREAM_USAGE)},
+        )
+    if serving.context_overflow not in CONTEXT_OVERFLOW:
+        raise Invalid(
+            f"unknown context_overflow {serving.context_overflow!r}",
+            {"context_overflow": serving.context_overflow, "allowed": sorted(CONTEXT_OVERFLOW)},
+        )
+
+    if reasoning.transport == "inline_tags" and not (reasoning.think_begin_token and reasoning.think_end_token):
+        raise Invalid(
+            "inline_tags needs both think tokens, because a client parsing the trace needs the literals",
+            {
+                "think_begin_token": reasoning.think_begin_token,
+                "think_end_token": reasoning.think_end_token,
+            },
+        )
+    if reasoning.suppress_eos_until_think_end and not reasoning.think_end_token:
+        raise Invalid(
+            "suppress_eos_until_think_end needs the token it suppresses until",
+            {"think_end_token": reasoning.think_end_token},
+        )
+    if _reasoning_declared(reasoning) and not capabilities.reasoning_supported:
+        raise Invalid(
+            "a recipe that is not claimed to reason cannot declare how it reasons",
+            {"reasoning": msgspec.to_builtins(reasoning), "reasoning_supported": False},
+        )
+
+    _members("structured_output_modes", capabilities.structured_output_modes, STRUCTURED_OUTPUT_MODES)
+    _members("tool_choice_modes", capabilities.tool_choice_modes, TOOL_CHOICE_MODES)
+    _members("input_modalities", capabilities.input_modalities, INPUT_MODALITIES)
+
+    if serving.structured_output_backend and "json_schema" not in capabilities.structured_output_modes:
+        raise Invalid(
+            "a structured output backend is meaningless without json_schema among the modes",
+            {
+                "structured_output_backend": serving.structured_output_backend,
+                "structured_output_modes": capabilities.structured_output_modes,
+            },
+        )
+    if bool(capabilities.tool_choice_modes) != capabilities.tool_calling_supported:
+        raise Invalid(
+            "tool_choice_modes is non-empty exactly when tool calling is supported",
+            {
+                "tool_choice_modes": capabilities.tool_choice_modes,
+                "tool_calling_supported": capabilities.tool_calling_supported,
+            },
+        )
+    if serving.tool_call_parser and not capabilities.tool_calling_supported:
+        raise Invalid(
+            "a tool call parser is meaningless on a recipe that does not claim tool calling",
+            {"tool_call_parser": serving.tool_call_parser},
+        )
+
+    if "text" not in capabilities.input_modalities:
+        raise Invalid("text is always an input modality", {"input_modalities": capabilities.input_modalities})
+    if serving.max_images_per_request is not None:
+        if "image" not in capabilities.input_modalities:
+            raise Invalid(
+                "an image limit is meaningless without image among the input modalities",
+                {"input_modalities": capabilities.input_modalities},
+            )
+        if serving.max_images_per_request < 1:
+            raise Invalid(
+                "max_images_per_request must be at least 1",
+                {"max_images_per_request": serving.max_images_per_request},
+            )
+
+    if capabilities.prompt_cache_mode not in PROMPT_CACHE_MODES:
+        raise Invalid(
+            f"unknown prompt_cache_mode {capabilities.prompt_cache_mode!r}",
+            {"prompt_cache_mode": capabilities.prompt_cache_mode, "allowed": sorted(PROMPT_CACHE_MODES)},
+        )
+    if capabilities.prompt_cache_mode != "off" and not prefix_cache_enabled:
+        raise Invalid(
+            "a prompt cache contract needs the mechanism under it",
+            {"prompt_cache_mode": capabilities.prompt_cache_mode, "prefix_cache_enabled": prefix_cache_enabled},
+        )
+    if capabilities.prompt_cache_ttl_seconds is not None and capabilities.prompt_cache_ttl_seconds < 0:
+        raise Invalid(
+            "prompt_cache_ttl_seconds cannot be negative",
+            {"prompt_cache_ttl_seconds": capabilities.prompt_cache_ttl_seconds},
+        )
+
+
+def serving_args(engine: str, serving: RecipeServingSchema) -> dict[str, str]:
+    """The engine arguments the typed serving block speaks for, keyed without dashes."""
+    flags = SERVING_FLAGS.get(engine.strip().lower(), {})
+    args: dict[str, str] = {}
+    for field_name, value in (
+        ("parser", serving.reasoning.parser),
+        ("tool_call_parser", serving.tool_call_parser),
+        ("structured_output_backend", serving.structured_output_backend),
+    ):
+        if value and field_name in flags:
+            args[flags[field_name]] = value
+    if serving.max_images_per_request is not None and "max_images_per_request" in flags:
+        args[flags["max_images_per_request"]] = f"image={serving.max_images_per_request}"
+    return args
+
+
+def resolved_engine_args(engine: str, engine_args: dict | None, serving: RecipeServingSchema) -> dict[str, str]:
+    """`engine_args` with the typed serving flags laid over the top.
+
+    The typed field wins the collision. `engine_args` stays the escape hatch for a
+    flag nothing here models, but a flag that *is* modelled has one declared home,
+    and a recipe that pins `--reasoning-parser` by hand while also naming
+    `serving.reasoning.parser` is stating the same thing twice — the typed value is
+    the one the plane can validate, display and verify, so it is the one that
+    stands.
+
+    Derived on every read and stored nowhere: `engine_args` is left exactly as it
+    was written.
+
+    TODO: the operator renders the other way round today — `engineArgs`
+    (`libs/operator/internal/render/dynamo.go:319`) lays `engine_args` over its
+    derived flags last, so whichever way the serving block eventually reaches the
+    wire, the two have to be made to agree or this becomes a resolved view of
+    something the cluster does not do.
+    """
+    resolved = {str(key).removeprefix("--"): str(value) for key, value in (engine_args or {}).items()}
+    resolved.update(serving_args(engine, serving))
+    return resolved
+
+
+def serving_block(stored: dict | None) -> RecipeServingSchema:
+    return msgspec.convert(stored or {}, RecipeServingSchema)
+
+
+def capabilities_block(stored: dict | None) -> RecipeCapabilitiesSchema:
+    return msgspec.convert(stored or {}, RecipeCapabilitiesSchema)
+
+
 def _revision(recipe: Recipe) -> str:
     stamp = recipe.updated_at or recipe.created_at
     return str(int(stamp.timestamp() * 1_000_000))
@@ -113,6 +322,7 @@ class RecipeService:
 
     def schema(self, recipe: Recipe, artifact_uid: str) -> RecipeSchema:
         fraction = recipe.kv_cache_fraction
+        serving = serving_block(recipe.serving)
         return RecipeSchema(
             id=recipe.uid,
             artifact_id=artifact_uid,
@@ -138,6 +348,9 @@ class RecipeService:
                 prefix_cache_enabled=recipe.prefix_cache_enabled,
                 prefix_cache_config=recipe.prefix_cache_config,
             ),
+            serving=serving,
+            capabilities=capabilities_block(recipe.capabilities),
+            resolved_engine_args=resolved_engine_args(recipe.engine, recipe.engine_args, serving),
             shape=RecipeShapeSchema(
                 device_class=recipe.device_class,
                 device_count=recipe.device_count,
@@ -210,6 +423,7 @@ class RecipeService:
             memory_mib=data.memory_mib,
             disk_gib=data.disk_gib,
         )
+        check_serving(data.serving, data.capabilities, data.prefix_cache_enabled)
         if data.version < 1:
             raise Invalid("version must be at least 1", {"version": data.version})
         artifact = await self.repo.artifact_by_ref(data.artifact)
@@ -247,6 +461,8 @@ class RecipeService:
             disk_gib=data.disk_gib,
             labels=data.labels,
             overlay=data.overlay,
+            serving=msgspec.to_builtins(data.serving),
+            capabilities=msgspec.to_builtins(data.capabilities),
         )
         try:
             await self.repo.add(recipe)
@@ -263,6 +479,13 @@ class RecipeService:
             raise Conflict("recipe changed since it was read", {"revision": _revision(recipe)})
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
+        declared_serving = fields.pop("serving", None)
+        declared_capabilities = fields.pop("capabilities", None)
+        serving = serving_block(recipe.serving) if declared_serving is None else declared_serving
+        capabilities = (
+            capabilities_block(recipe.capabilities) if declared_capabilities is None else declared_capabilities
+        )
+        check_serving(serving, capabilities, fields.get("prefix_cache_enabled", recipe.prefix_cache_enabled))
         check_shape(
             device_class=fields.get("device_class", recipe.device_class),
             device_count=fields.get("device_count", recipe.device_count),
@@ -281,6 +504,10 @@ class RecipeService:
         )
         for key, value in fields.items():
             setattr(recipe, key, value)
+        if declared_serving is not None:
+            recipe.serving = msgspec.to_builtins(serving)
+        if declared_capabilities is not None:
+            recipe.capabilities = msgspec.to_builtins(capabilities)
 
         try:
             await self.db.commit()

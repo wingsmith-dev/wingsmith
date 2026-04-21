@@ -1,5 +1,7 @@
 import datetime as dt
 
+from msgspec import field
+
 from app.core.schemas import UNSET
 from app.core.schemas import Struct
 from app.core.schemas import UnsetType
@@ -40,6 +42,72 @@ class RecipeCacheSchema(Struct):
     prefix_cache_config: dict
 
 
+class RecipeReasoningSchema(Struct):
+    """How this recipe thinks, as rendered flags. What it *can* do is in `capabilities`.
+
+    Its own struct for the reason `RecipeCacheSchema` is: the fields are
+    meaningless individually. All of them are conditioned on the model being able
+    to think at all, and flattened onto the serving block they would read as six
+    unrelated optionals with nothing to group them under.
+    """
+
+    default_on: bool = False
+    parser: str | None = None
+    transport: str = "reasoning_content"
+    think_begin_token: str | None = None
+    think_end_token: str | None = None
+    suppress_eos_until_think_end: bool = False
+
+
+class RecipeServingSchema(Struct):
+    """What the served API does, as the engine will actually be told to behave.
+
+    Every field renders to a flag or a rendered value. Honouring any of it means
+    a replica restart, which is why it lives beside `cache` on the recipe rather
+    than on the endpoint. Before it existed all of this went into `engine_args`,
+    where the plane could neither validate it nor say what it had asked for.
+
+    Every default is the behaviour of a recipe that says nothing, so the block is
+    inert on an existing recipe: an empty parser, an empty tool parser and
+    `suppress_eos_until_think_end` false all mean "emit no flag".
+    """
+
+    reasoning: RecipeReasoningSchema = field(default_factory=RecipeReasoningSchema)
+    stream_usage: str = "final_chunk"
+    context_overflow: str = "reject"
+    structured_output_backend: str | None = None
+    tool_call_parser: str | None = None
+    max_images_per_request: int | None = None
+
+
+class RecipeCapabilitiesSchema(Struct):
+    """What this engine × artifact is claimed to be able to do. Asserted, never rendered.
+
+    The same split as `engine_args` against `imported_args`, one level up: nothing
+    here becomes a flag or reaches a cluster, because a cluster has no use for a
+    claim about itself. The plane checks these against the recipe's own
+    declarations and against nothing else — it holds no table of what an engine
+    can do — so a block that is internally consistent and entirely false is
+    accepted, stored, and falsified by the first conformance run.
+
+    `asserted_by` / `asserted_at` / `source_uri` are the provenance triple, spelled
+    the same way and in the same order as every other asserted claim in the model.
+    """
+
+    reasoning_supported: bool = False
+    streaming_supported: bool = True
+    structured_output_modes: list[str] = field(default_factory=lambda: ["text"])
+    tool_calling_supported: bool = False
+    tool_choice_modes: list[str] = field(default_factory=list)
+    parallel_tool_calls: bool = False
+    input_modalities: list[str] = field(default_factory=lambda: ["text"])
+    prompt_cache_mode: str = "off"
+    prompt_cache_ttl_seconds: int | None = None
+    asserted_by: str | None = None
+    asserted_at: dt.datetime | None = None
+    source_uri: str | None = None
+
+
 class RecipeResourcesSchema(Struct):
     cpu_cores: int | None
     memory_mib: int | None
@@ -59,6 +127,15 @@ class RecipeOverlaySchema(Struct):
 
 
 class RecipeSchema(Struct):
+    """`resolved_engine_args` is derived on every read and stored nowhere.
+
+    It is the recipe's declared `engine_args` with the flags the typed `serving`
+    block dictates laid over the top, keyed the way the operator keys them —
+    without the leading dashes. It exists so that "which value actually took
+    effect" is a thing the console can show rather than a thing a reader has to
+    reconstruct from two fields with overlapping meaning.
+    """
+
     id: str
     artifact_id: str
     name: str
@@ -74,6 +151,9 @@ class RecipeSchema(Struct):
     context_length: int
     max_batch_tokens: int | None
     cache: RecipeCacheSchema
+    serving: RecipeServingSchema
+    capabilities: RecipeCapabilitiesSchema
+    resolved_engine_args: dict
     shape: RecipeShapeSchema
     resources: RecipeResourcesSchema
     overlay: RecipeOverlaySchema
@@ -113,6 +193,8 @@ class RecipeCreateRequest(Struct):
     disk_gib: int | None = None
     labels: dict = {}
     overlay: dict = {}
+    serving: RecipeServingSchema = field(default_factory=RecipeServingSchema)
+    capabilities: RecipeCapabilitiesSchema = field(default_factory=RecipeCapabilitiesSchema)
 
 
 class RecipeUpdateRequest(Struct):
@@ -151,3 +233,5 @@ class RecipeUpdateRequest(Struct):
     disk_gib: int | None | UnsetType = UNSET
     labels: dict | UnsetType = UNSET
     overlay: dict | UnsetType = UNSET
+    serving: RecipeServingSchema | UnsetType = UNSET
+    capabilities: RecipeCapabilitiesSchema | UnsetType = UNSET
