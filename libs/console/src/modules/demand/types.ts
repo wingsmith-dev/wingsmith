@@ -106,7 +106,8 @@ export interface Artifact {
   parameter_count: number | null
   base_artifact_id: string | null
   project_id: string | null
-  upstream: ArtifactUpstream
+  /** Absent on sparse payloads: the plane may return an artifact with no upstream. */
+  upstream?: ArtifactUpstream
   metadata: Record<string, unknown>
   created_at: string
   updated_at: string | null
@@ -770,7 +771,8 @@ export interface Endpoint {
   visibility: string
   routing_strategy: string
   enabled: boolean
-  surface: EndpointSurface
+  /** Absent on sparse payloads: an endpoint may arrive with no surface declared. */
+  surface?: EndpointSurface
   targets: EndpointTarget[]
   failover_order: string[]
   labels: Record<string, string>

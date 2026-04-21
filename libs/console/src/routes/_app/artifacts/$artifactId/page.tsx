@@ -22,7 +22,12 @@ import {
   useDeleteArtifact,
   useRecipes,
 } from "@/modules/demand/queries"
-import type { Artifact, ArtifactBaseline, Recipe } from "@/modules/demand/types"
+import type {
+  Artifact,
+  ArtifactBaseline,
+  ArtifactUpstream,
+  Recipe,
+} from "@/modules/demand/types"
 import { ArtifactForm } from "../ArtifactForm"
 import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
@@ -429,7 +434,7 @@ function BaselinesPanel({
 
 /** Where these bytes came from, and what they were derived from. */
 function LineagePanel({ artifact }: { artifact: Artifact }) {
-  const upstream = artifact.upstream ?? ({} as Artifact["upstream"])
+  const upstream = artifact.upstream ?? ({} as ArtifactUpstream)
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -484,11 +489,11 @@ function LineagePanel({ artifact }: { artifact: Artifact }) {
 
 /** The identity block — what the publisher said and what we believe. */
 function DetailsPanel({ artifact }: { artifact: Artifact }) {
-  const upstream: Artifact["upstream"] = {
+  const upstream: ArtifactUpstream = {
     input_modalities: [],
     structured_output_modes: [],
-    ...(artifact.upstream as Partial<Artifact["upstream"]> | undefined),
-  } as Artifact["upstream"]
+    ...(artifact.upstream as Partial<ArtifactUpstream> | undefined),
+  } as ArtifactUpstream
   const tone: StatusTone = artifact.verified ? "ok" : "warn"
   return (
     <Card>
