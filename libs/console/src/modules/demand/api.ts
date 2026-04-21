@@ -6,17 +6,21 @@ import type {
   ArtifactBaselineUpdateRequest,
   ArtifactCreateRequest,
   ArtifactUpdateRequest,
+  ArtifactUsage,
   Deployment,
   DeploymentUpdateRequest,
   Endpoint,
   EndpointCreateRequest,
   EndpointUpdateRequest,
   Recipe,
+  RecipeBenchmarkSummary,
   RecipeCreateRequest,
   RecipeUpdateRequest,
+  RecipeUsage,
   ResolvedArtifact,
   Workload,
   WorkloadCreateRequest,
+  WorkloadPlacement,
   WorkloadUpdateRequest,
 } from "./types"
 
@@ -26,6 +30,8 @@ export interface ArtifactFilters {
   format?: string
   project?: string
   search?: string
+  /** Artifacts derived from this one — quantizations and fine-tunes naming it as base. */
+  base_artifact?: string
   label?: string[]
 }
 
@@ -33,6 +39,8 @@ export interface RecipeFilters {
   artifact?: string
   engine?: string
   class?: string
+  /** draft | published | deprecated. */
+  lifecycle?: string
   search?: string
   label?: string[]
 }
@@ -59,6 +67,8 @@ export interface DeploymentFilters {
 export interface EndpointFilters {
   project?: string
   artifact?: string
+  /** The reverse index: endpoints whose targets point at this workload's deployments. */
+  workload?: string
   search?: string
   label?: string[]
 }
@@ -73,6 +83,11 @@ export function fetchArtifacts(
 
 export function fetchArtifact(ref: string): Promise<Artifact> {
   return api.get<Artifact>(`/artifacts/${encodeURIComponent(ref)}`)
+}
+
+/** Counted at read time, stored nowhere: recipes, workloads and downstream artifacts. */
+export function fetchArtifactUsage(ref: string): Promise<ArtifactUsage> {
+  return api.get<ArtifactUsage>(`/artifacts/${encodeURIComponent(ref)}/usage`)
 }
 
 /**
@@ -180,6 +195,18 @@ export function deleteRecipe(ref: string): Promise<void> {
   return api.delete<void>(`/recipes/${encodeURIComponent(ref)}`)
 }
 
+export function fetchRecipeUsage(ref: string): Promise<RecipeUsage> {
+  return api.get<RecipeUsage>(`/recipes/${encodeURIComponent(ref)}/usage`)
+}
+
+export function fetchRecipeBenchmarkSummary(
+  ref: string
+): Promise<RecipeBenchmarkSummary> {
+  return api.get<RecipeBenchmarkSummary>(
+    `/recipes/${encodeURIComponent(ref)}/benchmarks-summary`
+  )
+}
+
 export function fetchWorkloads(
   filters: WorkloadFilters = {},
   cursor?: string,
@@ -191,6 +218,20 @@ export function fetchWorkloads(
 /** `{ref}` is a `wkl_` uid or a name; a bare name needs `?project=` beside it. */
 export function fetchWorkload(ref: string, project?: string): Promise<Workload> {
   return api.get<Workload>(`/workloads/${encodeURIComponent(ref)}`, { project })
+}
+
+/**
+ * Where a workload physically landed, derived from its live allocations. A bare
+ * name needs `?project=` beside it, the same as `fetchWorkload`.
+ */
+export function fetchWorkloadPlacement(
+  ref: string,
+  project?: string
+): Promise<WorkloadPlacement> {
+  return api.get<WorkloadPlacement>(
+    `/workloads/${encodeURIComponent(ref)}/placement`,
+    { project }
+  )
 }
 
 export function createWorkload(body: WorkloadCreateRequest): Promise<Workload> {

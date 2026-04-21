@@ -126,6 +126,8 @@ interface ResolvedTarget {
   deployment?: Deployment
   recipe?: Recipe
   artifact?: Artifact
+  /** The cluster region this target lands in, off the workload's deployment row. */
+  region?: string | null
 }
 
 export function EndpointDetailPage() {
@@ -174,7 +176,10 @@ export function EndpointDetailPage() {
       const artifact = recipe?.artifact_id
         ? artifactById.get(recipe.artifact_id)
         : undefined
-      map.set(target.deployment_id, { deployment, recipe, artifact })
+      const region = workload?.deployments.find(
+        (d) => d.id === target.deployment_id
+      )?.region
+      map.set(target.deployment_id, { deployment, recipe, artifact, region })
     }
     return map
   }, [
@@ -190,6 +195,16 @@ export function EndpointDetailPage() {
     const targets = endpoint?.targets ?? []
     const primary = targets.find((t) => t.role === "primary") ?? targets[0]
     return primary ? resolved.get(primary.deployment_id) : undefined
+  }, [endpoint?.targets, resolved])
+
+  /** The distinct regions this endpoint's targets land in — its region affinity. */
+  const regions = useMemo(() => {
+    const seen = new Set<string>()
+    for (const target of endpoint?.targets ?? []) {
+      const region = resolved.get(target.deployment_id)?.region
+      if (region) seen.add(region)
+    }
+    return [...seen]
   }, [endpoint?.targets, resolved])
 
   if (error) {
@@ -474,11 +489,10 @@ export function EndpointDetailPage() {
                               : null}
                           </Dash>
                         </Field>
-                        {/* TODO-API region affinity is not on the endpoint object. */}
                         <Field label="Region affinity">
-                          <span className="text-muted-foreground/60">
-                            derived from targets
-                          </span>
+                          <Dash>
+                            {regions.length > 0 ? regions.join(", ") : null}
+                          </Dash>
                         </Field>
                       </FieldGrid>
                     </div>

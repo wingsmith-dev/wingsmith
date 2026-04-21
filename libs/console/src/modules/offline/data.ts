@@ -492,6 +492,7 @@ for (const spec of SPECS) {
         pool: poolId,
         pool_name: pool.name,
         condition: node.condition,
+        conditions: [],
         cordoned: node.cordoned,
         ready: node.condition === "ready",
         instance_type:
@@ -510,7 +511,12 @@ for (const spec of SPECS) {
         taints: node.cordoned
           ? [{ key: "hangar.io/cordoned", effect: "NoSchedule" }]
           : [],
-        devices: { total: node.devices, by_health: byHealth },
+        devices: {
+          total: node.devices,
+          by_health: byHealth,
+          device_class: pool.deviceClass,
+          allocated: 0,
+        },
         joined_at: iso(43_200),
         observed_at: iso(1),
         created_at: CREATED,
@@ -727,6 +733,7 @@ export const recipes: Recipe[] = [
     artifact_id: artifacts[0].id,
     name: "llama-70b-fp8-tp8",
     version: 3,
+    lifecycle: "published",
     engine: "vllm",
     engine_version: "0.9.1",
     engine_image: "ghcr.io/hangar/vllm:0.9.1",
@@ -764,6 +771,7 @@ export const recipes: Recipe[] = [
     artifact_id: artifacts[1].id,
     name: "bge-m3-l40s",
     version: 1,
+    lifecycle: "published",
     engine: "vllm",
     engine_version: "0.9.1",
     engine_image: null,
@@ -1048,16 +1056,23 @@ function scale(
 
 function workload(
   id: string,
-  fields: Omit<Workload, "id" | "scale" | "deployments"> & {
+  fields: Omit<
+    Workload,
+    "id" | "scale" | "deployments" | "recipe_name" | "artifact_tag"
+  > & {
     bounds: { min: number; max: number; desired: number }
+    recipe_name?: string | null
+    artifact_tag?: string | null
   }
 ): Workload {
-  const { bounds, ...rest } = fields
+  const { bounds, recipe_name = null, artifact_tag = null, ...rest } = fields
   const shares = deployments
     .filter((d) => d.workload_id === id)
     .map((d) => share(d))
   return {
     ...rest,
+    recipe_name,
+    artifact_tag,
     id,
     scale: scale(rest.kind, bounds, shares),
     deployments: shares,

@@ -24,10 +24,20 @@ import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { workloadPhaseTone } from "@/modules/demand/display"
 import {
   useDeleteWorkload,
+  useEndpoints,
   useRecipe,
   useWorkload,
+  useWorkloadPlacement,
 } from "@/modules/demand/queries"
-import type { WorkloadDeployment } from "@/modules/demand/types"
+import type {
+  Endpoint,
+  WorkloadDeployment,
+  WorkloadPlacementNode,
+  WorkloadReplicaPlacement,
+} from "@/modules/demand/types"
+import { useWorkloadBenchmarks } from "@/modules/benchmarks/queries"
+import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
+import { NewBenchmarkRequestDialog } from "@/components/benchmarks/new-request"
 import { useEvents, useOperations } from "@/modules/machinery/queries"
 import { WorkloadForm } from "../WorkloadForm"
 import {
@@ -62,14 +72,23 @@ import { toast } from "sonner"
  * unchanged.
  *
  * The page is split into six views — overview, performance, workbench,
- * placement, lifecycle, logs. Events and operations are measured live; serving,
- * topology, burn-in, rollout and log surfaces are data-plane or not yet backed,
- * so they are drawn from deterministic mock values, each marked `TODO-API`.
+ * placement, lifecycle, logs. Events, operations, the endpoints routing to the
+ * workload, its live placement and its benchmark run history are read from the
+ * plane; serving metrics, tuning analytics, rollout, probes and logs are
+ * data-plane or not yet backed, so those are deterministic mock values, each
+ * marked `TODO-API`.
  */
 export function WorkloadDetailPage() {
   const { workloadId } = useParams({ from: "/_app/workloads/$workloadId" })
   const { data: workload, isLoading, error } = useWorkload(workloadId)
   const { data: recipe } = useRecipe(workload?.recipe_id ?? "")
+  const { data: placement } = useWorkloadPlacement(workloadId)
+  const endpoints = useEndpoints({ workload: workload?.id })
+  const deploymentIds = useMemo(
+    () => (workload?.deployments ?? []).map((d) => d.id),
+    [workload]
+  )
+  const { data: benchmarks } = useWorkloadBenchmarks(deploymentIds)
   const operations = useOperations({ target: workload?.id })
   const events = useEvents({ subject: workload?.id })
   const remove = useDeleteWorkload()
@@ -81,6 +100,7 @@ export function WorkloadDetailPage() {
   const [draining, setDraining] = useState<WorkloadDeployment | undefined>()
   const [drainOpen, setDrainOpen] = useState(false)
   const [view, setView] = useState("overview")
+  const [benchOpen, setBenchOpen] = useState(false)
 
   if (error) {
     return (
@@ -190,6 +210,14 @@ export function WorkloadDetailPage() {
           onOpenChange={setDrainOpen}
         />
       )}
+      {workload && benchOpen && (
+        <NewBenchmarkRequestDialog
+          open
+          level="workload"
+          target={workload.id}
+          onOpenChange={setBenchOpen}
+        />
+      )}
       {workload && (
         <DeleteDialog
           icon="workload"
@@ -293,11 +321,10 @@ export function WorkloadDetailPage() {
                       title="Endpoints"
                       subtitle="Entrypoints routing traffic to this workload"
                     >
-                      {/* TODO-API endpoints targeting a workload — no reverse index from workload to endpoint */}
                       <DataTable
-                        columns={endpointColumns}
-                        list={mockList(MOCK_ENDPOINTS)}
-                        rowKey={(e) => e.name}
+                        columns={workloadEndpointColumns}
+                        list={endpoints}
+                        rowKey={(e) => e.id}
                         empty="No endpoint routes to this workload."
                       />
                     </Panel>
@@ -482,12 +509,26 @@ export function WorkloadDetailPage() {
 
               {/* ---- Workbench ---------------------------------------- */}
               <TabsContent value="workbench" className="mt-4 space-y-4">
-                {/* TODO-API benchmark / burn-in results not exposed by the plane */}
                 <StatRow>
-                  <StatTile label="Last run" value="2d ago" />
-                  <StatTile label="Configs tested" value="4" />
+                  <StatTile
+                    label="Last run"
+                    value={
+                      benchmarks?.length
+                        ? formatRelative(
+                            benchmarks[0].started_at ?? benchmarks[0].created_at
+                          )
+                        : "—"
+                    }
+                  />
+                  <StatTile
+                    label="Runs recorded"
+                    value={String(benchmarks?.length ?? 0)}
+                  />
+                  {/* TODO-API sustainable concurrency is a data-plane analytic, not a benchmark field */}
                   <StatTile label="Sustainable concurrency" value="72" />
+                  {/* TODO-API peak throughput is read from a harness summary the plane never normalises */}
                   <StatTile label="Peak throughput tested" value="19.3k tok/s" />
+                  {/* TODO-API tuning recommendation is not computed by the plane */}
                   <StatTile
                     label="Recommendation"
                     value="Current config is optimal"
@@ -539,13 +580,13 @@ export function WorkloadDetailPage() {
                       subtitle="Serving-engine tuning, fixed at 64 concurrent requests"
                       action={
                         <WriteAction>
-                          <Button size="sm" disabled>
+                          <Button size="sm" onClick={() => setBenchOpen(true)}>
                             Run benchmark
                           </Button>
                         </WriteAction>
                       }
                     >
-                      {/* TODO-API parameter-sweep runs not exposed by the plane */}
+                      {/* TODO-API parameter-sweep tuning is not aggregated by the plane */}
                       <DataTable
                         columns={sweepColumns}
                         list={mockList(MOCK_SWEEP)}
@@ -556,32 +597,35 @@ export function WorkloadDetailPage() {
 
                     <Panel
                       title="Run history"
-                      subtitle="Full configuration comparisons from burn-in testing"
+                      subtitle="Every benchmark run taken against this workload's deployments"
                     >
-                      {/* TODO-API benchmark run history not exposed by the plane */}
                       <DataTable
-                        columns={runColumns}
-                        list={mockList(MOCK_RUNS)}
-                        rowKey={(r) => r.config}
-                        empty=""
+                        columns={benchmarkColumns({
+                          level: "workload",
+                          showDeployment: true,
+                          showStep: true,
+                          showRequest: true,
+                        })}
+                        list={mockList(benchmarks ?? [])}
+                        rowKey={(run) => run.id}
+                        empty="No benchmark has been run against this workload."
                       />
                     </Panel>
                   </div>
 
                   <div className="flex flex-col gap-4">
                     <Panel title="New run">
-                      {/* TODO-API benchmark request shape not wired to a workload */}
-                      <FieldGrid>
-                        <Field label="Dataset">ShareGPT · 500 samples</Field>
-                        <Field label="Input / output tokens">256 / 256</Field>
-                        <Field label="Concurrency sweep">
-                          8 → 128, doubling
-                        </Field>
-                        <Field label="Duration / step">2 min</Field>
-                        <Field label="Target SLA">p99 &lt; 1s</Field>
-                      </FieldGrid>
+                      <p className="text-2xs text-muted-foreground/70">
+                        Requests a workload-level measurement of this recipe.
+                        The plane expands the ask into one run per placed
+                        deployment and grades it against the frozen standard.
+                      </p>
                       <WriteAction>
-                        <Button size="sm" disabled className="mt-3">
+                        <Button
+                          size="sm"
+                          className="mt-3"
+                          onClick={() => setBenchOpen(true)}
+                        >
                           Start run
                         </Button>
                       </WriteAction>
@@ -608,17 +652,16 @@ export function WorkloadDetailPage() {
 
               {/* ---- Placement ---------------------------------------- */}
               <TabsContent value="placement" className="mt-4 space-y-4">
-                {/* TODO-API topology packing metrics not exposed at workload scope */}
                 <StatRow>
-                  <StatTile label="Nodes" value={String(MOCK_NODES.length)} />
+                  <StatTile
+                    label="Nodes"
+                    value={placement ? String(placement.node_count) : "—"}
+                  />
                   <StatTile
                     label="GPUs allocated"
-                    value={
-                      recipe
-                        ? String(recipe.shape.device_count * scale.placed)
-                        : "12"
-                    }
+                    value={placement ? String(placement.gpu_count) : "—"}
                   />
+                  {/* TODO-API topology packing metrics not exposed at workload scope */}
                   <StatTile label="Node packing" value="75%" />
                   <StatTile label="Spot instances" value="0%" />
                   <StatTile label="Rescheduled (7d)" value="1" />
@@ -628,30 +671,33 @@ export function WorkloadDetailPage() {
                   <div className="flex flex-col gap-4">
                     <Panel
                       title="Topology"
-                      subtitle={`GPU allocation across ${MOCK_NODES.length} nodes in ${workload.deployments.length} clusters`}
+                      subtitle={`GPU allocation across ${
+                        placement?.node_count ?? 0
+                      } nodes in ${workload.deployments.length} clusters`}
                     >
-                      {/* TODO-API per-node GPU slot occupancy not exposed by the plane */}
                       <div className="flex flex-col gap-3">
-                        {MOCK_NODES.map((node) => (
-                          <GpuNodeCard key={node.name} node={node} />
+                        {(placement?.nodes ?? []).map((node) => (
+                          <GpuNodeCard key={node.node} node={node} />
                         ))}
+                        {placement && placement.nodes.length === 0 && (
+                          <p className="text-2xs text-muted-foreground/60">
+                            This workload holds no devices right now.
+                          </p>
+                        )}
                       </div>
                       <div className="mt-3 flex flex-wrap gap-4 text-2xs text-muted-foreground">
-                        <LegendSwatch kind="mine">This workload</LegendSwatch>
-                        <LegendSwatch kind="other">Other workloads</LegendSwatch>
-                        <LegendSwatch kind="idle">Idle</LegendSwatch>
+                        <LegendSwatch>This workload</LegendSwatch>
                       </div>
                     </Panel>
 
                     <Panel
                       title="Replica placement"
-                      subtitle="Node and GPU assignment for each replica"
+                      subtitle="Node and GPU assignment for each live allocation"
                     >
-                      {/* TODO-API per-replica node/GPU assignment not exposed by the plane */}
                       <DataTable
                         columns={replicaColumns}
-                        list={mockList(MOCK_REPLICAS)}
-                        rowKey={(r) => r.replica}
+                        list={mockList(placement?.replicas ?? [])}
+                        rowKey={(r) => r.allocation}
                         empty="No replicas placed."
                       />
                     </Panel>
@@ -1165,60 +1211,36 @@ function HeatmapLegend() {
 
 /* ---- placement topology --------------------------------------------- */
 
-type SlotKind = "mine" | "other" | "idle"
-interface TopoNode {
-  name: string
-  meta: string
-  slots: SlotKind[]
-}
-const MOCK_NODES: TopoNode[] = [
-  {
-    name: "node-0417",
-    meta: "us-east-1a · 8x H100 80GB · NVLink",
-    slots: ["mine", "mine", "mine", "mine", "other", "other", "other", "other"],
-  },
-  {
-    name: "node-0512",
-    meta: "us-east-1a · 8x H100 80GB · NVLink",
-    slots: ["mine", "mine", "mine", "mine", "other", "other", "idle", "idle"],
-  },
-  {
-    name: "node-0233",
-    meta: "us-east-1b · 8x H100 80GB · NVLink",
-    slots: ["mine", "mine", "mine", "mine", "idle", "idle", "idle", "idle"],
-  },
-]
 
-function slotStyle(kind: SlotKind): React.CSSProperties {
-  if (kind === "mine")
-    return {
-      backgroundColor: "color-mix(in oklab, var(--primary) 55%, transparent)",
-      borderColor: "var(--primary)",
-    }
-  if (kind === "other")
-    return {
-      backgroundColor:
-        "color-mix(in oklab, var(--muted-foreground) 35%, transparent)",
-      borderColor: "transparent",
-    }
-  return { backgroundColor: "transparent" }
+/**
+ * The workload's own occupancy of one node, from `/placement`. The plane
+ * reports how many of the node's devices this workload holds; it does not
+ * report the node's total capacity or what other workloads hold, so the card
+ * draws the held devices and no idle or foreign slots.
+ */
+function slotStyle(): React.CSSProperties {
+  return {
+    backgroundColor: "color-mix(in oklab, var(--primary) 55%, transparent)",
+    borderColor: "var(--primary)",
+  }
 }
 
-function GpuNodeCard({ node }: { node: TopoNode }) {
+function GpuNodeCard({ node }: { node: WorkloadPlacementNode }) {
   return (
     <div className="flex flex-col gap-2.5 rounded-md border bg-muted/40 px-3.5 py-3">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <span className="text-xs font-semibold">{node.name}</span>
+        <span className="text-xs font-semibold">{node.node}</span>
         <span className="font-mono text-2xs text-muted-foreground">
-          {node.meta}
+          {node.cluster} · {node.device_count} GPU
+          {node.device_count === 1 ? "" : "s"} held
         </span>
       </div>
       <div className="grid grid-cols-8 gap-1">
-        {node.slots.map((slot, i) => (
+        {Array.from({ length: node.device_count }, (_, i) => (
           <span
             key={i}
             className="aspect-square rounded border"
-            style={slotStyle(slot)}
+            style={slotStyle()}
           />
         ))}
       </div>
@@ -1226,15 +1248,12 @@ function GpuNodeCard({ node }: { node: TopoNode }) {
   )
 }
 
-function LegendSwatch({
-  kind,
-  children,
-}: React.PropsWithChildren<{ kind: SlotKind }>) {
+function LegendSwatch({ children }: React.PropsWithChildren) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <span
         className="inline-block size-2.5 rounded-[2px] border"
-        style={slotStyle(kind)}
+        style={slotStyle()}
       />
       {children}
     </span>
@@ -1446,35 +1465,16 @@ const SWEEP_AXIS = ["8", "16", "32", "48", "64", "72", "96", "128"]
 
 const mono = (v: string) => <span className="font-mono text-xs">{v}</span>
 
-interface EndpointRow {
-  name: string
-  status: string
-  rps: string
-  auth: string
-  updated: string
-}
-const MOCK_ENDPOINTS: EndpointRow[] = [
-  {
-    name: "chat-completions",
-    status: "healthy",
-    rps: "1,204",
-    auth: "api key",
-    updated: "2d ago",
-  },
-  {
-    name: "internal-eval",
-    status: "healthy",
-    rps: "36",
-    auth: "none · internal",
-    updated: "5d ago",
-  },
-]
-const endpointColumns = [
+const workloadEndpointColumns = [
   {
     key: "name",
     header: "Endpoint",
-    cell: (e: EndpointRow) => (
-      <Link to="/endpoints" className="inline-flex items-center gap-1 hover:underline">
+    cell: (e: Endpoint) => (
+      <Link
+        to="/endpoints/$endpointId"
+        params={{ endpointId: e.id }}
+        className="inline-flex items-center gap-1 hover:underline"
+      >
         <span className="font-mono text-xs">{e.name}</span>
         <IconExternalLink className="size-3 text-muted-foreground" />
       </Link>
@@ -1483,24 +1483,39 @@ const endpointColumns = [
   {
     key: "status",
     header: "Status",
-    cell: (e: EndpointRow) => (
+    cell: (e: Endpoint) => (
       <span className="inline-flex items-center gap-2">
-        <StatusDot tone="ok" />
-        <span className="text-2xs text-muted-foreground capitalize">
-          {e.status}
+        <StatusDot tone={e.enabled ? "ok" : "neutral"} />
+        <span className="text-2xs text-muted-foreground">
+          {e.enabled ? "enabled" : "disabled"}
         </span>
       </span>
     ),
   },
-  { key: "rps", header: "Requests/sec", align: "right" as const, cell: (e: EndpointRow) => mono(e.rps) },
+  {
+    key: "visibility",
+    header: "Visibility",
+    cell: (e: Endpoint) => (
+      <span className="font-mono text-2xs text-muted-foreground">
+        {e.visibility}
+      </span>
+    ),
+  },
   {
     key: "auth",
     header: "Auth",
-    cell: (e: EndpointRow) => (
-      <span className="font-mono text-2xs text-muted-foreground">{e.auth}</span>
+    cell: (e: Endpoint) => (
+      <span className="font-mono text-2xs text-muted-foreground">
+        {e.surface?.auth_mode ?? "—"}
+      </span>
     ),
   },
-  { key: "updated", header: "Updated", align: "right" as const, cell: (e: EndpointRow) => mono(e.updated) },
+  {
+    key: "updated",
+    header: "Updated",
+    align: "right" as const,
+    cell: (e: Endpoint) => mono(formatRelative(e.updated_at ?? e.created_at)),
+  },
 ]
 
 interface LatencyRow {
@@ -1548,77 +1563,59 @@ const sweepColumns = [
   { key: "verdict", header: "Verdict", cell: (r: SweepRow) => <span className="text-xs">{r.verdict}</span> },
 ]
 
-interface RunRow {
-  config: string
-  concurrency: string
-  throughput: string
-  ttft: string
-  p99: string
-  cost: string
-  date: string
-  current?: boolean
-}
-const MOCK_RUNS: RunRow[] = [
-  { config: "fp8 · awq · 8x H100", concurrency: "64", throughput: "18,420 tok/s", ttft: "210ms", p99: "890ms", cost: "$4.20", date: "Aug 14", current: true },
-  { config: "bf16 · 8x H100", concurrency: "64", throughput: "11,050 tok/s", ttft: "240ms", p99: "1,120ms", cost: "$7.85", date: "Aug 10" },
-  { config: "fp8 · awq · 8x A100", concurrency: "64", throughput: "9,680 tok/s", ttft: "310ms", p99: "1,340ms", cost: "$3.10", date: "Aug 05" },
-  { config: "fp8 · awq · 4x H100 (tp=4)", concurrency: "32", throughput: "12,300 tok/s", ttft: "180ms", p99: "760ms", cost: "$5.60", date: "Jul 30" },
-]
-const runColumns = [
+const replicaColumns = [
   {
-    key: "config",
-    header: "Configuration",
-    cell: (r: RunRow) => (
-      <span className="text-xs">
-        {r.config}
-        {r.current && (
-          <span className="ml-2 rounded-full bg-primary/15 px-1.5 py-0.5 font-mono text-2xs text-primary">
-            current
-          </span>
-        )}
+    key: "replica",
+    header: "Replica",
+    cell: (r: WorkloadReplicaPlacement) =>
+      r.replica ? (
+        mono(r.replica)
+      ) : (
+        <span className="font-mono text-2xs text-muted-foreground/60">
+          held (no replica yet)
+        </span>
+      ),
+  },
+  {
+    key: "allocation",
+    header: "Allocation",
+    secondary: true,
+    cell: (r: WorkloadReplicaPlacement) => (
+      <span className="font-mono text-2xs text-muted-foreground">
+        {r.allocation}
       </span>
     ),
   },
-  { key: "concurrency", header: "Concurrency", align: "right" as const, cell: (r: RunRow) => mono(r.concurrency) },
-  { key: "throughput", header: "Throughput", align: "right" as const, cell: (r: RunRow) => mono(r.throughput) },
-  { key: "ttft", header: "p50 TTFT", align: "right" as const, cell: (r: RunRow) => mono(r.ttft) },
-  { key: "p99", header: "p99 latency", align: "right" as const, cell: (r: RunRow) => mono(r.p99) },
-  { key: "cost", header: "Cost / 1M tok", align: "right" as const, cell: (r: RunRow) => mono(r.cost) },
-  { key: "date", header: "Date", align: "right" as const, cell: (r: RunRow) => mono(r.date) },
-]
-
-interface ReplicaRow {
-  replica: string
-  node: string
-  cluster: string
-  gpus: string
-  interconnect: string
-  type: string
-  status: string
-}
-const MOCK_REPLICAS: ReplicaRow[] = [
-  { replica: "replica-0", node: "node-0417", cluster: "us-east-1a", gpus: "0-1", interconnect: "NVLink", type: "On-demand", status: "healthy" },
-  { replica: "replica-1", node: "node-0417", cluster: "us-east-1a", gpus: "2-3", interconnect: "NVLink", type: "On-demand", status: "healthy" },
-  { replica: "replica-2", node: "node-0512", cluster: "us-east-1a", gpus: "0-1", interconnect: "NVLink", type: "On-demand", status: "healthy" },
-  { replica: "replica-3", node: "node-0512", cluster: "us-east-1a", gpus: "2-3", interconnect: "NVLink", type: "On-demand", status: "healthy" },
-  { replica: "replica-4", node: "node-0233", cluster: "us-east-1b", gpus: "0-1", interconnect: "NVLink", type: "On-demand", status: "healthy" },
-  { replica: "replica-5", node: "node-0233", cluster: "us-east-1b", gpus: "2-3", interconnect: "NVLink", type: "On-demand", status: "healthy" },
-]
-const replicaColumns = [
-  { key: "replica", header: "Replica", cell: (r: ReplicaRow) => mono(r.replica) },
-  { key: "node", header: "Node", cell: (r: ReplicaRow) => mono(r.node) },
-  { key: "cluster", header: "Cluster", cell: (r: ReplicaRow) => <span className="text-xs">{r.cluster}</span> },
-  { key: "gpus", header: "GPUs", align: "right" as const, cell: (r: ReplicaRow) => mono(r.gpus) },
-  { key: "interconnect", header: "Interconnect", cell: (r: ReplicaRow) => <span className="text-xs">{r.interconnect}</span> },
-  { key: "type", header: "Type", cell: (r: ReplicaRow) => <span className="text-xs">{r.type}</span> },
+  {
+    key: "cluster",
+    header: "Cluster",
+    cell: (r: WorkloadReplicaPlacement) => (
+      <span className="text-xs">{r.cluster}</span>
+    ),
+  },
+  {
+    key: "nodes",
+    header: "Nodes",
+    cell: (r: WorkloadReplicaPlacement) => (
+      <span className="font-mono text-2xs">
+        {r.nodes.length ? r.nodes.join(", ") : "—"}
+      </span>
+    ),
+  },
+  {
+    key: "gpus",
+    header: "GPUs",
+    align: "right" as const,
+    cell: (r: WorkloadReplicaPlacement) => mono(String(r.device_count)),
+  },
   {
     key: "status",
-    header: "Status",
-    cell: (r: ReplicaRow) => (
+    header: "Gang",
+    cell: (r: WorkloadReplicaPlacement) => (
       <span className="inline-flex items-center gap-2">
-        <StatusDot tone="ok" />
-        <span className="text-2xs text-muted-foreground capitalize">
-          {r.status}
+        <StatusDot tone={r.gang_complete ? "ok" : "warn"} />
+        <span className="text-2xs text-muted-foreground">
+          {r.gang_complete ? "complete" : "partial"}
         </span>
       </span>
     ),

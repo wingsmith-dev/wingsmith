@@ -5,6 +5,7 @@ import type {
   Pool,
   PoolCreateRequest,
   PoolUpdateRequest,
+  NodesSummary,
   SupplyNode,
   TopologyDomain,
 } from "./types"
@@ -68,6 +69,11 @@ export function fetchNodes(
 
 export function fetchNode(ref: string): Promise<SupplyNode> {
   return api.get<SupplyNode>(`/nodes/${encodeURIComponent(ref)}`)
+}
+
+/** Fleet-wide node rollup, computed server-side across every node. */
+export function fetchNodesSummary(): Promise<NodesSummary> {
+  return api.get<NodesSummary>("/nodes/summary")
 }
 
 export function fetchDevices(

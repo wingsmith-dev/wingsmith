@@ -66,6 +66,36 @@ export function useDeploymentBenchmarks(deployment: string | undefined) {
 }
 
 /**
+ * Every benchmark run taken against a workload, newest first.
+ *
+ * The plane filters runs by deployment, not by workload, and a workload run is
+ * one run per placed deployment — so the workload's history is the union of its
+ * deployments' runs, gathered here in one query and re-sorted by recency. A
+ * workload with no deployments has no runs and is not fetched.
+ */
+export function useWorkloadBenchmarks(deployments: string[]) {
+  const key = [...deployments].sort()
+  return useQuery({
+    queryKey: ["benchmarks", "workload", key],
+    enabled: deployments.length > 0,
+    queryFn: async () => {
+      const pages = await Promise.all(
+        deployments.map((deployment) =>
+          fetchBenchmarks({ deployment }, undefined, 100)
+        )
+      )
+      return pages
+        .flatMap((page) => page.items)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    },
+    refetchInterval: (query) => {
+      const runs = query.state.data as BenchmarkRun[] | undefined
+      return runs?.some((run) => isOpen(run.phase)) ? POLL_MS : false
+    },
+  })
+}
+
+/**
  * The ask, polled while the runs it fanned out into are still moving.
  *
  * Its `phase` is derived by the plane from those runs, so it is exactly as

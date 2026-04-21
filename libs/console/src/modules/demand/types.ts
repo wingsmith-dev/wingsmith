@@ -115,6 +115,18 @@ export interface Artifact {
   locations: ArtifactLocation[]
 }
 
+/**
+ * `ArtifactUsageSchema` — what depends on this artifact, counted at read time.
+ * `recipe_count` is recipes serving these weights, `workload_count` the distinct
+ * workloads reaching them, `downstream_count` the artifacts derived from this one.
+ */
+export interface ArtifactUsage {
+  artifact_id: string
+  recipe_count: number
+  workload_count: number
+  downstream_count: number
+}
+
 /** `ArtifactLocationRequest` — the write shape of a location. */
 export interface ArtifactLocationRequest {
   scheme: string
@@ -341,6 +353,8 @@ export interface Recipe {
   artifact_id: string
   name: string
   version: number
+  /** Where the recipe sits in its lifecycle: draft | published | deprecated. */
+  lifecycle: string
   engine: string
   engine_version: string
   engine_image: string | null
@@ -370,6 +384,24 @@ export interface Recipe {
   revision: string
 }
 
+/** How many workloads name this recipe, derived at read time. */
+export interface RecipeUsage {
+  recipe_id: string
+  workload_count: number
+}
+
+/**
+ * Offline benchmark measurement rolled up per recipe. `peak_output_tokens_per_second`
+ * is null when no graded run carried a reading — a named absence, not a zero. Held-in-plane
+ * offline measurement, never live serving telemetry.
+ */
+export interface RecipeBenchmarkSummary {
+  recipe_id: string
+  run_count: number
+  graded_run_count: number
+  peak_output_tokens_per_second: number | null
+}
+
 /**
  * The write shape is flat where the read shape is nested — parallelism, cache,
  * shape and resources are top-level fields on the request and grouped objects
@@ -383,6 +415,7 @@ export interface RecipeCreateRequest {
   device_class: string
   context_length: number
   version?: number
+  lifecycle?: string
   engine_image?: string | null
   engine_args?: Record<string, unknown>
   quantization?: string | null
@@ -410,6 +443,7 @@ export interface RecipeCreateRequest {
 /** The artifact is absent: repointing a recipe at other bytes is a new recipe. */
 export interface RecipeUpdateRequest {
   name?: string
+  lifecycle?: string
   engine?: string
   engine_version?: string
   engine_image?: string | null
@@ -556,6 +590,52 @@ export interface Workload {
   updated_at: string | null
   revision: string
   deployments: WorkloadDeployment[]
+  /** The recipe's name, resolved by the plane so the list needn't fetch each recipe. */
+  recipe_name: string | null
+  /** The artifact tag behind the recipe, resolved alongside `recipe_name`. */
+  artifact_tag: string | null
+}
+
+/**
+ * `WorkloadPlacementNodeSchema` — one node a workload's live devices sit on.
+ *
+ * `device_count` is how many of the node's devices this workload holds right now,
+ * derived from the live allocation rows rather than declared anywhere.
+ */
+export interface WorkloadPlacementNode {
+  node: string
+  cluster: string
+  device_count: number
+}
+
+/**
+ * `WorkloadReplicaPlacementSchema` — where one live allocation landed.
+ *
+ * `replica` is null for an allocation the cluster has not yet tied to a replica.
+ * `gang_complete` says whether the allocation currently holds every device it
+ * was granted, so a partially satisfied gang is visible here.
+ */
+export interface WorkloadReplicaPlacement {
+  allocation: string
+  replica: string | null
+  cluster: string
+  nodes: string[]
+  devices: string[]
+  device_count: number
+  gang_complete: boolean
+}
+
+/**
+ * `WorkloadPlacementSchema` — where a workload physically is, derived from its
+ * live allocations. Read-only, computed at read time; only membership and
+ * placement facts, no serving telemetry.
+ */
+export interface WorkloadPlacement {
+  workload: string
+  node_count: number
+  gpu_count: number
+  nodes: WorkloadPlacementNode[]
+  replicas: WorkloadReplicaPlacement[]
 }
 
 /**

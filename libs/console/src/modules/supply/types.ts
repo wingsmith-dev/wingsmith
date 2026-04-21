@@ -42,10 +42,37 @@ export interface TopologyDomain {
 /**
  * `NodeDeviceRollupSchema`. State only — how many devices and how they split by
  * health. No utilization, no temperature, no power.
+ *
+ * `device_class` is the node's dominant GPU model, derived on read, and `null`
+ * when the node carries no devices. `allocated` is how many of `total` are
+ * committed to a live allocation right now.
  */
 export interface NodeDeviceRollup {
   total: number
   by_health: Record<string, number>
+  device_class: string | null
+  allocated: number
+}
+
+/**
+ * `NodeConditionSchema` — one observed node condition as the cluster reported
+ * it. Generic health signals (memory/disk pressure, network availability) kept
+ * in full; the plane does not interpret `type`.
+ */
+export interface NodeConditionDetail {
+  type: string
+  status: string
+  reason: string
+  message: string
+  since: string
+}
+
+/** `NodesSummarySchema` — fleet-wide node rollup, computed server-side. */
+export interface NodesSummary {
+  total: number
+  ready: number
+  cordoned: number
+  faulted_devices: number
 }
 
 /** `NodeSchema` — a machine observed inside a cluster. Nothing here is declared. */
@@ -57,6 +84,11 @@ export interface SupplyNode {
   pool: string | null
   pool_name: string | null
   condition: NodeCondition
+  /**
+   * Per-signal observed conditions as the cluster named them — memory or disk
+   * pressure, network availability. The plane does not interpret `type`.
+   */
+  conditions: NodeConditionDetail[]
   /**
    * Observed schedulability. Its own boolean rather than a value of
    * `condition`: cordon is the state a drain Operation leaves behind, and

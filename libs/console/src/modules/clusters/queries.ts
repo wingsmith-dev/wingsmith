@@ -5,12 +5,16 @@ import {
   createCluster,
   deleteCluster,
   fetchCluster,
+  fetchClusterHeadroom,
+  fetchClusterRollup,
+  fetchClusterRollups,
   fetchClusters,
   mintClusterInstall,
   setClusterServing,
   updateCluster,
   type ClusterFilters,
 } from "./api"
+import type { ClusterRollup } from "./types"
 import type {
   ClusterCreateRequest,
   ClusterServingRequest,
@@ -28,6 +32,36 @@ export function useClusterOptions() {
   return useAllPages(["clusters", "options"], (cursor) =>
     fetchClusters({}, cursor, 200)
   )
+}
+
+/**
+ * Every cluster's rollup, drained across pages, indexed by `cluster_id`. The
+ * list and card views join this onto the cluster rows to show nodes ready,
+ * GPUs allocated and pool/deployment counts without a per-card request.
+ */
+export function useClusterRollups() {
+  const query = useAllPages(["clusters", "rollups"], (cursor) =>
+    fetchClusterRollups(cursor, 200)
+  )
+  const byCluster: Record<string, ClusterRollup> = {}
+  for (const rollup of query.data ?? []) byCluster[rollup.cluster_id] = rollup
+  return { ...query, byCluster }
+}
+
+export function useClusterRollup(ref: string) {
+  return useQuery({
+    queryKey: ["clusters", "rollup", ref],
+    queryFn: () => fetchClusterRollup(ref),
+    enabled: !!ref,
+  })
+}
+
+export function useClusterHeadroom(ref: string) {
+  return useQuery({
+    queryKey: ["clusters", "headroom", ref],
+    queryFn: () => fetchClusterHeadroom(ref),
+    enabled: !!ref,
+  })
 }
 
 export function useCluster(ref: string) {

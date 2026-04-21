@@ -1,7 +1,7 @@
 import { Field, FieldGrid } from "@/components/layout/field"
 import { PageHeader } from "@/components/layout/page-header"
 import { ResourceIcon } from "@/components/layout/resource-icon"
-import { StatusLabel, type StatusTone } from "@/components/layout/status-dot"
+import { StatusLabel } from "@/components/layout/status-dot"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -32,6 +32,8 @@ import {
   useSettingsStore,
   type Accent,
 } from "@/modules/settings/store"
+import { usePolicies, usePriorityClasses } from "@/modules/binding/queries"
+import type { Policy, PriorityClass } from "@/modules/binding/types"
 import { gibibytes } from "@/modules/supply/display"
 import { useDeviceClasses } from "@/modules/supply/queries"
 import type { DeviceClass } from "@/modules/supply/types"
@@ -336,78 +338,58 @@ function ProvidersSection() {
   )
 }
 
-// TODO-API priority classes: no scheduling-class object exists on the plane
-// yet; these are mocked reference rows.
-const PRIORITY_CLASSES = [
-  {
-    name: "interactive",
-    weight: 1000,
-    behaviour: "Preempts everything below. Latency-critical serving.",
-    guaranteed: "yes",
-    inUse: "4 workloads",
-  },
-  {
-    name: "standard",
-    weight: 500,
-    behaviour: "Default for new deployments.",
-    guaranteed: "yes",
-    inUse: "9 workloads",
-  },
-  {
-    name: "batch",
-    weight: 100,
-    behaviour: "Preemptible. Offline scoring and evals.",
-    guaranteed: "no",
-    inUse: "3 workloads",
-  },
-  {
-    name: "scavenger",
-    weight: 0,
-    behaviour: "Runs only on otherwise-idle capacity.",
-    guaranteed: "no",
-    inUse: "1 workload",
-  },
-]
-
+/**
+ * The plane's scheduling classes, summarised. The full surface — with create,
+ * edit and the total-ordering guard — is its own page at `/priority-classes`,
+ * reached from the header here.
+ */
 function PriorityClassesSection() {
+  const list = usePriorityClasses()
+  const classes = (list.items ?? [])
+    .slice()
+    .sort((a, b) => b.value - a.value)
+
   return (
     <Panel
       id="priority"
       title="Priority classes"
       description="scheduling order and preemption behaviour"
+      action={
+        <Link
+          to="/priority-classes"
+          className="inline-flex items-center gap-1 font-mono text-2xs text-primary hover:underline"
+        >
+          Manage
+          <IconArrowUpRight className="size-3.5" />
+        </Link>
+      }
     >
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Class</TableHead>
-              <TableHead className="text-right">Weight</TableHead>
-              <TableHead>Behaviour</TableHead>
-              <TableHead>Guaranteed</TableHead>
-              <TableHead>In use</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {PRIORITY_CLASSES.map((c) => (
-              <TableRow key={c.name}>
-                <TableCell className="font-mono text-2xs">{c.name}</TableCell>
-                <TableCell className="text-right font-mono text-2xs tabular-nums">
-                  {c.weight}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {c.behaviour}
-                </TableCell>
-                <TableCell className="font-mono text-2xs text-muted-foreground">
-                  {c.guaranteed}
-                </TableCell>
-                <TableCell className="font-mono text-2xs tabular-nums">
-                  {c.inUse}
-                </TableCell>
+      {list.isLoading ? (
+        <Skeleton className="h-40 w-full" />
+      ) : classes.length === 0 ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          No priority classes defined yet.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Class</TableHead>
+                <TableHead className="text-right">Value</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Preemptible</TableHead>
+                <TableHead>Preempts</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {classes.map((c) => (
+                <PriorityClassRow key={c.id} entry={c} />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
       <p className="mt-3 text-xs text-muted-foreground">
         Priority decides who wins when quota is contended — consumption itself
         is tracked under Access › Quotas.
@@ -416,92 +398,109 @@ function PriorityClassesSection() {
   )
 }
 
-// TODO-API policies: no admission/guardrail policy object on the plane yet;
-// mocked reference rows.
-const POLICIES: {
-  name: string
-  kind: string
-  effect: string
-  mode: string
-  tone: StatusTone
-  scope: string
-}[] = [
-  {
-    name: "require-signed-artifacts",
-    kind: "admission",
-    effect: "Blocks deployments whose artifact fingerprint is unsigned.",
-    mode: "Enforcing",
-    tone: "ok",
-    scope: "all clusters",
-  },
-  {
-    name: "gpu-model-allowlist",
-    kind: "scheduling",
-    effect: "Restricts tenants to their contracted GPU models.",
-    mode: "Enforcing",
-    tone: "ok",
-    scope: "all clusters",
-  },
-  {
-    name: "max-replicas-per-tenant",
-    kind: "quota",
-    effect: "Caps concurrent replicas per tenant at 32.",
-    mode: "Enforcing",
-    tone: "ok",
-    scope: "all clusters",
-  },
-  {
-    name: "drain-before-upgrade",
-    kind: "lifecycle",
-    effect: "Requires nodes to drain before a driver roll.",
-    mode: "Warn only",
-    tone: "warn",
-    scope: "prod clusters",
-  },
-]
+function PriorityClassRow({ entry }: { entry: PriorityClass }) {
+  return (
+    <TableRow>
+      <TableCell className="font-mono text-2xs">
+        {entry.name}
+        {entry.is_default && (
+          <Badge variant="outline" className="ml-2 font-mono text-2xs">
+            default
+          </Badge>
+        )}
+      </TableCell>
+      <TableCell className="text-right font-mono text-2xs tabular-nums">
+        {entry.value}
+      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {entry.description || "—"}
+      </TableCell>
+      <TableCell className="font-mono text-2xs text-muted-foreground">
+        {entry.preemptible ? "yes" : "no"}
+      </TableCell>
+      <TableCell className="font-mono text-2xs text-muted-foreground">
+        {entry.preempts ? "yes" : "no"}
+      </TableCell>
+    </TableRow>
+  )
+}
 
+/**
+ * The plane's placement guardrails, summarised. The full surface — with the
+ * allow/deny lists, rules and subject attachments — is its own page at
+ * `/policies`, reached from the header here.
+ */
 function PoliciesSection() {
+  const list = usePolicies()
+  const policies = list.items ?? []
+
   return (
     <Panel
       id="policies"
       title="Policies"
       description="guardrails applied at admission and scheduling time"
+      action={
+        <Link
+          to="/policies"
+          className="inline-flex items-center gap-1 font-mono text-2xs text-primary hover:underline"
+        >
+          Manage
+          <IconArrowUpRight className="size-3.5" />
+        </Link>
+      }
     >
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Policy</TableHead>
-              <TableHead>Kind</TableHead>
-              <TableHead>Effect</TableHead>
-              <TableHead>Mode</TableHead>
-              <TableHead>Scope</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {POLICIES.map((p) => (
-              <TableRow key={p.name}>
-                <TableCell className="font-mono text-2xs">{p.name}</TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="font-mono text-2xs">
-                    {p.kind}
-                  </Badge>
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {p.effect}
-                </TableCell>
-                <TableCell>
-                  <StatusLabel tone={p.tone}>{p.mode}</StatusLabel>
-                </TableCell>
-                <TableCell className="font-mono text-2xs text-muted-foreground">
-                  {p.scope}
-                </TableCell>
+      {list.isLoading ? (
+        <Skeleton className="h-40 w-full" />
+      ) : policies.length === 0 ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">
+          No policies defined yet.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Policy</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Mode</TableHead>
+                <TableHead>Scope</TableHead>
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+            </TableHeader>
+            <TableBody>
+              {policies.map((p) => (
+                <PolicyRow key={p.id} entry={p} />
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
     </Panel>
+  )
+}
+
+function PolicyRow({ entry }: { entry: Policy }) {
+  const scope =
+    entry.attachments.length === 0
+      ? "unattached"
+      : entry.attachments
+          .map((a) => a.subject_name || a.subject || a.subject_id)
+          .join(", ")
+
+  return (
+    <TableRow>
+      <TableCell className="font-mono text-2xs">{entry.name}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {entry.description || "—"}
+      </TableCell>
+      <TableCell>
+        <StatusLabel tone={entry.enabled ? "ok" : "neutral"}>
+          {entry.enabled ? "Enforcing" : "Disabled"}
+        </StatusLabel>
+      </TableCell>
+      <TableCell className="font-mono text-2xs text-muted-foreground">
+        {scope}
+      </TableCell>
+    </TableRow>
   )
 }
 

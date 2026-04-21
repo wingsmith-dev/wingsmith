@@ -86,11 +86,10 @@ function columns(
       cell: (workload) => (
         <div className="flex flex-col gap-0.5">
           <span className="font-mono text-xs">
-            <Id value={shortenId(workload.recipe_id)} />
+            {workload.recipe_name ?? <Id value={shortenId(workload.recipe_id)} />}
           </span>
-          {/* TODO-API Workload carries only recipe_id; recipe name + artifact tag are not on the list payload. */}
           <span className="font-mono text-2xs text-muted-foreground/60">
-            {workload.kind}
+            {workload.artifact_tag ?? workload.kind}
           </span>
         </div>
       ),

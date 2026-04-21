@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
 import { NODE_CONDITIONS, unhealthyCount } from "@/modules/supply/display"
-import { useNodes } from "@/modules/supply/queries"
+import { useNodes, useNodesSummary } from "@/modules/supply/queries"
 import type { NodeDeviceRollup, SupplyNode } from "@/modules/supply/types"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { useMemo } from "react"
@@ -160,11 +160,12 @@ function nodeListColumns(
     {
       key: "gpu_model",
       header: "GPU model",
-      cell: () => (
-        // TODO-API node schema carries no device class; the GPU model per node
-        // is not on the wire. Read from the pool's device_class once exposed.
-        <span className="font-mono text-2xs text-muted-foreground/40">—</span>
-      ),
+      cell: (node) =>
+        node.devices.device_class ? (
+          <span className="font-mono text-2xs">{node.devices.device_class}</span>
+        ) : (
+          <span className="font-mono text-2xs text-muted-foreground/40">—</span>
+        ),
     },
     {
       key: "devices",
@@ -175,16 +176,11 @@ function nodeListColumns(
       key: "allocated",
       header: "Allocated",
       align: "right",
-      cell: (node) => {
-        // TODO-API allocation count is not on the node schema; shown as
-        // healthy-of-total until `/allocations` rollups reach this row.
-        const usable = node.devices.total - unhealthyCount(node.devices)
-        return (
-          <span className="font-mono text-xs">
-            {usable}/{node.devices.total}
-          </span>
-        )
-      },
+      cell: (node) => (
+        <span className="font-mono text-xs">
+          {node.devices.allocated}/{node.devices.total}
+        </span>
+      ),
     },
     {
       key: "driver",
@@ -220,6 +216,7 @@ export function NodesPage() {
   const search = useSearch({ from: "/_app/nodes" })
   const navigate = useNavigate({ from: "/nodes" })
   const { data: clusters } = useClusterOptions()
+  const { data: fleet } = useNodesSummary()
 
   const list = useNodes({
     cluster: search.cluster,
@@ -245,15 +242,10 @@ export function NodesPage() {
   const { summary, driftDrivers } = useMemo(() => {
     const items = list.items ?? []
     // A node under an unreachable cluster is stale, not confirmably ready: the
-    // agent stopped reporting, so `ready` is only the last thing it said.
+    // agent stopped reporting, so `ready` is only the last thing it said. This
+    // stays over the loaded rows — the server summary counts readiness fleet-
+    // wide but cannot know which clusters the console currently sees as stale.
     const stale = items.filter((node) => unreachable.has(node.cluster)).length
-    const ready = items.filter(
-      (node) => node.ready && !unreachable.has(node.cluster)
-    ).length
-    const faultedGpus = items.reduce(
-      (sum, node) => sum + unhealthyCount(node.devices),
-      0
-    )
 
     const counts = new Map<string, number>()
     for (const node of items) {
@@ -280,11 +272,8 @@ export function NodesPage() {
 
     return {
       summary: {
-        total: items.length,
-        ready,
         stale,
         driftNodes,
-        faultedGpus,
       },
       driftDrivers: drift,
     }
@@ -304,12 +293,12 @@ export function NodesPage() {
 
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          {/* TODO-API counts reflect loaded rows, not the fleet total; a
-              server-side nodes summary would give true fleet-wide figures. */}
-          <SummaryTile label="Nodes" value={summary.total} />
+          <SummaryTile label="Nodes" value={fleet?.total ?? "—"} />
           <SummaryTile
             label="Ready"
-            value={`${summary.ready}/${summary.total}`}
+            value={
+              fleet ? `${fleet.ready}/${fleet.total}` : "—"
+            }
             tone={summary.stale > 0 ? "warn" : undefined}
             note={
               summary.stale > 0
@@ -324,8 +313,8 @@ export function NodesPage() {
           />
           <SummaryTile
             label="Faulted GPUs"
-            value={summary.faultedGpus}
-            tone={summary.faultedGpus > 0 ? "warn" : undefined}
+            value={fleet?.faulted_devices ?? "—"}
+            tone={fleet && fleet.faulted_devices > 0 ? "warn" : undefined}
           />
         </div>
 

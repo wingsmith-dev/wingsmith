@@ -11,8 +11,17 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatBytes } from "@/modules/demand/display"
-import { useArtifacts, useDeleteArtifact } from "@/modules/demand/queries"
-import { ARTIFACT_KINDS, type Artifact } from "@/modules/demand/types"
+import {
+  useArtifactQuantizations,
+  useArtifactUsages,
+  useArtifacts,
+  useDeleteArtifact,
+} from "@/modules/demand/queries"
+import {
+  ARTIFACT_KINDS,
+  type Artifact,
+  type ArtifactUsage,
+} from "@/modules/demand/types"
 import { formatError, formatRelative, shortenId } from "@/lib/format"
 import { ArtifactForm } from "./ArtifactForm"
 import { useMemo, useState } from "react"
@@ -51,21 +60,9 @@ function artifactStatus(artifact: Artifact): ArtifactStatus {
   return "ready"
 }
 
-/** Quantization lives on the recipe, not the artifact; surfaced from metadata. */
-function quantization(artifact: Artifact): string | null {
-  // TODO-API artifact carries no quantization; reading a metadata hint.
-  const q = artifact.metadata?.["quantization"]
-  return typeof q === "string" ? q : null
-}
-
-/** How many recipes reference these bytes. Not counted by the list endpoint. */
-function usedByCount(artifact: Artifact): number {
-  // TODO-API list endpoint does not return a recipe reference count.
-  const n = artifact.metadata?.["recipe_count"]
-  return typeof n === "number" ? n : 0
-}
-
 function columns(
+  usages: Map<string, ArtifactUsage>,
+  quantizations: Map<string, string[]>,
   onEdit: (artifact: Artifact) => void,
   onDelete: (artifact: Artifact) => void
 ): Column<Artifact>[] {
@@ -116,11 +113,14 @@ function columns(
     {
       key: "quantization",
       header: "Quantization",
-      cell: (artifact) => (
-        <span className="font-mono text-2xs text-muted-foreground">
-          <Dash>{quantization(artifact)}</Dash>
-        </span>
-      ),
+      cell: (artifact) => {
+        const quants = quantizations.get(artifact.id) ?? []
+        return (
+          <span className="font-mono text-2xs text-muted-foreground">
+            <Dash>{quants.length > 0 ? quants.join(" · ") : null}</Dash>
+          </span>
+        )
+      },
     },
     {
       key: "size",
@@ -147,7 +147,7 @@ function columns(
       align: "right",
       secondary: true,
       cell: (artifact) => {
-        const n = usedByCount(artifact)
+        const n = usages.get(artifact.id)?.recipe_count ?? 0
         return (
           <span className="font-mono text-2xs text-muted-foreground">
             {n === 0 ? (
@@ -240,6 +240,13 @@ export function ArtifactsPage() {
   const [creating, setCreating] = useState(false)
   const [doomed, setDoomed] = useState<Artifact | undefined>()
 
+  const ids = useMemo(
+    () => (list.items ?? []).map((a) => a.id),
+    [list.items]
+  )
+  const usages = useArtifactUsages(ids)
+  const quantizations = useArtifactQuantizations(ids)
+
   const rows = useMemo(
     () =>
       (list.items ?? []).filter(
@@ -253,10 +260,16 @@ export function ArtifactsPage() {
     return {
       count: items.length,
       storage: items.reduce((sum, a) => sum + a.size_bytes, 0),
-      inUse: items.filter((a) => usedByCount(a) > 0).length,
+      inUse: items.filter((a) => {
+        const usage = usages.get(a.id)
+        return (
+          !!usage &&
+          usage.recipe_count + usage.workload_count + usage.downstream_count > 0
+        )
+      }).length,
       attention: items.filter((a) => artifactStatus(a) === "failed").length,
     }
-  }, [list.items])
+  }, [list.items, usages])
 
   return (
     <div className="flex flex-col">
@@ -277,7 +290,6 @@ export function ArtifactsPage() {
             label="Total storage"
             value={formatBytes(summary.storage)}
           />
-          {/* TODO-API `In use` counts artifacts with a recipe reference, mocked from metadata. */}
           <SummaryTile label="In use" value={summary.inUse} />
           <SummaryTile
             label="Needs attention"
@@ -324,7 +336,7 @@ export function ArtifactsPage() {
         </div>
 
         <DataTable
-          columns={columns(setEditing, setDoomed)}
+          columns={columns(usages, quantizations, setEditing, setDoomed)}
           list={{ ...list, items: rows }}
           rowKey={(artifact) => artifact.id}
           empty="No artifacts registered."

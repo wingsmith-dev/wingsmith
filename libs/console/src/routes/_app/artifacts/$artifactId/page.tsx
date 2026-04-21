@@ -3,7 +3,11 @@ import { DeleteDialog } from "@/components/layout/destructive"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { CopyableId, Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
-import { StatusLabel, type StatusTone } from "@/components/layout/status-dot"
+import {
+  StatusDot,
+  StatusLabel,
+  type StatusTone,
+} from "@/components/layout/status-dot"
 import { NewOperationDialog } from "@/components/machinery/new-operation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -19,9 +23,13 @@ import {
 import {
   useArtifact,
   useArtifactBaselines,
+  useArtifactUsage,
   useDeleteArtifact,
+  useDerivedArtifacts,
   useRecipes,
 } from "@/modules/demand/queries"
+import { useEvents } from "@/modules/machinery/queries"
+import { severityTone } from "@/modules/machinery/display"
 import type {
   Artifact,
   ArtifactBaseline,
@@ -79,6 +87,8 @@ export function ArtifactDetailPage() {
   const { data: artifact, isLoading, error } = useArtifact(artifactId)
   const recipes = useRecipes({ artifact: artifactId })
   const baselines = useArtifactBaselines(artifactId)
+  const usage = useArtifactUsage(artifactId)
+  const derived = useDerivedArtifacts(artifactId)
   const remove = useDeleteArtifact()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -185,9 +195,14 @@ export function ArtifactDetailPage() {
               />
               {/* TODO-API Artifact carries no file manifest — showing registered locations as the file count. */}
               <StatCard label="Files" value={artifact.locations.length} />
-              <StatCard label="Recipes" value={recipes.loaded} />
-              {/* TODO-API No artifact→workload rollup on the object — mocked. */}
-              <StatCard label="Workloads" value={0} />
+              <StatCard
+                label="Recipes"
+                value={usage.data?.recipe_count ?? recipes.loaded}
+              />
+              <StatCard
+                label="Workloads"
+                value={usage.data?.workload_count ?? 0}
+              />
               <StatCard
                 label="Verification"
                 value={artifact.verified ? "Verified" : "Unverified"}
@@ -200,13 +215,13 @@ export function ArtifactDetailPage() {
                 <FilesPanel artifact={artifact} />
                 <RecipesPanel artifactId={artifactId} recipes={recipes} />
                 <BaselinesPanel baselines={baselines} />
-                <LineagePanel artifact={artifact} />
+                <LineagePanel artifact={artifact} derived={derived} />
               </div>
 
               <div className="flex flex-col gap-4">
                 <DetailsPanel artifact={artifact} />
                 <FingerprintPanel artifact={artifact} />
-                <ActivityPanel artifact={artifact} />
+                <ActivityPanel artifactId={artifactId} />
                 <MetadataPanel artifact={artifact} />
               </div>
             </div>
@@ -433,8 +448,15 @@ function BaselinesPanel({
 }
 
 /** Where these bytes came from, and what they were derived from. */
-function LineagePanel({ artifact }: { artifact: Artifact }) {
+function LineagePanel({
+  artifact,
+  derived,
+}: {
+  artifact: Artifact
+  derived: ReturnType<typeof useDerivedArtifacts>
+}) {
   const upstream = artifact.upstream ?? ({} as ArtifactUpstream)
+  const children = derived.items ?? []
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -477,9 +499,24 @@ function LineagePanel({ artifact }: { artifact: Artifact }) {
               <Dash>{null}</Dash>
             )}
           </Field>
-          {/* TODO-API No downstream-artifact rollup on the object. */}
-          <Field label="Downstream artifacts">
-            <Dash>{null}</Dash>
+          <Field label="Downstream artifacts" className="sm:col-span-2">
+            {children.length === 0 ? (
+              <Dash>{null}</Dash>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {children.map((child) => (
+                  <Link
+                    key={child.id}
+                    to="/artifacts/$artifactId"
+                    params={{ artifactId: child.id }}
+                    className="inline-flex items-center gap-1.5 font-mono text-xs hover:text-primary"
+                  >
+                    {child.name}
+                    <IconExternalLink className="size-3 text-muted-foreground" />
+                  </Link>
+                ))}
+              </div>
+            )}
           </Field>
         </FieldGrid>
       </CardContent>
@@ -614,34 +651,53 @@ function FingerprintPanel({ artifact }: { artifact: Artifact }) {
   )
 }
 
-/** A short timeline. Import and last change are real; the rest awaits an events feed. */
-function ActivityPanel({ artifact }: { artifact: Artifact }) {
-  const events: { at: string; text: string }[] = [
-    ...(artifact.updated_at
-      ? [{ at: artifact.updated_at, text: "Metadata last changed" }]
-      : []),
-    { at: artifact.created_at, text: "Imported and fingerprinted" },
-  ]
+/** Everything the plane has recorded against this artifact, newest first. */
+function ActivityPanel({ artifactId }: { artifactId: string }) {
+  const events = useEvents({ subject: artifactId })
+  const rows = events.items ?? []
   return (
     <Card>
-      <CardHeader className="pb-2">
+      <CardHeader className="flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm">Activity</CardTitle>
+        <Button asChild size="sm" variant="ghost" className="font-mono text-2xs">
+          <Link to="/events" search={{ subject: artifactId }}>
+            All events
+          </Link>
+        </Button>
       </CardHeader>
       <CardContent>
-        {/* TODO-API No per-artifact events feed — derived from created/updated. */}
-        <ol className="space-y-3">
-          {events.map((event, index) => (
-            <li key={index} className="flex gap-3">
-              <span className="mt-1 size-2 shrink-0 rounded-full bg-muted-foreground/40" />
-              <div className="space-y-0.5">
-                <div className="font-mono text-2xs text-muted-foreground">
-                  {formatAbsolute(event.at)}
+        {events.isLoading ? (
+          <Skeleton className="h-16 w-full" />
+        ) : rows.length === 0 ? (
+          <p className="font-mono text-2xs text-muted-foreground/50">
+            Nothing recorded against this artifact yet.
+          </p>
+        ) : (
+          <ol className="space-y-3">
+            {rows.map((event) => (
+              <li key={event.id} className="flex gap-3">
+                <StatusDot
+                  tone={severityTone(event.severity)}
+                  className="mt-1 shrink-0"
+                />
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-mono text-2xs">{event.kind}</span>
+                    <span
+                      className="font-mono text-2xs text-muted-foreground/50"
+                      title={formatAbsolute(event.occurred_at)}
+                    >
+                      {formatRelative(event.occurred_at)}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {event.message}
+                  </div>
                 </div>
-                <div className="text-xs">{event.text}</div>
-              </div>
-            </li>
-          ))}
-        </ol>
+              </li>
+            ))}
+          </ol>
+        )}
       </CardContent>
     </Card>
   )

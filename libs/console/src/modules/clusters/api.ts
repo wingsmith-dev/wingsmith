@@ -2,7 +2,9 @@ import { api, type ListResponse } from "@/lib/api"
 import type {
   Cluster,
   ClusterCreateRequest,
+  ClusterHeadroom,
   ClusterInstall,
+  ClusterRollup,
   ClusterServingRequest,
   ClusterUpdateRequest,
 } from "./types"
@@ -21,6 +23,28 @@ export function fetchClusters(
   limit?: number
 ): Promise<ListResponse<Cluster>> {
   return api.list<Cluster>("/clusters", { ...filters, cursor, limit })
+}
+
+/** Observed footprint per cluster in aggregate — for the list and card views. */
+export function fetchClusterRollups(
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<ClusterRollup>> {
+  return api.list<ClusterRollup>("/clusters/rollups", { cursor, limit })
+}
+
+/** The same rollup, scoped to one cluster by id or name. */
+export function fetchClusterRollup(ref: string): Promise<ClusterRollup> {
+  return api.get<ClusterRollup>(
+    `/clusters/${encodeURIComponent(ref)}/rollup`
+  )
+}
+
+/** Free capacity and how it is shaped, for one cluster. */
+export function fetchClusterHeadroom(ref: string): Promise<ClusterHeadroom> {
+  return api.get<ClusterHeadroom>(
+    `/clusters/${encodeURIComponent(ref)}/headroom`
+  )
 }
 
 export function createCluster(body: ClusterCreateRequest): Promise<Cluster> {

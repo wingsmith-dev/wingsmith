@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query"
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
   createArtifact,
@@ -13,14 +18,18 @@ import {
   deleteWorkload,
   fetchArtifact,
   fetchArtifactBaselines,
+  fetchArtifactUsage,
   fetchArtifacts,
   fetchDeployment,
   fetchDeployments,
   fetchEndpoint,
   fetchEndpoints,
   fetchRecipe,
+  fetchRecipeBenchmarkSummary,
+  fetchRecipeUsage,
   fetchRecipes,
   fetchWorkload,
+  fetchWorkloadPlacement,
   fetchWorkloads,
   resolveArtifact,
   updateArtifact,
@@ -40,12 +49,14 @@ import type {
   ArtifactBaselineUpdateRequest,
   ArtifactCreateRequest,
   ArtifactUpdateRequest,
+  ArtifactUsage,
   Deployment,
   DeploymentUpdateRequest,
   EndpointCreateRequest,
   EndpointUpdateRequest,
   RecipeCreateRequest,
   RecipeUpdateRequest,
+  RecipeUsage,
   Workload,
   WorkloadCreateRequest,
   WorkloadUpdateRequest,
@@ -66,6 +77,70 @@ export function useArtifact(ref: string) {
     queryFn: () => fetchArtifact(ref),
     enabled: !!ref,
   })
+}
+
+/**
+ * One artifact's dependants — recipes, workloads and downstream artifacts —
+ * counted at read time by the plane rather than stored on the object.
+ */
+export function useArtifactUsage(ref: string) {
+  return useQuery({
+    queryKey: ["artifacts", "usage", ref],
+    queryFn: () => fetchArtifactUsage(ref),
+    enabled: !!ref,
+  })
+}
+
+/**
+ * Usage for a set of artifacts, one read each. The list surfaces a reference
+ * count per row and an in-use total, and the plane counts usage per artifact —
+ * there is no batched rollup, so this fans out and reads back a map by id.
+ */
+export function useArtifactUsages(ids: string[]) {
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ["artifacts", "usage", id],
+      queryFn: () => fetchArtifactUsage(id),
+      enabled: !!id,
+    })),
+  })
+  const byId = new Map<string, ArtifactUsage>()
+  results.forEach((result, index) => {
+    if (result.data) byId.set(ids[index], result.data)
+  })
+  return byId
+}
+
+/** Artifacts derived from this one — the quantizations and fine-tunes that name it as base. */
+export function useDerivedArtifacts(baseArtifact: string) {
+  return useCursorList(
+    ["artifacts", "derived", baseArtifact],
+    (cursor) => fetchArtifacts({ base_artifact: baseArtifact }, cursor),
+    { enabled: !!baseArtifact }
+  )
+}
+
+/**
+ * The distinct quantizations declared for each artifact, read from its recipes.
+ * Quantization is a recipe property, not an artifact one, so the list column
+ * fans out one recipe read per artifact and collapses the set per id.
+ */
+export function useArtifactQuantizations(ids: string[]) {
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ["recipes", "by-artifact", id],
+      queryFn: () => fetchRecipes({ artifact: id }, undefined, 200),
+      enabled: !!id,
+    })),
+  })
+  const byId = new Map<string, string[]>()
+  results.forEach((result, index) => {
+    const quants = (result.data?.items ?? [])
+      .map((recipe) => recipe.quantization)
+      .filter((q): q is string => !!q)
+    byId.set(ids[index], [...new Set(quants)])
+  })
+  return byId
 }
 
 /** Every artifact, drained — recipes and adapter lists reference them by id. */
@@ -188,6 +263,47 @@ export function useRecipeOptions() {
   )
 }
 
+/** How many workloads name this recipe, counted at read time by the plane. */
+export function useRecipeUsage(ref: string) {
+  return useQuery({
+    queryKey: ["recipes", "usage", ref],
+    queryFn: () => fetchRecipeUsage(ref),
+    enabled: !!ref,
+  })
+}
+
+/**
+ * Usage for a set of recipes, one read each. The list surfaces a workload count
+ * per row and the plane counts usage per recipe — there is no batched rollup, so
+ * this fans out and reads back a map by id.
+ */
+export function useRecipeUsages(ids: string[]) {
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: ["recipes", "usage", id],
+      queryFn: () => fetchRecipeUsage(id),
+      enabled: !!id,
+    })),
+  })
+  const byId = new Map<string, RecipeUsage>()
+  results.forEach((result, index) => {
+    if (result.data) byId.set(ids[index], result.data)
+  })
+  return byId
+}
+
+/**
+ * Offline benchmark rollup for a recipe — peak measured output-token throughput
+ * over graded runs. Held-in-plane offline measurement, never live serving telemetry.
+ */
+export function useRecipeBenchmarkSummary(ref: string) {
+  return useQuery({
+    queryKey: ["recipes", "benchmarks-summary", ref],
+    queryFn: () => fetchRecipeBenchmarkSummary(ref),
+    enabled: !!ref,
+  })
+}
+
 export function useCreateRecipe() {
   const client = useQueryClient()
   return useMutation({
@@ -249,6 +365,22 @@ export function useWorkload(ref: string, project?: string) {
       if (!data) return POLL_MS
       return SETTLED_PHASES.has(data.phase) ? false : POLL_MS
     },
+  })
+}
+
+/**
+ * Where a workload physically landed, polled while it is still coming up.
+ *
+ * Placement is observed and moves as allocations are granted and replicas tie
+ * to them, so it follows the workload's derived phase the same way the detail
+ * query does rather than reading once and sitting on a cache.
+ */
+export function useWorkloadPlacement(ref: string, project?: string) {
+  return useQuery({
+    queryKey: ["workloads", "placement", ref, project],
+    queryFn: () => fetchWorkloadPlacement(ref, project),
+    enabled: !!ref,
+    refetchInterval: POLL_MS,
   })
 }
 

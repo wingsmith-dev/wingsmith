@@ -14,7 +14,11 @@ import {
   OPERATION_PHASES,
   severityTone,
 } from "@/modules/machinery/display"
-import { useEvents, useOperations } from "@/modules/machinery/queries"
+import {
+  useEvents,
+  useOperations,
+  useOperationsSummary,
+} from "@/modules/machinery/queries"
 import { OPERATION_TYPES } from "@/modules/machinery/types"
 import type { PlaneEvent } from "@/modules/machinery/types"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
@@ -46,14 +50,15 @@ export function OperationsPage() {
     severity,
   })
 
+  const summary = useOperationsSummary(search.cluster)
+
   const set = (key: "cluster" | "type" | "phase") => (value: string) =>
     navigate({
       search: (prev) => ({ ...prev, [key]: value === ALL ? undefined : value }),
     })
 
-  const loaded = list.items ?? []
-  const tally = (phase: string) =>
-    loaded.filter((operation) => operation.phase === phase).length
+  const counts = summary.data
+  const byPhase = counts?.by_phase ?? {}
 
   return (
     <div className="flex flex-col">
@@ -64,19 +69,26 @@ export function OperationsPage() {
       />
 
       <div className="space-y-4 p-4">
-        {/* Summary tiles — counted from the operations loaded so far. */}
-        {/* TODO-API dedicated counters (esp. 24h windows) rather than a page tally */}
+        {/* Summary tiles — the plane's read-time rollup, windowed by its clock. */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryTile label="Running" value={tally("running")} tone="warn" />
-          <SummaryTile label="Queued" value={tally("pending")} tone="info" />
+          <SummaryTile
+            label="Running"
+            value={byPhase.running ?? 0}
+            tone="warn"
+          />
+          <SummaryTile
+            label="Queued"
+            value={byPhase.pending ?? 0}
+            tone="info"
+          />
           <SummaryTile
             label="Failed · 24h"
-            value={tally("failed") + tally("timed_out")}
+            value={counts?.failed_24h ?? 0}
             tone="danger"
           />
           <SummaryTile
             label="Succeeded · 24h"
-            value={tally("succeeded")}
+            value={counts?.succeeded_24h ?? 0}
             tone="ok"
           />
         </div>

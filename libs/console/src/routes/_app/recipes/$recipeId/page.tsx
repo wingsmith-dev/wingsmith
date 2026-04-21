@@ -20,6 +20,7 @@ import {
   emptyServing,
   formatBytes,
   parallelismLabel,
+  recipeLifecycleTone,
   servingOverrides,
   workloadPhaseTone,
 } from "@/modules/demand/display"
@@ -28,6 +29,8 @@ import {
   useArtifact,
   useDeleteRecipe,
   useRecipe,
+  useRecipeBenchmarkSummary,
+  useRecipeUsage,
   useWorkloads,
 } from "@/modules/demand/queries"
 import { ChoiceSet } from "@/components/demand/choice-set"
@@ -153,6 +156,8 @@ export function RecipeDetailPage() {
   const { data: recipe, isLoading, error } = useRecipe(recipeId)
   const { data: artifact } = useArtifact(recipe?.artifact_id ?? "")
   const usedBy = useWorkloads({ recipe: recipe?.id ?? "" })
+  const { data: usage } = useRecipeUsage(recipe?.id ?? "")
+  const { data: benchmarks } = useRecipeBenchmarkSummary(recipe?.id ?? "")
   const remove = useDeleteRecipe()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -169,7 +174,8 @@ export function RecipeDetailPage() {
     )
   }
 
-  const usedByCount = usedBy.items?.length ?? 0
+  const usedByCount = usage?.workload_count ?? usedBy.items?.length ?? 0
+  const peakThroughput = benchmarks?.peak_output_tokens_per_second ?? null
   const lastUpdated = recipe?.updated_at ?? recipe?.created_at ?? null
 
   const serving = recipe?.serving ?? emptyServing()
@@ -267,18 +273,25 @@ export function RecipeDetailPage() {
               <Labels labels={recipe.labels} />
             </div>
 
-            {/* Summary strip. Throughput and cost have no source yet. */}
+            {/* Summary strip. Cost estimate has no source yet. */}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
               <Stat label="Status">
-                {/* TODO-API recipe has no lifecycle status; "Published" is assumed */}
-                <StatusLabel tone="ok">Published</StatusLabel>
+                <StatusLabel tone={recipeLifecycleTone(recipe.lifecycle)}>
+                  {recipe.lifecycle}
+                </StatusLabel>
               </Stat>
               <Stat label="Used by">
                 {usedByCount} {usedByCount === 1 ? "workload" : "workloads"}
               </Stat>
               <Stat label="Peak throughput tested">
-                {/* TODO-API no benchmarked throughput on the recipe */}
-                <Dash>{null}</Dash>
+                {peakThroughput === null ? (
+                  <Dash>{null}</Dash>
+                ) : (
+                  <span>
+                    {Math.round(peakThroughput).toLocaleString()}{" "}
+                    <span className="text-2xs text-muted-foreground">tok/s</span>
+                  </span>
+                )}
               </Stat>
               <Stat label="Est. cost / hr">
                 {/* TODO-API no cost estimate on the recipe */}
@@ -530,10 +543,9 @@ export function RecipeDetailPage() {
                   </CardHeader>
                   <CardContent className="space-y-2.5">
                     <KvRow label="Status">
-                      {/* TODO-API recipe has no lifecycle status */}
                       <span className="inline-flex items-center gap-1.5">
-                        <StatusDot tone="ok" />
-                        Published
+                        <StatusDot tone={recipeLifecycleTone(recipe.lifecycle)} />
+                        {recipe.lifecycle}
                       </span>
                     </KvRow>
                     <KvRow label="Version">v{recipe.version}</KvRow>

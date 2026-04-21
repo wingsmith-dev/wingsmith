@@ -4,6 +4,7 @@ import type {
   Component,
   Operation,
   OperationCreateRequest,
+  OperationSummary,
   PlaneEvent,
 } from "./types"
 
@@ -57,6 +58,13 @@ export function fetchOperations(
 
 export function fetchOperation(ref: string): Promise<Operation> {
   return api.get<Operation>(`/operations/${encodeURIComponent(ref)}`)
+}
+
+/** `GET /v1/operations/summary` — phase rollup and the 24h terminal counters. */
+export function fetchOperationsSummary(
+  cluster?: string
+): Promise<OperationSummary> {
+  return api.get<OperationSummary>("/operations/summary", { cluster })
 }
 
 /**

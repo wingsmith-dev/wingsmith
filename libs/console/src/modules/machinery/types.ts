@@ -102,6 +102,19 @@ export interface Operation {
   finished_at: string | null
 }
 
+/**
+ * `OperationSummarySchema` — a read-time rollup of the operations collection.
+ * `by_phase` carries a count for every phase the fleet currently holds; the two
+ * `_24h` fields are the terminal phases counted over the last day, windowed by
+ * the database's own clock.
+ */
+export interface OperationSummary {
+  total: number
+  by_phase: Record<string, number>
+  failed_24h: number
+  succeeded_24h: number
+}
+
 /** `POST /v1/operations` — a type and a target, never a verb on the target. */
 export interface OperationCreateRequest {
   type: string

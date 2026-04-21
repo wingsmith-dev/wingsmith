@@ -978,6 +978,8 @@ registerFixtures([
         paused: false,
         gang_size: 1,
         recipe_id: recipe.id,
+        recipe_name: recipe.name,
+        artifact_tag: null,
         adapter_artifact_ids: [],
         overrides: {},
         labels: workload.labels,

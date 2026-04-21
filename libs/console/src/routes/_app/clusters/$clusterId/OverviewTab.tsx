@@ -3,7 +3,9 @@ import { StatusLabel } from "@/components/layout/status-dot"
 import { Card } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { CLUSTER_PHASE_TONE, humanize } from "@/modules/clusters/display"
-import type { Cluster } from "@/modules/clusters/types"
+import { useClusterRollup } from "@/modules/clusters/queries"
+import type { Cluster, ClusterHeadroom } from "@/modules/clusters/types"
+import { useRecipeOptions, useWorkloadOptions } from "@/modules/demand/queries"
 import {
   useClusterDeployments,
   useClusterDevices,
@@ -12,11 +14,7 @@ import {
   useClusterOpenOperations,
   useClusterPools,
 } from "@/modules/overview/queries"
-import {
-  deriveClusterActionables,
-  summariseDevices,
-  summariseNodes,
-} from "@/modules/overview/summary"
+import { deriveClusterActionables } from "@/modules/overview/summary"
 import type { Deployment } from "@/modules/demand/types"
 import type { Pool } from "@/modules/supply/types"
 import { IconCheck, IconX } from "@tabler/icons-react"
@@ -166,13 +164,14 @@ function NodePoolsTable({
 }
 
 /**
- * Deployments running on this cluster. Recipe, pool and GPU columns the design
- * calls for are workload facts, not deployment facts, and are left for a future
- * expansion of the share object.
+ * Deployments running on this cluster. The recipe column is a workload fact,
+ * not a deployment fact: it resolves through the deployment's `workload_id` to
+ * the workload's `recipe_id` and then to the recipe's name.
  */
 function DeploymentsTable({
   clusterId,
   deployments,
+  recipeName,
 }: {
   clusterId: string
   deployments: {
@@ -180,6 +179,7 @@ function DeploymentsTable({
     isLoading: boolean
     error: unknown
   }
+  recipeName: (workloadId: string) => string | null
 }) {
   const rows = deployments.data ?? []
   const replicas = rows.reduce(
@@ -207,7 +207,6 @@ function DeploymentsTable({
             <tr className="border-b">
               <Th>Deployment</Th>
               <Th>Workload</Th>
-              {/* TODO-API recipe/pool/GPU count are not on the deployment share */}
               <Th>Recipe</Th>
               <Th>Replicas</Th>
               <Th>Status</Th>
@@ -216,6 +215,7 @@ function DeploymentsTable({
           <tbody>
             {rows.map((d) => {
               const short = d.replicas.ready < d.desired_replicas
+              const recipe = recipeName(d.workload_id)
               return (
                 <tr key={d.id} className="border-b last:border-0">
                   <Td>
@@ -236,9 +236,10 @@ function DeploymentsTable({
                       {d.workload_name}
                     </Link>
                   </Td>
-                  {/* TODO-API recipe name is not carried on the deployment */}
-                  <Td className="font-mono text-2xs text-muted-foreground/40">
-                    —
+                  <Td className="font-mono text-2xs text-muted-foreground">
+                    {recipe ?? (
+                      <span className="text-muted-foreground/40">—</span>
+                    )}
                   </Td>
                   <Td className="font-mono tabular-nums">
                     {d.replicas.ready}/{d.desired_replicas}
@@ -265,23 +266,33 @@ interface HeadroomTotal {
 }
 
 /**
- * Free capacity and how it is shaped. GPUs free is the drained allocatable
- * count; the block-shape figures the design leans on (largest contiguous block,
- * whole nodes free, VRAM free) are not yet computed by the plane.
+ * Free capacity and how it is shaped, all derived at read time by the plane.
+ * "GPUs free" is every allocatable device; "largest block" is the biggest set
+ * sharing one topology domain — what a job wanting one fabric can actually get,
+ * distinct from the raw free count; "whole nodes free" counts nodes on which
+ * every device is allocatable.
  */
 function HeadroomPanel({
-  free,
+  headroom,
   total,
 }: {
-  free: number
+  headroom: ClusterHeadroom | undefined
   total: number
 }) {
-  // TODO-API largest-block / whole-nodes-free / VRAM-free are not exposed yet
+  const free = headroom?.free_devices ?? 0
+  const wholeNodes = headroom?.whole_nodes_free ?? 0
   const totals: HeadroomTotal[] = [
-    { label: "GPUs free", value: String(free) },
-    { label: "of fleet", value: `${free}/${total}` },
-    { label: "largest block", value: "—" },
-    { label: "whole nodes free", value: "—", tone: "warn" },
+    { label: "GPUs free", value: headroom ? String(free) : "—" },
+    { label: "of fleet", value: headroom ? `${free}/${total}` : "—" },
+    {
+      label: "largest block",
+      value: headroom ? String(headroom.largest_contiguous_block) : "—",
+    },
+    {
+      label: "whole nodes free",
+      value: headroom ? String(wholeNodes) : "—",
+      tone: headroom && wholeNodes === 0 ? "warn" : undefined,
+    },
   ]
   return (
     <Card className="gap-0 border-primary/30 p-0">
@@ -417,6 +428,20 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
   const deployments = useClusterDeployments(cluster.id)
   const operations = useClusterOpenOperations(cluster.id)
   const events = useClusterEvents(cluster.id)
+  const rollup = useClusterRollup(cluster.id)
+  const workloads = useWorkloadOptions()
+  const recipes = useRecipeOptions()
+
+  /**
+   * A deployment's recipe is a workload fact: resolve `workload_id` to the
+   * workload's `recipe_id`, then that to the recipe's name. Absent while the
+   * option lists load, or if either object is not (yet) visible.
+   */
+  const recipeName = (workloadId: string): string | null => {
+    const recipeId = workloads.data?.find((w) => w.id === workloadId)?.recipe_id
+    if (!recipeId) return null
+    return recipes.data?.find((r) => r.id === recipeId)?.name ?? null
+  }
 
   const actionables = deriveClusterActionables({
     cluster,
@@ -439,16 +464,10 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
     .filter(([, error]) => !!error)
     .map(([label, error]) => ({ label, error }))
 
-  const nodeSummary = nodes.data && summariseNodes(nodes.data)
-  const deviceSummary = devices.data && summariseDevices(devices.data)
   const replicasReady =
     deployments.data?.reduce((sum, d) => sum + d.replicas.ready, 0) ?? 0
   const replicasDesired =
     deployments.data?.reduce((sum, d) => sum + d.desired_replicas, 0) ?? 0
-  // TODO-API a first-class allocated-GPU count is not exposed; derived from devices
-  const gpusAllocated = deviceSummary
-    ? deviceSummary.total - deviceSummary.allocatable
-    : 0
 
   return (
     <div className="space-y-4">
@@ -477,21 +496,27 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
         <StatTile
           label="Nodes ready"
           value={
-            nodeSummary ? `${nodeSummary.ready}/${nodeSummary.total}` : "—"
+            rollup.data
+              ? `${rollup.data.nodes_ready}/${rollup.data.nodes_total}`
+              : "—"
           }
           tone={
-            nodeSummary && nodeSummary.notReady > 0 ? "warn" : undefined
+            rollup.data && rollup.data.nodes_ready < rollup.data.nodes_total
+              ? "warn"
+              : undefined
           }
         />
         <StatTile
           label="GPUs allocated"
           value={
-            deviceSummary ? `${gpusAllocated}/${deviceSummary.total}` : "—"
+            rollup.data
+              ? `${rollup.data.devices_allocated}/${rollup.data.devices_total}`
+              : "—"
           }
         />
         <StatTile
           label="Deployments"
-          value={deployments.data?.length ?? "—"}
+          value={rollup.data?.deployment_count ?? "—"}
         />
         <StatTile
           label="Replicas"
@@ -503,11 +528,15 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <HeadroomPanel
-            free={deviceSummary?.allocatable ?? 0}
-            total={deviceSummary?.total ?? 0}
+            headroom={rollup.data?.headroom}
+            total={rollup.data?.devices_total ?? 0}
           />
           <NodePoolsTable clusterId={cluster.id} pools={pools} />
-          <DeploymentsTable clusterId={cluster.id} deployments={deployments} />
+          <DeploymentsTable
+            clusterId={cluster.id}
+            deployments={deployments}
+            recipeName={recipeName}
+          />
           <WhatFitsPanel />
         </div>
 

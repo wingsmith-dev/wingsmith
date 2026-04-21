@@ -3,7 +3,7 @@ import { ResourceCell } from "@/components/layout/resource-cell"
 import { DeleteDialog, RowActions } from "@/components/layout/destructive"
 import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
-import { StatusLabel, type StatusTone } from "@/components/layout/status-dot"
+import { StatusLabel } from "@/components/layout/status-dot"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { StatTile } from "@/routes/_app/overview/StatTile"
@@ -12,54 +12,20 @@ import {
   useArtifactOptions,
   useDeleteRecipe,
   useRecipes,
+  useRecipeUsages,
 } from "@/modules/demand/queries"
+import { recipeLifecycleTone } from "@/modules/demand/display"
 import type { Recipe } from "@/modules/demand/types"
 import { RecipeForm } from "./RecipeForm"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { Link, useSearch } from "@tanstack/react-router"
+import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 
-/** The lifecycle a recipe sits in. Not yet a field on the object. */
-type RecipeStatus = "published" | "draft" | "deprecated"
-
-const STATUS_TONES: Record<RecipeStatus, StatusTone> = {
-  published: "ok",
-  draft: "neutral",
-  deprecated: "warn",
-}
-
-/**
- * A recipe's lifecycle status, which the plane does not yet carry. Derived
- * deterministically from the id so the list, the tiles and the filter agree on
- * a value until the real field lands.
- */
-// TODO-API Recipe has no lifecycle status (published/draft/deprecated) — mocked from id.
-function recipeStatus(recipe: Recipe): RecipeStatus {
-  const buckets: RecipeStatus[] = [
-    "published",
-    "published",
-    "published",
-    "draft",
-    "deprecated",
-  ]
-  let hash = 0
-  for (const ch of recipe.id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0
-  return buckets[hash % buckets.length]
-}
-
-/**
- * How many workloads reference this recipe. The list endpoint does not carry a
- * rollup, so this is a placeholder until it does.
- */
-// TODO-API no workload-usage count on the recipe list response — mocked from id.
-function usedByCount(recipe: Recipe): number {
-  let hash = 0
-  for (const ch of recipe.id) hash = (hash * 17 + ch.charCodeAt(0)) >>> 0
-  return hash % 4
-}
+type Lifecycle = "published" | "draft" | "deprecated"
 
 function columns(
   artifactName: (id: string) => string,
+  usage: Map<string, { workload_count: number }>,
   onEdit: (recipe: Recipe) => void,
   onDelete: (recipe: Recipe) => void
 ): Column<Recipe>[] {
@@ -86,12 +52,11 @@ function columns(
     {
       key: "status",
       header: "Status",
-      cell: (recipe) => {
-        const status = recipeStatus(recipe)
-        return (
-          <StatusLabel tone={STATUS_TONES[status]}>{status}</StatusLabel>
-        )
-      },
+      cell: (recipe) => (
+        <StatusLabel tone={recipeLifecycleTone(recipe.lifecycle)}>
+          {recipe.lifecycle}
+        </StatusLabel>
+      ),
     },
     {
       key: "artifact",
@@ -134,8 +99,8 @@ function columns(
       key: "usedBy",
       header: "Used by",
       cell: (recipe) => {
-        const count = usedByCount(recipe)
-        return count === 0 ? (
+        const count = usage.get(recipe.id)?.workload_count
+        return !count ? (
           <Dash>{null}</Dash>
         ) : (
           <span className="font-mono text-2xs text-muted-foreground">
@@ -174,7 +139,7 @@ function columns(
   ]
 }
 
-const STATUS_TABS: { value: RecipeStatus | "all"; label: string }[] = [
+const STATUS_TABS: { value: Lifecycle | "all"; label: string }[] = [
   { value: "all", label: "All" },
   { value: "published", label: "Published" },
   { value: "draft", label: "Draft" },
@@ -187,13 +152,18 @@ const STATUS_TABS: { value: RecipeStatus | "all"; label: string }[] = [
  */
 export function RecipesPage() {
   const search = useSearch({ from: "/_app/recipes" })
-  const list = useRecipes({ artifact: search.artifact })
+  const navigate = useNavigate({ from: "/recipes" })
+  const status = (search.lifecycle as Lifecycle | undefined) ?? "all"
+  const all = useRecipes({ artifact: search.artifact })
+  const list = useRecipes({
+    artifact: search.artifact,
+    lifecycle: search.lifecycle,
+  })
   const { data: artifacts } = useArtifactOptions()
   const remove = useDeleteRecipe()
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Recipe | undefined>()
   const [doomed, setDoomed] = useState<Recipe | undefined>()
-  const [status, setStatus] = useState<RecipeStatus | "all">("all")
 
   const artifactName = useMemo(() => {
     const byId = new Map((artifacts ?? []).map((a) => [a.id, a.name]))
@@ -201,19 +171,24 @@ export function RecipesPage() {
   }, [artifacts])
 
   const items = useMemo(() => list.items ?? [], [list.items])
+  const usage = useRecipeUsages(items.map((recipe) => recipe.id))
   const counts = useMemo(() => {
-    const acc = { total: items.length, published: 0, draft: 0, deprecated: 0 }
-    for (const recipe of items) acc[recipeStatus(recipe)] += 1
+    const rows = all.items ?? []
+    const acc = { total: rows.length, published: 0, draft: 0, deprecated: 0 }
+    for (const recipe of rows) {
+      if (recipe.lifecycle in acc)
+        acc[recipe.lifecycle as Lifecycle] += 1
+    }
     return acc
-  }, [items])
+  }, [all.items])
 
-  const filtered = useMemo(
-    () =>
-      status === "all"
-        ? items
-        : items.filter((recipe) => recipeStatus(recipe) === status),
-    [items, status]
-  )
+  const setStatus = (value: Lifecycle | "all") =>
+    navigate({
+      search: (prev) => ({
+        ...prev,
+        lifecycle: value === "all" ? undefined : value,
+      }),
+    })
 
   return (
     <div className="flex flex-col">
@@ -233,32 +208,32 @@ export function RecipesPage() {
             label="Recipes"
             value={counts.total}
             to="/recipes"
-            isLoading={list.isLoading}
-            error={list.error}
+            isLoading={all.isLoading}
+            error={all.error}
           />
           <StatTile
             kind="recipe"
             label="Published"
             value={counts.published}
             to="/recipes"
-            isLoading={list.isLoading}
-            error={list.error}
+            isLoading={all.isLoading}
+            error={all.error}
           />
           <StatTile
             kind="recipe"
             label="Draft"
             value={counts.draft}
             to="/recipes"
-            isLoading={list.isLoading}
-            error={list.error}
+            isLoading={all.isLoading}
+            error={all.error}
           />
           <StatTile
             kind="recipe"
             label="Deprecated"
             value={counts.deprecated}
             to="/recipes"
-            isLoading={list.isLoading}
-            error={list.error}
+            isLoading={all.isLoading}
+            error={all.error}
           />
         </div>
 
@@ -280,7 +255,7 @@ export function RecipesPage() {
 
         <Tabs
           value={status}
-          onValueChange={(value) => setStatus(value as RecipeStatus | "all")}
+          onValueChange={(value) => setStatus(value as Lifecycle | "all")}
         >
           <TabsList>
             {STATUS_TABS.map((tab) => (
@@ -292,8 +267,8 @@ export function RecipesPage() {
         </Tabs>
 
         <DataTable
-          columns={columns(artifactName, setEditing, setDoomed)}
-          list={{ ...list, items: list.items && filtered }}
+          columns={columns(artifactName, usage, setEditing, setDoomed)}
+          list={list}
           rowKey={(recipe) => recipe.id}
           empty="No recipes defined."
         />

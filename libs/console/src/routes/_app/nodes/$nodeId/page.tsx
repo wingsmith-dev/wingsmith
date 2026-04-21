@@ -394,9 +394,23 @@ interface NodeConditionRow {
 }
 
 /**
- * The node's observed conditions. `condition` and `cordoned` are real; the
- * per-signal breakdown (memory/disk/network pressure) is not carried on the
- * node schema and is mocked until it is.
+ * A node condition's status, mapped to a tone without interpreting its `type`.
+ * The plane keeps the operator's vocabulary verbatim, so this reads truthiness
+ * only: a signal that is asserting (`True`) is worth a warn, one that is clear
+ * (`False`) reads ok, and anything else (`Unknown`) is neutral.
+ */
+function conditionStatusTone(status: string): StatusTone {
+  const value = status.toLowerCase()
+  if (value === "false") return "ok"
+  if (value === "true") return "warn"
+  return "neutral"
+}
+
+/**
+ * The node's observed conditions. The `Ready` summary row carries the
+ * stale/unreachable treatment; the per-signal rows below are the real
+ * `node.conditions` array as the cluster reported them, and `GpuEccCorrectable`
+ * is derived from the node's own devices.
  */
 function ConditionsCard({
   node,
@@ -416,10 +430,13 @@ function ConditionsCard({
         ? `stale · ${node.condition.replace(/_/g, " ")} · cluster unreachable`
         : node.condition.replace(/_/g, " "),
     },
-    // TODO-API node schema carries no kubelet pressure conditions
-    { label: "MemoryPressure", tone: "ok", detail: "none" },
-    { label: "DiskPressure", tone: "ok", detail: "none" },
-    { label: "NetworkUnavailable", tone: "ok", detail: "false" },
+    ...node.conditions.map((condition) => ({
+      label: condition.type,
+      tone: conditionStatusTone(condition.status),
+      detail:
+        [condition.reason, condition.message].filter(Boolean).join(" · ") ||
+        condition.status,
+    })),
     {
       label: "GpuEccCorrectable",
       tone: eccDevices.length > 0 ? "warn" : "ok",

@@ -85,6 +85,38 @@ export interface ClusterInstall {
   expires_in_seconds: number
 }
 
+/**
+ * How much of a cluster is free to place onto, derived at read time from
+ * observed devices — nothing here is stored. `largest_contiguous_block` is the
+ * biggest set of allocatable devices sharing one topology domain (what a job
+ * wanting one fabric can actually get), distinct from `free_devices` which
+ * counts every allocatable device regardless of where it sits.
+ * `whole_nodes_free` counts nodes on which every device is allocatable.
+ */
+export interface ClusterHeadroom {
+  free_devices: number
+  whole_nodes_free: number
+  largest_contiguous_block: number
+}
+
+/**
+ * A cluster's observed footprint in aggregate, for the list and card views.
+ * Every field is derived at read time. `devices_allocated` is
+ * `devices_total - devices_allocatable`; `pool_count` and `deployment_count`
+ * are the declared objects hanging off the cluster, the rest are observed.
+ */
+export interface ClusterRollup {
+  cluster_id: string
+  nodes_total: number
+  nodes_ready: number
+  devices_total: number
+  devices_allocatable: number
+  devices_allocated: number
+  pool_count: number
+  deployment_count: number
+  headroom: ClusterHeadroom
+}
+
 export interface ClusterCreateRequest {
   name: string
   region: string

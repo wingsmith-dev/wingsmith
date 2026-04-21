@@ -7,7 +7,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
 import { formatError } from "@/lib/format"
 import { CLUSTER_PHASES, clusterLabel } from "@/modules/clusters/display"
-import { useClusters, useDeleteCluster } from "@/modules/clusters/queries"
+import {
+  useClusterRollups,
+  useClusters,
+  useDeleteCluster,
+} from "@/modules/clusters/queries"
 import type { Cluster } from "@/modules/clusters/types"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useState } from "react"
@@ -25,6 +29,7 @@ export function ClustersPage() {
   const search = useSearch({ from: "/_app/clusters" })
   const navigate = useNavigate({ from: "/clusters" })
   const list = useClusters({ phase: search.phase, region: search.region })
+  const rollups = useClusterRollups()
   const remove = useDeleteCluster()
 
   const [creating, setCreating] = useState(false)
@@ -37,6 +42,16 @@ export function ClustersPage() {
   const needsAttention = clusters.filter(
     (c) => !c.reachable || c.phase === "draining" || c.sync.state === "stale"
   ).length
+
+  const fleet = (rollups.data ?? []).reduce(
+    (acc, r) => ({
+      nodesReady: acc.nodesReady + r.nodes_ready,
+      nodesTotal: acc.nodesTotal + r.nodes_total,
+      gpusAllocated: acc.gpusAllocated + r.devices_allocated,
+      gpusTotal: acc.gpusTotal + r.devices_total,
+    }),
+    { nodesReady: 0, nodesTotal: 0, gpusAllocated: 0, gpusTotal: 0 }
+  )
 
   const set = (key: "phase" | "region") => (value: string) =>
     navigate({
@@ -70,10 +85,22 @@ export function ClustersPage() {
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <StatCard label="Clusters" value={String(clusters.length)} />
-          {/* TODO-API node ready/total is not on the clusters list; mocked. */}
-          <StatCard label="Nodes ready" value="116/128" />
-          {/* TODO-API GPU allocation totals are not on the clusters list; mocked. */}
-          <StatCard label="GPUs allocated" value="642/992" />
+          <StatCard
+            label="Nodes ready"
+            value={
+              rollups.isLoading
+                ? "—"
+                : `${fleet.nodesReady}/${fleet.nodesTotal}`
+            }
+          />
+          <StatCard
+            label="GPUs allocated"
+            value={
+              rollups.isLoading
+                ? "—"
+                : `${fleet.gpusAllocated}/${fleet.gpusTotal}`
+            }
+          />
           <StatCard
             label="Needs attention"
             value={String(needsAttention)}
@@ -122,6 +149,7 @@ export function ClustersPage() {
               <ClusterCard
                 key={cluster.id}
                 cluster={cluster}
+                rollup={rollups.byCluster[cluster.id]}
                 onEdit={() => setEditing(cluster)}
                 onDelete={() => setDeleting(cluster)}
               />

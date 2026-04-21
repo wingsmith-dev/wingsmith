@@ -12,11 +12,24 @@ import { useProjectOptions } from "@/modules/binding/queries"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatError, shortenId } from "@/lib/format"
-import { useDeleteEndpoint, useEndpoints } from "@/modules/demand/queries"
-import type { Endpoint } from "@/modules/demand/types"
+import {
+  useArtifactOptions,
+  useDeleteEndpoint,
+  useDeploymentOptions,
+  useEndpoints,
+  useRecipeOptions,
+  useWorkloadOptions,
+} from "@/modules/demand/queries"
+import type {
+  Artifact,
+  Deployment,
+  Endpoint,
+  Recipe,
+  Workload,
+} from "@/modules/demand/types"
 import type { MetricSeriesPoint } from "@/modules/metrics/types"
 import { EndpointForm } from "./EndpointForm"
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { IconArrowUpRight } from "@tabler/icons-react"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
@@ -33,10 +46,6 @@ function seed(id: string): number {
   return Math.abs(hash)
 }
 
-function pick<T>(id: string, salt: number, options: readonly T[]): T {
-  return options[(seed(id) + salt) % options.length]
-}
-
 function trail(values: number[]): MetricSeriesPoint[] {
   return values.map((value, at) => ({ at, value }))
 }
@@ -49,8 +58,6 @@ function mockTrail(id: string, salt: number): MetricSeriesPoint[] {
   )
 }
 
-const REGIONS = ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"] as const
-const QUANTIZATIONS = ["fp8 · awq", "fp16", "int8", "fp8"] as const
 const AUTH_LABELS: Record<string, string> = {
   none: "public",
   api_key: "api key",
@@ -156,9 +163,78 @@ function StatTile({
   )
 }
 
+/** `fp8 · awq` from a recipe's quantization and dtype, or null if neither is set. */
+function quantLabel(recipe?: Recipe): string | null {
+  const parts = [recipe?.quantization, recipe?.dtype].filter(
+    (p): p is string => Boolean(p)
+  )
+  return parts.length > 0 ? parts.join(" · ") : null
+}
+
+/**
+ * What an endpoint's primary target resolves to across the object graph the
+ * endpoint does not carry — deployment → workload → recipe → artifact — plus the
+ * regions its targets land in, read off the workload's per-cluster deployments.
+ */
+interface ResolvedEndpoint {
+  workload?: Workload
+  recipe?: Recipe
+  artifact?: Artifact
+  regions: string[]
+}
+
+/**
+ * Builds a resolver over drained option lists. A sparse payload or an un-drained
+ * list leaves a field undefined and the cell falls back to a dash rather than
+ * throwing.
+ */
+function makeResolver(
+  deployments: Deployment[],
+  workloads: Workload[],
+  recipes: Recipe[],
+  artifacts: Artifact[]
+): (endpoint: Endpoint) => ResolvedEndpoint {
+  const deploymentById = new Map(deployments.map((d) => [d.id, d]))
+  const workloadById = new Map(workloads.map((w) => [w.id, w]))
+  const recipeById = new Map(recipes.map((r) => [r.id, r]))
+  const artifactById = new Map(artifacts.map((a) => [a.id, a]))
+
+  return (endpoint: Endpoint) => {
+    const targets = endpoint.targets ?? []
+    const primary = targets.find((t) => t.role === "primary") ?? targets[0]
+    const deployment = primary
+      ? deploymentById.get(primary.deployment_id)
+      : undefined
+    const workload = deployment?.workload_id
+      ? workloadById.get(deployment.workload_id)
+      : undefined
+    const recipe = workload?.recipe_id
+      ? recipeById.get(workload.recipe_id)
+      : undefined
+    const artifact = recipe?.artifact_id
+      ? artifactById.get(recipe.artifact_id)
+      : undefined
+
+    const regions = new Set<string>()
+    for (const target of targets) {
+      const dep = deploymentById.get(target.deployment_id)
+      const wl = dep?.workload_id
+        ? workloadById.get(dep.workload_id)
+        : undefined
+      const region = wl?.deployments.find(
+        (d) => d.id === target.deployment_id
+      )?.region
+      if (region) regions.add(region)
+    }
+
+    return { workload, recipe, artifact, regions: [...regions] }
+  }
+}
+
 function columns(
   onEdit: (endpoint: Endpoint) => void,
-  onDelete: (endpoint: Endpoint) => void
+  onDelete: (endpoint: Endpoint) => void,
+  resolve: (endpoint: Endpoint) => ResolvedEndpoint
 ): Column<Endpoint>[] {
   return [
     {
@@ -214,29 +290,46 @@ function columns(
       key: "workload",
       header: "Workload",
       secondary: true,
-      cell: (endpoint) => (
-        // TODO-API the backing workload is reached through a target's
-        // deployment, not carried on the endpoint; a plausible name is mocked.
-        <span className="inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground">
-          {endpoint.name}-svc
-          <IconArrowUpRight className="size-3 text-muted-foreground/50" />
-        </span>
-      ),
+      cell: (endpoint) => {
+        const { workload } = resolve(endpoint)
+        if (!workload) return <Dash>{null}</Dash>
+        return (
+          <Link
+            to="/workloads/$workloadId"
+            params={{ workloadId: workload.id }}
+            className="inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground hover:underline"
+          >
+            {workload.name}
+            <IconArrowUpRight className="size-3 text-muted-foreground/50" />
+          </Link>
+        )
+      },
     },
     {
       key: "model",
       header: "Model",
       secondary: true,
-      cell: (endpoint) => (
-        // TODO-API the served model is a recipe/artifact fact reached through
-        // the deployment, not on the endpoint; mocked for the designed column.
-        <div className="flex flex-col gap-0.5">
-          <span className="text-xs">{endpoint.name}-model</span>
-          <span className="font-mono text-2xs text-muted-foreground/60">
-            {pick(endpoint.id, 3, QUANTIZATIONS)}
-          </span>
-        </div>
-      ),
+      cell: (endpoint) => {
+        const { artifact, recipe } = resolve(endpoint)
+        if (!artifact) return <Dash>{null}</Dash>
+        const quant = quantLabel(recipe)
+        return (
+          <div className="flex flex-col gap-0.5">
+            <Link
+              to="/artifacts/$artifactId"
+              params={{ artifactId: artifact.id }}
+              className="text-xs hover:underline"
+            >
+              {artifact.name}
+            </Link>
+            {quant && (
+              <span className="font-mono text-2xs text-muted-foreground/60">
+                {quant}
+              </span>
+            )}
+          </div>
+        )
+      },
     },
     {
       key: "traffic",
@@ -305,13 +398,15 @@ function columns(
       key: "region",
       header: "Region",
       secondary: true,
-      cell: (endpoint) => (
-        // TODO-API region affinity is derived from a target's deployment, not
-        // on the endpoint; mocked so the column reads.
-        <span className="font-mono text-2xs text-muted-foreground">
-          {pick(endpoint.id, 5, REGIONS)}
-        </span>
-      ),
+      cell: (endpoint) => {
+        const { regions } = resolve(endpoint)
+        if (regions.length === 0) return <Dash>{null}</Dash>
+        return (
+          <span className="font-mono text-2xs text-muted-foreground">
+            {regions.join(", ")}
+          </span>
+        )
+      },
     },
     {
       key: "auth",
@@ -354,10 +449,25 @@ export function EndpointsPage() {
   const navigate = useNavigate({ from: "/endpoints" })
   const { data: projects } = useProjectOptions()
   const list = useEndpoints({ project: search.project })
+  const { data: deploymentOptions } = useDeploymentOptions()
+  const { data: workloadOptions } = useWorkloadOptions()
+  const { data: recipeOptions } = useRecipeOptions()
+  const { data: artifactOptions } = useArtifactOptions()
   const remove = useDeleteEndpoint()
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Endpoint | undefined>()
   const [doomed, setDoomed] = useState<Endpoint | undefined>()
+
+  const resolve = useMemo(
+    () =>
+      makeResolver(
+        deploymentOptions ?? [],
+        workloadOptions ?? [],
+        recipeOptions ?? [],
+        artifactOptions ?? []
+      ),
+    [deploymentOptions, workloadOptions, recipeOptions, artifactOptions]
+  )
 
   const endpoints = list.items ?? []
   const total = endpoints.length
@@ -413,7 +523,7 @@ export function EndpointsPage() {
         </div>
 
         <DataTable
-          columns={columns(setEditing, setDoomed)}
+          columns={columns(setEditing, setDoomed, resolve)}
           list={list}
           rowKey={(endpoint) => endpoint.id}
           empty="No endpoints published."

@@ -23,6 +23,19 @@ export function workloadPhaseTone(phase: string): StatusTone {
   return WORKLOAD_PHASE_TONES[phase] ?? "warn"
 }
 
+const RECIPE_LIFECYCLE_TONES: Record<string, StatusTone> = {
+  published: "ok",
+  draft: "neutral",
+  deprecated: "warn",
+}
+
+/** The tone for a recipe's lifecycle: published | draft | deprecated. */
+export function recipeLifecycleTone(lifecycle: string): StatusTone {
+  return RECIPE_LIFECYCLE_TONES[lifecycle] ?? "neutral"
+}
+
+export const RECIPE_LIFECYCLES = ["published", "draft", "deprecated"] as const
+
 export const WORKLOAD_PHASES = ["pending", "admitted", "placed", "running"]
 export const WORKLOAD_KINDS = ["service", "task", "gang"]
 export const WORKLOAD_STRATEGIES = ["pack", "spread"]

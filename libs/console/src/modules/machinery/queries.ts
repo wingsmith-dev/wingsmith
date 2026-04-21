@@ -9,6 +9,7 @@ import {
   fetchEvents,
   fetchOperation,
   fetchOperations,
+  fetchOperationsSummary,
   type AllocationFilters,
   type ComponentFilters,
   type EventFilters,
@@ -23,6 +24,18 @@ export function useOperations(filters: OperationFilters = {}) {
   return useCursorList(["operations", filters], (cursor) =>
     fetchOperations(filters, cursor)
   )
+}
+
+/**
+ * The phase rollup and 24h terminal counters, polled on the same cadence as an
+ * open operation so the tiles keep pace with a drain or roll in flight.
+ */
+export function useOperationsSummary(cluster?: string) {
+  return useQuery({
+    queryKey: ["operations", "summary", cluster ?? null],
+    queryFn: () => fetchOperationsSummary(cluster),
+    refetchInterval: POLL_MS,
+  })
 }
 
 /**

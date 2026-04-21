@@ -9,6 +9,7 @@ import {
   fetchDevices,
   fetchNode,
   fetchNodes,
+  fetchNodesSummary,
   fetchPool,
   fetchPools,
   fetchTopologyDomains,
@@ -25,6 +26,14 @@ export function useNodes(filters: NodeFilters = {}) {
   return useCursorList(["nodes", filters], (cursor) =>
     fetchNodes(filters, cursor)
   )
+}
+
+/** Fleet-wide node rollup for the list header — true totals, not a page. */
+export function useNodesSummary() {
+  return useQuery({
+    queryKey: ["nodes", "summary"],
+    queryFn: () => fetchNodesSummary(),
+  })
 }
 
 export function useNode(ref: string) {

@@ -4,7 +4,7 @@ import { Card } from "@/components/ui/card"
 import { formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { clusterLabel } from "@/modules/clusters/display"
-import type { Cluster } from "@/modules/clusters/types"
+import type { Cluster, ClusterRollup } from "@/modules/clusters/types"
 import { Link } from "@tanstack/react-router"
 import { IconActivity, IconAlertTriangle } from "@tabler/icons-react"
 
@@ -38,13 +38,6 @@ function clusterHealth(cluster: Cluster): ClusterHealth {
   return "healthy"
 }
 
-/** Deterministic pseudo-capacity so mocked cards differ until the API lands. */
-function seed(id: string): number {
-  let n = 0
-  for (const ch of id) n = (n * 31 + ch.charCodeAt(0)) % 997
-  return n
-}
-
 /**
  * Phase and reachability sit next to each other and are never folded into one
  * badge. A cluster that is `active` and unreachable is a network problem; a
@@ -53,10 +46,12 @@ function seed(id: string): number {
  */
 export function ClusterCard({
   cluster,
+  rollup,
   onEdit,
   onDelete,
 }: {
   cluster: Cluster
+  rollup: ClusterRollup | undefined
   onEdit: () => void
   onDelete: () => void
 }) {
@@ -67,18 +62,19 @@ export function ClusterCard({
     .filter(Boolean)
     .join(" · ")
 
-  // TODO-API cluster GPU allocation is not on the Cluster object; mocked.
-  const gpuTotal = 32 + (seed(cluster.id) % 8) * 32
-  const gpuAllocated = health === "down" ? null : Math.round(gpuTotal * (0.2 + (seed(cluster.name) % 70) / 100))
-  const gpuPct = gpuAllocated != null ? Math.round((gpuAllocated / gpuTotal) * 100) : 0
+  const gpuTotal = rollup?.devices_total ?? 0
+  const gpuAllocated = rollup ? rollup.devices_allocated : null
+  const gpuPct =
+    gpuAllocated != null && gpuTotal > 0
+      ? Math.round((gpuAllocated / gpuTotal) * 100)
+      : 0
   const fillTone =
     gpuPct >= 90 ? "bg-amber-500" : gpuPct <= 30 ? "bg-muted-foreground/70" : "bg-primary"
 
-  // TODO-API node ready/total, deployment and pool counts are not on the Cluster object; mocked.
-  const nodeTotal = 4 + (seed(cluster.id) % 8) * 2
-  const nodeReady = health === "degraded" ? nodeTotal - 3 : health === "down" ? null : nodeTotal
-  const deployments = health === "provisioning" ? null : 1 + (seed(cluster.name) % 9)
-  const pools = 1 + (seed(cluster.region) % 4)
+  const nodeTotal = rollup?.nodes_total ?? 0
+  const nodeReady = rollup ? rollup.nodes_ready : null
+  const deployments = rollup ? rollup.deployment_count : null
+  const pools = rollup ? rollup.pool_count : null
 
   const noteTone = health === "down" ? "down" : "warn"
   const note =
@@ -170,7 +166,11 @@ export function ClusterCard({
             value={deployments != null ? String(deployments) : "—"}
             muted={deployments == null}
           />
-          <Stat label="Pools" value={String(pools)} />
+          <Stat
+            label="Pools"
+            value={pools != null ? String(pools) : "—"}
+            muted={pools == null}
+          />
         </div>
       </div>
     </Card>
