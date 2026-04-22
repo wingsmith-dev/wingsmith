@@ -292,6 +292,14 @@ class ClusterService:
         Helm pulls the chart from its own registry, so the instructions work
         even where the plane's ingress is not reachable from the operator's laptop.
 
+        The command names `--kube-context` after the cluster rather than leaving
+        the target implicit. Omitted, helm installs a tier-2 — CRDs, webhooks, a
+        privileged DaemonSet — into whatever `kubectl` last pointed at, which is
+        as likely to be the plane's own cluster as the intended one, and nothing
+        about the output says which it was. The cluster's name is a guess at the
+        local context alias, but a wrong guess is `context "…" does not exist`
+        before anything is applied, which is the failure worth having.
+
         `enrolment_token` is the freshly minted plaintext (mint only); it is
         folded into the values so the chart creates the operator Secret, and is
         never returned again. `enrolment_token_set` reflects the stored hash.
@@ -307,6 +315,7 @@ class ClusterService:
         if version:
             parts.append(f"--version {version}")
         parts += [
+            f"--kube-context {cluster.name}",
             "--namespace hangar-system --create-namespace",
             "-f values.yaml",
         ]

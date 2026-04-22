@@ -96,9 +96,11 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
           </CardHeader>
           <CardContent className="space-y-5">
             <p className="text-2xs leading-relaxed text-muted-foreground/60">
-              Run these against the target cluster — wherever your{" "}
-              <code>kubectl</code> is pointed. Helm pulls the chart from its own
-              registry, so this works even where the plane is unreachable.
+              The install names its target with <code>--kube-context</code>, so
+              it does not depend on where your <code>kubectl</code> is pointed —
+              adjust it if your local context is named something else. Helm pulls
+              the chart from its own registry, so this works even where the plane
+              is unreachable.
             </p>
 
             {setup.isLoading && (
