@@ -2,7 +2,6 @@ import { api, type ListResponse } from "@/lib/api"
 import type {
   Cluster,
   ClusterCreateRequest,
-  ClusterHeadroom,
   ClusterRollup,
   ClusterServingRequest,
   ClusterSetup,
@@ -37,13 +36,6 @@ export function fetchClusterRollups(
 export function fetchClusterRollup(ref: string): Promise<ClusterRollup> {
   return api.get<ClusterRollup>(
     `/clusters/${encodeURIComponent(ref)}/rollup`
-  )
-}
-
-/** Free capacity and how it is shaped, for one cluster. */
-export function fetchClusterHeadroom(ref: string): Promise<ClusterHeadroom> {
-  return api.get<ClusterHeadroom>(
-    `/clusters/${encodeURIComponent(ref)}/headroom`
   )
 }
 

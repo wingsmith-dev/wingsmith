@@ -10,6 +10,7 @@ import { formatError } from "@/lib/format"
 import { CLUSTER_PHASES } from "@/modules/clusters/display"
 import { useCreateCluster, useUpdateCluster } from "@/modules/clusters/queries"
 import type { Cluster, ClusterPhase } from "@/modules/clusters/types"
+import { useNavigate } from "@tanstack/react-router"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -42,6 +43,7 @@ export function ClusterForm({
   )
   const [capabilitiesValid, setCapabilitiesValid] = useState(true)
 
+  const navigate = useNavigate()
   const create = useCreateCluster()
   const update = useUpdateCluster()
   const pending = create.isPending || update.isPending
@@ -77,10 +79,14 @@ export function ClusterForm({
       {
         onSuccess: (next) => {
           onOpenChange(false)
-          toast.success("Cluster declared", { description: next.id })
+          toast.success("Cluster registered", { description: next.id })
+          navigate({
+            to: "/clusters/$clusterId",
+            params: { clusterId: next.id },
+          })
         },
         onError: (error) =>
-          toast.error(formatError(error, "Could not create cluster")),
+          toast.error(formatError(error, "Could not register cluster")),
       }
     )
   }
@@ -90,11 +96,11 @@ export function ClusterForm({
       icon="cluster"
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? "Edit cluster" : "New cluster"}
+      title={editing ? "Edit cluster" : "Register cluster"}
       description="Declared enrolment. Reachability and sync are observed and cannot be set here."
       error={create.error ?? update.error}
       pending={pending}
-      submitLabel={editing ? "Save" : "Create cluster"}
+      submitLabel={editing ? "Save" : "Register"}
       disabled={
         !capabilitiesValid || region === "" || (!editing && name === "")
       }

@@ -17,7 +17,6 @@ import {
 import { deriveClusterActionables } from "@/modules/overview/summary"
 import type { Deployment } from "@/modules/demand/types"
 import type { Pool } from "@/modules/supply/types"
-import { IconCheck, IconX } from "@tabler/icons-react"
 import { Link } from "@tanstack/react-router"
 
 import { Actionables, type SourceFailure } from "./Actionables"
@@ -81,7 +80,11 @@ function Td({
   className,
 }: React.PropsWithChildren<{ className?: string }>) {
   return (
-    <td className={"px-3 py-2.5 align-middle whitespace-nowrap " + (className ?? "")}>
+    <td
+      className={
+        "px-3 py-2.5 align-middle whitespace-nowrap " + (className ?? "")
+      }
+    >
       {children}
     </td>
   )
@@ -182,10 +185,7 @@ function DeploymentsTable({
   recipeName: (workloadId: string) => string | null
 }) {
   const rows = deployments.data ?? []
-  const replicas = rows.reduce(
-    (sum, d) => sum + d.replicas.ready,
-    0
-  )
+  const replicas = rows.reduce((sum, d) => sum + d.replicas.ready, 0)
   const desired = rows.reduce((sum, d) => sum + d.desired_replicas, 0)
   return (
     <Section
@@ -291,7 +291,7 @@ function HeadroomPanel({
     {
       label: "whole nodes free",
       value: headroom ? String(wholeNodes) : "—",
-      tone: headroom && wholeNodes === 0 ? "warn" : undefined,
+      tone: headroom && total > 0 && wholeNodes === 0 ? "warn" : undefined,
     },
   ]
   return (
@@ -320,99 +320,6 @@ function HeadroomPanel({
         ))}
       </div>
     </Card>
-  )
-}
-
-interface FitRow {
-  recipe: string
-  shape: string
-  pool: string
-  fits: number
-  limitedBy: string | null
-}
-
-/**
- * Which current recipe shapes fit the free capacity. Placement fit is not yet
- * surfaced by the plane, so the rows below are illustrative.
- */
-function WhatFitsPanel() {
-  // TODO-API placement fit (recipe shape vs free capacity) is not exposed yet
-  const rows: FitRow[] = [
-    {
-      recipe: "vllm-h100-tp4",
-      shape: "4× H100 · 320 GB",
-      pool: "h100-sxm-8x",
-      fits: 0,
-      limitedBy: "largest free block is 1 GPU",
-    },
-    {
-      recipe: "sglang-a100-tp2",
-      shape: "2× A100 · 160 GB",
-      pool: "a100-sxm-8x",
-      fits: 3,
-      limitedBy: null,
-    },
-    {
-      recipe: "tei-l40s-1x",
-      shape: "1× L40S · 48 GB",
-      pool: "l40s-4x",
-      fits: 8,
-      limitedBy: null,
-    },
-  ]
-  return (
-    <Section
-      title="What fits here"
-      description="current recipe shapes against free capacity"
-      isLoading={false}
-      error={null}
-      errorMessage="Failed to load fit"
-    >
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="border-b">
-            <Th>Recipe</Th>
-            <Th>Shape</Th>
-            <Th>Pool</Th>
-            <Th>Fits</Th>
-            <Th>Limited by</Th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.recipe} className="border-b last:border-0">
-              <Td>{r.recipe}</Td>
-              <Td className="font-mono text-2xs text-muted-foreground">
-                {r.shape}
-              </Td>
-              <Td className="font-mono text-2xs text-muted-foreground">
-                {r.pool}
-              </Td>
-              <Td>
-                <span
-                  className={
-                    "inline-flex items-center gap-1 font-mono text-2xs " +
-                    (r.fits > 0
-                      ? "text-emerald-500"
-                      : "text-muted-foreground/50")
-                  }
-                >
-                  {r.fits > 0 ? (
-                    <IconCheck className="size-3.5" />
-                  ) : (
-                    <IconX className="size-3.5" />
-                  )}
-                  {r.fits} {r.fits === 1 ? "replica" : "replicas"}
-                </span>
-              </Td>
-              <Td className="text-2xs text-muted-foreground">
-                {r.limitedBy ?? <span className="text-muted-foreground/40">—</span>}
-              </Td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Section>
   )
 }
 
@@ -537,7 +444,6 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
             deployments={deployments}
             recipeName={recipeName}
           />
-          <WhatFitsPanel />
         </div>
 
         <div className="space-y-4">

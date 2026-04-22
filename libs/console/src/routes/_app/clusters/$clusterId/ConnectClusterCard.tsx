@@ -106,16 +106,16 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                     <>
                       <p className="text-2xs leading-relaxed text-amber-500">
                         Shown once — copy it now. It is folded into the
-                        <code> values.yaml</code> below, so the chart creates the
-                        operator secret; you won't see it again.
+                        <code> values.yaml</code> below, so the chart creates
+                        the operator secret; you won't see it again.
                       </p>
                       <CopyableBlock value={freshToken} />
                     </>
                   ) : view.enrolment_token_set ? (
                     <div className="space-y-1.5">
                       <p className="text-2xs leading-relaxed text-muted-foreground/50">
-                        A token was generated for this cluster and shown once. If
-                        you didn't capture it, rotate to mint a new one — the
+                        A token was generated for this cluster and shown once.
+                        If you didn't capture it, rotate to mint a new one — the
                         previous token stops working immediately.
                       </p>
                       <Button
@@ -130,8 +130,9 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                   ) : (
                     <div className="space-y-1.5">
                       <p className="text-2xs leading-relaxed text-muted-foreground/50">
-                        Generate the per-cluster token the operator authenticates
-                        with. It is shown once and baked into the values below.
+                        Generate the per-cluster token the operator
+                        authenticates with. It is shown once and baked into the
+                        values below.
                       </p>
                       <Button
                         size="sm"
@@ -167,9 +168,10 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                   </div>
                   <p className="text-2xs leading-relaxed text-muted-foreground/50">
                     The top block is filled in{" "}
-                    {freshToken ? "— identity and enrolment token" : ""}. Fill in
-                    the blanks below the divider with this cluster's own facts —
-                    pool labels, the RWX storage class, and the HF token.
+                    {freshToken ? "— identity and enrolment token" : ""}. Fill
+                    in the blanks below the divider with this cluster's own
+                    facts — pool labels, the RWX storage class, and the HF
+                    token.
                   </p>
                   <CopyableBlock value={view.values_yaml} />
                 </div>

@@ -5,7 +5,6 @@ import {
   createCluster,
   deleteCluster,
   fetchCluster,
-  fetchClusterHeadroom,
   fetchClusterRollup,
   fetchClusterRollups,
   fetchClusters,
@@ -53,14 +52,6 @@ export function useClusterRollup(ref: string) {
   return useQuery({
     queryKey: ["clusters", "rollup", ref],
     queryFn: () => fetchClusterRollup(ref),
-    enabled: !!ref,
-  })
-}
-
-export function useClusterHeadroom(ref: string) {
-  return useQuery({
-    queryKey: ["clusters", "headroom", ref],
-    queryFn: () => fetchClusterHeadroom(ref),
     enabled: !!ref,
   })
 }

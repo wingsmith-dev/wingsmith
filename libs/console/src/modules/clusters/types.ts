@@ -76,10 +76,11 @@ export interface Cluster {
 
 /**
  * Everything the register-cluster screen shows to make a cluster hangar-ready:
- * a `helm` install of the `cluster-setup` chart. `values_yaml` is the per-cluster
- * identity block, merged with a local values file. The enrolment token is shown
- * once when minted (`enrolment_token`, folded into `values_yaml`); a plain GET
- * carries none and `enrolment_token_set` says whether one already exists.
+ * a `helm` install of the `cluster-setup` chart. `values_yaml` is one editable
+ * file — plane-filled identity up top, a commented skeleton of the cluster's own
+ * infra facts below to fill in. The enrolment token is shown once when minted
+ * (`enrolment_token`, folded into `values_yaml`); a plain GET carries none and
+ * `enrolment_token_set` says whether one already exists.
  */
 export interface ClusterSetup {
   helm_command: string
