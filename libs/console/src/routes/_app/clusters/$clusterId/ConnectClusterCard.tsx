@@ -52,40 +52,49 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
   ]
 
   return (
-    <Card>
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Connect this cluster</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <ol className="space-y-3">
-          {steps.map((step) => (
-            <li key={step.label} className="flex gap-3">
-              <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
-                {step.done ? (
-                  <IconCheck className="size-4 text-emerald-500" />
-                ) : (
-                  <StatusDot tone="neutral" />
-                )}
-              </span>
-              <div className="space-y-0.5">
-                <p
-                  className={cn(
-                    "font-mono text-xs",
-                    step.done && "text-muted-foreground line-through"
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">Connect this cluster</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ol className="space-y-3">
+            {steps.map((step) => (
+              <li key={step.label} className="flex gap-3">
+                <span className="mt-0.5 flex size-4 shrink-0 items-center justify-center">
+                  {step.done ? (
+                    <IconCheck className="size-4 text-emerald-500" />
+                  ) : (
+                    <StatusDot tone="neutral" />
                   )}
-                >
-                  {step.label}
-                </p>
-                <p className="text-2xs leading-relaxed text-muted-foreground/60">
-                  {step.note}
-                </p>
-              </div>
-            </li>
-          ))}
-        </ol>
+                </span>
+                <div className="space-y-0.5">
+                  <p
+                    className={cn(
+                      "font-mono text-xs",
+                      step.done && "text-muted-foreground line-through"
+                    )}
+                  >
+                    {step.label}
+                  </p>
+                  <p className="text-2xs leading-relaxed text-muted-foreground/60">
+                    {step.note}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
 
-        {!connected && (
-          <div className="space-y-4">
+      {!connected && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">
+              Install the cluster-setup chart
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
             <p className="text-2xs leading-relaxed text-muted-foreground/60">
               Run these against the target cluster — wherever your{" "}
               <code>kubectl</code> is pointed. Helm pulls the chart from its own
@@ -173,7 +182,7 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                     facts — pool labels, the RWX storage class, and the HF
                     token.
                   </p>
-                  <CopyableBlock value={view.values_yaml} />
+                  <CopyableBlock value={view.values_yaml} language="yaml" />
                 </div>
 
                 <div className="space-y-1.5">
@@ -184,10 +193,13 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                         The chart registry is private — log in first, with a
                         token that can pull it.
                       </p>
-                      <CopyableBlock value={view.registry_login} />
+                      <CopyableBlock
+                        value={view.registry_login}
+                        language="shell"
+                      />
                     </>
                   )}
-                  <CopyableBlock value={view.helm_command} />
+                  <CopyableBlock value={view.helm_command} language="shell" />
                 </div>
               </>
             )}
@@ -197,10 +209,10 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                 {formatError(setup.error, "Could not prepare setup")}
               </p>
             )}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          </CardContent>
+        </Card>
+      )}
+    </div>
   )
 }
 

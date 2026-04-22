@@ -230,15 +230,16 @@ export function ClusterDetailPage() {
 
         {cluster && stage && (
           <>
-            <StatusRow cluster={cluster} stage={stage} />
-            <StageBanner stage={stage} />
+            {stage !== "onboarding" && (
+              <>
+                <StatusRow cluster={cluster} stage={stage} />
+                <StageBanner stage={stage} />
+              </>
+            )}
 
             {stage === "onboarding" && (
-              <div className="grid gap-4 lg:grid-cols-3">
-                <div className="lg:col-span-2">
-                  <ConnectClusterCard cluster={cluster} />
-                </div>
-                <ClusterIdentity cluster={cluster} />
+              <div className="mx-auto w-full max-w-3xl">
+                <ConnectClusterCard cluster={cluster} />
               </div>
             )}
 

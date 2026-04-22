@@ -76,16 +76,100 @@ export function VersionPair({
   )
 }
 
+type BlockLanguage = "yaml" | "shell"
+
+/**
+ * A tiny, dependency-free highlighter for the two languages the console shows
+ * in blocks: `values.yaml` and `helm`/`kubectl` commands. Deliberately not a
+ * general parser — it colours the few token classes that make these snippets
+ * readable (comments, keys, values; commands, flags) and leaves the rest plain.
+ */
+function highlightYaml(line: string, key: number): React.ReactNode {
+  const trimmed = line.trimStart()
+  if (trimmed === "") return line
+  if (trimmed.startsWith("#")) {
+    return (
+      <span key={key} className="text-muted-foreground/50 italic">
+        {line}
+      </span>
+    )
+  }
+  const match = line.match(/^(\s*-?\s*)([\w.\-/]+)(:)(.*)$/)
+  if (!match) return line
+  const [, indent, name, colon, rest] = match
+  // Split a trailing ` # comment` off the value so it colours separately.
+  const commentAt = rest.indexOf(" #")
+  const val = commentAt >= 0 ? rest.slice(0, commentAt) : rest
+  const comment = commentAt >= 0 ? rest.slice(commentAt) : ""
+  return (
+    <span key={key}>
+      {indent}
+      <span className="text-sky-600 dark:text-sky-400">{name}</span>
+      {colon}
+      {val && <span className="text-emerald-600 dark:text-emerald-400">{val}</span>}
+      {comment && (
+        <span className="text-muted-foreground/50 italic">{comment}</span>
+      )}
+    </span>
+  )
+}
+
+function highlightShell(line: string, key: number): React.ReactNode {
+  const parts = line.split(/(\s+)/)
+  let sawCommand = false
+  return (
+    <span key={key}>
+      {parts.map((part, i) => {
+        if (/^\s+$/.test(part) || part === "") return part
+        if (part.startsWith("-")) {
+          return (
+            <span key={i} className="text-amber-600 dark:text-amber-400">
+              {part}
+            </span>
+          )
+        }
+        if (!sawCommand) {
+          sawCommand = true
+          return (
+            <span
+              key={i}
+              className="font-medium text-violet-600 dark:text-violet-400"
+            >
+              {part}
+            </span>
+          )
+        }
+        return part
+      })}
+    </span>
+  )
+}
+
+function highlight(value: string, language: BlockLanguage): React.ReactNode {
+  const fn = language === "yaml" ? highlightYaml : highlightShell
+  const lines = value.split("\n")
+  return lines.map((line, i) => (
+    <React.Fragment key={i}>
+      {fn(line, i)}
+      {i < lines.length - 1 ? "\n" : null}
+    </React.Fragment>
+  ))
+}
+
 /**
  * A multi-line command block with a copy button. Unlike {@link CopyableId} the
  * whole snippet is always shown; the button copies it verbatim so an operator
  * can paste a `kubectl` or `just` line without hand-retyping a cluster name.
+ * Pass `language` to colour a `values.yaml` or a shell command; omit it for
+ * plain text (a token, an id).
  */
 export function CopyableBlock({
   value,
+  language,
   className,
 }: {
   value: string
+  language?: BlockLanguage
   className?: string
 }) {
   const [copied, setCopied] = React.useState(false)
@@ -106,7 +190,7 @@ export function CopyableBlock({
   return (
     <div className={cn("group/block relative", className)}>
       <pre className="overflow-x-auto rounded-md bg-muted/50 p-3 pr-9 font-mono text-2xs leading-relaxed ring-1 ring-foreground/10">
-        {value}
+        {language ? highlight(value, language) : value}
       </pre>
       <button
         type="button"
