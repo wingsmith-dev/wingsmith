@@ -164,19 +164,24 @@ def _registry_host(chart_ref: str) -> str:
 def _setup_values(
     cluster_name: str, hub_url: str, operator_image: str, enrolment_token: str | None = None
 ) -> str:
-    """The per-cluster identity block for the chart, as YAML text.
+    """The full editable `values.yaml` for the chart, as YAML text.
 
-    Identity only — the cluster's infra facts (pool labels, storage class,
-    serving host) live in the local values file this is merged with. The
-    operator image is pinned from `OPERATOR_IMAGE` when set so an install
-    records what it ran; unset leaves the chart's own appVersion.
+    The top block is filled by the plane — cluster identity, the pinned
+    operator image, and (at mint only) the enrolment token. Below a divider is
+    the cluster's own infra facts left blank with a one-line comment each: pool
+    labels, the RWX storage class, the HF token, serving. The operator
+    downloads this one file, edits the blanks, and runs helm against it — no
+    separate local values file and no need to know the chart's schema.
 
-    When `enrolment_token` is given (only at mint time), it is folded in as
-    `enrolmentToken.value` so the chart creates the operator Secret instead of
-    referencing one made out of band. It is never persisted, so a later render
-    omits it and the chart falls back to `enrolmentToken.existingSecret`.
+    The operator image is pinned from `OPERATOR_IMAGE` when set so an install
+    records what it ran; unset leaves the chart's own appVersion. When
+    `enrolment_token` is given (mint only) it is folded in as
+    `enrolmentToken.value` so the chart creates the operator Secret; it is never
+    persisted, so a later render omits it and the chart falls back to
+    `enrolmentToken.existingSecret`.
     """
     lines = [
+        "# Filled by the plane — cluster identity. Leave as-is.",
         "cluster:",
         f"  id: {cluster_name}",
         f"  hubUrl: {hub_url}",
@@ -192,9 +197,40 @@ def _setup_values(
             ]
     if enrolment_token:
         lines += [
+            "",
+            "# Minted for this cluster and shown once. The chart creates the operator Secret from it.",
             "enrolmentToken:",
             f"  value: {enrolment_token}",
         ]
+    lines += [
+        "",
+        "# ── Edit below: this cluster's own infra facts ─────────────────────────",
+        "",
+        "# How this cluster labels its node pools. `cacheValue` must name a pool that",
+        "# exists, or the model-prefetch jobs stay Pending.",
+        "pools:",
+        '  labelKey: ""     # e.g. example.com/pool',
+        '  gpuValue: ""     # the pool holding the GPU nodes, e.g. gpu',
+        '  cacheValue: ""   # the pool prefetch jobs run on, e.g. system',
+        "",
+        "# The shared model-weight cache. Must be a ReadWriteMany class (a default",
+        "# class is usually RWO and breaks the shared mount) — e.g. an EFS-backed one.",
+        "modelCache:",
+        '  storageClass: ""   # e.g. efs-models',
+        "  accessMode: ReadWriteMany",
+        "  size: 500Gi",
+        "",
+        "# Hugging Face token for pulling model weights. The chart creates",
+        "# hf-token-secret in the dynamo namespace from this.",
+        "hfToken:",
+        "  create: true",
+        '  value: ""   # a Hugging Face token',
+        "",
+        "# Serving ingress. Leave disabled until a Dynamo frontend Service exists to",
+        "# point the IngressRoute at; the plane can render it later from ClusterServing.",
+        "serving:",
+        "  enabled: false",
+    ]
     return "\n".join(lines) + "\n"
 
 
@@ -243,11 +279,12 @@ class ClusterService:
     def _render_setup(self, cluster: Cluster, host: str, enrolment_token: str | None) -> ClusterSetupSchema:
         """Builds the setup payload for a cluster, with or without a fresh token.
 
-        The `values.yaml` is identity only — cluster id, hub URL, operator image —
-        meant to be merged with a local values file holding the cluster's own
-        infra facts (pool labels, storage class, serving host). Helm pulls the
-        chart from its own registry, so the instructions work even where the
-        plane's ingress is not reachable from the operator's laptop.
+        The `values.yaml` carries the plane-filled identity — cluster id, hub
+        URL, operator image — plus a commented skeleton of the cluster's own
+        infra facts (pool labels, storage class, HF token, serving) for the
+        operator to edit in place. It is one downloadable file, not a merge.
+        Helm pulls the chart from its own registry, so the instructions work
+        even where the plane's ingress is not reachable from the operator's laptop.
 
         `enrolment_token` is the freshly minted plaintext (mint only); it is
         folded into the values so the chart creates the operator Secret, and is
@@ -265,7 +302,7 @@ class ClusterService:
             parts.append(f"--version {version}")
         parts += [
             "--namespace hangar-system --create-namespace",
-            "-f values.yaml -f values.local.yaml",
+            "-f values.yaml",
         ]
         helm_command = " \\\n  ".join(parts)
 

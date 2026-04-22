@@ -56,6 +56,17 @@ def test_setup_values_fold_in_the_enrolment_token_only_when_given():
     assert "value: hgro1.secret" in with_token
 
 
+def test_setup_values_carry_the_editable_infra_skeleton():
+    out = _setup_values("cid", "wss://h/v1/hub/sync", "")
+    assert "pools:" in out
+    assert "labelKey:" in out
+    assert "modelCache:" in out
+    assert "storageClass:" in out
+    assert "hfToken:" in out
+    assert "serving:" in out
+    assert "Edit below" in out
+
+
 def test_registry_host_from_oci_chart_ref():
     assert _registry_host("oci://ghcr.io/hangar-dev/charts/cluster-setup") == "ghcr.io"
 

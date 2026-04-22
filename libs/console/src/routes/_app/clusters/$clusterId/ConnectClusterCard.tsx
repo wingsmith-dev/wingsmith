@@ -152,14 +152,24 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                 </div>
 
                 <div className="space-y-1.5">
-                  <p className="text-2xs font-medium">
-                    2. Save this as <code>values.yaml</code>
-                  </p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-2xs font-medium">
+                      2. Save as <code>values.yaml</code> and edit
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 px-1.5 text-2xs"
+                      onClick={() => downloadValues(view.values_yaml)}
+                    >
+                      Download
+                    </Button>
+                  </div>
                   <p className="text-2xs leading-relaxed text-muted-foreground/50">
-                    Cluster identity{freshToken ? " and enrolment token" : ""}.
-                    Merge it with a local <code>values.local.yaml</code> holding
-                    this cluster's own facts — pool labels, storage class, the HF
-                    token, serving host.
+                    The top block is filled in{" "}
+                    {freshToken ? "— identity and enrolment token" : ""}. Fill in
+                    the blanks below the divider with this cluster's own facts —
+                    pool labels, the RWX storage class, and the HF token.
                   </p>
                   <CopyableBlock value={view.values_yaml} />
                 </div>
@@ -190,4 +200,14 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
       </CardContent>
     </Card>
   )
+}
+
+/** Save the rendered values as a `values.yaml` file the operator edits and runs helm against. */
+function downloadValues(yaml: string) {
+  const url = URL.createObjectURL(new Blob([yaml], { type: "text/yaml" }))
+  const a = document.createElement("a")
+  a.href = url
+  a.download = "values.yaml"
+  a.click()
+  URL.revokeObjectURL(url)
 }
