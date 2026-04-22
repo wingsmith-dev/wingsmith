@@ -77,9 +77,13 @@ function StatusRow({
   )
 }
 
-/** A one-line explainer shown for every stage except the unremarkable `live`. */
+/**
+ * A one-line explainer shown for every stage except the unremarkable `live` and
+ * `onboarding`, where {@link ConnectClusterCard} says the same thing at length
+ * and directly above the commands that act on it.
+ */
 function StageBanner({ stage }: { stage: ClusterStage }) {
-  if (stage === "live") return null
+  if (stage === "live" || stage === "onboarding") return null
   const meta = CLUSTER_STAGE_META[stage]
   const tone =
     meta.tone === "warn"
@@ -230,12 +234,8 @@ export function ClusterDetailPage() {
 
         {cluster && stage && (
           <>
-            {stage !== "onboarding" && (
-              <>
-                <StatusRow cluster={cluster} stage={stage} />
-                <StageBanner stage={stage} />
-              </>
-            )}
+            <StatusRow cluster={cluster} stage={stage} />
+            {stage !== "onboarding" && <StageBanner stage={stage} />}
 
             {stage === "onboarding" && (
               <div className="mx-auto w-full max-w-3xl">

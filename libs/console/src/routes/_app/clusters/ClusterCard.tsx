@@ -4,17 +4,28 @@ import { Card } from "@/components/ui/card"
 import { formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { clusterLabel } from "@/modules/clusters/display"
+import { clusterStage } from "@/modules/clusters/stage"
 import type { Cluster, ClusterRollup } from "@/modules/clusters/types"
 import { Link } from "@tanstack/react-router"
-import { IconActivity, IconAlertTriangle } from "@tabler/icons-react"
+import {
+  IconActivity,
+  IconAlertTriangle,
+  IconPlugConnected,
+} from "@tabler/icons-react"
 
-type ClusterHealth = "healthy" | "degraded" | "down" | "provisioning"
+type ClusterHealth =
+  | "healthy"
+  | "degraded"
+  | "down"
+  | "provisioning"
+  | "onboarding"
 
 const HEALTH_TONE: Record<ClusterHealth, StatusTone> = {
   healthy: "ok",
   degraded: "warn",
   down: "danger",
   provisioning: "neutral",
+  onboarding: "info",
 }
 
 const HEALTH_RING: Record<ClusterHealth, string> = {
@@ -22,6 +33,7 @@ const HEALTH_RING: Record<ClusterHealth, string> = {
   degraded: "ring-amber-500/30",
   down: "ring-destructive/35",
   provisioning: "ring-foreground/10",
+  onboarding: "ring-foreground/10",
 }
 
 /**
@@ -29,8 +41,15 @@ const HEALTH_RING: Record<ClusterHealth, string> = {
  * at-a-glance health, only for the card's dot and border. Phase and
  * reachability are still kept apart everywhere they carry a decision — a
  * disabled cluster is somebody's choice, an unreachable one is a network fault.
+ *
+ * `onboarding` is asked first, and from {@link clusterStage} so the card and the
+ * detail page cannot disagree. A cluster that has never connected also reports
+ * `reachable: false` — the plane has no sync row to say otherwise — so testing
+ * reachability first calls a cluster nobody has installed yet a fault, and
+ * offers to explain a last-known state that does not exist.
  */
-function clusterHealth(cluster: Cluster): ClusterHealth {
+export function clusterHealth(cluster: Cluster): ClusterHealth {
+  if (clusterStage(cluster) === "onboarding") return "onboarding"
   if (!cluster.reachable || cluster.sync.state === "disconnected") return "down"
   if (cluster.phase === "pending") return "provisioning"
   if (cluster.phase === "draining" || cluster.sync.state === "stale")
@@ -57,13 +76,18 @@ export function ClusterCard({
 }) {
   const health = clusterHealth(cluster)
   const tone = HEALTH_TONE[health]
+  // Nothing has reported yet, so every rollup number is a zero that means
+  // "unknown". Rendered as 0/0 it reads as a cluster that has nothing, which is
+  // a different and worse claim than one that has not been enrolled.
+  const onboarding = health === "onboarding"
 
   const region = [cluster.region, cluster.sync.cloud, cluster.sync.distribution]
     .filter(Boolean)
     .join(" · ")
 
-  const gpuTotal = rollup?.devices_total ?? 0
-  const gpuAllocated = rollup ? rollup.devices_allocated : null
+  const counted = onboarding ? undefined : rollup
+  const gpuTotal = counted?.devices_total ?? 0
+  const gpuAllocated = counted ? counted.devices_allocated : null
   const gpuPct =
     gpuAllocated != null && gpuTotal > 0
       ? Math.round((gpuAllocated / gpuTotal) * 100)
@@ -71,20 +95,26 @@ export function ClusterCard({
   const fillTone =
     gpuPct >= 90 ? "bg-amber-500" : gpuPct <= 30 ? "bg-muted-foreground/70" : "bg-primary"
 
-  const nodeTotal = rollup?.nodes_total ?? 0
-  const nodeReady = rollup ? rollup.nodes_ready : null
-  const deployments = rollup ? rollup.deployment_count : null
-  const pools = rollup ? rollup.pool_count : null
+  const nodeTotal = counted?.nodes_total ?? 0
+  const nodeReady = counted ? counted.nodes_ready : null
+  const deployments = counted ? counted.deployment_count : null
+  const pools = counted ? counted.pool_count : null
 
-  const noteTone = health === "down" ? "down" : "warn"
-  const note =
-    cluster.sync.last_error ??
-    (health === "provisioning"
-      ? "Provisioning — nodes still joining. Not schedulable yet."
-      : health === "down"
-        ? "Agent unreachable. Last known state shown; replicas may still be serving."
-        : null)
-  const showNote = health === "down" || health === "degraded" || health === "provisioning"
+  const noteTone =
+    health === "down" ? "down" : health === "onboarding" ? "info" : "warn"
+  const note = onboarding
+    ? "Not enrolled — install the cluster-setup chart to connect it."
+    : (cluster.sync.last_error ??
+      (health === "provisioning"
+        ? "Provisioning — nodes still joining. Not schedulable yet."
+        : health === "down"
+          ? "Agent unreachable. Last known state shown; replicas may still be serving."
+          : null))
+  const showNote =
+    health === "down" ||
+    health === "degraded" ||
+    health === "provisioning" ||
+    onboarding
 
   return (
     <Card size="sm" className={cn("gap-3 p-0", HEALTH_RING[health])}>
@@ -107,7 +137,7 @@ export function ClusterCard({
             <span
               className={cn(
                 "inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground",
-                !cluster.reachable && "text-amber-500"
+                !cluster.reachable && !onboarding && "text-amber-500"
               )}
             >
               <IconActivity className="size-3" />
@@ -127,9 +157,20 @@ export function ClusterCard({
             <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
               GPUs allocated
             </span>
-            <span className="font-mono text-xs tabular-nums">
-              {gpuAllocated ?? "?"}
-              <span className="text-muted-foreground/60">/{gpuTotal}</span>
+            <span
+              className={cn(
+                "font-mono text-xs tabular-nums",
+                onboarding && "text-muted-foreground/50"
+              )}
+            >
+              {onboarding ? (
+                "—"
+              ) : (
+                <>
+                  {gpuAllocated ?? "?"}
+                  <span className="text-muted-foreground/60">/{gpuTotal}</span>
+                </>
+              )}
             </span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-secondary">
@@ -146,10 +187,16 @@ export function ClusterCard({
               "flex items-center gap-1.5 rounded-md px-2 py-1.5 text-2xs leading-snug",
               noteTone === "down"
                 ? "bg-destructive/10 text-destructive"
-                : "bg-amber-500/10 text-amber-500"
+                : noteTone === "info"
+                  ? "bg-primary/10 text-primary"
+                  : "bg-amber-500/10 text-amber-500"
             )}
           >
-            <IconAlertTriangle className="size-3.5 shrink-0" />
+            {noteTone === "info" ? (
+              <IconPlugConnected className="size-3.5 shrink-0" />
+            ) : (
+              <IconAlertTriangle className="size-3.5 shrink-0" />
+            )}
             <span>{note}</span>
           </div>
         )}

@@ -351,15 +351,18 @@ describe("deriveClusterActionables", () => {
     expect(got[0].tone).toBe("danger")
   })
 
-  it("treats a cluster that never connected as a warning, not a failure", () => {
-    // Nothing has broken; it has not been enrolled yet.
+  it("reports a cluster that never connected as not enrolled, not a failure", () => {
+    // Nothing has broken; it has not been enrolled yet. `reachable` is false
+    // because the plane has no sync row for it — the shape the previous version
+    // of this test could not produce, having left the fixture default of true.
     const got = deriveClusterActionables({
       cluster: cluster({
+        reachable: false,
         sync: sync({ state: "never_connected" }),
       }),
     })
-    expect(ids(got)).toEqual(["cluster:sync"])
-    expect(got[0].tone).toBe("warn")
+    expect(ids(got)).toEqual(["cluster:not-enrolled"])
+    expect(got[0].tone).toBe("info")
   })
 
   it("treats a link that dropped as a failure", () => {

@@ -206,6 +206,23 @@ function syncActionables(cluster: Cluster): Actionable[] {
     params: { clusterId: cluster.id },
   }
 
+  // Asked before reachability, which is false for a cluster that never connected
+  // — the plane has no sync row to say otherwise. Reading that as unreachable
+  // files a permanent red fault against every cluster declared ahead of its
+  // install, and reports a link as broken that was never established.
+  if (cluster.sync.state === "never_connected") {
+    return [
+      {
+        id: "cluster:not-enrolled",
+        tone: "info",
+        kind: "cluster",
+        title: "Cluster is not enrolled",
+        detail: "install the cluster-setup chart to connect its operator",
+        link,
+      },
+    ]
+  }
+
   if (!cluster.reachable) {
     return [
       {
@@ -222,7 +239,7 @@ function syncActionables(cluster: Cluster): Actionable[] {
   if (cluster.sync.state !== "connected") {
     out.push({
       id: "cluster:sync",
-      tone: cluster.sync.state === "never_connected" ? "warn" : "danger",
+      tone: "danger",
       kind: "cluster",
       title: `Sync link is ${cluster.sync.state.replace(/_/g, " ")}`,
       detail: cluster.sync.last_error ?? undefined,
