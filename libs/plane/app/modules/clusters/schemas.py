@@ -12,7 +12,7 @@ class ClusterSyncSchema(Struct):
     same as one that connected and dropped, and neither is a value anybody
     declared.
 
-    One of `never`, `disconnected`, `stale` or `connected`. `stale` is the one
+    One of `never_connected`, `disconnected`, `stale` or `connected`. `stale` is the one
     that is not about the socket — it means the link is up and the cluster has
     stopped saying anything through it, which reads as healthy everywhere that
     only checks whether it is reachable.

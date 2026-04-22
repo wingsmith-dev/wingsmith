@@ -71,7 +71,7 @@ and a live socket carrying no observations is precisely the state this reports."
 def _sync(state: ClusterSyncState | None) -> ClusterSyncSchema:
     if state is None or state.connected_at is None:
         return ClusterSyncSchema(
-            state="never",
+            state="never_connected",
             last_sync_at=None,
             last_seen_at=None,
             agent_version=state.agent_version if state else None,
