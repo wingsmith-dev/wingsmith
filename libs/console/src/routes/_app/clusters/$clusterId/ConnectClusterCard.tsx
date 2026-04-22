@@ -10,6 +10,14 @@ import {
 } from "@/modules/clusters/queries"
 import type { Cluster } from "@/modules/clusters/types"
 import { IconCheck } from "@tabler/icons-react"
+import { useState } from "react"
+
+type LoginMethod = "gh" | "token"
+
+const LOGIN_METHODS: { key: LoginMethod; label: string }[] = [
+  { key: "gh", label: "gh cli" },
+  { key: "token", label: "token" },
+]
 
 /**
  * The bridge between a declared cluster and a running operator. `POST /clusters`
@@ -27,11 +35,20 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
   const serving = cluster.serving !== null
   const setup = useClusterSetup(connected ? "" : cluster.id)
   const mint = useIssueClusterEnrolmentToken()
+  // `gh` first: the registry is GitHub's, so an authenticated gh CLI is the
+  // common case and the only one that needs no token minted by hand.
+  const [loginVia, setLoginVia] = useState<LoginMethod>("gh")
 
   // The mint response carries the token once and folds it into the values; prefer
   // it over the tokenless GET whenever we have just minted in this session.
   const view = mint.data ?? setup.data
   const freshToken = mint.data?.enrolment_token ?? null
+
+  // A registry that is not GitHub's has no `gh` form, so the toggle is hidden and
+  // the hand-made-token command is the only one.
+  const usingGh = loginVia === "gh" && view?.registry_login_gh != null
+  const loginCommand =
+    (usingGh ? view?.registry_login_gh : view?.registry_login) ?? ""
 
   const steps = [
     {
@@ -191,14 +208,33 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                   <p className="text-2xs font-medium">3. Install</p>
                   {view.registry_login && (
                     <>
-                      <p className="text-2xs leading-relaxed text-muted-foreground/50">
-                        The chart registry is private — log in first, with a
-                        token that can pull it.
-                      </p>
-                      <CopyableBlock
-                        value={view.registry_login}
-                        language="shell"
-                      />
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-2xs leading-relaxed text-muted-foreground/50">
+                          {usingGh
+                            ? "The chart registry is private — this borrows the session your gh CLI already has, so there is no token to make."
+                            : "The chart registry is private — log in first, with a token that can pull it (read:packages)."}
+                        </p>
+                        {view.registry_login_gh && (
+                          <div className="flex shrink-0 overflow-hidden rounded-md ring-1 ring-foreground/10">
+                            {LOGIN_METHODS.map((method) => (
+                              <button
+                                key={method.key}
+                                type="button"
+                                onClick={() => setLoginVia(method.key)}
+                                className={cn(
+                                  "px-1.5 py-0.5 font-mono text-2xs",
+                                  loginVia === method.key
+                                    ? "bg-muted text-foreground"
+                                    : "text-muted-foreground/50 hover:text-muted-foreground"
+                                )}
+                              >
+                                {method.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <CopyableBlock value={loginCommand} language="shell" />
                     </>
                   )}
                   <CopyableBlock value={view.helm_command} language="shell" />

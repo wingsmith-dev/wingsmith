@@ -322,8 +322,14 @@ class ClusterService:
         helm_command = " \\\n  ".join(parts)
 
         registry_login = None
+        registry_login_gh = None
         if settings.SETUP_CHART_PRIVATE:
-            registry_login = f"helm registry login {_registry_host(settings.SETUP_CHART_REF)}"
+            host_ = _registry_host(settings.SETUP_CHART_REF)
+            registry_login = f"helm registry login {host_}"
+            if host_ == "ghcr.io":
+                registry_login_gh = (
+                    f'gh auth token | helm registry login {host_} -u "$(gh api user -q .login)" --password-stdin'
+                )
 
         return ClusterSetupSchema(
             helm_command=helm_command,
@@ -331,6 +337,7 @@ class ClusterService:
             chart_ref=settings.SETUP_CHART_REF,
             chart_version=version,
             registry_login=registry_login,
+            registry_login_gh=registry_login_gh,
             enrolment_token=enrolment_token,
             enrolment_token_set=cluster.token_hash is not None,
         )

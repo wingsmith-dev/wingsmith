@@ -88,6 +88,8 @@ export interface ClusterSetup {
   chart_ref: string
   chart_version: string | null
   registry_login: string | null
+  /** The same login via an existing `gh` session; null for a non-GitHub registry. */
+  registry_login_gh: string | null
   /** Present only in the mint/rotate response — shown once, never returned by a GET. */
   enrolment_token: string | null
   /** Whether a token already exists, so the screen offers "rotate" instead of "generate". */

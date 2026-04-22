@@ -74,6 +74,9 @@ class ClusterSetupSchema(Struct):
     image), merged by the operator with a local values file carrying the cluster's
     own infra facts. `registry_login` is the `helm registry login` a private chart
     registry needs before the pull — `None` when the registry serves anonymously.
+    `registry_login_gh` is the same login done with an existing `gh` session
+    instead of a hand-made token, and is `None` for any registry that is not
+    GitHub's, where `gh` has nothing to say.
 
     The enrolment token is shown exactly once, when it is minted (issue/rotate):
     `enrolment_token` carries the plaintext then and is folded into `values_yaml`
@@ -87,6 +90,7 @@ class ClusterSetupSchema(Struct):
     chart_ref: str
     chart_version: str | None
     registry_login: str | None
+    registry_login_gh: str | None
     enrolment_token: str | None
     enrolment_token_set: bool
 
