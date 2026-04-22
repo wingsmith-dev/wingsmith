@@ -1,9 +1,13 @@
 import { CopyableBlock } from "@/components/layout/mono"
 import { StatusDot } from "@/components/layout/status-dot"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatError } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { useClusterSetup } from "@/modules/clusters/queries"
+import {
+  useClusterSetup,
+  useIssueClusterEnrolmentToken,
+} from "@/modules/clusters/queries"
 import type { Cluster } from "@/modules/clusters/types"
 import { IconCheck } from "@tabler/icons-react"
 
@@ -22,6 +26,12 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
   const connected = cluster.sync.state !== "never_connected"
   const serving = cluster.serving !== null
   const setup = useClusterSetup(connected ? "" : cluster.id)
+  const mint = useIssueClusterEnrolmentToken()
+
+  // The mint response carries the token once and folds it into the values; prefer
+  // it over the tokenless GET whenever we have just minted in this session.
+  const view = mint.data ?? setup.data
+  const freshToken = mint.data?.enrolment_token ?? null
 
   const steps = [
     {
@@ -88,19 +98,57 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
               </p>
             )}
 
-            {setup.data && (
+            {view && (
               <>
                 <div className="space-y-1.5">
-                  <p className="text-2xs font-medium">
-                    1. Create the secrets the chart references
-                  </p>
-                  <p className="text-2xs leading-relaxed text-muted-foreground/50">
-                    The enrolment token and Hugging Face token are created out
-                    of band, never rendered here.
-                  </p>
-                  {setup.data.secret_commands.map((cmd) => (
-                    <CopyableBlock key={cmd} value={cmd} />
-                  ))}
+                  <p className="text-2xs font-medium">1. Enrolment token</p>
+                  {freshToken ? (
+                    <>
+                      <p className="text-2xs leading-relaxed text-amber-500">
+                        Shown once — copy it now. It is folded into the
+                        <code> values.yaml</code> below, so the chart creates the
+                        operator secret; you won't see it again.
+                      </p>
+                      <CopyableBlock value={freshToken} />
+                    </>
+                  ) : view.enrolment_token_set ? (
+                    <div className="space-y-1.5">
+                      <p className="text-2xs leading-relaxed text-muted-foreground/50">
+                        A token was generated for this cluster and shown once. If
+                        you didn't capture it, rotate to mint a new one — the
+                        previous token stops working immediately.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={mint.isPending}
+                        onClick={() => mint.mutate(cluster.id)}
+                      >
+                        {mint.isPending ? "Rotating…" : "Rotate token"}
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-2xs leading-relaxed text-muted-foreground/50">
+                        Generate the per-cluster token the operator authenticates
+                        with. It is shown once and baked into the values below.
+                      </p>
+                      <Button
+                        size="sm"
+                        disabled={mint.isPending}
+                        onClick={() => mint.mutate(cluster.id)}
+                      >
+                        {mint.isPending
+                          ? "Generating…"
+                          : "Generate enrolment token"}
+                      </Button>
+                    </div>
+                  )}
+                  {mint.error && (
+                    <p className="text-2xs text-destructive">
+                      {formatError(mint.error, "Could not mint the token")}
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
@@ -108,25 +156,26 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                     2. Save this as <code>values.yaml</code>
                   </p>
                   <p className="text-2xs leading-relaxed text-muted-foreground/50">
-                    Cluster identity only. Merge it with a local{" "}
-                    <code>values.local.yaml</code> holding this cluster's own
-                    facts — pool labels, storage class, serving host.
+                    Cluster identity{freshToken ? " and enrolment token" : ""}.
+                    Merge it with a local <code>values.local.yaml</code> holding
+                    this cluster's own facts — pool labels, storage class, the HF
+                    token, serving host.
                   </p>
-                  <CopyableBlock value={setup.data.values_yaml} />
+                  <CopyableBlock value={view.values_yaml} />
                 </div>
 
                 <div className="space-y-1.5">
                   <p className="text-2xs font-medium">3. Install</p>
-                  {setup.data.registry_login && (
+                  {view.registry_login && (
                     <>
                       <p className="text-2xs leading-relaxed text-muted-foreground/50">
                         The chart registry is private — log in first, with a
                         token that can pull it.
                       </p>
-                      <CopyableBlock value={setup.data.registry_login} />
+                      <CopyableBlock value={view.registry_login} />
                     </>
                   )}
-                  <CopyableBlock value={setup.data.helm_command} />
+                  <CopyableBlock value={view.helm_command} />
                 </div>
               </>
             )}

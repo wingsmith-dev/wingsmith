@@ -19,9 +19,14 @@ from app.core.auth import verify_password
 from app.core.auth import resolve_operator
 from app.core.auth import resolve_principal
 from app.core.auth import admin_auth_enabled
+from app.core.auth import operator_principal
 from app.core.auth import issue_session_token
+from app.core.auth import hash_enrolment_token
+from app.core.auth import looks_like_enrolment
+from app.core.auth import mint_enrolment_token
 from app.core.auth import verify_session_token
 from app.hub.server import serve_forever
+from app.hub.server import _resolve_connection
 from app.config.settings import Settings
 from app.config.settings import validate
 from app.config.settings import resolved_admin_auth
@@ -318,6 +323,53 @@ def test_cors_rejects_an_unconfigured_origin(monkeypatch):
             },
         )
     assert response.headers.get("access-control-allow-origin") != "https://evil.example.com"
+
+
+# --- enrolment tokens ----------------------------------------------------
+
+
+def test_mint_enrolment_token_is_prefixed_and_hashes_to_its_digest():
+    token, digest = mint_enrolment_token()
+    assert token.startswith("hgro1.")
+    assert digest == hash_enrolment_token(token)
+    assert len(digest) == 64
+
+
+def test_minted_enrolment_tokens_are_unique():
+    a, ha = mint_enrolment_token()
+    b, hb = mint_enrolment_token()
+    assert a != b and ha != hb
+
+
+def test_looks_like_enrolment_only_accepts_the_prefix():
+    token, _ = mint_enrolment_token()
+    assert looks_like_enrolment(token)
+    assert not looks_like_enrolment(None)
+    assert not looks_like_enrolment("")
+    assert not looks_like_enrolment("some-fleet-token")
+
+
+def test_bound_operator_principal_carries_the_cluster_in_scope():
+    bound = operator_principal(cluster_uid="clu_123", cluster_name="ap")
+    assert bound.scope == "clu_123"
+    assert bound.name == "ap"
+    assert operator_principal().scope is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_connection_returns_the_unbound_principal_for_the_fleet_token(monkeypatch):
+    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "fleet-token")
+    principal = await _resolve_connection("fleet-token")
+    assert principal is not None
+    assert principal.kind == "operator"
+    assert principal.scope is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_connection_refuses_a_token_that_is_neither_fleet_nor_enrolment(monkeypatch):
+    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "fleet-token")
+    assert await _resolve_connection("random-garbage") is None
+    assert await _resolve_connection(None) is None
 
 
 # --- hub -----------------------------------------------------------------

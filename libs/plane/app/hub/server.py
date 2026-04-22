@@ -13,8 +13,13 @@ from websockets.asyncio.server import serve
 from app.db import engine
 from app.utils import logs
 from app.config import settings
+from app.core.auth import Principal
 from app.core.auth import bearer_token
 from app.core.auth import resolve_operator
+from app.core.auth import operator_principal
+from app.core.auth import hash_enrolment_token
+from app.core.auth import looks_like_enrolment
+from app.db.engine import session_factory
 from app.hub.state import SessionRegistry
 from app.hub.state import reaper_loop
 from app.ingestion import DatabaseSink
@@ -26,6 +31,7 @@ from app.hub.identity import instance_id
 from app.reactor.loop import reactor_loop
 from app.hub.ownership import DatabaseClaimStore
 from app.config.settings import validate
+from app.modules.clusters.repository import ClusterRepository
 
 
 logger = getLogger(__name__)
@@ -61,22 +67,48 @@ def _process_request(connection: ServerConnection, request: Request) -> Response
     The hub's operator-token check has no disable switch, unlike the API's
     admin auth — a port-forward perimeter does not protect a socket that many
     cluster agents dial in over the network, and this is the credential that
-    authorises writing observed state for the whole fleet. Rejecting here,
-    ahead of the WebSocket handshake, means a bad token never gets a socket at
-    all, not even one that immediately closes.
+    authorises writing observed state for the whole fleet.
+
+    This is the cheap gate: it rejects a missing, malformed, or non-fleet token
+    before the handshake, without a database lookup. A well-formed *enrolment*
+    token is admitted here and resolved authoritatively (by hash, against the
+    database) in `_resolve_connection`; one that resolves to no cluster gets a
+    socket that closes at 4401 rather than being turned away pre-upgrade. The
+    fleet token is still fully decided here.
     """
     if request.path == "/health":
         return connection.respond(http.HTTPStatus.OK, "ok\n")
     if request.path != settings.HUB_PATH:
         return connection.respond(http.HTTPStatus.NOT_FOUND, "not found\n")
     token = bearer_token(request.headers.get("Authorization"))
-    if resolve_operator(token) is None:
+    if resolve_operator(token) is None and not looks_like_enrolment(token):
         return connection.respond(http.HTTPStatus.UNAUTHORIZED, "unauthorized\n")
     return None
 
 
+async def _resolve_connection(token: str | None) -> Principal | None:
+    """The operator identity for a connecting agent, or `None` to close.
+
+    The shared fleet token resolves synchronously to an unbound principal
+    (today's behaviour). A per-cluster enrolment token is resolved against the
+    database by its hash and, on a hit, binds the session to that one cluster.
+    An enrolment-shaped token that resolves to nothing gets no session.
+    """
+    principal = resolve_operator(token)
+    if principal is not None:
+        return principal
+    if not looks_like_enrolment(token):
+        return None
+    assert token is not None
+    async with session_factory() as db:
+        cluster = await ClusterRepository(db).by_token_hash(hash_enrolment_token(token))
+    if cluster is None:
+        return None
+    return operator_principal(cluster_uid=cluster.uid, cluster_name=cluster.name)
+
+
 async def _handler(connection: ServerConnection) -> None:
-    principal = resolve_operator(bearer_token(connection.request.headers.get("Authorization")))
+    principal = await _resolve_connection(bearer_token(connection.request.headers.get("Authorization")))
     if principal is None:
         await connection.close(code=4401, reason="unauthorized")
         return

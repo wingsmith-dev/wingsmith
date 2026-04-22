@@ -59,8 +59,10 @@ operator:
       cpu: 500m
       memory: 256Mi
 
-# The fleet enrolment credential is created out of band and referenced by name;
-# `value` (which makes the chart create the Secret) is for throwaway clusters only.
+# The per-cluster enrolment token. The register screen mints it and renders it
+# here as `value`, so the chart creates the Secret — the normal path. Leave
+# `value` empty and the chart references `existingSecret` instead, for a
+# hand-driven install where you created the Secret yourself.
 enrolmentToken:
   existingSecret: hangar-operator
   secretKey: enrolment-token

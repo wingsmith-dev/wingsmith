@@ -86,6 +86,15 @@ class ClusterRoutes(Controller):
         host = request.headers.get("host", "")
         return Response(await svc.setup_instructions(ref, host))
 
+    @post("/{ref:str}/enrolment-token")
+    async def issue_enrolment_token(
+        self, request: Request, context: RequestContext, svc: ClusterService, ref: str
+    ) -> Response[ClusterSetupSchema]:
+        """Mints or rotates the cluster's enrolment token; the plaintext is in
+        the response once and never again."""
+        host = request.headers.get("host", "")
+        return Response(await svc.issue_enrolment_token(ref, host))
+
     @patch("/{ref:str}")
     async def update_cluster(
         self,

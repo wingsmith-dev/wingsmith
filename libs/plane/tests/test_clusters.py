@@ -26,9 +26,9 @@ def test_rollup_endpoints_are_exposed():
     assert {"list_rollups", "get_rollup", "get_headroom"} <= handlers
 
 
-def test_setup_endpoint_is_exposed():
+def test_setup_endpoints_are_exposed():
     handlers = {h.handler_name for h in ClusterRoutes.__dict__.values() if hasattr(h, "handler_name")}
-    assert "cluster_setup" in handlers
+    assert {"cluster_setup", "issue_enrolment_token"} <= handlers
 
 
 def test_hub_url_derives_from_request_host_when_unset():
@@ -46,6 +46,14 @@ def test_setup_values_carry_identity_and_a_pinned_image():
 def test_setup_values_omit_image_when_unset():
     out = _setup_values("cid", "wss://h/v1/hub/sync", "")
     assert "operator:" not in out
+
+
+def test_setup_values_fold_in_the_enrolment_token_only_when_given():
+    without = _setup_values("cid", "wss://h/v1/hub/sync", "")
+    assert "enrolmentToken:" not in without
+    with_token = _setup_values("cid", "wss://h/v1/hub/sync", "", "hgro1.secret")
+    assert "enrolmentToken:" in with_token
+    assert "value: hgro1.secret" in with_token
 
 
 def test_registry_host_from_oci_chart_ref():

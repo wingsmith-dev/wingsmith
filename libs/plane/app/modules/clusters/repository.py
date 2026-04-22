@@ -31,6 +31,15 @@ class ClusterRepository:
         result = await self.db.execute(self._base().where(column == ref))
         return result.scalar_one_or_none()
 
+    async def by_token_hash(self, token_hash: str) -> Cluster | None:
+        """The cluster a per-cluster enrolment token belongs to, by its hash.
+
+        No eager loads: the one caller is hub authentication, which needs only
+        the cluster's identity (uid, name) to bind the session.
+        """
+        result = await self.db.execute(select(Cluster).where(Cluster.token_hash == token_hash))
+        return result.scalar_one_or_none()
+
     async def list(
         self,
         limit: int,

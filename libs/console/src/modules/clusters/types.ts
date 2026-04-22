@@ -76,19 +76,21 @@ export interface Cluster {
 
 /**
  * Everything the register-cluster screen shows to make a cluster hangar-ready:
- * a `helm` install of the `cluster-setup` chart. No secret and no plane token —
- * Helm pulls the chart from its own registry, so it works even where the plane
- * is not reachable. `values_yaml` is the per-cluster identity block, merged with
- * a local values file; `secret_commands` are the out-of-band secrets the chart
- * references but does not create.
+ * a `helm` install of the `cluster-setup` chart. `values_yaml` is the per-cluster
+ * identity block, merged with a local values file. The enrolment token is shown
+ * once when minted (`enrolment_token`, folded into `values_yaml`); a plain GET
+ * carries none and `enrolment_token_set` says whether one already exists.
  */
 export interface ClusterSetup {
   helm_command: string
   values_yaml: string
-  secret_commands: string[]
   chart_ref: string
   chart_version: string | null
   registry_login: string | null
+  /** Present only in the mint/rotate response — shown once, never returned by a GET. */
+  enrolment_token: string | null
+  /** Whether a token already exists, so the screen offers "rotate" instead of "generate". */
+  enrolment_token_set: boolean
 }
 
 /**

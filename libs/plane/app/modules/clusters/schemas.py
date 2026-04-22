@@ -70,22 +70,25 @@ class ClusterSchema(Struct):
 class ClusterSetupSchema(Struct):
     """Everything the register-cluster screen shows to make a cluster ready.
 
-    Not a one-liner and no secret in the payload: the chart is pulled from its
-    own registry by Helm, so nothing here depends on the plane being reachable
-    at install time. `values_yaml` is the per-cluster identity block (cluster
-    id, hub URL, operator image); an operator merges it with a local values file
-    carrying the cluster's own infra facts. `secret_commands` are the out-of-band
-    `kubectl create secret` lines the chart references but does not create.
-    `registry_login` is the `helm registry login` a private chart registry needs
-    before the pull — `None` when the registry serves the chart anonymously.
+    `values_yaml` is the per-cluster identity block (cluster id, hub URL, operator
+    image), merged by the operator with a local values file carrying the cluster's
+    own infra facts. `registry_login` is the `helm registry login` a private chart
+    registry needs before the pull — `None` when the registry serves anonymously.
+
+    The enrolment token is shown exactly once, when it is minted (issue/rotate):
+    `enrolment_token` carries the plaintext then and is folded into `values_yaml`
+    (`enrolmentToken.value`) so the chart creates the Secret. On a plain `GET` it
+    is `None` and `values_yaml` omits it; `enrolment_token_set` says whether a
+    token already exists, so the screen can offer "rotate" instead of "generate".
     """
 
     helm_command: str
     values_yaml: str
-    secret_commands: list[str]
     chart_ref: str
     chart_version: str | None
     registry_login: str | None
+    enrolment_token: str | None
+    enrolment_token_set: bool
 
 
 class ClusterHeadroomSchema(Struct):

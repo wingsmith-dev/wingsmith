@@ -278,6 +278,13 @@ class OperatorSession:
         assert isinstance(hello, Hello)
         if not hello.cluster_id:
             raise ProtocolViolation("hello carries no cluster_id")
+        if self.principal.scope is not None and hello.cluster_id not in (
+            self.principal.scope,
+            self.principal.name,
+        ):
+            raise ProtocolViolation(
+                f"hello cluster_id {hello.cluster_id!r} does not match the enrolment token's cluster"
+            )
 
         state, full_resync = self._resolve_session(hello)
         self.state = state

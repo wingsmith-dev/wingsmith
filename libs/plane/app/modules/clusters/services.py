@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
+from app.core.auth import mint_enrolment_token
 from app.db.models import Cluster
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
@@ -160,13 +161,20 @@ def _registry_host(chart_ref: str) -> str:
     return chart_ref.removeprefix("oci://").split("/", 1)[0]
 
 
-def _setup_values(cluster_name: str, hub_url: str, operator_image: str) -> str:
+def _setup_values(
+    cluster_name: str, hub_url: str, operator_image: str, enrolment_token: str | None = None
+) -> str:
     """The per-cluster identity block for the chart, as YAML text.
 
     Identity only — the cluster's infra facts (pool labels, storage class,
     serving host) live in the local values file this is merged with. The
     operator image is pinned from `OPERATOR_IMAGE` when set so an install
     records what it ran; unset leaves the chart's own appVersion.
+
+    When `enrolment_token` is given (only at mint time), it is folded in as
+    `enrolmentToken.value` so the chart creates the operator Secret instead of
+    referencing one made out of band. It is never persisted, so a later render
+    omits it and the chart falls back to `enrolmentToken.existingSecret`.
     """
     lines = [
         "cluster:",
@@ -182,6 +190,11 @@ def _setup_values(cluster_name: str, hub_url: str, operator_image: str) -> str:
                 f"    repository: {repository}",
                 f"    tag: {tag}",
             ]
+    if enrolment_token:
+        lines += [
+            "enrolmentToken:",
+            f"  value: {enrolment_token}",
+        ]
     return "\n".join(lines) + "\n"
 
 
@@ -227,22 +240,21 @@ class ClusterService:
             raise NotFound(f"no cluster {ref!r}")
         return self.schema(cluster)
 
-    async def setup_instructions(self, ref: str, host: str) -> ClusterSetupSchema:
-        """The chart install a person runs to make `ref` hangar-ready.
+    def _render_setup(self, cluster: Cluster, host: str, enrolment_token: str | None) -> ClusterSetupSchema:
+        """Builds the setup payload for a cluster, with or without a fresh token.
 
-        Carries no secret and no plane-minted token: Helm pulls the chart from
-        its own registry, so the instructions work even where the plane's
-        ingress is not reachable from the operator's laptop. The rendered
-        `values.yaml` is identity only — cluster id, hub URL, operator image —
-        and is meant to be merged with a local values file holding the cluster's
-        own infra facts (pool labels, storage class, serving host).
+        The `values.yaml` is identity only — cluster id, hub URL, operator image —
+        meant to be merged with a local values file holding the cluster's own
+        infra facts (pool labels, storage class, serving host). Helm pulls the
+        chart from its own registry, so the instructions work even where the
+        plane's ingress is not reachable from the operator's laptop.
+
+        `enrolment_token` is the freshly minted plaintext (mint only); it is
+        folded into the values so the chart creates the operator Secret, and is
+        never returned again. `enrolment_token_set` reflects the stored hash.
         """
-        cluster = await self.repo.get(ref)
-        if cluster is None:
-            raise NotFound(f"no cluster {ref!r}")
-
         hub_url = _hub_url(host)
-        values_yaml = _setup_values(cluster.name, hub_url, settings.OPERATOR_IMAGE)
+        values_yaml = _setup_values(cluster.name, hub_url, settings.OPERATOR_IMAGE, enrolment_token)
 
         version = settings.SETUP_CHART_VERSION or None
         parts = [
@@ -261,25 +273,45 @@ class ClusterService:
         if settings.SETUP_CHART_PRIVATE:
             registry_login = f"helm registry login {_registry_host(settings.SETUP_CHART_REF)}"
 
-        secret_commands = [
-            (
-                "kubectl -n hangar-system create secret generic hangar-operator \\\n"
-                "  --from-literal=enrolment-token=<the plane's HANGAR_OPERATOR_TOKEN>"
-            ),
-            (
-                "kubectl -n dynamo create secret generic hf-token-secret \\\n"
-                "  --from-literal=HF_TOKEN=<a Hugging Face token>"
-            ),
-        ]
-
         return ClusterSetupSchema(
             helm_command=helm_command,
             values_yaml=values_yaml,
-            secret_commands=secret_commands,
             chart_ref=settings.SETUP_CHART_REF,
             chart_version=version,
             registry_login=registry_login,
+            enrolment_token=enrolment_token,
+            enrolment_token_set=cluster.token_hash is not None,
         )
+
+    async def setup_instructions(self, ref: str, host: str) -> ClusterSetupSchema:
+        """The chart install a person runs to make `ref` hangar-ready (no token).
+
+        The enrolment token is minted separately (`issue_enrolment_token`) and
+        shown once; a plain read never carries it — `enrolment_token_set` tells
+        the screen whether to offer "generate" or "rotate".
+        """
+        cluster = await self.repo.get(ref)
+        if cluster is None:
+            raise NotFound(f"no cluster {ref!r}")
+        return self._render_setup(cluster, host, enrolment_token=None)
+
+    async def issue_enrolment_token(self, ref: str, host: str) -> ClusterSetupSchema:
+        """Mints (or rotates) `ref`'s enrolment token and returns it once.
+
+        Stores only the hash; the plaintext is folded into the returned values
+        and never recoverable afterwards. Rotating invalidates the previous
+        token immediately — an operator still holding it stops authenticating on
+        its next reconnect, which is the point.
+        """
+        cluster = await self.repo.get(ref)
+        if cluster is None:
+            raise NotFound(f"no cluster {ref!r}")
+
+        token, token_hash = mint_enrolment_token()
+        cluster.token_hash = token_hash
+        await self.db.commit()
+        await self.db.refresh(cluster)
+        return self._render_setup(cluster, host, enrolment_token=token)
 
     async def list(
         self,

@@ -59,6 +59,10 @@ class Cluster(BaseMixin):
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     capabilities: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     enrolled_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    token_hash: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    """sha256 of this cluster's enrolment token. The plaintext is shown once at
+    register/rotate and never stored. Null means the cluster has no per-cluster
+    token yet and its operator still authenticates with the shared fleet token."""
 
     sync_state: Mapped[ClusterSyncState | None] = relationship(
         "ClusterSyncState", back_populates="cluster", lazy="noload", uselist=False, cascade="all, delete-orphan"

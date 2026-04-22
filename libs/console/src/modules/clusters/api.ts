@@ -87,3 +87,15 @@ export function deleteCluster(ref: string): Promise<void> {
 export function fetchClusterSetup(ref: string): Promise<ClusterSetup> {
   return api.get<ClusterSetup>(`/clusters/${encodeURIComponent(ref)}/setup`)
 }
+
+/**
+ * Mints (or rotates) the cluster's enrolment token. The plaintext is in the
+ * response once and never again — the returned `values_yaml` already folds it in
+ * as `enrolmentToken.value` so the chart creates the operator Secret.
+ */
+export function issueClusterEnrolmentToken(ref: string): Promise<ClusterSetup> {
+  return api.post<ClusterSetup>(
+    `/clusters/${encodeURIComponent(ref)}/enrolment-token`,
+    {}
+  )
+}

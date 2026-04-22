@@ -16,23 +16,24 @@ manage. It installs, in one release:
 # one-time: authenticate Helm to the chart registry
 helm registry login ghcr.io
 
-# secrets the chart references but does not create
-kubectl -n hangar-system create secret generic hangar-operator \
-  --from-literal=enrolment-token=<the plane's HANGAR_OPERATOR_TOKEN>
-kubectl -n dynamo create secret generic hf-token-secret \
-  --from-literal=HF_TOKEN=<a Hugging Face token>
-
 helm upgrade --install hangar-cluster \
   oci://ghcr.io/hangar-dev/charts/cluster-setup --version <v> \
   --namespace hangar-system --create-namespace \
   -f values.yaml -f values.local.yaml
 ```
 
-`values.yaml` is the per-cluster identity block the register-cluster screen
-renders (cluster id, hub URL, operator image). `values.local.yaml` is where a
-cluster's own infra facts live — pool label scheme, the RWX storage class, the
-serving host — kept local and uncommitted. To pin the platform singletons off
-the GPU pool, the 1.4.x subcharts take:
+`values.yaml` is what the register-cluster screen renders — cluster id, hub URL,
+operator image, and (when you generate the enrolment token there)
+`enrolmentToken.value`, so the chart creates the operator secret itself. Nothing
+to create out of band: generate the token on the screen, save the rendered
+`values.yaml`, install. Only when driving the chart by hand (no plane) do you set
+`enrolmentToken.existingSecret` and create that secret yourself.
+
+`values.local.yaml` is where a cluster's own infra facts live — pool label
+scheme, the RWX storage class, the serving host, and the Hugging Face token
+(`hfToken.create: true` + `hfToken.value`, which makes the chart create
+`hf-token-secret`) — kept local and uncommitted. To pin the platform singletons
+off the GPU pool, the 1.4.x subcharts take:
 
 ```yaml
 dcgm-exporter:

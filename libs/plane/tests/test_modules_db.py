@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.ids import NODE
 from app.core.ids import TENANT
 from app.core.ids import new_uid
+from app.core.auth import hash_enrolment_token
 from app.db.notify import MemoryNotifier
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
@@ -255,6 +256,32 @@ async def test_clusters_lifecycle(db: AsyncSession) -> None:
 
     await service.delete(created.id)
     assert (await service.list()).count == 0
+
+
+async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSession) -> None:
+    service = ClusterService(db)
+    created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
+
+    setup = await service.setup_instructions(created.id, host="hangar.example")
+    assert setup.enrolment_token is None
+    assert setup.enrolment_token_set is False
+
+    issued = await service.issue_enrolment_token(created.id, host="hangar.example")
+    assert issued.enrolment_token is not None
+    assert issued.enrolment_token_set is True
+    assert f"value: {issued.enrolment_token}" in issued.values_yaml
+
+    resolved = await service.repo.by_token_hash(hash_enrolment_token(issued.enrolment_token))
+    assert resolved is not None and resolved.uid == created.id
+
+    rotated = await service.issue_enrolment_token(created.id, host="hangar.example")
+    assert rotated.enrolment_token != issued.enrolment_token
+    assert await service.repo.by_token_hash(hash_enrolment_token(issued.enrolment_token)) is None
+    assert (await service.repo.by_token_hash(hash_enrolment_token(rotated.enrolment_token))).uid == created.id
+
+    later = await service.setup_instructions(created.id, host="hangar.example")
+    assert later.enrolment_token is None
+    assert later.enrolment_token_set is True
 
 
 async def test_cluster_serving_is_set_replaced_and_cleared(db: AsyncSession) -> None:

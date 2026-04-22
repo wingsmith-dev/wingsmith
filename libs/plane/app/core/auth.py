@@ -19,6 +19,7 @@ import hmac
 import time
 import base64
 import hashlib
+import secrets
 
 import bcrypt
 
@@ -36,6 +37,13 @@ see `app.config.settings.validate`.
 SESSION_PREFIX = "hgrs1"
 """Version tag on session tokens, so a future format change can be told apart
 from this one instead of failing signature verification silently.
+"""
+
+ENROLMENT_PREFIX = "hgro1"
+"""Version tag on per-cluster operator enrolment tokens. The prefix lets the hub
+tell a well-formed enrolment token apart from junk before it spends a database
+lookup on it (see `looks_like_enrolment`), and lets a future format change be
+distinguished instead of silently failing to resolve.
 """
 
 
@@ -56,12 +64,21 @@ class Principal(Struct):
     scope: str | None = None
 
 
-def operator_principal() -> Principal:
+def operator_principal(cluster_uid: str | None = None, cluster_name: str | None = None) -> Principal:
+    """The operator identity a hub session runs as.
+
+    Unbound (`cluster_uid is None`) is the legacy shared fleet token: the session
+    trusts whichever cluster the `hello` frame names, as it always has. A bound
+    principal comes from a per-cluster enrolment token — `scope` carries the
+    cluster's uid, and the handshake refuses a `hello` that names a different
+    cluster, so the token *is* the identity rather than a fleet-wide pass.
+    """
     return Principal(
         id="00000000-0000-0000-0000-000000000001",
         kind="operator",
-        name="operator",
+        name=cluster_name or "operator",
         scopes=("*",),
+        scope=cluster_uid,
     )
 
 
@@ -106,11 +123,13 @@ def effective_operator_token() -> str:
 
 
 def resolve_operator(token: str | None) -> Principal | None:
-    """Resolves a bearer token to the operator principal, in constant time.
+    """Resolves a bearer token to the *unbound* operator principal, constant-time.
 
-    Returns `None` rather than raising so callers with different failure
-    behaviour (hub closes the socket, API tries an admin session next) can
-    each decide what "no operator match" means for them.
+    This is the shared fleet token only (`OPERATOR_TOKEN`). Per-cluster enrolment
+    tokens are resolved against the database by the hub, not here, because this
+    seam is pure and has no session. Returns `None` rather than raising so callers
+    with different failure behaviour (hub closes the socket, API tries an admin
+    session next) can each decide what "no operator match" means for them.
     """
     if not token:
         return None
@@ -118,6 +137,33 @@ def resolve_operator(token: str | None) -> Principal | None:
     if hmac.compare_digest(token.encode(), expected.encode()):
         return operator_principal()
     return None
+
+
+def mint_enrolment_token() -> tuple[str, str]:
+    """Mints a per-cluster enrolment token: returns `(plaintext, sha256_hex)`.
+
+    Only the hash is ever stored; the plaintext is shown once at register/rotate
+    and cannot be recovered. The token is high-entropy random, so a fast hash is
+    safe against precomputation and lets the hub resolve it with one indexed
+    lookup — bcrypt would forbid the lookup and buys nothing over a password.
+    """
+    token = f"{ENROLMENT_PREFIX}.{secrets.token_urlsafe(32)}"
+    return token, hash_enrolment_token(token)
+
+
+def hash_enrolment_token(token: str) -> str:
+    """The sha256 hex digest stored for, and looked up by, an enrolment token."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def looks_like_enrolment(token: str | None) -> bool:
+    """Whether a token is shaped like an enrolment token, without a lookup.
+
+    Lets the hub reject obvious junk before the WebSocket upgrade while still
+    admitting a well-formed-but-unknown token far enough to be resolved (and
+    then closed) — the authoritative check is the database lookup.
+    """
+    return bool(token) and token.startswith(f"{ENROLMENT_PREFIX}.")
 
 
 def hash_password(password: str) -> str:
