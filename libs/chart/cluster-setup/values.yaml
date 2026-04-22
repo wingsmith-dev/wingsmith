@@ -8,9 +8,10 @@ cluster:
   logLevel: info
   logFormat: json
 
-# Node-pool scheduling for rendered workloads and the prefetch job. Empty leaves
-# the operator on its own defaults; set these to match how this cluster labels
-# its pools. `cacheValue` must name a pool that exists or prefetch jobs stay Pending.
+# Node-pool scheduling for rendered workloads and the prefetch job. All three are
+# required: the operator's own default label key is not the one any cluster here
+# uses, so an empty value discovers nothing rather than falling back usefully.
+# `cacheValue` must name a pool that exists or prefetch jobs stay Pending.
 pools:
   labelKey: ""
   gpuValue: ""
@@ -20,8 +21,8 @@ pools:
 modelCache:
   create: true
   pvcName: model-cache
-  # Must be a ReadWriteMany class (an empty/default class is usually RWO and
-  # breaks the shared mount); e.g. an EFS-backed class.
+  # Required. Must be a ReadWriteMany class (the cluster's default class is
+  # usually RWO and breaks the shared mount); e.g. an EFS-backed class.
   storageClass: ""
   accessMode: ReadWriteMany
   size: 500Gi
@@ -60,14 +61,17 @@ operator:
       memory: 256Mi
 
 # The per-cluster enrolment token. The register screen mints it and renders it
-# here as `value`, so the chart creates the Secret — the normal path. Leave
-# `value` empty and the chart references `existingSecret` instead, for a
-# hand-driven install where you created the Secret yourself.
+# here as `value`, so the chart creates the Secret — the normal path, and the
+# install fails without it. `existing: true` is the opt-out for a hand-driven
+# install where you created `existingSecret` yourself.
 enrolmentToken:
   existingSecret: hangar-operator
   secretKey: enrolment-token
   value: ""
+  existing: false
 
+# `value` is required when `create` is true; an empty one is a Secret that looks
+# configured and fails on the first gated pull.
 hfToken:
   create: false
   secretName: hf-token-secret

@@ -17,15 +17,9 @@ data:
   HANGAR_READ_ONLY: {{ .Values.cluster.readOnly | quote }}
   HANGAR_ALLOWED_OPERATIONS: {{ .Values.cluster.allowedOperations | quote }}
 
-  {{- with .Values.pools.labelKey }}
-  HANGAR_POOL_LABEL_KEY: {{ . | quote }}
-  {{- end }}
-  {{- with .Values.pools.gpuValue }}
-  HANGAR_GPU_POOL_VALUE: {{ . | quote }}
-  {{- end }}
-  {{- with .Values.pools.cacheValue }}
-  HANGAR_CACHE_POOL_VALUE: {{ . | quote }}
-  {{- end }}
+  HANGAR_POOL_LABEL_KEY: {{ required "pools.labelKey is required: name the label this cluster puts on its node pools. Left empty the operator falls back to its own default key and discovers no pools at all." .Values.pools.labelKey | quote }}
+  HANGAR_GPU_POOL_VALUE: {{ required "pools.gpuValue is required: name the pool holding the GPU nodes." .Values.pools.gpuValue | quote }}
+  HANGAR_CACHE_POOL_VALUE: {{ required "pools.cacheValue is required: name the pool model-prefetch jobs run on. It must be a pool that exists, or the jobs stay Pending." .Values.pools.cacheValue | quote }}
   {{- with .Values.pools.cacheTaintKey }}
   HANGAR_CACHE_TAINT_KEY: {{ . | quote }}
   {{- end }}

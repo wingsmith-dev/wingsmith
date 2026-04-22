@@ -11,7 +11,7 @@ metadata:
 spec:
   accessModes:
     - {{ .Values.modelCache.accessMode }}
-  storageClassName: {{ .Values.modelCache.storageClass }}
+  storageClassName: {{ required "modelCache.storageClass is required: name a ReadWriteMany class (e.g. an EFS-backed one). Left empty the PVC falls to the cluster's default class, which is usually ReadWriteOnce, and it stays Pending on ProvisioningFailed." .Values.modelCache.storageClass }}
   resources:
     requests:
       storage: {{ .Values.modelCache.size }}
