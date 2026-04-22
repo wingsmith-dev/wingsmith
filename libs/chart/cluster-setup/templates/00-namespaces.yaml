@@ -1,0 +1,9 @@
+{{- include "cluster-setup.validate" . -}}
+# The namespace the operator renders DynamoGraphDeployments into. The release
+# namespace is left to `helm --create-namespace`.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dynamo
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}

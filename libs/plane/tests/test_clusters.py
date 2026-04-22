@@ -6,6 +6,9 @@ from app.modules.clusters.routes import ClusterRoutes
 from app.modules.clusters.schemas import ClusterRollupSchema
 from app.modules.clusters.schemas import ClusterHeadroomSchema
 from app.modules.clusters.services import _rollup
+from app.modules.clusters.services import _hub_url
+from app.modules.clusters.services import _setup_values
+from app.modules.clusters.services import _registry_host
 from app.modules.clusters.repository import ClusterRepository
 
 
@@ -23,9 +26,30 @@ def test_rollup_endpoints_are_exposed():
     assert {"list_rollups", "get_rollup", "get_headroom"} <= handlers
 
 
-def test_install_token_endpoint_is_exposed():
+def test_setup_endpoint_is_exposed():
     handlers = {h.handler_name for h in ClusterRoutes.__dict__.values() if hasattr(h, "handler_name")}
-    assert "install_token" in handlers
+    assert "cluster_setup" in handlers
+
+
+def test_hub_url_derives_from_request_host_when_unset():
+    assert _hub_url("host:8080") == "wss://host:8080/v1/hub/sync"
+
+
+def test_setup_values_carry_identity_and_a_pinned_image():
+    out = _setup_values("cid", "wss://h/v1/hub/sync", "ghcr.io/x/operator:sha7")
+    assert "id: cid" in out
+    assert "hubUrl: wss://h/v1/hub/sync" in out
+    assert "repository: ghcr.io/x/operator" in out
+    assert "tag: sha7" in out
+
+
+def test_setup_values_omit_image_when_unset():
+    out = _setup_values("cid", "wss://h/v1/hub/sync", "")
+    assert "operator:" not in out
+
+
+def test_registry_host_from_oci_chart_ref():
+    assert _registry_host("oci://ghcr.io/hangar-dev/charts/cluster-setup") == "ghcr.io"
 
 
 def test_node_rollup_counts_ready_in_the_database(repo):

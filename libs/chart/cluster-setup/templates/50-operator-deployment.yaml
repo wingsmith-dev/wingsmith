@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hangar-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hangar-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: hangar-operator
+      annotations:
+        # Roll the pod when the config changes, so a `helm upgrade` that only
+        # touches the ConfigMap still restarts the operator.
+        checksum/config: {{ include (print $.Template.BasePath "/40-operator-config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: hangar-operator
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: operator
+          image: {{ include "cluster-setup.operatorImage" . | quote }}
+          imagePullPolicy: {{ .Values.operator.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: hangar-operator
+          env:
+            - name: HANGAR_ENROLMENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.enrolmentToken.existingSecret }}
+                  key: {{ .Values.enrolmentToken.secretKey }}
+          ports:
+            - name: health
+              containerPort: 8081
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: health
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.operator.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      terminationGracePeriodSeconds: 30

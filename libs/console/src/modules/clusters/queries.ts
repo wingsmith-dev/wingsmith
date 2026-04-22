@@ -9,7 +9,7 @@ import {
   fetchClusterRollup,
   fetchClusterRollups,
   fetchClusters,
-  mintClusterInstall,
+  fetchClusterSetup,
   setClusterServing,
   updateCluster,
   type ClusterFilters,
@@ -114,12 +114,14 @@ export function useClearClusterServing() {
 }
 
 /**
- * Mints an install one-liner on demand. A mutation, not a query: each call
- * returns a fresh short-lived token, so it is never cached or refetched.
+ * The chart install instructions for a cluster. A plain query: it carries no
+ * token or secret and is deterministic for a given cluster, so it caches.
  */
-export function useClusterInstall() {
-  return useMutation({
-    mutationFn: (ref: string) => mintClusterInstall(ref),
+export function useClusterSetup(ref: string) {
+  return useQuery({
+    queryKey: ["clusters", "setup", ref],
+    queryFn: () => fetchClusterSetup(ref),
+    enabled: !!ref,
   })
 }
 

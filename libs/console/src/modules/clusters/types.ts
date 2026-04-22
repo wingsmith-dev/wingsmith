@@ -75,14 +75,20 @@ export interface Cluster {
 }
 
 /**
- * A one-time bootstrap command that installs the operator into a cluster. The
- * `command` carries a short-lived, single-cluster token and no secret — the
- * runtime credential is injected into the manifest the command fetches.
+ * Everything the register-cluster screen shows to make a cluster hangar-ready:
+ * a `helm` install of the `cluster-setup` chart. No secret and no plane token —
+ * Helm pulls the chart from its own registry, so it works even where the plane
+ * is not reachable. `values_yaml` is the per-cluster identity block, merged with
+ * a local values file; `secret_commands` are the out-of-band secrets the chart
+ * references but does not create.
  */
-export interface ClusterInstall {
-  command: string
-  manifest_url: string
-  expires_in_seconds: number
+export interface ClusterSetup {
+  helm_command: string
+  values_yaml: string
+  secret_commands: string[]
+  chart_ref: string
+  chart_version: string | null
+  registry_login: string | null
 }
 
 /**

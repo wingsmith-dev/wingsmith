@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
-from app.core.auth import issue_install_token
 from app.db.models import Cluster
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
@@ -23,9 +22,9 @@ from app.core.pagination import decode_cursor
 
 from .schemas import ClusterSchema
 from .schemas import ClusterSyncSchema
+from .schemas import ClusterSetupSchema
 from .schemas import ClusterRollupSchema
 from .schemas import ClusterCreateRequest
-from .schemas import ClusterInstallSchema
 from .schemas import ClusterServingSchema
 from .schemas import ClusterUpdateRequest
 from .schemas import ClusterHeadroomSchema
@@ -140,6 +139,52 @@ def _rollup(cluster_uid: str, row: dict | None) -> ClusterRollupSchema:
     )
 
 
+def _hub_url(host: str) -> str:
+    """The `wss://` URL the operator dials, written into the setup values.
+
+    An explicit `HUB_PUBLIC_URL` wins; otherwise `wss://{PUBLIC_HOST or host}` +
+    the hub path, so a command rendered behind a port-forward still names the real
+    origin while local and tests fall back to the request host.
+    """
+    if settings.HUB_PUBLIC_URL:
+        return settings.HUB_PUBLIC_URL
+    public = settings.PUBLIC_HOST or host
+    return f"wss://{public}{settings.HUB_PATH}"
+
+
+def _registry_host(chart_ref: str) -> str:
+    """The registry host to `helm registry login`, from an OCI chart reference.
+
+    `oci://ghcr.io/hangar-dev/charts/cluster-setup` → `ghcr.io`.
+    """
+    return chart_ref.removeprefix("oci://").split("/", 1)[0]
+
+
+def _setup_values(cluster_name: str, hub_url: str, operator_image: str) -> str:
+    """The per-cluster identity block for the chart, as YAML text.
+
+    Identity only — the cluster's infra facts (pool labels, storage class,
+    serving host) live in the local values file this is merged with. The
+    operator image is pinned from `OPERATOR_IMAGE` when set so an install
+    records what it ran; unset leaves the chart's own appVersion.
+    """
+    lines = [
+        "cluster:",
+        f"  id: {cluster_name}",
+        f"  hubUrl: {hub_url}",
+    ]
+    if operator_image:
+        repository, _, tag = operator_image.rpartition(":")
+        if repository and tag:
+            lines += [
+                "operator:",
+                "  image:",
+                f"    repository: {repository}",
+                f"    tag: {tag}",
+            ]
+    return "\n".join(lines) + "\n"
+
+
 def _serving(row: ClusterServing | None) -> ClusterServingSchema | None:
     if row is None:
         return None
@@ -182,26 +227,58 @@ class ClusterService:
             raise NotFound(f"no cluster {ref!r}")
         return self.schema(cluster)
 
-    async def install_command(self, ref: str, host: str) -> ClusterInstallSchema:
-        """A one-liner that installs the operator into `ref`, minted fresh.
+    async def setup_instructions(self, ref: str, host: str) -> ClusterSetupSchema:
+        """The chart install a person runs to make `ref` hangar-ready.
 
-        Read-only despite minting a token: the token is signed and stateless, so
-        nothing is written. The cluster must already be declared — you cannot get
-        an install command for a cluster the plane has never heard of, which is
-        the same rule ingestion enforces on the wire. `host` is the request's own
-        host, used only when `PUBLIC_HOST` is unset (local, tests).
+        Carries no secret and no plane-minted token: Helm pulls the chart from
+        its own registry, so the instructions work even where the plane's
+        ingress is not reachable from the operator's laptop. The rendered
+        `values.yaml` is identity only — cluster id, hub URL, operator image —
+        and is meant to be merged with a local values file holding the cluster's
+        own infra facts (pool labels, storage class, serving host).
         """
         cluster = await self.repo.get(ref)
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
-        token = issue_install_token(cluster.name)
-        public = settings.PUBLIC_HOST or host
-        script_url = f"https://{public}/install/{token}.sh"
-        manifest_url = f"https://{public}/install/{token}/operator.yaml"
-        return ClusterInstallSchema(
-            command=f"curl -fsSL {script_url} | sh",
-            manifest_url=manifest_url,
-            expires_in_seconds=settings.INSTALL_TOKEN_TTL_SECONDS,
+
+        hub_url = _hub_url(host)
+        values_yaml = _setup_values(cluster.name, hub_url, settings.OPERATOR_IMAGE)
+
+        version = settings.SETUP_CHART_VERSION or None
+        parts = [
+            "helm upgrade --install hangar-cluster",
+            settings.SETUP_CHART_REF,
+        ]
+        if version:
+            parts.append(f"--version {version}")
+        parts += [
+            "--namespace hangar-system --create-namespace",
+            "-f values.yaml -f values.local.yaml",
+        ]
+        helm_command = " \\\n  ".join(parts)
+
+        registry_login = None
+        if settings.SETUP_CHART_PRIVATE:
+            registry_login = f"helm registry login {_registry_host(settings.SETUP_CHART_REF)}"
+
+        secret_commands = [
+            (
+                "kubectl -n hangar-system create secret generic hangar-operator \\\n"
+                "  --from-literal=enrolment-token=<the plane's HANGAR_OPERATOR_TOKEN>"
+            ),
+            (
+                "kubectl -n dynamo create secret generic hf-token-secret \\\n"
+                "  --from-literal=HF_TOKEN=<a Hugging Face token>"
+            ),
+        ]
+
+        return ClusterSetupSchema(
+            helm_command=helm_command,
+            values_yaml=values_yaml,
+            secret_commands=secret_commands,
+            chart_ref=settings.SETUP_CHART_REF,
+            chart_version=version,
+            registry_login=registry_login,
         )
 
     async def list(

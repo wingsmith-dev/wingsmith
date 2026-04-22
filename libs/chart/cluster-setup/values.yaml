@@ -1,0 +1,129 @@
+cluster:
+  # Must match the name of a cluster already declared in the plane.
+  id: ""
+  # The plane's hub endpoint the operator dials, ws:// or wss://.
+  hubUrl: ""
+  readOnly: true
+  allowedOperations: benchmark
+  logLevel: info
+  logFormat: json
+
+# Node-pool scheduling for rendered workloads and the prefetch job. Empty leaves
+# the operator on its own defaults; set these to match how this cluster labels
+# its pools. `cacheValue` must name a pool that exists or prefetch jobs stay Pending.
+pools:
+  labelKey: ""
+  gpuValue: ""
+  cacheValue: ""
+  cacheTaintKey: ""
+
+modelCache:
+  create: true
+  pvcName: model-cache
+  # Must be a ReadWriteMany class (an empty/default class is usually RWO and
+  # breaks the shared mount); e.g. an EFS-backed class.
+  storageClass: ""
+  accessMode: ReadWriteMany
+  size: 500Gi
+
+dcgm:
+  # Empty derives the endpoint from the bundled dcgm-exporter when it is enabled;
+  # set it to point at an exporter this chart does not install.
+  endpoint: ""
+  timeout: 5s
+
+# Backend service name is not knowable at install time; leave disabled until the
+# Dynamo frontend Service exists, or let the plane render it from ClusterServing.url.
+serving:
+  enabled: false
+  host: ""
+  clusterIssuer: ""
+  entryPoints:
+    - websecure
+  backend:
+    service: ""
+    namespace: dynamo
+    port: 8000
+
+operator:
+  image:
+    repository: ghcr.io/hangar-dev/operator
+    tag: ""
+    pullPolicy: Always
+  leaderElection: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# The fleet enrolment credential is created out of band and referenced by name;
+# `value` (which makes the chart create the Secret) is for throwaway clusters only.
+enrolmentToken:
+  existingSecret: hangar-operator
+  secretKey: enrolment-token
+  value: ""
+
+hfToken:
+  create: false
+  secretName: hf-token-secret
+  value: ""
+
+# DaemonSet; tolerates the GPU taint so it lands on GPU nodes. Pin it to the GPU
+# pool with `nodeSelector` for a cluster whose non-GPU nodes carry no exporter.
+# ServiceMonitor off — enable only where a local monitoring stack exists.
+dcgm-exporter:
+  enabled: true
+  nodeSelector: {}
+  tolerations:
+    - key: nvidia.com/gpu
+      operator: Equal
+      value: "true"
+      effect: NoSchedule
+  serviceMonitor:
+    enabled: false
+    interval: 15s
+    # Must be <= interval; 15s/25s is a pair Prometheus Operator silently rejects.
+    scrapeTimeout: 10s
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+# The Dynamo operator + NATS, the bus Dynamo's Frontend and workers use for
+# request/response and KV-cache events (the hangar operator itself never touches
+# it). The operator applies the DynamoGraphDeployment CRD from its own image via a
+# crd-apply init container (upgradeCRD, on by default). etcd, Grove and KAI stay
+# off (their subchart defaults); NATS must be turned on explicitly — 1.4.x defaults
+# global.nats.install to false, and without it the Dynamo deployments have nothing
+# to route over. Component discovery is the Kubernetes API, not etcd. Pin these off
+# the GPU pool per cluster in local values.
+dynamo-platform:
+  enabled: true
+  global:
+    nats:
+      install: true
+  dynamo-operator:
+    controllerManager:
+      manager:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 512Mi
+  nats:
+    config:
+      cluster:
+        enabled: false
+      jetstream:
+        enabled: true
+        fileStore:
+          enabled: true
+          pvc:
+            enabled: true
+            size: 10Gi

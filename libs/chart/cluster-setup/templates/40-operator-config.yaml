@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hangar-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+data:
+  HANGAR_CLUSTER_ID: {{ .Values.cluster.id | quote }}
+  HANGAR_HUB_URL: {{ .Values.cluster.hubUrl | quote }}
+  HANGAR_LOG_LEVEL: {{ .Values.cluster.logLevel | quote }}
+  HANGAR_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
+  HANGAR_NAMESPACE: {{ .Release.Namespace | quote }}
+  HANGAR_WORKLOAD_NAMESPACE: "dynamo"
+  HANGAR_LEADER_ELECTION: {{ .Values.operator.leaderElection | quote }}
+
+  HANGAR_READ_ONLY: {{ .Values.cluster.readOnly | quote }}
+  HANGAR_ALLOWED_OPERATIONS: {{ .Values.cluster.allowedOperations | quote }}
+
+  {{- with .Values.pools.labelKey }}
+  HANGAR_POOL_LABEL_KEY: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.pools.gpuValue }}
+  HANGAR_GPU_POOL_VALUE: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.pools.cacheValue }}
+  HANGAR_CACHE_POOL_VALUE: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.pools.cacheTaintKey }}
+  HANGAR_CACHE_TAINT_KEY: {{ . | quote }}
+  {{- end }}
+
+  HANGAR_MODEL_CACHE_PVC: {{ .Values.modelCache.pvcName | quote }}
+
+  HANGAR_DCGM_ENDPOINT: {{ include "cluster-setup.dcgmEndpoint" . | quote }}
+  HANGAR_DCGM_TIMEOUT: {{ .Values.dcgm.timeout | quote }}

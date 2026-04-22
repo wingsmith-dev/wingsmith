@@ -19,7 +19,6 @@ from app.hub.state import SessionRegistry
 from app.hub.state import reaper_loop
 from app.ingestion import DatabaseSink
 from app.ingestion import DatabaseDesiredSource
-from app.hub.install import install_response
 from app.hub.session import OperatorSession
 from app.hub.dispatch import LiveSessions
 from app.hub.dispatch import listen_loop
@@ -68,9 +67,6 @@ def _process_request(connection: ServerConnection, request: Request) -> Response
     """
     if request.path == "/health":
         return connection.respond(http.HTTPStatus.OK, "ok\n")
-    install = install_response(connection, request.path, request.headers.get("Host", ""))
-    if install is not None:
-        return install
     if request.path != settings.HUB_PATH:
         return connection.respond(http.HTTPStatus.NOT_FOUND, "not found\n")
     token = bearer_token(request.headers.get("Authorization"))

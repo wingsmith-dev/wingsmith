@@ -1,0 +1,37 @@
+hangar cluster-setup {{ .Chart.Version }} installed into {{ .Release.Namespace }}.
+
+Cluster id : {{ .Values.cluster.id }}
+Hub        : {{ .Values.cluster.hubUrl }}
+Operator   : {{ include "cluster-setup.operatorImage" . }}
+Read-only  : {{ .Values.cluster.readOnly }}  (allowed operations: {{ .Values.cluster.allowedOperations | default "none" }})
+
+{{- if not .Values.enrolmentToken.value }}
+
+⚠  The operator reads its enrolment token from the Secret
+   `{{ .Values.enrolmentToken.existingSecret }}` in {{ .Release.Namespace }}. If you have not created
+   it yet, the pod will not start:
+
+     kubectl -n {{ .Release.Namespace }} create secret generic {{ .Values.enrolmentToken.existingSecret }} \
+       --from-literal={{ .Values.enrolmentToken.secretKey }}=<the plane's HANGAR_OPERATOR_TOKEN>
+{{- end }}
+{{- if not .Values.hfToken.create }}
+
+ℹ  Gated models and pull rate limits need an HF token in the `dynamo` namespace:
+
+     kubectl -n dynamo create secret generic {{ .Values.hfToken.secretName }} \
+       --from-literal=HF_TOKEN=<...>
+{{- end }}
+{{- if not .Values.serving.enabled }}
+
+ℹ  No serving route was installed (serving.enabled=false). The backend is the
+   Dynamo frontend Service, whose name is known only once a deployment exists.
+   Set serving.host + serving.backend.service and `helm upgrade` to add it, or
+   let the plane render it from ClusterServing.url.
+{{- end }}
+
+Watch the operator come up and enrol:
+
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/hangar-operator
+
+The cluster flips from `pending` to `active` in the plane on its first
+successful hub handshake.

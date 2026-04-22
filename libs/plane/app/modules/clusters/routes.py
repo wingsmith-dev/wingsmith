@@ -15,9 +15,9 @@ from app.core.schemas import ListResponse
 
 from .depends import cluster_svc_generator
 from .schemas import ClusterSchema
+from .schemas import ClusterSetupSchema
 from .schemas import ClusterRollupSchema
 from .schemas import ClusterCreateRequest
-from .schemas import ClusterInstallSchema
 from .schemas import ClusterUpdateRequest
 from .schemas import ClusterHeadroomSchema
 from .schemas import ClusterServingRequest
@@ -79,12 +79,12 @@ class ClusterRoutes(Controller):
     async def get_cluster(self, context: RequestContext, svc: ClusterService, ref: str) -> Response[ClusterSchema]:
         return Response(await svc.get(ref))
 
-    @post("/{ref:str}/install-token")
-    async def install_token(
+    @get("/{ref:str}/setup")
+    async def cluster_setup(
         self, request: Request, context: RequestContext, svc: ClusterService, ref: str
-    ) -> Response[ClusterInstallSchema]:
+    ) -> Response[ClusterSetupSchema]:
         host = request.headers.get("host", "")
-        return Response(await svc.install_command(ref, host))
+        return Response(await svc.setup_instructions(ref, host))
 
     @patch("/{ref:str}")
     async def update_cluster(

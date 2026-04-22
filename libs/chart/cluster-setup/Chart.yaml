@@ -1,0 +1,35 @@
+apiVersion: v2
+name: cluster-setup
+description: >-
+  Turns a tier-1 cluster into one the hangar plane can manage: the dynamo
+  namespace and model-weight cache, dcgm-exporter, the Dynamo platform (operator,
+  NATS, the DynamoGraphDeployment CRD), and the hangar operator.
+type: application
+
+# appVersion is the operator image tag; a helm upgrade moves it and the pinned
+# Dynamo CRD together so the operator and the CRD it renders into cannot skew.
+version: 0.1.0
+appVersion: "latest"
+
+kubeVersion: ">=1.29.0-0"
+
+keywords:
+  - hangar
+  - gpu
+  - inference
+  - dynamo
+
+dependencies:
+  # The exporter the operator scrapes for device identity; a hard dependency.
+  - name: dcgm-exporter
+    version: "4.*"
+    repository: https://nvidia.github.io/dcgm-exporter/helm-charts
+    condition: dcgm-exporter.enabled
+
+  # Operator + NATS (the request/response and KV-event bus). The operator applies
+  # the DynamoGraphDeployment CRD itself from its image (upgradeCRD, on by default),
+  # so there is no separate CRD chart to vendor and the pull is anonymous.
+  - name: dynamo-platform
+    version: "1.4.1"
+    repository: oci://nvcr.io/nvidia/ai-dynamo
+    condition: dynamo-platform.enabled

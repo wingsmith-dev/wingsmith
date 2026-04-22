@@ -3,9 +3,9 @@ import type {
   Cluster,
   ClusterCreateRequest,
   ClusterHeadroom,
-  ClusterInstall,
   ClusterRollup,
   ClusterServingRequest,
+  ClusterSetup,
   ClusterUpdateRequest,
 } from "./types"
 
@@ -83,10 +83,7 @@ export function deleteCluster(ref: string): Promise<void> {
   return api.delete<void>(`/clusters/${encodeURIComponent(ref)}`)
 }
 
-/** Mints a fresh, short-lived install one-liner for the cluster's operator. */
-export function mintClusterInstall(ref: string): Promise<ClusterInstall> {
-  return api.post<ClusterInstall>(
-    `/clusters/${encodeURIComponent(ref)}/install-token`,
-    {}
-  )
+/** The `helm` install of the cluster-setup chart, with a per-cluster values block. */
+export function fetchClusterSetup(ref: string): Promise<ClusterSetup> {
+  return api.get<ClusterSetup>(`/clusters/${encodeURIComponent(ref)}/setup`)
 }

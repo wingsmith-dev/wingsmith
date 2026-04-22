@@ -1,0 +1,18 @@
+{{- if .Values.modelCache.create }}
+# The shared model-weight cache the operator mounts by name. RWX (disaggregated
+# prefill/decode share it) and so EFS; the size is an EFS quota.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.modelCache.pvcName }}
+  namespace: dynamo
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.modelCache.accessMode }}
+  storageClassName: {{ .Values.modelCache.storageClass }}
+  resources:
+    requests:
+      storage: {{ .Values.modelCache.size }}
+{{- end }}

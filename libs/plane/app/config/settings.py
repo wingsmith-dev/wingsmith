@@ -142,36 +142,45 @@ class Settings:
     SESSION_TTL_SECONDS: int = 900
     """Lifetime of a session token minted by `POST /v1/auth/login`."""
 
-    INSTALL_TOKEN_TTL_SECONDS: int = 1800
-    """Lifetime of a bootstrap install token minted for a cluster's one-liner.
-
-    Thirty minutes: long enough to paste a command into a fresh cluster's
-    terminal, short enough that a token captured from a shell history or a
-    shoulder is useless by the time anyone tries it. The token only authorises
-    fetching install material — it is not the runtime credential.
-    """
-
     PUBLIC_HOST: str = ""
     """Public hostname that fronts the hub ingress, e.g. `hangar.example.com`.
 
-    Used to build the install one-liner's URL and the operator's `HANGAR_HUB_URL`
-    when they are not set explicitly. Empty falls back to the `Host` header of
-    the request being served, which is what a local `port-forward` or a test
-    presents; a deployment sets it so a minted command names the real origin
-    rather than whatever host the minting request happened to arrive on.
+    Used to build the operator's `HANGAR_HUB_URL` in the setup instructions when
+    it is not set explicitly. Empty falls back to the `Host` header of the
+    request being served, which is what a local `port-forward` or a test
+    presents; a deployment sets it so the rendered command names the real origin
+    rather than whatever host the request happened to arrive on.
     """
 
     HUB_PUBLIC_URL: str = ""
-    """The `wss://` URL cluster operators dial, baked into rendered install
-    manifests. Empty derives `wss://{PUBLIC_HOST}{HUB_PATH}` (or the request
-    host); set it when the operator-facing URL differs from the minting origin.
+    """The `wss://` URL cluster operators dial, written into the setup values.
+    Empty derives `wss://{PUBLIC_HOST}{HUB_PATH}` (or the request host); set it
+    when the operator-facing URL differs from the request origin.
     """
 
     OPERATOR_IMAGE: str = ""
-    """Fully-qualified operator image (`registry/repo:tag`) baked into rendered
-    install manifests. Pinned to a tag, never `latest`, so an install records
-    what it ran. Empty disables the install endpoint — the hub answers 503
-    rather than render a manifest with no image to pull."""
+    """Fully-qualified operator image (`registry/repo:tag`) pinned into the setup
+    values so an install records what it ran. Pinned to a tag, never `latest`.
+    Empty leaves the chart's own `appVersion` to name the image."""
+
+    SETUP_CHART_REF: str = "oci://ghcr.io/hangar-dev/charts/cluster-setup"
+    """OCI reference of the `cluster-setup` chart the register-cluster setup
+    instructions tell an operator to install. Points at where `just chart-push`
+    publishes it; a deployment overrides it only if it mirrors the chart
+    elsewhere."""
+
+    SETUP_CHART_VERSION: str = ""
+    """Chart version the setup instructions pin (`helm upgrade --version`). The
+    chart version is the compatibility unit — its `appVersion` names the operator
+    image — so an install records exactly what it ran. Empty omits `--version`
+    and takes whatever the registry resolves as latest, which is fine for dev but
+    should be pinned in a deployment."""
+
+    SETUP_CHART_PRIVATE: bool = True
+    """Whether the chart registry requires a `helm registry login` before the
+    pull. When true the setup instructions carry that login step (the registry
+    host is derived from `SETUP_CHART_REF`); the GHCR package `just chart-push`
+    publishes to is private by default, so this defaults true."""
 
     ALLOWED_ORIGINS: str = "http://localhost:5273,http://127.0.0.1:5273"
     """Comma-separated origins the API's CORS policy accepts. Empty disallows

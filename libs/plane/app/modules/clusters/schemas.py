@@ -67,19 +67,25 @@ class ClusterSchema(Struct):
     serving: ClusterServingSchema | None
 
 
-class ClusterInstallSchema(Struct):
-    """A one-time bootstrap command that installs the operator into a cluster.
+class ClusterSetupSchema(Struct):
+    """Everything the register-cluster screen shows to make a cluster ready.
 
-    `command` is the whole `curl … | sh` line, pre-filled with a short-lived,
-    single-cluster token. It carries no secret — the runtime credential is
-    injected into the manifest the script fetches, so it never reaches the
-    clipboard. `expires_in_seconds` is how long the token stays good; past that
-    a fresh command must be minted.
+    Not a one-liner and no secret in the payload: the chart is pulled from its
+    own registry by Helm, so nothing here depends on the plane being reachable
+    at install time. `values_yaml` is the per-cluster identity block (cluster
+    id, hub URL, operator image); an operator merges it with a local values file
+    carrying the cluster's own infra facts. `secret_commands` are the out-of-band
+    `kubectl create secret` lines the chart references but does not create.
+    `registry_login` is the `helm registry login` a private chart registry needs
+    before the pull — `None` when the registry serves the chart anonymously.
     """
 
-    command: str
-    manifest_url: str
-    expires_in_seconds: int
+    helm_command: str
+    values_yaml: str
+    secret_commands: list[str]
+    chart_ref: str
+    chart_version: str | None
+    registry_login: str | None
 
 
 class ClusterHeadroomSchema(Struct):

@@ -38,11 +38,6 @@ SESSION_PREFIX = "hgrs1"
 from this one instead of failing signature verification silently.
 """
 
-INSTALL_PREFIX = "hgri1"
-"""Version tag on bootstrap install tokens. A distinct prefix from
-`SESSION_PREFIX` so a session token can never be replayed against the install
-endpoint or the reverse, even though both are signed with the same secret.
-"""
 
 
 class Principal(Struct):
@@ -186,52 +181,6 @@ def verify_session_token(token: str) -> Principal | None:
     if not name or time.time() >= expires_at:
         return None
     return admin_principal(name=name)
-
-
-def issue_install_token(cluster: str, ttl_seconds: int | None = None) -> str:
-    """Mints a signed, expiring bootstrap token scoped to a single cluster.
-
-    Carries the cluster's name so the install endpoint — served by the hub,
-    which has no request database session — can render that cluster's manifest
-    without a lookup. It authorises fetching install material only; it is never
-    the operator's runtime credential (that is `OPERATOR_TOKEN`, delivered
-    inside the rendered manifest). Stateless and TTL-bounded: a leaked token is
-    useless past its short expiry, which is why the TTL is minutes, not days.
-    """
-    ttl = settings.INSTALL_TOKEN_TTL_SECONDS if ttl_seconds is None else ttl_seconds
-    expires_at = int(time.time()) + ttl
-    payload = f"{cluster}:{expires_at}".encode()
-    payload_b64 = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
-    signature = _sign(payload)
-    return f"{INSTALL_PREFIX}.{payload_b64}.{signature}"
-
-
-def verify_install_token(token: str) -> str | None:
-    """Returns the cluster name a valid, unexpired install token names, else None.
-
-    Constant-time on the signature, and returns `None` on any malformed,
-    tampered, or expired token so the caller can answer a bad token with a flat
-    401 rather than leaking which of those it was.
-    """
-    parts = token.split(".")
-    if len(parts) != 3 or parts[0] != INSTALL_PREFIX:
-        return None
-    _, payload_b64, signature = parts
-    try:
-        payload = base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
-    except Exception:  # noqa: BLE001 - any decode failure means "not a valid token"
-        return None
-    expected_signature = _sign(payload)
-    if not hmac.compare_digest(signature.encode(), expected_signature.encode()):
-        return None
-    try:
-        cluster, _, expires_raw = payload.decode().rpartition(":")
-        expires_at = int(expires_raw)
-    except (ValueError, UnicodeDecodeError):
-        return None
-    if not cluster or time.time() >= expires_at:
-        return None
-    return cluster
 
 
 def admin_auth_enabled() -> bool:

@@ -1,0 +1,35 @@
+{{- if .Values.serving.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: hangar-serving
+  namespace: {{ .Values.serving.backend.namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  secretName: hangar-serving-tls
+  dnsNames:
+    - {{ .Values.serving.host | quote }}
+  issuerRef:
+    name: {{ .Values.serving.clusterIssuer }}
+    kind: ClusterIssuer
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: hangar-serving
+  namespace: {{ .Values.serving.backend.namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  entryPoints:
+    {{- toYaml .Values.serving.entryPoints | nindent 4 }}
+  routes:
+    - match: Host(`{{ .Values.serving.host }}`)
+      kind: Rule
+      services:
+        - name: {{ .Values.serving.backend.service }}
+          port: {{ .Values.serving.backend.port }}
+  tls:
+    secretName: hangar-serving-tls
+{{- end }}

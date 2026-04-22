@@ -1,0 +1,93 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: streamcheckpoints.sync.hangar.dev
+spec:
+  group: sync.hangar.dev
+  names:
+    kind: StreamCheckpoint
+    listKind: StreamCheckpointList
+    plural: streamcheckpoints
+    shortNames:
+    - streamcp
+    singular: streamcheckpoint
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.sessionID
+      name: Session
+      type: string
+    - jsonPath: .spec.appliedSeq
+      name: Applied
+      type: integer
+    - jsonPath: .spec.lossy
+      name: Lossy
+      type: boolean
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          StreamCheckpoint is the durable resume cursor, stored in the cluster so that it survives an
+          operator restart with no control-plane connectivity.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              StreamCheckpointSpec is the durable resume cursor for the operator's hub stream.
+
+              It is held in spec rather than status because it is written by the sync loop and read by
+              nothing else: it is neither declared state from the plane nor observed state from the cluster,
+              and a single spec write keeps the three fields mutually consistent in one atomic update.
+            properties:
+              appliedSeq:
+                description: |-
+                  AppliedSeq is the highest *contiguous* inbound sequence number the operator has durably
+                  applied. It is never advanced across a gap: a hole means every later frame is unapplied,
+                  whatever its sequence number.
+                format: int64
+                minimum: 0
+                type: integer
+              lossy:
+                description: |-
+                  Lossy records that the local replay buffer discarded an unacknowledged frame. Once set,
+                  the operator must ask for a fresh session rather than claim it can resume, and the flag
+                  survives a restart so that a crash cannot launder it away.
+                type: boolean
+              sessionID:
+                description: |-
+                  SessionID is the hub-issued session the cursor belongs to. A cursor is only meaningful
+                  within its session, so the two are never stored apart.
+                minLength: 1
+                type: string
+              updatedAt:
+                description: UpdatedAt is diagnostic only and is never used for ordering
+                  or comparison.
+                format: date-time
+                type: string
+            required:
+            - appliedSeq
+            - sessionID
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources: {}
