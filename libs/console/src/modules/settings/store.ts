@@ -43,6 +43,14 @@ export const useSettingsStore = create<SettingsState>()(
   )
 )
 
+/**
+ * Paints the accent kept in `localStorage` before the first render, so a reload
+ * comes back in the operator's colour instead of the default and then switching.
+ */
+export function applyStoredAccent(): void {
+  applyAccent(useSettingsStore.getState().accent)
+}
+
 /** The accent is a data attribute on the root, so it composes with `.dark`. */
 function applyAccent(accent: Accent): void {
   document.documentElement.dataset.accent = accent

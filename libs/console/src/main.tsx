@@ -8,7 +8,10 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { queryClient } from "@/lib/query-client"
 import "./index.css"
 import { installUnauthorizedHandler } from "@/modules/auth/session"
+import { applyStoredAccent } from "@/modules/settings/store"
 import { routeTree } from "./routeTree.gen"
+
+applyStoredAccent()
 
 export const router = createRouter({ routeTree })
 
