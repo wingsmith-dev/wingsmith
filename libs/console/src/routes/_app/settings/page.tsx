@@ -46,7 +46,8 @@ import {
   IconShieldLock,
   IconSortDescending,
 } from "@tabler/icons-react"
-import { Link } from "@tanstack/react-router"
+import { Link, useSearch } from "@tanstack/react-router"
+import type { SettingsSection } from "./route"
 
 /**
  * Two kinds of thing live here. **Definitions** are reference data — hardware
@@ -54,52 +55,66 @@ import { Link } from "@tanstack/react-router"
  * points at; they are the plane's, read constantly and written rarely. Beneath
  * them, **Console** settings belong to this browser and are never written over
  * the API, so two operators can hold different views of the same fleet.
+ *
+ * One section is on screen at a time and the nav picks it, held in `?section=`
+ * so a view is linkable and the back button walks it.
  */
 export function SettingsPage() {
+  const { section } = useSearch({ from: "/_app/settings" })
+  const Section = SECTIONS[section]
+
   return (
     <div className="flex flex-col">
       <PageHeader title="Settings" description="definitions · this console" />
 
       <div className="grid gap-6 p-4 md:grid-cols-[12rem_minmax(0,1fr)]">
-        <SettingsNav />
+        <SettingsNav current={section} />
 
         <div className="flex min-w-0 flex-col gap-4">
-          <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">
-            Definitions are reference data — hardware types, providers,
-            scheduling classes and guardrails that the rest of the console
-            points at. They change rarely and are read constantly. Live state
-            for tenants, projects and quota consumption lives under Access.
-          </p>
-
-          <GpuModelsSection />
-          <ProvidersSection />
-          <PriorityClassesSection />
-          <PoliciesSection />
-
-          <PreferencesSection />
-          <AccessSection />
+          <Section />
         </div>
       </div>
     </div>
   )
 }
 
+const SECTIONS: Record<SettingsSection, React.ComponentType> = {
+  "gpu-models": GpuModelsSection,
+  providers: ProvidersSection,
+  priority: PriorityClassesSection,
+  policies: PoliciesSection,
+  preferences: PreferencesSection,
+  access: AccessSection,
+}
+
 const NAV_ITEMS = [
   { label: "Definitions", kind: "label" as const },
   {
-    href: "#gpu-models",
+    section: "gpu-models" as const,
     label: "GPU models",
     icon: IconDeviceDesktopAnalytics,
   },
-  { href: "#providers", label: "Providers & regions", icon: IconBuildingBank },
-  { href: "#priority", label: "Priority classes", icon: IconSortDescending },
-  { href: "#policies", label: "Policies", icon: IconShieldLock },
+  {
+    section: "providers" as const,
+    label: "Providers & regions",
+    icon: IconBuildingBank,
+  },
+  {
+    section: "priority" as const,
+    label: "Priority classes",
+    icon: IconSortDescending,
+  },
+  { section: "policies" as const, label: "Policies", icon: IconShieldLock },
   { label: "Console", kind: "label" as const },
-  { href: "#preferences", label: "Preferences", icon: IconSettings },
-  { href: "#access", label: "Access & tokens", icon: IconEye },
+  {
+    section: "preferences" as const,
+    label: "Preferences",
+    icon: IconSettings,
+  },
+  { section: "access" as const, label: "Access & tokens", icon: IconEye },
 ]
 
-function SettingsNav() {
+function SettingsNav({ current }: { current: SettingsSection }) {
   return (
     <nav className="top-20 flex flex-row flex-wrap gap-0.5 self-start md:sticky md:flex-col">
       {NAV_ITEMS.map((item) =>
@@ -111,14 +126,20 @@ function SettingsNav() {
             {item.label}
           </span>
         ) : (
-          <a
-            key={item.href}
-            href={item.href}
-            className="flex h-8 items-center gap-2 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+          <Link
+            key={item.section}
+            to="/settings"
+            search={{ section: item.section }}
+            aria-current={current === item.section ? "page" : undefined}
+            className={
+              current === item.section
+                ? "flex h-8 items-center gap-2 rounded-md bg-primary/10 px-2 text-xs font-medium text-primary"
+                : "flex h-8 items-center gap-2 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+            }
           >
             <item.icon className="size-4 shrink-0" />
             {item.label}
-          </a>
+          </Link>
         )
       )}
     </nav>
@@ -345,9 +366,7 @@ function ProvidersSection() {
  */
 function PriorityClassesSection() {
   const list = usePriorityClasses()
-  const classes = (list.items ?? [])
-    .slice()
-    .sort((a, b) => b.value - a.value)
+  const classes = (list.items ?? []).slice().sort((a, b) => b.value - a.value)
 
   return (
     <Panel
