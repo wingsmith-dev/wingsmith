@@ -161,30 +161,36 @@ def _registry_host(chart_ref: str) -> str:
     return chart_ref.removeprefix("oci://").split("/", 1)[0]
 
 
-def _setup_values(
-    cluster_name: str, hub_url: str, operator_image: str, enrolment_token: str | None = None
-) -> str:
+def _setup_values(cluster_name: str, hub_url: str, operator_image: str, enrolment_token: str | None = None) -> str:
     """The full editable `values.yaml` for the chart, as YAML text.
 
-    The top block is filled by the plane — cluster identity, the pinned
-    operator image, and (at mint only) the enrolment token. Below a divider is
-    the cluster's own infra facts left blank with a one-line comment each: pool
-    labels, the RWX storage class, the HF token, serving. The operator
-    downloads this one file, edits the blanks, and runs helm against it — no
-    separate local values file and no need to know the chart's schema.
+    The top block is filled by the plane — cluster identity, `readOnly`, the
+    pinned operator image, and (at mint only) the enrolment token. `readOnly`
+    sits there rather than below the divider because it must share the one
+    `cluster:` key; a second mapping would silently shadow the identity it
+    carries. Below a divider is the cluster's own infra facts left blank with a
+    one-line comment each: pool labels, the RWX storage class, the HF token,
+    serving. The operator downloads this one file, edits the blanks, and runs
+    helm against it — no separate local values file and no need to know the
+    chart's schema. The chart refuses an install with any of those blanks still
+    empty, so a half-edited file fails at `helm upgrade` rather than at the pod.
 
     The operator image is pinned from `OPERATOR_IMAGE` when set so an install
     records what it ran; unset leaves the chart's own appVersion. When
     `enrolment_token` is given (mint only) it is folded in as
     `enrolmentToken.value` so the chart creates the operator Secret; it is never
-    persisted, so a later render omits it and the chart falls back to
-    `enrolmentToken.existingSecret`.
+    persisted, so a later render omits it and the chart then requires either a
+    fresh mint or an explicit `enrolmentToken.existing=true`.
     """
     lines = [
-        "# Filled by the plane — cluster identity. Leave as-is.",
+        "# Filled by the plane — cluster identity. Leave as-is, except `readOnly`.",
         "cluster:",
         f"  id: {cluster_name}",
         f"  hubUrl: {hub_url}",
+        "  # Whether the operator may act on what the plane declares. It installs",
+        "  # read-only, reconciling nothing; set false once this cluster is managed.",
+        "  readOnly: true",
+        "  allowedOperations: benchmark",
     ]
     if operator_image:
         repository, _, tag = operator_image.rpartition(":")
