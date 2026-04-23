@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.ids import NODE
 from app.core.ids import TENANT
 from app.core.ids import new_uid
+from app.core.auth import ENROLMENT_PREFIX
 from app.core.auth import hash_enrolment_token
 from app.db.notify import MemoryNotifier
 from app.core.exceptions import Invalid
@@ -65,6 +66,7 @@ from app.modules.artifacts.schemas import ArtifactCreateRequest
 from app.modules.artifacts.schemas import ArtifactUpdateRequest
 from app.modules.artifacts.schemas import ArtifactLocationRequest
 from app.modules.clusters.services import ClusterService
+from app.hub.server import _resolve_connection
 from app.modules.endpoints.schemas import EndpointCreateRequest
 from app.modules.endpoints.schemas import EndpointTargetRequest
 from app.modules.endpoints.schemas import EndpointUpdateRequest
@@ -282,6 +284,33 @@ async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSe
     later = await service.setup_instructions(created.id, host="hangar.example")
     assert later.enrolment_token is None
     assert later.enrolment_token_set is True
+
+
+async def test_the_hub_resolves_an_enrolment_token_to_its_cluster(db: AsyncSession, database: str, monkeypatch) -> None:
+    """Covers `_resolve_connection`, which opens a session of its own.
+
+    Every other test of this path goes through the repository with a session
+    handed to it, so none of them exercised the one caller that has to build one
+    — and it shipped calling the sessionmaker a level short, closing every
+    operator's handshake with an internal error. Going through the hub entry
+    point rather than the repository is the whole point of this test.
+    """
+    service = ClusterService(db)
+    created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
+    issued = await service.issue_enrolment_token(created.id, host="hangar.example")
+    assert issued.enrolment_token is not None
+
+    engine = create_async_engine(database, poolclass=NullPool)
+    monkeypatch.setattr("app.hub.server.session_factory", lambda: async_sessionmaker(engine, expire_on_commit=False))
+    try:
+        principal = await _resolve_connection(issued.enrolment_token)
+        assert principal is not None
+        assert principal.scope == created.id
+        assert principal.name == "alpha"
+
+        assert await _resolve_connection(f"{ENROLMENT_PREFIX}.resolves-to-no-cluster") is None
+    finally:
+        await engine.dispose()
 
 
 async def test_cluster_serving_is_set_replaced_and_cleared(db: AsyncSession) -> None:

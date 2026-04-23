@@ -100,7 +100,7 @@ async def _resolve_connection(token: str | None) -> Principal | None:
     if not looks_like_enrolment(token):
         return None
     assert token is not None
-    async with session_factory() as db:
+    async with session_factory()() as db:
         cluster = await ClusterRepository(db).by_token_hash(hash_enrolment_token(token))
     if cluster is None:
         return None
