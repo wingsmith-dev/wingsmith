@@ -27,4 +27,7 @@ data:
   HANGAR_MODEL_CACHE_PVC: {{ .Values.modelCache.pvcName | quote }}
 
   HANGAR_DCGM_ENDPOINT: {{ include "cluster-setup.dcgmEndpoint" . | quote }}
+  {{- with (include "cluster-setup.dcgmSelector" .) }}
+  HANGAR_DCGM_SELECTOR: {{ . | quote }}
+  {{- end }}
   HANGAR_DCGM_TIMEOUT: {{ .Values.dcgm.timeout | quote }}

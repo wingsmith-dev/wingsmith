@@ -31,6 +31,10 @@ dcgm:
   # Empty derives the endpoint from the bundled dcgm-exporter when it is enabled;
   # set it to point at an exporter this chart does not install.
   endpoint: ""
+  # How the operator finds the exporter pods behind that Service, so it scrapes
+  # every node rather than whichever one the ClusterIP picks. Empty derives the
+  # bundled subchart's own labels; set it for an exporter installed elsewhere.
+  selector: ""
   timeout: 5s
 
 # Backend service name is not knowable at install time; leave disabled until the

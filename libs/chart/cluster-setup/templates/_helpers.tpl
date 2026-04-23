@@ -16,6 +16,23 @@ DCGM endpoint: explicit value wins; otherwise derived from the bundled exporter
 {{- end -}}
 {{- end -}}
 
+{{/*
+DCGM pod selector: how the operator finds the individual exporter pods behind that
+Service, so it scrapes every node instead of whichever one the ClusterIP happens to
+pick. It must be set, because the operator's own default derives the selector from
+the Service name — `<release>-dcgm-exporter` — while the exporter's chart labels its
+pods with its own name, `dcgm-exporter`. Nothing matches, the operator falls back to
+one GET against the Service, and the fleet's devices appear one random node at a
+time. Explicit value wins; otherwise the labels the bundled subchart actually sets.
+*/}}
+{{- define "cluster-setup.dcgmSelector" -}}
+{{- if .Values.dcgm.selector -}}
+{{- .Values.dcgm.selector -}}
+{{- else if (index .Values "dcgm-exporter" "enabled") -}}
+{{- printf "app.kubernetes.io/name=dcgm-exporter,app.kubernetes.io/instance=%s" .Release.Name -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Common labels on hangar-owned objects. */}}
 {{- define "cluster-setup.labels" -}}
 app.kubernetes.io/name: hangar-operator
