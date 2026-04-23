@@ -6,11 +6,11 @@ import type { ClusterSync } from "@/modules/clusters/types"
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 py-1.5">
+    <div className="flex items-baseline justify-between gap-3 py-1.5">
       <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
         {label}
       </span>
-      <span className="font-mono text-xs">{value}</span>
+      <span className="truncate font-mono text-xs">{value}</span>
     </div>
   )
 }
@@ -22,21 +22,19 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
  */
 export function SyncCard({ sync }: { sync: ClusterSync }) {
   return (
-    <Card>
-      <CardHeader className="pb-2">
+    <Card size="sm">
+      <CardHeader className="pb-1">
         <CardTitle className="flex items-center gap-2 text-sm">
           <StatusDot
             tone={syncTone(sync.state)}
             pulse={sync.state === "connected"}
           />
           Sync connection
-          <span className="ml-auto font-mono text-2xs font-normal text-muted-foreground/60">
-            agent {sync.agent_version ?? "—"}
-          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="divide-y">
         <Row label="State" value={humanize(sync.state)} />
+        <Row label="Agent" value={sync.agent_version ?? "—"} />
         <Row
           label="Last sync"
           value={

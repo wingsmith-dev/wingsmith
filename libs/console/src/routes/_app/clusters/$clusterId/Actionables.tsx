@@ -22,7 +22,7 @@ export interface SourceFailure {
 }
 
 /**
- * The top half of the tab, and deliberately not a summary of everything: a row
+ * The foot of the tab, and deliberately not a summary of everything: a row
  * appears only where a human has something to do, and links to the thing it is
  * about. An empty list is the good outcome and is written as one.
  */

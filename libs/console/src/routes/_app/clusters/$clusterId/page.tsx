@@ -1,4 +1,3 @@
-import { Labels } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Button } from "@/components/ui/button"
@@ -6,12 +5,7 @@ import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatError } from "@/lib/format"
-import {
-  CLUSTER_PHASE_TONE,
-  clusterLabel,
-  humanize,
-  syncTone,
-} from "@/modules/clusters/display"
+import { clusterLabel } from "@/modules/clusters/display"
 import { useCluster } from "@/modules/clusters/queries"
 import {
   CLUSTER_STAGE_META,
@@ -19,7 +13,15 @@ import {
   type ClusterStage,
 } from "@/modules/clusters/stage"
 import type { Cluster } from "@/modules/clusters/types"
-import { IconArrowLeft } from "@tabler/icons-react"
+import {
+  IconArrowLeft,
+  IconCpu,
+  IconLayoutDashboard,
+  IconServer2,
+  IconStack2,
+  IconTerminal2,
+  IconTopologyStar3,
+} from "@tabler/icons-react"
 import { Link, useParams } from "@tanstack/react-router"
 import { useState } from "react"
 import { ComponentsTable } from "./ComponentsTable"
@@ -29,8 +31,6 @@ import { ClusterNodesTable } from "./NodesTable"
 import { ClusterOverviewTab } from "./OverviewTab"
 import { ConnectClusterCard } from "./ConnectClusterCard"
 import { ClusterPoolsPanel } from "./PoolsPanel"
-import { ServingCard } from "./ServingCard"
-import { SyncCard } from "./SyncCard"
 import { ClusterTopologyTable } from "./TopologyTable"
 
 function TabNote({ children }: React.PropsWithChildren) {
@@ -42,37 +42,15 @@ function TabNote({ children }: React.PropsWithChildren) {
 }
 
 /**
- * The header status row. The stage badge is always shown; the observed
- * reachable/sync labels only make sense once a cluster has an operator, so they
- * are hidden while onboarding or archived where they would only read as noise.
+ * The stage badge on its own, for the stages that render no identity card — the
+ * card carries stage, phase, reachability, sync and labels everywhere else, and
+ * repeating them under the header only reads as noise.
  */
-function StatusRow({
-  cluster,
-  stage,
-}: {
-  cluster: Cluster
-  stage: ClusterStage
-}) {
+function StageRow({ stage }: { stage: ClusterStage }) {
   const meta = CLUSTER_STAGE_META[stage]
-  const enrolled =
-    stage === "live" || stage === "degraded" || stage === "draining"
   return (
     <div className="flex flex-wrap items-center gap-3">
       <StatusLabel tone={meta.tone}>{meta.label}</StatusLabel>
-      {enrolled && (
-        <>
-          <StatusLabel tone={CLUSTER_PHASE_TONE[cluster.phase] ?? "neutral"}>
-            {humanize(cluster.phase)}
-          </StatusLabel>
-          <StatusLabel tone={cluster.reachable ? "ok" : "danger"}>
-            {cluster.reachable ? "reachable" : "unreachable"}
-          </StatusLabel>
-          <StatusLabel tone={syncTone(cluster.sync.state)}>
-            {humanize(cluster.sync.state)}
-          </StatusLabel>
-        </>
-      )}
-      <Labels labels={cluster.labels} />
     </div>
   )
 }
@@ -100,44 +78,75 @@ function StageBanner({ stage }: { stage: ClusterStage }) {
   )
 }
 
+function ViewTab({
+  value,
+  icon: Icon,
+  children,
+}: React.PropsWithChildren<{
+  value: string
+  icon: typeof IconLayoutDashboard
+}>) {
+  return (
+    <TabsTrigger value={value}>
+      <Icon />
+      {children}
+    </TabsTrigger>
+  )
+}
+
 /**
  * The full operational dashboard — shown once a cluster is enrolled. Reused for
- * `live`, `degraded` and `draining`; the stage banner above it carries the
+ * `live`, `degraded` and `draining`; the stage banner inside it carries the
  * caveat (stale link, draining) so the panels themselves stay the same.
+ *
+ * The tab row is the only thing here that escapes the page padding: it sits
+ * flush under the header so its bottom border spans the full width.
  */
 function ClusterDashboard({
   cluster,
+  stage,
   tab,
   setTab,
   creatingPool,
   setCreatingPool,
 }: {
   cluster: Cluster
+  stage: ClusterStage
   tab: string
   setTab: (v: string) => void
   creatingPool: boolean
   setCreatingPool: (v: boolean) => void
 }) {
   return (
-    <>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SyncCard sync={cluster.sync} />
-        <ServingCard cluster={cluster} />
-      </div>
+    <Tabs value={tab} onValueChange={setTab} className="flex-col gap-0">
+      <TabsList variant="underline" className="px-4">
+        <ViewTab value="overview" icon={IconLayoutDashboard}>
+          Overview
+        </ViewTab>
+        <ViewTab value="nodes" icon={IconServer2}>
+          Nodes
+        </ViewTab>
+        <ViewTab value="pools" icon={IconStack2}>
+          Pools
+        </ViewTab>
+        <ViewTab value="devices" icon={IconCpu}>
+          Devices
+        </ViewTab>
+        <ViewTab value="topology" icon={IconTopologyStar3}>
+          Topology
+        </ViewTab>
+        <ViewTab value="components" icon={IconTerminal2}>
+          Components
+        </ViewTab>
+      </TabsList>
 
-      <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="nodes">Nodes</TabsTrigger>
-          <TabsTrigger value="pools">Pools</TabsTrigger>
-          <TabsTrigger value="devices">Devices</TabsTrigger>
-          <TabsTrigger value="topology">Topology</TabsTrigger>
-          <TabsTrigger value="components">Components</TabsTrigger>
-        </TabsList>
-        <TabsContent value="overview" className="mt-3">
+      <div className="space-y-4 p-4">
+        <StageBanner stage={stage} />
+
+        <TabsContent value="overview">
           <ClusterOverviewTab cluster={cluster} />
         </TabsContent>
-        <TabsContent value="pools" className="mt-3 space-y-3">
+        <TabsContent value="pools" className="space-y-3">
           <TabNote>
             Declared. A pool is the provisioning spec this cluster is asked for;
             its node bounds are how more or fewer nodes get requested.
@@ -148,7 +157,7 @@ function ClusterDashboard({
             onCreatingChange={setCreatingPool}
           />
         </TabsContent>
-        <TabsContent value="nodes" className="mt-3 space-y-3">
+        <TabsContent value="nodes" className="space-y-3">
           <TabNote>
             Observed. Nodes are reported by the cluster and cannot be added or
             removed here — raise a pool's node bounds instead, and act on a node
@@ -156,18 +165,18 @@ function ClusterDashboard({
           </TabNote>
           <ClusterNodesTable clusterId={cluster.id} />
         </TabsContent>
-        <TabsContent value="devices" className="mt-3 space-y-3">
+        <TabsContent value="devices" className="space-y-3">
           <TabNote>
             Observed. Devices arrive with the node that reports them; a device
             is acted on by resetting it, never by editing it.
           </TabNote>
           <ClusterDevicesTable clusterId={cluster.id} />
         </TabsContent>
-        <TabsContent value="topology" className="mt-3 space-y-3">
+        <TabsContent value="topology" className="space-y-3">
           <TabNote>Observed. The cluster is the authority on topology.</TabNote>
           <ClusterTopologyTable clusterId={cluster.id} />
         </TabsContent>
-        <TabsContent value="components" className="mt-3 space-y-3">
+        <TabsContent value="components" className="space-y-3">
           <TabNote>
             Reported, not managed. Hangar records what version of each component
             a cluster is running and whether it is behind, but it does not
@@ -176,8 +185,8 @@ function ClusterDashboard({
           </TabNote>
           <ComponentsTable clusterId={cluster.id} />
         </TabsContent>
-      </Tabs>
-    </>
+      </div>
+    </Tabs>
   )
 }
 
@@ -229,13 +238,27 @@ export function ClusterDetailPage() {
         }
       />
 
-      <div className="space-y-4 p-4">
-        {isLoading && <Skeleton className="h-40 w-full" />}
+      {isLoading && (
+        <div className="p-4">
+          <Skeleton className="h-40 w-full" />
+        </div>
+      )}
 
-        {cluster && stage && (
-          <>
-            <StatusRow cluster={cluster} stage={stage} />
-            {stage !== "onboarding" && <StageBanner stage={stage} />}
+      {cluster &&
+        stage &&
+        (stage === "live" || stage === "degraded" || stage === "draining" ? (
+          <ClusterDashboard
+            cluster={cluster}
+            stage={stage}
+            tab={tab}
+            setTab={setTab}
+            creatingPool={creatingPool}
+            setCreatingPool={setCreatingPool}
+          />
+        ) : (
+          <div className="space-y-4 p-4">
+            {stage === "onboarding" && <StageRow stage={stage} />}
+            <StageBanner stage={stage} />
 
             {stage === "onboarding" && (
               <div className="mx-auto w-full max-w-3xl">
@@ -248,21 +271,8 @@ export function ClusterDetailPage() {
                 <ClusterIdentity cluster={cluster} />
               </div>
             )}
-
-            {(stage === "live" ||
-              stage === "degraded" ||
-              stage === "draining") && (
-              <ClusterDashboard
-                cluster={cluster}
-                tab={tab}
-                setTab={setTab}
-                creatingPool={creatingPool}
-                setCreatingPool={setCreatingPool}
-              />
-            )}
-          </>
-        )}
-      </div>
+          </div>
+        ))}
     </div>
   )
 }

@@ -23,6 +23,7 @@ import { Actionables, type SourceFailure } from "./Actionables"
 import { ClusterEvents } from "./ClusterEvents"
 import { ClusterIdentity } from "./Glance"
 import { Section, SectionEmpty } from "./Section"
+import { SyncCard } from "./SyncCard"
 
 function StatTile({
   label,
@@ -324,9 +325,9 @@ function HeadroomPanel({
 }
 
 /**
- * Is this cluster healthy, and is there anything to do about it — in that
- * order. The actionable list is derived from the same drained reads the counts
- * below it are, so a row and a tile can never disagree.
+ * Is this cluster healthy, then what it is carrying, then anything to do about
+ * it — in that order. The actionable list at the foot is derived from the same
+ * drained reads the tiles above it are, so a row and a tile can never disagree.
  */
 export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
   const pools = useClusterPools(cluster.id)
@@ -378,18 +379,6 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
 
   return (
     <div className="space-y-4">
-      <Actionables
-        actionables={actionables}
-        isLoading={
-          pools.isLoading ||
-          nodes.isLoading ||
-          devices.isLoading ||
-          deployments.isLoading ||
-          operations.isLoading
-        }
-        failures={failures}
-      />
-
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <StatTile
           label="Status"
@@ -444,10 +433,23 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
             deployments={deployments}
             recipeName={recipeName}
           />
+          <Actionables
+            actionables={actionables}
+            isLoading={
+              pools.isLoading ||
+              nodes.isLoading ||
+              devices.isLoading ||
+              deployments.isLoading ||
+              operations.isLoading
+            }
+            failures={failures}
+          />
         </div>
 
         <div className="space-y-4">
           <ClusterIdentity cluster={cluster} />
+
+          <SyncCard sync={cluster.sync} />
 
           <MetricsSection scope="cluster" refId={cluster.id} />
 

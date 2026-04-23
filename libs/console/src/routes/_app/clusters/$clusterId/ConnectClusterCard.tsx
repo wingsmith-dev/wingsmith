@@ -27,8 +27,8 @@ const LOGIN_METHODS: { key: LoginMethod; label: string }[] = [
  * per-cluster `helm` install that makes it hangar-ready.
  *
  * It is deliberately shown only while onboarding is unfinished. Once the agent
- * is connected and a serving address is set, {@link SyncCard} and
- * {@link ServingCard} carry the live state and this panel steps aside.
+ * is connected and a serving address is set, the sync card and the identity
+ * card's serving section carry the live state and this panel steps aside.
  */
 export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
   const connected = cluster.sync.state !== "never_connected"
@@ -115,9 +115,9 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
             <p className="text-2xs leading-relaxed text-muted-foreground/60">
               The install names its target with <code>--kube-context</code>, so
               it does not depend on where your <code>kubectl</code> is pointed —
-              adjust it if your local context is named something else. Helm pulls
-              the chart from its own registry, so this works even where the plane
-              is unreachable.
+              adjust it if your local context is named something else. Helm
+              pulls the chart from its own registry, so this works even where
+              the plane is unreachable.
             </p>
 
             {setup.isLoading && (
