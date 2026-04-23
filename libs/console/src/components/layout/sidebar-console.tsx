@@ -22,14 +22,11 @@ import { Link, useRouterState } from "@tanstack/react-router"
 import { useAuthStore } from "@/modules/auth/store"
 import { useSignOut } from "@/modules/auth/session"
 import { useReadOnly } from "@/modules/settings/store"
-import { useUndecidedCount } from "@/modules/discovered/queries"
 
 type NavItem = {
   label: string
   to: string
   kind: ResourceKind
-  /** Draws the count of sightings nobody has decided on yet. */
-  badge?: "undecided"
 }
 
 const overviewItems: NavItem[] = [
@@ -46,12 +43,6 @@ const overviewItems: NavItem[] = [
 const servingItems: NavItem[] = [
   { label: "Endpoints", to: "/endpoints", kind: "endpoint" },
   { label: "Workloads", to: "/workloads", kind: "workload" },
-  {
-    label: "Discovered",
-    to: "/discovered",
-    kind: "discovered",
-    badge: "undecided",
-  },
 ]
 
 const catalogItems: NavItem[] = [
@@ -79,31 +70,12 @@ const accessItems: NavItem[] = [
 
 const activityItems: NavItem[] = [
   { label: "Operations", to: "/operations", kind: "operation" },
-  { label: "Benchmarks", to: "/benchmarks", kind: "benchmark" },
   { label: "Events", to: "/events", kind: "event" },
   { label: "Allocations", to: "/allocations", kind: "allocation" },
 ]
 
 const activeClass =
   "data-[active=true]:bg-primary/10 data-[active=true]:text-primary data-[active=true]:font-semibold"
-
-/**
- * Adopted clusters arrive with workloads already running on them. Until someone
- * decides about each one it is GPUs held by something the plane cannot see, so
- * the count is carried in the sidebar rather than waiting on the page.
- */
-function UndecidedBadge() {
-  const count = useUndecidedCount()
-  if (count === 0) return null
-  return (
-    <Badge
-      variant="outline"
-      className="ml-auto border-amber-500/30 bg-amber-500/10 font-mono text-2xs text-amber-600 group-data-[collapsible=icon]:hidden dark:text-amber-400"
-    >
-      {count}
-    </Badge>
-  )
-}
 
 function NavGroup({
   label,
@@ -133,7 +105,6 @@ function NavGroup({
               <Link to={item.to}>
                 <ResourceIcon kind={item.kind} />
                 <span>{item.label}</span>
-                {item.badge === "undecided" && <UndecidedBadge />}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>
