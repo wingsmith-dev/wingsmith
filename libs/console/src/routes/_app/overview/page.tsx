@@ -1,247 +1,215 @@
 import { PageHeader } from "@/components/layout/page-header"
+import { clusterLabel } from "@/modules/clusters/display"
+import { deriveFleetAttention } from "@/modules/overview/attention"
 import {
-  useOpenOperations,
+  allocationTotals,
+  capacityByClass,
+  reachabilityRows,
+  replicaFootprint,
+  staleClusters,
+  summariseEndpointHealth,
+  unschedulableReplicas,
+} from "@/modules/overview/fleet"
+import {
   useOverviewClusters,
   useOverviewDeployments,
   useOverviewDevices,
   useOverviewEndpoints,
   useOverviewNodes,
-  useRecentEvents,
+  useOverviewWorkloads,
+  useRecentOperations,
+  useUndecidedDiscovered,
 } from "@/modules/overview/queries"
+import { IconEye } from "@tabler/icons-react"
+import * as React from "react"
+import { CapacityPressure } from "./CapacityPressure"
+import { ClusterReachability } from "./ClusterReachability"
+import { NeedsAttention } from "./NeedsAttention"
+import { RecentOperations } from "./RecentOperations"
+import { SegTabs } from "./SegTabs"
 import {
-  summariseClusters,
-  summariseDemand,
-  summariseDevices,
-  summariseFleet,
-  summariseNodes,
-} from "@/modules/overview/summary"
-import { ClusterFleet } from "./ClusterFleet"
-import { FleetHealth } from "./FleetHealth"
-import { OpenOperations } from "./OpenOperations"
-import { RecentEvents } from "./RecentEvents"
-import { StatTile, type TileNote } from "./StatTile"
+  ServingTraffic,
+  TRAFFIC_WINDOWS,
+  type TrafficWindow,
+} from "./ServingTraffic"
+import { StatCard } from "./StatCard"
+
+/** Above this share of the fleet allocated, a placement is a coin toss. */
+const TIGHT_PERCENT = 75
+const FULL_PERCENT = 90
 
 /**
- * Every number here is drawn from a drained list rather than a first page, so
- * the tiles are collection totals and not page sizes. The one exception is the
- * event feed, which is a recent slice by construction and says so.
+ * The fleet page, ordered as the questions are asked: what is broken, what is
+ * tight, what changed. Every number is drawn from a drained list rather than a
+ * first page, so the cards are collection totals and not page sizes — the
+ * operations feed is the one recent slice, and it says so.
  */
 export function OverviewPage() {
+  const [window, setWindow] = React.useState<TrafficWindow>("24h")
+
   const clusters = useOverviewClusters()
   const nodes = useOverviewNodes()
   const devices = useOverviewDevices()
   const deployments = useOverviewDeployments()
   const endpoints = useOverviewEndpoints()
-  const events = useRecentEvents()
-  const operations = useOpenOperations()
+  const workloads = useOverviewWorkloads()
+  const discovered = useUndecidedDiscovered()
+  const operations = useRecentOperations()
 
-  const clusterSummary = clusters.data && summariseClusters(clusters.data)
-  const nodeSummary = nodes.data && summariseNodes(nodes.data)
-  const deviceSummary = devices.data && summariseDevices(devices.data)
-  const demandSummary =
-    deployments.data && endpoints.data
-      ? summariseDemand(deployments.data, endpoints.data)
+  const serving =
+    endpoints.data && deployments.data
+      ? summariseEndpointHealth(endpoints.data, deployments.data)
+      : undefined
+  const footprint = deployments.data && replicaFootprint(deployments.data)
+  const allocation = devices.data && allocationTotals(devices.data)
+  const pending = deployments.data && unschedulableReplicas(deployments.data)
+  const capacity = devices.data && capacityByClass(devices.data)
+  const reachability = clusters.data && reachabilityRows(clusters.data)
+  const stale = clusters.data ? staleClusters(clusters.data) : []
+
+  const attention =
+    clusters.data ||
+    devices.data ||
+    nodes.data ||
+    deployments.data ||
+    endpoints.data ||
+    discovered.data
+      ? deriveFleetAttention({
+          clusters: clusters.data,
+          nodes: nodes.data,
+          devices: devices.data,
+          deployments: deployments.data,
+          endpoints: endpoints.data,
+          discovered: discovered.data,
+        })
       : undefined
 
-  const fleet =
-    clusters.data && nodes.data && devices.data && deployments.data
-      ? summariseFleet(
-          clusters.data,
-          nodes.data,
-          devices.data,
-          deployments.data
-        )
-      : undefined
-
-  const clusterNotes: TileNote[] = clusterSummary
-    ? [
-        { label: `${clusterSummary.active} active`, tone: "ok" },
-        ...(clusterSummary.unreachable > 0
-          ? [
-              {
-                label: `${clusterSummary.unreachable} unreachable`,
-                tone: "danger" as const,
-              },
-            ]
-          : []),
-        ...(clusterSummary.outOfSync > 0
-          ? [
-              {
-                label: `${clusterSummary.outOfSync} out of sync`,
-                tone: "warn" as const,
-              },
-            ]
-          : []),
-      ]
-    : []
+  const attentionLoading =
+    clusters.isLoading ||
+    devices.isLoading ||
+    nodes.isLoading ||
+    deployments.isLoading ||
+    endpoints.isLoading ||
+    discovered.isLoading
 
   return (
     <div className="flex flex-col">
       <PageHeader
         title="Overview"
-        description="fleet health and what is running on it"
+        description="what is broken, what is tight, what changed"
+        readActions={
+          <SegTabs
+            aria-label="Traffic window"
+            value={window}
+            onChange={setWindow}
+            options={TRAFFIC_WINDOWS.map((value) => ({ value, label: value }))}
+          />
+        }
       />
 
-      <div className="space-y-4 p-4">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-          <StatTile
-            kind="cluster"
-            label="Clusters"
-            value={clusterSummary?.total ?? 0}
-            to="/clusters"
-            notes={clusterNotes}
-            isLoading={clusters.isLoading}
-            error={clusters.error}
+      <div className="flex flex-col gap-5 p-4">
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Endpoints serving"
+            value={serving?.serving ?? 0}
+            footnote={
+              serving &&
+              `${serving.degraded} degraded · ${serving.down} down${
+                serving.idle > 0 ? ` · ${serving.idle} idle` : ""
+              }`
+            }
+            tone={
+              serving && serving.down > 0
+                ? "danger"
+                : serving && serving.degraded > 0
+                  ? "warn"
+                  : "default"
+            }
+            to="/endpoints"
+            isLoading={endpoints.isLoading || deployments.isLoading}
+            error={endpoints.error ?? deployments.error}
           />
-          <StatTile
-            kind="node"
-            label="Nodes"
-            value={
-              nodeSummary ? `${nodeSummary.ready}/${nodeSummary.total}` : 0
+          <StatCard
+            label="Workloads"
+            value={workloads.data?.length ?? 0}
+            footnote={
+              footprint &&
+              `${footprint.ready} replicas across ${footprint.clusters} ${
+                footprint.clusters === 1 ? "cluster" : "clusters"
+              }`
             }
-            detail="ready"
-            to="/nodes"
-            notes={
-              nodeSummary
-                ? [
-                    ...(nodeSummary.notReady > 0
-                      ? [
-                          {
-                            label: `${nodeSummary.notReady} not ready`,
-                            tone: "danger" as const,
-                          },
-                        ]
-                      : []),
-                    ...(nodeSummary.cordoned > 0
-                      ? [
-                          {
-                            label: `${nodeSummary.cordoned} cordoned`,
-                            tone: "warn" as const,
-                          },
-                        ]
-                      : []),
-                  ]
-                : []
-            }
-            isLoading={nodes.isLoading}
-            error={nodes.error}
+            to="/workloads"
+            isLoading={workloads.isLoading}
+            error={workloads.error}
           />
-          <StatTile
-            kind="device"
-            label="Devices"
-            value={
-              deviceSummary
-                ? `${deviceSummary.healthy}/${deviceSummary.total}`
-                : 0
+          <StatCard
+            label="GPU allocated"
+            value={`${allocation?.percent ?? 0}%`}
+            footnote={
+              allocation &&
+              `${allocation.allocated} / ${allocation.total} devices`
             }
-            detail="healthy"
+            tone={
+              allocation && allocation.percent >= FULL_PERCENT
+                ? "danger"
+                : allocation && allocation.percent >= TIGHT_PERCENT
+                  ? "warn"
+                  : "default"
+            }
             to="/devices"
-            notes={
-              deviceSummary
-                ? [
-                    {
-                      label: `${deviceSummary.allocatable} allocatable`,
-                      tone: "ok" as const,
-                    },
-                    ...(deviceSummary.impaired.length > 0
-                      ? [
-                          {
-                            label: `${deviceSummary.impaired.length} need attention`,
-                            tone: "warn" as const,
-                          },
-                        ]
-                      : []),
-                  ]
-                : []
-            }
             isLoading={devices.isLoading}
             error={devices.error}
           />
-          <StatTile
-            kind="deployment"
-            label="Deployments"
-            value={demandSummary?.deployments ?? 0}
+          <StatCard
+            label="Unschedulable"
+            value={pending ?? 0}
+            footnote="replicas pending > 10m"
+            tone={pending ? "warn" : "default"}
             to="/deployments"
-            notes={
-              demandSummary
-                ? [
-                    {
-                      label: `${demandSummary.replicasReady}/${demandSummary.replicasDesired} replicas ready`,
-                      tone:
-                        demandSummary.replicasReady <
-                        demandSummary.replicasDesired
-                          ? ("warn" as const)
-                          : ("ok" as const),
-                    },
-                    ...(demandSummary.deploymentsPending > 0
-                      ? [
-                          {
-                            label: `${demandSummary.deploymentsPending} pending placement`,
-                            tone: "info" as const,
-                          },
-                        ]
-                      : []),
-                  ]
-                : []
-            }
             isLoading={deployments.isLoading}
             error={deployments.error}
           />
-          <StatTile
-            kind="endpoint"
-            label="Endpoints"
-            value={demandSummary?.endpoints ?? 0}
-            to="/endpoints"
-            notes={
-              demandSummary
-                ? [
-                    {
-                      label: `${demandSummary.endpointsEnabled} enabled`,
-                      tone: "ok" as const,
-                    },
-                  ]
-                : []
-            }
-            isLoading={endpoints.isLoading}
-            error={endpoints.error}
-          />
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
-          <FleetHealth
-            summary={deviceSummary}
-            isLoading={devices.isLoading}
-            error={devices.error}
-          />
-          <ClusterFleet
-            rows={fleet}
-            isLoading={
-              clusters.isLoading ||
-              nodes.isLoading ||
-              devices.isLoading ||
-              deployments.isLoading
-            }
-            error={
-              clusters.error ??
-              nodes.error ??
-              devices.error ??
-              deployments.error
-            }
-          />
+        <NeedsAttention
+          items={attention}
+          isLoading={attentionLoading}
+          error={clusters.error ?? deployments.error ?? endpoints.error}
+        />
+
+        <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-4">
+            <CapacityPressure
+              rows={capacity}
+              isLoading={devices.isLoading}
+              error={devices.error}
+            />
+            <ServingTraffic window={window} />
+          </div>
+
+          <div className="flex min-w-0 flex-col gap-4">
+            <ClusterReachability
+              rows={reachability}
+              isLoading={clusters.isLoading}
+              error={clusters.error}
+            />
+            <RecentOperations
+              operations={operations.items}
+              isLoading={operations.isLoading}
+              error={operations.error}
+            />
+          </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-2">
-          <RecentEvents
-            events={events.items}
-            isLoading={events.isLoading}
-            error={events.error}
-          />
-          <OpenOperations
-            operations={operations.data}
-            isLoading={operations.isLoading}
-            error={operations.error}
-          />
-        </div>
+        <p className="flex items-center gap-2 text-2xs text-muted-foreground">
+          <IconEye className="size-3.5 shrink-0" />
+          Read-only console.{" "}
+          {stale.length === 0
+            ? "Every cluster is reporting, so the counts above are current."
+            : `Counts may exclude ${stale
+                .map(clusterLabel)
+                .join(", ")} — last reconcile is older than the page.`}
+        </p>
       </div>
     </div>
   )

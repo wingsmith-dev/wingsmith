@@ -1,68 +1,75 @@
-import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatError } from "@/lib/format"
-import { Link, type LinkProps } from "@tanstack/react-router"
+import { cn } from "@/lib/utils"
 
 interface PanelProps {
   title: string
-  description?: string
-  to: LinkProps["to"]
-  linkLabel: string
-  isLoading: boolean
-  error: unknown
-  errorMessage: string
+  /** The line under the title: what the panel counts, and over what window. */
+  description?: React.ReactNode
+  /** The header's right-hand slot — a link out, a tab row, a legend. */
+  action?: React.ReactNode
+  /** `attention` tints the border, so the inbox reads as the loud panel it is. */
+  tone?: "default" | "attention"
+  isLoading?: boolean
+  error?: unknown
+  errorMessage?: string
   /** Rows of skeleton drawn while the panel's query is in flight. */
   skeletonRows?: number
+  className?: string
   children: React.ReactNode
 }
 
 export function Panel({
   title,
   description,
-  to,
-  linkLabel,
-  isLoading,
+  action,
+  tone = "default",
+  isLoading = false,
   error,
-  errorMessage,
+  errorMessage = "Failed to load",
   skeletonRows = 4,
+  className,
   children,
 }: PanelProps) {
   return (
-    <Card className="gap-0 p-0 py-0">
-      <div className="flex flex-wrap items-baseline gap-3 border-b px-4 py-3">
-        <h2 className="font-heading text-sm font-medium">{title}</h2>
-        {description && (
-          <p className="font-mono text-2xs text-muted-foreground/60">
-            {description}
-          </p>
-        )}
-        <Link
-          to={to}
-          className="ml-auto font-mono text-2xs text-muted-foreground hover:text-foreground hover:underline"
-        >
-          {linkLabel} →
-        </Link>
+    <section
+      className={cn(
+        "flex flex-col gap-3.5 rounded-lg bg-card p-4 ring-1",
+        tone === "attention" ? "ring-amber-500/35" : "ring-foreground/10",
+        className
+      )}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-heading text-sm font-semibold">{title}</h2>
+          {description && (
+            <div className="mt-0.5 text-2xs text-muted-foreground">
+              {description}
+            </div>
+          )}
+        </div>
+        {action}
       </div>
 
       {isLoading ? (
-        <div className="space-y-2 p-4">
+        <div className="space-y-2">
           {Array.from({ length: skeletonRows }, (_, i) => (
-            <Skeleton key={i} className="h-8 w-full" />
+            <Skeleton key={i} className="h-7 w-full" />
           ))}
         </div>
       ) : error ? (
-        <p className="p-6 text-center text-xs text-destructive">
+        <p className="py-4 text-center text-xs text-destructive">
           {formatError(error, errorMessage)}
         </p>
       ) : (
         children
       )}
-    </Card>
+    </section>
   )
 }
 
 export function PanelEmpty({ children }: React.PropsWithChildren) {
   return (
-    <p className="p-6 text-center text-xs text-muted-foreground">{children}</p>
+    <p className="py-3 text-center text-xs text-muted-foreground">{children}</p>
   )
 }

@@ -1,6 +1,11 @@
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import { fetchClusters } from "@/modules/clusters/api"
-import { fetchDeployments, fetchEndpoints } from "@/modules/demand/api"
+import {
+  fetchDeployments,
+  fetchEndpoints,
+  fetchWorkloads,
+} from "@/modules/demand/api"
+import { fetchDiscoveredWorkloads } from "@/modules/discovered/api"
 import { fetchEvents, fetchOperations } from "@/modules/machinery/api"
 import { OPEN_PHASES } from "@/modules/machinery/types"
 import { fetchDevices, fetchNodes, fetchPools } from "@/modules/supply/api"
@@ -43,6 +48,32 @@ export function useOverviewDeployments() {
 export function useOverviewEndpoints() {
   return useAllPages(["overview", "endpoints"], (cursor) =>
     fetchEndpoints({}, cursor, DRAIN_LIMIT)
+  )
+}
+
+export function useOverviewWorkloads() {
+  return useAllPages(["overview", "workloads"], (cursor) =>
+    fetchWorkloads({}, cursor, DRAIN_LIMIT)
+  )
+}
+
+/**
+ * Sightings nobody has decided about yet. Drained like the rest: an inbox that
+ * showed a first page would under-count the very thing it exists to surface.
+ */
+export function useUndecidedDiscovered() {
+  return useAllPages(["overview", "discovered", "new"], (cursor) =>
+    fetchDiscoveredWorkloads({ status: "new" }, cursor, DRAIN_LIMIT)
+  )
+}
+
+/**
+ * The newest operations whatever their phase — "what changed", which is a
+ * different question from {@link useOpenOperations}'s "what is still in flight".
+ */
+export function useRecentOperations() {
+  return useCursorList(["overview", "operations", "recent"], (cursor) =>
+    fetchOperations({}, cursor, ACTIVITY_LIMIT)
   )
 }
 
