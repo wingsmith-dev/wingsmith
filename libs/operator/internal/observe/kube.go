@@ -28,6 +28,10 @@ const (
 	labelDriverLegacy = "nvidia.com/gpu.driver-version"
 	labelRegion       = "topology.kubernetes.io/region"
 	labelZone         = "topology.kubernetes.io/zone"
+	// labelPool is the fallback pool label, used when no key is configured. A cluster that
+	// labels its pools with anything else sets HANGAR_POOL_LABEL_KEY, which is the same key
+	// placement selects on — observing one key while scheduling against another puts a node in
+	// a pool the plane cannot then target.
 	labelPool         = "hangar.dev/pool"
 	labelDeviceClass  = "hangar.dev/device-class"
 	labelInstanceType = "node.kubernetes.io/instance-type"
@@ -58,7 +62,18 @@ type KubeDiscoverer struct {
 	// discovery degrades to the annotation and then to synthetic ids rather than failing:
 	// inventory the plane cannot see is worse than inventory whose metrics do not join.
 	DCGM *DCGMSource
-	Log  *slog.Logger
+	// PoolLabelKey is the node label whose value names the pool a node belongs to. Empty falls
+	// back to {@link labelPool}.
+	PoolLabelKey string
+	Log          *slog.Logger
+}
+
+// poolKey is the label observation reads a node's pool from.
+func (k *KubeDiscoverer) poolKey() string {
+	if k == nil || strings.TrimSpace(k.PoolLabelKey) == "" {
+		return labelPool
+	}
+	return k.PoolLabelKey
 }
 
 var _ Discoverer = (*KubeDiscoverer)(nil)
@@ -100,7 +115,7 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 		Devices:   podDevicesFrom(inventory),
 	}
 	for i := range nodes.Items {
-		n := projectKubeNode(&nodes.Items[i], inventory, k.log())
+		n := projectKubeNode(&nodes.Items[i], inventory, k.poolKey(), k.log())
 		n.AllocatedDevices = allocated[n.Name]
 		out.Nodes = append(out.Nodes, n)
 	}
@@ -132,11 +147,11 @@ func (k *KubeDiscoverer) log() *slog.Logger {
 	return k.Log
 }
 
-func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, log *slog.Logger) Node {
+func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, poolKey string, log *slog.Logger) Node {
 	labels := n.Labels
 	out := Node{
 		Name:           n.Name,
-		Pool:           labels[labelPool],
+		Pool:           labels[poolKey],
 		Cordoned:       n.Spec.Unschedulable,
 		KernelVersion:  n.Status.NodeInfo.KernelVersion,
 		RuntimeVersion: n.Status.NodeInfo.ContainerRuntimeVersion,
@@ -151,7 +166,7 @@ func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, log *slog.Logger)
 		CPUCores:       int(n.Status.Capacity.Cpu().Value()),
 		MemoryMiB:      n.Status.Capacity.Memory().Value() / (1024 * 1024),
 		Taints:         taintsOf(n.Spec.Taints),
-		Labels:         exportedLabels(labels),
+		Labels:         exportedLabels(labels, poolKey),
 	}
 	for _, c := range n.Status.Conditions {
 		if c.Type == corev1.NodeReady {
@@ -268,7 +283,7 @@ func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.
 
 // exportedLabels narrows a node's labels to the handful the plane places against. A node carries
 // dozens of them and the observed object is not a mirror of Kubernetes.
-func exportedLabels(in map[string]string) map[string]string {
+func exportedLabels(in map[string]string, poolKey string) map[string]string {
 	out := map[string]string{}
 	if v := in[labelRegion]; v != "" {
 		out["region"] = v
@@ -283,6 +298,10 @@ func exportedLabels(in map[string]string) map[string]string {
 		if rest, ok := strings.CutPrefix(k, "hangar.dev/"); ok {
 			out[rest] = v
 		}
+	}
+	// Last so the configured key wins over a stale `hangar.dev/pool` the prefix loop copied.
+	if v := in[poolKey]; v != "" {
+		out["pool"] = v
 	}
 	return out
 }

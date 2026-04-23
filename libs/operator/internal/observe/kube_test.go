@@ -208,7 +208,7 @@ func TestDeviceClassPrecedence(t *testing.T) {
 		labelGPUProduct:  "NVIDIA-H100-80GB-HBM3",
 		labelDeviceClass: "bespoke-class",
 	}, nil, true, false)
-	if got := projectKubeNode(labelled, nil, discardLog).Devices[0].DeviceClass; got != "bespoke-class" {
+	if got := projectKubeNode(labelled, nil, labelPool, discardLog).Devices[0].DeviceClass; got != "bespoke-class" {
 		t.Fatalf("label override lost: %q", got)
 	}
 
@@ -216,12 +216,42 @@ func TestDeviceClassPrecedence(t *testing.T) {
 		labelGPUCount:   "1",
 		labelGPUProduct: "NVIDIA-Zephyr-4000-Ultra",
 	}, nil, true, false)
-	if got := projectKubeNode(unknown, nil, discardLog).Devices[0].DeviceClass; got != "zephyr-4000-ultra" {
+	if got := projectKubeNode(unknown, nil, labelPool, discardLog).Devices[0].DeviceClass; got != "zephyr-4000-ultra" {
 		t.Fatalf("unknown hardware did not fall through to a slug: %q", got)
 	}
 
 	none := gpuNode("gpu-c", map[string]string{labelGPUCount: "1"}, nil, true, false)
-	if got := projectKubeNode(none, nil, discardLog).Devices[0].DeviceClass; got != unknownClass {
+	if got := projectKubeNode(none, nil, labelPool, discardLog).Devices[0].DeviceClass; got != unknownClass {
 		t.Fatalf("a node with no product label should be %q, got %q", unknownClass, got)
+	}
+}
+
+// TestKubePoolLabelKeyIsConfigurable: the label a cluster names its pools with is the one
+// HANGAR_POOL_LABEL_KEY sets, and observation must read that key rather than a compiled-in one.
+// Reading a different key than placement selects on is silent: the node arrives in the default
+// pool, no pool of that name is declared, and the plane stores a null pool without complaining.
+func TestKubePoolLabelKeyIsConfigurable(t *testing.T) {
+	node := gpuNode("gpu-a", map[string]string{
+		labelGPUCount:       "1",
+		"example.com/pool": "gpu",
+	}, nil, true, false)
+
+	d := newKubeDiscoverer(t, node)
+	d.PoolLabelKey = "example.com/pool"
+	snap, err := d.Discover(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := snap.Nodes[0].Pool; got != "gpu" {
+		t.Fatalf("pool observed as %q, want %q", got, "gpu")
+	}
+	if got := snap.Nodes[0].Labels["pool"]; got != "gpu" {
+		t.Fatalf("exported pool label is %q, want %q", got, "gpu")
+	}
+
+	// Unset falls back to the hangar key, so a cluster that never configured one is unaffected.
+	plain := newKubeDiscoverer(t, node)
+	if got := plain.poolKey(); got != labelPool {
+		t.Fatalf("default pool key is %q, want %q", got, labelPool)
 	}
 }
