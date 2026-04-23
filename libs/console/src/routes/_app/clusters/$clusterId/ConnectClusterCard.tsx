@@ -198,8 +198,8 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                     The top block is filled in{" "}
                     {freshToken ? "— identity and enrolment token" : ""}. Fill
                     in the blanks below the divider with this cluster's own
-                    facts — pool labels, the RWX storage class, and the HF
-                    token.
+                    facts — pool labels and the RWX storage class. The HF token
+                    is opt-in; only gated weights need one.
                   </p>
                   <CopyableBlock value={view.values_yaml} language="yaml" />
                 </div>

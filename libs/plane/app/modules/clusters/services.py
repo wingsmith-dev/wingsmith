@@ -175,6 +175,12 @@ def _setup_values(cluster_name: str, hub_url: str, operator_image: str, enrolmen
     chart's schema. The chart refuses an install with any of those blanks still
     empty, so a half-edited file fails at `helm upgrade` rather than at the pod.
 
+    The HF token is the one blank that is opt-in rather than required: whether a
+    cluster needs one depends on which models land there, and the operator mounts
+    `hf-token-secret` with `Optional: true` in all three of its renders. So
+    `create` is emitted false — asking for the secret is what makes the token
+    mandatory, and a cluster serving open weights never has to think about it.
+
     The operator image is pinned from `OPERATOR_IMAGE` when set so an install
     records what it ran; unset leaves the chart's own appVersion. When
     `enrolment_token` is given (mint only) it is folded in as
@@ -226,10 +232,11 @@ def _setup_values(cluster_name: str, hub_url: str, operator_image: str, enrolmen
         "  accessMode: ReadWriteMany",
         "  size: 500Gi",
         "",
-        "# Hugging Face token for pulling model weights. The chart creates",
-        "# hf-token-secret in the dynamo namespace from this.",
+        "# Hugging Face token, only for gated weights. The operator mounts",
+        "# hf-token-secret optionally, so leaving this off costs nothing until a model",
+        "# needs it — flip `create` and fill `value` then.",
         "hfToken:",
-        "  create: true",
+        "  create: false",
         '  value: ""   # a Hugging Face token',
         "",
         "# Serving ingress. Leave disabled until a Dynamo frontend Service exists to",
