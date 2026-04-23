@@ -56,7 +56,7 @@ export function ArtifactBaselines({ artifactId }: { artifactId: string }) {
   const rows = baselines ?? []
 
   return (
-    <Card className="overflow-hidden p-0">
+    <Card className="gap-0 overflow-hidden p-0">
       <CardHeader className="gap-1 border-b bg-muted/30 px-4 py-3">
         <div className="flex items-center gap-2">
           <CardTitle className="text-sm">Baselines ({rows.length})</CardTitle>

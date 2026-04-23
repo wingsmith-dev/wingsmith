@@ -52,7 +52,7 @@ export function PoolCard({
   const span = Math.max(pool.max_nodes, 1)
 
   return (
-    <Card className="overflow-hidden p-0">
+    <Card className="gap-0 overflow-hidden p-0">
       <div className="flex flex-wrap items-center gap-3 border-b bg-muted/30 px-4 py-3">
         <ResourceGlyph kind="pool" size="sm" />
         <Link

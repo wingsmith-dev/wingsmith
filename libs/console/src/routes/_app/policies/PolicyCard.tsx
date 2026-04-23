@@ -48,7 +48,7 @@ export function PolicyCard({
   onDelete: () => void
 }) {
   return (
-    <Card className="h-full overflow-hidden p-0">
+    <Card className="h-full gap-0 overflow-hidden p-0">
       <div className="flex flex-wrap items-center gap-3 border-b bg-muted/30 px-4 py-3">
         <ResourceGlyph kind="policy" size="sm" />
         <span className="font-medium">{policy.name}</span>

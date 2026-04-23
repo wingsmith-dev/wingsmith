@@ -159,7 +159,7 @@ function Panel({
   action?: React.ReactNode
 }>) {
   return (
-    <Card id={id} className="scroll-mt-20 overflow-hidden p-0">
+    <Card id={id} className="scroll-mt-20 gap-0 overflow-hidden p-0">
       <div className="flex items-start justify-between gap-3 border-b bg-muted/30 px-4 py-3">
         <div>
           <h2 className="text-sm leading-none font-semibold">{title}</h2>
@@ -210,7 +210,6 @@ function GpuModelsSection() {
             <TableHeader>
               <TableRow>
                 <TableHead>Model</TableHead>
-                <TableHead>Identifier</TableHead>
                 <TableHead>Memory</TableHead>
                 <TableHead>Architecture</TableHead>
                 <TableHead className="hidden lg:table-cell">Form</TableHead>
@@ -235,26 +234,32 @@ function GpuModelRow({ entry }: { entry: DeviceClass }) {
   return (
     <TableRow>
       <TableCell>
-        <Link
-          to="/devices"
-          search={{ class: entry.name }}
-          className="inline-flex items-center gap-2 hover:text-primary hover:underline"
-        >
+        <div className="flex items-start gap-2">
           <ResourceIcon
             kind="device-class"
-            className="size-3.5 text-muted-foreground"
+            className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
           />
-          <span className="text-xs">{entry.label}</span>
-          <IconArrowUpRight className="size-3 text-muted-foreground" />
-        </Link>
-        {!entry.in_catalog && (
-          <span className="ml-5 block font-mono text-2xs text-amber-600 dark:text-amber-400">
-            not in the catalog
-          </span>
-        )}
-      </TableCell>
-      <TableCell className="font-mono text-2xs text-muted-foreground">
-        {entry.name}
+          <div className="min-w-0">
+            <Link
+              to="/devices"
+              search={{ class: entry.name }}
+              className="block hover:text-primary hover:underline"
+            >
+              <span className="inline-flex items-center gap-1.5 text-xs">
+                {entry.label}
+                <IconArrowUpRight className="size-3 text-muted-foreground" />
+              </span>
+              <span className="block truncate font-mono text-2xs text-muted-foreground/60">
+                {entry.name}
+              </span>
+            </Link>
+            {!entry.in_catalog && (
+              <span className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+                not in the catalog
+              </span>
+            )}
+          </div>
+        </div>
       </TableCell>
       <TableCell className="font-mono text-2xs tabular-nums">
         {entry.memory_mib ? gibibytes(entry.memory_mib) : "—"}
@@ -524,18 +529,30 @@ function PolicyRow({ entry }: { entry: Policy }) {
 }
 
 /** This browser's own settings — safety, where it points, and appearance. */
+/**
+ * Three panels rather than one: read-only is a safety switch, appearance is
+ * taste, and the plane endpoint is a build-time fact nobody can change from
+ * here. Reading them as one list invites the last to be mistaken for a setting.
+ */
 function PreferencesSection() {
-  const { theme, setTheme } = useTheme()
+  return (
+    <>
+      <ReadOnlyPanel />
+      <AppearancePanel />
+      <PlanePanel />
+    </>
+  )
+}
+
+function ReadOnlyPanel() {
   const readOnly = useSettingsStore((s) => s.readOnly)
   const setReadOnly = useSettingsStore((s) => s.setReadOnly)
-  const accent = useSettingsStore((s) => s.accent)
-  const setAccent = useSettingsStore((s) => s.setAccent)
 
   return (
     <Panel
       id="preferences"
-      title="Preferences"
-      description="how this console behaves on this machine"
+      title="Read-only mode"
+      description="what this console is allowed to write"
     >
       <div className="space-y-4">
         <div className="flex items-start justify-between gap-4 rounded-md border px-3 py-2.5">
@@ -559,7 +576,23 @@ function PreferencesSection() {
           declared state. Connecting a live cluster safely is a separate,
           per-cluster decision.
         </p>
+      </div>
+    </Panel>
+  )
+}
 
+function AppearancePanel() {
+  const { theme, setTheme } = useTheme()
+  const accent = useSettingsStore((s) => s.accent)
+  const setAccent = useSettingsStore((s) => s.setAccent)
+
+  return (
+    <Panel
+      id="appearance"
+      title="Appearance"
+      description="held in this browser, never written to the plane"
+    >
+      <div className="space-y-4">
         <div className="space-y-1.5">
           <Label>Accent</Label>
           <p className="text-2xs text-muted-foreground/70">
@@ -609,21 +642,49 @@ function PreferencesSection() {
             </SelectContent>
           </Select>
         </div>
+      </div>
+    </Panel>
+  )
+}
 
-        <div className="space-y-1.5 border-t pt-4">
-          <Label>Plane</Label>
-          <FieldGrid>
-            <Field label="Base URL">{BASE_URL}</Field>
-            <Field label="Transport">
-              <Badge variant="outline" className="font-mono text-2xs">
-                {transport.kind}
-              </Badge>
-            </Field>
-          </FieldGrid>
-          <p className="font-mono text-2xs text-muted-foreground/60">
-            Set with VITE_API_BASE_URL and VITE_API_MODE at build time.
-          </p>
-        </div>
+/**
+ * An empty {@link BASE_URL} is the plane image's deliberate setting, not a
+ * missing one — every request goes to the origin that served the console. Naming
+ * that origin is the only way the field can be read as configured rather than
+ * blank.
+ */
+function PlanePanel() {
+  const origin = typeof window === "undefined" ? null : window.location.origin
+
+  return (
+    <Panel
+      id="plane"
+      title="Plane"
+      description="where this console sends its requests"
+    >
+      <div className="space-y-1.5">
+        <FieldGrid>
+          <Field label="Base URL">
+            {BASE_URL || (
+              <span>
+                same origin
+                {origin && (
+                  <span className="ml-1.5 text-muted-foreground/60">
+                    {origin}
+                  </span>
+                )}
+              </span>
+            )}
+          </Field>
+          <Field label="Transport">
+            <Badge variant="outline" className="font-mono text-2xs">
+              {transport.kind}
+            </Badge>
+          </Field>
+        </FieldGrid>
+        <p className="font-mono text-2xs text-muted-foreground/60">
+          Set with VITE_API_BASE_URL and VITE_API_MODE at build time.
+        </p>
       </div>
     </Panel>
   )

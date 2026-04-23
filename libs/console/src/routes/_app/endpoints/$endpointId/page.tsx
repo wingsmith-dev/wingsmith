@@ -115,8 +115,8 @@ function ReplicaBar({ ready, total }: { ready: number; total: number }) {
 
 /** `fp8 · awq` from a recipe's quantization and dtype, or null if neither is set. */
 function quantLabel(recipe?: Recipe): string | null {
-  const parts = [recipe?.quantization, recipe?.dtype].filter(
-    (p): p is string => Boolean(p)
+  const parts = [recipe?.quantization, recipe?.dtype].filter((p): p is string =>
+    Boolean(p)
   )
   return parts.length > 0 ? parts.join(" · ") : null
 }
@@ -154,9 +154,7 @@ export function EndpointDetailPage() {
     const byDeployment = new Map<string, Deployment>(
       (deploymentOptions ?? []).map((d) => [d.id, d])
     )
-    const workloadById = new Map(
-      (workloadOptions ?? []).map((w) => [w.id, w])
-    )
+    const workloadById = new Map((workloadOptions ?? []).map((w) => [w.id, w]))
     const recipeById = new Map<string, Recipe>(
       (recipeOptions ?? []).map((r) => [r.id, r])
     )
@@ -240,9 +238,7 @@ export function EndpointDetailPage() {
 
   // TODO-API the endpoint's public URL is a gateway fact, not on the object;
   // derived from the name here so the copy affordance is real.
-  const url = endpoint
-    ? `hangar.example.com/v1/${endpoint.name}`
-    : ""
+  const url = endpoint ? `hangar.example.com/v1/${endpoint.name}` : ""
 
   return (
     <div className="flex flex-col">
@@ -385,28 +381,39 @@ export function EndpointDetailPage() {
                     <div className="flex flex-wrap items-center gap-4 text-2xs text-muted-foreground">
                       <span className="inline-flex items-center gap-1.5">
                         <span className="size-2 rounded-full bg-primary" />
-                        p50 <span className="font-mono text-foreground">142ms</span>
+                        p50{" "}
+                        <span className="font-mono text-foreground">142ms</span>
                       </span>
                       <span className="inline-flex items-center gap-1.5">
                         <span className="size-2 rounded-full bg-amber-500" />
-                        p95 <span className="font-mono text-foreground">238ms</span>
+                        p95{" "}
+                        <span className="font-mono text-foreground">238ms</span>
                       </span>
                       <span className="inline-flex items-center gap-1.5">
                         <span className="size-2 rounded-full bg-destructive" />
-                        p99 <span className="font-mono text-foreground">310ms</span>
+                        p99{" "}
+                        <span className="font-mono text-foreground">310ms</span>
                       </span>
                     </div>
                     <div className="space-y-1">
                       <Sparkline
-                        points={trail([30, 32, 30, 34, 33, 35, 34, 36, 35, 37, 36, 38, 37, 39, 38])}
+                        points={trail([
+                          30, 32, 30, 34, 33, 35, 34, 36, 35, 37, 36, 38, 37,
+                          39, 38,
+                        ])}
                         tone="danger"
                       />
                       <Sparkline
-                        points={trail([15, 18, 14, 22, 20, 26, 22, 30, 26, 34, 30, 40, 36, 45, 42])}
+                        points={trail([
+                          15, 18, 14, 22, 20, 26, 22, 30, 26, 34, 30, 40, 36,
+                          45, 42,
+                        ])}
                         tone="warn"
                       />
                       <Sparkline
-                        points={trail([2, 2, 0, 4, 3, 5, 4, 6, 5, 7, 6, 8, 7, 9, 8])}
+                        points={trail([
+                          2, 2, 0, 4, 3, 5, 4, 6, 5, 7, 6, 8, 7, 9, 8,
+                        ])}
                         tone="primary"
                       />
                     </div>
@@ -503,7 +510,7 @@ export function EndpointDetailPage() {
                     deployment → workload → recipe → artifact graph. Cluster and
                     replicas are the deployment's observed state; recipe and
                     artifact are its workload's. All lookups are defensive. */}
-                <Card className="overflow-hidden p-0">
+                <Card className="gap-0 overflow-hidden p-0">
                   <div className="border-b bg-muted/30 px-4 py-3">
                     <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
                       deployments
@@ -540,11 +547,9 @@ export function EndpointDetailPage() {
                                 }}
                                 className="inline-flex items-center gap-1 font-mono text-xs hover:underline"
                               >
-                                {deployment?.cluster_id ? (
-                                  shortenId(deployment.cluster_id)
-                                ) : (
-                                  shortenId(target.deployment_id)
-                                )}
+                                {deployment?.cluster_id
+                                  ? shortenId(deployment.cluster_id)
+                                  : shortenId(target.deployment_id)}
                                 <IconArrowUpRight className="size-3 text-muted-foreground" />
                               </Link>
                             </TableCell>
@@ -656,7 +661,10 @@ export function EndpointDetailPage() {
                     <FieldGrid>
                       <Field label="Endpoint URL" className="sm:col-span-2">
                         {/* TODO-API public URL is a gateway fact, derived. */}
-                        <CopyableId value={`https://${url}`} className="text-2xs">
+                        <CopyableId
+                          value={`https://${url}`}
+                          className="text-2xs"
+                        >
                           {url}
                         </CopyableId>
                       </Field>
@@ -690,7 +698,9 @@ export function EndpointDetailPage() {
                     the backing workload's recipe and that recipe's artifact. */}
                 <Card>
                   <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Recipe &amp; artifact</CardTitle>
+                    <CardTitle className="text-sm">
+                      Recipe &amp; artifact
+                    </CardTitle>
                   </CardHeader>
                   <CardContent>
                     {backing?.recipe || backing?.artifact ? (
