@@ -3,6 +3,12 @@ cluster:
   id: ""
   # The plane's hub endpoint the operator dials, ws:// or wss://.
   hubUrl: ""
+  # The cloud region this cluster runs in, e.g. ap-south-1. Only read by the
+  # metrics agent, which stamps it on every series as the `region` external
+  # label — the central store already holds `region` for the db fleets, so a
+  # cluster that omits it is the one row in a fleet-wide breakdown with a blank
+  # cell. Required when `monitoring.enabled` is true, ignored otherwise.
+  region: ""
   readOnly: true
   allowedOperations: benchmark
   logLevel: info
@@ -81,9 +87,109 @@ hfToken:
   secretName: hf-token-secret
   value: ""
 
+# Telemetry egress. Without this the cluster scrapes nothing and ships nothing:
+# the exporter below answers the operator's device-identity GETs and no DCGM,
+# vLLM or Dynamo series ever reach the plane, so every console panel for this
+# cluster renders empty — which reads as an idle fleet rather than as a missing
+# pipe. Rule 4 (the data plane never crosses the control plane) is why this is a
+# direct cluster -> central-store push and not something carried over the hub.
+#
+# What this installs is one Prometheus in **agent mode**: scrape, then
+# remote_write, with no TSDB, no query API, no rules and no UI. The plane owns
+# every read (ADR 0008 — a Backend answers metrics, and its store is the central
+# Prometheus in the plane's own cluster), so local retention would be storage
+# bought to answer questions nobody asks here. This is deliberately narrower than
+# the kube-prometheus-stack the fleet used to run: no Grafana, no Alertmanager,
+# no kube-state-metrics, no node-exporter, and no prometheus-operator — which
+# also means no monitoring.coreos.com CRDs, and therefore no ServiceMonitor or
+# PodMonitor ordering trap (see `dynamo-platform` below). Targets are discovered
+# by pod labels in the scrape config the chart renders.
+#
+# Off by default, because the write URL and its credential have no safe default
+# and a chart that failed to render without them would break every install that
+# does not want telemetry. Turning it on requires `cluster.region`,
+# `monitoring.remoteWrite.url` and a basicAuth credential.
+monitoring:
+  enabled: false
+
+  remoteWrite:
+    # The central store's ingress: `https://metrics.example.com/api/v1/write`,
+    # fronted by a Traefik basicAuth middleware in the plane cluster's `platform`
+    # namespace. Required when enabled — there is no default, because writing a
+    # fleet's telemetry to a guessed endpoint is worse than not writing it.
+    url: ""
+    timeout: 30s
+    # Sized for a burst after a network blip rather than for steady state: at
+    # 15s scrapes the queue is near-empty normally, and the shards are what let
+    # it drain a backlog faster than it accrued.
+    queue:
+      capacity: 10000
+      maxShards: 20
+      maxSamplesPerSend: 2000
+    # Keep-list, carried over verbatim from the kube-prometheus-stack values this
+    # replaces so the central store's series set does not change shape. DCGM is
+    # per-GPU telemetry and `vllm:`/`dynamo_` are the serving numbers; those are
+    # the only families the plane's dialect table names today. The `node_*`,
+    # `kube_*` and `container_*` families are dead weight here — this chart ships
+    # no node-exporter and no kube-state-metrics — and they stay listed so that
+    # adding either starts working without touching the write path. Anything not
+    # matched is dropped at the sender, which is the point: an unfiltered
+    # remote_write from a GPU cluster is mostly per-request histogram cardinality
+    # the central store has no reason to hold.
+    keep: "DCGM_FI_.*|node_.*|kube_pod_.*|kube_node_.*|kube_deployment_.*|container_(cpu|memory)_.*|vllm:.*|dynamo_.*|up|kubelet_volume_stats_.*"
+    # Same idiom as `enrolmentToken`: the chart creates the Secret from
+    # `username`/`password` — the normal path — and `existing: true` is the
+    # opt-out for a Secret you created yourself. Never put the credential in a
+    # values file that is committed. It is the same pair the other clusters use;
+    # it lives in AWS Secrets Manager under `ACME_PROM_REMOTE_WRITE_USERS`,
+    # which the plane cluster's ExternalSecret reads to build the htpasswd the
+    # ingress checks against.
+    basicAuth:
+      existingSecret: hangar-metrics-remote-write
+      usernameKey: username
+      passwordKey: password
+      username: ""
+      password: ""
+      existing: false
+
+  agent:
+    image:
+      repository: quay.io/prometheus/prometheus
+      # Agent mode is the `--agent` flag from 3.0 on; on 2.x it was
+      # `--enable-feature=agent`. Pinned to the 3.5 LTS line.
+      tag: v3.5.5
+      pullPolicy: IfNotPresent
+    scrapeInterval: 15s
+    # Must be <= scrapeInterval, the same trap the exporter's ServiceMonitor has.
+    scrapeTimeout: 10s
+    # The agent's WAL is a send buffer, not storage — it holds only what has not
+    # been acknowledged yet, so an emptyDir is right and a restart costs at most
+    # the unsent tail. A PVC here would be a volume bought to protect samples the
+    # central store is the record for.
+    walSizeLimit: 4Gi
+    # No nodeSelector on purpose: GPU nodes carry the `nvidia.com/gpu` taint this
+    # pod does not tolerate, so the default placement already keeps it off the
+    # expensive hardware. Pin it to a system pool per cluster if that stops being
+    # true.
+    nodeSelector: {}
+    tolerations: []
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 768Mi
+
 # DaemonSet; tolerates the GPU taint so it lands on GPU nodes. Pin it to the GPU
 # pool with `nodeSelector` for a cluster whose non-GPU nodes carry no exporter.
-# ServiceMonitor off — enable only where a local monitoring stack exists.
+#
+# ServiceMonitor stays off even when `monitoring.enabled` is true: that object
+# needs the monitoring.coreos.com CRDs, which this chart does not install, and
+# the metrics agent finds the exporter's pods by label instead. Turning it on
+# alongside `monitoring.enabled` is refused rather than accepted — it would be
+# either an apply failure (no CRDs) or a second scraper writing the same series
+# twice. Enable it only for a cluster running its own kube-prometheus-stack, with
+# `monitoring.enabled` false.
 dcgm-exporter:
   enabled: true
   nodeSelector: {}
@@ -112,12 +218,28 @@ dcgm-exporter:
 # global.nats.install to false, and without it the Dynamo deployments have nothing
 # to route over. Component discovery is the Kubernetes API, not etcd. Pin these off
 # the GPU pool per cluster in local values.
+#
+# `podMonitors.enabled` is pinned false rather than left at the subchart's `null`,
+# and the pin is the whole reason this cluster's serving metrics are reachable at
+# all. Null means auto-detect: the subchart renders its four PodMonitors only if
+# the monitoring.coreos.com CRDs exist AT INSTALL TIME, so whether a cluster has
+# Dynamo metrics depends on the order two unrelated charts were installed in, and
+# the failure is a chart that installed cleanly and emits no `vllm:` series. That
+# trap is the one that took the fleet dark. Here it cannot fire in either
+# direction: the agent above scrapes Dynamo's pods from its own scrape config, so
+# these objects are never needed, and pinning them off stops them appearing later
+# on a cluster that grows the CRDs for some other reason and double-scraping
+# every worker.
 dynamo-platform:
   enabled: true
   global:
     nats:
       install: true
   dynamo-operator:
+    dynamo:
+      metrics:
+        podMonitors:
+          enabled: false
     controllerManager:
       manager:
         resources:

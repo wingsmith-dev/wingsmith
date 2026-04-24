@@ -1,0 +1,253 @@
+{{- if .Values.monitoring.enabled }}
+# Telemetry egress: one Prometheus in agent mode whose only job is to scrape this
+# cluster's exporters and push them to the central store. No TSDB, no query API,
+# no rules, no UI — the plane reads the central store and never dials in here.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hangar-metrics-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+---
+# Pod discovery is cluster-scoped because the targets are not: the exporter lives
+# in this namespace and Dynamo's workers live in `dynamo`. Read-only on pods and
+# nothing else — the agent needs to enumerate targets, not to know what they are.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Release.Namespace }}-hangar-metrics-agent
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Release.Namespace }}-hangar-metrics-agent
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Release.Namespace }}-hangar-metrics-agent
+subjects:
+  - kind: ServiceAccount
+    name: hangar-metrics-agent
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hangar-metrics-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: {{ .Values.monitoring.agent.scrapeInterval }}
+      scrape_timeout: {{ .Values.monitoring.agent.scrapeTimeout }}
+      # `cluster` is the label the plane narrows every query on, and it must equal
+      # the cluster id the plane knows this cluster by — derived from
+      # `cluster.id` rather than asked for a second time, because a second field
+      # is a second chance to disagree and the symptom of disagreement is an
+      # empty panel, not an error.
+      external_labels:
+        cluster: {{ .Values.cluster.id | quote }}
+        region: {{ .Values.cluster.region | quote }}
+
+    remote_write:
+      - url: {{ .Values.monitoring.remoteWrite.url | quote }}
+        remote_timeout: {{ .Values.monitoring.remoteWrite.timeout }}
+        basic_auth:
+          username_file: /etc/hangar/remote-write/{{ .Values.monitoring.remoteWrite.basicAuth.usernameKey }}
+          password_file: /etc/hangar/remote-write/{{ .Values.monitoring.remoteWrite.basicAuth.passwordKey }}
+        queue_config:
+          capacity: {{ .Values.monitoring.remoteWrite.queue.capacity }}
+          max_shards: {{ .Values.monitoring.remoteWrite.queue.maxShards }}
+          max_samples_per_send: {{ .Values.monitoring.remoteWrite.queue.maxSamplesPerSend }}
+        write_relabel_configs:
+          - source_labels: [__name__]
+            regex: {{ .Values.monitoring.remoteWrite.keep | quote }}
+            action: keep
+
+    scrape_configs:
+      # Per-GPU telemetry. Discovered by the exporter's own pod labels and not
+      # through its Service, so every node's exporter is a target instead of
+      # whichever pod the ClusterIP picks — the same reason the operator's
+      # HANGAR_DCGM_SELECTOR exists.
+      - job_name: dcgm-exporter
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: [{{ .Release.Namespace | quote }}]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+            regex: dcgm-exporter
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: metrics
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+      # Dynamo's frontend, workers and planner. These are the serving numbers —
+      # TTFT, inter-token latency, queue depth, KV-cache hit rate, token counts —
+      # and they come from the ports the Dynamo operator names on the pods it
+      # owns, so a new DynamoGraphDeployment is picked up without editing this.
+      #
+      # This replaces the PodMonitors the dynamo-platform subchart would render,
+      # which is why `dynamo-platform` pins them off: those objects only appear if
+      # the prometheus-operator CRDs happened to exist when Dynamo was installed,
+      # and a scrape config in this ConfigMap has no such dependency.
+      #
+      # honor_labels keeps `dynamo_namespace` and the router labels the runtime
+      # sets, matching what Dynamo's own PodMonitors do.
+      - job_name: dynamo
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ["dynamo"]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_nvidia_com_metrics_enabled]
+            regex: "true"
+            action: keep
+          # `system-0`/`system-1` exist only on GMS shadow-failover pods, which
+          # pack two engines into one pod and rename the clashing port; on every
+          # other pod they are absent and generate no target.
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            regex: "http|system|system-0|system-1|metrics"
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_label_nvidia_com_dynamo_namespace]
+            target_label: dynamo_namespace
+          - source_labels: [__meta_kubernetes_pod_label_nvidia_com_dynamo_component_type]
+            target_label: dynamo_component_type
+          - source_labels: [__meta_kubernetes_pod_label_nvidia_com_dynamo_graph_deployment_name]
+            target_label: dynamo_graph_deployment
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+      # The router reports itself as component type `default` and declares no
+      # container port, so the job above cannot match it. Its metrics are on
+      # DYN_SYSTEM_PORT (9090), forced onto the pod IP here rather than required
+      # in the pod spec.
+      - job_name: dynamo-router
+        honor_labels: true
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names: ["dynamo"]
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_label_nvidia_com_metrics_enabled]
+            regex: "true"
+            action: keep
+          - source_labels: [__meta_kubernetes_pod_label_nvidia_com_dynamo_component_type]
+            regex: "default"
+            action: keep
+          - source_labels: [__address__]
+            regex: '([^:]+)(?::\d+)?'
+            replacement: '${1}:9090'
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_pod_label_nvidia_com_dynamo_namespace]
+            target_label: dynamo_namespace
+          - source_labels: [__meta_kubernetes_pod_node_name]
+            target_label: node
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hangar-metrics-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "cluster-setup.agentSelectorLabels" . | nindent 6 }}
+  # One replica holding a send buffer: Recreate, so the replacement does not
+  # briefly double every series in the central store the way a rolling update
+  # would.
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        {{- include "cluster-setup.agentSelectorLabels" . | nindent 8 }}
+      annotations:
+        # A config change is a pod restart. The agent reloads on SIGHUP, but
+        # nothing here sends one, so without this the ConfigMap moves and the
+        # running agent keeps the old scrape config indefinitely.
+        checksum/config: {{ printf "%s|%s|%s|%s|%s" .Values.cluster.id .Values.cluster.region .Values.monitoring.remoteWrite.url .Values.monitoring.remoteWrite.keep (toString .Values.monitoring.agent.scrapeInterval) | sha256sum }}
+    spec:
+      serviceAccountName: hangar-metrics-agent
+      {{- with .Values.monitoring.agent.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.monitoring.agent.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # The upstream image runs as nobody; fsGroup is what makes the WAL directory
+      # on the emptyDir writable by it.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        fsGroup: 65534
+      containers:
+        - name: prometheus
+          image: "{{ .Values.monitoring.agent.image.repository }}:{{ .Values.monitoring.agent.image.tag }}"
+          imagePullPolicy: {{ .Values.monitoring.agent.image.pullPolicy }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --agent
+            - --storage.agent.path=/data
+            - --web.listen-address=:9090
+            # No query API and no admin API: this process is an outbound pipe, and
+            # the only thing that should be readable on it is its own health.
+            - --web.enable-lifecycle=false
+          ports:
+            - name: http
+              containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http
+            initialDelaySeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http
+            initialDelaySeconds: 30
+          resources:
+            {{- toYaml .Values.monitoring.agent.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+              readOnly: true
+            - name: remote-write
+              mountPath: /etc/hangar/remote-write
+              readOnly: true
+            - name: wal
+              mountPath: /data
+      volumes:
+        - name: config
+          configMap:
+            name: hangar-metrics-agent
+        - name: remote-write
+          secret:
+            secretName: {{ .Values.monitoring.remoteWrite.basicAuth.existingSecret }}
+        - name: wal
+          emptyDir:
+            sizeLimit: {{ .Values.monitoring.agent.walSizeLimit }}
+{{- end }}

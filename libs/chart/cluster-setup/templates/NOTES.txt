@@ -4,6 +4,7 @@ Cluster id : {{ .Values.cluster.id }}
 Hub        : {{ .Values.cluster.hubUrl }}
 Operator   : {{ include "cluster-setup.operatorImage" . }}
 Read-only  : {{ .Values.cluster.readOnly }}  (allowed operations: {{ .Values.cluster.allowedOperations | default "none" }})
+Telemetry  : {{ if .Values.monitoring.enabled }}agent -> {{ .Values.monitoring.remoteWrite.url }} as cluster={{ .Values.cluster.id }} region={{ .Values.cluster.region }}{{ else }}none (monitoring.enabled=false){{ end }}
 
 {{- if not .Values.enrolmentToken.value }}
 
@@ -20,6 +21,25 @@ Read-only  : {{ .Values.cluster.readOnly }}  (allowed operations: {{ .Values.clu
 
      kubectl -n dynamo create secret generic {{ .Values.hfToken.secretName }} \
        --from-literal=HF_TOKEN=<...>
+{{- end }}
+{{- if .Values.monitoring.enabled }}
+
+ℹ  Telemetry egress is on. Confirm the agent is actually sending, because a
+   scraping-but-not-writing agent looks identical to a healthy one from outside:
+
+     kubectl -n {{ .Release.Namespace }} logs deploy/hangar-metrics-agent | grep -i 'remote_write\|401\|403'
+
+   Then confirm the plane's store has the label before adding this cluster to
+   HANGAR_METRICS_SOURCES — an entry added early replaces an honest "no metrics
+   source" with an empty chart that reads as an idle fleet:
+
+     /api/v1/label/cluster/values
+{{- else }}
+
+⚠  No telemetry leaves this cluster (monitoring.enabled=false). The operator can
+   still read DCGM for device identity, but every metrics panel for this cluster
+   in the console will be empty. Set monitoring.enabled=true with
+   monitoring.remoteWrite.url, cluster.region and the basicAuth credential.
 {{- end }}
 {{- if not .Values.serving.enabled }}
 

@@ -33,6 +33,16 @@ time. Explicit value wins; otherwise the labels the bundled subchart actually se
 {{- end -}}
 {{- end -}}
 
+{{/*
+Selector labels for the metrics agent. Its own, not the operator's — the agent is
+a separate workload and sharing a selector would make one Deployment adopt the
+other's pods.
+*/}}
+{{- define "cluster-setup.agentSelectorLabels" -}}
+app.kubernetes.io/name: hangar-metrics-agent
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
 {{/* Common labels on hangar-owned objects. */}}
 {{- define "cluster-setup.labels" -}}
 app.kubernetes.io/name: hangar-operator
@@ -51,5 +61,19 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end -}}
 {{- if and .Values.serving.enabled (not .Values.serving.backend.service) -}}
 {{- fail "serving.enabled is true but serving.backend.service is empty — set it to the Dynamo frontend Service name" -}}
+{{- end -}}
+{{- if .Values.monitoring.enabled -}}
+{{- if not .Values.monitoring.remoteWrite.url -}}
+{{- fail "monitoring.enabled is true but monitoring.remoteWrite.url is empty — set it to the central store's write endpoint (https://metrics.example.com/api/v1/write). An agent with no remote_write scrapes the cluster and discards every sample, which looks like a healthy install and produces empty console panels." -}}
+{{- end -}}
+{{- if not .Values.cluster.region -}}
+{{- fail "monitoring.enabled is true but cluster.region is empty — it becomes the `region` external label on every series this cluster writes. Left blank the series land in the central store unattributed and cannot be told apart from another region's in a fleet-wide breakdown." -}}
+{{- end -}}
+{{- if index .Values "dcgm-exporter" "serviceMonitor" "enabled" -}}
+{{- fail "monitoring.enabled and dcgm-exporter.serviceMonitor.enabled are both true — pick one. This chart installs no prometheus-operator, so the ServiceMonitor either fails to apply for a missing CRD or, where an operator does exist, adds a second scraper writing the same DCGM series twice. The metrics agent already discovers the exporter's pods by label." -}}
+{{- end -}}
+{{- if and (not .Values.monitoring.remoteWrite.basicAuth.existing) (or (not .Values.monitoring.remoteWrite.basicAuth.username) (not .Values.monitoring.remoteWrite.basicAuth.password)) -}}
+{{- fail "monitoring.remoteWrite.basicAuth needs a username and password: the central store's write ingress is behind basicAuth and rejects the agent with 401 on every send otherwise, which surfaces only in the agent's own logs. Set monitoring.remoteWrite.basicAuth.existing=true if you created the Secret yourself." -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
