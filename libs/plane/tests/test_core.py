@@ -167,6 +167,50 @@ def test_a_filter_valid_on_one_collection_is_rejected_on_another():
     assert rejected.json()["detail"]["unknown"] == ["severity"]
 
 
+SINGLE_PAGE_LISTS = {
+    "/v1/device-classes",
+    "/v1/benchmarks/harnesses",
+    "/v1/alert-rules",
+    "/v1/benchmarks/requests/{ref:str}/bands",
+}
+"""List routes that deliberately answer in one page: fixed catalogues, not collections."""
+
+
+def _list_routes():
+    for route in create_app().routes:
+        for method, entry in getattr(route, "route_handler_map", {}).items():
+            handler = entry[0] if isinstance(entry, tuple) else entry
+            if method != "GET" or getattr(handler.fn, "__module__", "").startswith("litestar."):
+                continue
+            if "ListResponse" not in str(handler.parsed_fn_signature.return_type.annotation):
+                continue
+            model = handler.create_kwargs_model(path_parameters=dict.fromkeys(route.path_parameters))
+            yield route.path, {param.field_alias for param in model.expected_query_params}
+
+
+def test_every_paginated_list_route_accepts_limit_and_cursor():
+    """The envelope promises a cursor, so the route has to take one back.
+
+    A handler that returns `ListResponse` without declaring `limit` and `cursor`
+    reads as paginated and answers `400 unknown_parameter` to the second page —
+    and because `reject_unknown_params` is doing its job, the client sees the
+    failure on the *first* request, not the second. `/clusters/rollups` shipped
+    that way and every cluster card rendered its counts as unknown. Adding a
+    route to `SINGLE_PAGE_LISTS` is how a fixed catalogue opts out, deliberately.
+    """
+    missing = {
+        path: sorted({"limit", "cursor"} - accepted)
+        for path, accepted in _list_routes()
+        if path not in SINGLE_PAGE_LISTS and not {"limit", "cursor"} <= accepted
+    }
+    assert missing == {}
+
+
+def test_the_single_page_allowlist_names_only_routes_that_exist():
+    """A stale exemption silently excuses a route nobody meant to exempt."""
+    assert SINGLE_PAGE_LISTS <= {path for path, _ in _list_routes()}
+
+
 def test_aliased_parameter_is_accepted_under_its_wire_name():
     """`/v1/devices` declares `device_class` as `Parameter(query="class")`."""
     with TestClient(app=create_app()) as client:

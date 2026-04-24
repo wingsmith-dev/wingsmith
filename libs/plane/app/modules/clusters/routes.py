@@ -53,9 +53,13 @@ class ClusterRoutes(Controller):
 
     @get("/rollups")
     async def list_rollups(
-        self, context: RequestContext, svc: ClusterService
+        self,
+        context: RequestContext,
+        svc: ClusterService,
+        limit: int | None = None,
+        cursor: str | None = None,
     ) -> Response[ListResponse[ClusterRollupSchema]]:
-        return Response(await svc.rollups())
+        return Response(await svc.rollups(limit=limit, cursor=cursor))
 
     @get("/{ref:str}/rollup")
     async def get_rollup(

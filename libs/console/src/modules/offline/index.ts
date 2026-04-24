@@ -1,4 +1,4 @@
-import { registerFixtures, type FixtureContext } from "@/lib/api/fixtures"
+import { page, registerFixtures, type FixtureContext } from "@/lib/api/fixtures"
 import { ConflictError, NotFoundError } from "@/lib/api/transport"
 import {
   OPERATION_TYPES,
@@ -50,6 +50,81 @@ const bool = (value: boolean | undefined, actual: boolean) =>
 
 const eq = (want: string | undefined, ...actual: (string | null)[]) =>
   want === undefined || actual.includes(want)
+
+/**
+ * The batch rollup, counted out of the fixture supply rather than stored beside
+ * it, so a card cannot disagree with the tables it links to. Registered ahead of
+ * the cluster collection because `/clusters/:ref` would otherwise swallow
+ * `/clusters/rollups` — the same route-order trap the plane has.
+ */
+function clusterRollup(clusterId: string) {
+  const own = devices.filter((d) => d.cluster === clusterId)
+  const free = own.filter((d) => d.allocatable)
+  const ownNodes = nodes.filter((n) => n.cluster === clusterId)
+  const byNode = new Map<string, { total: number; free: number }>()
+  for (const device of own) {
+    const seen = byNode.get(device.node) ?? { total: 0, free: 0 }
+    byNode.set(device.node, {
+      total: seen.total + 1,
+      free: seen.free + (device.allocatable ? 1 : 0),
+    })
+  }
+  const domains = new Map<string, number>()
+  for (const device of free) {
+    if (!device.topology?.id) continue
+    domains.set(device.topology.id, (domains.get(device.topology.id) ?? 0) + 1)
+  }
+  const block = Math.max(0, ...domains.values())
+
+  return {
+    cluster_id: clusterId,
+    nodes_total: ownNodes.length,
+    nodes_ready: ownNodes.filter((n) => n.ready).length,
+    devices_total: own.length,
+    devices_allocatable: free.length,
+    devices_allocated: own.length - free.length,
+    pool_count: pools.filter((p) => p.cluster_id === clusterId).length,
+    deployment_count: deployments.filter((d) => d.cluster_id === clusterId)
+      .length,
+    headroom: {
+      free_devices: free.length,
+      whole_nodes_free: [...byNode.values()].filter(
+        (n) => n.total > 0 && n.total === n.free
+      ).length,
+      largest_contiguous_block: block === 0 && free.length > 0 ? 1 : block,
+    },
+  }
+}
+
+registerFixtures([
+  {
+    method: "GET",
+    path: "/clusters/rollups",
+    handler: ({ query }: FixtureContext) =>
+      page(
+        clusters.map((c) => clusterRollup(c.id)),
+        query
+      ),
+  },
+  {
+    method: "GET",
+    path: "/clusters/:ref/rollup",
+    handler: ({ params }: FixtureContext) => {
+      const id = clusterRef(params.ref)
+      if (!id) throw new NotFoundError(`no cluster '${params.ref}'`)
+      return clusterRollup(id)
+    },
+  },
+  {
+    method: "GET",
+    path: "/clusters/:ref/headroom",
+    handler: ({ params }: FixtureContext) => {
+      const id = clusterRef(params.ref)
+      if (!id) throw new NotFoundError(`no cluster '${params.ref}'`)
+      return clusterRollup(id).headroom
+    },
+  },
+])
 
 collection({
   path: "/clusters",

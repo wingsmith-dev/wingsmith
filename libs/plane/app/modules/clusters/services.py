@@ -477,11 +477,13 @@ class ClusterService:
     async def headroom(self, ref: str) -> ClusterHeadroomSchema:
         return (await self.rollup(ref)).headroom
 
-    async def rollups(self) -> ListResponse[ClusterRollupSchema]:
-        pairs = await self.repo.all_ids()
-        rows = await self.repo.rollup([pair.id for pair in pairs])
-        items = [_rollup(pair.uid, rows.get(pair.id)) for pair in pairs]
-        return ListResponse(items=items, count=len(items), next_cursor=None)
+    async def rollups(self, limit: int | None = None, cursor: str | None = None) -> ListResponse[ClusterRollupSchema]:
+        size = clamp_limit(limit)
+        pairs = await self.repo.all_ids(limit=size + 1, after_seq=decode_cursor(cursor))
+        kept, next_cursor = page(pairs, size, lambda pair: pair.seq)
+        rows = await self.repo.rollup([pair.id for pair in kept])
+        items = [_rollup(pair.uid, rows.get(pair.id)) for pair in kept]
+        return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def create(self, data: ClusterCreateRequest) -> ClusterSchema:
         """Registers a cluster, labelling it for the metrics store by its own name.

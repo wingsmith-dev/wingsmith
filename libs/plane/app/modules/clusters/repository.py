@@ -185,9 +185,17 @@ class ClusterRepository:
             rollup.setdefault(row.cluster_id, {}).update(largest_block=row.largest_block or 0)
         return rollup
 
-    async def all_ids(self) -> list:
-        """Every cluster's (id, uid) pair, ordered, for the batch rollup."""
-        result = await self.db.execute(select(Cluster.id, Cluster.uid).order_by(Cluster.seq.asc()))
+    async def all_ids(self, limit: int, after_seq: int | None = None) -> list:
+        """One page of `(id, uid, seq)` triples, ordered, for the batch rollup.
+
+        Paged on the same key as `list` so the two collections can be walked
+        together: a console joining rollups onto cluster rows follows one cursor
+        per collection and never has to reconcile two orderings.
+        """
+        query = select(Cluster.id, Cluster.uid, Cluster.seq).order_by(Cluster.seq.asc()).limit(limit)
+        if after_seq is not None:
+            query = query.where(Cluster.seq > after_seq)
+        result = await self.db.execute(query)
         return list(result.all())
 
     async def add(self, cluster: Cluster) -> Cluster:
