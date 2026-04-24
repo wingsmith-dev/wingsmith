@@ -63,9 +63,19 @@ data:
     remote_write:
       - url: {{ .Values.monitoring.remoteWrite.url | quote }}
         remote_timeout: {{ .Values.monitoring.remoteWrite.timeout }}
+        # The password is always a file out of a mounted Secret, never a literal
+        # here — this ConfigMap is readable by anything with `get configmaps`.
+        # Under `useEnrolmentToken` that Secret is the enrolment one and the
+        # username is the cluster id, inline because an id is not a secret and a
+        # `username_file` would mean generating a file to hold a value already in
+        # this document.
         basic_auth:
+        {{- if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}
+          username: {{ .Values.cluster.id | quote }}
+        {{- else }}
           username_file: /etc/hangar/remote-write/{{ .Values.monitoring.remoteWrite.basicAuth.usernameKey }}
-          password_file: /etc/hangar/remote-write/{{ .Values.monitoring.remoteWrite.basicAuth.passwordKey }}
+        {{- end }}
+          password_file: /etc/hangar/remote-write/{{ include "cluster-setup.remoteWritePasswordKey" . }}
         queue_config:
           capacity: {{ .Values.monitoring.remoteWrite.queue.capacity }}
           max_shards: {{ .Values.monitoring.remoteWrite.queue.maxShards }}
@@ -187,7 +197,7 @@ spec:
         # A config change is a pod restart. The agent reloads on SIGHUP, but
         # nothing here sends one, so without this the ConfigMap moves and the
         # running agent keeps the old scrape config indefinitely.
-        checksum/config: {{ printf "%s|%s|%s|%s|%s" .Values.cluster.id .Values.cluster.region .Values.monitoring.remoteWrite.url .Values.monitoring.remoteWrite.keep (toString .Values.monitoring.agent.scrapeInterval) | sha256sum }}
+        checksum/config: {{ printf "%s|%s|%s|%s|%s|%s" .Values.cluster.id .Values.cluster.region .Values.monitoring.remoteWrite.url .Values.monitoring.remoteWrite.keep (toString .Values.monitoring.agent.scrapeInterval) (toString .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken) | sha256sum }}
     spec:
       serviceAccountName: hangar-metrics-agent
       {{- with .Values.monitoring.agent.nodeSelector }}
@@ -246,7 +256,7 @@ spec:
             name: hangar-metrics-agent
         - name: remote-write
           secret:
-            secretName: {{ .Values.monitoring.remoteWrite.basicAuth.existingSecret }}
+            secretName: {{ include "cluster-setup.remoteWriteSecret" . }}
         - name: wal
           emptyDir:
             sizeLimit: {{ .Values.monitoring.agent.walSizeLimit }}

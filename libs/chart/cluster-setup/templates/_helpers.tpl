@@ -43,6 +43,29 @@ app.kubernetes.io/name: hangar-metrics-agent
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
+{{/*
+The Secret the metrics agent mounts for its remote-write password, and the key in
+it that holds it. Under `useEnrolmentToken` (the default) both name the enrolment
+Secret this chart already creates, so the token is written in one place and the
+agent's credential cannot drift from the one the plane verifies; otherwise they
+name the separate basicAuth Secret.
+*/}}
+{{- define "cluster-setup.remoteWriteSecret" -}}
+{{- if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken -}}
+{{- .Values.enrolmentToken.existingSecret -}}
+{{- else -}}
+{{- .Values.monitoring.remoteWrite.basicAuth.existingSecret -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "cluster-setup.remoteWritePasswordKey" -}}
+{{- if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken -}}
+{{- .Values.enrolmentToken.secretKey -}}
+{{- else -}}
+{{- .Values.monitoring.remoteWrite.basicAuth.passwordKey -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Common labels on hangar-owned objects. */}}
 {{- define "cluster-setup.labels" -}}
 app.kubernetes.io/name: hangar-operator
@@ -55,6 +78,13 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- define "cluster-setup.validate" -}}
 {{- if not .Values.cluster.id -}}
 {{- fail "cluster.id is required — it must match the name of a cluster already declared in the plane" -}}
+{{- end -}}
+{{- if and (not .Values.enrolmentToken.value) (not .Values.enrolmentToken.existing) -}}
+{{- if and .Values.monitoring.enabled .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken -}}
+{{- fail "enrolmentToken.value is required, and with monitoring.remoteWrite.basicAuth.useEnrolmentToken it is needed twice over: the operator reads the token from a Secret this chart creates, so without it that pod starts into CreateContainerConfigError, and the metrics agent presents the same token to the central store's write ingress — whose htpasswd the plane filled in when it minted it — so a missing one also means an agent that scrapes fine and is rejected with 401 on every send, visible only in its own logs. Mint the token on the register screen and install from the values.yaml it renders. Set enrolmentToken.existing=true if you created that Secret yourself, or useEnrolmentToken=false with an explicit basicAuth username and password for a store that is not hangar's." -}}
+{{- else -}}
+{{- fail "enrolmentToken.value is required: mint the cluster's token on the register screen and install from the values.yaml it renders. The operator Deployment reads the token from a Secret this chart creates, so without it the pod starts into CreateContainerConfigError. Set enrolmentToken.existing=true only if you created that Secret yourself." -}}
+{{- end -}}
 {{- end -}}
 {{- if not (or (hasPrefix "ws://" .Values.cluster.hubUrl) (hasPrefix "wss://" .Values.cluster.hubUrl)) -}}
 {{- fail "cluster.hubUrl must start with ws:// or wss://" -}}
@@ -72,8 +102,11 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- if index .Values "dcgm-exporter" "serviceMonitor" "enabled" -}}
 {{- fail "monitoring.enabled and dcgm-exporter.serviceMonitor.enabled are both true — pick one. This chart installs no prometheus-operator, so the ServiceMonitor either fails to apply for a missing CRD or, where an operator does exist, adds a second scraper writing the same DCGM series twice. The metrics agent already discovers the exporter's pods by label." -}}
 {{- end -}}
-{{- if and (not .Values.monitoring.remoteWrite.basicAuth.existing) (or (not .Values.monitoring.remoteWrite.basicAuth.username) (not .Values.monitoring.remoteWrite.basicAuth.password)) -}}
-{{- fail "monitoring.remoteWrite.basicAuth needs a username and password: the central store's write ingress is behind basicAuth and rejects the agent with 401 on every send otherwise, which surfaces only in the agent's own logs. Set monitoring.remoteWrite.basicAuth.existing=true if you created the Secret yourself." -}}
+{{- if and .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken .Values.monitoring.remoteWrite.basicAuth.existing -}}
+{{- fail "monitoring.remoteWrite.basicAuth has both useEnrolmentToken and existing set — pick one. useEnrolmentToken makes the agent read the enrolment Secret, so the Secret you created would be mounted by nothing and ignored in silence. Set useEnrolmentToken=false to use it." -}}
+{{- end -}}
+{{- if and (not .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken) (not .Values.monitoring.remoteWrite.basicAuth.existing) (or (not .Values.monitoring.remoteWrite.basicAuth.username) (not .Values.monitoring.remoteWrite.basicAuth.password)) -}}
+{{- fail "monitoring.remoteWrite.basicAuth.useEnrolmentToken is false, so the credential must be supplied: without a username and password the write ingress rejects the agent with 401 on every send, which surfaces only in the agent's own logs. Set both, or basicAuth.existing=true if you created the Secret yourself — or drop useEnrolmentToken back to true and let the enrolment token be the credential." -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}

@@ -4,7 +4,8 @@ Cluster id : {{ .Values.cluster.id }}
 Hub        : {{ .Values.cluster.hubUrl }}
 Operator   : {{ include "cluster-setup.operatorImage" . }}
 Read-only  : {{ .Values.cluster.readOnly }}  (allowed operations: {{ .Values.cluster.allowedOperations | default "none" }})
-Telemetry  : {{ if .Values.monitoring.enabled }}agent -> {{ .Values.monitoring.remoteWrite.url }} as cluster={{ .Values.cluster.id }} region={{ .Values.cluster.region }}{{ else }}none (monitoring.enabled=false){{ end }}
+Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Values.monitoring.remoteWrite.url }} as cluster={{ .Values.cluster.id }} region={{ .Values.cluster.region }}
+             credential : {{ if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}this cluster's enrolment token, read from {{ .Values.enrolmentToken.existingSecret }}/{{ .Values.enrolmentToken.secretKey }} — nothing per-cluster to configure{{ else }}basicAuth from the Secret {{ .Values.monitoring.remoteWrite.basicAuth.existingSecret }} (useEnrolmentToken=false){{ end }}{{ else }}not configured — nothing leaves this cluster (monitoring.enabled=false){{ end }}
 
 {{- if not .Values.enrolmentToken.value }}
 
@@ -29,6 +30,10 @@ Telemetry  : {{ if .Values.monitoring.enabled }}agent -> {{ .Values.monitoring.r
 
      kubectl -n {{ .Release.Namespace }} logs deploy/hangar-metrics-agent | grep -i 'remote_write\|401\|403'
 
+   {{ if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}A 401 there means the write ingress holds no verifier for this cluster's
+   enrolment token — re-mint the token, rather than looking for a credential to
+   fix.{{ else }}A 401 there means this basicAuth pair is not in the write ingress's htpasswd.{{ end }}
+
    Then confirm the plane's store has the label before adding this cluster to
    HANGAR_METRICS_SOURCES — an entry added early replaces an honest "no metrics
    source" with an empty chart that reads as an idle fleet:
@@ -39,7 +44,8 @@ Telemetry  : {{ if .Values.monitoring.enabled }}agent -> {{ .Values.monitoring.r
 ⚠  No telemetry leaves this cluster (monitoring.enabled=false). The operator can
    still read DCGM for device identity, but every metrics panel for this cluster
    in the console will be empty. Set monitoring.enabled=true with
-   monitoring.remoteWrite.url, cluster.region and the basicAuth credential.
+   monitoring.remoteWrite.url and cluster.region — no credential to find, the
+   agent authenticates with this cluster's enrolment token.
 {{- end }}
 {{- if not .Values.serving.enabled }}
 

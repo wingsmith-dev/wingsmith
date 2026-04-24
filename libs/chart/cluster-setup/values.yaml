@@ -105,10 +105,11 @@ hfToken:
 # PodMonitor ordering trap (see `dynamo-platform` below). Targets are discovered
 # by pod labels in the scrape config the chart renders.
 #
-# Off by default, because the write URL and its credential have no safe default
-# and a chart that failed to render without them would break every install that
-# does not want telemetry. Turning it on requires `cluster.region`,
-# `monitoring.remoteWrite.url` and a basicAuth credential.
+# Off by default, because the write URL has no safe default and a chart that
+# failed to render without it would break every install that does not want
+# telemetry. Turning it on requires `cluster.region` and
+# `monitoring.remoteWrite.url` — and no credential, because the credential is the
+# enrolment token this cluster already has (see `basicAuth` below).
 monitoring:
   enabled: false
 
@@ -137,14 +138,28 @@ monitoring:
     # remote_write from a GPU cluster is mostly per-request histogram cardinality
     # the central store has no reason to hold.
     keep: "DCGM_FI_.*|node_.*|kube_pod_.*|kube_node_.*|kube_deployment_.*|container_(cpu|memory)_.*|vllm:.*|dynamo_.*|up|kubelet_volume_stats_.*"
-    # Same idiom as `enrolmentToken`: the chart creates the Secret from
-    # `username`/`password` — the normal path — and `existing: true` is the
-    # opt-out for a Secret you created yourself. Never put the credential in a
-    # values file that is committed. It is the same pair the other clusters use;
-    # it lives in AWS Secrets Manager under `ACME_PROM_REMOTE_WRITE_USERS`,
-    # which the plane cluster's ExternalSecret reads to build the htpasswd the
-    # ingress checks against.
+    # The credential is the enrolment token. The plane derives a bcrypt verifier
+    # from the same token when it mints it and publishes that into the write
+    # ingress's htpasswd, so a cluster that is registered can already authenticate
+    # and there is nothing to configure per cluster. The username is `cluster.id`,
+    # which is not a secret and so goes inline in the scrape config; the password
+    # is read with `password_file` out of the enrolment Secret this chart already
+    # creates from `enrolmentToken.value`. That is the point of the default: the
+    # token appears exactly once in a values file, and a second copy cannot drift
+    # from the one the plane verifies against. `username`/`password` below are
+    # unused and unread while this is true.
+    #
+    # `useEnrolmentToken: false` is for a remote-write store that is not hangar's,
+    # and restores the older shape: the chart creates the Secret from
+    # `username`/`password` and the agent reads both as files, with
+    # `existing: true` the further opt-out for a Secret you created yourself —
+    # refused alongside `useEnrolmentToken`, which would mount the other Secret
+    # and ignore yours.
+    # Those clusters used the pair in AWS Secrets Manager under
+    # `ACME_PROM_REMOTE_WRITE_USERS`. Never put a credential in a values file
+    # that is committed.
     basicAuth:
+      useEnrolmentToken: true
       existingSecret: hangar-metrics-remote-write
       usernameKey: username
       passwordKey: password
