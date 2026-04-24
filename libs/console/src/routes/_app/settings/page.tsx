@@ -635,6 +635,12 @@ function MetricsSourcesPanel({ config }: { config: PlaneConfig }) {
           <Field label="Window · step · timeout">
             {metrics.window} · {metrics.step} · {seconds(metrics.timeout)}
           </Field>
+          <Field label="Fleet writes to">
+            {metrics.remote_write_url || <Unset />}
+          </Field>
+          <Field label="Write auth htpasswd">
+            {metrics.remote_write_auth_secret || <Unset />}
+          </Field>
         </FieldGrid>
 
         {clusters.isLoading ? (

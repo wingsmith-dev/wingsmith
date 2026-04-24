@@ -1,3 +1,7 @@
+from app.integrations.kubernetes import SecretStore
+from app.integrations.kubernetes import KubernetesApi
+from app.integrations.kubernetes import KubernetesError
+from app.integrations.kubernetes import in_cluster
 from app.integrations.huggingface import HuggingFaceError
 from app.integrations.huggingface import HuggingFaceGated
 from app.integrations.huggingface import HuggingFaceModel
@@ -15,4 +19,8 @@ __all__ = [
     "HuggingFaceNotFound",
     "HuggingFaceUnavailable",
     "HuggingFaceWeightFile",
+    "KubernetesApi",
+    "KubernetesError",
+    "SecretStore",
+    "in_cluster",
 ]

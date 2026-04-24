@@ -113,6 +113,37 @@ class Settings:
     METRICS_WINDOW: str = "5m"
     METRICS_STEP: str = "60s"
 
+    METRICS_REMOTE_WRITE_URL: str = ""
+    """The central store's write endpoint every cluster's metrics agent pushes to.
+
+    A fleet constant, not a per-cluster fact: one store fronts the fleet, so this
+    is rendered verbatim into `monitoring.remoteWrite.url` in the setup values the
+    register screen produces. Empty renders `monitoring.enabled: false` instead, so
+    a deployment with no store still hands out installable values — an agent with
+    no `remote_write` scrapes a cluster and discards every sample, which is worse
+    than not scraping it.
+    """
+
+    REMOTE_WRITE_AUTH_ENABLED: bool = False
+    """Whether the reactor reconciles the write ingress's htpasswd Secret.
+
+    Off by default because it is the one thing the plane does that reaches outside
+    its own namespace, and because it is inert without a service account to
+    authenticate with. Unset, or set with no in-cluster credential (local dev,
+    tests), the pass logs once and does nothing — never a crash loop.
+    """
+
+    REMOTE_WRITE_AUTH_NAMESPACE: str = "platform"
+    """Namespace of the Secret backing the write ingress's Traefik basicAuth
+    middleware. Defaults to where the central Prometheus and its ingress live."""
+
+    REMOTE_WRITE_AUTH_SECRET: str = "prom-remote-write-auth"
+    """Name of that Secret. The plane's Role is scoped to this one name."""
+
+    REMOTE_WRITE_AUTH_KEY: str = "users"
+    """Key within it holding the htpasswd file. `users` is what Traefik's
+    `basicAuth.secret` reads when the Secret is not of type `kubernetes.io/basic-auth`."""
+
     OPERATOR_TOKEN: str = ""
     """Bearer token cluster agents present to the hub and the API.
 

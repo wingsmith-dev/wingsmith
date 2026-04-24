@@ -117,6 +117,18 @@ class MetricsConfigSchema(Struct):
     list alone cannot tell them apart.
     """
 
+    remote_write_url: str
+    """Where the fleet is told to push, i.e. what the setup values render.
+
+    Not a credential and not a secret — it is a public ingress, and it is the one
+    value that decides whether a freshly enrolled cluster sends anything at all.
+    Empty means the register screen hands out `monitoring.enabled: false`.
+    """
+
+    remote_write_auth_secret: str
+    """`<namespace>/<name>` of the htpasswd Secret the reactor reconciles, or empty
+    when the reconciler is disabled. A Secret's coordinates, never its contents."""
+
     sources: list[MetricsSourceConfigSchema]
 
 
@@ -189,6 +201,18 @@ def _shared_url() -> str:
     return "" if shared is None else shared.url
 
 
+def _remote_write_auth_secret() -> str:
+    """`<namespace>/<name>` the reactor reconciles, or empty when it is off.
+
+    Empty rather than the configured names when the flag is false, because the
+    question this answers is "is the plane maintaining that file", and printing
+    coordinates it is not writing to would answer it wrongly.
+    """
+    if not settings.REMOTE_WRITE_AUTH_ENABLED:
+        return ""
+    return f"{settings.REMOTE_WRITE_AUTH_NAMESPACE}/{settings.REMOTE_WRITE_AUTH_SECRET}"
+
+
 def effective_config() -> ConfigSchema:
     """The allowlisted view of `settings` this process is running with."""
     return ConfigSchema(
@@ -224,6 +248,8 @@ def effective_config() -> ConfigSchema:
             window=settings.METRICS_WINDOW,
             step=settings.METRICS_STEP,
             shared_url=_shared_url(),
+            remote_write_url=settings.METRICS_REMOTE_WRITE_URL,
+            remote_write_auth_secret=_remote_write_auth_secret(),
             sources=_metrics_sources(),
         ),
         auth=AuthConfigSchema(

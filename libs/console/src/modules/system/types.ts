@@ -69,6 +69,10 @@ export interface MetricsConfig {
   step: string
   /** The shared `default=` endpoint. Empty means no store is configured at all. */
   shared_url: string
+  /** Where the fleet is told to push. Empty means enrolment renders `monitoring.enabled: false`. */
+  remote_write_url: string
+  /** `<namespace>/<name>` of the htpasswd Secret the plane maintains, or empty when it does not. */
+  remote_write_auth_secret: string
   sources: MetricsSourceConfig[]
 }
 

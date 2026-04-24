@@ -5,6 +5,7 @@ from app.core.ids import new_uid
 from app.modules.clusters.routes import ClusterRoutes
 from app.modules.clusters.schemas import ClusterRollupSchema
 from app.modules.clusters.schemas import ClusterHeadroomSchema
+from app.modules.clusters.services import SetupValues
 from app.modules.clusters.services import _rollup
 from app.modules.clusters.services import _hub_url
 from app.modules.clusters.services import _setup_values
@@ -35,8 +36,13 @@ def test_hub_url_derives_from_request_host_when_unset():
     assert _hub_url("host:8080") == "wss://host:8080/v1/hub/sync"
 
 
+def values(**overrides) -> SetupValues:
+    fields = {"cluster_name": "cid", "hub_url": "wss://h/v1/hub/sync", "region": "us-east-1"}
+    return SetupValues(**{**fields, **overrides})
+
+
 def test_setup_values_carry_identity_and_a_pinned_image():
-    out = _setup_values("cid", "wss://h/v1/hub/sync", "ghcr.io/x/operator:sha7")
+    out = _setup_values(values(operator_image="ghcr.io/x/operator:sha7"))
     assert "id: cid" in out
     assert "hubUrl: wss://h/v1/hub/sync" in out
     assert "repository: ghcr.io/x/operator" in out
@@ -44,20 +50,54 @@ def test_setup_values_carry_identity_and_a_pinned_image():
 
 
 def test_setup_values_omit_image_when_unset():
-    out = _setup_values("cid", "wss://h/v1/hub/sync", "")
+    out = _setup_values(values())
     assert "operator:" not in out
 
 
 def test_setup_values_fold_in_the_enrolment_token_only_when_given():
-    without = _setup_values("cid", "wss://h/v1/hub/sync", "")
+    without = _setup_values(values())
     assert "enrolmentToken:" not in without
-    with_token = _setup_values("cid", "wss://h/v1/hub/sync", "", "hgro1.secret")
+    with_token = _setup_values(values(enrolment_token="hgro1.secret"))
     assert "enrolmentToken:" in with_token
     assert "value: hgro1.secret" in with_token
 
 
+def test_setup_values_carry_the_region_inside_the_single_cluster_mapping():
+    """A second `cluster:` key would silently shadow `id` and `hubUrl`."""
+    out = _setup_values(values(region="ap-southeast-1"))
+    lines = out.splitlines()
+    assert len([line for line in lines if line == "cluster:"]) == 1
+    assert "  region: ap-southeast-1" in lines
+    assert lines.index("  region: ap-southeast-1") < lines.index("monitoring:")
+
+
+def test_setup_values_enable_monitoring_with_the_configured_url():
+    out = _setup_values(values(remote_write_url="https://metrics.example/api/v1/write"))
+    assert "monitoring:" in out
+    assert "  enabled: true" in out
+    assert "  remoteWrite:" in out
+    assert "    url: https://metrics.example/api/v1/write" in out
+
+
+def test_setup_values_disable_monitoring_when_no_url_is_configured():
+    out = _setup_values(values())
+    assert "monitoring:" in out
+    assert "  enabled: false" in out
+    assert "remoteWrite:" not in out
+
+
+def test_setup_values_never_render_a_remote_write_credential():
+    """The chart derives basicAuth from the enrolment-token Secret it already creates."""
+    url = "https://metrics.example/api/v1/write"
+    out = _setup_values(values(remote_write_url=url, enrolment_token="hgro1.secret"))
+    assert "basicAuth" not in out
+    assert "password" not in out
+    assert "username" not in out
+    assert out.count("hgro1.secret") == 1
+
+
 def test_setup_values_carry_the_editable_infra_skeleton():
-    out = _setup_values("cid", "wss://h/v1/hub/sync", "")
+    out = _setup_values(values())
     assert "pools:" in out
     assert "labelKey:" in out
     assert "modelCache:" in out

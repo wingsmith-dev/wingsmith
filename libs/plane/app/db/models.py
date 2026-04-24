@@ -64,6 +64,20 @@ class Cluster(BaseMixin):
     register/rotate and never stored. Null means the cluster has no per-cluster
     token yet and its operator still authenticates with the shared fleet token."""
 
+    remote_write_hash: Mapped[str | None] = mapped_column(String(72), nullable=True)
+    """Bcrypt hash of the *same* enrolment token, for the metrics write ingress.
+
+    Two verifiers over one credential: the hub compares `token_hash` in constant
+    time after an indexed lookup, and Traefik's `basicAuth` middleware in front of
+    the central Prometheus checks this one, because a crypt-style hash is the only
+    thing it can check. The reactor renders every non-null hash here into the
+    htpasswd Secret that middleware reads, so a cluster's telemetry credential and
+    its hub credential are the same string and rotate in one act (ADR 0012).
+
+    Null means no bcrypt verifier exists, and it cannot be backfilled — the
+    plaintext is unrecoverable. A cluster registered before this column existed
+    must re-issue its token to gain one."""
+
     metrics_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
     """The `cluster` label this cluster's series are stamped with in the shared store.
 

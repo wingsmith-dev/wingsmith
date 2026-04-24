@@ -97,6 +97,9 @@ then the bare `<NAME>`, so `DATABASE_URL` works unprefixed.
 | `REACTOR_EVENT_BATCH` / `REACTOR_NOTIFY_TIMEOUT` | `500` / `5` |
 | `METRICS_SOURCES` | unset — `default=<url>\|token=...`; the per-cluster label is `Cluster.metrics_label` |
 | `METRICS_TIMEOUT` / `METRICS_WINDOW` / `METRICS_STEP` | `5` / `5m` / `60s` |
+| `METRICS_REMOTE_WRITE_URL` | unset — where the fleet pushes; rendered into the setup values. Empty renders `monitoring.enabled: false` |
+| `REMOTE_WRITE_AUTH_ENABLED` | `false` — whether the reactor reconciles the write ingress's htpasswd Secret (ADR 0012) |
+| `REMOTE_WRITE_AUTH_NAMESPACE` / `REMOTE_WRITE_AUTH_SECRET` / `REMOTE_WRITE_AUTH_KEY` | `platform` / `prom-remote-write-auth` / `users` |
 | `HF_TOKEN` | unset |
 | `OPERATOR_TOKEN` | unset — falls back to `hangar-local-operator-token` only when `APP_ENV=local` |
 | `ADMIN_AUTH` | unset — resolves to `disabled` when `APP_ENV=local`, `enabled` otherwise |

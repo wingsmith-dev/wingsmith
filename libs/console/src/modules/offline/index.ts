@@ -1095,6 +1095,8 @@ registerFixtures([
         window: "5m",
         step: "60s",
         shared_url: "https://prometheus.example.com",
+        remote_write_url: "https://metrics.example.com/api/v1/write",
+        remote_write_auth_secret: "platform/prom-remote-write-auth",
         sources: [
           {
             cluster: "iad-1",

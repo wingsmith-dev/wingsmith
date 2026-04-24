@@ -107,6 +107,20 @@ def test_metrics_sources_are_parsed_with_their_cluster_label():
     assert metrics["shared_url"] == "https://prom.central:9090"
 
 
+def test_remote_write_reports_the_write_url_and_the_htpasswd_secret(monkeypatch):
+    """Both are coordinates, not contents: a public ingress and a Secret's name."""
+    monkeypatch.setattr(settings, "METRICS_REMOTE_WRITE_URL", "https://metrics.example/api/v1/write")
+    monkeypatch.setattr(settings, "REMOTE_WRITE_AUTH_ENABLED", True)
+    metrics = body()["metrics"]
+    assert metrics["remote_write_url"] == "https://metrics.example/api/v1/write"
+    assert metrics["remote_write_auth_secret"] == "platform/prom-remote-write-auth"
+
+
+def test_remote_write_secret_is_empty_when_the_plane_does_not_maintain_it(monkeypatch):
+    monkeypatch.setattr(settings, "REMOTE_WRITE_AUTH_ENABLED", False)
+    assert effective_config().metrics.remote_write_auth_secret == ""
+
+
 def test_shared_url_is_empty_when_no_default_endpoint_is_configured(monkeypatch):
     monkeypatch.setattr(settings, "METRICS_SOURCES", "us=https://prom.us:9090")
     metrics = effective_config().metrics

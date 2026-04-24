@@ -10,10 +10,12 @@ from app.config import settings
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
 from app.core.auth import mint_enrolment_token
+from app.core.auth import hash_remote_write_token
 from app.db.models import Cluster
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
 from app.core.schemas import ListResponse
+from app.utils.schemas import Struct
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -161,13 +163,31 @@ def _registry_host(chart_ref: str) -> str:
     return chart_ref.removeprefix("oci://").split("/", 1)[0]
 
 
-def _setup_values(cluster_name: str, hub_url: str, operator_image: str, enrolment_token: str | None = None) -> str:
+class SetupValues(Struct):
+    """Everything the plane fills into a cluster's `values.yaml`.
+
+    A struct rather than five positional arguments, and the fields are exactly the
+    plane's half of the contract with the chart. Notably absent: any credential
+    for the metrics write ingress. The chart derives the basicAuth password from
+    the enrolment-token Secret it already creates, so username and password are
+    the chart's business and never travel through this file (ADR 0012).
+    """
+
+    cluster_name: str
+    hub_url: str
+    region: str
+    operator_image: str = ""
+    remote_write_url: str = ""
+    enrolment_token: str | None = None
+
+
+def _setup_values(values: SetupValues) -> str:
     """The full editable `values.yaml` for the chart, as YAML text.
 
-    The top block is filled by the plane — cluster identity, `readOnly`, the
-    pinned operator image, and (at mint only) the enrolment token. `readOnly`
-    sits there rather than below the divider because it must share the one
-    `cluster:` key; a second mapping would silently shadow the identity it
+    The top block is filled by the plane — cluster identity, `region`, `readOnly`,
+    the pinned operator image, and (at mint only) the enrolment token. `region` and
+    `readOnly` sit there rather than below the divider because they must share the
+    one `cluster:` key; a second mapping would silently shadow the identity it
     carries. Below a divider is the cluster's own infra facts left blank with a
     one-line comment each: pool labels, the RWX storage class, the HF token,
     serving. The operator downloads this one file, edits the blanks, and runs
@@ -187,19 +207,26 @@ def _setup_values(cluster_name: str, hub_url: str, operator_image: str, enrolmen
     `enrolmentToken.value` so the chart creates the operator Secret; it is never
     persisted, so a later render omits it and the chart then requires either a
     fresh mint or an explicit `enrolmentToken.existing=true`.
+
+    The monitoring block is what makes telemetry work with no per-cluster step:
+    `enabled` plus the fleet's one write endpoint, and nothing else. When no
+    endpoint is configured it renders `enabled: false` with no url, because the
+    chart refuses to render an enabled agent without one — a deployment that has
+    no central store still gets installable values.
     """
     lines = [
         "# Filled by the plane — cluster identity. Leave as-is, except `readOnly`.",
         "cluster:",
-        f"  id: {cluster_name}",
-        f"  hubUrl: {hub_url}",
+        f"  id: {values.cluster_name}",
+        f"  hubUrl: {values.hub_url}",
+        f"  region: {values.region}",
         "  # Whether the operator may act on what the plane declares. It installs",
         "  # read-only, reconciling nothing; set false once this cluster is managed.",
         "  readOnly: true",
         "  allowedOperations: benchmark",
     ]
-    if operator_image:
-        repository, _, tag = operator_image.rpartition(":")
+    if values.operator_image:
+        repository, _, tag = values.operator_image.rpartition(":")
         if repository and tag:
             lines += [
                 "operator:",
@@ -207,12 +234,31 @@ def _setup_values(cluster_name: str, hub_url: str, operator_image: str, enrolmen
                 f"    repository: {repository}",
                 f"    tag: {tag}",
             ]
-    if enrolment_token:
+    if values.enrolment_token:
         lines += [
             "",
             "# Minted for this cluster and shown once. The chart creates the operator Secret from it.",
             "enrolmentToken:",
-            f"  value: {enrolment_token}",
+            f"  value: {values.enrolment_token}",
+        ]
+    if values.remote_write_url:
+        lines += [
+            "",
+            "# Telemetry. The agent scrapes DCGM and Dynamo here and pushes to the central",
+            "# store; the credential is the enrolment token, which the chart already holds.",
+            "monitoring:",
+            "  enabled: true",
+            "  remoteWrite:",
+            f"    url: {values.remote_write_url}",
+        ]
+    else:
+        lines += [
+            "",
+            "# Telemetry is off: this plane has no central metrics store configured",
+            "# (HANGAR_METRICS_REMOTE_WRITE_URL), and an agent with nowhere to push",
+            "# would scrape the cluster and discard every sample.",
+            "monitoring:",
+            "  enabled: false",
         ]
     lines += [
         "",
@@ -294,7 +340,8 @@ class ClusterService:
         """Builds the setup payload for a cluster, with or without a fresh token.
 
         The `values.yaml` carries the plane-filled identity — cluster id, hub
-        URL, operator image — plus a commented skeleton of the cluster's own
+        URL, region, operator image, and the fleet's one metrics write endpoint
+        — plus a commented skeleton of the cluster's own
         infra facts (pool labels, storage class, HF token, serving) for the
         operator to edit in place. It is one downloadable file, not a merge.
         Helm pulls the chart from its own registry, so the instructions work
@@ -313,7 +360,16 @@ class ClusterService:
         never returned again. `enrolment_token_set` reflects the stored hash.
         """
         hub_url = _hub_url(host)
-        values_yaml = _setup_values(cluster.name, hub_url, settings.OPERATOR_IMAGE, enrolment_token)
+        values_yaml = _setup_values(
+            SetupValues(
+                cluster_name=cluster.name,
+                hub_url=hub_url,
+                region=cluster.region,
+                operator_image=settings.OPERATOR_IMAGE,
+                remote_write_url=settings.METRICS_REMOTE_WRITE_URL,
+                enrolment_token=enrolment_token,
+            )
+        )
 
         version = settings.SETUP_CHART_VERSION or None
         parts = [
@@ -365,10 +421,18 @@ class ClusterService:
     async def issue_enrolment_token(self, ref: str, host: str) -> ClusterSetupSchema:
         """Mints (or rotates) `ref`'s enrolment token and returns it once.
 
-        Stores only the hash; the plaintext is folded into the returned values
-        and never recoverable afterwards. Rotating invalidates the previous
-        token immediately — an operator still holding it stops authenticating on
-        its next reconnect, which is the point.
+        Stores only hashes; the plaintext is folded into the returned values and
+        never recoverable afterwards. Rotating invalidates the previous token
+        immediately — an operator still holding it stops authenticating on its
+        next reconnect, which is the point.
+
+        Two hashes, one credential. `token_hash` is the sha256 the hub looks the
+        token up by and compares in constant time; `remote_write_hash` is a
+        bcrypt verifier over the same string, which is the only shape Traefik's
+        `basicAuth` middleware in front of the central metrics store can check
+        (ADR 0012). Both are written here so rotation stays a single act — a
+        cluster that rotates its token keeps pushing telemetry as soon as the
+        reactor's next pass rewrites the htpasswd.
         """
         cluster = await self.repo.get(ref)
         if cluster is None:
@@ -376,6 +440,7 @@ class ClusterService:
 
         token, token_hash = mint_enrolment_token()
         cluster.token_hash = token_hash
+        cluster.remote_write_hash = hash_remote_write_token(token)
         await self.db.commit()
         await self.db.refresh(cluster)
         return self._render_setup(cluster, host, enrolment_token=token)

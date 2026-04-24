@@ -10,6 +10,10 @@ Three passes per tick, in this order and for a reason:
    evaluation is better handled on the next one than half-handled on this one.
 3. **Notify.** Send what the first two passes made due, and advance the notified
    marker only on success.
+4. **Remote-write auth.** Reconcile the central metrics store's htpasswd Secret
+   against the registry (`app.reactor.remote_write`). Last because it is not part
+   of alerting at all and must never delay it — it is here for the lease, which is
+   the only thing in the plane that guarantees one writer of that Secret.
 
 The lease is what makes step 3 safe. Conditions and events are idempotent by
 `dedupe_key` and two reactors would merely both write the same rows; two reactors
@@ -39,6 +43,7 @@ from app.db.models import NotificationChannel
 from . import alerts as alert_store
 from . import notify
 from . import conditions
+from . import remote_write
 from .rules import event_intent
 
 
@@ -190,6 +195,9 @@ async def tick(sessions: async_sessionmaker[AsyncSession], instance: str) -> boo
     async with sessions() as db:
         await send_pending(db, settings.REACTOR_NOTIFY_TIMEOUT)
         await db.commit()
+
+    async with sessions() as db:
+        await remote_write.reconcile(db)
     return True
 
 

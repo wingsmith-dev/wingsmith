@@ -156,6 +156,31 @@ def hash_enrolment_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
+REMOTE_WRITE_BCRYPT_ROUNDS = 8
+"""Cost factor for the bcrypt verifier the metrics write ingress checks.
+
+Deliberately below the library's default of 12. The credential is a 256-bit
+machine-generated token, so an attacker holding the hash gains nothing from a
+slower KDF — there is no dictionary to walk and no human-chosen password to
+recover. What the cost does buy is CPU spent on Traefik for *every* remote-write
+request on a public endpoint, which is a denial-of-service lever. 8 keeps the
+hash a bcrypt hash rather than a bare digest while costing roughly a sixteenth of
+the default per verification (ADR 0012).
+"""
+
+
+def hash_remote_write_token(token: str) -> str:
+    """Bcrypt-hashes an enrolment token for the metrics write ingress's htpasswd.
+
+    A second verifier over the same credential, minted alongside the sha256 the
+    hub compares. Traefik's `basicAuth` middleware can only check a crypt-style
+    hash, and the hub needs an indexed lookup — neither hash can serve both, so
+    both are stored and the plaintext still exists only at mint time.
+    """
+    salt = bcrypt.gensalt(rounds=REMOTE_WRITE_BCRYPT_ROUNDS)
+    return bcrypt.hashpw(token.encode(), salt).decode()
+
+
 def looks_like_enrolment(token: str | None) -> bool:
     """Whether a token is shaped like an enrolment token, without a lookup.
 

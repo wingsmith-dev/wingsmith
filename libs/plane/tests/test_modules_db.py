@@ -17,6 +17,7 @@ import subprocess
 
 from pathlib import Path
 
+import bcrypt
 import pytest
 import psycopg
 
@@ -307,6 +308,36 @@ async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSe
     later = await service.setup_instructions(created.id, host="hangar.example")
     assert later.enrolment_token is None
     assert later.enrolment_token_set is True
+
+
+async def test_enrolment_token_also_stores_a_bcrypt_verifier_and_rotation_replaces_both(
+    db: AsyncSession,
+) -> None:
+    """One credential, two hashes: the hub's sha256 and the write ingress's bcrypt.
+
+    Rotation must overwrite both or the two drift apart, and a cluster ends up
+    authenticating to the hub with one token while pushing telemetry with another.
+    """
+    service = ClusterService(db)
+    created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
+
+    row = await service.repo.get(created.id)
+    assert row.remote_write_hash is None
+
+    issued = await service.issue_enrolment_token(created.id, host="hangar.example")
+    row = await service.repo.get(created.id)
+    assert row.remote_write_hash is not None
+    assert bcrypt.checkpw(issued.enrolment_token.encode(), row.remote_write_hash.encode())
+    first = row.remote_write_hash
+
+    rotated = await service.issue_enrolment_token(created.id, host="hangar.example")
+    row = await service.repo.get(created.id)
+    assert row.remote_write_hash != first
+    assert bcrypt.checkpw(rotated.enrolment_token.encode(), row.remote_write_hash.encode())
+    assert not bcrypt.checkpw(issued.enrolment_token.encode(), row.remote_write_hash.encode())
+    assert row.token_hash == hash_enrolment_token(rotated.enrolment_token)
+
+    assert row.remote_write_hash not in rotated.values_yaml
 
 
 async def test_the_hub_resolves_an_enrolment_token_to_its_cluster(db: AsyncSession, database: str, monkeypatch) -> None:
