@@ -1,3 +1,4 @@
+import { LocationsField } from "@/components/demand/artifact-locations"
 import {
   FormDialog,
   FormGrid,
@@ -9,8 +10,9 @@ import {
 import { Button } from "@/components/ui/button"
 import { NotFoundError } from "@/lib/api"
 import { formatError } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import { useProjectOptions } from "@/modules/binding/queries"
-import { formatBytes } from "@/modules/demand/display"
+import { formatBytes, formatParameters } from "@/modules/demand/display"
 import {
   useCreateArtifact,
   useResolveArtifact,
@@ -21,7 +23,9 @@ import {
   type Artifact,
   type ArtifactLocationRequest,
   type RecipeDefaults,
+  type ResolveNote,
 } from "@/modules/demand/types"
+import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -55,8 +59,14 @@ export function ArtifactForm({
   const [source, setSource] = useState("")
   const [resolved, setResolved] = useState<string | null>(null)
   const [recipe, setRecipe] = useState<RecipeDefaults | null>(null)
-  const [notes, setNotes] = useState<string[]>([])
+  const [notes, setNotes] = useState<ResolveNote[]>([])
   const [existing, setExisting] = useState<string | null>(null)
+  /**
+   * Bumped on every resolve, and used as the metadata editor's `key`. A textarea
+   * seeded once on mount will not show what the repo turned out to carry, and
+   * silently keeping the empty object a person never typed is worse than either.
+   */
+  const [populated, setPopulated] = useState(0)
 
   const [digest, setDigest] = useState(artifact?.digest ?? "")
   const [name, setName] = useState(artifact?.name ?? "")
@@ -71,7 +81,7 @@ export function ArtifactForm({
   )
   const [project, setProject] = useState(artifact?.project_id ?? UNSET)
   const [metadata, setMetadata] = useState<unknown>(artifact?.metadata ?? {})
-  const [locations, setLocations] = useState<unknown>(
+  const [locations, setLocations] = useState<ArtifactLocationRequest[]>(
     artifact?.locations.map((l) => ({
       scheme: l.scheme,
       uri: l.uri,
@@ -80,7 +90,6 @@ export function ArtifactForm({
     })) ?? []
   )
   const [jsonValid, setJsonValid] = useState(true)
-  const [locationsValid, setLocationsValid] = useState(true)
 
   const pending = create.isPending || update.isPending
   const error = create.error ?? update.error
@@ -94,7 +103,7 @@ export function ArtifactForm({
     parameter_count: parameterCount,
     project: project === UNSET ? null : project,
     metadata: (metadata as Record<string, unknown>) ?? {},
-    locations: (locations as ArtifactLocationRequest[]) ?? [],
+    locations,
   }
 
   const done = (verb: string) => {
@@ -127,6 +136,7 @@ export function ArtifactForm({
         setParameterCount(draft.parameter_count)
         setMetadata(draft.metadata)
         setLocations(draft.locations)
+        setPopulated((n) => n + 1)
         if (draft.existing_id) {
           toast.info("These weights are already registered", {
             description: draft.existing_id,
@@ -180,12 +190,7 @@ export function ArtifactForm({
       error={error}
       pending={pending}
       submitLabel={editing ? "Save" : "Register"}
-      disabled={
-        !name ||
-        (!editing && !resolved && !digest) ||
-        !jsonValid ||
-        !locationsValid
-      }
+      disabled={!name || (!editing && !resolved && !digest) || !jsonValid}
       onSubmit={submit}
     >
       {!editing && (
@@ -227,13 +232,7 @@ export function ArtifactForm({
             </p>
           )}
 
-          {notes.length > 0 && (
-            <ul className="space-y-1 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-2xs text-amber-600 dark:text-amber-400">
-              {notes.map((note) => (
-                <li key={note}>{note}</li>
-              ))}
-            </ul>
-          )}
+          {notes.length > 0 && <ResolveNotes notes={notes} />}
         </div>
       )}
 
@@ -272,16 +271,22 @@ export function ArtifactForm({
         />
         <TextField label="Licence" value={licence} onChange={setLicence} />
         <NumberField
-          label="Size (bytes)"
+          label="Size"
           value={sizeBytes}
           onChange={setSizeBytes}
           min={0}
+          hint={sizeBytes ? `${formatBytes(sizeBytes)} — bytes` : "In bytes."}
         />
         <NumberField
           label="Parameters"
           value={parameterCount}
           onChange={setParameterCount}
           min={0}
+          hint={
+            parameterCount
+              ? `${formatParameters(parameterCount)} parameters`
+              : "Total, not active."
+          }
         />
         <SelectField
           label="Project"
@@ -296,27 +301,69 @@ export function ArtifactForm({
 
       {recipe && <RecipeSuggestion recipe={recipe} />}
 
-      <JsonField
-        label="Locations"
-        value={locations}
-        rows={5}
-        hint="Array of {scheme, uri, region, preferred}."
-        onChange={(value, valid) => {
-          setLocations(value ?? [])
-          setLocationsValid(valid)
-        }}
-      />
+      <LocationsField value={locations} onChange={setLocations} />
 
       <JsonField
+        key={populated}
         label="Metadata"
         value={metadata}
-        rows={3}
+        rows={6}
+        hint={
+          resolved
+            ? "Read off the repo — architecture, dtype, quantization, context. Yours to edit."
+            : "Anything worth carrying with these weights."
+        }
         onChange={(value, valid) => {
           setMetadata(value ?? {})
           setJsonValid(valid)
         }}
       />
     </FormDialog>
+  )
+}
+
+/**
+ * What the plane noticed while reading the repo, split by whether it is a problem.
+ *
+ * A repo shipping a second copy of its weights under `original/` is a packaging
+ * detail the plane handled — it says so because the size and digest would
+ * otherwise be unexplainable, not because anything is wrong. Weights the Hub
+ * cannot address are a different matter. Painting both amber is how the second
+ * one gets skimmed past.
+ */
+function ResolveNotes({ notes }: { notes: ResolveNote[] }) {
+  const warnings = notes.filter((note) => note.level === "warn")
+  const info = notes.filter((note) => note.level !== "warn")
+  return (
+    <div className="space-y-1.5">
+      {[
+        { rows: warnings, warn: true },
+        { rows: info, warn: false },
+      ]
+        .filter((group) => group.rows.length > 0)
+        .map((group) => (
+          <ul
+            key={group.warn ? "warn" : "info"}
+            className={cn(
+              "space-y-1 rounded-md border px-3 py-2 text-2xs",
+              group.warn
+                ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                : "border-border bg-muted/60 text-muted-foreground"
+            )}
+          >
+            {group.rows.map((note) => (
+              <li key={note.message} className="flex items-start gap-1.5">
+                {group.warn ? (
+                  <IconAlertTriangle className="mt-px size-3 shrink-0" />
+                ) : (
+                  <IconInfoCircle className="mt-px size-3 shrink-0" />
+                )}
+                <span>{note.message}</span>
+              </li>
+            ))}
+          </ul>
+        ))}
+    </div>
   )
 }
 
@@ -342,24 +389,36 @@ function ResolveError({ error }: { error: unknown }) {
 /**
  * Sizing implied by the weights, shown and never submitted. It belongs to the
  * recipe someone writes next; an artifact has no opinion on how it is served.
+ *
+ * The two halves are ordered the way they are derived. Context, quantization and
+ * dtype are the repo's own — the window it declares, not one trimmed to fit
+ * anything. Devices and memory are what serving that would take. It never runs
+ * the other way: choosing a smaller window because of what a card holds is a
+ * recipe's decision, made against real device classes, not an artifact's.
  */
 function RecipeSuggestion({ recipe }: { recipe: RecipeDefaults }) {
   const rows: [string, string][] = [
-    ["Devices", String(recipe.device_count)],
-    ["Device memory", formatBytes(recipe.device_memory_mib_min * 1024 * 1024)],
     [
       "Context length",
       recipe.context_length ? recipe.context_length.toLocaleString() : "—",
     ],
     ["Quantization", recipe.quantization ?? "none"],
     ["Dtype", recipe.dtype ?? "—"],
+    ["Devices needed", String(recipe.device_count)],
+    [
+      "Memory per device",
+      recipe.device_memory_mib_min
+        ? formatBytes(recipe.device_memory_mib_min * 1024 * 1024)
+        : "—",
+    ],
   ]
   return (
     <div className="space-y-2 rounded-md border bg-muted/40 px-3 py-2.5">
       <p className="text-xs font-medium">Suggested serving shape</p>
       <p className="text-2xs text-muted-foreground/70">
-        Read from the repo's config. Nothing here is saved on the artifact — it
-        carries over when you write a recipe for these weights.
+        The first three are read off the repo's config; the last two are the
+        hardware that configuration would need. Nothing here is saved on the
+        artifact — it carries over when you write a recipe for these weights.
       </p>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
         {rows.map(([label, value]) => (

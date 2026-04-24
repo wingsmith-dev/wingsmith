@@ -172,6 +172,11 @@ export interface ArtifactUpdateRequest {
  * `RecipeDefaults` — serving parameters implied by the weights. A suggestion the
  * plane never applies: a recipe is declared state someone owns, so these are
  * carried into the recipe form and nowhere else.
+ *
+ * `context_length`, `quantization` and `dtype` are read off the repository;
+ * `device_count` and `device_memory_mib_min` are what serving that needs. The
+ * derivation only runs that way — an artifact never trims its own context to fit
+ * a card, because it knows nothing about which cards exist.
  */
 export interface RecipeDefaults {
   device_count: number
@@ -179,6 +184,19 @@ export interface RecipeDefaults {
   context_length: number | null
   quantization: string | null
   dtype: string | null
+}
+
+/**
+ * `ResolveNote` — one remark about a resolved source, and how much it matters.
+ *
+ * `info` is something the plane handled and is telling you about — a duplicate
+ * copy of the weights excluded from the digest. `warn` is something that will
+ * bite: weights the Hub cannot address, or a gate that needs a token. Painting
+ * both amber is how a person learns to skim past the second.
+ */
+export interface ResolveNote {
+  level: "info" | "warn"
+  message: string
 }
 
 /**
@@ -203,7 +221,7 @@ export interface ResolvedArtifact {
   locations: ArtifactLocationRequest[]
   recipe: RecipeDefaults
   existing_id: string | null
-  notes: string[]
+  notes: ResolveNote[]
 }
 
 /** The four kinds the plane accepts. Anything else is `409 invalid`. */
@@ -299,7 +317,10 @@ export interface RecipeCapabilities {
   source_uri: string | null
 }
 
-export const REASONING_TRANSPORTS = ["reasoning_content", "inline_tags"] as const
+export const REASONING_TRANSPORTS = [
+  "reasoning_content",
+  "inline_tags",
+] as const
 export const STREAM_USAGE_MODES = [
   "final_chunk",
   "every_chunk",
@@ -481,12 +502,7 @@ export type WorkloadKind = "service" | "task" | "gang" | (string & {})
  * otherwise the least advanced phase among them.
  */
 export type WorkloadPhase =
-  | "pending"
-  | "admitted"
-  | "placed"
-  | "running"
-  | "failed"
-  | (string & {})
+  "pending" | "admitted" | "placed" | "running" | "failed" | (string & {})
 
 /**
  * How placement spends the total across the clusters a workload may use.

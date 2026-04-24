@@ -331,7 +331,13 @@ registerFixtures([
           dtype: "bfloat16",
         },
         existing_id: artifacts.find((a) => a.digest === digest)?.id ?? null,
-        notes: ["Sized from config.json — a suggestion, not a measurement."],
+        notes: [
+          {
+            level: "info",
+            message:
+              "the device shape is sized from config.json — a suggestion, not a measurement",
+          },
+        ],
       }
     },
   },
