@@ -223,9 +223,12 @@ spec:
             - --agent
             - --storage.agent.path=/data
             - --web.listen-address=:9090
-            # No query API and no admin API: this process is an outbound pipe, and
-            # the only thing that should be readable on it is its own health.
-            - --web.enable-lifecycle=false
+          # No reload or admin endpoint: this process is an outbound pipe, and the
+          # only thing readable on it is its own health. Both are off unless asked
+          # for, so the absence of `--web.enable-lifecycle` is what disables them —
+          # passing it `=false` is a parse error, since Prometheus' flags are
+          # kingpin booleans that take no value and the `false` lands as a stray
+          # positional argument.
           ports:
             - name: http
               containerPort: 9090
