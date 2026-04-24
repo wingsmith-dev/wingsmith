@@ -153,6 +153,9 @@ export function ClusterIdentity({ cluster }: { cluster: Cluster }) {
         <Field label="Residency">
           <Dash>{cluster.residency}</Dash>
         </Field>
+        <Field label="Metrics label">
+          <Dash>{cluster.metrics_label}</Dash>
+        </Field>
         <Field label="Capabilities">
           {Object.keys(cluster.capabilities).length === 0 ? (
             <span className="text-muted-foreground/40">none</span>

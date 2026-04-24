@@ -22,6 +22,7 @@
       "updated_at": null,
       "revision": "1787162474670060",
       "reachable": true,
+      "metrics_label": "iad-1",
       "sync": {
         "state": "connected",
         "last_sync_at": "2026-08-19T18:01:02.574792Z",
@@ -53,6 +54,7 @@
       "updated_at": null,
       "revision": "1787162474670060",
       "reachable": false,
+      "metrics_label": "sjc-1",
       "sync": {
         "state": "disconnected",
         "last_sync_at": "2026-08-19T18:01:02.574792Z",
@@ -83,6 +85,7 @@
       "updated_at": null,
       "revision": "1787162474670060",
       "reachable": false,
+      "metrics_label": "ams-1",
       "sync": {
         "state": "never",
         "last_sync_at": null,

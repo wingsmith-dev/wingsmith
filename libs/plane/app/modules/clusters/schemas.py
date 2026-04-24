@@ -47,6 +47,10 @@ class ClusterSchema(Struct):
     `phase` is what we asked for; `reachable` and `sync` are what is true right
     now. Folding the two would make "someone disabled this cluster" and "the
     network is down" the same fact, and they need different responses.
+
+    `metrics_label` is the `cluster` label this cluster's series carry in the
+    shared metrics store. Null means it is not observable and its panels say so,
+    rather than querying under a label nobody has confirmed.
     """
 
     id: str
@@ -65,6 +69,7 @@ class ClusterSchema(Struct):
     reachable: bool
     sync: ClusterSyncSchema
     serving: ClusterServingSchema | None
+    metrics_label: str | None
 
 
 class ClusterSetupSchema(Struct):
@@ -134,6 +139,15 @@ class ClusterRollupSchema(Struct):
 
 
 class ClusterCreateRequest(Struct):
+    """A new registry entry. `metrics_label` defaults to the cluster's own name.
+
+    That default is not a guess: `libs/chart/cluster-setup` writes the metrics
+    agent's `external_labels.cluster` from the same `cluster.id` the plane renders
+    into the install values, which is this name. Pass an explicit null for a
+    cluster whose store label is unknown, and the cluster reports no metrics
+    source until one is set.
+    """
+
     name: str
     region: str
     display_name: str | None = None
@@ -142,10 +156,16 @@ class ClusterCreateRequest(Struct):
     phase: str = "pending"
     labels: dict = {}
     capabilities: dict = {}
+    metrics_label: str | None | UnsetType = UNSET
 
 
 class ClusterUpdateRequest(Struct):
-    """A partial update. An absent field is untouched; an explicit null clears."""
+    """A partial update. An absent field is untouched; an explicit null clears.
+
+    Clearing `metrics_label` is how a cluster stops being queried at all, and
+    setting it is how a cluster whose store label differs from its name is
+    corrected without a redeploy.
+    """
 
     display_name: str | None | UnsetType = UNSET
     region: str | UnsetType = UNSET
@@ -154,6 +174,7 @@ class ClusterUpdateRequest(Struct):
     phase: str | UnsetType = UNSET
     labels: dict | UnsetType = UNSET
     capabilities: dict | UnsetType = UNSET
+    metrics_label: str | None | UnsetType = UNSET
 
 
 class ClusterServingRequest(Struct):

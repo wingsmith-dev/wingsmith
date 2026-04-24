@@ -95,7 +95,7 @@ then the bare `<NAME>`, so `DATABASE_URL` works unprefixed.
 | `REACTOR_ENABLED` | `true` |
 | `REACTOR_INTERVAL_SECONDS` / `REACTOR_LEASE_SECONDS` | `60` / `180` |
 | `REACTOR_EVENT_BATCH` / `REACTOR_NOTIFY_TIMEOUT` | `500` / `5` |
-| `METRICS_SOURCES` | unset — `default=<url>,<cluster>\|label=<name>,...` |
+| `METRICS_SOURCES` | unset — `default=<url>\|token=...`; the per-cluster label is `Cluster.metrics_label` |
 | `METRICS_TIMEOUT` / `METRICS_WINDOW` / `METRICS_STEP` | `5` / `5m` / `60s` |
 | `HF_TOKEN` | unset |
 | `OPERATOR_TOKEN` | unset — falls back to `hangar-local-operator-token` only when `APP_ENV=local` |

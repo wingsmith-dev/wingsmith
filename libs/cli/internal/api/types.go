@@ -130,6 +130,11 @@ type Cluster struct {
 	Revision     string         `json:"revision"`
 	Reachable    bool           `json:"reachable"`
 	Sync         ClusterSync    `json:"sync"`
+
+	// MetricsLabel is the `cluster` label this cluster's series carry in the
+	// shared metrics store. Nil means it is not observable and its panels say so
+	// rather than querying under a label nobody has confirmed.
+	MetricsLabel *string `json:"metrics_label"`
 }
 
 // Cluster phases. Enrolment and reachability are different questions, so a

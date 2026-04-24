@@ -95,19 +95,18 @@ class Settings:
     DB_POOL_PRE_PING: bool = True
 
     METRICS_SOURCES: str = ""
-    """Which store answers for which cluster: `default=<url>,<cluster>|label=<name>,…`.
+    """Where the plane reads measurement from: `default=<url>[|token=…][|kind=…]`.
 
     The fleet remote-writes into one central Prometheus that stamps `cluster` on
-    every series, so the normal shape is a single `default=` endpoint plus one
-    entry per cluster carrying the label to narrow it by; an entry with no URL
-    inherits `default` and defaults its label to its own key. The older
-    `<cluster>=<url>` form still means a store holding that cluster alone and
-    therefore queried with no cluster matcher (ADR 0008). Empty means the console
-    shows inventory only, which is a working state; a cluster with no entry is
-    told plainly that it has no source rather than being pointed at the shared
-    store, because a guessed label there reads as a healthy idle fleet.
+    every series, so the endpoint is one value and which label narrows it is the
+    cluster's own `metrics_label` column, not a per-entry setting here (ADR 0011).
+    Empty means the console shows inventory only, which is a working state.
 
-    See `app.modules.metrics.sources` for the parse and `|token=` / `|kind=`.
+    Per-cluster entries still parse and still win over the column: `<cluster>|label=<name>`
+    overrides the label for one cluster, and `<cluster>=<url>` means a store
+    holding that cluster alone, queried with no cluster matcher at all (ADR 0008).
+
+    See `app.modules.metrics.sources` for the parse.
     """
 
     METRICS_TIMEOUT: float = 5.0

@@ -72,6 +72,13 @@ export interface Cluster {
   sync: ClusterSync
   /** Null until an address is declared. A cluster is schedulable without one. */
   serving: ClusterServing | null
+  /**
+   * The `cluster` label this cluster's series are stamped with in the shared
+   * metrics store. Defaults to the cluster's own name at registration, since
+   * that is what the setup chart stamps. Null means it is not observable and its
+   * panels say so, rather than querying under a label nobody has confirmed.
+   */
+  metrics_label: string | null
 }
 
 /**
@@ -137,6 +144,8 @@ export interface ClusterCreateRequest {
   phase?: ClusterPhase
   labels?: Record<string, string>
   capabilities?: Record<string, unknown>
+  /** Omitted defaults to the cluster's name; null registers it as not observable. */
+  metrics_label?: string | null
 }
 
 export interface ClusterUpdateRequest {
@@ -147,4 +156,6 @@ export interface ClusterUpdateRequest {
   phase?: ClusterPhase
   labels?: Record<string, string>
   capabilities?: Record<string, unknown>
+  /** Null stops this cluster being queried for metrics at all. */
+  metrics_label?: string | null
 }

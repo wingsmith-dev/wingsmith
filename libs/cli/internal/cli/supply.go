@@ -68,6 +68,7 @@ sync are what is true right now.`,
 			kv.Add("region", c.Region)
 			kv.Add("zone", orDash(str(c.Zone)))
 			kv.Add("residency", orDash(str(c.Residency)))
+			kv.Add("metrics label", orDash(str(c.MetricsLabel)))
 			kv.Add("phase", clusterPhase(s, c))
 			kv.Add("capabilities", orDash(capabilityString(c.Capabilities)))
 			kv.Add("labels", labelString(c.Labels))

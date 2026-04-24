@@ -83,8 +83,24 @@ class MetricsService:
         self.window = settings.METRICS_WINDOW
         self.timeout = settings.METRICS_TIMEOUT
 
-    def sources(self) -> list[SourceSchema]:
-        return [SourceSchema(**s.public()) for s in configured().values()]
+    async def sources(self) -> list[SourceSchema]:
+        """Every cluster that can be measured at all, and the store that answers for it.
+
+        Most clusters are answered by the shared store narrowed to their own
+        `metrics_label`, so this has to walk the registry rather than read the
+        environment. Env entries that match no cluster are listed after the rows:
+        a typo in one is exactly the thing this endpoint is checked for.
+        """
+        rows = (await self.db.execute(select(Cluster).order_by(Cluster.seq.asc()))).scalars().all()
+        unmatched = configured()
+        items = []
+        for cluster in rows:
+            unmatched.pop(cluster.name, None)
+            unmatched.pop(cluster.uid, None)
+            source = resolve(cluster)
+            if source is not None:
+                items.append(SourceSchema(**source.public()))
+        return items + [SourceSchema(**s.public()) for s in unmatched.values()]
 
     async def _cluster(self, cluster_id: UUID) -> Cluster:
         row = await self.db.execute(select(Cluster).where(Cluster.id == cluster_id))
@@ -94,7 +110,7 @@ class MetricsService:
         return cluster
 
     def _source(self, cluster: Cluster) -> Source | None:
-        return resolve(cluster.name, cluster.uid)
+        return resolve(cluster)
 
     async def _answer(
         self,
@@ -118,9 +134,7 @@ class MetricsService:
             window=lookback,
         )
         if source is None:
-            answer.unavailable = (
-                f"no metrics source configured for cluster {cluster.name!r}; set HANGAR_METRICS_SOURCES"
-            )
+            answer.unavailable = _no_source(cluster)
             return answer
         if not metrics:
             return answer
@@ -352,6 +366,21 @@ class MetricsService:
         return await self._answer(
             cluster, scope, deployment.uid, engine.metrics, window, step, span, with_series=series
         )
+
+
+def _no_source(cluster: Cluster) -> str:
+    """Why a cluster cannot be measured, named as whichever half is missing.
+
+    The two halves fail in different places and are fixed by different people: an
+    unlabelled cluster is a row somebody edits through the API, and a missing
+    `default=` endpoint is the deployment's configuration.
+    """
+    if not cluster.metrics_label:
+        return (
+            f"cluster {cluster.name!r} has no metrics label, so nothing narrows the shared store to it; "
+            "set one once the store's `cluster` label shows this cluster"
+        )
+    return f"no metrics store for the plane to query on behalf of cluster {cluster.name!r}; set HANGAR_METRICS_SOURCES"
 
 
 def served_model(recipe: Recipe, artifact: Artifact) -> str:

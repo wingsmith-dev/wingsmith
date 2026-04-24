@@ -27,10 +27,15 @@ UTILIZATION = BY_NAME["gpu.utilization"]
 POWER = BY_NAME["gpu.power"]
 
 SOURCES = "cluster-us|label=cluster-us,default=https://central:9090"
+SHARED = "default=https://central:9090|token=secret"
 
 
-def cluster(name="cluster-us", uid="clu_01j9x2aaaaaaaaaaaaaaaaaaaa") -> Cluster:
-    return Cluster(name=name, uid=uid)
+def cluster(
+    name="cluster-us",
+    uid="clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+    metrics_label="cluster-us",
+) -> Cluster:
+    return Cluster(name=name, uid=uid, metrics_label=metrics_label)
 
 
 def service() -> MetricsService:
@@ -84,17 +89,40 @@ async def answer(svc, backend, scope, **kw):
 # --- an unconfigured cluster -----------------------------------------------
 
 
-async def test_a_cluster_with_no_source_says_so_rather_than_answering_zero():
+async def test_a_plane_with_no_store_says_so_rather_than_answering_zero():
     """An empty panel with a reason beats a zero that reads as an idle GPU."""
     svc = service()
     with patch.object(sources.settings, "METRICS_SOURCES", ""), with_backend(StubBackend()):
         got = await svc._answer(cluster(), Scope(kind="cluster"), "ref", (UTILIZATION,), None, None, 3600)
 
     assert got.unavailable
-    assert "no metrics source configured" in got.unavailable
+    assert "no metrics store" in got.unavailable
     assert "HANGAR_METRICS_SOURCES" in got.unavailable, "the message does not say how to fix it"
     assert got.source is None
     assert not got.samples
+
+
+async def test_an_unlabelled_cluster_reports_no_source_even_with_a_shared_store():
+    """ADR 0008: a guessed label against the shared store reads as a healthy idle fleet."""
+    svc = service()
+    with patch.object(sources.settings, "METRICS_SOURCES", SHARED), with_backend(StubBackend()):
+        got = await svc._answer(
+            cluster(metrics_label=None), Scope(kind="cluster"), "ref", (UTILIZATION,), None, None, 3600
+        )
+
+    assert got.source is None
+    assert got.unavailable
+    assert "no metrics label" in got.unavailable
+    assert "cluster-us" in got.unavailable
+    assert not got.samples
+
+
+async def test_an_unlabelled_cluster_never_reaches_a_backend():
+    backend = StubBackend()
+    svc = service()
+    with patch.object(sources.settings, "METRICS_SOURCES", SHARED), with_backend(backend):
+        await svc._answer(cluster(metrics_label=None), Scope(kind="cluster"), "ref", (UTILIZATION,), None, None, 3600)
+    assert not backend.requests
 
 
 async def test_an_unconfigured_cluster_never_reaches_a_backend():
@@ -329,17 +357,107 @@ def test_an_empty_served_model_name_falls_through_rather_than_selecting_nothing(
     assert served_model(recipe, artifact) == "gemma-4-31b-it"
 
 
+# --- resolving a store for a cluster ----------------------------------------
+
+
+def resolve(spec, **kw):
+    with patch.object(sources.settings, "METRICS_SOURCES", spec):
+        return sources.resolve(cluster(**kw))
+
+
+def test_a_labelled_cluster_is_answered_by_the_shared_store():
+    """The column carries the label; the environment carries only the endpoint."""
+    got = resolve(SHARED, metrics_label="cluster-a")
+    assert got is not None
+    assert got.url == "https://central:9090"
+    assert got.label == "cluster-a"
+    assert got.token == "secret", "the shared endpoint's credential is inherited"
+
+
+def test_an_unlabelled_cluster_has_no_store_at_all():
+    assert resolve(SHARED, metrics_label=None) is None
+
+
+def test_a_blank_label_is_treated_as_no_label_rather_than_matching_nothing():
+    assert resolve(SHARED, metrics_label="") is None
+
+
+def test_an_explicit_entry_overrides_the_column():
+    """A wrong column is fixable from the deployment, without a database write."""
+    got = resolve(f"{SHARED},cluster-us|label=corrected", metrics_label="stale")
+    assert got is not None
+    assert got.label == "corrected"
+
+
+def test_an_entry_keyed_by_uid_also_overrides_the_column():
+    got = resolve(f"{SHARED},clu_01j9x2aaaaaaaaaaaaaaaaaaaa|label=corrected", metrics_label="stale")
+    assert got is not None
+    assert got.label == "corrected"
+
+
+def test_a_dedicated_store_entry_still_wins_and_still_carries_no_matcher():
+    """The pre-`remote_write` form: one Prometheus holding one cluster (ADR 0008)."""
+    got = resolve(f"{SHARED},cluster-us=https://prom.us:9090", metrics_label="ignored")
+    assert got is not None
+    assert got.url == "https://prom.us:9090"
+    assert got.label == "", "a store holding one cluster has no cluster label to match on"
+    assert got.token == "", "a dedicated store does not inherit the shared endpoint's credential"
+
+
+def test_a_labelled_cluster_with_no_shared_endpoint_has_no_store():
+    """A label names which series, not where they are; without an endpoint it answers nothing."""
+    assert resolve("", metrics_label="cluster-us") is None
+
+
 # --- configured sources -----------------------------------------------------
 
 
-def test_the_source_listing_never_carries_a_token():
+class RowsSession:
+    """Enough session to answer the registry walk the listing does."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def execute(self, query):
+        return self
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self._rows
+
+
+async def test_the_source_listing_never_carries_a_token():
     """A listing is the most likely thing to end up in a screenshot."""
+    svc = MetricsService(db=RowsSession([cluster()]))  # type: ignore[arg-type]
     with patch.object(sources.settings, "METRICS_SOURCES", "us|label=l|token=secret,default=https://c:9090"):
-        listed = service().sources()
+        listed = await svc.sources()
     assert listed
     for entry in listed:
         rendered = msgspec.json.encode(entry).decode()
         assert "secret" not in rendered, f"a token reached the listing: {rendered}"
+
+
+async def test_the_source_listing_names_a_cluster_answered_only_by_its_column():
+    svc = MetricsService(db=RowsSession([cluster(metrics_label="cluster-a")]))  # type: ignore[arg-type]
+    with patch.object(sources.settings, "METRICS_SOURCES", SHARED):
+        listed = await svc.sources()
+    assert [entry.cluster for entry in listed] == ["cluster-us"]
+
+
+async def test_the_source_listing_omits_a_cluster_with_no_label():
+    svc = MetricsService(db=RowsSession([cluster(metrics_label=None)]))  # type: ignore[arg-type]
+    with patch.object(sources.settings, "METRICS_SOURCES", SHARED):
+        assert await svc.sources() == []
+
+
+async def test_an_env_entry_matching_no_cluster_is_still_listed():
+    """A typo in one is exactly what this endpoint gets checked for."""
+    svc = MetricsService(db=RowsSession([]))  # type: ignore[arg-type]
+    with patch.object(sources.settings, "METRICS_SOURCES", f"{SHARED},typo|label=l"):
+        listed = await svc.sources()
+    assert [entry.cluster for entry in listed] == ["typo"]
 
 
 # --- the deployment join ----------------------------------------------------

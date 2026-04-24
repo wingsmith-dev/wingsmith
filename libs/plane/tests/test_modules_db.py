@@ -260,6 +260,29 @@ async def test_clusters_lifecycle(db: AsyncSession) -> None:
     assert (await service.list()).count == 0
 
 
+async def test_a_registered_cluster_is_labelled_for_the_metrics_store_by_its_own_name(db: AsyncSession) -> None:
+    """The chart stamps `external_labels.cluster` from the same name (ADR 0011)."""
+    service = ClusterService(db)
+    created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
+    assert created.metrics_label == "alpha"
+
+    corrected = await service.update(created.id, ClusterUpdateRequest(metrics_label="alpha-prod"))
+    assert corrected.metrics_label == "alpha-prod"
+
+    cleared = await service.update(created.id, ClusterUpdateRequest(metrics_label=None))
+    assert cleared.metrics_label is None
+
+
+async def test_a_cluster_registered_with_no_metrics_label_keeps_none(db: AsyncSession) -> None:
+    """An explicit null is how a cluster whose store label is unknown stays honest."""
+    service = ClusterService(db)
+    created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1", metrics_label=None))
+    assert created.metrics_label is None
+
+    blank = await service.create(ClusterCreateRequest(name="beta", region="eu-west-1", metrics_label=""))
+    assert blank.metrics_label is None
+
+
 async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSession) -> None:
     service = ClusterService(db)
     created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))

@@ -422,6 +422,7 @@ for (const spec of SPECS) {
     updated_at: null,
     revision: REV,
     reachable: spec.reachable,
+    metrics_label: spec.enrolled ? spec.name : null,
     serving: spec.enrolled
       ? {
           url: `http://dynamo-frontend.${spec.name}.svc.cluster.local:8000`,

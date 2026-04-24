@@ -75,6 +75,7 @@ func seed() *state {
 			Revision:     revision(enrolled),
 			Reachable:    spec.reachable,
 			Sync:         sync,
+			MetricsLabel: strptr(spec.name),
 		}
 		st.Clusters = append(st.Clusters, cluster)
 		if spec.nodes == 0 {

@@ -281,6 +281,7 @@ class ClusterService:
             reachable=bool(state and state.reachable),
             sync=_sync(state),
             serving=_serving(cluster.serving),
+            metrics_label=cluster.metrics_label,
         )
 
     async def get(self, ref: str) -> ClusterSchema:
@@ -418,8 +419,16 @@ class ClusterService:
         return ListResponse(items=items, count=len(items), next_cursor=None)
 
     async def create(self, data: ClusterCreateRequest) -> ClusterSchema:
+        """Registers a cluster, labelling it for the metrics store by its own name.
+
+        The label is not asked for a second time because it is not a second fact:
+        the setup values the plane renders carry this name as `cluster.id`, and the
+        chart's metrics agent stamps `external_labels.cluster` from it. An explicit
+        null is still accepted, for a cluster whose store label is not yet known.
+        """
         if data.phase not in PHASES:
             raise Invalid(f"unknown phase {data.phase!r}", {"allowed": sorted(PHASES)})
+        metrics_label = data.name if data.metrics_label is UNSET else data.metrics_label
         cluster = Cluster(
             uid=new_uid(CLUSTER),
             name=data.name,
@@ -430,6 +439,7 @@ class ClusterService:
             phase=data.phase,
             labels=data.labels,
             capabilities=data.capabilities,
+            metrics_label=metrics_label or None,
         )
         try:
             await self.repo.add(cluster)
@@ -449,6 +459,8 @@ class ClusterService:
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
         if "phase" in fields and fields["phase"] not in PHASES:
             raise Invalid(f"unknown phase {fields['phase']!r}", {"allowed": sorted(PHASES)})
+        if fields.get("metrics_label") == "":
+            fields["metrics_label"] = None
         for key, value in fields.items():
             setattr(cluster, key, value)
 

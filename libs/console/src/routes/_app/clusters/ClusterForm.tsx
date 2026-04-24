@@ -34,6 +34,9 @@ export function ClusterForm({
   const [region, setRegion] = useState(cluster?.region ?? "")
   const [zone, setZone] = useState(cluster?.zone ?? "")
   const [residency, setResidency] = useState(cluster?.residency ?? "")
+  const [metricsLabel, setMetricsLabel] = useState(
+    cluster?.metrics_label ?? ""
+  )
   const [phase, setPhase] = useState<ClusterPhase>(cluster?.phase ?? "pending")
   const [labels, setLabels] = useState<Record<string, string>>(
     cluster?.labels ?? {}
@@ -61,7 +64,11 @@ export function ClusterForm({
 
     if (editing) {
       update.mutate(
-        { ref: cluster.id, body: shared, revision: cluster.revision },
+        {
+          ref: cluster.id,
+          body: { ...shared, metrics_label: metricsLabel || null },
+          revision: cluster.revision,
+        },
         {
           onSuccess: (next) => {
             onOpenChange(false)
@@ -148,6 +155,15 @@ export function ClusterForm({
           onChange={(value) => setPhase(value as ClusterPhase)}
           options={CLUSTER_PHASES}
         />
+        {editing && (
+          <TextField
+            label="Metrics label"
+            value={metricsLabel}
+            onChange={setMetricsLabel}
+            placeholder={cluster.name}
+            hint="The `cluster` label this cluster's series carry. Empty means no metrics."
+          />
+        )}
       </FormGrid>
 
       <LabelsField value={labels} onChange={setLabels} />

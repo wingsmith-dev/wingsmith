@@ -64,6 +64,21 @@ class Cluster(BaseMixin):
     register/rotate and never stored. Null means the cluster has no per-cluster
     token yet and its operator still authenticates with the shared fleet token."""
 
+    metrics_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    """The `cluster` label this cluster's series are stamped with in the shared store.
+
+    Not an address, so it breaks no invariant above: the plane still never dials a
+    cluster, and this names a value to match on inside a store the plane already
+    holds one endpoint for. It is declared state and it is the cluster's own fact —
+    `libs/chart/cluster-setup` writes `external_labels.cluster` from the same
+    `cluster.id` the plane renders into the install values, so on an enrolled
+    cluster this is that identity rather than a guess at it.
+
+    Null means "not observable", and it is honoured as such: metrics report no
+    source for the cluster rather than querying the shared store under a label
+    nobody has confirmed. A clean empty there would read as a healthy idle fleet,
+    which is the one wrong answer that looks right (ADR 0008, ADR 0011)."""
+
     sync_state: Mapped[ClusterSyncState | None] = relationship(
         "ClusterSyncState", back_populates="cluster", lazy="noload", uselist=False, cascade="all, delete-orphan"
     )

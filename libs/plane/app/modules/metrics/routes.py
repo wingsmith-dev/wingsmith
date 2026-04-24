@@ -29,7 +29,7 @@ class MetricsRoutes(Controller):
     @get("/sources")
     async def list_sources(self, context: RequestContext, svc: MetricsService) -> Response[SourceListSchema]:
         """Which clusters can be measured at all. The first thing to check when a panel is empty."""
-        items = svc.sources()
+        items = await svc.sources()
         return Response(SourceListSchema(items=items, count=len(items)))
 
     @get("/clusters/{ref:str}")
