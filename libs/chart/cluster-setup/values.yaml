@@ -195,8 +195,19 @@ monitoring:
       limits:
         memory: 768Mi
 
-# DaemonSet; tolerates the GPU taint so it lands on GPU nodes. Pin it to the GPU
-# pool with `nodeSelector` for a cluster whose non-GPU nodes carry no exporter.
+# DaemonSet; tolerates the GPU taint so it lands on GPU nodes, and selects them by
+# `nvidia.com/gpu.present`, the label NFD sets wherever the device plugin finds a
+# GPU. Deliberately not `pools.gpuValue`: a subchart's values cannot be templated
+# from the parent's, so keying off the pool would mean naming the same nodes twice
+# in one file and the two copies drifting. This label is the same on every cluster,
+# so it needs no editing and cannot disagree with anything.
+#
+# The toleration alone is not enough. Without a selector this lands on every node
+# in the cluster, and the exporter on a CPU node has no GPU to read — it fails, and
+# the operator's device discovery reads a target set that does not match the
+# hardware. That is the shape of the missing-devices and phantom-`fell_off_bus`
+# failure, so an empty selector here is a silent data-integrity bug rather than
+# wasted scheduling.
 #
 # ServiceMonitor stays off even when `monitoring.enabled` is true: that object
 # needs the monitoring.coreos.com CRDs, which this chart does not install, and
@@ -207,7 +218,8 @@ monitoring:
 # `monitoring.enabled` false.
 dcgm-exporter:
   enabled: true
-  nodeSelector: {}
+  nodeSelector:
+    nvidia.com/gpu.present: "true"
   tolerations:
     - key: nvidia.com/gpu
       operator: Equal
@@ -231,8 +243,12 @@ dcgm-exporter:
 # crd-apply init container (upgradeCRD, on by default). etcd, Grove and KAI stay
 # off (their subchart defaults); NATS must be turned on explicitly — 1.4.x defaults
 # global.nats.install to false, and without it the Dynamo deployments have nothing
-# to route over. Component discovery is the Kubernetes API, not etcd. Pin these off
-# the GPU pool per cluster in local values.
+# to route over. Component discovery is the Kubernetes API, not etcd.
+#
+# Neither the operator nor NATS is pinned, and neither needs to be: GPU nodes carry
+# the `nvidia.com/gpu` taint and these pods do not tolerate it, so they land on the
+# system pool on their own. A per-cluster nodeSelector here would be one more fact
+# to keep correct in exchange for nothing.
 #
 # `podMonitors.enabled` is pinned false rather than left at the subchart's `null`,
 # and the pin is the whole reason this cluster's serving metrics are reachable at
