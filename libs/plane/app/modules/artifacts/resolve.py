@@ -13,15 +13,13 @@ the draft or by posting `source` and letting `create` apply it.
 import math
 
 from app.core.schemas import Struct
-from app.modules.recipes.vram import MIN_CONTEXT_LENGTH
 from app.modules.recipes.vram import DEFAULT_QUANTIZATION
 from app.modules.recipes.vram import is_moe
+from app.modules.recipes.vram import estimate_vram
 from app.modules.recipes.vram import extract_shape
 from app.modules.recipes.vram import effective_config
-from app.modules.recipes.vram import fit_context_length
 from app.modules.recipes.vram import native_quant_method
 from app.modules.recipes.vram import derive_active_params
-from app.modules.recipes.vram import baseline_min_gpu_memory_gb
 from app.integrations.huggingface import HuggingFaceModel
 
 from .schemas import ArtifactLocationRequest
@@ -33,6 +31,26 @@ _MAX_DEVICE_MEMORY_GB = 141
 """The largest single accelerator we operate. Past this, a suggestion has to shard."""
 
 _MIB_PER_GB = 1024
+
+_FALLBACK_CONTEXT_LENGTH = 8192
+"""Context assumed when a config declares none, only so the sizing has a number."""
+
+INFO = "info"
+WARN = "warn"
+
+
+class ResolveNote(Struct):
+    """One remark about a resolved source, carrying how much it should alarm.
+
+    A draft produces two kinds of remark and a flat list of strings makes them
+    look alike: that a repo ships a second copy of its weights under `original/`
+    is a packaging fact we handled, while weights the Hub cannot address mean the
+    digest is a name rather than a hash. Rendering the first as a warning trains
+    people to ignore the second.
+    """
+
+    level: str
+    message: str
 
 
 class RecipeDefaults(Struct):
@@ -78,7 +96,7 @@ class ResolvedArtifact(Struct):
     locations: list[ArtifactLocationRequest]
     recipe: RecipeDefaults
     existing_id: str | None
-    notes: list[str]
+    notes: list[ResolveNote]
 
 
 def normalise_source(source: str) -> str:
@@ -122,8 +140,29 @@ def _architecture_of(config: dict) -> str | None:
     return model_type if isinstance(model_type, str) else None
 
 
-def suggest_recipe(model: HuggingFaceModel, notes: list[str]) -> RecipeDefaults:
-    """Sizes a first recipe from the weights, sharding only when one device cannot hold them.
+def _shardable(count: int) -> int:
+    """Rounds a device count up to a power of two, floored at one.
+
+    Tensor parallelism splits attention heads across devices and every engine we
+    run wants that split to come out even, so a suggestion of five devices is
+    arithmetically correct and cannot be served. Powers of two are what nodes are
+    built in and what the engines accept.
+    """
+    shards = 1
+    while shards < count:
+        shards *= 2
+    return shards
+
+
+def suggest_recipe(model: HuggingFaceModel, notes: list[ResolveNote]) -> RecipeDefaults:
+    """Sizes a first recipe from the weights, then says what hardware that needs.
+
+    The direction matters. The serving parameters are the repo's own: its native
+    quantization, its dtype, and the full context window it declares. Those are
+    read and never trimmed — an artifact knows nothing about what we operate, so
+    it cannot be the thing that decides a 131k model should be served at 8k. The
+    device shape is the consequence: how much memory that configuration needs, and
+    across how many accelerators it has to spread to get it.
 
     Quantization is resolved from the repo rather than defaulted: a repo shipping
     mxfp4 sized as fp16 overcounts weights fourfold, which turns a suggestion into
@@ -134,7 +173,12 @@ def suggest_recipe(model: HuggingFaceModel, notes: list[str]) -> RecipeDefaults:
     shape = extract_shape(model.config)
 
     if shape is None or not model.parameter_count:
-        notes.append("the config did not carry an attention shape, so no device sizing is suggested")
+        notes.append(
+            ResolveNote(
+                level=INFO,
+                message="the config carries no attention shape, so no device sizing is suggested",
+            )
+        )
         return RecipeDefaults(
             device_count=1,
             device_memory_mib_min=0,
@@ -143,34 +187,32 @@ def suggest_recipe(model: HuggingFaceModel, notes: list[str]) -> RecipeDefaults:
             dtype=dtype,
         )
 
-    floor_gb = baseline_min_gpu_memory_gb(
+    context_length = shape.context_length or _FALLBACK_CONTEXT_LENGTH
+    required_gb = estimate_vram(
         total_params=model.parameter_count,
         shape=shape,
         quantization=quantization,
-    )
-    device_count = max(1, math.ceil(floor_gb / _MAX_DEVICE_MEMORY_GB))
-    per_device_gb = math.ceil(floor_gb / device_count)
-    if device_count > 1:
-        notes.append(f"the weights do not fit one device, so the suggestion shards across {device_count}")
-
-    fit = fit_context_length(
-        total_params=model.parameter_count,
-        shape=shape,
-        quantization=quantization,
-        declared_context_length=shape.context_length or MIN_CONTEXT_LENGTH,
+        context_length=context_length,
         concurrency=1,
-        available_gb=float(device_count * per_device_gb),
-    )
-    if fit.reduced:
+    ).required_gb
+
+    device_count = _shardable(math.ceil(required_gb / _MAX_DEVICE_MEMORY_GB))
+    per_device_gb = math.ceil(required_gb / device_count)
+    if device_count > 1:
         notes.append(
-            f"the declared context of {shape.context_length} does not fit the suggested devices, "
-            f"so {fit.context_length} is offered instead"
+            ResolveNote(
+                level=INFO,
+                message=(
+                    f"serving the declared context of {context_length:,} tokens needs about "
+                    f"{math.ceil(required_gb)} GB, so the suggestion spreads it across {device_count} devices"
+                ),
+            )
         )
 
     return RecipeDefaults(
         device_count=device_count,
         device_memory_mib_min=per_device_gb * _MIB_PER_GB,
-        context_length=fit.context_length,
+        context_length=context_length,
         quantization=quantization,
         dtype=dtype,
     )
@@ -182,25 +224,46 @@ def resolved(model: HuggingFaceModel, existing_id: str | None = None) -> Resolve
     Pure: everything that needed the network happened in the client, and
     `existing_id` is a question about the catalogue that the service answers.
     """
-    notes: list[str] = []
+    notes: list[ResolveNote] = []
     if not model.content_addressable:
         notes.append(
-            "the weights are not content-addressable, so the digest names the commit rather than hashing the bytes"
+            ResolveNote(
+                level=WARN,
+                message=(
+                    "the weights are not content-addressable, so the digest names the commit "
+                    "rather than hashing the bytes"
+                ),
+            )
         )
         for path in model.unaddressable_files:
-            notes.append(f"{path} is committed to git rather than LFS and carries no content hash")
+            notes.append(
+                ResolveNote(
+                    level=WARN,
+                    message=f"{path} is committed to git rather than LFS and carries no content hash",
+                )
+            )
         if not model.weight_files:
-            notes.append("the repo publishes no weight files at all")
+            notes.append(ResolveNote(level=WARN, message="the repo publishes no weight files at all"))
     if model.sidecar_files:
         notes.append(
-            f"{len(model.sidecar_files)} file(s) under a subdirectory were read as extra copies rather than "
-            f"as the served weights, and count towards neither the size nor the digest: "
-            f"{', '.join(model.sidecar_files)}"
+            ResolveNote(
+                level=INFO,
+                message=(
+                    f"the served weights are the {len(model.weight_files)} file(s) at the repo root; "
+                    f"{len(model.sidecar_files)} duplicate copy(s) in subdirectories were excluded from the "
+                    f"size and the digest: {', '.join(model.sidecar_files)}"
+                ),
+            )
         )
     if model.gated:
-        notes.append("the repo is gated, so fetching the weights needs a token that has accepted its licence")
+        notes.append(
+            ResolveNote(
+                level=WARN,
+                message="the repo is gated, so fetching the weights needs a token that has accepted its licence",
+            )
+        )
     if model.parameter_count is None:
-        notes.append("the repo does not publish a parameter count")
+        notes.append(ResolveNote(level=INFO, message="the repo does not publish a parameter count"))
 
     shape = extract_shape(model.config)
     active = derive_active_params(model.config, model.parameter_count)

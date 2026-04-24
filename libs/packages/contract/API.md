@@ -394,6 +394,20 @@ to set, because the fix is a credential and not a retry; a malformed source is `
 Hub being down or refusing is `500`, since the failure is upstream of us and the caller's request
 was fine.
 
+The `recipe` block is derived in one direction only: **the serving parameters come from the
+repository, and the device shape is derived from them.** `context_length` is the window the config
+declares, `quantization` and `dtype` are what the repository ships, and `device_count` and
+`device_memory_mib_min` are the hardware that configuration would need. An artifact knows nothing
+about what we operate, so it never trims a 131k window down to what a card happens to hold — sizing
+the weights to the hardware is a recipe's decision, made against real device classes, and this
+endpoint has no business pre-empting it.
+
+`notes` is a list of `{level, message}`, `level` being `info` or `warn`. Two different things get
+said here and a flat list of strings makes them look alike: that a repository ships a duplicate copy
+of its weights under `original/` is a packaging fact the plane handled correctly, while weights the
+Hub cannot address mean the digest is a name rather than a hash of anything. A client that paints
+the first as a warning teaches people to ignore the second.
+
 **`POST /v1/artifacts` takes a `source` instead of a `digest`.** Identity is still the digest and
 the digest is still immutable — what changed is who computes it. A caller who has to assert the hash
 of seventy billion parameters either downloads them first or invents one, and the second is what

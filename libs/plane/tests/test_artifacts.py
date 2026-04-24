@@ -362,7 +362,25 @@ async def test_a_prequantized_repo_is_sized_at_its_native_quantization():
     assert draft.recipe.dtype == "bfloat16"
     assert draft.recipe.device_count == 1
     assert 0 < draft.recipe.device_memory_mib_min < 40 * 1024
-    assert draft.recipe.context_length >= 4096
+
+
+async def test_the_suggested_context_is_the_declared_one_and_devices_follow_from_it():
+    """The artifact sizes hardware to the weights, never the weights to hardware."""
+    draft = await service().resolve("openai/gpt-oss-20b")
+    assert draft.recipe.context_length == draft.metadata["context_length"] == 131072
+    assert not any("offered instead" in note.message for note in draft.notes)
+    kv_at_full_context = 6 * 1024
+    assert draft.recipe.device_memory_mib_min > kv_at_full_context
+
+
+async def test_weights_too_large_for_one_device_shard_across_a_power_of_two():
+    """Five devices is arithmetically right and cannot be tensor-parallelised."""
+    model = hf_model(parameter_count=470_000_000_000)
+    draft = await service(hub=FakeHub(model)).resolve("openai/gpt-oss-20b")
+    assert draft.recipe.device_count == 4
+    assert draft.recipe.device_memory_mib_min * draft.recipe.device_count > 282 * 1024
+    assert draft.recipe.context_length == 131072
+    assert any("spreads it across 4 devices" in note.message for note in draft.notes)
 
 
 async def test_a_recipe_suggestion_is_offered_and_never_applied():
@@ -380,8 +398,9 @@ async def test_weights_the_hub_cannot_address_are_a_named_digest_and_unverified(
     draft = await service(hub=FakeHub(model)).resolve("openai/gpt-oss-20b")
     assert draft.verified is False
     assert draft.digest.startswith("hf:")
-    assert any("not content-addressable" in note for note in draft.notes)
-    assert any("model.bin" in note for note in draft.notes)
+    assert any("not content-addressable" in note.message for note in draft.notes)
+    assert any("model.bin" in note.message for note in draft.notes)
+    assert all(note.level == "warn" for note in draft.notes)
 
 
 async def test_resolve_surfaces_an_artifact_the_catalogue_already_holds():
