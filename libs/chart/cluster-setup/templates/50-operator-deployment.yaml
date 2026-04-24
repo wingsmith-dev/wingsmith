@@ -20,6 +20,18 @@ spec:
         # Roll the pod when the config changes, so a `helm upgrade` that only
         # touches the ConfigMap still restarts the operator.
         checksum/config: {{ include (print $.Template.BasePath "/40-operator-config.yaml") . | sha256sum }}
+        # And when the token changes. `HANGAR_ENROLMENT_TOKEN` is a `secretKeyRef`,
+        # resolved once when the pod starts, so rotating the token without this
+        # leaves the operator holding an invalidated credential — its open session
+        # survives and it fails on some later reconnect, hours away from the
+        # `helm upgrade` that caused it.
+        #
+        # Domain-separated rather than a bare digest of the token: the plane indexes
+        # enrolment tokens by their plain sha256, and this annotation is readable by
+        # anything with `get deployments`, which is a wider audience than `get
+        # secrets`. The hash authenticates nobody either way, but there is no reason
+        # to publish the plane's own lookup key.
+        checksum/enrolment-token: {{ printf "enrolment-token:%s" .Values.enrolmentToken.value | sha256sum }}
     spec:
       serviceAccountName: hangar-operator
       securityContext:
