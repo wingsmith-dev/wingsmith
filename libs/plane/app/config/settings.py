@@ -95,11 +95,19 @@ class Settings:
     DB_POOL_PRE_PING: bool = True
 
     METRICS_SOURCES: str = ""
-    """Per-cluster metric stores: `us=https://prom.us:9090,ap=https://prom.ap:9090`.
+    """Which store answers for which cluster: `default=<url>,<cluster>|label=<name>,…`.
 
-    One store per cluster rather than one store filtered by label, because the
-    reference clusters each keep their own Prometheus and set no `externalLabels`.
-    Empty means the console shows inventory only, which is a working state.
+    The fleet remote-writes into one central Prometheus that stamps `cluster` on
+    every series, so the normal shape is a single `default=` endpoint plus one
+    entry per cluster carrying the label to narrow it by; an entry with no URL
+    inherits `default` and defaults its label to its own key. The older
+    `<cluster>=<url>` form still means a store holding that cluster alone and
+    therefore queried with no cluster matcher (ADR 0008). Empty means the console
+    shows inventory only, which is a working state; a cluster with no entry is
+    told plainly that it has no source rather than being pointed at the shared
+    store, because a guessed label there reads as a healthy idle fleet.
+
+    See `app.modules.metrics.sources` for the parse and `|token=` / `|kind=`.
     """
 
     METRICS_TIMEOUT: float = 5.0
