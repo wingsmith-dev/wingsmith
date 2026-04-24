@@ -7,6 +7,7 @@ export const SETTINGS_SECTIONS = [
   "providers",
   "priority",
   "policies",
+  "configuration",
   "preferences",
   "access",
 ] as const

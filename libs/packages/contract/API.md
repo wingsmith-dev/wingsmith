@@ -163,6 +163,26 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/events` | observed, read-only, append-only |
 | `/v1/alerts` | derived, read-only apart from two lifecycle verbs — see below |
 | `/v1/notification-channels` | declared, plus a `test` verb |
+| `/v1/system/config` | the process's own configuration, read-only — see below |
+
+**`GET /v1/system/config` is the plane telling you what it is running with**, and it is not an
+object in the model — it is the process, so it lives beside `/health` and `POST /v1/auth/login`
+rather than under a resource. It answers the question a misconfigured metric store raises: which
+cluster is mapped to which store, under which `cluster` label, and is there a shared endpoint at
+all. Alongside that it carries the resolved app environment, log level and format, the hub's
+host/port/path and public URL, the reactor's switch and intervals, the session TTL and reaper
+window, the database's driver/host/port/name and pool sizing, and the operator image and chart
+ref/version the register-cluster screen hands out.
+
+**The exposed set is an allowlist, and a denylist here would be a defect.** Every field is named
+by hand in the response schema, so a credential added to the plane's settings is absent from this
+endpoint until somebody decides otherwise; a rule that skipped suspicious names would publish the
+next one by default. Three consequences are binding on any implementation: a credential is
+reported only as a boolean — never a value, a prefix, a length or a digest; `DATABASE_URL` is
+reported in parts and never as a string, so userinfo cannot travel; and the per-source `|token=`
+never appears, because a metrics source is public as endpoint, kind and label only. Admin
+principals only — an operator token is `403 forbidden`, since a cluster agent has no use for the
+plane's process configuration.
 
 **`GET /v1/endpoints/resolved` is derived and belongs to no object.** An endpoint declares a name
 and a set of targets; the resolution is what that means right now — each enabled target followed

@@ -33,6 +33,7 @@ import {
 import { revision, uid } from "./ids"
 import { collection } from "./registry"
 import type { Deployment, Workload } from "@/modules/demand/types"
+import type { PlaneConfig } from "@/modules/system/types"
 import type {
   BenchmarkCreateRequest,
   BenchmarkHarness,
@@ -689,7 +690,9 @@ registerFixtures([
       const planeLocal = PLANE_LOCAL_PREFIXES.includes(prefix)
       const cluster = planeLocal
         ? null
-        : (clusterOf(data.target) ?? clusterRef(data.cluster ?? undefined) ?? null)
+        : (clusterOf(data.target) ??
+          clusterRef(data.cluster ?? undefined) ??
+          null)
       if (!planeLocal && cluster === null) {
         throw new ConflictError(
           "invalid",
@@ -1039,3 +1042,94 @@ registerFixtures([
 ])
 
 export { operationsCollection, benchmarksCollection }
+
+/**
+ * The plane's effective configuration. Static: it describes a process, and the
+ * offline plane has none — the values are a plausible deployment. `fra-1` is
+ * deliberately left out of `metrics.sources`, so the unmapped-cluster marker on
+ * the Settings › Configuration panel has something to show.
+ */
+registerFixtures([
+  {
+    method: "GET",
+    path: "/system/config",
+    handler: (): PlaneConfig => ({
+      app: {
+        env: "production",
+        debug: false,
+        log_level: "INFO",
+        log_format: "json",
+        allowed_origins: ["https://hangar.example.com"],
+      },
+      api: { host: "0.0.0.0", port: 8000 },
+      hub: {
+        host: "0.0.0.0",
+        port: 8001,
+        path: "/v1/hub/sync",
+        public_host: "hangar.example.com",
+        public_url: "wss://hangar.example.com/v1/hub/sync",
+        instance_id: "",
+        session_ttl_seconds: 600,
+        reaper_interval_seconds: 60,
+        ownership_check_seconds: 10,
+      },
+      reactor: {
+        enabled: true,
+        interval_seconds: 60,
+        lease_seconds: 180,
+        event_batch: 500,
+        notify_timeout: 5,
+      },
+      database: {
+        driver: "postgresql+psycopg",
+        host: "hangar-db.internal",
+        port: 5432,
+        database: "hangar",
+        echo: false,
+        pool_size: 10,
+        pool_max_overflow: 10,
+        pool_pre_ping: true,
+      },
+      metrics: {
+        timeout: 5,
+        window: "5m",
+        step: "60s",
+        shared_url: "https://prometheus.example.com",
+        sources: [
+          {
+            cluster: "iad-1",
+            url: "https://prometheus.example.com",
+            kind: "prometheus",
+            label: "iad-1",
+          },
+          {
+            cluster: "sjc-1",
+            url: "https://prometheus.example.com",
+            kind: "prometheus",
+            label: "cluster-sjc",
+          },
+          {
+            cluster: "ams-1",
+            url: "https://prom.ams.internal:9090",
+            kind: "prometheus",
+            label: "",
+          },
+        ],
+      },
+      auth: {
+        admin_auth: "enabled",
+        admin_password_hash_set: true,
+        session_signing_secret_set: true,
+        session_ttl_seconds: 900,
+        operator_token_set: true,
+        huggingface_token_set: false,
+      },
+      setup: {
+        operator_image: "ghcr.io/hangar-dev/hangar-operator:cf143b3",
+        chart_ref: "oci://ghcr.io/hangar-dev/charts/cluster-setup",
+        chart_version: "0.4.2",
+        chart_private: true,
+      },
+    }),
+  },
+])
