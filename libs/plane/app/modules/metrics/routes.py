@@ -118,6 +118,24 @@ class MetricsRoutes(Controller):
         """
         return Response(await svc.workload(ref, project, window, step, span, series))
 
+    @get("/fleet")
+    async def fleet_metrics(
+        self,
+        context: RequestContext,
+        svc: MetricsService,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> Response[MetricsSchema]:
+        """Every cluster at once, in one widened query, with each cluster in the breakdown.
+
+        `unavailable` when the fleet's clusters are not all in one store: the
+        answer then belongs to the stores rather than to this process, and a
+        merged percentile is not a measurement.
+        """
+        return Response(await svc.fleet(window, step, span, series))
+
     @get("/serving")
     async def serving_metrics(
         self,

@@ -38,6 +38,11 @@ merged afterwards. What can be merged is what `Metric.aggregate` says adds; a
 percentile is not, and is left out of the merged figure rather than averaged into
 one — see `_merge`.
 
+The fleet is the same widening in the other direction: every cluster one store
+holds, in one `cluster` matcher the store aggregates over itself. It is not a
+fan-out that this process merges, because merging is where percentiles stop being
+measurements — see `fleet`, which refuses rather than approximates.
+
 An endpoint is the one object no cluster can be asked about. It never syncs to
 one, and the requests that make its availability number interesting are the ones
 that never reached a cluster at all, so it is answered from the gateway's own
@@ -87,6 +92,7 @@ from .sources import Source
 from .sources import shared
 from .sources import resolve
 from .sources import configured
+from .registry import BY_NAME
 from .registry import ENGINES
 from .registry import Metric
 from .registry import family
@@ -100,6 +106,28 @@ GATEWAY = "gateway"
 NO_GATEWAY = (
     "no metrics store for the plane to read the gateway's own series from; set HANGAR_METRICS_SOURCES"
 )
+
+FLEET = "fleet"
+"""The scope, the ref, and the source name for an answer about every cluster at once."""
+
+NO_FLEET = "no cluster in the fleet has a metrics store to read; check GET /v1/metrics/sources"
+
+FLEET_METRICS: tuple[Metric, ...] = tuple(
+    BY_NAME[name]
+    for name in (
+        "inference.requests_finished",
+        "inference.ttft",
+        "inference.ttft_p50",
+        "inference.requests_running",
+        "inference.output_tokens_per_second",
+    )
+)
+"""What a fleet-wide question is worth asking about: traffic, its tail, and throughput.
+
+Not `family("inference")`. A fleet answer is one query per metric over every
+cluster's series at once, and the whole vocabulary would be a page of them for
+figures nobody put on an overview.
+"""
 
 RESERVED_ENDPOINTS: dict[str, str] = {
     "_catalog": "Model catalogue",
@@ -597,6 +625,66 @@ class MetricsService:
         if failures:
             answer.unavailable = failures[0]
         return answer
+
+    async def fleet(
+        self,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> MetricsSchema:
+        """Every measurable cluster at once, as one query the store answers itself.
+
+        The clusters are widened into a single `cluster=~"a|b"` matcher rather than
+        asked one at a time and added up here. The plane is not the aggregation
+        layer, and the arithmetic is the reason: a rate and a histogram's buckets
+        add inside one store, and two p95s from two stores have no mean at all, so
+        a merged tail would be a number nothing measured.
+
+        That only holds while one store holds them all, so the refusals are the
+        substance of this method. Sources are grouped by the endpoint they point
+        at, and anything other than one group of labelled clusters answers with a
+        reason and no samples — a store nothing narrows would blend the fleet with
+        the clusters beside it, and two stores are two questions.
+        """
+        rows = (await self.db.execute(select(Cluster).order_by(Cluster.seq.asc()))).scalars().all()
+        answer = MetricsSchema(scope=FLEET, ref=FLEET, cluster=None, source=None, window=window or self.window)
+        measurable = [(row, source) for row in rows if (source := self._source(row)) is not None]
+        if not measurable:
+            answer.unavailable = NO_FLEET
+            return answer
+        groups: dict[tuple[str, str, str], list[tuple[Cluster, Source]]] = {}
+        for cluster, source in measurable:
+            groups.setdefault((source.url, source.kind, source.token), []).append((cluster, source))
+        if len(groups) > 1:
+            answer.unavailable = f"the fleet spans {len(groups)} metric stores; ask each cluster"
+            return answer
+        (url, kind, token), members = next(iter(groups.items()))
+        unnarrowed = [cluster for cluster, source in members if not source.label]
+        if unnarrowed:
+            answer.unavailable = (
+                f"cluster {unnarrowed[0].name!r} is answered by a store that carries no cluster label, "
+                "so it cannot be widened into a fleet query; ask each cluster"
+            )
+            return answer
+        scope = Scope(
+            kind=FLEET,
+            cluster="",
+            match={"cluster": tuple(sorted(source.label for _, source in members))},
+            breakdown="cluster",
+        )
+        return await self._answer_source(
+            Source(cluster=FLEET, url=url, kind=kind, token=token),
+            None,
+            scope,
+            FLEET,
+            FLEET_METRICS,
+            window,
+            step,
+            span,
+            labels={source.label: cluster.name for cluster, source in members},
+            with_series=series,
+        )
 
     def _gateway(self) -> Source | None:
         """The store the gateway's own series are read out of, or nothing.

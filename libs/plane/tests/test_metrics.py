@@ -1,5 +1,7 @@
 import re
 
+from unittest.mock import patch
+
 import pytest
 
 from app.api.app import create_app
@@ -29,6 +31,7 @@ from app.modules.metrics.registry import BY_NAME
 from app.modules.metrics.registry import ENGINES
 from app.modules.metrics.registry import Metric
 from app.modules.metrics.registry import family
+from app.modules.metrics.services import FLEET_METRICS
 from app.modules.metrics.services import MetricsService
 from app.modules.metrics.services import served_model
 from app.modules.metrics.prometheus import PrometheusBackend
@@ -550,3 +553,147 @@ def test_only_real_substitution_tokens_appear_in_a_grouped_template():
     for name, expression in DIALECT.items():
         tokens = set(re.findall(r"\$[A-Z_]+", expression.grouped))
         assert tokens <= known, f"{name} uses {sorted(tokens - known)}"
+
+
+# --- the fleet scope ---------------------------------------------------------
+
+
+class ClustersSession:
+    """A session that answers the one query `fleet()` makes: every cluster, in order."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def execute(self, query):
+        return self
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return self._rows
+
+
+class CaptureBackend:
+    """Records the request it was handed, so the rendered selector can be inspected."""
+
+    def __init__(self, samples=None, breakdown=None):
+        self._samples = samples or {}
+        self._breakdown = breakdown or {}
+        self.requests = []
+
+    async def samples(self, request):
+        self.requests.append(request)
+        return self._samples
+
+    async def breakdown(self, request):
+        return self._breakdown
+
+    async def curves(self, request):
+        return []
+
+
+def fleet_clusters():
+    from app.db.models import Cluster
+
+    return [
+        Cluster(name="cluster-us", uid="clu_01j9x2aaaaaaaaaaaaaaaaaaaa", metrics_label="us"),
+        Cluster(name="cluster-ap", uid="clu_01j9x2bbbbbbbbbbbbbbbbbbbb", metrics_label="ap"),
+    ]
+
+
+async def fleet_answer(spec, backend):
+    svc = MetricsService(db=ClustersSession(fleet_clusters()))  # type: ignore[arg-type]
+    with (
+        patch.object(sources.settings, "METRICS_SOURCES", spec),
+        patch("app.modules.metrics.services.for_source", lambda source, timeout: backend),
+    ):
+        return await svc.fleet()
+
+
+def test_the_fleet_route_declares_every_parameter_the_console_sends():
+    """An undeclared parameter is a 400 from `reject_unknown_params`, not an ignored one."""
+    assert query_params("/v1/metrics/fleet") == {"window", "step", "span", "series"}
+
+
+async def test_one_store_over_two_clusters_is_one_widened_selector():
+    """The store adds the two clusters; this process must never be the thing that does.
+
+    A rate and a histogram's buckets add inside one store, so asking it once for
+    both clusters is the only version of this answer that is also true of the
+    tail. Two queries merged here would give a p95 nothing measured.
+    """
+    backend = CaptureBackend(samples={"inference.requests_running": 7.0})
+    got = await fleet_answer("default=https://central:9090", backend)
+
+    scope = backend.requests[0].scope
+    assert selector(scope) == 'cluster=~"ap|us"'
+    assert got.scope == "fleet"
+    assert got.ref == "fleet"
+    assert got.cluster is None, "the answer belongs to every cluster, so it names none of them"
+    assert got.unavailable is None
+    assert [(s.metric, s.value) for s in got.samples] == [("inference.requests_running", 7.0)]
+
+
+async def test_a_fleet_in_two_stores_says_so_rather_than_merging_them_here():
+    """Two stores are two questions, and the plane is not the aggregation layer.
+
+    Nothing partial is returned either: half the fleet's traffic under a label
+    that claims to be all of it reads as a quiet fleet rather than as a missing
+    one.
+    """
+    backend = CaptureBackend(samples={"inference.requests_running": 7.0})
+    got = await fleet_answer(
+        "cluster-us=https://prom.us:9090|label=us,cluster-ap=https://prom.ap:9090|label=ap",
+        backend,
+    )
+
+    assert got.samples == []
+    assert got.unavailable == "the fleet spans 2 metric stores; ask each cluster"
+    assert not backend.requests, "no store was asked, because no single store could answer"
+
+
+async def test_a_store_nothing_narrows_is_left_out_of_the_fleet_rather_than_widened():
+    """A `cluster=~` matcher that omits a cluster is a fleet total missing a cluster.
+
+    A dedicated store holds one cluster and carries no `cluster` label, so it can
+    neither be matched nor be left unmatched — an unscoped query there would blend
+    in whatever else that store holds.
+    """
+    backend = CaptureBackend()
+    spec = "cluster-us=https://central:9090,cluster-ap=https://central:9090"
+    got = await fleet_answer(spec, backend)
+
+    assert got.samples == []
+    assert got.unavailable
+    assert "no cluster label" in got.unavailable
+    assert not backend.requests
+
+
+async def test_a_fleet_with_no_store_at_all_says_where_to_look():
+    backend = CaptureBackend()
+    got = await fleet_answer("", backend)
+
+    assert got.samples == []
+    assert got.unavailable
+    assert "/v1/metrics/sources" in got.unavailable
+
+
+async def test_the_fleet_breaks_down_by_cluster_under_the_name_it_is_called_by():
+    """The store keys a breakdown by its own label; the console shows people cluster names."""
+    backend = CaptureBackend(breakdown={"us": {"inference.requests_running": 3.0}})
+    got = await fleet_answer("default=https://central:9090", backend)
+
+    assert backend.requests[0].scope.breakdown == "cluster"
+    assert [(row.key, row.label) for row in got.breakdown] == [("us", "cluster-us")]
+
+
+def test_the_fleet_asks_for_the_five_figures_an_overview_shows():
+    """A fleet question is one query per metric over every cluster, so it is a short list."""
+    assert [metric.name for metric in FLEET_METRICS] == [
+        "inference.requests_finished",
+        "inference.ttft",
+        "inference.ttft_p50",
+        "inference.requests_running",
+        "inference.output_tokens_per_second",
+    ]

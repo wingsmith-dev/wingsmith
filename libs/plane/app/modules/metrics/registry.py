@@ -39,6 +39,7 @@ SCOPES: tuple[str, ...] = (
     "workload",
     "endpoint",
     "serving",
+    "fleet",
 )
 """The dimensions a measurement can be narrowed by, in Hangar's words.
 
@@ -53,6 +54,11 @@ hop that emits it is the hop that resolved the endpoint: it is a plane uid on th
 gateway's series. `serving` narrows by nothing at all — it is every request the
 front door answered — and exists as a word so that an answer about the whole
 served surface says which question it answered.
+
+`fleet` is the `cluster` dimension widened to every cluster one store holds, and
+it is a word rather than a missing matcher: that store holds clusters that are
+not ours to serve from, so the fleet is an enumeration of labels and never an
+unscoped query.
 
 `deployment` and `worker` are both ways of asking about one deployment and they
 are not the same question. `deployment` selects the served model, so two
