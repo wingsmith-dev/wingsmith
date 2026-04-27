@@ -124,17 +124,52 @@ class MetricsService:
         labels: dict[str, str] | None = None,
         with_series: bool = False,
     ) -> MetricsSchema:
+        return await self._answer_source(
+            self._source(cluster),
+            cluster.uid,
+            scope,
+            ref,
+            metrics,
+            window,
+            step,
+            span,
+            labels=labels,
+            with_series=with_series,
+            no_source=_no_source(cluster),
+        )
+
+    async def _answer_source(
+        self,
+        source: Source | None,
+        cluster_uid: str | None,
+        scope: Scope,
+        ref: str,
+        metrics: tuple[Metric, ...],
+        window: str | None,
+        step: str | None,
+        span: int,
+        labels: dict[str, str] | None = None,
+        with_series: bool = False,
+        no_source: str = "",
+    ) -> MetricsSchema:
+        """One answer from one store, for a scope that may belong to no cluster.
+
+        A workload spans clusters, a fleet answer spans all of them and an
+        endpoint is served by the gateway rather than by any cluster, so the
+        store and the cluster the answer is stamped with are two separate
+        arguments here. `no_source` is the caller's own reason, because why a
+        store is missing depends on what was being asked for.
+        """
         lookback = window or self.window
-        source = self._source(cluster)
         answer = MetricsSchema(
             scope=scope.kind,
             ref=ref,
-            cluster=cluster.uid,
+            cluster=cluster_uid,
             source=SourceSchema(**source.public()) if source else None,
             window=lookback,
         )
         if source is None:
-            answer.unavailable = _no_source(cluster)
+            answer.unavailable = no_source or None
             return answer
         if not metrics:
             return answer

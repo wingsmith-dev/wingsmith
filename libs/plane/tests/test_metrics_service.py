@@ -147,6 +147,34 @@ async def test_an_answer_identifies_the_scope_cluster_and_source():
     assert got.unavailable is None
 
 
+async def test_an_answer_for_no_single_cluster_still_names_the_store_it_came_from():
+    """A workload, the fleet and an endpoint each span or skip clusters.
+
+    `cluster: null` says the numbers belong to no one cluster; the source still
+    has to be there, because a caller must be able to tell which store answered
+    from an answer that names no cluster at all.
+    """
+    backend = StubBackend(samples={"gpu.utilization": 72.5})
+    svc = service()
+    with with_sources(), with_backend(backend):
+        got = await svc._answer_source(
+            sources.Source(cluster="us", url="https://central:9090", label="cluster-us"),
+            None,
+            Scope(kind="workload"),
+            "wl_01j9x2aaaaaaaaaaaaaaaaaaaa",
+            (UTILIZATION,),
+            None,
+            None,
+            3600,
+        )
+
+    assert got.cluster is None
+    assert got.source is not None
+    assert got.source.url == "https://central:9090"
+    assert got.unavailable is None
+    assert [(s.metric, s.value) for s in got.samples] == [("gpu.utilization", 72.5)]
+
+
 async def test_samples_carry_the_title_and_unit_the_registry_gives_them():
     backend = StubBackend(samples={"gpu.utilization": 72.5, "gpu.power": 410.0})
     got = await answer(service(), backend, Scope(kind="cluster"), metrics=(UTILIZATION, POWER))
