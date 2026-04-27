@@ -17,6 +17,7 @@ import pytest
 from app.modules.metrics import sources
 from app.modules.metrics.client import Client
 from app.modules.metrics.client import MetricsUnavailable
+from app.modules.metrics.promql import COUNTED
 from app.modules.metrics.backend import Scope
 from app.modules.metrics.backend import Window
 from app.modules.metrics.backend import Request
@@ -326,16 +327,49 @@ async def test_the_failure_ratio_names_the_outcomes_that_are_ours():
     assert 'hangar_endpoint="end_1"' in issued
 
 
-async def test_the_failure_ratio_clamps_its_denominator_rather_than_dividing_by_zero():
-    """An endpoint with no traffic must not take the query down with it.
+async def test_the_healthy_case_has_a_numerator_wherever_it_has_a_denominator():
+    """An endpoint that never failed has no failed-outcome series to sum.
 
-    The clamp is far below one request, so it can never dilute a real ratio into a
-    plausible-looking small percentage.
+    `sum` over an empty vector is empty rather than zero, so a bare division would
+    be absent for every endpoint serving traffic cleanly and would only start
+    answering once something broke — a 100% available endpoint reading "not
+    measured" until it has an outage. The numerator is unioned with a zeroed copy
+    of the denominator so that it exists whenever the denominator does.
     """
-    client = StubClient({"hangar_gateway_requests_total": [sample(0.4)]})
-    await backend(client).samples(serving(FAILURE_RATIO))
-    assert "clamp_min(" in client.instant_queries[0]
-    assert "1e-9" in client.instant_queries[0]
+    for metric in (FAILURE_RATIO, AVAILABILITY):
+        client = StubClient({"hangar_gateway_requests_total": [sample(0.0)]})
+        await backend(client).samples(serving(metric))
+        issued = client.instant_queries[0]
+        counted = f'sum (rate(hangar_gateway_requests_total{{origin="live",{COUNTED}}}[5m]))'
+        assert f"({counted} * 0)" in issued, "the union's other half has to exist when nothing failed"
+        assert f" or ({counted} * 0)) /" in issued
+
+
+async def test_the_failure_ratio_filters_its_denominator_rather_than_clamping_it():
+    """A window nothing called must be absent, not 0% failed and 100% available.
+
+    The counter series outlive the traffic that created them, so a day with no
+    requests rates to zero over both halves; a clamped denominator would turn that
+    into a green 100% for a day nothing measured. `> 0` drops the sample instead.
+    """
+    for metric in (FAILURE_RATIO, AVAILABILITY):
+        client = StubClient({"hangar_gateway_requests_total": [sample(0.0)]})
+        await backend(client).samples(serving(metric))
+        issued = client.instant_queries[0]
+        assert "clamp_min(" not in issued, "clamping invents an SLA for an unmeasured window"
+        assert "1e-9" not in issued
+        assert issued.endswith(" > 0) * 100)" if metric is AVAILABILITY else " > 0) * 100")
+
+
+async def test_a_serving_breakdown_keeps_the_group_label_on_both_halves_of_the_union():
+    """`vector(0)` carries no labels, so it would match no group and divide nothing."""
+    client = StubClient({"hangar_gateway_requests_total": [sample(0.4, {"hangar_endpoint": "end_1"})]})
+    got = await backend(client).breakdown(serving(FAILURE_RATIO, breakdown="endpoint"))
+
+    assert got == {"end_1": {"serving.failure_ratio": 0.4}}
+    issued = client.instant_queries[0]
+    assert "vector(0)" not in issued
+    assert issued.count("sum by (hangar_endpoint)") == 3, "failed, the zeroed fallback, and the denominator"
 
 
 async def test_availability_is_the_same_ratio_subtracted_from_a_hundred():

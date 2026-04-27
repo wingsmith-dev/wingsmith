@@ -161,20 +161,30 @@ def _gateway_gauge(series: str) -> Expression:
 def _failure_ratio(group: str) -> str:
     """Failed requests over counted requests, as a percentage, per group or in total.
 
-    The denominator is clamped rather than guarded because an endpoint with no
-    traffic must not divide by zero, and it is clamped to a number far below one
-    request so that the clamp can never dilute a real ratio: at one failure and a
-    clamped denominator the result is astronomically large, not a plausible-looking
-    small percentage.
+    Two different shapes of nothing meet in this one expression and a plain
+    division confuses both of them.
 
-    An endpoint nothing has called answers with no series at all here, which the
-    service reports as absent. That is the whole point — an untouched endpoint is
-    not 100% available and it is not 0% either.
+    A healthy endpoint emits no failed-outcome series at all — the gateway only
+    creates a child series once that outcome happens — and `sum` over an empty
+    vector is empty, not zero, so the division would vanish exactly when
+    everything works and would only produce a number once something broke. The
+    numerator is therefore unioned with a zeroed copy of the denominator, which
+    exists wherever the denominator does; a served window with no failures reads
+    0% failed and 100% available, which is measured rather than assumed.
+
+    A window nothing called, by contrast, has both rates at zero over series that
+    are still being scraped from earlier traffic. Dividing that — clamped
+    denominator or not — answers 0% failed and 100% available for a period nothing
+    measured, which is the invented SLA this module exists to refuse. So the
+    denominator is filtered to `> 0` rather than clamped: with no counted requests
+    in the window there is no series, the service reports the sample as absent, and
+    the console says it was not measured. An untouched endpoint is not 100%
+    available and it is not 0% either.
     """
     aggregate = f"sum by ({group})" if group else "sum"
     failed = f"{aggregate} (rate($SERIES{{{_gateway_where(FAILED)}}}[$WINDOW]))"
     counted = f"{aggregate} (rate($SERIES{{{_gateway_where(COUNTED)}}}[$WINDOW]))"
-    return f"{failed} / clamp_min({counted}, 1e-9) * 100"
+    return f"({failed} or ({counted} * 0)) / ({counted} > 0) * 100"
 
 
 DIALECT: dict[str, Expression] = {
