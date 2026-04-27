@@ -546,6 +546,10 @@ class MetricsService:
         `source` names the store that answered first, because a workload whose
         clusters sit in different stores has no one store either; which cluster
         each figure came from is in the breakdown.
+
+        Curves are stamped with the cluster they came from. An aggregated query
+        returns no labels of its own, so two clusters' curves for one metric
+        would otherwise arrive identical and a chart could only draw one of them.
         """
         workload, recipe, artifact = await self._workload(ref, project)
         lookback = window or self.window
@@ -609,7 +613,9 @@ class MetricsService:
                     with_series=series,
                 )
                 values.update({sample.metric: sample.value for sample in part.samples})
-                answer.series.extend(part.series)
+                for curve in part.series:
+                    curve.labels = {**curve.labels, "cluster": cluster.name}
+                    answer.series.append(curve)
                 if part.unavailable:
                     failures.append(part.unavailable)
             per_cluster.append((cluster, values))
@@ -689,11 +695,16 @@ class MetricsService:
     def _gateway(self) -> Source | None:
         """The store the gateway's own series are read out of, or nothing.
 
-        The gateway belongs to no cluster, so this does not go through `resolve`:
-        it is the shared store under a label that is normally empty, because
-        `hangar_gateway_*` comes from one process rather than from a fleet.
+        The gateway belongs to no cluster, so this does not go through `resolve`
+        and it is never narrowed by a cluster label. `cluster` on a
+        `hangar_gateway_*` series names the cluster a request was *sent to* — the
+        one thing it cannot name is which gateway emitted it, and it is the empty
+        string for exactly the requests that matter most, the ones no cluster ever
+        saw. Narrowing by it would drop those and count one front door's traffic
+        as another's. A second gateway sharing this store needs a label of its
+        own from the scrape config before it can be told apart here.
         """
-        return shared(GATEWAY, settings.METRICS_GATEWAY_LABEL)
+        return shared(GATEWAY, "")
 
     async def endpoint(
         self,
@@ -774,12 +785,18 @@ class MetricsService:
 def _merge(metrics: tuple[Metric, ...], per_cluster: list[dict[str, float | None]]) -> dict[str, float | None]:
     """Several clusters' numbers for one metric back into one number, or into none.
 
-    `Metric.aggregate` holds across stores for the same reason it holds inside
-    one: throughput and power add, a temperature takes the worst card, and a
-    utilization averages. A percentile is the exception and is dropped rather
-    than merged, because two p95s have no mean and the console reading "not
-    measured" is truthful where a number nothing computed is not — the per-cluster
-    figures are still in the breakdown, where they are each true of one store.
+    Only two of the three aggregations survive the crossing. A throughput or a
+    count adds, and a temperature takes the worst card, because both are true of
+    the union of what was measured. The other two are dropped rather than merged:
+    two p95s have no mean, and a mean of two means is not a mean unless the
+    clusters were the same size — a workload holding eight devices at 90% in one
+    cluster and one device at 10% in another averages to 50%, which is true of no
+    device it owns. Each store's real figure is in the breakdown, where it is
+    true of that store, and the merged tile reads "not measured", which is also
+    true. A number nothing computed would not be.
+
+    One cluster is not a crossing, so a single-cluster workload merges nothing
+    and every metric passes through as measured.
 
     A metric every cluster answered with no series stays as `None`, which is the
     difference between an idle workload and one nobody is measuring.
@@ -792,14 +809,14 @@ def _merge(metrics: tuple[Metric, ...], per_cluster: list[dict[str, float | None
         numbers = [value for value in reported if value is not None]
         if not numbers:
             merged[metric.name] = None
-        elif len(numbers) > 1 and is_quantile(metric.name):
+        elif len(numbers) == 1:
+            merged[metric.name] = numbers[0]
+        elif is_quantile(metric.name) or metric.aggregate == "avg":
             continue
         elif metric.aggregate == "sum":
             merged[metric.name] = sum(numbers)
         elif metric.aggregate == "max":
             merged[metric.name] = max(numbers)
-        else:
-            merged[metric.name] = sum(numbers) / len(numbers)
     return merged
 
 

@@ -109,6 +109,17 @@ P90 = "histogram_quantile(0.90, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))
 P50 = "histogram_quantile(0.50, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
 RATE = "sum(rate($SERIES{$SELECTOR}[$WINDOW]))"
 
+QUANTILE_BY = "histogram_quantile(0.95, sum by (le, $BY) (rate($SERIES{$SELECTOR}[$WINDOW])))"
+P50_BY = "histogram_quantile(0.50, sum by (le, $BY) (rate($SERIES{$SELECTOR}[$WINDOW])))"
+RATE_BY = "sum by ($BY) (rate($SERIES{$SELECTOR}[$WINDOW]))"
+GAUGE_BY = "sum by ($BY) ($SERIES{$SELECTOR})"
+"""The grouped halves of the four shapes a fleet answer is built from.
+
+A quantile keeps `le` alongside the grouping label because `histogram_quantile`
+reads the buckets out of it; dropping it there returns nothing rather than a
+wrong number, which is why this is written out per shape instead of derived.
+"""
+
 GATEWAY_REQUESTS = "hangar_gateway_requests_total"
 GATEWAY_DURATION = "hangar_gateway_request_duration_seconds_bucket"
 GATEWAY_TTFT = "hangar_gateway_ttft_seconds_bucket"
@@ -199,19 +210,19 @@ DIALECT: dict[str, Expression] = {
     "gpu.throttle_reasons": Expression(("DCGM_FI_DEV_CLOCK_THROTTLE_REASONS", "DCGM_FI_DEV_CLOCKS_EVENT_REASONS")),
     "gpu.ecc_uncorrectable": Expression(("DCGM_FI_DEV_ECC_DBE_AGG_TOTAL", "DCGM_FI_DEV_ECC_DBE_VOL_TOTAL")),
     "gpu.pcie_replays": Expression(("DCGM_FI_DEV_PCIE_REPLAY_COUNTER",)),
-    "inference.ttft": Expression(("vllm:time_to_first_token_seconds_bucket",), QUANTILE),
+    "inference.ttft": Expression(("vllm:time_to_first_token_seconds_bucket",), QUANTILE, QUANTILE_BY),
     "inference.tpot": Expression(
         ("vllm:time_per_output_token_seconds_bucket", "vllm:inter_token_latency_seconds_bucket"),
         QUANTILE,
     ),
     "inference.latency": Expression(("vllm:e2e_request_latency_seconds_bucket",), QUANTILE),
     "inference.output_tokens_per_second": Expression(
-        ("vllm:generation_tokens_total",), "sum(rate($SERIES{$SELECTOR}[$WINDOW]))"
+        ("vllm:generation_tokens_total",), "sum(rate($SERIES{$SELECTOR}[$WINDOW]))", RATE_BY
     ),
     "inference.input_tokens_per_second": Expression(
         ("vllm:prompt_tokens_total",), "sum(rate($SERIES{$SELECTOR}[$WINDOW]))"
     ),
-    "inference.requests_running": Expression(("vllm:num_requests_running",), "sum($SERIES{$SELECTOR})"),
+    "inference.requests_running": Expression(("vllm:num_requests_running",), "sum($SERIES{$SELECTOR})", GAUGE_BY),
     "inference.requests_waiting": Expression(("vllm:num_requests_waiting",), "sum($SERIES{$SELECTOR})"),
     "inference.kv_cache_utilization": Expression(
         ("vllm:gpu_cache_usage_perc", "vllm:kv_cache_usage_perc"), "avg($SERIES{$SELECTOR}) * 100"
@@ -220,7 +231,7 @@ DIALECT: dict[str, Expression] = {
         ("vllm:prefix_cache_hits_total",),
         "sum(rate($SERIES{$SELECTOR}[$WINDOW])) / clamp_min(sum(rate(vllm:prefix_cache_queries_total{$SELECTOR}[$WINDOW])), 1) * 100",
     ),
-    "inference.ttft_p50": Expression(("vllm:time_to_first_token_seconds_bucket",), P50),
+    "inference.ttft_p50": Expression(("vllm:time_to_first_token_seconds_bucket",), P50, P50_BY),
     "inference.ttft_p90": Expression(("vllm:time_to_first_token_seconds_bucket",), P90),
     "inference.ttft_p99": Expression(("vllm:time_to_first_token_seconds_bucket",), P99),
     "inference.tpot_p99": Expression(
@@ -235,7 +246,7 @@ DIALECT: dict[str, Expression] = {
         ("vllm:time_per_output_token_seconds_bucket", "vllm:inter_token_latency_seconds_bucket"),
         f"1 / clamp_min({QUANTILE}, 0.000001)",
     ),
-    "inference.requests_finished": Expression(("vllm:request_success_total",), RATE),
+    "inference.requests_finished": Expression(("vllm:request_success_total",), RATE, RATE_BY),
     "inference.preemptions": Expression(("vllm:num_preemptions_total",), RATE),
     "inference.prompt_tokens_per_request": Expression(("vllm:request_prompt_tokens_bucket",), QUANTILE),
     "inference.generation_tokens_per_request": Expression(("vllm:request_generation_tokens_bucket",), QUANTILE),

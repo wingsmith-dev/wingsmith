@@ -688,6 +688,22 @@ async def test_the_fleet_breaks_down_by_cluster_under_the_name_it_is_called_by()
     assert [(row.key, row.label) for row in got.breakdown] == [("us", "cluster-us")]
 
 
+def test_every_fleet_metric_can_actually_be_grouped_by_cluster():
+    """A breakdown the expression cannot render is an empty panel, not an error.
+
+    `render` falls back to the ungrouped template when a metric has no `grouped`
+    one, and the ungrouped shapes all aggregate the `cluster` label away — so the
+    store answers a single unlabelled number, the backend finds no key to group on
+    and the breakdown comes back empty with nothing anywhere reporting a problem.
+    The fleet scope exists to break down by cluster, so every metric it asks for
+    has to be able to.
+    """
+    for metric in FLEET_METRICS:
+        series = DIALECT[metric.name].candidates[0]
+        grouped = render(metric, series, 'cluster=~"ap|us"', "5m", by="cluster")
+        assert "by (cluster)" in grouped or "by (le, cluster)" in grouped, f"{metric.name}: {grouped}"
+
+
 def test_the_fleet_asks_for_the_five_figures_an_overview_shows():
     """A fleet question is one query per metric over every cluster, so it is a short list."""
     assert [metric.name for metric in FLEET_METRICS] == [

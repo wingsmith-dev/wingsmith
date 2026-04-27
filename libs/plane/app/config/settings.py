@@ -109,14 +109,6 @@ class Settings:
     See `app.modules.metrics.sources` for the parse.
     """
 
-    METRICS_GATEWAY_LABEL: str = ""
-    """The `cluster` label value the gateway's own series carry in the shared store.
-
-    Empty is the normal case and not a gap: `hangar_gateway_*` is emitted by one
-    process rather than by a fleet, so there is nothing to narrow. It exists for
-    the day a second gateway writes into the same store, where an unnarrowed
-    query would add two front doors into one availability number.
-    """
 
     METRICS_TIMEOUT: float = 5.0
     METRICS_WINDOW: str = "5m"

@@ -586,8 +586,8 @@ class ScriptedResult:
 class SequenceBackend(StubBackend):
     """A different set of numbers per call, so two clusters can answer differently."""
 
-    def __init__(self, *answers):
-        super().__init__()
+    def __init__(self, *answers, curves=None):
+        super().__init__(curves=curves)
         self._answers = list(answers)
 
     async def samples(self, request):
@@ -650,6 +650,26 @@ async def test_a_two_cluster_workload_adds_its_summed_metrics_together():
     merged = {s.metric: s.value for s in got.samples}
     assert merged["inference.requests_running"] == 8.0
     assert merged["inference.output_tokens_per_second"] == 140.0
+
+
+async def test_each_cluster_curve_says_which_cluster_it_came_from():
+    """Two clusters' curves for one metric are otherwise indistinguishable.
+
+    `sum(rate(...))` returns no labels, so both halves arrive as the same metric
+    with the same title and an empty label set. A chart keying lines off that draws
+    one and silently discards the other, and the one it keeps looks like the whole
+    workload.
+    """
+    svc = workload_service([workload_row()], two_clusters(), [])
+    curve = Curve(metric="inference.output_tokens_per_second", labels={}, points=((1.0, 2.0),))
+    backend = SequenceBackend({}, {}, curves=[curve])
+    got = await workload_answer(svc, backend, series=True)
+
+    assert len(got.series) == 2
+    assert [line.labels["cluster"] for line in got.series] == [
+        "cluster-us",
+        "cluster-ap",
+    ]
 
 
 async def test_a_two_cluster_workload_keeps_one_breakdown_row_per_cluster():
@@ -793,14 +813,40 @@ def test_a_temperature_takes_the_worst_cluster_not_the_mean_of_them():
     assert merged == {"gpu.temperature": 89.0}
 
 
-def test_a_utilization_averages_across_the_clusters_that_reported_one():
-    merged = _merge((UTILIZATION,), [{"gpu.utilization": 40.0}, {"gpu.utilization": 80.0}, {}])
-    assert merged == {"gpu.utilization": 60.0}
+def test_a_utilization_two_clusters_reported_is_dropped_rather_than_averaged():
+    """A mean of two means is only a mean if the clusters were the same size.
+
+    Eight devices at 90% in one cluster and one device at 10% in another average
+    to 50%, which is true of no device the workload holds — and it is the figure a
+    person would read as the workload's utilization. Both real numbers are in the
+    breakdown; the merged tile says nothing instead of saying that.
+    """
+    merged = _merge((UTILIZATION,), [{"gpu.utilization": 90.0}, {"gpu.utilization": 10.0}, {}])
+    assert merged == {}
+
+
+def test_a_single_cluster_utilization_survives_because_nothing_was_crossed():
+    merged = _merge((UTILIZATION,), [{"gpu.utilization": 40.0}, {}])
+    assert merged == {"gpu.utilization": 40.0}
+
+
+def test_a_throughput_still_adds_because_it_is_true_of_the_union():
+    merged = _merge(
+        (BY_NAME["inference.output_tokens_per_second"],),
+        [{"inference.output_tokens_per_second": 120.0}, {"inference.output_tokens_per_second": 30.0}],
+    )
+    assert merged == {"inference.output_tokens_per_second": 150.0}
 
 
 def test_a_single_cluster_percentile_survives_because_nothing_was_merged():
     merged = _merge((BY_NAME["inference.ttft_p99"],), [{"inference.ttft_p99": 1.5}, {}])
     assert merged == {"inference.ttft_p99": 1.5}
+
+
+def test_a_metric_nobody_measured_stays_none_rather_than_vanishing():
+    """Absent and unmeasured are different answers; only one of them is a gap."""
+    merged = _merge((UTILIZATION,), [{"gpu.utilization": None}, {"gpu.utilization": None}])
+    assert merged == {"gpu.utilization": None}
 
 
 # --- the endpoint and serving scopes -----------------------------------------
@@ -881,6 +927,24 @@ async def test_the_gateways_reserved_keys_are_labelled_rather_than_dropped():
     labels = {b.key: b.label for b in got.breakdown}
     assert labels["_catalog"] == "Model catalogue"
     assert labels["_unknown"] == "Unrecognised model"
+
+
+async def test_the_gateway_is_never_narrowed_by_a_cluster_label():
+    """`cluster` on a gateway series is the destination, not the sender.
+
+    It is the empty string for exactly the requests that matter most — the ones no
+    cluster ever saw, because no upstream was reachable. Narrowing the query by any
+    cluster value would drop those, which would turn a total outage into "no
+    traffic". Telling two gateways apart needs a label of the gateway's own.
+    """
+    svc = endpoint_service([Endpoint(uid=ENDPOINT, name="gemma-chat")])
+    backend = StubBackend(samples={"serving.requests_per_second": 12.0})
+    with with_sources(SHARED), with_backend(backend):
+        await svc.endpoint(ENDPOINT)
+
+    scope = backend.requests[0].scope
+    assert scope.cluster == ""
+    assert "cluster" not in scope.match
 
 
 async def test_no_gateway_store_says_so_rather_than_reporting_full_availability():
