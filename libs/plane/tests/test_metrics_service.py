@@ -14,6 +14,7 @@ import msgspec
 from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Artifact
+from app.db.models import Endpoint
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
 from app.modules.metrics import sources
@@ -21,6 +22,7 @@ from app.modules.metrics.client import MetricsUnavailable
 from app.modules.metrics.backend import Curve
 from app.modules.metrics.backend import Scope
 from app.modules.metrics.registry import BY_NAME
+from app.modules.metrics.registry import family
 from app.modules.metrics.services import MetricsService
 from app.modules.metrics.services import _merge
 from app.modules.metrics.services import served_model
@@ -799,3 +801,104 @@ def test_a_utilization_averages_across_the_clusters_that_reported_one():
 def test_a_single_cluster_percentile_survives_because_nothing_was_merged():
     merged = _merge((BY_NAME["inference.ttft_p99"],), [{"inference.ttft_p99": 1.5}, {}])
     assert merged == {"inference.ttft_p99": 1.5}
+
+
+# --- the endpoint and serving scopes -----------------------------------------
+
+ENDPOINT = "end_01j9x2aaaaaaaaaaaaaaaaaaaa"
+
+
+def endpoint_service(*results) -> MetricsService:
+    return MetricsService(db=ScriptedSession(*results))  # type: ignore[arg-type]
+
+
+async def test_an_endpoint_is_measured_at_the_front_door_and_by_its_uid():
+    """`hangar_endpoint` is the uid the gateway stamped, not the name it was called by.
+
+    An endpoint never reaches a cluster, so nothing in a cluster can be asked
+    about one; the join is against the hop that resolved it, and a rename must not
+    move the series.
+    """
+    svc = endpoint_service([Endpoint(uid=ENDPOINT, name="gemma-chat")])
+    backend = StubBackend(samples={"serving.availability": 99.95})
+    with with_sources(SHARED), with_backend(backend):
+        got = await svc.endpoint("gemma-chat")
+
+    assert backend.requests[0].scope.match == {"endpoint": (ENDPOINT,)}
+    assert {m.name for m in backend.requests[0].metrics} == {m.name for m in family("serving")}
+    assert got.scope == "endpoint"
+    assert got.ref == ENDPOINT
+    assert got.cluster is None, "an endpoint is global; naming a cluster would be a lie"
+    assert [(s.metric, s.value) for s in got.samples] == [("serving.availability", 99.95)]
+
+
+async def test_an_unknown_endpoint_is_a_404():
+    svc = endpoint_service([])
+    with with_sources(SHARED), with_backend(StubBackend()), pytest.raises(NotFound):
+        await svc.endpoint("nope")
+
+
+async def test_the_served_surface_belongs_to_no_cluster_and_breaks_down_by_endpoint():
+    """The total comes from the front door, not from adding up a page of endpoints.
+
+    A tile summed over whatever endpoints the console had loaded is a total of
+    that page and moves when somebody pages, which is why this is one query.
+    """
+    svc = endpoint_service([(ENDPOINT, "gemma-chat")])
+    backend = StubBackend(
+        samples={"serving.requests_per_second": 12.0},
+        breakdown={ENDPOINT: {"serving.requests_per_second": 12.0}},
+    )
+    with with_sources(SHARED), with_backend(backend):
+        got = await svc.serving()
+
+    assert got.scope == "serving"
+    assert got.ref == "serving"
+    assert got.cluster is None
+    assert got.source is not None, "the store that answered is still named"
+    assert backend.requests[0].scope.match == {}
+    assert backend.requests[0].scope.breakdown == "endpoint"
+    assert [(b.key, b.label) for b in got.breakdown] == [(ENDPOINT, "gemma-chat")]
+
+
+async def test_the_gateways_reserved_keys_are_labelled_rather_than_dropped():
+    """`_unknown` growing is a rename nobody told the callers about.
+
+    A breakdown that filters the two reserved keys out cannot show that, and
+    `_catalog` traffic would silently vanish from a total that included it.
+    """
+    svc = endpoint_service([(ENDPOINT, "gemma-chat")])
+    backend = StubBackend(
+        breakdown={
+            ENDPOINT: {"serving.requests_per_second": 12.0},
+            "_catalog": {"serving.requests_per_second": 0.5},
+            "_unknown": {"serving.requests_per_second": 3.0},
+        },
+    )
+    with with_sources(SHARED), with_backend(backend):
+        got = await svc.serving()
+
+    labels = {b.key: b.label for b in got.breakdown}
+    assert labels["_catalog"] == "Model catalogue"
+    assert labels["_unknown"] == "Unrecognised model"
+
+
+async def test_no_gateway_store_says_so_rather_than_reporting_full_availability():
+    """Nothing scrapes the gateway's metrics port yet, so this is the day-one answer.
+
+    `infra/80-gateway.yaml` exposes the port and no ServiceMonitor reads it. Until
+    one does, both routes have to answer with a reason and no samples — an
+    availability of 100% here would be a number nothing measured, and 0% would be
+    an outage nothing observed.
+    """
+    svc = endpoint_service([Endpoint(uid=ENDPOINT, name="gemma-chat")])
+    with with_sources(""), with_backend(StubBackend(samples={"serving.availability": 100.0})):
+        one = await svc.endpoint(ENDPOINT)
+        every = await svc.serving()
+
+    for got in (one, every):
+        assert got.samples == []
+        assert got.breakdown == []
+        assert got.source is None
+        assert got.unavailable
+        assert "HANGAR_METRICS_SOURCES" in got.unavailable

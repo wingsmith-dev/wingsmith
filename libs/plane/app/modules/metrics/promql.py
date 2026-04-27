@@ -42,6 +42,7 @@ LABELS: dict[str, str] = {
     "device_class": "modelName",
     "deployment": "model_name",
     "worker": "dynamo_namespace",
+    "endpoint": "hangar_endpoint",
 }
 """The label each Hangar dimension is selected by. Verified against the fleet's store.
 
@@ -51,6 +52,11 @@ LABELS: dict[str, str] = {
 `dynamo-namespace` and `dynamo-worker-hash` labels — see `worker_identity`. It is
 the only label on a vLLM series that distinguishes one deployment of a model from
 another.
+
+`hangar_endpoint` is a plane uid rather than a name, and the gateway puts
+`endpoint_name` beside it for panels. Joining on the name would break the moment
+an endpoint is renamed, which is one of the things having an endpoint object is
+for.
 """
 
 
@@ -83,10 +89,18 @@ class Expression:
     `template` carries `$SERIES`, `$SELECTOR` and `$WINDOW`. An empty template
     means the series is read as-is and only needs the metric's own aggregation
     wrapped around it, which is the whole of DCGM.
+
+    `grouped` is the same expression with `$BY` where the label a breakdown groups
+    by goes, and it has to be written out rather than derived: `sum by (x)` sits
+    outside a rate and inside a `histogram_quantile`'s own `by (le)`, and a ratio
+    needs it on both halves or the division matches nothing. Empty means this
+    metric does not appear in a breakdown, which is the truthful outcome for a
+    bare-series metric that never needed one.
     """
 
     candidates: tuple[str, ...]
     template: str = ""
+    grouped: str = ""
 
 
 QUANTILE = "histogram_quantile(0.95, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
@@ -94,6 +108,74 @@ P99 = "histogram_quantile(0.99, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))
 P90 = "histogram_quantile(0.90, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
 P50 = "histogram_quantile(0.50, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
 RATE = "sum(rate($SERIES{$SELECTOR}[$WINDOW]))"
+
+GATEWAY_REQUESTS = "hangar_gateway_requests_total"
+GATEWAY_DURATION = "hangar_gateway_request_duration_seconds_bucket"
+GATEWAY_TTFT = "hangar_gateway_ttft_seconds_bucket"
+GATEWAY_TOKENS = "hangar_gateway_tokens_total"
+GATEWAY_IN_FLIGHT = "hangar_gateway_requests_in_flight"
+
+LIVE = 'origin="live"'
+"""Every gateway query carries it. The conformance suite sends deliberately
+malformed requests at a live endpoint, so counting its probes would manufacture
+the availability breach they exist to detect."""
+
+FAILED = 'outcome=~"shed|no_upstream|upstream_error|upstream_timeout|internal_error"'
+"""The outcomes that are ours. Matched by name and never by status class.
+
+`rate_limited` is out because a 429 issued to an identified caller over its own
+declared limit is the standard's carve-out, and `shed` — the same status code,
+issued by the gateway to protect itself — is in. Keying this off `status="429"`
+would turn every capacity incident into a clean bill of health. See
+`libs/gateway/internal/metrics/outcome.go`, which is where the set is closed.
+"""
+
+COUNTED = 'outcome!="canceled"'
+"""A caller that hung up took its own request away; charging it to the endpoint
+would make an availability number a function of client behaviour."""
+
+
+def _gateway_where(*extra: str) -> str:
+    return ",".join(("$SELECTOR", LIVE) + extra)
+
+
+def _gateway_rate(series: str, *extra: str) -> Expression:
+    inner = f"rate($SERIES{{{_gateway_where(*extra)}}}[$WINDOW])"
+    return Expression((series,), f"sum({inner})", f"sum by ($BY) ({inner})")
+
+
+def _gateway_quantile(series: str, quantile: str) -> Expression:
+    inner = f"rate($SERIES{{{_gateway_where()}}}[$WINDOW])"
+    return Expression(
+        (series,),
+        f"histogram_quantile({quantile}, sum by (le) ({inner}))",
+        f"histogram_quantile({quantile}, sum by (le, $BY) ({inner}))",
+    )
+
+
+def _gateway_gauge(series: str) -> Expression:
+    inner = f"$SERIES{{{_gateway_where()}}}"
+    return Expression((series,), f"sum({inner})", f"sum by ($BY) ({inner})")
+
+
+def _failure_ratio(group: str) -> str:
+    """Failed requests over counted requests, as a percentage, per group or in total.
+
+    The denominator is clamped rather than guarded because an endpoint with no
+    traffic must not divide by zero, and it is clamped to a number far below one
+    request so that the clamp can never dilute a real ratio: at one failure and a
+    clamped denominator the result is astronomically large, not a plausible-looking
+    small percentage.
+
+    An endpoint nothing has called answers with no series at all here, which the
+    service reports as absent. That is the whole point — an untouched endpoint is
+    not 100% available and it is not 0% either.
+    """
+    aggregate = f"sum by ({group})" if group else "sum"
+    failed = f"{aggregate} (rate($SERIES{{{_gateway_where(FAILED)}}}[$WINDOW]))"
+    counted = f"{aggregate} (rate($SERIES{{{_gateway_where(COUNTED)}}}[$WINDOW]))"
+    return f"{failed} / clamp_min({counted}, 1e-9) * 100"
+
 
 DIALECT: dict[str, Expression] = {
     "gpu.utilization": Expression(("DCGM_FI_DEV_GPU_UTIL",)),
@@ -147,7 +229,26 @@ DIALECT: dict[str, Expression] = {
     "inference.preemptions": Expression(("vllm:num_preemptions_total",), RATE),
     "inference.prompt_tokens_per_request": Expression(("vllm:request_prompt_tokens_bucket",), QUANTILE),
     "inference.generation_tokens_per_request": Expression(("vllm:request_generation_tokens_bucket",), QUANTILE),
+    "serving.requests_per_second": _gateway_rate(GATEWAY_REQUESTS),
+    "serving.latency_p50": _gateway_quantile(GATEWAY_DURATION, "0.50"),
+    "serving.latency_p95": _gateway_quantile(GATEWAY_DURATION, "0.95"),
+    "serving.latency_p99": _gateway_quantile(GATEWAY_DURATION, "0.99"),
+    "serving.ttft_p50": _gateway_quantile(GATEWAY_TTFT, "0.50"),
+    "serving.ttft_p95": _gateway_quantile(GATEWAY_TTFT, "0.95"),
+    "serving.failure_ratio": Expression((GATEWAY_REQUESTS,), _failure_ratio(""), _failure_ratio("$BY")),
+    "serving.availability": Expression(
+        (GATEWAY_REQUESTS,),
+        f"100 - ({_failure_ratio('')})",
+        f"100 - ({_failure_ratio('$BY')})",
+    ),
+    "serving.requests_in_flight": _gateway_gauge(GATEWAY_IN_FLIGHT),
+    "serving.input_tokens_per_second": _gateway_rate(GATEWAY_TOKENS, 'direction="input"'),
+    "serving.output_tokens_per_second": _gateway_rate(GATEWAY_TOKENS, 'direction="output"'),
 }
+"""`direction="cached_input"` is never summed into either token rate. The gateway
+records all three from the upstream's own usage object, and cached input is a
+subset of input rather than a fourth kind of token — adding it double-counts the
+prompt."""
 
 
 def is_quantile(name: str) -> bool:
@@ -211,10 +312,23 @@ def selector(scope: Scope) -> str:
 
 
 def render(metric: Metric, series: str, where: str, window: str, by: str = "") -> str:
-    """The PromQL that answers one metric out of one candidate series."""
+    """The PromQL that answers one metric out of one candidate series.
+
+    A scope that narrows nothing — the whole served surface, which is a real
+    question — renders an empty `$SELECTOR`, and a matcher list may not begin with
+    the comma that leaves behind. It is dropped here rather than by making every
+    template carry a conditional.
+    """
     expression = DIALECT[metric.name]
-    if expression.template:
-        return expression.template.replace("$SERIES", series).replace("$SELECTOR", where).replace("$WINDOW", window)
+    template = expression.grouped if by and expression.grouped else expression.template
+    if template:
+        rendered = (
+            template.replace("$SERIES", series)
+            .replace("$SELECTOR", where)
+            .replace("$WINDOW", window)
+            .replace("$BY", by)
+        )
+        return rendered if where else rendered.replace("{,", "{")
     inner = f"{series}{{{where}}}" if where else series
     if by:
         return f"{metric.aggregate} by ({by}) ({inner})"

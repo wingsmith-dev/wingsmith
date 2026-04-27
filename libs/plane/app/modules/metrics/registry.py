@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 
 Unit = Literal["percent", "celsius", "watts", "mib", "mhz", "seconds", "per_second", "count"]
-Family = Literal["gpu", "inference"]
+Family = Literal["gpu", "inference", "serving"]
 
 SCOPES: tuple[str, ...] = (
     "cluster",
@@ -37,6 +37,8 @@ SCOPES: tuple[str, ...] = (
     "deployment",
     "worker",
     "workload",
+    "endpoint",
+    "serving",
 )
 """The dimensions a measurement can be narrowed by, in Hangar's words.
 
@@ -45,6 +47,12 @@ in it, which is why it never reaches a backend under its own name. `workload` is
 the same kind of word for the same reason and one step further out: a workload is
 measured as the devices it holds and the workers it registered, in each of the
 clusters it landed in, so no store is ever asked about a workload.
+
+`endpoint` is the one dimension a store does know under its own name, because the
+hop that emits it is the hop that resolved the endpoint: it is a plane uid on the
+gateway's series. `serving` narrows by nothing at all — it is every request the
+front door answered — and exists as a word so that an answer about the whole
+served surface says which question it answered.
 
 `deployment` and `worker` are both ways of asking about one deployment and they
 are not the same question. `deployment` selects the served model, so two
@@ -134,6 +142,37 @@ number an availability claim rests on has to come from the hop that saw the requ
 """
 
 
+SERVING_METRICS: tuple[Metric, ...] = (
+    Metric("serving.requests_per_second", "per_second", "serving", "Requests/sec", aggregate="sum"),
+    Metric("serving.latency_p50", "seconds", "serving", "Latency (p50)"),
+    Metric("serving.latency_p95", "seconds", "serving", "Latency (p95)"),
+    Metric("serving.latency_p99", "seconds", "serving", "Latency (p99)"),
+    Metric("serving.ttft_p50", "seconds", "serving", "Time to first token (p50)"),
+    Metric("serving.ttft_p95", "seconds", "serving", "Time to first token (p95)"),
+    Metric("serving.failure_ratio", "percent", "serving", "Failed requests"),
+    Metric("serving.availability", "percent", "serving", "Availability"),
+    Metric("serving.requests_in_flight", "count", "serving", "Requests in flight", aggregate="sum"),
+    Metric("serving.input_tokens_per_second", "per_second", "serving", "Input tokens/sec", aggregate="sum"),
+    Metric("serving.output_tokens_per_second", "per_second", "serving", "Output tokens/sec", aggregate="sum"),
+)
+"""What the front door saw, which is the only place a failure rate can be measured.
+
+The `inference` family is what a serving engine says about itself, and a request
+that never reached one leaves no trace in it — a model that is not served, an
+endpoint with nowhere to route, a cluster that cannot be dialled. Those requests
+dominate an availability incident, so `failure_ratio` and the `availability`
+beside it are read from the gateway and from nowhere else.
+
+Latency here is not the `inference` latency next to it and the two disagreeing is
+not a bug: this one includes the hop, the queue in front of it, and the requests
+that failed before an engine saw them.
+
+`serving.availability` has no floor and no rounding of its own. Whether 99.4% is
+an outage is a threshold somebody declared, which belongs to whoever declared it;
+this is the measurement it is compared against.
+"""
+
+
 @dataclass(frozen=True)
 class Engine:
     """One serving engine: the metrics it can be asked for."""
@@ -145,7 +184,11 @@ class Engine:
 ENGINES: dict[str, Engine] = {
     "dcgm": Engine(kind="dcgm", metrics=GPU_METRICS),
     "vllm": Engine(kind="vllm", metrics=INFERENCE_METRICS),
+    "gateway": Engine(kind="gateway", metrics=SERVING_METRICS),
 }
+"""Who emits what. `gateway` is one of ours rather than a vendor's, and is still an
+entry here because the shape of the fact is the same: a process, and the metrics it
+is the only thing able to answer."""
 
 BY_NAME: dict[str, Metric] = {m.name: m for e in ENGINES.values() for m in e.metrics}
 

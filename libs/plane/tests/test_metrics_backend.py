@@ -30,6 +30,9 @@ UTILIZATION = BY_NAME["gpu.utilization"]
 POWER = BY_NAME["gpu.power"]
 TEMPERATURE = BY_NAME["gpu.temperature"]
 ECC = BY_NAME["gpu.ecc_uncorrectable"]
+REQUESTS = BY_NAME["serving.requests_per_second"]
+FAILURE_RATIO = BY_NAME["serving.failure_ratio"]
+AVAILABILITY = BY_NAME["serving.availability"]
 
 
 class StubClient:
@@ -294,6 +297,95 @@ async def test_a_metric_this_backend_cannot_answer_produces_no_curve():
     fake = type(UTILIZATION)(name="cost.hourly", unit="count", family="gpu", title="Cost")
     got = await b.curves(Request(scope=scope(), metrics=(fake,), window=Window(lookback="5m", step="60s", span=3600)))
     assert got == []
+
+
+# --- the gateway's own series ----------------------------------------------
+
+
+def serving(*metrics, **kw) -> Request:
+    """A gateway request: no cluster to narrow by, because one process emits it all."""
+    return request(*metrics, cluster="", **kw)
+
+
+async def test_the_failure_ratio_names_the_outcomes_that_are_ours():
+    """A 429 is two different events and only one of them is a failure.
+
+    `shed` is the gateway protecting itself and `rate_limited` is a caller over
+    its own declared limit; both are 429s, so a ratio keyed off the status code
+    reports every capacity incident as a clean bill of health.
+    """
+    client = StubClient({"hangar_gateway_requests_total": [sample(0.4)]})
+    got = await backend(client).samples(serving(FAILURE_RATIO, match={"endpoint": ("end_1",)}))
+
+    assert got == {"serving.failure_ratio": 0.4}
+    issued = client.instant_queries[0]
+    assert 'outcome=~"shed|no_upstream|upstream_error|upstream_timeout|internal_error"' in issued
+    assert "rate_limited" not in issued
+    assert 'outcome!="canceled"' in issued, "a caller that hung up took its own request away"
+    assert 'origin="live"' in issued, "the conformance suite would manufacture its own breach"
+    assert 'hangar_endpoint="end_1"' in issued
+
+
+async def test_the_failure_ratio_clamps_its_denominator_rather_than_dividing_by_zero():
+    """An endpoint with no traffic must not take the query down with it.
+
+    The clamp is far below one request, so it can never dilute a real ratio into a
+    plausible-looking small percentage.
+    """
+    client = StubClient({"hangar_gateway_requests_total": [sample(0.4)]})
+    await backend(client).samples(serving(FAILURE_RATIO))
+    assert "clamp_min(" in client.instant_queries[0]
+    assert "1e-9" in client.instant_queries[0]
+
+
+async def test_availability_is_the_same_ratio_subtracted_from_a_hundred():
+    """Two expressions that could disagree is two numbers on one screen that do."""
+    client = StubClient({"hangar_gateway_requests_total": [sample(99.6)]})
+    got = await backend(client).samples(serving(AVAILABILITY))
+    assert got == {"serving.availability": 99.6}
+    assert client.instant_queries[0].startswith("100 - (")
+
+
+async def test_a_gateway_nobody_scrapes_is_absent_and_never_a_hundred_percent():
+    """The day-one answer: the port is exposed and no ServiceMonitor reads it.
+
+    A store that holds no `hangar_gateway_*` series at all answers with nothing,
+    and nothing has to stay nothing all the way to the console — an invented 100%
+    is an SLA nobody measured.
+    """
+    got = await backend(StubClient()).samples(serving(AVAILABILITY, FAILURE_RATIO, REQUESTS))
+    assert got == {
+        "serving.availability": None,
+        "serving.failure_ratio": None,
+        "serving.requests_per_second": None,
+    }
+
+
+async def test_a_serving_breakdown_groups_by_the_endpoint_label():
+    """The whole surface and each endpoint's share of it come from one query."""
+    client = StubClient(
+        {
+            "hangar_gateway_requests_total": [
+                sample(12, {"hangar_endpoint": "end_1"}),
+                sample(3, {"hangar_endpoint": "_unknown"}),
+            ]
+        }
+    )
+    got = await backend(client).breakdown(serving(REQUESTS, breakdown="endpoint"))
+
+    assert got == {
+        "end_1": {"serving.requests_per_second": 12.0},
+        "_unknown": {"serving.requests_per_second": 3.0},
+    }
+    assert "sum by (hangar_endpoint)" in client.instant_queries[0]
+
+
+async def test_a_query_for_the_whole_surface_is_still_well_formed():
+    """`serving` narrows by nothing, so `$SELECTOR` is empty and cannot leave a comma."""
+    client = StubClient()
+    await backend(client).samples(serving(REQUESTS))
+    assert '{origin="live"}' in client.instant_queries[0]
+    assert "{," not in client.instant_queries[0]
 
 
 # --- the transport ---------------------------------------------------------

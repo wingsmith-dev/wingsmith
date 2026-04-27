@@ -37,6 +37,12 @@ is the device join and the deployment join, run once per cluster it landed in an
 merged afterwards. What can be merged is what `Metric.aggregate` says adds; a
 percentile is not, and is left out of the merged figure rather than averaged into
 one — see `_merge`.
+
+An endpoint is the one object no cluster can be asked about. It never syncs to
+one, and the requests that make its availability number interesting are the ones
+that never reached a cluster at all, so it is answered from the gateway's own
+series — a fifth join, on `hangar_endpoint`, against a store that has no cluster
+label to narrow by.
 """
 
 import logging
@@ -54,6 +60,7 @@ from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Artifact
+from app.db.models import Endpoint
 from app.db.models import Workload
 from app.db.models import Allocation
 from app.db.models import Deployment
@@ -77,6 +84,7 @@ from .schemas import MetricsSchema
 from .schemas import BreakdownSchema
 from .schemas import SeriesPointSchema
 from .sources import Source
+from .sources import shared
 from .sources import resolve
 from .sources import configured
 from .registry import ENGINES
@@ -85,6 +93,23 @@ from .registry import family
 
 
 logger = logging.getLogger(__name__)
+
+GATEWAY = "gateway"
+"""The source key the gateway's own series are read under. Not a cluster name."""
+
+NO_GATEWAY = (
+    "no metrics store for the plane to read the gateway's own series from; set HANGAR_METRICS_SOURCES"
+)
+
+RESERVED_ENDPOINTS: dict[str, str] = {
+    "_catalog": "Model catalogue",
+    "_unknown": "Unrecognised model",
+}
+"""What the gateway's two non-endpoint keys are called in a breakdown.
+
+Both are labelled and neither is hidden: `_unknown` growing is a rename somebody
+made without telling the callers, and a row that is filtered out cannot show that.
+"""
 
 
 class MetricsService:
@@ -572,6 +597,90 @@ class MetricsService:
         if failures:
             answer.unavailable = failures[0]
         return answer
+
+    def _gateway(self) -> Source | None:
+        """The store the gateway's own series are read out of, or nothing.
+
+        The gateway belongs to no cluster, so this does not go through `resolve`:
+        it is the shared store under a label that is normally empty, because
+        `hangar_gateway_*` comes from one process rather than from a fleet.
+        """
+        return shared(GATEWAY, settings.METRICS_GATEWAY_LABEL)
+
+    async def endpoint(
+        self,
+        ref: str,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> MetricsSchema:
+        """One endpoint as the front door saw it, which is the only place it is visible.
+
+        An endpoint is a plane-only object — it never reaches a cluster — so no
+        cluster can be asked about one, and the answer carries `cluster: null`.
+        The join is exact: `hangar_endpoint` is the uid, stamped by the hop that
+        resolved it.
+
+        A configured store that nobody has pointed at the gateway's metrics port
+        answers every one of these with no series, which arrives as an absent
+        sample rather than a zero. An endpoint nobody has called is not 100%
+        available and is not 0% available either.
+        """
+        query = select(Endpoint).where(Endpoint.uid == ref if is_uid(ref) else Endpoint.name == ref)
+        endpoint = (await self.db.execute(query)).scalars().first()
+        if endpoint is None:
+            raise NotFound(f"no endpoint {ref!r}")
+        source = self._gateway()
+        return await self._answer_source(
+            source,
+            None,
+            self._scope("endpoint", source, endpoint=(endpoint.uid,)),
+            endpoint.uid,
+            family("serving"),
+            window,
+            step,
+            span,
+            with_series=series,
+            no_source=NO_GATEWAY,
+        )
+
+    async def serving(
+        self,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> MetricsSchema:
+        """Every request the front door answered, with one breakdown row per endpoint.
+
+        Narrowed by nothing, deliberately: a total assembled by adding up a page
+        of endpoints is a total of that page, and it moves when somebody pages.
+        The breakdown keeps every endpoint's own figure beside it.
+
+        The gateway's two reserved keys are labelled rather than dropped.
+        `_catalog` is `GET /v1/models`, answered from the routing table by no
+        endpoint at all, and `_unknown` is a caller naming a model we do not
+        serve — which is the traffic worth seeing when a rename has gone wrong.
+        """
+        source = self._gateway()
+        labels = dict(RESERVED_ENDPOINTS)
+        if source is not None:
+            rows = await self.db.execute(select(Endpoint.uid, Endpoint.name))
+            labels.update({uid: name for uid, name in rows.all()})
+        return await self._answer_source(
+            source,
+            None,
+            self._scope("serving", source, breakdown="endpoint"),
+            "serving",
+            family("serving"),
+            window,
+            step,
+            span,
+            labels=labels,
+            with_series=series,
+            no_source=NO_GATEWAY,
+        )
 
 
 def _merge(metrics: tuple[Metric, ...], per_cluster: list[dict[str, float | None]]) -> dict[str, float | None]:

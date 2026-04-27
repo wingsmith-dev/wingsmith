@@ -48,6 +48,7 @@ from app.modules.alerts.services import catalogue
 from app.modules.metrics.schemas import SampleSchema
 from app.modules.metrics.schemas import MetricsSchema
 from app.modules.metrics.registry import BY_NAME
+from app.modules.metrics.registry import family
 from app.modules.alerts.repository import AlertThresholdRepository
 
 
@@ -100,12 +101,17 @@ def test_no_rule_claims_to_measure_availability_from_cluster_side_series():
     reports a fully-broken cluster as "no traffic" rather than as an outage. A rule
     here that claimed to watch availability would be a green light with nothing
     behind it, and it would be believed.
+
+    `serving.availability` exists and is exempt, because it is measured at the
+    gateway — the one hop that saw the requests no cluster did. The ban is on
+    claiming the number out of `gpu` or `inference` series, not on the number.
     """
     banned = ("availability", "failure", "error_rate", "success_rate", "uptime")
     for definition in rules.METRIC_RULES.values():
         assert not any(word in definition.rule for word in banned), definition.rule
         assert not any(word in definition.metric for word in banned), definition.metric
-    assert not any(any(word in name for word in banned) for name in BY_NAME)
+    cluster_side = {metric.name for metric in family("gpu") + family("inference")}
+    assert not any(any(word in name for word in banned) for name in cluster_side)
 
 
 def test_a_breach_is_strict_on_both_sides_of_the_boundary():

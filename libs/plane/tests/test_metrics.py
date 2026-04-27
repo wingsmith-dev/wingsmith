@@ -6,6 +6,7 @@ from app.api.app import create_app
 from app.core.devices import DIALECT_DCGM
 from app.core.devices import DeviceClass
 from app.core.devices import DeviceTable
+from app.core.exceptions import NotFound
 from app.modules.metrics import promql
 from app.modules.metrics import sources
 from app.modules.metrics.client import MetricsUnavailable
@@ -485,3 +486,67 @@ def query_params(path: str) -> set[str]:
 def test_the_workload_route_declares_every_parameter_the_console_sends():
     """An undeclared parameter is a 400 from `reject_unknown_params`, not an ignored one."""
     assert query_params("/v1/metrics/workloads/{ref:str}") == {"project", "window", "step", "span", "series"}
+
+
+# --- the endpoint and serving routes -----------------------------------------
+
+
+class EmptySession:
+    """A session that finds nothing, which is what a 404 is made of."""
+
+    async def execute(self, query):
+        return self
+
+    def scalars(self):
+        return self
+
+    def first(self):
+        return None
+
+
+def test_the_endpoint_route_declares_every_parameter_the_console_sends():
+    """An undeclared parameter is a 400 from `reject_unknown_params`, not an ignored one."""
+    assert query_params("/v1/metrics/endpoints/{ref:str}") == {"window", "step", "span", "series"}
+
+
+def test_the_serving_route_declares_every_parameter_the_console_sends():
+    """The endpoints page reads the fleet tile and the 14-day strip from this one route."""
+    assert query_params("/v1/metrics/serving") == {"window", "step", "span", "series"}
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_endpoint_is_a_404_rather_than_an_empty_measurement():
+    """A misspelled name that answers with no samples is indistinguishable from an idle endpoint."""
+    with pytest.raises(NotFound):
+        await MetricsService(db=EmptySession()).endpoint("no-such-endpoint")  # type: ignore[arg-type]
+
+
+def test_the_endpoint_dimension_selects_the_uid_the_gateway_stamps():
+    """`endpoint_name` is beside it for panels and is never joined on: names change."""
+    assert LABELS["endpoint"] == "hangar_endpoint"
+
+
+def test_the_serving_family_is_read_from_the_gateway_and_from_nowhere_else():
+    """A request that never reached a cluster leaves no trace in an engine's series."""
+    assert {m.name for m in ENGINES["gateway"].metrics} == {m.name for m in family("serving")}
+    assert {"serving.availability", "serving.failure_ratio", "serving.requests_per_second"} <= {
+        m.name for m in family("serving")
+    }
+    for metric in family("serving"):
+        assert DIALECT[metric.name].candidates[0].startswith("hangar_gateway_")
+
+
+def test_the_token_rates_never_add_cached_input_to_input():
+    """Cached input is a subset of the prompt, so summing it counts the prompt twice."""
+    assert 'direction="input"' in DIALECT["serving.input_tokens_per_second"].template
+    assert 'direction="output"' in DIALECT["serving.output_tokens_per_second"].template
+    for name in ("serving.input_tokens_per_second", "serving.output_tokens_per_second"):
+        assert "cached_input" not in DIALECT[name].template
+
+
+def test_only_real_substitution_tokens_appear_in_a_grouped_template():
+    """A token the renderer does not know survives into the query and matches nothing."""
+    known = {"$SERIES", "$SELECTOR", "$WINDOW", "$BY"}
+    for name, expression in DIALECT.items():
+        tokens = set(re.findall(r"\$[A-Z_]+", expression.grouped))
+        assert tokens <= known, f"{name} uses {sorted(tokens - known)}"

@@ -118,6 +118,42 @@ class MetricsRoutes(Controller):
         """
         return Response(await svc.workload(ref, project, window, step, span, series))
 
+    @get("/serving")
+    async def serving_metrics(
+        self,
+        context: RequestContext,
+        svc: MetricsService,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> Response[MetricsSchema]:
+        """Everything the gateway answered, with one row per endpoint in the breakdown.
+
+        The fleet total, taken from the hop that saw every request — including the
+        ones no cluster ever did. Adding up a page of endpoints instead gives a
+        total that changes when somebody pages.
+        """
+        return Response(await svc.serving(window, step, span, series))
+
+    @get("/endpoints/{ref:str}")
+    async def endpoint_metrics(
+        self,
+        context: RequestContext,
+        svc: MetricsService,
+        ref: str,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> Response[MetricsSchema]:
+        """One endpoint, measured at the front door rather than inside a cluster.
+
+        `cluster` is null on the answer: an endpoint is global, and a request that
+        was refused before it was routed belongs to no cluster.
+        """
+        return Response(await svc.endpoint(ref, window, step, span, series))
+
     @get("/deployments/{ref:str}")
     async def deployment_metrics(
         self,
