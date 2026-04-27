@@ -134,9 +134,18 @@ state it leaves behind.
   references. Generic observed attributes (os image, kernel version, driver version, agent version)
   are fine. The operator is the only thing that knows Kubernetes exists; leaking it here would make
   the plane's API a Kubernetes API with extra steps.
-- **No telemetry.** Utilization, temperature, throughput, latency, token counts. Health, allocation,
-  membership and residency are state and belong here; measurement goes to the observability stack
-  directly.
+- **No telemetry on an object.** Utilization, temperature, throughput, latency, token counts are
+  never fields on a device, a node or a deployment. Health, allocation, membership and residency are
+  state and belong here; measurement is written to the observability stack directly and read back
+  from it under `/v1/metrics`, which belongs to no object and is a read-through rather than storage
+  — see §6.
+- **No failure-rate metric from an engine exporter, and no availability derived from one.** A
+  request that never reached a cluster — refused at the front door, routed nowhere, timed out before
+  an engine saw it — leaves no trace in what that engine reports about itself, and those are the
+  requests an availability incident is made of. So the vocabulary has no `inference.failure_*`:
+  `serving.failure_ratio` and `serving.availability` are gateway measurements or they are absent.
+  Where the threshold that calls a number an outage lives is a separate matter — not here, because a
+  threshold is not a measurement.
 
 ## 6. Resources
 
@@ -161,6 +170,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/operations` | see §7 |
 | `/v1/benchmarks` | declared run, observed result — see §7.1 |
 | `/v1/events` | observed, read-only, append-only |
+| `/v1/metrics` | measurement, read-only, belongs to no object — see below |
 | `/v1/alerts` | derived, read-only apart from two lifecycle verbs — see below |
 | `/v1/notification-channels` | declared, plus a `test` verb |
 | `/v1/system/config` | the process's own configuration, read-only — see below |
@@ -259,6 +269,89 @@ and the last few characters, enough to tell two apart and not enough to use. `PO
 /v1/notification-channels/{ref}/test` posts a sample message and answers `200` with
 `{"delivered": false, "detail": "..."}` when the webhook rejects it: the failure is Slack's, not the
 plane's, and the reason is the useful part.
+
+**`/v1/metrics` is measurement read back, and it is one answer shape for every scope.** There is no
+`POST` anywhere under it and nothing to write: the plane forwards a question to whichever store
+holds the series and reduces the result. It is not a field on a device or a deployment because the
+two have different failure modes and different freshness — an inventory read must never get slower
+because a Prometheus is unreachable — and it is not the data plane either: the numbers were written
+to the store directly and this is only a reader.
+
+Every route answers the same object: `scope` (which question was asked), `ref` (which object, or the
+scope's own word where there is none), `cluster` (null when the answer belongs to no single cluster),
+`source` (the store that answered, as `cluster`, `url` and `kind` — never its credential), `window`
+(the lookback actually used), `samples[]` of `{metric, title, unit, value}`, `breakdown[]` of
+`{key, label, samples[]}`, `series[]` of `{metric, title, unit, labels, points[]}`, and
+`unavailable`. **`value: null` means the
+store had no series, which is not zero** — an idle GPU reads 0 and an unmeasured one reads null, and
+rendering the second as the first is how a panel comes to claim a fault that is not there. Same for
+`unavailable`: it is the reason there is nothing, in words, and it is meant to be shown rather than
+replaced with a number.
+
+`GET /v1/metrics/sources` is the exception and answers its own shape: which clusters can be measured
+at all, which is the first thing to check when a panel is empty. Everything else is one of these:
+
+| Route | Scope | `ref` | `cluster` |
+|---|---|---|---|
+| `GET /v1/metrics/clusters/{ref}` | `cluster` | cluster uid | the cluster |
+| `GET /v1/metrics/clusters/{ref}/device-classes/{name}` | `device_class` | the class name | the cluster |
+| `GET /v1/metrics/pools/{ref}` | `pool` | pool uid | the cluster |
+| `GET /v1/metrics/nodes/{ref}` | `node` | node uid | the cluster |
+| `GET /v1/metrics/devices/{ref}` | `device` | device uid | the cluster |
+| `GET /v1/metrics/deployments/{ref}` | `deployment` | deployment uid | the cluster |
+| `GET /v1/metrics/workloads/{ref}` | `workload` | workload uid | **null** — a workload spans clusters |
+| `GET /v1/metrics/fleet` | `fleet` | `"fleet"` | **null** — every cluster at once |
+| `GET /v1/metrics/serving` | `serving` | `"serving"` | **null** — measured at the gateway |
+| `GET /v1/metrics/endpoints/{ref}` | `endpoint` | endpoint uid | **null** — an endpoint reaches no cluster |
+
+Every one of them takes `window`, `step`, `span` (seconds, default `3600`) and `series` (default
+`false`), and nothing else — `series=false` is the normal read and the points are only computed when
+asked for. `GET /v1/metrics/workloads/{ref}` also takes `project`, because a bare workload name is
+unique only within its project; an ambiguous one answers `409 invalid` listing the candidates, which
+is exactly what `GET /v1/workloads/{ref}` does with the same reference. None of these is a list, so
+none of them accepts `limit` or `cursor`, and passing one is `400 unknown_parameter` like anywhere
+else.
+
+**Metric names are Hangar's vocabulary, not PromQL, and the family says who emitted the number.**
+`gpu.*` is what the device exporter reports, `inference.*` is what a serving engine says about
+itself, and `serving.*` is what the gateway saw. The percentiles in the vocabulary are named because
+somebody is held to them rather than because a caller can pick a quantile — `inference.ttft` (p95)
+beside `ttft_p50`, `ttft_p90` and `ttft_p99`, and `tpot_p99` and `latency_p99` beside their p95s.
+Each is quantiled out of the engine's own buckets in its own right: a tail inferred from the
+percentile next to it would be a number nothing measured, which is worse than a cell that says it
+was not measured. `serving.latency_*` is not `inference.latency_*` and the two disagreeing is not a
+defect — the gateway's includes the hop, the queue in front of it and the requests that failed
+before an engine saw them.
+
+**A workload is measured once per cluster it landed in and merged afterwards, and a percentile is
+not merged.** The GPU family is selected by the devices its live allocations hold — absent, not
+zero, in a cluster where it holds none — and the inference family by the same worker-then-model rule
+`deployment` follows. `breakdown[]` carries one row per cluster, keyed by cluster uid, each with that
+cluster's own numbers. In the merged `samples[]` sums add, temperatures take the worst card and
+utilizations average, but a metric read out of a histogram quantile is **omitted** when more than one
+cluster answered it: two p95s have no mean, so the merged figure is absent and the real per-cluster
+ones stay in the breakdown.
+
+**`GET /v1/metrics/fleet` is one widened query or a refusal.** The clusters are widened into a single
+`cluster=~"…"` matcher that one store aggregates over itself, rather than fanned out and added up
+here — the plane is not the aggregation layer, and the arithmetic is the reason. So it answers
+`samples: []`, `breakdown: []` and an `unavailable` string when that cannot be done honestly: when
+the fleet's clusters sit in more than one store ("ask each cluster"), when a store answering for a
+cluster carries no cluster label to narrow by, and when no cluster has a store at all. It carries a
+deliberately short vocabulary — traffic, its tail, and throughput — because a fleet answer is one
+query per metric over every cluster's series and the whole vocabulary would be a page of them.
+
+**`GET /v1/metrics/serving` and `/v1/metrics/endpoints/{ref}` are read from the gateway and from
+nowhere else**, which is the whole point of the `serving` family (§5): the requests that make an
+availability number interesting are the ones no cluster ever saw. The join is exact — the endpoint
+uid is a label on the gateway's series — and the total is asked for as a total rather than assembled
+from a page of endpoints, which would move when somebody pages. `breakdown[]` on `/serving` is one
+row per endpoint, and the gateway's two reserved keys are labelled rather than hidden: `_catalog` is
+`GET /v1/models`, answered from the routing table by no endpoint at all, and `_unknown` is a caller
+naming a model we do not serve — the row worth watching when a rename has gone wrong. An unknown
+endpoint reference is `404`. Until something scrapes the gateway these answer with every `value`
+null, or with `unavailable` set if no store is configured for them at all: an endpoint nobody has
+called is not 100% available, and it is not 0% either.
 
 **`/v1/workloads` is what you create; `/v1/deployments` is what that became.** A Workload is the
 global declaration — a recipe, a total scale, a kind, a priority, and the regions or clusters it may
@@ -447,7 +540,11 @@ standards and a verdict would grade against whichever was read first. `recorded_
 `recorded_at` are the authenticated principal and the write; a body carrying either is accepted and
 the values are discarded, because a signature a caller can type is not one and an acceptance review
 argues with the signature. `tolerance_pct` is the recorder's own slack and is not the acceptance
-floor — that belongs to the criteria version and is resolved when a verdict is derived (§7.1).
+floor — that belongs to the criteria version and is resolved when a verdict is derived (§7.1). The
+list is an ordinary paged envelope (`limit`, `cursor`) and `{ref}` is a uid or a name as everywhere
+else, while `{baseline}` is the `abl_` uid only. A baseline that belongs to another artifact is `404`
+from under this one rather than edited across the boundary: the artifact in the path is part of the
+row's identity, not a hint about where to look.
 
 **`cluster` is optional on `POST /v1/workloads`**, and leaving it out is the normal path: the
 plane picks the clusters from the recipe's device shape, the project's quota, the policies attached
