@@ -682,10 +682,24 @@ async def test_numeric_columns_are_floats_by_the_time_they_reach_the_wire():
 
 
 async def test_a_baseline_of_another_artifact_is_not_found_under_this_one():
-    """The uid is global but the sub-resource is not, and a floor read off the wrong artifact grades the wrong weights."""
+    """The uid is global but the sub-resource is not, and a floor read off the wrong artifact grades the wrong weights.
+
+    The row has to exist and belong to somebody else for this to mean anything —
+    looking up a uid nothing owns passes whether or not the read is scoped at all.
+    """
     svc = baseline_service()
+    stranger = ArtifactBaseline(
+        id=uuid.uuid4(),
+        uid=new_uid(ARTIFACT_BASELINE),
+        artifact_id=uuid.uuid4(),
+        dataset="mmlu_pro",
+        metric="accuracy",
+        value=decimal.Decimal("0.75"),
+    )
+    svc.repo.rows.append(stranger)
+
     with pytest.raises(NotFound):
-        await svc.get(svc.repo.artifact.uid, new_uid(ARTIFACT_BASELINE))
+        await svc.get(svc.repo.artifact.uid, stranger.uid)
 
 
 async def test_an_unknown_artifact_has_no_baseline_collection():
