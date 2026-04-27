@@ -28,11 +28,23 @@ from dataclasses import dataclass
 Unit = Literal["percent", "celsius", "watts", "mib", "mhz", "seconds", "per_second", "count"]
 Family = Literal["gpu", "inference"]
 
-SCOPES: tuple[str, ...] = ("cluster", "node", "pool", "device", "device_class", "deployment", "worker")
+SCOPES: tuple[str, ...] = (
+    "cluster",
+    "node",
+    "pool",
+    "device",
+    "device_class",
+    "deployment",
+    "worker",
+    "workload",
+)
 """The dimensions a measurement can be narrowed by, in Hangar's words.
 
 `pool` is not a dimension a store knows: a pool is measured as the set of nodes
-in it, which is why it never reaches a backend under its own name.
+in it, which is why it never reaches a backend under its own name. `workload` is
+the same kind of word for the same reason and one step further out: a workload is
+measured as the devices it holds and the workers it registered, in each of the
+clusters it landed in, so no store is ever asked about a workload.
 
 `deployment` and `worker` are both ways of asking about one deployment and they
 are not the same question. `deployment` selects the served model, so two
@@ -86,6 +98,9 @@ INFERENCE_METRICS: tuple[Metric, ...] = (
     Metric("inference.prefix_cache_hit_rate", "percent", "inference", "Prefix cache hit rate"),
     Metric("inference.ttft_p50", "seconds", "inference", "Time to first token (p50)"),
     Metric("inference.ttft_p90", "seconds", "inference", "Time to first token (p90)"),
+    Metric("inference.ttft_p99", "seconds", "inference", "Time to first token (p99)"),
+    Metric("inference.tpot_p99", "seconds", "inference", "Time per output token (p99)"),
+    Metric("inference.latency_p99", "seconds", "inference", "End-to-end latency (p99)"),
     Metric("inference.queue_time", "seconds", "inference", "Time waiting in queue (p95)"),
     Metric("inference.prefill_time", "seconds", "inference", "Prefill time (p95)"),
     Metric("inference.decode_time", "seconds", "inference", "Decode time (p95)"),
@@ -104,9 +119,12 @@ experiences and is scale-invariant. An acceptance floor of "30 tokens/second" me
 the second — thirty aggregate tokens a second on a serving GPU would be a fault —
 and reading the wrong one gives a check that passes under every condition.
 
-`ttft_p50` and `ttft_p90` sit beside the p95 `ttft` because they are named
-percentiles somebody is held to, not a query dimension. A percentile a caller can
-ask for is a name in this vocabulary; that is the cost of keeping PromQL out of it.
+`ttft_p50`, `ttft_p90` and the three `_p99` entries sit beside the p95 `ttft`,
+`tpot` and `latency` because they are named percentiles somebody is held to, not a
+query dimension. A percentile a caller can ask for is a name in this vocabulary;
+that is the cost of keeping PromQL out of it. Each is quantiled out of the buckets
+in its own right — a tail read off the p95 next to it would be a number nothing
+measured, which is worse than a cell that says it was not measured.
 
 There is no failure-rate metric here and its absence is deliberate. A request that
 never reached the cluster — refused at the front door, routed nowhere, timed out

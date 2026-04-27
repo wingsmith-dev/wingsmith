@@ -90,6 +90,7 @@ class Expression:
 
 
 QUANTILE = "histogram_quantile(0.95, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
+P99 = "histogram_quantile(0.99, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
 P90 = "histogram_quantile(0.90, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
 P50 = "histogram_quantile(0.50, sum by (le) (rate($SERIES{$SELECTOR}[$WINDOW])))"
 RATE = "sum(rate($SERIES{$SELECTOR}[$WINDOW]))"
@@ -129,6 +130,12 @@ DIALECT: dict[str, Expression] = {
     ),
     "inference.ttft_p50": Expression(("vllm:time_to_first_token_seconds_bucket",), P50),
     "inference.ttft_p90": Expression(("vllm:time_to_first_token_seconds_bucket",), P90),
+    "inference.ttft_p99": Expression(("vllm:time_to_first_token_seconds_bucket",), P99),
+    "inference.tpot_p99": Expression(
+        ("vllm:time_per_output_token_seconds_bucket", "vllm:inter_token_latency_seconds_bucket"),
+        P99,
+    ),
+    "inference.latency_p99": Expression(("vllm:e2e_request_latency_seconds_bucket",), P99),
     "inference.queue_time": Expression(("vllm:request_queue_time_seconds_bucket",), QUANTILE),
     "inference.prefill_time": Expression(("vllm:request_prefill_time_seconds_bucket",), QUANTILE),
     "inference.decode_time": Expression(("vllm:request_decode_time_seconds_bucket",), QUANTILE),
@@ -141,6 +148,18 @@ DIALECT: dict[str, Expression] = {
     "inference.prompt_tokens_per_request": Expression(("vllm:request_prompt_tokens_bucket",), QUANTILE),
     "inference.generation_tokens_per_request": Expression(("vllm:request_generation_tokens_bucket",), QUANTILE),
 }
+
+
+def is_quantile(name: str) -> bool:
+    """Whether this metric is read out of a histogram's buckets rather than added up.
+
+    A quantile cannot be combined with another quantile after the fact: two p95s
+    measured in two stores have no mean, and the store that would know is the one
+    holding both sets of buckets. A caller merging numbers across clusters asks
+    this so it can leave the percentile out rather than average one into
+    existence.
+    """
+    return "histogram_quantile" in DIALECT[name].template
 
 
 def escape(value: str) -> str:

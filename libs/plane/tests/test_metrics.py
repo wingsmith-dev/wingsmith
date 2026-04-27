@@ -2,6 +2,7 @@ import re
 
 import pytest
 
+from app.api.app import create_app
 from app.core.devices import DIALECT_DCGM
 from app.core.devices import DeviceClass
 from app.core.devices import DeviceTable
@@ -13,6 +14,7 @@ from app.modules.metrics.promql import DIALECT
 from app.modules.metrics.promql import render
 from app.modules.metrics.promql import matcher
 from app.modules.metrics.promql import selector
+from app.modules.metrics.promql import is_quantile
 from app.modules.metrics.promql import worker_identity
 from app.modules.metrics.routes import MetricsRoutes
 from app.modules.metrics.backend import Scope
@@ -430,3 +432,56 @@ def test_the_worker_join_separates_two_deployments_of_one_model():
     one = Scope(kind="deployment", cluster="c", match={"worker": ("dynamo-aaaa",)})
     two = Scope(kind="deployment", cluster="c", match={"worker": ("dynamo-bbbb",)})
     assert selector(one) != selector(two)
+
+
+# --- the p99 tail -----------------------------------------------------------
+
+
+P99_PAIRS = (
+    ("inference.ttft_p99", "inference.ttft"),
+    ("inference.tpot_p99", "inference.tpot"),
+    ("inference.latency_p99", "inference.latency"),
+)
+
+
+def test_the_p99_metrics_are_quantiled_out_of_the_same_buckets_as_their_p95():
+    """A tail read off the p95 beside it is a number nothing measured.
+
+    The console renders p95 and p99 in adjacent cells, so the two have to come
+    from the same histogram at two quantiles; doubling one to fill the other
+    would be indistinguishable from a measurement and always wrong.
+    """
+    for tail, existing in P99_PAIRS:
+        assert "histogram_quantile(0.99," in DIALECT[tail].template
+        assert DIALECT[tail].candidates == DIALECT[existing].candidates
+
+
+def test_a_quantile_metric_is_recognisable_so_it_is_never_merged_in_python():
+    """Two p95s from two stores have no mean; the merge has to be able to tell."""
+    for name, _ in P99_PAIRS:
+        assert is_quantile(name)
+    assert is_quantile("inference.output_tokens_per_stream"), "the reciprocal of a quantile is one too"
+    assert not is_quantile("gpu.utilization")
+    assert not is_quantile("inference.requests_running")
+
+
+# --- the workload route -----------------------------------------------------
+
+
+def query_params(path: str) -> set[str]:
+    """What `app/core/params.py` will accept on a route, read off the handler itself."""
+    for route in create_app().routes:
+        if route.path != path:
+            continue
+        for method, entry in getattr(route, "route_handler_map", {}).items():
+            handler = entry[0] if isinstance(entry, tuple) else entry
+            if method != "GET":
+                continue
+            model = handler.create_kwargs_model(path_parameters=dict.fromkeys(route.path_parameters))
+            return {param.field_alias for param in model.expected_query_params}
+    raise AssertionError(f"no GET route at {path}")
+
+
+def test_the_workload_route_declares_every_parameter_the_console_sends():
+    """An undeclared parameter is a 400 from `reject_unknown_params`, not an ignored one."""
+    assert query_params("/v1/metrics/workloads/{ref:str}") == {"project", "window", "step", "span", "series"}

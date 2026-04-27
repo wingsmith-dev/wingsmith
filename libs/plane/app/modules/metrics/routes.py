@@ -99,6 +99,25 @@ class MetricsRoutes(Controller):
     ) -> Response[MetricsSchema]:
         return Response(await svc.device(ref, window, step, span, series))
 
+    @get("/workloads/{ref:str}")
+    async def workload_metrics(
+        self,
+        context: RequestContext,
+        svc: MetricsService,
+        ref: str,
+        project: str | None = None,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> Response[MetricsSchema]:
+        """One workload across every cluster it landed in, with each cluster in the breakdown.
+
+        `project` disambiguates a bare name, which is unique only within its
+        project — the same rule `GET /v1/workloads/{ref}` follows.
+        """
+        return Response(await svc.workload(ref, project, window, step, span, series))
+
     @get("/deployments/{ref:str}")
     async def deployment_metrics(
         self,

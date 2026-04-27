@@ -31,6 +31,12 @@ The three scoping joins, and how much each can be trusted:
 Every one of them is narrowed by cluster first. The fleet remote-writes into one
 store holding four clusters, two of which are databases, so an unscoped query
 does not answer for a cluster — it answers for all of them at once.
+
+A workload is the one object that spans clusters, and it is not a fourth join: it
+is the device join and the deployment join, run once per cluster it landed in and
+merged afterwards. What can be merged is what `Metric.aggregate` says adds; a
+percentile is not, and is left out of the merged figure rather than averaged into
+one — see `_merge`.
 """
 
 import logging
@@ -46,13 +52,19 @@ from app.db.models import Pool
 from app.db.models import Device
 from app.db.models import Recipe
 from app.db.models import Cluster
+from app.db.models import Project
 from app.db.models import Artifact
 from app.db.models import Workload
+from app.db.models import Allocation
 from app.db.models import Deployment
+from app.db.models import AllocationDevice
+from app.core.filters import ref_ids
 from app.config.settings import settings
+from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
 
 from .client import MetricsUnavailable
+from .promql import is_quantile
 from .promql import worker_identity
 from .backend import Scope
 from .backend import Window
@@ -401,6 +413,197 @@ class MetricsService:
         return await self._answer(
             cluster, scope, deployment.uid, engine.metrics, window, step, span, with_series=series
         )
+
+    async def _workload(self, ref: str, project: str | None):
+        """The workload a reference names, with the recipe and artifact behind it.
+
+        A name is unique only within its project, so a bare one can name several
+        workloads; that is a 400 listing the projects it could have meant rather
+        than a guess, exactly as `GET /v1/workloads/{ref}` answers it.
+        """
+        query = (
+            select(Workload, Recipe, Artifact)
+            .join(Recipe, Workload.recipe_id == Recipe.id)
+            .join(Artifact, Recipe.artifact_id == Artifact.id)
+            .where(Workload.uid == ref if is_uid(ref) else Workload.name == ref)
+        )
+        if project is not None:
+            query = query.where(Workload.project_id.in_(ref_ids(Project, project, "slug")))
+        found = (await self.db.execute(query.limit(2))).all()
+        if not found:
+            raise NotFound(f"no workload {ref!r}")
+        if len(found) > 1:
+            rows = await self.db.execute(
+                select(Workload.uid, Project.slug)
+                .join(Project, Workload.project_id == Project.id)
+                .where(Workload.name == ref)
+            )
+            raise Invalid(
+                f"{ref!r} names a workload in more than one project; say which with `project`",
+                {"candidates": [{"id": uid, "project": slug} for uid, slug in rows.all()]},
+            )
+        return found[0]
+
+    async def _held_devices(self, workload_id: UUID) -> dict[UUID, tuple[str, ...]]:
+        """The device UUIDs a workload holds right now, per cluster.
+
+        Live on both halves — the allocation and the membership — because this is
+        what the workload occupies now, not what it has occupied. A cluster with
+        nothing live is absent from the mapping rather than present with an empty
+        tuple: an empty device matcher selects the whole fleet.
+        """
+        rows = (
+            await self.db.execute(
+                select(Allocation.cluster_id, Device.device_uuid)
+                .select_from(Allocation)
+                .join(AllocationDevice, AllocationDevice.allocation_id == Allocation.id)
+                .join(Device, AllocationDevice.device_id == Device.id)
+                .where(
+                    Allocation.workload_id == workload_id,
+                    Allocation.released_at.is_(None),
+                    AllocationDevice.released_at.is_(None),
+                )
+            )
+        ).all()
+        held: dict[UUID, set[str]] = {}
+        for cluster_id, device_uuid in rows:
+            if device_uuid:
+                held.setdefault(cluster_id, set()).add(device_uuid)
+        return {cluster_id: tuple(sorted(uuids)) for cluster_id, uuids in held.items()}
+
+    async def workload(
+        self,
+        ref: str,
+        project: str | None = None,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> MetricsSchema:
+        """One workload, measured in every cluster it landed in and merged back.
+
+        A workload is the object a person asked for and the only one that spans
+        clusters, so its answer belongs to no single cluster and says so with
+        `cluster: null`. Each cluster is asked twice, because the two families
+        join differently: the cards are selected by the UUIDs the workload's live
+        allocations hold, and the serving process by the same worker-then-model
+        rule `deployment` uses. Every cluster's own numbers survive in the
+        breakdown, so a merge that cannot be made honestly costs nothing.
+
+        `source` names the store that answered first, because a workload whose
+        clusters sit in different stores has no one store either; which cluster
+        each figure came from is in the breakdown.
+        """
+        workload, recipe, artifact = await self._workload(ref, project)
+        lookback = window or self.window
+        answer = MetricsSchema(scope="workload", ref=workload.uid, cluster=None, source=None, window=lookback)
+        engine = ENGINES.get(recipe.engine)
+        if engine is None or not engine.metrics:
+            answer.unavailable = f"no metric dialect registered for engine {recipe.engine!r}"
+            return answer
+        clusters = (
+            (
+                await self.db.execute(
+                    select(Cluster)
+                    .join(Deployment, Deployment.cluster_id == Cluster.id)
+                    .where(Deployment.workload_id == workload.id)
+                    .distinct()
+                    .order_by(Cluster.seq.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not clusters:
+            answer.unavailable = "this workload is not deployed to any cluster"
+            return answer
+
+        held = await self._held_devices(workload.id)
+        worker = worker_identity(workload.labels or {})
+        served = served_model(recipe, artifact)
+        metrics = family("gpu") + engine.metrics
+        titles = {m.name: m for m in metrics}
+        per_cluster: list[tuple[Cluster, dict[str, float | None]]] = []
+        reasons: list[str] = []
+        failures: list[str] = []
+
+        for cluster in clusters:
+            source = self._source(cluster)
+            if source is None:
+                reasons.append(_no_source(cluster))
+                continue
+            if answer.source is None:
+                answer.source = SourceSchema(**source.public())
+            values: dict[str, float | None] = {}
+            devices = held.get(cluster.id, ())
+            if worker:
+                serving = self._scope("workload", source, worker=(worker,))
+            else:
+                serving = self._scope("workload", source, deployment=(served,))
+            asked = [(serving, engine.metrics)]
+            if devices:
+                asked.insert(0, (self._scope("workload", source, device=devices), family("gpu")))
+            for scope, wanted in asked:
+                part = await self._answer_source(
+                    source,
+                    cluster.uid,
+                    scope,
+                    workload.uid,
+                    wanted,
+                    window,
+                    step,
+                    span,
+                    with_series=series,
+                )
+                values.update({sample.metric: sample.value for sample in part.samples})
+                answer.series.extend(part.series)
+                if part.unavailable:
+                    failures.append(part.unavailable)
+            per_cluster.append((cluster, values))
+
+        if not per_cluster:
+            answer.unavailable = "; ".join(dict.fromkeys(reasons))
+            return answer
+        answer.samples = _samples(_merge(metrics, [values for _, values in per_cluster]), titles)
+        answer.breakdown = [
+            BreakdownSchema(key=cluster.uid, label=cluster.name, samples=_samples(values, titles))
+            for cluster, values in per_cluster
+        ]
+        if failures:
+            answer.unavailable = failures[0]
+        return answer
+
+
+def _merge(metrics: tuple[Metric, ...], per_cluster: list[dict[str, float | None]]) -> dict[str, float | None]:
+    """Several clusters' numbers for one metric back into one number, or into none.
+
+    `Metric.aggregate` holds across stores for the same reason it holds inside
+    one: throughput and power add, a temperature takes the worst card, and a
+    utilization averages. A percentile is the exception and is dropped rather
+    than merged, because two p95s have no mean and the console reading "not
+    measured" is truthful where a number nothing computed is not — the per-cluster
+    figures are still in the breakdown, where they are each true of one store.
+
+    A metric every cluster answered with no series stays as `None`, which is the
+    difference between an idle workload and one nobody is measuring.
+    """
+    merged: dict[str, float | None] = {}
+    for metric in metrics:
+        reported = [values[metric.name] for values in per_cluster if metric.name in values]
+        if not reported:
+            continue
+        numbers = [value for value in reported if value is not None]
+        if not numbers:
+            merged[metric.name] = None
+        elif len(numbers) > 1 and is_quantile(metric.name):
+            continue
+        elif metric.aggregate == "sum":
+            merged[metric.name] = sum(numbers)
+        elif metric.aggregate == "max":
+            merged[metric.name] = max(numbers)
+        else:
+            merged[metric.name] = sum(numbers) / len(numbers)
+    return merged
 
 
 def _no_source(cluster: Cluster) -> str:

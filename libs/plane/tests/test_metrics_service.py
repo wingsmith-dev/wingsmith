@@ -14,12 +14,15 @@ import msgspec
 from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Artifact
+from app.core.exceptions import Invalid
+from app.core.exceptions import NotFound
 from app.modules.metrics import sources
 from app.modules.metrics.client import MetricsUnavailable
 from app.modules.metrics.backend import Curve
 from app.modules.metrics.backend import Scope
 from app.modules.metrics.registry import BY_NAME
 from app.modules.metrics.services import MetricsService
+from app.modules.metrics.services import _merge
 from app.modules.metrics.services import served_model
 
 
@@ -541,3 +544,258 @@ async def test_the_worker_join_reads_the_labels_off_the_workload():
 async def test_an_unobserved_worker_falls_back_to_the_served_model():
     scope = await deployment_scope({})
     assert scope.match == {"deployment": ("gemma-4-31b-it",)}
+
+
+# --- the workload scope ------------------------------------------------------
+
+
+class ScriptedSession:
+    """Answers a fixed sequence of queries, in the order the service issues them.
+
+    A workload answer is three reads — the workload, the clusters it landed in,
+    the devices it holds — so a session that answers every query the same way
+    cannot exercise it.
+    """
+
+    def __init__(self, *results):
+        self._results = list(results)
+
+    async def execute(self, query):
+        return ScriptedResult(self._results.pop(0))
+
+
+class ScriptedResult:
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def all(self):
+        return list(self._rows)
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+    def scalar_one_or_none(self):
+        return self._rows[0] if self._rows else None
+
+    def scalars(self):
+        return self
+
+
+class SequenceBackend(StubBackend):
+    """A different set of numbers per call, so two clusters can answer differently."""
+
+    def __init__(self, *answers):
+        super().__init__()
+        self._answers = list(answers)
+
+    async def samples(self, request):
+        self.requests.append(request)
+        return self._answers.pop(0)
+
+
+WORKLOAD = "wkl_01j9x2aaaaaaaaaaaaaaaaaaaa"
+DEPLOYMENT = "dep_01j9x2aaaaaaaaaaaaaaaaaaaa"
+US = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
+AP = "clu_01j9x2bbbbbbbbbbbbbbbbbbbb"
+
+
+def workload_row(labels=None, engine="vllm"):
+    from app.db.models import Workload
+
+    workload = Workload(uid=WORKLOAD, name="gemma-serve", labels=DYNAMO_LABELS if labels is None else labels)
+    recipe = Recipe(name="gemma-4-31b-it", engine=engine, engine_args={})
+    artifact = Artifact(name="google/gemma-4-31B-it")
+    return (workload, recipe, artifact)
+
+
+def workload_service(*results) -> MetricsService:
+    return MetricsService(db=ScriptedSession(*results))  # type: ignore[arg-type]
+
+
+def two_clusters():
+    return [
+        cluster(name="cluster-us", uid=US, metrics_label="cluster-us"),
+        cluster(name="cluster-ap", uid=AP, metrics_label="cluster-ap"),
+    ]
+
+
+async def workload_answer(svc, backend, ref=WORKLOAD, **kw):
+    with with_sources(SHARED), with_backend(backend):
+        return await svc.workload(ref, **kw)
+
+
+async def test_a_workload_answer_belongs_to_no_single_cluster():
+    """It is the one object that spans them, so a cluster on the answer would be a lie."""
+    svc = workload_service([workload_row()], two_clusters(), [])
+    backend = SequenceBackend({"inference.requests_running": 1.0}, {"inference.requests_running": 2.0})
+    got = await workload_answer(svc, backend)
+
+    assert got.scope == "workload"
+    assert got.ref == WORKLOAD
+    assert got.cluster is None
+    assert got.source is not None, "the store that answered is still named"
+
+
+async def test_a_two_cluster_workload_adds_its_summed_metrics_together():
+    """Requests running in two regions is the total; either half alone is wrong."""
+    svc = workload_service([workload_row()], two_clusters(), [])
+    backend = SequenceBackend(
+        {"inference.requests_running": 3.0, "inference.output_tokens_per_second": 100.0},
+        {"inference.requests_running": 5.0, "inference.output_tokens_per_second": 40.0},
+    )
+    got = await workload_answer(svc, backend)
+
+    merged = {s.metric: s.value for s in got.samples}
+    assert merged["inference.requests_running"] == 8.0
+    assert merged["inference.output_tokens_per_second"] == 140.0
+
+
+async def test_a_two_cluster_workload_keeps_one_breakdown_row_per_cluster():
+    svc = workload_service([workload_row()], two_clusters(), [])
+    backend = SequenceBackend({"inference.requests_running": 3.0}, {"inference.requests_running": 5.0})
+    got = await workload_answer(svc, backend)
+
+    assert [(row.key, row.label) for row in got.breakdown] == [
+        (US, "cluster-us"),
+        (AP, "cluster-ap"),
+    ]
+    assert [row.samples[0].value for row in got.breakdown] == [3.0, 5.0]
+
+
+async def test_a_percentile_is_left_out_of_a_two_cluster_answer_rather_than_averaged():
+    """Two p95s have no mean, and the store that would know holds neither set of buckets.
+
+    The console reads "not measured" for the merged cell and both real numbers
+    are still in the breakdown, which is the honest version of this answer.
+    """
+    svc = workload_service([workload_row()], two_clusters(), [])
+    backend = SequenceBackend({"inference.ttft": 0.4}, {"inference.ttft": 0.9})
+    got = await workload_answer(svc, backend)
+
+    assert "inference.ttft" not in {s.metric for s in got.samples}
+    assert [row.samples[0].value for row in got.breakdown] == [0.4, 0.9]
+
+
+async def test_a_metric_no_cluster_had_a_series_for_stays_none_rather_than_vanishing():
+    svc = workload_service([workload_row()], two_clusters(), [])
+    backend = SequenceBackend({"inference.ttft": None}, {"inference.ttft": None})
+    got = await workload_answer(svc, backend)
+    assert ("inference.ttft", None) in [(s.metric, s.value) for s in got.samples]
+
+
+async def test_a_single_cluster_workload_reads_the_same_as_its_one_deployment():
+    """With one cluster there is nothing to merge, so the two answers must agree."""
+    from app.db.models import Deployment
+
+    numbers = {"inference.ttft": 0.42, "inference.requests_running": 3.0}
+    row = workload_row()
+    svc = workload_service([row], [cluster()], [])
+    workload_backend = SequenceBackend(dict(numbers))
+    from_workload = await workload_answer(svc, workload_backend)
+
+    other = MetricsService(db=OneRowSession((Deployment(uid=DEPLOYMENT, cluster_id=None), *row)))  # type: ignore[arg-type]
+    deployment_backend = StubBackend(samples=dict(numbers))
+    with (
+        with_sources(SHARED),
+        with_backend(deployment_backend),
+        patch.object(other, "_cluster", return_value=cluster()),
+    ):
+        from_deployment = await other.deployment(DEPLOYMENT)
+
+    assert [(s.metric, s.value) for s in from_workload.samples] == [
+        (s.metric, s.value) for s in from_deployment.samples
+    ]
+    assert workload_backend.requests[0].scope.match == deployment_backend.requests[0].scope.match
+
+
+async def test_the_serving_family_falls_back_to_the_served_model_exactly_as_a_deployment_does():
+    svc = workload_service([workload_row(labels={})], [cluster()], [])
+    backend = SequenceBackend({})
+    await workload_answer(svc, backend)
+    assert backend.requests[0].scope.match == {"deployment": ("gemma-4-31b-it",)}
+
+
+async def test_the_cards_are_selected_by_the_devices_the_workload_holds_now():
+    """The strongest join in the module: a UUID the hardware itself issued."""
+    svc = workload_service([workload_row()], [cluster()], [(None, "GPU-bbb"), (None, "GPU-aaa")])
+    backend = SequenceBackend({"gpu.utilization": 71.0}, {"inference.requests_running": 2.0})
+    got = await workload_answer(svc, backend)
+
+    assert backend.requests[0].scope.match == {"device": ("GPU-aaa", "GPU-bbb")}
+    assert {s.metric for s in got.samples} == {"gpu.utilization", "inference.requests_running"}
+
+
+async def test_a_workload_holding_no_devices_is_asked_nothing_about_gpus():
+    """No live allocation is not an idle card, so the gpu samples are absent, not zero."""
+    svc = workload_service([workload_row()], [cluster()], [])
+    backend = SequenceBackend({"inference.requests_running": 2.0})
+    got = await workload_answer(svc, backend)
+
+    assert len(backend.requests) == 1
+    assert not [s for s in got.samples if s.metric.startswith("gpu.")]
+
+
+async def test_an_engine_with_no_dialect_says_so_and_never_reaches_a_store():
+    svc = workload_service([workload_row(engine="tensorrt-llm")])
+    backend = SequenceBackend()
+    got = await workload_answer(svc, backend)
+
+    assert got.unavailable == "no metric dialect registered for engine 'tensorrt-llm'"
+    assert not backend.requests
+    assert not got.samples
+
+
+async def test_a_workload_placed_nowhere_says_so_rather_than_answering_zero():
+    svc = workload_service([workload_row()], [])
+    got = await workload_answer(svc, SequenceBackend())
+    assert got.unavailable == "this workload is not deployed to any cluster"
+    assert not got.samples
+
+
+async def test_a_workload_whose_clusters_cannot_be_measured_carries_their_reason():
+    svc = workload_service([workload_row()], [cluster(metrics_label=None)], [])
+    got = await workload_answer(svc, SequenceBackend())
+
+    assert got.unavailable is not None
+    assert "no metrics label" in got.unavailable
+    assert not got.samples
+    assert not got.breakdown
+
+
+async def test_a_bare_name_in_two_projects_names_the_candidates_rather_than_guessing():
+    """The same rule `GET /v1/workloads/{ref}` follows: one of two is not a default."""
+    svc = workload_service(
+        [workload_row(), workload_row()],
+        [(WORKLOAD, "team-a"), ("wkl_01j9x2cccccccccccccccccccc", "team-b")],
+    )
+    with pytest.raises(Invalid) as raised:
+        await workload_answer(svc, SequenceBackend(), ref="gemma-serve")
+
+    assert raised.value.detail["candidates"] == [
+        {"id": WORKLOAD, "project": "team-a"},
+        {"id": "wkl_01j9x2cccccccccccccccccccc", "project": "team-b"},
+    ]
+
+
+async def test_an_unknown_workload_is_a_404():
+    svc = workload_service([])
+    with pytest.raises(NotFound):
+        await workload_answer(svc, SequenceBackend(), ref="nope")
+
+
+# --- merging across clusters -------------------------------------------------
+
+
+def test_a_temperature_takes_the_worst_cluster_not_the_mean_of_them():
+    merged = _merge((BY_NAME["gpu.temperature"],), [{"gpu.temperature": 61.0}, {"gpu.temperature": 89.0}])
+    assert merged == {"gpu.temperature": 89.0}
+
+
+def test_a_utilization_averages_across_the_clusters_that_reported_one():
+    merged = _merge((UTILIZATION,), [{"gpu.utilization": 40.0}, {"gpu.utilization": 80.0}, {}])
+    assert merged == {"gpu.utilization": 60.0}
+
+
+def test_a_single_cluster_percentile_survives_because_nothing_was_merged():
+    merged = _merge((BY_NAME["inference.ttft_p99"],), [{"inference.ttft_p99": 1.5}, {}])
+    assert merged == {"inference.ttft_p99": 1.5}
