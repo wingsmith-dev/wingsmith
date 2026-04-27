@@ -218,7 +218,6 @@ export function ClusterDetailPage() {
         actions={
           schedulable ? (
             <Button
-              size="sm"
               onClick={() => {
                 setTab("pools")
                 setCreatingPool(true)
@@ -229,7 +228,7 @@ export function ClusterDetailPage() {
           ) : undefined
         }
         readActions={
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline">
             <Link to="/clusters">
               <IconArrowLeft className="size-4" />
               All clusters

@@ -47,11 +47,7 @@ export function PoolsPage() {
       <PageHeader
         title="Pools"
         description="declared provisioning spec · observed membership beside it"
-        actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            New pool
-          </Button>
-        }
+        actions={<Button onClick={() => setCreating(true)}>New pool</Button>}
       />
 
       <div className="space-y-4 p-4">

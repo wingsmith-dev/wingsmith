@@ -256,23 +256,15 @@ export function EndpointDetailPage() {
           <div className="flex gap-2">
             {endpoint && (
               <>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setEditing(true)}
-                >
+                <Button variant="outline" onClick={() => setEditing(true)}>
                   Edit
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setDoomed(true)}
-                >
+                <Button variant="outline" onClick={() => setDoomed(true)}>
                   Delete
                 </Button>
               </>
             )}
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline">
               <Link to="/endpoints">
                 <IconArrowLeft className="size-4" />
                 All endpoints

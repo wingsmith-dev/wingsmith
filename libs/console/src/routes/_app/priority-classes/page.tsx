@@ -31,9 +31,7 @@ export function PriorityClassesPage() {
         title="Priority classes"
         description="declared · what preempts what"
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            New priority class
-          </Button>
+          <Button onClick={() => setCreating(true)}>New priority class</Button>
         }
       />
       <div className="space-y-4 p-4">

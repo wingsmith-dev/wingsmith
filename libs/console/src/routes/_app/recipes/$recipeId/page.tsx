@@ -199,14 +199,12 @@ export function RecipeDetailPage() {
           recipe && (
             <div className="flex gap-2">
               <Button
-                size="sm"
                 variant="outline"
                 onClick={() => setEditing(true)}
               >
                 Edit
               </Button>
               <Button
-                size="sm"
                 variant="outline"
                 onClick={() => setDoomed(true)}
               >
@@ -216,7 +214,7 @@ export function RecipeDetailPage() {
           )
         }
         readActions={
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline">
             <Link to="/recipes">
               <IconArrowLeft className="size-4" />
               All recipes

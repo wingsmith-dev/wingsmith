@@ -33,7 +33,7 @@ export function PoolDetailPage() {
         title={pool?.name ?? "Pool"}
         description={pool ? `${pool.id} · ${pool.device_class}` : undefined}
         actions={
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline">
             <Link to="/pools">
               <IconArrowLeft className="size-4" />
               All pools

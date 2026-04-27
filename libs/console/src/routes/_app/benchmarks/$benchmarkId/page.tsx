@@ -55,7 +55,7 @@ export function BenchmarkDetailPage() {
         readActions={
           <div className="flex gap-2">
             {run?.request_id && (
-              <Button asChild variant="outline" size="sm">
+              <Button asChild variant="outline">
                 <Link
                   to="/benchmarks/requests/$requestId"
                   params={{ requestId: run.request_id }}
@@ -65,7 +65,7 @@ export function BenchmarkDetailPage() {
               </Button>
             )}
             {run?.operation_id && (
-              <Button asChild variant="outline" size="sm">
+              <Button asChild variant="outline">
                 <Link
                   to="/operations/$operationId"
                   params={{ operationId: run.operation_id }}
@@ -75,7 +75,7 @@ export function BenchmarkDetailPage() {
               </Button>
             )}
             {run?.deployment_id && (
-              <Button asChild variant="outline" size="sm">
+              <Button asChild variant="outline">
                 <Link
                   to="/deployments/$deploymentId"
                   params={{ deploymentId: run.deployment_id }}
@@ -85,7 +85,7 @@ export function BenchmarkDetailPage() {
               </Button>
             )}
             {run?.endpoint_id && (
-              <Button asChild variant="outline" size="sm">
+              <Button asChild variant="outline">
                 <Link
                   to="/endpoints/$endpointId"
                   params={{ endpointId: run.endpoint_id }}
@@ -94,7 +94,7 @@ export function BenchmarkDetailPage() {
                 </Link>
               </Button>
             )}
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline">
               <Link to="/benchmarks">
                 <IconArrowLeft className="size-4" />
                 All benchmarks

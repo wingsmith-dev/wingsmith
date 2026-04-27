@@ -130,18 +130,16 @@ export function WorkloadDetailPage() {
             {workload && (
               <WriteAction>
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => setScaling(true)}>
+                  <Button onClick={() => setScaling(true)}>
                     Scale
                   </Button>
                   <Button
-                    size="sm"
                     variant="outline"
                     onClick={() => setPausing(true)}
                   >
                     {workload.paused ? "Resume" : "Pause"}
                   </Button>
                   <Button
-                    size="sm"
                     variant="outline"
                     disabled={workload.deployments.length === 0}
                     onClick={() => {
@@ -152,14 +150,12 @@ export function WorkloadDetailPage() {
                     Drain
                   </Button>
                   <Button
-                    size="sm"
                     variant="outline"
                     onClick={() => setEditing(true)}
                   >
                     Edit
                   </Button>
                   <Button
-                    size="sm"
                     variant="outline"
                     onClick={() => setDoomed(true)}
                   >
@@ -168,7 +164,7 @@ export function WorkloadDetailPage() {
                 </div>
               </WriteAction>
             )}
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline">
               <Link to="/workloads">
                 <IconArrowLeft className="size-4" />
                 All workloads

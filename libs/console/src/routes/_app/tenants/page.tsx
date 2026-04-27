@@ -100,11 +100,7 @@ export function TenantsPage() {
       <PageHeader
         title="Tenants"
         description="declared · the billing root a project hangs off"
-        actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            New tenant
-          </Button>
-        }
+        actions={<Button onClick={() => setCreating(true)}>New tenant</Button>}
       />
       <div className="space-y-4 p-4">
         <DataTable

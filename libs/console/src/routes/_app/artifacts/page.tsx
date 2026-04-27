@@ -277,7 +277,7 @@ export function ArtifactsPage() {
         title="Artifacts"
         description="declared · immutable, content-addressed bytes"
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
+          <Button onClick={() => setCreating(true)}>
             New artifact
           </Button>
         }

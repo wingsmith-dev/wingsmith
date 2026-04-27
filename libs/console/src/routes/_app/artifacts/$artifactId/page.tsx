@@ -114,14 +114,12 @@ export function ArtifactDetailPage() {
           artifact && (
             <div className="flex gap-2">
               <Button
-                size="sm"
                 variant="outline"
                 onClick={() => setEditing(true)}
               >
                 Edit
               </Button>
               <Button
-                size="sm"
                 variant="outline"
                 onClick={() => setDoomed(true)}
               >
@@ -131,7 +129,7 @@ export function ArtifactDetailPage() {
                 defaultType="cache.warm"
                 defaultTarget={artifact.id}
                 trigger={
-                  <Button size="sm" variant="outline">
+                  <Button variant="outline">
                     Warm
                   </Button>
                 }
@@ -140,7 +138,7 @@ export function ArtifactDetailPage() {
           )
         }
         readActions={
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline">
             <Link to="/artifacts">
               <IconArrowLeft className="size-4" />
               All artifacts

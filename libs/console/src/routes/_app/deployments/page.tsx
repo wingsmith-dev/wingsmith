@@ -156,7 +156,7 @@ export function DeploymentsPage() {
         title="Deployments"
         description="declared · one workload's share on one cluster, with observed replicas beside it"
         actions={
-          <Button asChild size="sm" variant="outline">
+          <Button asChild variant="outline">
             <Link to="/workloads">All workloads</Link>
           </Button>
         }

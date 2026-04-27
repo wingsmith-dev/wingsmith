@@ -53,7 +53,6 @@ export function OperationDetailPage() {
           <div className="flex gap-2">
             {operation && open && (
               <Button
-                size="sm"
                 variant="outline"
                 disabled={cancel.isPending || !!operation.cancel_requested_at}
                 onClick={() =>
@@ -75,7 +74,7 @@ export function OperationDetailPage() {
                 {operation.cancel_requested_at ? "Cancelling…" : "Cancel"}
               </Button>
             )}
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline">
               <Link to="/operations">
                 <IconArrowLeft className="size-4" />
                 All operations

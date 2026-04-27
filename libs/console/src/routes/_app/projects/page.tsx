@@ -123,11 +123,7 @@ export function ProjectsPage() {
       <PageHeader
         title="Projects"
         description="declared · the tenancy unit quota attaches to"
-        actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            New project
-          </Button>
-        }
+        actions={<Button onClick={() => setCreating(true)}>New project</Button>}
       />
       <div className="space-y-4 p-4">
         <DataTable

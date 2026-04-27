@@ -80,7 +80,7 @@ export function NodeDetailPage() {
           )
         }
         readActions={
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline">
             <Link to="/nodes">
               <IconArrowLeft className="size-4" />
               All nodes

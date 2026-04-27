@@ -180,7 +180,7 @@ export function WorkloadsPage() {
         title="Workloads"
         description="declared · what you asked to run, and every cluster it landed on"
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
+          <Button onClick={() => setCreating(true)}>
             New workload
           </Button>
         }

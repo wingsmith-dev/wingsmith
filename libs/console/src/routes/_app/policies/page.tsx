@@ -27,11 +27,7 @@ export function PoliciesPage() {
       <PageHeader
         title="Policies"
         description="declared · placement constraints and what they bind to"
-        actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            New policy
-          </Button>
-        }
+        actions={<Button onClick={() => setCreating(true)}>New policy</Button>}
       />
       <div className="space-y-4 p-4">
         <CardGrid

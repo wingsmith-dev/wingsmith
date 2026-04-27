@@ -196,7 +196,7 @@ export function RecipesPage() {
         title="Recipes"
         description="declared · a reproducible way to serve an artifact"
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
+          <Button onClick={() => setCreating(true)}>
             New recipe
           </Button>
         }

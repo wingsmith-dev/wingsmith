@@ -52,7 +52,7 @@ export function DeviceDetailPage() {
           )
         }
         readActions={
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline">
             <Link to="/devices">
               <IconArrowLeft className="size-4" />
               All devices

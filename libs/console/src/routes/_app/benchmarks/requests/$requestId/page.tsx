@@ -65,7 +65,7 @@ export function BenchmarkRequestPage() {
         title={request ? `${request.harness} ${request.mode}` : "Benchmark request"}
         description={requestId}
         readActions={
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="outline">
             <Link to="/benchmarks">
               <IconArrowLeft className="size-4" />
               All benchmarks

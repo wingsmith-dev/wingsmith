@@ -484,7 +484,7 @@ export function EndpointsPage() {
         title="Endpoints"
         description="declared · the stable public name clients call"
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
+          <Button onClick={() => setCreating(true)}>
             New endpoint
           </Button>
         }

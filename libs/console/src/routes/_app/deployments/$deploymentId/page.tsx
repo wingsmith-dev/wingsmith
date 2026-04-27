@@ -91,7 +91,7 @@ export function DeploymentDetailPage() {
         actions={
           <div className="flex gap-2">
             {deployment && (
-              <Button asChild size="sm" variant="outline">
+              <Button asChild variant="outline">
                 <Link
                   to="/workloads/$workloadId"
                   params={{ workloadId: deployment.workload_id }}
@@ -105,7 +105,7 @@ export function DeploymentDetailPage() {
                 deployment={deployment.id}
                 stayOnPage
                 trigger={
-                  <Button size="sm" variant="outline">
+                  <Button variant="outline">
                     Run benchmark
                   </Button>
                 }
@@ -116,13 +116,13 @@ export function DeploymentDetailPage() {
                 defaultType="deployment.roll"
                 defaultTarget={deployment.id}
                 trigger={
-                  <Button size="sm" variant="outline">
+                  <Button variant="outline">
                     Roll
                   </Button>
                 }
               />
             )}
-            <Button asChild variant="outline" size="sm">
+            <Button asChild variant="outline">
               <Link to="/deployments">
                 <IconArrowLeft className="size-4" />
                 All deployments

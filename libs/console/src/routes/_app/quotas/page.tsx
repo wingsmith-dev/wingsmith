@@ -282,7 +282,6 @@ export function QuotasPage() {
         description="devices at admission · traffic on every request"
         actions={
           <Button
-            size="sm"
             onClick={() =>
               serving ? setCreatingServing(true) : setCreatingQuota(true)
             }

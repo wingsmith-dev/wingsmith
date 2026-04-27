@@ -76,9 +76,7 @@ export function ClustersPage() {
         title="Clusters"
         description="declared enrolment · observed reachability and sync"
         actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            Register cluster
-          </Button>
+          <Button onClick={() => setCreating(true)}>Register cluster</Button>
         }
       />
 

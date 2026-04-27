@@ -310,11 +310,7 @@ export function AlertsPage() {
         readActions={
           <RefreshButton keys={[["alerts"], ["alert-thresholds"]]} />
         }
-        actions={
-          <Button size="sm" onClick={() => setCreating({})}>
-            New threshold
-          </Button>
-        }
+        actions={<Button onClick={() => setCreating({})}>New threshold</Button>}
       />
 
       <div className="space-y-4 p-4">

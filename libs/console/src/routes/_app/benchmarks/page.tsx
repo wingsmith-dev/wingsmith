@@ -47,11 +47,7 @@ export function BenchmarksPage() {
       <PageHeader
         title="Benchmarks"
         description="requests are declared · runs and their verdicts are observed"
-        actions={
-          <Button size="sm" onClick={() => setCreating(true)}>
-            New request
-          </Button>
-        }
+        actions={<Button onClick={() => setCreating(true)}>New request</Button>}
         readActions={
           <Select
             value={search.phase ?? "all"}
@@ -64,7 +60,7 @@ export function BenchmarksPage() {
               })
             }
           >
-            <SelectTrigger size="sm" className="w-40 font-mono text-xs">
+            <SelectTrigger className="w-40 font-mono text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
