@@ -5,8 +5,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import ARTIFACT
+from app.core.ids import ARTIFACT_BASELINE
 from app.core.ids import new_uid
 from app.db.models import Artifact
+from app.db.models import ArtifactBaseline
 from app.db.models import ArtifactLocation
 from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
@@ -30,17 +32,23 @@ from .schemas import ArtifactSchema
 from .schemas import ArtifactUsageSchema
 from .schemas import ArtifactCreateRequest
 from .schemas import ArtifactUpdateRequest
+from .schemas import ArtifactBaselineSchema
 from .schemas import ArtifactLocationSchema
 from .schemas import ArtifactLocationRequest
+from .schemas import ArtifactBaselineCreateRequest
+from .schemas import ArtifactBaselineUpdateRequest
 from .repository import ArtifactRepository
 
 
 KINDS = frozenset({"weights", "adapter", "dataset", "image"})
 
+IGNORED_PROVENANCE = ("recorded_by", "recorded_at")
+"""Body fields a caller may send and the plane refuses to read. See the create schema."""
 
-def _revision(artifact: Artifact) -> str:
+
+def _revision(row: Artifact | ArtifactBaseline) -> str:
     """The value `If-Match` is checked against, derived from the last write."""
-    stamp = artifact.updated_at or artifact.created_at
+    stamp = row.updated_at or row.created_at
     return str(int(stamp.timestamp() * 1_000_000))
 
 
@@ -330,3 +338,144 @@ class ArtifactService:
         except IntegrityError as exc:
             await self.db.rollback()
             raise Conflict(f"artifact {ref!r} is still referenced by a recipe") from exc
+
+
+class ArtifactBaselineService:
+    """The declared quality floors under one artifact.
+
+    Declared state, so this is ordinary CRUD and this service owns the commit —
+    a baseline is somebody's assertion about these weights, not a number the
+    plane observed. `actor` is the authenticated principal and is the only source
+    of `recorded_by`: the whole use of the table is that an acceptance review
+    argues with a signed assertion, and a signature a caller can type is not one.
+    """
+
+    def __init__(self, db: AsyncSession, actor: str = "unknown") -> None:
+        self.db = db
+        self.actor = actor
+        self.repo = ArtifactRepository(db)
+
+    def schema(self, row: ArtifactBaseline, artifact_uid: str) -> ArtifactBaselineSchema:
+        return ArtifactBaselineSchema(
+            id=row.uid,
+            artifact_id=artifact_uid,
+            dataset=row.dataset,
+            metric=row.metric,
+            value=float(row.value),
+            tolerance_pct=float(row.tolerance_pct),
+            source_uri=row.source_uri,
+            recorded_by=row.recorded_by,
+            recorded_at=row.recorded_at,
+            note=row.note,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            revision=_revision(row),
+        )
+
+    async def _artifact(self, ref: str) -> Artifact:
+        row = await self.repo.get(ref)
+        if row is None:
+            raise NotFound(f"no artifact {ref!r}")
+        return row[0]
+
+    async def _one(self, artifact: Artifact, baseline: str) -> ArtifactBaseline:
+        row = await self.repo.baseline(artifact.id, baseline)
+        if row is None:
+            raise NotFound(f"no baseline {baseline!r} on artifact {artifact.uid!r}")
+        return row
+
+    async def list(
+        self,
+        ref: str,
+        limit: int | None = None,
+        cursor: str | None = None,
+        dataset: str | None = None,
+        metric: str | None = None,
+    ) -> ListResponse[ArtifactBaselineSchema]:
+        artifact = await self._artifact(ref)
+        size = clamp_limit(limit)
+        rows = await self.repo.baseline_list(
+            artifact_id=artifact.id,
+            limit=size,
+            after_seq=decode_cursor(cursor),
+            dataset=dataset,
+            metric=metric,
+        )
+        kept, next_cursor = page(rows, size, lambda r: r.seq)
+        items = [self.schema(row, artifact.uid) for row in kept]
+        return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
+
+    async def get(self, ref: str, baseline: str) -> ArtifactBaselineSchema:
+        artifact = await self._artifact(ref)
+        return self.schema(await self._one(artifact, baseline), artifact.uid)
+
+    async def create(self, ref: str, data: ArtifactBaselineCreateRequest) -> ArtifactBaselineSchema:
+        """One floor per dataset and metric, recorded in the principal's name.
+
+        A second row for the same pair is refused rather than reconciled: two
+        declared floors for one eval is two standards, and a verdict would grade
+        against whichever the query returned first.
+        """
+        artifact = await self._artifact(ref)
+        if not data.dataset.strip():
+            raise Invalid("a baseline without a dataset is not about any eval")
+        if not data.metric.strip():
+            raise Invalid("a baseline without a metric declares no number")
+        if data.tolerance_pct < 0:
+            raise Invalid("tolerance_pct cannot be negative")
+
+        baseline = ArtifactBaseline(
+            uid=new_uid(ARTIFACT_BASELINE),
+            artifact_id=artifact.id,
+            dataset=data.dataset,
+            metric=data.metric,
+            value=data.value,
+            tolerance_pct=data.tolerance_pct,
+            source_uri=data.source_uri,
+            recorded_by=self.actor,
+            note=data.note,
+        )
+        try:
+            await self.repo.add_baseline(baseline)
+            await self.db.commit()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise Conflict(
+                f"artifact {artifact.uid} already declares a baseline for {data.dataset!r}/{data.metric!r}",
+                {"dataset": data.dataset, "metric": data.metric},
+            ) from exc
+        return await self.get(artifact.uid, baseline.uid)
+
+    async def update(
+        self,
+        ref: str,
+        baseline: str,
+        data: ArtifactBaselineUpdateRequest,
+        if_match: str | None = None,
+    ) -> ArtifactBaselineSchema:
+        """Revises the number, never which eval it is about.
+
+        `recorded_by` and `recorded_at` are left as first written: they say who
+        declared this floor, and an edit does not transfer the assertion.
+        """
+        artifact = await self._artifact(ref)
+        row = await self._one(artifact, baseline)
+        if if_match is not None and if_match != _revision(row):
+            raise Conflict("baseline changed since it was read", {"revision": _revision(row)})
+
+        fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
+        for name in IGNORED_PROVENANCE:
+            fields.pop(name, None)
+        if fields.get("tolerance_pct", 0) < 0:
+            raise Invalid("tolerance_pct cannot be negative")
+        for key, value in fields.items():
+            setattr(row, key, value)
+
+        await self.db.commit()
+        return await self.get(artifact.uid, row.uid)
+
+    async def delete(self, ref: str, baseline: str) -> None:
+        artifact = await self._artifact(ref)
+        row = await self._one(artifact, baseline)
+        await self.repo.delete_baseline(row)
+        await self.db.commit()

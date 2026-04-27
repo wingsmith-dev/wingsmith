@@ -6,17 +6,23 @@ being testable this way it has stopped being derivable at read.
 """
 
 import math
+import uuid
+import datetime as dt
 
 from types import SimpleNamespace
 
 import pytest
 
+from app.core import ids
+from app.db.models import Artifact
 from app.core.exceptions import Invalid
 from app.modules.benchmarks import buckets
 from app.modules.benchmarks import verdicts
 from app.modules.benchmarks import harnesses
 from app.modules.benchmarks import summaries
+from app.modules.artifacts.schemas import ArtifactBaselineCreateRequest
 from app.modules.benchmarks.routes import BenchmarkRoutes
+from app.modules.artifacts.services import ArtifactBaselineService
 from app.modules.benchmarks.schemas import BenchmarkRequestCreateRequest
 from app.modules.benchmarks.services import MODES
 from app.modules.benchmarks.services import STEPPED
@@ -674,3 +680,75 @@ async def test_a_harness_at_a_level_it_does_not_grade_at_is_refused_before_the_d
 async def test_an_unknown_criteria_version_is_refused_before_the_database():
     with pytest.raises(Invalid):
         await BenchmarkService(db=None).create_request(request(criteria="acceptance-2027.1"))
+
+
+class ArtifactRow:
+    """What the artifact query returns: the row, plus the uids it resolved."""
+
+    def __init__(self, artifact: Artifact) -> None:
+        self.artifact = artifact
+
+    def __getitem__(self, index):
+        return self.artifact
+
+
+class BaselineRepo:
+    """The rows the baseline write path would leave in `demand_artifact_baseline`."""
+
+    def __init__(self, artifact: Artifact) -> None:
+        self.artifact = artifact
+        self.rows = []
+
+    async def get(self, ref: str):
+        return ArtifactRow(self.artifact) if ref == self.artifact.uid else None
+
+    async def add_baseline(self, baseline):
+        baseline.created_at = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+        baseline.updated_at = None
+        baseline.recorded_at = baseline.created_at
+        baseline.seq = 1000 + len(self.rows)
+        self.rows.append(baseline)
+        return baseline
+
+    async def baseline(self, artifact_id, ref: str):
+        return next((row for row in self.rows if row.uid == ref), None)
+
+
+class BaselineSession:
+    async def commit(self):
+        return None
+
+    async def flush(self):
+        return None
+
+
+@pytest.mark.asyncio
+async def test_a_baseline_declared_through_the_route_is_the_floor_a_run_is_graded_against():
+    """The write side and the grading side must agree on one number, spelled one way.
+
+    `ArtifactBaselineService` converts `Numeric` to float at the schema boundary
+    and `verdicts` compares floats; a `Decimal` surviving that seam would make the
+    boundary case here depend on which side of the comparison rounded.
+    """
+    artifact = Artifact(id=uuid.uuid4(), uid=ids.new_uid(ids.ARTIFACT), name="gpt-oss-20b")
+    svc = ArtifactBaselineService(db=BaselineSession(), actor="ada@acme")
+    svc.repo = BaselineRepo(artifact)
+
+    declared = await svc.create(
+        artifact.uid,
+        ArtifactBaselineCreateRequest(dataset="mmlu_pro", metric="accuracy", value=0.7412),
+    )
+    graded = verdicts.Baseline(
+        dataset=declared.dataset,
+        metric=declared.metric,
+        value=float(declared.value),
+        tolerance_pct=float(declared.tolerance_pct),
+    )
+    floor = 0.7412 * CRITERIA.baseline_floor
+
+    passing = verdicts.verdict(accuracy_facts(floor)._replace(baselines=(graded,)), CRITERIA)
+    assert check(passing, "accuracy.mmlu_pro").threshold == floor
+    assert passing.outcome == verdicts.PASS
+
+    failing = verdicts.verdict(accuracy_facts(math.nextafter(floor, 0.0))._replace(baselines=(graded,)), CRITERIA)
+    assert failing.outcome == verdicts.FAIL

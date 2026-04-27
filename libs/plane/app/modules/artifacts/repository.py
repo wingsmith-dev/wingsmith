@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import or_
@@ -12,6 +14,7 @@ from app.db.models import Recipe
 from app.db.models import Project
 from app.db.models import Artifact
 from app.db.models import Workload
+from app.db.models import ArtifactBaseline
 from app.core.filters import ref_ids
 
 
@@ -137,11 +140,60 @@ class ArtifactRepository:
         downstream = await self.db.execute(self.downstream_query(artifact))
         return int(recipes.scalar_one()), int(workloads.scalar_one()), int(downstream.scalar_one())
 
+    def baseline_list_query(
+        self,
+        artifact_id: UUID,
+        limit: int,
+        after_seq: int | None = None,
+        dataset: str | None = None,
+        metric: str | None = None,
+    ) -> Select:
+        query = (
+            select(ArtifactBaseline)
+            .where(ArtifactBaseline.artifact_id == artifact_id)
+            .order_by(ArtifactBaseline.seq.asc())
+            .limit(limit + 1)
+        )
+        if after_seq is not None:
+            query = query.where(ArtifactBaseline.seq > after_seq)
+        if dataset is not None:
+            query = query.where(ArtifactBaseline.dataset == dataset)
+        if metric is not None:
+            query = query.where(ArtifactBaseline.metric == metric)
+        return query
+
+    def baseline_query(self, artifact_id: UUID, ref: str) -> Select:
+        """Scoped to the artifact, so a baseline of another one is not found here.
+
+        A baseline is addressed by uid only: `dataset` and `metric` identify the
+        row too, but as a pair and not as a path segment.
+        """
+        return select(ArtifactBaseline).where(
+            ArtifactBaseline.artifact_id == artifact_id, ArtifactBaseline.uid == ref
+        )
+
+    async def baseline_list(self, **kwargs) -> "list[ArtifactBaseline]":
+        result = await self.db.execute(self.baseline_list_query(**kwargs))
+        return list(result.scalars().all())
+
+    async def baseline(self, artifact_id: UUID, ref: str) -> ArtifactBaseline | None:
+        result = await self.db.execute(self.baseline_query(artifact_id, ref).limit(1))
+        return result.scalar_one_or_none()
+
     async def add(self, artifact: Artifact) -> Artifact:
         self.db.add(artifact)
         await self.db.flush()
         return artifact
 
+    async def add_baseline(self, baseline: ArtifactBaseline) -> ArtifactBaseline:
+        self.db.add(baseline)
+        await self.db.flush()
+        return baseline
+
     async def delete(self, artifact: Artifact) -> None:
         await self.db.delete(artifact)
+        await self.db.flush()
+
+    async def delete_baseline(self, baseline: ArtifactBaseline) -> None:
+        await self.db.delete(baseline)
         await self.db.flush()

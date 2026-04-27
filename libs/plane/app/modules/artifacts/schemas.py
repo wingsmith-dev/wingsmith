@@ -63,6 +63,72 @@ class ArtifactUsageSchema(Struct):
     downstream_count: int
 
 
+class ArtifactBaselineSchema(Struct):
+    """One declared quality floor, per dataset and metric.
+
+    A sub-resource rather than a field on the artifact: the set is genuinely
+    plural, each row carries its own tolerance and its own provenance, and
+    editing one is not a rewrite of the rest.
+
+    `tolerance_pct` is the recorder's own slack and is not the acceptance floor —
+    that belongs to the criteria version and is resolved when a verdict is
+    derived (`app/modules/benchmarks/verdicts.py`). `value` and `tolerance_pct`
+    are `Numeric` on the row and floats here, converted once at this seam so no
+    `Decimal` meets a float threshold halfway through an expression.
+    """
+
+    id: str
+    artifact_id: str
+    dataset: str
+    metric: str
+    value: float
+    tolerance_pct: float
+    source_uri: str | None
+    recorded_by: str
+    recorded_at: dt.datetime
+    note: str | None
+    created_at: dt.datetime
+    updated_at: dt.datetime | None
+    revision: str
+
+
+class ArtifactBaselineCreateRequest(Struct):
+    """`dataset` and `metric` are the row's identity; one pair per artifact.
+
+    `recorded_by` and `recorded_at` are declared here only so that a body still
+    carrying them is accepted and discarded. Who asserted a floor is the
+    authenticated principal and when is the write, and a caller that could type
+    either could sign the assertion in somebody else's name — which is the one
+    thing an acceptance argument rests on.
+    """
+
+    dataset: str
+    metric: str
+    value: float
+    tolerance_pct: float = 3.0
+    source_uri: str | None = None
+    note: str | None = None
+    recorded_by: str | None = None
+    recorded_at: dt.datetime | None = None
+
+
+class ArtifactBaselineUpdateRequest(Struct):
+    """A partial update. An absent field is untouched; an explicit null clears.
+
+    `dataset` and `metric` are absent: they identify the row within the artifact,
+    so moving a floor to another eval is a different baseline and not an edit to
+    this one. `recorded_by` and `recorded_at` are ignored exactly as they are on
+    create.
+    """
+
+    value: float | UnsetType = UNSET
+    tolerance_pct: float | UnsetType = UNSET
+    source_uri: str | None | UnsetType = UNSET
+    note: str | None | UnsetType = UNSET
+    recorded_by: str | None | UnsetType = UNSET
+    recorded_at: dt.datetime | None | UnsetType = UNSET
+
+
 class ArtifactLocationRequest(Struct):
     scheme: str
     uri: str

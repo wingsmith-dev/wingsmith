@@ -150,7 +150,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/nodes`, `/v1/devices`, `/v1/topology-domains` | observed, read-only |
 | `/v1/device-classes` | the shared dictionary, read-only — see below |
 | `/v1/pools` | declared, with observed membership |
-| `/v1/artifacts` | declared, plus one read-only resolve verb — see below |
+| `/v1/artifacts` | declared, plus one read-only resolve verb and a declared baseline sub-resource — see below |
 | `/v1/recipes`, `/v1/workloads`, `/v1/endpoints` | declared, plus a read-only resolution — see below |
 | `/v1/deployments` | declared, per-cluster, read-mostly — see below |
 | `/v1/discovered` | observed, read-only, plus the decision verbs — see below |
@@ -436,6 +436,18 @@ and the digest is therefore a hash of content, false when one did not — an unh
 means the reference names the weights rather than fixing them, which is also the case for weights
 adopted by reference from a running workload. It is set at creation and absent from `PATCH`:
 re-verifying an artifact means resolving the bytes again, which is an operation, not an edit.
+
+**`/v1/artifacts/{ref}/baselines` is the declared quality floor, one row per dataset and metric.**
+Full CRUD — `GET` (filters `dataset`, `metric`), `POST`, `PATCH` on
+`/v1/artifacts/{ref}/baselines/{baseline}`, `DELETE` — because a floor is somebody's assertion about
+these weights and not something the plane observed. `dataset` and `metric` identify the row within
+the artifact and are absent from `PATCH`: moving a floor to another eval is a different baseline. A
+second row for a pair already declared is `409 conflict`, since two floors for one eval is two
+standards and a verdict would grade against whichever was read first. `recorded_by` and
+`recorded_at` are the authenticated principal and the write; a body carrying either is accepted and
+the values are discarded, because a signature a caller can type is not one and an acceptance review
+argues with the signature. `tolerance_pct` is the recorder's own slack and is not the acceptance
+floor — that belongs to the criteria version and is resolved when a verdict is derived (§7.1).
 
 **`cluster` is optional on `POST /v1/workloads`**, and leaving it out is the normal path: the
 plane picks the clusters from the recipe's device shape, the project's quota, the policies attached

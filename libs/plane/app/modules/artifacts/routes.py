@@ -12,18 +12,26 @@ from app.core.filters import parse_labels
 from app.core.schemas import ListResponse
 
 from .depends import artifact_svc_generator
+from .depends import artifact_baseline_svc_generator
 from .resolve import ResolvedArtifact
 from .schemas import ArtifactSchema
 from .schemas import ArtifactUsageSchema
 from .schemas import ArtifactCreateRequest
 from .schemas import ArtifactUpdateRequest
+from .schemas import ArtifactBaselineSchema
+from .schemas import ArtifactBaselineCreateRequest
+from .schemas import ArtifactBaselineUpdateRequest
 from .services import ArtifactService
+from .services import ArtifactBaselineService
 
 
 class ArtifactRoutes(Controller):
     tags = ["Artifacts"]
     path = "/artifacts"
-    dependencies = {"svc": Provide(artifact_svc_generator)}
+    dependencies = {
+        "svc": Provide(artifact_svc_generator),
+        "baselines": Provide(artifact_baseline_svc_generator),
+    }
 
     @get()
     async def list_artifacts(
@@ -74,6 +82,48 @@ class ArtifactRoutes(Controller):
     ) -> Response[ArtifactUsageSchema]:
         """Recipe, workload and downstream counts for this artifact. Derived, stored nowhere."""
         return Response(await svc.usage(ref))
+
+    @get("/{ref:str}/baselines")
+    async def list_artifact_baselines(
+        self,
+        context: RequestContext,
+        baselines: ArtifactBaselineService,
+        ref: str,
+        limit: int | None = None,
+        cursor: str | None = None,
+        dataset: str | None = None,
+        metric: str | None = None,
+    ) -> Response[ListResponse[ArtifactBaselineSchema]]:
+        """The declared quality floors for this artifact, one row per dataset and metric."""
+        return Response(await baselines.list(ref, limit=limit, cursor=cursor, dataset=dataset, metric=metric))
+
+    @post("/{ref:str}/baselines")
+    async def create_artifact_baseline(
+        self,
+        context: RequestContext,
+        baselines: ArtifactBaselineService,
+        ref: str,
+        data: ArtifactBaselineCreateRequest,
+    ) -> Response[ArtifactBaselineSchema]:
+        return Response(await baselines.create(ref, data), status_code=201)
+
+    @patch("/{ref:str}/baselines/{baseline:str}")
+    async def update_artifact_baseline(
+        self,
+        context: RequestContext,
+        baselines: ArtifactBaselineService,
+        ref: str,
+        baseline: str,
+        data: ArtifactBaselineUpdateRequest,
+        if_match: str | None = Parameter(header="If-Match", default=None),
+    ) -> Response[ArtifactBaselineSchema]:
+        return Response(await baselines.update(ref, baseline, data, if_match=if_match))
+
+    @delete("/{ref:str}/baselines/{baseline:str}", status_code=204)
+    async def delete_artifact_baseline(
+        self, context: RequestContext, baselines: ArtifactBaselineService, ref: str, baseline: str
+    ) -> None:
+        await baselines.delete(ref, baseline)
 
     @patch("/{ref:str}")
     async def update_artifact(

@@ -1,12 +1,19 @@
+import uuid
+import decimal
 import inspect
 import datetime as dt
 
 import pytest
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.ids import ARTIFACT
+from app.core.ids import ARTIFACT_BASELINE
 from app.core.ids import new_uid
 from app.db.models import Artifact
+from app.db.models import ArtifactBaseline
 from app.core.exceptions import Invalid
+from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
 from app.core.exceptions import PlaneError
 from app.integrations.huggingface import HuggingFaceGated
@@ -25,8 +32,11 @@ from app.modules.artifacts.schemas import ArtifactCreateRequest
 from app.modules.artifacts.schemas import ArtifactUpdateRequest
 from app.modules.artifacts.schemas import ArtifactLocationSchema
 from app.modules.artifacts.schemas import ArtifactLocationRequest
+from app.modules.artifacts.schemas import ArtifactBaselineCreateRequest
+from app.modules.artifacts.schemas import ArtifactBaselineUpdateRequest
 from app.modules.artifacts.services import KINDS
 from app.modules.artifacts.services import ArtifactService
+from app.modules.artifacts.services import ArtifactBaselineService
 from app.modules.artifacts.services import _revision
 from app.modules.artifacts.services import check_locations
 from app.modules.artifacts.repository import ArtifactRepository
@@ -167,6 +177,10 @@ def test_controller_exposes_full_crud():
         "delete_artifact",
         "resolve_artifact",
         "artifact_usage",
+        "list_artifact_baselines",
+        "create_artifact_baseline",
+        "update_artifact_baseline",
+        "delete_artifact_baseline",
     }
 
 
@@ -495,3 +509,216 @@ def test_resolve_is_matched_as_a_literal_path_not_as_a_ref():
     assert "/artifacts/resolve" in by_path
     assert by_path["/artifacts/resolve"].route_handler_map["GET"][0].handler_name == "resolve_artifact"
     assert by_path["/artifacts/{ref:str}"].route_handler_map["GET"][0].handler_name == "get_artifact"
+
+
+# ------------------------------------------------------------------ baselines
+
+
+class FakeBaselineRepo:
+    """Stands in for the table, including the unique constraint the service relies on.
+
+    The `(artifact, dataset, metric)` constraint is enforced here so that the
+    conflict path is exercised without a database: the point of the test is that
+    the service answers a duplicate with a message, and an `IntegrityError` is
+    what the real table would hand it.
+    """
+
+    def __init__(self, artifact: Artifact) -> None:
+        self.artifact = artifact
+        self.rows: list[ArtifactBaseline] = []
+        self.next_seq = 1000
+
+    async def get(self, ref: str):
+        if ref in {self.artifact.uid, self.artifact.name}:
+            return FakeRow(self.artifact)
+        return None
+
+    async def add_baseline(self, baseline: ArtifactBaseline):
+        taken = {(row.artifact_id, row.dataset, row.metric) for row in self.rows}
+        if (baseline.artifact_id, baseline.dataset, baseline.metric) in taken:
+            raise IntegrityError("INSERT", {}, Exception("uq_demand_artifact_baseline_dataset_metric"))
+        baseline.created_at = EPOCH
+        baseline.updated_at = None
+        baseline.recorded_at = EPOCH
+        baseline.seq = self.next_seq
+        self.next_seq += 1
+        self.rows.append(baseline)
+        return baseline
+
+    async def baseline(self, artifact_id, ref: str):
+        for row in self.rows:
+            if row.artifact_id == artifact_id and row.uid == ref:
+                return row
+        return None
+
+    async def baseline_list(self, artifact_id, limit, after_seq=None, dataset=None, metric=None):
+        kept = [row for row in self.rows if row.artifact_id == artifact_id]
+        if after_seq is not None:
+            kept = [row for row in kept if row.seq > after_seq]
+        if dataset is not None:
+            kept = [row for row in kept if row.dataset == dataset]
+        if metric is not None:
+            kept = [row for row in kept if row.metric == metric]
+        return kept[: limit + 1]
+
+    async def delete_baseline(self, baseline: ArtifactBaseline) -> None:
+        self.rows.remove(baseline)
+
+
+def baseline_service(actor: str = "ada@acme") -> ArtifactBaselineService:
+    artifact = Artifact(id=uuid.uuid4(), uid=new_uid(ARTIFACT), name="gpt-oss-20b")
+    svc = ArtifactBaselineService(db=FakeSession(), actor=actor)
+    svc.repo = FakeBaselineRepo(artifact)
+    return svc
+
+
+def baseline_request(**kwargs) -> ArtifactBaselineCreateRequest:
+    fields = {"dataset": "mmlu_pro", "metric": "accuracy", "value": 0.7412}
+    return ArtifactBaselineCreateRequest(**{**fields, **kwargs})
+
+
+async def test_a_baseline_round_trips_through_create_list_update_and_delete():
+    """The route exists to make a declared floor visible, so the read must return what was written."""
+    svc = baseline_service()
+    artifact = svc.repo.artifact
+
+    created = await svc.create(artifact.uid, baseline_request(source_uri="https://evals/mmlu_pro/run/12"))
+    assert created.id.startswith("abl_")
+    assert created.artifact_id == artifact.uid
+    assert created.dataset == "mmlu_pro"
+    assert created.metric == "accuracy"
+    assert created.value == 0.7412
+    assert created.tolerance_pct == 3.0
+    assert created.source_uri == "https://evals/mmlu_pro/run/12"
+    assert created.note is None
+
+    listed = await svc.list(artifact.uid)
+    assert [item.id for item in listed.items] == [created.id]
+    assert listed.count == 1
+
+    updated = await svc.update(artifact.uid, created.id, ArtifactBaselineUpdateRequest(value=0.75, note="rerun"))
+    assert updated.value == 0.75
+    assert updated.note == "rerun"
+    assert updated.dataset == "mmlu_pro"
+
+    await svc.delete(artifact.uid, created.id)
+    assert (await svc.list(artifact.uid)).items == []
+
+
+async def test_a_second_floor_for_one_dataset_and_metric_is_a_conflict_not_an_integrity_error():
+    """Two declared floors for one eval is two standards, and a verdict would grade against either."""
+    svc = baseline_service()
+    artifact = svc.repo.artifact
+    await svc.create(artifact.uid, baseline_request())
+
+    with pytest.raises(Conflict) as caught:
+        await svc.create(artifact.uid, baseline_request(value=0.9))
+
+    assert caught.value.status == 409
+    assert caught.value.detail == {"dataset": "mmlu_pro", "metric": "accuracy"}
+
+
+async def test_the_recorder_is_the_principal_and_a_body_value_is_ignored():
+    """A signature a caller can type is not a signature, and the table exists to be signed."""
+    svc = baseline_service(actor="ada@acme")
+    created = await svc.create(svc.repo.artifact.uid, baseline_request(recorded_by="grace@elsewhere"))
+    assert created.recorded_by == "ada@acme"
+
+    revised = await svc.update(
+        svc.repo.artifact.uid,
+        created.id,
+        ArtifactBaselineUpdateRequest(value=0.8, recorded_by="grace@elsewhere"),
+    )
+    assert revised.recorded_by == "ada@acme"
+
+
+async def test_an_if_match_mismatch_refuses_the_write():
+    """Two people revising one floor from two reads is exactly the case the etag is for."""
+    svc = baseline_service()
+    created = await svc.create(svc.repo.artifact.uid, baseline_request())
+
+    with pytest.raises(Conflict) as caught:
+        await svc.update(
+            svc.repo.artifact.uid,
+            created.id,
+            ArtifactBaselineUpdateRequest(value=0.8),
+            if_match="0",
+        )
+
+    assert caught.value.detail["revision"] == created.revision
+    assert (await svc.list(svc.repo.artifact.uid)).items[0].value == 0.7412
+
+
+async def test_a_matching_if_match_is_accepted():
+    svc = baseline_service()
+    created = await svc.create(svc.repo.artifact.uid, baseline_request())
+    revised = await svc.update(
+        svc.repo.artifact.uid,
+        created.id,
+        ArtifactBaselineUpdateRequest(value=0.8),
+        if_match=created.revision,
+    )
+    assert revised.value == 0.8
+
+
+async def test_dataset_and_metric_are_the_rows_identity_and_cannot_be_patched():
+    """Moving a floor to another eval is a different baseline, not an edit to this one."""
+    fields = set(ArtifactBaselineUpdateRequest.__struct_fields__)
+    assert "dataset" not in fields
+    assert "metric" not in fields
+
+
+async def test_numeric_columns_are_floats_by_the_time_they_reach_the_wire():
+    """`Numeric` meets a float acceptance floor in `verdicts.py`; converting once here is the seam."""
+    svc = baseline_service()
+    created = await svc.create(svc.repo.artifact.uid, baseline_request())
+    row = svc.repo.rows[0]
+    row.value = decimal.Decimal("0.741200")
+    row.tolerance_pct = decimal.Decimal("3.000")
+
+    read = await svc.get(svc.repo.artifact.uid, created.id)
+    assert isinstance(read.value, float)
+    assert isinstance(read.tolerance_pct, float)
+
+
+async def test_a_baseline_of_another_artifact_is_not_found_under_this_one():
+    """The uid is global but the sub-resource is not, and a floor read off the wrong artifact grades the wrong weights."""
+    svc = baseline_service()
+    with pytest.raises(NotFound):
+        await svc.get(svc.repo.artifact.uid, new_uid(ARTIFACT_BASELINE))
+
+
+async def test_an_unknown_artifact_has_no_baseline_collection():
+    svc = baseline_service()
+    with pytest.raises(NotFound):
+        await svc.list("art_01jnothingnothingnothing")
+
+
+def test_baselines_are_read_scoped_to_the_artifact(repo):
+    text = sql(repo.baseline_list_query(artifact_id=uuid.uuid4(), limit=10, dataset="mmlu_pro"))
+    assert "demand_artifact_baseline.artifact_id = " in text
+    assert "demand_artifact_baseline.dataset = " in text
+    assert "ORDER BY demand_artifact_baseline.seq ASC" in text
+
+
+def test_the_baselines_sub_path_is_not_read_as_a_ref():
+    """`/{ref}` is registered on this controller too, and a shadowed sub-path is the 404 this item fixes."""
+    from litestar import Litestar
+
+    app = Litestar(route_handlers=[ArtifactRoutes], openapi_config=None)
+    by_path = {route.path: route for route in app.routes}
+
+    assert by_path["/artifacts/{ref:str}/baselines"].route_handler_map["GET"][0].handler_name == (
+        "list_artifact_baselines"
+    )
+    assert by_path["/artifacts/{ref:str}/baselines"].route_handler_map["POST"][0].handler_name == (
+        "create_artifact_baseline"
+    )
+    handlers = by_path["/artifacts/{ref:str}/baselines/{baseline:str}"].route_handler_map
+    assert handlers["PATCH"][0].handler_name == "update_artifact_baseline"
+    assert handlers["DELETE"][0].handler_name == "delete_artifact_baseline"
+
+
+def test_the_baseline_patch_reads_if_match_from_the_header():
+    parameter = inspect.signature(ArtifactRoutes.update_artifact_baseline.fn).parameters["if_match"]
+    assert parameter.default.header == "If-Match"
