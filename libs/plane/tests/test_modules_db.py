@@ -34,6 +34,7 @@ from app.core.ids import new_uid
 from app.core.auth import ENROLMENT_PREFIX
 from app.core.auth import hash_enrolment_token
 from app.db.notify import MemoryNotifier
+from app.hub.server import _resolve_connection
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -67,7 +68,6 @@ from app.modules.artifacts.schemas import ArtifactCreateRequest
 from app.modules.artifacts.schemas import ArtifactUpdateRequest
 from app.modules.artifacts.schemas import ArtifactLocationRequest
 from app.modules.clusters.services import ClusterService
-from app.hub.server import _resolve_connection
 from app.modules.endpoints.schemas import EndpointCreateRequest
 from app.modules.endpoints.schemas import EndpointTargetRequest
 from app.modules.endpoints.schemas import EndpointUpdateRequest
