@@ -7,6 +7,23 @@ It is the only part of hangar that sits in the request path, and it holds nothin
 holds. The plane derives the routing table; the gateway keeps a copy in memory and refreshes it on
 a timer. Nothing is joined per request.
 
+It is also the gateway end of the tunnel. There is no separate gateway deployment: one
+StatefulSet, `hangar-gateway`, answers callers on one port and accepts cluster dials on another. A
+cluster runs two hangar processes and neither is this one — the operator, which operates the
+cluster, and the agent, which dials out to the gateway and carries inference requests in.
+
+## Layout
+
+| Path | What it owns |
+|---|---|
+| `cmd/gateway/` | the binary: flags, listeners, shutdown |
+| `internal/serving/` | the HTTP entry point — mux, reverse proxy, caller guard, per-request observation, readiness, usage |
+| `internal/routing/` | the model-to-cluster table and upstream selection |
+| `internal/plane/` | client for the plane's HTTP API |
+| `internal/metrics/` | the Prometheus registry |
+| `../packages/tunnel/` | the wire, its own module, both ends of it |
+| `../agent/` | the cluster end, its own module, its own upgrade cadence |
+
 ## What it does not do
 
 - **No authentication, metering, or billing.** Whoever puts a gateway in front of their users
@@ -30,6 +47,8 @@ a timer. Nothing is joined per request.
 | `-credentials` / `HANGAR_GATEWAY_CREDENTIALS` | JSON file of `{"<credential id>": {"<header>": "<value>"}}` |
 | `-metrics-listen` / `HANGAR_GATEWAY_METRICS_LISTEN` | where `/metrics` is served, default `:9090`, `off` to disable |
 | `-probe-token` / `HANGAR_GATEWAY_PROBE_TOKEN` | what the conformance runner presents to mark its traffic as a probe; a comma-separated pair while rotating |
+| `-tunnel-listen` / `HANGAR_GATEWAY_TUNNEL_LISTEN` | where cluster agents dial, default `:8443`, `off` to disable |
+| `-tunnel-cert` / `-tunnel-key` (`HANGAR_GATEWAY_TUNNEL_TLS_CERT` / `_KEY`) | PEM pair for the tunnel listener; neither means plaintext, and TLS has to be terminated in front of it |
 
 Neither of the last two is required and neither is fatal by its absence, which is a deploy
 constraint rather than a courtesy: `just deploy plane` runs `kubectl apply -k infra/`, and `infra/`

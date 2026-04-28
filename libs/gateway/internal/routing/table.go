@@ -45,8 +45,28 @@ type Upstream struct {
 	// Ready is the plane's observation of the deployment, not a probe of our
 	// own. It orders candidates; it never removes the last one.
 	Ready bool
+	// Tunnelled means this upstream has no dialable address and is reachable
+	// only over a tunnel the cluster dialled out. It is the normal case: no
+	// cluster publishes a serving URL, so the URL above is usually empty and the
+	// cluster id is the whole of the routing key.
+	Tunnelled bool
 
 	handler http.Handler
+	// reachable answers whether this upstream can be used right now. Nil means
+	// yes, which is what an upstream with a dialable address is.
+	reachable func() bool
+}
+
+// Reachable reports whether this upstream can take a request at this instant.
+//
+// It is deliberately not readiness. Readiness is the plane's observation of a
+// deployment and lags by a sync interval; this is a local fact about this
+// replica — whether there is a live tunnel to the cluster, or an address to dial
+// instead. An upstream that is not reachable is not a candidate at all, which is
+// what keeps a cluster with neither a tunnel nor an address answering the
+// no-capacity 503 rather than a 502 from a proxy that had nowhere to go.
+func (u Upstream) Reachable() bool {
+	return u.reachable == nil || u.reachable()
 }
 
 // Handler returns the reverse proxy forwarding to this upstream.
@@ -95,7 +115,7 @@ func NewRoute(name, strategy string, upstreams ...Upstream) Route {
 // when a cluster is being ramped up. Failover always picks the first live
 // upstream in the declared order.
 func (r Route) Pick() (Upstream, error) {
-	candidates := r.Upstreams
+	candidates := filterReachable(r.Upstreams)
 	if ready := filterReady(candidates); len(ready) > 0 {
 		candidates = ready
 	}
@@ -130,6 +150,19 @@ func (r Route) Pick() (Upstream, error) {
 	return candidates[len(candidates)-1], nil
 }
 
+// filterReachable drops the upstreams that have nowhere to send a request. It
+// runs before the readiness preference, because an unreachable upstream is not a
+// worse candidate — it is not a candidate.
+func filterReachable(upstreams []Upstream) []Upstream {
+	reachable := make([]Upstream, 0, len(upstreams))
+	for _, upstream := range upstreams {
+		if upstream.Reachable() {
+			reachable = append(reachable, upstream)
+		}
+	}
+	return reachable
+}
+
 func filterReady(upstreams []Upstream) []Upstream {
 	ready := make([]Upstream, 0, len(upstreams))
 	for _, upstream := range upstreams {
@@ -145,9 +178,36 @@ type Source interface {
 	Resolved(ctx context.Context, revision string) (plane.Table, error)
 }
 
-// ProxyFactory builds the handler that forwards to one upstream, given the
-// credential reference the plane attached to its address.
-type ProxyFactory func(upstream *url.URL, credentialID string) http.Handler
+// Target is where one upstream's traffic goes.
+//
+// It carries a cluster id as well as an address because the address is usually
+// absent: a cluster is reached over the tunnel it dialled out, and the cluster id
+// is what the tunnel pool is keyed by. The URL path is kept alongside it because
+// ClusterServing still exists and is the fallback — both modes coexist, and a
+// cluster that publishes a serving address is dialled at it.
+type Target struct {
+	// ClusterID is the cluster this upstream is in. Always set.
+	ClusterID string
+	// ClusterName is for logs and metrics, never for routing.
+	ClusterName string
+	// URL is the cluster's published serving address, nil when it has none.
+	URL *url.URL
+	// CredentialID is the credential the plane attached to the address.
+	CredentialID string
+}
+
+// ProxyFactory builds the handler that forwards to one upstream.
+type ProxyFactory func(target Target) http.Handler
+
+// Reachability reports whether a cluster can be reached from this replica right
+// now. The tunnel pool implements it.
+//
+// It is read on the request path, so it must be cheap and must not block. It is
+// never written to: reachability is a fact about this process, not observed state
+// — that has exactly one writer and it is the plane's ingestion.
+type Reachability interface {
+	Live(clusterID string) int
+}
 
 // Observer is told what each refresh did, so the health of the table this hop
 // serves from is visible without asking the plane — which is the one thing that
@@ -167,11 +227,18 @@ func WithObserver(observer Observer) Option {
 	return func(r *Router) { r.observer = observer }
 }
 
+// WithReachability attaches the tunnel pool. Absent, an upstream with no
+// dialable address has nowhere to go and is never picked.
+func WithReachability(tunnels Reachability) Option {
+	return func(r *Router) { r.tunnels = tunnels }
+}
+
 // Router holds the current table.
 type Router struct {
 	source   Source
 	factory  ProxyFactory
 	observer Observer
+	tunnels  Reachability
 
 	mu       sync.RWMutex
 	revision string
@@ -232,19 +299,47 @@ func (r *Router) Load(ctx context.Context) error {
 		}
 
 		for _, upstream := range order(endpoint) {
-			parsed, err := url.Parse(upstream.URL)
-			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-				// Skip the address rather than fail the refresh: one bad
-				// serving URL must not take every other model down with it.
-				slog.Error("gateway: skipping upstream with unusable address",
-					"endpoint", endpoint.Name, "cluster", upstream.ClusterName, "url", upstream.URL, "err", err)
+			if upstream.ClusterID == "" {
+				// Nothing can be done with this one: with no address and no
+				// cluster there is no tunnel to look up either. Skipped rather
+				// than failing the refresh, so one bad row does not take every
+				// other model down with it.
+				slog.Error("gateway: skipping upstream with no cluster",
+					"endpoint", endpoint.Name, "deployment", upstream.DeploymentID)
 				continue
 			}
 
-			key := upstream.URL + "\x00" + upstream.CredentialID
+			// An address is optional now and usually absent. A cluster is
+			// reached over the tunnel it dialled out; a published serving URL is
+			// the fallback that ClusterServing still provides, and an
+			// unparseable one is treated as absent rather than as a reason to
+			// drop the cluster.
+			var address *url.URL
+			if upstream.URL != "" {
+				parsed, err := url.Parse(upstream.URL)
+				switch {
+				case err != nil || parsed.Scheme == "" || parsed.Host == "":
+					slog.Error("gateway: ignoring unusable serving address, this cluster is tunnel-only",
+						"endpoint", endpoint.Name, "cluster", upstream.ClusterName, "url", upstream.URL, "err", err)
+				default:
+					address = parsed
+				}
+			}
+
+			// Keyed by cluster as well as address and credential. Without the
+			// cluster every tunnelled upstream sharing a credential would
+			// collapse onto one handler, and that handler forwards to exactly one
+			// cluster — so a request for one model would be answered by another
+			// cluster's.
+			key := upstream.ClusterID + "\x00" + upstream.URL + "\x00" + upstream.CredentialID
 			handler, ok := pools[key]
 			if !ok {
-				handler = r.factory(parsed, upstream.CredentialID)
+				handler = r.factory(Target{
+					ClusterID:    upstream.ClusterID,
+					ClusterName:  upstream.ClusterName,
+					URL:          address,
+					CredentialID: upstream.CredentialID,
+				})
 				pools[key] = handler
 			}
 			used[key] = true
@@ -261,7 +356,9 @@ func (r *Router) Load(ctx context.Context) error {
 				Weight:       weight,
 				Role:         upstream.Role,
 				Ready:        upstream.AdmissionPhase == "running",
+				Tunnelled:    address == nil,
 				handler:      handler,
+				reachable:    r.reachability(upstream.ClusterID, address != nil),
 			})
 			route.totalWeight += weight
 		}
@@ -293,6 +390,24 @@ func (r *Router) Load(ctx context.Context) error {
 	slog.Info("gateway: routing table loaded",
 		"revision", table.Revision, "endpoints", len(next), "upstreams", len(pools))
 	return nil
+}
+
+// reachability builds the liveness test for one upstream.
+//
+// An upstream with an address is always a candidate: whether the address answers
+// is the proxy's problem and produces a 502, which is the truth. A tunnelled one
+// is a candidate only while this replica holds a tunnel to its cluster — and with
+// no pool at all it never is, so a gateway built without tunnels behaves exactly
+// as it did when an addressless upstream was skipped outright.
+func (r *Router) reachability(clusterID string, addressed bool) func() bool {
+	if addressed {
+		return nil
+	}
+	tunnels := r.tunnels
+	if tunnels == nil {
+		return func() bool { return false }
+	}
+	return func() bool { return tunnels.Live(clusterID) > 0 }
 }
 
 // observe calls the observer when there is one.
@@ -368,6 +483,51 @@ func (r *Router) Names() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// ClusterReach is one cluster in the loaded table and how this replica can get
+// to it.
+type ClusterReach struct {
+	ClusterID   string
+	ClusterName string
+	// Tunnelled means at least one of its upstreams has no published address and
+	// can only be served over a tunnel.
+	Tunnelled bool
+	// Reachable means at least one of its upstreams can take a request now: a
+	// live tunnel, or an address to dial.
+	Reachable bool
+}
+
+// ClusterReach lists every cluster the loaded table routes to, with whether this
+// replica can currently reach it.
+//
+// It is what readiness is computed from. A replica holding no tunnel to any
+// cluster in its own table can serve nothing and must say so, and this is the
+// only place both halves of that sentence — the table and the tunnels — are
+// known together.
+func (r *Router) ClusterReach() []ClusterReach {
+	r.mu.RLock()
+	routes := r.routes
+	r.mu.RUnlock()
+
+	byCluster := make(map[string]ClusterReach)
+	for _, route := range routes {
+		for _, upstream := range route.Upstreams {
+			reach := byCluster[upstream.ClusterID]
+			reach.ClusterID = upstream.ClusterID
+			reach.ClusterName = upstream.ClusterName
+			reach.Tunnelled = reach.Tunnelled || upstream.Tunnelled
+			reach.Reachable = reach.Reachable || upstream.Reachable()
+			byCluster[upstream.ClusterID] = reach
+		}
+	}
+
+	clusters := make([]ClusterReach, 0, len(byCluster))
+	for _, reach := range byCluster {
+		clusters = append(clusters, reach)
+	}
+	sort.Slice(clusters, func(i, j int) bool { return clusters[i].ClusterID < clusters[j].ClusterID })
+	return clusters
 }
 
 // Revision reports the table currently loaded.

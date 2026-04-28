@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"sync/atomic"
 	"testing"
 
@@ -31,13 +30,23 @@ func (s *stubSource) Resolved(_ context.Context, revision string) (plane.Table, 
 }
 
 func factory() ProxyFactory {
-	return func(upstream *url.URL, credentialID string) http.Handler {
+	return func(target Target) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("X-Upstream", upstream.String())
-			w.Header().Set("X-Credential", credentialID)
+			address := ""
+			if target.URL != nil {
+				address = target.URL.String()
+			}
+			w.Header().Set("X-Upstream", address)
+			w.Header().Set("X-Cluster", target.ClusterID)
+			w.Header().Set("X-Credential", target.CredentialID)
 		})
 	}
 }
+
+// liveClusters is a stub tunnel pool: the clusters it names have a tunnel.
+type liveClusters map[string]int
+
+func (l liveClusters) Live(clusterID string) int { return l[clusterID] }
 
 func upstream(cluster, deployment, address string, weight int, phase string) plane.Upstream {
 	return plane.Upstream{
@@ -112,7 +121,11 @@ func TestNotModifiedIsNotAnError(t *testing.T) {
 	}
 }
 
-func TestUnusableAddressesAreSkippedWithoutFailingTheRefresh(t *testing.T) {
+// TestUnusableAddressesFallBackToTheTunnelWithoutFailingTheRefresh pins the
+// coexistence rule. An address that cannot be parsed is not a reason to drop the
+// cluster — it has no address, which is the normal case now — and it must not
+// take the sibling upstream down with it either.
+func TestUnusableAddressesFallBackToTheTunnelWithoutFailingTheRefresh(t *testing.T) {
 	source := &stubSource{tables: []plane.Table{{
 		Revision: "1",
 		Endpoints: []plane.Endpoint{{
@@ -129,8 +142,19 @@ func TestUnusableAddressesAreSkippedWithoutFailingTheRefresh(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	route, _ := router.Resolve("chat")
-	if len(route.Upstreams) != 1 || route.Upstreams[0].ClusterID != "us" {
-		t.Fatalf("upstreams = %v", route.Upstreams)
+	if len(route.Upstreams) != 2 {
+		t.Fatalf("upstreams = %v, want both kept", route.Upstreams)
+	}
+	if !route.Upstreams[0].Tunnelled || route.Upstreams[1].Tunnelled {
+		t.Fatalf("tunnelled = %v, %v", route.Upstreams[0].Tunnelled, route.Upstreams[1].Tunnelled)
+	}
+	// With no pool, the addressless one is not a candidate and the addressed one
+	// still answers every request.
+	for i := 0; i < 4; i++ {
+		picked, err := route.Pick()
+		if err != nil || picked.ClusterID != "us" {
+			t.Fatalf("pick = %v, %v", picked.ClusterID, err)
+		}
 	}
 }
 

@@ -1,5 +1,9 @@
-// Package gateway is hangar's data plane: one hop that turns a public model
-// name into a request against the cluster currently serving it.
+// Package serving is the gateway's HTTP entry point: one hop that turns a
+// public model name into a request against the cluster currently serving it.
+//
+// It owns the mux, the reverse proxy, the caller guard, per-request observation
+// and readiness. The model-to-cluster table it reads is routing's, and the wire
+// into a cluster is libs/packages/tunnel's.
 //
 // It is deliberately thin. It does not authenticate callers, meter tokens, or
 // bill anyone — whoever puts a gateway in front of their users already has a
@@ -11,10 +15,9 @@
 // Replica selection inside a cluster is not this hop's business either. The
 // serving runtime routes on live queue depth and KV-cache residency, which is
 // state that does not leave the cluster and should not.
-package gateway
+package serving
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -27,6 +30,7 @@ import (
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
 	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/hangar-dev/hangar/libs/packages/tunnel"
 )
 
 // maxRequestBodyBytes caps how much of a body is buffered to read its `model`.
@@ -57,17 +61,40 @@ type Config struct {
 	// Probes, when set, recognises the conformance suite's own traffic so it can
 	// be excluded from an availability ratio. Nil means every request is live.
 	Probes *ProbeMarker
+	// Ready, when set, gates `GET /readyz`. Nil means always ready, which is
+	// what a gateway whose upstreams all have addresses is.
+	Ready ReadinessChecker
 }
 
 // New builds the gateway handler.
 //
-// `/healthz` is registered outside everything else on purpose: it is what
-// Kubernetes probes and it must answer without the plane, a table, or a token.
+// The probes are registered outside everything else on purpose: they are what
+// Kubernetes calls and they must answer without the plane, a table, or a token.
+//
+// They are two probes and not one, because they answer different questions.
+// `/healthz` is liveness and is unconditional — a replica that cannot serve must
+// not be restarted for it, since restarting is exactly what will not fix a
+// missing tunnel. `/readyz` is readiness and reports whether this replica can
+// actually carry a request, which for a tunnelled cluster is a per-pod fact that
+// no load balancer can see for itself.
 func New(cfg Config) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
+	})
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		ready, detail := true, "ok"
+		if cfg.Ready != nil {
+			ready, detail = cfg.Ready.Ready()
+		}
+		if !ready {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("not ready: " + detail))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ready: " + detail))
 	})
 
 	var handler http.Handler = withRouting(cfg.Router)
@@ -144,8 +171,12 @@ func withRouting(resolver Resolver) http.Handler {
 			return
 		}
 
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		r.ContentLength = int64(len(body))
+		// Replayable, using the buffer that was read to find the model rather
+		// than a second copy of it. Without a GetBody, HTTP/2 refuses to retry
+		// anything with a body after an agent sends GOAWAY — which is every
+		// completion there is, and they are the requests it is cheapest to get
+		// right because the agent never processed them.
+		r = tunnel.Replayable(r, body)
 		r.Header.Del("Content-Length")
 		r.TransferEncoding = nil
 
@@ -264,7 +295,7 @@ func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter 
 //
 // One wrapper rather than two, for the reason stated on statusRecorder.
 //
-// GET /healthz is neither logged nor counted. A kubelet probe is not a request
+// The kubelet's probes are neither logged nor counted. A probe is not a request
 // against anyone's availability, and counting a few thousand of them a day
 // against an endpoint's failure budget would make the budget meaningless in the
 // helpful direction.
@@ -275,22 +306,46 @@ func observed(recorder *metrics.Recorder, probes *ProbeMarker, next http.Handler
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK, obs: obs}
 		r = r.WithContext(context.WithValue(r.Context(), observationKey{}, obs))
 
-		next.ServeHTTP(rec, r)
+		// Deferred, and the panic is recovered, because httputil.ReverseProxy
+		// reports a failure halfway through copying a response body by panicking
+		// http.ErrAbortHandler rather than through ErrorHandler. That panic
+		// unwinds straight past a non-deferred observation, so every stream that
+		// was truncated mid-generation — the exact failure a caller notices most
+		// — was recorded as nothing at all.
+		//
+		// It is re-raised afterwards. The panic is how a handler tells net/http
+		// to sever the response instead of finishing its framing, and swallowing
+		// it would hand the caller a truncated stream with a clean ending on it.
+		defer func() {
+			aborted := recover()
+			if aborted != nil {
+				markAborted(r, aborted)
+			}
+			if !isProbePath(r.URL.Path) {
+				elapsed := time.Since(start)
+				slog.Info("gateway: request",
+					"method", r.Method,
+					"path", r.URL.Path,
+					"status", rec.status,
+					"duration_ms", elapsed.Milliseconds(),
+					"aborted", aborted != nil,
+				)
+				if recorder != nil {
+					recorder.Observe(obs.sample(rec.status, elapsed))
+				}
+			}
+			if aborted != nil {
+				panic(aborted)
+			}
+		}()
 
-		if r.URL.Path == "/healthz" {
-			return
-		}
-		elapsed := time.Since(start)
-		slog.Info("gateway: request",
-			"method", r.Method,
-			"path", r.URL.Path,
-			"status", rec.status,
-			"duration_ms", elapsed.Milliseconds(),
-		)
-		if recorder != nil {
-			recorder.Observe(obs.sample(rec.status, elapsed))
-		}
+		next.ServeHTTP(rec, r)
 	})
+}
+
+// isProbePath reports whether a path is one of the kubelet's.
+func isProbePath(path string) bool {
+	return path == "/healthz" || path == "/readyz"
 }
 
 // inFlight marks a request as being proxied for as long as it is, and returns

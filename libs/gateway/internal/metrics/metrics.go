@@ -77,6 +77,10 @@ type Recorder struct {
 	inFlight    *prometheus.GaugeVec
 	upstreamUp  *prometheus.GaugeVec
 
+	tunnels        *prometheus.GaugeVec
+	tunnelDials    *prometheus.CounterVec
+	tunnelCoverage *prometheus.GaugeVec
+
 	tableConfirmed  *prometheus.Gauge
 	tableRefreshes  *prometheus.CounterVec
 	tableRefreshOK  prometheus.Gauge
@@ -181,9 +185,12 @@ func New(opts ...Option) *Recorder {
 		return r.now().Sub(time.Unix(0, confirmed)).Seconds()
 	})
 
+	r.registerTunnels()
+
 	r.registry.MustRegister(
 		r.requests, r.duration, r.ttft, r.ttftByInput, r.tokens,
 		r.inFlight, r.upstreamUp,
+		r.tunnels, r.tunnelDials, r.tunnelCoverage,
 		r.tableRefreshes, r.tableRefreshOK, r.tableEndpoints, r.tableConfirmUnx, age,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),

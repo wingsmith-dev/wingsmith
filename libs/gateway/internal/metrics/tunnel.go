@@ -1,0 +1,77 @@
+package metrics
+
+import "github.com/prometheus/client_golang/prometheus"
+
+// The tunnel series are labelled cluster_id rather than cluster, because the
+// tunnel pool is keyed by the plane's cluster uid and a cluster renames freely —
+// a name label here would split one cluster's coverage in two the first time
+// somebody renamed it, and the break would look like an agent outage. The
+// human-readable name rides alongside as a second label on the coverage gauge,
+// where it is for panels and never joined on.
+var (
+	tunnelLabels   = []string{"cluster_id"}
+	coverageLabels = []string{"cluster_id", "cluster"}
+)
+
+// TunnelSample is one cluster in the routing table and how this replica reaches
+// it.
+type TunnelSample struct {
+	ClusterID string
+	Cluster   string
+	// Reachable means at least one of its upstreams can take a request now.
+	Reachable bool
+}
+
+// registerTunnels builds the tunnel series. Called from New.
+func (r *Recorder) registerTunnels() {
+	r.tunnels = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "hangar_gateway_tunnels",
+		Help: "Live tunnels this replica holds to a cluster. Per-replica by nature: an agent dials one pod, not a Service, so this is coverage of this process and not of the deployment.",
+	}, tunnelLabels)
+
+	r.tunnelDials = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "hangar_gateway_tunnel_dials_rejected_total",
+		Help: "Agent dials that never became tunnels, by reason. unauthorized is a credential problem and unavailable is the plane being unreachable; the two need different people.",
+	}, []string{"reason"})
+
+	r.tunnelCoverage = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "hangar_gateway_tunnel_coverage",
+		Help: "0 when this replica cannot reach a cluster its own routing table routes to, 1 when it can. The alert is on the zero: it means requests for that cluster's models get no capacity from this pod.",
+	}, coverageLabels)
+}
+
+// TunnelOpened records a tunnel this replica adopted.
+func (r *Recorder) TunnelOpened(clusterID string, live int) {
+	r.tunnels.WithLabelValues(clusterID).Set(float64(live))
+}
+
+// TunnelClosed records a tunnel this replica lost.
+//
+// The gauge is set rather than decremented, and the count comes from the pool: a
+// decrement that raced a re-dial would drift, and a coverage number that drifts
+// is worse than one that is occasionally stale.
+func (r *Recorder) TunnelClosed(clusterID string, live int) {
+	r.tunnels.WithLabelValues(clusterID).Set(float64(live))
+}
+
+// TunnelDialRejected records a dial that did not authenticate.
+func (r *Recorder) TunnelDialRejected(reason string) {
+	r.tunnelDials.WithLabelValues(reason).Inc()
+}
+
+// TunnelCoverage records which clusters in the loaded table this replica can
+// reach.
+//
+// It is reset first, so a cluster that has left the routing table stops
+// reporting instead of freezing at its last value — a stuck 0 on a cluster
+// nobody routes to any more is an alert that cannot be cleared.
+func (r *Recorder) TunnelCoverage(samples []TunnelSample) {
+	r.tunnelCoverage.Reset()
+	for _, sample := range samples {
+		covered := 0.0
+		if sample.Reachable {
+			covered = 1
+		}
+		r.tunnelCoverage.WithLabelValues(sample.ClusterID, sample.Cluster).Set(covered)
+	}
+}

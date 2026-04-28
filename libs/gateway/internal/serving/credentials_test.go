@@ -1,4 +1,4 @@
-package gateway
+package serving
 
 import (
 	"os"
