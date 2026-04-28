@@ -151,7 +151,6 @@ export function WorkloadsPage() {
   const navigate = useNavigate({ from: "/workloads" })
   const { data: clusters } = useClusterOptions()
   const remove = useDeleteWorkload()
-  const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Workload | undefined>()
   const [doomed, setDoomed] = useState<Workload | undefined>()
   const list = useWorkloads({
@@ -180,8 +179,8 @@ export function WorkloadsPage() {
         title="Workloads"
         description="declared · what you asked to run, and every cluster it landed on"
         actions={
-          <Button onClick={() => setCreating(true)}>
-            New workload
+          <Button asChild>
+            <Link to="/workloads/new">New workload</Link>
           </Button>
         }
       />
@@ -242,9 +241,6 @@ export function WorkloadsPage() {
         />
       </div>
 
-      {creating && (
-        <WorkloadForm open onOpenChange={(open) => !open && setCreating(false)} />
-      )}
       {editing && (
         <WorkloadForm
           key={editing.revision}

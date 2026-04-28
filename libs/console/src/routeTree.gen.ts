@@ -46,6 +46,7 @@ import { Route as AppOperationsOperationIdRouteRouteImport } from './routes/_app
 import { Route as AppPoolsPoolIdRouteRouteImport } from './routes/_app/pools/$poolId/route'
 import { Route as AppRecipesRecipeIdRouteRouteImport } from './routes/_app/recipes/$recipeId/route'
 import { Route as AppWorkloadsWorkloadIdRouteRouteImport } from './routes/_app/workloads/$workloadId/route'
+import { Route as AppWorkloadsNewRouteRouteImport } from './routes/_app/workloads/new/route'
 import { Route as AppBenchmarksRequestsRequestIdRouteRouteImport } from './routes/_app/benchmarks/requests/$requestId/route'
 
 const IndexRoute = IndexRouteImport.update({
@@ -239,6 +240,11 @@ const AppWorkloadsWorkloadIdRouteRoute =
     path: '/$workloadId',
     getParentRoute: () => AppWorkloadsRouteRoute,
   } as any)
+const AppWorkloadsNewRouteRoute = AppWorkloadsNewRouteRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AppWorkloadsRouteRoute,
+} as any)
 const AppBenchmarksRequestsRequestIdRouteRoute =
   AppBenchmarksRequestsRequestIdRouteRouteImport.update({
     id: '/requests/$requestId',
@@ -283,6 +289,7 @@ export interface FileRoutesByFullPath {
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
   '/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
   '/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
+  '/workloads/new': typeof AppWorkloadsNewRouteRoute
   '/benchmarks/requests/$requestId': typeof AppBenchmarksRequestsRequestIdRouteRoute
 }
 export interface FileRoutesByTo {
@@ -322,6 +329,7 @@ export interface FileRoutesByTo {
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
   '/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
   '/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
+  '/workloads/new': typeof AppWorkloadsNewRouteRoute
   '/benchmarks/requests/$requestId': typeof AppBenchmarksRequestsRequestIdRouteRoute
 }
 export interface FileRoutesById {
@@ -363,6 +371,7 @@ export interface FileRoutesById {
   '/_app/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
   '/_app/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
   '/_app/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
+  '/_app/workloads/new': typeof AppWorkloadsNewRouteRoute
   '/_app/benchmarks/requests/$requestId': typeof AppBenchmarksRequestsRequestIdRouteRoute
 }
 export interface FileRouteTypes {
@@ -404,6 +413,7 @@ export interface FileRouteTypes {
     | '/pools/$poolId'
     | '/recipes/$recipeId'
     | '/workloads/$workloadId'
+    | '/workloads/new'
     | '/benchmarks/requests/$requestId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -443,6 +453,7 @@ export interface FileRouteTypes {
     | '/pools/$poolId'
     | '/recipes/$recipeId'
     | '/workloads/$workloadId'
+    | '/workloads/new'
     | '/benchmarks/requests/$requestId'
   id:
     | '__root__'
@@ -483,6 +494,7 @@ export interface FileRouteTypes {
     | '/_app/pools/$poolId'
     | '/_app/recipes/$recipeId'
     | '/_app/workloads/$workloadId'
+    | '/_app/workloads/new'
     | '/_app/benchmarks/requests/$requestId'
   fileRoutesById: FileRoutesById
 }
@@ -753,6 +765,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkloadsWorkloadIdRouteRouteImport
       parentRoute: typeof AppWorkloadsRouteRoute
     }
+    '/_app/workloads/new': {
+      id: '/_app/workloads/new'
+      path: '/new'
+      fullPath: '/workloads/new'
+      preLoaderRoute: typeof AppWorkloadsNewRouteRouteImport
+      parentRoute: typeof AppWorkloadsRouteRoute
+    }
     '/_app/benchmarks/requests/$requestId': {
       id: '/_app/benchmarks/requests/$requestId'
       path: '/requests/$requestId'
@@ -882,10 +901,12 @@ const AppRecipesRouteRouteWithChildren = AppRecipesRouteRoute._addFileChildren(
 
 interface AppWorkloadsRouteRouteChildren {
   AppWorkloadsWorkloadIdRouteRoute: typeof AppWorkloadsWorkloadIdRouteRoute
+  AppWorkloadsNewRouteRoute: typeof AppWorkloadsNewRouteRoute
 }
 
 const AppWorkloadsRouteRouteChildren: AppWorkloadsRouteRouteChildren = {
   AppWorkloadsWorkloadIdRouteRoute: AppWorkloadsWorkloadIdRouteRoute,
+  AppWorkloadsNewRouteRoute: AppWorkloadsNewRouteRoute,
 }
 
 const AppWorkloadsRouteRouteWithChildren =

@@ -8,6 +8,8 @@ import {
   StatusLabel,
   type StatusTone,
 } from "@/components/layout/status-dot"
+import { ArtifactFitmentPanel } from "@/components/demand/artifact-fitment"
+import { RefreshSourceButton } from "@/components/demand/artifact-refresh"
 import { NewOperationDialog } from "@/components/machinery/new-operation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -113,26 +115,23 @@ export function ArtifactDetailPage() {
         actions={
           artifact && (
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setEditing(true)}
-              >
+              {/* The primary action on an artifact: the one thing you registered it to do. */}
+              <Button asChild>
+                <Link to="/workloads/new" search={{ artifact: artifact.id }}>
+                  Deploy
+                </Link>
+              </Button>
+              <Button variant="outline" onClick={() => setEditing(true)}>
                 Edit
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => setDoomed(true)}
-              >
+              <Button variant="outline" onClick={() => setDoomed(true)}>
                 Delete
               </Button>
+              <RefreshSourceButton artifact={artifact} />
               <NewOperationDialog
                 defaultType="cache.warm"
                 defaultTarget={artifact.id}
-                trigger={
-                  <Button variant="outline">
-                    Warm
-                  </Button>
-                }
+                trigger={<Button variant="outline">Warm</Button>}
               />
             </div>
           )
@@ -187,10 +186,7 @@ export function ArtifactDetailPage() {
         {artifact && (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-              <StatCard
-                label="Size"
-                value={formatBytes(artifact.size_bytes)}
-              />
+              <StatCard label="Size" value={formatBytes(artifact.size_bytes)} />
               {/* TODO-API Artifact carries no file manifest — showing registered locations as the file count. */}
               <StatCard label="Files" value={artifact.locations.length} />
               <StatCard
@@ -210,6 +206,23 @@ export function ArtifactDetailPage() {
 
             <div className="grid gap-4 lg:grid-cols-3">
               <div className="flex flex-col gap-4 lg:col-span-2">
+                <ArtifactFitmentPanel
+                  artifact={artifact}
+                  onPick={(footprint) =>
+                    navigate({
+                      to: "/workloads/new",
+                      search: {
+                        artifact: artifact.id,
+                        class: footprint.device_class,
+                        devices: footprint.device_count,
+                        tp: footprint.tensor_parallel,
+                        pp: footprint.pipeline_parallel,
+                        ctx: footprint.context_length,
+                        quant: footprint.quantization || undefined,
+                      },
+                    })
+                  }
+                />
                 <FilesPanel artifact={artifact} />
                 <RecipesPanel artifactId={artifactId} recipes={recipes} />
                 <BaselinesPanel baselines={baselines} />
@@ -270,7 +283,10 @@ function FilesPanel({ artifact }: { artifact: Artifact }) {
                     </td>
                     <td className="p-2">
                       {location.preferred ? (
-                        <Badge variant="secondary" className="font-mono text-2xs">
+                        <Badge
+                          variant="secondary"
+                          className="font-mono text-2xs"
+                        >
                           preferred
                         </Badge>
                       ) : (
@@ -359,7 +375,12 @@ function RecipesPanel({
     <Card>
       <CardHeader className="flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm">Recipes</CardTitle>
-        <Button asChild size="sm" variant="ghost" className="font-mono text-2xs">
+        <Button
+          asChild
+          size="sm"
+          variant="ghost"
+          className="font-mono text-2xs"
+        >
           <Link to="/recipes" search={{ artifact: artifactId }}>
             View all
           </Link>
@@ -396,7 +417,12 @@ function BaselinesPanel({
             Declared floors graded against benchmark runs
           </p>
         </div>
-        <Button asChild size="sm" variant="ghost" className="font-mono text-2xs">
+        <Button
+          asChild
+          size="sm"
+          variant="ghost"
+          className="font-mono text-2xs"
+        >
           <Link to="/benchmarks">Benchmarks</Link>
         </Button>
       </CardHeader>
@@ -428,7 +454,7 @@ function BaselinesPanel({
                     <td className="p-2 text-right font-mono tabular-nums">
                       {formatScore(baseline.value)}
                     </td>
-                    <td className="p-2 text-right font-mono tabular-nums text-muted-foreground">
+                    <td className="p-2 text-right font-mono text-muted-foreground tabular-nums">
                       {formatScore(acceptanceFloor(baseline.value))}
                     </td>
                     <td className="p-2 font-mono text-muted-foreground">
@@ -567,7 +593,11 @@ function DetailsPanel({ artifact }: { artifact: Artifact }) {
             {upstream.input_modalities.length > 0 ? (
               <div className="flex flex-wrap gap-1">
                 {upstream.input_modalities.map((m) => (
-                  <Badge key={m} variant="outline" className="font-mono text-2xs">
+                  <Badge
+                    key={m}
+                    variant="outline"
+                    className="font-mono text-2xs"
+                  >
                     {m}
                   </Badge>
                 ))}
@@ -605,7 +635,9 @@ function FingerprintPanel({ artifact }: { artifact: Artifact }) {
   return (
     <Card>
       <CardHeader className="pb-2">
-        <CardTitle className="text-sm">Fingerprint &amp; verification</CardTitle>
+        <CardTitle className="text-sm">
+          Fingerprint &amp; verification
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <FieldGrid>
@@ -657,7 +689,12 @@ function ActivityPanel({ artifactId }: { artifactId: string }) {
     <Card>
       <CardHeader className="flex-row items-center justify-between pb-2">
         <CardTitle className="text-sm">Activity</CardTitle>
-        <Button asChild size="sm" variant="ghost" className="font-mono text-2xs">
+        <Button
+          asChild
+          size="sm"
+          variant="ghost"
+          className="font-mono text-2xs"
+        >
           <Link to="/events" search={{ subject: artifactId }}>
             All events
           </Link>

@@ -1,3 +1,9 @@
+import { HangarMark } from "@/components/layout/hangar-mark"
+import {
+  ResourceIcon,
+  type ResourceKind,
+} from "@/components/layout/resource-icon"
+import { Badge } from "@/components/ui/badge"
 import {
   Sidebar,
   SidebarContent,
@@ -10,18 +16,12 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from "@/components/ui/sidebar"
-import { Badge } from "@/components/ui/badge"
 import { transport } from "@/lib/api"
-import {
-  ResourceIcon,
-  type ResourceKind,
-} from "@/components/layout/resource-icon"
-import { HangarMark } from "@/components/layout/hangar-mark"
+import { useSignOut } from "@/modules/auth/session"
+import { useAuthStore } from "@/modules/auth/store"
+import { useReadOnly } from "@/modules/settings/store"
 import { IconEye, IconLogout, IconSettings } from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
-import { useAuthStore } from "@/modules/auth/store"
-import { useSignOut } from "@/modules/auth/session"
-import { useReadOnly } from "@/modules/settings/store"
 
 type NavItem = {
   label: string
@@ -37,17 +37,20 @@ const overviewItems: NavItem[] = [
  * Grouped by what an operator came to do, not by the domain model. Supply,
  * demand, binding and machinery are the right vocabulary in the code and the
  * docs; in a sidebar they ask the reader to translate before they can navigate.
- * Within each group the operated thing comes before the thing that defines it —
- * an endpoint has a URL and users, a recipe is something you wrote last week.
+ *
+ * Ordered by how often it is opened, not by the order things are created in. You
+ * register an artifact a handful of times and look at what is running every day,
+ * so the operated thing comes before the thing that defines it. Recipes is last
+ * because nothing routes through it any more — a deploy derives one, and the page
+ * is where you go to read them back, not a step on the way anywhere. "Where do I
+ * start" is Overview's problem, and Overview can stop saying it once there is
+ * something running, which a sidebar item cannot.
  */
 const servingItems: NavItem[] = [
   { label: "Endpoints", to: "/endpoints", kind: "endpoint" },
   { label: "Workloads", to: "/workloads", kind: "workload" },
-]
-
-const catalogItems: NavItem[] = [
-  { label: "Recipes", to: "/recipes", kind: "recipe" },
   { label: "Artifacts", to: "/artifacts", kind: "artifact" },
+  { label: "Recipes", to: "/recipes", kind: "recipe" },
 ]
 
 const fleetItems: NavItem[] = [
@@ -146,7 +149,6 @@ export function ConsoleSidebar({
       <SidebarContent>
         <NavGroup items={overviewItems} pathname={pathname} />
         <NavGroup label="Serving" items={servingItems} pathname={pathname} />
-        <NavGroup label="Catalog" items={catalogItems} pathname={pathname} />
         <NavGroup label="Fleet" items={fleetItems} pathname={pathname} />
         <NavGroup label="Access" items={accessItems} pathname={pathname} />
         <NavGroup label="Activity" items={activityItems} pathname={pathname} />

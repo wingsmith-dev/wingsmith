@@ -1,0 +1,203 @@
+/**
+ * Deriving a recipe from an artifact and a fitment row, so that nobody types one.
+ *
+ * `RecipeForm` asks twenty-five questions. Six of them the fitment already answered
+ * from the weights, and most of the rest are either derivable or a default that only
+ * an expert should ever move. What is left once those are taken out is a name, and a
+ * name is not a question worth asking either — so this module answers all of them and
+ * the deploy flow asks none.
+ *
+ * Nothing here is authority. The plane sizes the fit and places the workload; this
+ * only assembles the request those two answers imply. Where a field cannot be derived
+ * honestly it is left off the request entirely rather than guessed, so the plane's own
+ * default applies instead of one invented here.
+ */
+
+import type {
+  Artifact,
+  Recipe,
+  RecipeCreateRequest,
+  RecipeFootprint,
+} from "./types"
+
+/** The engine a derived recipe is built for until something offers a choice. */
+export const DEFAULT_ENGINE = "vllm"
+
+/**
+ * Engine version is required by `RecipeCreateRequest` and is not derivable from an
+ * artifact — the console does not know what builds exist. `latest` is the honest
+ * stand-in: it says "whatever the operator ships" rather than pinning a version this
+ * code invented, and it is visible and editable on the recipe afterwards.
+ */
+export const DEFAULT_ENGINE_VERSION = "latest"
+
+/** `Llama-3.3-70B-Instruct` -> `llama-3-3-70b-instruct`. */
+export function slugify(value: string): string {
+  return value
+    .split("/")
+    .pop()!
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+}
+
+/** `32768` -> `32k`, `8192` -> `8k`, `1000` -> `1000`. */
+export function shortTokens(value: number): string {
+  if (value >= 1024 && value % 1024 === 0) return `${value / 1024}k`
+  return String(value)
+}
+
+/**
+ * A name that describes the configuration rather than the day it was made.
+ *
+ * `llama-3-3-70b-instruct-fp8-tp2-32k` reads as what it is, which is the whole reason
+ * a derived recipe can go unnamed: the four things that distinguish one recipe over an
+ * artifact from another are exactly the four things in the fit, so putting them in the
+ * name makes two derived recipes over one artifact tell themselves apart in a list.
+ *
+ * Pipeline degree appears only when it is greater than one, because `pp1` on every
+ * single-node recipe is noise that makes the interesting case harder to spot.
+ */
+export function derivedRecipeName(
+  artifact: Artifact,
+  footprint: RecipeFootprint
+): string {
+  const parts = [slugify(artifact.name)]
+  if (footprint.quantization) parts.push(footprint.quantization)
+  parts.push(`tp${footprint.tensor_parallel}`)
+  if (footprint.pipeline_parallel > 1)
+    parts.push(`pp${footprint.pipeline_parallel}`)
+  if (footprint.context_length > 0)
+    parts.push(shortTokens(footprint.context_length))
+  return parts.join("-")
+}
+
+/**
+ * The name a workload gets when nobody typed one.
+ *
+ * The artifact rather than the recipe, because a workload is the thing you asked to
+ * run and you asked for the weights — the fit is how, not what. Collisions are the
+ * plane's to reject; this only avoids the ones it can see, by suffixing past names
+ * already in the list.
+ */
+export function derivedWorkloadName(
+  artifact: Artifact,
+  taken: string[] = []
+): string {
+  const base = slugify(artifact.name)
+  if (!taken.includes(base)) return base
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${base}-${n}`
+    if (!taken.includes(candidate)) return candidate
+  }
+  return base
+}
+
+/**
+ * Whether a replica of this footprint has to stay inside one fabric domain.
+ *
+ * Derived, not asked. A tensor group reaching over the backend fabric is the one
+ * configuration that is always wrong, so any footprint whose tensor degree exceeds
+ * what a single node holds requires a domain. When the fit is pipeline-parallel the
+ * tensor groups are already node-sized and the pipeline stages are what cross the
+ * fabric, which is exactly what a fabric is for.
+ */
+export function requiresSingleDomain(footprint: RecipeFootprint): boolean {
+  return footprint.pipeline_parallel <= 1 && footprint.tensor_parallel > 1
+}
+
+/**
+ * The request that a fitment row plus an artifact imply.
+ *
+ * Deliberately sparse. `dtype`, `max_batch_tokens`, `kv_cache_dtype`,
+ * `kv_cache_fraction`, `cpu_cores`, `memory_mib`, `disk_gib`, `device_memory_mib_min`
+ * and `topology_domain_kind` are all absent, because the console has no honest value
+ * for any of them and the plane's default is better than a number typed here. They
+ * remain editable on the recipe afterwards, which is what `RecipeForm` is for now.
+ *
+ * `prefix_cache_enabled` is the one opinion: on. It is free on a repeated prompt and
+ * the engines default it on themselves.
+ */
+export function derivedRecipeRequest(
+  artifact: Artifact,
+  footprint: RecipeFootprint,
+  overrides: { name?: string; engine?: string; engine_version?: string } = {}
+): RecipeCreateRequest {
+  return {
+    artifact: artifact.id,
+    name: overrides.name?.trim() || derivedRecipeName(artifact, footprint),
+    engine: overrides.engine || DEFAULT_ENGINE,
+    engine_version: overrides.engine_version || DEFAULT_ENGINE_VERSION,
+    device_class: footprint.device_class,
+    device_count: footprint.device_count,
+    context_length: footprint.context_length,
+    tensor_parallel: footprint.tensor_parallel,
+    pipeline_parallel: footprint.pipeline_parallel,
+    quantization: footprint.quantization || null,
+    requires_single_topology_domain: requiresSingleDomain(footprint),
+    prefix_cache_enabled: true,
+  }
+}
+
+/**
+ * An existing recipe with the same spec, so that deploying the same thing twice does
+ * not leave two recipes behind.
+ *
+ * The same instinct as content-addressing an artifact, one level up: a recipe is
+ * identified by what it says, so two identical ones are one. Matched on the six fields
+ * a fit determines plus the engine — not on name, which a person may have changed, and
+ * not on the fields left off the derived request, which the plane defaulted and someone
+ * may since have tuned. That last one is a deliberate looseness: reusing a recipe whose
+ * KV fraction was hand-tuned is the desirable outcome, not a mismatch.
+ *
+ * Deprecated recipes are skipped — reusing one silently would resurrect a config
+ * somebody retired on purpose.
+ */
+export function matchExistingRecipe(
+  recipes: Recipe[],
+  artifact: Artifact,
+  footprint: RecipeFootprint,
+  engine: string = DEFAULT_ENGINE
+): Recipe | undefined {
+  return recipes.find(
+    (recipe) =>
+      recipe.artifact_id === artifact.id &&
+      recipe.lifecycle !== "deprecated" &&
+      recipe.engine === engine &&
+      recipe.shape.device_class === footprint.device_class &&
+      recipe.shape.device_count === footprint.device_count &&
+      recipe.context_length === footprint.context_length &&
+      recipe.parallelism.tensor === footprint.tensor_parallel &&
+      recipe.parallelism.pipeline === footprint.pipeline_parallel &&
+      (recipe.quantization ?? "") === (footprint.quantization ?? "")
+  )
+}
+
+/** The footprint an existing recipe already describes, for the reuse shortcut. */
+export function footprintOfRecipe(recipe: Recipe): RecipeFootprint {
+  return {
+    device_class: recipe.shape.device_class,
+    device_count: recipe.shape.device_count,
+    tensor_parallel: recipe.parallelism.tensor,
+    pipeline_parallel: recipe.parallelism.pipeline,
+    context_length: recipe.context_length,
+    quantization: recipe.quantization ?? "",
+  }
+}
+
+/** `2 x H100 · tp2 · 32k · fp8` — a footprint on one line, for a collapsed step. */
+export function footprintSummary(
+  footprint: RecipeFootprint,
+  label?: string
+): string {
+  const parts = [
+    `${footprint.device_count} x ${label ?? footprint.device_class}`,
+    `tp${footprint.tensor_parallel}`,
+  ]
+  if (footprint.pipeline_parallel > 1)
+    parts.push(`pp${footprint.pipeline_parallel}`)
+  if (footprint.context_length > 0)
+    parts.push(shortTokens(footprint.context_length))
+  if (footprint.quantization) parts.push(footprint.quantization)
+  return parts.join(" · ")
+}
