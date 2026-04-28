@@ -69,9 +69,7 @@ function DeviceStrip({ devices }: { devices: NodeDeviceRollup }) {
           key={index}
           className={cn(
             "h-3.5 w-[7px] rounded-[1px]",
-            index >= total - bad
-              ? "bg-destructive"
-              : "bg-muted-foreground/25"
+            index >= total - bad ? "bg-destructive" : "bg-muted-foreground/25"
           )}
         />
       ))}
@@ -162,7 +160,9 @@ function nodeListColumns(
       header: "GPU model",
       cell: (node) =>
         node.devices.device_class ? (
-          <span className="font-mono text-2xs">{node.devices.device_class}</span>
+          <span className="font-mono text-2xs">
+            {node.devices.device_class}
+          </span>
         ) : (
           <span className="font-mono text-2xs text-muted-foreground/40">—</span>
         ),
@@ -233,9 +233,7 @@ export function NodesPage() {
 
   const unreachable = useMemo(
     () =>
-      new Set(
-        (clusters ?? []).filter((c) => !c.reachable).map((c) => c.id)
-      ),
+      new Set((clusters ?? []).filter((c) => !c.reachable).map((c) => c.id)),
     [clusters]
   )
 
@@ -296,9 +294,7 @@ export function NodesPage() {
           <SummaryTile label="Nodes" value={fleet?.total ?? "—"} />
           <SummaryTile
             label="Ready"
-            value={
-              fleet ? `${fleet.ready}/${fleet.total}` : "—"
-            }
+            value={fleet ? `${fleet.ready}/${fleet.total}` : "—"}
             tone={summary.stale > 0 ? "warn" : undefined}
             note={
               summary.stale > 0

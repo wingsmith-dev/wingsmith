@@ -34,9 +34,7 @@ export function ClusterForm({
   const [region, setRegion] = useState(cluster?.region ?? "")
   const [zone, setZone] = useState(cluster?.zone ?? "")
   const [residency, setResidency] = useState(cluster?.residency ?? "")
-  const [metricsLabel, setMetricsLabel] = useState(
-    cluster?.metrics_label ?? ""
-  )
+  const [metricsLabel, setMetricsLabel] = useState(cluster?.metrics_label ?? "")
   const [phase, setPhase] = useState<ClusterPhase>(cluster?.phase ?? "pending")
   const [labels, setLabels] = useState<Record<string, string>>(
     cluster?.labels ?? {}

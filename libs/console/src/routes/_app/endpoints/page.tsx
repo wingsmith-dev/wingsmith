@@ -54,7 +54,10 @@ function trail(values: number[]): MetricSeriesPoint[] {
 function mockTrail(id: string, salt: number): MetricSeriesPoint[] {
   const base = seed(`${id}:${salt}`)
   return trail(
-    Array.from({ length: 8 }, (_, i) => 10 + ((base >> i) % 7) + i * ((base % 3) - 1))
+    Array.from(
+      { length: 8 },
+      (_, i) => 10 + ((base >> i) % 7) + i * ((base % 3) - 1)
+    )
   )
 }
 
@@ -89,14 +92,18 @@ function mockHealth(endpoint: Endpoint): Health {
   }
   const roll = seed(endpoint.id) % 10
   const tone: StatusTone = roll < 6 ? "ok" : roll < 9 ? "warn" : "danger"
-  const label = tone === "ok" ? "Healthy" : tone === "warn" ? "Degraded" : "Down"
+  const label =
+    tone === "ok" ? "Healthy" : tone === "warn" ? "Degraded" : "Down"
   const availability =
     tone === "ok" ? "99.95%" : tone === "warn" ? "98.10%" : "94.20%"
-  const marks: ("up" | "warn" | "down")[] = Array.from({ length: 14 }, (_, i) => {
-    if (tone === "ok") return i === (roll % 14) ? "warn" : "up"
-    if (tone === "warn") return i > 8 ? "warn" : "up"
-    return i > 11 ? "down" : i === 11 ? "warn" : "up"
-  })
+  const marks: ("up" | "warn" | "down")[] = Array.from(
+    { length: 14 },
+    (_, i) => {
+      if (tone === "ok") return i === roll % 14 ? "warn" : "up"
+      if (tone === "warn") return i > 8 ? "warn" : "up"
+      return i > 11 ? "down" : i === 11 ? "warn" : "up"
+    }
+  )
   return { tone, label, availability, marks }
 }
 
@@ -165,8 +172,8 @@ function StatTile({
 
 /** `fp8 · awq` from a recipe's quantization and dtype, or null if neither is set. */
 function quantLabel(recipe?: Recipe): string | null {
-  const parts = [recipe?.quantization, recipe?.dtype].filter(
-    (p): p is string => Boolean(p)
+  const parts = [recipe?.quantization, recipe?.dtype].filter((p): p is string =>
+    Boolean(p)
   )
   return parts.length > 0 ? parts.join(" · ") : null
 }
@@ -484,9 +491,7 @@ export function EndpointsPage() {
         title="Endpoints"
         description="declared · the stable public name clients call"
         actions={
-          <Button onClick={() => setCreating(true)}>
-            New endpoint
-          </Button>
+          <Button onClick={() => setCreating(true)}>New endpoint</Button>
         }
       />
 

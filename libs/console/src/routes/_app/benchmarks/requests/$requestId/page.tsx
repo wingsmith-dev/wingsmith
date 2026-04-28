@@ -62,7 +62,9 @@ export function BenchmarkRequestPage() {
   return (
     <div className="flex flex-col">
       <PageHeader
-        title={request ? `${request.harness} ${request.mode}` : "Benchmark request"}
+        title={
+          request ? `${request.harness} ${request.mode}` : "Benchmark request"
+        }
         description={requestId}
         readActions={
           <Button asChild variant="outline">
@@ -168,9 +170,10 @@ export function BenchmarkRequestPage() {
                   </p>
                   {request.coverage.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      Nothing was recorded behind this target — an endpoint-level
-                      request is routed by weight, and attributing it to one
-                      upstream would be a confident wrong answer.
+                      Nothing was recorded behind this target — an
+                      endpoint-level request is routed by weight, and
+                      attributing it to one upstream would be a confident wrong
+                      answer.
                     </p>
                   ) : (
                     <div className="space-y-2">

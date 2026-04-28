@@ -71,7 +71,7 @@ export function DeploymentTimeline({
                 {formatRelative(event.occurred_at)}
               </span>
             </div>
-            <p className="mt-0.5 break-words text-xs">{event.message}</p>
+            <p className="mt-0.5 text-xs break-words">{event.message}</p>
             <Detail event={event} />
           </div>
         </li>

@@ -59,7 +59,9 @@ export function RecipeReuse({
             </div>
             <div className="flex shrink-0 flex-col items-end font-mono text-2xs text-muted-foreground/50">
               <Id value={shortenId(recipe.id)} />
-              <span>{formatRelative(recipe.updated_at ?? recipe.created_at)}</span>
+              <span>
+                {formatRelative(recipe.updated_at ?? recipe.created_at)}
+              </span>
             </div>
           </button>
         ))}

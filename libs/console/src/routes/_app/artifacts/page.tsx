@@ -216,7 +216,7 @@ function SummaryTile({ label, value, tone }: TileProps) {
       <span
         className={
           tone === "warn"
-            ? "font-heading text-2xl leading-none font-semibold tabular-nums text-amber-500"
+            ? "font-heading text-2xl leading-none font-semibold text-amber-500 tabular-nums"
             : "font-heading text-2xl leading-none font-semibold tabular-nums"
         }
       >
@@ -240,10 +240,7 @@ export function ArtifactsPage() {
   const [creating, setCreating] = useState(false)
   const [doomed, setDoomed] = useState<Artifact | undefined>()
 
-  const ids = useMemo(
-    () => (list.items ?? []).map((a) => a.id),
-    [list.items]
-  )
+  const ids = useMemo(() => (list.items ?? []).map((a) => a.id), [list.items])
   const usages = useArtifactUsages(ids)
   const quantizations = useArtifactQuantizations(ids)
 
@@ -277,9 +274,7 @@ export function ArtifactsPage() {
         title="Artifacts"
         description="declared · immutable, content-addressed bytes"
         actions={
-          <Button onClick={() => setCreating(true)}>
-            New artifact
-          </Button>
+          <Button onClick={() => setCreating(true)}>New artifact</Button>
         }
       />
 
@@ -323,7 +318,7 @@ export function ArtifactsPage() {
                 value={term}
                 onChange={(e) => setTerm(e.target.value)}
                 placeholder="Search artifacts…"
-                className="h-8 w-56 rounded-md border border-input bg-card pl-8 pr-3 font-mono text-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="h-8 w-56 rounded-md border border-input bg-card pr-3 pl-8 font-mono text-xs placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
               />
             </div>
             <FilterSelect

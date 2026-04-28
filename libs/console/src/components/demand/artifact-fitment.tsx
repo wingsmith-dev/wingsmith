@@ -276,7 +276,10 @@ export function ArtifactFitmentPanel({
           </p>
         </div>
         {!selecting && (
-          <Tabs value={scope} onValueChange={(v) => setScope(v as FitmentScope)}>
+          <Tabs
+            value={scope}
+            onValueChange={(v) => setScope(v as FitmentScope)}
+          >
             <TabsList>
               {SCOPES.map((entry) => (
                 <TabsTrigger key={entry.value} value={entry.value}>
@@ -289,57 +292,57 @@ export function ArtifactFitmentPanel({
       </div>
 
       <div className="flex flex-wrap items-center gap-4 border-t pt-3">
-          <Terms label="Context">
-            <Select
-              value={String(contextLength ?? data?.context_length ?? "")}
-              onValueChange={(v) => setContextLength(Number(v))}
-            >
-              <SelectTrigger size="sm" className="h-7 w-24 font-mono text-2xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {choices.map((value) => (
-                  <SelectItem key={value} value={String(value)}>
-                    {value.toLocaleString()}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Terms>
-          <Terms label="Streams">
-            <Select
-              value={String(concurrency)}
-              onValueChange={(v) => setConcurrency(Number(v))}
-            >
-              <SelectTrigger size="sm" className="h-7 w-16 font-mono text-2xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CONCURRENCIES.map((value) => (
-                  <SelectItem key={value} value={String(value)}>
-                    {value}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Terms>
-          <Terms label="Quantization">
-            <Select
-              value={quantization}
-              onValueChange={(v) => setQuantization(v === "native" ? "" : v)}
-            >
-              <SelectTrigger size="sm" className="h-7 w-28 font-mono text-2xs">
-                <SelectValue placeholder="as shipped" />
-              </SelectTrigger>
-              <SelectContent>
-                {QUANTIZATIONS.map((value) => (
-                  <SelectItem key={value || "native"} value={value || "native"}>
-                    {value || "as shipped"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Terms>
+        <Terms label="Context">
+          <Select
+            value={String(contextLength ?? data?.context_length ?? "")}
+            onValueChange={(v) => setContextLength(Number(v))}
+          >
+            <SelectTrigger size="sm" className="h-7 w-24 font-mono text-2xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {choices.map((value) => (
+                <SelectItem key={value} value={String(value)}>
+                  {value.toLocaleString()}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Terms>
+        <Terms label="Streams">
+          <Select
+            value={String(concurrency)}
+            onValueChange={(v) => setConcurrency(Number(v))}
+          >
+            <SelectTrigger size="sm" className="h-7 w-16 font-mono text-2xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CONCURRENCIES.map((value) => (
+                <SelectItem key={value} value={String(value)}>
+                  {value}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Terms>
+        <Terms label="Quantization">
+          <Select
+            value={quantization}
+            onValueChange={(v) => setQuantization(v === "native" ? "" : v)}
+          >
+            <SelectTrigger size="sm" className="h-7 w-28 font-mono text-2xs">
+              <SelectValue placeholder="as shipped" />
+            </SelectTrigger>
+            <SelectContent>
+              {QUANTIZATIONS.map((value) => (
+                <SelectItem key={value || "native"} value={value || "native"}>
+                  {value || "as shipped"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Terms>
         {data && (
           <span className="ml-auto font-mono text-2xs text-muted-foreground/50">
             sized at {data.quantization}
@@ -352,96 +355,96 @@ export function ArtifactFitmentPanel({
   const content = (
     <>
       {isLoading && <Skeleton className="h-40 w-full" />}
-        {error && (
-          <p className="text-xs text-destructive">
-            {formatError(error, "Could not fit this artifact")}
+      {error && (
+        <p className="text-xs text-destructive">
+          {formatError(error, "Could not fit this artifact")}
+        </p>
+      )}
+      {data && !data.sizable && (
+        <div className="space-y-2">
+          <p className="font-mono text-2xs text-muted-foreground/60">
+            {data.note}
           </p>
-        )}
-        {data && !data.sizable && (
-          <div className="space-y-2">
-            <p className="font-mono text-2xs text-muted-foreground/60">
-              {data.note}
-            </p>
+          <RefreshSourceButton
+            artifact={artifact}
+            size="sm"
+            variant="secondary"
+          />
+        </div>
+      )}
+      {data?.sizable && data.items.length === 0 && (
+        <p className="font-mono text-2xs text-muted-foreground/60">
+          {data.note}
+        </p>
+      )}
+      {data?.sizable && data.items.length > 0 && data.note && (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5">
+          <p className="font-mono text-2xs text-amber-600 dark:text-amber-500">
+            {data.note}
+          </p>
+          {/* The note ends by saying re-resolving the source prices the window. This is that. */}
+          {data.items.every((item) => !item.kv_counted) && (
             <RefreshSourceButton
               artifact={artifact}
               size="sm"
               variant="secondary"
             />
-          </div>
-        )}
-        {data?.sizable && data.items.length === 0 && (
-          <p className="font-mono text-2xs text-muted-foreground/60">
-            {data.note}
-          </p>
-        )}
-        {data?.sizable && data.items.length > 0 && data.note && (
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5">
-            <p className="font-mono text-2xs text-amber-600 dark:text-amber-500">
-              {data.note}
-            </p>
-            {/* The note ends by saying re-resolving the source prices the window. This is that. */}
-            {data.items.every((item) => !item.kv_counted) && (
-              <RefreshSourceButton
-                artifact={artifact}
-                size="sm"
-                variant="secondary"
-              />
-            )}
-          </div>
-        )}
-        {data?.sizable && data.items.length > 0 && (
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
-                  {selecting && <th className="w-6 p-2" />}
-                  <th className="p-2 text-left font-medium">Device class</th>
-                  <th className="p-2 text-left font-medium">Fit</th>
-                  <th className="p-2 text-left font-medium">Hardware</th>
-                  <th className="p-2 text-left font-medium">
-                    {data.items.some((item) => item.kv_counted)
-                      ? "Memory"
-                      : "Weights"}
-                  </th>
-                  <th className="p-2 text-left font-medium">Free</th>
-                  <th className="p-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {data.items.map((fit) => (
-                  <FitRow
-                    key={fit.device_class}
-                    fit={fit}
-                    quantization={data.quantization}
-                    onPick={onPick}
-                    selecting={selecting}
-                    selected={selected === fit.device_class}
-                    actionLabel={actionLabel}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        {data?.sizable && data.considered > data.items.length && (
-          <button
-            type="button"
-            onClick={() => setEverything(true)}
-            className="mt-2 font-mono text-2xs text-muted-foreground/60 hover:text-primary"
-          >
-            showing the top {data.items.length} of {data.considered} ranked —
-            show all
-          </button>
-        )}
-        {data?.sizable && everything && data.items.length > 5 && (
-          <button
-            type="button"
-            onClick={() => setEverything(false)}
-            className="mt-2 font-mono text-2xs text-muted-foreground/60 hover:text-primary"
-          >
-            showing all {data.considered} — show the top 5
-          </button>
-        )}
+          )}
+        </div>
+      )}
+      {data?.sizable && data.items.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+                {selecting && <th className="w-6 p-2" />}
+                <th className="p-2 text-left font-medium">Device class</th>
+                <th className="p-2 text-left font-medium">Fit</th>
+                <th className="p-2 text-left font-medium">Hardware</th>
+                <th className="p-2 text-left font-medium">
+                  {data.items.some((item) => item.kv_counted)
+                    ? "Memory"
+                    : "Weights"}
+                </th>
+                <th className="p-2 text-left font-medium">Free</th>
+                <th className="p-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {data.items.map((fit) => (
+                <FitRow
+                  key={fit.device_class}
+                  fit={fit}
+                  quantization={data.quantization}
+                  onPick={onPick}
+                  selecting={selecting}
+                  selected={selected === fit.device_class}
+                  actionLabel={actionLabel}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {data?.sizable && data.considered > data.items.length && (
+        <button
+          type="button"
+          onClick={() => setEverything(true)}
+          className="mt-2 font-mono text-2xs text-muted-foreground/60 hover:text-primary"
+        >
+          showing the top {data.items.length} of {data.considered} ranked — show
+          all
+        </button>
+      )}
+      {data?.sizable && everything && data.items.length > 5 && (
+        <button
+          type="button"
+          onClick={() => setEverything(false)}
+          className="mt-2 font-mono text-2xs text-muted-foreground/60 hover:text-primary"
+        >
+          showing all {data.considered} — show the top 5
+        </button>
+      )}
     </>
   )
 

@@ -144,9 +144,8 @@ class ClusterRepository:
             .group_by(Device.cluster_id, Device.topology_domain_id)
             .subquery()
         )
-        return (
-            select(per_domain.c.cluster_id, func.max(per_domain.c.cnt).label("largest_block"))
-            .group_by(per_domain.c.cluster_id)
+        return select(per_domain.c.cluster_id, func.max(per_domain.c.cnt).label("largest_block")).group_by(
+            per_domain.c.cluster_id
         )
 
     async def rollup(self, cluster_ids: list) -> dict:

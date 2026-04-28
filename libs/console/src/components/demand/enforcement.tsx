@@ -32,8 +32,7 @@ const ENFORCEMENT: Record<
   conditional: {
     label: "under enforce",
     hint: "A term only while the gateway runs with its enforce capability on. Declared and compared against observation otherwise.",
-    className:
-      "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-400",
+    className: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-400",
   },
 }
 

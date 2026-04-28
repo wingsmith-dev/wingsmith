@@ -166,7 +166,10 @@ export function useRequestVerdict(
   })
 }
 
-export function useBenchmarkVerdict(run: string | undefined, criteria?: string) {
+export function useBenchmarkVerdict(
+  run: string | undefined,
+  criteria?: string
+) {
   return useQuery({
     queryKey: ["benchmarks", "verdict", run, criteria],
     queryFn: () => fetchBenchmarkVerdict(run!, criteria),

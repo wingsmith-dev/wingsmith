@@ -95,9 +95,9 @@ describe("requiresSingleDomain", () => {
   })
 
   it("does not, once the fit is pipeline-parallel across nodes", () => {
-    expect(
-      requiresSingleDomain({ ...footprint, pipeline_parallel: 2 })
-    ).toBe(false)
+    expect(requiresSingleDomain({ ...footprint, pipeline_parallel: 2 })).toBe(
+      false
+    )
   })
 
   it("does not for a single device, which has no group to split", () => {
@@ -155,13 +155,15 @@ describe("derivedRecipeRequest", () => {
 
 describe("matchExistingRecipe", () => {
   it("reuses a recipe with the same spec", () => {
-    expect(
-      matchExistingRecipe([recipeLike()], artifact, footprint)?.id
-    ).toBe("rcp_1")
+    expect(matchExistingRecipe([recipeLike()], artifact, footprint)?.id).toBe(
+      "rcp_1"
+    )
   })
 
   it("does not reuse one that differs on a field the fit set", () => {
-    const wider = recipeLike({ parallelism: { tensor: 4, pipeline: 1, expert: 1 } })
+    const wider = recipeLike({
+      parallelism: { tensor: 4, pipeline: 1, expert: 1 },
+    })
     expect(matchExistingRecipe([wider], artifact, footprint)).toBeUndefined()
   })
 

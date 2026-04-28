@@ -51,10 +51,7 @@ function Json({ value }: { value: unknown }) {
 }
 
 /** One tile in the summary strip at the top of the page. */
-function Stat({
-  label,
-  children,
-}: React.PropsWithChildren<{ label: string }>) {
+function Stat({ label, children }: React.PropsWithChildren<{ label: string }>) {
   return (
     <Card className="p-4">
       <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
@@ -188,7 +185,9 @@ export function RecipeDetailPage() {
   }
   const resolvedArgs = recipe?.resolved_engine_args ?? {}
   const engineArgs = recipe?.engine_args ?? {}
-  const overrides = recipe ? servingOverrides(recipe.engine, engineArgs, serving) : []
+  const overrides = recipe
+    ? servingOverrides(recipe.engine, engineArgs, serving)
+    : []
 
   return (
     <div className="flex flex-col">
@@ -198,16 +197,10 @@ export function RecipeDetailPage() {
         actions={
           recipe && (
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setEditing(true)}
-              >
+              <Button variant="outline" onClick={() => setEditing(true)}>
                 Edit
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => setDoomed(true)}
-              >
+              <Button variant="outline" onClick={() => setDoomed(true)}>
                 Delete
               </Button>
             </div>
@@ -287,7 +280,9 @@ export function RecipeDetailPage() {
                 ) : (
                   <span>
                     {Math.round(peakThroughput).toLocaleString()}{" "}
-                    <span className="text-2xs text-muted-foreground">tok/s</span>
+                    <span className="text-2xs text-muted-foreground">
+                      tok/s
+                    </span>
                   </span>
                 )}
               </Stat>
@@ -328,8 +323,8 @@ export function RecipeDetailPage() {
                     {overrides.length > 0 && (
                       <p className="text-2xs text-amber-700 dark:text-amber-400">
                         {overrides.map((o) => `--${o.flag}`).join(", ")} came
-                        from the typed serving block; the engine args spelling of
-                        each is ignored.
+                        from the typed serving block; the engine args spelling
+                        of each is ignored.
                       </p>
                     )}
                     {Object.keys(engineArgs).length > 0 && (
@@ -338,8 +333,8 @@ export function RecipeDetailPage() {
                           As declared
                         </div>
                         <p className="font-mono text-2xs text-muted-foreground/50">
-                          What the recipe stores, before the serving block is laid
-                          over the top.
+                          What the recipe stores, before the serving block is
+                          laid over the top.
                         </p>
                         <Json value={engineArgs} />
                       </div>
@@ -423,7 +418,9 @@ export function RecipeDetailPage() {
                           <Dash>{cache.kv_cache_fraction}</Dash>
                         </Field>
                         <Field label="Max batch tokens">
-                          <Dash>{recipe.max_batch_tokens?.toLocaleString()}</Dash>
+                          <Dash>
+                            {recipe.max_batch_tokens?.toLocaleString()}
+                          </Dash>
                         </Field>
                         <Field label="Prefix cache">
                           {cache.prefix_cache_enabled ? "on" : "off"}
@@ -477,9 +474,14 @@ export function RecipeDetailPage() {
                         label="Structured output modes"
                         className="sm:col-span-2"
                       >
-                        <ChoiceSet value={capabilities.structured_output_modes} />
+                        <ChoiceSet
+                          value={capabilities.structured_output_modes}
+                        />
                       </Field>
-                      <Field label="Tool choice modes" className="sm:col-span-2">
+                      <Field
+                        label="Tool choice modes"
+                        className="sm:col-span-2"
+                      >
                         <ChoiceSet value={capabilities.tool_choice_modes} />
                       </Field>
                       <Field label="Input modalities" className="sm:col-span-2">
@@ -542,7 +544,9 @@ export function RecipeDetailPage() {
                   <CardContent className="space-y-2.5">
                     <KvRow label="Status">
                       <span className="inline-flex items-center gap-1.5">
-                        <StatusDot tone={recipeLifecycleTone(recipe.lifecycle)} />
+                        <StatusDot
+                          tone={recipeLifecycleTone(recipe.lifecycle)}
+                        />
                         {recipe.lifecycle}
                       </span>
                     </KvRow>
@@ -641,7 +645,11 @@ export function RecipeDetailPage() {
                       <Dash>{recipe.dtype}</Dash>
                     </KvRow>
                     <KvRow label="Size on disk">
-                      {artifact ? formatBytes(artifact.size_bytes) : <Dash>{null}</Dash>}
+                      {artifact ? (
+                        formatBytes(artifact.size_bytes)
+                      ) : (
+                        <Dash>{null}</Dash>
+                      )}
                     </KvRow>
                     <KvRow label="Fingerprint">
                       <Dash>{artifact?.digest}</Dash>

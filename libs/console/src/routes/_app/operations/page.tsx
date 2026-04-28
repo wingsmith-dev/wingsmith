@@ -93,7 +93,10 @@ export function OperationsPage() {
           />
         </div>
 
-        <Tabs value={view} onValueChange={(next) => setView(next as typeof view)}>
+        <Tabs
+          value={view}
+          onValueChange={(next) => setView(next as typeof view)}
+        >
           <TabsList>
             <TabsTrigger value="operations">Operations</TabsTrigger>
             <TabsTrigger value="events">Events</TabsTrigger>
@@ -136,9 +139,9 @@ export function OperationsPage() {
             />
 
             <p className="px-1 text-2xs text-muted-foreground/60">
-              Most operations start from the resource they act on — cordon from a
-              node, roll from a deployment. This page is where you come back to see
-              whether they finished.
+              Most operations start from the resource they act on — cordon from
+              a node, roll from a deployment. This page is where you come back
+              to see whether they finished.
             </p>
           </TabsContent>
 
@@ -173,9 +176,9 @@ export function OperationsPage() {
             />
 
             <p className="px-1 text-2xs text-muted-foreground/60">
-              Events tagged with an operation id came from something we initiated.
-              Untagged ones — a lost heartbeat, an ECC error — are the cluster
-              telling us something on its own.
+              Events tagged with an operation id came from something we
+              initiated. Untagged ones — a lost heartbeat, an ECC error — are
+              the cluster telling us something on its own.
             </p>
           </TabsContent>
         </Tabs>
@@ -257,7 +260,10 @@ function EventFeed({
             >
               {formatRelative(event.occurred_at)}
             </span>
-            <StatusDot tone={severityTone(event.severity)} className="self-center" />
+            <StatusDot
+              tone={severityTone(event.severity)}
+              className="self-center"
+            />
             <div className="min-w-0 text-xs leading-relaxed">
               <span>{event.message}</span>
               <div className="mt-0.5 flex flex-wrap items-center gap-2">

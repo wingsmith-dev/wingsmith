@@ -14,11 +14,7 @@ import {
 } from "@tabler/icons-react"
 
 type ClusterHealth =
-  | "healthy"
-  | "degraded"
-  | "down"
-  | "provisioning"
-  | "onboarding"
+  "healthy" | "degraded" | "down" | "provisioning" | "onboarding"
 
 const HEALTH_TONE: Record<ClusterHealth, StatusTone> = {
   healthy: "ok",
@@ -93,7 +89,11 @@ export function ClusterCard({
       ? Math.round((gpuAllocated / gpuTotal) * 100)
       : 0
   const fillTone =
-    gpuPct >= 90 ? "bg-amber-500" : gpuPct <= 30 ? "bg-muted-foreground/70" : "bg-primary"
+    gpuPct >= 90
+      ? "bg-amber-500"
+      : gpuPct <= 30
+        ? "bg-muted-foreground/70"
+        : "bg-primary"
 
   const nodeTotal = counted?.nodes_total ?? 0
   const nodeReady = counted ? counted.nodes_ready : null
@@ -126,7 +126,10 @@ export function ClusterCard({
               params={{ clusterId: cluster.id }}
               className="flex items-center gap-2 truncate font-medium tracking-tight hover:text-primary"
             >
-              <StatusDot tone={tone} pulse={cluster.sync.state === "connected"} />
+              <StatusDot
+                tone={tone}
+                pulse={cluster.sync.state === "connected"}
+              />
               {clusterLabel(cluster)}
             </Link>
             <span className="mt-1 block truncate font-mono text-2xs text-muted-foreground/60">
@@ -141,7 +144,9 @@ export function ClusterCard({
               )}
             >
               <IconActivity className="size-3" />
-              {formatRelative(cluster.sync.last_seen_at ?? cluster.sync.last_sync_at)}
+              {formatRelative(
+                cluster.sync.last_seen_at ?? cluster.sync.last_sync_at
+              )}
             </span>
             <RowActions
               actions={[

@@ -16,11 +16,7 @@ export type BenchmarkMode = "single" | "warmup" | "ramp" | "sweep" | "soak"
 
 export type BenchmarkTier = "L1" | "L2"
 
-export type VerdictOutcome =
-  | "pass"
-  | "fail"
-  | "inconclusive"
-  | "not_applicable"
+export type VerdictOutcome = "pass" | "fail" | "inconclusive" | "not_applicable"
 
 /**
  * What was running when a run was taken. Snapshotted by the plane at creation

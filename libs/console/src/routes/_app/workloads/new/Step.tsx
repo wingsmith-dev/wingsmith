@@ -45,7 +45,10 @@ export function Step({
   const body = answered ? answer : ready ? children : null
 
   return (
-    <Card size="sm" className={cn("transition-opacity", !ready && "opacity-50")}>
+    <Card
+      size="sm"
+      className={cn("transition-opacity", !ready && "opacity-50")}
+    >
       <CardHeader>
         <div className="flex items-start gap-2.5">
           <div

@@ -517,9 +517,7 @@ def test_the_envelope_is_applied_once_and_not_compounded():
         quantization="fp16",
         context_length=8192,
     )
-    assert estimate.total_gb == pytest.approx(
-        estimate.weights_gb + estimate.kv_cache_gb + estimate.activations_gb
-    )
+    assert estimate.total_gb == pytest.approx(estimate.weights_gb + estimate.kv_cache_gb + estimate.activations_gb)
     assert estimate.required_gb == pytest.approx(estimate.total_gb / 0.9)
 
 
@@ -531,9 +529,7 @@ def test_activations_scale_with_the_batch_and_not_with_the_weights():
     huge = estimate_vram(total_params=2_800_000_000_000, shape=shape, context_length=8192)
     assert small.activations_gb == huge.activations_gb
 
-    wider = estimate_vram(
-        total_params=8_000_000_000, shape=shape, context_length=8192, batch_tokens=32_768
-    )
+    wider = estimate_vram(total_params=8_000_000_000, shape=shape, context_length=8192, batch_tokens=32_768)
     assert wider.activations_gb == pytest.approx(small.activations_gb * 4)
 
 

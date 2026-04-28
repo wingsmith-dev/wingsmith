@@ -130,13 +130,8 @@ export function WorkloadDetailPage() {
             {workload && (
               <WriteAction>
                 <div className="flex gap-2">
-                  <Button onClick={() => setScaling(true)}>
-                    Scale
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setPausing(true)}
-                  >
+                  <Button onClick={() => setScaling(true)}>Scale</Button>
+                  <Button variant="outline" onClick={() => setPausing(true)}>
                     {workload.paused ? "Resume" : "Pause"}
                   </Button>
                   <Button
@@ -149,16 +144,10 @@ export function WorkloadDetailPage() {
                   >
                     Drain
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setEditing(true)}
-                  >
+                  <Button variant="outline" onClick={() => setEditing(true)}>
                     Edit
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setDoomed(true)}
-                  >
+                  <Button variant="outline" onClick={() => setDoomed(true)}>
                     Delete
                   </Button>
                 </div>
@@ -249,9 +238,7 @@ export function WorkloadDetailPage() {
               <StatusLabel tone={workloadPhaseTone(workload.phase)}>
                 {workload.phase}
               </StatusLabel>
-              {workload.paused && (
-                <StatusLabel tone="warn">paused</StatusLabel>
-              )}
+              {workload.paused && <StatusLabel tone="warn">paused</StatusLabel>}
               <span className="font-mono text-2xs text-muted-foreground/60">
                 {workload.kind} · {workload.deployments.length} cluster
                 {workload.deployments.length === 1 ? "" : "s"}
@@ -523,7 +510,10 @@ export function WorkloadDetailPage() {
                   {/* TODO-API sustainable concurrency is a data-plane analytic, not a benchmark field */}
                   <StatTile label="Sustainable concurrency" value="72" />
                   {/* TODO-API peak throughput is read from a harness summary the plane never normalises */}
-                  <StatTile label="Peak throughput tested" value="19.3k tok/s" />
+                  <StatTile
+                    label="Peak throughput tested"
+                    value="19.3k tok/s"
+                  />
                   {/* TODO-API tuning recommendation is not computed by the plane */}
                   <StatTile
                     label="Recommendation"
@@ -1207,7 +1197,6 @@ function HeatmapLegend() {
 
 /* ---- placement topology --------------------------------------------- */
 
-
 /**
  * The workload's own occupancy of one node, from `/placement`. The plane
  * reports how many of the node's devices this workload holds; it does not
@@ -1356,7 +1345,7 @@ function LogViewer() {
             value={term}
             onChange={(e) => setTerm(e.target.value)}
             placeholder="Search logs…"
-            className="h-8 w-52 rounded-md border border-input bg-card pl-7 pr-3 text-xs placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            className="h-8 w-52 rounded-md border border-input bg-card pr-3 pl-7 text-xs placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           />
         </label>
 
@@ -1393,8 +1382,7 @@ function LogViewer() {
                 className={cn(
                   "w-12 shrink-0 font-semibold",
                   line.level === "INFO" && "text-primary",
-                  line.level === "WARN" &&
-                    "text-amber-600 dark:text-amber-400",
+                  line.level === "WARN" && "text-amber-600 dark:text-amber-400",
                   line.level === "ERROR" && "text-destructive"
                 )}
               >
@@ -1526,10 +1514,29 @@ const MOCK_LATENCY: LatencyRow[] = [
   { percentile: "p99", ttft: "890ms", itl: "52ms", e2e: "4.6s" },
 ]
 const latencyColumns = [
-  { key: "percentile", header: "Percentile", cell: (r: LatencyRow) => mono(r.percentile) },
-  { key: "ttft", header: "TTFT", align: "right" as const, cell: (r: LatencyRow) => mono(r.ttft) },
-  { key: "itl", header: "Inter-token", align: "right" as const, cell: (r: LatencyRow) => mono(r.itl) },
-  { key: "e2e", header: "End-to-end", align: "right" as const, cell: (r: LatencyRow) => mono(r.e2e) },
+  {
+    key: "percentile",
+    header: "Percentile",
+    cell: (r: LatencyRow) => mono(r.percentile),
+  },
+  {
+    key: "ttft",
+    header: "TTFT",
+    align: "right" as const,
+    cell: (r: LatencyRow) => mono(r.ttft),
+  },
+  {
+    key: "itl",
+    header: "Inter-token",
+    align: "right" as const,
+    cell: (r: LatencyRow) => mono(r.itl),
+  },
+  {
+    key: "e2e",
+    header: "End-to-end",
+    align: "right" as const,
+    cell: (r: LatencyRow) => mono(r.e2e),
+  },
 ]
 
 interface SweepRow {
@@ -1543,20 +1550,89 @@ interface SweepRow {
   verdict: string
 }
 const MOCK_SWEEP: SweepRow[] = [
-  { run: "1", seqs: "32", batch: "4096", kv: "16", spec: "Off", throughput: "12,100 tok/s", p99: "340ms", verdict: "Baseline" },
-  { run: "2", seqs: "64", batch: "8192", kv: "16", spec: "Off", throughput: "16,900 tok/s", p99: "420ms", verdict: "Better" },
-  { run: "3", seqs: "64", batch: "8192", kv: "32", spec: "Off", throughput: "18,420 tok/s", p99: "890ms", verdict: "Current" },
-  { run: "4", seqs: "64", batch: "8192", kv: "32", spec: "On · draft 8b", throughput: "21,600 tok/s", p99: "610ms", verdict: "Needs soak" },
+  {
+    run: "1",
+    seqs: "32",
+    batch: "4096",
+    kv: "16",
+    spec: "Off",
+    throughput: "12,100 tok/s",
+    p99: "340ms",
+    verdict: "Baseline",
+  },
+  {
+    run: "2",
+    seqs: "64",
+    batch: "8192",
+    kv: "16",
+    spec: "Off",
+    throughput: "16,900 tok/s",
+    p99: "420ms",
+    verdict: "Better",
+  },
+  {
+    run: "3",
+    seqs: "64",
+    batch: "8192",
+    kv: "32",
+    spec: "Off",
+    throughput: "18,420 tok/s",
+    p99: "890ms",
+    verdict: "Current",
+  },
+  {
+    run: "4",
+    seqs: "64",
+    batch: "8192",
+    kv: "32",
+    spec: "On · draft 8b",
+    throughput: "21,600 tok/s",
+    p99: "610ms",
+    verdict: "Needs soak",
+  },
 ]
 const sweepColumns = [
   { key: "run", header: "Run", cell: (r: SweepRow) => mono(r.run) },
-  { key: "seqs", header: "max_num_seqs", align: "right" as const, cell: (r: SweepRow) => mono(r.seqs) },
-  { key: "batch", header: "max_batch_tokens", align: "right" as const, cell: (r: SweepRow) => mono(r.batch) },
-  { key: "kv", header: "KV block", align: "right" as const, cell: (r: SweepRow) => mono(r.kv) },
-  { key: "spec", header: "Spec. decoding", cell: (r: SweepRow) => <span className="text-xs">{r.spec}</span> },
-  { key: "throughput", header: "Throughput", align: "right" as const, cell: (r: SweepRow) => mono(r.throughput) },
-  { key: "p99", header: "p99 latency", align: "right" as const, cell: (r: SweepRow) => mono(r.p99) },
-  { key: "verdict", header: "Verdict", cell: (r: SweepRow) => <span className="text-xs">{r.verdict}</span> },
+  {
+    key: "seqs",
+    header: "max_num_seqs",
+    align: "right" as const,
+    cell: (r: SweepRow) => mono(r.seqs),
+  },
+  {
+    key: "batch",
+    header: "max_batch_tokens",
+    align: "right" as const,
+    cell: (r: SweepRow) => mono(r.batch),
+  },
+  {
+    key: "kv",
+    header: "KV block",
+    align: "right" as const,
+    cell: (r: SweepRow) => mono(r.kv),
+  },
+  {
+    key: "spec",
+    header: "Spec. decoding",
+    cell: (r: SweepRow) => <span className="text-xs">{r.spec}</span>,
+  },
+  {
+    key: "throughput",
+    header: "Throughput",
+    align: "right" as const,
+    cell: (r: SweepRow) => mono(r.throughput),
+  },
+  {
+    key: "p99",
+    header: "p99 latency",
+    align: "right" as const,
+    cell: (r: SweepRow) => mono(r.p99),
+  },
+  {
+    key: "verdict",
+    header: "Verdict",
+    cell: (r: SweepRow) => <span className="text-xs">{r.verdict}</span>,
+  },
 ]
 
 const replicaColumns = [
@@ -1627,10 +1703,38 @@ interface RevisionRow {
   deployed: string
 }
 const MOCK_REVISIONS: RevisionRow[] = [
-  { version: "v12", change: "llama-3.1-70b-chat-fp8 (recipe updated)", rollout: "Rolling", status: "Active", statusTone: "ok", deployed: "Aug 14" },
-  { version: "v11", change: "Quantization bf16 → fp8", rollout: "Canary (10% → 100%)", status: "Superseded", statusTone: "neutral", deployed: "Aug 09" },
-  { version: "v10", change: "Hardware 8x A100 → 8x H100", rollout: "Rolling", status: "Superseded", statusTone: "neutral", deployed: "Jul 30" },
-  { version: "v9", change: "Initial release (bf16, 8x A100)", rollout: "Rolling", status: "Superseded", statusTone: "neutral", deployed: "Jul 28" },
+  {
+    version: "v12",
+    change: "llama-3.1-70b-chat-fp8 (recipe updated)",
+    rollout: "Rolling",
+    status: "Active",
+    statusTone: "ok",
+    deployed: "Aug 14",
+  },
+  {
+    version: "v11",
+    change: "Quantization bf16 → fp8",
+    rollout: "Canary (10% → 100%)",
+    status: "Superseded",
+    statusTone: "neutral",
+    deployed: "Aug 09",
+  },
+  {
+    version: "v10",
+    change: "Hardware 8x A100 → 8x H100",
+    rollout: "Rolling",
+    status: "Superseded",
+    statusTone: "neutral",
+    deployed: "Jul 30",
+  },
+  {
+    version: "v9",
+    change: "Initial release (bf16, 8x A100)",
+    rollout: "Rolling",
+    status: "Superseded",
+    statusTone: "neutral",
+    deployed: "Jul 28",
+  },
 ]
 const revisionColumns = [
   {
@@ -1649,8 +1753,16 @@ const revisionColumns = [
       </span>
     ),
   },
-  { key: "change", header: "Change", cell: (r: RevisionRow) => <span className="text-xs">{r.change}</span> },
-  { key: "rollout", header: "Rollout", cell: (r: RevisionRow) => <span className="text-xs">{r.rollout}</span> },
+  {
+    key: "change",
+    header: "Change",
+    cell: (r: RevisionRow) => <span className="text-xs">{r.change}</span>,
+  },
+  {
+    key: "rollout",
+    header: "Rollout",
+    cell: (r: RevisionRow) => <span className="text-xs">{r.rollout}</span>,
+  },
   {
     key: "status",
     header: "Status",
@@ -1661,7 +1773,12 @@ const revisionColumns = [
       </span>
     ),
   },
-  { key: "deployed", header: "Deployed", align: "right" as const, cell: (r: RevisionRow) => mono(r.deployed) },
+  {
+    key: "deployed",
+    header: "Deployed",
+    align: "right" as const,
+    cell: (r: RevisionRow) => mono(r.deployed),
+  },
 ]
 
 interface LogLine {
@@ -1671,15 +1788,70 @@ interface LogLine {
   msg: string
 }
 const MOCK_LOGS: LogLine[] = [
-  { time: "08-24 14:01:58", level: "WARN", replica: "replica-1", msg: "queue depth exceeded threshold (128), triggering scale-up evaluation" },
-  { time: "08-24 14:02:03", level: "INFO", replica: "autoscaler", msg: "scaling us-east-1a from 3 to 4 replicas" },
-  { time: "08-24 14:02:41", level: "INFO", replica: "replica-3", msg: "model loaded, entering ready state (18.4s)" },
-  { time: "08-24 14:02:44", level: "INFO", replica: "replica-3", msg: "passed readiness probe, added to load balancer" },
-  { time: "08-24 14:13:57", level: "INFO", replica: "autoscaler", msg: "traffic normalized, queue depth nominal" },
-  { time: "08-24 09:12:03", level: "ERROR", replica: "replica-4", msg: "CUDA out of memory during batch expansion, restarting worker" },
-  { time: "08-24 09:12:05", level: "WARN", replica: "replica-4", msg: "restarting container (attempt 1/3)" },
-  { time: "08-24 09:12:24", level: "INFO", replica: "replica-4", msg: "model loaded, entering ready state (19.1s)" },
-  { time: "08-23 22:41:09", level: "INFO", replica: "replica-0", msg: "request batch flushed, size=32, avg_ttft=204ms" },
-  { time: "08-18 02:14:00", level: "WARN", replica: "replica-5", msg: "node drain signal received, draining connections before eviction" },
-  { time: "08-18 02:14:32", level: "INFO", replica: "scheduler", msg: "replica-5 rescheduled to node-0233, rejoined load balancer" },
+  {
+    time: "08-24 14:01:58",
+    level: "WARN",
+    replica: "replica-1",
+    msg: "queue depth exceeded threshold (128), triggering scale-up evaluation",
+  },
+  {
+    time: "08-24 14:02:03",
+    level: "INFO",
+    replica: "autoscaler",
+    msg: "scaling us-east-1a from 3 to 4 replicas",
+  },
+  {
+    time: "08-24 14:02:41",
+    level: "INFO",
+    replica: "replica-3",
+    msg: "model loaded, entering ready state (18.4s)",
+  },
+  {
+    time: "08-24 14:02:44",
+    level: "INFO",
+    replica: "replica-3",
+    msg: "passed readiness probe, added to load balancer",
+  },
+  {
+    time: "08-24 14:13:57",
+    level: "INFO",
+    replica: "autoscaler",
+    msg: "traffic normalized, queue depth nominal",
+  },
+  {
+    time: "08-24 09:12:03",
+    level: "ERROR",
+    replica: "replica-4",
+    msg: "CUDA out of memory during batch expansion, restarting worker",
+  },
+  {
+    time: "08-24 09:12:05",
+    level: "WARN",
+    replica: "replica-4",
+    msg: "restarting container (attempt 1/3)",
+  },
+  {
+    time: "08-24 09:12:24",
+    level: "INFO",
+    replica: "replica-4",
+    msg: "model loaded, entering ready state (19.1s)",
+  },
+  {
+    time: "08-23 22:41:09",
+    level: "INFO",
+    replica: "replica-0",
+    msg: "request batch flushed, size=32, avg_ttft=204ms",
+  },
+  {
+    time: "08-18 02:14:00",
+    level: "WARN",
+    replica: "replica-5",
+    msg: "node drain signal received, draining connections before eviction",
+  },
+  {
+    time: "08-18 02:14:32",
+    level: "INFO",
+    replica: "scheduler",
+    msg: "replica-5 rescheduled to node-0233, rejoined load balancer",
+  },
 ]

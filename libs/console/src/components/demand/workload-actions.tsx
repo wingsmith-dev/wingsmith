@@ -1,4 +1,9 @@
-import { FormDialog, FormGrid, NumberField, SelectField } from "@/components/layout/form"
+import {
+  FormDialog,
+  FormGrid,
+  NumberField,
+  SelectField,
+} from "@/components/layout/form"
 import { formatError } from "@/lib/format"
 import { scaleUnit } from "@/modules/demand/display"
 import type { Workload, WorkloadDeployment } from "@/modules/demand/types"
@@ -72,11 +77,7 @@ export function ScaleWorkloadDialog({
       submitLabel="Scale"
       disabled={desired === null}
       onSubmit={() =>
-        run(
-          "workload.scale",
-          { desired: desired ?? 0, min, max },
-          null
-        )
+        run("workload.scale", { desired: desired ?? 0, min, max }, null)
       }
     >
       <FormGrid>

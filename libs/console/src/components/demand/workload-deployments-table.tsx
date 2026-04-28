@@ -1,4 +1,8 @@
-import { DataTable, type Column, type ListState } from "@/components/layout/data-table"
+import {
+  DataTable,
+  type Column,
+  type ListState,
+} from "@/components/layout/data-table"
 import { Dash, Id } from "@/components/layout/mono"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
@@ -175,8 +179,8 @@ function columns(
       secondary: true,
       cell: (deployment) => (
         <span className="font-mono text-2xs text-muted-foreground">
-          {deployment.replicas.at_current_generation}/{deployment.replicas.total}{" "}
-          · gen {deployment.generation}
+          {deployment.replicas.at_current_generation}/
+          {deployment.replicas.total} · gen {deployment.generation}
         </span>
       ),
     },

@@ -47,7 +47,6 @@ distinguished instead of silently failing to resolve.
 """
 
 
-
 class Principal(Struct):
     """The identity of a caller.
 

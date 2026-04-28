@@ -50,7 +50,9 @@ function ByModel({ devices }: { devices: Device[] }) {
     if (bucket) bucket.push(device)
     else byClass.set(device.device_class, [device])
   }
-  const groups = [...byClass.entries()].sort((a, b) => b[1].length - a[1].length)
+  const groups = [...byClass.entries()].sort(
+    (a, b) => b[1].length - a[1].length
+  )
 
   return (
     <div className="space-y-3">
@@ -124,8 +126,7 @@ function ModelGroup({ name, devices }: { name: string; devices: Device[] }) {
               {allocated} allocated / {total}
             </span>
             <span>
-              {clusters.length}{" "}
-              {clusters.length === 1 ? "cluster" : "clusters"}
+              {clusters.length} {clusters.length === 1 ? "cluster" : "clusters"}
             </span>
           </div>
           <div className="flex h-2 overflow-hidden rounded-full bg-secondary">
@@ -203,7 +204,9 @@ function ClusterRow({ row }: { row: ClusterRollup }) {
       </TableCell>
       <TableCell className="text-right font-mono text-2xs tabular-nums">
         {row.fault > 0 ? (
-          <span className="text-amber-600 dark:text-amber-400">{row.fault}</span>
+          <span className="text-amber-600 dark:text-amber-400">
+            {row.fault}
+          </span>
         ) : (
           <span className="text-muted-foreground/40">—</span>
         )}
@@ -219,7 +222,7 @@ function ClusterRow({ row }: { row: ClusterRollup }) {
               style={{ width: `${pct}%` }}
             />
           </div>
-          <span className="w-9 text-right font-mono text-2xs tabular-nums text-muted-foreground">
+          <span className="w-9 text-right font-mono text-2xs text-muted-foreground tabular-nums">
             {pct}%
           </span>
         </div>

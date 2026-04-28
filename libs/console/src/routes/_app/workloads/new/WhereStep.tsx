@@ -261,8 +261,8 @@ export function WhereStep({
       {value.mode === "pin" && (
         <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
           <p className="font-mono text-2xs text-amber-600 dark:text-amber-500">
-            A pinned workload gets exactly one deployment on the cluster you name,
-            whether or not it has the devices for it.
+            A pinned workload gets exactly one deployment on the cluster you
+            name, whether or not it has the devices for it.
           </p>
           <div className="flex flex-wrap gap-2">
             {(clusters ?? []).map((cluster) => (
@@ -372,8 +372,8 @@ function CapacityHint({ fit }: { fit: ArtifactFit | null }) {
   if (!fit)
     return (
       <p className="rounded-lg border bg-muted/20 p-3 font-mono text-2xs text-muted-foreground/60">
-        Placement picks the cluster when you deploy. The workload page shows what it
-        decided, and why every other cluster lost.
+        Placement picks the cluster when you deploy. The workload page shows
+        what it decided, and why every other cluster lost.
       </p>
     )
   const short = fit.devices_allocatable < fit.device_count
@@ -394,9 +394,9 @@ function CapacityHint({ fit }: { fit: ArtifactFit | null }) {
           </TooltipTrigger>
           <TooltipContent className="max-w-80">
             Placement preview needs a recipe, and this deploy would derive a new
-            one. Free devices say nothing about whether {fit.device_count} of them
-            share a topology domain — placement answers that when you deploy, and
-            the workload page shows what it decided.
+            one. Free devices say nothing about whether {fit.device_count} of
+            them share a topology domain — placement answers that when you
+            deploy, and the workload page shows what it decided.
           </TooltipContent>
         </Tooltip>
       </div>

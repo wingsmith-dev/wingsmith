@@ -103,9 +103,7 @@ logger = logging.getLogger(__name__)
 GATEWAY = "gateway"
 """The source key the gateway's own series are read under. Not a cluster name."""
 
-NO_GATEWAY = (
-    "no metrics store for the plane to read the gateway's own series from; set HANGAR_METRICS_SOURCES"
-)
+NO_GATEWAY = "no metrics store for the plane to read the gateway's own series from; set HANGAR_METRICS_SOURCES"
 
 FLEET = "fleet"
 """The scope, the ref, and the source name for an answer about every cluster at once."""

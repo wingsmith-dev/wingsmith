@@ -154,7 +154,8 @@ export function WorkloadForm({
       },
       {
         onSuccess: () => done("created"),
-        onError: (e) => toast.error(formatError(e, "Could not create workload")),
+        onError: (e) =>
+          toast.error(formatError(e, "Could not create workload")),
       }
     )
   }

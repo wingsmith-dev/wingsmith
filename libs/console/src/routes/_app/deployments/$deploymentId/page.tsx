@@ -19,11 +19,7 @@ import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { parallelismLabel, workloadPhaseTone } from "@/modules/demand/display"
-import {
-  useDeployment,
-  useRecipe,
-  useWorkload,
-} from "@/modules/demand/queries"
+import { useDeployment, useRecipe, useWorkload } from "@/modules/demand/queries"
 import { DeploymentLifecycle } from "@/components/demand/deployment-lifecycle"
 import { useState } from "react"
 import { useOperations } from "@/modules/machinery/queries"
@@ -104,22 +100,14 @@ export function DeploymentDetailPage() {
               <NewBenchmarkDialog
                 deployment={deployment.id}
                 stayOnPage
-                trigger={
-                  <Button variant="outline">
-                    Run benchmark
-                  </Button>
-                }
+                trigger={<Button variant="outline">Run benchmark</Button>}
               />
             )}
             {deployment && (
               <NewOperationDialog
                 defaultType="deployment.roll"
                 defaultTarget={deployment.id}
-                trigger={
-                  <Button variant="outline">
-                    Roll
-                  </Button>
-                }
+                trigger={<Button variant="outline">Roll</Button>}
               />
             )}
             <Button asChild variant="outline">
@@ -131,7 +119,6 @@ export function DeploymentDetailPage() {
           </div>
         }
       />
-
 
       <div className="space-y-4 p-4">
         {isLoading && <Skeleton className="h-40 w-full" />}

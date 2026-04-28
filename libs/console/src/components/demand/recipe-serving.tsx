@@ -13,7 +13,10 @@ import {
 import { Dash } from "@/components/layout/mono"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { EnforcementBadge } from "@/components/demand/enforcement"
-import { servingOverrides, type ServingOverride } from "@/modules/demand/display"
+import {
+  servingOverrides,
+  type ServingOverride,
+} from "@/modules/demand/display"
 import {
   CONTEXT_OVERFLOW_MODES,
   INPUT_MODALITIES,
@@ -47,7 +50,8 @@ export function ServingFields({
   onChange: (value: RecipeServing) => void
   engineArgs: Record<string, unknown>
 }) {
-  const set = (patch: Partial<RecipeServing>) => onChange({ ...value, ...patch })
+  const set = (patch: Partial<RecipeServing>) =>
+    onChange({ ...value, ...patch })
   const setReasoning = (patch: Partial<RecipeServing["reasoning"]>) =>
     onChange({ ...value, reasoning: { ...value.reasoning, ...patch } })
 
@@ -209,7 +213,9 @@ export function CapabilityFields({
         <ChoiceSetField
           label="Structured output modes"
           value={value.structured_output_modes}
-          onChange={(structured_output_modes) => set({ structured_output_modes })}
+          onChange={(structured_output_modes) =>
+            set({ structured_output_modes })
+          }
           options={STRUCTURED_OUTPUT_MODES}
           hint="Three support levels, not one flag. Valid JSON is not an honoured schema."
         />
@@ -410,7 +416,8 @@ export function ServingCards({
         <CardContent className="space-y-2">
           <p className="text-2xs text-muted-foreground/70">
             The declared engine args with the flags the typed serving block
-            dictates laid over the top. Derived on every read and stored nowhere.
+            dictates laid over the top. Derived on every read and stored
+            nowhere.
           </p>
           {Object.keys(resolvedArgs).length === 0 ? (
             <p className="font-mono text-2xs text-muted-foreground/50">

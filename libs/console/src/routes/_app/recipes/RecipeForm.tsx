@@ -110,7 +110,10 @@ export function RecipeForm({
       1
   )
   const [pipeline, setPipeline] = useState<number | null>(
-    recipe?.parallelism.pipeline ?? footprint?.pipeline_parallel ?? draft?.pipeline_parallel ?? 1
+    recipe?.parallelism.pipeline ??
+      footprint?.pipeline_parallel ??
+      draft?.pipeline_parallel ??
+      1
   )
   const [expert, setExpert] = useState<number | null>(
     recipe?.parallelism.expert ?? draft?.expert_parallel ?? 1

@@ -18,8 +18,7 @@ import { Link } from "@tanstack/react-router"
  * claim is one hover away from every number rather than in a document.
  */
 const LEVEL_STYLES: Record<BenchmarkLevel, string> = {
-  deployment:
-    "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+  deployment: "border-sky-500/40 bg-sky-500/10 text-sky-700 dark:text-sky-300",
   workload:
     "border-violet-500/40 bg-violet-500/10 text-violet-700 dark:text-violet-300",
   endpoint:
@@ -71,13 +70,21 @@ export function TargetLink({
   if (!target) return <span className="text-muted-foreground/40">—</span>
   if (level === "endpoint")
     return (
-      <Link to="/endpoints/$endpointId" params={{ endpointId: target }} className={style}>
+      <Link
+        to="/endpoints/$endpointId"
+        params={{ endpointId: target }}
+        className={style}
+      >
         {target}
       </Link>
     )
   if (level === "workload")
     return (
-      <Link to="/workloads/$workloadId" params={{ workloadId: target }} className={style}>
+      <Link
+        to="/workloads/$workloadId"
+        params={{ workloadId: target }}
+        className={style}
+      >
         {target}
       </Link>
     )

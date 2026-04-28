@@ -176,8 +176,7 @@ export function RecipesPage() {
     const rows = all.items ?? []
     const acc = { total: rows.length, published: 0, draft: 0, deprecated: 0 }
     for (const recipe of rows) {
-      if (recipe.lifecycle in acc)
-        acc[recipe.lifecycle as Lifecycle] += 1
+      if (recipe.lifecycle in acc) acc[recipe.lifecycle as Lifecycle] += 1
     }
     return acc
   }, [all.items])
@@ -195,11 +194,7 @@ export function RecipesPage() {
       <PageHeader
         title="Recipes"
         description="declared · a reproducible way to serve an artifact"
-        actions={
-          <Button onClick={() => setCreating(true)}>
-            New recipe
-          </Button>
-        }
+        actions={<Button onClick={() => setCreating(true)}>New recipe</Button>}
       />
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

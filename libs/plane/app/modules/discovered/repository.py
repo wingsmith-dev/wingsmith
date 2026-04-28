@@ -84,9 +84,7 @@ class DiscoveredWorkloadRepository:
             # A dismissed sighting is one somebody has already looked at and does not want to
             # see again. The row stays — ingestion owns it and goes on refreshing it — and the
             # list is where the decision is honoured, so `?status=dismissed` still shows them.
-            query = query.where(
-                (WorkloadAdoption.id.is_(None)) | (WorkloadAdoption.decision != DISMISSED)
-            )
+            query = query.where((WorkloadAdoption.id.is_(None)) | (WorkloadAdoption.decision != DISMISSED))
         if after_seq is not None:
             query = query.where(DiscoveredWorkload.seq > after_seq)
         if cluster is not None:

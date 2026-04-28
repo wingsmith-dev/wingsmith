@@ -106,7 +106,9 @@ function highlightYaml(line: string, key: number): React.ReactNode {
       {indent}
       <span className="text-sky-600 dark:text-sky-400">{name}</span>
       {colon}
-      {val && <span className="text-emerald-600 dark:text-emerald-400">{val}</span>}
+      {val && (
+        <span className="text-emerald-600 dark:text-emerald-400">{val}</span>
+      )}
       {comment && (
         <span className="text-muted-foreground/50 italic">{comment}</span>
       )}

@@ -100,8 +100,8 @@ function columns(clusterName: (id: string) => string): Column<Deployment>[] {
       secondary: true,
       cell: (deployment) => (
         <span className="font-mono text-2xs text-muted-foreground">
-          {deployment.replicas.at_current_generation}/{deployment.replicas.total}{" "}
-          · gen {deployment.generation}
+          {deployment.replicas.at_current_generation}/
+          {deployment.replicas.total} · gen {deployment.generation}
         </span>
       ),
     },

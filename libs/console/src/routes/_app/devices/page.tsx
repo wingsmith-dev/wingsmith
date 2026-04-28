@@ -174,7 +174,6 @@ export function DevicesPage() {
               label: domain.identifier,
             }))}
           />
-
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">

@@ -1,5 +1,10 @@
 import { ArtifactFitmentPanel } from "@/components/demand/artifact-fitment"
-import { FormGrid, NumberField, SelectField, TextField } from "@/components/layout/form"
+import {
+  FormGrid,
+  NumberField,
+  SelectField,
+  TextField,
+} from "@/components/layout/form"
 import { Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { WriteAction } from "@/components/layout/write-action"
@@ -46,7 +51,9 @@ import { AUTO_WHERE, WhereStep, type WhereChoice } from "./WhereStep"
  * asked a real question, and a deploy against it writes nothing but a workload.
  */
 /** The six numbers a fitment row is, if the link carried all of them. */
-function footprintFromSearch(search: NewWorkloadSearch): RecipeFootprint | null {
+function footprintFromSearch(
+  search: NewWorkloadSearch
+): RecipeFootprint | null {
   if (!search.class || !search.devices) return null
   return {
     device_class: search.class,
@@ -95,12 +102,21 @@ export function NewWorkloadPage() {
   const linkedFootprint = useMemo(
     () => footprintFromSearch(search),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [search.class, search.devices, search.tp, search.pp, search.ctx, search.quant]
+    [
+      search.class,
+      search.devices,
+      search.tp,
+      search.pp,
+      search.ctx,
+      search.quant,
+    ]
   )
 
   const [picked, setArtifact] = useState<Artifact | null>(null)
   const [how, setHow] = useState<How | null>(
-    linkedFootprint ? { kind: "derive", footprint: linkedFootprint, fit: null } : null
+    linkedFootprint
+      ? { kind: "derive", footprint: linkedFootprint, fit: null }
+      : null
   )
   const [project, setProject] = useState("")
   const [replicas, setReplicas] = useState<number | null>(1)
@@ -348,8 +364,8 @@ export function NewWorkloadPage() {
             )}
             {projects?.length === 0 && (
               <p className="font-mono text-2xs text-amber-600 dark:text-amber-500">
-                No projects exist. Quota is keyed by project, so one has to before
-                anything can run.
+                No projects exist. Quota is keyed by project, so one has to
+                before anything can run.
               </p>
             )}
           </div>
@@ -374,8 +390,8 @@ export function NewWorkloadPage() {
 
         <div className="flex items-center justify-between gap-3 pt-4">
           <p className="font-mono text-2xs text-muted-foreground/50">
-            Need a task, a gang or a deadline? Those still go through the workload
-            form on the list page.
+            Need a task, a gang or a deadline? Those still go through the
+            workload form on the list page.
           </p>
           <WriteAction>
             <Button disabled={!ready || pending} onClick={submit}>

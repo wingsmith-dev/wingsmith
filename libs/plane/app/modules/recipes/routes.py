@@ -62,9 +62,7 @@ class RecipeRoutes(Controller):
         return Response(await svc.get(ref))
 
     @get("/{ref:str}/usage")
-    async def recipe_usage(
-        self, context: RequestContext, svc: RecipeService, ref: str
-    ) -> Response[RecipeUsageSchema]:
+    async def recipe_usage(self, context: RequestContext, svc: RecipeService, ref: str) -> Response[RecipeUsageSchema]:
         """How many workloads name this recipe. Derived, stored nowhere."""
         return Response(await svc.usage(ref))
 

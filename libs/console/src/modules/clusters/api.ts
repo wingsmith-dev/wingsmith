@@ -34,9 +34,7 @@ export function fetchClusterRollups(
 
 /** The same rollup, scoped to one cluster by id or name. */
 export function fetchClusterRollup(ref: string): Promise<ClusterRollup> {
-  return api.get<ClusterRollup>(
-    `/clusters/${encodeURIComponent(ref)}/rollup`
-  )
+  return api.get<ClusterRollup>(`/clusters/${encodeURIComponent(ref)}/rollup`)
 }
 
 export function createCluster(body: ClusterCreateRequest): Promise<Cluster> {

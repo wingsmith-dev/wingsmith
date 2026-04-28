@@ -86,7 +86,9 @@ function columns(
       cell: (workload) => (
         <div className="flex flex-col gap-0.5">
           <span className="font-mono text-xs">
-            {workload.recipe_name ?? <Id value={shortenId(workload.recipe_id)} />}
+            {workload.recipe_name ?? (
+              <Id value={shortenId(workload.recipe_id)} />
+            )}
           </span>
           <span className="font-mono text-2xs text-muted-foreground/60">
             {workload.artifact_tag ?? workload.kind}
@@ -193,15 +195,10 @@ export function WorkloadsPage() {
           />
           <StatTile
             label="Replicas running"
-            value={
-              list.isLoading ? "—" : `${readyReplicas}/${desiredReplicas}`
-            }
+            value={list.isLoading ? "—" : `${readyReplicas}/${desiredReplicas}`}
           />
           {/* TODO-API No aggregate request-rate on the workloads list; this is a placeholder. */}
-          <StatTile
-            label="Requests / sec"
-            value={list.isLoading ? "—" : "—"}
-          />
+          <StatTile label="Requests / sec" value={list.isLoading ? "—" : "—"} />
           <StatTile
             label="Needs attention"
             value={list.isLoading ? "—" : needsAttention}
@@ -293,7 +290,7 @@ function StatTile({
         <span
           className={
             tone === "warn"
-              ? "font-heading text-2xl leading-none font-semibold tabular-nums text-amber-500"
+              ? "font-heading text-2xl leading-none font-semibold text-amber-500 tabular-nums"
               : "font-heading text-2xl leading-none font-semibold tabular-nums"
           }
         >

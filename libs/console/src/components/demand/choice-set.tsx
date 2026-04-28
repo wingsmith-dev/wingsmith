@@ -69,7 +69,7 @@ export function ChoiceSetField({
                   aria-label={`Move ${member} earlier`}
                   disabled={index === 0}
                   onClick={() => move(index, -1)}
-                  className="text-muted-foreground/60 disabled:opacity-30 hover:text-foreground"
+                  className="text-muted-foreground/60 hover:text-foreground disabled:opacity-30"
                 >
                   <IconChevronLeft className="size-3" />
                 </button>
@@ -78,7 +78,7 @@ export function ChoiceSetField({
                   aria-label={`Move ${member} later`}
                   disabled={index === value.length - 1}
                   onClick={() => move(index, 1)}
-                  className="text-muted-foreground/60 disabled:opacity-30 hover:text-foreground"
+                  className="text-muted-foreground/60 hover:text-foreground disabled:opacity-30"
                 >
                   <IconChevronRight className="size-3" />
                 </button>
