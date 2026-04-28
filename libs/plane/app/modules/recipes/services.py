@@ -1,12 +1,19 @@
+from dataclasses import replace
+
 import msgspec
 
 from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import devices
 from app.core.ids import RECIPE
 from app.core.ids import new_uid
+from app.core.vram import Sizing
+from app.core.vram import sizing_of
+from app.core.vram import impossible
 from app.db.models import Recipe
+from app.db.models import Artifact
 from app.db.notify import RECIPE as RECIPE_KIND
 from app.db.notify import Notifier
 from app.db.notify import DeclaredChange
@@ -101,6 +108,56 @@ def check_shape(
         )
     if kv_cache_fraction is not None and not 0 < kv_cache_fraction <= 1:
         raise Invalid("kv_cache_fraction must be within (0, 1]", {"kv_cache_fraction": kv_cache_fraction})
+
+
+def sizing_for(artifact: Artifact, quantization: str | None) -> Sizing | None:
+    """The artifact's sizing facts, at the precision this recipe means to serve it.
+
+    The recipe's quantization wins wherever it declares one. Serving fp16 weights
+    at fp8 halves what has to be resident, so sizing a recipe against the repo's
+    native precision would refuse shapes that work — the recipe is the thing that
+    decides how the weights are loaded, and the artifact only says how they ship.
+    """
+    sizing = sizing_of(artifact.metadata_, artifact.parameter_count)
+    if sizing is None or not quantization:
+        return sizing
+    return replace(sizing, quantization=quantization)
+
+
+def check_capacity(sizing: Sizing | None, device_class: str, device_count: int, tensor_parallel: int) -> None:
+    """Rejects a shape whose devices cannot physically hold the weights.
+
+    Separate from `check_shape` because it needs the artifact, and `check_shape`
+    runs on arithmetic alone before one has been loaded. Separate from a full fit
+    because of where the confidence runs out: `app.core.vram.impossible` is the half
+    of a fit with no fudge factor in it, and whether a context window and a batch
+    also fit is an estimate that belongs in a fitment view as advice. Enforcing the
+    estimate would eventually refuse a recipe that serves perfectly well.
+
+    Silent about anything it cannot measure. An artifact whose repo published no
+    attention shape or parameter count, and a device class the catalogue does not
+    name, both pass — the plane does not refuse what it has no number for.
+
+    `tensor_parallel` is the recipe's own, not the device count. A replica of sixteen
+    devices at tensor-eight by pipeline-two divides its heads by eight, and checking
+    against sixteen would refuse a layout that works.
+    """
+    if sizing is None:
+        return
+    device = devices.table().get(device_class)
+    if device is None:
+        return
+    reason = impossible(sizing, device, device_count, tensor_parallel=tensor_parallel)
+    if reason is not None:
+        raise Invalid(
+            f"this shape cannot serve the artifact: {reason}",
+            {
+                "device_class": device_class,
+                "device_count": device_count,
+                "tensor_parallel": tensor_parallel,
+                "quantization": sizing.quantization,
+            },
+        )
 
 
 TRANSPORTS = frozenset({"reasoning_content", "inline_tags"})
@@ -485,6 +542,12 @@ class RecipeService:
         artifact = await self.repo.artifact_by_ref(data.artifact)
         if artifact is None:
             raise NotFound(f"no artifact {data.artifact!r}")
+        check_capacity(
+            sizing_for(artifact, data.quantization),
+            data.device_class,
+            data.device_count,
+            data.tensor_parallel,
+        )
 
         recipe = Recipe(
             uid=new_uid(RECIPE),
@@ -561,6 +624,14 @@ class RecipeService:
                 if name in fields
             }
         )
+        artifact = await self.repo.artifact_of(recipe)
+        if artifact is not None:
+            check_capacity(
+                sizing_for(artifact, fields.get("quantization", recipe.quantization)),
+                fields.get("device_class", recipe.device_class),
+                fields.get("device_count", recipe.device_count),
+                fields.get("tensor_parallel", recipe.tensor_parallel),
+            )
         for key, value in fields.items():
             setattr(recipe, key, value)
         if declared_serving is not None:

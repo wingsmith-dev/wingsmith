@@ -74,6 +74,16 @@ class RecipeRepository:
         result = await self.db.execute(select(Artifact).where(column == ref).limit(1))
         return result.scalar_one_or_none()
 
+    async def artifact_of(self, recipe: Recipe) -> Artifact | None:
+        """The artifact a recipe serves, by primary key.
+
+        `_base` already joins the artifact, but only for its uid — an update has to
+        re-check the device shape against the weights, and that needs the sizing
+        columns rather than the label. Widening the join would put them on every
+        list row to serve one write path.
+        """
+        return await self.db.get(Artifact, recipe.artifact_id)
+
     async def clusters_running(self, recipe: Recipe) -> list[str]:
         """The clusters a change to this recipe is worth waking, by uid.
 

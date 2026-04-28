@@ -12,45 +12,38 @@ the draft or by posting `source` and letting `create` apply it.
 
 import math
 
+from app.core import devices
+from app.core.vram import DEFAULT_QUANTIZATION
+from app.core.vram import is_moe
+from app.core.vram import estimate_vram
+from app.core.vram import extract_shape
+from app.core.vram import shape_metadata
+from app.core.vram import effective_config
+from app.core.vram import native_quant_method
+from app.core.vram import derive_active_params
 from app.core.schemas import Struct
-from app.modules.recipes.vram import DEFAULT_QUANTIZATION
-from app.modules.recipes.vram import is_moe
-from app.modules.recipes.vram import estimate_vram
-from app.modules.recipes.vram import extract_shape
-from app.modules.recipes.vram import effective_config
-from app.modules.recipes.vram import native_quant_method
-from app.modules.recipes.vram import derive_active_params
 from app.integrations.huggingface import HuggingFaceModel
 
+from .schemas import INFO
+from .schemas import WARN
+from .schemas import ResolveNote
 from .schemas import ArtifactLocationRequest
 
 
 SCHEME = "hf"
 
-_MAX_DEVICE_MEMORY_GB = 141
-"""The largest single accelerator we operate. Past this, a suggestion has to shard."""
+_FALLBACK_DEVICE_MEMORY_GB = 80
+"""Assumed largest accelerator when the device table cannot be read.
+
+The table is the authority and `devices.table().largest()` is the real answer; this
+only keeps a suggestion arithmetically possible on a broken install, where the
+alternative is dividing a memory requirement by nothing.
+"""
 
 _MIB_PER_GB = 1024
 
-_FALLBACK_CONTEXT_LENGTH = 8192
+FALLBACK_CONTEXT_LENGTH = 8192
 """Context assumed when a config declares none, only so the sizing has a number."""
-
-INFO = "info"
-WARN = "warn"
-
-
-class ResolveNote(Struct):
-    """One remark about a resolved source, carrying how much it should alarm.
-
-    A draft produces two kinds of remark and a flat list of strings makes them
-    look alike: that a repo ships a second copy of its weights under `original/`
-    is a packaging fact we handled, while weights the Hub cannot address mean the
-    digest is a name rather than a hash. Rendering the first as a warning trains
-    people to ignore the second.
-    """
-
-    level: str
-    message: str
 
 
 class RecipeDefaults(Struct):
@@ -125,6 +118,29 @@ def slug_of(source: str) -> str:
     return "/".join(parts)
 
 
+def source_of(metadata: dict, uris: tuple[str, ...] = ()) -> str | None:
+    """The source a registered artifact can be re-read from, or None.
+
+    `metadata.huggingface_id` first, because that is what `resolved` wrote and it
+    names the repo without a revision attached. The locations are the fallback for
+    artifacts registered before that key existed or adopted by reference from a
+    running workload — their uris carry `@revision`, which is dropped: a refresh
+    asks the repo what it says now, and pinning the commit it said it at would make
+    the answer the one already stored.
+
+    Returns the canonical `hf://owner/name`, or None for an artifact whose bytes
+    came from somewhere the plane cannot go back and ask.
+    """
+    slug = metadata.get("huggingface_id")
+    if isinstance(slug, str) and slug_of(slug):
+        return normalise_source(slug)
+    for uri in uris:
+        candidate = uri.split("@")[0]
+        if candidate.lower().startswith(("hf:", "hf://")) and slug_of(candidate):
+            return normalise_source(candidate)
+    return None
+
+
 def _dtype_of(config: dict) -> str | None:
     eff = effective_config(config)
     value = eff.get("torch_dtype") or eff.get("dtype")
@@ -187,7 +203,7 @@ def suggest_recipe(model: HuggingFaceModel, notes: list[ResolveNote]) -> RecipeD
             dtype=dtype,
         )
 
-    context_length = shape.context_length or _FALLBACK_CONTEXT_LENGTH
+    context_length = shape.context_length or FALLBACK_CONTEXT_LENGTH
     required_gb = estimate_vram(
         total_params=model.parameter_count,
         shape=shape,
@@ -196,7 +212,9 @@ def suggest_recipe(model: HuggingFaceModel, notes: list[ResolveNote]) -> RecipeD
         concurrency=1,
     ).required_gb
 
-    device_count = _shardable(math.ceil(required_gb / _MAX_DEVICE_MEMORY_GB))
+    largest = devices.table().largest()
+    ceiling_gb = largest.memory_mib / _MIB_PER_GB if largest else _FALLBACK_DEVICE_MEMORY_GB
+    device_count = _shardable(math.ceil(required_gb / ceiling_gb))
     per_device_gb = math.ceil(required_gb / device_count)
     if device_count > 1:
         notes.append(
@@ -277,6 +295,7 @@ def resolved(model: HuggingFaceModel, existing_id: str | None = None) -> Resolve
         "is_moe": is_moe(model.config),
         "active_parameter_count": active,
         "context_length": shape.context_length if shape else None,
+        "shape": shape_metadata(shape) if shape else None,
     }
 
     uri = f"hf://{model.slug}@{model.revision}"

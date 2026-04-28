@@ -3,6 +3,7 @@ from uuid import UUID
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import or_
+from sqlalchemy import case
 from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
@@ -10,10 +11,12 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
+from app.db.models import Device
 from app.db.models import Recipe
 from app.db.models import Project
 from app.db.models import Artifact
 from app.db.models import Workload
+from app.db.models import TopologyDomain
 from app.db.models import ArtifactBaseline
 from app.core.filters import ref_ids
 
@@ -168,9 +171,7 @@ class ArtifactRepository:
         A baseline is addressed by uid only: `dataset` and `metric` identify the
         row too, but as a pair and not as a path segment.
         """
-        return select(ArtifactBaseline).where(
-            ArtifactBaseline.artifact_id == artifact_id, ArtifactBaseline.uid == ref
-        )
+        return select(ArtifactBaseline).where(ArtifactBaseline.artifact_id == artifact_id, ArtifactBaseline.uid == ref)
 
     async def baseline_list(self, **kwargs) -> "list[ArtifactBaseline]":
         result = await self.db.execute(self.baseline_list_query(**kwargs))
@@ -179,6 +180,61 @@ class ArtifactRepository:
     async def baseline(self, artifact_id: UUID, ref: str) -> ArtifactBaseline | None:
         result = await self.db.execute(self.baseline_query(artifact_id, ref).limit(1))
         return result.scalar_one_or_none()
+
+    def fleet_classes_query(self) -> Select:
+        """Every device class the fleet has actually reported, with how much of it.
+
+        Counts, never a placement verdict. Whether eight free devices of a class sit
+        in one topology domain right now is a question for `POST /placement/preview`,
+        and answering it here would fold a fact that changes by the minute into one
+        that only changes when a card is bought.
+
+        `memory_mib` is the largest figure observed for the class rather than the
+        contract table's, because the fleet is entitled to hold hardware the table
+        has never heard of — `app.core.devices` slugifies those rather than dropping
+        them, and a fit against what the cluster reported beats no fit at all.
+        """
+        return (
+            select(
+                Device.device_class.label("device_class"),
+                func.max(Device.memory_mib).label("memory_mib"),
+                func.count(Device.id).label("devices_total"),
+                func.sum(case((Device.allocatable.is_(True), 1), else_=0)).label("devices_allocatable"),
+                func.count(func.distinct(Device.cluster_id)).label("cluster_count"),
+            )
+            .group_by(Device.device_class)
+            .order_by(Device.device_class)
+        )
+
+    async def fleet_classes(self) -> "list[Row]":
+        result = await self.db.execute(self.fleet_classes_query())
+        return list(result.all())
+
+    def devices_per_node_query(self) -> Select:
+        """The largest node each device class has been observed in, in devices.
+
+        A node here is a set of devices sharing a coherent interconnect, which is what
+        makes it the unit a replica is laid out in — eight on an HGX board, seventy-two in
+        a GB300 NVL72, where the rack is many chassis of silicon and one node to anything
+        scheduling on it. `supply_topology_domain.device_count` already carries exactly
+        that, so the fleet answers the question and nothing is assumed for what we run.
+
+        The maximum rather than the mode: a class present in both an 8-way chassis and a
+        72-way rack can be laid out either way, and the wider option is the one a fit
+        should be allowed to reach for.
+        """
+        return (
+            select(
+                Device.device_class.label("device_class"),
+                func.max(TopologyDomain.device_count).label("devices_per_node"),
+            )
+            .join(TopologyDomain, Device.topology_domain_id == TopologyDomain.id)
+            .group_by(Device.device_class)
+        )
+
+    async def devices_per_node(self) -> dict[str, int]:
+        result = await self.db.execute(self.devices_per_node_query())
+        return {row.device_class: row.devices_per_node for row in result.all() if row.devices_per_node}
 
     async def add(self, artifact: Artifact) -> Artifact:
         self.db.add(artifact)

@@ -1,15 +1,29 @@
+from dataclasses import replace
+
 import msgspec
 
 from msgspec import UNSET
+from sqlalchemy import Row
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import devices
 from app.core.ids import ARTIFACT
 from app.core.ids import ARTIFACT_BASELINE
 from app.core.ids import new_uid
+from app.core.vram import MAX_DEVICES
+from app.core.vram import DEFAULT_QUANTIZATION
+from app.core.vram import DEFAULT_DEVICES_PER_NODE
+from app.core.vram import Fit
+from app.core.vram import Intent
+from app.core.vram import Sizing
+from app.core.vram import fit
+from app.core.vram import sizing_of
 from app.db.models import Artifact
 from app.db.models import ArtifactBaseline
 from app.db.models import ArtifactLocation
+from app.core.devices import DeviceClass
+from app.core.devices import DeviceTable
 from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
@@ -24,15 +38,23 @@ from app.integrations.huggingface import HuggingFaceClient
 from app.integrations.huggingface import HuggingFaceNotFound
 from app.integrations.huggingface import HuggingFaceUnavailable
 
+from .resolve import FALLBACK_CONTEXT_LENGTH
 from .resolve import ResolvedArtifact
 from .resolve import slug_of
 from .resolve import resolved
+from .resolve import source_of
 from .resolve import normalise_source
+from .schemas import FLEET
+from .schemas import FITMENT_SCOPES
 from .schemas import ArtifactSchema
+from .schemas import ArtifactFitSchema
 from .schemas import ArtifactUsageSchema
 from .schemas import ArtifactCreateRequest
+from .schemas import ArtifactFitmentSchema
+from .schemas import ArtifactRefreshSchema
 from .schemas import ArtifactUpdateRequest
 from .schemas import ArtifactBaselineSchema
+from .schemas import ArtifactFitmentRequest
 from .schemas import ArtifactLocationSchema
 from .schemas import ArtifactLocationRequest
 from .schemas import ArtifactBaselineCreateRequest
@@ -42,8 +64,28 @@ from .repository import ArtifactRepository
 
 KINDS = frozenset({"weights", "adapter", "dataset", "image"})
 
+DEFAULT_FITMENT_LIMIT = 5
+"""Ranked rows a fitment returns unless asked for more.
+
+Nineteen device classes is a wall, and the answer to "what do I run this on" is in the
+first few. The cap is on the response rather than on the ranking — every candidate is
+still fitted and ranked, so the head is genuinely the best five and not the first five
+that happened to be looked at.
+"""
+
 IGNORED_PROVENANCE = ("recorded_by", "recorded_at")
 """Body fields a caller may send and the plane refuses to read. See the create schema."""
+
+REFRESHED = ("format", "size_bytes", "licence", "parameter_count", "verified")
+"""The scalar half a re-read of the source may move. Everything absent here is deliberate.
+
+`digest` is identity: different bytes are a different artifact, which is why a refresh
+that resolves to another digest is refused rather than applied. `name`, `kind`,
+`project` and `base_artifact_id` are somebody's opinion about what these weights are
+for, and the repo has none. `verified` *is* here, and it is the one field
+`ArtifactUpdateRequest` refuses — verification is resolving the bytes, and this is
+where the bytes get resolved.
+"""
 
 
 def _revision(row: Artifact | ArtifactBaseline) -> str:
@@ -58,6 +100,119 @@ def _location(row: ArtifactLocation) -> ArtifactLocationSchema:
         uri=row.uri,
         region=row.region,
         preferred=row.preferred,
+    )
+
+
+def _declared_context(artifact: Artifact, sizing: Sizing | None) -> int:
+    """The window to fit at when the caller named none: the artifact's own.
+
+    Read from `metadata.context_length` first because that is what the repo
+    published, then from the persisted attention shape, then a floor that only
+    exists so the arithmetic has a number. An artifact that declares 131k is fitted
+    at 131k — choosing a smaller window here would make more cards look workable by
+    quietly answering a different question.
+    """
+    declared = artifact.metadata_.get("context_length")
+    if isinstance(declared, int) and declared > 0:
+        return declared
+    if sizing is not None and sizing.shape is not None and sizing.shape.context_length:
+        return sizing.shape.context_length
+    return FALLBACK_CONTEXT_LENGTH
+
+
+def _observed_class(row: Row) -> DeviceClass:
+    """A device class built from what a cluster reported, for hardware the table lacks.
+
+    `app.core.devices` slugifies an unrecognised vendor string rather than dropping
+    it, so the fleet can legitimately hold classes the contract table has never
+    named. Those still have an observed memory size, which is all a fit needs — the
+    label falls back to the class itself, exactly as `label_for` does.
+    """
+    return DeviceClass(
+        name=row.device_class,
+        label=row.device_class,
+        architecture="",
+        vendor="",
+        memory_mib=row.memory_mib or 0,
+        form_factor="",
+        aliases={},
+    )
+
+
+def _candidates(scope: str, fleet: dict[str, Row], catalog: DeviceTable) -> list[DeviceClass]:
+    """The classes to fit against, per scope.
+
+    `fleet` is what clusters have reported, preferring the contract table's entry for
+    a class it names and falling back to the observed one for a class it does not.
+    `catalog` is that set plus every class the table carries, so a fit on hardware we
+    own none of is still shown — that is the procurement answer, and filtering it out
+    is what makes people ask us for the number by hand.
+    """
+    observed = [catalog.get(name) or _observed_class(row) for name, row in fleet.items()]
+    if scope == FLEET:
+        return observed
+    named = {entry.name for entry in observed}
+    return observed + [entry for entry in catalog.classes if entry.name not in named]
+
+
+def _note(scope: str, candidates: list[DeviceClass], weights_only: bool) -> str | None:
+    """The one caveat worth putting above the table, or nothing.
+
+    An empty candidate set outranks the weights-only caveat: a note about uncosted
+    windows is unhelpful next to a table with no rows in it.
+    """
+    if not candidates:
+        if scope == FLEET:
+            return "no cluster has reported a device yet, so there is no fleet to fit against"
+        return "the device table could not be read, so there are no classes to fit against"
+    if weights_only:
+        return (
+            "this artifact publishes no attention shape, so these rows size the weights only "
+            "and no context window is costed — every requirement shown is a floor. Re-resolving "
+            "its source records the shape and prices the window."
+        )
+    return None
+
+
+def _rank(result: Fit) -> tuple:
+    """Fits first, full windows before truncated, then the fewest nodes.
+
+    Nodes outrank devices in the ordering because nodes are what gets bought. Where two
+    classes both fit, the smaller hardware order comes first, and thirty-two devices in
+    four nodes is a smaller order than thirty-two across eight.
+    """
+    return (
+        not result.fits,
+        result.reduced,
+        result.node_count,
+        result.device_count,
+        result.aggregate_gb,
+        result.device_class,
+    )
+
+
+def _fit_schema(result: Fit, devices_per_node: int, row: Row | None, catalog: DeviceTable) -> ArtifactFitSchema:
+    return ArtifactFitSchema(
+        device_class=result.device_class,
+        label=catalog.label_for(result.device_class),
+        fits=result.fits,
+        reduced=result.reduced,
+        device_count=result.device_count,
+        node_count=result.node_count,
+        devices_per_node=devices_per_node,
+        tensor_parallel=result.tensor_parallel,
+        pipeline_parallel=result.pipeline_parallel,
+        memory_mib_per_device=result.memory_mib_per_device,
+        aggregate_gb=round(result.aggregate_gb, 2),
+        weights_gb=round(result.weights_gb, 2),
+        required_gb=round(result.required_gb, 2),
+        context_length=result.context_length,
+        kv_counted=result.kv_counted,
+        reason=result.reason,
+        devices_total=row.devices_total if row else 0,
+        devices_allocatable=(row.devices_allocatable or 0) if row else 0,
+        cluster_count=row.cluster_count if row else 0,
+        in_catalog=catalog.get(result.device_class) is not None,
     )
 
 
@@ -81,6 +236,31 @@ def _apply(data: ArtifactCreateRequest, draft: ResolvedArtifact) -> ArtifactCrea
         verified=draft.verified,
         metadata=metadata,
     )
+
+
+def _reread(artifact: Artifact, draft: ResolvedArtifact) -> list[str]:
+    """Lays a fresh draft over an artifact's derived half, naming what actually moved.
+
+    Metadata is overlaid key by key rather than replaced, so labels a person put on the
+    artifact survive a refresh and the derived keys are the only ones rewritten — including
+    to null, because a key the repo no longer publishes is a fact about the repo. The dict
+    is rebuilt rather than mutated: `JSONB` is not change-tracked in place, and an
+    in-place update is a refresh that reports success and writes nothing.
+    """
+    changed = []
+    for field in REFRESHED:
+        value = getattr(draft, field)
+        if getattr(artifact, field) != value:
+            setattr(artifact, field, value)
+            changed.append(field)
+
+    metadata = dict(artifact.metadata_)
+    for key, value in draft.metadata.items():
+        if metadata.get(key) != value:
+            metadata[key] = value
+            changed.append(f"metadata.{key}")
+    artifact.metadata_ = metadata
+    return changed
 
 
 def check_locations(locations: list[ArtifactLocationRequest]) -> None:
@@ -142,6 +322,59 @@ class ArtifactService:
         existing = await self.repo.artifact_by_digest(model.digest)
         return resolved(model, existing_id=existing.uid if existing is not None else None)
 
+    async def refresh(self, ref: str) -> ArtifactRefreshSchema:
+        """Re-reads a registered artifact's own source and updates what is derived from it.
+
+        The case this exists for: the plane learns to extract something it did not
+        extract before — an attention shape, a native quantization, an active parameter
+        count — and every artifact registered until then is missing it. Without this
+        route the only way to record it is to delete the artifact and register it again,
+        which breaks every recipe that names it, or to `PATCH` the metadata by hand,
+        which is a person retyping what the plane can read.
+
+        It is a `POST` and not a `PATCH` because it is an operation: it reaches the
+        network, it can fail for reasons that have nothing to do with the request, and
+        the caller supplies no body — there is nothing here for them to state.
+
+        A source resolving to a different digest is refused. That is not a stale record
+        to be corrected, it is different bytes, and different bytes are a different
+        artifact: applying the new size and parameter count over this digest would leave
+        a row describing weights nobody can fetch. Register the new source instead —
+        `GET /artifacts/resolve` will say whether it already exists.
+
+        No commit happens when nothing moved, so a refresh that finds the source
+        unchanged leaves `updated_at` alone and nobody's `If-Match` goes stale.
+        """
+        artifact, _, _ = await self._one(ref)
+        source = source_of(artifact.metadata_, tuple(loc.uri for loc in artifact.locations))
+        if source is None:
+            raise Invalid(
+                f"artifact {artifact.uid} records no source to re-read; only huggingface artifacts can be refreshed",
+                {"artifact": artifact.uid, "expected": "metadata.huggingface_id or an hf:// location"},
+            )
+
+        draft = await self.resolve(source)
+        if draft.digest != artifact.digest:
+            raise Conflict(
+                f"{source} now resolves to different bytes, which is a new artifact rather than a change to this one",
+                {
+                    "source": source,
+                    "digest": artifact.digest,
+                    "resolved_digest": draft.digest,
+                    "existing_id": draft.existing_id,
+                },
+            )
+
+        changed = _reread(artifact, draft)
+        if changed:
+            await self.db.commit()
+        return ArtifactRefreshSchema(
+            artifact=await self.get(artifact.uid),
+            source=source,
+            changed=changed,
+            notes=list(draft.notes),
+        )
+
     def schema(self, artifact: Artifact, base_uid: str | None, project_uid: str | None) -> ArtifactSchema:
         return ArtifactSchema(
             id=artifact.uid,
@@ -180,6 +413,92 @@ class ArtifactService:
             recipe_count=recipes,
             workload_count=workloads,
             downstream_count=downstream,
+        )
+
+    async def fitment(self, ref: str, query: ArtifactFitmentRequest) -> ArtifactFitmentSchema:
+        """Every device class this artifact could be served on, most useful first.
+
+        Reads nothing but the artifact and the observed device counts. The sizing is
+        `app.core.vram`'s and the fleet half is three aggregates, so this is a view
+        rather than a decision — nothing here reserves anything, and a class it calls
+        a fit still has to survive placement.
+        """
+        if query.scope not in FITMENT_SCOPES:
+            raise Invalid(
+                f"scope must be one of {', '.join(FITMENT_SCOPES)}",
+                {"scope": query.scope, "allowed": list(FITMENT_SCOPES)},
+            )
+        for name, value in (
+            ("concurrency", query.concurrency),
+            ("max_devices", query.max_devices),
+            ("devices_per_node", query.devices_per_node),
+        ):
+            if value is not None and value < 1:
+                raise Invalid(f"{name} must be at least 1", {name: value})
+        if query.context_length is not None and query.context_length < 1:
+            raise Invalid("context_length must be at least 1", {"context_length": query.context_length})
+
+        artifact, _, _ = await self._one(ref)
+        sizing = sizing_of(artifact.metadata_, artifact.parameter_count)
+        if sizing is not None and query.quantization:
+            sizing = replace(sizing, quantization=query.quantization)
+
+        context_length = query.context_length or _declared_context(artifact, sizing)
+        max_devices = min(query.max_devices or MAX_DEVICES, MAX_DEVICES)
+        header = {
+            "artifact_id": artifact.uid,
+            "scope": query.scope,
+            "context_length": context_length,
+            "concurrency": query.concurrency,
+            "max_devices": max_devices,
+        }
+        if sizing is None:
+            return ArtifactFitmentSchema(
+                sizable=False,
+                considered=0,
+                quantization=query.quantization or DEFAULT_QUANTIZATION,
+                note=(
+                    "this artifact publishes no parameter count, so not even its weights can be "
+                    "sized; re-resolving its source records what a fit needs"
+                ),
+                items=[],
+                **header,
+            )
+
+        fleet = {row.device_class: row for row in await self.repo.fleet_classes()}
+        observed_nodes = await self.repo.devices_per_node()
+        catalog = devices.table()
+        candidates = _candidates(query.scope, fleet, catalog)
+        fallback_node = query.devices_per_node or DEFAULT_DEVICES_PER_NODE
+        """Precedence for how big a node is, most authoritative first: what the fleet has
+        observed, then what the contract says the part is packaged as, then whatever the
+        caller assumed, then the default. The caller's figure fills gaps rather than
+        overruling either — an NVL72 is 72 devices whether or not somebody said eight."""
+
+        results: list[tuple[Fit, int]] = []
+        for candidate in candidates:
+            devices_per_node = observed_nodes.get(candidate.name) or candidate.devices_per_node or fallback_node
+            intent = Intent(
+                context_length=context_length,
+                concurrency=query.concurrency,
+                devices_per_node=devices_per_node,
+                max_devices=max_devices,
+            )
+            results.append((fit(sizing, candidate, intent), devices_per_node))
+        results.sort(key=lambda pair: _rank(pair[0]))
+        limit = DEFAULT_FITMENT_LIMIT if query.limit is None else query.limit
+        head = results if limit <= 0 else results[:limit]
+
+        return ArtifactFitmentSchema(
+            sizable=True,
+            quantization=sizing.quantization,
+            considered=len(results),
+            note=_note(query.scope, candidates, sizing.shape is None),
+            items=[
+                _fit_schema(result, devices_per_node, fleet.get(result.device_class), catalog)
+                for result, devices_per_node in head
+            ],
+            **header,
         )
 
     async def list(

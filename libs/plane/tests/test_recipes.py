@@ -1,12 +1,16 @@
 import inspect
 import datetime as dt
 
+from types import SimpleNamespace
+
 import pytest
 import msgspec
 
 from app.core.ids import RECIPE
 from app.core.ids import ARTIFACT
 from app.core.ids import new_uid
+from app.core.vram import extract_shape
+from app.core.vram import shape_metadata
 from app.db.models import Recipe
 from app.db.notify import MemoryNotifier
 from app.hub.messages import RecipeDesired
@@ -25,9 +29,11 @@ from app.modules.recipes.schemas import RecipeCapabilitiesSchema
 from app.modules.recipes.schemas import RecipeBenchmarkSummarySchema
 from app.modules.recipes.services import RecipeService
 from app.modules.recipes.services import _revision
+from app.modules.recipes.services import sizing_for
 from app.modules.recipes.services import check_shape
 from app.modules.recipes.services import serving_args
 from app.modules.recipes.services import check_serving
+from app.modules.recipes.services import check_capacity
 from app.modules.recipes.services import check_footprint
 from app.modules.recipes.services import resolved_engine_args
 from app.modules.recipes.repository import RecipeRepository
@@ -627,3 +633,54 @@ def test_the_serving_block_is_declared_on_the_recipe_and_patchable():
     assert "capabilities" in RecipeCreateRequest.__struct_fields__
     assert "capabilities" in RecipeUpdateRequest.__struct_fields__
     assert RecipeUpdateRequest(serving=serving()).to_dict(exclude_unset=True) == {"serving": serving()}
+
+
+def artifact_row(*, parameter_count: int | None, quantization: str = "fp16", with_shape: bool = True):
+    shape = extract_shape(
+        {
+            "num_hidden_layers": 32,
+            "num_attention_heads": 32,
+            "num_key_value_heads": 8,
+            "hidden_size": 4096,
+            "max_position_embeddings": 8192,
+        }
+    )
+    assert shape is not None
+    metadata = {"quantization": quantization}
+    if with_shape:
+        metadata["shape"] = shape_metadata(shape)
+    return SimpleNamespace(parameter_count=parameter_count, metadata_=metadata)
+
+
+def test_a_shape_that_cannot_hold_the_weights_is_refused():
+    """The arithmetic half of a fit: 130 GB of weights do not go on one 80 GB card."""
+    sizing = sizing_for(artifact_row(parameter_count=70_000_000_000), "fp16")
+    with pytest.raises(Invalid):
+        check_capacity(sizing, "h100-80gb-sxm", 1, 1)
+    assert check_capacity(sizing, "h100-80gb-sxm", 4, 4) is None
+
+
+def test_the_recipes_quantization_decides_what_has_to_be_resident():
+    """Serving fp16 weights at fp8 halves the footprint, and the recipe owns that call."""
+    artifact = artifact_row(parameter_count=70_000_000_000, quantization="fp16")
+    with pytest.raises(Invalid):
+        check_capacity(sizing_for(artifact, "fp16"), "h100-80gb-sxm", 1, 1)
+    assert check_capacity(sizing_for(artifact, "int4"), "h100-80gb-sxm", 1, 1) is None
+
+
+def test_a_capacity_check_is_silent_about_what_it_cannot_measure():
+    """An unsizeable artifact or an unknown class is not grounds to refuse a recipe."""
+    assert check_capacity(None, "h100-80gb-sxm", 1, 1) is None
+    assert check_capacity(sizing_for(artifact_row(parameter_count=None), "fp16"), "h100-80gb-sxm", 1, 1) is None
+    assert (
+        check_capacity(sizing_for(artifact_row(parameter_count=70_000_000_000, with_shape=False), "fp16"), "h100", 1, 1)
+        is None
+    )
+    sizing = sizing_for(artifact_row(parameter_count=405_000_000_000), "fp16")
+    assert check_capacity(sizing, "some-card-the-table-has-never-heard-of", 1, 1) is None
+
+
+def test_a_context_window_that_does_not_fit_is_not_a_refusal():
+    """The estimate has a 15% fudge in it, so enforcing it would refuse working recipes."""
+    sizing = sizing_for(artifact_row(parameter_count=70_000_000_000), "fp16")
+    assert check_capacity(sizing, "h100-80gb-sxm", 2, 2) is None

@@ -215,6 +215,44 @@
       }
     },
     {
+      "class": "gb200-186gb-nvl",
+      "label": "NVIDIA GB200 NVL72",
+      "architecture": "blackwell",
+      "vendor": "nvidia",
+      "memory_mib": 190464,
+      "form_factor": "nvl",
+      "devices_per_node": 72,
+      "aliases": {
+        "gfd": [
+          "NVIDIA-GB200-NVL72",
+          "NVIDIA-GB200"
+        ],
+        "dcgm": [
+          "NVIDIA GB200 NVL72",
+          "NVIDIA GB200"
+        ]
+      }
+    },
+    {
+      "class": "gb300-288gb-nvl",
+      "label": "NVIDIA GB300 NVL72",
+      "architecture": "blackwell",
+      "vendor": "nvidia",
+      "memory_mib": 294912,
+      "form_factor": "nvl",
+      "devices_per_node": 72,
+      "aliases": {
+        "gfd": [
+          "NVIDIA-GB300-NVL72",
+          "NVIDIA-GB300"
+        ],
+        "dcgm": [
+          "NVIDIA GB300 NVL72",
+          "NVIDIA GB300"
+        ]
+      }
+    },
+    {
       "class": "rtx-pro-6000-96gb-server-edition",
       "label": "NVIDIA RTX PRO 6000 Blackwell Server Edition",
       "architecture": "blackwell",
@@ -279,5 +317,6 @@
       }
     }
   ],
-  "label": "`label` is the human name for a class and the only string a console or CLI should print to a person; `class` is the identifier and the only string that travels on the wire. `architecture` groups a vendor generation for display and is never placed against."
+  "label": "`label` is the human name for a class and the only string a console or CLI should print to a person; `class` is the identifier and the only string that travels on the wire. `architecture` groups a vendor generation for display and is never placed against.",
+  "devices_per_node": "Devices sharing one coherent interconnect, which is the unit a replica is laid out in: tensor parallelism stays inside it and pipeline parallelism crosses it over the backend fabric. Absent means the default of 8, an HGX board. Present where the part is sold as a rack-scale domain \u2014 a GB300 NVL72 is 72 devices and one node, however many chassis of silicon that is. A cluster's own `supply_topology_domain.device_count` overrides this."
 }

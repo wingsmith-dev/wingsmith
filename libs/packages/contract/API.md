@@ -159,7 +159,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/nodes`, `/v1/devices`, `/v1/topology-domains` | observed, read-only |
 | `/v1/device-classes` | the shared dictionary, read-only — see below |
 | `/v1/pools` | declared, with observed membership |
-| `/v1/artifacts` | declared, plus one read-only resolve verb and a declared baseline sub-resource — see below |
+| `/v1/artifacts` | declared, plus two read-only derived views, one operation, and a declared baseline sub-resource — see below |
 | `/v1/recipes`, `/v1/workloads`, `/v1/endpoints` | declared, plus a read-only resolution — see below |
 | `/v1/deployments` | declared, per-cluster, read-mostly — see below |
 | `/v1/discovered` | observed, read-only, plus the decision verbs — see below |
@@ -529,6 +529,62 @@ and the digest is therefore a hash of content, false when one did not — an unh
 means the reference names the weights rather than fixing them, which is also the case for weights
 adopted by reference from a running workload. It is set at creation and absent from `PATCH`:
 re-verifying an artifact means resolving the bytes again, which is an operation, not an edit.
+
+**`POST /v1/artifacts/{ref}/refresh` is that operation.** It re-reads the artifact's own source and
+rewrites only what is derived from it: `format`, `size_bytes`, `licence`, `parameter_count`,
+`verified`, and the derived keys of `metadata`. The case it exists for is the plane learning to read
+something it did not read before — an attention shape, a native quantization, an active parameter
+count — which leaves every artifact registered until then missing it, with no fix but deleting the
+artifact (breaking every recipe that names it) or retyping the metadata by hand. There is no body:
+the source is already on the artifact, and letting a caller name a different one would be a way to
+move an artifact onto weights it was not registered from. A `POST` and not a `PATCH` because it
+reaches the network and can fail for reasons that have nothing to do with the request.
+
+The response is `{artifact, source, changed, notes}`. `changed` names the fields that actually
+moved, dotted for metadata keys (`metadata.shape`); an empty list is a successful refresh that found
+the source saying exactly what was already recorded, and no write happens in that case, so nobody's
+`If-Match` goes stale because somebody pressed the button. `notes` is the draft's own `{level,
+message}` remarks, unfiltered — a repository that has since become gated says so here. Metadata is
+overlaid key by key rather than replaced, so labels a person put on the artifact survive; the
+derived keys are rewritten even to null, because a key the repository no longer publishes is a fact
+about the repository.
+
+**A source that now resolves to a different digest is `409 conflict`, never applied.** That is not a
+stale record to be corrected, it is different bytes, and different bytes are a different artifact —
+writing the new size and parameter count over this digest would leave a row describing weights
+nobody can fetch. The detail carries `resolved_digest` and `existing_id`, so a client can offer
+registering the new source or point at the artifact that already holds it. An artifact with no
+recoverable source — no `metadata.huggingface_id` and no `hf://` location — is `409 invalid`,
+because there is nowhere to go back and ask.
+
+**`GET /v1/artifacts/{ref}/fitment` answers what hardware this artifact runs on.** Derived at read
+time, stored nowhere, and it reserves nothing: a class it calls a fit still has to survive placement.
+Query parameters are `scope` (`fleet` or `catalog`), `context_length`, `concurrency`,
+`quantization`, `devices_per_node`, `max_devices` and `limit`. `fleet` asks *what can I run right
+now* — only classes a cluster has reported — and `catalog` asks *what would I need*, adding every
+class the device table names, so a fit on hardware we own none of is a procurement answer rather
+than a bug in the first. `context_length` defaults to the artifact's own declared window, and
+`quantization` to however the weights ship; overriding either is how "what if we quantized this" is
+asked without registering anything.
+
+Each row carries the layout as well as the verdict: `device_count`, `node_count`,
+`devices_per_node`, `tensor_parallel` and `pipeline_parallel`. Nodes are the unit to act on — "four
+nodes of B300" is an order and "32 devices" is a number to divide — and a node is however many
+devices share a coherent interconnect, eight on an HGX board and seventy-two on a GB300 NVL72.
+`tensor_parallel` is bounded by the node because a tensor group over the backend fabric is the one
+split that does not work; `pipeline_parallel` crosses freely, so a multi-node replica is normal and
+its nodes are one fabric-connected unit rather than a set of islands. `aggregate_gb` is what the
+devices *offer*, net of the utilization envelope and the per-device CUDA reserve — multiply
+`memory_mib_per_device` by `device_count` for the nameplate, and note that comparing `required_gb`
+against the nameplate over-promises by about fifteen percent.
+
+`sizable` is false only when the artifact carries no parameter count at all; `items` is then empty
+and `note` says why. A missing attention shape is not that case — the weights alone still bound
+which cards are too small, so the matrix is returned with every row's `kv_counted` false,
+`context_length` zero, and `required_gb` a floor rather than a sizing. `considered` is how many
+classes were ranked against `items`, which is capped at five unless `limit` says otherwise; the cap
+is on the response and not on the ranking, so the head is the best five and not the first five
+looked at.
 
 **`/v1/artifacts/{ref}/baselines` is the declared quality floor, one row per dataset and metric.**
 Full CRUD — `GET` (filters `dataset`, `metric`), `POST`, `PATCH` on

@@ -14,11 +14,15 @@ from app.core.schemas import ListResponse
 from .depends import artifact_svc_generator
 from .depends import artifact_baseline_svc_generator
 from .resolve import ResolvedArtifact
+from .schemas import FLEET
 from .schemas import ArtifactSchema
 from .schemas import ArtifactUsageSchema
 from .schemas import ArtifactCreateRequest
+from .schemas import ArtifactFitmentSchema
+from .schemas import ArtifactRefreshSchema
 from .schemas import ArtifactUpdateRequest
 from .schemas import ArtifactBaselineSchema
+from .schemas import ArtifactFitmentRequest
 from .schemas import ArtifactBaselineCreateRequest
 from .schemas import ArtifactBaselineUpdateRequest
 from .services import ArtifactService
@@ -82,6 +86,58 @@ class ArtifactRoutes(Controller):
     ) -> Response[ArtifactUsageSchema]:
         """Recipe, workload and downstream counts for this artifact. Derived, stored nowhere."""
         return Response(await svc.usage(ref))
+
+    @get("/{ref:str}/fitment")
+    async def artifact_fitment(
+        self,
+        context: RequestContext,
+        svc: ArtifactService,
+        ref: str,
+        fit_scope: str = Parameter(query="scope", default=FLEET),
+        context_length: int | None = None,
+        concurrency: int = 1,
+        quantization: str | None = None,
+        devices_per_node: int | None = None,
+        max_devices: int | None = None,
+        limit: int | None = None,
+    ) -> Response[ArtifactFitmentSchema]:
+        """The device classes this artifact could be served on, ranked, derived at read time.
+
+        A `GET` with query parameters rather than a posted body: nothing is created,
+        the same question always returns the same answer, and a link to one matrix is
+        a thing a person can send to another person.
+
+        The `scope` query parameter binds to `fit_scope` because `scope` is the name
+        Litestar reserves for the ASGI scope, and a handler argument called that
+        receives the connection instead of the query string — silently, and as a value
+        that fails validation rather than one that fails to parse.
+        """
+        return Response(
+            await svc.fitment(
+                ref,
+                ArtifactFitmentRequest(
+                    scope=fit_scope,
+                    context_length=context_length,
+                    concurrency=concurrency,
+                    quantization=quantization,
+                    devices_per_node=devices_per_node,
+                    max_devices=max_devices,
+                    limit=limit,
+                ),
+            )
+        )
+
+    @post("/{ref:str}/refresh")
+    async def refresh_artifact(
+        self, context: RequestContext, svc: ArtifactService, ref: str
+    ) -> Response[ArtifactRefreshSchema]:
+        """Re-reads this artifact's source and records what the plane can now derive from it.
+
+        No body: the source is already on the artifact, and letting a caller name a
+        different one would be a way to move an artifact onto weights it was not
+        registered from. A source that resolves to a different digest is a 409.
+        """
+        return Response(await svc.refresh(ref))
 
     @get("/{ref:str}/baselines")
     async def list_artifact_baselines(

@@ -206,3 +206,16 @@ class TestInventoryAgainstPostgres:
         async with sessions() as db:
             with pytest.raises(NotFound):
                 await DeviceClassService(db=db).get("no-such-card")
+
+
+def test_a_rack_scale_part_carries_its_node_size_and_an_hgx_board_does_not():
+    """An NVL72 is 72 devices and one node; the interconnect is what makes a node a node."""
+    catalogue = table()
+    for name in ("gb200-186gb-nvl", "gb300-288gb-nvl"):
+        entry = catalogue.get(name)
+        assert entry is not None, f"{name} is missing from the contract table"
+        assert entry.devices_per_node == 72
+
+    hgx = catalogue.get("b300-288gb-sxm")
+    assert hgx is not None
+    assert hgx.devices_per_node is None, "an HGX board takes the caller's default, not a table value"

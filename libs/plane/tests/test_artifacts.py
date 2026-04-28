@@ -7,11 +7,15 @@ import pytest
 
 from sqlalchemy.exc import IntegrityError
 
+from app.core import devices
 from app.core.ids import ARTIFACT
 from app.core.ids import ARTIFACT_BASELINE
 from app.core.ids import new_uid
+from app.core.vram import extract_shape
+from app.core.vram import shape_metadata
 from app.db.models import Artifact
 from app.db.models import ArtifactBaseline
+from app.db.models import ArtifactLocation
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -30,11 +34,13 @@ from app.modules.artifacts.schemas import ArtifactSchema
 from app.modules.artifacts.schemas import ArtifactUsageSchema
 from app.modules.artifacts.schemas import ArtifactCreateRequest
 from app.modules.artifacts.schemas import ArtifactUpdateRequest
+from app.modules.artifacts.schemas import ArtifactFitmentRequest
 from app.modules.artifacts.schemas import ArtifactLocationSchema
 from app.modules.artifacts.schemas import ArtifactLocationRequest
 from app.modules.artifacts.schemas import ArtifactBaselineCreateRequest
 from app.modules.artifacts.schemas import ArtifactBaselineUpdateRequest
 from app.modules.artifacts.services import KINDS
+from app.modules.artifacts.services import DEFAULT_FITMENT_LIMIT
 from app.modules.artifacts.services import ArtifactService
 from app.modules.artifacts.services import ArtifactBaselineService
 from app.modules.artifacts.services import _revision
@@ -177,6 +183,8 @@ def test_controller_exposes_full_crud():
         "delete_artifact",
         "resolve_artifact",
         "artifact_usage",
+        "artifact_fitment",
+        "refresh_artifact",
         "list_artifact_baselines",
         "create_artifact_baseline",
         "update_artifact_baseline",
@@ -388,11 +396,22 @@ async def test_the_suggested_context_is_the_declared_one_and_devices_follow_from
 
 
 async def test_weights_too_large_for_one_device_shard_across_a_power_of_two():
-    """Five devices is arithmetically right and cannot be tensor-parallelised."""
-    model = hf_model(parameter_count=470_000_000_000)
+    """Five devices is arithmetically right and cannot be tensor-parallelised.
+
+    The parameter count is derived from the biggest card the contract table names
+    rather than written down. The suggestion divides by that card, so a literal here
+    would stop testing sharding the week a bigger one is added to the table — it
+    would still pass, for the wrong reason, having stopped needing to shard at all.
+    """
+    largest = devices.table().largest()
+    assert largest is not None
+    ceiling_gb = largest.memory_mib / 1024
+    weights_gb = ceiling_gb * 2.35
+    model = hf_model(parameter_count=int(weights_gb * 1024**3 / 0.5))
+
     draft = await service(hub=FakeHub(model)).resolve("openai/gpt-oss-20b")
     assert draft.recipe.device_count == 4
-    assert draft.recipe.device_memory_mib_min * draft.recipe.device_count > 282 * 1024
+    assert draft.recipe.device_memory_mib_min * draft.recipe.device_count > weights_gb * 1024
     assert draft.recipe.context_length == 131072
     assert any("spreads it across 4 devices" in note.message for note in draft.notes)
 
@@ -439,6 +458,146 @@ async def test_the_hub_being_down_is_not_the_callers_fault():
     with pytest.raises(PlaneError) as caught:
         await service(hub=FakeHub(error=HuggingFaceUnavailable("down"))).resolve("openai/gpt-oss-20b")
     assert caught.value.status == 500
+
+
+class RefreshRepo:
+    """One already-registered artifact, read back however it is asked for."""
+
+    def __init__(self, artifact: Artifact, existing_digest: str | None = None):
+        self.artifact = artifact
+        self.existing_digest = existing_digest
+
+    async def get(self, ref: str):
+        return FakeRow(self.artifact)
+
+    async def artifact_by_digest(self, digest: str):
+        if digest == self.existing_digest:
+            return Artifact(uid="art_01jexistingexistingexisti", digest=digest)
+        return None
+
+
+def registered(**kwargs) -> Artifact:
+    """An artifact as it sits in the table, defaulting to one registered before shapes."""
+    stale = {
+        "source": "huggingface",
+        "huggingface_id": "openai/gpt-oss-20b",
+        "revision": "c" * 40,
+        "context_length": None,
+        "shape": None,
+    }
+    defaults = {
+        "uid": "art_01jgptoss20bgptoss20bgpt",
+        "digest": hf_model().digest,
+        "name": "gpt-oss-20b",
+        "kind": "weights",
+        "format": "safetensors",
+        "size_bytes": 10_400_000_000,
+        "licence": "apache-2.0",
+        "parameter_count": 20_914_757_632,
+        "verified": True,
+        "metadata_": stale,
+        "locations": [],
+    }
+    row = Artifact(**{**defaults, **kwargs})
+    row.created_at = EPOCH
+    row.updated_at = None
+    return row
+
+
+def refresh_service(artifact: Artifact, hub=None, existing_digest: str | None = None) -> ArtifactService:
+    svc = ArtifactService(db=FakeSession(), hub=hub or FakeHub())
+    svc.repo = RefreshRepo(artifact, existing_digest=existing_digest)
+    return svc
+
+
+async def test_a_refresh_records_what_the_plane_has_since_learned_to_read():
+    """The case the route exists for: an artifact registered before shapes were extracted."""
+    artifact = registered()
+    result = await refresh_service(artifact).refresh("gpt-oss-20b")
+
+    assert result.source == "hf://openai/gpt-oss-20b"
+    assert "metadata.shape" in result.changed
+    assert "metadata.context_length" in result.changed
+    assert artifact.metadata_["shape"]["num_hidden_layers"] == GPT_OSS_CONFIG["num_hidden_layers"]
+    assert artifact.metadata_["context_length"] == 131072
+
+
+async def test_a_refresh_that_finds_nothing_new_changes_nothing_and_says_so():
+    """No write, so nobody's `If-Match` goes stale because somebody pressed the button."""
+    artifact = registered()
+    await refresh_service(artifact).refresh("gpt-oss-20b")
+    before = _revision(artifact)
+
+    result = await refresh_service(artifact).refresh("gpt-oss-20b")
+    assert result.changed == []
+    assert _revision(artifact) == before
+
+
+async def test_a_refresh_leaves_the_labels_a_person_put_on_the_artifact():
+    artifact = registered(metadata_={"huggingface_id": "openai/gpt-oss-20b", "team": "inference"})
+    await refresh_service(artifact).refresh("gpt-oss-20b")
+    assert artifact.metadata_["team"] == "inference"
+    assert artifact.metadata_["shape"] is not None
+
+
+async def test_a_refresh_does_not_rewrite_what_a_person_decided_the_weights_are_for():
+    artifact = registered(name="our-house-model", kind="weights")
+    await refresh_service(artifact).refresh("our-house-model")
+    assert artifact.name == "our-house-model"
+    assert artifact.digest == hf_model().digest
+
+
+async def test_a_refresh_reads_the_source_off_a_location_when_the_metadata_has_none():
+    """Artifacts registered before `huggingface_id` existed still have their uri."""
+    artifact = registered(
+        metadata_={},
+        locations=[ArtifactLocation(scheme="hf", uri=f"hf://openai/gpt-oss-20b@{'c' * 40}", preferred=True)],
+    )
+    result = await refresh_service(artifact).refresh("gpt-oss-20b")
+    assert result.source == "hf://openai/gpt-oss-20b"
+    assert result.changed
+
+
+async def test_an_artifact_with_no_source_cannot_be_refreshed():
+    artifact = registered(metadata_={}, locations=[ArtifactLocation(scheme="s3", uri="s3://bucket/weights")])
+    with pytest.raises(Invalid) as caught:
+        await refresh_service(artifact).refresh("gpt-oss-20b")
+    assert "no source to re-read" in caught.value.message
+
+
+async def test_a_source_that_now_resolves_to_other_bytes_is_a_new_artifact_not_an_edit():
+    """Applying a new size over this digest would describe weights nobody can fetch."""
+    artifact = registered(digest="sha256:" + "0" * 64, parameter_count=1)
+    with pytest.raises(Conflict) as caught:
+        await refresh_service(artifact).refresh("gpt-oss-20b")
+
+    assert caught.value.detail["resolved_digest"] == hf_model().digest
+    assert artifact.parameter_count == 1
+    assert artifact.metadata_["shape"] is None
+
+
+async def test_a_moved_source_points_at_the_artifact_that_already_holds_the_new_bytes():
+    artifact = registered(digest="sha256:" + "0" * 64)
+    svc = refresh_service(artifact, existing_digest=hf_model().digest)
+    with pytest.raises(Conflict) as caught:
+        await svc.refresh("gpt-oss-20b")
+    assert caught.value.detail["existing_id"] == "art_01jexistingexistingexisti"
+
+
+async def test_a_refresh_is_what_verifies_an_artifact_adopted_by_reference():
+    """`verified` is the one derived field `PATCH` refuses, because resolving is an operation."""
+    artifact = registered(verified=False)
+    result = await refresh_service(artifact).refresh("gpt-oss-20b")
+    assert "verified" in result.changed
+    assert artifact.verified is True
+    assert "verified" not in ArtifactUpdateRequest.__struct_fields__
+
+
+async def test_a_refresh_carries_the_sources_own_warnings_through():
+    model = hf_model(gated=True)
+    artifact = registered()
+    result = await refresh_service(artifact, hub=FakeHub(model)).refresh("gpt-oss-20b")
+    assert any(note.level == "warn" and "gated" in note.message for note in result.notes)
 
 
 async def test_a_source_that_is_not_a_slug_is_rejected():
@@ -736,3 +895,288 @@ def test_the_baselines_sub_path_is_not_read_as_a_ref():
 def test_the_baseline_patch_reads_if_match_from_the_header():
     parameter = inspect.signature(ArtifactRoutes.update_artifact_baseline.fn).parameters["if_match"]
     assert parameter.default.header == "If-Match"
+
+
+class FleetRow:
+    def __init__(self, device_class, memory_mib, total, allocatable, clusters):
+        self.device_class = device_class
+        self.memory_mib = memory_mib
+        self.devices_total = total
+        self.devices_allocatable = allocatable
+        self.cluster_count = clusters
+
+
+class FitmentRepo:
+    """A stored artifact and a reported fleet, which is all a fitment reads."""
+
+    def __init__(self, artifact, fleet=None, domains=None):
+        self.artifact = artifact
+        self.fleet = fleet if fleet is not None else [FleetRow("h100-80gb-sxm", 81559, 16, 16, 2)]
+        self.domains = domains or {}
+
+    async def get(self, ref: str):
+        return FakeRow(self.artifact)
+
+    async def fleet_classes(self):
+        return self.fleet
+
+    async def devices_per_node(self):
+        """What the fleet has observed, which is nothing unless a test says otherwise.
+
+        An empty map is the normal case for a class nobody has racked, and it is what
+        makes the caller's `domain_size` (or the default) apply.
+        """
+        return self.domains
+
+
+def sized_artifact(
+    *,
+    parameter_count=70_000_000_000,
+    quantization="fp16",
+    context_length=8192,
+    shape=True,
+    declare_context=True,
+):
+    model_shape = extract_shape(
+        {
+            "num_hidden_layers": 80,
+            "num_attention_heads": 64,
+            "num_key_value_heads": 8,
+            "hidden_size": 8192,
+            "max_position_embeddings": context_length,
+        }
+    )
+    assert model_shape is not None
+    metadata = {"quantization": quantization}
+    if declare_context:
+        metadata["context_length"] = context_length
+    if shape:
+        metadata["shape"] = shape_metadata(model_shape)
+    artifact = Artifact(
+        uid=new_uid(ARTIFACT),
+        digest="sha256:abc",
+        name="llama-70b",
+        parameter_count=parameter_count,
+        created_at=EPOCH,
+    )
+    artifact.metadata_ = metadata
+    return artifact
+
+
+def fitment_service(artifact=None, fleet=None, domains=None) -> ArtifactService:
+    svc = ArtifactService(db=FakeSession(), hub=FakeHub())
+    svc.repo = FitmentRepo(artifact or sized_artifact(), fleet, domains)
+    return svc
+
+
+async def test_a_fitment_fits_the_fleet_by_default_and_carries_what_we_have_of_it():
+    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
+    assert result.scope == "fleet"
+    assert result.sizable
+    assert [item.device_class for item in result.items] == ["h100-80gb-sxm"]
+
+    fit = result.items[0]
+    assert fit.fits
+    assert fit.device_count == 2
+    assert fit.weights_gb < fit.required_gb <= fit.aggregate_gb
+    assert fit.devices_total == 16
+    assert fit.devices_allocatable == 16
+    assert fit.cluster_count == 2
+    assert fit.in_catalog
+    assert fit.label == "NVIDIA H100 80GB SXM"
+
+
+async def test_the_catalog_scope_answers_a_procurement_question_the_fleet_cannot():
+    """A class we own none of is a fit worth showing, not a row worth filtering."""
+    fleet = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
+    catalog = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog"))
+
+    assert len(catalog.items) > len(fleet.items)
+    unowned = [item for item in catalog.items if item.devices_total == 0 and item.fits]
+    assert unowned, "the catalog scope should surface classes that fit and that we do not have"
+    assert all(item.devices_allocatable == 0 for item in unowned)
+
+
+async def test_a_fitment_is_ranked_with_the_cheapest_workable_class_first():
+    catalog = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog"))
+    fits = [item for item in catalog.items if item.fits]
+    assert catalog.items[0].fits
+    assert fits[0].device_count <= fits[-1].device_count
+
+
+async def test_a_shapeless_artifact_gets_a_matrix_of_floors_not_a_blank_panel():
+    """The weights still bound which cards are too small; only the window is uncosted."""
+    result = await fitment_service(sized_artifact(shape=False)).fitment("llama-70b", ArtifactFitmentRequest())
+    assert result.sizable
+    assert len(result.items) == 1
+    assert result.items[0].kv_counted is False
+    assert result.items[0].context_length == 0
+    assert result.note is not None
+    assert "floor" in result.note
+
+
+async def test_an_artifact_with_no_parameter_count_is_reported_rather_than_refused():
+    """Nothing at all can be sized from it, and that is a note rather than an error."""
+    artifact = sized_artifact(parameter_count=None)
+    result = await fitment_service(artifact).fitment("llama-70b", ArtifactFitmentRequest())
+    assert not result.sizable
+    assert result.items == []
+    assert result.note is not None
+    assert "no parameter count" in result.note
+
+
+async def test_a_full_sizing_counts_the_cache_and_says_so():
+    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
+    assert all(item.kv_counted for item in result.items)
+    assert result.note is None
+
+
+async def test_the_artifacts_own_context_is_the_default_window():
+    """Trimming it here would make more cards look workable by answering another question."""
+    artifact = sized_artifact(context_length=131072)
+    result = await fitment_service(artifact).fitment("llama-70b", ArtifactFitmentRequest())
+    assert result.context_length == 131072
+
+    asked = await fitment_service(artifact).fitment("llama-70b", ArtifactFitmentRequest(context_length=8192))
+    assert asked.context_length == 8192
+    assert asked.items[0].device_count <= result.items[0].device_count
+
+
+async def test_quantization_can_be_asked_about_without_registering_anything():
+    heavy = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
+    light = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(quantization="int4"))
+    assert heavy.quantization == "fp16"
+    assert light.quantization == "int4"
+    assert light.items[0].weights_gb < heavy.items[0].weights_gb
+    assert light.items[0].device_count < heavy.items[0].device_count
+
+
+async def test_hardware_the_contract_table_never_named_is_still_fitted():
+    """`app.core.devices` slugifies an unknown card; a fit uses what the cluster reported."""
+    fleet = [FleetRow("some-new-accelerator-192gb", 196608, 8, 4, 1)]
+    result = await fitment_service(fleet=fleet).fitment("llama-70b", ArtifactFitmentRequest())
+
+    fit = result.items[0]
+    assert fit.device_class == "some-new-accelerator-192gb"
+    assert not fit.in_catalog
+    assert fit.label == "some-new-accelerator-192gb"
+    assert fit.memory_mib_per_device == 196608
+    assert fit.fits
+
+
+async def test_an_empty_fleet_says_so_rather_than_returning_an_empty_matrix():
+    result = await fitment_service(fleet=[]).fitment("llama-70b", ArtifactFitmentRequest())
+    assert result.sizable
+    assert result.items == []
+    assert result.note is not None
+    assert "no cluster has reported a device" in result.note
+
+
+@pytest.mark.parametrize(
+    "request_",
+    [
+        ArtifactFitmentRequest(scope="everything"),
+        ArtifactFitmentRequest(concurrency=0),
+        ArtifactFitmentRequest(max_devices=0),
+        ArtifactFitmentRequest(context_length=0),
+    ],
+)
+async def test_a_fitment_refuses_terms_it_cannot_fit_against(request_):
+    with pytest.raises(Invalid):
+        await fitment_service().fitment("llama-70b", request_)
+
+
+async def test_a_fitment_reads_and_reserves_nothing():
+    """A view, not a decision: placement is still the thing that can say no."""
+    svc = fitment_service()
+    await svc.fitment("llama-70b", ArtifactFitmentRequest())
+    assert not hasattr(svc.repo, "added") or svc.repo.added is None
+
+
+async def test_an_artifact_carrying_neither_a_shape_nor_a_window_still_fits():
+    """The real shapeless case: no persisted shape and no declared context either.
+
+    Every artifact registered before the shape was persisted looks like this, and
+    reaching for `sizing.shape.context_length` to default the window turned the whole
+    panel into a 500 for exactly those.
+    """
+    artifact = sized_artifact(shape=False, declare_context=False)
+    result = await fitment_service(artifact).fitment("llama-70b", ArtifactFitmentRequest())
+
+    assert result.sizable
+    assert result.context_length == 8192
+    assert len(result.items) == 1
+    assert result.items[0].kv_counted is False
+
+
+async def test_a_frontier_model_is_answered_as_a_rack_order():
+    """The user-facing shape of the answer: "2 domains of 8× B300", not a red row.
+
+    A 2.8T artifact fits in no single chassis on the market. Before the fit could cross
+    a scale-up domain, every row here came back as a refusal, which is the opposite of
+    useful for the one case where knowing the hardware bill matters most.
+    """
+    kimi = sized_artifact(parameter_count=2_800_000_000_000, quantization="fp8", shape=False)
+    fleet = [FleetRow("b300-288gb-sxm", 294912, 32, 32, 2), FleetRow("b200-180gb-sxm", 183359, 64, 64, 4)]
+    result = await fitment_service(kimi, fleet).fitment("kimi", ArtifactFitmentRequest())
+
+    by_class = {item.device_class: item for item in result.items}
+    b300, b200 = by_class["b300-288gb-sxm"], by_class["b200-180gb-sxm"]
+
+    assert b300.fits and b300.device_count == 16 and b300.node_count == 2
+    assert (b300.tensor_parallel, b300.pipeline_parallel) == (8, 2)
+    assert b200.fits and b200.device_count == 32 and b200.node_count == 4
+    assert result.items[0].device_class == "b300-288gb-sxm", "fewer domains ranks first"
+
+
+async def test_an_observed_nvl72_node_beats_the_assumed_chassis():
+    """A class the fleet runs is laid out the way the fleet actually racks it."""
+    kimi = sized_artifact(parameter_count=2_800_000_000_000, quantization="fp8", shape=False)
+    fleet = [FleetRow("b300-288gb-sxm", 294912, 144, 144, 2)]
+
+    chassis = await fitment_service(kimi, fleet).fitment("kimi", ArtifactFitmentRequest())
+    rack = await fitment_service(kimi, fleet, {"b300-288gb-sxm": 72}).fitment("kimi", ArtifactFitmentRequest())
+
+    assert chassis.items[0].devices_per_node == 8
+    assert chassis.items[0].node_count == 2
+    assert rack.items[0].devices_per_node == 72
+    assert rack.items[0].node_count == 1
+    assert rack.items[0].pipeline_parallel == 1
+
+
+async def test_a_stated_node_size_applies_only_where_nothing_was_observed():
+    """An observed figure is real; a stated one is an assumption and must not overrule it."""
+    kimi = sized_artifact(parameter_count=2_800_000_000_000, quantization="fp8", shape=False)
+    fleet = [FleetRow("b300-288gb-sxm", 294912, 144, 144, 2)]
+    result = await fitment_service(kimi, fleet, {"b300-288gb-sxm": 8}).fitment(
+        "kimi", ArtifactFitmentRequest(scope="catalog", devices_per_node=72, limit=0)
+    )
+
+    by_class = {item.device_class: item for item in result.items}
+    assert by_class["b300-288gb-sxm"].devices_per_node == 8
+    assert by_class["b200-180gb-sxm"].devices_per_node == 72
+
+
+async def test_a_fitment_returns_the_ranked_head_and_says_how_many_it_ranked():
+    """A wall of nineteen classes buries the answer; a silent cap reads as the whole world."""
+    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog"))
+
+    assert len(result.items) == DEFAULT_FITMENT_LIMIT
+    assert result.considered > DEFAULT_FITMENT_LIMIT
+    assert result.items[0].fits
+
+
+async def test_the_head_is_the_best_rows_and_not_the_first_ones_looked_at():
+    """Every candidate is fitted and ranked before the cap applies."""
+    capped = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog"))
+    every = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog", limit=0))
+
+    assert len(every.items) == every.considered == capped.considered
+    assert [item.device_class for item in capped.items] == [
+        item.device_class for item in every.items[: len(capped.items)]
+    ]
+
+
+async def test_asking_for_everything_is_how_the_rest_is_reached():
+    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog", limit=0))
+    assert len(result.items) == result.considered > DEFAULT_FITMENT_LIMIT

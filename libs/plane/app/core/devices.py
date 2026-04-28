@@ -63,6 +63,11 @@ class DeviceClass:
     `name` is the identifier and the only form that travels on the wire; `label`
     is the one to show a person. A class the table does not carry has no label
     of its own, and callers fall back to the name — see `label_for`.
+
+    `devices_per_node` is how many of these share one coherent interconnect, and it is
+    `None` unless the part is sold as a rack-scale domain: a GB300 NVL72 is 72 devices
+    and one node, whatever number of chassis that is. `None` means the caller's default
+    applies, and a cluster's own observed topology outranks both.
     """
 
     name: str
@@ -72,6 +77,7 @@ class DeviceClass:
     memory_mib: int
     form_factor: str
     aliases: dict[str, tuple[str, ...]]
+    devices_per_node: int | None = None
 
 
 def normalize(value: str) -> str:
@@ -136,6 +142,16 @@ class DeviceTable:
         entry = self._by_name.get(name)
         return entry.label if entry is not None else name
 
+    def largest(self) -> DeviceClass | None:
+        """The biggest card the table names, or `None` when the table is empty.
+
+        Sizing a first suggestion needs an upper bound on a single accelerator, and
+        a constant in the caller is a second copy of the table that goes stale the
+        week a bigger card ships. An empty table returns nothing and the caller
+        decides what to do without one, rather than being handed a zero to divide by.
+        """
+        return max(self.classes, key=lambda c: c.memory_mib, default=None)
+
     def aliases(self, name: str, dialect: str) -> tuple[str, ...]:
         """The vendor strings a hangar class is emitted under in one dialect."""
         entry = self._by_name.get(name)
@@ -168,6 +184,7 @@ def load(path: Path | None = None) -> DeviceTable:
             memory_mib=int(entry["memory_mib"]),
             form_factor=entry["form_factor"],
             aliases={k: tuple(v) for k, v in entry.get("aliases", {}).items()},
+            devices_per_node=entry.get("devices_per_node"),
         )
         for entry in document.get("classes", [])
     ]
