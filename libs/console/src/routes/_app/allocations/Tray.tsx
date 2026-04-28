@@ -565,9 +565,9 @@ function brickOfFit(fit: ArtifactFit, artifact: string): Brick {
     label: `${fit.device_count}× ${fit.label}`,
     detail: [
       `${fit.required_gb.toFixed(0)} GB needed`,
-      fit.domain_count > 1
-        ? `tp${fit.tensor_parallel} · pp${fit.pipeline_parallel} over ${fit.domain_count} domains`
-        : `tp${fit.tensor_parallel} · one domain`,
+      fit.node_count > 1
+        ? `tp${fit.tensor_parallel} · pp${fit.pipeline_parallel} over ${fit.node_count} nodes`
+        : `tp${fit.tensor_parallel} · one node`,
       fit.kv_counted
         ? `${fit.context_length} ctx`
         : "weights only · window uncosted",
@@ -581,11 +581,12 @@ function brickOfFit(fit: ArtifactFit, artifact: string): Brick {
     device_count: fit.device_count,
     /**
      * The fit says how the replica is laid out, so this is read rather than
-     * guessed: tensor-parallel ranks share a domain, and pipeline stages cross
-     * one. A replica spanning domains is a normal answer for a large model, not
-     * a degraded one, so `domain_count` above 1 is what says it may spread.
+     * guessed: tensor-parallel ranks share a node's interconnect, and pipeline
+     * stages cross the backend fabric between nodes. A replica spanning nodes is
+     * a normal answer for a large model, not a degraded one, so `node_count`
+     * above 1 is what says it may spread.
      */
-    requires_single_topology_domain: fit.domain_count <= 1,
+    requires_single_topology_domain: fit.node_count <= 1,
     topology_domain_kind: null,
     replicas: 1,
     strategy: "pack",
