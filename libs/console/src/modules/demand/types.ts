@@ -808,6 +808,14 @@ export interface WorkloadCreateRequest {
   name: string
   project: string
   cluster?: string | null
+  /**
+   * Narrows placement without taking the decision off it, unlike `cluster`. The plane
+   * turns either list into a Policy named after the workload and attached to it, so the
+   * constraint is enforced on every later expansion and readable at
+   * `GET /policies?subject_type=workload`. Empty means no opinion.
+   */
+  allowed_regions?: string[]
+  allowed_clusters?: string[]
   priority_class?: string | null
   kind?: WorkloadKind
   min_scale?: number

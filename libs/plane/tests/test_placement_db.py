@@ -80,16 +80,23 @@ async def seed_demand(sessions) -> None:
         )
 
 
-async def seed_supply(sessions, name: str, devices: int, phase: str = "active", reachable: bool = True) -> uuid.UUID:
+async def seed_supply(
+    sessions,
+    name: str,
+    devices: int,
+    phase: str = "active",
+    reachable: bool = True,
+    region: str = "eu-west-1",
+) -> uuid.UUID:
     """One cluster with a node and some free, healthy accelerators."""
     async with sessions.begin() as db:
         cluster = (
             await db.execute(
                 text(
                     "insert into supply_cluster (uid, name, region, phase)"
-                    " values (:uid, :name, 'eu-west-1', :phase) returning id"
+                    " values (:uid, :name, :region, :phase) returning id"
                 ),
-                {"uid": ids.new_uid(ids.CLUSTER), "name": name, "phase": phase},
+                {"uid": ids.new_uid(ids.CLUSTER), "name": name, "phase": phase, "region": region},
             )
         ).scalar_one()
         await db.execute(
@@ -281,6 +288,104 @@ async def test_naming_a_cluster_skips_placement_entirely(sessions) -> None:
 
     assert [d.cluster_name for d in workload.deployments] == ["manual"]
     assert workload.pinned_cluster_id is not None
+
+
+async def test_a_region_allow_list_narrows_placement_without_choosing_for_it(sessions) -> None:
+    """A region allow-list is a constraint, not a pin.
+
+    The roomier cluster is the one that loses, which is the whole point: placement still
+    ranks and still picks, it just cannot leave the region it was given.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "euro", devices=8, region="eu-west-1")
+    await seed_supply(sessions, "asia", devices=4, region="ap-southeast-1")
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(allowed_regions=["ap-southeast-1"]))
+
+    assert [d.cluster_name for d in workload.deployments] == ["asia"]
+    assert workload.pinned_cluster_id is None
+
+
+async def test_a_region_allow_list_becomes_a_policy_attached_to_the_workload(sessions) -> None:
+    """The constraint is discoverable afterwards, not a field nothing else can see.
+
+    §6.3 says placement constraints are Policy. Declaring one on the create request is a
+    shortcut past `POST /policies`, not a second mechanism beside it — so what lands is an
+    ordinary policy row with an ordinary attachment.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "asia", devices=8, region="ap-southeast-1")
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(allowed_regions=["ap-southeast-1"]))
+
+    rows = await fetch(
+        sessions,
+        "select p.name, p.allowed_regions, a.subject_type"
+        " from bind_policy p join bind_policy_attachment a on a.policy_id = p.id"
+        " join demand_workload w on w.id = a.subject_id"
+        " where w.uid = :uid",
+        {"uid": workload.id},
+    )
+    assert rows == [("llama-prod-placement", ["ap-southeast-1"], "workload")]
+
+
+async def test_the_constraint_a_workload_declared_survives_into_later_expansions(sessions) -> None:
+    """Scaling up must not escape the region the workload was created under.
+
+    This is the half that a create-time-only constraint would get wrong. The policy is
+    read back through its attachment on every expansion, so a workload that outgrows its
+    region takes a shortfall rather than quietly spilling into another one.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "asia", devices=8, region="ap-southeast-1")
+    await seed_supply(sessions, "euro", devices=32, region="eu-west-1")
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(allowed_regions=["ap-southeast-1"]))
+    assert [d.cluster_name for d in workload.deployments] == ["asia"]
+
+    async with sessions() as db:
+        operation = await _scale_op(db, workload.id, min=0, desired=4, max=4)
+    assert operation.phase == "succeeded"
+
+    async with sessions() as db:
+        after = await WorkloadService(db).get(workload.id)
+    assert {d.cluster_name for d in after.deployments} == {"asia"}
+    assert after.scale.desired == 4
+    assert sum(d.desired_replicas for d in after.deployments) == 2
+
+
+async def test_a_cluster_allow_list_still_checks_capacity_unlike_a_pin(sessions) -> None:
+    """The difference between `nodeSelector` and `nodeName`, in one assertion.
+
+    A pin at an empty cluster is accepted (`test_naming_a_cluster_skips_placement_entirely`).
+    An allow-list naming the same cluster is not: placement ran, found nothing, and said so.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "roomy", devices=8)
+    await seed_supply(sessions, "empty", devices=0)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(allowed_clusters=["empty"]))
+
+    assert workload.deployments == []
+    assert workload.phase == "pending"
+
+
+async def test_a_pin_and_an_allow_list_together_are_refused(sessions) -> None:
+    """They are contradictory instructions, so the plane refuses rather than ranking them.
+
+    A pin says placement does not decide; an allow-list says it decides inside a smaller
+    set. Silently letting one win would make the other a field that sometimes does nothing.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "alpha", devices=8)
+
+    async with sessions() as db:
+        with pytest.raises(Invalid):
+            await WorkloadService(db).create(create(cluster="alpha", allowed_regions=["eu-west-1"]))
 
 
 async def test_replicas_multiply_the_device_shape(sessions) -> None:

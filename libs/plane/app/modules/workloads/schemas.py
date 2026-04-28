@@ -160,12 +160,28 @@ class WorkloadCreateRequest(Struct):
     `priority_class` is optional rather than absent: every workload carries one, but
     the project's default answers for most callers and making them repeat it is how
     defaults drift.
+
+    `allowed_regions` and `allowed_clusters` narrow placement without taking the
+    decision off it, which is what separates them from `cluster`: placement still runs,
+    still reads quota, still checks topology and capacity, and still picks — it just has
+    fewer clusters to pick from. "Any cluster in `ap`" is the common form and the reason
+    the region is a first-class field rather than a cluster list somebody has to keep up
+    to date as the fleet grows.
+
+    They are here rather than left to `POST /policies` because placement expands inside
+    `create`: a policy attached after the response has already missed the decision it
+    was meant to constrain. What is created *is* a Policy — named after the workload and
+    attached to it — so the constraint is discoverable, editable and enforced on every
+    later expansion by exactly the machinery §6.3 says owns it. Both lists empty means no
+    opinion, never "nothing allowed".
     """
 
     recipe: str
     name: str
     project: str
     cluster: str | None = None
+    allowed_regions: list[str] = []
+    allowed_clusters: list[str] = []
     priority_class: str | None = None
     kind: str = "service"
     min_scale: int = 1

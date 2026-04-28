@@ -610,6 +610,28 @@ is not entitled to overrule — and it forces a single deployment. When nothing 
 the create is `409 conflict` and the body carries a verdict per cluster, each with the numbers it
 was rejected on, so "no capacity" is never the whole answer.
 
+**`allowed_regions` and `allowed_clusters` narrow placement instead of replacing it.** They are the
+middle ground between the normal path and `cluster`, and the distinction is the same one Kubernetes
+draws between `nodeSelector` and `nodeName`: an allow-list still runs placement, still reads quota,
+still checks topology and capacity, and still picks — it just has fewer clusters to pick from, so an
+allow-list naming a cluster with no devices places nothing while a `cluster` naming the same one is
+accepted. `allowed_regions` is a first-class field rather than a cluster list because "any cluster in
+`ap`" is the common request and a list of names is one the caller has to maintain as the fleet grows.
+Both are allow-lists in the §6 sense: empty means no opinion, never "nothing allowed". Naming a
+`cluster` alongside either is `422` — a pin says placement does not decide and an allow-list says it
+decides within a smaller set, so letting one silently win would make the other a field that
+sometimes does nothing.
+
+What is created is an ordinary **Policy**, named `<workload>-placement`, attached with
+`subject_type=workload`, and readable at `GET /v1/policies?subject_type=workload&subject={ref}`.
+That is deliberate rather than incidental: placement constraints are Policy, and these two fields
+are a shortcut past `POST /v1/policies` rather than a second mechanism beside it. The shortcut has
+to exist because placement expands inside the create, so a policy attached after the response has
+already missed the decision it was meant to constrain. Being a real policy is what makes the
+constraint hold afterwards — it is read back through its attachment on every later expansion, so a
+workload scaled past what its region can hold takes a shortfall instead of quietly spilling out of
+it — and editing or deleting that policy is how the constraint is changed or lifted.
+
 A create that lands returns the workload with its `deployments` already expanded — one row per
 cluster placement chose, each carrying that cluster's share. When the clusters together can hold
 only part of the total, the placed shares are returned with the shortfall named rather than the

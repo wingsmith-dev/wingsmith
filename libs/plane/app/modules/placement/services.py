@@ -109,7 +109,7 @@ class PlacementService:
         demand = await self.demand(workload)
         capacity = snapshot
         if capacity is None:
-            capacity = await self.repo.capacity(workload.project_id, demand.device_class)
+            capacity = await self.repo.capacity(workload.project_id, demand.device_class, workload.id)
         decision = expand(demand, capacity)
         if not decision.splittable and not decision.shares:
             raise Invalid(decision.summary)

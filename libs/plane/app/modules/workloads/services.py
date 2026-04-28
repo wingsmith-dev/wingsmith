@@ -8,12 +8,15 @@ from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.ids import POLICY
 from app.core.ids import WORKLOAD
 from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
+from app.db.models import Policy
 from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import PriorityClass
+from app.db.models import PolicyAttachment
 from app.db.notify import DEPLOYMENT as DEPLOYMENT_KIND
 from app.db.notify import Notifier
 from app.db.notify import DeclaredChange
@@ -27,9 +30,11 @@ from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
 from app.modules.placement.services import PlacementService
+from app.modules.placement.snapshot import PolicySnapshot
 from app.modules.placement.snapshot import CapacitySnapshot
 from app.modules.deployments.schemas import DeploymentStatusSchema
 from app.modules.deployments.schemas import DeploymentReplicaRollupSchema
+from app.modules.placement.repository import SUBJECT_WORKLOAD
 
 from .schemas import WorkloadSchema
 from .schemas import WorkloadScaleSchema
@@ -44,6 +49,7 @@ from .repository import WorkloadRepository
 
 KINDS = frozenset({"service", "task", "gang"})
 STRATEGIES = frozenset({"pack", "spread"})
+CONSTRAINT_SUFFIX = "-placement"
 PHASES = frozenset({"pending", "admitted", "placed", "running", "succeeded", "failed"})
 
 MANAGED = "managed"
@@ -72,6 +78,17 @@ EMPTY = DeploymentReplicaRollupSchema(
     failed=0,
     at_current_generation=0,
 )
+
+
+def constraint_name(workload_name: str) -> str:
+    """The name of the policy a workload's own allow-list becomes.
+
+    Derived from the workload rather than random so that the policies list reads as a
+    list of intentions instead of a list of identifiers, and so a second workload of the
+    same name in another project collides loudly — `Policy.name` is globally unique, and
+    a silent second constraint sharing one name would be worse than the conflict.
+    """
+    return f"{workload_name}{CONSTRAINT_SUFFIX}"
 
 
 def check_scale(min_scale: int, desired_scale: int, max_scale: int, kind: str, gang_size: int) -> None:
@@ -471,7 +488,12 @@ class WorkloadService:
             raise Invalid("no priority class was given and none is marked default")
         return fallback
 
-    async def _expand(self, workload: Workload, exclude: str | None = None):
+    async def _expand(
+        self,
+        workload: Workload,
+        exclude: str | None = None,
+        extra_policies: tuple[PolicySnapshot, ...] = (),
+    ):
         """Asks placement where this workload goes, and how much of it goes there.
 
         The shares come back whole and are never re-derived here: a share is this
@@ -483,20 +505,37 @@ class WorkloadService:
         shortfall is visible in the scale rollup rather than costing the caller the
         capacity that was found. A gang is the one shape with no partial answer, and
         placement raises rather than returning half of one.
+
+        `extra_policies` exists for exactly one caller: `create`, whose workload has no
+        primary key yet — the column is `server_default` — so nothing can be attached to
+        it and `_policies` has nothing to find. The constraint the caller declared is
+        handed to the expansion directly and persisted as a real Policy in the same
+        write, so this is the only expansion in the object's life that needs it. Every
+        later one reads the attachment.
         """
         placement = PlacementService(self.db)
         snapshot = None
-        if exclude is not None:
+        if exclude is not None or extra_policies:
             demand = await placement.demand(workload)
-            capacity = await placement.repo.capacity(workload.project_id, demand.device_class)
+            workload_id = getattr(workload, "id", None)
+            capacity = await placement.repo.capacity(workload.project_id, demand.device_class, workload_id)
             snapshot = CapacitySnapshot(
-                clusters=tuple(c for c in capacity.clusters if c.uid != exclude),
+                clusters=tuple(c for c in capacity.clusters if exclude is None or c.uid != exclude),
                 quotas=capacity.quotas,
-                policies=capacity.policies,
+                policies=capacity.policies + extra_policies,
             )
         return await placement.expand(workload, snapshot)
 
     async def create(self, data: WorkloadCreateRequest) -> WorkloadSchema:
+        """Creates a workload and the deployments placement expanded it into.
+
+        A declared `allowed_regions` or `allowed_clusters` becomes a real Policy attached
+        to the workload, written in this same transaction. It is also handed to the
+        expansion directly, because placement runs here and the attachment cannot exist
+        yet — `Workload.id` is `server_default`, so there is no primary key to attach to
+        until `repo.add` has flushed. Those are the same constraint expressed twice for
+        one call only; every expansion after this one reads the attachment.
+        """
         if data.kind not in KINDS:
             raise Invalid(f"unknown kind {data.kind!r}", {"allowed": sorted(KINDS)})
         if data.strategy not in STRATEGIES:
@@ -520,6 +559,31 @@ class WorkloadService:
             pinned = await self.repo.cluster_by_ref(data.cluster)
             if pinned is None:
                 raise NotFound(f"no cluster {data.cluster!r}")
+
+        narrowed = []
+        for ref in data.allowed_clusters:
+            cluster = await self.repo.cluster_by_ref(ref)
+            if cluster is None:
+                raise NotFound(f"no cluster {ref!r}")
+            narrowed.append(cluster)
+        if pinned is not None and (data.allowed_regions or narrowed):
+            raise Invalid(
+                "cluster pins placement to one and an allow-list asks placement to choose",
+                {"cluster": data.cluster},
+            )
+        constraint = (
+            PolicySnapshot(
+                name=constraint_name(data.name),
+                enabled=True,
+                allowed_regions=tuple(data.allowed_regions),
+                allowed_residencies=(),
+                allowed_device_classes=(),
+                allowed_clusters=tuple(c.uid for c in narrowed),
+                denied_clusters=(),
+            )
+            if data.allowed_regions or narrowed
+            else None
+        )
 
         workload = Workload(
             uid=new_uid(WORKLOAD),
@@ -546,7 +610,7 @@ class WorkloadService:
             deadline_at=data.deadline_at,
         )
 
-        decision = await self._expand(workload)
+        decision = await self._expand(workload, extra_policies=() if constraint is None else (constraint,))
         shares = [s for s in decision.shares if s.replicas > 0]
         clusters = await self.repo.clusters_by_uid([s.cluster for s in shares])
         now = dt.datetime.now(dt.UTC)
@@ -572,6 +636,18 @@ class WorkloadService:
 
         try:
             await self.repo.add(workload, deployments)
+            if constraint is not None:
+                self.db.add(
+                    Policy(
+                        uid=new_uid(POLICY),
+                        name=constraint.name,
+                        description=f"Placement constraint declared when {data.name} was created.",
+                        allowed_regions=list(data.allowed_regions),
+                        allowed_cluster_ids=[c.id for c in narrowed],
+                        enabled=True,
+                        attachments=[PolicyAttachment(subject_type=SUBJECT_WORKLOAD, subject_id=workload.id)],
+                    )
+                )
             for deployment, share in zip(deployments, shares, strict=True):
                 await self._record(
                     deployment,

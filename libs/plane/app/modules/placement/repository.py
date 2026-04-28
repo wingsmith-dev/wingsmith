@@ -54,6 +54,7 @@ device we cannot promise.
 
 SUBJECT_PROJECT = "project"
 SUBJECT_TENANT = "tenant"
+SUBJECT_WORKLOAD = "workload"
 
 
 class PlacementRepository:
@@ -62,18 +63,24 @@ class PlacementRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def capacity(self, project_id: UUID, device_class: str) -> CapacitySnapshot:
+    async def capacity(self, project_id: UUID, device_class: str, workload_id: UUID | None = None) -> CapacitySnapshot:
         """Everything placement is allowed to look at, for one project and device class.
 
         Narrowed to the device class on purpose. A control plane that snapshots
         every accelerator it owns to place one deployment reads the whole fleet
         for an answer that could only ever have concerned one slice of it.
+
+        `workload_id` is optional because two callers legitimately have no workload to
+        name: `preview`, which is asked about a recipe before anything exists, and the
+        create path, which has no primary key until it flushes. Both are answered without
+        workload-level policies, and create compensates by handing its own constraint
+        straight to the expansion.
         """
         clusters = await self._clusters(device_class)
         return CapacitySnapshot(
             clusters=clusters,
             quotas=await self._quotas(project_id, device_class),
-            policies=await self._policies(project_id),
+            policies=await self._policies(project_id, workload_id),
         )
 
     async def _clusters(self, device_class: str) -> tuple[ClusterSnapshot, ...]:
@@ -277,18 +284,21 @@ class PlacementRepository:
             drawn[cluster_id] = drawn.get(cluster_id, 0) + 1
         return drawn
 
-    async def _policies(self, project_id: UUID) -> tuple[PolicySnapshot, ...]:
-        """Policies attached to the project or to the tenant above it.
+    async def _policies(self, project_id: UUID, workload_id: UUID | None = None) -> tuple[PolicySnapshot, ...]:
+        """Policies attached to the workload, its project, or the tenant above it.
 
         Attachment resolution happens here so the engine receives only policies
         that apply. A tenant policy reaches every project inside it; there is no
-        precedence between the two levels, because a constraint that a narrower
-        attachment could switch off would not be a constraint.
+        precedence between the three levels, because a constraint that a narrower
+        attachment could switch off would not be a constraint. A workload policy is
+        therefore additive: it can only ever narrow what the project already allowed.
         """
         tenant_id = await self.db.scalar(select(Project.tenant_id).where(Project.id == project_id))
         subjects = [(SUBJECT_PROJECT, project_id)]
         if tenant_id is not None:
             subjects.append((SUBJECT_TENANT, tenant_id))
+        if workload_id is not None:
+            subjects.append((SUBJECT_WORKLOAD, workload_id))
 
         rows = (
             (
