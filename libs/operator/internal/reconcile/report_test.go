@@ -60,7 +60,7 @@ func runReconcileReporting(t *testing.T, rep Reporter, objects ...client.Object)
 	r := &SyncedResourceReconciler{
 		Client: c, Scheme: scheme, Log: slog.Default(),
 		Namespace: "hangar-system", Render: testRender,
-		ClusterID: "cluster-ap",
+		ClusterID: "ap-cluster-1",
 	}
 	r.Bind(rep)
 
@@ -99,7 +99,7 @@ func TestWaitingIsReportedToTheHub(t *testing.T) {
 	if got.DeploymentID != testDeploymentID {
 		t.Errorf("deployment = %q, want %q", got.DeploymentID, testDeploymentID)
 	}
-	if got.ClusterID != "cluster-ap" {
+	if got.ClusterID != "ap-cluster-1" {
 		t.Errorf("cluster = %q, want the operator's own", got.ClusterID)
 	}
 }

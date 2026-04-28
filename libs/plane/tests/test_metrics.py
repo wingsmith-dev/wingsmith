@@ -39,7 +39,7 @@ from app.modules.metrics.prometheus import PrometheusBackend
 
 WRITE_METHODS = ("create", "update", "delete", "patch", "post", "add", "remove")
 
-CENTRAL = sources.Source(cluster="us", url="https://prom", label="cluster-us")
+CENTRAL = sources.Source(cluster="us", url="https://prom", label="us-cluster-1")
 
 
 class FakeClient:
@@ -104,14 +104,12 @@ def test_a_dedicated_endpoint_per_cluster_still_parses():
 
 
 def test_the_shared_store_is_one_endpoint_and_a_label_per_cluster():
-    parsed = sources.parse(
-        "default=https://central:9090|token=t,us|label=cluster-us,ap|label=cluster-ap"
-    )
+    parsed = sources.parse("default=https://central:9090|token=t,us|label=us-cluster-1,ap|label=ap-cluster-1")
     assert set(parsed) == {"us", "ap"}
     assert parsed["us"].url == "https://central:9090"
     assert parsed["us"].token == "t"
-    assert parsed["us"].label == "cluster-us"
-    assert parsed["ap"].label == "cluster-ap"
+    assert parsed["us"].label == "us-cluster-1"
+    assert parsed["ap"].label == "ap-cluster-1"
 
 
 def test_an_entry_on_the_shared_store_is_never_unlabelled():
@@ -122,7 +120,7 @@ def test_an_entry_on_the_shared_store_is_never_unlabelled():
 
 def test_a_cluster_with_no_entry_has_no_source_even_when_a_default_exists():
     """Reporting plainly beats guessing a label and rendering an idle fleet."""
-    parsed = sources.parse("default=https://central:9090,us|label=cluster-us")
+    parsed = sources.parse("default=https://central:9090,us|label=us-cluster-1")
     assert sources.Source(cluster="ap", url="https://central:9090") not in parsed.values()
     assert "ap" not in parsed
 
@@ -153,8 +151,8 @@ def test_every_scope_carries_a_cluster_matcher():
         ("device", {"device": ("GPU-1",)}),
         ("deployment", {"deployment": ("gpt-oss-120b",)}),
     ):
-        where = selector(Scope(kind=kind, cluster="cluster-us", match=match))
-        assert where.startswith('cluster="cluster-us"'), kind
+        where = selector(Scope(kind=kind, cluster="us-cluster-1", match=match))
+        assert where.startswith('cluster="us-cluster-1"'), kind
 
 
 def test_a_dedicated_store_gets_no_cluster_matcher():
@@ -427,8 +425,8 @@ def test_worker_identity_is_empty_when_either_half_is_missing():
 
 
 def test_the_worker_dimension_selects_on_the_dynamo_namespace():
-    scope = Scope(kind="deployment", cluster="cluster-ap", match={"worker": ("dynamo-891b8dda",)})
-    assert selector(scope) == 'cluster="cluster-ap",dynamo_namespace="dynamo-891b8dda"'
+    scope = Scope(kind="deployment", cluster="ap-cluster-1", match={"worker": ("dynamo-891b8dda",)})
+    assert selector(scope) == 'cluster="ap-cluster-1",dynamo_namespace="dynamo-891b8dda"'
 
 
 def test_the_worker_join_separates_two_deployments_of_one_model():
@@ -597,8 +595,8 @@ def fleet_clusters():
     from app.db.models import Cluster
 
     return [
-        Cluster(name="cluster-us", uid="clu_01j9x2aaaaaaaaaaaaaaaaaaaa", metrics_label="us"),
-        Cluster(name="cluster-ap", uid="clu_01j9x2bbbbbbbbbbbbbbbbbbbb", metrics_label="ap"),
+        Cluster(name="us-cluster-1", uid="clu_01j9x2aaaaaaaaaaaaaaaaaaaa", metrics_label="us"),
+        Cluster(name="ap-cluster-1", uid="clu_01j9x2bbbbbbbbbbbbbbbbbbbb", metrics_label="ap"),
     ]
 
 
@@ -644,7 +642,7 @@ async def test_a_fleet_in_two_stores_says_so_rather_than_merging_them_here():
     """
     backend = CaptureBackend(samples={"inference.requests_running": 7.0})
     got = await fleet_answer(
-        "cluster-us=https://prom.us:9090|label=us,cluster-ap=https://prom.ap:9090|label=ap",
+        "us-cluster-1=https://prom.us:9090|label=us,ap-cluster-1=https://prom.ap:9090|label=ap",
         backend,
     )
 
@@ -661,7 +659,7 @@ async def test_a_store_nothing_narrows_is_left_out_of_the_fleet_rather_than_wide
     in whatever else that store holds.
     """
     backend = CaptureBackend()
-    spec = "cluster-us=https://central:9090,cluster-ap=https://central:9090"
+    spec = "us-cluster-1=https://central:9090,ap-cluster-1=https://central:9090"
     got = await fleet_answer(spec, backend)
 
     assert got.samples == []
@@ -685,7 +683,7 @@ async def test_the_fleet_breaks_down_by_cluster_under_the_name_it_is_called_by()
     got = await fleet_answer("default=https://central:9090", backend)
 
     assert backend.requests[0].scope.breakdown == "cluster"
-    assert [(row.key, row.label) for row in got.breakdown] == [("us", "cluster-us")]
+    assert [(row.key, row.label) for row in got.breakdown] == [("us", "us-cluster-1")]
 
 
 def test_every_fleet_metric_can_actually_be_grouped_by_cluster():

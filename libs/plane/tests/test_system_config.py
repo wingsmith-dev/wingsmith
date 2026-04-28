@@ -27,7 +27,7 @@ SECRETS = {
     "DATABASE_URL": "postgresql+psycopg://dbuser:sentinel-db-password-dddd@db.internal:5433/hangar",
     "METRICS_SOURCES": (
         "default=https://prom.central:9090|token=sentinel-metrics-token-eeee,"
-        "us|label=cluster-us,"
+        "us|label=us-cluster-1,"
         "ap=https://prom.ap:9090|token=sentinel-metrics-token-ffff|kind=prometheus"
     ),
 }
@@ -100,7 +100,7 @@ def test_metrics_sources_are_parsed_with_their_cluster_label():
     by_cluster = {source["cluster"]: source for source in metrics["sources"]}
     assert set(by_cluster) == {"us", "ap"}
     assert by_cluster["us"]["url"] == "https://prom.central:9090"
-    assert by_cluster["us"]["label"] == "cluster-us"
+    assert by_cluster["us"]["label"] == "us-cluster-1"
     assert by_cluster["ap"]["url"] == "https://prom.ap:9090"
     assert by_cluster["ap"]["label"] == ""
     assert all(set(source) == {"cluster", "url", "kind", "label"} for source in metrics["sources"])

@@ -271,7 +271,7 @@ async def test_an_operation_hint_is_rendered_by_the_operations_renderer(monkeypa
     assert [type_name for type_name, _ in rendered] == ["operation.desired"]
 
 
-CLUSTER_NAME = "cluster-us"
+CLUSTER_NAME = "us-cluster-1"
 
 
 async def test_a_session_that_named_itself_is_reachable_by_uid() -> None:

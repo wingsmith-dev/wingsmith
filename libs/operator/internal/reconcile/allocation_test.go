@@ -20,7 +20,7 @@ func (f fakeDevices) DevicesForPod(namespace, name string) []string {
 // allocatingReconciler is a reconciler with a known device binding and nothing else — the rollout
 // helpers it exercises read pods that are handed to them, so no API server is involved.
 func allocatingReconciler(devices DeviceIndex) *SyncedResourceReconciler {
-	return &SyncedResourceReconciler{ClusterID: "cluster-ap", Devices: devices}
+	return &SyncedResourceReconciler{ClusterID: "ap-cluster-1", Devices: devices}
 }
 
 func gpuPod(name string, node string) corev1.Pod {

@@ -708,7 +708,7 @@ func TestARenamedWorkloadFromBeforeTheLabelIsCollected(t *testing.T) {
 	legacy := legacyRendered(t, render.Name(testDeploymentID), nil)
 	r := &SyncedResourceReconciler{
 		Client: fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(legacy).Build(),
-		Log:    slog.Default(), Render: testRender, ClusterID: "cluster-ap",
+		Log:    slog.Default(), Render: testRender, ClusterID: "ap-cluster-1",
 	}
 
 	if err := r.pruneRendered(context.Background(), testDeploymentID, "gpt-oss-20b"); err != nil {
@@ -726,7 +726,7 @@ func TestTheCurrentRenderIsNeverCollectedByName(t *testing.T) {
 	current := legacyRendered(t, name, nil)
 	r := &SyncedResourceReconciler{
 		Client: fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(current).Build(),
-		Log:    slog.Default(), Render: testRender, ClusterID: "cluster-ap",
+		Log:    slog.Default(), Render: testRender, ClusterID: "ap-cluster-1",
 	}
 
 	if err := r.pruneRendered(context.Background(), testDeploymentID, name); err != nil {
@@ -744,7 +744,7 @@ func TestAnObjectLabelledForAnotherDeploymentIsLeftAlone(t *testing.T) {
 	theirs := legacyRendered(t, name, map[string]string{deploymentIDLabel: "dep_01someoneelse"})
 	r := &SyncedResourceReconciler{
 		Client: fake.NewClientBuilder().WithScheme(testScheme(t)).WithObjects(theirs).Build(),
-		Log:    slog.Default(), Render: testRender, ClusterID: "cluster-ap",
+		Log:    slog.Default(), Render: testRender, ClusterID: "ap-cluster-1",
 	}
 
 	if err := r.pruneRendered(context.Background(), testDeploymentID, "gpt-oss-20b"); err != nil {

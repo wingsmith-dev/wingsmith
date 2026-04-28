@@ -20,7 +20,7 @@ clean empty that reads as a healthy idle fleet.
 An env entry per cluster still parses, still means what it meant, and still
 wins over the column, so a wrong or missing label is fixable from either side:
 
-    HANGAR_METRICS_SOURCES="default=https://prom.central:9090,us|label=cluster-us"
+    HANGAR_METRICS_SOURCES="default=https://prom.central:9090,us|label=us-cluster-1"
     HANGAR_METRICS_SOURCES="us=https://prom.us.example:9090"
 
 An entry with no URL of its own inherits `default`'s endpoint and carries the

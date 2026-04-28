@@ -31,14 +31,14 @@ from app.modules.metrics.services import served_model
 UTILIZATION = BY_NAME["gpu.utilization"]
 POWER = BY_NAME["gpu.power"]
 
-SOURCES = "cluster-us|label=cluster-us,default=https://central:9090"
+SOURCES = "us-cluster-1|label=us-cluster-1,default=https://central:9090"
 SHARED = "default=https://central:9090|token=secret"
 
 
 def cluster(
-    name="cluster-us",
+    name="us-cluster-1",
     uid="clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
-    metrics_label="cluster-us",
+    metrics_label="us-cluster-1",
 ) -> Cluster:
     return Cluster(name=name, uid=uid, metrics_label=metrics_label)
 
@@ -118,7 +118,7 @@ async def test_an_unlabelled_cluster_reports_no_source_even_with_a_shared_store(
     assert got.source is None
     assert got.unavailable
     assert "no metrics label" in got.unavailable
-    assert "cluster-us" in got.unavailable
+    assert "us-cluster-1" in got.unavailable
     assert not got.samples
 
 
@@ -143,7 +143,7 @@ async def test_an_unconfigured_cluster_never_reaches_a_backend():
 
 async def test_an_answer_identifies_the_scope_cluster_and_source():
     backend = StubBackend(samples={"gpu.utilization": 72.5})
-    got = await answer(service(), backend, Scope(kind="cluster", cluster="cluster-us"))
+    got = await answer(service(), backend, Scope(kind="cluster", cluster="us-cluster-1"))
 
     assert got.scope == "cluster"
     assert got.ref == "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
@@ -163,7 +163,7 @@ async def test_an_answer_for_no_single_cluster_still_names_the_store_it_came_fro
     svc = service()
     with with_sources(), with_backend(backend):
         got = await svc._answer_source(
-            sources.Source(cluster="us", url="https://central:9090", label="cluster-us"),
+            sources.Source(cluster="us", url="https://central:9090", label="us-cluster-1"),
             None,
             Scope(kind="workload"),
             "wl_01j9x2aaaaaaaaaaaaaaaaaaaa",
@@ -339,9 +339,9 @@ async def test_an_unavailable_store_is_never_raised_at_the_caller():
 
 def test_a_scope_always_carries_the_cluster_label_its_source_is_narrowed_by():
     """The fleet remote-writes into one store holding four clusters."""
-    source = sources.Source(cluster="us", url="https://prom", label="cluster-us")
+    source = sources.Source(cluster="us", url="https://prom", label="us-cluster-1")
     scope = service()._scope("node", source, node=("iad-1-n01",))
-    assert scope.cluster == "cluster-us"
+    assert scope.cluster == "us-cluster-1"
     assert scope.match == {"node": ("iad-1-n01",)}
 
 
@@ -417,7 +417,7 @@ def test_a_blank_label_is_treated_as_no_label_rather_than_matching_nothing():
 
 def test_an_explicit_entry_overrides_the_column():
     """A wrong column is fixable from the deployment, without a database write."""
-    got = resolve(f"{SHARED},cluster-us|label=corrected", metrics_label="stale")
+    got = resolve(f"{SHARED},us-cluster-1|label=corrected", metrics_label="stale")
     assert got is not None
     assert got.label == "corrected"
 
@@ -430,7 +430,7 @@ def test_an_entry_keyed_by_uid_also_overrides_the_column():
 
 def test_a_dedicated_store_entry_still_wins_and_still_carries_no_matcher():
     """The pre-`remote_write` form: one Prometheus holding one cluster (ADR 0008)."""
-    got = resolve(f"{SHARED},cluster-us=https://prom.us:9090", metrics_label="ignored")
+    got = resolve(f"{SHARED},us-cluster-1=https://prom.us:9090", metrics_label="ignored")
     assert got is not None
     assert got.url == "https://prom.us:9090"
     assert got.label == "", "a store holding one cluster has no cluster label to match on"
@@ -439,7 +439,7 @@ def test_a_dedicated_store_entry_still_wins_and_still_carries_no_matcher():
 
 def test_a_labelled_cluster_with_no_shared_endpoint_has_no_store():
     """A label names which series, not where they are; without an endpoint it answers nothing."""
-    assert resolve("", metrics_label="cluster-us") is None
+    assert resolve("", metrics_label="us-cluster-1") is None
 
 
 # --- configured sources -----------------------------------------------------
@@ -476,7 +476,7 @@ async def test_the_source_listing_names_a_cluster_answered_only_by_its_column():
     svc = MetricsService(db=RowsSession([cluster(metrics_label="cluster-a")]))  # type: ignore[arg-type]
     with patch.object(sources.settings, "METRICS_SOURCES", SHARED):
         listed = await svc.sources()
-    assert [entry.cluster for entry in listed] == ["cluster-us"]
+    assert [entry.cluster for entry in listed] == ["us-cluster-1"]
 
 
 async def test_the_source_listing_omits_a_cluster_with_no_label():
@@ -616,8 +616,8 @@ def workload_service(*results) -> MetricsService:
 
 def two_clusters():
     return [
-        cluster(name="cluster-us", uid=US, metrics_label="cluster-us"),
-        cluster(name="cluster-ap", uid=AP, metrics_label="cluster-ap"),
+        cluster(name="us-cluster-1", uid=US, metrics_label="us-cluster-1"),
+        cluster(name="ap-cluster-1", uid=AP, metrics_label="ap-cluster-1"),
     ]
 
 
@@ -667,8 +667,8 @@ async def test_each_cluster_curve_says_which_cluster_it_came_from():
 
     assert len(got.series) == 2
     assert [line.labels["cluster"] for line in got.series] == [
-        "cluster-us",
-        "cluster-ap",
+        "us-cluster-1",
+        "ap-cluster-1",
     ]
 
 
@@ -678,8 +678,8 @@ async def test_a_two_cluster_workload_keeps_one_breakdown_row_per_cluster():
     got = await workload_answer(svc, backend)
 
     assert [(row.key, row.label) for row in got.breakdown] == [
-        (US, "cluster-us"),
-        (AP, "cluster-ap"),
+        (US, "us-cluster-1"),
+        (AP, "ap-cluster-1"),
     ]
     assert [row.samples[0].value for row in got.breakdown] == [3.0, 5.0]
 

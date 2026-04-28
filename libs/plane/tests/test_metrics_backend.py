@@ -25,7 +25,7 @@ from app.modules.metrics.registry import BY_NAME
 from app.modules.metrics.prometheus import PrometheusBackend
 
 
-SOURCE = sources.Source(cluster="us", url="https://prom", label="cluster-us")
+SOURCE = sources.Source(cluster="us", url="https://prom", label="us-cluster-1")
 
 UTILIZATION = BY_NAME["gpu.utilization"]
 POWER = BY_NAME["gpu.power"]
@@ -76,7 +76,7 @@ def sample(value, labels=None):
 
 
 def scope(**kw) -> Scope:
-    return Scope(kind=kw.pop("kind", "cluster"), cluster=kw.pop("cluster", "cluster-us"), **kw)
+    return Scope(kind=kw.pop("kind", "cluster"), cluster=kw.pop("cluster", "us-cluster-1"), **kw)
 
 
 def request(*metrics, window="5m", **kw) -> Request:
@@ -138,8 +138,8 @@ async def test_every_requested_metric_is_answered_for():
 
 async def test_the_scope_reaches_the_expression():
     client = StubClient({"DCGM_FI_DEV_GPU_UTIL": [sample(50)]})
-    await backend(client).samples(request(UTILIZATION, cluster="cluster-ap"))
-    assert any("cluster-ap" in q for q in client.instant_queries)
+    await backend(client).samples(request(UTILIZATION, cluster="ap-cluster-1"))
+    assert any("ap-cluster-1" in q for q in client.instant_queries)
 
 
 # --- the double-count guard ------------------------------------------------

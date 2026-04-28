@@ -51,14 +51,14 @@ describe("WorkloadServingSection", () => {
     render(
       <WorkloadServingSection
         deployments={[
-          deployment("dep_ap", "cluster-ap"),
-          deployment("dep_us", "cluster-us"),
+          deployment("dep_ap", "ap-cluster-1"),
+          deployment("dep_us", "us-cluster-1"),
         ]}
       />
     )
 
-    expect(screen.getByText("cluster-ap")).toBeInTheDocument()
-    expect(screen.getByText("cluster-us")).toBeInTheDocument()
+    expect(screen.getByText("ap-cluster-1")).toBeInTheDocument()
+    expect(screen.getByText("us-cluster-1")).toBeInTheDocument()
     expect(screen.getByText("28.5/s")).toBeInTheDocument()
     expect(screen.getByText("33.5/s")).toBeInTheDocument()
     // 62.0/s would be the sum of two per-stream rates, which is not a number.
@@ -69,7 +69,7 @@ describe("WorkloadServingSection", () => {
   it("says nothing about averaging when there is only one cluster", () => {
     render(
       <WorkloadServingSection
-        deployments={[deployment("dep_us", "cluster-us")]}
+        deployments={[deployment("dep_us", "us-cluster-1")]}
       />
     )
     expect(
