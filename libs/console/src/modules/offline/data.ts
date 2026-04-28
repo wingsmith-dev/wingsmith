@@ -85,7 +85,7 @@ interface ClusterSpec {
   labels: Record<string, string>
   capabilities: Record<string, unknown>
   syncState: string
-  agentVersion: string | null
+  operatorVersion: string | null
   lastError: string | null
   enrolled: boolean
   pools: PoolSpec[]
@@ -103,7 +103,7 @@ const SPECS: ClusterSpec[] = [
     labels: { tier: "prod", fabric: "nvswitch" },
     capabilities: { nvlink: true, rdma: true, mig: true },
     syncState: "connected",
-    agentVersion: "0.4.2",
+    operatorVersion: "0.4.2",
     lastError: null,
     enrolled: true,
     pools: [
@@ -167,7 +167,7 @@ const SPECS: ClusterSpec[] = [
     labels: { tier: "prod" },
     capabilities: { nvlink: true },
     syncState: "disconnected",
-    agentVersion: "0.4.1",
+    operatorVersion: "0.4.1",
     lastError: "stream closed by peer",
     enrolled: true,
     pools: [
@@ -217,7 +217,7 @@ const SPECS: ClusterSpec[] = [
     labels: { tier: "prod", residency: "eu" },
     capabilities: { nvlink: true, rdma: true },
     syncState: "connected",
-    agentVersion: "0.4.2",
+    operatorVersion: "0.4.2",
     lastError: null,
     enrolled: true,
     pools: [
@@ -260,7 +260,7 @@ const SPECS: ClusterSpec[] = [
     labels: { tier: "staging" },
     capabilities: {},
     syncState: "never_connected",
-    agentVersion: null,
+    operatorVersion: null,
     lastError: null,
     enrolled: false,
     pools: [
@@ -486,7 +486,7 @@ for (const spec of SPECS) {
       distribution: spec.enrolled ? "eks" : null,
       cloud: spec.enrolled ? "aws" : null,
       observed_region: spec.enrolled ? spec.region : null,
-      agent_version: spec.agentVersion,
+      operator_version: spec.operatorVersion,
       lag_ms: spec.reachable ? 340 : null,
       last_error: spec.lastError,
     },
@@ -556,7 +556,7 @@ for (const spec of SPECS) {
         os_image: "Ubuntu 22.04.4 LTS",
         kernel_version: "5.15.0-119-generic",
         driver_version: "550.90.07",
-        agent_version: spec.agentVersion,
+        operator_version: spec.operatorVersion,
         labels: spec.labels,
         taints: node.cordoned
           ? [{ key: "hangar.io/cordoned", effect: "NoSchedule" }]

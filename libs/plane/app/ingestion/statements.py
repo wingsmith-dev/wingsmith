@@ -230,7 +230,7 @@ def upsert_node(cluster_id: UUID, payload: NodeObserved) -> Insert:
         "ready": payload.ready,
         "kernel_version": payload.kernel_version or None,
         "driver_version": payload.driver_version or None,
-        "agent_version": payload.agent_version or None,
+        "operator_version": payload.operator_version or None,
         "labels": payload.labels,
         "observed_at": parse_ts(payload.observed_at),
     }

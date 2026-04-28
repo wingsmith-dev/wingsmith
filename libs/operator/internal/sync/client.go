@@ -92,10 +92,10 @@ func (m *MemoryCheckpointer) Save(_ context.Context, c Cursor) error {
 
 // Options configures a Client.
 type Options struct {
-	HubURL       string
-	ClusterID    string
-	Token        string
-	AgentVersion string
+	HubURL          string
+	ClusterID       string
+	Token           string
+	OperatorVersion string
 
 	TLSConfig  *tls.Config
 	HTTPClient *http.Client
@@ -128,8 +128,8 @@ func (o *Options) defaults() {
 	if o.SendQueueSize <= 0 {
 		o.SendQueueSize = 1024
 	}
-	if o.AgentVersion == "" {
-		o.AgentVersion = "dev"
+	if o.OperatorVersion == "" {
+		o.OperatorVersion = "dev"
 	}
 	if o.Logger == nil {
 		o.Logger = slog.Default()
@@ -365,9 +365,9 @@ func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
 	c.mu.Unlock()
 
 	hello := wire.Hello{
-		ClusterID:    c.opts.ClusterID,
-		AgentVersion: c.opts.AgentVersion,
-		Lossy:        cursor.Lossy || c.replay.Lossy(),
+		ClusterID:       c.opts.ClusterID,
+		OperatorVersion: c.opts.OperatorVersion,
+		Lossy:           cursor.Lossy || c.replay.Lossy(),
 	}
 	if cursor.SessionID != "" {
 		session := cursor.SessionID

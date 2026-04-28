@@ -40,7 +40,7 @@
     "kernel_version": "6.8.0-45-generic",
     "driver_version": "570.86.15",
     "runtime_version": "containerd://1.7.27",
-    "agent_version": "0.4.2",
+    "operator_version": "0.4.2",
     "taints": [
       {
         "key": "nvidia.com/gpu",

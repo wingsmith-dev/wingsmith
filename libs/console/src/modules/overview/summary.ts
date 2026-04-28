@@ -243,8 +243,8 @@ function syncActionables(cluster: Cluster): Actionable[] {
       kind: "cluster",
       title: `Sync link is ${cluster.sync.state.replace(/_/g, " ")}`,
       detail: cluster.sync.last_error ?? undefined,
-      badges: cluster.sync.agent_version
-        ? [`agent ${cluster.sync.agent_version}`]
+      badges: cluster.sync.operator_version
+        ? [`operator ${cluster.sync.operator_version}`]
         : undefined,
       link,
     })

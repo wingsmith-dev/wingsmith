@@ -337,7 +337,7 @@ func TestLiveness(t *testing.T) {
 
 		conn := h.dialRaw(ctx)
 		defer conn.CloseNow()
-		payload, err := json.Marshal(wire.Hello{ClusterID: clusterID, AgentVersion: "interop-silent"})
+		payload, err := json.Marshal(wire.Hello{ClusterID: clusterID, OperatorVersion: "interop-silent"})
 		if err != nil {
 			t.Fatalf("encode hello: %v", err)
 		}

@@ -110,7 +110,7 @@ export interface SupplyNode {
   os_image: string | null
   kernel_version: string | null
   driver_version: string | null
-  agent_version: string | null
+  operator_version: string | null
   labels: Record<string, string>
   taints: unknown[]
   devices: NodeDeviceRollup

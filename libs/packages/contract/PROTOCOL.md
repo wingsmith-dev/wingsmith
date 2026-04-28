@@ -17,7 +17,7 @@ operator                                            hub
    │                                                 │
    ├─ WSS connect (Authorization: Bearer <token>) ───►
    │                                                 │
-   ├─ hello { cluster_id, agent_version, session_id, resume_from, lossy } ►
+   ├─ hello { cluster_id, operator_version, session_id, resume_from, lossy } ►
    │                                                 │
    ◄─ welcome { session_id, ack_seq, full_resync } ──┤
    │                                                 │

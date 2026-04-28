@@ -834,7 +834,8 @@ async def test_connect_and_disconnect_are_written_to_sync_state(sessions, cluste
     await sink.mark_connected(CLUSTER, "0.4.2")
 
     rows = await fetch(
-        sessions, "SELECT reachable, agent_version, connected_at IS NOT NULL, last_error FROM supply_cluster_sync_state"
+        sessions,
+        "SELECT reachable, operator_version, connected_at IS NOT NULL, last_error FROM supply_cluster_sync_state",
     )
     assert rows == [(True, "0.4.2", True, None)]
 
@@ -842,7 +843,7 @@ async def test_connect_and_disconnect_are_written_to_sync_state(sessions, cluste
 
     rows = await fetch(
         sessions,
-        "SELECT reachable, agent_version, disconnected_at IS NOT NULL, last_error FROM supply_cluster_sync_state",
+        "SELECT reachable, operator_version, disconnected_at IS NOT NULL, last_error FROM supply_cluster_sync_state",
     )
     assert rows == [(False, "0.4.2", True, "peer went away")]
 
@@ -890,7 +891,9 @@ async def test_a_live_session_writes_state_and_marks_the_cluster(sessions, clust
     await connection.next_of_type("ack", timeout=3.0)
 
     assert await fetch(sessions, "SELECT uid FROM supply_node") == [(NODE,)]
-    assert await fetch(sessions, "SELECT reachable, agent_version FROM supply_cluster_sync_state") == [(True, "0.4.2")]
+    assert await fetch(sessions, "SELECT reachable, operator_version FROM supply_cluster_sync_state") == [
+        (True, "0.4.2")
+    ]
 
     await connection.close()
     await asyncio.wait_for(task, timeout=3.0)

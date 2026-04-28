@@ -34,7 +34,7 @@ export function SyncCard({ sync }: { sync: ClusterSync }) {
       </CardHeader>
       <CardContent className="divide-y">
         <Row label="State" value={humanize(sync.state)} />
-        <Row label="Agent" value={sync.agent_version ?? "—"} />
+        <Row label="Operator" value={sync.operator_version ?? "—"} />
         <Row
           label="Last sync"
           value={

@@ -8,7 +8,7 @@ function sync(over: Partial<Cluster["sync"]> = {}): Cluster["sync"] {
     last_seen_at: null,
     last_sync_at: null,
     last_error: null,
-    agent_version: "1.4.0",
+    operator_version: "1.4.0",
     lag_ms: 0,
     ...over,
   } as Cluster["sync"]

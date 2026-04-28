@@ -58,7 +58,7 @@ class NodeService:
             os_image=node.os_image,
             kernel_version=node.kernel_version,
             driver_version=node.driver_version,
-            agent_version=node.agent_version,
+            operator_version=node.operator_version,
             labels=node.labels,
             taints=node.taints,
             devices=NodeDeviceRollupSchema(
@@ -116,7 +116,5 @@ class NodeService:
         rollup = await self.repo.device_rollup(node_ids)
         allocated = await self.repo.allocated_rollup(node_ids)
         classes = await self.repo.class_rollup(node_ids)
-        items = [
-            self.schema(r, rollup.get(r[0].id), allocated.get(r[0].id, 0), classes.get(r[0].id)) for r in kept
-        ]
+        items = [self.schema(r, rollup.get(r[0].id), allocated.get(r[0].id, 0), classes.get(r[0].id)) for r in kept]
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)

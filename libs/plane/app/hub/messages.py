@@ -78,7 +78,7 @@ class Hello(Struct):
     """
 
     cluster_id: str
-    agent_version: str
+    operator_version: str
     lossy: bool
     resume_from: int | None = None
     session_id: str | None = None
@@ -181,7 +181,7 @@ class NodeObserved(Struct):
     kernel_version: str
     driver_version: str
     runtime_version: str
-    agent_version: str
+    operator_version: str
     device_ids: list[str]
     labels: dict[str, str]
     observed_at: str

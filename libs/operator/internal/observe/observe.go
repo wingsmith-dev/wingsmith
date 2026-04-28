@@ -45,12 +45,12 @@ type Sender interface {
 // unchanged node buys nothing and spends the send queue's replacement slots on frames the hub
 // already has. What guarantees the hub is not left behind is resync, not repetition.
 type Observer struct {
-	ClusterID    string
-	AgentVersion string
-	Discoverer   Discoverer
-	Sender       Sender
-	Interval     time.Duration
-	Log          *slog.Logger
+	ClusterID       string
+	OperatorVersion string
+	Discoverer      Discoverer
+	Sender          Sender
+	Interval        time.Duration
+	Log             *slog.Logger
 
 	// Devices is where each tick publishes which pod holds which accelerator, for the reconcile
 	// loop to read. Optional: left nil, this loop behaves exactly as it did before and the

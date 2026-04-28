@@ -142,7 +142,7 @@ def test_schema_projection_carries_dominant_class_and_allocated():
         os_image=None,
         kernel_version=None,
         driver_version=None,
-        agent_version=None,
+        operator_version=None,
         joined_at=None,
         observed_at=None,
     )
@@ -177,7 +177,7 @@ def test_schema_projection_includes_the_device_rollup():
         os_image=None,
         kernel_version=None,
         driver_version=None,
-        agent_version=None,
+        operator_version=None,
         joined_at=None,
         observed_at=None,
     )

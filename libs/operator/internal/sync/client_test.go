@@ -151,7 +151,7 @@ func testOptions(h *fakeHub) Options {
 		HubURL:            h.url(),
 		ClusterID:         "clu_test",
 		Token:             "token",
-		AgentVersion:      "0.0.1-test",
+		OperatorVersion:   "0.0.1-test",
 		HeartbeatInterval: 20 * time.Millisecond,
 		LivenessTimeout:   200 * time.Millisecond,
 		BackoffMin:        5 * time.Millisecond,
@@ -198,7 +198,7 @@ func TestHandshakeIsContractShaped(t *testing.T) {
 		t.Fatalf("token must travel as an Authorization header, got %q", got)
 	}
 	hello := h.lastHello()
-	if hello.ClusterID != "clu_test" || hello.AgentVersion != "0.0.1-test" {
+	if hello.ClusterID != "clu_test" || hello.OperatorVersion != "0.0.1-test" {
 		t.Fatalf("unexpected hello: %+v", hello)
 	}
 	if hello.SessionID != nil || hello.ResumeFrom != nil {

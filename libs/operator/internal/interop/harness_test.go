@@ -491,7 +491,7 @@ func startClient(t *testing.T, h *hub, store checkpoint.Store, handler syncpkg.H
 		HubURL:            h.url(),
 		ClusterID:         clusterID,
 		Token:             token,
-		AgentVersion:      "interop",
+		OperatorVersion:   "interop",
 		HeartbeatInterval: 100 * time.Millisecond,
 		LivenessTimeout:   time.Second,
 		BackoffMin:        20 * time.Millisecond,

@@ -85,7 +85,7 @@ class NodeSchema(Struct):
     os_image: str | None
     kernel_version: str | None
     driver_version: str | None
-    agent_version: str | None
+    operator_version: str | None
     labels: dict
     taints: list
     devices: NodeDeviceRollupSchema

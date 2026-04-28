@@ -57,12 +57,12 @@ func (r *recordingSender) ofType(t syncpkg.MessageType) []frame {
 func newTestObserver(t *testing.T, d Discoverer) *Observer {
 	t.Helper()
 	return New(&Observer{
-		ClusterID:    testCluster,
-		AgentVersion: "0.4.2",
-		Discoverer:   d,
-		Sender:       &recordingSender{},
-		Interval:     time.Hour,
-		Log:          slog.New(slog.NewTextHandler(io.Discard, nil)),
+		ClusterID:       testCluster,
+		OperatorVersion: "0.4.2",
+		Discoverer:      d,
+		Sender:          &recordingSender{},
+		Interval:        time.Hour,
+		Log:             slog.New(slog.NewTextHandler(io.Discard, nil)),
 	})
 }
 
@@ -140,8 +140,8 @@ func TestFirstTickSendsTheInventory(t *testing.T) {
 	if node.Membership != membershipJoined || !node.Ready {
 		t.Fatalf("node projected as %+v", node)
 	}
-	if node.AgentVersion != "0.4.2" {
-		t.Fatalf("node carries agent version %q", node.AgentVersion)
+	if node.OperatorVersion != "0.4.2" {
+		t.Fatalf("node carries agent version %q", node.OperatorVersion)
 	}
 	if len(node.DeviceIDs) != 2 {
 		t.Fatalf("node names %d devices, want 2", len(node.DeviceIDs))

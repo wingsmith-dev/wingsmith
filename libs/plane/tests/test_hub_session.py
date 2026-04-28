@@ -152,7 +152,7 @@ class Harness:
         self.task = asyncio.create_task(self.session.run())
 
     async def hello(self, **payload: Any) -> dict[str, Any]:
-        body = {"cluster_id": CLUSTER, "agent_version": "0.4.2", "lossy": False}
+        body = {"cluster_id": CLUSTER, "operator_version": "0.4.2", "lossy": False}
         body.update(payload)
         self.connection.push(frame("hello", body))
         return await self.connection.next_of_type("welcome")
@@ -196,7 +196,7 @@ async def test_a_second_hello_is_a_protocol_error() -> None:
     await harness.start()
     await harness.hello()
 
-    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "agent_version": "0.4.2", "lossy": False}))
+    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "operator_version": "0.4.2", "lossy": False}))
     await asyncio.wait_for(harness.connection.closed.wait(), timeout=1)
     assert harness.connection.close_code == 1002
     await harness.stop()
@@ -477,7 +477,7 @@ async def test_a_full_outbound_buffer_closes_the_connection() -> None:
         send_gate=gate,
     )
     await harness.start()
-    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "agent_version": "0.4.2", "lossy": False}))
+    harness.connection.push(frame("hello", {"cluster_id": CLUSTER, "operator_version": "0.4.2", "lossy": False}))
     await until(lambda: harness.session.state is not None)
 
     with pytest.raises(Backpressure):
@@ -742,8 +742,8 @@ async def test_operations_that_cannot_be_read_do_not_cost_the_connection() -> No
 class NamingSink(MemorySink):
     """A sink whose cluster answers to a uid the operator has never heard of."""
 
-    async def mark_connected(self, cluster_uid: str, agent_version: str) -> str | None:
-        await super().mark_connected(cluster_uid, agent_version)
+    async def mark_connected(self, cluster_uid: str, operator_version: str) -> str | None:
+        await super().mark_connected(cluster_uid, operator_version)
         return CLUSTER
 
 
@@ -756,10 +756,10 @@ async def test_a_session_that_said_its_name_is_dispatchable_by_uid() -> None:
     live = LiveSessions()
     harness = Harness(sink=NamingSink(), live=live)
     await harness.start()
-    await harness.hello(cluster_id="cluster-us")
+    await harness.hello(cluster_id="us-cluster-1")
     await until(lambda: live.get(CLUSTER) is not None)
 
-    assert live.get("cluster-us") is harness.session
+    assert live.get("us-cluster-1") is harness.session
     assert live.get(CLUSTER) is harness.session
 
     await harness.stop()

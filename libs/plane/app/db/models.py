@@ -128,7 +128,7 @@ class ClusterSyncState(BaseMixin):
         DBUUID, ForeignKey("supply_cluster.id", ondelete="CASCADE"), unique=True, nullable=False
     )
     reachable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    operator_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     distribution: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cloud: Mapped[str | None] = mapped_column(String(32), nullable=True)
     observed_region: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -208,7 +208,7 @@ class Node(BaseMixin):
     os_image: Mapped[str | None] = mapped_column(String(255), nullable=True)
     kernel_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
     driver_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    agent_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    operator_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     taints: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     joined_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -330,7 +330,7 @@ class OperatorSession:
         if not isinstance(self.sink, Liveness):
             return
         try:
-            canonical = await self.sink.mark_connected(hello.cluster_id, hello.agent_version)
+            canonical = await self.sink.mark_connected(hello.cluster_id, hello.operator_version)
         except Exception:
             logger.warning("hub.session.sync_state_failed phase=connect cluster=%s", hello.cluster_id, exc_info=True)
             return

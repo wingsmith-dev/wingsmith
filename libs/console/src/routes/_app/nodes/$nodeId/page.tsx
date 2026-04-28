@@ -15,15 +15,15 @@ import { deviceColumns } from "@/components/supply/columns"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import {
-  formatAbsolute,
-  formatError,
-  formatRelative,
-} from "@/lib/format"
+import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { severityTone } from "@/modules/machinery/display"
 import type { Allocation, PlaneEvent } from "@/modules/machinery/types"
 import { gibibytes, unhealthyCount } from "@/modules/supply/display"
-import { useOpenOperations, useAllocations, useEvents } from "@/modules/machinery/queries"
+import {
+  useOpenOperations,
+  useAllocations,
+  useEvents,
+} from "@/modules/machinery/queries"
 import { useDevices, useNode } from "@/modules/supply/queries"
 import { useCluster } from "@/modules/clusters/queries"
 import type { Device, SupplyNode } from "@/modules/supply/types"
@@ -120,7 +120,7 @@ export function NodeDetailPage() {
                 <span
                   className={
                     eccTotal > 0
-                      ? "font-mono text-2xl leading-none font-semibold tabular-nums text-amber-600 dark:text-amber-400"
+                      ? "font-mono text-2xl leading-none font-semibold text-amber-600 tabular-nums dark:text-amber-400"
                       : "font-mono text-2xl leading-none font-semibold tabular-nums"
                   }
                 >
@@ -173,7 +173,11 @@ export function NodeDetailPage() {
                   isLoading={allocations.isLoading}
                 />
 
-                <ConditionsCard node={node} devices={deviceItems} stale={stale} />
+                <ConditionsCard
+                  node={node}
+                  devices={deviceItems}
+                  stale={stale}
+                />
               </div>
 
               <div className="space-y-4">
@@ -219,9 +223,7 @@ export function NodeDetailPage() {
                       <Field label="Internal IP">
                         <CopyableId value="10.0.0.0">10.0.0.0</CopyableId>
                       </Field>
-                      <Field label="CPU">
-                        {node.cpu_cores ?? "—"} cores
-                      </Field>
+                      <Field label="CPU">{node.cpu_cores ?? "—"} cores</Field>
                       <Field label="Host memory">
                         {gibibytes(node.memory_mib)}
                       </Field>
@@ -241,13 +243,11 @@ export function NodeDetailPage() {
                       <Field label="CUDA">
                         <span className="text-muted-foreground/40">—</span>
                       </Field>
-                      <Field label="Agent">
-                        <Dash>{node.agent_version}</Dash>
+                      <Field label="Operator">
+                        <Dash>{node.operator_version}</Dash>
                       </Field>
                       <Field label="Joined">
-                        {node.joined_at
-                          ? formatAbsolute(node.joined_at)
-                          : "—"}
+                        {node.joined_at ? formatAbsolute(node.joined_at) : "—"}
                       </Field>
                       <Field label="Taints">
                         {node.taints.length
@@ -310,7 +310,8 @@ function ReplicasCard({
   isLoading: boolean
 }) {
   const held = allocations.reduce(
-    (sum, a) => sum + a.devices.filter((d) => d.live && d.node === node.id).length,
+    (sum, a) =>
+      sum + a.devices.filter((d) => d.live && d.node === node.id).length,
     0
   )
   return (
@@ -365,9 +366,8 @@ function ReplicasCard({
                 </td>
                 <td className="px-4 py-2.5 text-right font-mono text-xs">
                   {
-                    alloc.devices.filter(
-                      (d) => d.live && d.node === node.id
-                    ).length
+                    alloc.devices.filter((d) => d.live && d.node === node.id)
+                      .length
                   }
                 </td>
                 <td className="px-4 py-2.5 font-mono text-2xs text-muted-foreground">
@@ -518,9 +518,7 @@ function NodeEventsCard({
               />
               <div className="min-w-0 flex-1">
                 <span className="font-mono text-2xs">{event.kind}</span>
-                <p className="text-xs text-muted-foreground">
-                  {event.message}
-                </p>
+                <p className="text-xs text-muted-foreground">{event.message}</p>
               </div>
               <span
                 className="shrink-0 font-mono text-2xs text-muted-foreground/50"

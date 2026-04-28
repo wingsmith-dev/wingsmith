@@ -137,8 +137,8 @@ export function ClusterIdentity({ cluster }: { cluster: Cluster }) {
             {humanize(cluster.sync.state)}
           </StatusLabel>
         </Field>
-        <Field label="Agent version">
-          <Dash>{cluster.sync.agent_version}</Dash>
+        <Field label="Operator version">
+          <Dash>{cluster.sync.operator_version}</Dash>
         </Field>
         <Field label="Last sync">
           <span title={formatAbsolute(cluster.sync.last_sync_at)}>

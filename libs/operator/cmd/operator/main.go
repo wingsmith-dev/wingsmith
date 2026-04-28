@@ -95,8 +95,8 @@ func run() error {
 		Checkpoint: cursor,
 	}
 	observer := observe.New(&observe.Observer{
-		ClusterID:    cfg.ClusterID,
-		AgentVersion: version,
+		ClusterID:       cfg.ClusterID,
+		OperatorVersion: version,
 		Discoverer: &observe.KubeDiscoverer{
 			Client: directClient,
 			DCGM: &observe.DCGMSource{
@@ -150,7 +150,7 @@ func run() error {
 		HubURL:            cfg.HubURL,
 		ClusterID:         cfg.ClusterID,
 		Token:             cfg.EnrolmentToken,
-		AgentVersion:      version,
+		OperatorVersion:   version,
 		TLSConfig:         tlsCfg,
 		HeartbeatInterval: cfg.HeartbeatInterval,
 		LivenessTimeout:   cfg.LivenessTimeout,

@@ -21,7 +21,7 @@ class ClusterSyncSchema(Struct):
     state: str
     last_sync_at: dt.datetime | None
     last_seen_at: dt.datetime | None
-    agent_version: str | None
+    operator_version: str | None
     lag_ms: int | None
     last_error: str | None
     distribution: str | None = None

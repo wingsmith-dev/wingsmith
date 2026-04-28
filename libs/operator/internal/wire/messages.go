@@ -6,11 +6,11 @@ import "encoding/json"
 
 // Hello is the first frame the operator sends. It is never sent twice on one connection.
 type Hello struct {
-	ClusterID    string  `json:"cluster_id"`
-	AgentVersion string  `json:"agent_version"`
-	Lossy        bool    `json:"lossy"`
-	ResumeFrom   *uint64 `json:"resume_from,omitempty"`
-	SessionID    *string `json:"session_id,omitempty"`
+	ClusterID       string  `json:"cluster_id"`
+	OperatorVersion string  `json:"operator_version"`
+	Lossy           bool    `json:"lossy"`
+	ResumeFrom      *uint64 `json:"resume_from,omitempty"`
+	SessionID       *string `json:"session_id,omitempty"`
 }
 
 // Welcome is the hub's answer to Hello.
@@ -106,30 +106,30 @@ type NodeTaint struct {
 // observed per node rather than declared per cluster: a cluster can be told it is in one place and
 // be wrong, and a hybrid cluster would make the cluster-level answer a lie for some of its nodes.
 type NodeObserved struct {
-	NodeID         string            `json:"node_id"`
-	ClusterID      string            `json:"cluster_id"`
-	Name           string            `json:"name"`
-	Pool           string            `json:"pool"`
-	Membership     string            `json:"membership"`
-	Ready          bool              `json:"ready"`
-	Cordoned       bool              `json:"cordoned"`
-	Conditions     []NodeCondition   `json:"conditions"`
-	InstanceType   string            `json:"instance_type"`
-	Cloud          string            `json:"cloud"`
-	Zone           string            `json:"zone"`
-	Region         string            `json:"region"`
-	CPUCores       int               `json:"cpu_cores"`
-	MemoryMiB      int64             `json:"memory_mib"`
-	CPUArch        string            `json:"cpu_arch"`
-	OSImage        string            `json:"os_image"`
-	KernelVersion  string            `json:"kernel_version"`
-	DriverVersion  string            `json:"driver_version"`
-	RuntimeVersion string            `json:"runtime_version"`
-	AgentVersion   string            `json:"agent_version"`
-	Taints         []NodeTaint       `json:"taints"`
-	DeviceIDs      []string          `json:"device_ids"`
-	Labels         map[string]string `json:"labels"`
-	ObservedAt     string            `json:"observed_at"`
+	NodeID          string            `json:"node_id"`
+	ClusterID       string            `json:"cluster_id"`
+	Name            string            `json:"name"`
+	Pool            string            `json:"pool"`
+	Membership      string            `json:"membership"`
+	Ready           bool              `json:"ready"`
+	Cordoned        bool              `json:"cordoned"`
+	Conditions      []NodeCondition   `json:"conditions"`
+	InstanceType    string            `json:"instance_type"`
+	Cloud           string            `json:"cloud"`
+	Zone            string            `json:"zone"`
+	Region          string            `json:"region"`
+	CPUCores        int               `json:"cpu_cores"`
+	MemoryMiB       int64             `json:"memory_mib"`
+	CPUArch         string            `json:"cpu_arch"`
+	OSImage         string            `json:"os_image"`
+	KernelVersion   string            `json:"kernel_version"`
+	DriverVersion   string            `json:"driver_version"`
+	RuntimeVersion  string            `json:"runtime_version"`
+	OperatorVersion string            `json:"operator_version"`
+	Taints          []NodeTaint       `json:"taints"`
+	DeviceIDs       []string          `json:"device_ids"`
+	Labels          map[string]string `json:"labels"`
+	ObservedAt      string            `json:"observed_at"`
 }
 
 // NodeEvent reports something that happened to a node at a point in time.

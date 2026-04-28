@@ -94,7 +94,7 @@ function cluster(over: Partial<Cluster> = {}): Cluster {
       last_sync_at: NOW.toISOString(),
       last_seen_at: NOW.toISOString(),
       last_error: null,
-      agent_version: "1.4.0",
+      operator_version: "1.4.0",
     },
     ...over,
   } as Cluster

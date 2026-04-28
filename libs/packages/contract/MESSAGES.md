@@ -34,7 +34,7 @@ bandwidth we do not care about at this scale.
 
 | Type | Direction | Payload |
 |---|---|---|
-| `hello` | op → hub | `cluster_id`, `agent_version`, `session_id`, `resume_from`, `lossy`. **Unsequenced.** |
+| `hello` | op → hub | `cluster_id`, `operator_version`, `session_id`, `resume_from`, `lossy`. **Unsequenced.** |
 | `welcome` | hub → op | `session_id`, `ack_seq`, `full_resync`. **Unsequenced.** `reply_to` is the `hello`'s id. |
 | `ping` / `pong` | either | empty. **Unsequenced.** |
 | `error` | either | `code`, `message`, `retryable` |
@@ -46,7 +46,7 @@ bandwidth we do not care about at this scale.
 | Type | Payload |
 |---|---|
 | `cluster.observed` | what the cluster turned out to be: distribution, cloud, region, and its node and device counts |
-| `node.observed` | identity, membership, conditions, cordon state, machine shape (instance type, cloud, zone, region, cores, memory, architecture, os image), taints, kernel / driver / container-runtime / agent versions |
+| `node.observed` | identity, membership, conditions, cordon state, machine shape (instance type, cloud, zone, region, cores, memory, architecture, os image), taints, kernel / driver / container-runtime / operator versions |
 | `node.event` | joined, left, cordoned, uncordoned, degraded |
 | `device.observed` | per-accelerator: uuid, model, memory capacity, health, ECC and throttle state, MIG profile, current allocation |
 | `device.event` | degraded, recovered, reset, fell off the bus |
@@ -343,7 +343,7 @@ receiver handling concurrent resyncs of different scopes matches them on that an
 which is why `stream.end` carries no `scope` of its own.
 
 A resync opens with `resync.begin` and closes with the ordinary `stream.end`; there is no
-`resync.end`. Two terminators with identical payloads would be two ways to say one thing, and a
+`resync.end`. Two gateways with identical payloads would be two ways to say one thing, and a
 receiver that has to handle both will eventually handle only one.
 
 Everything between is ordinary `.desired` / `.observed` frames sharing one `reply_to`. There is no

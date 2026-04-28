@@ -24,7 +24,7 @@ export interface ClusterSync {
   state: SyncState
   last_sync_at: string | null
   last_seen_at: string | null
-  agent_version: string | null
+  operator_version: string | null
   lag_ms: number | null
   last_error: string | null
   /** What the cluster turned out to be, as opposed to how it was enrolled. */

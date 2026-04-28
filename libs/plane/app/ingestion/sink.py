@@ -547,7 +547,7 @@ class DatabaseSink:
 
     # ----------------------------------------------------------------- liveness
 
-    async def mark_connected(self, cluster_uid: str, agent_version: str) -> str | None:
+    async def mark_connected(self, cluster_uid: str, operator_version: str) -> str | None:
         """The observed half of a cluster coming up. Never touches `Cluster.phase`.
 
         Returns the cluster's canonical uid, which the session needs and only a
@@ -559,7 +559,7 @@ class DatabaseSink:
             cluster_uid,
             {
                 "reachable": True,
-                "agent_version": agent_version or None,
+                "operator_version": operator_version or None,
                 "connected_at": moment,
                 "last_seen_at": moment,
                 "last_error": None,
