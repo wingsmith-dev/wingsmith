@@ -78,11 +78,12 @@ export async function fetchAllPages<T>(
 export function useAllPages<T>(
   queryKey: readonly unknown[],
   fetchPage: PageFetcher<T>,
-  options: { enabled?: boolean } = {}
+  options: { enabled?: boolean; refetchInterval?: number } = {}
 ) {
   return useQuery({
     queryKey: [...queryKey, "all"],
     queryFn: () => fetchAllPages(fetchPage),
     enabled: options.enabled,
+    refetchInterval: options.refetchInterval,
   })
 }

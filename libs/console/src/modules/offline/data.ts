@@ -241,7 +241,7 @@ const SPECS: ClusterSpec[] = [
           {
             suffix: "n02",
             condition: "ready",
-            cordoned: true,
+            cordoned: false,
             devices: 8,
             unhealthy: 2,
           },
@@ -312,6 +312,55 @@ const CATALOG: Omit<DeviceClass, "inventory">[] = [
     form_factor: "sxm",
     in_catalog: true,
     aliases: { gfd: ["NVIDIA-H200"], dcgm: ["NVIDIA H200"] },
+  },
+  {
+    name: "b200-180gb-sxm",
+    label: "NVIDIA B200 180GB SXM",
+    architecture: "blackwell",
+    vendor: "nvidia",
+    memory_mib: 183_359,
+    form_factor: "sxm",
+    in_catalog: true,
+    aliases: { gfd: ["NVIDIA-B200"], dcgm: ["NVIDIA B200"] },
+  },
+  {
+    name: "b300-288gb-sxm",
+    label: "NVIDIA B300 288GB SXM",
+    architecture: "blackwell",
+    vendor: "nvidia",
+    memory_mib: 294_912,
+    form_factor: "sxm",
+    in_catalog: true,
+    aliases: {
+      gfd: ["NVIDIA-B300-SXM6-AC"],
+      dcgm: ["NVIDIA B300 SXM6 AC"],
+    },
+  },
+  {
+    name: "gb200-186gb-nvl",
+    label: "NVIDIA GB200 NVL72",
+    architecture: "blackwell",
+    vendor: "nvidia",
+    memory_mib: 190_464,
+    form_factor: "nvl",
+    in_catalog: true,
+    aliases: {
+      gfd: ["NVIDIA-GB200-NVL72", "NVIDIA-GB200"],
+      dcgm: ["NVIDIA GB200 NVL72", "NVIDIA GB200"],
+    },
+  },
+  {
+    name: "gb300-288gb-nvl",
+    label: "NVIDIA GB300 NVL72",
+    architecture: "blackwell",
+    vendor: "nvidia",
+    memory_mib: 294_912,
+    form_factor: "nvl",
+    in_catalog: true,
+    aliases: {
+      gfd: ["NVIDIA-GB300-NVL72", "NVIDIA-GB300"],
+      dcgm: ["NVIDIA GB300 NVL72", "NVIDIA GB300"],
+    },
   },
   {
     name: "a100-80gb-sxm",
@@ -601,6 +650,36 @@ for (const spec of SPECS) {
   }
 }
 
+/**
+ * One partitioned card, so the intra-device layer is not empty.
+ *
+ * MIG children are devices in their own right in the plane's model: their own
+ * uuid, their own memory, their own allocation, and the card they were cut from
+ * named in `mig_parent_device_uuid`. The parent stops being schedulable the
+ * moment it is split, which is why its `allocatable` goes false here.
+ */
+const partitioned = devices.find(
+  (device) => device.node_name === "iad-1-n02" && device.device_index === 7
+)
+if (partitioned) {
+  partitioned.mig_enabled = true
+  partitioned.allocatable = false
+  for (let slice = 0; slice < 4; slice++) {
+    devices.push({
+      ...partitioned,
+      id: uid("dev_"),
+      device_uuid: `MIG-${uuid(900 + slice)}`,
+      device_index: slice,
+      memory_mib: 20_480,
+      mig_enabled: true,
+      mig_profile: "2g.20gb",
+      mig_parent_device_uuid: partitioned.device_uuid,
+      allocatable: true,
+      pci_address: null,
+    })
+  }
+}
+
 const tenant = {
   id: uid("ten_"),
   slug: "acme",
@@ -672,6 +751,29 @@ export const projects: Project[] = [
   },
 ]
 
+/**
+ * Llama 3.3 70B's attention shape, as the plane persists it on an artifact at
+ * resolve time. Real values from the published `config.json`, because the fixture's
+ * fitment matrix does the plane's arithmetic and a made-up shape would put the wrong
+ * card at the top of a table somebody is learning to read.
+ *
+ * `bge-m3-embed` deliberately has none, but does record the source it came from.
+ * That is the shape of the artifact `POST /artifacts/:ref/refresh` exists for: one
+ * registered before the plane extracted shapes, sizable only to a weights floor, and
+ * one re-read away from a priced context window. The console has to render the floor
+ * as a note rather than an empty table, and then render what the refresh changed.
+ */
+const LLAMA_70B_SHAPE = {
+  num_hidden_layers: 80,
+  num_key_value_heads: 8,
+  head_dim: 128,
+  kv_lora_rank: null,
+  qk_rope_head_dim: null,
+  context_length: 131_072,
+  num_attention_heads: 64,
+  hidden_size: 8192,
+}
+
 export const artifacts: Artifact[] = [
   {
     id: uid("art_"),
@@ -687,7 +789,12 @@ export const artifacts: Artifact[] = [
     base_artifact_id: null,
     project_id: null,
     upstream: emptyUpstream(),
-    metadata: { source: "huggingface" },
+    metadata: {
+      source: "huggingface",
+      quantization: "fp16",
+      context_length: 131_072,
+      shape: LLAMA_70B_SHAPE,
+    },
     created_at: CREATED,
     updated_at: null,
     revision: REV,
@@ -720,7 +827,7 @@ export const artifacts: Artifact[] = [
     base_artifact_id: null,
     project_id: null,
     upstream: emptyUpstream(),
-    metadata: {},
+    metadata: { source: "huggingface", huggingface_id: "BAAI/bge-m3" },
     created_at: CREATED,
     updated_at: null,
     revision: REV,
@@ -801,6 +908,44 @@ export const recipes: Recipe[] = [
     },
     resources: { cpu_cores: null, memory_mib: null, disk_gib: null },
     labels: {},
+    created_at: CREATED,
+    updated_at: null,
+    revision: REV,
+  },
+  {
+    id: uid("rec_"),
+    artifact_id: artifacts[0].id,
+    name: "llama-70b-a100-eval",
+    version: 1,
+    lifecycle: "published",
+    engine: "vllm",
+    engine_version: "0.9.1",
+    engine_image: null,
+    engine_args: {},
+    imported_args: {},
+    quantization: null,
+    dtype: "bfloat16",
+    parallelism: { tensor: 2, pipeline: 1, expert: 1 },
+    context_length: 32_768,
+    max_batch_tokens: 16_384,
+    cache: {
+      kv_cache_dtype: null,
+      kv_cache_fraction: 0.8,
+      prefix_cache_enabled: false,
+      prefix_cache_config: {},
+    },
+    serving: emptyServing(),
+    capabilities: emptyCapabilities(),
+    resolved_engine_args: {},
+    shape: {
+      device_class: "a100-80gb-sxm",
+      device_count: 2,
+      device_memory_mib_min: 81_920,
+      requires_single_topology_domain: true,
+      topology_domain_kind: "nvlink",
+    },
+    resources: { cpu_cores: 32, memory_mib: 131_072, disk_gib: 256 },
+    labels: { tier: "batch" },
     created_at: CREATED,
     updated_at: null,
     revision: REV,
@@ -1095,7 +1240,7 @@ export const workloads: Workload[] = [
     overrides: { "--max-num-seqs": 256 },
     labels: { tier: "prod" },
     requires_single_topology_domain: true,
-    topology_domain_kind: "nvlink",
+    topology_domain_kind: "nvswitch",
     strategy: "spread",
     cluster_floors: { [clusters[2].id]: 2 },
     max_clusters: 2,
@@ -1144,7 +1289,7 @@ export const workloads: Workload[] = [
     preemptible: true,
     paused: false,
     gang_size: 8,
-    recipe_id: recipes[0].id,
+    recipe_id: recipes[2].id,
     adapter_artifact_ids: [artifacts[1].id],
     overrides: {},
     labels: { tier: "batch" },
@@ -1292,63 +1437,143 @@ export const policies: Policy[] = [
   },
 ]
 
-const liveDevices = devices.filter((d) => d.allocatable).slice(0, 12)
+interface Commitment {
+  /** The nodes it may take devices from, in the order it takes them. */
+  nodes: string[]
+  workload: string
+  project: number
+  count: number
+  /** How far into each node's free devices to start. Leaves gaps on purpose. */
+  offset?: number
+  /** Hold MIG slices rather than whole cards. */
+  slices?: boolean
+  overQuota?: boolean
+  age: number
+}
+
+const COMMITMENTS: Commitment[] = [
+  {
+    nodes: ["iad-1-n01"],
+    workload: workloadIds.llama,
+    project: 0,
+    count: 8,
+    age: 2875,
+  },
+  {
+    nodes: ["iad-1-n02"],
+    workload: workloadIds.llama,
+    project: 0,
+    count: 4,
+    age: 1440,
+  },
+  {
+    nodes: ["iad-1-n02"],
+    workload: workloadIds.bge,
+    project: 0,
+    count: 2,
+    slices: true,
+    age: 200,
+  },
+  {
+    nodes: ["sjc-1-n01"],
+    workload: workloadIds.bge,
+    project: 0,
+    count: 3,
+    overQuota: true,
+    age: 88,
+  },
+  {
+    nodes: ["ams-1-n02"],
+    workload: workloadIds.eval,
+    project: 1,
+    count: 2,
+    age: 640,
+  },
+  {
+    nodes: ["ams-1-n02"],
+    workload: workloadIds.eval,
+    project: 1,
+    count: 2,
+    age: 620,
+  },
+  {
+    nodes: ["sjc-1-n02"],
+    workload: workloadIds.llama,
+    project: 0,
+    count: 2,
+    offset: 2,
+    age: 45,
+  },
+]
+
+/**
+ * Allocations built out of the devices they hold, rather than written beside
+ * them.
+ *
+ * The device state is the one that has to agree: an allocation naming a device
+ * the same fixture reports as allocatable is a state the plane cannot be in, and
+ * a capacity board drawn over it would offer free devices that are not. So
+ * holding a device here is what makes it unallocatable, in that order.
+ */
+function hold(commitment: Commitment): Allocation {
+  const held: Device[] = []
+  for (const name of commitment.nodes) {
+    const open = devices
+      .filter(
+        (device) =>
+          device.node_name === name &&
+          device.allocatable &&
+          (commitment.slices
+            ? device.mig_parent_device_uuid !== null
+            : device.mig_parent_device_uuid === null)
+      )
+      .sort((a, b) => a.device_index - b.device_index)
+      .slice(commitment.offset ?? 0)
+    for (const device of open) {
+      if (held.length === commitment.count) break
+      device.allocatable = false
+      held.push(device)
+    }
+  }
+
+  if (held.length === 0) {
+    throw new Error(
+      `offline fixture: nothing allocatable on ${commitment.nodes.join(", ")}`
+    )
+  }
+
+  const cluster = clusters.find((entry) => entry.id === held[0].cluster)
+  return {
+    id: uid("alc_"),
+    cluster: cluster?.id ?? clusters[0].id,
+    cluster_name: cluster?.name ?? clusters[0].name,
+    project: projects[commitment.project].id,
+    project_slug: projects[commitment.project].slug,
+    workload: commitment.workload,
+    replica: uid("rep_"),
+    device_class: held[0]?.device_class ?? "h100-80gb-sxm",
+    device_count: commitment.count,
+    over_quota: commitment.overQuota ?? false,
+    phase: "held",
+    live: true,
+    gang_complete: held.length === commitment.count,
+    acquired_at: iso(commitment.age),
+    released_at: null,
+    observed_at: iso(1),
+    created_at: CREATED,
+    updated_at: null,
+    devices: held.map((device) => ({
+      device: device.id,
+      device_uuid: device.device_uuid,
+      node: device.node,
+      live: true,
+      released_at: null,
+    })),
+  }
+}
 
 export const allocations: Allocation[] = [
-  {
-    id: uid("alc_"),
-    cluster: clusters[0].id,
-    cluster_name: clusters[0].name,
-    project: projects[0].id,
-    project_slug: "core",
-    workload: workloadIds.llama,
-    replica: uid("rep_"),
-    device_class: "h100-80gb-sxm",
-    device_count: 8,
-    over_quota: false,
-    phase: "held",
-    live: true,
-    gang_complete: true,
-    acquired_at: iso(2875),
-    released_at: null,
-    observed_at: iso(1),
-    created_at: CREATED,
-    updated_at: null,
-    devices: liveDevices.slice(0, 8).map((d) => ({
-      device: d.id,
-      device_uuid: d.device_uuid,
-      node: d.node,
-      live: true,
-      released_at: null,
-    })),
-  },
-  {
-    id: uid("alc_"),
-    cluster: clusters[1].id,
-    cluster_name: clusters[1].name,
-    project: projects[0].id,
-    project_slug: "core",
-    workload: workloadIds.bge,
-    replica: null,
-    device_class: "l40s-48gb-pcie",
-    device_count: 4,
-    over_quota: true,
-    phase: "held",
-    live: true,
-    gang_complete: false,
-    acquired_at: iso(88),
-    released_at: null,
-    observed_at: iso(1),
-    created_at: CREATED,
-    updated_at: null,
-    devices: liveDevices.slice(8, 11).map((d) => ({
-      device: d.id,
-      device_uuid: d.device_uuid,
-      node: d.node,
-      live: true,
-      released_at: null,
-    })),
-  },
+  ...COMMITMENTS.map(hold),
   {
     id: uid("alc_"),
     cluster: clusters[2].id,
@@ -1371,6 +1596,28 @@ export const allocations: Allocation[] = [
     devices: [],
   },
 ]
+
+/** Rollups recounted once the commitments above have taken their devices. */
+for (const node of nodes) {
+  const own = devices.filter(
+    (device) =>
+      device.node === node.id && device.mig_parent_device_uuid === null
+  )
+  node.devices.allocated = own.filter(
+    (device) => !device.allocatable && device.health === "healthy"
+  ).length
+}
+for (const pool of pools) {
+  const poolNodes = new Set(
+    nodes.filter((node) => node.pool === pool.id).map((node) => node.id)
+  )
+  pool.membership.devices_allocatable = devices.filter(
+    (device) =>
+      device.mig_parent_device_uuid === null &&
+      poolNodes.has(device.node) &&
+      device.allocatable
+  ).length
+}
 
 export const components: Component[] = [
   {

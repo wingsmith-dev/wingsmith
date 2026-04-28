@@ -127,6 +127,126 @@ export interface ArtifactUsage {
   downstream_count: number
 }
 
+/**
+ * The two questions a fitment matrix can answer, and they are not one question.
+ *
+ * `fleet` is *what can I run right now* — every class a cluster has reported, where
+ * a no-fit row is a dead end. `catalog` is *what hardware would I need* — every
+ * class the contract table names as well, where a fit on a class we own none of is
+ * a procurement answer rather than a deployable one.
+ */
+export const FITMENT_SCOPES = ["fleet", "catalog"] as const
+
+export type FitmentScope = (typeof FITMENT_SCOPES)[number]
+
+/**
+ * `ArtifactFitSchema` — whether this artifact serves on one class of card.
+ *
+ * The fit half is durable and the three counts are the fleet half. They stay apart
+ * because `fits` with `devices_allocatable: 0` is a capacity problem and `fits:
+ * false` is a physics problem, and only one of them is fixed by waiting.
+ *
+ * `devices_allocatable` is not a promise that a replica of `device_count` devices
+ * can be placed — contiguity inside a topology domain decides that, and placement
+ * preview is what answers it.
+ */
+export interface ArtifactFit {
+  device_class: string
+  label: string
+  fits: boolean
+  /** The window had to be cut below the one asked for. Deliberately not a failure. */
+  reduced: boolean
+  device_count: number
+  /**
+   * Nodes the replica spans. The unit that gets ordered and racked, and the number to
+   * lead with — "4 nodes of B300" is an order, "32 devices" is a number to divide.
+   */
+  node_count: number
+  /**
+   * How big one node was taken to be. Read from the fleet's observed topology for a class
+   * we run, assumed otherwise. Eight on an HGX board, seventy-two on a GB300 NVL72 — the
+   * interconnect is what makes a node a node, and the rack has one.
+   */
+  devices_per_node: number
+  /** Inside a node, where the interconnect is coherent. Capped by `devices_per_node`. */
+  tensor_parallel: number
+  /** Across nodes, over the backend fabric. Those nodes are one connected unit. */
+  pipeline_parallel: number
+  memory_mib_per_device: number
+  aggregate_gb: number
+  weights_gb: number
+  required_gb: number
+  context_length: number
+  /**
+   * False when the artifact published no attention shape, so `required_gb` is the
+   * weights and nothing else and `context_length` is zero. Such a row is a floor —
+   * the real requirement is strictly larger — and showing it as a full sizing would
+   * promise a window nobody costed.
+   */
+  kv_counted: boolean
+  reason: string
+  devices_total: number
+  devices_allocatable: number
+  cluster_count: number
+  /** False for hardware the contract table has never named, fitted from what a cluster reported. */
+  in_catalog: boolean
+}
+
+/**
+ * `ArtifactFitmentSchema` — the classes an artifact could be served on, ranked.
+ *
+ * Every input is echoed because a fit is meaningless without them: the same
+ * artifact fits very different hardware at 8k and at 131k, and a matrix that did
+ * not say which would be read as a property of the weights.
+ *
+ * `sizable` is false only when the artifact carries no parameter count at all —
+ * `items` is then empty and `note` says why. A missing attention shape is not that
+ * case: the weights still bound which cards are too small, so the matrix comes back
+ * with every row's `kv_counted` false and `note` saying the windows are uncosted.
+ */
+export interface ArtifactFitment {
+  artifact_id: string
+  scope: FitmentScope
+  sizable: boolean
+  quantization: string
+  context_length: number
+  concurrency: number
+  max_devices: number
+  /** How many classes were ranked. `items` is the head of that list, not all of it. */
+  considered: number
+  note: string | null
+  items: ArtifactFit[]
+}
+
+/**
+ * One row of a fitment, carried into the recipe form as a starting point.
+ *
+ * The fit told us these four things and nothing else — which card, how many, at what
+ * window, at what precision. Everything else on a recipe is still the person's to
+ * declare, which is why this is four fields rather than a whole draft recipe.
+ */
+export interface RecipeFootprint {
+  device_class: string
+  device_count: number
+  tensor_parallel: number
+  pipeline_parallel: number
+  context_length: number
+  quantization: string
+}
+
+/** Query parameters for a fitment. Every one is optional and defaulted by the plane. */
+export interface FitmentParams {
+  scope?: FitmentScope
+  context_length?: number
+  concurrency?: number
+  quantization?: string
+  /** Only applies to classes the fleet has never reported; observed figures win. */
+  devices_per_node?: number
+  max_devices?: number
+  /** Ranked rows to return. Zero or below means every one of them. */
+  limit?: number
+}
+
 /** `ArtifactLocationRequest` — the write shape of a location. */
 export interface ArtifactLocationRequest {
   scheme: string
@@ -221,6 +341,26 @@ export interface ResolvedArtifact {
   locations: ArtifactLocationRequest[]
   recipe: RecipeDefaults
   existing_id: string | null
+  notes: ResolveNote[]
+}
+
+/**
+ * `ArtifactRefresh` — the result of `POST /artifacts/:ref/refresh`.
+ *
+ * `changed` is the point of the response, not decoration. A refresh that records
+ * an attention shape the plane only recently learned to read leaves the artifact
+ * looking identical apart from one metadata key, so a button that could only say
+ * "refreshed" would leave the person guessing whether anything happened. Keys are
+ * dotted for metadata (`metadata.shape`), and an empty list is a success — the
+ * source still says exactly what was already recorded.
+ *
+ * `notes` is about the source rather than the diff: a repo that has since become
+ * gated says so here even when nothing changed.
+ */
+export interface ArtifactRefresh {
+  artifact: Artifact
+  source: string
+  changed: string[]
   notes: ResolveNote[]
 }
 

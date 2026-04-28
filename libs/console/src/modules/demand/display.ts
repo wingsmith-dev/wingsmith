@@ -1,5 +1,6 @@
 import type { StatusTone } from "@/components/layout/status-dot"
 import type {
+  Artifact,
   ArtifactUpstream,
   EndpointSurface,
   RecipeCapabilities,
@@ -82,6 +83,39 @@ export function formatParameters(count: number | null): string {
   if (count >= 1e9) return `${(count / 1e9).toFixed(1)}B`
   if (count >= 1e6) return `${(count / 1e6).toFixed(0)}M`
   return String(count)
+}
+
+/**
+ * The source this artifact can be re-read from, or null.
+ *
+ * Mirrors the plane's own precedence — `metadata.huggingface_id` first, then an
+ * `hf://` location with its revision dropped — so the refresh button is disabled
+ * exactly when the plane would refuse. Deciding that here rather than by trying the
+ * call means the person is not offered an action that can only fail.
+ */
+export function artifactSource(artifact: Artifact): string | null {
+  const stored = artifact.metadata?.huggingface_id
+  if (typeof stored === "string" && stored.includes("/"))
+    return `hf://${stored}`
+  for (const location of artifact.locations) {
+    if (/^hf:/i.test(location.uri))
+      return `hf://${location.uri.replace(/^hf:\/\/|^hf:/i, "").split("@")[0]}`
+  }
+  return null
+}
+
+/**
+ * What a refresh moved, in a line a person can read.
+ *
+ * The plane returns dotted field names (`metadata.shape`), which are the honest
+ * answer and not a sentence. The `metadata.` prefix carries no information at this
+ * point — everything derived from a config lives there — so it is dropped.
+ */
+export function refreshSummary(changed: string[]): string {
+  if (changed.length === 0)
+    return "the source says what was already recorded — nothing changed"
+  const names = changed.map((field) => field.replace(/^metadata\./, ""))
+  return `updated ${names.join(", ")}`
 }
 
 /** `tp8/pp1/ep1`, the shorthand every engine log prints. */
@@ -310,11 +344,11 @@ export function resolvedEngineArgs(
 export function reasoningDeclared(reasoning: RecipeReasoning): boolean {
   return Boolean(
     reasoning.default_on ||
-      reasoning.parser ||
-      reasoning.transport === "inline_tags" ||
-      reasoning.think_begin_token ||
-      reasoning.think_end_token ||
-      reasoning.suppress_eos_until_think_end
+    reasoning.parser ||
+    reasoning.transport === "inline_tags" ||
+    reasoning.think_begin_token ||
+    reasoning.think_end_token ||
+    reasoning.suppress_eos_until_think_end
   )
 }
 
@@ -480,13 +514,13 @@ export function emptyUpstream(): ArtifactUpstream {
 export function upstreamClaimed(upstream: ArtifactUpstream): boolean {
   return Boolean(
     upstream.provider ||
-      upstream.provider_model_id ||
-      upstream.context_length !== null ||
-      upstream.max_output_tokens !== null ||
-      upstream.reasoning !== null ||
-      upstream.tool_calling !== null ||
-      upstream.structured_output_modes.length > 0 ||
-      upstream.licence ||
-      upstream.released_at
+    upstream.provider_model_id ||
+    upstream.context_length !== null ||
+    upstream.max_output_tokens !== null ||
+    upstream.reasoning !== null ||
+    upstream.tool_calling !== null ||
+    upstream.structured_output_modes.length > 0 ||
+    upstream.licence ||
+    upstream.released_at
   )
 }

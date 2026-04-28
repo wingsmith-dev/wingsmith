@@ -1,5 +1,6 @@
 import { page, registerFixtures, type FixtureContext } from "@/lib/api/fixtures"
 import { ConflictError, NotFoundError } from "@/lib/api/transport"
+import { fitment } from "./fitment"
 import {
   OPERATION_TYPES,
   isOpen,
@@ -32,7 +33,7 @@ import {
 } from "./data"
 import { revision, uid } from "./ids"
 import { collection } from "./registry"
-import type { Deployment, Workload } from "@/modules/demand/types"
+import type { Artifact, Deployment, Workload } from "@/modules/demand/types"
 import type { PlaneConfig } from "@/modules/system/types"
 import type {
   BenchmarkCreateRequest,
@@ -272,6 +273,135 @@ function hfSlug(source: string): string {
     .replace(/^hf:/i, "")
   const parts = value.split("/").filter(Boolean)
   return parts.length === 2 ? parts.join("/") : ""
+}
+
+/**
+ * Registered ahead of the artifact collection for the same reason `/resolve` is:
+ * the fixture router takes the first matching route, and `/artifacts/:ref` would
+ * otherwise swallow the sub-resource.
+ */
+registerFixtures([
+  {
+    method: "GET",
+    path: "/artifacts/:ref/fitment",
+    handler: ({ params, query }: FixtureContext) => {
+      const found = artifacts.find(
+        (a) => a.id === params.ref || a.name === params.ref
+      )
+      if (!found) throw new NotFoundError(`no artifact '${params.ref}'`)
+      return fitment(found, deviceClasses(), {
+        scope: query.get("scope") ?? undefined,
+        context_length: query.int("context_length"),
+        concurrency: query.int("concurrency"),
+        quantization: query.get("quantization") ?? undefined,
+        max_devices: query.int("max_devices"),
+      })
+    },
+  },
+])
+
+/**
+ * What a re-read of a source would say now, per slug.
+ *
+ * Only the derived half, because that is all `POST /artifacts/:ref/refresh` writes.
+ * `BAAI/bge-m3`'s entry is the interesting one: the offline `bge-m3-embed` carries no
+ * shape, so refreshing it moves that artifact from a weights floor to a priced context
+ * window — the whole reason the route exists, reproduced rather than described.
+ */
+const HF_REFRESH: Record<string, Record<string, unknown>> = {
+  "BAAI/bge-m3": {
+    source: "huggingface",
+    huggingface_id: "BAAI/bge-m3",
+    quantization: "fp16",
+    dtype: "float32",
+    architecture: "XLMRobertaModel",
+    is_moe: false,
+    active_parameter_count: null,
+    context_length: 8192,
+    shape: {
+      num_hidden_layers: 24,
+      num_key_value_heads: 16,
+      head_dim: 64,
+      kv_lora_rank: null,
+      qk_rope_head_dim: null,
+      context_length: 8192,
+      num_attention_heads: 16,
+      hidden_size: 1024,
+    },
+  },
+}
+
+/**
+ * Registered ahead of the artifact collection for the same reason `/resolve` is.
+ *
+ * Mutates the fixture row, so a refresh is visible in the panel that prompted it
+ * rather than being a message about a write that did not happen. The three refusals
+ * are all reachable: an artifact with no source, a source the offline Hub does not
+ * carry, and — for `llama-3.3-70b-instruct`, whose locations are `s3` — the "nowhere
+ * to go back and ask" case a console has to render as a disabled button.
+ */
+registerFixtures([
+  {
+    method: "POST",
+    path: "/artifacts/:ref/refresh",
+    handler: ({ params }: FixtureContext) => {
+      const found = artifacts.find(
+        (a) => a.id === params.ref || a.name === params.ref
+      )
+      if (!found) throw new NotFoundError(`no artifact '${params.ref}'`)
+
+      const source = artifactSource(found)
+      if (!source)
+        throw new ConflictError(
+          "invalid",
+          `artifact ${found.id} records no source to re-read; only huggingface artifacts can be refreshed`,
+          {
+            artifact: found.id,
+            expected: "metadata.huggingface_id or an hf:// location",
+          }
+        )
+
+      const slug = hfSlug(source)
+      const fresh = HF_REFRESH[slug]
+      if (!fresh) throw new NotFoundError(`no HuggingFace repo '${slug}'`)
+
+      const changed: string[] = []
+      const metadata: Record<string, unknown> = { ...found.metadata }
+      for (const [key, value] of Object.entries(fresh)) {
+        if (JSON.stringify(metadata[key]) === JSON.stringify(value)) continue
+        metadata[key] = value
+        changed.push(`metadata.${key}`)
+      }
+      found.metadata = metadata
+
+      return {
+        artifact: found,
+        source,
+        changed,
+        notes: found.verified
+          ? []
+          : [
+              {
+                level: "warn",
+                message:
+                  "the weights are not content-addressable, so the digest names the commit rather than hashing the bytes",
+              },
+            ],
+      }
+    },
+  },
+])
+
+/** `metadata.huggingface_id` first, then an `hf://` location with its revision dropped. */
+function artifactSource(artifact: Artifact): string | null {
+  const stored = artifact.metadata?.huggingface_id
+  if (typeof stored === "string" && hfSlug(stored)) return `hf://${stored}`
+  for (const location of artifact.locations) {
+    const candidate = location.uri.split("@")[0]
+    if (/^hf:/i.test(candidate) && hfSlug(candidate))
+      return `hf://${hfSlug(candidate)}`
+  }
+  return null
 }
 
 registerFixtures([

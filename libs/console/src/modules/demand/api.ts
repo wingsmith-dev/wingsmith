@@ -5,6 +5,8 @@ import type {
   ArtifactBaselineCreateRequest,
   ArtifactBaselineUpdateRequest,
   ArtifactCreateRequest,
+  ArtifactFitment,
+  ArtifactRefresh,
   ArtifactUpdateRequest,
   ArtifactUsage,
   Deployment,
@@ -18,6 +20,7 @@ import type {
   RecipeUpdateRequest,
   RecipeUsage,
   ResolvedArtifact,
+  FitmentParams,
   Workload,
   WorkloadCreateRequest,
   WorkloadPlacement,
@@ -91,6 +94,23 @@ export function fetchArtifactUsage(ref: string): Promise<ArtifactUsage> {
 }
 
 /**
+ * The device classes this artifact could be served on, ranked, derived at read time.
+ *
+ * Reserves nothing and decides nothing — a class this calls a fit still has to
+ * survive placement. `scope` picks which question is being asked; the rest are the
+ * terms of the fit, and the plane defaults every one of them.
+ */
+export function fetchArtifactFitment(
+  ref: string,
+  params: FitmentParams = {}
+): Promise<ArtifactFitment> {
+  return api.get<ArtifactFitment>(
+    `/artifacts/${encodeURIComponent(ref)}/fitment`,
+    { ...params }
+  )
+}
+
+/**
  * Reads a source slug as a proposed artifact. Writes nothing, so it is safe to
  * call while someone is still typing into the form.
  */
@@ -111,6 +131,20 @@ export function updateArtifact(
   return api.patch<Artifact>(`/artifacts/${encodeURIComponent(ref)}`, body, {
     ifMatch: revision,
   })
+}
+
+/**
+ * Re-reads the artifact's own source and records what the plane can now derive.
+ *
+ * No body: the source is already on the artifact, and naming a different one would
+ * be a way to move an artifact onto weights it was not registered from. A source
+ * that now resolves to a different digest is a `409` and nothing is written.
+ */
+export function refreshArtifact(ref: string): Promise<ArtifactRefresh> {
+  return api.post<ArtifactRefresh>(
+    `/artifacts/${encodeURIComponent(ref)}/refresh`,
+    {}
+  )
 }
 
 export function deleteArtifact(ref: string): Promise<void> {
@@ -216,7 +250,10 @@ export function fetchWorkloads(
 }
 
 /** `{ref}` is a `wkl_` uid or a name; a bare name needs `?project=` beside it. */
-export function fetchWorkload(ref: string, project?: string): Promise<Workload> {
+export function fetchWorkload(
+  ref: string,
+  project?: string
+): Promise<Workload> {
   return api.get<Workload>(`/workloads/${encodeURIComponent(ref)}`, { project })
 }
 

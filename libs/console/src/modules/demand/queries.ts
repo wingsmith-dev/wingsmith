@@ -18,6 +18,7 @@ import {
   deleteWorkload,
   fetchArtifact,
   fetchArtifactBaselines,
+  fetchArtifactFitment,
   fetchArtifactUsage,
   fetchArtifacts,
   fetchDeployment,
@@ -31,6 +32,7 @@ import {
   fetchWorkload,
   fetchWorkloadPlacement,
   fetchWorkloads,
+  refreshArtifact,
   resolveArtifact,
   updateArtifact,
   updateArtifactBaseline,
@@ -44,6 +46,7 @@ import {
   type RecipeFilters,
   type WorkloadFilters,
 } from "./api"
+import type { FitmentParams } from "./types"
 import type {
   ArtifactBaselineCreateRequest,
   ArtifactBaselineUpdateRequest,
@@ -87,6 +90,22 @@ export function useArtifactUsage(ref: string) {
   return useQuery({
     queryKey: ["artifacts", "usage", ref],
     queryFn: () => fetchArtifactUsage(ref),
+    enabled: !!ref,
+  })
+}
+
+/**
+ * The device classes one artifact could be served on, ranked by the plane.
+ *
+ * Keyed on the terms as well as the ref: the same artifact fits very different
+ * hardware at 8k and at 131k, so caching two answers under one key would show the
+ * previous question's matrix while the new one loads. Nothing here writes, so it is
+ * safe to re-run while somebody is still dragging a slider.
+ */
+export function useArtifactFitment(ref: string, params: FitmentParams = {}) {
+  return useQuery({
+    queryKey: ["artifacts", "fitment", ref, params],
+    queryFn: () => fetchArtifactFitment(ref, params),
     enabled: !!ref,
   })
 }
@@ -182,6 +201,28 @@ export function useUpdateArtifact() {
       revision?: string
     }) => updateArtifact(vars.ref, vars.body, vars.revision),
     onSuccess: () => client.invalidateQueries({ queryKey: ["artifacts"] }),
+  })
+}
+
+/**
+ * Re-reads the source and invalidates the fitment along with the artifact.
+ *
+ * The fitment is the reason anyone presses this: an artifact with no recorded
+ * attention shape can only be sized to a floor, and recording one reprices every
+ * row in the matrix. Leaving the cached fitment in place would show the old floors
+ * next to a freshly shaped artifact, which reads as the refresh having failed.
+ */
+export function useRefreshArtifact() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (ref: string) => refreshArtifact(ref),
+    onSuccess: (result) => {
+      client.invalidateQueries({ queryKey: ["artifacts"] })
+      client.setQueryData(
+        ["artifacts", "detail", result.artifact.id],
+        result.artifact
+      )
+    },
   })
 }
 

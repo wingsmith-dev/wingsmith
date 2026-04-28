@@ -20,7 +20,7 @@ import {
   useCreateRecipe,
   useUpdateRecipe,
 } from "@/modules/demand/queries"
-import type { Recipe } from "@/modules/demand/types"
+import type { Recipe, RecipeFootprint } from "@/modules/demand/types"
 import type { RecipeDraft } from "@/modules/discovered/types"
 import { useState } from "react"
 import { toast } from "sonner"
@@ -35,6 +35,7 @@ export function RecipeForm({
   onOpenChange,
   recipe,
   draft,
+  footprint,
   artifactId,
   onCreated,
 }: {
@@ -42,6 +43,17 @@ export function RecipeForm({
   onOpenChange: (open: boolean) => void
   recipe?: Recipe
   draft?: RecipeDraft
+  /**
+   * A footprint chosen from the fitment matrix, layered over `draft` and under
+   * `recipe`. Not a `RecipeDraft`, because that is a reading of a workload a cluster is
+   * already running and this is the opposite — nothing is running yet, and the only
+   * thing picked was which card, how many, and how they are split.
+   *
+   * The two parallelism degrees come from the fit rather than from the device count.
+   * A replica of sixteen devices across two domains is tensor-eight by pipeline-two,
+   * and setting tensor to sixteen would ask a tensor group to reach over the fabric.
+   */
+  footprint?: RecipeFootprint
   artifactId?: string
   onCreated?: (recipe: Recipe) => void
 }) {
@@ -62,10 +74,16 @@ export function RecipeForm({
     recipe?.engine_image ?? draft?.engine_image ?? ""
   )
   const [deviceClass, setDeviceClass] = useState(
-    recipe?.shape.device_class ?? draft?.device_class ?? ""
+    recipe?.shape.device_class ??
+      footprint?.device_class ??
+      draft?.device_class ??
+      ""
   )
   const [deviceCount, setDeviceCount] = useState<number | null>(
-    recipe?.shape.device_count ?? draft?.device_count ?? 1
+    recipe?.shape.device_count ??
+      footprint?.device_count ??
+      draft?.device_count ??
+      1
   )
   const [deviceMemory, setDeviceMemory] = useState<number | null>(
     recipe?.shape.device_memory_mib_min ?? 0
@@ -77,22 +95,28 @@ export function RecipeForm({
     recipe?.shape.topology_domain_kind ?? ""
   )
   const [contextLength, setContextLength] = useState<number | null>(
-    recipe?.context_length ?? draft?.context_length ?? 8192
+    recipe?.context_length ??
+      footprint?.context_length ??
+      draft?.context_length ??
+      8192
   )
   const [maxBatchTokens, setMaxBatchTokens] = useState<number | null>(
     recipe?.max_batch_tokens ?? draft?.max_batch_tokens ?? null
   )
   const [tensor, setTensor] = useState<number | null>(
-    recipe?.parallelism.tensor ?? draft?.tensor_parallel ?? 1
+    recipe?.parallelism.tensor ??
+      footprint?.device_count ??
+      draft?.tensor_parallel ??
+      1
   )
   const [pipeline, setPipeline] = useState<number | null>(
-    recipe?.parallelism.pipeline ?? draft?.pipeline_parallel ?? 1
+    recipe?.parallelism.pipeline ?? footprint?.pipeline_parallel ?? draft?.pipeline_parallel ?? 1
   )
   const [expert, setExpert] = useState<number | null>(
     recipe?.parallelism.expert ?? draft?.expert_parallel ?? 1
   )
   const [quantization, setQuantization] = useState(
-    recipe?.quantization ?? draft?.quantization ?? ""
+    recipe?.quantization ?? footprint?.quantization ?? draft?.quantization ?? ""
   )
   const [dtype, setDtype] = useState(recipe?.dtype ?? draft?.dtype ?? "")
   const [kvCacheDtype, setKvCacheDtype] = useState(
