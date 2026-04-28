@@ -1,0 +1,447 @@
+package tunnel
+
+import (
+	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net"
+	"sync"
+	"time"
+)
+
+// Verifier resolves an enrolment token to the cluster it belongs to.
+//
+// The gateway holds no cluster token material: it has no list of hashes, no
+// database, and nothing to keep in sync with the plane. It asks, once per
+// connection, and remembers the answer. That is the whole of the trust model on
+// this listener — TLS for confidentiality, the token for identity, no CA and no
+// mTLS.
+//
+// A Verifier returns ErrRejected only for a definitive no. Anything else is
+// read as "the plane could not be reached", which is a different situation with
+// a different answer.
+type Verifier interface {
+	VerifyTunnelToken(ctx context.Context, token string) (string, error)
+}
+
+// DialObserver counts dials that never became tunnels.
+//
+// Separate from Observer because the pool never sees these: a dial that fails
+// the handshake or the token check is not a tunnel that opened and closed, and
+// folding it into the coverage gauge would make a misconfigured agent look
+// like a flapping one. The reason strings are a closed set — see the Reason
+// constants — because this is a metric label.
+type DialObserver interface {
+	TunnelDialRejected(reason string)
+}
+
+// Reasons a dial was refused. Closed set: these reach a metric label.
+const (
+	// ReasonHandshake is a dial that presented nothing intelligible.
+	ReasonHandshake = "handshake"
+	// ReasonUnauthorized is a token the plane refused, or one that resolved to a
+	// cluster other than the one the agent claimed.
+	ReasonUnauthorized = "unauthorized"
+	// ReasonUnavailable is a token that could not be checked because the plane
+	// could not be reached and nothing was cached for it. Existing tunnels are
+	// unaffected; only new dials land here.
+	ReasonUnavailable = "unavailable"
+	// ReasonAdopt is an agent that authenticated and then failed to speak
+	// HTTP/2.
+	ReasonAdopt = "adopt"
+)
+
+// DefaultCacheTTL is how long a verified token is reused without asking the
+// plane again.
+const DefaultCacheTTL = 5 * time.Minute
+
+// DefaultCacheGrace is how long a verified token stays usable after the plane
+// has become unreachable.
+//
+// It is what makes a control-plane outage survivable for an agent that is
+// restarted during one — rule 4 in the other direction. It is bounded rather
+// than infinite because a token that has been rotated has to stop working
+// eventually, and an hour is short next to how long a rotation takes to reach
+// every cluster and long next to any plane outage worth having.
+const DefaultCacheGrace = time.Hour
+
+// ListenerConfig configures the tunnel listener.
+type ListenerConfig struct {
+	// Pool adopts every connection that authenticates.
+	Pool *Pool
+	// GatewayID is this replica's stable identity, reported to every agent that
+	// dials in. Empty means the agent cannot tell replicas apart and will treat
+	// the gateway as a single one.
+	GatewayID string
+	// Gateways is how many replicas the gateway is running, reported to every
+	// agent that dials in so it knows how many distinct tunnels to hold. Zero or
+	// one both mean one.
+	//
+	// It is a number this process is told rather than one it discovers. The
+	// gateway has no Kubernetes client and is not getting one — see
+	// libs/gateway/CLAUDE.md — so the manifest that sets the replica count is
+	// also what sets this, and the two live beside each other in one file.
+	Gateways int
+	// Verifier checks enrolment tokens. Required: a listener with no verifier
+	// would accept any dial that spoke the protocol.
+	Verifier Verifier
+	// HandshakeTimeout bounds the exchange and the verification together. Zero
+	// means DefaultHandshakeTimeout.
+	HandshakeTimeout time.Duration
+	// CacheTTL is how long a verified token is trusted without asking again.
+	// Zero means DefaultCacheTTL.
+	CacheTTL time.Duration
+	// CacheGrace is how long a verified token survives a plane that cannot be
+	// reached. Zero means DefaultCacheGrace.
+	CacheGrace time.Duration
+	// Dials, when set, is told about refused dials.
+	Dials DialObserver
+	// Now replaces the clock. For tests.
+	Now func() time.Time
+}
+
+// Listener accepts agent dials and turns the ones that authenticate into
+// tunnels.
+//
+// It is a listener of its own, on a port of its own, and that is not tidiness:
+// it must stay reachable while this replica reports itself unready. Readiness
+// here means "holds a tunnel", so a replica that could only be dialled once
+// ready could never become ready — the gate would be the thing keeping it shut.
+// Nothing in this file consults readiness, and the Service in front of this port
+// must publish not-ready addresses.
+type Listener struct {
+	cfg   ListenerConfig
+	cache *tokenCache
+
+	mu       sync.Mutex
+	ln       net.Listener
+	closing  bool
+	handling sync.WaitGroup
+}
+
+// NewListener builds the listener. It does not bind: the caller supplies the
+// net.Listener, so TLS and the address stay wiring decisions.
+func NewListener(cfg ListenerConfig) (*Listener, error) {
+	if cfg.Pool == nil {
+		return nil, errors.New("tunnel: listener needs a pool")
+	}
+	if cfg.Verifier == nil {
+		return nil, errors.New("tunnel: listener needs a verifier")
+	}
+	if cfg.HandshakeTimeout <= 0 {
+		cfg.HandshakeTimeout = DefaultHandshakeTimeout
+	}
+	if cfg.CacheTTL <= 0 {
+		cfg.CacheTTL = DefaultCacheTTL
+	}
+	if cfg.CacheGrace <= 0 {
+		cfg.CacheGrace = DefaultCacheGrace
+	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
+	return &Listener{
+		cfg:   cfg,
+		cache: &tokenCache{ttl: cfg.CacheTTL, grace: cfg.CacheGrace, now: cfg.Now},
+	}, nil
+}
+
+// Serve accepts dials until the listener is shut down or ctx is cancelled.
+//
+// ctx bounds handshakes and the plane calls inside them. It does not abort
+// tunnels that are already adopted: cancelling it stops new dials, and Shutdown
+// is what drains the live ones.
+func (l *Listener) Serve(ctx context.Context, ln net.Listener) error {
+	l.mu.Lock()
+	if l.closing {
+		l.mu.Unlock()
+		_ = ln.Close()
+		return ErrConnectorClosed
+	}
+	l.ln = ln
+	l.mu.Unlock()
+
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			l.mu.Lock()
+			closing := l.closing
+			l.mu.Unlock()
+			if closing || ctx.Err() != nil || errors.Is(err, net.ErrClosed) {
+				return nil
+			}
+			return err
+		}
+		l.handling.Add(1)
+		go func() {
+			defer l.handling.Done()
+			l.handle(ctx, conn)
+		}()
+	}
+}
+
+// handle authenticates one dial and hands it to the pool.
+func (l *Listener) handle(ctx context.Context, conn net.Conn) {
+	remote := addrString(conn)
+	handshakeCtx, cancel := context.WithTimeout(ctx, l.cfg.HandshakeTimeout)
+	defer cancel()
+
+	clusterID, hello, err := l.authenticate(handshakeCtx, conn)
+	if err != nil {
+		_ = conn.Close()
+		return
+	}
+
+	// Adopt closes the connection itself on failure, and owns it from here.
+	adopted, err := l.cfg.Pool.Adopt(handshakeCtx, clusterID, conn)
+	if err != nil {
+		l.refuse(remote, ReasonAdopt, err)
+		return
+	}
+	slog.Info("gateway: tunnel open",
+		"cluster", clusterID, "agent", hello.Agent, "remote", remote,
+		"capacity", adopted.Capacity(), "live", l.cfg.Pool.Live(clusterID))
+
+	<-adopted.Done()
+	slog.Info("gateway: tunnel closed",
+		"cluster", clusterID, "remote", remote,
+		"held", time.Since(adopted.Opened).Round(time.Second).String(),
+		"live", l.cfg.Pool.Live(clusterID))
+}
+
+// authenticate reads the handshake and answers it. The deadline it sets is
+// cleared before the connection is handed on: an HTTP/2 connection with a
+// socket deadline on it dies at that deadline mid-generation.
+func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hello, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		deadline = l.cfg.Now().Add(l.cfg.HandshakeTimeout)
+	}
+	if err := conn.SetDeadline(deadline); err != nil {
+		return "", Hello{}, err
+	}
+	defer func() { _ = conn.SetDeadline(time.Time{}) }()
+
+	remote := addrString(conn)
+	hello, err := ReadHello(conn)
+	if err != nil {
+		l.reject(conn, remote, ReasonHandshake, err)
+		return "", Hello{}, err
+	}
+
+	clusterID, err := l.resolve(ctx, hello.Token)
+	if err != nil {
+		reason := ReasonUnavailable
+		if errors.Is(err, ErrRejected) {
+			reason = ReasonUnauthorized
+		}
+		l.reject(conn, remote, reason, err)
+		return "", Hello{}, err
+	}
+
+	// The claim is checked, not trusted. An agent holding another cluster's
+	// Secret is a copy-paste away, and the failure it produces — one cluster's
+	// traffic served by another's models — is silent at every other layer.
+	if hello.ClusterID != "" && hello.ClusterID != clusterID {
+		err := fmt.Errorf("%w: token belongs to %s, dial claimed %s", ErrRejected, clusterID, hello.ClusterID)
+		l.reject(conn, remote, ReasonUnauthorized, err)
+		return "", Hello{}, err
+	}
+
+	if err := WriteAccept(conn, l.accept(clusterID)); err != nil {
+		return "", Hello{}, err
+	}
+	return clusterID, hello, nil
+}
+
+// accept is the answer to a dial that authenticated, carrying this replica's
+// identity and the replica count alongside the cluster.
+//
+// The count is normalised here rather than at the agent so that the wire never
+// carries a zero that means one: an agent reading Gateways decides how many
+// tunnels to hold, and a gateway that forgot to say is a gateway an agent must
+// not conclude anything from.
+func (l *Listener) accept(clusterID string) Accept {
+	gateways := l.cfg.Gateways
+	if gateways < 1 {
+		gateways = 1
+	}
+	return Accept{
+		OK:        true,
+		ClusterID: clusterID,
+		GatewayID: l.cfg.GatewayID,
+		Gateways:  gateways,
+	}
+}
+
+// resolve verifies a token, preferring what is already known.
+//
+// A fresh cache entry answers without a plane call at all, so an agent that
+// reconnects in a loop cannot turn a rollout into a load test of the control
+// plane. A stale entry answers when the plane cannot be reached, which is what
+// keeps a control-plane outage off the data path: existing tunnels are never
+// re-checked, and an agent restarted during an outage still gets in.
+func (l *Listener) resolve(ctx context.Context, token string) (string, error) {
+	if clusterID, fresh, ok := l.cache.lookup(token); ok && fresh {
+		return clusterID, nil
+	}
+
+	clusterID, err := l.cfg.Verifier.VerifyTunnelToken(ctx, token)
+	if err == nil {
+		if clusterID == "" {
+			return "", fmt.Errorf("%w: the plane named no cluster", ErrRejected)
+		}
+		l.cache.store(token, clusterID)
+		return clusterID, nil
+	}
+	if errors.Is(err, ErrRejected) {
+		l.cache.forget(token)
+		return "", err
+	}
+	if clusterID, _, ok := l.cache.lookup(token); ok {
+		slog.Warn("gateway: tunnel token verified from cache, the plane is unreachable", "err", err)
+		return clusterID, nil
+	}
+	return "", err
+}
+
+// reject answers a refused dial, so an agent logs why rather than an EOF.
+// The caller closes the connection.
+func (l *Listener) reject(conn net.Conn, remote, reason string, err error) {
+	_ = WriteAccept(conn, Accept{Error: reason})
+	l.refuse(remote, reason, err)
+}
+
+func (l *Listener) refuse(remote, reason string, err error) {
+	slog.Warn("gateway: tunnel dial refused", "remote", remote, "reason", reason, "err", err)
+	if l.cfg.Dials != nil {
+		l.cfg.Dials.TunnelDialRejected(reason)
+	}
+}
+
+// Shutdown stops accepting dials and drains the tunnels already held.
+//
+// Both halves matter to a rollout. Closing the accept side alone would leave
+// agents' streams cut when the process exits; draining alone would let a
+// terminating replica keep taking dials it is about to abandon.
+func (l *Listener) Shutdown(ctx context.Context) error {
+	l.stopAccepting()
+	err := l.cfg.Pool.Shutdown(ctx)
+	done := make(chan struct{})
+	go func() {
+		l.handling.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		if err == nil {
+			err = ctx.Err()
+		}
+	}
+	return err
+}
+
+// Close stops accepting and severs every tunnel. It is the deadline behind
+// Shutdown, not an alternative to it.
+func (l *Listener) Close() error {
+	l.stopAccepting()
+	return l.cfg.Pool.Close()
+}
+
+func (l *Listener) stopAccepting() {
+	l.mu.Lock()
+	l.closing = true
+	ln := l.ln
+	l.mu.Unlock()
+	if ln != nil {
+		_ = ln.Close()
+	}
+}
+
+// tokenCache remembers which cluster a token resolved to.
+//
+// A slice scanned in constant time rather than a map: the fleet is tens of
+// clusters, the scan is once per connection and never per request, and it means
+// no comparison in this path can be short-circuited on a secret. The tokens
+// themselves are not kept — only their digests, so a heap dump of a long-lived
+// gateway does not hand over every cluster's credential.
+type tokenCache struct {
+	ttl   time.Duration
+	grace time.Duration
+	now   func() time.Time
+
+	mu      sync.Mutex
+	entries []cacheEntry
+}
+
+type cacheEntry struct {
+	digest    [sha256.Size]byte
+	clusterID string
+	verified  time.Time
+}
+
+// lookup reports what a token resolved to last time, and whether that answer is
+// still fresh enough to use without asking the plane.
+func (c *tokenCache) lookup(token string) (string, bool, bool) {
+	digest := sha256.Sum256([]byte(token))
+	now := c.now()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	kept := c.entries[:0]
+	var found cacheEntry
+	hit := 0
+	for _, entry := range c.entries {
+		if now.Sub(entry.verified) > c.grace {
+			continue
+		}
+		kept = append(kept, entry)
+		if subtle.ConstantTimeCompare(digest[:], entry.digest[:]) == 1 {
+			found = entry
+			hit = 1
+		}
+	}
+	c.entries = kept
+	if hit == 0 {
+		return "", false, false
+	}
+	return found.clusterID, now.Sub(found.verified) <= c.ttl, true
+}
+
+func (c *tokenCache) store(token, clusterID string) {
+	digest := sha256.Sum256([]byte(token))
+	now := c.now()
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.entries {
+		if subtle.ConstantTimeCompare(digest[:], c.entries[i].digest[:]) == 1 {
+			c.entries[i].clusterID = clusterID
+			c.entries[i].verified = now
+			return
+		}
+	}
+	c.entries = append(c.entries, cacheEntry{digest: digest, clusterID: clusterID, verified: now})
+}
+
+// forget drops a token the plane has refused, so a revoked credential does not
+// keep working out of the grace window.
+func (c *tokenCache) forget(token string) {
+	digest := sha256.Sum256([]byte(token))
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	kept := c.entries[:0]
+	for _, entry := range c.entries {
+		if subtle.ConstantTimeCompare(digest[:], entry.digest[:]) == 1 {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	c.entries = kept
+}
