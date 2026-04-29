@@ -90,6 +90,23 @@ func Parse(raw []byte) (*Table, error) {
 	return &table, nil
 }
 
+// ByClass finds a class by its own identifier rather than by a vendor alias.
+//
+// The alias index answers "what is this card called", which is the question discovery asks. This
+// answers "what is a card of this class", which is what a node that states its class outright —
+// through the device-class label — leaves to be filled in.
+func (t *Table) ByClass(class string) (Class, bool) {
+	if t == nil || class == "" {
+		return Class{}, false
+	}
+	for _, candidate := range t.Classes {
+		if candidate.Class == class {
+			return candidate, true
+		}
+	}
+	return Class{}, false
+}
+
 // Lookup finds the class a vendor string names in one dialect.
 func (t *Table) Lookup(dialect, product string) (Class, bool) {
 	if t == nil || product == "" {

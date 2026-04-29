@@ -171,6 +171,55 @@ func TestDCGMClassResolvesThroughTheContractWhenGFDIsSilent(t *testing.T) {
 	if devices[0].Model != "NVIDIA H100 80GB HBM3" {
 		t.Fatalf("model is %q", devices[0].Model)
 	}
+	// Memory comes from the dictionary here, and a zero would be worse than an absence: the plane
+	// filters a recipe's device_memory_mib_min against this number, so a zero makes every recipe
+	// that asks for memory unplaceable and blames the recipe for it.
+	if devices[0].MemoryTotalMB != 81559 {
+		t.Fatalf("memory without a gfd label is %d, not the class's own", devices[0].MemoryTotalMB)
+	}
+}
+
+// TestAnExplicitDeviceClassStillCarriesItsMemory covers the other way a node can name its hardware:
+// the device-class label states the class outright and bypasses both dialects, which used to leave
+// memory with nowhere to come from.
+func TestAnExplicitDeviceClassStillCarriesItsMemory(t *testing.T) {
+	node := gpuNode("gpu-labelled", map[string]string{
+		labelGPUCount:    "1",
+		labelDeviceClass: "rtx-pro-6000-96gb-server-edition",
+	}, nil, true, false)
+	d := newKubeDiscoverer(t, node)
+	snap, err := d.Discover(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	devices := snap.Nodes[0].Devices
+	if len(devices) != 1 {
+		t.Fatalf("discovered %d devices", len(devices))
+	}
+	if devices[0].DeviceClass != "rtx-pro-6000-96gb-server-edition" {
+		t.Fatalf("device class is %q", devices[0].DeviceClass)
+	}
+	if devices[0].MemoryTotalMB != 97249 {
+		t.Fatalf("memory for an explicitly classed device is %d", devices[0].MemoryTotalMB)
+	}
+}
+
+// TestHardwareNobodyHasDescribedReportsNoMemory: an unknown class slugifies, is not in the
+// dictionary, and must stay at zero rather than borrow a number from a card it is not.
+func TestHardwareNobodyHasDescribedReportsNoMemory(t *testing.T) {
+	node := gpuNode("gpu-exotic", map[string]string{
+		labelGPUCount:   "1",
+		labelGPUProduct: "NVIDIA-Something-Nobody-Has-Named",
+	}, nil, true, false)
+	d := newKubeDiscoverer(t, node)
+	snap, err := d.Discover(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	device := snap.Nodes[0].Devices[0]
+	if device.MemoryTotalMB != 0 {
+		t.Fatalf("an unknown class invented %d MiB of memory", device.MemoryTotalMB)
+	}
 }
 
 // TestUnreachableDCGMDegradesRatherThanFailing: an exporter that is down must cost us joinable

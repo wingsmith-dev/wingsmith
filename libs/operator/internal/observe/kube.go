@@ -249,6 +249,10 @@ func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.
 		if class == "" {
 			class = deviceClass(model, scrapedModel)
 		}
+		deviceMemory := memory
+		if deviceMemory <= 0 {
+			deviceMemory = classMemoryMiB(class)
+		}
 		health := HealthHealthy
 		switch {
 		case !ready:
@@ -266,7 +270,7 @@ func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.
 			Index:           i,
 			Model:           nodeModel,
 			DeviceClass:     class,
-			MemoryTotalMB:   memory,
+			MemoryTotalMB:   deviceMemory,
 			Health:          health,
 			ThrottleReasons: []string{},
 			Mig:             mig,
@@ -322,6 +326,26 @@ func deviceClass(gfdProduct, dcgmModel string) string {
 	default:
 		return unknownClass
 	}
+}
+
+// classMemoryMiB is what a card of this class holds, according to the embedded dictionary.
+//
+// It is the fallback for a cluster that publishes no `nvidia.com/gpu.memory`, which is the ordinary
+// case for a device plugin installed without GPU feature discovery — the same case the device count
+// above already falls back to DCGM for. Memory was the one field left reporting zero there, and a
+// zero is worse than an absence: the plane filters a recipe's `device_memory_mib_min` against it, so
+// every recipe that asks for memory at all becomes unplaceable, and the refusal names the recipe's
+// floor rather than the missing label.
+//
+// The dictionary is the right source because memory is part of a class's identity — an h100-80gb-sxm
+// and an h100-94gb-sxm are different classes, so naming the class has already named the memory. An
+// unknown class slug is not in the table and stays at zero, which is honest: nothing here knows how
+// big a card nobody has described is.
+func classMemoryMiB(class string) int64 {
+	if entry, ok := devices.Load().ByClass(class); ok {
+		return entry.MemoryMiB
+	}
+	return 0
 }
 
 // snake renders a Kubernetes CamelCase identifier in the wire's lower_snake_case vocabulary.
