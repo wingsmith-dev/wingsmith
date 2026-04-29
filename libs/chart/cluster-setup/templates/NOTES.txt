@@ -82,13 +82,19 @@ Watch the operator come up and enrol:
 
   kubectl -n {{ .Release.Namespace }} rollout status deploy/hangar-operator
 
-Enrolling does not move the cluster's `phase`. Phase is declared state with one
-writer — the API — and `reachable` on the sync state already answers liveness, so
-promoting on a handshake would give the row two writers. A cluster therefore stays
-`pending` however healthy its stream is, until somebody says otherwise:
+The first handshake promotes the cluster from `pending` to `active` and stamps
+`enrolled_at`, so there is nothing to do here for an install that reached the hub.
+It happens once and only out of `pending`, which is what keeps it from fighting an
+operator who has since moved the cluster to `draining` or `disabled`.
+
+Check it rather than assuming it, because the phase is what decides whether this
+cluster can serve at all — endpoints resolve only on a phase that may serve, so a
+cluster left `pending` is absent from the gateway's routing table and its models
+answer as though they were nowhere:
+
+  GET /v1/clusters/{{ .Values.cluster.id }}     -> phase, reachable, sync.state
+
+If it is still `pending`, the handshake has not happened — read the operator's logs
+rather than setting the phase by hand. Should you need to anyway:
 
   PATCH /v1/clusters/{{ .Values.cluster.id }}   {"phase": "active"}
-
-Do it, because nothing serves from a cluster that is not `active`: endpoints
-resolve only on a phase that may serve, so a `pending` cluster is absent from the
-gateway's routing table and its models answer as though they were nowhere.
