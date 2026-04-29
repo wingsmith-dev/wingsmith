@@ -27,6 +27,28 @@ const maxFrameBytes = 8 << 20
 // seconds is closed.
 const handshakeTimeout = 10 * time.Second
 
+// applyQueueDepth is how many accepted frames may be waiting on the handler before the reader
+// feels it.
+//
+// It absorbs a burst — a snapshot stream is the shape that arrives faster than it applies — without
+// letting a permanently stuck handler buffer the whole stream into memory. Slowness that outlasts
+// this buffer reaches the reader, and from there the liveness timeout, which is the intended path.
+const applyQueueDepth = 256
+
+// applyTimeout bounds one call into the handler, and checkpointTimeout one durable cursor write.
+//
+// Both exist because the session context has no deadline of its own, and both are generous: the
+// point is not to catch a slow apply but to make sure an indefinite one becomes an error somebody
+// can read.
+const (
+	applyTimeout      = 60 * time.Second
+	checkpointTimeout = 30 * time.Second
+)
+
+// loopDrainTimeout is how long a finished session waits for its own goroutines before redialling
+// without them.
+const loopDrainTimeout = 5 * time.Second
+
 // Handler consumes frames the hub pushes down.
 //
 // Returning an error means the frame was not durably applied: the client will not advance its
@@ -328,12 +350,17 @@ func (c *Client) session(ctx context.Context) error {
 		c.mu.Unlock()
 	}()
 
-	errCh := make(chan error, 3)
+	apply := make(chan inbound, applyQueueDepth)
+	errCh := make(chan error, 4)
 	var wg stdsync.WaitGroup
-	wg.Add(3)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
-		errCh <- c.runProtected("read", func() error { return c.readLoop(sessCtx, conn) })
+		errCh <- c.runProtected("read", func() error { return c.readLoop(sessCtx, conn, apply) })
+	}()
+	go func() {
+		defer wg.Done()
+		errCh <- c.runProtected("apply", func() error { return c.applyLoop(sessCtx, apply) })
 	}()
 	go func() {
 		defer wg.Done()
@@ -347,11 +374,36 @@ func (c *Client) session(ctx context.Context) error {
 	err = <-errCh
 	cancel()
 	conn.CloseNow()
-	wg.Wait()
+	c.awaitLoops(&wg)
 	if ctx.Err() != nil {
 		return nil
 	}
 	return err
+}
+
+// awaitLoops gives the session's goroutines a bounded chance to leave before the caller redials.
+//
+// Bounded, and that bound is the whole point. Joining them unconditionally is what turned one slow
+// apply into a seven-minute outage that logged nothing: every signal a stalled session has —
+// the error, the "hub session ended" line, the backoff, the reconnect, and the deferred
+// `connected = false` that readiness is read from — is downstream of this wait, so a reader stuck
+// inside a Kubernetes call suppressed all of them at once while the pod went on reporting Ready.
+//
+// The connection is already severed by the caller, so a goroutine that outlives this cannot write
+// to a live socket, and a frame it applies late is one the next resume replays from the durable
+// cursor anyway.
+func (c *Client) awaitLoops(wg *stdsync.WaitGroup) {
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(loopDrainTimeout):
+		c.log.Warn("session goroutines outlived the connection; reconnecting without them",
+			"after", loopDrainTimeout)
+	}
 }
 
 // handshake sends hello from the durable cursor, waits for welcome, and replays anything the hub
@@ -443,9 +495,25 @@ func (c *Client) handshake(ctx context.Context, conn *websocket.Conn) error {
 	return nil
 }
 
+// inbound is one accepted frame on its way from the reader to the applier.
+//
+// handle is false for a hub error frame, which is logged where it arrives and then travels this
+// channel for its sequence alone: it is checkpointed like any other frame and handed to no handler.
+type inbound struct {
+	env    *Envelope
+	handle bool
+}
+
 // readLoop processes inbound frames strictly in order: a duplicate is dropped, a gap closes the
 // connection rather than being accepted as a hole.
-func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
+//
+// It reads, orders, and answers pings, and does nothing else. Everything that touches Kubernetes —
+// applying a frame, checkpointing a cursor — happens on applyLoop, because this goroutine sitting
+// inside conn.Read is the only thing that makes the library emit a pong. Doing an apply inline
+// stops the pongs for as long as the apply takes, and the hub closes a session that has not ponged
+// within 20 seconds. That is not a hypothetical: it killed the first production session during the
+// leader-election burst at startup.
+func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn, apply chan<- inbound) error {
 	for {
 		e, err := readEnvelope(ctx, conn)
 		if err != nil {
@@ -459,6 +527,7 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			c.replay.Ack(*e.Ack)
 		}
 
+		handle := true
 		switch e.Type {
 		case TypePing:
 			pong, err := newEnvelope(TypePong, wire.Pong{})
@@ -476,18 +545,12 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			return fmt.Errorf("unexpected %s after the handshake", e.Type)
 		case TypeError:
 			c.log.Warn("hub error", "error", hubError(e))
-			fresh, err := c.accept(e)
-			if err != nil {
-				return err
-			}
-			if fresh && e.Sequenced() {
-				if err := c.advance(ctx, *e.Seq); err != nil {
-					return err
-				}
-			}
-			continue
+			handle = false
 		}
 
+		// Ordering is decided here rather than at the applier so that a gap still ends the session
+		// at the moment it arrives. Arrival order is what this cursor tracks, and it is cheap; the
+		// applied position is the applier's, and it is not.
 		fresh, err := c.accept(e)
 		if err != nil {
 			return err
@@ -496,23 +559,50 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			continue
 		}
 
-		if err := c.safeHandle(ctx, e); err != nil {
-			var pe *panicError
-			if errors.As(err, &pe) {
-				// PROTOCOL §6b: a panic is not obviously transient, and a deterministic one
-				// recurs on every retry — withholding the ack would wedge the stream behind it
-				// forever. Treated as a permanently unappliable frame instead: accepted,
-				// discarded, and logged loudly, exactly like an unknown type or a malformed
-				// payload. The frame's sequence still advances below.
-				c.log.Error("handler panicked; discarding frame per PROTOCOL 6b",
-					"type", e.Type, "seq", e.Seq, "panic", pe.value, "stack", string(pe.stack))
-			} else {
-				c.log.Error("handler rejected frame; withholding ack",
-					"type", e.Type, "seq", e.Seq, "error", err)
-				c.mu.Lock()
-				c.holed = true
-				c.mu.Unlock()
-				continue
+		select {
+		case apply <- inbound{env: e, handle: handle}:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+}
+
+// applyLoop hands frames to the handler and moves the durable cursor, one at a time and in the
+// order the reader accepted them.
+//
+// It is a goroutine of its own so that a slow apply costs throughput and not the session. The
+// channel in front of it is bounded, so sustained slowness still reaches the reader in the end —
+// and when it does, the heartbeat's liveness timeout ends the session and the next resume replays
+// from the last checkpoint, which is the recoverable direction.
+func (c *Client) applyLoop(ctx context.Context, apply <-chan inbound) error {
+	for {
+		var in inbound
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case in = <-apply:
+		}
+		e := in.env
+
+		if in.handle {
+			if err := c.handleFrame(ctx, e); err != nil {
+				var pe *panicError
+				if errors.As(err, &pe) {
+					// PROTOCOL §6b: a panic is not obviously transient, and a deterministic one
+					// recurs on every retry — withholding the ack would wedge the stream behind it
+					// forever. Treated as a permanently unappliable frame instead: accepted,
+					// discarded, and logged loudly, exactly like an unknown type or a malformed
+					// payload. The frame's sequence still advances below.
+					c.log.Error("handler panicked; discarding frame per PROTOCOL 6b",
+						"type", e.Type, "seq", e.Seq, "panic", pe.value, "stack", string(pe.stack))
+				} else {
+					c.log.Error("handler rejected frame; withholding ack",
+						"type", e.Type, "seq", e.Seq, "error", err)
+					c.mu.Lock()
+					c.holed = true
+					c.mu.Unlock()
+					continue
+				}
 			}
 		}
 
@@ -523,6 +613,18 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn) error {
 			return err
 		}
 	}
+}
+
+// handleFrame applies one frame under a deadline of its own.
+//
+// The deadline is here because the session context has none: a handler blocked on an unresponsive
+// API server would otherwise hold this goroutine for as long as that lasts, and a stall with no
+// bound is a stall nothing can report. Exceeding it is an ordinary rejection — the ack is withheld
+// and the hub replays the frame on the next resume.
+func (c *Client) handleFrame(ctx context.Context, e *Envelope) error {
+	ctx, cancel := context.WithTimeout(ctx, applyTimeout)
+	defer cancel()
+	return c.safeHandle(ctx, e)
 }
 
 // accept applies §4's ordering rules to one inbound frame and reports whether it is new.
@@ -568,7 +670,9 @@ func (c *Client) advance(ctx context.Context, seq uint64) error {
 	}
 	next.Seq = seq
 
-	if err := c.opts.Checkpointer.Save(ctx, next); err != nil {
+	saveCtx, cancel := context.WithTimeout(ctx, checkpointTimeout)
+	defer cancel()
+	if err := c.opts.Checkpointer.Save(saveCtx, next); err != nil {
 		return fmt.Errorf("save resume cursor at seq %d: %w", seq, err)
 	}
 	c.mu.Lock()

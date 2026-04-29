@@ -500,6 +500,97 @@ func TestLivenessTimeoutForcesReconnect(t *testing.T) {
 	eventually(t, 3*time.Second, "redial after a silent hub", func() bool { return h.connectionCount() >= 2 })
 }
 
+// A slow apply must not stop the reader reading.
+//
+// The hub pings at the WebSocket level and closes a session that has not ponged within 20 seconds,
+// and the library emits that pong only from inside conn.Read. So an apply done on the read
+// goroutine is a pause in the keepalive for as long as the apply lasts. In production that pause
+// was the leader-election burst at startup, the hub closed the session 24 seconds in, and the
+// operator's own view of the world stopped there.
+func TestASlowApplyStillAnswersTheHubsKeepalive(t *testing.T) {
+	h := newFakeHub(t)
+	stall := newStallingHandler()
+
+	opts := testOptions(h)
+	opts.Handler = stall
+	// Long enough that the client's own liveness watchdog is not what this test measures.
+	opts.LivenessTimeout = 30 * time.Second
+	startWith(t, opts)
+	// Released after the client's own cleanup is registered, so it is unblocked before the client
+	// is asked to stop rather than after.
+	t.Cleanup(stall.release)
+
+	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+	h.push("d1")
+
+	select {
+	case <-stall.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the handler was never called")
+	}
+
+	if err := h.keepalive(2 * time.Second); err != nil {
+		t.Fatalf("the hub's keepalive went unanswered while a frame was applying: %v", err)
+	}
+}
+
+// A handler that never returns must not take the reconnect down with it.
+//
+// The session's goroutines used to be joined before the session could report anything, so a handler
+// blocked on an unresponsive API server held up the error, the log line, the backoff, the redial,
+// and the deferred flag that readiness is read from — all at once. The pod stayed Ready and the
+// operator stayed silently disconnected for seven minutes. This handler ignores its context, which
+// is the shape that caused it: a call that does not honour cancellation cannot be waited out.
+func TestAWedgedApplyStillRedials(t *testing.T) {
+	h := newFakeHub(t)
+	stall := newStallingHandler()
+
+	opts := testOptions(h)
+	opts.Handler = stall
+	startWith(t, opts)
+	t.Cleanup(stall.release)
+
+	eventually(t, 2*time.Second, "first connection", func() bool { return h.connectionCount() == 1 })
+	h.push("d1")
+
+	select {
+	case <-stall.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the handler was never called")
+	}
+
+	// The hub stops answering, so the liveness watchdog is what ends this session. Nothing else
+	// can: the apply is not coming back.
+	h.setSilent(true)
+	eventually(t, 10*time.Second, "a redial past a wedged apply", func() bool { return h.connectionCount() >= 2 })
+}
+
+// stallingHandler blocks in Handle until released, and ignores its context while it does — a
+// reconcile against an API server that has stopped answering, which is what the read path used to
+// be exposed to.
+type stallingHandler struct {
+	entered   chan struct{}
+	released  chan struct{}
+	closeOnce stdsync.Once
+}
+
+func newStallingHandler() *stallingHandler {
+	return &stallingHandler{entered: make(chan struct{}, 1), released: make(chan struct{})}
+}
+
+func (s *stallingHandler) Handle(context.Context, *Envelope) error {
+	select {
+	case s.entered <- struct{}{}:
+	default:
+	}
+	<-s.released
+	return nil
+}
+
+func (s *stallingHandler) Resync(context.Context) error { return nil }
+
+func (s *stallingHandler) release() { s.closeOnce.Do(func() { close(s.released) }) }
+
 // TestLossyHelloAfterReplayOverflow: once the buffer has discarded an unacknowledged frame this
 // side can no longer reproduce its own stream, and PROTOCOL §4 says it must say so rather than
 // ask for a resume it cannot honour.

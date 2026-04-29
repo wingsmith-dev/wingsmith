@@ -218,6 +218,25 @@ func (h *fakeHub) kill() {
 	}
 }
 
+// keepalive sends a WebSocket-level ping and waits for the pong, which is what the real hub does
+// every 20 seconds and closes the session over when it goes unanswered.
+//
+// This is a different mechanism from the application-level ping frames elsewhere in this harness,
+// and the difference is the whole reason it exists: the library answers a control ping only while a
+// goroutine on the other side is inside conn.Read, so this is the only way a test can tell whether
+// the client's reader is actually reading.
+func (h *fakeHub) keepalive(timeout time.Duration) error {
+	h.mu.Lock()
+	conn := h.conn
+	h.mu.Unlock()
+	if conn == nil {
+		return errors.New("no live connection to ping")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	return conn.Ping(ctx)
+}
+
 func (h *fakeHub) connectionCount() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
