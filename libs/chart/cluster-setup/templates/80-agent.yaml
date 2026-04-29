@@ -16,10 +16,11 @@
 # left at that file's default on purpose, so the chart's surface stays the set of
 # facts that differ per cluster.
 #
-# TODO: nothing pushes to `agent.image.repository`'s default — `just build agent`
-# publishes to ECR, and the plane overrides this from HANGAR_AGENT_IMAGE when it
-# renders a cluster's values. Off by default, so an install cannot reach for an
-# image that is not there.
+# `just build agent` publishes to `agent.image.repository`'s default, so the
+# address below is the one that serves it and the plane no longer overrides it:
+# HANGAR_AGENT_IMAGE is empty, the tag falls back to this chart's appVersion, and
+# the operator and the agent a cluster installs are named by the same version that
+# names the Dynamo CRD.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
