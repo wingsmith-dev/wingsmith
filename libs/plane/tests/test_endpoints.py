@@ -7,6 +7,7 @@ from app.core.ids import ENDPOINT
 from app.core.ids import new_uid
 from app.db.models import Endpoint
 from app.core.exceptions import Invalid
+from app.core.exceptions import NotFound
 from app.modules.endpoints.routes import EndpointRoutes
 from app.modules.endpoints.schemas import EndpointSchema
 from app.modules.endpoints.schemas import EndpointTargetSchema
@@ -16,6 +17,8 @@ from app.modules.endpoints.schemas import EndpointUpdateRequest
 from app.modules.endpoints.services import ROLES
 from app.modules.endpoints.services import STRATEGIES
 from app.modules.endpoints.services import VISIBILITIES
+from app.modules.endpoints.services import SERVING_PHASES
+from app.modules.endpoints.services import EndpointService
 from app.modules.endpoints.services import _revision
 from app.modules.endpoints.services import check_shape
 from app.modules.endpoints.services import check_targets
@@ -241,3 +244,196 @@ def test_workload_filter_compiles_into_one_statement_as_a_subquery(repo):
 def test_conditional_update_reads_if_match_from_the_header():
     parameter = inspect.signature(EndpointRoutes.update_endpoint.fn).parameters["if_match"]
     assert parameter.default.header == "If-Match"
+
+
+# --- the resolution, against a repository that is not a database --------------
+
+
+class FakeRepo:
+    def __init__(self, rows=()) -> None:
+        self.rows = list(rows)
+
+    async def resolved(self, ref=None):
+        return self.rows
+
+
+class FakeEndpoint:
+    id = 1
+
+    def __init__(self, uid="end_1", name="chat", enabled=True) -> None:
+        self.uid = uid
+        self.name = name
+        self.enabled = enabled
+        self.visibility = "public"
+        self.routing_strategy = "weighted"
+        self.failover_order = []
+        self.created_at = EPOCH
+        self.updated_at = None
+
+
+class FakeTarget:
+    def __init__(self, weight=100, role="primary", enabled=True) -> None:
+        self.weight = weight
+        self.role = role
+        self.enabled = enabled
+        self.created_at = EPOCH
+        self.updated_at = None
+
+
+class FakeDeployment:
+    def __init__(self, uid="dep_1", name="serve-a", enabled=True) -> None:
+        self.id = uid
+        self.uid = uid
+        self.name = name
+        self.enabled = enabled
+        self.admission_phase = "placed"
+        self.created_at = EPOCH
+        self.updated_at = None
+
+
+class FakeCluster:
+    def __init__(self, phase="active", uid="clu_1", name="iad-1", updated_at=None) -> None:
+        self.uid = uid
+        self.name = name
+        self.phase = phase
+        self.created_at = EPOCH
+        self.updated_at = updated_at
+
+
+class FakeServing:
+    def __init__(self, url="https://iad-1.example", enabled=True) -> None:
+        self.url = url
+        self.enabled = enabled
+        self.credential_id = None
+        self.created_at = EPOCH
+        self.updated_at = None
+
+
+class FakeRow(tuple):
+    """A `Row` is a tuple with labels; the resolution reads it positionally."""
+
+    def __new__(cls, endpoint, target, deployment, cluster, serving, quota=None):
+        return super().__new__(cls, (endpoint, target, deployment, cluster, serving, quota))
+
+
+def resolution(rows) -> EndpointService:
+    svc = EndpointService.__new__(EndpointService)
+    svc.db = None
+    svc.repo = FakeRepo(rows)
+    return svc
+
+
+def upstream_row(phase="active", endpoint=None, **kwargs) -> FakeRow:
+    return FakeRow(
+        endpoint or FakeEndpoint(),
+        FakeTarget(),
+        FakeDeployment(**kwargs),
+        FakeCluster(phase=phase),
+        FakeServing(),
+    )
+
+
+def tunnelled_row(phase="active", endpoint=None, **kwargs) -> FakeRow:
+    """A cluster that publishes no serving address, which is every cluster we run."""
+    return FakeRow(
+        endpoint or FakeEndpoint(),
+        FakeTarget(),
+        FakeDeployment(**kwargs),
+        FakeCluster(phase=phase),
+        None,
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_active_cluster_with_a_serving_address_is_an_upstream():
+    table = await resolution([upstream_row()]).resolved()
+    assert [u.cluster_name for u in table.endpoints[0].upstreams] == ["iad-1"]
+
+
+@pytest.mark.asyncio
+async def test_a_cluster_with_no_serving_address_is_an_upstream_with_no_url():
+    """The tunnelled case, and the only one in production: the cluster id is the route.
+
+    Dropping it would empty the table on every cluster we run — nothing declares a
+    `ClusterServing`, so the gateway would be told no model is serving anywhere.
+    """
+    table = await resolution([tunnelled_row()]).resolved()
+    upstream = table.endpoints[0].upstreams[0]
+    assert (upstream.url, upstream.credential_id) == ("", None)
+    assert upstream.cluster_id == "clu_1"
+
+
+@pytest.mark.asyncio
+async def test_a_tunnelled_cluster_that_is_not_active_contributes_no_upstream():
+    """The phase rule holds without an address to hang it on."""
+    table = await resolution([tunnelled_row(phase="draining")]).resolved()
+    assert table.endpoints[0].upstreams == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["pending", "draining", "disabled"])
+async def test_a_cluster_that_is_not_active_contributes_no_upstream(phase):
+    """`phase` is declared intent, and traffic is the one thing that must obey it."""
+    table = await resolution([upstream_row(phase=phase)]).resolved()
+    assert table.endpoints[0].upstreams == []
+
+
+@pytest.mark.asyncio
+async def test_a_drained_cluster_is_dropped_while_its_active_neighbour_stays():
+    endpoint = FakeEndpoint()
+    rows = [
+        upstream_row(phase="draining", endpoint=endpoint, uid="dep_a", name="serve-a"),
+        upstream_row(phase="active", endpoint=endpoint, uid="dep_b", name="serve-b"),
+    ]
+    table = await resolution(rows).resolved()
+    assert [u.deployment_name for u in table.endpoints[0].upstreams] == ["serve-b"]
+
+
+@pytest.mark.asyncio
+async def test_an_endpoint_whose_every_cluster_is_draining_resolves_empty_and_is_not_omitted():
+    """`API.md`: "no such model" and "this model has nowhere to go" differ."""
+    endpoint = FakeEndpoint()
+    rows = [
+        upstream_row(phase="draining", endpoint=endpoint, uid="dep_a"),
+        upstream_row(phase="disabled", endpoint=endpoint, uid="dep_b"),
+    ]
+    table = await resolution(rows).resolved()
+    assert [e.name for e in table.endpoints] == ["chat"]
+    assert table.endpoints[0].upstreams == []
+
+
+@pytest.mark.asyncio
+async def test_resolving_one_drained_endpoint_by_name_is_not_a_404():
+    table = await resolution([upstream_row(phase="draining")]).resolved("chat")
+    assert len(table.endpoints) == 1
+    assert table.endpoints[0].upstreams == []
+
+
+@pytest.mark.asyncio
+async def test_an_endpoint_that_exists_nowhere_is_still_a_404():
+    with pytest.raises(NotFound):
+        await resolution([]).resolved("chat")
+
+
+def test_the_phase_is_filtered_above_the_query_so_the_row_survives_the_drain():
+    """A `WHERE` on the cluster would take the endpoint's last row with it."""
+    text = sql(EndpointRepository(db=None).resolved_query())
+    assert "supply_cluster.phase =" not in text
+    assert "supply_cluster.phase IN" not in text
+    assert "LEFT OUTER JOIN supply_cluster" in text
+
+
+@pytest.mark.asyncio
+async def test_draining_a_cluster_moves_the_revision_the_gateway_polls():
+    """Otherwise a `304` keeps the drained upstream alive in the gateway's table."""
+    before = await resolution([upstream_row()]).resolved()
+    drained = upstream_row()
+    drained[3].phase = "draining"
+    drained[3].updated_at = EPOCH + dt.timedelta(hours=1)
+    after = await resolution([drained]).resolved()
+    assert after.revision != before.revision
+    assert after.endpoints[0].revision != before.endpoints[0].revision
+
+
+def test_only_an_active_cluster_serves():
+    assert SERVING_PHASES == {"active"}

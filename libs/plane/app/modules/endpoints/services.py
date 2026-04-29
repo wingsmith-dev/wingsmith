@@ -35,6 +35,14 @@ from .repository import EndpointRepository
 VISIBILITIES = frozenset({"private", "public"})
 STRATEGIES = frozenset({"weighted", "failover", "latency"})
 ROLES = frozenset({"primary", "canary", "fallback"})
+SERVING_PHASES = frozenset({"active"})
+"""The cluster phases that may carry inference traffic.
+
+`pending` has never been enrolled, `draining` is being emptied on purpose and
+`disabled` is out of service — sending requests to any of them is the plane
+contradicting the intent somebody declared. Stated here rather than imported from
+the clusters module for the same reason `PLACEABLE_PHASES` is stated in
+`placement`: which phases serve is this reader's rule, not the vocabulary's."""
 
 
 def check_targets(targets: list[EndpointTargetRequest]) -> None:
@@ -306,9 +314,28 @@ class EndpointService:
         create a second copy of the same fact with its own way of being wrong.
 
         A target is dropped when it is disabled, when its deployment is disabled,
-        or when the cluster it sits on has no serving address or has had one
-        turned off — each of those is somebody saying "not this one", and the
-        endpoint survives all of them with fewer upstreams.
+        when the cluster it sits on is not in a serving phase, or when that
+        cluster has declared a serving address and then turned it off — each of
+        those is somebody saying "not this one", and the endpoint survives all of
+        them with fewer upstreams.
+
+        A cluster with no `ClusterServing` row at all is *not* one of them, and it
+        is the normal case: inference reaches a cluster over the tunnel its
+        serving agent dialled out, so there is no address to publish and
+        nothing declares one. Such a target resolves with an empty `url`, and the
+        `cluster_id` beside it is the whole of the routing key — the gateway keys
+        its tunnel pool by exactly that and dials the published address only when
+        there is one. Dropping these rows would make the table empty on every
+        cluster we run, which reads as "no model is serving" rather than as
+        "nobody publishes an ingress any more".
+
+        Every one of those is decided here rather than in the query, because the
+        query is an outer join the whole way down and a `WHERE` on the cluster
+        would drop the endpoint's last row along with its last upstream — turning
+        "this model has nowhere to go" into "no such model". The cluster's stamp
+        goes into the revision for the same reason the others do: marking a
+        cluster `draining` changes this table, and a gateway sitting behind a
+        `304` would keep routing to it.
 
         The serving quota is one row per endpoint rather than one per target, so
         its stamp goes into `own` beside the endpoint's and not into the row loop.
@@ -344,12 +371,14 @@ class EndpointService:
             for _, target, deployment, cluster, serving, _ in grouped[endpoint_id]:
                 if target is None:
                     continue
-                own.extend([_stamp(target), _stamp(deployment), _stamp(serving)])
+                own.extend([_stamp(target), _stamp(deployment), _stamp(cluster), _stamp(serving)])
                 if deployment is not None:
                     uids[deployment.id] = deployment.uid
                 if not target.enabled or deployment is None or not deployment.enabled:
                     continue
-                if serving is None or not serving.enabled:
+                if cluster is None or cluster.phase not in SERVING_PHASES:
+                    continue
+                if serving is not None and not serving.enabled:
                     continue
                 upstreams.append(
                     ResolvedUpstreamSchema(
@@ -358,8 +387,10 @@ class EndpointService:
                         admission_phase=deployment.admission_phase,
                         cluster_id=cluster.uid,
                         cluster_name=cluster.name,
-                        url=serving.url,
-                        credential_id=str(serving.credential_id) if serving.credential_id else None,
+                        url=serving.url if serving is not None else "",
+                        credential_id=str(serving.credential_id)
+                        if serving is not None and serving.credential_id
+                        else None,
                         weight=target.weight,
                         role=target.role,
                     )
