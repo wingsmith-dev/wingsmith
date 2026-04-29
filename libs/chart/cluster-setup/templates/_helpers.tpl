@@ -11,6 +11,20 @@
 {{- end -}}
 
 {{/*
+The gateway address the agent dials. Every reader goes through here rather than
+touching .Values.agent.gateway.address, so the check that it is still a map
+cannot be outrun: a values.yaml carrying the old flat string reaches whichever
+template is rendered first, and without this that is an unattributable
+"can't evaluate field address in type interface {}" from inside NOTES.txt.
+*/}}
+{{- define "cluster-setup.gatewayAddress" -}}
+{{- if kindIs "string" .Values.agent.gateway -}}
+{{- fail "agent.gateway is a map, not a string — move the address one level down, to agent.gateway.address. It groups the gateway-dialling settings the agent reads (serverName, caFile, connsPerGateway) under the thing they are all about instead of spreading them across agent.tunnelThis and agent.tunnelThat. Nothing else changed: still one address as host:port, still not a list, still no scheme." -}}
+{{- end -}}
+{{- .Values.agent.gateway.address -}}
+{{- end -}}
+
+{{/*
 Selector labels for the serving agent. Its own, like the metrics agent's and
 for the same reason: sharing the operator's selector would make one Deployment
 adopt the other's pods.
@@ -109,11 +123,15 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- if .Values.cluster.readOnly -}}
 {{- fail "agent.enabled is true but cluster.readOnly is also true — a read-only cluster cannot serve. Serving a model means the operator applying what the plane declared, and read-only reconciles nothing, so the agent would come up, hold healthy tunnels to every gateway, advertise this cluster as reachable, and answer every inference request with a 502 for a frontend that was never deployed. That is worse than a refusal: it is an install that looks clean and never works, and the gateway would route real traffic to it. Set cluster.readOnly=false once this cluster is managed, or leave agent.enabled=false until it is." -}}
 {{- end -}}
-{{- if not .Values.agent.gateway -}}
-{{- fail "agent.enabled is true but agent.gateway is empty — set it to the gateway's public tunnel address, as host:port. There is no default: an agent with nowhere to dial installs cleanly and carries nothing, and the gateway sees this cluster as unreachable with no reason attached. One address, not a list of replicas: how many replicas there are is reported in the handshake, so the agent finds them all from this one name (infra/80-gateway.yaml)." -}}
+{{- $gateway := include "cluster-setup.gatewayAddress" . -}}
+{{- if not $gateway -}}
+{{- fail "agent.enabled is true but agent.gateway.address is empty — set it to the gateway's public tunnel address, as host:port. There is no default: an agent with nowhere to dial installs cleanly and carries nothing, and the gateway sees this cluster as unreachable with no reason attached. One address, not a list of replicas: how many replicas there are is reported in the handshake, so the agent finds them all from this one name (infra/80-gateway.yaml)." -}}
 {{- end -}}
-{{- if contains "," .Values.agent.gateway -}}
-{{- fail "agent.gateway holds a comma-separated list, but it takes one address. Earlier values named every gateway replica; the agent now discovers them from the handshake, so give it the gateway's single public tunnel address and delete the rest." -}}
+{{- if contains "," $gateway -}}
+{{- fail "agent.gateway.address holds a comma-separated list, but it takes one address. Earlier values named every gateway replica; the agent now discovers them from the handshake, so give it the gateway's single public tunnel address and delete the rest." -}}
+{{- end -}}
+{{- if regexMatch "^[a-zA-Z][a-zA-Z0-9+.-]*://" $gateway -}}
+{{- fail "agent.gateway.address is an address and not a URL — give it as host:port, with no scheme. TLS is not optional on this dial and is assumed, so a scheme carries nothing the agent can act on; the value is passed to net.Dial, where a scheme becomes part of the hostname and fails to resolve." -}}
 {{- end -}}
 {{- end -}}
 {{- if and .Values.serving.enabled (not .Values.serving.backend.service) -}}

@@ -293,7 +293,8 @@ def _setup_values(values: SetupValues) -> str:
             "# Flip both together when this cluster is ready to serve.",
             "agent:",
             "  enabled: false",
-            f"  gateway: {values.gateway}",
+            "  gateway:",
+            f"    address: {values.gateway}",
         ]
         if values.agent_image:
             repository, _, tag = values.agent_image.rpartition(":")

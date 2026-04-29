@@ -4,7 +4,7 @@ Cluster id : {{ .Values.cluster.id }}
 Hub        : {{ .Values.cluster.hubUrl }}
 Operator   : {{ include "cluster-setup.operatorImage" . }}
 Read-only  : {{ .Values.cluster.readOnly }}  (allowed operations: {{ .Values.cluster.allowedOperations | default "none" }})
-Inference  : {{ if .Values.agent.enabled }}tunnelled — {{ .Values.agent.replicas }} × agent -> {{ .Values.agent.gateway }}
+Inference  : {{ if .Values.agent.enabled }}tunnelled — {{ .Values.agent.replicas }} × agent -> {{ include "cluster-setup.gatewayAddress" . }}
              frontend   : {{ if .Values.agent.frontendEndpoint }}{{ .Values.agent.frontendEndpoint }} (override){{ else }}discovered by label in the `dynamo` namespace{{ end }}{{ else }}no path in (agent.enabled=false){{ end }}
 Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Values.monitoring.remoteWrite.url }} as cluster={{ .Values.cluster.id }} region={{ .Values.cluster.region }}
              credential : {{ if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}this cluster's enrolment token, read from {{ .Values.enrolmentToken.existingSecret }}/{{ .Values.enrolmentToken.secretKey }} — nothing per-cluster to configure{{ else }}basicAuth from the Secret {{ .Values.monitoring.remoteWrite.basicAuth.existingSecret }} (useEnrolmentToken=false){{ end }}{{ else }}not configured — nothing leaves this cluster (monitoring.enabled=false){{ end }}
@@ -67,7 +67,7 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Valu
 ⚠  Nothing serves inference from this cluster (agent.enabled=false). The plane
    can declare deployments here and the operator will reconcile them, but no
    request can reach them: the gateway only forwards down tunnels an agent
-   dialled out. Set agent.enabled=true with agent.gateway once this
+   dialled out. Set agent.enabled=true with agent.gateway.address once this
    cluster is out of read-only.
 {{- end }}
 {{- if not .Values.serving.enabled }}
@@ -82,5 +82,13 @@ Watch the operator come up and enrol:
 
   kubectl -n {{ .Release.Namespace }} rollout status deploy/hangar-operator
 
-The cluster flips from `pending` to `active` in the plane on its first
-successful hub handshake.
+Enrolling does not move the cluster's `phase`. Phase is declared state with one
+writer — the API — and `reachable` on the sync state already answers liveness, so
+promoting on a handshake would give the row two writers. A cluster therefore stays
+`pending` however healthy its stream is, until somebody says otherwise:
+
+  PATCH /v1/clusters/{{ .Values.cluster.id }}   {"phase": "active"}
+
+Do it, because nothing serves from a cluster that is not `active`: endpoints
+resolve only on a phase that may serve, so a `pending` cluster is absent from the
+gateway's routing table and its models answer as though they were nowhere.

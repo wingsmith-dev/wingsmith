@@ -68,19 +68,23 @@ cluster:
 agent:
   enabled: true
   replicas: 2
-  gateway: hangar.example.com:443   # one address, however many replicas the plane runs
+  gateway:
+    address: hangar.example.com:443   # one address, however many replicas the plane runs
   frontendEndpoint: ""     # empty discovers the Dynamo frontend Service by label
 ```
 
-Three things the chart refuses rather than accepts:
+Four things the chart refuses rather than accepts:
 
 - `agent.enabled` with `cluster.readOnly: true`. Serving what the plane declared means the
   operator applying it, and read-only applies nothing — so the agent would hold healthy
   tunnels, advertise this cluster as reachable, and 502 every request against a frontend that was
   never deployed.
-- `agent.enabled` with an empty `gateway`. An agent with nowhere to dial installs
-  cleanly and carries nothing. A `gateway` holding a comma-separated list is refused too — earlier
+- `agent.enabled` with an empty `gateway.address`. An agent with nowhere to dial installs
+  cleanly and carries nothing. An address holding a comma-separated list is refused too — earlier
   values named every replica, and that is no longer how they are found.
+- an `agent.gateway` that is still a flat string, or an address carrying a scheme. It is
+  `host:port`: TLS is assumed and not optional, so `https://` conveys nothing and resolves as part
+  of the hostname.
 - an empty `enrolmentToken.value` (already true for the operator). The agent presents the same
   token as its identity on the tunnel — TLS for confidentiality, the token for who is calling —
   so there is no second credential to mint or rotate.

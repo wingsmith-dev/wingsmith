@@ -101,7 +101,8 @@ def test_setup_values_render_the_one_gateway_address():
     out = _setup_values(values(gateway="tunnel.example:443"))
     lines = out.splitlines()
     assert "agent:" in lines
-    assert "  gateway: tunnel.example:443" in lines
+    assert "  gateway:" in lines
+    assert "    address: tunnel.example:443" in lines
     assert "gateways" not in out
 
 

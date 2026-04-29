@@ -70,61 +70,29 @@ operator:
       cpu: 500m
       memory: 256Mi
 
-# The serving agent: this cluster's end of the inference tunnel, and the only
-# way a request reaches a cluster whose network Acme does not control. It
-# dials OUT to the plane's gateway replicas and then runs the HTTP/2 *server*
-# on that connection while the gateway runs the client, so the gateway holds an
-# ordinary RoundTripper per cluster and nothing ever dials in here. No Ingress,
-# no public name, no inbound firewall rule to ask anyone for.
-#
-# Its own Deployment, deliberately, and never a second container beside the
-# operator. The operator is a leader-elected singleton on the control path; this
-# scales with traffic on the data path. One process holding both would make
-# control-plane uptime the inference SLA, which is exactly what rule 4 forbids.
-#
-# Off by default: the gateway address has no safe default, and an agent that has
-# not been given one is a pod that dials nothing. A cluster the plane is
-# not yet routing inference to should install without one.
+# This cluster's end of the inference tunnel: dials out to the gateway, proxies
+# each request to the local Dynamo frontend. Off by default — the gateway address
+# has no safe default, and an agent without one dials nothing.
+# Why it is its own Deployment and not a sidecar: templates/80-agent.yaml.
 agent:
   enabled: false
-  # Two, not one. A single replica means every `helm upgrade` that moves the
-  # agent takes all inference for this cluster with it for the length of the
-  # rollout, because there is no second path in — the serving IngressRoute below
-  # is off on every cluster we run.
+  # Two, so a `helm upgrade` does not take this cluster's inference with it.
   replicas: 2
   image:
     repository: ghcr.io/hangar-dev/agent
     tag: ""
     pullPolicy: Always
-  # The gateway to dial, `host:port`, TLS assumed.
-  #
-  # One address, and it stays one however many replicas the plane runs. Coverage
-  # does have to be complete — a gateway replica can only answer a request for
-  # this cluster if it is itself holding one of this cluster's tunnels, because
-  # the pool is in-process — but which replicas exist is the gateway's business
-  # to report and not this cluster's to be told. The agent redials this address
-  # until it has a tunnel to every replica, because each accepted handshake says
-  # which replica took it and how many there are.
-  #
-  # That is the whole reason this is not a list. A list would mean that scaling
-  # the gateway is an edit to the values of every cluster in the fleet, and a
-  # cluster that missed the edit would be served by fewer replicas than the
-  # others with nothing anywhere saying so.
-  #
-  # e.g. hangar.example.com:443
-  gateway: ""
-  # Where this cluster fronts its models — `host:port` or a URL. Empty means
-  # discovery: the agent asks the API server for the Service carrying
-  # Dynamo's frontend labels, mirroring the operator's HANGAR_INFERENCE_ENDPOINT
-  # exactly, and for the same reason — the Service *name* is different on every
-  # cluster we run, so a default here would be a DNS error deep inside somebody's
-  # request rather than a setting nobody set. Fill it in only when this cluster
-  # fronts its models with something Dynamo did not label.
+  gateway:
+    # The gateway's tunnel address as `host:port` — TLS assumed, no scheme. One
+    # address however many replicas the gateway runs: the agent learns the rest
+    # from the handshake, so scaling it never edits this file.
+    # e.g. hangar.example.com:443
+    address: ""
+  # `host:port` or a URL. Empty discovers the Service carrying Dynamo's frontend
+  # labels; set it only if this cluster fronts its models with something else.
   frontendEndpoint: ""
-  # Sized as a proxy, not a runtime: it copies bytes and holds streams open. The
-  # memory limit is what a few hundred concurrent SSE generations cost in
-  # buffers; no CPU limit, because throttling the data path shows up as latency
-  # on every token rather than as a failure anyone can see.
+  # A proxy, not a runtime: it copies bytes and holds streams open. No CPU limit,
+  # because throttling the data path is latency on every token.
   resources:
     requests:
       cpu: 100m
