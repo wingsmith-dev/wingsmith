@@ -264,3 +264,40 @@ func TestWithModelReplacesOnlyTheModel(t *testing.T) {
 		}
 	}
 }
+
+func TestBothTokensAreAcceptedDuringARotation(t *testing.T) {
+	guard := NewTokenGuard("old-secret,new-secret")
+	for _, token := range []string{"old-secret", "new-secret"} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		if !guard.Allow(req) {
+			t.Fatalf("%s was refused; a rotation with no overlap is a coordinated flip", token)
+		}
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	req.Header.Set("Authorization", "Bearer retired-secret")
+	if guard.Allow(req) {
+		t.Fatal("a token outside the set was accepted")
+	}
+}
+
+func TestSeparatorsAndSpacingAreNotTokens(t *testing.T) {
+	guard := NewTokenGuard(" old-secret , new-secret ,, ")
+	for _, token := range []string{"old-secret", "new-secret"} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		if !guard.Allow(req) {
+			t.Fatalf("%s was refused; surrounding space must not be part of the secret", token)
+		}
+	}
+	for _, empty := range []string{"", " "} {
+		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+		req.Header.Set("Authorization", "Bearer "+empty)
+		if guard.Allow(req) {
+			t.Fatalf("a trailing comma admitted %q as a token", empty)
+		}
+	}
+	if NewTokenGuard(" , ,, ") != nil {
+		t.Fatal("a value that is all separators must leave the gateway open, not admit nothing")
+	}
+}

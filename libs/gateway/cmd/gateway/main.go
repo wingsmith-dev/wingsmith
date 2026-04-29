@@ -112,6 +112,7 @@ func main() {
 	var callers serving.Guard
 	if guard := serving.NewTokenGuard(callerToken); guard != nil {
 		callers = guard
+		slog.Info("gateway: caller token enforced", "tokens", guard.Accepted())
 	}
 
 	recorder := metrics.New()
