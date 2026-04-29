@@ -1,23 +1,43 @@
+# cluster-setup — everything a cluster installs to become one the plane can manage.
+#
+# This file is a form. Each value says what to put and what breaks if it is wrong;
+# the reasoning behind a component lives in its template's header, and the
+# reasoning behind a decision lives in docs/decisions. What is left here is only
+# what differs per cluster.
+
+# ── Identity ──────────────────────────────────────────────────────────────────
+
 cluster:
   # Must match the name of a cluster already declared in the plane.
   id: ""
   # The plane's hub endpoint the operator dials, ws:// or wss://.
   hubUrl: ""
-  # The cloud region this cluster runs in, e.g. ap-south-1. Only read by the
-  # metrics agent, which stamps it on every series as the `region` external
-  # label — the central store already holds `region` for the db fleets, so a
-  # cluster that omits it is the one row in a fleet-wide breakdown with a blank
-  # cell. Required when `monitoring.enabled` is true, ignored otherwise.
+  # e.g. ap-south-1. Stamped on every series as the `region` external label, so a
+  # cluster that omits it is the one blank cell in a fleet-wide breakdown.
+  # Required with `monitoring.enabled`, ignored otherwise.
   region: ""
   readOnly: true
   allowedOperations: benchmark
   logLevel: info
   logFormat: json
 
-# Node-pool scheduling for rendered workloads and the prefetch job. All three are
-# required: the operator's own default label key is not the one any cluster here
-# uses, so an empty value discovers nothing rather than falling back usefully.
-# `cacheValue` must name a pool that exists or prefetch jobs stay Pending.
+# This cluster's identity, and the only credential it needs. Three things verify
+# the same string: the operator against the hub, the agent on the tunnel, and the
+# metrics agent as remote-write basic auth. The register screen mints it and
+# renders it as `value`, and the chart creates the Secret.
+enrolmentToken:
+  existingSecret: hangar-operator
+  secretKey: enrolment-token
+  value: ""
+  # Opt-out for a hand-driven install where you created `existingSecret` yourself.
+  existing: false
+
+# ── What this cluster's hardware looks like ───────────────────────────────────
+
+# All three are required. The operator's own default label key is not the one any
+# cluster here uses, so an empty value discovers no pools rather than falling back
+# usefully, and a `cacheValue` naming a pool that does not exist leaves prefetch
+# jobs Pending.
 pools:
   labelKey: ""
   gpuValue: ""
@@ -27,34 +47,22 @@ pools:
 modelCache:
   create: true
   pvcName: model-cache
-  # Required. Must be a ReadWriteMany class (the cluster's default class is
-  # usually RWO and breaks the shared mount); e.g. an EFS-backed class.
+  # Required, and must be ReadWriteMany — a cluster's default class is usually RWO
+  # and breaks the shared mount. e.g. an EFS-backed class.
   storageClass: ""
   accessMode: ReadWriteMany
   size: 500Gi
 
 dcgm:
-  # Empty derives the endpoint from the bundled dcgm-exporter when it is enabled;
-  # set it to point at an exporter this chart does not install.
+  # Empty derives both from the bundled dcgm-exporter. Set them to point at an
+  # exporter this chart does not install.
   endpoint: ""
   # How the operator finds the exporter pods behind that Service, so it scrapes
-  # every node rather than whichever one the ClusterIP picks. Empty derives the
-  # bundled subchart's own labels; set it for an exporter installed elsewhere.
+  # every node rather than whichever one the ClusterIP picks.
   selector: ""
   timeout: 5s
 
-# Backend service name is not knowable at install time; leave disabled until the
-# Dynamo frontend Service exists, or let the plane render it from ClusterServing.url.
-serving:
-  enabled: false
-  host: ""
-  clusterIssuer: ""
-  entryPoints:
-    - websecure
-  backend:
-    service: ""
-    namespace: dynamo
-    port: 8000
+# ── What this chart runs ──────────────────────────────────────────────────────
 
 operator:
   image:
@@ -100,98 +108,59 @@ agent:
     limits:
       memory: 512Mi
 
-# The per-cluster enrolment token. The register screen mints it and renders it
-# here as `value`, so the chart creates the Secret — the normal path, and the
-# install fails without it. `existing: true` is the opt-out for a hand-driven
-# install where you created `existingSecret` yourself.
-#
-# The agent presents this same token to the gateway: TLS for
-# confidentiality, the token for identity, and no second credential to mint,
-# distribute or rotate. It is one Secret read by two Deployments.
-enrolmentToken:
-  existingSecret: hangar-operator
-  secretKey: enrolment-token
-  value: ""
-  existing: false
+# The pre-tunnel way in, off on every cluster we run. `backend.service` is the
+# Dynamo frontend Service, whose name is not knowable until a deployment exists —
+# so leave this disabled, or let the plane render it from ClusterServing.url.
+serving:
+  enabled: false
+  host: ""
+  clusterIssuer: ""
+  entryPoints:
+    - websecure
+  backend:
+    service: ""
+    namespace: dynamo
+    port: 8000
 
-# `value` is required when `create` is true; an empty one is a Secret that looks
-# configured and fails on the first gated pull.
-hfToken:
-  create: false
-  secretName: hf-token-secret
-  value: ""
+# ── Telemetry ─────────────────────────────────────────────────────────────────
 
-# Telemetry egress. Without this the cluster scrapes nothing and ships nothing:
-# the exporter below answers the operator's device-identity GETs and no DCGM,
-# vLLM or Dynamo series ever reach the plane, so every console panel for this
-# cluster renders empty — which reads as an idle fleet rather than as a missing
-# pipe. Rule 4 (the data plane never crosses the control plane) is why this is a
-# direct cluster -> central-store push and not something carried over the hub.
-#
-# What this installs is one Prometheus in **agent mode**: scrape, then
-# remote_write, with no TSDB, no query API, no rules and no UI. The plane owns
-# every read (ADR 0008 — a Backend answers metrics, and its store is the central
-# Prometheus in the plane's own cluster), so local retention would be storage
-# bought to answer questions nobody asks here. This is deliberately narrower than
-# the kube-prometheus-stack the fleet used to run: no Grafana, no Alertmanager,
-# no kube-state-metrics, no node-exporter, and no prometheus-operator — which
-# also means no monitoring.coreos.com CRDs, and therefore no ServiceMonitor or
-# PodMonitor ordering trap (see `dynamo-platform` below). Targets are discovered
-# by pod labels in the scrape config the chart renders.
-#
-# Off by default, because the write URL has no safe default and a chart that
-# failed to render without it would break every install that does not want
-# telemetry. Turning it on requires `cluster.region` and
-# `monitoring.remoteWrite.url` — and no credential, because the credential is the
-# enrolment token this cluster already has (see `basicAuth` below).
+# Off by default: the write URL has no safe default. Turning it on needs
+# `cluster.region` and `remoteWrite.url`, and no credential — the credential is
+# the enrolment token above. Left off, the operator can still read DCGM for device
+# identity but every metrics panel for this cluster is empty, which reads as an
+# idle fleet rather than as a missing pipe.
+# What it installs and why it is a direct push: templates/70-metrics-agent.yaml.
 monitoring:
   enabled: false
 
   remoteWrite:
-    # The central store's ingress: `https://metrics.example.com/api/v1/write`,
-    # fronted by a Traefik basicAuth middleware in the plane cluster's `platform`
-    # namespace. Required when enabled — there is no default, because writing a
-    # fleet's telemetry to a guessed endpoint is worse than not writing it.
+    # Required when enabled; there is no default, because writing a fleet's
+    # telemetry to a guessed endpoint is worse than not writing it.
+    # e.g. https://metrics.example.com/api/v1/write
     url: ""
     timeout: 30s
-    # Sized for a burst after a network blip rather than for steady state: at
-    # 15s scrapes the queue is near-empty normally, and the shards are what let
-    # it drain a backlog faster than it accrued.
+    # Sized for a burst after a network blip, not for steady state: at 15s scrapes
+    # the queue is near-empty, and the shards drain a backlog faster than it grew.
     queue:
       capacity: 10000
       maxShards: 20
       maxSamplesPerSend: 2000
-    # Keep-list, carried over verbatim from the kube-prometheus-stack values this
-    # replaces so the central store's series set does not change shape. DCGM is
-    # per-GPU telemetry and `vllm:`/`dynamo_` are the serving numbers; those are
-    # the only families the plane's dialect table names today. The `node_*`,
-    # `kube_*` and `container_*` families are dead weight here — this chart ships
-    # no node-exporter and no kube-state-metrics — and they stay listed so that
-    # adding either starts working without touching the write path. Anything not
-    # matched is dropped at the sender, which is the point: an unfiltered
-    # remote_write from a GPU cluster is mostly per-request histogram cardinality
-    # the central store has no reason to hold.
+    # Anything unmatched is dropped at the sender — an unfiltered remote_write from
+    # a GPU cluster is mostly per-request histogram cardinality. `node_*`, `kube_*`
+    # and `container_*` match nothing today (this chart ships no node-exporter and
+    # no kube-state-metrics) and stay listed so adding either needs no write-path
+    # change. Carried over verbatim from the stack this replaced, so the central
+    # store's series set keeps its shape.
     keep: "DCGM_FI_.*|node_.*|kube_pod_.*|kube_node_.*|kube_deployment_.*|container_(cpu|memory)_.*|vllm:.*|dynamo_.*|up|kubelet_volume_stats_.*"
-    # The credential is the enrolment token. The plane derives a bcrypt verifier
-    # from the same token when it mints it and publishes that into the write
-    # ingress's htpasswd, so a cluster that is registered can already authenticate
-    # and there is nothing to configure per cluster. The username is `cluster.id`,
-    # which is not a secret and so goes inline in the scrape config; the password
-    # is read with `password_file` out of the enrolment Secret this chart already
-    # creates from `enrolmentToken.value`. That is the point of the default: the
-    # token appears exactly once in a values file, and a second copy cannot drift
-    # from the one the plane verifies against. `username`/`password` below are
-    # unused and unread while this is true.
+    # The default needs nothing set: the username is `cluster.id` and the password
+    # is the enrolment Secret, whose bcrypt verifier the plane published to the
+    # write ingress when it minted the token (ADR 0012). The token therefore
+    # appears once in a values file and a second copy cannot drift from it, so
+    # `username`/`password` are unread while this is true.
     #
-    # `useEnrolmentToken: false` is for a remote-write store that is not hangar's,
-    # and restores the older shape: the chart creates the Secret from
-    # `username`/`password` and the agent reads both as files, with
-    # `existing: true` the further opt-out for a Secret you created yourself —
-    # refused alongside `useEnrolmentToken`, which would mount the other Secret
-    # and ignore yours.
-    # Those clusters used the pair in AWS Secrets Manager under
-    # `ACME_PROM_REMOTE_WRITE_USERS`. Never put a credential in a values file
-    # that is committed.
+    # `useEnrolmentToken: false` is for a store that is not hangar's: the chart
+    # creates the Secret from `username`/`password` instead, with `existing: true`
+    # the further opt-out for one you made yourself. Never commit a credential.
     basicAuth:
       useEnrolmentToken: true
       existingSecret: hangar-metrics-remote-write
@@ -204,22 +173,18 @@ monitoring:
   agent:
     image:
       repository: quay.io/prometheus/prometheus
-      # Agent mode is the `--agent` flag from 3.0 on; on 2.x it was
+      # Agent mode is `--agent` from 3.0 on; on 2.x it was
       # `--enable-feature=agent`. Pinned to the 3.5 LTS line.
       tag: v3.5.5
       pullPolicy: IfNotPresent
     scrapeInterval: 15s
     # Must be <= scrapeInterval, the same trap the exporter's ServiceMonitor has.
     scrapeTimeout: 10s
-    # The agent's WAL is a send buffer, not storage — it holds only what has not
-    # been acknowledged yet, so an emptyDir is right and a restart costs at most
-    # the unsent tail. A PVC here would be a volume bought to protect samples the
-    # central store is the record for.
+    # A send buffer, not storage: it holds only what is unacknowledged, so a
+    # restart costs the unsent tail and a PVC here would buy nothing.
     walSizeLimit: 4Gi
-    # No nodeSelector on purpose: GPU nodes carry the `nvidia.com/gpu` taint this
-    # pod does not tolerate, so the default placement already keeps it off the
-    # expensive hardware. Pin it to a system pool per cluster if that stops being
-    # true.
+    # Empty on purpose: GPU nodes carry a taint this pod does not tolerate, so the
+    # default placement already keeps it off the expensive hardware.
     nodeSelector: {}
     tolerations: []
     resources:
@@ -229,27 +194,32 @@ monitoring:
       limits:
         memory: 768Mi
 
-# DaemonSet; tolerates the GPU taint so it lands on GPU nodes, and selects them by
-# `nvidia.com/gpu.present`, the label NFD sets wherever the device plugin finds a
-# GPU. Deliberately not `pools.gpuValue`: a subchart's values cannot be templated
-# from the parent's, so keying off the pool would mean naming the same nodes twice
-# in one file and the two copies drifting. This label is the same on every cluster,
-# so it needs no editing and cannot disagree with anything.
+# ── Third-party model pulls ───────────────────────────────────────────────────
+
+# Gated models and pull rate limits, in the `dynamo` namespace. `value` is
+# required when `create` is true; an empty one is a Secret that looks configured
+# and fails on the first gated pull.
+hfToken:
+  create: false
+  secretName: hf-token-secret
+  value: ""
+
+# ── Subcharts ─────────────────────────────────────────────────────────────────
+
+# A DaemonSet on GPU nodes. Both the toleration and the selector are load-bearing:
+# with the toleration alone this lands on every node, and an exporter on a CPU node
+# has no GPU to read — the operator then discovers a target set that does not match
+# the hardware, which is the missing-devices and phantom-`fell_off_bus` failure. So
+# an empty selector is a data-integrity bug, not wasted scheduling.
 #
-# The toleration alone is not enough. Without a selector this lands on every node
-# in the cluster, and the exporter on a CPU node has no GPU to read — it fails, and
-# the operator's device discovery reads a target set that does not match the
-# hardware. That is the shape of the missing-devices and phantom-`fell_off_bus`
-# failure, so an empty selector here is a silent data-integrity bug rather than
-# wasted scheduling.
+# `nvidia.com/gpu.present` and not `pools.gpuValue`: a subchart's values cannot be
+# templated from the parent's, so keying off the pool would name the same nodes
+# twice in one file and let the copies drift. This label is identical on every
+# cluster.
 #
-# ServiceMonitor stays off even when `monitoring.enabled` is true: that object
-# needs the monitoring.coreos.com CRDs, which this chart does not install, and
-# the metrics agent finds the exporter's pods by label instead. Turning it on
-# alongside `monitoring.enabled` is refused rather than accepted — it would be
-# either an apply failure (no CRDs) or a second scraper writing the same series
-# twice. Enable it only for a cluster running its own kube-prometheus-stack, with
-# `monitoring.enabled` false.
+# serviceMonitor needs CRDs this chart does not install, and turning it on with
+# `monitoring.enabled` is refused — it would either fail to apply or double-scrape.
+# Enable it only for a cluster running its own kube-prometheus-stack.
 dcgm-exporter:
   enabled: true
   nodeSelector:
@@ -272,29 +242,20 @@ dcgm-exporter:
       memory: 256Mi
 
 # The Dynamo operator + NATS, the bus Dynamo's Frontend and workers use for
-# request/response and KV-cache events (the hangar operator itself never touches
-# it). The operator applies the DynamoGraphDeployment CRD from its own image via a
-# crd-apply init container (upgradeCRD, on by default). etcd, Grove and KAI stay
-# off (their subchart defaults); NATS must be turned on explicitly — 1.4.x defaults
-# global.nats.install to false, and without it the Dynamo deployments have nothing
-# to route over. Component discovery is the Kubernetes API, not etcd.
+# request/response and KV-cache events; the hangar operator never touches it. NATS
+# must be turned on explicitly — 1.4.x defaults `global.nats.install` to false, and
+# without it Dynamo's deployments have nothing to route over. etcd, Grove and KAI
+# stay off at their subchart defaults; component discovery is the Kubernetes API.
 #
-# Neither the operator nor NATS is pinned, and neither needs to be: GPU nodes carry
-# the `nvidia.com/gpu` taint and these pods do not tolerate it, so they land on the
-# system pool on their own. A per-cluster nodeSelector here would be one more fact
-# to keep correct in exchange for nothing.
-#
-# `podMonitors.enabled` is pinned false rather than left at the subchart's `null`,
-# and the pin is the whole reason this cluster's serving metrics are reachable at
-# all. Null means auto-detect: the subchart renders its four PodMonitors only if
-# the monitoring.coreos.com CRDs exist AT INSTALL TIME, so whether a cluster has
-# Dynamo metrics depends on the order two unrelated charts were installed in, and
-# the failure is a chart that installed cleanly and emits no `vllm:` series. That
-# trap is the one that took the fleet dark. Here it cannot fire in either
-# direction: the agent above scrapes Dynamo's pods from its own scrape config, so
-# these objects are never needed, and pinning them off stops them appearing later
-# on a cluster that grows the CRDs for some other reason and double-scraping
-# every worker.
+# `podMonitors.enabled` is pinned false rather than left `null`, and the pin is why
+# this cluster's serving metrics are reachable at all. Null means auto-detect: the
+# subchart renders its PodMonitors only if the monitoring.coreos.com CRDs exist AT
+# INSTALL TIME, so whether a cluster has Dynamo metrics depends on the order two
+# unrelated charts were installed in — and the failure is a clean install emitting
+# no `vllm:` series. That is the trap that took the fleet dark. Pinned off it
+# cannot fire either way: the metrics agent scrapes Dynamo's pods from its own
+# config, so these objects are never needed, and a cluster that later grows the
+# CRDs for some other reason will not start double-scraping every worker.
 dynamo-platform:
   enabled: true
   global:
