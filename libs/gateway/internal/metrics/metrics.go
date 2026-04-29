@@ -87,6 +87,8 @@ type Recorder struct {
 	tableEndpoints  prometheus.Gauge
 	tableConfirmUnx prometheus.Gauge
 
+	tunnelCertExpiry prometheus.Gauge
+
 	// confirmedAt is when the plane last told us the loaded table is current,
 	// as unix nanoseconds. Read at scrape time by the age gauge, so it is an
 	// atomic rather than a mutex: a refresh must never contend with a scrape.
@@ -170,6 +172,15 @@ func New(opts ...Option) *Recorder {
 		Help: "Unix time at which the plane last confirmed the loaded table is current, either by sending a new one or by answering 304.",
 	})
 
+	// The certificate this process has in memory, not the one in the Secret.
+	// cert-manager reports on the Secret and would read healthy the day after a
+	// renewal the gateway ignored, so this is the only series that can catch a
+	// listener serving something stale. Alert on this approaching now.
+	r.tunnelCertExpiry = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "hangar_gateway_tunnel_certificate_expiry_timestamp_seconds",
+		Help: "Unix time at which the tunnel certificate currently loaded in this process expires. Every agent dial fails once it passes.",
+	})
+
 	// Age is computed at scrape rather than stored, so it is right in the
 	// sample even if the process has been unable to refresh for an hour. It is
 	// the plain reading of the timestamp gauge beside it, kept because it is
@@ -192,6 +203,7 @@ func New(opts ...Option) *Recorder {
 		r.inFlight, r.upstreamUp,
 		r.tunnels, r.tunnelDials, r.tunnelCoverage,
 		r.tableRefreshes, r.tableRefreshOK, r.tableEndpoints, r.tableConfirmUnx, age,
+		r.tunnelCertExpiry,
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
 	)
@@ -348,4 +360,16 @@ func (r *Recorder) confirm() {
 	r.confirmedAt.Store(now.UnixNano())
 	r.tableConfirmUnx.Set(float64(now.UnixNano()) / 1e9)
 	r.tableRefreshOK.Set(1)
+}
+
+// TunnelCertificateExpiry records when the loaded tunnel certificate expires.
+//
+// A no-op on a zero time so that a gateway whose tunnel listener is plaintext
+// reports nothing here rather than reporting the epoch, which would read as a
+// certificate that expired in 1970.
+func (r *Recorder) TunnelCertificateExpiry(at time.Time) {
+	if r == nil || at.IsZero() {
+		return
+	}
+	r.tunnelCertExpiry.Set(float64(at.Unix()))
 }

@@ -173,7 +173,7 @@ func main() {
 	// started before the request path, and nothing in it consults readiness — the
 	// Service in front of it is a headless one publishing not-ready addresses.
 	if listener != nil {
-		serveTunnels(ctx, listener, *tunnelAddr, *tunnelCert, *tunnelKey, stop)
+		serveTunnels(ctx, listener, *tunnelAddr, *tunnelCert, *tunnelKey, recorder, stop)
 	}
 
 	readiness := serving.NewReadiness(router, recorder)
@@ -232,6 +232,13 @@ func main() {
 
 // defaultTunnelAddr is where cluster agents dial when nothing says otherwise.
 const defaultTunnelAddr = ":8443"
+
+// tunnelCertReloadEvery is how often the tunnel certificate is re-read from disk.
+//
+// Ten minutes against a renewal window of 30 days. There is no benefit to being
+// quicker — the old certificate stays valid for the whole window — and a slow
+// poll keeps a mid-swap read rare rather than merely survivable.
+const tunnelCertReloadEvery = 10 * time.Minute
 
 // newTunnels builds the pool and the listener, or nothing when tunnels are
 // disabled.
@@ -301,7 +308,7 @@ func envInt(key string) int {
 // Failing to bind is fatal by way of stop: a gateway that cannot be dialled by
 // any agent is a gateway that can serve nothing, and carrying on would mean
 // reporting unready forever while looking healthy in the logs.
-func serveTunnels(ctx context.Context, listener *tunnel.Listener, addr, certPath, keyPath string, stop func()) {
+func serveTunnels(ctx context.Context, listener *tunnel.Listener, addr, certPath, keyPath string, recorder *metrics.Recorder, stop func()) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		slog.Error("gateway: could not bind the tunnel listener", "addr", addr, "err", err)
@@ -319,18 +326,24 @@ func serveTunnels(ctx context.Context, listener *tunnel.Listener, addr, certPath
 		stop()
 		return
 	case certPath != "":
-		cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+		keypair, err := serving.NewKeypair(certPath, keyPath)
 		if err != nil {
 			slog.Error("gateway: could not load the tunnel certificate", "err", err)
 			_ = ln.Close()
 			stop()
 			return
 		}
+		slog.Info("gateway: tunnel certificate loaded", "expires", keypair.NotAfter())
+		recorder.TunnelCertificateExpiry(keypair.NotAfter())
+		// cert-manager renews 30 days out and the kubelet lands the new bytes
+		// within about a minute, so the poll only has to be far shorter than
+		// the window, not prompt.
+		go keypair.Watch(ctx, tunnelCertReloadEvery, recorder.TunnelCertificateExpiry)
 		// NextProtos is deliberately absent. The agent negotiates nothing:
 		// the handshake on this connection is hangar's own and HTTP/2 starts
 		// after it, so advertising h2 here would invite a TLS stack to hand the
 		// socket to an HTTP/2 client that expects to be the one dialling.
-		ln = tls.NewListener(ln, &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12})
+		ln = tls.NewListener(ln, &tls.Config{GetCertificate: keypair.GetCertificate, MinVersion: tls.VersionTLS12})
 	default:
 		slog.Warn("gateway: tunnel listener is plaintext, TLS must be terminated in front of it", "addr", addr)
 	}
