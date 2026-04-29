@@ -16,6 +16,11 @@ RUN CGO_ENABLED=0 go build -trimpath \
       -o /out/agent ./cmd/agent
 
 FROM gcr.io/distroless/static:nonroot
+# Links the GHCR package to this repository. Without it a pushed package is owned
+# by the org and attached to nothing, so its access comes from a per-package list
+# rather than from repository permissions — which is also why a fine-grained token,
+# whose package grants are repository-scoped, has no handle on it.
+LABEL org.opencontainers.image.source=https://github.com/hangar-dev/hangar
 WORKDIR /
 COPY --from=build /out/agent /agent
 USER 65532:65532
