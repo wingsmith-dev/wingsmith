@@ -33,7 +33,7 @@ from app.modules.metrics.registry import Metric
 from app.modules.metrics.registry import family
 from app.modules.metrics.services import FLEET_METRICS
 from app.modules.metrics.services import MetricsService
-from app.modules.metrics.services import served_model
+from app.core.serving import served_model
 from app.modules.metrics.prometheus import PrometheusBackend
 
 

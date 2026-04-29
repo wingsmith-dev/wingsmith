@@ -50,6 +50,13 @@ type Upstream struct {
 	// cluster publishes a serving URL, so the URL above is usually empty and the
 	// cluster id is the whole of the routing key.
 	Tunnelled bool
+	// ServedModelName is what the engine behind this upstream answers to, which
+	// is almost never the endpoint the caller named: the plane sends the
+	// recipe's name, and a recipe the console derived is named for its
+	// configuration — `llama-3-3-70b-instruct-fp8-tp2-32k`. Requests are
+	// rewritten to it on the way through. Empty means the plane had nothing to
+	// say, and then the caller's own string is forwarded untouched.
+	ServedModelName string
 
 	handler http.Handler
 	// reachable answers whether this upstream can be used right now. Nil means
@@ -349,16 +356,17 @@ func (r *Router) Load(ctx context.Context) error {
 				weight = 1
 			}
 			route.Upstreams = append(route.Upstreams, Upstream{
-				DeploymentID: upstream.DeploymentID,
-				ClusterID:    upstream.ClusterID,
-				ClusterName:  upstream.ClusterName,
-				URL:          upstream.URL,
-				Weight:       weight,
-				Role:         upstream.Role,
-				Ready:        upstream.AdmissionPhase == "running",
-				Tunnelled:    address == nil,
-				handler:      handler,
-				reachable:    r.reachability(upstream.ClusterID, address != nil),
+				DeploymentID:    upstream.DeploymentID,
+				ClusterID:       upstream.ClusterID,
+				ClusterName:     upstream.ClusterName,
+				URL:             upstream.URL,
+				ServedModelName: upstream.ServedModelName,
+				Weight:          weight,
+				Role:            upstream.Role,
+				Ready:           upstream.AdmissionPhase == "running",
+				Tunnelled:       address == nil,
+				handler:         handler,
+				reachable:       r.reachability(upstream.ClusterID, address != nil),
 			})
 			route.totalWeight += weight
 		}

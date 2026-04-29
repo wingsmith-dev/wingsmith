@@ -18,15 +18,16 @@ import (
 
 // Upstream is one dialable address behind an endpoint.
 type Upstream struct {
-	DeploymentID   string `json:"deployment_id"`
-	DeploymentName string `json:"deployment_name"`
-	AdmissionPhase string `json:"admission_phase"`
-	ClusterID      string `json:"cluster_id"`
-	ClusterName    string `json:"cluster_name"`
-	URL            string `json:"url"`
-	CredentialID   string `json:"credential_id"`
-	Weight         int    `json:"weight"`
-	Role           string `json:"role"`
+	DeploymentID    string `json:"deployment_id"`
+	DeploymentName  string `json:"deployment_name"`
+	AdmissionPhase  string `json:"admission_phase"`
+	ClusterID       string `json:"cluster_id"`
+	ClusterName     string `json:"cluster_name"`
+	URL             string `json:"url"`
+	ServedModelName string `json:"served_model_name"`
+	CredentialID    string `json:"credential_id"`
+	Weight          int    `json:"weight"`
+	Role            string `json:"role"`
 }
 
 // Endpoint is one public name and every address currently behind it.

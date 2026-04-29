@@ -61,6 +61,7 @@ from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Pool
 from app.db.models import Device
+from app.core.serving import served_model
 from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
@@ -831,19 +832,6 @@ def _no_source(cluster: Cluster) -> str:
             "set one once the store's `cluster` label shows this cluster"
         )
     return f"no metrics store for the plane to query on behalf of cluster {cluster.name!r}; set HANGAR_METRICS_SOURCES"
-
-
-def served_model(recipe: Recipe, artifact: Artifact) -> str:
-    """The `model_name` the engine reports itself under, most authoritative first.
-
-    An explicit `served_model_name` wins because it is the operator saying so.
-    `Recipe.name` comes next: it is the name the deployment is built and served
-    under, and it is what the engine emits. The artifact is the last resort
-    because it holds the repository a model is fetched from rather than the name
-    it serves under — `google/gemma-4-31B-it` against a `model_name` of
-    `gemma-4-31b-it` — so reaching it usually means matching no series at all.
-    """
-    return str(recipe.engine_args.get("served_model_name") or recipe.name or artifact.name)
 
 
 def _samples(values: dict[str, float | None], metrics: dict[str, Metric]) -> list[SampleSchema]:

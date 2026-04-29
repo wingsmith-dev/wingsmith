@@ -13,6 +13,7 @@ from app.core.ids import new_uid
 from app.db.models import Endpoint
 from app.db.models import EndpointTarget
 from app.core.schemas import ListResponse
+from app.core.serving import served_model
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -337,6 +338,17 @@ class EndpointService:
         cluster `draining` changes this table, and a gateway sitting behind a
         `304` would keep routing to it.
 
+        Each upstream carries the name the engine behind it answers to, because
+        the public name and the served name are not the same string and nothing
+        makes them agree. A recipe the console derived is named for its
+        configuration — `llama-3-3-70b-instruct-fp8-tp2-32k` — and the operator
+        renders that into `served-model-name`, so a client calling the endpoint
+        by name would be asking the frontend for a model it does not have. The
+        gateway rewrites it. The recipe's stamp goes into the revision for the
+        same reason the cluster's does: renaming a recipe changes what the
+        frontend answers to, and a gateway sitting behind a `304` would keep
+        rewriting to a name that no longer exists.
+
         The serving quota is one row per endpoint rather than one per target, so
         its stamp goes into `own` beside the endpoint's and not into the row loop.
         Its limits are passed through undivided: how many gateway replicas are
@@ -368,10 +380,11 @@ class EndpointService:
             upstreams: list[ResolvedUpstreamSchema] = []
             uids: dict[UUID, str] = {}
 
-            for _, target, deployment, cluster, serving, _ in grouped[endpoint_id]:
+            for _, target, deployment, cluster, serving, _, recipe, artifact in grouped[endpoint_id]:
                 if target is None:
                     continue
                 own.extend([_stamp(target), _stamp(deployment), _stamp(cluster), _stamp(serving)])
+                own.extend([_stamp(recipe), _stamp(artifact)])
                 if deployment is not None:
                     uids[deployment.id] = deployment.uid
                 if not target.enabled or deployment is None or not deployment.enabled:
@@ -388,6 +401,9 @@ class EndpointService:
                         cluster_id=cluster.uid,
                         cluster_name=cluster.name,
                         url=serving.url if serving is not None else "",
+                        served_model_name=served_model(recipe, artifact)
+                        if recipe is not None and artifact is not None
+                        else "",
                         credential_id=str(serving.credential_id)
                         if serving is not None and serving.credential_id
                         else None,

@@ -171,6 +171,22 @@ func withRouting(resolver Resolver) http.Handler {
 			return
 		}
 
+		// The caller named an endpoint; the engine answers to something else.
+		// Rewritten after Pick because the served name belongs to the upstream
+		// and not to the endpoint — one endpoint can front two clusters running
+		// different recipes, and each wants its own name.
+		if served := upstream.ServedModelName; served != "" && served != envelope.Model {
+			rewritten, err := withModel(body, served)
+			if err != nil {
+				MarkOutcome(r, metrics.OutcomeInternalError)
+				slog.Error("gateway: could not rewrite the model name",
+					"model", envelope.Model, "served", served, "err", err)
+				writeError(w, http.StatusInternalServerError, "routing_error", "Unable to route this request.")
+				return
+			}
+			body = rewritten
+		}
+
 		// Replayable, using the buffer that was read to find the model rather
 		// than a second copy of it. Without a GetBody, HTTP/2 refuses to retry
 		// anything with a body after an agent sends GOAWAY — which is every
@@ -186,6 +202,31 @@ func withRouting(resolver Resolver) http.Handler {
 
 		upstream.Handler().ServeHTTP(w, r)
 	})
+}
+
+// withModel returns the body with `model` replaced by the name the engine
+// answers to, leaving every other field exactly as the caller sent it.
+//
+// Decoded one level deep only. The fields that matter here are large and
+// entirely opaque to this hop — `messages`, `tools`, `response_format` — so they
+// stay as raw bytes and are copied through rather than parsed and rebuilt. That
+// keeps the cost proportional to the number of top-level keys instead of to the
+// size of the conversation, and it means a body using some parameter this
+// gateway has never heard of survives the trip unaltered.
+//
+// Key order is not preserved, because JSON objects are unordered and no engine
+// may depend on it.
+func withModel(body []byte, model string) ([]byte, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(model)
+	if err != nil {
+		return nil, err
+	}
+	fields["model"] = encoded
+	return json.Marshal(fields)
 }
 
 // readBody buffers the request body under the size cap.

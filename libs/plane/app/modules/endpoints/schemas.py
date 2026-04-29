@@ -101,6 +101,15 @@ class ResolvedUpstreamSchema(Struct):
     deployment is running is observed, it can lag what the cluster is actually
     doing, and a plane that silently drops targets on it would turn a stale
     observation into an outage. The gateway is closer to the truth and decides.
+
+    `served_model_name` is the name the engine behind this one upstream answers
+    to, and it is here because it is a fact about the upstream and not about the
+    endpoint: one endpoint can front two clusters running different recipes, so
+    there is no single answer to hang one level up. The gateway rewrites the
+    inbound `model` to it before forwarding. It is usually *not* the endpoint's
+    name — a recipe the console derived is named for its configuration
+    (`llama-3-3-70b-instruct-fp8-tp2-32k`), which is an internal detail of the
+    fit that no client should ever have to type or notice changing.
     """
 
     deployment_id: str
@@ -109,6 +118,7 @@ class ResolvedUpstreamSchema(Struct):
     cluster_id: str
     cluster_name: str
     url: str
+    served_model_name: str
     credential_id: str | None
     weight: int
     role: str

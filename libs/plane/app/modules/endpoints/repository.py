@@ -116,14 +116,26 @@ class EndpointRepository:
         endpoint FK, so it multiplies no rows and the per-endpoint grouping above
         is unaffected. It is here rather than on a surface of its own because the
         gateway enforces it on the request path and already polls this table.
+
+        The recipe and artifact come along for one reason: the name the engine
+        answers to. A client calls an endpoint by its public name, and the
+        frontend behind it serves under the recipe's — usually a derived
+        configuration slug like `llama-3-3-70b-instruct-fp8-tp2-32k`, which no
+        one typed and which moves when the fit is redone. The gateway rewrites
+        one to the other, so the table has to carry it. Both hops are NOT NULL
+        FKs and 1:1, so they multiply no rows either; they are outer joins only
+        because everything below `EndpointTarget` already is.
         """
         query = (
-            select(Endpoint, EndpointTarget, Deployment, Cluster, ClusterServing, ServingQuota)
+            select(Endpoint, EndpointTarget, Deployment, Cluster, ClusterServing, ServingQuota, Recipe, Artifact)
             .outerjoin(EndpointTarget, EndpointTarget.endpoint_id == Endpoint.id)
             .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)
             .outerjoin(ClusterServing, ClusterServing.cluster_id == Cluster.id)
             .outerjoin(ServingQuota, ServingQuota.endpoint_id == Endpoint.id)
+            .outerjoin(Workload, Deployment.workload_id == Workload.id)
+            .outerjoin(Recipe, Workload.recipe_id == Recipe.id)
+            .outerjoin(Artifact, Recipe.artifact_id == Artifact.id)
             .where(Endpoint.enabled.is_(True))
             .order_by(Endpoint.seq.asc())
         )

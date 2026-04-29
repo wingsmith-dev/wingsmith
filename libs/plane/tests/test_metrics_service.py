@@ -25,7 +25,7 @@ from app.modules.metrics.registry import BY_NAME
 from app.modules.metrics.registry import family
 from app.modules.metrics.services import MetricsService
 from app.modules.metrics.services import _merge
-from app.modules.metrics.services import served_model
+from app.core.serving import served_model
 
 
 UTILIZATION = BY_NAME["gpu.utilization"]

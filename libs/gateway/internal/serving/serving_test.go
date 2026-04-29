@@ -197,3 +197,70 @@ func TestCredentialHeadersAreStampedOnTheOutboundLegOnly(t *testing.T) {
 		t.Fatalf("upstream saw %q, want the caller's value overwritten", seen.Get("X-Access-Token"))
 	}
 }
+
+func TestModelIsRewrittenToTheNameTheEngineAnswersTo(t *testing.T) {
+	server, _ := upstreamServer(t)
+	route := routeTo(t, server.URL, nil)
+	route.Upstreams[0].ServedModelName = "llama-3-3-70b-instruct-fp8-tp2-32k"
+	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{"chat": route}}})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"chat","messages":[{"role":"user","content":"hi"}],"stream":true}`)))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var forwarded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &forwarded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if forwarded["model"] != "llama-3-3-70b-instruct-fp8-tp2-32k" {
+		t.Fatalf("model = %v, want the served name", forwarded["model"])
+	}
+	if forwarded["stream"] != true {
+		t.Fatalf("stream = %v, want every other field carried through", forwarded["stream"])
+	}
+	if _, ok := forwarded["messages"].([]any); !ok {
+		t.Fatalf("messages = %v, want them intact", forwarded["messages"])
+	}
+}
+
+func TestModelIsUntouchedWhenThePlaneNamesNoServedModel(t *testing.T) {
+	server, _ := upstreamServer(t)
+	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+		"chat": routeTo(t, server.URL, nil),
+	}}})
+
+	body := `{"model":"chat","messages":[{"role":"user","content":"hi"}]}`
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+
+	if rec.Body.String() != body {
+		t.Fatalf("body = %s, want it byte-identical when there is nothing to rewrite", rec.Body.String())
+	}
+}
+
+func TestWithModelReplacesOnlyTheModel(t *testing.T) {
+	body := []byte(`{"model":"chat","temperature":0.7,"tools":[{"type":"function"}],"n":2}`)
+	out, err := withModel(body, "llama-tp2")
+	if err != nil {
+		t.Fatalf("withModel: %v", err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(out, &fields); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if string(fields["model"]) != `"llama-tp2"` {
+		t.Fatalf("model = %s", fields["model"])
+	}
+	for key, want := range map[string]string{
+		"temperature": "0.7",
+		"tools":       `[{"type":"function"}]`,
+		"n":           "2",
+	} {
+		if string(fields[key]) != want {
+			t.Fatalf("%s = %s, want %s untouched", key, fields[key], want)
+		}
+	}
+}

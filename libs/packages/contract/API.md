@@ -207,9 +207,20 @@ to its deployment, that deployment's cluster, and the serving address the cluste
 computed on read and stored nowhere, because a materialised copy is a second version of the same
 fact with its own way of being stale. The whole table comes back unpaginated: a caller that
 assembled half a routing table would route half its traffic into a hole. It is `ETag`ged by a
-revision covering all four tables it was built from, so polling it costs a `304` until one of them
+revision covering every table it was built from, so polling it costs a `304` until one of them
 moves. An endpoint with no usable targets is returned with an empty upstream list rather than
 omitted — "no such model" and "this model has nowhere to go" are different answers.
+
+**Each upstream carries `served_model_name`, and it is usually not the endpoint's name.** A client
+addresses an endpoint by its public name; the engine behind it answers to the recipe's name, which
+for a recipe the console derived is a description of the fit — `llama-3-3-70b-instruct-fp8-tp2-32k`
+— and moves whenever the fit is redone. The gateway rewrites the request's `model` to this before
+forwarding, so the public name never has to equal the served one and a re-fit is invisible to
+callers. It rides the upstream rather than the endpoint because one endpoint can front two clusters
+running different recipes, and there is no single answer to put one level up. An override belongs in
+the recipe's `engine_args` under the flag's own spelling, `served-model-name`: those keys are
+rendered onto the engine command line verbatim, so the hyphenated form is the only one that both
+reaches the engine and is read here.
 
 A cluster contributes upstreams only while its `phase` is `active`. `draining` and `disabled` are
 somebody declaring that the cluster must stop taking work, and traffic is the first thing that has

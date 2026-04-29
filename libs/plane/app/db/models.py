@@ -900,6 +900,21 @@ class Endpoint(BaseMixin):
     disposable. Keeping them separate is what allows weighted splits, canaries,
     cross-cluster failover, and renaming without breaking clients; merging them
     would give one globally unique record N cluster-side writers.
+
+    `name` is globally unique, which makes this the only child object in the schema
+    that reaches past its parent for uniqueness — `Workload` is unique on
+    `(project_id, name)` and `Project` on `(tenant_id, slug)`. That is deliberate
+    while there is one tenant, because a single namespace makes global and
+    project-scoped the same thing, and it is the cheaper of the two to change
+    later: with no colliding rows the migration is a constraint swap. The scope
+    becomes `(project_id, name)` when a second tenant appears, and the routing key
+    the gateway resolves has to grow the project alongside it — `model` is the only
+    key an OpenAI-compatible client sends, so a name must resolve to exactly one
+    endpoint within whatever scope the caller belongs to.
+
+    Not to be confused with the name the engine answers to. That is the recipe's,
+    it is usually a derived configuration slug, and the gateway rewrites between
+    the two — see `app.core.serving.served_model`.
     """
 
     __tablename__ = "demand_endpoint"

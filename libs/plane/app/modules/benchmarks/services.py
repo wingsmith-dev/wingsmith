@@ -29,7 +29,7 @@ from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
-from app.modules.metrics.services import served_model
+from app.core.serving import served_model
 from app.modules.operations.services import PHASES
 from app.modules.operations.services import PENDING
 
