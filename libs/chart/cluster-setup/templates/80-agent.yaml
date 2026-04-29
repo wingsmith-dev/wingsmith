@@ -1,0 +1,211 @@
+{{- if .Values.agent.enabled }}
+# The serving agent: the data path into this cluster. It dials out to the
+# plane's gateway replicas, then serves HTTP/2 on those connections and reverse
+# proxies each request to this cluster's inference frontend. Nothing dials in, so
+# this adds no ingress, no public name and no firewall exception.
+#
+# Separate from the operator on purpose — a different binary, a different
+# Deployment, a different pod. The operator is a leader-elected singleton that
+# reconciles declared state; this is a horizontally scaled proxy on the request
+# path. Rule 4: the data plane never crosses the control plane, so they share
+# neither a process nor a connection. They do share the enrolment token, which is
+# identity rather than a path.
+#
+# The binary is libs/agent/cmd/agent and the settings below are the ones it
+# reads (libs/agent/internal/agent/config.go); everything not named here is
+# left at that file's default on purpose, so the chart's surface stays the set of
+# facts that differ per cluster.
+#
+# TODO: nothing pushes to `agent.image.repository`'s default — `just build agent`
+# publishes to ECR, and the plane overrides this from HANGAR_AGENT_IMAGE when it
+# renders a cluster's values. Off by default, so an install cannot reach for an
+# image that is not there.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: hangar-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+---
+# Read-only on Services in the workload namespace, and nothing else. That is the
+# whole of what frontend discovery needs: the Service name differs on every
+# cluster, so the agent looks it up by Dynamo's own labels instead of being
+# told a name that would be wrong.
+#
+# Rendered even when `agent.frontendEndpoint` overrides discovery. Clearing
+# the override later is then a values change and not also a permissions change,
+# and the failure it avoids — an agent that starts listing Services and is
+# refused — happens on the request path.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: hangar-agent
+  namespace: dynamo
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: hangar-agent
+  namespace: dynamo
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: hangar-agent
+subjects:
+  - kind: ServiceAccount
+    name: hangar-agent
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hangar-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+data:
+  # `cluster.id` and nothing derived from it: the gateway matches the token it
+  # is presented against the cluster the plane minted it for, and a mismatch here
+  # is refused at the handshake rather than routed somewhere wrong.
+  HANGAR_CLUSTER_ID: {{ .Values.cluster.id | quote }}
+  HANGAR_LOG_LEVEL: {{ .Values.cluster.logLevel | quote }}
+  HANGAR_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
+  HANGAR_WORKLOAD_NAMESPACE: "dynamo"
+
+  # One address. The agent redials it until it holds a tunnel to every gateway
+  # replica, which it learns about from the handshake — see values.yaml for why
+  # the replicas are not named here. Each replica opens
+  # HANGAR_TUNNEL_CONNS_PER_GATEWAY tunnels to each of them, left at the agent's
+  # own default.
+  HANGAR_TUNNEL_GATEWAY: {{ .Values.agent.gateway | quote }}
+  # Empty means discover the frontend by label. Same variable name and same
+  # precedence as the operator's, so a cluster that had to override it there
+  # overrides it the same way here.
+  HANGAR_INFERENCE_ENDPOINT: {{ .Values.agent.frontendEndpoint | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hangar-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.agent.replicas }}
+  selector:
+    matchLabels:
+      {{- include "cluster-setup.servingAgentSelectorLabels" . | nindent 6 }}
+  # maxUnavailable 0, unlike the operator's Recreate: two agents are not two
+  # writers of anything, so the replacement establishes its tunnels and reports
+  # ready before the pod it replaces is asked to drain.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "cluster-setup.servingAgentSelectorLabels" . | nindent 8 }}
+      annotations:
+        # A config change is a pod restart; nothing here sends a reload signal.
+        # Hashed from the values rather than from the rendered ConfigMap the way
+        # the operator's is, because that object lives in this same file and
+        # including it here would render this annotation into its own input.
+        checksum/config: {{ printf "%s|%s|%s|%s" .Values.cluster.id .Values.agent.gateway .Values.agent.frontendEndpoint .Values.cluster.logLevel | sha256sum }}
+        # Same reasoning as the operator's, and the same domain separation: the
+        # token is a `secretKeyRef` resolved once at pod start, so a rotation
+        # without this leaves live tunnels authenticated by a credential the plane
+        # has already invalidated, and the break lands on some later re-dial
+        # rather than on the upgrade that caused it.
+        checksum/enrolment-token: {{ printf "enrolment-token:%s" .Values.enrolmentToken.value | sha256sum }}
+    spec:
+      serviceAccountName: hangar-agent
+      # Preferred, not required: two replicas on one node is a single node drain
+      # taking all inference for this cluster, and a cluster with one schedulable
+      # system node should still install.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "cluster-setup.servingAgentSelectorLabels" . | nindent 20 }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: {{ include "cluster-setup.servingAgentImage" . | quote }}
+          imagePullPolicy: {{ .Values.agent.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: hangar-agent
+          env:
+            # Identity on the tunnel. The token the plane minted for this cluster,
+            # out of the Secret the operator already reads — TLS carries
+            # confidentiality, this carries who is calling, and there is no second
+            # credential to keep in step with the first.
+            - name: HANGAR_ENROLMENT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.enrolmentToken.existingSecret }}
+                  key: {{ .Values.enrolmentToken.secretKey }}
+          ports:
+            # HANGAR_HEALTH_ADDR's default. One listener, carrying the two probes
+            # and /metrics — the agent has no listener on its data path, so
+            # this port is the only thing reachable here at all.
+            #
+            # TODO: nothing scrapes it. The metrics agent's scrape configs keep
+            # dcgm-exporter and Dynamo's pods, so the agent's own coverage and
+            # churn counters stay inside the pod.
+            - name: probe
+              containerPort: 8081
+          # Liveness is unconditional in the binary and readiness is coverage: a
+          # agent holding no tunnel is not restarted (the gateway may be
+          # mid-rollout, and restarting would discard the tunnels it does have) but
+          # it does report unready, which is what makes the rollout above safe — a
+          # replacement that cannot reach the gateway stalls the rollout
+          # instead of replacing a pod that was working.
+          #
+          # No Service selects these pods and nothing routes to them; requests
+          # arrive down connections this pod opened. The probes are for the
+          # rollout and the kubelet, not for traffic.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: probe
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: probe
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.agent.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      # Longer than the drain it has to contain: SIGTERM sends GOAWAY on every
+      # tunnel and then waits up to HANGAR_DRAIN_TIMEOUT (60s by default) for the
+      # streams already open, and one of those is somebody's half-written
+      # completion. A grace period below that turns the drain into a kill. The
+      # operator's 30s is right for a reconciler and would sever generations here.
+      terminationGracePeriodSeconds: 120
+{{- end }}

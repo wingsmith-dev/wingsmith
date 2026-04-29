@@ -8,6 +8,7 @@ manage. It installs, in one release:
 - **dcgm-exporter** (subchart) — the exporter the operator scrapes for device identity;
 - the **Dynamo platform** (subchart) — operator, NATS, and the `DynamoGraphDeployment` CRD;
 - the **hangar operator** and its CRDs, RBAC, config, and Deployment;
+- optionally, the **serving agent** — the cluster's end of the inference tunnel;
 - optionally, the serving `Certificate` + Traefik `IngressRoute`.
 
 ## Install
@@ -52,6 +53,48 @@ belt-and-suspenders.)
 
 `cluster.id` and `cluster.hubUrl` are required; the chart refuses to render
 without them. See `values.yaml` for the full surface.
+
+## How inference gets in
+
+Nothing dials into a GPU cluster. The **serving agent** is a second Deployment — its own
+binary, its own pod, never a container beside the operator — that dials out to the plane's gateway
+and then serves HTTP/2 on those connections while the gateway drives the client end.
+Requests arrive down a connection this cluster opened, and are reverse proxied to the local
+inference frontend.
+
+```yaml
+cluster:
+  readOnly: false          # required: a read-only cluster reconciles nothing, so it cannot serve
+agent:
+  enabled: true
+  replicas: 2
+  gateway: hangar.example.com:443   # one address, however many replicas the plane runs
+  frontendEndpoint: ""     # empty discovers the Dynamo frontend Service by label
+```
+
+Three things the chart refuses rather than accepts:
+
+- `agent.enabled` with `cluster.readOnly: true`. Serving what the plane declared means the
+  operator applying it, and read-only applies nothing — so the agent would hold healthy
+  tunnels, advertise this cluster as reachable, and 502 every request against a frontend that was
+  never deployed.
+- `agent.enabled` with an empty `gateway`. An agent with nowhere to dial installs
+  cleanly and carries nothing. A `gateway` holding a comma-separated list is refused too — earlier
+  values named every replica, and that is no longer how they are found.
+- an empty `enrolmentToken.value` (already true for the operator). The agent presents the same
+  token as its identity on the tunnel — TLS for confidentiality, the token for who is calling —
+  so there is no second credential to mint or rotate.
+
+One address, and it stays one. Coverage does have to be complete — the tunnel pool is in-process,
+so a gateway replica can only answer a request for this cluster if it is itself holding one of this
+cluster's tunnels — but the replicas are not named here. Each accepted handshake says which replica
+took the dial and how many there are, so the agent redials this one address until it has found them
+all. Scaling the gateway is a change in the plane's own repository and never an edit to this file,
+which is the point: a fleet where some clusters got the edit and others did not would be served by
+different numbers of replicas with nothing anywhere saying so.
+
+`serving.enabled` — the Traefik `IngressRoute` and its `Certificate` — is the older public-ingress
+path and stays as the fallback. It is off on every cluster we run.
 
 ## Versioning
 

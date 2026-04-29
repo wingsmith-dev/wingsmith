@@ -4,6 +4,8 @@ Cluster id : {{ .Values.cluster.id }}
 Hub        : {{ .Values.cluster.hubUrl }}
 Operator   : {{ include "cluster-setup.operatorImage" . }}
 Read-only  : {{ .Values.cluster.readOnly }}  (allowed operations: {{ .Values.cluster.allowedOperations | default "none" }})
+Inference  : {{ if .Values.agent.enabled }}tunnelled — {{ .Values.agent.replicas }} × agent -> {{ .Values.agent.gateway }}
+             frontend   : {{ if .Values.agent.frontendEndpoint }}{{ .Values.agent.frontendEndpoint }} (override){{ else }}discovered by label in the `dynamo` namespace{{ end }}{{ else }}no path in (agent.enabled=false){{ end }}
 Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Values.monitoring.remoteWrite.url }} as cluster={{ .Values.cluster.id }} region={{ .Values.cluster.region }}
              credential : {{ if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}this cluster's enrolment token, read from {{ .Values.enrolmentToken.existingSecret }}/{{ .Values.enrolmentToken.secretKey }} — nothing per-cluster to configure{{ else }}basicAuth from the Secret {{ .Values.monitoring.remoteWrite.basicAuth.existingSecret }} (useEnrolmentToken=false){{ end }}{{ else }}not configured — nothing leaves this cluster (monitoring.enabled=false){{ end }}
 
@@ -46,6 +48,27 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Valu
    in the console will be empty. Set monitoring.enabled=true with
    monitoring.remoteWrite.url and cluster.region — no credential to find, the
    agent authenticates with this cluster's enrolment token.
+{{- end }}
+{{- if .Values.agent.enabled }}
+
+ℹ  Inference reaches this cluster over tunnels the agent dialled out. Nothing
+   dials in, so there is no address to check from outside — confirm from here that
+   every gateway was reached, because an agent that holds three of four
+   tunnels serves whichever gateway pods it got and fails the rest:
+
+     kubectl -n {{ .Release.Namespace }} rollout status deploy/hangar-agent
+     kubectl -n {{ .Release.Namespace }} logs deploy/hangar-agent | grep -i tunnel
+
+   The plane's side of the same question is the gateway's tunnel coverage gauge —
+   live tunnels per cluster, measured there and nowhere else, because the gateway
+   is not a writer of observed state.
+{{- else }}
+
+⚠  Nothing serves inference from this cluster (agent.enabled=false). The plane
+   can declare deployments here and the operator will reconcile them, but no
+   request can reach them: the gateway only forwards down tunnels an agent
+   dialled out. Set agent.enabled=true with agent.gateway once this
+   cluster is out of read-only.
 {{- end }}
 {{- if not .Values.serving.enabled }}
 

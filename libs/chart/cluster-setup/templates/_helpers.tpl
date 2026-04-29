@@ -4,6 +4,22 @@
 {{- printf "%s:%s" .Values.operator.image.repository $tag -}}
 {{- end -}}
 
+{{/* Serving agent image; tag falls back to the chart's appVersion. */}}
+{{- define "cluster-setup.servingAgentImage" -}}
+{{- $tag := .Values.agent.image.tag | default .Chart.AppVersion -}}
+{{- printf "%s:%s" .Values.agent.image.repository $tag -}}
+{{- end -}}
+
+{{/*
+Selector labels for the serving agent. Its own, like the metrics agent's and
+for the same reason: sharing the operator's selector would make one Deployment
+adopt the other's pods.
+*/}}
+{{- define "cluster-setup.servingAgentSelectorLabels" -}}
+app.kubernetes.io/name: hangar-agent
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
 {{/*
 DCGM endpoint: explicit value wins; otherwise derived from the bundled exporter
 (service <release>-dcgm-exporter) when it is enabled; empty disables the scrape.
@@ -88,6 +104,17 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- end -}}
 {{- if not (or (hasPrefix "ws://" .Values.cluster.hubUrl) (hasPrefix "wss://" .Values.cluster.hubUrl)) -}}
 {{- fail "cluster.hubUrl must start with ws:// or wss://" -}}
+{{- end -}}
+{{- if .Values.agent.enabled -}}
+{{- if .Values.cluster.readOnly -}}
+{{- fail "agent.enabled is true but cluster.readOnly is also true — a read-only cluster cannot serve. Serving a model means the operator applying what the plane declared, and read-only reconciles nothing, so the agent would come up, hold healthy tunnels to every gateway, advertise this cluster as reachable, and answer every inference request with a 502 for a frontend that was never deployed. That is worse than a refusal: it is an install that looks clean and never works, and the gateway would route real traffic to it. Set cluster.readOnly=false once this cluster is managed, or leave agent.enabled=false until it is." -}}
+{{- end -}}
+{{- if not .Values.agent.gateway -}}
+{{- fail "agent.enabled is true but agent.gateway is empty — set it to the gateway's public tunnel address, as host:port. There is no default: an agent with nowhere to dial installs cleanly and carries nothing, and the gateway sees this cluster as unreachable with no reason attached. One address, not a list of replicas: how many replicas there are is reported in the handshake, so the agent finds them all from this one name (infra/80-gateway.yaml)." -}}
+{{- end -}}
+{{- if contains "," .Values.agent.gateway -}}
+{{- fail "agent.gateway holds a comma-separated list, but it takes one address. Earlier values named every gateway replica; the agent now discovers them from the handshake, so give it the gateway's single public tunnel address and delete the rest." -}}
+{{- end -}}
 {{- end -}}
 {{- if and .Values.serving.enabled (not .Values.serving.backend.service) -}}
 {{- fail "serving.enabled is true but serving.backend.service is empty — set it to the Dynamo frontend Service name" -}}
