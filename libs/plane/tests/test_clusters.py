@@ -142,9 +142,11 @@ def test_setup_values_render_the_agent_off_even_with_a_gateway():
     assert lines.index("agent:") < lines.index("  enabled: false")
 
 
-def test_setup_values_leave_the_gateway_blank_when_none_is_configured():
+def test_setup_values_leave_the_gateway_blank_in_the_nested_shape():
+    """A flat `gateway: ""` is a string where the chart has a map — Helm refuses it outright."""
     out = _setup_values(values())
-    assert '  gateway: ""' in out
+    assert "  gateway:" in out.splitlines()
+    assert '    address: ""' in out
 
 
 def test_setup_values_pin_the_agent_image_only_alongside_a_gateway():

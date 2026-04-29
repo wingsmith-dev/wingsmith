@@ -388,7 +388,8 @@ def _setup_values(values: SetupValues) -> str:
             "# `readOnly` above is false — the chart refuses the pair.",
             "agent:",
             "  enabled: false",
-            '  gateway: ""   # e.g. hangar.example.com:443',
+            "  gateway:",
+            '    address: ""   # e.g. hangar.example.com:443',
         ]
     lines += [
         "",
