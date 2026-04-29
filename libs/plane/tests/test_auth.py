@@ -31,6 +31,7 @@ from app.config.settings import Settings
 from app.config.settings import validate
 from app.config.settings import resolved_admin_auth
 from app.core.exceptions import NotAuthorized
+from app.core.auth_routes import LOGIN_GUESSES
 
 
 PASSWORD = "correct horse battery staple"
@@ -43,7 +44,9 @@ def _reset_auth_settings(monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", "")
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "")
     monkeypatch.setattr(settings, "SESSION_TTL_SECONDS", 900)
+    LOGIN_GUESSES.clear()
     yield
+    LOGIN_GUESSES.clear()
 
 
 def enable_admin_auth(monkeypatch, password: str = PASSWORD) -> None:
@@ -280,6 +283,47 @@ def test_admin_login_fails_with_the_wrong_password(monkeypatch):
         response = client.post("/v1/auth/login", json={"password": "not it"})
     assert response.status_code == 401
     assert response.json()["code"] == "not_authorized"
+
+
+def test_repeated_wrong_passwords_are_throttled(monkeypatch):
+    enable_admin_auth(monkeypatch)
+    with TestClient(app=create_app()) as client:
+        for _ in range(LOGIN_GUESSES.limit):
+            assert client.post("/v1/auth/login", json={"password": "not it"}).status_code == 401
+        response = client.post("/v1/auth/login", json={"password": "not it"})
+    assert response.status_code == 429
+    assert response.json()["code"] == "rate_limited"
+
+
+def test_throttled_login_refuses_the_right_password_too(monkeypatch):
+    """The budget is checked before the hash, so a spent window refuses everyone.
+
+    That is the tradeoff `LOGIN_GUESSES` documents: bounding the bcrypt an
+    anonymous caller can buy costs the operator a minute of lockout.
+    """
+    enable_admin_auth(monkeypatch)
+    with TestClient(app=create_app()) as client:
+        for _ in range(LOGIN_GUESSES.limit):
+            client.post("/v1/auth/login", json={"password": "not it"})
+        response = client.post("/v1/auth/login", json={"password": PASSWORD})
+    assert response.status_code == 429
+
+
+def test_a_correct_login_does_not_spend_the_budget(monkeypatch):
+    enable_admin_auth(monkeypatch)
+    with TestClient(app=create_app()) as client:
+        for _ in range(LOGIN_GUESSES.limit * 2):
+            assert client.post("/v1/auth/login", json={"password": PASSWORD}).status_code in (200, 201)
+    assert not LOGIN_GUESSES.spent()
+
+
+def test_schema_is_not_served_outside_local(monkeypatch):
+    monkeypatch.setattr(settings, "APP_ENV", "production")
+    enable_admin_auth(monkeypatch)
+    monkeypatch.setattr(settings, "OPERATOR_TOKEN", "op-token")
+    with TestClient(app=create_app()) as client:
+        response = client.get("/schema/openapi.json")
+    assert response.status_code == 404
 
 
 def test_session_token_from_login_is_accepted_on_a_protected_route(monkeypatch):

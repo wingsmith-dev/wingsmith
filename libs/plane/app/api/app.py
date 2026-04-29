@@ -3,6 +3,7 @@ from logging import getLogger
 from litestar import Litestar
 from litestar.di import Provide
 from litestar.config.cors import CORSConfig
+from litestar.openapi.config import OpenAPIConfig
 
 from app.db import engine
 from app.api import routes
@@ -39,6 +40,20 @@ def _allowed_origins() -> list[str]:
     return [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
 
+def _openapi_config() -> OpenAPIConfig | None:
+    """The schema endpoints, served under `local` only.
+
+    Litestar serves `/schema` by default, and it answers before `request_context`
+    — there is nowhere in an `OpenAPIConfig` to require a credential. Behind a
+    port-forward that costs nothing. Behind an ingress it publishes every route,
+    parameter and shape in the API to anyone who asks, which is a map of what to
+    try the login against. `None` is how Litestar is told not to serve it.
+    """
+    if settings.APP_ENV != "local":
+        return None
+    return OpenAPIConfig(title="Hangar", version="1.0.0")
+
+
 def create_app() -> Litestar:
     """Builds the HTTP application.
 
@@ -69,6 +84,7 @@ def create_app() -> Litestar:
         exception_handlers=EXCEPTION_HANDLERS,
         before_request=reject_unknown_params,
         cors_config=cors_config,
+        openapi_config=_openapi_config(),
         on_startup=[on_startup],
         on_shutdown=[on_shutdown],
         dependencies={"context": Provide(request_context)},
