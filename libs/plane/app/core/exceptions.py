@@ -47,6 +47,19 @@ class Invalid(PlaneError):
     status = 409
 
 
+class TooManyRequests(PlaneError):
+    """A caller that has spent a budget the plane keeps to bound its own work.
+
+    The only budget today is on failed credential verifications
+    (`app.core.throttle`), where the refusal is the useful part: a caller that
+    keeps presenting tokens nothing knows is either broken or guessing, and both
+    deserve to be slowed down rather than served at line rate.
+    """
+
+    code = "rate_limited"
+    status = 429
+
+
 class UnknownParameter(PlaneError):
     """A request carrying a query parameter the matched handler does not declare.
 

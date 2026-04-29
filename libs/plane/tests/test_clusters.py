@@ -96,6 +96,36 @@ def test_setup_values_never_render_a_remote_write_credential():
     assert out.count("hgro1.secret") == 1
 
 
+def test_setup_values_render_the_one_gateway_address():
+    """One address, never a list of replicas: scaling the gateway must not reach a cluster."""
+    out = _setup_values(values(gateway="tunnel.example:443"))
+    lines = out.splitlines()
+    assert "agent:" in lines
+    assert "  gateway: tunnel.example:443" in lines
+    assert "gateways" not in out
+
+
+def test_setup_values_render_the_agent_off_even_with_a_gateway():
+    """The chart refuses an agent on a readOnly cluster, and readOnly is the default."""
+    out = _setup_values(values(gateway="tunnel.example:443"))
+    lines = out.splitlines()
+    assert lines.index("agent:") < lines.index("  enabled: false")
+
+
+def test_setup_values_leave_the_gateway_blank_when_none_is_configured():
+    out = _setup_values(values())
+    assert '  gateway: ""' in out
+
+
+def test_setup_values_pin_the_agent_image_only_alongside_a_gateway():
+    """An image with nowhere to dial is an agent that cannot establish anything."""
+    without = _setup_values(values(agent_image="ghcr.io/x/agent:sha7"))
+    assert "ghcr.io/x/agent" not in without
+    with_gateway = _setup_values(values(agent_image="ghcr.io/x/agent:sha7", gateway="tunnel.example:443"))
+    assert "    repository: ghcr.io/x/agent" in with_gateway
+    assert "    tag: sha7" in with_gateway
+
+
 def test_setup_values_carry_the_editable_infra_skeleton():
     out = _setup_values(values())
     assert "pools:" in out
@@ -160,9 +190,7 @@ def test_missing_row_is_all_zero():
     schema = _rollup(new_uid(CLUSTER), None)
     assert schema.nodes_total == 0
     assert schema.devices_allocated == 0
-    assert schema.headroom == ClusterHeadroomSchema(
-        free_devices=0, whole_nodes_free=0, largest_contiguous_block=0
-    )
+    assert schema.headroom == ClusterHeadroomSchema(free_devices=0, whole_nodes_free=0, largest_contiguous_block=0)
 
 
 def test_free_block_is_floored_at_one_when_devices_are_free_but_domainless():

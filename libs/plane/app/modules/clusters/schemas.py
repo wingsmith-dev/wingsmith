@@ -177,6 +177,29 @@ class ClusterUpdateRequest(Struct):
     metrics_label: str | None | UnsetType = UNSET
 
 
+class TunnelAuthRequest(Struct):
+    """The enrolment token a serving agent presented when it dialled the gateway.
+
+    The token travels in the body and not in `Authorization`, because that header
+    already carries the caller's own credential. One request, two credentials, and
+    only one of them belongs to the caller.
+    """
+
+    token: str
+
+
+class TunnelIdentitySchema(Struct):
+    """Which cluster a verified agent token belongs to, and nothing else.
+
+    No token material, no hash, no prefix. The caller sent the credential and
+    gets back only the identity it maps to — enough to key a tunnel by cluster
+    and to label a metric, which is all the gateway does with it.
+    """
+
+    cluster_id: str
+    cluster_name: str
+
+
 class ClusterServingRequest(Struct):
     """A full replacement. Serving config is small enough that partial updates buy nothing."""
 

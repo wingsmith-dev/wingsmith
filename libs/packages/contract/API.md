@@ -64,6 +64,13 @@ A request with no token, an unrecognized token, or an expired or tampered sessio
 `401 not_authorized` in the standard error envelope. `/health` is exempt so probes do not need
 credentials.
 
+A cluster's **enrolment token** is a third kind of credential and deliberately not a third principal
+kind. It authenticates that cluster's operator to the hub ([`PROTOCOL.md`](PROTOCOL.md)) and its
+serving agent to the gateway, and this API never accepts one in `Authorization`. The one route
+that takes it takes it in a request body, from an operator principal, and answers with a cluster
+identity rather than with a session (§6). Two principal kinds is a number small enough to review in
+one function; a third exists the moment something needs a permission model, and nothing does yet.
+
 **`ADMIN_AUTH=disabled`.** A day-1 deployment with no ingress — reached only by
 `kubectl port-forward` — can turn off the admin half of this check entirely; every request then
 resolves to a full-scope admin principal with no credential required. The hub's operator-token
@@ -131,7 +138,7 @@ state it leaves behind.
   plane reaches its serving runtime, and a credential reference for whatever fronts it. The plane
   stores and hands it out; only the gateway ever dials it.
 - **No Kubernetes-specific fields.** No `kubelet_version`, no manifest fragments, no object
-  references. Generic observed attributes (os image, kernel version, driver version, agent version)
+  references. Generic observed attributes (os image, kernel version, driver version, operator version)
   are fine. The operator is the only thing that knows Kubernetes exists; leaking it here would make
   the plane's API a Kubernetes API with extra steps.
 - **No telemetry on an object.** Utilization, temperature, throughput, latency, token counts are
@@ -155,7 +162,7 @@ not created. Writing to an observed resource is a category error and returns `40
 
 | Path | Kind |
 |---|---|
-| `/v1/clusters` | declared registry, observed body |
+| `/v1/clusters` | declared registry, observed body, plus an agent-token check — see below |
 | `/v1/nodes`, `/v1/devices`, `/v1/topology-domains` | observed, read-only |
 | `/v1/device-classes` | the shared dictionary, read-only — see below |
 | `/v1/pools` | declared, with observed membership |
@@ -203,6 +210,52 @@ assembled half a routing table would route half its traffic into a hole. It is `
 revision covering all four tables it was built from, so polling it costs a `304` until one of them
 moves. An endpoint with no usable targets is returned with an empty upstream list rather than
 omitted — "no such model" and "this model has nowhere to go" are different answers.
+
+A cluster contributes upstreams only while its `phase` is `active`. `draining` and `disabled` are
+somebody declaring that the cluster must stop taking work, and traffic is the first thing that has
+to obey it — a target on such a cluster disappears from the resolution exactly as a disabled target
+does, and the endpoint comes back with fewer upstreams or with none. The cluster's phase is one of
+the facts the revision covers, so marking one `draining` invalidates the `ETag` and a poller stops
+holding the route behind a `304`.
+
+**`POST /v1/clusters/tunnel-auth` is the gateway asking who just dialled it**, and it is the only
+route in this API that carries a credential in a body. A serving agent inside a GPU cluster opens
+an outbound tunnel to the gateway — nothing dials into a cluster — and identifies itself with the
+cluster's enrolment token, the same string the operator authenticates to the hub with and delivered
+by the same chart into the same Secret. The gateway cannot check it alone: only the plane holds the
+hash, and shipping every cluster's token material to the machine that faces the internet is exactly
+the trade a control plane exists to avoid. So the gateway posts `{"token": "hgro1..."}` and gets back
+`{"cluster_id": "clu_...", "cluster_name": "iad-1"}`, or a refusal. Nothing is minted and nothing is
+stored; no hash, prefix or length of the token appears in any response.
+
+The caller's own credential stays in `Authorization`, which is why the token being verified travels
+in the body — one request, two credentials, and only one of them belongs to the caller. **Operator
+principals only**: an admin session is `403 forbidden`, because a human credential that can turn
+tokens into identities is one that can sweep for them, and no screen asks this question. Every
+refusal is `401 not_authorized` so a caller branches on one code, while the message says which
+refusal it was, since a person reading an agent's logs needs to know whether the token is wrong or
+the cluster is out of service.
+
+Only `disabled` is refused. A `draining` cluster's tunnel still has to carry the streams already on
+it — its upstreams are gone from the resolution above, which is how new traffic stops — and a
+`pending` cluster may bring its agent up before its operator has completed a handshake. Refusing
+either would sever in-flight work or make tunnel setup depend on the order two Deployments happen to
+roll. Failed verifications are budgeted per API replica, twenty in a rolling minute, then
+`429 rate_limited` until the window drains; a *known* token belonging to a disabled cluster spends
+nothing, or one misconfigured cluster's retry loop would deny every other cluster's dials. The budget
+is not sized against guessing — the token is 256 bits of random and the route needs the gateway's own
+credential to reach at all — it is there so a leaked gateway credential or a looping agent costs
+the plane a bounded amount of work and announces itself.
+
+**This is a connection-setup call, not a per-request one.** The gateway verifies once per tunnel and
+holds the identity for the life of that connection, so a plane that is down, redeploying or migrating
+its database does not break inference: established tunnels keep carrying traffic and only an agent
+dialling in — a first start, a restart, a reconnect — waits for the plane to answer again. That is the
+same property `GET /v1/endpoints/resolved` has, where the gateway keeps serving the last table it
+read, and it is deliberate in both places, because the alternative is that this project's uptime
+becomes the inference SLA. The plane also learns nothing from the call: whether the tunnel then
+works, how long it lasts and when it goes away are gateway measurements, and there is no route here
+that writes them back — a tunnel is not an object in the model and reachability has one writer.
 
 Sub-resources are addressed by filter, not by nesting: `GET /v1/devices?cluster=iad-1`, not
 `/v1/clusters/iad-1/devices`. One collection per object type keeps filtering, pagination and

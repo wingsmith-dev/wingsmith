@@ -109,7 +109,6 @@ class Settings:
     See `app.modules.metrics.sources` for the parse.
     """
 
-
     METRICS_TIMEOUT: float = 5.0
     METRICS_WINDOW: str = "5m"
     METRICS_STEP: str = "60s"
@@ -201,6 +200,29 @@ class Settings:
     """Fully-qualified operator image (`registry/repo:tag`) pinned into the setup
     values so an install records what it ran. Pinned to a tag, never `latest`.
     Empty leaves the chart's own `appVersion` to name the image."""
+
+    AGENT_IMAGE: str = ""
+    """Fully-qualified serving-agent image, pinned into the setup values the
+    same way `OPERATOR_IMAGE` is and for the same reason. Empty leaves the chart's
+    own default."""
+
+    TUNNEL_GATEWAY: str = ""
+    """The gateway address a cluster's agent dials, `host:port`, written into the
+    setup values.
+
+    One address, however many replicas the gateway runs. Coverage does have to be
+    complete — the tunnel pool is in-process, so a gateway replica can only answer
+    for a cluster whose tunnel it is itself holding — but the replica count rides
+    the handshake, so an agent given this one name redials it until it has found
+    them all. Naming the replicas here instead would mean that scaling the gateway
+    is an edit to the values of every cluster in the fleet.
+
+    This is the plane's own deployment fact — it is the public tunnel name of the
+    StatefulSet in `infra/80-gateway.yaml` — which is why it is configuration here
+    and not a column. Empty renders the agent block as a blank with an example,
+    because a cluster cannot be handed an address the plane does not know, and
+    because values that install and serve nothing beat values that do not
+    install."""
 
     SETUP_CHART_REF: str = "oci://ghcr.io/hangar-dev/charts/cluster-setup"
     """OCI reference of the `cluster-setup` chart the register-cluster setup

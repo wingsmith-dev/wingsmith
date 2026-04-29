@@ -174,8 +174,14 @@ async def seed_node(db: AsyncSession, cluster_uid: str, name: str = "node-a") ->
     return uid
 
 
-async def a_cluster(db: AsyncSession, name: str = "alpha"):
-    return await ClusterService(db).create(ClusterCreateRequest(name=name, region="eu-west-1"))
+async def a_cluster(db: AsyncSession, name: str = "alpha", phase: str = "active"):
+    """A cluster in service, because `pending` is not allowed to carry traffic.
+
+    The registry default is `pending` and the resolution honours it, so a seed that
+    took the default would front an endpoint with a cluster nobody has put into
+    service and read as a broken routing table rather than as an unfinished one.
+    """
+    return await ClusterService(db).create(ClusterCreateRequest(name=name, region="eu-west-1", phase=phase))
 
 
 async def a_project(db: AsyncSession, slug: str = "search"):
@@ -815,9 +821,12 @@ async def test_resolution_follows_targets_to_serving_addresses(db: AsyncSession)
         )
     )
 
+    # No ClusterServing row at all, which is the state of every cluster we run: the
+    # upstream resolves with an empty url and the cluster id is the whole route,
+    # because the agent dialled a tunnel out and there is no address to publish.
     bare = await endpoints.resolved()
     assert [e.id for e in bare.endpoints] == [created.id]
-    assert bare.endpoints[0].upstreams == []
+    assert [(u.cluster_id, u.url) for u in bare.endpoints[0].upstreams] == [(cluster.id, "")]
 
     await clusters.set_serving(cluster.id, ClusterServingRequest(url="http://frontend.svc:8000"))
     table = await endpoints.resolved()
@@ -851,7 +860,7 @@ async def _two_serving_deployments(db: AsyncSession):
     """
     cluster_a, project, recipe, workload_a = await a_workload(db, name="chat-alpha")
     deployment_a = await DeploymentService(db).get(workload_a.deployments[0].id)
-    cluster_b = await ClusterService(db).create(ClusterCreateRequest(name="beta", region="eu-west-1"))
+    cluster_b = await ClusterService(db).create(ClusterCreateRequest(name="beta", region="eu-west-1", phase="active"))
     workload_b = await WorkloadService(db, notifier=MemoryNotifier()).create(
         WorkloadCreateRequest(cluster=cluster_b.id, recipe=recipe.id, name="chat-beta", project=project.id)
     )
@@ -886,7 +895,15 @@ async def test_an_endpoint_over_two_clusters_resolves_to_both_upstreams(db: Asyn
 
 
 async def test_one_cluster_going_quiet_drops_its_upstream_and_keeps_the_other(db: AsyncSession) -> None:
-    """Clearing one cluster's serving address removes its upstream; the endpoint survives."""
+    """Turning off one cluster's serving address removes its upstream; the endpoint survives.
+
+    Turning it off and *clearing* it are no longer the same thing, and this is where
+    the difference shows. `enabled=False` is somebody saying "not this address" and
+    the upstream goes; clearing the row leaves the cluster in exactly the state every
+    cluster we run is in — no published address, reached over the tunnel its agent
+    dialled — so the upstream stays with an empty url. What stops traffic to a cluster
+    outright is its `phase`, which the test below covers.
+    """
     project, cluster_a, deployment_a, cluster_b, deployment_b = await _two_serving_deployments(db)
     endpoints = EndpointService(db)
     await endpoints.create(
@@ -899,11 +916,55 @@ async def test_one_cluster_going_quiet_drops_its_upstream_and_keeps_the_other(db
             ],
         )
     )
-    await ClusterService(db).clear_serving(cluster_b.id)
+    await ClusterService(db).set_serving(cluster_b.id, ClusterServingRequest(url="http://beta.svc:8000", enabled=False))
 
     table = await endpoints.resolved()
     assert len(table.endpoints) == 1
     assert [u.cluster_id for u in table.endpoints[0].upstreams] == [cluster_a.id]
+
+    await ClusterService(db).clear_serving(cluster_b.id)
+    tunnelled = await endpoints.resolved()
+    assert {u.cluster_id: u.url for u in tunnelled.endpoints[0].upstreams} == {
+        cluster_a.id: "http://alpha.svc:8000",
+        cluster_b.id: "",
+    }
+
+
+async def test_draining_a_cluster_takes_its_upstream_out_of_the_table(db: AsyncSession) -> None:
+    """A phase is declared intent and traffic is the first thing that has to obey it.
+
+    The serving address is untouched throughout: draining is not the same act as
+    withdrawing an address, and either one alone has to be enough to stop traffic.
+    """
+    project, cluster_a, deployment_a, cluster_b, deployment_b = await _two_serving_deployments(db)
+    endpoints = EndpointService(db)
+    clusters = ClusterService(db)
+    await endpoints.create(
+        EndpointCreateRequest(
+            name="chat",
+            project=project.id,
+            targets=[
+                EndpointTargetRequest(deployment=deployment_a.id),
+                EndpointTargetRequest(deployment=deployment_b.id),
+            ],
+        )
+    )
+    before = await endpoints.resolved()
+    assert {u.cluster_id for u in before.endpoints[0].upstreams} == {cluster_a.id, cluster_b.id}
+
+    await clusters.update(cluster_b.id, ClusterUpdateRequest(phase="draining"))
+    drained = await endpoints.resolved()
+    assert [u.cluster_id for u in drained.endpoints[0].upstreams] == [cluster_a.id]
+    assert drained.revision != before.revision
+    assert (await clusters.get(cluster_b.id)).serving.url == "http://beta.svc:8000"
+
+    await clusters.update(cluster_a.id, ClusterUpdateRequest(phase="disabled"))
+    dark = await endpoints.resolved()
+    assert [e.name for e in dark.endpoints] == ["chat"]
+    assert dark.endpoints[0].upstreams == []
+
+    await clusters.update(cluster_a.id, ClusterUpdateRequest(phase="active"))
+    assert [u.cluster_id for u in (await endpoints.resolved()).endpoints[0].upstreams] == [cluster_a.id]
 
 
 async def test_a_deployment_that_is_not_running_still_appears_for_the_gateway_to_judge(db: AsyncSession) -> None:

@@ -12,13 +12,16 @@ from litestar.params import Parameter
 from app.core.context import RequestContext
 from app.core.filters import parse_labels
 from app.core.schemas import ListResponse
+from app.core.exceptions import Forbidden
 
 from .depends import cluster_svc_generator
 from .schemas import ClusterSchema
+from .schemas import TunnelAuthRequest
 from .schemas import ClusterSetupSchema
 from .schemas import ClusterRollupSchema
 from .schemas import ClusterCreateRequest
 from .schemas import ClusterUpdateRequest
+from .schemas import TunnelIdentitySchema
 from .schemas import ClusterHeadroomSchema
 from .schemas import ClusterServingRequest
 from .services import ClusterService
@@ -62,9 +65,7 @@ class ClusterRoutes(Controller):
         return Response(await svc.rollups(limit=limit, cursor=cursor))
 
     @get("/{ref:str}/rollup")
-    async def get_rollup(
-        self, context: RequestContext, svc: ClusterService, ref: str
-    ) -> Response[ClusterRollupSchema]:
+    async def get_rollup(self, context: RequestContext, svc: ClusterService, ref: str) -> Response[ClusterRollupSchema]:
         return Response(await svc.rollup(ref))
 
     @get("/{ref:str}/headroom")
@@ -98,6 +99,29 @@ class ClusterRoutes(Controller):
         the response once and never again."""
         host = request.headers.get("host", "")
         return Response(await svc.issue_enrolment_token(ref, host))
+
+    @post("/tunnel-auth", status_code=200)
+    async def verify_tunnel_token(
+        self, context: RequestContext, svc: ClusterService, data: TunnelAuthRequest
+    ) -> Response[TunnelIdentitySchema]:
+        """Turns a cluster's enrolment token into that cluster's identity.
+
+        `200`, not the `201` a POST defaults to: nothing is created, and the
+        gateway treats any status it was not promised as "the plane could not be
+        reached" — which refuses every dial while looking like a network fault.
+        It is a POST only because the credential being checked must not travel in
+        a query string.
+
+        Operator principals only. The caller is the gateway, which terminates the
+        outbound tunnels serving agents dial and needs to know which cluster
+        is on the other end of one; it already holds an operator token to read the
+        routing table. An admin session is refused rather than accommodated — a
+        human credential that can turn tokens into identities is a credential that
+        can sweep for them, and no console screen asks this question.
+        """
+        if context.principal.kind != "operator":
+            raise Forbidden("agent verification is for the gateway's operator principal only")
+        return Response(await svc.verify_tunnel_token(data.token))
 
     @patch("/{ref:str}")
     async def update_cluster(

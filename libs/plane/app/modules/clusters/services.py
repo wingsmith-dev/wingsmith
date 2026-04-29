@@ -1,6 +1,9 @@
+import hmac
 import datetime as dt
 
 from uuid import UUID
+from typing import NoReturn
+from logging import getLogger
 
 from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
@@ -9,16 +12,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
+from app.core.auth import hash_enrolment_token
+from app.core.auth import looks_like_enrolment
 from app.core.auth import mint_enrolment_token
 from app.core.auth import hash_remote_write_token
 from app.db.models import Cluster
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
 from app.core.schemas import ListResponse
+from app.core.throttle import FailureBudget
 from app.utils.schemas import Struct
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
+from app.core.exceptions import NotAuthorized
+from app.core.exceptions import TooManyRequests
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
@@ -30,12 +38,36 @@ from .schemas import ClusterRollupSchema
 from .schemas import ClusterCreateRequest
 from .schemas import ClusterServingSchema
 from .schemas import ClusterUpdateRequest
+from .schemas import TunnelIdentitySchema
 from .schemas import ClusterHeadroomSchema
 from .schemas import ClusterServingRequest
 from .repository import ClusterRepository
 
 
+logger = getLogger(__name__)
+
 PHASES = frozenset({"pending", "active", "draining", "disabled"})
+
+TUNNEL_AUTH_GUESSES = FailureBudget(limit=20, window_seconds=60.0)
+"""Failed agent verifications this process will answer in a rolling minute.
+
+Twenty is well above what a healthy fleet produces — verification happens once
+per tunnel, at connection setup, and the gateway caches the answer for the life of
+that connection, so a fleet of a hundred clusters restarting all at once makes a
+hundred *successful* calls and spends nothing here. It is far below what guessing
+a 256-bit token needs. Reaching this route at all requires the gateway's own
+credential, so an exhausted budget means either that credential leaked or a
+agent is looping on a token nobody has: both are worth a 429 and a log line.
+
+Spent only by failures, and consulted only on the failure path, so a valid token
+is never refused by it. The reverse — gating every call on the budget — reads as
+the safer choice and is not: one cluster left with a stale token retries eight
+dial slots at `BackoffMax`, which is roughly thirty refusals a minute against
+this limit, so the budget stays spent for as long as that agent is installed
+and no other cluster can establish a tunnel again. That is a fleet-wide outage
+caused by one misconfigured cluster. A guesser still gets nothing but `429`s here;
+what it no longer gets is everyone else's dials.
+"""
 
 
 def _revision(cluster: Cluster) -> str:
@@ -177,6 +209,8 @@ class SetupValues(Struct):
     hub_url: str
     region: str
     operator_image: str = ""
+    agent_image: str = ""
+    gateway: str = ""
     remote_write_url: str = ""
     enrolment_token: str | None = None
 
@@ -208,6 +242,17 @@ def _setup_values(values: SetupValues) -> str:
     persisted, so a later render omits it and the chart then requires either a
     fresh mint or an explicit `enrolmentToken.existing=true`.
 
+    The `agent:` block is plane-filled when `TUNNEL_GATEWAY` is configured,
+    because the gateway's address is a fact about the plane's own deployment and
+    not about the cluster: rendering it is the difference between an operator
+    flipping two booleans and an operator having to ask somebody which hostname to
+    dial. One address and not a list of replicas, so that scaling the gateway
+    never reaches this file. It is still emitted off, because the agent may not run
+    while the cluster is `readOnly` and the chart refuses that pair. With none
+    configured it falls below the divider as a blank with an example, so a plane
+    whose gateway is not reachable from outside yet still renders values that
+    install.
+
     The monitoring block is what makes telemetry work with no per-cluster step:
     `enabled` plus the fleet's one write endpoint, and nothing else. When no
     endpoint is configured it renders `enabled: false` with no url, because the
@@ -234,6 +279,30 @@ def _setup_values(values: SetupValues) -> str:
                 f"    repository: {repository}",
                 f"    tag: {tag}",
             ]
+    if values.gateway:
+        lines += [
+            "",
+            "# How inference reaches this cluster. The agent dials out to the address below",
+            "# and nothing dials in, so there is no port to open and no name to publish",
+            "# here. One address however many gateway replicas the plane runs: each",
+            "# handshake says how many there are, and the agent redials until it holds a",
+            "# tunnel to every one. So this never has to change when the gateway scales.",
+            "#",
+            "# Off, because the agent may not run while `readOnly` above is true — serving",
+            "# what the plane declares means reconciling it, and the chart refuses the pair.",
+            "# Flip both together when this cluster is ready to serve.",
+            "agent:",
+            "  enabled: false",
+            f"  gateway: {values.gateway}",
+        ]
+        if values.agent_image:
+            repository, _, tag = values.agent_image.rpartition(":")
+            if repository and tag:
+                lines += [
+                    "  image:",
+                    f"    repository: {repository}",
+                    f"    tag: {tag}",
+                ]
     if values.enrolment_token:
         lines += [
             "",
@@ -284,6 +353,25 @@ def _setup_values(values: SetupValues) -> str:
         "hfToken:",
         "  create: false",
         '  value: ""   # a Hugging Face token',
+    ]
+    if not values.gateway:
+        lines += [
+            "",
+            "# How inference reaches this cluster. The agent dials out to the plane's",
+            "# gateway and nothing dials in, so there is nothing to open here — but a",
+            "# cluster with no agent serves nothing, however much is declared on it. This",
+            "# plane has no gateway address configured (HANGAR_TUNNEL_GATEWAY), so it has",
+            "# to be filled in by hand; ask for it rather than guessing, because a wrong",
+            "# one is a tunnel that never establishes.",
+            "#",
+            "# One address, not a list of replicas: the gateway reports how many it runs in",
+            "# the handshake and the agent finds them all from this one name. Enable it once",
+            "# `readOnly` above is false — the chart refuses the pair.",
+            "agent:",
+            "  enabled: false",
+            '  gateway: ""   # e.g. hangar.example.com:443',
+        ]
+    lines += [
         "",
         "# Serving ingress. Leave disabled until a Dynamo frontend Service exists to",
         "# point the IngressRoute at; the plane can render it later from ClusterServing.",
@@ -366,6 +454,8 @@ class ClusterService:
                 hub_url=hub_url,
                 region=cluster.region,
                 operator_image=settings.OPERATOR_IMAGE,
+                agent_image=settings.AGENT_IMAGE,
+                gateway=settings.TUNNEL_GATEWAY,
                 remote_write_url=settings.METRICS_REMOTE_WRITE_URL,
                 enrolment_token=enrolment_token,
             )
@@ -444,6 +534,64 @@ class ClusterService:
         await self.db.commit()
         await self.db.refresh(cluster)
         return self._render_setup(cluster, host, enrolment_token=token)
+
+    def _spend_tunnel_guess(self, message: str) -> NoReturn:
+        """Charges one failed verification to the budget and refuses.
+
+        Only failures reach here, which is the whole point: the budget is read on
+        the way to a refusal and never on the way to an identity, so a cluster
+        presenting a good token is never rate-limited by somebody else's bad one.
+        """
+        if TUNNEL_AUTH_GUESSES.spent():
+            raise TooManyRequests("too many failed agent verifications; retry shortly")
+        TUNNEL_AUTH_GUESSES.fail()
+        raise NotAuthorized(message)
+
+    async def verify_tunnel_token(self, token: str) -> TunnelIdentitySchema:
+        """Resolves a serving agent's enrolment token to the cluster it belongs to.
+
+        A third verifier over the same credential the hub and the metrics write
+        ingress already check (`issue_enrolment_token`), for the third thing a
+        cluster dials out to: the gateway's tunnel listener. It
+        deliberately mints nothing and stores nothing — the gateway asks who just
+        connected, gets an identity or a refusal, and never holds a cluster's
+        token material or a hash of it.
+
+        The lookup is by digest and the digest is then compared in constant time.
+        The second step is not redundant paranoia about the index: it keeps the
+        decision that admits a cluster from depending on how the database compares
+        a secret-derived value, which is the only comparison in this path that
+        matters.
+
+        Refusals are all `not_authorized` so the gateway branches on one code, but
+        the messages differ because a person reading an agent's logs needs to
+        know whether the token is wrong or the cluster is out of service. Only
+        `disabled` is refused: a `draining` cluster is being emptied and its
+        in-flight streams still need the tunnel they arrived on (its upstreams are
+        already gone from `GET /v1/endpoints/resolved`), and a `pending` one may
+        bring its agent up before its operator has completed a handshake.
+
+        A wrong or unknown token spends from a shared failure budget; a known
+        token belonging to a disabled cluster does not, or one cluster left
+        disabled with an agent retry loop would deny every other cluster's
+        dials. For the same reason the budget is never consulted before the
+        lookup: a cluster holding a stale token must not be able to refuse a
+        cluster holding a good one.
+        """
+        if not looks_like_enrolment(token):
+            self._spend_tunnel_guess("not a cluster enrolment token")
+
+        digest = hash_enrolment_token(token)
+        cluster = await self.repo.by_token_hash(digest)
+        if cluster is None or not hmac.compare_digest(cluster.token_hash or "", digest):
+            logger.warning("cluster.tunnel_auth.refused reason=unknown_token")
+            self._spend_tunnel_guess("unknown cluster enrolment token")
+
+        if cluster.phase == "disabled":
+            logger.warning("cluster.tunnel_auth.refused cluster=%s reason=disabled", cluster.uid)
+            raise NotAuthorized(f"cluster {cluster.name!r} is disabled")
+
+        return TunnelIdentitySchema(cluster_id=cluster.uid, cluster_name=cluster.name)
 
     async def list(
         self,
