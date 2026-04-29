@@ -29,12 +29,17 @@ func TestVerifyTunnelTokenAsksThePlaneAndAnswersWithTheCluster(t *testing.T) {
 	}))
 	defer server.Close()
 
-	clusterID, err := New(server.URL, "gateway-token", time.Second).VerifyTunnelToken(context.Background(), "enrol-abc")
+	identity, err := New(server.URL, "gateway-token", time.Second).VerifyTunnelToken(context.Background(), "enrol-abc")
 	if err != nil {
 		t.Fatalf("verify: %v", err)
 	}
-	if clusterID != "clu_ap" {
-		t.Fatalf("cluster = %q", clusterID)
+	if identity.ClusterID != "clu_ap" {
+		t.Fatalf("cluster = %q", identity.ClusterID)
+	}
+	// The name is carried too, and dropping it is not cosmetic: the listener
+	// checks an agent's claim against it, and an agent claims the name.
+	if identity.ClusterName != "ap" {
+		t.Fatalf("cluster name = %q, want the plane's answer to reach the listener", identity.ClusterName)
 	}
 	if seen.Token != "enrol-abc" {
 		t.Fatalf("the plane was sent %q", seen.Token)

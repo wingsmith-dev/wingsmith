@@ -60,10 +60,36 @@ func TestDialRejectedTokenIsRejected(t *testing.T) {
 	}
 }
 
+// The shape a real handshake has, and the one that refused every install in production: the agent
+// claims the cluster's name, because that is what the chart writes HANGAR_CLUSTER_ID from, and the
+// gateway answers with the plane's uid, because that is what the pool and every metric label key on.
+// Neither side is wrong and the two strings differ, so the answer has to carry both for either side
+// to recognise it. Every other test here let the fake gateway echo the claim, which is the one
+// answer a real gateway never gives.
+func TestDialAcceptsTheUidWhenItClaimedTheName(t *testing.T) {
+	tr := startGateway(t, &gateway{clusterID: "clu_ap", clusterName: "cluster-a"})
+
+	cfg := dialConfig(tr.addr)
+	cfg.ClusterID = "cluster-a"
+	cfg.TLSEnabled = false
+	dialler, _ := NewDialler(cfg)
+
+	conn, _, err := dialler.Dial(context.Background(), tr.addr)
+	if err != nil {
+		t.Fatalf("a dial claiming the cluster's name was refused: %v", err)
+	}
+	_ = conn.Close()
+	if got := tr.lastHello(t).ClusterID; got != "cluster-a" {
+		t.Fatalf("claimed %q, want the name the chart configures", got)
+	}
+}
+
 // A token that resolves to another cluster means the Secret was copied. Serving that cluster's
 // traffic from this one's GPUs is worse than not serving it.
+// Accepting either name must not have widened this to accepting anything: a copied Secret resolves
+// to a uid *and* a name that both belong to somebody else, so neither half matches.
 func TestDialRefusesAClusterTheGatewayDisagreesWith(t *testing.T) {
-	tr := startGateway(t, &gateway{clusterID: "clu_somebody_else"})
+	tr := startGateway(t, &gateway{clusterID: "clu_somebody_else", clusterName: "somebody-else"})
 
 	cfg := dialConfig(tr.addr)
 	cfg.TLSEnabled = false

@@ -105,10 +105,17 @@ func (d *Dialler) Dial(ctx context.Context, target string) (net.Conn, Peer, erro
 	// The gateway's answer is the authority on which cluster this token belongs to, and it
 	// disagreeing means the Secret in this cluster holds another cluster's credential. Refusing is
 	// the only safe move: carrying on would serve that cluster's traffic from this one's GPUs.
-	if accept.ClusterID != "" && accept.ClusterID != d.clusterID {
+	//
+	// Either name in the answer counts as agreement. HANGAR_CLUSTER_ID is normally the cluster's
+	// name — the chart writes it from what the plane rendered — while the accept's ClusterID is the
+	// plane's uid, so comparing against that alone refuses every ordinary install. It refuses none
+	// of the dangerous ones: another cluster's credential resolves to a uid *and* a name that are
+	// both somebody else's.
+	if named := accept.ClusterID != "" || accept.ClusterName != ""; named &&
+		accept.ClusterID != d.clusterID && accept.ClusterName != d.clusterID {
 		_ = conn.Close()
-		return nil, Peer{}, fmt.Errorf("agent: %s resolved this enrolment token to %s, but HANGAR_CLUSTER_ID says %s",
-			target, accept.ClusterID, d.clusterID)
+		return nil, Peer{}, fmt.Errorf("agent: %s resolved this enrolment token to %s (%s), but HANGAR_CLUSTER_ID says %s",
+			target, accept.ClusterID, accept.ClusterName, d.clusterID)
 	}
 	return conn, peerFrom(accept, target), nil
 }

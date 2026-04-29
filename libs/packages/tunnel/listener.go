@@ -12,6 +12,35 @@ import (
 	"time"
 )
 
+// Identity is the cluster a token belongs to, under both of its names.
+//
+// Two fields and not one because a cluster is addressable two ways and the two
+// halves of this system reach for different ones. ClusterID is the plane's uid
+// and is what everything downstream keys on — the pool, the routing table, every
+// metric label — because it is the only one that cannot be renamed. ClusterName
+// is the operator-facing name, and it is what a cluster's own configuration
+// carries: the chart's `cluster.id`, the operator's HANGAR_CLUSTER_ID, the label
+// its metrics are written under. An agent therefore claims the name, and a
+// listener comparing that claim against the uid alone refuses every real
+// install.
+type Identity struct {
+	ClusterID   string
+	ClusterName string
+}
+
+// claims reports whether an agent's claimed cluster is this identity.
+//
+// Either spelling is accepted, for the same reason `GET /v1/clusters/{ref}`
+// takes either: they name one row, and which one a caller holds is an accident
+// of where it read it. Empty claims nothing and is not a match — the caller
+// decides whether an unclaimed dial is allowed.
+func (i Identity) claims(claimed string) bool {
+	if claimed == "" {
+		return false
+	}
+	return claimed == i.ClusterID || claimed == i.ClusterName
+}
+
 // Verifier resolves an enrolment token to the cluster it belongs to.
 //
 // The gateway holds no cluster token material: it has no list of hashes, no
@@ -24,7 +53,7 @@ import (
 // read as "the plane could not be reached", which is a different situation with
 // a different answer.
 type Verifier interface {
-	VerifyTunnelToken(ctx context.Context, token string) (string, error)
+	VerifyTunnelToken(ctx context.Context, token string) (Identity, error)
 }
 
 // DialObserver counts dials that never became tunnels.
@@ -232,7 +261,7 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 		return "", Hello{}, err
 	}
 
-	clusterID, err := l.resolve(ctx, hello.Token)
+	identity, err := l.resolve(ctx, hello.Token)
 	if err != nil {
 		reason := ReasonUnavailable
 		if errors.Is(err, ErrRejected) {
@@ -245,16 +274,25 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 	// The claim is checked, not trusted. An agent holding another cluster's
 	// Secret is a copy-paste away, and the failure it produces — one cluster's
 	// traffic served by another's models — is silent at every other layer.
-	if hello.ClusterID != "" && hello.ClusterID != clusterID {
-		err := fmt.Errorf("%w: token belongs to %s, dial claimed %s", ErrRejected, clusterID, hello.ClusterID)
+	//
+	// Checked against either of the cluster's names, because the one an agent
+	// holds is not a choice it makes: the chart writes `cluster.id` from what the
+	// plane rendered, which is the name.
+	if hello.ClusterID != "" && !identity.claims(hello.ClusterID) {
+		err := fmt.Errorf("%w: token belongs to %s (%s), dial claimed %s",
+			ErrRejected, identity.ClusterID, identity.ClusterName, hello.ClusterID)
 		l.reject(conn, remote, ReasonUnauthorized, err)
 		return "", Hello{}, err
 	}
 
-	if err := WriteAccept(conn, l.accept(clusterID)); err != nil {
+	// The pool key is the uid, never the claim and never the name: everything past
+	// this point — the pool, the routing table lookup, every metric label — keys
+	// on the one identifier a rename cannot move. The accept carries both, so the
+	// agent can see its own name in the answer.
+	if err := WriteAccept(conn, l.accept(identity)); err != nil {
 		return "", Hello{}, err
 	}
-	return clusterID, hello, nil
+	return identity.ClusterID, hello, nil
 }
 
 // accept is the answer to a dial that authenticated, carrying this replica's
@@ -264,16 +302,17 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 // carries a zero that means one: an agent reading Gateways decides how many
 // tunnels to hold, and a gateway that forgot to say is a gateway an agent must
 // not conclude anything from.
-func (l *Listener) accept(clusterID string) Accept {
+func (l *Listener) accept(identity Identity) Accept {
 	gateways := l.cfg.Gateways
 	if gateways < 1 {
 		gateways = 1
 	}
 	return Accept{
-		OK:        true,
-		ClusterID: clusterID,
-		GatewayID: l.cfg.GatewayID,
-		Gateways:  gateways,
+		OK:          true,
+		ClusterID:   identity.ClusterID,
+		ClusterName: identity.ClusterName,
+		GatewayID:   l.cfg.GatewayID,
+		Gateways:    gateways,
 	}
 }
 
@@ -284,28 +323,28 @@ func (l *Listener) accept(clusterID string) Accept {
 // plane. A stale entry answers when the plane cannot be reached, which is what
 // keeps a control-plane outage off the data path: existing tunnels are never
 // re-checked, and an agent restarted during an outage still gets in.
-func (l *Listener) resolve(ctx context.Context, token string) (string, error) {
-	if clusterID, fresh, ok := l.cache.lookup(token); ok && fresh {
-		return clusterID, nil
+func (l *Listener) resolve(ctx context.Context, token string) (Identity, error) {
+	if identity, fresh, ok := l.cache.lookup(token); ok && fresh {
+		return identity, nil
 	}
 
-	clusterID, err := l.cfg.Verifier.VerifyTunnelToken(ctx, token)
+	identity, err := l.cfg.Verifier.VerifyTunnelToken(ctx, token)
 	if err == nil {
-		if clusterID == "" {
-			return "", fmt.Errorf("%w: the plane named no cluster", ErrRejected)
+		if identity.ClusterID == "" {
+			return Identity{}, fmt.Errorf("%w: the plane named no cluster", ErrRejected)
 		}
-		l.cache.store(token, clusterID)
-		return clusterID, nil
+		l.cache.store(token, identity)
+		return identity, nil
 	}
 	if errors.Is(err, ErrRejected) {
 		l.cache.forget(token)
-		return "", err
+		return Identity{}, err
 	}
-	if clusterID, _, ok := l.cache.lookup(token); ok {
+	if identity, _, ok := l.cache.lookup(token); ok {
 		slog.Warn("gateway: tunnel token verified from cache, the plane is unreachable", "err", err)
-		return clusterID, nil
+		return identity, nil
 	}
-	return "", err
+	return Identity{}, err
 }
 
 // reject answers a refused dial, so an agent logs why rather than an EOF.
@@ -379,14 +418,14 @@ type tokenCache struct {
 }
 
 type cacheEntry struct {
-	digest    [sha256.Size]byte
-	clusterID string
-	verified  time.Time
+	digest   [sha256.Size]byte
+	identity Identity
+	verified time.Time
 }
 
 // lookup reports what a token resolved to last time, and whether that answer is
 // still fresh enough to use without asking the plane.
-func (c *tokenCache) lookup(token string) (string, bool, bool) {
+func (c *tokenCache) lookup(token string) (Identity, bool, bool) {
 	digest := sha256.Sum256([]byte(token))
 	now := c.now()
 
@@ -408,12 +447,12 @@ func (c *tokenCache) lookup(token string) (string, bool, bool) {
 	}
 	c.entries = kept
 	if hit == 0 {
-		return "", false, false
+		return Identity{}, false, false
 	}
-	return found.clusterID, now.Sub(found.verified) <= c.ttl, true
+	return found.identity, now.Sub(found.verified) <= c.ttl, true
 }
 
-func (c *tokenCache) store(token, clusterID string) {
+func (c *tokenCache) store(token string, identity Identity) {
 	digest := sha256.Sum256([]byte(token))
 	now := c.now()
 
@@ -421,12 +460,12 @@ func (c *tokenCache) store(token, clusterID string) {
 	defer c.mu.Unlock()
 	for i := range c.entries {
 		if subtle.ConstantTimeCompare(digest[:], c.entries[i].digest[:]) == 1 {
-			c.entries[i].clusterID = clusterID
+			c.entries[i].identity = identity
 			c.entries[i].verified = now
 			return
 		}
 	}
-	c.entries = append(c.entries, cacheEntry{digest: digest, clusterID: clusterID, verified: now})
+	c.entries = append(c.entries, cacheEntry{digest: digest, identity: identity, verified: now})
 }
 
 // forget drops a token the plane has refused, so a revoked credential does not

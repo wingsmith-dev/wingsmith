@@ -42,38 +42,42 @@ type tunnelAuthResponse struct {
 // really a version skew. Nor is the 429 the plane answers while its failed-guess
 // budget is spent — that is a wait, not a refusal. Both are reported as
 // unavailable, which is recoverable, rather than as a refusal, which is not.
-func (c *Client) VerifyTunnelToken(ctx context.Context, token string) (string, error) {
+// Both names are carried back, not just the uid. The plane answers with both
+// because they are addressable interchangeably, and the agent's claim is checked
+// against either: a cluster's own configuration holds the name, so returning the
+// uid alone refused every dial from a chart-installed agent.
+func (c *Client) VerifyTunnelToken(ctx context.Context, token string) (tunnel.Identity, error) {
 	body, err := json.Marshal(tunnelAuthRequest{Token: token})
 	if err != nil {
-		return "", err
+		return tunnel.Identity{}, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+tunnelAuthPath, bytes.NewReader(body))
 	if err != nil {
-		return "", err
+		return tunnel.Identity{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("plane tunnel-auth: %w", err)
+		return tunnel.Identity{}, fmt.Errorf("plane tunnel-auth: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	switch {
 	case resp.StatusCode == http.StatusOK:
 	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden:
-		return "", fmt.Errorf("%w: the plane refused it", tunnel.ErrRejected)
+		return tunnel.Identity{}, fmt.Errorf("%w: the plane refused it", tunnel.ErrRejected)
 	default:
-		return "", fmt.Errorf("plane tunnel-auth: unexpected status %d", resp.StatusCode)
+		return tunnel.Identity{}, fmt.Errorf("plane tunnel-auth: unexpected status %d", resp.StatusCode)
 	}
 
 	var decoded tunnelAuthResponse
 	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
-		return "", fmt.Errorf("plane tunnel-auth: decode: %w", err)
+		return tunnel.Identity{}, fmt.Errorf("plane tunnel-auth: decode: %w", err)
 	}
 	if decoded.ClusterID == "" {
-		return "", fmt.Errorf("plane tunnel-auth: no cluster in the answer")
+		return tunnel.Identity{}, fmt.Errorf("plane tunnel-auth: no cluster in the answer")
 	}
-	return decoded.ClusterID, nil
+	return tunnel.Identity{ClusterID: decoded.ClusterID, ClusterName: decoded.ClusterName}, nil
 }

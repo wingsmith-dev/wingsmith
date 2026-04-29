@@ -14,25 +14,31 @@ import (
 )
 
 // stubVerifier is the plane, as the listener sees it.
+//
+// `clusters` maps a token to the uid and `names` to the operator-facing name, the
+// two apart because the plane answers with both and an agent may claim either.
+// A token absent from `names` resolves to an identity with no name, which is what
+// a plane too old to send one looks like.
 type stubVerifier struct {
 	mu       sync.Mutex
 	clusters map[string]string
+	names    map[string]string
 	err      error
 	calls    int
 }
 
-func (v *stubVerifier) VerifyTunnelToken(_ context.Context, token string) (string, error) {
+func (v *stubVerifier) VerifyTunnelToken(_ context.Context, token string) (Identity, error) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.calls++
 	if v.err != nil {
-		return "", v.err
+		return Identity{}, v.err
 	}
 	cluster, ok := v.clusters[token]
 	if !ok {
-		return "", fmt.Errorf("%w: no such cluster", ErrRejected)
+		return Identity{}, fmt.Errorf("%w: no such cluster", ErrRejected)
 	}
-	return cluster, nil
+	return Identity{ClusterID: cluster, ClusterName: v.names[token]}, nil
 }
 
 func (v *stubVerifier) fail(err error) {
@@ -152,6 +158,37 @@ func TestAnAcceptedDialIsToldWhichReplicaAndHowMany(t *testing.T) {
 	}
 }
 
+// The shape every chart-installed agent actually dials with, and the one that was refused in
+// production while every test passed. The chart writes `cluster.id` from what the plane rendered,
+// which is the cluster's name — so the agent claims the name while the plane answers with the uid,
+// and a listener comparing the claim against the uid alone rejects the whole fleet. The e2e missed
+// it by dialling with the uid, which no agent has.
+func TestAnAgentClaimingTheClusterNameIsAcceptedAndKeyedOnTheUid(t *testing.T) {
+	verifier := &stubVerifier{
+		clusters: map[string]string{"tok-ap": "clu_ap"},
+		names:    map[string]string{"tok-ap": "cluster-a"},
+	}
+	pool, _, addr := startListener(t, ListenerConfig{Verifier: verifier})
+
+	accept, err := dialConnector(t, addr,
+		Hello{Token: "tok-ap", ClusterID: "cluster-a"}, echoHandler("pong"))
+	if err != nil {
+		t.Fatalf("an agent claiming the cluster's name was refused: %v", err)
+	}
+	if !accept.OK {
+		t.Fatalf("accept = %+v", accept)
+	}
+	// The uid comes back, not the name that was claimed: the agent's own routing
+	// and the pool have to agree, and the uid is the half that cannot be renamed.
+	if accept.ClusterID != "clu_ap" {
+		t.Fatalf("ClusterID = %q, want the uid", accept.ClusterID)
+	}
+	eventually(t, 5*time.Second, "the tunnel keyed on the uid", func() bool { return pool.Live("clu_ap") == 1 })
+	if got := pool.Live("cluster-a"); got != 0 {
+		t.Fatalf("the pool holds %d tunnels under the name; it must key on the uid alone", got)
+	}
+}
+
 // A gateway that was never told its replica count must say one rather than none. Zero on the wire
 // would reach an agent as "hold no tunnels", which is the one answer that is never right.
 func TestAnUnconfiguredReplicaCountIsReportedAsOne(t *testing.T) {
@@ -205,6 +242,10 @@ func TestDialsThatDoNotAuthenticateAreRefusedWithAReason(t *testing.T) {
 	}{
 		{name: "unknown token", hello: Hello{Token: "nope"}, planeUp: true, reason: ReasonUnauthorized},
 		{name: "token for another cluster", hello: Hello{Token: "tok-ap", ClusterID: "clu_us"}, planeUp: true, reason: ReasonUnauthorized},
+		// Accepting the name as well as the uid must not have widened this to any
+		// string: another cluster's *name* is exactly the copy-pasted Secret the
+		// check exists for.
+		{name: "another cluster's name", hello: Hello{Token: "tok-ap", ClusterID: "inference-us"}, planeUp: true, reason: ReasonUnauthorized},
 		{name: "plane unreachable", hello: Hello{Token: "tok-ap"}, reason: ReasonUnavailable},
 		{name: "not a hangar dial", garbage: "GET / HTTP/1.1\r\n\r\n", planeUp: true, reason: ReasonHandshake},
 	}

@@ -75,7 +75,17 @@ type Hello struct {
 type Accept struct {
 	OK        bool   `json:"ok"`
 	ClusterID string `json:"cluster_id,omitempty"`
-	Error     string `json:"error,omitempty"`
+	// ClusterName is the same cluster under the name its own configuration uses,
+	// sent so that an agent can recognise the answer as being about itself.
+	//
+	// An agent claims the name — the chart's `cluster.id` is what the plane
+	// rendered, which is the name — while ClusterID above is the uid, because
+	// that is the identifier the pool and every metric label key on. Without
+	// this field the two halves have nothing in common to compare, and the
+	// agent's own safety check (a Secret holding another cluster's credential)
+	// cannot tell that case apart from the ordinary one.
+	ClusterName string `json:"cluster_name,omitempty"`
+	Error       string `json:"error,omitempty"`
 	// GatewayID names the replica that accepted this dial. Stable for the life
 	// of that replica and the same on every connection it accepts, which is what
 	// lets an agent tell a replica it has never reached from one it already holds

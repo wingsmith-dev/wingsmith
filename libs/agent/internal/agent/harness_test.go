@@ -31,7 +31,13 @@ type gateway struct {
 	// reject, when set, is the reason sent back instead of an acceptance.
 	reject string
 	// clusterID overrides the cluster the token is said to resolve to. Empty echoes the claim.
+	//
+	// Echoing is convenient and is also how this harness hid a production bug: a real gateway
+	// answers with the plane's uid while an agent claims the cluster's name, so an echo is the one
+	// answer no real gateway gives. Set clusterName alongside it to get the real shape.
 	clusterID string
+	// clusterName is the operator-facing name in the answer, beside the uid above.
+	clusterName string
 	// token, when set, is the only token accepted.
 	token string
 	// accepted is called with the connection once the hello has been answered. The callback owns
@@ -118,7 +124,7 @@ func (tr *gateway) handle(conn net.Conn) {
 	}
 	tr.mu.Lock()
 	tr.hellos = append(tr.hellos, hello)
-	accepted, reject, clusterID, token := tr.accepted, tr.reject, tr.clusterID, tr.token
+	accepted, reject, clusterID, clusterName, token := tr.accepted, tr.reject, tr.clusterID, tr.clusterName, tr.token
 	tr.mu.Unlock()
 
 	if token != "" && hello.Token != token {
@@ -134,10 +140,11 @@ func (tr *gateway) handle(conn net.Conn) {
 	}
 	id, replicas := tr.identity()
 	if err := tunnel.WriteAccept(conn, tunnel.Accept{
-		OK:        true,
-		ClusterID: clusterID,
-		GatewayID: id,
-		Gateways:  replicas,
+		OK:          true,
+		ClusterID:   clusterID,
+		ClusterName: clusterName,
+		GatewayID:   id,
+		Gateways:    replicas,
 	}); err != nil {
 		_ = conn.Close()
 		return
