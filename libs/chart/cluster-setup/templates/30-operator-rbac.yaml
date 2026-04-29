@@ -5,6 +5,12 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
+{{- with .Values.imagePullSecret.name }}
+# On the ServiceAccount and not the pod spec, so every pod that runs as it inherits
+# the credential and adding one later is not an edit to a Deployment.
+imagePullSecrets:
+  - name: {{ . }}
+{{- end }}
 ---
 # Kept in step with libs/operator/deploy/rbac/role.yaml; read-only is behavioural,
 # not a permission switch, so the role is the same either way.

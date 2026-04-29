@@ -28,6 +28,10 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "cluster-setup.labels" . | nindent 4 }}
+{{- with .Values.imagePullSecret.name }}
+imagePullSecrets:
+  - name: {{ . }}
+{{- end }}
 ---
 # Read-only on Services in the workload namespace, and nothing else. That is the
 # whole of what frontend discovery needs: the Service name differs on every

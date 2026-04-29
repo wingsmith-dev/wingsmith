@@ -32,6 +32,21 @@ enrolmentToken:
   # Opt-out for a hand-driven install where you created `existingSecret` yourself.
   existing: false
 
+# Registry credential for the two images this chart owns, the operator and the
+# agent. `name` empty means no pull secret is referenced at all, which is right
+# when those images are public or sit in a registry the nodes already authenticate
+# to. Set `name` to reference one, and `create` to have the chart build it from
+# `username` and `token` — a GHCR token needs only `read:packages`.
+#
+# Not applied to the metrics agent or the subcharts: they pull from quay.io,
+# nvcr.io and Docker Hub, and the subcharts carry their own pull-secret values.
+imagePullSecret:
+  create: false
+  name: ""
+  registry: ghcr.io
+  username: ""
+  token: ""
+
 # ── What this cluster's hardware looks like ───────────────────────────────────
 
 # All three are required. The operator's own default label key is not the one any

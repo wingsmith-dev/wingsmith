@@ -213,6 +213,10 @@ class SetupValues(Struct):
     gateway: str = ""
     remote_write_url: str = ""
     enrolment_token: str | None = None
+    pull_secret_name: str = ""
+    pull_secret_registry: str = ""
+    pull_secret_username: str = ""
+    pull_secret_token: str = ""
 
 
 def _setup_values(values: SetupValues) -> str:
@@ -304,6 +308,20 @@ def _setup_values(values: SetupValues) -> str:
                     f"    repository: {repository}",
                     f"    tag: {tag}",
                 ]
+    if values.pull_secret_name and values.pull_secret_token:
+        lines += [
+            "",
+            "# The credential the operator and agent ServiceAccounts present to their",
+            "# registry, because those two images are not public. One credential for the",
+            "# whole fleet, not one per cluster, so rotating it is a helm upgrade",
+            "# everywhere — the cost of keeping the images private.",
+            "imagePullSecret:",
+            "  create: true",
+            f"  name: {values.pull_secret_name}",
+            f"  registry: {values.pull_secret_registry}",
+            f"  username: {values.pull_secret_username}",
+            f"  token: {values.pull_secret_token}",
+        ]
     if values.enrolment_token:
         lines += [
             "",
@@ -459,6 +477,10 @@ class ClusterService:
                 gateway=settings.TUNNEL_GATEWAY,
                 remote_write_url=settings.METRICS_REMOTE_WRITE_URL,
                 enrolment_token=enrolment_token,
+                pull_secret_name=settings.IMAGE_PULL_SECRET_NAME,
+                pull_secret_registry=settings.IMAGE_PULL_SECRET_REGISTRY,
+                pull_secret_username=settings.IMAGE_PULL_SECRET_USERNAME,
+                pull_secret_token=settings.IMAGE_PULL_SECRET_TOKEN,
             )
         )
 

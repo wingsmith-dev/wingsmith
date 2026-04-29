@@ -62,6 +62,35 @@ def test_setup_values_fold_in_the_enrolment_token_only_when_given():
     assert "value: hgro1.secret" in with_token
 
 
+def test_setup_values_render_a_pull_secret_when_one_is_configured():
+    """Private operator and agent images need a credential, or the install cannot pull."""
+    out = _setup_values(
+        values(
+            pull_secret_name="ghcr-pull",
+            pull_secret_registry="ghcr.io",
+            pull_secret_username="machine-user",
+            pull_secret_token="ghp_x",
+        )
+    )
+    lines = out.splitlines()
+    assert "imagePullSecret:" in lines
+    assert "  create: true" in lines
+    assert "  name: ghcr-pull" in lines
+    assert "  registry: ghcr.io" in lines
+    assert "  token: ghp_x" in lines
+
+
+def test_setup_values_omit_the_pull_secret_when_none_is_configured():
+    """The default. Public images, or a registry the nodes already authenticate to."""
+    assert "imagePullSecret" not in _setup_values(values())
+
+
+def test_setup_values_omit_a_half_configured_pull_secret():
+    """A name with no token renders `auth` as the base64 of ":" — an ImagePullBackOff, not a refusal."""
+    assert "imagePullSecret" not in _setup_values(values(pull_secret_name="ghcr-pull"))
+    assert "imagePullSecret" not in _setup_values(values(pull_secret_token="ghp_x"))
+
+
 def test_setup_values_carry_the_region_inside_the_single_cluster_mapping():
     """A second `cluster:` key would silently shadow `id` and `hubUrl`."""
     out = _setup_values(values(region="ap-southeast-1"))

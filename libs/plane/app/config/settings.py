@@ -206,6 +206,30 @@ class Settings:
     same way `OPERATOR_IMAGE` is and for the same reason. Empty leaves the chart's
     own default."""
 
+    IMAGE_PULL_SECRET_NAME: str = ""
+    """Name of the Secret the operator and agent ServiceAccounts present to their
+    registry, written into the setup values.
+
+    Empty renders no pull secret at all, which is right when those images are
+    public or sit in a registry the nodes already authenticate to. Set it, with the
+    username and token below, when they are private — otherwise a registered
+    cluster is handed values that install cleanly and cannot pull."""
+
+    IMAGE_PULL_SECRET_REGISTRY: str = "ghcr.io"
+    """The registry those credentials authenticate to."""
+
+    IMAGE_PULL_SECRET_USERNAME: str = ""
+    """The registry username. Not a secret, unlike the token beside it."""
+
+    IMAGE_PULL_SECRET_TOKEN: str = ""
+    """The registry token, rendered into a cluster's values so the chart can build
+    the Secret. Read-only on packages is all it needs.
+
+    Unlike the enrolment token this is one credential shared by the whole fleet
+    rather than one per cluster, so it is held here and not minted per cluster —
+    and rotating it is a `helm upgrade` everywhere, which is the cost of keeping
+    the images private."""
+
     TUNNEL_GATEWAY: str = ""
     """The gateway address a cluster's agent dials, `host:port`, written into the
     setup values.

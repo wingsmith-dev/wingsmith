@@ -119,6 +119,14 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- if not (or (hasPrefix "ws://" .Values.cluster.hubUrl) (hasPrefix "wss://" .Values.cluster.hubUrl)) -}}
 {{- fail "cluster.hubUrl must start with ws:// or wss://" -}}
 {{- end -}}
+{{- if .Values.imagePullSecret.create -}}
+{{- if not .Values.imagePullSecret.name -}}
+{{- fail "imagePullSecret.create is true but imagePullSecret.name is empty — the chart would build a Secret with no name, and nothing would reference it. Name it, or set create=false when the images need no credential." -}}
+{{- end -}}
+{{- if not (and .Values.imagePullSecret.username .Values.imagePullSecret.token) -}}
+{{- fail "imagePullSecret.create is true but username or token is empty — that renders a Secret carrying the base64 of \":\", which the kubelet accepts and the registry then refuses, so the failure is an ImagePullBackOff on the operator rather than a refusal here. A GHCR token needs read:packages and nothing else." -}}
+{{- end -}}
+{{- end -}}
 {{- if .Values.agent.enabled -}}
 {{- if .Values.cluster.readOnly -}}
 {{- fail "agent.enabled is true but cluster.readOnly is also true — a read-only cluster cannot serve. Serving a model means the operator applying what the plane declared, and read-only reconciles nothing, so the agent would come up, hold healthy tunnels to every gateway, advertise this cluster as reachable, and answer every inference request with a 502 for a frontend that was never deployed. That is worse than a refusal: it is an install that looks clean and never works, and the gateway would route real traffic to it. Set cluster.readOnly=false once this cluster is managed, or leave agent.enabled=false until it is." -}}
