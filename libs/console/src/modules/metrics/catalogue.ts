@@ -14,7 +14,13 @@
 
 import type { MetricSample, MetricUnit } from "./types"
 
-export type MetricFamily = "gpu" | "inference"
+/**
+ * `serving` is the front door's own account of a request and is not a third
+ * view of the `inference` numbers beside it. The two disagreeing is not a bug:
+ * the gateway's latency includes the hop and the queue in front of it, and it
+ * counts the requests that never reached an engine at all.
+ */
+export type MetricFamily = "gpu" | "inference" | "serving"
 
 export type MetricGroup =
   | "occupancy"

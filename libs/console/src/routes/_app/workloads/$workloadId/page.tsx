@@ -1349,10 +1349,14 @@ function PerformanceView({
                 {formatMetric(meanUtilization(week.data), "percent")}
               </Field>
               <Field label="Idle GPU-hours (7d)">
-                {idleHours === null ? <Dash /> : idleHours.toFixed(1)}
+                {idleHours === null ? (
+                  <Dash>{null}</Dash>
+                ) : (
+                  idleHours.toFixed(1)
+                )}
               </Field>
               <Field label="Cards held">
-                {gpuCount ? String(gpuCount) : <Dash />}
+                {gpuCount ? String(gpuCount) : <Dash>{null}</Dash>}
               </Field>
               <Field label="Window">{data.window}</Field>
             </FieldGrid>

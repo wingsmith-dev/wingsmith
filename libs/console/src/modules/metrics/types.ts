@@ -1,7 +1,18 @@
 /** Mirrors `app/modules/metrics/schemas.py`. Measurement, never inventory. */
 
+/**
+ * `endpoint` is the one scope that is not a cluster or a part of one. It is
+ * answered from the gateway's own series, so it is the only scope whose answer
+ * carries no cluster at all.
+ */
 export type MetricScope =
-  "cluster" | "pool" | "node" | "device" | "deployment" | "workload"
+  | "cluster"
+  | "pool"
+  | "node"
+  | "device"
+  | "deployment"
+  | "workload"
+  | "endpoint"
 
 export type MetricUnit =
   | "percent"
