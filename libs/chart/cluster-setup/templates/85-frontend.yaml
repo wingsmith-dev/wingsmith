@@ -1,0 +1,64 @@
+{{- if .Values.frontend.enabled }}
+# The one OpenAI-compatible frontend this cluster serves every model through.
+#
+# It belongs to the cluster and not to a deployment, and that is the whole reason
+# it is here rather than something the operator renders. A request names its model
+# in the body, where no ingress and no Service can route on it, so a frontend per
+# deployment would leave nothing able to choose between them: the thing that picks
+# a worker has to be the thing that has already parsed the body. One frontend per
+# cluster, joined by every worker through `globalDynamoNamespace`, is what makes
+# `libs/operator/internal/render/dynamo.go` able to render workers alone.
+#
+# So it is cluster setup in the same sense as NATS and the model cache — a
+# singleton a cluster installs once to become one the plane can serve from, not a
+# per-workload object. Nothing about it varies with what is running: it discovers
+# workers over NATS as they register, and a model added or removed never edits it.
+#
+# Two things find it by Dynamo's own labels rather than by name, because the name
+# is the part that varies between clusters: the serving agent
+# (`libs/agent/internal/dynamo/resolver.go`) and the operator's benchmark
+# executor. Both look for the Service selecting
+# `nvidia.com/dynamo-component: Frontend`, which is why the component below is
+# NAMED `Frontend` — the label carries the component's name, and renaming it here
+# would leave both halves looking for something that no longer exists.
+#
+# ORDERING, and it is not incidental: `DynamoGraphDeployment` is a CRD the Dynamo
+# operator applies from its own image at runtime, not one this chart vendors into
+# `crds/`. On a cluster that does not have it yet, this object cannot apply and
+# Helm fails the release with "no matches for kind DynamoGraphDeployment". A first
+# install therefore leaves `frontend.enabled` false and a second `helm upgrade`
+# turns it on, once the Dynamo operator has registered its own types. That is
+# stated in values.yaml and in NOTES.txt, because the failure is otherwise read as
+# a broken chart rather than as a step in the wrong order.
+apiVersion: nvidia.com/v1beta1
+kind: DynamoGraphDeployment
+metadata:
+  name: inference
+  namespace: dynamo
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  components:
+    # `type: frontend` is what earns the component its ports and its frontend
+    # labels; `name: Frontend` is what both discoverers match on. They are
+    # different fields saying different things and both are load-bearing.
+    - name: Frontend
+      type: frontend
+      replicas: {{ .Values.frontend.replicas }}
+      # The global namespace, not the one derived from this object's name. Workers
+      # the operator renders set the same flag, and it is the only thing that puts
+      # them and this frontend in one another's reach.
+      globalDynamoNamespace: true
+      podTemplate:
+        spec:
+          # No node selector and no GPU toleration: this holds no model and wants
+          # no accelerator, and the GPU pool is tainted, so it lands on ordinary
+          # nodes without being told to. Pinning it to the system pool would only
+          # add a value that has to be right on every cluster.
+          containers:
+            - name: main
+              image: {{ printf "%s:%s" .Values.frontend.image.repository .Values.frontend.image.tag | quote }}
+              imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+              resources:
+                {{- toYaml .Values.frontend.resources | nindent 16 }}
+{{- end }}

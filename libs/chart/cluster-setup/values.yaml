@@ -123,6 +123,39 @@ agent:
     limits:
       memory: 512Mi
 
+# The one OpenAI-compatible frontend every model on this cluster is served
+# through. The agent forwards to it, so serving needs it — but it is off by
+# default because of an ordering constraint that cannot be worked around here:
+# it renders a DynamoGraphDeployment, and that CRD is applied by the Dynamo
+# operator at runtime rather than shipped in this chart's `crds/`. Turn it on in a
+# SECOND `helm upgrade`, after the first install has the Dynamo operator running;
+# enabling it on a fresh cluster fails the release with "no matches for kind
+# DynamoGraphDeployment".
+# Why it belongs to the cluster and not to a deployment: templates/85-frontend.yaml.
+frontend:
+  enabled: false
+  # Two, so a `helm upgrade` does not take this cluster's inference with it. It
+  # holds no model state — the workers do — so a replica is cheap and stateless.
+  replicas: 2
+  image:
+    # The Dynamo runtime, which carries the frontend as well as the engines.
+    # Keep the tag in step with the `dynamo-platform` dependency in Chart.yaml:
+    # this pod speaks to that operator's NATS and registers in its namespace, and
+    # Helm does not expose a dependency's version to a template, so the two
+    # versions cannot be derived from one another here.
+    repository: nvcr.io/nvidia/ai-dynamo/vllm-runtime
+    tag: "1.4.1"
+    pullPolicy: IfNotPresent
+  # A router, not a runtime: it holds streams open and copies bytes, and every
+  # token of every response passes through it. No CPU limit, for the same reason
+  # the agent has none — throttling the data path is latency on every token.
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      memory: 2Gi
+
 # The pre-tunnel way in, off on every cluster we run. `backend.service` is the
 # Dynamo frontend Service, whose name is not knowable until a deployment exists —
 # so leave this disabled, or let the plane render it from ClusterServing.url.

@@ -142,6 +142,9 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- fail "agent.gateway.address is an address and not a URL — give it as host:port, with no scheme. TLS is not optional on this dial and is assumed, so a scheme carries nothing the agent can act on; the value is passed to net.Dial, where a scheme becomes part of the hostname and fails to resolve." -}}
 {{- end -}}
 {{- end -}}
+{{- if and .Values.agent.enabled (not .Values.frontend.enabled) (not .Values.agent.frontendEndpoint) -}}
+{{- fail "agent.enabled is true but this cluster has no frontend to forward to — set frontend.enabled=true, or agent.frontendEndpoint if the frontend is something this chart did not install. The agent proxies every inference request to the one Dynamo frontend it finds by label, so without one it comes up healthy, holds tunnels to every gateway, advertises this cluster as reachable, and answers real traffic with a 502 that names a Service nobody deployed. Note the ordering: frontend.enabled renders a DynamoGraphDeployment, whose CRD the Dynamo operator applies at runtime, so on a fresh cluster it goes on in a second `helm upgrade` and not in the first install." -}}
+{{- end -}}
 {{- if and .Values.serving.enabled (not .Values.serving.backend.service) -}}
 {{- fail "serving.enabled is true but serving.backend.service is empty — set it to the Dynamo frontend Service name" -}}
 {{- end -}}
