@@ -8,6 +8,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/hangar-dev/hangar/libs/operator/internal/render"
@@ -202,5 +203,99 @@ func TestAnUndecodableWarmSetFailsWithoutRetrying(t *testing.T) {
 	}
 	if result.Requeue || result.RequeueAfter != 0 {
 		t.Error("an undecodable payload was scheduled for a retry that cannot help")
+	}
+}
+
+// lastCache is the most recent thing said about an artifact's residency.
+func lastCache(t *testing.T, r *recordingReporter, artifactID string) wire.CacheObserved {
+	t.Helper()
+	for i := len(r.cacheFrames) - 1; i >= 0; i-- {
+		if r.cacheFrames[i].ArtifactID == artifactID {
+			return r.cacheFrames[i]
+		}
+	}
+	t.Fatalf("nothing was reported about %s", artifactID)
+	return wire.CacheObserved{}
+}
+
+// TestAStalledWarmSetEntrySaysWhyItIsStalled is the gap that let a workload hang indefinitely with
+// no explanation anywhere the plane could read. The operator knew the download would never start —
+// there is no image to start it with — and kept that entirely to itself, reporting a bare `absent`
+// that is indistinguishable from a download about to begin.
+func TestAStalledWarmSetEntrySaysWhyItIsStalled(t *testing.T) {
+	recipe := testRecipeDesired()
+	recipe.EngineImage = nil
+	rep := &recordingReporter{}
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	runReconcileWith(t, rep, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "recipe", testRecipeID, recipe),
+	)
+
+	frame := lastCache(t, rep, testArtifactID)
+	if frame.State != "absent" {
+		t.Errorf("state = %q, want absent", frame.State)
+	}
+	if frame.Reason != "NoRuntimeImage" {
+		t.Errorf("reason = %q, want NoRuntimeImage", frame.Reason)
+	}
+	if frame.Message == "" {
+		t.Error("a reason with no message leaves the reader to guess what to do about it")
+	}
+}
+
+// TestAnUndeclaredArtifactSaysSo — the other stalled entry, and a different action: this one
+// resolves on its own when the frame arrives, so it must not read like the one that never does.
+func TestAnUndeclaredArtifactSaysSo(t *testing.T) {
+	rep := &recordingReporter{}
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	runReconcileWith(t, rep, cache)
+
+	if got := lastCache(t, rep, testArtifactID).Reason; got != "ArtifactNotDeclared" {
+		t.Errorf("reason = %q, want ArtifactNotDeclared", got)
+	}
+}
+
+// TestADispatchedPrefetchReportsItIsPending — a warm-set entry that is fetchable but whose job has
+// not run yet is also `absent`, and it is the one `absent` that needs no action at all.
+func TestADispatchedPrefetchReportsItIsPending(t *testing.T) {
+	rep := &recordingReporter{}
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	runReconcileWith(t, rep, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+	)
+
+	frame := lastCache(t, rep, testArtifactID)
+	if frame.Reason != "PrefetchPending" {
+		t.Errorf("reason = %q, want PrefetchPending", frame.Reason)
+	}
+	if frame.Resident {
+		t.Error("a queued download reported the weights as resident")
+	}
+}
+
+// TestResidencyIsReportedOncePerTransition — the report is suppressed when it would repeat itself,
+// so the plane's event log is transitions and not a heartbeat every fifteen seconds.
+func TestResidencyIsReportedOncePerTransition(t *testing.T) {
+	rep := &recordingReporter{}
+	recipe := testRecipeDesired()
+	recipe.EngineImage = nil
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	objects := []client.Object{
+		cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "recipe", testRecipeID, recipe),
+	}
+	r, _, _ := runReconcileWith(t, rep, objects...)
+	before := len(rep.cacheFrames)
+
+	req := types.NamespacedName{Namespace: cache.GetNamespace(), Name: cache.GetName()}
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: req}); err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+
+	if len(rep.cacheFrames) != before {
+		t.Errorf("frames = %d, want %d: an unchanged residency was reported twice", len(rep.cacheFrames), before)
 	}
 }

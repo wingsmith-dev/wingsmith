@@ -644,6 +644,15 @@ class CacheObserved(Struct):
     eviction_pressure: float
     observed_at: str
     last_accessed_at: str | None = None
+    reason: str = ""
+    message: str = ""
+    """Why this state and not another, in the cluster's own words.
+
+    Free text with an empty default, so an operator that predates these fields
+    still decodes. `absent` was previously indistinguishable between "the
+    download has not started yet" and "nothing on this cluster can start it",
+    and those need different actions from whoever is reading the page.
+    """
 
 
 class ComponentObserved(Struct):

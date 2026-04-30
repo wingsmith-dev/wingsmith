@@ -24,6 +24,7 @@ type recordingReporter struct {
 	sent             []wire.DeploymentObserved
 	replicaFrames    []wire.ReplicaObserved
 	allocationFrames []wire.AllocationObserved
+	cacheFrames      []wire.CacheObserved
 }
 
 func (r *recordingReporter) Send(_ syncpkg.MessageType, _ string, payload any) error {
@@ -34,6 +35,8 @@ func (r *recordingReporter) Send(_ syncpkg.MessageType, _ string, payload any) e
 		r.replicaFrames = append(r.replicaFrames, p)
 	case wire.AllocationObserved:
 		r.allocationFrames = append(r.allocationFrames, p)
+	case wire.CacheObserved:
+		r.cacheFrames = append(r.cacheFrames, p)
 	}
 	return nil
 }

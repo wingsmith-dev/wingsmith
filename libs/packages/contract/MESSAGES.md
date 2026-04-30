@@ -277,6 +277,20 @@ the cluster-wide rollup, because a shared tier has residency with no node to att
 mid-fetch and a node already serving are different facts to a cache-aware router, and a flat list of
 node ids cannot tell them apart.
 
+**`cache.observed` carries `reason` and `message`, on every state and not only on failures.** The
+same argument as `deployment.observed`, one layer down. `state: "absent"` cannot distinguish a
+download that has not started yet from one that nothing on the cluster is able to start, and the
+second of those never resolves on its own: the operator fetches weights with the engine image of a
+recipe that serves them, so an artifact no recipe on that cluster names an image for has no
+downloader and waits for ever. The plane used to see only `absent` and a deployment repeating
+`WeightsNotResident`, with the reason recorded nowhere it could show. Both fields are free text and
+both are omitted when empty, so an operator that predates them decodes against a new plane and a new
+operator against an old one.
+
+Reasons the operator sets deliberately: `NoRuntimeImage`, `ArtifactNotDeclared`, `PrefetchPending`,
+`Fetching`, `Resident`. The plane files each transition as a `cache.<state>` event against the
+artifact, which is what puts the download on the timeline of every workload waiting on it.
+
 ## Operations
 
 | Type | Direction | Payload |

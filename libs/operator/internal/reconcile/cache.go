@@ -42,7 +42,8 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 			// Reported even so. "The cluster was told to hold weights it has never heard
 			// described" is the answer to why a deployment is not starting, and it is only an
 			// answer if it leaves the operator.
-			r.reportResidency(ctx, entry.ArtifactID, 0)
+			r.reportResidency(ctx, entry.ArtifactID, 0, "ArtifactNotDeclared",
+				fmt.Sprintf("artifact %s has not arrived on this cluster yet", entry.ArtifactID))
 			continue
 		}
 		image, err := r.runtimeImage(ctx, entry.ArtifactID)
@@ -51,13 +52,18 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 		}
 		if image == "" {
 			pending++
-			r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes)
+			// The one gate with no self-healing path. Every other wait here ends when a frame
+			// arrives; this one ends only when somebody gives a recipe an engine image, so the
+			// reason has to travel or the deployment waits forever on a silent cluster.
+			r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes, "NoRuntimeImage",
+				fmt.Sprintf("no recipe on this cluster serving %s names an engine image to fetch it with; "+
+					"the download cannot start until one does", entry.ArtifactID))
 			continue
 		}
 		if err := r.ensurePrefetch(ctx, res, *artifact, image); err != nil {
 			return ctrl.Result{}, err
 		}
-		r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes)
+		r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes, "", "")
 	}
 
 	if pending > 0 {
@@ -145,7 +151,7 @@ func (r *SyncedResourceReconciler) runtimeImage(ctx context.Context, artifactID 
 //
 // Failures are swallowed for the same reason the deployment report's are: this is a progress
 // report, and losing one must never turn a reconcile that otherwise succeeded into a retry.
-func (r *SyncedResourceReconciler) reportResidency(ctx context.Context, artifactID string, size int64) {
+func (r *SyncedResourceReconciler) reportResidency(ctx context.Context, artifactID string, size int64, reason, message string) {
 	reporter := r.reporter()
 	if reporter == nil {
 		return
@@ -165,7 +171,18 @@ func (r *SyncedResourceReconciler) reportResidency(ctx context.Context, artifact
 		state = "fetching"
 	}
 
-	key2 := reportKey{phase: state, message: strconv.FormatInt(bytes, 10)}
+	if reason == "" {
+		switch state {
+		case "resident":
+			reason, message = "Resident", "the weights are on this cluster"
+		case "fetching":
+			reason, message = "Fetching", "the download is running"
+		default:
+			reason, message = "PrefetchPending", "the download has not started yet"
+		}
+	}
+
+	key2 := reportKey{phase: state + "/" + reason, message: strconv.FormatInt(bytes, 10)}
 	if r.lastReported(artifactID) == key2 {
 		return
 	}
@@ -177,6 +194,8 @@ func (r *SyncedResourceReconciler) reportResidency(ctx context.Context, artifact
 		Resident:      state == "resident",
 		BytesResident: bytes,
 		Nodes:         []wire.CacheNodeResidency{},
+		Reason:        reason,
+		Message:       message,
 		ObservedAt:    time.Now().UTC().Format(time.RFC3339Nano),
 	}
 	if err := reporter.Send(TypeCacheObserved, artifactID, payload); err != nil {

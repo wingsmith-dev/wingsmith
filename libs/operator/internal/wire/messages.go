@@ -545,6 +545,11 @@ type CacheObserved struct {
 	EvictionPressure float64              `json:"eviction_pressure"`
 	LastAccessedAt   *string              `json:"last_accessed_at,omitempty"`
 	ObservedAt       string               `json:"observed_at"`
+	// Reason and Message say why this state and not another. Free text, omitted when empty, so
+	// a plane that predates them is unaffected: `absent` alone cannot distinguish a download
+	// that has not started from one nothing on this cluster is able to start.
+	Reason  string `json:"reason,omitempty"`
+	Message string `json:"message,omitempty"`
 }
 
 // ComponentObserved is the rollout status of one component.

@@ -26,6 +26,8 @@
     ],
     "eviction_pressure": 0.72,
     "last_accessed_at": "2026-08-19T14:01:59.300Z",
-    "observed_at": "2026-08-19T14:02:11.400Z"
+    "observed_at": "2026-08-19T14:02:11.400Z",
+    "reason": "Resident",
+    "message": "the weights are on this cluster"
   }
 }
