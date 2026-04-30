@@ -45,11 +45,9 @@ import {
   IconArrowLeft,
   IconChartHistogram,
   IconCpu,
-  IconDownload,
   IconExternalLink,
   IconFlask,
   IconLayoutDashboard,
-  IconSearch,
   IconTerminal2,
   IconTimeline,
 } from "@tabler/icons-react"
