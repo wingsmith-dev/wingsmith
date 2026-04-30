@@ -229,11 +229,36 @@ export function WorkloadDetailPage() {
         />
       )}
 
-      <div className="space-y-4 p-4">
-        {isLoading && <Skeleton className="h-40 w-full" />}
+      {isLoading && (
+        <div className="p-4">
+          <Skeleton className="h-40 w-full" />
+        </div>
+      )}
 
-        {workload && scale && (
-          <>
+      {workload && scale && (
+        <Tabs value={view} onValueChange={setView} className="flex-col gap-0">
+          <TabsList variant="underline" className="px-4">
+            <ViewTab value="overview" icon={IconLayoutDashboard}>
+              Overview
+            </ViewTab>
+            <ViewTab value="performance" icon={IconChartHistogram}>
+              Performance
+            </ViewTab>
+            <ViewTab value="workbench" icon={IconFlask}>
+              Workbench
+            </ViewTab>
+            <ViewTab value="placement" icon={IconCpu}>
+              Placement
+            </ViewTab>
+            <ViewTab value="lifecycle" icon={IconTimeline}>
+              Lifecycle
+            </ViewTab>
+            <ViewTab value="logs" icon={IconTerminal2}>
+              Logs
+            </ViewTab>
+          </TabsList>
+
+          <div className="space-y-4 p-4">
             <div className="flex flex-wrap items-center gap-3">
               <StatusLabel tone={workloadPhaseTone(workload.phase)}>
                 {workload.phase}
@@ -245,641 +270,609 @@ export function WorkloadDetailPage() {
               </span>
             </div>
 
-            <Tabs value={view} onValueChange={setView}>
-              <TabsList className="h-auto w-full justify-start gap-5 rounded-none border-b bg-transparent p-0">
-                <ViewTab value="overview" icon={IconLayoutDashboard}>
-                  Overview
-                </ViewTab>
-                <ViewTab value="performance" icon={IconChartHistogram}>
-                  Performance
-                </ViewTab>
-                <ViewTab value="workbench" icon={IconFlask}>
-                  Workbench
-                </ViewTab>
-                <ViewTab value="placement" icon={IconCpu}>
-                  Placement
-                </ViewTab>
-                <ViewTab value="lifecycle" icon={IconTimeline}>
-                  Lifecycle
-                </ViewTab>
-                <ViewTab value="logs" icon={IconTerminal2}>
-                  Logs
-                </ViewTab>
-              </TabsList>
+            {/* ---- Overview ------------------------------------------ */}
+            <TabsContent value="overview" className="space-y-4">
+              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+                <div className="flex flex-col gap-4">
+                  <TrafficPanel />
 
-              {/* ---- Overview ------------------------------------------ */}
-              <TabsContent value="overview" className="mt-4 space-y-4">
-                <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                  <div className="flex flex-col gap-4">
-                    <TrafficPanel />
-
-                    <Panel
-                      title="Deployments"
-                      subtitle={`${workload.deployments.length} cluster${
-                        workload.deployments.length === 1 ? "" : "s"
-                      } placement chose`}
-                      action={
-                        <WriteAction>
-                          <Button size="sm" onClick={() => setScaling(true)}>
-                            Scale
-                          </Button>
-                        </WriteAction>
-                      }
-                    >
-                      <WorkloadDeploymentsTable
-                        deployments={workload.deployments}
-                        unit={scale.unit}
-                        // TODO-API per-cluster requests/sec is data-plane, seeded here
-                        serving={(d) =>
-                          (d.desired_replicas * 215).toLocaleString()
-                        }
-                        onDrain={(deployment) => {
-                          setDraining(deployment)
-                          setDrainOpen(true)
-                        }}
-                      />
-                    </Panel>
-
-                    <Panel
-                      title="Endpoints"
-                      subtitle="Entrypoints routing traffic to this workload"
-                    >
-                      <DataTable
-                        columns={workloadEndpointColumns}
-                        list={endpoints}
-                        rowKey={(e) => e.id}
-                        empty="No endpoint routes to this workload."
-                      />
-                    </Panel>
-                  </div>
-
-                  <div className="flex flex-col gap-4">
-                    <Panel title="Details">
-                      <FieldGrid>
-                        <Field label="Status">
-                          <StatusLabel tone={workloadPhaseTone(workload.phase)}>
-                            {workload.phase}
-                          </StatusLabel>
-                        </Field>
-                        <Field label="Autoscaling">
-                          min {scale.min} · max {scale.max}
-                        </Field>
-                        <Field label="Clusters">
-                          {workload.deployments.length === 0 ? (
-                            <Dash>{null}</Dash>
-                          ) : (
-                            workload.deployments
-                              .map((d) => d.cluster_name)
-                              .join(", ")
-                          )}
-                        </Field>
-                        <Field label="Region">
-                          <Dash>
-                            {Array.from(
-                              new Set(
-                                workload.deployments
-                                  .map((d) => d.region)
-                                  .filter((r): r is string => r != null)
-                              )
-                            ).join(", ") || null}
-                          </Dash>
-                        </Field>
-                        <Field label="Project">{workload.project_id}</Field>
-                        <Field label="Created">
-                          {formatAbsolute(workload.created_at)}
-                        </Field>
-                        <Field label="Labels" className="sm:col-span-2">
-                          <Labels labels={workload.labels ?? {}} />
-                        </Field>
-                      </FieldGrid>
-                    </Panel>
-
-                    <Panel title="Recipe & artifact">
-                      <FieldGrid>
-                        <Field label="Recipe">
-                          <Link to="/recipes" className="hover:underline">
-                            {recipe?.name ?? workload.recipe_id}
-                          </Link>
-                        </Field>
-                        <Field label="Hardware">
-                          {recipe
-                            ? `${recipe.shape.device_count}× ${recipe.shape.device_class}`
-                            : "—"}
-                        </Field>
-                        <Field label="Engine">
-                          {recipe
-                            ? `${recipe.engine} ${recipe.engine_version}`
-                            : "—"}
-                        </Field>
-                        <Field label="Quantization">
-                          <Dash>
-                            {recipe
-                              ? [recipe.quantization, recipe.dtype]
-                                  .filter(Boolean)
-                                  .join(" · ") || null
-                              : null}
-                          </Dash>
-                        </Field>
-                        <Field label="Context length">
-                          {recipe?.context_length ?? "—"}
-                        </Field>
-                        <Field label="Adapters">
-                          {workload.adapter_artifact_ids?.length || "none"}
-                        </Field>
-                      </FieldGrid>
-                    </Panel>
-
-                    <Panel title="Activity">
-                      <DeploymentTimeline
-                        events={events.items}
-                        loading={events.isLoading}
-                      />
-                    </Panel>
-                  </div>
-                </div>
-              </TabsContent>
-
-              {/* ---- Performance -------------------------------------- */}
-              <TabsContent value="performance" className="mt-4 space-y-4">
-                {/* TODO-API workload-level performance rollups — metrics are per-deployment only */}
-                <StatRow>
-                  <StatTile label="GPU utilization" value="78%" />
-                  <StatTile label="KV cache utilization" value="64%" />
-                  <StatTile label="Avg batch size" value="24.3" />
-                  <StatTile label="Tokens / sec" value="18,420" />
-                  <StatTile label="Queue depth (p50)" value="6" />
-                </StatRow>
-
-                <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                  <div className="flex flex-col gap-4">
-                    <Panel
-                      title="Throughput"
-                      subtitle="Input and output tokens per second"
-                    >
-                      {/* TODO-API token throughput series not exposed at workload scope */}
-                      <ChartLegend
-                        items={[
-                          {
-                            tone: "primary",
-                            label: "Output",
-                            value: "12,180 tok/s",
-                          },
-                          {
-                            tone: "warn",
-                            label: "Input",
-                            value: "6,240 tok/s",
-                          },
-                        ]}
-                      />
-                      <MiniChart
-                        lines={[
-                          { points: THROUGHPUT_OUT, tone: "primary" },
-                          { points: THROUGHPUT_IN, tone: "warn" },
-                        ]}
-                      />
-                    </Panel>
-
-                    <Panel
-                      title="Latency breakdown"
-                      subtitle="Time to first token, inter-token latency, end-to-end"
-                    >
-                      {/* TODO-API latency-percentile breakdown not exposed by the plane */}
-                      <DataTable
-                        columns={latencyColumns}
-                        list={mockList(MOCK_LATENCY)}
-                        rowKey={(r) => r.percentile}
-                        empty=""
-                      />
-                    </Panel>
-
-                    <Panel
-                      title="GPU utilization"
-                      subtitle="Hourly average across all replicas, last 7 days"
-                      action={<HeatmapLegend />}
-                    >
-                      {/* TODO-API per-hour GPU utilization heatmap not exposed by the plane */}
-                      <GpuHeatmap />
-                    </Panel>
-                  </div>
-
-                  <div className="flex flex-col gap-4">
-                    <Panel title="Resource utilization">
-                      {/* TODO-API host CPU / memory / network rollups at workload scope */}
-                      <FieldGrid>
-                        <Field label="GPU memory (avg)">
-                          71% · 681 / 960 GB
-                        </Field>
-                        <Field label="Host CPU">34%</Field>
-                        <Field label="Host memory">58%</Field>
-                        <Field label="Network throughput">420 Mbps</Field>
-                      </FieldGrid>
-                    </Panel>
-
-                    <Panel title="Efficiency">
-                      {/* TODO-API efficiency scoring and cost suggestions not computed by the plane */}
-                      <FieldGrid>
-                        <Field label="Utilization efficiency">78%</Field>
-                        <Field label="Idle GPU-hours (24h)">11.4</Field>
-                        <Field label="Suggestion" className="sm:col-span-2">
-                          Scale us-east-1b to 1 replica during low-traffic
-                          windows
-                        </Field>
-                      </FieldGrid>
-                    </Panel>
-                  </div>
-                </div>
-              </TabsContent>
-
-              {/* ---- Workbench ---------------------------------------- */}
-              <TabsContent value="workbench" className="mt-4 space-y-4">
-                <StatRow>
-                  <StatTile
-                    label="Last run"
-                    value={
-                      benchmarks?.length
-                        ? formatRelative(
-                            benchmarks[0].started_at ?? benchmarks[0].created_at
-                          )
-                        : "—"
-                    }
-                  />
-                  <StatTile
-                    label="Runs recorded"
-                    value={String(benchmarks?.length ?? 0)}
-                  />
-                  {/* TODO-API sustainable concurrency is a data-plane analytic, not a benchmark field */}
-                  <StatTile label="Sustainable concurrency" value="72" />
-                  {/* TODO-API peak throughput is read from a harness summary the plane never normalises */}
-                  <StatTile
-                    label="Peak throughput tested"
-                    value="19.3k tok/s"
-                  />
-                  {/* TODO-API tuning recommendation is not computed by the plane */}
-                  <StatTile
-                    label="Recommendation"
-                    value="Current config is optimal"
-                    small
-                  />
-                </StatRow>
-
-                <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                  <div className="flex flex-col gap-4">
-                    <Panel
-                      title="Finding the inflection point"
-                      subtitle="Throughput and p99 latency across a concurrency sweep, fp8 · awq · 8x H100"
-                    >
-                      {/* TODO-API concurrency-sweep results not exposed by the plane */}
-                      <ChartLegend
-                        items={[
-                          {
-                            tone: "primary",
-                            label: "Throughput",
-                            value: "3.2k → 19.3k tok/s",
-                          },
-                          {
-                            tone: "danger",
-                            label: "p99 latency",
-                            value: "220ms → 4.8s",
-                          },
-                        ]}
-                      />
-                      <MiniChart
-                        lines={[
-                          { points: SWEEP_THROUGHPUT, tone: "primary" },
-                          { points: SWEEP_LATENCY, tone: "danger" },
-                        ]}
-                      />
-                      <ChartAxis labels={SWEEP_AXIS} />
-                      <FieldGrid>
-                        <Field label="Inflection point">
-                          72 concurrent requests
-                        </Field>
-                        <Field label="Beyond 72">
-                          Throughput gains flatten (+4%) while p99 latency grows
-                          5x
-                        </Field>
-                      </FieldGrid>
-                    </Panel>
-
-                    <Panel
-                      title="Parameter sweep"
-                      subtitle="Serving-engine tuning, fixed at 64 concurrent requests"
-                      action={
-                        <WriteAction>
-                          <Button size="sm" onClick={() => setBenchOpen(true)}>
-                            Run benchmark
-                          </Button>
-                        </WriteAction>
-                      }
-                    >
-                      {/* TODO-API parameter-sweep tuning is not aggregated by the plane */}
-                      <DataTable
-                        columns={sweepColumns}
-                        list={mockList(MOCK_SWEEP)}
-                        rowKey={(r) => r.run}
-                        empty=""
-                      />
-                    </Panel>
-
-                    <Panel
-                      title="Run history"
-                      subtitle="Every benchmark run taken against this workload's deployments"
-                    >
-                      <DataTable
-                        columns={benchmarkColumns({
-                          level: "workload",
-                          showDeployment: true,
-                          showStep: true,
-                          showRequest: true,
-                        })}
-                        list={mockList(benchmarks ?? [])}
-                        rowKey={(run) => run.id}
-                        empty="No benchmark has been run against this workload."
-                      />
-                    </Panel>
-                  </div>
-
-                  <div className="flex flex-col gap-4">
-                    <Panel title="New run">
-                      <p className="text-2xs text-muted-foreground/70">
-                        Requests a workload-level measurement of this recipe.
-                        The plane expands the ask into one run per placed
-                        deployment and grades it against the frozen standard.
-                      </p>
+                  <Panel
+                    title="Deployments"
+                    subtitle={`${workload.deployments.length} cluster${
+                      workload.deployments.length === 1 ? "" : "s"
+                    } placement chose`}
+                    action={
                       <WriteAction>
-                        <Button
-                          size="sm"
-                          className="mt-3"
-                          onClick={() => setBenchOpen(true)}
-                        >
-                          Start run
+                        <Button size="sm" onClick={() => setScaling(true)}>
+                          Scale
                         </Button>
                       </WriteAction>
-                    </Panel>
+                    }
+                  >
+                    <WorkloadDeploymentsTable
+                      deployments={workload.deployments}
+                      unit={scale.unit}
+                      // TODO-API per-cluster requests/sec is data-plane, seeded here
+                      serving={(d) =>
+                        (d.desired_replicas * 215).toLocaleString()
+                      }
+                      onDrain={(deployment) => {
+                        setDraining(deployment)
+                        setDrainOpen(true)
+                      }}
+                    />
+                  </Panel>
 
-                    <Panel title="Recommendation">
-                      {/* TODO-API tuning recommendations not computed by the plane */}
-                      <FieldGrid>
-                        <Field label="Recommended config">
-                          fp8 · awq · 8x H100 (current)
-                        </Field>
-                        <Field label="Headroom before re-tuning">
-                          ~30% traffic growth
-                        </Field>
-                        <Field label="Next suggested test">
-                          Speculative decoding soak test (run 4)
-                        </Field>
-                        <Field label="Last run by">perf-eng · Aug 14</Field>
-                      </FieldGrid>
-                    </Panel>
-                  </div>
+                  <Panel
+                    title="Endpoints"
+                    subtitle="Entrypoints routing traffic to this workload"
+                  >
+                    <DataTable
+                      columns={workloadEndpointColumns}
+                      list={endpoints}
+                      rowKey={(e) => e.id}
+                      empty="No endpoint routes to this workload."
+                    />
+                  </Panel>
                 </div>
-              </TabsContent>
 
-              {/* ---- Placement ---------------------------------------- */}
-              <TabsContent value="placement" className="mt-4 space-y-4">
-                <StatRow>
-                  <StatTile
-                    label="Nodes"
-                    value={placement ? String(placement.node_count) : "—"}
-                  />
-                  <StatTile
-                    label="GPUs allocated"
-                    value={placement ? String(placement.gpu_count) : "—"}
-                  />
-                  {/* TODO-API topology packing metrics not exposed at workload scope */}
-                  <StatTile label="Node packing" value="75%" />
-                  <StatTile label="Spot instances" value="0%" />
-                  <StatTile label="Rescheduled (7d)" value="1" />
-                </StatRow>
-
-                <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                  <div className="flex flex-col gap-4">
-                    <Panel
-                      title="Topology"
-                      subtitle={`GPU allocation across ${
-                        placement?.node_count ?? 0
-                      } nodes in ${workload.deployments.length} clusters`}
-                    >
-                      <div className="flex flex-col gap-3">
-                        {(placement?.nodes ?? []).map((node) => (
-                          <GpuNodeCard key={node.node} node={node} />
-                        ))}
-                        {placement && placement.nodes.length === 0 && (
-                          <p className="text-2xs text-muted-foreground/60">
-                            This workload holds no devices right now.
-                          </p>
-                        )}
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-4 text-2xs text-muted-foreground">
-                        <LegendSwatch>This workload</LegendSwatch>
-                      </div>
-                    </Panel>
-
-                    <Panel
-                      title="Replica placement"
-                      subtitle="Node and GPU assignment for each live allocation"
-                    >
-                      <DataTable
-                        columns={replicaColumns}
-                        list={mockList(placement?.replicas ?? [])}
-                        rowKey={(r) => r.allocation}
-                        empty="No replicas placed."
-                      />
-                    </Panel>
-                  </div>
-
-                  <div className="flex flex-col gap-4">
-                    <Panel title="Scheduling constraints">
-                      <FieldGrid>
-                        <Field label="Priority class">
-                          {workload.priority_class}
-                        </Field>
-                        <Field label="Preemptible">
-                          {workload.preemptible ? "yes" : "no"}
-                        </Field>
-                        <Field label="Strategy">{workload.strategy}</Field>
-                        <Field label="Fan-out cap">
-                          {workload.max_clusters ?? "none"}
-                        </Field>
-                        {/* TODO-API affinity / anti-affinity / tolerations not modelled by the plane */}
-                        <Field label="Node affinity">gpu-type=H100</Field>
-                        <Field label="Anti-affinity">
-                          Spread across nodes (soft)
-                        </Field>
-                        <Field label="Placement grouping">
-                          NVLink-grouped GPU pairs
-                        </Field>
-                        <Field label="Pinned cluster">
-                          {workload.pinned_cluster_id ? (
-                            <Link
-                              to="/clusters/$clusterId"
-                              params={{
-                                clusterId: workload.pinned_cluster_id,
-                              }}
-                              className="hover:underline"
-                            >
-                              {workload.pinned_cluster_id}
-                            </Link>
-                          ) : (
-                            "none"
-                          )}
-                        </Field>
-                      </FieldGrid>
-                    </Panel>
-
-                    <Panel title="Capacity">
-                      {/* TODO-API pool capacity accounting not exposed at workload scope */}
-                      <FieldGrid>
-                        <Field label="GPUs in pool">48</Field>
-                        <Field label="Allocated to this workload">12</Field>
-                        <Field label="Idle on shared nodes">6</Field>
-                        <Field label="Spot / on-demand">0% / 100%</Field>
-                      </FieldGrid>
-                    </Panel>
-
-                    <Panel title="Recent scheduling events">
-                      <DeploymentTimeline
-                        events={events.items}
-                        loading={events.isLoading}
-                      />
-                    </Panel>
-                  </div>
-                </div>
-              </TabsContent>
-
-              {/* ---- Lifecycle ---------------------------------------- */}
-              <TabsContent value="lifecycle" className="mt-4 space-y-4">
-                <StatRow>
-                  <StatTile
-                    label="Current revision"
-                    value={workload.revision}
-                  />
-                  {/* TODO-API rollout strategy is not a declared field on the workload */}
-                  <StatTile label="Rollout strategy" value="Rolling" small />
-                  <StatTile
-                    label="Started"
-                    value={formatRelative(workload.started_at)}
-                  />
-                  {/* TODO-API rollback / time-to-healthy history not exposed */}
-                  <StatTile label="Rollbacks (30d)" value="0" />
-                  <StatTile label="Time to healthy" value="3m 42s" />
-                </StatRow>
-
-                <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                  <div className="flex flex-col gap-4">
-                    <Panel
-                      title="Operations"
-                      subtitle="Scale, pause and drain — plane-local, each with its own phase"
-                    >
-                      <DataTable
-                        columns={operationColumns()}
-                        list={operations}
-                        rowKey={(operation) => operation.id}
-                        empty="Nothing has been asked of this workload."
-                      />
-                    </Panel>
-
-                    <Panel
-                      title="Revision history"
-                      subtitle="Recipe and configuration changes over time"
-                    >
-                      {/* TODO-API revision history not exposed — only the current revision is on the workload */}
-                      <DataTable
-                        columns={revisionColumns}
-                        list={mockList(MOCK_REVISIONS)}
-                        rowKey={(r) => r.version}
-                        empty=""
-                      />
-                    </Panel>
-
-                    <Panel
-                      title="Canary analysis"
-                      subtitle="v11 → v12, quantization migration"
-                    >
-                      {/* TODO-API canary comparison not computed by the plane */}
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <CanaryCard
-                          label="Baseline · bf16"
-                          metrics={[
-                            ["Error rate", "0.04%"],
-                            ["p99 latency", "340ms"],
-                            ["Cost / 1M tok", "$7.85"],
-                          ]}
-                        />
-                        <CanaryCard
-                          canary
-                          label="Canary · fp8"
-                          metrics={[
-                            ["Error rate", "0.03%"],
-                            ["p99 latency", "305ms"],
-                            ["Cost / 1M tok", "$4.20"],
-                          ]}
-                        />
-                      </div>
-                    </Panel>
-                  </div>
-
-                  <div className="flex flex-col gap-4">
-                    <Panel title="Rollout strategy">
-                      {/* TODO-API rollout tuning not modelled by the plane */}
-                      <FieldGrid>
-                        <Field label="Strategy">Rolling update</Field>
-                        <Field label="Max surge">25%</Field>
-                        <Field label="Max unavailable">0</Field>
-                        <Field label="Min ready seconds">10</Field>
-                      </FieldGrid>
-                    </Panel>
-
-                    <Panel title="Health checks">
-                      {/* TODO-API probe configuration not exposed at workload scope */}
-                      <FieldGrid>
-                        <Field label="Readiness probe">GET /health · 10s</Field>
-                        <Field label="Liveness probe">GET /health · 30s</Field>
-                        <Field label="Startup probe">60s · 10s period</Field>
-                        <Field label="Failure threshold">3 consecutive</Field>
-                      </FieldGrid>
-                    </Panel>
-
-                    <Panel title="Rollback safety">
-                      {/* TODO-API automatic-rollback policy not modelled by the plane */}
-                      <FieldGrid>
-                        <Field label="Automatic rollback">Enabled</Field>
-                        <Field label="Trigger">Error rate &gt; 1% for 5m</Field>
-                        <Field label="Last automatic rollback">
+                <div className="flex flex-col gap-4">
+                  <Panel title="Details">
+                    <FieldGrid>
+                      <Field label="Status">
+                        <StatusLabel tone={workloadPhaseTone(workload.phase)}>
+                          {workload.phase}
+                        </StatusLabel>
+                      </Field>
+                      <Field label="Autoscaling">
+                        min {scale.min} · max {scale.max}
+                      </Field>
+                      <Field label="Clusters">
+                        {workload.deployments.length === 0 ? (
                           <Dash>{null}</Dash>
-                        </Field>
-                        <Field label="Grace period">10m</Field>
-                      </FieldGrid>
-                    </Panel>
-                  </div>
+                        ) : (
+                          workload.deployments
+                            .map((d) => d.cluster_name)
+                            .join(", ")
+                        )}
+                      </Field>
+                      <Field label="Region">
+                        <Dash>
+                          {Array.from(
+                            new Set(
+                              workload.deployments
+                                .map((d) => d.region)
+                                .filter((r): r is string => r != null)
+                            )
+                          ).join(", ") || null}
+                        </Dash>
+                      </Field>
+                      <Field label="Project">{workload.project_id}</Field>
+                      <Field label="Created">
+                        {formatAbsolute(workload.created_at)}
+                      </Field>
+                      <Field label="Labels" className="sm:col-span-2">
+                        <Labels labels={workload.labels ?? {}} />
+                      </Field>
+                    </FieldGrid>
+                  </Panel>
+
+                  <Panel title="Recipe & artifact">
+                    <FieldGrid>
+                      <Field label="Recipe">
+                        <Link to="/recipes" className="hover:underline">
+                          {recipe?.name ?? workload.recipe_id}
+                        </Link>
+                      </Field>
+                      <Field label="Hardware">
+                        {recipe
+                          ? `${recipe.shape.device_count}× ${recipe.shape.device_class}`
+                          : "—"}
+                      </Field>
+                      <Field label="Engine">
+                        {recipe
+                          ? `${recipe.engine} ${recipe.engine_version}`
+                          : "—"}
+                      </Field>
+                      <Field label="Quantization">
+                        <Dash>
+                          {recipe
+                            ? [recipe.quantization, recipe.dtype]
+                                .filter(Boolean)
+                                .join(" · ") || null
+                            : null}
+                        </Dash>
+                      </Field>
+                      <Field label="Context length">
+                        {recipe?.context_length ?? "—"}
+                      </Field>
+                      <Field label="Adapters">
+                        {workload.adapter_artifact_ids?.length || "none"}
+                      </Field>
+                    </FieldGrid>
+                  </Panel>
+
+                  <Panel title="Activity">
+                    <DeploymentTimeline
+                      events={events.items}
+                      loading={events.isLoading}
+                    />
+                  </Panel>
                 </div>
-              </TabsContent>
+              </div>
+            </TabsContent>
 
-              {/* ---- Logs --------------------------------------------- */}
-              <TabsContent value="logs" className="mt-4 space-y-4">
-                <Panel
-                  title="Replica logs"
-                  subtitle="Logs stream direct from the cluster and never cross the control plane"
-                >
-                  {/* TODO-API log streaming is a data-plane concern, not served by the plane */}
-                  <LogViewer />
-                </Panel>
+            {/* ---- Performance -------------------------------------- */}
+            <TabsContent value="performance" className="space-y-4">
+              {/* TODO-API workload-level performance rollups — metrics are per-deployment only */}
+              <StatRow>
+                <StatTile label="GPU utilization" value="78%" />
+                <StatTile label="KV cache utilization" value="64%" />
+                <StatTile label="Avg batch size" value="24.3" />
+                <StatTile label="Tokens / sec" value="18,420" />
+                <StatTile label="Queue depth (p50)" value="6" />
+              </StatRow>
 
-                <Panel
-                  title="Events"
-                  subtitle="Scheduler and lifecycle events for this workload"
-                >
-                  <DeploymentTimeline
-                    events={events.items}
-                    loading={events.isLoading}
-                  />
-                </Panel>
-              </TabsContent>
-            </Tabs>
-          </>
-        )}
-      </div>
+              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+                <div className="flex flex-col gap-4">
+                  <Panel
+                    title="Throughput"
+                    subtitle="Input and output tokens per second"
+                  >
+                    {/* TODO-API token throughput series not exposed at workload scope */}
+                    <ChartLegend
+                      items={[
+                        {
+                          tone: "primary",
+                          label: "Output",
+                          value: "12,180 tok/s",
+                        },
+                        {
+                          tone: "warn",
+                          label: "Input",
+                          value: "6,240 tok/s",
+                        },
+                      ]}
+                    />
+                    <MiniChart
+                      lines={[
+                        { points: THROUGHPUT_OUT, tone: "primary" },
+                        { points: THROUGHPUT_IN, tone: "warn" },
+                      ]}
+                    />
+                  </Panel>
+
+                  <Panel
+                    title="Latency breakdown"
+                    subtitle="Time to first token, inter-token latency, end-to-end"
+                  >
+                    {/* TODO-API latency-percentile breakdown not exposed by the plane */}
+                    <DataTable
+                      columns={latencyColumns}
+                      list={mockList(MOCK_LATENCY)}
+                      rowKey={(r) => r.percentile}
+                      empty=""
+                    />
+                  </Panel>
+
+                  <Panel
+                    title="GPU utilization"
+                    subtitle="Hourly average across all replicas, last 7 days"
+                    action={<HeatmapLegend />}
+                  >
+                    {/* TODO-API per-hour GPU utilization heatmap not exposed by the plane */}
+                    <GpuHeatmap />
+                  </Panel>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <Panel title="Resource utilization">
+                    {/* TODO-API host CPU / memory / network rollups at workload scope */}
+                    <FieldGrid>
+                      <Field label="GPU memory (avg)">71% · 681 / 960 GB</Field>
+                      <Field label="Host CPU">34%</Field>
+                      <Field label="Host memory">58%</Field>
+                      <Field label="Network throughput">420 Mbps</Field>
+                    </FieldGrid>
+                  </Panel>
+
+                  <Panel title="Efficiency">
+                    {/* TODO-API efficiency scoring and cost suggestions not computed by the plane */}
+                    <FieldGrid>
+                      <Field label="Utilization efficiency">78%</Field>
+                      <Field label="Idle GPU-hours (24h)">11.4</Field>
+                      <Field label="Suggestion" className="sm:col-span-2">
+                        Scale us-east-1b to 1 replica during low-traffic windows
+                      </Field>
+                    </FieldGrid>
+                  </Panel>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ---- Workbench ---------------------------------------- */}
+            <TabsContent value="workbench" className="space-y-4">
+              <StatRow>
+                <StatTile
+                  label="Last run"
+                  value={
+                    benchmarks?.length
+                      ? formatRelative(
+                          benchmarks[0].started_at ?? benchmarks[0].created_at
+                        )
+                      : "—"
+                  }
+                />
+                <StatTile
+                  label="Runs recorded"
+                  value={String(benchmarks?.length ?? 0)}
+                />
+                {/* TODO-API sustainable concurrency is a data-plane analytic, not a benchmark field */}
+                <StatTile label="Sustainable concurrency" value="72" />
+                {/* TODO-API peak throughput is read from a harness summary the plane never normalises */}
+                <StatTile label="Peak throughput tested" value="19.3k tok/s" />
+                {/* TODO-API tuning recommendation is not computed by the plane */}
+                <StatTile
+                  label="Recommendation"
+                  value="Current config is optimal"
+                  small
+                />
+              </StatRow>
+
+              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+                <div className="flex flex-col gap-4">
+                  <Panel
+                    title="Finding the inflection point"
+                    subtitle="Throughput and p99 latency across a concurrency sweep, fp8 · awq · 8x H100"
+                  >
+                    {/* TODO-API concurrency-sweep results not exposed by the plane */}
+                    <ChartLegend
+                      items={[
+                        {
+                          tone: "primary",
+                          label: "Throughput",
+                          value: "3.2k → 19.3k tok/s",
+                        },
+                        {
+                          tone: "danger",
+                          label: "p99 latency",
+                          value: "220ms → 4.8s",
+                        },
+                      ]}
+                    />
+                    <MiniChart
+                      lines={[
+                        { points: SWEEP_THROUGHPUT, tone: "primary" },
+                        { points: SWEEP_LATENCY, tone: "danger" },
+                      ]}
+                    />
+                    <ChartAxis labels={SWEEP_AXIS} />
+                    <FieldGrid>
+                      <Field label="Inflection point">
+                        72 concurrent requests
+                      </Field>
+                      <Field label="Beyond 72">
+                        Throughput gains flatten (+4%) while p99 latency grows
+                        5x
+                      </Field>
+                    </FieldGrid>
+                  </Panel>
+
+                  <Panel
+                    title="Parameter sweep"
+                    subtitle="Serving-engine tuning, fixed at 64 concurrent requests"
+                    action={
+                      <WriteAction>
+                        <Button size="sm" onClick={() => setBenchOpen(true)}>
+                          Run benchmark
+                        </Button>
+                      </WriteAction>
+                    }
+                  >
+                    {/* TODO-API parameter-sweep tuning is not aggregated by the plane */}
+                    <DataTable
+                      columns={sweepColumns}
+                      list={mockList(MOCK_SWEEP)}
+                      rowKey={(r) => r.run}
+                      empty=""
+                    />
+                  </Panel>
+
+                  <Panel
+                    title="Run history"
+                    subtitle="Every benchmark run taken against this workload's deployments"
+                  >
+                    <DataTable
+                      columns={benchmarkColumns({
+                        level: "workload",
+                        showDeployment: true,
+                        showStep: true,
+                        showRequest: true,
+                      })}
+                      list={mockList(benchmarks ?? [])}
+                      rowKey={(run) => run.id}
+                      empty="No benchmark has been run against this workload."
+                    />
+                  </Panel>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <Panel title="New run">
+                    <p className="text-2xs text-muted-foreground/70">
+                      Requests a workload-level measurement of this recipe. The
+                      plane expands the ask into one run per placed deployment
+                      and grades it against the frozen standard.
+                    </p>
+                    <WriteAction>
+                      <Button
+                        size="sm"
+                        className="mt-3"
+                        onClick={() => setBenchOpen(true)}
+                      >
+                        Start run
+                      </Button>
+                    </WriteAction>
+                  </Panel>
+
+                  <Panel title="Recommendation">
+                    {/* TODO-API tuning recommendations not computed by the plane */}
+                    <FieldGrid>
+                      <Field label="Recommended config">
+                        fp8 · awq · 8x H100 (current)
+                      </Field>
+                      <Field label="Headroom before re-tuning">
+                        ~30% traffic growth
+                      </Field>
+                      <Field label="Next suggested test">
+                        Speculative decoding soak test (run 4)
+                      </Field>
+                      <Field label="Last run by">perf-eng · Aug 14</Field>
+                    </FieldGrid>
+                  </Panel>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ---- Placement ---------------------------------------- */}
+            <TabsContent value="placement" className="space-y-4">
+              <StatRow>
+                <StatTile
+                  label="Nodes"
+                  value={placement ? String(placement.node_count) : "—"}
+                />
+                <StatTile
+                  label="GPUs allocated"
+                  value={placement ? String(placement.gpu_count) : "—"}
+                />
+                {/* TODO-API topology packing metrics not exposed at workload scope */}
+                <StatTile label="Node packing" value="75%" />
+                <StatTile label="Spot instances" value="0%" />
+                <StatTile label="Rescheduled (7d)" value="1" />
+              </StatRow>
+
+              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+                <div className="flex flex-col gap-4">
+                  <Panel
+                    title="Topology"
+                    subtitle={`GPU allocation across ${
+                      placement?.node_count ?? 0
+                    } nodes in ${workload.deployments.length} clusters`}
+                  >
+                    <div className="flex flex-col gap-3">
+                      {(placement?.nodes ?? []).map((node) => (
+                        <GpuNodeCard key={node.node} node={node} />
+                      ))}
+                      {placement && placement.nodes.length === 0 && (
+                        <p className="text-2xs text-muted-foreground/60">
+                          This workload holds no devices right now.
+                        </p>
+                      )}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-4 text-2xs text-muted-foreground">
+                      <LegendSwatch>This workload</LegendSwatch>
+                    </div>
+                  </Panel>
+
+                  <Panel
+                    title="Replica placement"
+                    subtitle="Node and GPU assignment for each live allocation"
+                  >
+                    <DataTable
+                      columns={replicaColumns}
+                      list={mockList(placement?.replicas ?? [])}
+                      rowKey={(r) => r.allocation}
+                      empty="No replicas placed."
+                    />
+                  </Panel>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <Panel title="Scheduling constraints">
+                    <FieldGrid>
+                      <Field label="Priority class">
+                        {workload.priority_class}
+                      </Field>
+                      <Field label="Preemptible">
+                        {workload.preemptible ? "yes" : "no"}
+                      </Field>
+                      <Field label="Strategy">{workload.strategy}</Field>
+                      <Field label="Fan-out cap">
+                        {workload.max_clusters ?? "none"}
+                      </Field>
+                      {/* TODO-API affinity / anti-affinity / tolerations not modelled by the plane */}
+                      <Field label="Node affinity">gpu-type=H100</Field>
+                      <Field label="Anti-affinity">
+                        Spread across nodes (soft)
+                      </Field>
+                      <Field label="Placement grouping">
+                        NVLink-grouped GPU pairs
+                      </Field>
+                      <Field label="Pinned cluster">
+                        {workload.pinned_cluster_id ? (
+                          <Link
+                            to="/clusters/$clusterId"
+                            params={{
+                              clusterId: workload.pinned_cluster_id,
+                            }}
+                            className="hover:underline"
+                          >
+                            {workload.pinned_cluster_id}
+                          </Link>
+                        ) : (
+                          "none"
+                        )}
+                      </Field>
+                    </FieldGrid>
+                  </Panel>
+
+                  <Panel title="Capacity">
+                    {/* TODO-API pool capacity accounting not exposed at workload scope */}
+                    <FieldGrid>
+                      <Field label="GPUs in pool">48</Field>
+                      <Field label="Allocated to this workload">12</Field>
+                      <Field label="Idle on shared nodes">6</Field>
+                      <Field label="Spot / on-demand">0% / 100%</Field>
+                    </FieldGrid>
+                  </Panel>
+
+                  <Panel title="Recent scheduling events">
+                    <DeploymentTimeline
+                      events={events.items}
+                      loading={events.isLoading}
+                    />
+                  </Panel>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ---- Lifecycle ---------------------------------------- */}
+            <TabsContent value="lifecycle" className="space-y-4">
+              <StatRow>
+                <StatTile label="Current revision" value={workload.revision} />
+                {/* TODO-API rollout strategy is not a declared field on the workload */}
+                <StatTile label="Rollout strategy" value="Rolling" small />
+                <StatTile
+                  label="Started"
+                  value={formatRelative(workload.started_at)}
+                />
+                {/* TODO-API rollback / time-to-healthy history not exposed */}
+                <StatTile label="Rollbacks (30d)" value="0" />
+                <StatTile label="Time to healthy" value="3m 42s" />
+              </StatRow>
+
+              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+                <div className="flex flex-col gap-4">
+                  <Panel
+                    title="Operations"
+                    subtitle="Scale, pause and drain — plane-local, each with its own phase"
+                  >
+                    <DataTable
+                      columns={operationColumns()}
+                      list={operations}
+                      rowKey={(operation) => operation.id}
+                      empty="Nothing has been asked of this workload."
+                    />
+                  </Panel>
+
+                  <Panel
+                    title="Revision history"
+                    subtitle="Recipe and configuration changes over time"
+                  >
+                    {/* TODO-API revision history not exposed — only the current revision is on the workload */}
+                    <DataTable
+                      columns={revisionColumns}
+                      list={mockList(MOCK_REVISIONS)}
+                      rowKey={(r) => r.version}
+                      empty=""
+                    />
+                  </Panel>
+
+                  <Panel
+                    title="Canary analysis"
+                    subtitle="v11 → v12, quantization migration"
+                  >
+                    {/* TODO-API canary comparison not computed by the plane */}
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <CanaryCard
+                        label="Baseline · bf16"
+                        metrics={[
+                          ["Error rate", "0.04%"],
+                          ["p99 latency", "340ms"],
+                          ["Cost / 1M tok", "$7.85"],
+                        ]}
+                      />
+                      <CanaryCard
+                        canary
+                        label="Canary · fp8"
+                        metrics={[
+                          ["Error rate", "0.03%"],
+                          ["p99 latency", "305ms"],
+                          ["Cost / 1M tok", "$4.20"],
+                        ]}
+                      />
+                    </div>
+                  </Panel>
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <Panel title="Rollout strategy">
+                    {/* TODO-API rollout tuning not modelled by the plane */}
+                    <FieldGrid>
+                      <Field label="Strategy">Rolling update</Field>
+                      <Field label="Max surge">25%</Field>
+                      <Field label="Max unavailable">0</Field>
+                      <Field label="Min ready seconds">10</Field>
+                    </FieldGrid>
+                  </Panel>
+
+                  <Panel title="Health checks">
+                    {/* TODO-API probe configuration not exposed at workload scope */}
+                    <FieldGrid>
+                      <Field label="Readiness probe">GET /health · 10s</Field>
+                      <Field label="Liveness probe">GET /health · 30s</Field>
+                      <Field label="Startup probe">60s · 10s period</Field>
+                      <Field label="Failure threshold">3 consecutive</Field>
+                    </FieldGrid>
+                  </Panel>
+
+                  <Panel title="Rollback safety">
+                    {/* TODO-API automatic-rollback policy not modelled by the plane */}
+                    <FieldGrid>
+                      <Field label="Automatic rollback">Enabled</Field>
+                      <Field label="Trigger">Error rate &gt; 1% for 5m</Field>
+                      <Field label="Last automatic rollback">
+                        <Dash>{null}</Dash>
+                      </Field>
+                      <Field label="Grace period">10m</Field>
+                    </FieldGrid>
+                  </Panel>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ---- Logs --------------------------------------------- */}
+            <TabsContent value="logs" className="space-y-4">
+              <Panel
+                title="Replica logs"
+                subtitle="Logs stream direct from the cluster and never cross the control plane"
+              >
+                {/* TODO-API log streaming is a data-plane concern, not served by the plane */}
+                <LogViewer />
+              </Panel>
+
+              <Panel
+                title="Events"
+                subtitle="Scheduler and lifecycle events for this workload"
+              >
+                <DeploymentTimeline
+                  events={events.items}
+                  loading={events.isLoading}
+                />
+              </Panel>
+            </TabsContent>
+          </div>
+        </Tabs>
+      )}
     </div>
   )
 }
@@ -895,11 +888,8 @@ function ViewTab({
   icon: typeof IconLayoutDashboard
 }>) {
   return (
-    <TabsTrigger
-      value={value}
-      className="gap-1.5 rounded-none border-b-2 border-transparent bg-transparent px-0.5 py-3 text-muted-foreground shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
-    >
-      <Icon className="size-4" />
+    <TabsTrigger value={value}>
+      <Icon />
       {children}
     </TabsTrigger>
   )
