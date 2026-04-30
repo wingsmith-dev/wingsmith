@@ -6,6 +6,7 @@ from app.core.ids import NODE
 from app.core.ids import EVENT
 from app.core.ids import PROJECT
 from app.core.ids import PREFIXES
+from app.core.ids import WORKLOAD
 from app.core.ids import is_uid
 from app.core.ids import new_uid
 from app.core.exceptions import Invalid
@@ -13,6 +14,7 @@ from app.modules.events.routes import EventRoutes
 from app.modules.events.schemas import EventSchema
 from app.modules.events.services import EventService
 from app.modules.events.repository import EventRepository
+from app.modules.events.repository import subject_clause
 from app.modules.events.repository import subject_subquery
 
 
@@ -123,3 +125,28 @@ def test_get_resolves_on_the_public_id_not_the_row_key(repo):
 def test_the_event_prefix_is_registered():
     assert EVENT in PREFIXES
     assert is_uid(new_uid(EVENT))
+
+
+def test_a_workload_subject_reaches_its_deployments_and_replicas(repo):
+    """A workload has no events of its own; the whole timeline is its children's."""
+    text = sql(repo.list_query(limit=10, subject=new_uid(WORKLOAD)))
+    assert "demand_deployment.id" in text
+    assert "demand_replica.id" in text
+
+
+def test_a_workload_subject_reaches_the_weights_it_waits_on(repo):
+    """The download that blocks every deployment is filed against the artifact."""
+    text = sql(repo.list_query(limit=10, subject=new_uid(WORKLOAD)))
+    assert "demand_artifact.id" in text
+    assert "ops_event.subject_type = " in text
+
+
+def test_a_workloads_artifact_events_are_scoped_to_its_own_clusters(repo):
+    """Shared weights must not drag another workload's downloads into this one."""
+    text = sql(repo.list_query(limit=10, subject=new_uid(WORKLOAD)))
+    assert "ops_event.cluster_id IN (SELECT demand_deployment.cluster_id" in text
+
+
+def test_a_workload_subject_is_no_longer_rejected(repo):
+    """It used to raise, which is why the page it backs showed an empty log."""
+    assert subject_clause(new_uid(WORKLOAD)) is not None

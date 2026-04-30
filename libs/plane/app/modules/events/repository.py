@@ -3,6 +3,7 @@ import datetime as dt
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import or_
+from sqlalchemy import and_
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +14,7 @@ from app.core.ids import CLUSTER
 from app.core.ids import REPLICA
 from app.core.ids import ARTIFACT
 from app.core.ids import ENDPOINT
+from app.core.ids import WORKLOAD
 from app.core.ids import COMPONENT
 from app.core.ids import OPERATION
 from app.core.ids import DEPLOYMENT
@@ -22,10 +24,12 @@ from app.db.models import Node
 from app.db.models import Pool
 from app.db.models import Event
 from app.db.models import Device
+from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Replica
 from app.db.models import Artifact
 from app.db.models import Endpoint
+from app.db.models import Workload
 from app.db.models import Component
 from app.db.models import Operation
 from app.db.models import Deployment
@@ -79,8 +83,54 @@ def subject_subquery(ref: str):
     return select(model.id).where(model.uid == ref)
 
 
+def workload_clause(ref: str):
+    """Every event in one workload's story, including its children's.
+
+    Nothing writes an event whose subject is a workload: a workload is a
+    statement of intent, and everything that happens to it happens to a
+    deployment, a replica, or the weights those replicas load. Filtering on the
+    workload alone therefore returned an empty timeline for a workload that was
+    visibly stuck, which is the opposite of what the page is for.
+
+    Three generations, in the order a reader meets them. The deployments are the
+    workload's share of each cluster; the replicas are what those deployments
+    run; and the artifact is the one thing outside the workload's own tree that
+    can hold all of it — a deployment waiting on weights that are not resident is
+    waiting on an event filed against the artifact.
+
+    The artifact leg is scoped to the clusters this workload is deployed on. The
+    same weights may back several workloads, and a download on a cluster this
+    workload never reached is somebody else's timeline.
+    """
+    deployments = select(Deployment.id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
+    replicas = select(Replica.id).where(Replica.deployment_id.in_(deployments))
+    artifact = (
+        select(Artifact.id)
+        .join(Recipe, Recipe.artifact_id == Artifact.id)
+        .join(Workload, Workload.recipe_id == Recipe.id)
+        .where(Workload.uid == ref)
+    )
+    clusters = (
+        select(Deployment.cluster_id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
+    )
+    return or_(
+        Event.subject_id.in_(deployments),
+        Event.subject_id.in_(replicas),
+        Event.details["workload_id"].astext == ref,
+        and_(
+            Event.subject_type == "artifact",
+            Event.subject_id.in_(artifact),
+            Event.cluster_id.in_(clusters),
+        ),
+    )
+
+
 def subject_clause(ref: str):
     """Matches events about one subject, whether or not the subject still exists."""
+    if not is_uid(ref):
+        raise Invalid(f"subject {ref!r} is not an identifier", {"subject": ref})
+    if ref[:4] == WORKLOAD:
+        return workload_clause(ref)
     matched = Event.subject_id.in_(subject_subquery(ref))
     key = SUBJECT_DETAIL_KEYS.get(ref[:4])
     if key is None:

@@ -30,6 +30,7 @@ from app.hub.messages import MESSAGE_TYPES
 from app.ingestion.sink import DatabaseSink
 from app.ingestion.sink import UnknownCluster
 from app.ingestion.desired import stream_desired
+from app.modules.events.repository import EventRepository
 
 from tests.conftest import ROOT
 from tests.conftest import CLUSTER
@@ -58,6 +59,7 @@ OPERATION = "opr_01j9x2kkkkkkkkkkkkkkkkkkkk"
 BENCHMARK = "bmk_01j9x2mmmmmmmmmmmmmmmmmmmm"
 DEPLOYMENT = "dep_01j9x2ccccccccccccccccccc1"
 COMPONENT = "cmp_01j9x2mmmmmmmmmmmmmmmmmmmm"
+SEEDED_WORKLOAD = "wkl_01j9x2wwwwwwwwwwwwwwwwwwww"
 
 
 # --------------------------------------------------------------------------- payloads
@@ -401,7 +403,7 @@ async def seed_deployment(sessions, cluster) -> None:
                   ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
                 ), w AS (
                   INSERT INTO demand_workload (uid, name, kind, project_id, priority_class_id, recipe_id)
-                  SELECT 'wkl_bench', 'llama-70b-prod', 'service', p.id, c.id, r.id FROM p, c, r
+                  SELECT :workload, 'llama-70b-prod', 'service', p.id, c.id, r.id FROM p, c, r
                   ON CONFLICT (uid) DO UPDATE SET kind = excluded.kind RETURNING id
                 )
                 INSERT INTO demand_deployment (uid, workload_id, cluster_id, name, generation)
@@ -409,7 +411,7 @@ async def seed_deployment(sessions, cluster) -> None:
                 ON CONFLICT (uid) DO UPDATE SET cluster_id = excluded.cluster_id
                 """
             ),
-            {"deployment": DEPLOYMENT, "cluster": cluster},
+            {"deployment": DEPLOYMENT, "cluster": cluster, "workload": SEEDED_WORKLOAD},
         )
 
 
@@ -901,3 +903,145 @@ async def test_a_live_session_writes_state_and_marks_the_cluster(sessions, clust
     assert await fetch(sessions, "SELECT reachable, disconnected_at IS NOT NULL FROM supply_cluster_sync_state") == [
         (False, True)
     ]
+
+
+# --------------------------------------------------------------------------- weights residency
+
+
+async def seed_warm_artifact(sessions, cluster) -> None:
+    """The artifact `seed_deployment` already hangs a recipe off, ready to be reported on."""
+    await seed_deployment(sessions, cluster)
+
+
+async def test_a_residency_frame_lands_a_row_and_an_event(sessions, cluster) -> None:
+    """Residency used to land a row and nothing else.
+
+    The row answers "are the weights there now"; a stuck deployment is asking what
+    has been happening to them, and there was no answer anywhere. Both halves are
+    written from the one frame now.
+    """
+    await seed_warm_artifact(sessions, cluster)
+    sink = DatabaseSink(sessions)
+
+    await sink.apply_observed(
+        observed("cache.observed", artifact_id="art_bench", state="absent", resident=False, nodes=[])
+    )
+
+    rows = await fetch(sessions, "SELECT state FROM ops_cache_entry WHERE cluster_id = :c", {"c": cluster})
+    assert [r.state for r in rows] == ["absent"]
+    events = await fetch(sessions, "SELECT type, subject_type FROM ops_event WHERE cluster_id = :c", {"c": cluster})
+    assert ("cache.absent", "artifact") in [(e.type, e.subject_type) for e in events]
+
+
+async def test_the_reason_a_download_is_stalled_reaches_the_plane(sessions, cluster) -> None:
+    """The whole point of the field: `absent` alone is not an answer anybody can act on."""
+    await seed_warm_artifact(sessions, cluster)
+    sink = DatabaseSink(sessions)
+
+    await sink.apply_observed(
+        observed(
+            "cache.observed",
+            artifact_id="art_bench",
+            state="absent",
+            resident=False,
+            nodes=[],
+            reason="NoRuntimeImage",
+            message="no recipe on this cluster names an engine image",
+        )
+    )
+
+    rows = await fetch(
+        sessions,
+        "SELECT message, details->>'reason' AS reason FROM ops_event WHERE type = 'cache.absent'",
+    )
+    assert rows[0].reason == "NoRuntimeImage"
+    assert "engine image" in rows[0].message
+
+
+async def test_an_operator_that_sends_no_reason_still_files_the_event(sessions, cluster) -> None:
+    """Free text with an empty default, so neither side has to ship first."""
+    await seed_warm_artifact(sessions, cluster)
+    sink = DatabaseSink(sessions)
+
+    await sink.apply_observed(
+        observed("cache.observed", artifact_id="art_bench", state="fetching", resident=False, nodes=[], reason="")
+    )
+
+    rows = await fetch(sessions, "SELECT message FROM ops_event WHERE type = 'cache.fetching'")
+    assert rows and rows[0].message
+
+
+async def test_replaying_one_residency_frame_writes_one_event(sessions, cluster) -> None:
+    """A resync replays frames, and a timeline that grows on replay is not a timeline."""
+    await seed_warm_artifact(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    frame = observed("cache.observed", artifact_id="art_bench", state="resident", nodes=[])
+
+    await sink.apply_observed(frame)
+    await sink.apply_observed(frame)
+
+    rows = await fetch(sessions, "SELECT count(*) AS n FROM ops_event WHERE type = 'cache.resident'")
+    assert rows[0].n == 1
+
+
+async def test_a_workloads_timeline_reaches_the_download_it_is_blocked_on(sessions, cluster) -> None:
+    """Hop four, end to end: what the operator said, read back the way the page reads it.
+
+    The event is filed against the artifact, and the page asks by workload. Without
+    the subject expansion this returns nothing, which is precisely what the Logs
+    tab showed while a workload sat waiting on weights that were never fetched.
+    """
+    await seed_warm_artifact(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(
+        observed(
+            "cache.observed",
+            artifact_id="art_bench",
+            state="absent",
+            resident=False,
+            nodes=[],
+            reason="NoRuntimeImage",
+        )
+    )
+
+    async with sessions() as db:
+        repo = EventRepository(db)
+        result = await db.execute(repo.list_query(limit=50, subject=SEEDED_WORKLOAD))
+        kinds = [row[0].type for row in result.all()]
+
+    assert "cache.absent" in kinds, "the workload's timeline does not reach the weights it waits on"
+
+
+async def test_a_workloads_timeline_reaches_its_deployments(sessions, cluster) -> None:
+    """The other child, and the one every deployment event is already written against."""
+    await seed_warm_artifact(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    await sink.apply_observed(
+        observed("deployment.observed", deployment_id=DEPLOYMENT, phase="pending", reason="WeightsNotResident")
+    )
+
+    async with sessions() as db:
+        repo = EventRepository(db)
+        result = await db.execute(repo.list_query(limit=50, subject=SEEDED_WORKLOAD))
+        rows = [row[0] for row in result.all()]
+
+    assert any(r.type.startswith("deployment.") for r in rows)
+    assert any(r.details.get("reason") == "WeightsNotResident" for r in rows)
+
+
+async def test_another_workloads_download_stays_out_of_this_ones_timeline(sessions, cluster) -> None:
+    """Shared weights are shared; a download on a cluster this workload never reached is not its story."""
+    await seed_warm_artifact(sessions, cluster)
+    await seed_cluster(sessions, OTHER_CLUSTER, "other")
+    sink = DatabaseSink(sessions)
+
+    await sink.apply_observed(
+        observed("cache.observed", cluster_uid=OTHER_CLUSTER, artifact_id="art_bench", state="absent", nodes=[])
+    )
+
+    async with sessions() as db:
+        repo = EventRepository(db)
+        result = await db.execute(repo.list_query(limit=50, subject=SEEDED_WORKLOAD))
+        kinds = [row[0].type for row in result.all()]
+
+    assert "cache.absent" not in kinds
