@@ -161,6 +161,30 @@ class Settings:
     than a boot failure.
     """
 
+    ENGINE_IMAGE_REPOS: str = "vllm=nvcr.io/nvidia/ai-dynamo/vllm-runtime,sglang=nvcr.io/nvidia/ai-dynamo/sglang-runtime,trtllm=nvcr.io/nvidia/ai-dynamo/tensorrtllm-runtime"
+    """`engine=repository` pairs the plane resolves a recipe's image from.
+
+    A recipe names an engine and a version; the image those two mean is a
+    property of the deployment, not of the recipe, and asking every author to
+    retype it is how a recipe reaches a cluster with no image at all. A recipe
+    with no image is not rejected by anything downstream — the operator simply
+    never renders a prefetch job for its weights, and the deployment waits on a
+    download nobody was told to start. Resolving it here removes the field from
+    the set of things a user can silently get wrong.
+
+    An explicit `engine_image` on the recipe always wins; this is the fallback.
+    An engine absent from this map has no default and still requires one.
+    """
+
+    ENGINE_IMAGE_TAG_DEFAULT: str = "1.4.1"
+    """Tag used when a recipe's `engine_version` is empty or `latest`.
+
+    `latest` is not a tag these registries publish, so accepting it verbatim
+    produces an `ImagePullBackOff` rather than a validation error. Keep this in
+    step with `dynamo.frontend.image.tag` in the cluster-setup chart: the
+    prefetch job's layout has to be the one the engine later reads.
+    """
+
     ADMIN_AUTH: str = ""
     """`enabled` or `disabled`. Empty means "not explicitly set", which resolves
     to `disabled` when `APP_ENV == "local"` and `enabled` everywhere else — see

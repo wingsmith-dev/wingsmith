@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 import msgspec
 
+from app.config import settings
 from app.core.ids import RECIPE
 from app.core.ids import ARTIFACT
 from app.core.ids import new_uid
@@ -35,6 +36,7 @@ from app.modules.recipes.services import serving_args
 from app.modules.recipes.services import check_serving
 from app.modules.recipes.services import check_capacity
 from app.modules.recipes.services import check_footprint
+from app.modules.recipes.services import resolve_engine_image
 from app.modules.recipes.services import resolved_engine_args
 from app.modules.recipes.repository import RecipeRepository
 
@@ -684,3 +686,45 @@ def test_a_context_window_that_does_not_fit_is_not_a_refusal():
     """The estimate has a 15% fudge in it, so enforcing it would refuse working recipes."""
     sizing = sizing_for(artifact_row(parameter_count=70_000_000_000), "fp16")
     assert check_capacity(sizing, "h100-80gb-sxm", 2, 2) is None
+
+
+def test_engine_image_is_resolved_from_the_engine_and_version():
+    """The common case: an author picks an engine, not a registry address."""
+    assert resolve_engine_image("vllm", "1.4.1", None) == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.1"
+
+
+def test_a_declared_engine_image_always_wins():
+    """Pinning an exact image is the reason the field is writable."""
+    assert resolve_engine_image("vllm", "1.4.1", "my.registry/vllm:dev") == "my.registry/vllm:dev"
+
+
+def test_latest_resolves_to_a_real_tag():
+    """`latest` is not a tag these registries publish; taking it verbatim is a pull failure."""
+    resolved = resolve_engine_image("vllm", "latest", None)
+    assert resolved is not None
+    assert resolved.endswith(f":{settings.ENGINE_IMAGE_TAG_DEFAULT}")
+
+
+def test_an_empty_version_resolves_to_a_real_tag():
+    resolved = resolve_engine_image("vllm", "", None)
+    assert resolved is not None
+    assert resolved.endswith(f":{settings.ENGINE_IMAGE_TAG_DEFAULT}")
+
+
+def test_an_unknown_engine_has_no_default():
+    """Inventing an address would trade a visible gap for an ImagePullBackOff."""
+    assert resolve_engine_image("some-engine-nobody-configured", "1.0", None) is None
+
+
+def test_the_engine_name_is_matched_case_insensitively():
+    assert resolve_engine_image("VLLM", "1.4.1", None) is not None
+
+
+def test_a_malformed_repo_pair_does_not_break_the_write_path():
+    """One bad character in an env var must not be why a recipe cannot be created."""
+    original = settings.ENGINE_IMAGE_REPOS
+    settings.ENGINE_IMAGE_REPOS = "garbage,,vllm=repo/vllm"
+    try:
+        assert resolve_engine_image("vllm", "1.4.1", None) == "repo/vllm:1.4.1"
+    finally:
+        settings.ENGINE_IMAGE_REPOS = original

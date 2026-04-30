@@ -1463,3 +1463,50 @@ async def test_a_deleted_deployment_keeps_its_timeline(db: AsyncSession) -> None
 
     kinds = [kind for kind, _ in await _timeline(db, created.id)]
     assert kinds == ["deployment.created", "deployment.deleted"]
+
+
+async def test_the_recipe_a_cluster_receives_can_actually_fetch_the_weights(db: AsyncSession) -> None:
+    """The frame is well-formed and still useless without this field.
+
+    `engine_image` is what the operator fetches an artifact with, and it was
+    optional the whole way down: no default in the plane, no rejection anywhere,
+    and an empty box in the console form sending `null`. The cluster then held a
+    warm-set entry it had no downloader for, so the prefetch job was never created
+    and the deployment waited on `WeightsNotResident` for ever. Nothing in the
+    dispatch path noticed, because every frame it sent was valid.
+
+    The fixture recipe declares no image, which is exactly the shape that broke.
+    """
+    cluster, _, _, created = await a_deployment(db)
+
+    frames = await desired_frames(db, cluster.id, "deployment", created.id)
+    recipes = [payload for kind, payload in frames if kind == "recipe.desired"]
+
+    assert recipes, "a deployment's recipe reaches the cluster"
+    assert recipes[0].engine_image, "the cluster cannot fetch weights without one"
+    assert ":" in recipes[0].engine_image, "an image without a tag is not an address"
+
+
+async def test_a_recipe_never_reaches_a_cluster_naming_the_latest_tag(db: AsyncSession) -> None:
+    """`latest` is not a tag these registries publish; it is an ImagePullBackOff.
+
+    The console offers a version box and `latest` is what gets typed into it. Taken
+    verbatim it fails on the cluster minutes later, which is the slowest possible
+    place to learn it.
+    """
+    cluster, _, _, created = await a_deployment(db, name="latest-tagged")
+    artifact = await an_artifact(db, digest="sha256:bbbb", name="other-weights")
+    recipe = await RecipeService(db).create(
+        RecipeCreateRequest(
+            artifact=artifact.id,
+            name="latest-vllm",
+            engine="vllm",
+            engine_version="latest",
+            device_class="h100",
+            context_length=8192,
+        )
+    )
+
+    assert recipe.engine_image is not None
+    assert not recipe.engine_image.endswith(":latest")
+    assert created is not None and cluster is not None

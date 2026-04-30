@@ -278,7 +278,8 @@ export function RecipeForm({
           label="Engine image"
           value={engineImage}
           onChange={setEngineImage}
-          placeholder="registry/image:tag"
+          placeholder="Resolved from the engine and version"
+          hint="Leave empty unless you are pinning a specific build. The plane resolves the image from the engine and version above, and the same image fetches the weights — a recipe with no image is one whose weights never download."
         />
         <DeviceClassField value={deviceClass} onChange={setDeviceClass} />
         <NumberField

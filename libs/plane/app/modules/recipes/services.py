@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import devices
+from app.config import settings
 from app.core.ids import RECIPE
 from app.core.ids import new_uid
 from app.core.vram import Sizing
@@ -332,6 +333,46 @@ def serving_args(engine: str, serving: RecipeServingSchema) -> dict[str, str]:
     return args
 
 
+def engine_image_repos() -> dict[str, str]:
+    """`ENGINE_IMAGE_REPOS` parsed into `engine -> repository`.
+
+    Malformed pairs are dropped rather than raised on: this is read on the write
+    path of every recipe, and one bad character in an environment variable must
+    not be the reason a recipe cannot be created.
+    """
+    repos: dict[str, str] = {}
+    for pair in settings.ENGINE_IMAGE_REPOS.split(","):
+        engine, _, repository = pair.strip().partition("=")
+        if engine and repository:
+            repos[engine.strip().lower()] = repository.strip()
+    return repos
+
+
+def resolve_engine_image(engine: str, engine_version: str, declared: str | None) -> str | None:
+    """The image a recipe serves with, resolved from its engine and version.
+
+    A declared image is returned untouched — pinning an exact image is the whole
+    reason the field is writable, and a recipe that names one has already said
+    what it means. Everything else is the common case: an author picks `vllm` and
+    a version, and the repository those two imply is configuration, not a thing
+    to retype.
+
+    Returns `None` for an engine with no configured repository, which leaves the
+    recipe exactly as it was before this existed. That is deliberate: inventing an
+    address for an engine the plane has never been told about would trade a
+    visible "no image" for an `ImagePullBackOff` on a cluster.
+    """
+    if declared:
+        return declared
+    repository = engine_image_repos().get((engine or "").strip().lower())
+    if not repository:
+        return None
+    tag = (engine_version or "").strip()
+    if not tag or tag == "latest":
+        tag = settings.ENGINE_IMAGE_TAG_DEFAULT
+    return f"{repository}:{tag}"
+
+
 def resolved_engine_args(engine: str, engine_args: dict | None, serving: RecipeServingSchema) -> dict[str, str]:
     """`engine_args` with the typed serving flags laid over the top.
 
@@ -557,7 +598,7 @@ class RecipeService:
             lifecycle=data.lifecycle,
             engine=data.engine,
             engine_version=data.engine_version,
-            engine_image=data.engine_image,
+            engine_image=resolve_engine_image(data.engine, data.engine_version, data.engine_image),
             engine_args=data.engine_args,
             imported_args=data.imported_args,
             quantization=data.quantization,
@@ -634,6 +675,7 @@ class RecipeService:
             )
         for key, value in fields.items():
             setattr(recipe, key, value)
+        recipe.engine_image = resolve_engine_image(recipe.engine, recipe.engine_version, recipe.engine_image)
         if declared_serving is not None:
             recipe.serving = msgspec.to_builtins(serving)
         if declared_capabilities is not None:
