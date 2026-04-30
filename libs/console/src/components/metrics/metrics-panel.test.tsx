@@ -185,4 +185,35 @@ describe("MetricsPanel", () => {
       screen.getByText("no metrics endpoint on this cluster")
     ).toBeInTheDocument()
   })
+
+  it("names a workload's breakdown members clusters and reads them by family", () => {
+    const breakdown = [
+      {
+        key: "clu_a",
+        label: "us-cluster-1",
+        samples: [
+          sample("inference.kv_cache_utilization", 62),
+          sample("inference.ttft", 0.42),
+        ],
+      },
+      {
+        key: "clu_b",
+        label: "ap-cluster-1",
+        samples: [
+          sample("inference.kv_cache_utilization", 34),
+          sample("inference.ttft", 0.88),
+        ],
+      },
+    ]
+    answer(metrics({ scope: "workload", ref: "wkl_1", breakdown }))
+    render(<MetricsPanel scope="workload" refId="wkl_1" family="inference" />)
+
+    expect(screen.getByText("Per cluster")).toBeInTheDocument()
+    expect(screen.getByText("us-cluster-1")).toBeInTheDocument()
+    // The serving family reads its own two numbers, not a card's heat.
+    expect(screen.getByText("34%")).toBeInTheDocument()
+    expect(screen.getByText("880 ms")).toBeInTheDocument()
+    // 88°C is the GPU column this row would carry under the other family.
+    expect(screen.queryByText("88°C")).not.toBeInTheDocument()
+  })
 })

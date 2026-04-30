@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import {
   AVAILABILITY_SOURCE,
   DEFAULT_TILES,
+  metricDefinition,
   metricGroups,
   type MetricFamily,
 } from "@/modules/metrics/catalogue"
@@ -38,19 +39,46 @@ function Empty({ reason }: { reason: string }) {
   )
 }
 
-function Breakdown({ data }: { data: Metrics }) {
+/** What one member of a breakdown is, said in the word the reader uses. */
+const MEMBER: Record<MetricScope, string> = {
+  cluster: "node",
+  pool: "node",
+  node: "device",
+  device: "device",
+  deployment: "device",
+  workload: "cluster",
+}
+
+/**
+ * The two numbers a breakdown row carries, per family.
+ *
+ * The bar is always a percent, because a bar drawn from anything else compares
+ * members on a scale that does not exist. The figure beside it is the one thing
+ * that says "go look at this member" — heat for cards, the tail for serving.
+ */
+const ROW: Record<MetricFamily, { bar: string; side: string }> = {
+  gpu: { bar: "gpu.utilization", side: "gpu.temperature" },
+  inference: {
+    bar: "inference.kv_cache_utilization",
+    side: "inference.ttft",
+  },
+}
+
+function Breakdown({ data, family }: { data: Metrics; family: MetricFamily }) {
   if (data.breakdown.length < 2) return null
+  const row = ROW[family]
+  const side = metricDefinition(row.side)
   return (
     <Card size="sm" className="gap-0 overflow-hidden px-0">
       <div className="px-3 pb-2 font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
-        Per{" "}
-        {data.scope === "cluster" || data.scope === "pool" ? "node" : "device"}
+        Per {MEMBER[data.scope]}
       </div>
       <div className="divide-y divide-border/60">
         {data.breakdown.map((member) => {
-          const util = valueOf(member.samples, "gpu.utilization")
-          const temp = valueOf(member.samples, "gpu.temperature")
-          const tone = temperatureTone(temp)
+          const bar = valueOf(member.samples, row.bar)
+          const value = valueOf(member.samples, row.side)
+          const tone =
+            row.side === "gpu.temperature" ? temperatureTone(value) : "ok"
           return (
             <div
               key={member.key}
@@ -62,11 +90,11 @@ function Breakdown({ data }: { data: Metrics }) {
               <div className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-muted">
                 <div
                   className="h-full rounded-full bg-primary/70"
-                  style={{ width: `${Math.min(100, Math.max(0, util ?? 0))}%` }}
+                  style={{ width: `${Math.min(100, Math.max(0, bar ?? 0))}%` }}
                 />
               </div>
               <span className="w-12 shrink-0 text-right font-mono tabular-nums">
-                {formatMetric(util, "percent")}
+                {formatMetric(bar, "percent")}
               </span>
               <span
                 className={cn(
@@ -78,7 +106,7 @@ function Breakdown({ data }: { data: Metrics }) {
                       : "text-muted-foreground"
                 )}
               >
-                {formatMetric(temp, "celsius")}
+                {formatMetric(value, side?.unit ?? "count")}
               </span>
             </div>
           )
@@ -206,7 +234,7 @@ export function MetricsPanel({
         </div>
       ))}
 
-      <Breakdown data={data} />
+      <Breakdown data={data} family={family} />
       {data.source ? (
         <div className="font-mono text-2xs text-muted-foreground/50">
           {data.window} window · {data.source.kind} · {data.source.url}

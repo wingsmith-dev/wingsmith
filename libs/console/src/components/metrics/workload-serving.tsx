@@ -6,12 +6,12 @@ import { MetricsPanel } from "./metrics-panel"
  * Serving measurement for a workload, which is every cluster's share drawn
  * separately.
  *
- * There is no workload scope in the metrics API and there should not be one. A
+ * The plane does answer a workload scope, and it merges only what merges: a
  * quantile does not average across clusters, per-stream throughput is what one
  * caller saw wherever it was served, and aggregate throughput is a different
- * number in each place — so one workload number would be three measurements
- * blended into something nobody could act on. Each share is asked for by its
- * own deployment and shown under the cluster that runs it.
+ * number in each place. This is the other way to read the same fleet — each
+ * share asked for by its own deployment and shown under the cluster that runs
+ * it, with nothing merged at all.
  */
 export function WorkloadServingSection({
   deployments,

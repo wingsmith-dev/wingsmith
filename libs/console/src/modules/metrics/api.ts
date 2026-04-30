@@ -8,6 +8,7 @@ const PATHS: Record<MetricScope, string> = {
   node: "nodes",
   device: "devices",
   deployment: "deployments",
+  workload: "workloads",
 }
 
 export interface MetricsQuery {

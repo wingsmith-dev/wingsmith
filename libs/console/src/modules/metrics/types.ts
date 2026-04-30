@@ -1,6 +1,7 @@
 /** Mirrors `app/modules/metrics/schemas.py`. Measurement, never inventory. */
 
-export type MetricScope = "cluster" | "pool" | "node" | "device" | "deployment"
+export type MetricScope =
+  "cluster" | "pool" | "node" | "device" | "deployment" | "workload"
 
 export type MetricUnit =
   | "percent"
