@@ -941,3 +941,21 @@ class _Stored:
         self.message = message
         self.ready_replicas = ready_replicas
         self.observed_generation = observed_generation
+
+
+def test_cache_observed_files_an_event():
+    """Residency had a row and no timeline; a stuck download left no trace."""
+    frame = structs.replace(payload("cache.observed"), state="absent", reason="NoRuntimeImage")
+    text = str(statements.cache_progressed(uuid.uuid4(), uuid.uuid4(), frame))
+    assert "INSERT INTO ops_event" in text
+
+
+def test_a_cache_event_is_filed_against_the_artifact_not_the_deployment():
+    """One download serves every deployment of those weights on the cluster."""
+    stmt = statements.cache_progressed(uuid.uuid4(), uuid.uuid4(), payload("cache.observed"))
+    assert "artifact" in str(stmt.compile().params.values())
+
+
+def test_a_cache_event_replay_lands_on_the_row_it_already_wrote():
+    text = str(statements.cache_progressed(uuid.uuid4(), uuid.uuid4(), payload("cache.observed")))
+    assert "ON CONFLICT" in text

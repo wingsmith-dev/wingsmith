@@ -385,6 +385,7 @@ class DatabaseSink:
                     return None
                 for statement in statements.upsert_cache_entries(cluster_id, artifact_id, payload):
                     await db.execute(statement)
+                await db.execute(statements.cache_progressed(cluster_id, artifact_id, payload))
                 return None
             case "benchmark.observed":
                 assert isinstance(payload, BenchmarkObserved)

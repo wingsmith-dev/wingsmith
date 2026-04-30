@@ -961,6 +961,48 @@ def deployment_progressed(
     )
 
 
+CACHE_STATE_SEVERITY = {"absent": "info", "fetching": "info", "resident": "info", "evicting": "warn"}
+
+
+def cache_progressed(cluster_id: UUID, artifact_id: UUID, payload: CacheObserved) -> Insert:
+    """Records one artifact's residency transition as an event.
+
+    Residency had a row and no timeline. The row answers "are the weights there
+    now"; nothing answered "what has been happening to them", and that is the
+    question a stuck deployment actually asks. A workload whose weights were
+    never fetched — because no recipe on that cluster named an engine image to
+    fetch them with — showed as a deployment repeating `WeightsNotResident`
+    forever, with the reason it would never stop repeating recorded nowhere the
+    plane could show.
+
+    `reason` is the operator's own word for why this state and not another, and
+    it is free text on the wire: an old operator sends none and this files the
+    state alone, which is what it did before.
+
+    Filed against the artifact rather than the deployment because that is what it
+    is about. One download serves every deployment of those weights on the
+    cluster, and copying the same event onto each of them would make the fan-out
+    look like a fact.
+    """
+    reason = getattr(payload, "reason", "") or ""
+    message = getattr(payload, "message", "") or reason or f"weights are {payload.state}"
+    return _insert_event(
+        cluster_id,
+        f"cache.{payload.state}",
+        CACHE_STATE_SEVERITY.get(payload.state, "info"),
+        "artifact",
+        artifact_id,
+        message,
+        {
+            "artifact_id": payload.artifact_id,
+            "state": payload.state,
+            "reason": reason,
+            "bytes_resident": str(payload.bytes_resident),
+        },
+        parse_ts(payload.observed_at),
+    )
+
+
 def deployment_lifecycle(
     cluster_id: UUID | None,
     deployment_id: UUID,
