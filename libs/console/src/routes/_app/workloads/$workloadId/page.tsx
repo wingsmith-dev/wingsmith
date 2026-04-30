@@ -15,6 +15,19 @@ import { ActivityStream } from "@/components/demand/activity-stream"
 import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
 import { WorkloadDeploymentsTable } from "@/components/demand/workload-deployments-table"
 import { Sparkline } from "@/components/metrics/sparkline"
+import { formatMetric, sampleOf, valueOf } from "@/modules/metrics/format"
+import { useMetrics } from "@/modules/metrics/queries"
+import {
+  idleGpuHours,
+  latencyStages,
+  meanUtilization,
+  sumCurvePoints,
+  sumCurves,
+  utilizationWeek,
+  type LatencyStage,
+  type UtilizationWeek,
+} from "@/modules/metrics/rollup"
+import type { Metrics } from "@/modules/metrics/types"
 import { operationColumns } from "@/components/machinery/operation-columns"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -44,6 +57,7 @@ import { WorkloadForm } from "../WorkloadForm"
 import {
   IconArrowLeft,
   IconChartHistogram,
+  IconChartLine,
   IconCpu,
   IconExternalLink,
   IconFlask,
@@ -72,10 +86,10 @@ import { toast } from "sonner"
  *
  * The page is split into six views — overview, performance, workbench,
  * placement, lifecycle, logs. Events, operations, the endpoints routing to the
- * workload, its live placement and its benchmark run history are read from the
- * plane; serving metrics, tuning analytics, rollout, probes and logs are
- * data-plane or not yet backed, so those are deterministic mock values, each
- * marked `TODO-API`.
+ * workload, its live placement, its performance across every cluster it landed
+ * in and its benchmark run history are read from the plane; tuning analytics,
+ * rollout, probes and logs are not yet backed, so those are deterministic mock
+ * values, each marked `TODO-API`.
  */
 export function WorkloadDetailPage() {
   const { workloadId } = useParams({ from: "/_app/workloads/$workloadId" })
@@ -276,7 +290,10 @@ export function WorkloadDetailPage() {
             <TabsContent value="overview" className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
                 <div className="flex flex-col gap-4">
-                  <TrafficPanel />
+                  <TrafficPanel
+                    workloadId={workload.id}
+                    placed={workload.deployments.length > 0}
+                  />
 
                   <Panel
                     title="Deployments"
@@ -406,90 +423,13 @@ export function WorkloadDetailPage() {
 
             {/* ---- Performance -------------------------------------- */}
             <TabsContent value="performance" className="space-y-4">
-              {/* TODO-API workload-level performance rollups — metrics are per-deployment only */}
-              <StatRow>
-                <StatTile label="GPU utilization" value="78%" />
-                <StatTile label="KV cache utilization" value="64%" />
-                <StatTile label="Avg batch size" value="24.3" />
-                <StatTile label="Tokens / sec" value="18,420" />
-                <StatTile label="Queue depth (p50)" value="6" />
-              </StatRow>
-
-              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                <div className="flex flex-col gap-4">
-                  <Panel
-                    title="Throughput"
-                    subtitle="Input and output tokens per second"
-                  >
-                    {/* TODO-API token throughput series not exposed at workload scope */}
-                    <ChartLegend
-                      items={[
-                        {
-                          tone: "primary",
-                          label: "Output",
-                          value: "12,180 tok/s",
-                        },
-                        {
-                          tone: "warn",
-                          label: "Input",
-                          value: "6,240 tok/s",
-                        },
-                      ]}
-                    />
-                    <MiniChart
-                      lines={[
-                        { points: THROUGHPUT_OUT, tone: "primary" },
-                        { points: THROUGHPUT_IN, tone: "warn" },
-                      ]}
-                    />
-                  </Panel>
-
-                  <Panel
-                    title="Latency breakdown"
-                    subtitle="Time to first token, inter-token latency, end-to-end"
-                  >
-                    {/* TODO-API latency-percentile breakdown not exposed by the plane */}
-                    <DataTable
-                      columns={latencyColumns}
-                      list={mockList(MOCK_LATENCY)}
-                      rowKey={(r) => r.percentile}
-                      empty=""
-                    />
-                  </Panel>
-
-                  <Panel
-                    title="GPU utilization"
-                    subtitle="Hourly average across all replicas, last 7 days"
-                    action={<HeatmapLegend />}
-                  >
-                    {/* TODO-API per-hour GPU utilization heatmap not exposed by the plane */}
-                    <GpuHeatmap />
-                  </Panel>
-                </div>
-
-                <div className="flex flex-col gap-4">
-                  <Panel title="Resource utilization">
-                    {/* TODO-API host CPU / memory / network rollups at workload scope */}
-                    <FieldGrid>
-                      <Field label="GPU memory (avg)">71% · 681 / 960 GB</Field>
-                      <Field label="Host CPU">34%</Field>
-                      <Field label="Host memory">58%</Field>
-                      <Field label="Network throughput">420 Mbps</Field>
-                    </FieldGrid>
-                  </Panel>
-
-                  <Panel title="Efficiency">
-                    {/* TODO-API efficiency scoring and cost suggestions not computed by the plane */}
-                    <FieldGrid>
-                      <Field label="Utilization efficiency">78%</Field>
-                      <Field label="Idle GPU-hours (24h)">11.4</Field>
-                      <Field label="Suggestion" className="sm:col-span-2">
-                        Scale us-east-1b to 1 replica during low-traffic windows
-                      </Field>
-                    </FieldGrid>
-                  </Panel>
-                </div>
-              </div>
+              {workload && (
+                <PerformanceView
+                  workloadId={workload.id}
+                  placed={workload.deployments.length > 0}
+                  gpuCount={placement?.gpu_count ?? 0}
+                />
+              )}
             </TabsContent>
 
             {/* ---- Workbench ---------------------------------------- */}
@@ -574,7 +514,7 @@ export function WorkloadDetailPage() {
                     {/* TODO-API parameter-sweep tuning is not aggregated by the plane */}
                     <DataTable
                       columns={sweepColumns}
-                      list={mockList(MOCK_SWEEP)}
+                      list={staticList(MOCK_SWEEP)}
                       rowKey={(r) => r.run}
                       empty=""
                     />
@@ -591,7 +531,7 @@ export function WorkloadDetailPage() {
                         showStep: true,
                         showRequest: true,
                       })}
-                      list={mockList(benchmarks ?? [])}
+                      list={staticList(benchmarks ?? [])}
                       rowKey={(run) => run.id}
                       empty="No benchmark has been run against this workload."
                     />
@@ -681,7 +621,7 @@ export function WorkloadDetailPage() {
                   >
                     <DataTable
                       columns={replicaColumns}
-                      list={mockList(placement?.replicas ?? [])}
+                      list={staticList(placement?.replicas ?? [])}
                       rowKey={(r) => r.allocation}
                       empty="No replicas placed."
                     />
@@ -783,7 +723,7 @@ export function WorkloadDetailPage() {
                     {/* TODO-API revision history not exposed — only the current revision is on the workload */}
                     <DataTable
                       columns={revisionColumns}
-                      list={mockList(MOCK_REVISIONS)}
+                      list={staticList(MOCK_REVISIONS)}
                       rowKey={(r) => r.version}
                       empty=""
                     />
@@ -971,22 +911,95 @@ function Panel({
 }
 
 /**
- * The Overview traffic chart — requests/sec across all deployments, drawn as a
- * filled area with the console's own `Sparkline`. Serving rate is data-plane
- * and never rolled up to the workload, so the series is a seeded mock and the
- * range tabs re-shape it rather than re-fetch.
+ * The Overview traffic chart — how much work is actually arriving.
+ *
+ * `inference.requests_finished` is a rate the engines count and it sums across
+ * clusters, so the curve is every cluster's share added at each step. It counts
+ * no request that never reached a cluster, which is why this is a traffic chart
+ * and not an availability one — the number that would answer the second lives
+ * on the gateway's own series and this console does not read it yet.
+ *
+ * The range buttons are three different questions, not three shapes of one
+ * answer: each re-asks the plane with its own span and step, because an hour
+ * read at hourly resolution is one point.
  */
-function TrafficPanel() {
-  const [range, setRange] = useState<keyof typeof TRAFFIC>("24h")
+function TrafficPanel({
+  workloadId,
+  placed,
+}: {
+  workloadId: string
+  placed: boolean
+}) {
+  const [range, setRange] = useState<TrafficRange>("24h")
+  const { span, step } = TRAFFIC_RANGES[range]
+  const { data, isLoading, error } = useMetrics(
+    "workload",
+    placed ? workloadId : undefined,
+    { series: true, span, step }
+  )
+  const points = sumCurvePoints(
+    data?.series ?? [],
+    "inference.requests_finished"
+  )
+
   return (
     <Panel
       title="Traffic"
-      subtitle="Requests per second, across all deployments"
+      subtitle="Requests the engines completed per second, across every cluster"
       action={<RangeTabs value={range} onChange={setRange} />}
     >
-      {/* TODO-API workload traffic series — no serving metric rolled up to the workload */}
-      <Sparkline points={TRAFFIC[range]} size="lg" tone="primary" />
+      {!placed ? (
+        <EmptyNote>
+          this workload runs on no cluster, so no engine is counting requests
+          for it
+        </EmptyNote>
+      ) : isLoading ? (
+        <Skeleton className="h-24" />
+      ) : error ? (
+        <EmptyNote>{formatError(error, "traffic unavailable")}</EmptyNote>
+      ) : points.length < 2 ? (
+        <EmptyNote>
+          {data?.unavailable ??
+            `no request rate reported over the last ${range}`}
+        </EmptyNote>
+      ) : (
+        <>
+          <ChartLegend
+            items={[
+              {
+                tone: "primary",
+                label: "Completed",
+                value: formatMetric(
+                  points[points.length - 1].value,
+                  "per_second"
+                ),
+              },
+            ]}
+          />
+          <Sparkline points={points} size="lg" tone="primary" />
+          <ChartAxis labels={trafficAxis(points)} />
+        </>
+      )}
     </Panel>
+  )
+}
+
+/** Each range is its own query: an hour at hourly resolution is one point. */
+const TRAFFIC_RANGES = {
+  "1h": { span: 3600, step: "1m" },
+  "24h": { span: 24 * 3600, step: "5m" },
+  "7d": { span: 7 * 24 * 3600, step: "1h" },
+} as const
+
+type TrafficRange = keyof typeof TRAFFIC_RANGES
+
+/** First, middle and last stamp of what actually came back, in local time. */
+function trafficAxis(points: { at: number }[]): string[] {
+  return [0, Math.floor(points.length / 2), points.length - 1].map((i) =>
+    new Date(points[i].at * 1000).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
   )
 }
 
@@ -994,12 +1007,12 @@ function RangeTabs({
   value,
   onChange,
 }: {
-  value: keyof typeof TRAFFIC
-  onChange: (r: keyof typeof TRAFFIC) => void
+  value: TrafficRange
+  onChange: (r: TrafficRange) => void
 }) {
   return (
     <div className="flex gap-0.5 rounded-md bg-muted p-0.5">
-      {(["1h", "24h", "7d"] as const).map((r) => (
+      {(Object.keys(TRAFFIC_RANGES) as TrafficRange[]).map((r) => (
         <button
           key={r}
           type="button"
@@ -1123,20 +1136,337 @@ function ChartAxis({ labels }: { labels: string[] }) {
   )
 }
 
-/* ---- GPU utilization heatmap ---------------------------------------- */
+/* ---- performance ------------------------------------------------------ */
 
+/** A week of hourly buckets, which is what the heatmap draws. */
+const HEATMAP_SPAN = 7 * 24 * 3600
 const HEATMAP_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
-/** Deterministic hourly GPU utilization, peaking midday and softer on weekends. */
-function gpuUtil(day: number, hour: number): number {
-  const midday = Math.exp(-Math.pow(hour - 14, 2) / 42)
-  const weekend = day >= 5 ? 0.7 : 1
-  return Math.round((0.12 + 0.78 * midday * weekend) * 100)
+/**
+ * How the workload is performing, everywhere placement put it.
+ *
+ * A workload is the one object that spans clusters, and the plane answers it as
+ * its own scope rather than as an average this console computes: throughputs
+ * and counts add, the hottest card wins, and a quantile or a mean that cannot
+ * cross clusters honestly comes back unmeasured with every cluster's own figure
+ * in the breakdown. So nothing here re-derives a merged number — a tile that
+ * reads "—" is the plane refusing, and that refusal is information.
+ *
+ * Two requests, not six panels' worth: one for the live window every tile and
+ * the two charts read, and one long, coarse one for the week the heatmap draws.
+ */
+function PerformanceView({
+  workloadId,
+  placed,
+  gpuCount,
+}: {
+  workloadId: string
+  placed: boolean
+  gpuCount: number
+}) {
+  const live = useMetrics("workload", placed ? workloadId : undefined, {
+    series: true,
+  })
+  const week = useMetrics("workload", placed ? workloadId : undefined, {
+    series: true,
+    span: HEATMAP_SPAN,
+    step: "1h",
+  })
+
+  if (!placed) {
+    return (
+      <MetricsNotice>
+        This workload runs on no cluster, so nothing is measuring it.
+        Performance appears once placement admits it somewhere.
+      </MetricsNotice>
+    )
+  }
+  if (live.isLoading) {
+    return (
+      <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <Skeleton key={i} className="h-16" />
+        ))}
+      </div>
+    )
+  }
+  if (live.error) {
+    return (
+      <MetricsNotice>
+        {formatError(live.error, "metrics unavailable")}
+      </MetricsNotice>
+    )
+  }
+  if (!live.data) return null
+  /**
+   * A workload spans clusters, so `unavailable` and real numbers arrive
+   * together: one cluster's store being down is a reason, not an empty page,
+   * and the clusters that did answer are still measured. Only an answer with
+   * nothing in it at all becomes the notice.
+   */
+  if (live.data.unavailable && live.data.samples.length === 0) {
+    return <MetricsNotice>{live.data.unavailable}</MetricsNotice>
+  }
+
+  const data = live.data
+  const out = sumCurves(data.series, "inference.output_tokens_per_second")
+  const input = sumCurves(data.series, "inference.input_tokens_per_second")
+  const week7 = utilizationWeek(week.data)
+  const idleHours = idleGpuHours(week.data, gpuCount, HEATMAP_SPAN)
+
+  return (
+    <>
+      <StatRow>
+        <StatTile
+          label="GPU utilization"
+          value={reading(data, "gpu.utilization")}
+        />
+        <StatTile
+          label="KV cache utilization"
+          value={reading(data, "inference.kv_cache_utilization")}
+        />
+        <StatTile
+          label="Requests running"
+          value={reading(data, "inference.requests_running")}
+        />
+        <StatTile
+          label="Tokens / sec"
+          value={reading(data, "inference.output_tokens_per_second")}
+        />
+        <StatTile
+          label="Requests queued"
+          value={reading(data, "inference.requests_waiting")}
+        />
+      </StatRow>
+
+      <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+        <div className="flex flex-col gap-4">
+          <Panel
+            title="Throughput"
+            subtitle="Input and output tokens per second, summed over every replica"
+          >
+            {out.length > 1 || input.length > 1 ? (
+              <>
+                <ChartLegend
+                  items={[
+                    {
+                      tone: "primary",
+                      label: "Output",
+                      value: reading(
+                        data,
+                        "inference.output_tokens_per_second"
+                      ),
+                    },
+                    {
+                      tone: "warn",
+                      label: "Input",
+                      value: reading(data, "inference.input_tokens_per_second"),
+                    },
+                  ]}
+                />
+                <MiniChart
+                  lines={[
+                    { points: out, tone: "primary" },
+                    { points: input, tone: "warn" },
+                  ]}
+                />
+              </>
+            ) : (
+              <EmptyNote>
+                the metrics store returned no token throughput series for this
+                window
+              </EmptyNote>
+            )}
+          </Panel>
+
+          <Panel
+            title="Latency breakdown"
+            subtitle="Where a request spends its time, from the engines serving it"
+          >
+            <DataTable
+              columns={latencyColumns}
+              list={staticList(
+                latencyStages(data.samples).map((stage) => ({
+                  ...stage,
+                  value: reading(data, stage.metric),
+                }))
+              )}
+              rowKey={(r) => r.metric}
+              empty="No latency series in this window."
+            />
+          </Panel>
+
+          <Panel
+            title="GPU utilization"
+            subtitle="Hourly average across the cards this workload holds, last 7 days"
+            action={<HeatmapLegend />}
+          >
+            {week.isLoading ? (
+              <Skeleton className="h-40" />
+            ) : week.error ? (
+              <EmptyNote>
+                {formatError(week.error, "the week could not be read")}
+              </EmptyNote>
+            ) : week7.length === 0 ? (
+              <EmptyNote>
+                {week.data?.unavailable ??
+                  "no hourly utilization series for the last 7 days"}
+              </EmptyNote>
+            ) : (
+              week7.map((curve) => (
+                <GpuHeatmap key={curve.label} curve={curve} />
+              ))
+            )}
+          </Panel>
+        </div>
+
+        <div className="flex flex-col gap-4">
+          <Panel title="Resource utilization">
+            <FieldGrid>
+              <Field label="Framebuffer used">
+                {reading(data, "gpu.memory_used")}
+              </Field>
+              <Field label="Framebuffer free">
+                {reading(data, "gpu.memory_free")}
+              </Field>
+              <Field label="Memory bandwidth">
+                {reading(data, "gpu.memory_utilization")}
+              </Field>
+              <Field label="SM clock">{reading(data, "gpu.sm_clock")}</Field>
+              <Field label="Power draw">{reading(data, "gpu.power")}</Field>
+              <Field label="GPU temperature">
+                {reading(data, "gpu.temperature")}
+              </Field>
+            </FieldGrid>
+          </Panel>
+
+          <Panel
+            title="Efficiency"
+            subtitle="Derived from the utilization series above and the cards placement holds"
+          >
+            <FieldGrid>
+              <Field label="Mean utilization (7d)">
+                {formatMetric(meanUtilization(week.data), "percent")}
+              </Field>
+              <Field label="Idle GPU-hours (7d)">
+                {idleHours === null ? <Dash /> : idleHours.toFixed(1)}
+              </Field>
+              <Field label="Cards held">
+                {gpuCount ? String(gpuCount) : <Dash />}
+              </Field>
+              <Field label="Window">{data.window}</Field>
+            </FieldGrid>
+          </Panel>
+
+          {data.breakdown.length > 1 && (
+            <Panel
+              title="Per cluster"
+              subtitle="Each cluster's own figures, which is where a number that cannot cross clusters survives"
+            >
+              <div className="flex flex-col gap-3">
+                {data.breakdown.map((member) => (
+                  <div key={member.key} className="flex flex-col gap-1">
+                    <div className="font-mono text-2xs text-muted-foreground/60">
+                      {member.label}
+                    </div>
+                    <FieldGrid>
+                      <Field label="GPU utilization">
+                        {formatMetric(
+                          valueOf(member.samples, "gpu.utilization"),
+                          "percent"
+                        )}
+                      </Field>
+                      <Field label="Tokens / sec">
+                        {formatMetric(
+                          valueOf(
+                            member.samples,
+                            "inference.output_tokens_per_second"
+                          ),
+                          "per_second"
+                        )}
+                      </Field>
+                    </FieldGrid>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          )}
+        </div>
+      </div>
+
+      {data.unavailable && (
+        <div className="text-2xs text-muted-foreground/60">
+          Partly measured: {data.unavailable}
+        </div>
+      )}
+
+      {data.source && (
+        <div className="font-mono text-2xs text-muted-foreground/50">
+          {data.window} window · {data.source.kind} · {data.source.url}
+        </div>
+      )}
+    </>
+  )
 }
 
-function GpuHeatmap() {
+/** One metric as the console spells it, or an em dash where nothing measured it. */
+function reading(data: Metrics, metric: string): string {
+  const sample = sampleOf(data.samples, metric)
+  return sample ? formatMetric(sample.value, sample.unit) : "—"
+}
+
+function MetricsNotice({ children }: React.PropsWithChildren) {
+  return (
+    <Card size="sm" className="items-start gap-1 px-3 py-3">
+      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+        <IconChartLine className="size-4 shrink-0 opacity-60" />
+        {children}
+      </div>
+    </Card>
+  )
+}
+
+function EmptyNote({ children }: React.PropsWithChildren) {
+  return (
+    <p className="py-6 text-center text-2xs text-muted-foreground/60">
+      {children}
+    </p>
+  )
+}
+
+/** A stage the store answered, with its figure already rendered. */
+type LatencyRow = LatencyStage & { value: string }
+
+const latencyColumns = [
+  {
+    key: "stage",
+    header: "Stage",
+    cell: (r: LatencyStage) => <span className="text-xs">{r.stage}</span>,
+  },
+  {
+    key: "metric",
+    header: "Metric",
+    secondary: true,
+    cell: (r: LatencyStage) => (
+      <span className="font-mono text-2xs text-muted-foreground">
+        {r.metric}
+      </span>
+    ),
+  },
+  {
+    key: "value",
+    header: "Value",
+    align: "right" as const,
+    cell: (r: LatencyRow) => mono(r.value),
+  },
+]
+
+function GpuHeatmap({ curve }: { curve: UtilizationWeek }) {
   return (
     <div className="flex flex-col gap-1">
+      <div className="font-mono text-2xs text-muted-foreground/60">
+        {curve.label}
+      </div>
       {HEATMAP_DAYS.map((label, day) => (
         <div key={label} className="flex items-center gap-2.5">
           <span className="w-8 shrink-0 font-mono text-2xs text-muted-foreground">
@@ -1144,17 +1474,28 @@ function GpuHeatmap() {
           </span>
           <div className="grid flex-1 grid-cols-[repeat(24,minmax(0,1fr))] gap-0.5">
             {Array.from({ length: 24 }, (_, hour) => {
-              const pct = gpuUtil(day, hour)
+              const pct = curve.grid[day][hour]
               return (
                 <span
                   key={hour}
-                  title={`${label} ${String(hour).padStart(2, "0")}:00 — ${pct}% GPU util`}
-                  className="aspect-square rounded-[2px]"
-                  style={{
-                    backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(
-                      pct * 0.75
-                    )}%, var(--secondary))`,
-                  }}
+                  title={
+                    pct === null
+                      ? `${label} ${String(hour).padStart(2, "0")}:00 — not reported`
+                      : `${label} ${String(hour).padStart(2, "0")}:00 — ${Math.round(pct)}% GPU util`
+                  }
+                  className={cn(
+                    "aspect-square rounded-[2px]",
+                    pct === null && "border border-dashed border-border"
+                  )}
+                  style={
+                    pct === null
+                      ? undefined
+                      : {
+                          backgroundColor: `color-mix(in oklab, var(--primary) ${Math.round(
+                            Math.min(100, Math.max(0, pct)) * 0.75
+                          )}%, var(--secondary))`,
+                        }
+                  }
                 />
               )
             })}
@@ -1274,10 +1615,11 @@ function CanaryCard({
 }
 
 /**
- * A `ListState` wrapper for statically-mocked rows, so designed-but-unbacked
- * tables render through the same `DataTable` as the live ones.
+ * A `ListState` wrapper for rows already in hand — a derived table, or one of
+ * the designed-but-unbacked ones — so they render through the same `DataTable`
+ * as the paged, live queries.
  */
-function mockList<T>(items: T[]) {
+function staticList<T>(items: T[]) {
   return {
     items,
     loaded: items.length,
@@ -1290,29 +1632,6 @@ function mockList<T>(items: T[]) {
 }
 
 /* ---- mocked series (all TODO-API, see call sites) ------------------- */
-
-const TRAFFIC = {
-  "1h": [
-    980, 1010, 1005, 1040, 1080, 1120, 1090, 1140, 1180, 1210, 1195, 1240,
-  ].map((value, at) => ({ at, value })),
-  "24h": [
-    420, 560, 610, 720, 940, 1050, 980, 1180, 1120, 1360, 1300, 1460, 1420,
-    1560, 1600,
-  ].map((value, at) => ({ at, value })),
-  "7d": [
-    900, 1200, 1450, 1100, 1350, 700, 640, 1280, 1500, 1320, 1480, 760, 700,
-    1240,
-  ].map((value, at) => ({ at, value })),
-} as const
-
-const THROUGHPUT_OUT = [
-  4200, 5600, 6800, 8200, 9400, 10200, 9800, 11800, 11200, 13200, 12600, 14600,
-  14200, 15600, 16200,
-]
-const THROUGHPUT_IN = [
-  2100, 2600, 3100, 3800, 4400, 4900, 4600, 5400, 5200, 5900, 5700, 6200, 6100,
-  6400, 6600,
-]
 
 const SWEEP_THROUGHPUT = [3200, 6800, 10400, 13600, 16200, 18420, 19000, 19300]
 const SWEEP_LATENCY = [220, 240, 280, 340, 420, 890, 2600, 4800]
@@ -1372,43 +1691,6 @@ const workloadEndpointColumns = [
     header: "Updated",
     align: "right" as const,
     cell: (e: Endpoint) => mono(formatRelative(e.updated_at ?? e.created_at)),
-  },
-]
-
-interface LatencyRow {
-  percentile: string
-  ttft: string
-  itl: string
-  e2e: string
-}
-const MOCK_LATENCY: LatencyRow[] = [
-  { percentile: "p50", ttft: "210ms", itl: "18ms", e2e: "1.4s" },
-  { percentile: "p95", ttft: "480ms", itl: "34ms", e2e: "3.1s" },
-  { percentile: "p99", ttft: "890ms", itl: "52ms", e2e: "4.6s" },
-]
-const latencyColumns = [
-  {
-    key: "percentile",
-    header: "Percentile",
-    cell: (r: LatencyRow) => mono(r.percentile),
-  },
-  {
-    key: "ttft",
-    header: "TTFT",
-    align: "right" as const,
-    cell: (r: LatencyRow) => mono(r.ttft),
-  },
-  {
-    key: "itl",
-    header: "Inter-token",
-    align: "right" as const,
-    cell: (r: LatencyRow) => mono(r.itl),
-  },
-  {
-    key: "e2e",
-    header: "End-to-end",
-    align: "right" as const,
-    cell: (r: LatencyRow) => mono(r.e2e),
   },
 ]
 
