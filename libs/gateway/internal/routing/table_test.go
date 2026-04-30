@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"sync/atomic"
 	"testing"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
@@ -183,7 +182,7 @@ func TestPickPrefersReadyUpstreamsButFallsBackToUnreadyOnes(t *testing.T) {
 			{ClusterID: "ap", Weight: 100, Ready: false},
 			{ClusterID: "us", Weight: 100, Ready: true},
 		},
-		cursor: &atomic.Uint64{},
+		cursor: newPicker(),
 	}
 	for i := 0; i < 5; i++ {
 		picked, err := route.Pick()
@@ -192,7 +191,7 @@ func TestPickPrefersReadyUpstreamsButFallsBackToUnreadyOnes(t *testing.T) {
 		}
 	}
 
-	unready := Route{Upstreams: []Upstream{{ClusterID: "ap", Weight: 100}}, cursor: &atomic.Uint64{}}
+	unready := Route{Upstreams: []Upstream{{ClusterID: "ap", Weight: 100}}, cursor: newPicker()}
 	picked, err := unready.Pick()
 	if err != nil || picked.ClusterID != "ap" {
 		t.Fatalf("an unready upstream is better than none: %v, %v", picked, err)
@@ -205,7 +204,7 @@ func TestWeightedPickHonoursWeightExactly(t *testing.T) {
 			{ClusterID: "ap", Weight: 3, Ready: true},
 			{ClusterID: "us", Weight: 1, Ready: true},
 		},
-		cursor: &atomic.Uint64{},
+		cursor: newPicker(),
 	}
 	counts := map[string]int{}
 	for i := 0; i < 8; i++ {
@@ -214,6 +213,69 @@ func TestWeightedPickHonoursWeightExactly(t *testing.T) {
 	}
 	if counts["ap"] != 6 || counts["us"] != 2 {
 		t.Fatalf("counts = %v, want an exact 3:1 split", counts)
+	}
+}
+
+// TestWeightedPickSpreadsTheShareInsteadOfSpendingItInARun is the claim the totals
+// alone do not make. Walking a cursor across the cumulative weight range gives the
+// same per-cycle counts as this and gets the order wrong: it hands each upstream its
+// whole share consecutively, so two clusters at the default weight of 100 mean a
+// hundred requests to one while the other idles, and no burst shorter than the cycle
+// ever reaches the second.
+func TestWeightedPickSpreadsTheShareInsteadOfSpendingItInARun(t *testing.T) {
+	route := Route{
+		Upstreams: []Upstream{
+			{ClusterID: "ap", Weight: 100, Ready: true},
+			{ClusterID: "us", Weight: 100, Ready: true},
+		},
+		cursor: newPicker(),
+	}
+	var got string
+	for i := 0; i < 6; i++ {
+		picked, err := route.Pick()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got += picked.ClusterID + " "
+	}
+	if got != "ap us ap us ap us " {
+		t.Fatalf("equal weights did not alternate: %q", got)
+	}
+}
+
+// TestARampedUpstreamIsSampledAcrossTheCycle: a canary at 5 against 100 is a request
+// in roughly every twenty-one, not five in a row and then nothing for a hundred. The
+// run is what makes a ramp measure a spike rather than a share of live traffic.
+func TestARampedUpstreamIsSampledAcrossTheCycle(t *testing.T) {
+	route := Route{
+		Upstreams: []Upstream{
+			{ClusterID: "canary", Weight: 5, Ready: true},
+			{ClusterID: "live", Weight: 100, Ready: true},
+		},
+		cursor: newPicker(),
+	}
+	gaps := []int{}
+	since := 0
+	total := 0
+	for i := 0; i < 105; i++ {
+		picked, _ := route.Pick()
+		since++
+		if picked.ClusterID == "canary" {
+			total++
+			gaps = append(gaps, since)
+			since = 0
+		}
+	}
+	if total != 5 {
+		t.Fatalf("the canary took %d of 105, want its exact 5", total)
+	}
+	// Gaps come out [11 21 21 21 21]: the first is short because both upstreams
+	// start level, and the rest are the one-in-twenty-one the weights ask for. The
+	// behaviour this guards against gave gaps of [1 1 1 1 1].
+	for _, gap := range gaps {
+		if gap < 10 {
+			t.Fatalf("canary picks bunched together, gaps = %v", gaps)
+		}
 	}
 }
 

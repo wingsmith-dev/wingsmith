@@ -19,7 +19,6 @@ import (
 	"net/url"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
@@ -90,7 +89,65 @@ type Route struct {
 	Upstreams []Upstream
 
 	totalWeight int
-	cursor      *atomic.Uint64
+	cursor      *picker
+}
+
+// picker holds a weighted route's rotation state across requests.
+//
+// Shared by pointer so that copying a Route — which happens on every table read —
+// keeps one rotation rather than restarting it, and carried across refreshes for
+// the same reason.
+type picker struct {
+	mu sync.Mutex
+	// current is the running credit per upstream, keyed by an identity that
+	// survives a refresh. A key whose upstream is momentarily not a candidate
+	// keeps its credit rather than losing it, so a replica that flaps back into
+	// readiness does not have to earn its place from zero.
+	current map[string]int
+}
+
+func newPicker() *picker { return &picker{current: map[string]int{}} }
+
+// pickKey identifies an upstream within its route across refreshes. The
+// deployment is the real identity; `NewUpstream` leaves it empty, so the cluster
+// answers for upstreams built by hand.
+func pickKey(u Upstream) string {
+	if u.DeploymentID != "" {
+		return u.DeploymentID
+	}
+	return u.ClusterID
+}
+
+// next chooses among candidates by smooth weighted round-robin — nginx's
+// algorithm — and it is chosen over walking a cursor across the cumulative
+// weight range because the two agree on the totals and disagree on the order,
+// which is the part that matters.
+//
+// A cursor over cumulative ranges hands out each upstream's whole share in one
+// contiguous run: two upstreams at the default weight of 100 mean a hundred
+// consecutive requests to the first cluster while the second sits idle, and any
+// burst shorter than the cycle never reaches the second at all. Worse where it
+// was supposed to help most — a canary at 5 against 100 got its five as five
+// consecutive requests rather than as one in every twenty-one, so the ramp
+// measured a five-request spike instead of a sampled share of live traffic.
+//
+// Smooth WRR spends the same budget per cycle and spreads it: 100/100
+// alternates, and 5/100 puts the five where a sample belongs. Ties go to the
+// earlier upstream so the choice stays deterministic for a given state.
+func (p *picker) next(candidates []Upstream, total int) Upstream {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	best := 0
+	for i, candidate := range candidates {
+		key := pickKey(candidate)
+		p.current[key] += candidate.Weight
+		if p.current[key] > p.current[pickKey(candidates[best])] {
+			best = i
+		}
+	}
+	p.current[pickKey(candidates[best])] -= total
+	return candidates[best]
 }
 
 // NewUpstream binds an address to the handler that forwards to it.
@@ -103,7 +160,7 @@ func NewUpstream(clusterID string, weight int, ready bool, handler http.Handler)
 
 // NewRoute assembles a route from upstreams that are already bound.
 func NewRoute(name, strategy string, upstreams ...Upstream) Route {
-	route := Route{Name: name, Strategy: strategy, Upstreams: upstreams, cursor: &atomic.Uint64{}}
+	route := Route{Name: name, Strategy: strategy, Upstreams: upstreams, cursor: newPicker()}
 	for _, upstream := range upstreams {
 		route.totalWeight += upstream.Weight
 	}
@@ -118,9 +175,10 @@ func NewRoute(name, strategy string, upstreams ...Upstream) Route {
 // sending it to one that is not.
 //
 // Weighted picks by round-robin rather than at random, so a weight of 5 out of
-// 100 is honoured exactly rather than on average — which is the whole point
-// when a cluster is being ramped up. Failover always picks the first live
-// upstream in the declared order.
+// 100 is honoured exactly rather than on average — which is the whole point when
+// a cluster is being ramped up — and it is spread across the cycle rather than
+// spent in one run, which is the point of `picker.next`. Failover always picks
+// the first live upstream in the declared order.
 func (r Route) Pick() (Upstream, error) {
 	candidates := filterReachable(r.Upstreams)
 	if ready := filterReady(candidates); len(ready) > 0 {
@@ -146,15 +204,7 @@ func (r Route) Pick() (Upstream, error) {
 		return candidates[0], nil
 	}
 
-	target := (r.cursor.Add(1) - 1) % uint64(total)
-	var acc uint64
-	for _, upstream := range candidates {
-		acc += uint64(upstream.Weight)
-		if target < acc {
-			return upstream, nil
-		}
-	}
-	return candidates[len(candidates)-1], nil
+	return r.cursor.next(candidates, total), nil
 }
 
 // filterReachable drops the upstreams that have nowhere to send a request. It
@@ -376,7 +426,7 @@ func (r *Router) Load(ctx context.Context) error {
 		if prior, ok := previous[route.Name]; ok && prior.cursor != nil {
 			route.cursor = prior.cursor
 		} else {
-			route.cursor = &atomic.Uint64{}
+			route.cursor = newPicker()
 		}
 		next[route.Name] = route
 	}
