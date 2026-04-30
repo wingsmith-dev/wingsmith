@@ -79,9 +79,11 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Valu
 
    It renders a DynamoGraphDeployment, and that CRD is applied by the Dynamo
    operator at runtime rather than shipped in this chart. So turn it on in a
-   second pass, once the operator above is running:
+   second pass, once the operator above is running — together with the agent,
+   which is refused without it:
 
-     helm upgrade {{ .Release.Name }} <chart> -n {{ .Release.Namespace }} --reuse-values --set frontend.enabled=true
+     helm upgrade {{ .Release.Name }} <chart> -n {{ .Release.Namespace }} --reuse-values \
+       --set frontend.enabled=true --set agent.enabled=true
 {{- end }}
 {{- if not .Values.serving.enabled }}
 

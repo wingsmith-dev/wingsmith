@@ -127,10 +127,18 @@ agent:
 # through. The agent forwards to it, so serving needs it — but it is off by
 # default because of an ordering constraint that cannot be worked around here:
 # it renders a DynamoGraphDeployment, and that CRD is applied by the Dynamo
-# operator at runtime rather than shipped in this chart's `crds/`. Turn it on in a
-# SECOND `helm upgrade`, after the first install has the Dynamo operator running;
-# enabling it on a fresh cluster fails the release with "no matches for kind
+# operator at runtime rather than shipped in this chart's `crds/`. Enabling it on
+# a fresh cluster fails the release with "no matches for kind
 # DynamoGraphDeployment".
+#
+# So serving arrives in a second pass, and this switch and `agent.enabled` move
+# TOGETHER — an agent with no frontend is refused, because it would be a cluster
+# that holds tunnels and 502s every request. The sequence is:
+#
+#   1. install with agent.enabled=false and frontend.enabled=false — the control
+#      path only. The operator enrols and the cluster goes `active`.
+#   2. upgrade with both true — the data path, once the Dynamo operator from
+#      step 1 has registered its own types.
 # Why it belongs to the cluster and not to a deployment: templates/85-frontend.yaml.
 frontend:
   enabled: false
