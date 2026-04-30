@@ -10,6 +10,7 @@ from app.db.models import Node
 from app.db.models import Pool
 from app.db.models import Device
 from app.db.models import Cluster
+from app.db.supply import free_device_sum
 
 
 def _cluster_column(ref: str):
@@ -50,7 +51,7 @@ class PoolRepository:
                 Node.pool_id,
                 func.count(Device.id).label("devices_total"),
                 func.sum(case((Device.health == "healthy", 1), else_=0)).label("devices_healthy"),
-                func.sum(case((Device.allocatable.is_(True), 1), else_=0)).label("devices_allocatable"),
+                free_device_sum().label("devices_allocatable"),
             )
             .select_from(Device)
             .join(Node, Device.node_id == Node.id)

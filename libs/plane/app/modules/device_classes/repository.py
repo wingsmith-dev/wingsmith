@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Node
 from app.db.models import Device
 from app.db.models import Cluster
+from app.db.supply import device_free
 from app.core.filters import ref_ids
 
 
@@ -30,7 +31,7 @@ class DeviceClassRepository:
                 Device.device_class,
                 func.count(Device.id),
                 func.count(case((Device.health == "healthy", 1))),
-                func.count(case((Device.allocatable.is_(True), 1))),
+                func.count(case((device_free(), 1))),
                 func.count(func.distinct(Device.node_id)),
                 func.array_agg(func.distinct(Cluster.name)),
             )

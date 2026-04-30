@@ -123,8 +123,9 @@ class ArtifactFitSchema(Struct):
     `fits` with `devices_allocatable` at zero is a capacity problem and `fits` false
     is a physics problem, and one is fixed by waiting.
 
-    `devices_allocatable` is not a promise that a replica of `device_count` devices
-    can be placed: contiguity within a topology domain decides that, and
+    `devices_allocatable` counts the cards that are claimable and held by no live
+    allocation. It is not a promise that a replica of `device_count` devices can be
+    placed: contiguity within a topology domain decides that, and
     `POST /placement/preview` is what answers it.
 
     `node_count` is the unit to act on: "four nodes of B300" is an order, "32 devices" is

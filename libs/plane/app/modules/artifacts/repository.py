@@ -3,7 +3,6 @@ from uuid import UUID
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import or_
-from sqlalchemy import case
 from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy.orm import aliased
@@ -18,6 +17,7 @@ from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import TopologyDomain
 from app.db.models import ArtifactBaseline
+from app.db.supply import free_device_sum
 from app.core.filters import ref_ids
 
 
@@ -199,7 +199,7 @@ class ArtifactRepository:
                 Device.device_class.label("device_class"),
                 func.max(Device.memory_mib).label("memory_mib"),
                 func.count(Device.id).label("devices_total"),
-                func.sum(case((Device.allocatable.is_(True), 1), else_=0)).label("devices_allocatable"),
+                free_device_sum().label("devices_allocatable"),
                 func.count(func.distinct(Device.cluster_id)).label("cluster_count"),
             )
             .group_by(Device.device_class)

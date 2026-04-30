@@ -187,6 +187,17 @@ def test_device_rollup_counts_allocatable_in_the_database(repo):
     assert "GROUP BY supply_device.cluster_id" in text
 
 
+def test_device_rollup_does_not_count_a_held_device_as_free(repo):
+    """A live allocation takes a device out of the free count.
+
+    `allocatable` alone says the card is claimable, not unclaimed, and a rollup
+    that read only the column reported every allocated device as free.
+    """
+    text = sql(repo.device_rollup_query([1]))
+    assert "bind_allocation_device.released_at IS NULL" in text
+    assert "NOT (EXISTS" in text
+
+
 def test_pool_and_deployment_counts_group_by_cluster(repo):
     pools = sql(repo.pool_rollup_query([1]))
     deployments = sql(repo.deployment_rollup_query([1]))
@@ -207,6 +218,7 @@ def test_largest_block_excludes_domainless_devices(repo):
     text = sql(repo.largest_block_query([1]))
     assert "supply_device.topology_domain_id IS NOT NULL" in text
     assert "supply_device.allocatable IS true" in text
+    assert "bind_allocation_device.released_at IS NULL" in text
     assert "max(" in text
 
 

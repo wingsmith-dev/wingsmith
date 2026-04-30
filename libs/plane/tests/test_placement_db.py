@@ -18,6 +18,7 @@ from sqlalchemy import text
 
 from app.core import ids
 from app.core.exceptions import Invalid
+from app.modules.clusters.services import ClusterService
 from app.modules.placement.schemas import PlacementPreviewRequest
 from app.modules.workloads.schemas import WorkloadCreateRequest
 from app.modules.operations.schemas import OperationCreateRequest
@@ -130,6 +131,54 @@ async def seed_supply(
                 },
             )
         return cluster
+
+
+async def hold_one_device(sessions, cluster: uuid.UUID) -> None:
+    """Gives one of the cluster's devices to a workload nobody asked about.
+
+    A live `bind_allocation_device` row is the only record that an accelerator is
+    spoken for — `supply_device.allocatable` stays true, because the card is still
+    claimable hardware. Anything that reports free devices has to read this.
+    """
+    async with sessions.begin() as db:
+        project = (await db.execute(text("select id from bind_project"))).scalar_one()
+        priority = (await db.execute(text("select id from bind_priority_class"))).scalar_one()
+        recipe = (await db.execute(text("select id from demand_recipe"))).scalar_one()
+        workload = (
+            await db.execute(
+                text(
+                    "insert into demand_workload (uid, name, kind, project_id, priority_class_id, recipe_id)"
+                    " values (:uid, 'holder', 'service', :project, :priority, :recipe) returning id"
+                ),
+                {
+                    "uid": ids.new_uid(ids.WORKLOAD),
+                    "project": project,
+                    "priority": priority,
+                    "recipe": recipe,
+                },
+            )
+        ).scalar_one()
+        allocation = (
+            await db.execute(
+                text(
+                    "insert into bind_allocation"
+                    " (uid, cluster_id, workload_id, project_id, device_class, device_count)"
+                    " values (:uid, :cluster, :workload, :project, :cls, 1) returning id"
+                ),
+                {
+                    "uid": ids.new_uid(ids.ALLOCATION),
+                    "cluster": cluster,
+                    "workload": workload,
+                    "project": project,
+                    "cls": DEVICE_CLASS,
+                },
+            )
+        ).scalar_one()
+        device = (await db.execute(text("select id from supply_device limit 1"))).scalar_one()
+        await db.execute(
+            text("insert into bind_allocation_device (allocation_id, device_id) values (:a, :d)"),
+            {"a": allocation, "d": device},
+        )
 
 
 def create(**overrides) -> WorkloadCreateRequest:
@@ -404,51 +453,33 @@ async def test_a_device_held_by_another_workload_is_not_free(sessions) -> None:
     """The hold has to come back from the join, or a full cluster reads as empty."""
     await seed_demand(sessions)
     cluster = await seed_supply(sessions, "busy", devices=4)
-    async with sessions.begin() as db:
-        project = (await db.execute(text("select id from bind_project"))).scalar_one()
-        priority = (await db.execute(text("select id from bind_priority_class"))).scalar_one()
-        recipe = (await db.execute(text("select id from demand_recipe"))).scalar_one()
-        workload = (
-            await db.execute(
-                text(
-                    "insert into demand_workload (uid, name, kind, project_id, priority_class_id, recipe_id)"
-                    " values (:uid, 'holder', 'service', :project, :priority, :recipe) returning id"
-                ),
-                {
-                    "uid": ids.new_uid(ids.WORKLOAD),
-                    "project": project,
-                    "priority": priority,
-                    "recipe": recipe,
-                },
-            )
-        ).scalar_one()
-        allocation = (
-            await db.execute(
-                text(
-                    "insert into bind_allocation"
-                    " (uid, cluster_id, workload_id, project_id, device_class, device_count)"
-                    " values (:uid, :cluster, :workload, :project, :cls, 1) returning id"
-                ),
-                {
-                    "uid": ids.new_uid(ids.ALLOCATION),
-                    "cluster": cluster,
-                    "workload": workload,
-                    "project": project,
-                    "cls": DEVICE_CLASS,
-                },
-            )
-        ).scalar_one()
-        device = (await db.execute(text("select id from supply_device limit 1"))).scalar_one()
-        await db.execute(
-            text("insert into bind_allocation_device (allocation_id, device_id) values (:a, :d)"),
-            {"a": allocation, "d": device},
-        )
+    await hold_one_device(sessions, cluster)
 
     async with sessions() as db:
         decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
 
     assert not decision.placed
     assert decision.verdicts[0].free_devices == 3
+
+
+async def test_the_cluster_rollup_reports_a_held_device_as_allocated(sessions) -> None:
+    """The console's `0/4 GPUs` bug: the rollup read `allocatable` and nothing else.
+
+    Placement and the rollup have to agree about what is free, so the same hold
+    that costs placement a device has to cost the rollup one.
+    """
+    await seed_demand(sessions)
+    cluster = await seed_supply(sessions, "busy", devices=4)
+    await hold_one_device(sessions, cluster)
+
+    async with sessions() as db:
+        rollup = await ClusterService(db).rollup("busy")
+
+    assert rollup.devices_total == 4
+    assert rollup.devices_allocatable == 3
+    assert rollup.devices_allocated == 1
+    assert rollup.headroom.free_devices == 3
+    assert rollup.headroom.whole_nodes_free == 0
 
 
 async def test_a_quota_ceiling_rules_out_a_cluster_that_has_the_devices(sessions) -> None:

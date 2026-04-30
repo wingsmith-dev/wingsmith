@@ -16,6 +16,8 @@ from app.db.models import Credential
 from app.db.models import Deployment
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
+from app.db.supply import device_free
+from app.db.supply import free_device_sum
 
 
 class ClusterRepository:
@@ -79,7 +81,7 @@ class ClusterRepository:
             select(
                 Device.cluster_id,
                 func.count(Device.id).label("devices_total"),
-                func.sum(case((Device.allocatable.is_(True), 1), else_=0)).label("devices_allocatable"),
+                free_device_sum().label("devices_allocatable"),
             )
             .where(Device.cluster_id.in_(cluster_ids))
             .group_by(Device.cluster_id)
@@ -100,18 +102,18 @@ class ClusterRepository:
         )
 
     def whole_nodes_free_query(self, cluster_ids: list) -> Select:
-        """Counts nodes on which every device is allocatable.
+        """Counts nodes on which every device is free.
 
         Reduced entirely in the database: a per-node subquery totals devices and
-        allocatable devices, and the outer query keeps only nodes where the two
-        agree and at least one device exists.
+        free devices, and the outer query keeps only nodes where the two agree and
+        at least one device exists.
         """
         per_node = (
             select(
                 Device.cluster_id.label("cluster_id"),
                 Device.node_id.label("node_id"),
                 func.count(Device.id).label("total"),
-                func.sum(case((Device.allocatable.is_(True), 1), else_=0)).label("free"),
+                free_device_sum().label("free"),
             )
             .where(Device.cluster_id.in_(cluster_ids))
             .group_by(Device.cluster_id, Device.node_id)
@@ -124,7 +126,7 @@ class ClusterRepository:
         )
 
     def largest_block_query(self, cluster_ids: list) -> Select:
-        """Largest set of allocatable devices sharing one topology domain, per cluster.
+        """Largest set of free devices sharing one topology domain, per cluster.
 
         Devices without a topology domain are not part of any interconnect fabric,
         so they are excluded here; the service floors the result at one when a
@@ -138,7 +140,7 @@ class ClusterRepository:
             )
             .where(
                 Device.cluster_id.in_(cluster_ids),
-                Device.allocatable.is_(True),
+                device_free(),
                 Device.topology_domain_id.is_not(None),
             )
             .group_by(Device.cluster_id, Device.topology_domain_id)
