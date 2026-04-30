@@ -138,6 +138,35 @@ export function useDeploymentEvents(
   )
 }
 
+/**
+ * Everything that has happened to one workload, its deployments, its replicas
+ * and the weights they load — newest first.
+ *
+ * A workload id used to return nothing at all: no writer files an event whose
+ * subject is a workload, so the page that most needed a timeline was the one
+ * page guaranteed to show an empty one. The plane now expands a `wkl_` subject
+ * over the whole tree, so this is the same call it always was and only the
+ * answer changed.
+ *
+ * Polled while the workload is not yet serving, for the same reason the
+ * deployment timeline is: that is when it is moving and when somebody is
+ * watching it.
+ */
+export function useWorkloadEvents(
+  workload: string | undefined,
+  settled: boolean
+) {
+  return useCursorList(
+    ["events", "workload", workload],
+    (cursor) => fetchEvents({ subject: workload! }, cursor),
+    {
+      enabled: !!workload,
+      pollWhile: () => !settled,
+      pollMs: 5000,
+    }
+  )
+}
+
 export function useAllocations(filters: AllocationFilters = {}) {
   return useCursorList(["allocations", filters], (cursor) =>
     fetchAllocations(filters, cursor)

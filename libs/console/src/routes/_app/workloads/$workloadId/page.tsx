@@ -11,6 +11,7 @@ import {
   PauseWorkloadDialog,
   ScaleWorkloadDialog,
 } from "@/components/demand/workload-actions"
+import { ActivityStream } from "@/components/demand/activity-stream"
 import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
 import { WorkloadDeploymentsTable } from "@/components/demand/workload-deployments-table"
 import { Sparkline } from "@/components/metrics/sparkline"
@@ -38,7 +39,7 @@ import type {
 import { useWorkloadBenchmarks } from "@/modules/benchmarks/queries"
 import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
 import { NewBenchmarkRequestDialog } from "@/components/benchmarks/new-request"
-import { useEvents, useOperations } from "@/modules/machinery/queries"
+import { useOperations, useWorkloadEvents } from "@/modules/machinery/queries"
 import { WorkloadForm } from "../WorkloadForm"
 import {
   IconArrowLeft,
@@ -90,7 +91,10 @@ export function WorkloadDetailPage() {
   )
   const { data: benchmarks } = useWorkloadBenchmarks(deploymentIds)
   const operations = useOperations({ target: workload?.id })
-  const events = useEvents({ subject: workload?.id })
+  const settled =
+    (workload?.phase === "running" || workload?.phase === "failed") &&
+    workload.scale.ready >= workload.scale.desired
+  const events = useWorkloadEvents(workload?.id, settled)
   const remove = useDeleteWorkload()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -853,21 +857,26 @@ export function WorkloadDetailPage() {
             {/* ---- Logs --------------------------------------------- */}
             <TabsContent value="logs" className="space-y-4">
               <Panel
-                title="Replica logs"
-                subtitle="Logs stream direct from the cluster and never cross the control plane"
+                title="Activity"
+                subtitle="Everything recorded against this workload, its deployments, its replicas and its weights"
               >
-                {/* TODO-API log streaming is a data-plane concern, not served by the plane */}
-                <LogViewer />
-              </Panel>
-
-              <Panel
-                title="Events"
-                subtitle="Scheduler and lifecycle events for this workload"
-              >
-                <DeploymentTimeline
+                <ActivityStream
                   events={events.items}
                   loading={events.isLoading}
+                  deployments={workload.deployments}
                 />
+              </Panel>
+
+              <Panel title="Replica logs" subtitle="Not served from here">
+                <p className="text-xs text-muted-foreground">
+                  A replica's stdout goes from the cluster to the observability
+                  stack directly and never crosses the control plane, so there
+                  is nothing here to show and nothing that could be shown
+                  without making this service the inference SLA. Read them
+                  against the cluster, or in the observability stack. What the
+                  plane can answer — why a replica has not started, what it is
+                  waiting on, what changed and when — is the stream above.
+                </p>
               </Panel>
             </TabsContent>
           </div>
@@ -1266,130 +1275,6 @@ function CanaryCard({
   )
 }
 
-/* ---- logs viewer ---------------------------------------------------- */
-
-/**
- * The Logs surface with its toolbar: replica picker, level filter, search, a
- * live-tail toggle and a download button. Filtering is client-side over the
- * mocked lines — real streaming is data-plane and never crosses the control
- * plane, so the wiring is the shape, not a socket.
- */
-function LogViewer() {
-  const [replica, setReplica] = useState("all")
-  const [level, setLevel] = useState<"all" | "info" | "warn" | "error">("all")
-  const [term, setTerm] = useState("")
-  const [live, setLive] = useState(false)
-
-  const replicas = useMemo(
-    () => Array.from(new Set(MOCK_LOGS.map((l) => l.replica))),
-    []
-  )
-
-  const rows = MOCK_LOGS.filter((line) => {
-    const matchesLevel = level === "all" || line.level.toLowerCase() === level
-    const matchesReplica = replica === "all" || line.replica === replica
-    const matchesSearch =
-      term.trim() === "" ||
-      line.msg.toLowerCase().includes(term.trim().toLowerCase())
-    return matchesLevel && matchesReplica && matchesSearch
-  })
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <select
-          value={replica}
-          onChange={(e) => setReplica(e.target.value)}
-          className="h-8 rounded-md border border-input bg-card px-2 font-mono text-2xs"
-        >
-          <option value="all">All replicas</option>
-          {replicas.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
-
-        <div className="flex gap-0.5 rounded-md bg-muted p-0.5">
-          {(["all", "info", "warn", "error"] as const).map((l) => (
-            <button
-              key={l}
-              type="button"
-              onClick={() => setLevel(l)}
-              className={cn(
-                "rounded px-2.5 py-1 text-xs capitalize",
-                level === l
-                  ? "bg-card text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-
-        <label className="relative flex items-center">
-          <IconSearch className="pointer-events-none absolute left-2 size-3.5 text-muted-foreground" />
-          <input
-            type="search"
-            value={term}
-            onChange={(e) => setTerm(e.target.value)}
-            placeholder="Search logs…"
-            className="h-8 w-52 rounded-md border border-input bg-card pr-3 pl-7 text-xs placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-          />
-        </label>
-
-        <span className="ml-auto" />
-
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-          Live tail
-          <input
-            type="checkbox"
-            checked={live}
-            onChange={(e) => setLive(e.target.checked)}
-            className="size-4 accent-primary"
-          />
-        </label>
-
-        <WriteAction>
-          <Button size="sm" variant="outline" disabled>
-            <IconDownload className="size-3.5" />
-            Download
-          </Button>
-        </WriteAction>
-      </div>
-
-      <div className="h-[360px] overflow-y-auto rounded-lg border bg-background/60 p-3 font-mono text-2xs leading-relaxed">
-        {rows.length === 0 ? (
-          <div className="text-muted-foreground/60">No matching log lines.</div>
-        ) : (
-          rows.map((line, i) => (
-            <div key={i} className="flex gap-2.5 py-px">
-              <span className="shrink-0 text-muted-foreground/70">
-                {line.time}
-              </span>
-              <span
-                className={cn(
-                  "w-12 shrink-0 font-semibold",
-                  line.level === "INFO" && "text-primary",
-                  line.level === "WARN" && "text-amber-600 dark:text-amber-400",
-                  line.level === "ERROR" && "text-destructive"
-                )}
-              >
-                {line.level}
-              </span>
-              <span className="shrink-0 text-muted-foreground/60">
-                {line.replica}
-              </span>
-              <span className="text-foreground">{line.msg}</span>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  )
-}
-
 /**
  * A `ListState` wrapper for statically-mocked rows, so designed-but-unbacked
  * tables render through the same `DataTable` as the live ones.
@@ -1768,80 +1653,5 @@ const revisionColumns = [
     header: "Deployed",
     align: "right" as const,
     cell: (r: RevisionRow) => mono(r.deployed),
-  },
-]
-
-interface LogLine {
-  time: string
-  level: "INFO" | "WARN" | "ERROR"
-  replica: string
-  msg: string
-}
-const MOCK_LOGS: LogLine[] = [
-  {
-    time: "08-24 14:01:58",
-    level: "WARN",
-    replica: "replica-1",
-    msg: "queue depth exceeded threshold (128), triggering scale-up evaluation",
-  },
-  {
-    time: "08-24 14:02:03",
-    level: "INFO",
-    replica: "autoscaler",
-    msg: "scaling us-east-1a from 3 to 4 replicas",
-  },
-  {
-    time: "08-24 14:02:41",
-    level: "INFO",
-    replica: "replica-3",
-    msg: "model loaded, entering ready state (18.4s)",
-  },
-  {
-    time: "08-24 14:02:44",
-    level: "INFO",
-    replica: "replica-3",
-    msg: "passed readiness probe, added to load balancer",
-  },
-  {
-    time: "08-24 14:13:57",
-    level: "INFO",
-    replica: "autoscaler",
-    msg: "traffic normalized, queue depth nominal",
-  },
-  {
-    time: "08-24 09:12:03",
-    level: "ERROR",
-    replica: "replica-4",
-    msg: "CUDA out of memory during batch expansion, restarting worker",
-  },
-  {
-    time: "08-24 09:12:05",
-    level: "WARN",
-    replica: "replica-4",
-    msg: "restarting container (attempt 1/3)",
-  },
-  {
-    time: "08-24 09:12:24",
-    level: "INFO",
-    replica: "replica-4",
-    msg: "model loaded, entering ready state (19.1s)",
-  },
-  {
-    time: "08-23 22:41:09",
-    level: "INFO",
-    replica: "replica-0",
-    msg: "request batch flushed, size=32, avg_ttft=204ms",
-  },
-  {
-    time: "08-18 02:14:00",
-    level: "WARN",
-    replica: "replica-5",
-    msg: "node drain signal received, draining connections before eviction",
-  },
-  {
-    time: "08-18 02:14:32",
-    level: "INFO",
-    replica: "scheduler",
-    msg: "replica-5 rescheduled to node-0233, rejoined load balancer",
   },
 ]
