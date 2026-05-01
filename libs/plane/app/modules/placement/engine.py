@@ -19,6 +19,7 @@ from .decision import NO_SUCH_DEVICE_CLASS
 from .decision import INSUFFICIENT_CAPACITY
 from .decision import INSUFFICIENT_TOPOLOGY
 from .decision import POLICY_CLUSTER_DENIED
+from .decision import TENSOR_GROUP_TOO_LARGE
 from .decision import POLICY_CLUSTER_NOT_ALLOWED
 from .decision import Share
 from .decision import Rejection
@@ -295,9 +296,56 @@ def _fit(
     candidates: tuple[DeviceSnapshot, ...],
     free: tuple[DeviceSnapshot, ...],
 ) -> _Fit:
+    too_wide = _tensor_group_too_wide(request, cluster, candidates)
+    if too_wide is not None:
+        fit = _Fit()
+        fit.reasons.append(too_wide)
+        return fit
     if request.requires_single_domain:
         return _fit_contiguous(request, cluster, candidates, free)
     return _fit_aggregate(request, cluster, candidates, free)
+
+
+def _tensor_group_too_wide(
+    request: PlacementRequest,
+    cluster: ClusterSnapshot,
+    candidates: tuple[DeviceSnapshot, ...],
+) -> Rejection | None:
+    """Rules out a cluster whose machines are too small to hold one tensor group.
+
+    Counted over every candidate device rather than the free ones, because this is a
+    fact about the hardware and not about how busy it is. A cluster of one-device
+    machines does not become able to run a tensor-parallel-two replica when something
+    else finishes, so reporting it as a capacity shortfall would send someone to wait
+    for a queue that will never clear — and preemption would be offered as the remedy
+    for a machine that is simply the wrong shape.
+
+    The same judgement the operator makes in `reconcile.schedulable`, made here for the
+    reason `DeviceSnapshot` already gives for duplicating `nodeUsable`: a plane that
+    ignores it picks a cluster that cluster will refuse, and the workload sits pending
+    against a message about the device plugin.
+    """
+    want = max(request.tensor_parallel, 1)
+    if want < 2:
+        return None
+    per_node: dict[str, int] = {}
+    for device in candidates:
+        per_node[device.node] = per_node.get(device.node, 0) + 1
+    largest = max(per_node.values(), default=0)
+    if largest >= want:
+        return None
+    return Rejection(
+        code=TENSOR_GROUP_TOO_LARGE,
+        message=(
+            f"cluster {cluster.name} has {largest} {request.device_class} on its largest node, "
+            f"{want} needed in one node for a tensor group"
+        ),
+        detail={
+            "largest_node_devices": largest,
+            "tensor_parallel": want,
+            "requested_devices": request.device_count,
+        },
+    )
 
 
 def _fit_aggregate(
@@ -622,6 +670,7 @@ def _unit_request(demand: WorkloadDemand) -> PlacementRequest:
         priority_value=demand.priority_value,
         preempts=demand.preempts,
         device_memory_mib_min=demand.device_memory_mib_min,
+        tensor_parallel=demand.tensor_parallel,
         requires_single_domain=demand.requires_single_domain,
         domain_kind=demand.domain_kind,
         deployment_name=demand.name,

@@ -85,6 +85,7 @@ class PlacementService:
             priority_value=priority.value,
             preempts=priority.preempts,
             device_memory_mib_min=recipe.device_memory_mib_min,
+            tensor_parallel=max(recipe.tensor_parallel, 1),
             requires_single_domain=(
                 recipe.requires_single_topology_domain if requires_single_domain is None else requires_single_domain
             ),
@@ -144,6 +145,7 @@ class PlacementService:
             priority_value=priority.value,
             preempts=priority.preempts,
             device_memory_mib_min=recipe.device_memory_mib_min,
+            tensor_parallel=max(recipe.tensor_parallel, 1),
             requires_single_domain=(
                 recipe.requires_single_topology_domain
                 if workload.requires_single_topology_domain is None

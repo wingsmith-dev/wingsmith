@@ -24,6 +24,7 @@ QUOTA_EXHAUSTED = "quota_exhausted"
 NO_SUCH_DEVICE_CLASS = "no_such_device_class"
 INSUFFICIENT_CAPACITY = "insufficient_capacity"
 INSUFFICIENT_TOPOLOGY = "insufficient_topology"
+TENSOR_GROUP_TOO_LARGE = "tensor_group_too_large"
 NAME_TAKEN = "name_taken"
 
 

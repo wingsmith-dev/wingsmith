@@ -160,6 +160,16 @@ class PlacementRequest(Snap):
     priority_value: int = 0
     preempts: bool = False
     device_memory_mib_min: int = 0
+    tensor_parallel: int = 1
+    """How many devices of the unit must share one node.
+
+    Not the same question as `requires_single_domain`, and asked of every request
+    whether or not one is declared. A tensor group reaching over the backend fabric
+    is the one split that does not work, so it is a floor on the node rather than a
+    preference expressed about the fabric — a cluster of one-device machines cannot
+    serve a tensor-parallel-two replica however many machines it has, and however
+    little it cares which domain they sit in.
+    """
     requires_single_domain: bool = False
     domain_kind: str | None = None
     deployment_name: str | None = None
@@ -201,6 +211,7 @@ class WorkloadDemand(Snap):
     priority_value: int = 0
     preempts: bool = False
     device_memory_mib_min: int = 0
+    tensor_parallel: int = 1
     requires_single_domain: bool = False
     domain_kind: str | None = None
     desired_scale: int = 1

@@ -80,6 +80,30 @@ def test_capacity_is_counted_from_free_devices_not_node_counts():
     assert verdict_for(unplaced, "iad-1").free_devices == 6
 
 
+def test_a_cluster_of_small_machines_cannot_hold_a_tensor_group():
+    """Free devices are not the answer when the machines are the wrong shape.
+
+    Four one-device nodes have four free devices and can serve nothing that needs
+    two of them in one node. Reported as capacity it reads as a queue to wait in,
+    and preemption is offered as the remedy for hardware.
+    """
+    devs = [DeviceSnapshot(uid=f"c1-d{i}", node=f"n{i}", device_class="h100") for i in range(4)]
+    snap = CapacitySnapshot(clusters=(cluster("c1", "iad-1", devs),))
+
+    decision = place(request(2, tensor_parallel=2), snap)
+
+    assert decision.placed is False
+    assert codes_for(decision, "iad-1") == [codes.TENSOR_GROUP_TOO_LARGE]
+
+
+def test_the_same_devices_serve_a_replica_that_does_not_need_them_in_one_node():
+    """The other half of it: pipeline stages cross a network perfectly well."""
+    devs = [DeviceSnapshot(uid=f"c1-d{i}", node=f"n{i}", device_class="h100") for i in range(4)]
+    snap = CapacitySnapshot(clusters=(cluster("c1", "iad-1", devs),))
+
+    assert place(request(2, tensor_parallel=1), snap).placed is True
+
+
 def test_gang_fits_only_in_the_one_domain_large_enough():
     doms = (nvlink("dom-a", "nvl-a"), nvlink("dom-b", "nvl-b"))
     devs = devices("c1", count=4, domain="dom-a", prefix="a") + devices("c1", count=8, domain="dom-b", prefix="b")
@@ -379,6 +403,7 @@ def a_recipe(**overrides):
     fields = {
         "device_class": "h100",
         "device_count": 4,
+        "tensor_parallel": 4,
         "device_memory_mib_min": 81920,
         "requires_single_topology_domain": True,
         "topology_domain_kind": "nvlink",
