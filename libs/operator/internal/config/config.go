@@ -146,6 +146,15 @@ type Config struct {
 	PrefetchMemory      string
 	PrefetchMemoryLimit string
 
+	// Multinode says whether this cluster can run a replica that spans machines.
+	//
+	// Off by default, and the default is the safe one. A multi-node replica is a leader-worker
+	// group, which Dynamo renders only where Grove or LeaderWorkerSet is installed; neither is
+	// installed by the chart at its own defaults. Turning this on without them produces a single
+	// pod holding a fraction of the devices the engine expects, which hangs in collective
+	// initialisation rather than failing. A cluster sets it once it has installed one of them.
+	Multinode bool
+
 	// DCGMEndpoint is the in-cluster DCGM exporter's metrics URL, which the observation loop
 	// scrapes for device identity — the true accelerator UUID, which Kubernetes does not carry
 	// anywhere (ADR 0007). It is read cluster-locally and only for identity; the measurements on
@@ -238,6 +247,7 @@ func Load() (*Config, error) {
 		PrefetchMemory:        env("HANGAR_PREFETCH_MEMORY", ""),
 		PrefetchMemoryLimit:   env("HANGAR_PREFETCH_MEMORY_LIMIT", ""),
 		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
+		Multinode:             envBool("HANGAR_MULTINODE", false),
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		BenchmarkArtifactBase: env("HANGAR_BENCHMARK_ARTIFACT_BASE", ""),
 		BenchmarkTimeout:      envDuration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),

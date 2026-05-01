@@ -26,6 +26,8 @@ data:
 
   HANGAR_MODEL_CACHE_PVC: {{ .Values.modelCache.pvcName | quote }}
 
+  HANGAR_MULTINODE: {{ .Values.multinode.enabled | quote }}
+
   HANGAR_DCGM_ENDPOINT: {{ include "cluster-setup.dcgmEndpoint" . | quote }}
   {{- with (include "cluster-setup.dcgmSelector" .) }}
   HANGAR_DCGM_SELECTOR: {{ . | quote }}

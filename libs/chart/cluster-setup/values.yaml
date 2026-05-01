@@ -68,6 +68,21 @@ modelCache:
   accessMode: ReadWriteMany
   size: 500Gi
 
+# Whether this cluster can run a replica whose devices do not fit on one machine.
+#
+# Off, and off is the safe default. A multi-node replica is a leader-worker group,
+# which Dynamo renders only where Grove or LeaderWorkerSet is installed — and the
+# dynamo-platform subchart leaves Grove off at its own defaults. Turned on without
+# one of them, the CRD accepts the field and produces a single pod holding a
+# fraction of the devices the engine was told to expect: it starts, then hangs in
+# collective initialisation with nothing saying why.
+#
+# Left off, a deployment needing more than one node waits with `MultinodeNotEnabled`
+# and names this setting, which is the honest answer and a recoverable one. Turn it
+# on together with `dynamo-platform.grove.enabled`.
+multinode:
+  enabled: false
+
 dcgm:
   # Empty derives both from the bundled dcgm-exporter. Set them to point at an
   # exporter this chart does not install.
