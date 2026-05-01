@@ -21,7 +21,7 @@
       "rep_01j9x2hhhhhhhhhhhhhhhhhhhm"
     ],
     "reason": "NoSchedulableCapacity",
-    "message": "one replica needs 2 accelerators of class h100-80gb-sxm and the largest usable node advertises 1",
+    "message": "a tensor group of 2 accelerators of class h100-80gb-sxm must fit inside one node and the largest usable node advertises 1",
     "last_error": {
       "code": "insufficient_capacity",
       "message": "no single nvlink domain with 2 free h100-80gb-sxm devices",

@@ -106,15 +106,23 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 
 	// Capacity is checked before rendering rather than left to the scheduler, because the
 	// scheduler's answer to an impossible request is silence.
-	fits, most, err := schedulable(ctx, r.Client, dep, render.NodeSelector(dep, r.Render))
+	placed, err := schedulable(ctx, r.Client, dep, *recipe, render.NodeSelector(dep, r.Render))
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	if !fits {
-		return r.wait(ctx, res, "NoSchedulableCapacity", fmt.Sprintf(
-			"one replica needs %d accelerators of class %s and the largest usable node advertises %d; "+
-				"if the nodes are present, the device plugin may not be installed",
-			dep.Placement.DevicesPerReplica, dep.Placement.DeviceClass, most))
+	if !placed.OK {
+		return r.wait(ctx, res, placed.Code, placed.Reason)
+	}
+
+	// A replica the check could only place across machines, on a cluster that cannot run one.
+	// Rendering it anyway produces a single pod holding a fraction of the devices the engine was
+	// told to expect, which starts and then hangs in collective initialisation with nothing
+	// saying why — so this waits, and names the thing that has to be installed.
+	if placed.NodesPerReplica > 1 && !r.Render.MultinodeEnabled {
+		return r.wait(ctx, res, "MultinodeNotEnabled", fmt.Sprintf(
+			"one replica needs %d nodes of %d accelerators and this cluster does not run multi-node "+
+				"replicas; install Grove or LeaderWorkerSet and set multinode.enabled",
+			placed.NodesPerReplica, placed.DevicesPerNode))
 	}
 
 	// Every ordering is satisfied and the capacity is there. What is left is turning the recipe
@@ -125,6 +133,11 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 		Deployment: dep,
 		Recipe:     *recipe,
 		Artifact:   *artifact,
+		Layout: render.Layout{
+			DevicesPerNode:  placed.DevicesPerNode,
+			NodesPerReplica: placed.NodesPerReplica,
+			Domain:          placed.Domain,
+		},
 	}, r.Render)
 	if err != nil {
 		return r.fail(ctx, res, "RenderFailed", err.Error())

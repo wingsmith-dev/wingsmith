@@ -173,6 +173,22 @@ The device shape is deliberately absent from `recipe.desired`. It reaches the cl
 deployment's `placement`, derived from that same recipe. Two copies of one fact on one wire is two
 things that can disagree, and the placement copy is the one placement already reads.
 
+**How many machines a replica lands on is derived by the cluster, not declared by the plane.**
+`placement.devices_per_replica` says how large the replica is and `recipe.parallelism.tensor` says
+how much of it has to share a node; how those become pods depends on how big this cluster's
+machines are, which is a local fact. So a replica of four devices is one pod on a four-device
+cluster and two pods on a two-device one, and a tensor group larger than any node is refused
+outright — no arrangement of machines serves it, and reporting that as a capacity shortfall points
+a person at a queue that will never clear.
+
+**`placement.topology: single_domain` is honoured at both ends, and it means different things at
+each.** The plane reads it when it chooses a cluster: a gang lands inside one of that cluster's
+observed domains or the cluster is rejected. The operator reads the same field when it renders,
+and pins every pod of a replica to one fabric — a node carrying no `nvidia.com/gpu.clique` is a
+domain of its own, so nodes with no declared fabric between them are never combined. Without the
+second half the first is decoration: the plane picks a cluster on the strength of a domain and the
+cluster then spreads the replica over whichever machines are free.
+
 ## Demand — operator → hub
 
 | Type | Payload |

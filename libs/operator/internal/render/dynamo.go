@@ -43,6 +43,16 @@ type Options struct {
 	PrefetchCPU         string
 	PrefetchMemory      string
 	PrefetchMemoryLimit string
+
+	// MultinodeEnabled says whether this cluster can run a replica that spans machines.
+	//
+	// A per-cluster fact rather than a plane decision, and a hard one: a multi-node replica is a
+	// leader-worker group, and Dynamo renders one only where Grove or LeaderWorkerSet is
+	// installed. Without them the CRD accepts the field and produces a single pod asking for a
+	// fraction of the devices the engine was told to expect, which starts and then hangs in
+	// collective initialisation. Refusing is the only honest behaviour, so this defaults off and
+	// a cluster turns it on when it has installed the thing that makes it true.
+	MultinodeEnabled bool
 }
 
 // Inputs is everything one render reads. Grouping them makes the dependency explicit: a
@@ -52,6 +62,40 @@ type Inputs struct {
 	Deployment wire.DeploymentDesired
 	Recipe     wire.RecipeDesired
 	Artifact   wire.ArtifactDesired
+	Layout     Layout
+}
+
+// Layout is how one replica's devices are spread over machines, as the capacity check concluded.
+//
+// Passed in rather than re-derived here, because what was admitted and what is applied have to be
+// the one calculation. A zero value means the ordinary case — the whole replica on one node — so
+// a caller that has not run the check still renders what it always did.
+type Layout struct {
+	// DevicesPerNode is what one pod asks for.
+	DevicesPerNode int
+	// NodesPerReplica is how many pods one replica is.
+	NodesPerReplica int
+	// Domain is the fabric every pod of the replica must land in, empty when unpinned.
+	Domain string
+}
+
+// nodes is how many machines one replica spans, never less than one.
+func (l Layout) nodes() int {
+	if l.NodesPerReplica < 1 {
+		return 1
+	}
+	return l.NodesPerReplica
+}
+
+// devices is what one pod asks the scheduler for, falling back to the whole replica.
+func (l Layout) devices(dep wire.DeploymentDesired) int {
+	if l.DevicesPerNode > 0 {
+		return l.DevicesPerNode
+	}
+	if n := dep.Placement.DevicesPerReplica; n > 0 {
+		return n
+	}
+	return 1
 }
 
 // workerComponent is the Dynamo component name for the engine.
@@ -79,6 +123,23 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 		return nil, fmt.Errorf("convert pod spec: %w", err)
 	}
 
+	component := map[string]any{
+		"name":                  workerComponent,
+		"type":                  "decode",
+		"replicas":              int64(Replicas(in.Deployment)),
+		"globalDynamoNamespace": true,
+		"podTemplate": map[string]any{
+			"metadata": map[string]any{"labels": ownershipLabels(in)},
+			"spec":     podMap,
+		},
+	}
+	// A replica that spans machines is one leader-worker group, not several replicas. Dynamo
+	// renders it from the same pod template, which is why the device request above is per node
+	// and not per replica.
+	if n := in.Layout.nodes(); n > 1 {
+		component["multinode"] = map[string]any{"nodeCount": int64(n)}
+	}
+
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": GVK.GroupVersion().String(),
 		"kind":       GVK.Kind,
@@ -92,18 +153,7 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 			},
 		},
 		"spec": map[string]any{
-			"components": []any{
-				map[string]any{
-					"name":                  workerComponent,
-					"type":                  "decode",
-					"replicas":              int64(Replicas(in.Deployment)),
-					"globalDynamoNamespace": true,
-					"podTemplate": map[string]any{
-						"metadata": map[string]any{"labels": ownershipLabels(in)},
-						"spec":     podMap,
-					},
-				},
-			},
+			"components": []any{component},
 		},
 	}}
 
@@ -199,10 +249,7 @@ func Replicas(dep wire.DeploymentDesired) int {
 }
 
 func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
-	devices := in.Deployment.Placement.DevicesPerReplica
-	if devices < 1 {
-		devices = 1
-	}
+	devices := in.Layout.devices(in.Deployment)
 
 	requests := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
 	limits := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
@@ -235,7 +282,7 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	shm := resource.MustParse("16Gi")
 
 	spec := &corev1.PodSpec{
-		NodeSelector: NodeSelector(in.Deployment, opts),
+		NodeSelector: podNodeSelector(in, opts),
 		Tolerations: []corev1.Toleration{{
 			Key:      "nvidia.com/gpu",
 			Operator: corev1.TolerationOpEqual,
@@ -297,6 +344,33 @@ func NodeSelector(dep wire.DeploymentDesired, opts Options) map[string]string {
 		out[key] = value
 	}
 	return out
+}
+
+// podNodeSelector is what the render actually lands on: the deployment's selector, plus the fabric
+// when the replica was pinned to one.
+//
+// Kept apart from NodeSelector because the capacity check runs before a domain has been chosen and
+// has to ask about every node, where the render asks about the one domain the check settled on.
+func podNodeSelector(in Inputs, opts Options) map[string]string {
+	out := NodeSelector(in.Deployment, opts)
+	if kind, key, ok := splitDomain(in.Layout.Domain); ok && kind == "nvlink" {
+		out[CliqueLabel] = key
+	}
+	return out
+}
+
+// CliqueLabel names the fabric a node's accelerators belong to. Exported because the capacity
+// check groups nodes by the same label the render selects on; two spellings of one fact is how
+// they drift apart.
+const CliqueLabel = "nvidia.com/gpu.clique"
+
+// splitDomain takes a domain id apart into what is shared and which one it is.
+func splitDomain(domain string) (kind, key string, ok bool) {
+	slash := strings.Index(domain, "/")
+	if slash < 1 || slash == len(domain)-1 {
+		return "", "", false
+	}
+	return domain[:slash], domain[slash+1:], true
 }
 
 // engineModule maps a recipe engine onto the Dynamo entrypoint that runs it.

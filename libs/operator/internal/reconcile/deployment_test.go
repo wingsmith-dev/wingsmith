@@ -583,8 +583,8 @@ func TestDeploymentWaitsWhenNoNodeCanHoldAReplica(t *testing.T) {
 	}
 }
 
-// Capacity spread thinly over several nodes does not satisfy one replica: a tensor-parallel
-// replica cannot be split across machines at all.
+// Capacity spread thinly over several nodes does not satisfy a tensor group, which is the unit
+// that has to fit inside one machine. Two devices at tensor-parallel two are one such group.
 func TestCapacityIsCountedPerNodeNotClusterWide(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
