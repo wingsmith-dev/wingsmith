@@ -33,6 +33,7 @@ from app.db.models import Workload
 from app.db.models import Component
 from app.db.models import Operation
 from app.db.models import Deployment
+from app.db.models import EndpointTarget
 from app.db.models import TopologyDomain
 from app.core.exceptions import Invalid
 
@@ -125,12 +126,43 @@ def workload_clause(ref: str):
     )
 
 
+def endpoint_clause(ref: str):
+    """Every event in one endpoint's story, which is its targets' stories.
+
+    Nothing writes an event whose subject is an endpoint, for the same reason
+    nothing writes one about a workload: an endpoint is a name and a weighting,
+    and everything that can go wrong with it goes wrong to a deployment it
+    points at or to a replica that deployment runs. Filtering on the endpoint
+    alone returned an empty timeline for an endpoint that was visibly failing.
+
+    Only the deployments its targets name, and only their replicas. The
+    workload behind a target is deliberately not walked: a target is a share of
+    traffic sent to one deployment, and the other clusters the same workload
+    landed on are not this endpoint's story even though they serve the same
+    weights. The endpoint's own subject stays in the clause so that a writer
+    filing `endpoint.*` later needs no change here.
+    """
+    deployments = (
+        select(EndpointTarget.deployment_id)
+        .join(Endpoint, Endpoint.id == EndpointTarget.endpoint_id)
+        .where(Endpoint.uid == ref)
+    )
+    replicas = select(Replica.id).where(Replica.deployment_id.in_(deployments))
+    return or_(
+        Event.subject_id.in_(subject_subquery(ref)),
+        Event.subject_id.in_(deployments),
+        Event.subject_id.in_(replicas),
+    )
+
+
 def subject_clause(ref: str):
     """Matches events about one subject, whether or not the subject still exists."""
     if not is_uid(ref):
         raise Invalid(f"subject {ref!r} is not an identifier", {"subject": ref})
     if ref[:4] == WORKLOAD:
         return workload_clause(ref)
+    if ref[:4] == ENDPOINT:
+        return endpoint_clause(ref)
     matched = Event.subject_id.in_(subject_subquery(ref))
     key = SUBJECT_DETAIL_KEYS.get(ref[:4])
     if key is None:

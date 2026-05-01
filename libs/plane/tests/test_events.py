@@ -5,6 +5,7 @@ import pytest
 from app.core.ids import NODE
 from app.core.ids import EVENT
 from app.core.ids import PROJECT
+from app.core.ids import ENDPOINT
 from app.core.ids import PREFIXES
 from app.core.ids import WORKLOAD
 from app.core.ids import is_uid
@@ -150,3 +151,23 @@ def test_a_workloads_artifact_events_are_scoped_to_its_own_clusters(repo):
 def test_a_workload_subject_is_no_longer_rejected(repo):
     """It used to raise, which is why the page it backs showed an empty log."""
     assert subject_clause(new_uid(WORKLOAD)) is not None
+
+
+def test_an_endpoint_subject_reaches_its_targets_deployments_and_replicas(repo):
+    """An endpoint has no events of its own; its story is the story of what it routes to."""
+    text = sql(repo.list_query(limit=10, subject=new_uid(ENDPOINT)))
+    assert "demand_endpoint_target.deployment_id" in text
+    assert "demand_replica.id" in text
+
+
+def test_an_endpoint_subject_does_not_walk_the_workload_behind_a_target(repo):
+    """The other clusters the same weights landed on are not this name's timeline."""
+    text = sql(repo.list_query(limit=10, subject=new_uid(ENDPOINT)))
+    assert "demand_workload" not in text
+    assert "demand_artifact" not in text
+
+
+def test_an_endpoint_subject_keeps_the_endpoints_own_rows(repo):
+    """Nothing files one today, so a writer added later needs no change here."""
+    text = sql(repo.list_query(limit=10, subject=new_uid(ENDPOINT)))
+    assert "SELECT demand_endpoint.id" in text
