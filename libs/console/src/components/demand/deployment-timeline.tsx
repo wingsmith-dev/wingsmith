@@ -23,9 +23,12 @@ import type { PlaneEvent } from "@/modules/machinery/types"
 export function DeploymentTimeline({
   events,
   loading,
+  empty = "Nothing has been recorded against this deployment yet.",
 }: {
   events: PlaneEvent[] | undefined
   loading: boolean
+  /** What an empty log means here, for a caller whose subject is not a deployment. */
+  empty?: string
 }) {
   if (loading && !events) {
     return (
@@ -37,7 +40,7 @@ export function DeploymentTimeline({
     return (
       <div className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
         <StatusDot tone="neutral" />
-        Nothing has been recorded against this deployment yet.
+        {empty}
       </div>
     )
   }

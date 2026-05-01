@@ -167,6 +167,26 @@ export function useWorkloadEvents(
   )
 }
 
+/**
+ * Everything that has happened to one endpoint's targets — newest first.
+ *
+ * An endpoint has no story of its own: nothing files an event whose subject is
+ * an endpoint, so the rows here are its targets' deployments and the replicas
+ * those run. That is the answer to the question the page asks — "why is this
+ * name failing" is always a fact about something behind it.
+ *
+ * Not polled. An endpoint does not converge on anything, so there is no state
+ * this page is waiting to see change; the refresh button is the way to ask
+ * again.
+ */
+export function useEndpointEvents(endpoint: string | undefined) {
+  return useCursorList(
+    ["events", "endpoint", endpoint],
+    (cursor) => fetchEvents({ subject: endpoint! }, cursor),
+    { enabled: !!endpoint }
+  )
+}
+
 export function useAllocations(filters: AllocationFilters = {}) {
   return useCursorList(["allocations", filters], (cursor) =>
     fetchAllocations(filters, cursor)
