@@ -59,6 +59,17 @@ describe("catalogue", () => {
       "inference.preemptions",
       "inference.prompt_tokens_per_request",
       "inference.generation_tokens_per_request",
+      "serving.requests_per_second",
+      "serving.latency_p50",
+      "serving.latency_p95",
+      "serving.latency_p99",
+      "serving.ttft_p50",
+      "serving.ttft_p95",
+      "serving.failure_ratio",
+      "serving.availability",
+      "serving.requests_in_flight",
+      "serving.input_tokens_per_second",
+      "serving.output_tokens_per_second",
     ]
     expect(CATALOGUE.map((metric) => metric.name).sort()).toEqual(
       expected.sort()
@@ -166,15 +177,19 @@ describe("the three time-to-first-token series", () => {
 })
 
 describe("failure rate", () => {
-  it("is not offered, because no engine exporter can count it", () => {
-    // A ratio built from these series reports a cluster nothing reaches as
-    // healthy. Availability comes from the gateway, which the console does not
-    // read yet — so the catalogue must never grow a name that implies one.
+  it("is offered by the gateway family and by no other", () => {
+    // A ratio built from an engine exporter's series reports a cluster nothing
+    // reaches as healthy, so `gpu` and `inference` must never grow a name that
+    // implies one. The gateway counts the requests that reached no cluster,
+    // which is why it is the one family allowed to answer this.
     const forbidden = /fail|error|success rate|availab|uptime|refus/i
     for (const metric of CATALOGUE) {
+      if (metric.family === "serving") continue
       expect(forbidden.test(metric.name), metric.name).toBe(false)
       expect(forbidden.test(metric.title), metric.title).toBe(false)
     }
+    expect(metricDefinition("serving.failure_ratio")!.family).toBe("serving")
+    expect(metricDefinition("serving.availability")!.family).toBe("serving")
   })
 
   it("says so on the completed-requests rate, which is the nearest thing", () => {
@@ -182,11 +197,53 @@ describe("failure rate", () => {
       /never reached a cluster/i
     )
   })
+
+  it("says where the gateway's two reliability numbers are counted", () => {
+    expect(metricDefinition("serving.failure_ratio")!.note).toMatch(
+      /never sees a request that reached no cluster/i
+    )
+    expect(metricDefinition("serving.availability")!.note).toMatch(
+      /no floor of its own/i
+    )
+  })
+})
+
+describe("the serving family", () => {
+  it("labels every measurement an engine also reports as the front door's", () => {
+    // `serving.latency_p50` and `inference.latency` are different measurements
+    // of the same request and the two disagreeing is not a fault. A tile that
+    // did not say which one it was would be the fault.
+    for (const name of [
+      "serving.latency_p50",
+      "serving.latency_p95",
+      "serving.latency_p99",
+      "serving.ttft_p50",
+      "serving.ttft_p95",
+      "serving.requests_per_second",
+      "serving.requests_in_flight",
+      "serving.input_tokens_per_second",
+      "serving.output_tokens_per_second",
+    ]) {
+      expect(metricDefinition(name)!.title, name).toMatch(/front door/i)
+    }
+  })
+
+  it("sums the rates and refuses to sum the quantiles", () => {
+    expect(isSummable("serving.requests_per_second")).toBe(true)
+    expect(isSummable("serving.requests_in_flight")).toBe(true)
+    for (const name of [
+      "serving.latency_p99",
+      "serving.availability",
+      "serving.failure_ratio",
+    ]) {
+      expect(isSummable(name), name).toBe(false)
+    }
+  })
 })
 
 describe("grouping", () => {
   it("puts every metric in a group its family lists", () => {
-    for (const family of ["gpu", "inference"] as const) {
+    for (const family of ["gpu", "inference", "serving"] as const) {
       const grouped = metricGroups(family).flatMap((group) => group.metrics)
       expect(grouped.length).toBe(
         CATALOGUE.filter((metric) => metric.family === family).length

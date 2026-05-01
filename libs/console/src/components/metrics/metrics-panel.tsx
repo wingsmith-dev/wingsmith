@@ -47,6 +47,7 @@ const MEMBER: Record<MetricScope, string> = {
   device: "device",
   deployment: "device",
   workload: "cluster",
+  endpoint: "cluster",
 }
 
 /**
@@ -62,6 +63,7 @@ const ROW: Record<MetricFamily, { bar: string; side: string }> = {
     bar: "inference.kv_cache_utilization",
     side: "inference.ttft",
   },
+  serving: { bar: "serving.availability", side: "serving.latency_p99" },
 }
 
 function Breakdown({ data, family }: { data: Metrics; family: MetricFamily }) {

@@ -307,7 +307,105 @@ const INFERENCE: MetricDefinition[] = [
   },
 ]
 
-export const CATALOGUE: readonly MetricDefinition[] = [...GPU, ...INFERENCE]
+const SERVING: MetricDefinition[] = [
+  {
+    name: "serving.availability",
+    title: "Availability",
+    unit: "percent",
+    family: "serving",
+    group: "reliability",
+    scale: "invariant",
+    note: "The share of requests the front door answered. It has no floor of its own — whether a figure is an outage is a threshold somebody declared, not a property of the measurement.",
+  },
+  {
+    name: "serving.failure_ratio",
+    title: "Failed requests",
+    unit: "percent",
+    family: "serving",
+    group: "reliability",
+    scale: "invariant",
+    note: "Counted at the hop that saw the request, which is the only place it can be counted: an engine exporter never sees a request that reached no cluster.",
+  },
+  {
+    name: "serving.requests_per_second",
+    title: "Requests/sec, front door",
+    unit: "per_second",
+    family: "serving",
+    group: "throughput",
+    scale: "aggregate",
+  },
+  {
+    name: "serving.input_tokens_per_second",
+    title: "Input tokens/sec, front door",
+    unit: "per_second",
+    family: "serving",
+    group: "throughput",
+    scale: "aggregate",
+  },
+  {
+    name: "serving.output_tokens_per_second",
+    title: "Output tokens/sec, front door",
+    unit: "per_second",
+    family: "serving",
+    group: "throughput",
+    scale: "aggregate",
+  },
+  {
+    name: "serving.latency_p50",
+    title: "Latency (p50), front door",
+    unit: "seconds",
+    family: "serving",
+    group: "latency",
+    scale: "invariant",
+    note: "The whole hop, including the queue in front of it and the requests that failed before an engine saw them.",
+  },
+  {
+    name: "serving.latency_p95",
+    title: "Latency (p95), front door",
+    unit: "seconds",
+    family: "serving",
+    group: "latency",
+    scale: "invariant",
+  },
+  {
+    name: "serving.latency_p99",
+    title: "Latency (p99), front door",
+    unit: "seconds",
+    family: "serving",
+    group: "latency",
+    scale: "invariant",
+  },
+  {
+    name: "serving.ttft_p50",
+    title: "Time to first token (p50), front door",
+    unit: "seconds",
+    family: "serving",
+    group: "latency",
+    scale: "invariant",
+  },
+  {
+    name: "serving.ttft_p95",
+    title: "Time to first token (p95), front door",
+    unit: "seconds",
+    family: "serving",
+    group: "latency",
+    scale: "invariant",
+  },
+  {
+    name: "serving.requests_in_flight",
+    title: "Requests in flight, front door",
+    unit: "count",
+    family: "serving",
+    group: "load",
+    scale: "aggregate",
+  },
+]
+
+export const CATALOGUE: readonly MetricDefinition[] = [
+  ...GPU,
+  ...INFERENCE,
+  ...SERVING,
+]
 
 const BY_NAME = new Map(CATALOGUE.map((metric) => [metric.name, metric]))
 
@@ -324,6 +422,7 @@ export const GROUP_LABELS: Record<MetricGroup, string> = {
 const GROUP_ORDER: Record<MetricFamily, MetricGroup[]> = {
   gpu: ["occupancy", "thermal", "reliability"],
   inference: ["latency", "throughput", "load", "shape"],
+  serving: ["reliability", "latency", "throughput", "load"],
 }
 
 /**
@@ -334,7 +433,7 @@ const GROUP_ORDER: Record<MetricFamily, MetricGroup[]> = {
  * ratio built out of these would read a total outage as a quiet afternoon.
  */
 export const AVAILABILITY_SOURCE =
-  "No failure or availability rate is charted here: engine exporters only count requests that reached them, so a ratio built from these series would read an outage as no traffic. That number comes from the gateway's own /metrics, which this console does not read yet."
+  "No failure or availability rate is charted here: engine exporters only count requests that reached them, so a ratio built from these series would read an outage as no traffic. That number comes from the gateway's own /metrics, which is the `serving` family an endpoint's page reads."
 
 /** The tiles a panel opens with. Everything else in the family is a pick away. */
 export const DEFAULT_TILES: Record<MetricFamily, string[]> = {
@@ -360,6 +459,19 @@ export const DEFAULT_TILES: Record<MetricFamily, string[]> = {
     "inference.requests_running",
     "inference.requests_waiting",
     "inference.kv_cache_utilization",
+  ],
+  serving: [
+    "serving.availability",
+    "serving.failure_ratio",
+    "serving.requests_per_second",
+    "serving.latency_p50",
+    "serving.latency_p95",
+    "serving.latency_p99",
+    "serving.ttft_p50",
+    "serving.ttft_p95",
+    "serving.requests_in_flight",
+    "serving.input_tokens_per_second",
+    "serving.output_tokens_per_second",
   ],
 }
 
