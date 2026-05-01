@@ -245,6 +245,26 @@ function columns(
 ): Column<Endpoint>[] {
   return [
     {
+      key: "name",
+      header: "Endpoint",
+      cell: (endpoint) => (
+        <ResourceCell kind="endpoint">
+          <Link
+            to="/endpoints/$endpointId"
+            params={{ endpointId: endpoint.id }}
+            className="block"
+          >
+            <span className="font-mono text-xs">{endpoint.name}</span>
+            <Id value={shortenId(endpoint.id)} className="ml-2" />
+          </Link>
+          {/* TODO-API the public URL is a gateway fact, not on the object. */}
+          <div className="font-mono text-2xs text-muted-foreground/60">
+            hangar.example.com/v1/{endpoint.name}
+          </div>
+        </ResourceCell>
+      ),
+    },
+    {
       key: "status",
       header: (
         <span>
@@ -272,26 +292,6 @@ function columns(
           </div>
         )
       },
-    },
-    {
-      key: "name",
-      header: "Endpoint",
-      cell: (endpoint) => (
-        <ResourceCell kind="endpoint">
-          <Link
-            to="/endpoints/$endpointId"
-            params={{ endpointId: endpoint.id }}
-            className="block"
-          >
-            <span className="font-mono text-xs">{endpoint.name}</span>
-            <Id value={shortenId(endpoint.id)} className="ml-2" />
-          </Link>
-          {/* TODO-API the public URL is a gateway fact, not on the object. */}
-          <div className="font-mono text-2xs text-muted-foreground/60">
-            hangar.example.com/v1/{endpoint.name}
-          </div>
-        </ResourceCell>
-      ),
     },
     {
       key: "workload",
