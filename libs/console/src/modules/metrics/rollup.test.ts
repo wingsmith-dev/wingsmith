@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import {
+  availabilityDays,
   idleGpuHours,
   latencyStages,
   meanUtilization,
@@ -197,5 +198,59 @@ describe("latencyStages", () => {
   it("gives no row to a stage the store did not answer", () => {
     expect(latencyStages([])).toEqual([])
     expect(latencyStages([sample("gpu.utilization")])).toEqual([])
+  })
+})
+
+describe("availabilityDays", () => {
+  /** Local midnight today, which is the cell the last point lands in. */
+  function midnight(daysAgo: number): number {
+    const at = new Date()
+    at.setHours(0, 0, 0, 0)
+    return Math.floor(at.getTime() / 1000) - daysAgo * 86400
+  }
+
+  it("always draws the whole strip, so unmeasured days stay visible", () => {
+    const days = availabilityDays(answer(), 14)
+    expect(days).toHaveLength(14)
+    expect(days.every((day) => day.value === null)).toBe(true)
+  })
+
+  it("means the hours inside a day rather than taking the last one", () => {
+    const today = midnight(0)
+    const days = availabilityDays(
+      answer({
+        series: [
+          curve("serving.availability", [
+            [today + 3600, 100],
+            [today + 7200, 98],
+          ]),
+        ],
+      }),
+      3
+    )
+    expect(days[2].value).toBe(99)
+  })
+
+  it("puts each point in its own day, oldest cell first", () => {
+    const days = availabilityDays(
+      answer({
+        series: [
+          curve("serving.availability", [
+            [midnight(2) + 60, 90],
+            [midnight(0) + 60, 100],
+          ]),
+        ],
+      }),
+      3
+    )
+    expect(days.map((day) => day.value)).toEqual([90, null, 100])
+  })
+
+  it("reads no availability off a metric that is not one", () => {
+    const days = availabilityDays(
+      answer({ series: [curve("gpu.utilization", [[midnight(0) + 60, 40]])] }),
+      2
+    )
+    expect(days.map((day) => day.value)).toEqual([null, null])
   })
 })

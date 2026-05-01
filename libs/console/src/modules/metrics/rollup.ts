@@ -1,5 +1,5 @@
 /**
- * The arithmetic a workload's performance view does over what the plane sent.
+ * The arithmetic the performance views do over what the plane sent.
  *
  * The plane merges what merges and refuses the rest, so everything here obeys
  * the same rule: rates and counts add across clusters because a rate over two
@@ -109,6 +109,54 @@ export function idleGpuHours(
   const mean = meanUtilization(data)
   if (mean === null || gpuCount === 0) return null
   return (spanSeconds / 3600) * gpuCount * (1 - mean / 100)
+}
+
+export interface AvailabilityDay {
+  /** Local midnight of the day, in epoch seconds. */
+  at: number
+  /** The day's mean availability, or nothing for a day no store reported. */
+  value: number | null
+}
+
+/**
+ * An endpoint's availability as one figure per calendar day, oldest first.
+ *
+ * The row always has `days` cells, because the shape of the strip is the point:
+ * a fortnight drawn as four cells reads as a quiet fortnight rather than as ten
+ * days nobody measured. A day the store answered nothing is `null` and must be
+ * drawn as absence — a front door nobody called was not 0% available.
+ *
+ * Local midnight, not UTC, because the reader compares these cells against a
+ * day they remember.
+ */
+export function availabilityDays(
+  data: Metrics | undefined,
+  days: number
+): AvailabilityDay[] {
+  const sums = new Map<number, { total: number; count: number }>()
+  for (const curve of data?.series ?? []) {
+    if (curve.metric !== "serving.availability") continue
+    for (const point of curve.points) {
+      const key = startOfDay(point.at)
+      const bucket = sums.get(key) ?? { total: 0, count: 0 }
+      bucket.total += point.value
+      bucket.count += 1
+      sums.set(key, bucket)
+    }
+  }
+  const today = startOfDay(Date.now() / 1000)
+  return Array.from({ length: days }, (_, i) => {
+    const at = startOfDay(today - (days - 1 - i) * 86400)
+    const bucket = sums.get(at)
+    return { at, value: bucket ? bucket.total / bucket.count : null }
+  })
+}
+
+/** Local midnight of the day an epoch-seconds instant falls in. */
+function startOfDay(seconds: number): number {
+  const at = new Date(seconds * 1000)
+  at.setHours(0, 0, 0, 0)
+  return Math.floor(at.getTime() / 1000)
 }
 
 export interface LatencyStage {
