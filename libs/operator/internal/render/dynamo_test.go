@@ -313,3 +313,26 @@ func TestTheOwnershipLabelsReachThePodTemplate(t *testing.T) {
 		t.Fatalf("graph labels = %v", obj.GetLabels())
 	}
 }
+
+// The regression this exists for: a name that fits the graph deployment and not the objects Dynamo
+// derives from it. The child DynamoComponentDeployment's name is also a label value, so it is held
+// to 63 bytes, and a graph name three characters too long left the workload
+// `nvidia-nemotron-3-5-lightning-30b-a3b-bf16` with no pod ever created.
+func TestTheDerivedComponentNameFitsALabelValue(t *testing.T) {
+	in := testInputs()
+	in.Deployment.Name = strings.Repeat("a", 200)
+	child := WorkloadName(in.Deployment) + componentSuffix
+	if len(child) > maxObjectNameBytes {
+		t.Fatalf("the derived component name is %d bytes, over the %d a label value holds: %s",
+			len(child), maxObjectNameBytes, child)
+	}
+}
+
+// componentSuffix is written out because a const cannot be lowercased, so nothing but this stops it
+// drifting from the component it stands for.
+func TestComponentSuffixMatchesWorker(t *testing.T) {
+	want := "-" + strings.ToLower(workerComponent) + "-" + specHashPlaceholder
+	if componentSuffix != want {
+		t.Fatalf("componentSuffix = %q, want %q", componentSuffix, want)
+	}
+}

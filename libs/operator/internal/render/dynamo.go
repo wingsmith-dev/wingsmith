@@ -168,10 +168,35 @@ func Name(id string) string {
 	return strings.ToLower(strings.ReplaceAll(id, "_", "-"))
 }
 
-// maxWorkloadName bounds the rendered name so the objects Dynamo derives from it — a Deployment
-// per component, then a ReplicaSet, then pods, each appending a suffix — stay inside the 63
-// character limit their own names are held to.
-const maxWorkloadName = 40
+// maxWorkloadName bounds the rendered name so the objects Dynamo derives from it stay inside the
+// 63 byte limit their own names are held to.
+//
+// Derived rather than chosen. The number that matters is not the graph deployment's own name — it
+// has 253 bytes to spend — but the DynamoComponentDeployment Dynamo names after it, whose name is
+// also the value of the `nvidia.com/selector` label on the Deployment underneath. A label value is
+// 63 bytes, so a graph name that fits perfectly well produces a child the API server refuses:
+//
+//	Deployment.apps "<40 chars>-vllmdecodeworker-bb8c5a8c" is invalid:
+//	spec.selector.matchLabels: must be no more than 63 bytes
+//
+// A constant 40 was three over, and the failure landed on an object this operator does not own and
+// never read — so the deployment reported `placed · 0 of 1 replicas ready` for as long as it
+// existed, with no pod ever created and nothing anywhere saying why.
+const maxWorkloadName = maxObjectNameBytes - len(componentSuffix)
+
+// maxObjectNameBytes is the label-value limit the derived name is actually held to.
+const maxObjectNameBytes = 63
+
+// componentSuffix is what Dynamo appends to the graph's name to name one component's objects:
+// a dash, the component lowercased, a dash, and an eight character spec hash.
+//
+// Written out rather than lowercased from `workerComponent`, because a const has to be a const.
+// `TestComponentSuffixMatchesWorker` is what keeps the two from drifting.
+const componentSuffix = "-vllmdecodeworker-" + specHashPlaceholder
+
+// specHashPlaceholder stands in for the hash Dynamo derives per component. Only its length is
+// used; the value is never rendered.
+const specHashPlaceholder = "00000000"
 
 // WorkloadName is the object name one deployment renders under.
 //
