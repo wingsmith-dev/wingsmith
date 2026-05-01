@@ -77,6 +77,11 @@ type reportKey struct {
 	ready    int
 	desired  int
 	replicas string
+	// errorCode is part of the key because a diagnosis can appear without moving anything
+	// else: a deployment holding at zero of one gets its first `ClusterRejected` with the same
+	// phase, counts and replica set it had a pass earlier, and suppressing that frame would
+	// hold back the only thing worth sending.
+	errorCode string
 }
 
 // report sends one deployment.observed, unless it would say exactly what the last one said.
@@ -153,6 +158,7 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 	}
 	sort.Strings(present)
 
+	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
 	r.send(reporter, id, wire.DeploymentObserved{
 		DeploymentID:        id,
 		ClusterID:           r.ClusterID,
@@ -167,7 +173,11 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 		ReplicaIDs: present,
 		Reason:     out.reason(),
 		Message:    out.message(),
-		ObservedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		// The failure the shortfall is explained by, when the cluster explained it. The field
+		// has been on the wire and in the plane's schema since the beginning and nothing ever
+		// wrote it, so `last_error_message` was null for every deployment that ever broke.
+		LastError:  out.trouble.lastError(observedAt),
+		ObservedAt: observedAt,
 	})
 
 	// The replicas themselves, each under its own id. Not suppressed against a previous
@@ -278,6 +288,9 @@ func (r *SyncedResourceReconciler) send(reporter Reporter, id string, payload wi
 		// which replicas exist without changing any of the counts. Suppressing that frame
 		// would suppress the prune that goes with it.
 		replicas: strings.Join(payload.ReplicaIDs, ","),
+	}
+	if payload.LastError != nil {
+		key.errorCode = payload.LastError.Code
 	}
 	// A frame that makes no claim about replicas inherits the last one's, so it compares on
 	// the fields it actually carries. Without this the two senders alternate — `report` with

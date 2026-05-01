@@ -1,0 +1,307 @@
+package reconcile
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/hangar-dev/hangar/libs/operator/internal/render"
+	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
+)
+
+// componentGVK is the object Dynamo derives from a graph deployment, one per component.
+//
+// This operator neither renders nor owns it, and reads it for one reason: it is where the Dynamo
+// operator writes down that it could not do what the graph asked. The graph's own Ready condition
+// names the child and stops there, so a diagnosis that reads only the graph reports "some
+// resources are not ready" — the fact you already had — rather than what went wrong.
+var componentGVK = schema.GroupVersionKind{
+	Group:   render.GVK.Group,
+	Version: render.GVK.Version,
+	Kind:    "DynamoComponentDeploymentList",
+}
+
+// stallAfter is how long a deployment may hold at zero ready replicas before the silence is
+// reported as a failure in its own right.
+//
+// The window is generous on purpose. Everything with a name of its own — a rejected spec, an image
+// that will not pull, a pod nothing can schedule — is reported the moment it is seen, and this
+// catches only what none of those explain: a graph applied cleanly, no pod, no complaint from
+// anybody. Weights are already resident before the apply, so what remains is loading a model off
+// local disk into device memory, which is minutes rather than tens of them.
+const stallAfter = 15 * time.Minute
+
+// trouble is a diagnosis: the closed-set reason for it, and the message a person reads.
+//
+// Separate from `rollout` because it comes from somewhere else. A rollout is counted off the pods;
+// this is read off the objects between the apply and those pods, which is the whole region the
+// operator used to have no opinion about. A deployment with no pods and no trouble is starting up;
+// a deployment with no pods and trouble is broken, and until this existed the two reported the
+// same `placed · 0 of 1 replicas ready`.
+type trouble struct {
+	reason  string
+	code    string
+	message string
+
+	// fatal marks a diagnosis that will not resolve on its own. An unschedulable pod clears
+	// when a node joins; a spec the API server refused is refused identically forever.
+	fatal bool
+}
+
+func (t *trouble) lastError(at string) *wire.LastError {
+	if t == nil {
+		return nil
+	}
+	return &wire.LastError{Code: t.code, Message: t.message, At: at}
+}
+
+// diagnose reads why a deployment has fewer ready replicas than it asked for.
+//
+// Called only on the shortfall, which is also the only time anybody wants the answer. The order is
+// the order of certainty. A rejection by the cluster's own controllers comes first because nothing
+// downstream of it will ever change — no pod is coming, so pod evidence is stale or absent. Pod
+// evidence comes next. The stall is last, because it is the diagnosis for having found nothing.
+func (r *SyncedResourceReconciler) diagnose(
+	ctx context.Context,
+	name string,
+	pods []corev1.Pod,
+	out rollout,
+) *trouble {
+	if out.desired == 0 || out.ready >= out.desired {
+		return nil
+	}
+	if found := r.rejectedBy(ctx, name); found != nil {
+		return found
+	}
+	if found := troubleFromPods(pods); found != nil {
+		return found
+	}
+	return r.stalled(ctx, name, out)
+}
+
+// rejectedBy reads the conditions of the objects Dynamo derived from the graph, and of the graph
+// itself, for one that is false because something refused it.
+//
+// The children are read before the parent. A parent's condition summarises — "some resources are
+// not ready", naming the child — and the child holds the sentence that says why, which for the
+// workload this was written for was `must be no more than 63 bytes`. Reporting the summary would
+// have left the same investigation to do, one level further down.
+func (r *SyncedResourceReconciler) rejectedBy(ctx context.Context, name string) *trouble {
+	var children unstructured.UnstructuredList
+	children.SetGroupVersionKind(componentGVK)
+	err := r.Client.List(ctx, &children,
+		client.InNamespace(r.Render.Namespace),
+		client.MatchingLabels{graphDeploymentLabel: name},
+	)
+	if err != nil {
+		// Not a reconcile failure. A cluster whose Dynamo version does not serve this kind is
+		// one this operator still reconciles; it only diagnoses it less well.
+		r.Log.Debug("could not read the rendered components", "graph", name, "error", err)
+	}
+	for i := range children.Items {
+		if found := troubleFromConditions(&children.Items[i]); found != nil {
+			return found
+		}
+	}
+
+	var graph unstructured.Unstructured
+	graph.SetGroupVersionKind(render.GVK)
+	key := client.ObjectKey{Namespace: r.Render.Namespace, Name: name}
+	if err := r.Client.Get(ctx, key, &graph); err != nil {
+		r.Log.Debug("could not read the rendered graph", "graph", name, "error", err)
+		return nil
+	}
+	return troubleFromConditions(&graph)
+}
+
+// progressReasons are the condition reasons that mean the object is still working, as opposed to
+// having given up. A false condition carrying one of them is not a diagnosis.
+//
+// Everything else is treated as trouble, deliberately. A closed list of failures would have to
+// enumerate what a controller this operator does not own might one day write, and being silent
+// about an unrecognised failure is the exact behaviour being fixed here.
+var progressReasons = map[string]bool{
+	"Reconciling":                  true,
+	"Progressing":                  true,
+	"Pending":                      true,
+	"Creating":                     true,
+	"some_resources_are_not_ready": true,
+}
+
+// troubleFromConditions reads one object's status conditions for a failure worth reporting.
+//
+// A `Reconciling` reason with a message that names an API server rejection is still a rejection:
+// the Dynamo operator reports its permanent failures under the reason it retries them with, so
+// keying on the reason alone reports nothing. The message is what carries the fact, so a false
+// condition whose reason means progress is still read when its message says a write was refused.
+func troubleFromConditions(obj *unstructured.Unstructured) *trouble {
+	conditions, found, err := unstructured.NestedSlice(obj.Object, "status", "conditions")
+	if err != nil || !found {
+		return nil
+	}
+	for _, raw := range conditions {
+		cond, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		status, _ := cond["status"].(string)
+		if status != "False" {
+			continue
+		}
+		reason, _ := cond["reason"].(string)
+		message, _ := cond["message"].(string)
+		if message == "" {
+			continue
+		}
+		if progressReasons[reason] && !refusal(message) {
+			continue
+		}
+		return &trouble{
+			reason:  "ClusterRejected",
+			code:    "ClusterRejected",
+			message: fmt.Sprintf("%s refused %s: %s", "the cluster", obj.GetName(), message),
+			fatal:   refusal(message),
+		}
+	}
+	return nil
+}
+
+// refusal is whether a controller's message is the API server having rejected a write.
+//
+// A rejection is permanent in a way a retry is not: the same spec is refused identically for ever,
+// so nothing about waiting longer changes the outcome. This is a heuristic over free text, which is
+// why it only ever escalates a diagnosis that is already being reported and never suppresses one.
+func refusal(message string) bool {
+	lower := strings.ToLower(message)
+	return strings.Contains(lower, "is invalid") ||
+		strings.Contains(lower, "is forbidden") ||
+		strings.Contains(lower, "already exists")
+}
+
+// troubleFromPods reads a pod that exists and is not going to serve.
+//
+// Waiting reasons rather than pod phase: a pod stuck on `ImagePullBackOff` is `Pending`, which is
+// the same phase as one that is pulling normally, and the difference between those two is the
+// entire question. The first pod with something to say wins — a deployment whose every replica is
+// crash-looping has one fault, not four.
+func troubleFromPods(pods []corev1.Pod) *trouble {
+	for i := range pods {
+		pod := &pods[i]
+		if !pod.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if found := unschedulable(pod); found != nil {
+			return found
+		}
+		if found := containerTrouble(pod); found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// unschedulable is a pod the scheduler has looked at and cannot place.
+//
+// Not fatal: the message names what was missing, and a node joining or a workload leaving makes it
+// placeable with nothing about the deployment having changed. The stall guard is what turns a
+// shortfall nobody ever resolves into a failure.
+func unschedulable(pod *corev1.Pod) *trouble {
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type != corev1.PodScheduled || cond.Status != corev1.ConditionFalse {
+			continue
+		}
+		if cond.Reason != corev1.PodReasonUnschedulable {
+			continue
+		}
+		return &trouble{
+			reason:  "PodUnschedulable",
+			code:    "PodUnschedulable",
+			message: fmt.Sprintf("%s cannot be scheduled: %s", pod.Name, cond.Message),
+		}
+	}
+	return nil
+}
+
+// waitingReasons maps the container states worth reporting onto the closed set, and is also what
+// decides which of them are worth reporting at all: `ContainerCreating` and `PodInitializing` are
+// absent because they are a pod coming up normally.
+var waitingReasons = map[string]string{
+	"ImagePullBackOff":           "ImagePullFailed",
+	"ErrImagePull":               "ImagePullFailed",
+	"InvalidImageName":           "ImagePullFailed",
+	"CrashLoopBackOff":           "CrashLooping",
+	"CreateContainerConfigError": "ContainerConfigInvalid",
+	"CreateContainerError":       "ContainerConfigInvalid",
+}
+
+func containerTrouble(pod *corev1.Pod) *trouble {
+	statuses := append(append([]corev1.ContainerStatus{}, pod.Status.InitContainerStatuses...),
+		pod.Status.ContainerStatuses...)
+	for _, status := range statuses {
+		waiting := status.State.Waiting
+		if waiting == nil {
+			continue
+		}
+		reason, known := waitingReasons[waiting.Reason]
+		if !known {
+			continue
+		}
+		message := waiting.Message
+		if message == "" {
+			message = waiting.Reason
+		}
+		return &trouble{
+			reason:  reason,
+			code:    reason,
+			message: fmt.Sprintf("%s/%s: %s", pod.Name, status.Name, message),
+			fatal:   reason == "ImagePullFailed",
+		}
+	}
+	return nil
+}
+
+// stalled is the diagnosis for a deployment that has been applied, has produced no ready replica,
+// and has nothing anywhere saying why.
+//
+// It reports the silence itself, which is the failure this whole file exists for: the workload that
+// prompted it sat at `placed · 0 of 1 replicas ready` indefinitely, and every layer involved was
+// individually behaving as designed. The age comes from the rendered graph rather than from the
+// declared object, because the graph is created by the apply and is therefore the moment the
+// cluster was actually asked to run something.
+func (r *SyncedResourceReconciler) stalled(ctx context.Context, name string, out rollout) *trouble {
+	var graph unstructured.Unstructured
+	graph.SetGroupVersionKind(render.GVK)
+	key := client.ObjectKey{Namespace: r.Render.Namespace, Name: name}
+	if err := r.Client.Get(ctx, key, &graph); err != nil {
+		return nil
+	}
+	created := graph.GetCreationTimestamp()
+	if created.IsZero() {
+		return nil
+	}
+	age := time.Since(created.Time)
+	if age < stallAfter {
+		return nil
+	}
+	return &trouble{
+		reason: "NoReplicasStarted",
+		code:   "NoReplicasStarted",
+		message: fmt.Sprintf(
+			"applied %s ago and %d of %d replicas are ready, with nothing reporting why; %s",
+			age.Round(time.Minute), out.ready, out.desired, podCount(len(out.replicas))),
+		fatal: true,
+	}
+}
+
+func podCount(n int) string {
+	if n == 0 {
+		return "no pod was ever created"
+	}
+	return fmt.Sprintf("%d pods exist and none is ready", n)
+}

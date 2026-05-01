@@ -871,7 +871,13 @@ def test_a_capacity_refusal_outranks_the_severity_of_its_phase() -> None:
 def test_a_frame_that_restates_the_stored_row_is_not_filed_again() -> None:
     """A hub failover replays the current state of every deployment; none of it is news."""
     observed = payload("deployment.observed")
-    same = _Stored(observed.phase, observed.reason, observed.message, observed.ready_replicas)
+    same = _Stored(
+        observed.phase,
+        observed.reason,
+        observed.message,
+        observed.ready_replicas,
+        last_error_code=observed.last_error.code if observed.last_error else None,
+    )
     assert not _moved(same, observed)
 
 
@@ -935,7 +941,9 @@ class _Stored:
         message: str | None,
         ready_replicas: int,
         observed_generation: int = 0,
+        last_error_code: str | None = None,
     ) -> None:
+        self.last_error_code = last_error_code
         self.phase = phase
         self.reason = reason
         self.message = message
@@ -959,3 +967,13 @@ def test_a_cache_event_is_filed_against_the_artifact_not_the_deployment():
 def test_a_cache_event_replay_lands_on_the_row_it_already_wrote():
     text = str(statements.cache_progressed(uuid.uuid4(), uuid.uuid4(), payload("cache.observed")))
     assert "ON CONFLICT" in text
+
+
+def test_a_diagnosis_arriving_on_an_unchanged_shortfall_is_news() -> None:
+    """The frame that finally says why a deployment is stuck carries the phase, reason and counts
+    the deployment already had — it is the `last_error` that is new. Compared without it, the one
+    frame anybody was waiting for is the one suppressed as a repeat."""
+    observed = payload("deployment.observed")
+    before = _Stored(observed.phase, observed.reason, observed.message, observed.ready_replicas)
+    assert observed.last_error is not None, "the fixture carries no error to notice"
+    assert _moved(before, observed)

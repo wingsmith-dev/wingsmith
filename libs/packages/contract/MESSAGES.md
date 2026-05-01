@@ -244,6 +244,12 @@ who takes them in this order is reading the deployment coming up.
 | `Applied` | `placed` | Rendered and applied; no replica has reported ready yet |
 | `Progressing` | `degraded` | Some replicas are ready and some are not — filling in, or rolling |
 | `Serving` | `running` | Every desired replica is ready |
+| `PodUnschedulable` | `placed` | A replica's pod exists and the scheduler cannot place it |
+| `CrashLooping` | `failed` | A replica's container starts and exits repeatedly |
+| `ContainerConfigInvalid` | `failed` | A replica's container cannot be created from its config |
+| `ImagePullFailed` | `failed` | A replica's image cannot be pulled |
+| `ClusterRejected` | `failed` | A controller in the cluster refused the objects that were applied |
+| `NoReplicasStarted` | `failed` | Applied, no replica ready past the grace window, and nothing said why |
 | `PayloadUndecodable` | `failed` | The desired frame did not decode |
 | `RenderFailed` | `failed` | The frame decoded and describes nothing renderable |
 
@@ -254,6 +260,28 @@ whatever the loop concluded next, and since the receiver files an event per tran
 deployment would accumulate a timeline of the same two rows forever. They are facts about an
 instruction arriving, and a revision is what an instruction is — so the operator remembers how far
 into this set it has reported for the current revision and never goes backwards within one.
+
+**Everything between the apply and a running pod has a reason of its own, and `last_error` is
+where the sentence goes.** `Applied` says a write to the cluster's API succeeded and the counts say
+no replica is ready, and for a long time that pair was the whole vocabulary for the region between
+them — so a deployment the API server had permanently refused, one whose image did not exist, and
+one still loading a model all reported the identical `placed · 0 of 1 replicas ready`. The
+operator now reads that region: the conditions on the objects it rendered, the objects the cluster's
+own controllers derived from those, and the pods' waiting reasons. `ClusterRejected` is the one that
+matters most, because the refusal is written on an object the plane never sees and is permanent —
+the same spec is refused identically for ever.
+
+`last_error` carries the code and the controller's own message, and is set only for a failure. The
+waiting reasons above it are not failures and stay out of it, which is the rule that keeps
+`last_error` meaning something. `message` keeps the replica counts and appends the diagnosis, so a
+reader gets the number they looked for and the sentence they came for in one line.
+
+**`NoReplicasStarted` is the reason for having no reason.** A deployment can be applied, produce no
+pod, and draw no complaint from any controller — nothing is wrong anywhere, and nothing is running.
+Reported as `placed` that is indistinguishable from starting up, and it stayed that way for as long
+as the deployment existed. Past a grace window measured from the rendered object's creation, the
+silence is itself reported as the failure. It is deliberately last: every diagnosis with a name of
+its own is reported the moment it is seen, and this catches only what none of them explain.
 
 **`Applied`, `Progressing` and `Serving` are three answers, not one.** `Applied` is a statement
 about a write to the cluster's API and says nothing about whether a worker ever started; the other

@@ -42,6 +42,11 @@ type rollout struct {
 	unavailable int
 	replicas    []wire.ReplicaObserved
 	allocations []wire.AllocationObserved
+
+	// trouble is why the shortfall exists, when anything in the cluster said. Nil is not
+	// health: it is a shortfall nothing has explained yet, which for the first minute of a
+	// rollout is the normal reading. See diagnose.go.
+	trouble *trouble
 }
 
 // phase is the observed phase these counts amount to.
@@ -54,6 +59,11 @@ func (r rollout) phase() string {
 	switch {
 	case r.desired == 0:
 		return phasePlaced
+	// A diagnosis that will not resolve on its own is a failure, whatever the counts say.
+	// Without this a workload the API server had permanently refused read `placed` for as long
+	// as it existed, which is the same word a healthy deployment uses on its way up.
+	case r.trouble != nil && r.trouble.fatal:
+		return phaseFailed
 	case r.ready == 0:
 		return phasePlaced
 	case r.ready < r.desired:
@@ -69,6 +79,11 @@ func (r rollout) phase() string {
 // question and answering it again once replicas are up is how the plane came to describe a serving
 // deployment as one still waiting for replicas.
 func (r rollout) reason() string {
+	// A diagnosis outranks the counts. `Applied` and `Progressing` are both true of a
+	// deployment whose pods will never start, and neither is the thing anybody needs told.
+	if r.trouble != nil {
+		return r.trouble.reason
+	}
 	switch r.phase() {
 	case phaseRunning:
 		return "Serving"
@@ -79,8 +94,14 @@ func (r rollout) reason() string {
 	}
 }
 
+// message keeps the counts and adds the diagnosis to them, rather than replacing one with the
+// other. The counts are what a reader looks for first and the diagnosis is what they came for.
 func (r rollout) message() string {
-	return fmt.Sprintf("%d of %d replicas ready", r.ready, r.desired)
+	counts := fmt.Sprintf("%d of %d replicas ready", r.ready, r.desired)
+	if r.trouble == nil {
+		return counts
+	}
+	return counts + "; " + r.trouble.message
 }
 
 // observeRollout reads what is running for one deployment.
@@ -94,15 +115,18 @@ func (r *SyncedResourceReconciler) observeRollout(
 	dep wire.DeploymentDesired,
 	recipe wire.RecipeDesired,
 ) (rollout, error) {
+	name := render.WorkloadName(dep)
 	var pods corev1.PodList
 	err := r.Client.List(ctx, &pods,
 		client.InNamespace(r.Render.Namespace),
-		client.MatchingLabels{graphDeploymentLabel: render.WorkloadName(dep)},
+		client.MatchingLabels{graphDeploymentLabel: name},
 	)
 	if err != nil {
 		return rollout{}, fmt.Errorf("list pods for %s: %w", dep.DeploymentID, err)
 	}
-	return r.rolloutFrom(pods.Items, dep, render.Replicas(dep), recipe.Engine, recipe.EngineVersion), nil
+	out := r.rolloutFrom(pods.Items, dep, render.Replicas(dep), recipe.Engine, recipe.EngineVersion)
+	out.trouble = r.diagnose(ctx, name, pods.Items, out)
+	return out, nil
 }
 
 // observeAdoptedRollout reads what is running for a deployment this operator did not render.
@@ -148,7 +172,13 @@ func (r *SyncedResourceReconciler) observeAdoptedRollout(
 	); err != nil {
 		return rollout{}, fmt.Errorf("list pods for adopted %s/%s: %w", adopt.Namespace, adopt.Name, err)
 	}
-	return r.rolloutFrom(pods.Items, dep, desired, "", ""), nil
+	out := r.rolloutFrom(pods.Items, dep, desired, "", "")
+	// Pod evidence only. The other half of a diagnosis reads the objects this operator
+	// rendered, and an adopted deployment was rendered by somebody else.
+	if out.ready < out.desired {
+		out.trouble = troubleFromPods(pods.Items)
+	}
+	return out, nil
 }
 
 // adoptedSelector is the live object's own pod selector, and how many replicas it asks for.

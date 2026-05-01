@@ -897,6 +897,14 @@ DEPLOYMENT_REASON_SEVERITY = {
     "PayloadUndecodable": "error",
     "FingerprintMismatch": "warning",
     "LiveObjectUnreadable": "warning",
+    # What the cluster found between the apply and a running replica. `PodUnschedulable` is a
+    # warning because it clears on its own when a node joins; the rest do not.
+    "PodUnschedulable": "warning",
+    "ClusterRejected": "error",
+    "ImagePullFailed": "error",
+    "CrashLooping": "error",
+    "ContainerConfigInvalid": "error",
+    "NoReplicasStarted": "error",
 }
 """Reasons whose severity is not the one their phase implies.
 
@@ -919,6 +927,7 @@ def deployment_status_before(deployment_id: UUID) -> Select:
         DeploymentStatus.message,
         DeploymentStatus.ready_replicas,
         DeploymentStatus.observed_generation,
+        DeploymentStatus.last_error_code,
     ).where(DeploymentStatus.deployment_id == deployment_id)
 
 
@@ -956,6 +965,14 @@ def deployment_progressed(
             "generation": str(payload.generation),
             "ready_replicas": str(payload.ready_replicas),
             "desired_replicas": str(payload.desired_replicas),
+            # The failing controller's own words, on the event and not only on the status row.
+            # The row holds the present and is overwritten; the event is the only place a
+            # failure that later cleared can still be read.
+            **(
+                {"error_code": payload.last_error.code, "error_message": payload.last_error.message}
+                if payload.last_error
+                else {}
+            ),
         },
         parse_ts(payload.observed_at),
     )

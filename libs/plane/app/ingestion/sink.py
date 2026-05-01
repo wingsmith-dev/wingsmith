@@ -81,11 +81,15 @@ def _moved(before: Any, payload: DeploymentObserved) -> bool:
     """
     if before is None:
         return True
+    error = payload.last_error.code if payload.last_error else ""
     return (
         before.phase != payload.phase
         or (before.reason or "") != (payload.reason or "")
         or (before.message or "") != (payload.message or "")
         or before.ready_replicas != payload.ready_replicas
+        # A diagnosis can arrive without moving any of the above: the first frame that explains
+        # a shortfall carries the phase, reason and counts the shortfall already had.
+        or (before.last_error_code or "") != error
     )
 
 
