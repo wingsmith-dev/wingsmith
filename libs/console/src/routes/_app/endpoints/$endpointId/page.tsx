@@ -1,8 +1,10 @@
+import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
 import { SurfaceCard } from "@/components/demand/endpoint-surface"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { DeleteDialog } from "@/components/layout/destructive"
 import { CopyableId, Dash, Id, Labels } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
+import { RefreshButton } from "@/components/layout/refresh-button"
 import { StatusDot, StatusLabel } from "@/components/layout/status-dot"
 import { Sparkline } from "@/components/metrics/sparkline"
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +21,15 @@ import {
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import { formatError, shortenId } from "@/lib/format"
-import type { MetricSeriesPoint } from "@/modules/metrics/types"
+import { formatMetric, sampleOf } from "@/modules/metrics/format"
+import { useMetrics } from "@/modules/metrics/queries"
+import {
+  availabilityDays,
+  sumCurvePoints,
+  type AvailabilityDay,
+} from "@/modules/metrics/rollup"
+import type { Metrics } from "@/modules/metrics/types"
+import { useEndpointEvents } from "@/modules/machinery/queries"
 import type { Artifact, Deployment, Recipe } from "@/modules/demand/types"
 import {
   useArtifactOptions,
@@ -35,9 +45,57 @@ import { toast } from "sonner"
 import { IconArrowLeft, IconArrowUpRight } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
 
-/** A telemetry point trail, purely for the sparkline shape. */
-function trail(values: number[]): MetricSeriesPoint[] {
-  return values.map((value, at) => ({ at, value }))
+/**
+ * How far back the charts reach. The tiles beside them are instant values over
+ * the plane's own rate window, which is a different question — "how fast is it
+ * going now" against "what has the day looked like".
+ */
+const CHART_SPAN = 24 * 3600
+
+/** The strip's width, in days. */
+const AVAILABILITY_DAYS = 14
+const AVAILABILITY_SPAN = AVAILABILITY_DAYS * 86400
+
+/** One metric as the console spells it, or an em dash where nothing measured it. */
+function reading(data: Metrics | undefined, metric: string): string {
+  if (!data) return "—"
+  const sample = sampleOf(data.samples, metric)
+  return sample ? formatMetric(sample.value, sample.unit) : "—"
+}
+
+/** Why a chart or a strip is empty, said where the chart would have been. */
+function EmptyNote({ children }: React.PropsWithChildren) {
+  return (
+    <p className="py-2 font-mono text-2xs text-muted-foreground/50">
+      {children}
+    </p>
+  )
+}
+
+/**
+ * One curve, or a note saying the store held none.
+ *
+ * A `Sparkline` draws nothing at all below two points, so without this a metric
+ * nobody is collecting and a metric that is flat at zero look identical.
+ */
+function Trend({
+  data,
+  metric,
+  tone,
+  size,
+  label,
+}: {
+  data: Metrics
+  metric: string
+  tone: "primary" | "warn" | "danger"
+  size?: "sm" | "lg"
+  label: string
+}) {
+  const points = sumCurvePoints(data.series, metric)
+  if (points.length < 2) {
+    return <EmptyNote>no {label} series for this window</EmptyNote>
+  }
+  return <Sparkline points={points} tone={tone} size={size} />
 }
 
 /** One summary tile in the stat strip. */
@@ -49,7 +107,7 @@ function StatTile({
 }: React.PropsWithChildren<{
   label: string
   value: string
-  tone?: "default" | "ok" | "warn"
+  tone?: "default" | "ok" | "warn" | "danger"
 }>) {
   return (
     <Card size="sm" className="gap-1.5 px-3 py-3">
@@ -60,7 +118,8 @@ function StatTile({
         className={cn(
           "font-mono text-xl leading-none tabular-nums",
           tone === "ok" && "text-emerald-500",
-          tone === "warn" && "text-amber-500"
+          tone === "warn" && "text-amber-500",
+          tone === "danger" && "text-destructive"
         )}
       >
         {value}
@@ -70,16 +129,44 @@ function StatTile({
   )
 }
 
-/** The 14-day availability bar, one cell per day. */
-function AvailabilityBar({ marks }: { marks: ("up" | "warn")[] }) {
+/**
+ * Where the console draws the line on an availability figure.
+ *
+ * The measurement carries no threshold of its own — whether 99.4% is an outage
+ * is a claim somebody made, and the plane deliberately declines to make it. The
+ * two numbers here are this console's reading colour and nothing else; they are
+ * not an SLO and no acceptance term is checked against them.
+ */
+function availabilityTone(percent: number | null): "default" | "ok" | "warn" {
+  if (percent === null) return "default"
+  if (percent >= 99.9) return "ok"
+  return "warn"
+}
+
+/**
+ * The availability strip, one cell per day.
+ *
+ * A day the store answered nothing is drawn hollow rather than red. An endpoint
+ * nobody called, and an endpoint the gateway's metrics port was never scraped
+ * for, were not unavailable — and a strip that says they were is the one thing
+ * this cell must never do.
+ */
+function AvailabilityBar({ days }: { days: AvailabilityDay[] }) {
   return (
     <div className="flex items-end gap-0.5">
-      {marks.map((mark, i) => (
+      {days.map((day) => (
         <span
-          key={i}
+          key={day.at}
+          title={`${new Date(day.at * 1000).toLocaleDateString()} · ${formatMetric(day.value, "percent")}`}
           className={cn(
             "h-2.5 w-[3px] rounded-[1px]",
-            mark === "up" ? "bg-emerald-500" : "bg-amber-500"
+            day.value === null
+              ? "bg-muted-foreground/20"
+              : day.value >= 99.9
+                ? "bg-emerald-500"
+                : day.value >= 99
+                  ? "bg-amber-500"
+                  : "bg-destructive"
           )}
         />
       ))}
@@ -142,6 +229,40 @@ export function EndpointDetailPage() {
   const { data: workloadOptions } = useWorkloadOptions()
   const { data: recipeOptions } = useRecipeOptions()
   const { data: artifactOptions } = useArtifactOptions()
+
+  /**
+   * What the front door saw, which is the only place an endpoint is visible.
+   *
+   * An endpoint reaches no cluster, so no cluster can be asked about one and the
+   * answer carries no cluster at all. Two queries because they answer two
+   * different questions: `live` is the day, at the plane's own rate window, and
+   * `fortnight` is the availability strip — a 14-day figure is a 14-day window,
+   * not fourteen of today's.
+   */
+  const live = useMetrics("endpoint", endpointId, {
+    series: true,
+    span: CHART_SPAN,
+  })
+  const fortnight = useMetrics("endpoint", endpointId, {
+    window: `${AVAILABILITY_DAYS}d`,
+    series: true,
+    span: AVAILABILITY_SPAN,
+    step: "1h",
+  })
+
+  /** The endpoint's targets' events; nothing files one against the name itself. */
+  const events = useEndpointEvents(endpoint?.id)
+
+  const metrics = live.data
+  const days = useMemo(
+    () => availabilityDays(fortnight.data, AVAILABILITY_DAYS),
+    [fortnight.data]
+  )
+  const availability = sampleOf(
+    fortnight.data?.samples ?? [],
+    "serving.availability"
+  )
+  const failure = sampleOf(metrics?.samples ?? [], "serving.failure_ratio")
 
   /**
    * Resolves each endpoint target through the object graph the endpoint itself
@@ -216,29 +337,17 @@ export function EndpointDetailPage() {
     )
   }
 
-  // TODO-API telemetry (requests/sec, latency percentiles, error rate,
-  // availability) is data-plane and reaches the observability stack directly,
-  // never the plane — mocked here so the summary and charts stay designed.
-  const availability: ("up" | "warn")[] = [
-    "up",
-    "up",
-    "up",
-    "up",
-    "up",
-    "up",
-    "up",
-    "up",
-    "warn",
-    "up",
-    "up",
-    "up",
-    "up",
-    "up",
-  ]
-
-  // TODO-API the endpoint's public URL is a gateway fact, not on the object;
-  // derived from the name here so the copy affordance is real.
-  const url = endpoint ? `hangar.example.com/v1/${endpoint.name}` : ""
+  /**
+   * Why the measurement half of this page is empty, when it is.
+   *
+   * Three different absences, and they must not be spelled the same way. No
+   * store configured, a store nobody pointed at the gateway, and a store that
+   * answered with no series are told apart by the plane and reported verbatim;
+   * an endpoint nobody has called is not 100% available and is not 0% either.
+   */
+  const unmeasured = live.error
+    ? formatError(live.error, "metrics unavailable")
+    : (metrics?.unavailable ?? null)
 
   return (
     <div className="flex flex-col">
@@ -252,6 +361,9 @@ export function EndpointDetailPage() {
           </span>
         }
         description={endpoint?.id}
+        readActions={
+          <RefreshButton keys={[["endpoints"], ["metrics"], ["events"]]} />
+        }
         actions={
           <div className="flex gap-2">
             {endpoint && (
@@ -313,31 +425,81 @@ export function EndpointDetailPage() {
 
         {endpoint && (
           <>
-            {/* TODO-API summary tiles are telemetry (data-plane), mocked. */}
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-              <StatTile label="Requests / sec" value="1,204">
-                <Sparkline
-                  points={trail([14, 22, 26, 31, 40, 48, 52, 66])}
-                  tone="primary"
+            {/* The gateway's own series, read at the front door. Absent
+                measurements render as an em dash, never as a zero. */}
+            {live.isLoading ? (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+                {[0, 1, 2, 3, 4].map((i) => (
+                  <Skeleton key={i} className="h-20" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+                <StatTile
+                  label="Requests / sec"
+                  value={reading(metrics, "serving.requests_per_second")}
+                >
+                  {metrics && (
+                    <Trend
+                      data={metrics}
+                      metric="serving.requests_per_second"
+                      tone="primary"
+                      label="request rate"
+                    />
+                  )}
+                </StatTile>
+                <StatTile
+                  label="p50 latency"
+                  value={reading(metrics, "serving.latency_p50")}
                 />
-              </StatTile>
-              <StatTile label="p50 latency" value="142ms" />
-              <StatTile label="p99 latency" value="310ms" />
-              <StatTile label="Error rate" value="0.02%" />
-              <StatTile label="Availability (14d)" value="99.95%" tone="ok">
-                <AvailabilityBar marks={availability} />
-              </StatTile>
-            </div>
+                <StatTile
+                  label="p99 latency"
+                  value={reading(metrics, "serving.latency_p99")}
+                />
+                <StatTile
+                  label="Failed requests"
+                  value={reading(metrics, "serving.failure_ratio")}
+                  tone={
+                    failure?.value == null
+                      ? "default"
+                      : failure.value > 1
+                        ? "danger"
+                        : failure.value > 0
+                          ? "warn"
+                          : "ok"
+                  }
+                />
+                <StatTile
+                  label={`Availability (${AVAILABILITY_DAYS}d)`}
+                  value={
+                    fortnight.isLoading
+                      ? "…"
+                      : formatMetric(availability?.value ?? null, "percent")
+                  }
+                  tone={availabilityTone(availability?.value ?? null)}
+                >
+                  <AvailabilityBar days={days} />
+                </StatTile>
+              </div>
+            )}
+
+            {unmeasured && (
+              <Card size="sm" className="px-3 py-2.5">
+                <p className="font-mono text-2xs text-muted-foreground/60">
+                  {unmeasured}
+                </p>
+              </Card>
+            )}
 
             <div className="grid gap-4 lg:grid-cols-3">
               <div className="space-y-4 lg:col-span-2">
-                {/* TODO-API traffic series is telemetry, mocked. */}
+                {/* Traffic — the gateway's request rate for this name. */}
                 <Card>
                   <CardHeader className="flex-row items-start justify-between gap-2 pb-2">
                     <div>
                       <CardTitle className="text-sm">Traffic</CardTitle>
                       <p className="text-2xs text-muted-foreground">
-                        Requests per second
+                        Requests per second, counted at the front door
                       </p>
                     </div>
                     <span className="font-mono text-2xs text-muted-foreground/60">
@@ -345,24 +507,32 @@ export function EndpointDetailPage() {
                     </span>
                   </CardHeader>
                   <CardContent>
-                    <Sparkline
-                      points={trail([
-                        20, 35, 40, 50, 70, 80, 75, 90, 85, 100, 95, 105, 102,
-                        115, 118,
-                      ])}
-                      tone="primary"
-                      size="lg"
-                    />
+                    {live.isLoading ? (
+                      <Skeleton className="h-14" />
+                    ) : metrics ? (
+                      <Trend
+                        data={metrics}
+                        metric="serving.requests_per_second"
+                        tone="primary"
+                        size="lg"
+                        label="request rate"
+                      />
+                    ) : (
+                      <EmptyNote>nothing is measuring this endpoint</EmptyNote>
+                    )}
                   </CardContent>
                 </Card>
 
-                {/* TODO-API latency percentiles are telemetry, mocked. */}
+                {/* Latency — the gateway's percentiles, which include the hop
+                    and every request that failed before an engine saw it. Not
+                    the same measurement as a deployment's `inference.latency`,
+                    and the two disagreeing is not a fault. */}
                 <Card>
                   <CardHeader className="flex-row items-start justify-between gap-2 pb-2">
                     <div>
                       <CardTitle className="text-sm">Latency</CardTitle>
                       <p className="text-2xs text-muted-foreground">
-                        Response time percentiles
+                        End-to-end percentiles, hop and queue included
                       </p>
                     </div>
                     <span className="font-mono text-2xs text-muted-foreground/60">
@@ -370,45 +540,81 @@ export function EndpointDetailPage() {
                     </span>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="flex flex-wrap items-center gap-4 text-2xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="size-2 rounded-full bg-primary" />
-                        p50{" "}
-                        <span className="font-mono text-foreground">142ms</span>
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="size-2 rounded-full bg-amber-500" />
-                        p95{" "}
-                        <span className="font-mono text-foreground">238ms</span>
-                      </span>
-                      <span className="inline-flex items-center gap-1.5">
-                        <span className="size-2 rounded-full bg-destructive" />
-                        p99{" "}
-                        <span className="font-mono text-foreground">310ms</span>
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      <Sparkline
-                        points={trail([
-                          30, 32, 30, 34, 33, 35, 34, 36, 35, 37, 36, 38, 37,
-                          39, 38,
-                        ])}
-                        tone="danger"
-                      />
-                      <Sparkline
-                        points={trail([
-                          15, 18, 14, 22, 20, 26, 22, 30, 26, 34, 30, 40, 36,
-                          45, 42,
-                        ])}
-                        tone="warn"
-                      />
-                      <Sparkline
-                        points={trail([
-                          2, 2, 0, 4, 3, 5, 4, 6, 5, 7, 6, 8, 7, 9, 8,
-                        ])}
-                        tone="primary"
-                      />
-                    </div>
+                    {live.isLoading ? (
+                      <Skeleton className="h-24" />
+                    ) : metrics ? (
+                      <>
+                        <div className="flex flex-wrap items-center gap-4 text-2xs text-muted-foreground">
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="size-2 rounded-full bg-destructive" />
+                            p99{" "}
+                            <span className="font-mono text-foreground">
+                              {reading(metrics, "serving.latency_p99")}
+                            </span>
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="size-2 rounded-full bg-amber-500" />
+                            p95{" "}
+                            <span className="font-mono text-foreground">
+                              {reading(metrics, "serving.latency_p95")}
+                            </span>
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span className="size-2 rounded-full bg-primary" />
+                            p50{" "}
+                            <span className="font-mono text-foreground">
+                              {reading(metrics, "serving.latency_p50")}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="space-y-1">
+                          <Trend
+                            data={metrics}
+                            metric="serving.latency_p99"
+                            tone="danger"
+                            label="p99 latency"
+                          />
+                          <Trend
+                            data={metrics}
+                            metric="serving.latency_p95"
+                            tone="warn"
+                            label="p95 latency"
+                          />
+                          <Trend
+                            data={metrics}
+                            metric="serving.latency_p50"
+                            tone="primary"
+                            label="p50 latency"
+                          />
+                        </div>
+                        <div className="border-t pt-3">
+                          <FieldGrid>
+                            <Field label="Time to first token (p50)">
+                              {reading(metrics, "serving.ttft_p50")}
+                            </Field>
+                            <Field label="Time to first token (p95)">
+                              {reading(metrics, "serving.ttft_p95")}
+                            </Field>
+                            <Field label="Requests in flight">
+                              {reading(metrics, "serving.requests_in_flight")}
+                            </Field>
+                            <Field label="Tokens/sec in · out">
+                              {reading(
+                                metrics,
+                                "serving.input_tokens_per_second"
+                              )}{" "}
+                              ·{" "}
+                              {reading(
+                                metrics,
+                                "serving.output_tokens_per_second"
+                              )}
+                            </Field>
+                          </FieldGrid>
+                        </div>
+                      </>
+                    ) : (
+                      <EmptyNote>nothing is measuring this endpoint</EmptyNote>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -651,14 +857,22 @@ export function EndpointDetailPage() {
                   </CardHeader>
                   <CardContent>
                     <FieldGrid>
-                      <Field label="Endpoint URL" className="sm:col-span-2">
-                        {/* TODO-API public URL is a gateway fact, derived. */}
-                        <CopyableId
-                          value={`https://${url}`}
-                          className="text-2xs"
-                        >
-                          {url}
+                      {/* What a caller sends, which is the only addressing fact
+                          this object holds. The gateway routes on the `model`
+                          in the request body and never branches on the path, so
+                          the name is the routing key and the URL is not ours:
+                          the gateway has no Ingress of its own and is called by
+                          whatever sits in front of it. */}
+                      <Field label="Model identifier" className="sm:col-span-2">
+                        <CopyableId value={endpoint.name} className="text-2xs">
+                          {endpoint.name}
                         </CopyableId>
+                        <p className="mt-1 font-mono text-2xs text-muted-foreground/50">
+                          Send this as <code>model</code> on the standard
+                          OpenAI-compatible routes. The gateway reads the body,
+                          never the path, and has no public name of its own —
+                          the host belongs to whatever fronts it.
+                        </p>
                       </Field>
                       <Field label="Name">{endpoint.name}</Field>
                       <Field label="Display name">
@@ -765,51 +979,55 @@ export function EndpointDetailPage() {
 
                 <SurfaceCard surface={endpoint.surface} />
 
-                {/* TODO-API endpoint activity/event history is not exposed on
-                    the endpoint object; a designed timeline with mocked rows. */}
+                {/* Activity — the event log, filtered by this endpoint. The
+                    rows are its targets' deployments and their replicas: an
+                    endpoint is a name and a weighting, and everything that can
+                    go wrong with it goes wrong behind it. */}
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">Activity</CardTitle>
+                    <p className="text-2xs text-muted-foreground">
+                      Recorded against the deployments this name routes to
+                    </p>
                   </CardHeader>
-                  <CardContent>
-                    <ol className="space-y-3">
-                      {[
-                        {
-                          tone: "warn" as const,
-                          time: "Aug 24, 14:02",
-                          text: "Latency degraded for 12m (p99 > 1.2s), recovered automatically",
-                        },
-                        {
-                          tone: "info" as const,
-                          time: "Aug 20, 09:15",
-                          text: "Scaled a target from 3 → 4 replicas",
-                        },
-                        {
-                          tone: "info" as const,
-                          time: "Aug 14, 18:40",
-                          text: "Recipe updated on backing deployment",
-                        },
-                        {
-                          tone: "neutral" as const,
-                          time: "Aug 02, 11:00",
-                          text: "Endpoint created",
-                        },
-                      ].map((item, i) => (
-                        <li key={i} className="flex gap-2.5">
-                          <StatusDot tone={item.tone} className="mt-1" />
-                          <div className="space-y-0.5">
-                            <div className="font-mono text-2xs text-muted-foreground">
-                              {item.time}
-                            </div>
-                            <div className="text-xs leading-relaxed">
-                              {item.text}
-                            </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
+                  <CardContent className="space-y-3">
+                    {events.error ? (
+                      <p className="font-mono text-2xs text-destructive">
+                        {formatError(events.error, "Could not read the log")}
+                      </p>
+                    ) : (
+                      <DeploymentTimeline
+                        events={events.items}
+                        loading={events.isLoading}
+                        empty={
+                          endpoint.targets.length === 0
+                            ? "This endpoint routes nowhere, so nothing can be recorded against it."
+                            : "Nothing has been recorded against this endpoint's targets yet."
+                        }
+                      />
+                    )}
+                    {events.hasNextPage && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        disabled={events.isFetchingNextPage}
+                        onClick={() => events.fetchNextPage()}
+                      >
+                        {events.isFetchingNextPage ? "Loading…" : "Load more"}
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
+
+                {/* Which store answered, and over what window. The gateway
+                    belongs to no cluster, so this is never a cluster's store. */}
+                {metrics?.source && (
+                  <p className="font-mono text-2xs text-muted-foreground/50">
+                    {metrics.window} window · {metrics.source.kind} ·{" "}
+                    {metrics.source.url}
+                  </p>
+                )}
               </div>
             </div>
           </>
