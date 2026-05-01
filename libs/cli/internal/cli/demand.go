@@ -589,6 +589,8 @@ func newWorkloadCreateCmd(app *App) *cobra.Command {
 		preemptible   bool
 		adapters      []string
 		labels        []string
+		singleFabric  bool
+		fabricKind    string
 	)
 	cmd := &cobra.Command{
 		Use:     "create <name>",
@@ -657,6 +659,16 @@ already single-cluster by construction, because its ranks are co-scheduled.`,
 			if cmd.Flags().Changed("max-clusters") {
 				req.MaxClusters = &maxClusters
 			}
+			// Sent only when it was typed. The field is a nullable override of the recipe's
+			// own requirement, and null means the recipe's answer stands rather than that
+			// there is no requirement, so a default written in unasked would freeze the
+			// shape's derived answer onto a workload that should follow its recipe.
+			if cmd.Flags().Changed("single-fabric") {
+				req.RequiresSingleTopologyDomain = &singleFabric
+			}
+			if cmd.Flags().Changed("fabric-kind") {
+				req.TopologyDomainKind = fabricKind
+			}
 
 			ctx, cancel := app.RequestContext()
 			defer cancel()
@@ -683,6 +695,9 @@ already single-cluster by construction, because its ranks are co-scheduled.`,
 	fl.BoolVar(&preemptible, "preemptible", false, "may be evicted for something of higher priority")
 	fl.StringArrayVar(&adapters, "adapter", nil, "adapter artifact to load (repeatable)")
 	fl.StringArrayVarP(&labels, "label", "l", nil, "label (KEY=VALUE, repeatable)")
+	fl.BoolVar(&singleFabric, "single-fabric", false,
+		"every device of a replica in one topology domain, overriding the recipe")
+	fl.StringVar(&fabricKind, "fabric-kind", "", "which kind of domain --single-fabric means (nvlink, pcie_root, numa)")
 	return cmd
 }
 

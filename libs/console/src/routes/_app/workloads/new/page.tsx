@@ -15,6 +15,7 @@ import { useProjectOptions } from "@/modules/binding/queries"
 import {
   DEFAULT_ENGINE,
   derivedRecipeRequest,
+  requiresSingleDomain,
   derivedWorkloadName,
   footprintOfRecipe,
   footprintSummary,
@@ -144,6 +145,17 @@ export function NewWorkloadPage() {
     : null
   const fit = how?.kind === "derive" ? how.fit : null
   const recipeId = how?.kind === "existing" ? how.recipe.id : null
+  /**
+   * What the chosen shape says about fabric, before anyone overrides it. Derived from the
+   * footprint for a new recipe and read off an existing one, so the box the Where step
+   * starts on is what would actually be written either way.
+   */
+  const derivedFabric =
+    how?.kind === "existing"
+      ? how.recipe.shape.requires_single_topology_domain
+      : how
+        ? requiresSingleDomain(how.footprint)
+        : false
 
   const suggestedName = artifact ? derivedWorkloadName(artifact, taken) : ""
   const effectiveName = touchedName ? name : suggestedName
@@ -223,6 +235,10 @@ export function NewWorkloadPage() {
         // for the mode that means them, so switching modes cannot leave one behind.
         allowed_regions: where.mode === "region" ? where.regions : [],
         allowed_clusters: where.mode === "clusters" ? where.allowed : [],
+        // Sent only when it disagrees with the recipe. Null is the ordinary value and
+        // means the recipe's own requirement stands, so writing the derived answer here
+        // would pin today's derivation onto a workload that should follow its recipe.
+        requires_single_topology_domain: where.fabric,
         // Absent on purpose: every workload carries one and the project's default
         // answers it. Repeating it here is how defaults drift.
         min_scale: replicas ?? 1,
@@ -385,6 +401,7 @@ export function NewWorkloadPage() {
             project={effectiveProject || null}
             replicas={replicas ?? 1}
             fit={fit}
+            derivedFabric={derivedFabric}
           />
         </Step>
 

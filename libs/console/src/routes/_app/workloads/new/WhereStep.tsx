@@ -17,6 +17,58 @@ import { usePlacementPreview } from "@/modules/placement/queries"
 import type { ClusterVerdict } from "@/modules/placement/types"
 
 /**
+ * Whether the replica must land inside one fabric.
+ *
+ * A separate declaration from which cluster, and it belongs beside it because it is the
+ * other half of the same question: the plane chooses the cluster and the constraint
+ * travels with the choice, where the cluster's own scheduler honours it against its
+ * topology domains. Rule 3, at the two ends it draws.
+ *
+ * The derived value is pre-selected and unticking it is allowed. That direction matters:
+ * the shape implies the requirement, so the common case needs no thought, and the case
+ * the derivation cannot see — a pipeline-parallel replica somebody still wants inside one
+ * rack for latency — is a tick rather than a recipe edit after the fact.
+ *
+ * An unchanged box sends nothing at all. The workload's column is a nullable override of
+ * the recipe's, and null means the recipe's answer stands rather than that there is no
+ * requirement, so writing the derived value into it would freeze today's derivation onto
+ * a workload that should follow its recipe.
+ */
+function FabricChoice({
+  derived,
+  value,
+  onChange,
+}: {
+  derived: boolean
+  value: boolean | null
+  onChange: (fabric: boolean | null) => void
+}) {
+  const checked = value ?? derived
+  return (
+    <label className="flex cursor-pointer items-start gap-2.5 rounded-md border bg-muted/20 px-3 py-2">
+      <Checkbox
+        className="mt-0.5"
+        checked={checked}
+        onCheckedChange={(next) =>
+          onChange(next === derived ? null : next === true)
+        }
+      />
+      <div className="min-w-0">
+        <span className="text-xs font-medium">
+          Keep every replica inside one fabric
+        </span>
+        <p className="font-mono text-2xs text-muted-foreground/60">
+          {derived
+            ? "The shape needs it: a tensor group reaching over the backend fabric is the one split that does not work."
+            : "Not needed by this shape — pipeline stages cross a network perfectly well. Tick it to ask for one anyway."}
+          {value !== null && " Overriding the recipe."}
+        </p>
+      </div>
+    </label>
+  )
+}
+
+/**
  * Which clusters this may use — a default, an affinity and an escape hatch.
  *
  * The three modes are the k8s ones and they mean the same things. `auto` lets placement
@@ -39,6 +91,15 @@ export interface WhereChoice {
   allowed: string[]
   /** The one cluster, for `pin`. */
   pinned: string | null
+  /**
+   * Whether every device of a replica must sit in one fabric, overriding the recipe.
+   *
+   * Null is the ordinary value and means the recipe's own answer stands — which is not
+   * the same as "no requirement", and is why this is not a plain boolean. The shape
+   * implies the requirement in the common case, so an override is the exception and is
+   * sent only when someone actually disagrees with what was derived.
+   */
+  fabric: boolean | null
 }
 
 export const AUTO_WHERE: WhereChoice = {
@@ -46,6 +107,7 @@ export const AUTO_WHERE: WhereChoice = {
   regions: [],
   allowed: [],
   pinned: null,
+  fabric: null,
 }
 
 /**
@@ -96,6 +158,7 @@ export function WhereStep({
   project,
   replicas,
   fit,
+  derivedFabric,
 }: {
   value: WhereChoice
   onChange: (choice: WhereChoice) => void
@@ -108,6 +171,12 @@ export function WhereStep({
   replicas: number
   /** The chosen fitment row, which is all there is to go on without a recipe. */
   fit: ArtifactFit | null
+  /**
+   * What the chosen shape implies about fabric, which is what the checkbox starts on.
+   * A tensor group crossing machines is a configuration that is always wrong, so a
+   * tensor-parallel shape derives true and the box is ticked before anyone touches it.
+   */
+  derivedFabric: boolean
 }) {
   const { data: clusters } = useClusterOptions()
   /**
@@ -157,6 +226,12 @@ export function WhereStep({
         ) : (
           <CapacityHint fit={fit} />
         ))}
+
+      <FabricChoice
+        derived={derivedFabric}
+        value={value.fabric}
+        onChange={(fabric) => onChange({ ...value, fabric })}
+      />
 
       <div className="space-y-1.5">
         {MODES.map((mode) => (
