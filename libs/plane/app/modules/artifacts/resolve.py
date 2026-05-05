@@ -183,8 +183,16 @@ def suggest_recipe(model: HuggingFaceModel, notes: list[ResolveNote]) -> RecipeD
     Quantization is resolved from the repo rather than defaulted: a repo shipping
     mxfp4 sized as fp16 overcounts weights fourfold, which turns a suggestion into
     a placement that never schedules.
+
+    The suggestion and the sizing want different answers when a repo declares no
+    quantization at all. Sizing needs a bytes-per-param bucket and fp16 is the right
+    one for unquantized weights; the suggestion needs to stay empty, because it is
+    offered as the recipe's `--quantization` and fp16 is a dtype, not a quantization
+    method any engine accepts. Defaulting the two together renders every unquantized
+    repo into a recipe the engine rejects before it binds a port.
     """
-    quantization = native_quant_method(model.config, model.slug) or DEFAULT_QUANTIZATION
+    quantization = native_quant_method(model.config, model.slug)
+    sizing_quantization = quantization or DEFAULT_QUANTIZATION
     dtype = _dtype_of(model.config)
     shape = extract_shape(model.config)
 
@@ -207,7 +215,7 @@ def suggest_recipe(model: HuggingFaceModel, notes: list[ResolveNote]) -> RecipeD
     required_gb = estimate_vram(
         total_params=model.parameter_count,
         shape=shape,
-        quantization=quantization,
+        quantization=sizing_quantization,
         context_length=context_length,
         concurrency=1,
     ).required_gb

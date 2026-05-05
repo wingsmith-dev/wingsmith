@@ -422,6 +422,28 @@ async def test_a_recipe_suggestion_is_offered_and_never_applied():
     assert "recipe" not in ArtifactCreateRequest.__struct_fields__
 
 
+async def test_unquantized_weights_suggest_no_quantization_but_still_size_as_fp16():
+    """A repo that declares no quantization must not be offered one.
+
+    The suggestion becomes the recipe's `--quantization`, and an engine takes only
+    real quantization methods there — `fp16` is a dtype and is rejected before the
+    worker binds a port. Sizing still needs a bytes-per-param bucket, and fp16 is
+    the right one for unquantized weights, so the two answers differ here.
+    """
+    config = {k: v for k, v in GPT_OSS_CONFIG.items() if k != "quantization_config"}
+    model = hf_model(slug="nvidia/Nemotron-30B-A3B-BF16", config=config)
+
+    draft = await service(hub=FakeHub(model)).resolve(model.slug)
+
+    assert draft.recipe.quantization is None
+    assert draft.metadata["quantization"] is None
+    assert draft.recipe.dtype == "bfloat16"
+
+    quantized = await service().resolve("openai/gpt-oss-20b")
+    assert quantized.recipe.quantization == "mxfp4"
+    assert draft.recipe.device_memory_mib_min > quantized.recipe.device_memory_mib_min
+
+
 async def test_weights_the_hub_cannot_address_are_a_named_digest_and_unverified():
     model = hf_model(
         content_addressable=False,
