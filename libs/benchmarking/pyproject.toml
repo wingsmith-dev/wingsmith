@@ -1,0 +1,56 @@
+[project]
+name = "hgrbench"
+version = "0.1.0"
+description = "Run this project's benchmark harnesses locally against an OpenAI-compatible endpoint, and compare what they say"
+requires-python = ">=3.11"
+dependencies = []
+
+# No dependencies, deliberately. Plans are TOML and `tomllib` is in the standard
+# library; the report is a string; the harnesses are containers. That is what lets
+# `python3 -m hgrbench` work from a fresh checkout with no virtualenv, on the laptop
+# of somebody who wanted one number and not an environment.
+
+[project.scripts]
+hgrbench = "hgrbench.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hgrbench"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+# `images/` is upstream vLLM source and hand-written stubs standing in for its
+# torch-dependent internals. Linting somebody else's code to our house style would
+# make every upstream re-vendor a diff about import order.
+extend-exclude = ["images"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+# html.py is one long template string holding the report's own CSS and JS. Wrapping
+# those lines to our Python line length would make the page harder to read, not easier.
+[tool.ruff.lint.per-file-ignores]
+"hgrbench/report/html.py" = ["E501"]
+
+# Borrowed verbatim from libs/plane, so that a file moved between the two does not
+# change shape on the way.
+[tool.ruff.lint.isort]
+force-single-line = true
+from-first = false
+force-sort-within-sections = false
+length-sort = true
+length-sort-straight = true
+lines-after-imports = 2
+lines-between-types = 1
+known-first-party = ["hgrbench"]
+section-order = [
+  "future",
+  "standard-library",
+  "third-party",
+  "first-party",
+  "local-folder",
+]

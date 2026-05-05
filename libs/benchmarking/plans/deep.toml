@@ -1,0 +1,77 @@
+name = "deep"
+description = "Both models, four harnesses, five load points, three repeats, both ladders, and the saturation search."
+
+# The numbers you would quote. Budget two hours and run it when nobody minds the
+# endpoint being busy — the saturation search at the end deliberately pushes until
+# the SLA breaks, and `--hard` is required to let it.
+#
+# Three repeats is not caution, it is the point: on a shared endpoint the run-to-run
+# spread is often wider than the difference somebody is about to draw a conclusion
+# from, and the report shows both so the conclusion can be checked against the noise.
+
+repeats = 3
+cooldown_seconds = 20
+input_tokens = 2000
+output_tokens = 256
+
+harnesses = ["aiperf", "vllm-bench", "guidellm"]
+
+[endpoint]
+url = "http://host.docker.internal:8080"
+token_env = "HANGAR_GATEWAY_TOKEN"
+token_from_cluster = "acme"
+
+[[models]]
+name = "gpt-oss-120b"
+tokenizer = "openai/gpt-oss-120b"
+
+[[models]]
+name = "gpt-oss-20b"
+tokenizer = "openai/gpt-oss-20b"
+
+# The load points every harness measures, so the cross-harness comparison has
+# something to compare at each one.
+[[load]]
+concurrency = 1
+requests = 30
+
+[[load]]
+concurrency = 2
+requests = 40
+
+[[load]]
+concurrency = 4
+requests = 60
+
+[[load]]
+concurrency = 8
+requests = 80
+
+[[load]]
+concurrency = 16
+requests = 120
+
+# The ladders each harness walks in one process. Both of the ones that can: vLLM's
+# own sweep for its summary and plot artifacts, GuideLLM for a single continuous
+# client climbing the rungs rather than N cold starts.
+[sweep]
+enabled = true
+harnesses = ["vllm-sweep", "guidellm"]
+ladder = [1, 2, 4, 8, 16, 32]
+requests_per_rung = 60
+num_runs = 2
+
+# The saturation search. Needs --hard. It climbs until p90 TTFT crosses two seconds
+# or any request fails, then stops and reports the last rung that held.
+#
+# Two seconds is a placeholder for a real SLA: put the number the product actually
+# promises here, because the whole output of this stage is "the load at which we stop
+# keeping that promise", and against an invented limit that sentence means nothing.
+[knee]
+enabled = true
+harness = "aiperf"
+field = "ttft.p90"
+limit = 2000
+error_limit = 0
+ladder = [1, 2, 4, 8, 16, 32, 64, 128]
+requests_per_rung = 60
