@@ -1,0 +1,46 @@
+name = "smoke"
+description = "Both models, all four harnesses, two load points. About ten minutes, safe any time of day."
+
+# A run you can do before a deploy. It is not enough load to find the knee and it is
+# not meant to be: what it answers is whether the endpoint works, whether every
+# harness still runs, and roughly where the numbers sit. If it fails, the deep plan
+# is not worth starting.
+
+repeats = 1
+cooldown_seconds = 10
+input_tokens = 1000
+output_tokens = 128
+
+harnesses = ["aiperf", "vllm-bench", "guidellm"]
+
+[endpoint]
+url = "http://host.docker.internal:8080"
+token_env = "HANGAR_GATEWAY_TOKEN"
+token_from_cluster = "acme"
+
+[[models]]
+name = "gpt-oss-120b"
+tokenizer = "openai/gpt-oss-120b"
+
+[[models]]
+name = "gpt-oss-20b"
+tokenizer = "openai/gpt-oss-20b"
+
+[[load]]
+concurrency = 1
+requests = 8
+
+[[load]]
+concurrency = 4
+requests = 16
+
+# One ladder run per model through vLLM's own sweep, so the smoke test also proves
+# the sweep path still works. Two rungs, four requests each.
+[sweep]
+enabled = true
+harnesses = ["vllm-sweep"]
+ladder = [1, 4]
+requests_per_rung = 8
+
+[knee]
+enabled = false
