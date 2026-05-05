@@ -56,6 +56,33 @@ def check_lifecycle(value: str) -> None:
         )
 
 
+DTYPE_VALUES = ("fp16", "float16", "bf16", "bfloat16", "fp32", "float32", "auto")
+"""Precisions a checkpoint is stored in. None of them is a quantization method."""
+
+
+def check_quantization(value: str | None) -> None:
+    """Rejects a dtype put in the quantization field.
+
+    The two are one keystroke apart in a form and mean opposite things: dtype is
+    the precision weights are already in, quantization is a scheme for making them
+    smaller than that. An engine takes only real methods on `--quantization`, so a
+    dtype there is not a degraded serve — it is a worker that exits before it binds
+    a port, and the cluster reports it as a crash loop with no mention of this
+    field. Cheap to catch when someone writes it, expensive to diagnose an hour
+    later from the other side of the wire.
+
+    Unquantized weights declare nothing here. Empty is the correct answer for the
+    majority of repos, which is why this rejects rather than translates: silently
+    moving the value to `dtype` would guess at an intent the caller did not state.
+    """
+    if value is not None and value.strip().lower() in DTYPE_VALUES:
+        raise Invalid(
+            f"{value} is a dtype, not a quantization method; set dtype instead, "
+            "and leave quantization empty for weights that ship unquantized",
+            {"quantization": value},
+        )
+
+
 def check_footprint(**fields: int | None) -> None:
     """Rejects a negative resource request.
 
@@ -578,6 +605,7 @@ class RecipeService:
         )
         check_serving(data.serving, data.capabilities, data.prefix_cache_enabled)
         check_lifecycle(data.lifecycle)
+        check_quantization(data.quantization)
         if data.version < 1:
             raise Invalid("version must be at least 1", {"version": data.version})
         artifact = await self.repo.artifact_by_ref(data.artifact)
@@ -649,6 +677,8 @@ class RecipeService:
         check_serving(serving, capabilities, fields.get("prefix_cache_enabled", recipe.prefix_cache_enabled))
         if "lifecycle" in fields:
             check_lifecycle(fields["lifecycle"])
+        if "quantization" in fields:
+            check_quantization(fields["quantization"])
         check_shape(
             device_class=fields.get("device_class", recipe.device_class),
             device_count=fields.get("device_count", recipe.device_count),

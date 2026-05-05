@@ -32,6 +32,7 @@ from app.modules.recipes.services import RecipeService
 from app.modules.recipes.services import _revision
 from app.modules.recipes.services import sizing_for
 from app.modules.recipes.services import check_shape
+from app.modules.recipes.services import check_quantization
 from app.modules.recipes.services import serving_args
 from app.modules.recipes.services import check_serving
 from app.modules.recipes.services import check_capacity
@@ -64,6 +65,24 @@ def shape(**kwargs) -> dict:
         "kv_cache_fraction": None,
     }
     return base | kwargs
+
+
+def test_a_dtype_in_the_quantization_field_is_refused():
+    """`--quantization fp16` is not a degraded serve, it is a worker that never starts.
+
+    vLLM rejects it building the engine config, before the port is bound, so the
+    cluster reports only a crash loop and a failing probe. Catching it here is the
+    difference between an error on the form and an hour spent in pod logs.
+    """
+    for value in ("fp16", "bfloat16", "BF16", " float16 ", "auto"):
+        with pytest.raises(Invalid):
+            check_quantization(value)
+
+
+def test_a_real_quantization_method_and_an_empty_one_are_both_allowed():
+    """Empty is the right answer for unquantized weights, not a missing value."""
+    for value in ("mxfp4", "fp8", "awq", "gptq", None, ""):
+        check_quantization(value)
 
 
 def test_a_shape_without_a_device_class_is_not_a_shape():
