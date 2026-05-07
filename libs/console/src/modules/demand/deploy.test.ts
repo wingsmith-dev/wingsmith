@@ -146,6 +146,21 @@ describe("derivedRecipeRequest", () => {
       expect(request[absent]).toBeUndefined()
   })
 
+  it("declares no quantization for weights that ship unquantized", () => {
+    /**
+     * The fitment matrix sizes unquantized weights as fp16 because bytes-per-param
+     * needs a number. That fallback must not reach the recipe: it becomes
+     * `--quantization fp16`, which no engine accepts, and the worker exits before
+     * it binds a port. Empty is the correct declaration, not a missing one.
+     */
+    const request = derivedRecipeRequest(artifact, {
+      ...footprint,
+      quantization: "",
+    })
+    expect(request.quantization).toBeNull()
+    expect(request.name).not.toContain("fp16")
+  })
+
   it("takes a typed name over the derived one", () => {
     expect(
       derivedRecipeRequest(artifact, footprint, { name: " mine " }).name

@@ -255,6 +255,17 @@ export function ArtifactFitmentPanel({
   const [quantization, setQuantization] = useState("")
   const [everything, setEverything] = useState(false)
 
+  /**
+   * What a recipe built from this row should declare, which is not what the matrix
+   * sized at. Sizing falls back to fp16 for weights that ship unquantized, because
+   * bytes-per-param needs a number; a recipe must not carry that fallback, because
+   * it becomes `--quantization` and fp16 is a dtype no engine accepts there. So the
+   * footprint takes the explicit choice, then what the repo actually ships, then
+   * nothing — and nothing is the right answer for unquantized weights.
+   */
+  const declaredQuantization =
+    quantization || ((artifact.metadata?.quantization as string | null) ?? "")
+
   /** Selecting is always against the fleet: the other scope answers a purchase order. */
   const effectiveScope: FitmentScope = selecting ? "fleet" : scope
   const { data, isLoading, error } = useArtifactFitment(artifact.id, {
@@ -415,7 +426,7 @@ export function ArtifactFitmentPanel({
                 <FitRow
                   key={fit.device_class}
                   fit={fit}
-                  quantization={data.quantization}
+                  quantization={declaredQuantization}
                   onPick={onPick}
                   selecting={selecting}
                   selected={selected === fit.device_class}
@@ -473,6 +484,7 @@ function FitRow({
   actionLabel = "Deploy",
 }: {
   fit: ArtifactFit
+  /** What a recipe from this row declares — the repo's own, never the sizing fallback. */
   quantization: string
   onPick?: (footprint: RecipeFootprint, fit: ArtifactFit) => void
   selecting?: boolean
