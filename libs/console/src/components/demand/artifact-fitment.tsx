@@ -60,8 +60,14 @@ const CONCURRENCIES = [1, 8, 32, 128, 256]
  * The empty value means "however the weights ship", which is the plane's default and
  * the only honest starting point — the artifact already knows its own precision, and
  * offering fp16 as the default would silently oversize a repo that ships mxfp4.
+ *
+ * fp16 is absent on purpose. It is a dtype, so it is the one entry here that could not
+ * also be declared on a recipe, and this list feeds both questions: how big is it at
+ * this precision, and what should the recipe say. Nothing is lost by dropping it —
+ * unquantized weights are already sized at fp16 under the empty value, which is the
+ * same arithmetic under the name a recipe can actually carry.
  */
-const QUANTIZATIONS = ["", "fp16", "fp8", "int8", "int4", "mxfp4", "awq"]
+const QUANTIZATIONS = ["", "fp8", "int8", "int4", "mxfp4", "awq"]
 
 /** Halvings down from the artifact's declared window, which is the plane's default. */
 function contextChoices(declared: number | null): number[] {
