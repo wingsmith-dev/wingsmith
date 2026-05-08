@@ -4,6 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from msgspec import structs
+
 from app.modules import placement
 from app.modules.placement import DeviceHold
 from app.modules.placement import QuotaSnapshot
@@ -35,6 +37,10 @@ def cluster(uid, name, devs=(), doms=(), **kw):
     return ClusterSnapshot(
         uid=uid, name=name, region=kw.pop("region", "us-east"), devices=tuple(devs), domains=tuple(doms), **kw
     )
+
+
+def hold(workload, priority_value=0, preemptible=False):
+    return DeviceHold(workload=workload, project="proj_a", priority_value=priority_value, preemptible=preemptible)
 
 
 def request(count=8, **kw):
@@ -346,6 +352,50 @@ def test_ties_between_identical_clusters_break_deterministically_on_name():
     assert first.cluster_name == "aaa-1"
     assert place(request(4), reversed_snap).cluster_name == "aaa-1"
     assert [v.cluster_name for v in first.verdicts] == ["aaa-1", "zzz-1"]
+
+
+def test_workloads_alternate_between_identical_clusters_instead_of_packing_one():
+    """Four one-device workloads over two identical four-device clusters.
+
+    Ranking on cluster-wide slack sorted by free devices ascending, which sent
+    every one of them to the same cluster until it was full.
+    """
+    placements = []
+    held: dict[str, str] = {}
+    for n in range(4):
+        clusters = []
+        for uid, name in (("c1", "aaa-1"), ("c2", "zzz-1")):
+            devs = [
+                structs.replace(d, held_by=hold(held[d.uid])) if d.uid in held else d for d in devices(uid, count=4)
+            ]
+            clusters.append(cluster(uid, name, devs))
+        snap = CapacitySnapshot(clusters=tuple(clusters))
+
+        decision = place(request(1, workload=f"wl_{n}"), snap)
+        placements.append(decision.cluster_name)
+
+        chosen = next(c for c in clusters if c.uid == decision.cluster)
+        held[next(d for d in chosen.devices if d.free).uid] = f"wl_{n}"
+
+    assert placements == ["aaa-1", "zzz-1", "aaa-1", "zzz-1"]
+
+
+def test_a_gang_still_takes_the_tightest_domain_when_a_roomier_cluster_exists():
+    """The domain half of the tiebreak, which the alternation must not undo."""
+    doms = (nvlink("dom-a", "nvl-a"), nvlink("dom-b", "nvl-b"))
+    tight = devices("c1", count=4, domain="dom-a", prefix="a") + devices("c1", count=4, domain="dom-b", prefix="b")
+    roomy = devices("c2", count=16, domain="dom-c", prefix="c")
+    snap = CapacitySnapshot(
+        clusters=(
+            cluster("c1", "aaa-1", tight, doms),
+            cluster("c2", "zzz-1", roomy, (nvlink("dom-c", "nvl-c"),)),
+        )
+    )
+
+    decision = place(request(4, requires_single_domain=True, domain_kind="nvlink"), snap)
+
+    assert decision.cluster_name == "aaa-1"
+    assert verdict_for(decision, "aaa-1").fit_slack == 0
 
 
 def test_the_tightest_domain_that_fits_wins_so_big_fabrics_stay_whole():

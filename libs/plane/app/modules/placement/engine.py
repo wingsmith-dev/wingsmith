@@ -79,17 +79,26 @@ def place(request: PlacementRequest, snapshot: CapacitySnapshot) -> PlacementDec
 def _rank(verdict: ClusterVerdict) -> tuple:
     """The tiebreak, ordered so the same question always gets the same answer.
 
-    Preemption-free wins first, then the cheapest eviction, then the tightest fit
-    so large contiguous domains are kept whole, then the roomiest cluster, then
-    the most quota headroom, and finally the cluster name — which guarantees
+    Preemption-free wins first, then the cheapest eviction, then the tightest
+    domain so large fabrics are kept whole, then the roomiest cluster, then the
+    most quota headroom, and finally the cluster name — which guarantees
     determinism even when two clusters are identical in every other respect.
+
+    Tightness is scoped to a domain, and only to a domain. `fit_slack` measures
+    the leftover in whatever the fit was made against: one topology domain for a
+    gang, the whole cluster for anything else. Ranking on the second sorts by
+    free devices ascending, so the fullest cluster that still fits always wins —
+    best-fit packing, which would drain one cluster before touching the next and
+    make the roomiest-cluster key below unreachable. A gang still wants the
+    smallest fabric that holds it, so the key stays for a domain fit and is
+    dropped for an aggregate one.
     """
     plan = verdict.preemption
     return (
         plan is not None and not plan.empty,
         plan.devices_reclaimed if plan else 0,
         len(plan.victims) if plan else 0,
-        verdict.fit_slack,
+        verdict.fit_slack if verdict.domain else 0,
         -verdict.free_devices,
         -(verdict.quota_headroom if verdict.quota_headroom is not None else UNBOUNDED),
         verdict.cluster_name,
