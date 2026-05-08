@@ -28,7 +28,7 @@ function AppLayout() {
   return (
     <SidebarProvider>
       <ConsoleSidebar />
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <Outlet />
       </SidebarInset>
     </SidebarProvider>
