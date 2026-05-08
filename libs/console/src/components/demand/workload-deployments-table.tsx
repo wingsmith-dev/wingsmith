@@ -101,8 +101,11 @@ function columns(
             params={{ clusterId: deployment.cluster_id }}
             className="block"
           >
-            <span className="font-mono text-xs">{deployment.cluster_name}</span>
-            <span className="ml-2 font-mono text-2xs text-muted-foreground">
+            <span className="block font-mono text-xs">
+              {deployment.cluster_name}
+            </span>
+            <span className="block font-mono text-2xs text-muted-foreground">
+              {shortenId(deployment.cluster_id)} ·{" "}
               <Dash>{deployment.region}</Dash>
             </span>
           </Link>
@@ -116,24 +119,16 @@ function columns(
         <Link
           to="/deployments/$deploymentId"
           params={{ deploymentId: deployment.id }}
-          className="hover:underline"
+          className="block hover:underline"
         >
-          <span className="font-mono text-xs">{deployment.name}</span>
-          <Id value={shortenId(deployment.id)} className="ml-2" />
+          <span className="block font-mono text-xs">{deployment.name}</span>
+          <Id value={shortenId(deployment.id)} className="block" />
         </Link>
       ),
     },
     {
-      key: "share",
-      header: `Share (${unit})`,
-      align: "right",
-      cell: (deployment) => (
-        <span className="font-mono text-xs">{deployment.desired_replicas}</span>
-      ),
-    },
-    {
       key: "ready",
-      header: "Ready",
+      header: `Ready (${unit})`,
       cell: (deployment) => (
         <span className="inline-flex items-center gap-2">
           <span className="font-mono text-xs">

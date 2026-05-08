@@ -107,6 +107,7 @@ export function WorkloadDetailPage() {
     (workload?.phase === "running" || workload?.phase === "failed") &&
     workload.scale.ready >= workload.scale.desired
   const events = useWorkloadEvents(workload?.id, settled)
+  const recentEvents = events.items?.slice(0, RECENT_EVENTS)
   const remove = useDeleteWorkload()
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
@@ -289,7 +290,7 @@ export function WorkloadDetailPage() {
             {/* ---- Overview ------------------------------------------ */}
             <TabsContent value="overview" className="space-y-4">
               <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                <div className="flex flex-col gap-4">
+                <div className="flex min-w-0 flex-col gap-4">
                   <TrafficPanel
                     workloadId={workload.id}
                     placed={workload.deployments.length > 0}
@@ -335,7 +336,7 @@ export function WorkloadDetailPage() {
                   </Panel>
                 </div>
 
-                <div className="flex flex-col gap-4">
+                <div className="flex min-w-0 flex-col gap-4">
                   <Panel title="Details">
                     <FieldGrid>
                       <Field label="Status">
@@ -411,9 +412,12 @@ export function WorkloadDetailPage() {
                     </FieldGrid>
                   </Panel>
 
-                  <Panel title="Activity">
+                  <Panel
+                    title="Activity"
+                    action={<SeeAllEvents onClick={() => setView("logs")} />}
+                  >
                     <DeploymentTimeline
-                      events={events.items}
+                      events={recentEvents}
                       loading={events.isLoading}
                     />
                   </Panel>
@@ -462,7 +466,7 @@ export function WorkloadDetailPage() {
               </StatRow>
 
               <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                <div className="flex flex-col gap-4">
+                <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Finding the inflection point"
                     subtitle="Throughput and p99 latency across a concurrency sweep, fp8 · awq · 8x H100"
@@ -538,7 +542,7 @@ export function WorkloadDetailPage() {
                   </Panel>
                 </div>
 
-                <div className="flex flex-col gap-4">
+                <div className="flex min-w-0 flex-col gap-4">
                   <Panel title="New run">
                     <p className="text-2xs text-muted-foreground/70">
                       Requests a workload-level measurement of this recipe. The
@@ -593,7 +597,7 @@ export function WorkloadDetailPage() {
               </StatRow>
 
               <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                <div className="flex flex-col gap-4">
+                <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Topology"
                     subtitle={`GPU allocation across ${
@@ -628,7 +632,7 @@ export function WorkloadDetailPage() {
                   </Panel>
                 </div>
 
-                <div className="flex flex-col gap-4">
+                <div className="flex min-w-0 flex-col gap-4">
                   <Panel title="Scheduling constraints">
                     <FieldGrid>
                       <Field label="Priority class">
@@ -677,9 +681,12 @@ export function WorkloadDetailPage() {
                     </FieldGrid>
                   </Panel>
 
-                  <Panel title="Recent scheduling events">
+                  <Panel
+                    title="Recent scheduling events"
+                    action={<SeeAllEvents onClick={() => setView("logs")} />}
+                  >
                     <DeploymentTimeline
-                      events={events.items}
+                      events={recentEvents}
                       loading={events.isLoading}
                     />
                   </Panel>
@@ -703,7 +710,7 @@ export function WorkloadDetailPage() {
               </StatRow>
 
               <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-                <div className="flex flex-col gap-4">
+                <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Operations"
                     subtitle="Scale, pause and drain — plane-local, each with its own phase"
@@ -756,7 +763,7 @@ export function WorkloadDetailPage() {
                   </Panel>
                 </div>
 
-                <div className="flex flex-col gap-4">
+                <div className="flex min-w-0 flex-col gap-4">
                   <Panel title="Rollout strategy">
                     {/* TODO-API rollout tuning not modelled by the plane */}
                     <FieldGrid>
@@ -877,6 +884,24 @@ function StatTile({
         {value}
       </div>
     </Card>
+  )
+}
+
+/** How many events the overview panels show before deferring to the Logs tab. */
+const RECENT_EVENTS = 5
+
+/**
+ * The link out of a capped activity panel and into the full log.
+ */
+function SeeAllEvents({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      className="font-mono text-2xs text-muted-foreground hover:text-foreground hover:underline"
+      onClick={onClick}
+    >
+      See all
+    </button>
   )
 }
 
@@ -1240,7 +1265,7 @@ function PerformanceView({
       </StatRow>
 
       <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <Panel
             title="Throughput"
             subtitle="Input and output tokens per second, summed over every replica"
@@ -1320,7 +1345,7 @@ function PerformanceView({
           </Panel>
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-4">
           <Panel title="Resource utilization">
             <FieldGrid>
               <Field label="Framebuffer used">
