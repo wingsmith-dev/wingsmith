@@ -40,11 +40,15 @@ function columns(
             params={{ recipeId: recipe.id }}
             className="block"
           >
-            <span className="font-mono text-xs">{recipe.name}</span>
-            <span className="ml-2 font-mono text-2xs text-muted-foreground/60">
-              v{recipe.version}
+            <span
+              className="block max-w-[18rem] truncate font-mono text-xs"
+              title={recipe.name}
+            >
+              {recipe.name}
             </span>
-            <Id value={shortenId(recipe.id)} className="ml-2" />
+            <span className="block font-mono text-2xs text-muted-foreground/60">
+              v{recipe.version} · <Id value={shortenId(recipe.id)} />
+            </span>
           </Link>
         </ResourceCell>
       ),
@@ -66,7 +70,8 @@ function columns(
           <Link
             to="/artifacts/$artifactId"
             params={{ artifactId: recipe.artifact_id }}
-            className="font-mono text-xs hover:text-primary"
+            className="block max-w-[16rem] truncate font-mono text-xs hover:text-primary"
+            title={artifactName(recipe.artifact_id)}
           >
             {artifactName(recipe.artifact_id)}
           </Link>
@@ -78,19 +83,13 @@ function columns(
       ),
     },
     {
-      key: "engine",
-      header: "Engine",
-      cell: (recipe) => (
-        <span className="font-mono text-2xs">
-          {recipe.engine} {recipe.engine_version}
-        </span>
-      ),
-    },
-    {
       key: "hardware",
       header: "Hardware",
       cell: (recipe) => (
-        <span className="font-mono text-2xs">
+        <span
+          className="block max-w-[10rem] truncate font-mono text-2xs"
+          title={`${recipe.shape.device_count}× ${recipe.shape.device_class}`}
+        >
           {recipe.shape.device_count}× {recipe.shape.device_class}
         </span>
       ),
