@@ -170,14 +170,6 @@ function StatTile({
   )
 }
 
-/** `fp8 · awq` from a recipe's quantization and dtype, or null if neither is set. */
-function quantLabel(recipe?: Recipe): string | null {
-  const parts = [recipe?.quantization, recipe?.dtype].filter((p): p is string =>
-    Boolean(p)
-  )
-  return parts.length > 0 ? parts.join(" · ") : null
-}
-
 /**
  * What an endpoint's primary target resolves to across the object graph the
  * endpoint does not carry — deployment → workload → recipe → artifact — plus the
@@ -254,11 +246,19 @@ function columns(
             params={{ endpointId: endpoint.id }}
             className="block"
           >
-            <span className="font-mono text-xs">{endpoint.name}</span>
-            <Id value={shortenId(endpoint.id)} className="ml-2" />
+            <span
+              className="block max-w-[16rem] truncate font-mono text-xs"
+              title={endpoint.name}
+            >
+              {endpoint.name}
+            </span>
+            <Id value={shortenId(endpoint.id)} />
           </Link>
           {/* TODO-API the public URL is a gateway fact, not on the object. */}
-          <div className="font-mono text-2xs text-muted-foreground/60">
+          <div
+            className="max-w-[16rem] truncate font-mono text-2xs text-muted-foreground/60"
+            title={`hangar.example.com/v1/${endpoint.name}`}
+          >
             hangar.example.com/v1/{endpoint.name}
           </div>
         </ResourceCell>
@@ -304,37 +304,12 @@ function columns(
           <Link
             to="/workloads/$workloadId"
             params={{ workloadId: workload.id }}
-            className="inline-flex items-center gap-1 font-mono text-2xs text-muted-foreground hover:underline"
+            className="inline-flex max-w-[12rem] items-center gap-1 font-mono text-2xs text-muted-foreground hover:underline"
+            title={workload.name}
           >
-            {workload.name}
+            <span className="truncate">{workload.name}</span>
             <IconArrowUpRight className="size-3 text-muted-foreground/50" />
           </Link>
-        )
-      },
-    },
-    {
-      key: "model",
-      header: "Model",
-      secondary: true,
-      cell: (endpoint) => {
-        const { artifact, recipe } = resolve(endpoint)
-        if (!artifact) return <Dash>{null}</Dash>
-        const quant = quantLabel(recipe)
-        return (
-          <div className="flex flex-col gap-0.5">
-            <Link
-              to="/artifacts/$artifactId"
-              params={{ artifactId: artifact.id }}
-              className="text-xs hover:underline"
-            >
-              {artifact.name}
-            </Link>
-            {quant && (
-              <span className="font-mono text-2xs text-muted-foreground/60">
-                {quant}
-              </span>
-            )}
-          </div>
         )
       },
     },
@@ -409,7 +384,10 @@ function columns(
         const { regions } = resolve(endpoint)
         if (regions.length === 0) return <Dash>{null}</Dash>
         return (
-          <span className="font-mono text-2xs text-muted-foreground">
+          <span
+            className="block max-w-[10rem] truncate font-mono text-2xs text-muted-foreground"
+            title={regions.join(", ")}
+          >
             {regions.join(", ")}
           </span>
         )
