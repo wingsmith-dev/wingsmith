@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/layout/page-header"
 import { RefreshButton } from "@/components/layout/refresh-button"
 import { StatusDot, StatusLabel } from "@/components/layout/status-dot"
 import { Sparkline } from "@/components/metrics/sparkline"
+import { WindowToggle } from "@/components/metrics/window-toggle"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -29,6 +30,11 @@ import {
   type AvailabilityDay,
 } from "@/modules/metrics/rollup"
 import type { Metrics } from "@/modules/metrics/types"
+import {
+  DEFAULT_WINDOW,
+  windowQuery,
+  type TimeWindow,
+} from "@/modules/metrics/windows"
 import { useEndpointEvents } from "@/modules/machinery/queries"
 import type { Artifact, Deployment, Recipe } from "@/modules/demand/types"
 import {
@@ -44,13 +50,6 @@ import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { IconArrowLeft, IconArrowUpRight } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
-
-/**
- * How far back the charts reach. The tiles beside them are instant values over
- * the plane's own rate window, which is a different question — "how fast is it
- * going now" against "what has the day looked like".
- */
-const CHART_SPAN = 24 * 3600
 
 /** The strip's width, in days. */
 const AVAILABILITY_DAYS = 14
@@ -224,6 +223,7 @@ export function EndpointDetailPage() {
   const navigate = useNavigate()
   const [editing, setEditing] = useState(false)
   const [doomed, setDoomed] = useState(false)
+  const [chartWindow, setChartWindow] = useState<TimeWindow>(DEFAULT_WINDOW)
 
   const { data: deploymentOptions } = useDeploymentOptions()
   const { data: workloadOptions } = useWorkloadOptions()
@@ -235,14 +235,11 @@ export function EndpointDetailPage() {
    *
    * An endpoint reaches no cluster, so no cluster can be asked about one and the
    * answer carries no cluster at all. Two queries because they answer two
-   * different questions: `live` is the day, at the plane's own rate window, and
+   * different questions: `live` is whichever span the toggle names, and
    * `fortnight` is the availability strip — a 14-day figure is a 14-day window,
    * not fourteen of today's.
    */
-  const live = useMetrics("endpoint", endpointId, {
-    series: true,
-    span: CHART_SPAN,
-  })
+  const live = useMetrics("endpoint", endpointId, windowQuery(chartWindow))
   const fortnight = useMetrics("endpoint", endpointId, {
     window: `${AVAILABILITY_DAYS}d`,
     series: true,
@@ -426,7 +423,17 @@ export function EndpointDetailPage() {
         {endpoint && (
           <>
             {/* The gateway's own series, read at the front door. Absent
-                measurements render as an em dash, never as a zero. */}
+                measurements render as an em dash, never as a zero. The toggle
+                governs the whole strip and both charts below it, because the
+                tiles are the same query's instant values — a tile read over one
+                lookback beside a curve drawn over another is two measurements
+                wearing one heading. */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+                measured at the front door
+              </span>
+              <WindowToggle value={chartWindow} onChange={setChartWindow} />
+            </div>
             {live.isLoading ? (
               <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
                 {[0, 1, 2, 3, 4].map((i) => (
@@ -503,7 +510,7 @@ export function EndpointDetailPage() {
                       </p>
                     </div>
                     <span className="font-mono text-2xs text-muted-foreground/60">
-                      24h
+                      {chartWindow.label}
                     </span>
                   </CardHeader>
                   <CardContent>
@@ -536,7 +543,7 @@ export function EndpointDetailPage() {
                       </p>
                     </div>
                     <span className="font-mono text-2xs text-muted-foreground/60">
-                      24h
+                      {chartWindow.label}
                     </span>
                   </CardHeader>
                   <CardContent className="space-y-3">
