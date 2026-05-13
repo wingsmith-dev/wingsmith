@@ -30,6 +30,29 @@ describe("offline fitment", () => {
     expect(flags).toEqual([...flags].sort((a, b) => Number(b) - Number(a)))
   })
 
+  it("marks a fit the fleet holds too few cards for, and sinks it", () => {
+    const classes = deviceClasses().map((entry) =>
+      entry.inventory.devices > 0
+        ? {
+            ...entry,
+            inventory: { ...entry.inventory, devices: 1, allocatable: 1 },
+          }
+        : entry
+    )
+    const result = fitment(llama, classes, { scope: "fleet", limit: 0 })
+
+    const short = result.items.filter((item) => item.supply_short)
+    expect(short.length).toBeGreaterThan(0)
+    for (const item of short) {
+      expect(item.fits).toBe(true)
+      expect(item.device_count).toBeGreaterThan(item.devices_total)
+    }
+    const flags = result.items
+      .filter((item) => item.fits)
+      .map((item) => item.supply_short)
+    expect(flags).toEqual([...flags].sort((a, b) => Number(a) - Number(b)))
+  })
+
   it("asks a different question in each scope", () => {
     const fleet = fitment(llama, deviceClasses(), { scope: "fleet", limit: 0 })
     const catalog = fitment(llama, deviceClasses(), {

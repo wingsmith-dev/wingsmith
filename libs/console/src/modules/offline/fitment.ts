@@ -257,6 +257,7 @@ function fitAt(
     aggregate_gb: aggregate,
     weights_gb: weights,
     devices_total: device.inventory.devices,
+    supply_short: false,
     devices_allocatable: device.inventory.allocatable,
     cluster_count: device.inventory.clusters.length,
     in_catalog: device.in_catalog,
@@ -365,10 +366,24 @@ function fit(
       count,
       devicesPerNode
     )
-    if (attempt.fits && !attempt.reduced) return attempt
+    if (attempt.fits && !attempt.reduced) return short(attempt)
     attempts.push(attempt)
   }
-  return attempts.find((a) => a.fits) ?? attempts[attempts.length - 1]
+  const chosen = attempts.find((a) => a.fits) ?? attempts[attempts.length - 1]
+  return short(chosen)
+}
+
+/**
+ * The fleet half saying no: a fit on a class we own too few of to run one replica.
+ * Mirrors `_short` in the plane, and is set on the chosen attempt rather than on
+ * every attempt, because the count it is measured against is the chosen one.
+ */
+function short(fit: ArtifactFit): ArtifactFit {
+  return {
+    ...fit,
+    supply_short:
+      fit.fits && fit.devices_total > 0 && fit.devices_total < fit.device_count,
+  }
 }
 
 export function fitment(
@@ -429,6 +444,7 @@ export function fitment(
     .sort(
       (a, b) =>
         Number(!a.fits) - Number(!b.fits) ||
+        Number(a.supply_short) - Number(b.supply_short) ||
         Number(a.reduced) - Number(b.reduced) ||
         a.node_count - b.node_count ||
         a.device_count - b.device_count ||

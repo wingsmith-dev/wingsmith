@@ -144,6 +144,13 @@ class ArtifactFitSchema(Struct):
     `memory_mib_per_device` by `device_count` for the nameplate figure. Comparing
     `required_gb` against the nameplate would over-promise by about fifteen percent.
 
+    `supply_short` is the fleet half saying no. It is true when the artifact fits on
+    this class and the fleet holds some of it but fewer devices than one replica needs
+    — a fit nobody can run today. It is deliberately not the same as `devices_total` at
+    zero, which is a class we own none of and the honest procurement answer, and not the
+    same as `devices_allocatable` being low, which waiting fixes. This one is fixed by
+    buying cards.
+
     `kv_counted` false means the artifact published no attention shape, so
     `required_gb` is the weights and nothing else and `context_length` is zero. That
     row is a floor — the true requirement is strictly larger — and rendering it as a
@@ -169,6 +176,7 @@ class ArtifactFitSchema(Struct):
     devices_total: int
     devices_allocatable: int
     cluster_count: int
+    supply_short: bool
     in_catalog: bool
 
 

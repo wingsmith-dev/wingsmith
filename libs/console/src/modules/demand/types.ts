@@ -188,6 +188,12 @@ export interface ArtifactFit {
   devices_total: number
   devices_allocatable: number
   cluster_count: number
+  /**
+   * The fleet holds this class and fewer of it than one replica needs — a fit
+   * nobody can run today. Not the same as owning none of the class, which is a
+   * purchase, and not the same as the free count being low, which waiting fixes.
+   */
+  supply_short: boolean
   /** False for hardware the contract table has never named, fitted from what a cluster reported. */
   in_catalog: boolean
 }

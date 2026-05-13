@@ -174,15 +174,33 @@ def _note(scope: str, candidates: list[DeviceClass], weights_only: bool) -> str 
     return None
 
 
-def _rank(result: Fit) -> tuple:
-    """Fits first, full windows before truncated, then the fewest nodes.
+def _short(result: Fit, row: Row | None) -> bool:
+    """Whether the fleet holds this class but too few of it to run one replica.
 
-    Nodes outrank devices in the ordering because nodes are what gets bought. Where two
-    classes both fit, the smaller hardware order comes first, and thirty-two devices in
-    four nodes is a smaller order than thirty-two across eight.
+    Three different noes, and they must not be flattened into one. `fits` false is
+    physics and no amount of hardware fixes it. Zero devices of the class is a
+    purchasing question, which is what the catalog scope is for. This is the third: we
+    own the right card and not enough of them, so the row is arithmetically a fit and
+    nothing anyone can run today.
+
+    Counted against `devices_total` rather than `devices_allocatable` because the two
+    are different problems. Cards busy with somebody else's work come back; cards that
+    were never bought do not.
+    """
+    return bool(result.fits and row is not None and 0 < row.devices_total < result.device_count)
+
+
+def _rank(result: Fit, short: bool) -> tuple:
+    """Fits first, then fits we own the hardware for, then full windows, then the fewest nodes.
+
+    Supply outranks the window because a truncated fit that runs today beats a full one
+    that needs cards nobody has bought. Nodes outrank devices for the same reason of
+    acting on it: nodes are what gets bought, and thirty-two devices in four nodes is a
+    smaller order than thirty-two across eight.
     """
     return (
         not result.fits,
+        short,
         result.reduced,
         result.node_count,
         result.device_count,
@@ -212,6 +230,7 @@ def _fit_schema(result: Fit, devices_per_node: int, row: Row | None, catalog: De
         devices_total=row.devices_total if row else 0,
         devices_allocatable=(row.devices_allocatable or 0) if row else 0,
         cluster_count=row.cluster_count if row else 0,
+        supply_short=_short(result, row),
         in_catalog=catalog.get(result.device_class) is not None,
     )
 
@@ -485,7 +504,7 @@ class ArtifactService:
                 max_devices=max_devices,
             )
             results.append((fit(sizing, candidate, intent), devices_per_node))
-        results.sort(key=lambda pair: _rank(pair[0]))
+        results.sort(key=lambda pair: _rank(pair[0], _short(pair[0], fleet.get(pair[0].device_class))))
         limit = DEFAULT_FITMENT_LIMIT if query.limit is None else query.limit
         head = results if limit <= 0 else results[:limit]
 

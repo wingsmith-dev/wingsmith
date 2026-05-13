@@ -84,13 +84,19 @@ function formatTokens(value: number): string {
 }
 
 /**
- * A fit is three states, not two.
+ * A fit is four states, not two.
+ *
+ * `supply_short` comes first because this column is read as "can we run it", and
+ * under "What we can run" a green dot beside a row needing sixty-four cards we own
+ * five of is the one answer that is confidently wrong. The arithmetic still fits;
+ * the fleet does not, and the row says which.
  *
  * `reduced` is a fit that had to cut the window, and flattening it into a failure
  * would hide the cheapest card that works from anyone willing to serve at 32k.
  */
 function fitTone(fit: ArtifactFit) {
   if (!fit.fits) return { tone: "neutral" as const, text: "no" }
+  if (fit.supply_short) return { tone: "warn" as const, text: "short" }
   if (!fit.kv_counted) return { tone: "info" as const, text: "holds" }
   if (fit.reduced)
     return {
@@ -98,6 +104,11 @@ function fitTone(fit: ArtifactFit) {
       text: `at ${formatTokens(fit.context_length)}`,
     }
   return { tone: "ok" as const, text: "fits" }
+}
+
+/** Why a row is short, in the words the fit column is too narrow to carry. */
+function shortfall(fit: ArtifactFit): string {
+  return `Needs ${fit.device_count} devices; the fleet holds ${fit.devices_total} of this class. It fits on paper and cannot be placed until more are bought.`
 }
 
 /**
@@ -169,7 +180,8 @@ function FleetCell({ fit }: { fit: ArtifactFit }) {
         <span
           className={cn(
             "font-mono text-2xs tabular-nums",
-            short && "text-amber-500"
+            short && "text-amber-500",
+            fit.supply_short && "text-amber-500"
           )}
         >
           {fit.devices_allocatable}/{fit.devices_total}
@@ -178,7 +190,10 @@ function FleetCell({ fit }: { fit: ArtifactFit }) {
       <TooltipContent>
         {fit.devices_allocatable} of {fit.devices_total} allocatable across{" "}
         {fit.cluster_count} cluster{fit.cluster_count === 1 ? "" : "s"}
-        {short && ` — fewer free than the ${fit.device_count} a replica needs`}
+        {fit.supply_short
+          ? ` — fewer of them in total than the ${fit.device_count} a replica needs`
+          : short &&
+            ` — fewer free than the ${fit.device_count} a replica needs`}
       </TooltipContent>
     </Tooltip>
   )
@@ -515,13 +530,13 @@ function FitRow({
    * an action — it is a thing you do — but wrong for a choice among five, where the
    * clickable area should be the thing you are comparing.
    */
-  const choosable = selecting && fit.fits && !!onPick
+  const choosable = selecting && fit.fits && !fit.supply_short && !!onPick
   return (
     <tr
       onClick={choosable ? pick : undefined}
       className={cn(
         "border-b last:border-0",
-        !fit.fits && "opacity-55",
+        (!fit.fits || fit.supply_short) && "opacity-55",
         choosable && "cursor-pointer hover:bg-primary/5",
         selected && "bg-primary/10 hover:bg-primary/10"
       )}
@@ -533,7 +548,7 @@ function FitRow({
               "flex size-3.5 items-center justify-center rounded-full border",
               selected
                 ? "border-primary bg-primary"
-                : fit.fits
+                : choosable
                   ? "border-muted-foreground/40"
                   : "border-muted-foreground/20"
             )}
@@ -573,7 +588,14 @@ function FitRow({
               <span className="font-mono text-2xs">{state.text}</span>
             </span>
           </TooltipTrigger>
-          <TooltipContent className="max-w-80">{fit.reason}</TooltipContent>
+          <TooltipContent className="max-w-80">
+            {fit.reason}
+            {fit.supply_short && (
+              <span className="mt-1 block text-amber-500">
+                {shortfall(fit)}
+              </span>
+            )}
+          </TooltipContent>
         </Tooltip>
       </td>
       <td className="p-2">
@@ -581,7 +603,12 @@ function FitRow({
           <Tooltip>
             <TooltipTrigger asChild>
               <div className="flex flex-col">
-                <span className="font-mono text-xs tabular-nums">
+                <span
+                  className={cn(
+                    "font-mono text-xs tabular-nums",
+                    fit.supply_short && "text-amber-500"
+                  )}
+                >
                   {fit.node_count > 1
                     ? `${fit.node_count} nodes x ${Math.min(fit.devices_per_node, fit.device_count)}`
                     : `1 node x ${fit.device_count}`}
@@ -596,6 +623,11 @@ function FitRow({
               {fit.node_count > 1
                 ? `${fit.node_count} nodes of ${Math.min(fit.devices_per_node, fit.device_count)}, on one backend fabric — tensor-parallel ${fit.tensor_parallel} inside each node, pipeline-parallel ${fit.pipeline_parallel} across them.`
                 : `One node of ${fit.device_count}, tensor-parallel ${fit.tensor_parallel}. A node of this class holds ${fit.devices_per_node} devices.`}
+              {fit.supply_short && (
+                <span className="mt-1 block text-amber-500">
+                  {shortfall(fit)}
+                </span>
+              )}
             </TooltipContent>
           </Tooltip>
         ) : (
@@ -609,7 +641,10 @@ function FitRow({
         <FleetCell fit={fit} />
       </td>
       <td className="p-2 text-right">
-        {fit.fits && onPick && !selecting && (
+        {/* A row the fleet cannot supply is not offered. Placement would refuse it,
+            and the count is a hard bound rather than a busy one — waiting does not
+            turn five cards into sixty-four. */}
+        {fit.fits && !fit.supply_short && onPick && !selecting && (
           <Button size="sm" variant="outline" onClick={pick}>
             {actionLabel}
           </Button>

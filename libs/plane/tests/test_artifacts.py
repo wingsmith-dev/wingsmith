@@ -1086,6 +1086,40 @@ async def test_hardware_the_contract_table_never_named_is_still_fitted():
     assert fit.fits
 
 
+async def test_a_fit_the_fleet_holds_too_few_cards_for_is_marked_short():
+    """The 4TB-on-five-cards case: arithmetically a fit, and nothing anyone can run."""
+    fleet = [FleetRow("rtx-pro-6000-blackwell", 98304, 5, 5, 1)]
+    huge = sized_artifact(parameter_count=2_000_000_000_000)
+    result = await fitment_service(huge, fleet=fleet).fitment("llama-70b", ArtifactFitmentRequest())
+
+    fit = result.items[0]
+    assert fit.fits
+    assert fit.device_count > fit.devices_total
+    assert fit.supply_short
+
+
+async def test_a_class_we_own_enough_of_outranks_one_we_do_not():
+    """Supply beats the window: a truncated fit that runs today beats a full one we cannot."""
+    fleet = [
+        FleetRow("h100-80gb-sxm", 81559, 1, 1, 1),
+        FleetRow("h200-141gb-sxm", 144384, 16, 16, 1),
+    ]
+    result = await fitment_service(fleet=fleet).fitment("llama-70b", ArtifactFitmentRequest())
+
+    assert [item.device_class for item in result.items] == ["h200-141gb-sxm", "h100-80gb-sxm"]
+    assert not result.items[0].supply_short
+    assert result.items[1].supply_short
+
+
+async def test_a_class_we_own_none_of_is_a_purchase_and_not_a_shortfall():
+    """Zero total is the procurement answer the catalog scope exists to give."""
+    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog", limit=0))
+
+    unowned = [item for item in result.items if item.devices_total == 0]
+    assert unowned
+    assert not any(item.supply_short for item in unowned)
+
+
 async def test_an_empty_fleet_says_so_rather_than_returning_an_empty_matrix():
     result = await fitment_service(fleet=[]).fitment("llama-70b", ArtifactFitmentRequest())
     assert result.sizable
