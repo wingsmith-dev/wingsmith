@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 
-import { fetchMetrics, type MetricsQuery } from "./api"
+import { fetchMetrics, fetchServingMetrics, type MetricsQuery } from "./api"
 import type { MetricScope } from "./types"
 
 /** Measurement goes stale on its own, so it refetches; inventory does not and does not. */
@@ -21,6 +21,17 @@ export function useMetrics(
      * for longer than a panel is worth blocking on, and the plane already turns
      * that case into a body carrying `unavailable` rather than an error.
      */
+    retry: 1,
+    staleTime: REFRESH_MS / 2,
+  })
+}
+
+/** The gateway's own totals, and every endpoint's figures beside them. */
+export function useServingMetrics(query: MetricsQuery = {}) {
+  return useQuery({
+    queryKey: ["metrics", "serving", query],
+    queryFn: () => fetchServingMetrics(query),
+    refetchInterval: REFRESH_MS,
     retry: 1,
     staleTime: REFRESH_MS / 2,
   })

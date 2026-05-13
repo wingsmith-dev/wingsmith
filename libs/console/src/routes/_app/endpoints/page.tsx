@@ -5,7 +5,6 @@ import { DeleteDialog, RowActions } from "@/components/layout/destructive"
 import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusDot, type StatusTone } from "@/components/layout/status-dot"
-import { Sparkline } from "@/components/metrics/sparkline"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { useProjectOptions } from "@/modules/binding/queries"
@@ -27,7 +26,10 @@ import type {
   Recipe,
   Workload,
 } from "@/modules/demand/types"
-import type { MetricSeriesPoint } from "@/modules/metrics/types"
+import { Sparkline } from "@/components/metrics/sparkline"
+import { formatMetric, valueOf } from "@/modules/metrics/format"
+import { useServingMetrics } from "@/modules/metrics/queries"
+import type { MetricSample, MetricSeriesPoint } from "@/modules/metrics/types"
 import { EndpointForm } from "./EndpointForm"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
@@ -35,8 +37,8 @@ import { IconArrowUpRight } from "@tabler/icons-react"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 
 /**
- * A stable pseudo-random seed from an id, so every mocked telemetry figure on a
- * row stays put across renders rather than flickering each paint.
+ * A stable pseudo-random seed from an id, so a row's sparkline stays put across
+ * renders rather than flickering each paint.
  */
 function seed(id: string): number {
   let hash = 0
@@ -46,19 +48,21 @@ function seed(id: string): number {
   return Math.abs(hash)
 }
 
-function trail(values: number[]): MetricSeriesPoint[] {
-  return values.map((value, at) => ({ at, value }))
-}
-
-/** A short climbing/spiky series shaped by the seed, purely for sparkline form. */
+/**
+ * A short series shaped by the seed, for sparkline form only.
+ *
+ * TODO-API the numbers beside these curves are the gateway's own, but the shape
+ * is not: `/metrics/serving` breaks down per endpoint in samples and draws its
+ * curves from the aggregate expression, so there is no per-endpoint series to
+ * plot without a query per row. Give the serving scope per-endpoint curves and
+ * this goes away.
+ */
 function mockTrail(id: string, salt: number): MetricSeriesPoint[] {
   const base = seed(`${id}:${salt}`)
-  return trail(
-    Array.from(
-      { length: 8 },
-      (_, i) => 10 + ((base >> i) % 7) + i * ((base % 3) - 1)
-    )
-  )
+  return Array.from({ length: 8 }, (_, at) => ({
+    at,
+    value: 10 + ((base >> at) % 7) + at * ((base % 3) - 1),
+  }))
 }
 
 const AUTH_LABELS: Record<string, string> = {
@@ -71,59 +75,37 @@ interface Health {
   tone: StatusTone
   label: string
   availability: string
-  marks: ("up" | "warn" | "down")[]
 }
 
 /**
- * Endpoint health, availability and traffic are data-plane observed state that
- * reaches the observability stack directly and never the plane object — mocked
- * here, deterministic per endpoint, so the designed status column stays real to
- * scan. Only `enabled` is a true plane fact and it pins a disabled endpoint to
- * "Provisioning".
+ * What an endpoint's row says about it, read off the gateway's own series.
+ *
+ * Only `enabled` is a plane fact; everything else is measurement, and where the
+ * store answered nothing the row says so rather than guessing. An endpoint
+ * nobody has called is not down and is not 100% up — it is unmeasured, and the
+ * two must not be spelled the same way.
+ *
+ * The thresholds are this console's reading colour and nothing else. No
+ * acceptance term is checked against them.
  */
-function mockHealth(endpoint: Endpoint): Health {
+function health(
+  endpoint: Endpoint,
+  availability: number | null,
+  measured: boolean
+): Health {
   if (!endpoint.enabled) {
-    return {
-      tone: "neutral",
-      label: "Provisioning",
-      availability: "no data yet",
-      marks: Array.from({ length: 14 }, () => "down"),
-    }
+    return { tone: "neutral", label: "Disabled", availability: "—" }
   }
-  const roll = seed(endpoint.id) % 10
-  const tone: StatusTone = roll < 6 ? "ok" : roll < 9 ? "warn" : "danger"
-  const label =
-    tone === "ok" ? "Healthy" : tone === "warn" ? "Degraded" : "Down"
-  const availability =
-    tone === "ok" ? "99.95%" : tone === "warn" ? "98.10%" : "94.20%"
-  const marks: ("up" | "warn" | "down")[] = Array.from(
-    { length: 14 },
-    (_, i) => {
-      if (tone === "ok") return i === roll % 14 ? "warn" : "up"
-      if (tone === "warn") return i > 8 ? "warn" : "up"
-      return i > 11 ? "down" : i === 11 ? "warn" : "up"
-    }
-  )
-  return { tone, label, availability, marks }
-}
-
-/** The 14-day availability strip, one cell per day. */
-function AvailabilityBar({ marks }: { marks: ("up" | "warn" | "down")[] }) {
-  return (
-    <div className="flex items-end gap-0.5">
-      {marks.map((mark, i) => (
-        <span
-          key={i}
-          className={cn(
-            "h-2.5 w-[3px] rounded-[1px]",
-            mark === "up" && "bg-emerald-500",
-            mark === "warn" && "bg-amber-500",
-            mark === "down" && "bg-destructive"
-          )}
-        />
-      ))}
-    </div>
-  )
+  if (!measured || availability === null) {
+    return { tone: "neutral", label: "Unmeasured", availability: "—" }
+  }
+  const tone: StatusTone =
+    availability >= 99.9 ? "ok" : availability >= 99 ? "warn" : "danger"
+  return {
+    tone,
+    label: tone === "ok" ? "Healthy" : tone === "warn" ? "Degraded" : "Down",
+    availability: formatMetric(availability, "percent"),
+  }
 }
 
 /** A weighted target's readiness bar — enabled targets up, the rest idle. */
@@ -230,10 +212,24 @@ function makeResolver(
   }
 }
 
+/**
+ * One endpoint's measurement, out of the gateway's breakdown.
+ *
+ * The two windows are two different questions, so they are two queries and two
+ * lookups: `now` is the rate and the percentiles at the plane's own window, and
+ * `availability` is a fortnight. Neither is the other resampled.
+ */
+interface Reading {
+  now: MetricSample[]
+  availability: number | null
+  measured: boolean
+}
+
 function columns(
   onEdit: (endpoint: Endpoint) => void,
   onDelete: (endpoint: Endpoint) => void,
-  resolve: (endpoint: Endpoint) => ResolvedEndpoint
+  resolve: (endpoint: Endpoint) => ResolvedEndpoint,
+  read: (endpoint: Endpoint) => Reading
 ): Column<Endpoint>[] {
   return [
     {
@@ -254,13 +250,6 @@ function columns(
             </span>
             <Id value={shortenId(endpoint.id)} />
           </Link>
-          {/* TODO-API the public URL is a gateway fact, not on the object. */}
-          <div
-            className="max-w-[16rem] truncate font-mono text-2xs text-muted-foreground/60"
-            title={`hangar.example.com/v1/${endpoint.name}`}
-          >
-            hangar.example.com/v1/{endpoint.name}
-          </div>
         </ResourceCell>
       ),
     },
@@ -273,22 +262,19 @@ function columns(
         </span>
       ),
       cell: (endpoint) => {
-        const health = mockHealth(endpoint)
+        const { availability, measured } = read(endpoint)
+        const state = health(endpoint, availability, measured)
         return (
           <div className="flex flex-col gap-1.5">
             <span className="inline-flex items-center gap-2">
-              <StatusDot tone={health.tone} />
+              <StatusDot tone={state.tone} />
               <span className="text-2xs text-muted-foreground">
-                {health.label}
+                {state.label}
               </span>
             </span>
-            {/* TODO-API availability history is data-plane telemetry, mocked. */}
-            <div className="flex items-center gap-1.5">
-              <AvailabilityBar marks={health.marks} />
-              <span className="font-mono text-2xs text-muted-foreground/60">
-                {health.availability}
-              </span>
-            </div>
+            <span className="font-mono text-2xs text-muted-foreground/60">
+              {state.availability}
+            </span>
           </div>
         )
       },
@@ -317,19 +303,21 @@ function columns(
       key: "traffic",
       header: "Traffic",
       cell: (endpoint) => {
-        const health = mockHealth(endpoint)
-        if (health.tone === "neutral") return <Dash>{null}</Dash>
+        const { now, availability, measured } = read(endpoint)
+        const rate = valueOf(now, "serving.requests_per_second")
+        if (rate === null) return <Dash>{null}</Dash>
+        const tone = health(endpoint, availability, measured).tone
         return (
-          // TODO-API requests/sec is data-plane telemetry, mocked.
           <div className="flex flex-col gap-1">
+            {/* TODO-API the curve is mocked; the figure under it is not. */}
             <div className="w-14">
               <Sparkline
                 points={mockTrail(endpoint.id, 1)}
-                tone={health.tone === "ok" ? "primary" : "warn"}
+                tone={tone === "ok" ? "primary" : "warn"}
               />
             </div>
             <span className="font-mono text-2xs tabular-nums">
-              {(seed(endpoint.id) % 1200) + 40} req/s
+              {formatMetric(rate, "per_second")}
             </span>
           </div>
         )
@@ -340,21 +328,22 @@ function columns(
       header: "Latency (p50 / p99)",
       secondary: true,
       cell: (endpoint) => {
-        const health = mockHealth(endpoint)
-        if (health.tone === "neutral" || health.tone === "danger")
-          return <Dash>{null}</Dash>
-        const p50 = (seed(endpoint.id) % 400) + 30
+        const { now, availability, measured } = read(endpoint)
+        const p50 = valueOf(now, "serving.latency_p50")
+        const p99 = valueOf(now, "serving.latency_p99")
+        if (p50 === null && p99 === null) return <Dash>{null}</Dash>
+        const tone = health(endpoint, availability, measured).tone
         return (
-          // TODO-API latency percentiles are data-plane telemetry, mocked.
           <div className="flex flex-col gap-1">
+            {/* TODO-API the curve is mocked; the figures under it are not. */}
             <div className="w-14">
               <Sparkline
                 points={mockTrail(endpoint.id, 2)}
-                tone={health.tone === "ok" ? "primary" : "warn"}
+                tone={tone === "ok" ? "primary" : "warn"}
               />
             </div>
             <span className="font-mono text-2xs tabular-nums">
-              {p50}ms / {p50 * 2 + 40}ms
+              {formatMetric(p50, "seconds")} / {formatMetric(p99, "seconds")}
             </span>
           </div>
         )
@@ -439,6 +428,19 @@ export function EndpointsPage() {
   const { data: recipeOptions } = useRecipeOptions()
   const { data: artifactOptions } = useArtifactOptions()
   const remove = useDeleteEndpoint()
+
+  /**
+   * The gateway's own answer for the whole front door, in two windows.
+   *
+   * One query for the page rather than one per row: the totals are the gateway's
+   * and do not move when somebody pages, and a table of names must not be a
+   * round trip to Prometheus per name. `fortnight` exists only for the
+   * availability column, because a 14-day figure is a 14-day window and not
+   * fourteen of today's.
+   */
+  const serving = useServingMetrics()
+  const fortnight = useServingMetrics({ window: "14d" })
+
   const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Endpoint | undefined>()
   const [doomed, setDoomed] = useState<Endpoint | undefined>()
@@ -454,14 +456,44 @@ export function EndpointsPage() {
     [deploymentOptions, workloadOptions, recipeOptions, artifactOptions]
   )
 
+  /**
+   * Each endpoint's own row out of the two breakdowns, keyed the way the
+   * gateway labels them — by endpoint id. A name the store has never seen is
+   * absent from the breakdown and reads as unmeasured, which is what it is.
+   */
+  const read = useMemo(() => {
+    const now = new Map(
+      (serving.data?.breakdown ?? []).map((row) => [row.key, row.samples])
+    )
+    const days = new Map(
+      (fortnight.data?.breakdown ?? []).map((row) => [row.key, row.samples])
+    )
+    return (endpoint: Endpoint) => {
+      const samples = now.get(endpoint.id)
+      return {
+        now: samples ?? [],
+        availability: valueOf(
+          days.get(endpoint.id) ?? [],
+          "serving.availability"
+        ),
+        measured: Boolean(samples),
+      }
+    }
+  }, [serving.data, fortnight.data])
+
   const endpoints = list.items ?? []
   const total = endpoints.length
-  const healthy = endpoints.filter((e) => e.enabled).length
-  // TODO-API aggregate serving telemetry (requests/sec, p50) is data-plane. */
-  const requestsPerSec = endpoints.reduce(
-    (sum, e) => sum + (e.enabled ? (seed(e.id) % 1200) + 40 : 0),
-    0
+  const enabled = endpoints.filter((e) => e.enabled).length
+  const requestsPerSec = valueOf(
+    serving.data?.samples ?? [],
+    "serving.requests_per_second"
   )
+  const p50 = valueOf(serving.data?.samples ?? [], "serving.latency_p50")
+
+  /** Why the measured columns are empty, when they are. Never drawn as zero. */
+  const unmeasured = serving.error
+    ? formatError(serving.error, "metrics unavailable")
+    : (serving.data?.unavailable ?? null)
 
   return (
     <div className="flex flex-col">
@@ -476,15 +508,23 @@ export function EndpointsPage() {
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatTile label="Endpoints" value={String(total)} />
-          <StatTile label="Healthy" value={String(healthy)} tone="ok" />
-          {/* TODO-API requests/sec is data-plane telemetry, mocked. */}
+          <StatTile label="Enabled" value={String(enabled)} tone="ok" />
+          {/* The gateway's own totals, not a sum over this page: adding up a
+              page of endpoints gives a total that moves when somebody pages. */}
           <StatTile
             label="Requests / sec"
-            value={requestsPerSec.toLocaleString()}
+            value={formatMetric(requestsPerSec, "per_second")}
           />
-          {/* TODO-API p50 latency is data-plane telemetry, mocked. */}
-          <StatTile label="p50 latency" value="128ms" />
+          <StatTile label="p50 latency" value={formatMetric(p50, "seconds")} />
         </div>
+
+        {unmeasured && (
+          <Card size="sm" className="px-3 py-2.5">
+            <p className="font-mono text-2xs text-muted-foreground/60">
+              {unmeasured}
+            </p>
+          </Card>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <FilterSelect
@@ -506,7 +546,7 @@ export function EndpointsPage() {
         </div>
 
         <DataTable
-          columns={columns(setEditing, setDoomed, resolve)}
+          columns={columns(setEditing, setDoomed, resolve, read)}
           list={list}
           rowKey={(endpoint) => endpoint.id}
           empty="No endpoints published."
