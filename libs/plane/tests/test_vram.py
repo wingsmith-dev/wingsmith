@@ -208,6 +208,68 @@ def test_compressed_tensors_declares_bits_not_a_scheme_name():
     assert native_quant_method(config) == "int4"
 
 
+def test_multimodal_quantization_is_read_from_the_nested_text_config():
+    """A multimodal repo nests `quantization_config` under `text_config`.
+
+    Reading only the top level returned None, which `sizing_of` turns into the
+    fp16 default — a fourfold overcount on 4-bit weights, and four times the
+    cards.
+    """
+    config = {
+        "model_type": "kimi_k3",
+        "vision_config": {"hidden_size": 1152},
+        "text_config": {
+            "num_hidden_layers": 93,
+            "quantization_config": {
+                "quant_method": "compressed-tensors",
+                "format": "mxfp4-pack-quantized",
+                "config_groups": {"group_0": {"weights": {"num_bits": 4, "type": "float"}}},
+            },
+        },
+    }
+    assert native_quant_method(config) == "mxfp4"
+
+
+def test_compressed_tensors_format_beats_its_generic_method_name():
+    """`quant_method` is the literal 'compressed-tensors' for every bucket it holds.
+
+    The bit width alone says fp4, which sizes correctly but is not a string any
+    engine accepts as `--quantization`. `format` carries the real scheme.
+    """
+    quant = {
+        "quant_method": "compressed-tensors",
+        "format": "mxfp4-pack-quantized",
+        "config_groups": {"group_0": {"weights": {"num_bits": 4, "type": "float"}}},
+    }
+    assert native_quant_method({"quantization_config": quant}) == "mxfp4"
+    del quant["format"]
+    assert native_quant_method({"quantization_config": quant}) == "fp4"
+
+
+def test_a_2_8t_mxfp4_model_fits_one_node_of_b300():
+    """The regression that started this: 2.8T MXFP4 sized at fp16 asked for four nodes."""
+    shape = ModelShape(
+        num_hidden_layers=93,
+        num_key_value_heads=None,
+        head_dim=None,
+        kv_lora_rank=512,
+        qk_rope_head_dim=64,
+        context_length=1048576,
+        num_attention_heads=96,
+        hidden_size=7168,
+    )
+    device = next(d for d in devices.table().classes if d.name == "b300-288gb-sxm")
+    intent = Intent(context_length=1048576, devices_per_node=8)
+    sizing = Sizing(total_params=2_800_000_000_000, shape=shape, quantization="mxfp4")
+    fitted = fit(sizing, device, intent)
+    assert fitted.fits
+    assert fitted.device_count == 8
+    assert fitted.node_count == 1
+
+    overcounted = fit(Sizing(total_params=2_800_000_000_000, shape=shape, quantization="fp16"), device, intent)
+    assert overcounted.device_count == 32
+
+
 def test_active_params_drop_the_unrouted_experts():
     config = gpt_oss_config()
     total = 20_900_000_000
