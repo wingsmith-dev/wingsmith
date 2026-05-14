@@ -45,7 +45,7 @@ bandwidth we do not care about at this scale.
 
 | Type | Payload |
 |---|---|
-| `cluster.observed` | what the cluster turned out to be: distribution, cloud, region, and its node and device counts |
+| `cluster.observed` | what the cluster turned out to be: distribution, cloud, region, its node and device counts, and whether the operator is read-only |
 | `node.observed` | identity, membership, conditions, cordon state, machine shape (instance type, cloud, zone, region, cores, memory, architecture, os image), taints, kernel / driver / container-runtime / operator versions |
 | `node.event` | joined, left, cordoned, uncordoned, degraded |
 | `device.observed` | per-accelerator: uuid, model, memory capacity, health, ECC and throttle state, MIG profile, current allocation |
@@ -57,6 +57,14 @@ bandwidth we do not care about at this scale.
 Device metrics — utilization, temperature, throughput, memory in use — are **not** here. Device
 memory appears only as `memory_total_mb`: capacity is state, occupancy is measurement. See
 PROTOCOL §7.
+
+**`read_only` is the only field on the wire about the operator rather than the cluster.**
+A read-only operator runs without its reconcile loop: it reports everything and applies nothing the
+plane declares. It is carried because the plane cannot otherwise tell an operator that declines to
+act from one that has not acted yet — placement picks the cluster, the hub streams the desired
+state, the session stays healthy, and the workload sits at zero replicas with no error to explain
+it. Like `distribution` it is inert: stored and displayed, never branched on. It defaults to false,
+so an operator built before this field reads as a normal one, which is what it is.
 
 **`distribution` is the one orchestrator name on the wire.** Every other field is deliberately
 neutral, and this one is not: `eks`, `rke2`, `gke` name a Kubernetes flavour. It is carried because

@@ -67,6 +67,14 @@ type ResyncBegin struct {
 // Distribution is the one string on the wire that names an orchestrator. That is deliberate and
 // bounded: it is an opaque label the plane stores and displays, never something it branches on.
 // The moment the plane reads it to decide what to send, rule 2 is broken.
+// ReadOnly is the one field here that is about the operator rather than the cluster, and it is
+// the most consequential thing this frame can say. A read-only operator runs without the
+// reconcile loop: it reports everything the cluster has and applies nothing the plane declares.
+// Left off the wire, that is invisible from the plane — placement picks the cluster, the hub
+// streams the desired state, the operator acknowledges the session and silently does nothing,
+// and a workload sits at zero replicas with no error anywhere to explain it. Reporting it is
+// what lets the console say that nothing will happen here, rather than leaving somebody to
+// discover it by waiting.
 type ClusterObserved struct {
 	ClusterID    string `json:"cluster_id"`
 	Distribution string `json:"distribution"`
@@ -74,6 +82,7 @@ type ClusterObserved struct {
 	Region       string `json:"region"`
 	Nodes        int    `json:"nodes"`
 	Devices      int    `json:"devices"`
+	ReadOnly     bool   `json:"read_only"`
 	ObservedAt   string `json:"observed_at"`
 }
 

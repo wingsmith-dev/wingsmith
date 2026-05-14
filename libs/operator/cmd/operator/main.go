@@ -97,6 +97,7 @@ func run() error {
 	observer := observe.New(&observe.Observer{
 		ClusterID:       cfg.ClusterID,
 		OperatorVersion: version,
+		ReadOnly:        cfg.ReadOnly,
 		Discoverer: &observe.KubeDiscoverer{
 			Client: directClient,
 			DCGM: &observe.DCGMSource{

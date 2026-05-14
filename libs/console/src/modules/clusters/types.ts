@@ -31,6 +31,13 @@ export interface ClusterSync {
   distribution: string | null
   cloud: string | null
   observed_region: string | null
+  /**
+   * The operator runs without its reconcile loop: it reports everything and
+   * applies nothing the plane declares. Orthogonal to `state` — a read-only
+   * cluster is `connected` and healthy by every other field here, which is why
+   * it has to be shown on its own. Anything placed on it never starts.
+   */
+  read_only: boolean
 }
 
 /**

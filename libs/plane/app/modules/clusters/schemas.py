@@ -27,6 +27,7 @@ class ClusterSyncSchema(Struct):
     distribution: str | None = None
     cloud: str | None = None
     observed_region: str | None = None
+    read_only: bool = False
 
 
 class ClusterServingSchema(Struct):

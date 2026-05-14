@@ -265,6 +265,7 @@ def upsert_cluster_observed(cluster_id: UUID, payload: ClusterObserved) -> Inser
             "distribution": payload.distribution or None,
             "cloud": payload.cloud or None,
             "observed_region": payload.region or None,
+            "read_only": payload.read_only,
             "last_sync_at": parse_ts(payload.observed_at),
         },
         bump=True,

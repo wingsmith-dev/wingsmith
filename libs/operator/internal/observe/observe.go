@@ -47,6 +47,12 @@ type Sender interface {
 type Observer struct {
 	ClusterID       string
 	OperatorVersion string
+
+	// ReadOnly mirrors config.Config.ReadOnly onto every projection, so the plane can see that
+	// this operator applies nothing. It belongs on the upward loop rather than being inferred
+	// downstream: whether the reconcile loop is running is a fact only this process holds, and
+	// the plane cannot tell an operator that declines to act from one that has not acted yet.
+	ReadOnly bool
 	Discoverer      Discoverer
 	Sender          Sender
 	Interval        time.Duration

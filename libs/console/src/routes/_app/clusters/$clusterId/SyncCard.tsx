@@ -35,6 +35,18 @@ export function SyncCard({ sync }: { sync: ClusterSync }) {
       <CardContent className="divide-y">
         <Row label="State" value={humanize(sync.state)} />
         <Row label="Operator" value={sync.operator_version ?? "—"} />
+        {sync.read_only && (
+          <div className="py-2">
+            <p className="font-mono text-2xs tracking-wider text-amber-600 uppercase dark:text-amber-400">
+              Read-only operator
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              This operator reports what the cluster has and applies nothing the
+              plane declares. Anything placed here stays at zero replicas until
+              the cluster is upgraded with <code>cluster.readOnly: false</code>.
+            </p>
+          </div>
+        )}
         <Row
           label="Last sync"
           value={

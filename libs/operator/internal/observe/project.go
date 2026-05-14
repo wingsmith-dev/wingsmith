@@ -217,6 +217,7 @@ func (o *Observer) project(s Snapshot) projection {
 		Region:       fleet.Region,
 		Nodes:        len(p.nodes),
 		Devices:      len(p.devices),
+		ReadOnly:     o.ReadOnly,
 		ObservedAt:   observedAt,
 	}
 

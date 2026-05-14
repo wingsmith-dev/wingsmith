@@ -496,6 +496,23 @@ def test_cluster_observed_lands_on_the_sync_state_and_never_the_registry_row() -
     assert "aws" in params.values()
 
 
+def test_cluster_observed_carries_whether_the_operator_reconciles() -> None:
+    """`read_only` is the operator's posture and only the operator knows it.
+
+    The plane renders `cluster.readOnly` into the install values and then forgets
+    it, and that field is the one the header invites an operator to override — so
+    what was rendered is not evidence of what is running.
+    """
+    frame = payload("cluster.observed")
+    sql, params = compile_sql(statements.upsert_cluster_observed(CLUSTER_ID, frame))
+    assert "read_only" in sql
+    assert params["read_only"] is False
+
+    frame.read_only = True
+    _, params = compile_sql(statements.upsert_cluster_observed(CLUSTER_ID, frame))
+    assert params["read_only"] is True
+
+
 def test_cluster_observed_does_not_overwrite_the_declared_region() -> None:
     sql, _ = compile_sql(statements.upsert_cluster_observed(CLUSTER_ID, payload("cluster.observed")))
     assert "observed_region" in sql

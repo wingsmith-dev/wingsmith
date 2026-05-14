@@ -114,6 +114,7 @@ def _sync(state: ClusterSyncState | None) -> ClusterSyncSchema:
             distribution=state.distribution if state else None,
             cloud=state.cloud if state else None,
             observed_region=state.observed_region if state else None,
+            read_only=state.read_only if state else False,
         )
     lag = None
     stale = False
@@ -140,6 +141,7 @@ def _sync(state: ClusterSyncState | None) -> ClusterSyncSchema:
         distribution=state.distribution,
         cloud=state.cloud,
         observed_region=state.observed_region,
+        read_only=state.read_only,
     )
 
 
@@ -251,8 +253,9 @@ def _setup_values(values: SetupValues) -> str:
     not about the cluster: rendering it is the difference between an operator
     flipping two booleans and an operator having to ask somebody which hostname to
     dial. One address and not a list of replicas, so that scaling the gateway
-    never reaches this file. It is still emitted off, because the agent may not run
-    while the cluster is `readOnly` and the chart refuses that pair. With none
+    never reaches this file. It is still emitted off, because the chart refuses
+    an agent with no frontend to forward to, and the frontend cannot go on in a
+    first install — its CRD is applied at runtime by the Dynamo operator. With none
     configured it falls below the divider as a blank with an example, so a plane
     whose gateway is not reachable from outside yet still renders values that
     install.
@@ -269,9 +272,13 @@ def _setup_values(values: SetupValues) -> str:
         f"  id: {values.cluster_name}",
         f"  hubUrl: {values.hub_url}",
         f"  region: {values.region}",
-        "  # Whether the operator may act on what the plane declares. It installs",
-        "  # read-only, reconciling nothing; set false once this cluster is managed.",
-        "  readOnly: true",
+        "  # Whether the operator may act on what the plane declares. False is the",
+        "  # working setting: the cluster was registered to be managed, and nothing is",
+        "  # declared on a cluster nobody has placed anything on yet, so installing",
+        "  # inert buys no safety and costs a silent stall — a read-only operator",
+        "  # enrols, reports, stays healthy, and quietly applies nothing. Set true to",
+        "  # park a cluster as an observer; the plane will say so on its sync card.",
+        "  readOnly: false",
         "  allowedOperations: benchmark",
     ]
     if values.operator_image:
@@ -292,9 +299,12 @@ def _setup_values(values: SetupValues) -> str:
             "# handshake says how many there are, and the agent redials until it holds a",
             "# tunnel to every one. So this never has to change when the gateway scales.",
             "#",
-            "# Off, because the agent may not run while `readOnly` above is true — serving",
-            "# what the plane declares means reconciling it, and the chart refuses the pair.",
-            "# Flip both together when this cluster is ready to serve.",
+            "# Off, because the agent has nothing to forward to yet. It proxies every",
+            "# request to the one Dynamo frontend in this cluster, and `frontend.enabled`",
+            "# renders a DynamoGraphDeployment whose CRD the Dynamo operator only applies",
+            "# at runtime — so the frontend cannot go on in the first install, and the",
+            "# chart refuses an agent without one. Install once as rendered, then upgrade",
+            "# with `agent.enabled` and `frontend.enabled` both true to start serving.",
             "agent:",
             "  enabled: false",
             "  gateway:",
@@ -384,8 +394,10 @@ def _setup_values(values: SetupValues) -> str:
             "# one is a tunnel that never establishes.",
             "#",
             "# One address, not a list of replicas: the gateway reports how many it runs in",
-            "# the handshake and the agent finds them all from this one name. Enable it once",
-            "# `readOnly` above is false — the chart refuses the pair.",
+            "# the handshake and the agent finds them all from this one name. Enable it",
+            "# together with `frontend.enabled` on a later upgrade — the chart refuses an",
+            "# agent with no frontend to forward to, and the frontend cannot go on in the",
+            "# first install because its CRD is applied at runtime.",
             "agent:",
             "  enabled: false",
             "  gateway:",

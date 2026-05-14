@@ -486,6 +486,7 @@ for (const spec of SPECS) {
       distribution: spec.enrolled ? "eks" : null,
       cloud: spec.enrolled ? "aws" : null,
       observed_region: spec.enrolled ? spec.region : null,
+      read_only: false,
       operator_version: spec.operatorVersion,
       lag_ms: spec.reachable ? 340 : null,
       last_error: spec.lastError,

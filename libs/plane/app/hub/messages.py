@@ -144,6 +144,14 @@ class ClusterObserved(Struct):
     `distribution` is the only orchestrator name anywhere in the plane, and it is
     stored and displayed rather than read: the moment something branches on it,
     the plane knows what Kubernetes is and rule 2 is gone.
+
+    `read_only` is about the operator rather than the cluster, and it is the one
+    field here that changes what an answer from this cluster means. A read-only
+    operator runs without its reconcile loop: it reports everything and applies
+    nothing. Without it on the wire the plane cannot tell an operator that
+    declines to act from one that has not acted yet, and a workload placed there
+    sits at zero replicas with no error to explain it. It defaults false so an
+    operator too old to send it reads as a normal one, which is what it is.
     """
 
     cluster_id: str
@@ -153,6 +161,7 @@ class ClusterObserved(Struct):
     distribution: str = ""
     cloud: str = ""
     region: str = ""
+    read_only: bool = False
 
 
 class NodeCondition(Struct):

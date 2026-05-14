@@ -49,6 +49,31 @@ def test_setup_values_carry_identity_and_a_pinned_image():
     assert "tag: sha7" in out
 
 
+def test_setup_values_register_a_cluster_that_reconciles():
+    """Read-only is not the registration default, and the reason is a silent stall.
+
+    A read-only operator enrols, reports, stays healthy and applies nothing. The
+    plane cannot see that except through `cluster.observed.read_only`, so a
+    cluster installed inert looks identical to a working one until somebody
+    notices a workload that never starts.
+    """
+    out = _setup_values(values())
+    assert "readOnly: false" in out
+    assert "readOnly: true" not in out
+
+
+def test_setup_values_leave_the_agent_off_for_the_first_install():
+    """Not because of `readOnly` — because the frontend's CRD is applied at runtime.
+
+    The chart refuses an agent with no frontend to forward to, and the frontend
+    renders a DynamoGraphDeployment whose CRD does not exist until the Dynamo
+    operator has run. Both go on together in a later upgrade.
+    """
+    out = _setup_values(values(gateway="tunnel.example:443"))
+    assert "enabled: false" in out
+    assert "readOnly` above is true" not in out
+
+
 def test_setup_values_omit_image_when_unset():
     out = _setup_values(values())
     assert "operator:" not in out

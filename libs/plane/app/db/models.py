@@ -112,6 +112,13 @@ class ClusterSyncState(BaseMixin):
     would give one record two writers and make "declared draining" and "observed
     unreachable" indistinguishable.
 
+    `read_only` is the operator's own posture rather than the cluster's: true means
+    it runs without its reconcile loop and applies nothing the plane declares. It
+    is observed for the same reason the rest of this row is — only the operator
+    knows it — and it is what lets a caller say that a workload placed here will
+    never start, instead of leaving somebody to infer it from a replica count that
+    never moves.
+
     `distribution`, `cloud` and `observed_region` are what the cluster turned out
     to be. They live here rather than on `Cluster` for the same reason
     `reachable` does — they are observed, and writing them onto the registry row
@@ -132,6 +139,7 @@ class ClusterSyncState(BaseMixin):
     distribution: Mapped[str | None] = mapped_column(String(32), nullable=True)
     cloud: Mapped[str | None] = mapped_column(String(32), nullable=True)
     observed_region: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    read_only: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     connected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disconnected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
