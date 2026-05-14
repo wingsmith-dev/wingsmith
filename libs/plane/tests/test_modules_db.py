@@ -563,6 +563,47 @@ async def test_a_recipe_carries_an_overlay_the_plane_never_reads_inside(db: Asyn
     assert (plain.overlay.pod_spec, plain.overlay.dynamo) == ({}, {})
 
 
+async def test_bumping_the_engine_version_moves_the_derived_image(db: AsyncSession) -> None:
+    """A version bump used to be stored and then silently ignored.
+
+    `create` resolves an image and persists it; the update then passed that stored
+    value back as the declared one, which always wins. So the recipe reported the
+    new engine version while every cluster went on pulling the old image.
+    """
+    artifact = await an_artifact(db)
+    recipe = await a_recipe(db, artifact.id)
+    assert recipe.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0"
+
+    patched = await RecipeService(db).update(recipe.id, RecipeUpdateRequest(engine_version="1.4.2"))
+    assert patched.engine_version == "1.4.2"
+    assert patched.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.2"
+
+
+async def test_a_hand_pinned_engine_image_survives_a_version_bump(db: AsyncSession) -> None:
+    """The override is the whole reason the field is writable, so re-deriving must not eat it."""
+    artifact = await an_artifact(db)
+    recipe = await a_recipe(db, artifact.id)
+    pinned = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+
+    service = RecipeService(db)
+    await service.update(recipe.id, RecipeUpdateRequest(engine_image=pinned))
+    patched = await service.update(recipe.id, RecipeUpdateRequest(engine_version="1.4.2"))
+
+    assert patched.engine_version == "1.4.2"
+    assert patched.engine_image == pinned
+
+
+async def test_naming_an_engine_image_in_the_same_patch_wins(db: AsyncSession) -> None:
+    artifact = await an_artifact(db)
+    recipe = await a_recipe(db, artifact.id)
+    pinned = "my.registry/vllm:dev"
+
+    patched = await RecipeService(db).update(
+        recipe.id, RecipeUpdateRequest(engine_version="1.4.2", engine_image=pinned)
+    )
+    assert patched.engine_image == pinned
+
+
 async def test_the_overlay_reaches_the_cluster_on_the_desired_stream(db: AsyncSession) -> None:
     cluster, _, recipe, _ = await a_deployment(db)
     await RecipeService(db).update(recipe.id, RecipeUpdateRequest(overlay={"dynamo": {"router": {"mode": "kv"}}}))

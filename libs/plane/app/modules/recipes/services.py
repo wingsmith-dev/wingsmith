@@ -668,6 +668,11 @@ class RecipeService:
             raise Conflict("recipe changed since it was read", {"revision": _revision(recipe)})
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
+        was_derived = recipe.engine_image == resolve_engine_image(recipe.engine, recipe.engine_version, None)
+        """Whether the stored image is the one the plane derived, rather than one a person
+        pinned. Captured before the patch is applied, because it is a question about the
+        recipe as it was: after `setattr` the old engine and version are gone and there is
+        nothing left to compare against."""
         declared_serving = fields.pop("serving", None)
         declared_capabilities = fields.pop("capabilities", None)
         serving = serving_block(recipe.serving) if declared_serving is None else declared_serving
@@ -705,7 +710,22 @@ class RecipeService:
             )
         for key, value in fields.items():
             setattr(recipe, key, value)
-        recipe.engine_image = resolve_engine_image(recipe.engine, recipe.engine_version, recipe.engine_image)
+        recipe.engine_image = resolve_engine_image(
+            recipe.engine,
+            recipe.engine_version,
+            None if was_derived and "engine_image" not in fields else recipe.engine_image,
+        )
+        """Re-derive when the stored image is one this function produced and the caller did
+        not name a new one, so that moving `engine_version` moves the image.
+
+        Passing the stored image back as `declared` made every recipe pin itself the moment
+        it was created: `create` resolves and persists an image, `declared` wins, and from
+        then on a version bump was accepted, stored, and silently ignored — the recipe
+        reported the new version while the cluster went on pulling the old image. The
+        derived-ness check is what keeps that from trampling a real override: an image
+        somebody pinned by hand does not match what the old engine and version resolve to,
+        so it survives a version bump untouched, and naming `engine_image` in the same patch
+        always wins outright."""
         if declared_serving is not None:
             recipe.serving = msgspec.to_builtins(serving)
         if declared_capabilities is not None:
