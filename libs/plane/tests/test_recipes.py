@@ -156,6 +156,17 @@ def test_kv_cache_is_recipe_configuration_and_not_the_weight_cache():
     assert not [f for f in RecipeSchema.__struct_fields__ if "warm" in f or "resident" in f]
 
 
+def test_a_recipe_that_says_nothing_about_the_prefix_cache_gets_it():
+    """The default is a position, not the default a bool gets when nobody picks one.
+
+    vLLM caches prefixes itself, and the operator only renders the off case. A
+    false default here meant every recipe that never mentioned the field shipped
+    --no-enable-prefix-caching.
+    """
+    field = {f.name: f for f in msgspec.structs.fields(RecipeCreateRequest)}["prefix_cache_enabled"]
+    assert field.default is True
+
+
 def test_the_shape_is_returned_as_one_thing_class_included():
     assert "device_class" in RecipeShapeSchema.__struct_fields__
     assert "device_class" not in RecipeSchema.__struct_fields__

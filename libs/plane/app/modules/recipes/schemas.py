@@ -214,7 +214,7 @@ class RecipeCreateRequest(Struct):
     max_batch_tokens: int | None = None
     kv_cache_dtype: str | None = None
     kv_cache_fraction: float | None = None
-    prefix_cache_enabled: bool = False
+    prefix_cache_enabled: bool = True
     prefix_cache_config: dict = {}
     device_count: int = 1
     device_memory_mib_min: int = 0

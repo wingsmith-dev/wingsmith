@@ -567,7 +567,7 @@ class Recipe(BaseMixin):
     max_batch_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     kv_cache_dtype: Mapped[str | None] = mapped_column(String(32), nullable=True)
     kv_cache_fraction: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
-    prefix_cache_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    prefix_cache_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     prefix_cache_config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     device_class: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     device_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
