@@ -38,6 +38,13 @@ export interface ClusterSync {
    * it has to be shown on its own. Anything placed on it never starts.
    */
   read_only: boolean
+  /**
+   * A leader-worker backend — Grove or LeaderWorkerSet — is installed, so this
+   * cluster can run a replica whose devices do not fit on one machine. Observed
+   * from the API groups the cluster serves rather than configured, so installing
+   * a backend is enough to make it true and nothing has to be redeclared.
+   */
+  multinode: boolean
 }
 
 /**

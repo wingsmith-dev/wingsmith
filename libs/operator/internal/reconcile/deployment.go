@@ -118,10 +118,11 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	// Rendering it anyway produces a single pod holding a fraction of the devices the engine was
 	// told to expect, which starts and then hangs in collective initialisation with nothing
 	// saying why — so this waits, and names the thing that has to be installed.
-	if placed.NodesPerReplica > 1 && !r.Render.MultinodeEnabled {
+	if placed.NodesPerReplica > 1 && !r.multinodeEnabled() {
 		return r.wait(ctx, res, "MultinodeNotEnabled", fmt.Sprintf(
-			"one replica needs %d nodes of %d accelerators and this cluster does not run multi-node "+
-				"replicas; install Grove or LeaderWorkerSet and set multinode.enabled",
+			"one replica needs %d nodes of %d accelerators and no leader-worker backend was found "+
+				"in this cluster's API groups; install Grove (dynamo-platform.grove.enabled) or "+
+				"LeaderWorkerSet",
 			placed.NodesPerReplica, placed.DevicesPerNode))
 	}
 

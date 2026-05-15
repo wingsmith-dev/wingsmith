@@ -68,18 +68,26 @@ modelCache:
   accessMode: ReadWriteMany
   size: 500Gi
 
-# Whether this cluster can run a replica whose devices do not fit on one machine.
+# An override, not the switch. Leave it off.
 #
-# Off, and off is the safe default. A multi-node replica is a leader-worker group,
-# which Dynamo renders only where Grove or LeaderWorkerSet is installed — and the
-# dynamo-platform subchart leaves Grove off at its own defaults. Turned on without
-# one of them, the CRD accepts the field and produces a single pod holding a
-# fraction of the devices the engine was told to expect: it starts, then hangs in
-# collective initialisation with nothing saying why.
+# Whether this cluster can run a replica whose devices do not fit on one machine is
+# discovered, not declared: the operator reads the API groups it is served and
+# reports a leader-worker backend — Grove or LeaderWorkerSet — if one is there. So
+# the way to turn multi-node on is `dynamo-platform.grove.enabled`, and the
+# capability follows on the next observation tick with nothing set here.
 #
-# Left off, a deployment needing more than one node waits with `MultinodeNotEnabled`
-# and names this setting, which is the honest answer and a recoverable one. Turn it
-# on together with `dynamo-platform.grove.enabled`.
+# This exists because detection matches on group name. A backend serving a group
+# nobody anticipated would read as absent, and this asserts it by hand until the
+# match is fixed. It can only widen: a cluster the operator can see a backend in is
+# capable whatever this says, because a stale `false` that disabled a working
+# cluster would be the same class of bug this replaced.
+#
+# Setting it true on a cluster with no backend is the one way left to get the old
+# failure — the CRD accepts the field and produces a single pod holding a fraction
+# of the devices the engine was told to expect, which starts and then hangs in
+# collective initialisation with nothing saying why. Without it, a deployment
+# needing more than one node waits with `MultinodeNotEnabled` and names the backend
+# to install.
 multinode:
   enabled: false
 

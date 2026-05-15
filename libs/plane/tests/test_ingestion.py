@@ -513,6 +513,21 @@ def test_cluster_observed_carries_whether_the_operator_reconciles() -> None:
     assert params["read_only"] is True
 
 
+def test_cluster_observed_carries_whether_a_replica_can_span_machines() -> None:
+    """`multinode` is discovered from the cluster's API groups, so it can change
+    under a running operator: installing Grove makes a cluster capable without
+    anything being redeclared, and the next frame has to say so.
+    """
+    frame = payload("cluster.observed")
+    sql, params = compile_sql(statements.upsert_cluster_observed(CLUSTER_ID, frame))
+    assert "multinode" in sql
+    assert params["multinode"] is False
+
+    frame.multinode = True
+    _, params = compile_sql(statements.upsert_cluster_observed(CLUSTER_ID, frame))
+    assert params["multinode"] is True
+
+
 def test_cluster_observed_does_not_overwrite_the_declared_region() -> None:
     sql, _ = compile_sql(statements.upsert_cluster_observed(CLUSTER_ID, payload("cluster.observed")))
     assert "observed_region" in sql

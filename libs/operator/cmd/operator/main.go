@@ -17,6 +17,8 @@ import (
 
 	"golang.org/x/sync/errgroup"
 
+	"k8s.io/client-go/discovery"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	ctrlclient "sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -64,6 +66,11 @@ func run() error {
 	// and still give two readings that disagree.
 	deviceIndex := &observe.DeviceIndex{}
 
+	// What the cluster can do, read once per observation tick and gated on by the reconcile
+	// loop. Shared for the same reason deviceIndex is: the fact is discovered on one loop's
+	// clock and acted on by the other's.
+	capabilities := &observe.Capability{}
+
 	var reconciler *reconcile.SyncedResourceReconciler
 	if !cfg.ReadOnly {
 		reconciler, err = reconcile.SetupWithManager(mgr, cfg, log)
@@ -71,6 +78,7 @@ func run() error {
 			return err
 		}
 		reconciler.Devices = deviceIndex
+		reconciler.Capabilities = capabilities
 	}
 
 	tlsCfg, err := tlsConfig(cfg)
@@ -86,6 +94,14 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("build checkpoint client: %w", err)
 	}
+	// Discovery is how the observation loop learns whether a leader-worker backend is installed.
+	// Built here from the same rest config rather than inside the discoverer so that a cluster
+	// this operator cannot even reach discovery on fails at startup, where it is visible, rather
+	// than degrading to "no multi-node backend" on every tick.
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(restCfg)
+	if err != nil {
+		return fmt.Errorf("build discovery client: %w", err)
+	}
 	cursor := checkpoint.NewCRDStore(directClient, cfg.Namespace)
 
 	store := &reconcile.Store{
@@ -100,6 +116,7 @@ func run() error {
 		ReadOnly:        cfg.ReadOnly,
 		Discoverer: &observe.KubeDiscoverer{
 			Client: directClient,
+			Groups: &observe.DiscoveryGroups{Client: discoveryClient},
 			DCGM: &observe.DCGMSource{
 				Endpoint: cfg.DCGMEndpoint,
 				Client:   &http.Client{Timeout: cfg.DCGMTimeout},
@@ -111,6 +128,7 @@ func run() error {
 			Log:          log,
 		},
 		Devices:        deviceIndex,
+		Capabilities:   capabilities,
 		Interval:       cfg.ObserveInterval,
 		Timeout:        cfg.ObserveTimeout,
 		ResyncInterval: cfg.ResyncInterval,

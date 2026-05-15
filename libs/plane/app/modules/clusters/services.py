@@ -115,6 +115,7 @@ def _sync(state: ClusterSyncState | None) -> ClusterSyncSchema:
             cloud=state.cloud if state else None,
             observed_region=state.observed_region if state else None,
             read_only=state.read_only if state else False,
+            multinode=state.multinode if state else False,
         )
     lag = None
     stale = False
@@ -142,6 +143,7 @@ def _sync(state: ClusterSyncState | None) -> ClusterSyncSchema:
         cloud=state.cloud,
         observed_region=state.observed_region,
         read_only=state.read_only,
+        multinode=state.multinode,
     )
 
 

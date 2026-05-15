@@ -152,6 +152,14 @@ class ClusterObserved(Struct):
     declines to act from one that has not acted yet, and a workload placed there
     sits at zero replicas with no error to explain it. It defaults false so an
     operator too old to send it reads as a normal one, which is what it is.
+
+    `multinode` says a leader-worker backend is installed, so this cluster can run
+    a replica whose devices do not fit on one machine. It is the one observed field
+    here that placement reads rather than merely displays: sending a replica that
+    spans nodes to a cluster without a backend renders a single pod holding a
+    fraction of the devices the engine expects, which hangs in collective
+    initialisation instead of failing. It defaults false because an operator too
+    old to send it is one that could not have detected a backend either.
     """
 
     cluster_id: str
@@ -162,6 +170,7 @@ class ClusterObserved(Struct):
     cloud: str = ""
     region: str = ""
     read_only: bool = False
+    multinode: bool = False
 
 
 class NodeCondition(Struct):

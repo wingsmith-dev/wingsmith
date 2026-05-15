@@ -153,6 +153,17 @@ func runReconcile(t *testing.T, objects ...client.Object) (*SyncedResourceReconc
 
 func runReconcileWith(t *testing.T, reporter Reporter, objects ...client.Object) (*SyncedResourceReconciler, *v1alpha1.SyncedResource, ctrl.Result) {
 	t.Helper()
+	return runReconcileAs(t, reporter, nil, objects...)
+}
+
+// runReconcileCapable reconciles against an observation loop that has reported a capability.
+func runReconcileCapable(t *testing.T, caps Capabilities, objects ...client.Object) (*SyncedResourceReconciler, *v1alpha1.SyncedResource, ctrl.Result) {
+	t.Helper()
+	return runReconcileAs(t, nil, caps, objects...)
+}
+
+func runReconcileAs(t *testing.T, reporter Reporter, caps Capabilities, objects ...client.Object) (*SyncedResourceReconciler, *v1alpha1.SyncedResource, ctrl.Result) {
+	t.Helper()
 	scheme := clientgoscheme.Scheme
 	if err := v1alpha1.AddToScheme(scheme); err != nil {
 		t.Fatalf("scheme: %v", err)
@@ -164,6 +175,7 @@ func runReconcileWith(t *testing.T, reporter Reporter, objects ...client.Object)
 		Client: c, Scheme: scheme, Log: slog.Default(),
 		Namespace: "hangar-system", Render: testRender,
 		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa", Report: reporter,
+		Capabilities: caps,
 	}
 
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: subject.GetNamespace(), Name: subject.GetName()}}

@@ -75,6 +75,14 @@ type ResyncBegin struct {
 // and a workload sits at zero replicas with no error anywhere to explain it. Reporting it is
 // what lets the console say that nothing will happen here, rather than leaving somebody to
 // discover it by waiting.
+//
+// Multinode says a leader-worker backend — Grove or LeaderWorkerSet — is installed, so Dynamo
+// can render a replica whose devices do not fit on one machine. Unlike ReadOnly and Distribution
+// this one is not inert: placement must not send a replica that spans nodes to a cluster that
+// cannot run one, so the plane reads it. It is discovered from the API groups the cluster serves
+// rather than declared in the operator's config, because a flag asserting it is a second copy of
+// a truth the operator can simply look up — and when the two disagree the cluster wins, silently,
+// by hanging in collective initialisation.
 type ClusterObserved struct {
 	ClusterID    string `json:"cluster_id"`
 	Distribution string `json:"distribution"`
@@ -83,6 +91,7 @@ type ClusterObserved struct {
 	Nodes        int    `json:"nodes"`
 	Devices      int    `json:"devices"`
 	ReadOnly     bool   `json:"read_only"`
+	Multinode    bool   `json:"multinode"`
 	ObservedAt   string `json:"observed_at"`
 }
 

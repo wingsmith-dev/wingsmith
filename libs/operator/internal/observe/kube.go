@@ -65,7 +65,10 @@ type KubeDiscoverer struct {
 	// PoolLabelKey is the node label whose value names the pool a node belongs to. Empty falls
 	// back to {@link labelPool}.
 	PoolLabelKey string
-	Log          *slog.Logger
+	// Groups is where the leader-worker backend is detected. Nil reads as no backend, which
+	// parks multi-node replicas rather than hanging them.
+	Groups GroupSource
+	Log    *slog.Logger
 }
 
 // poolKey is the label observation reads a node's pool from.
@@ -108,11 +111,27 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 		k.log().Debug("scraped device identity", "devices", inventory.Devices, "hosts", inventory.Hosts)
 	}
 
+	// A discovery failure degrades to "no backend" rather than failing the tick. The direction
+	// matters: absent the capability a multi-node replica parks with a reason, where claiming
+	// one the cluster does not have produces a pod that hangs in collective initialisation with
+	// nothing saying why. Losing inventory over a transient read would be worse than either.
+	var multinode bool
+	if k.Groups != nil {
+		groups, err := k.Groups.Groups()
+		if err != nil {
+			k.log().Warn("api group discovery failed; reporting no multi-node backend",
+				"error", err)
+		} else {
+			multinode = multinodeCapable(groups)
+		}
+	}
+
 	out := Snapshot{
 		At:        time.Now().UTC(),
 		Nodes:     make([]Node, 0, len(nodes.Items)),
 		Workloads: workloads,
 		Devices:   podDevicesFrom(inventory),
+		Multinode: multinode,
 	}
 	for i := range nodes.Items {
 		n := projectKubeNode(&nodes.Items[i], inventory, k.poolKey(), k.log())

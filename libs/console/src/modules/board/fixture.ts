@@ -41,6 +41,7 @@ export function cluster(name: string, region: string, id = name): Cluster {
       cloud: null,
       observed_region: region,
       read_only: false,
+      multinode: false,
     },
   }
 }

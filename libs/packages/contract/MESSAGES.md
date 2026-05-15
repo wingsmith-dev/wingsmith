@@ -66,6 +66,17 @@ state, the session stays healthy, and the workload sits at zero replicas with no
 it. Like `distribution` it is inert: stored and displayed, never branched on. It defaults to false,
 so an operator built before this field reads as a normal one, which is what it is.
 
+**`multinode` is the one observed field on this frame that placement reads.** It says a
+leader-worker backend — Grove or LeaderWorkerSet — is installed, so Dynamo can render a replica
+whose devices do not fit on one machine. It is discovered from the API groups the cluster serves,
+not declared in the operator's configuration: the CRDs are either present or they are not, and a
+flag asserting otherwise is a second copy of the same truth that can disagree with it. When it
+does disagree the cluster wins silently — the render produces one pod holding a fraction of the
+devices the engine expects, which hangs in collective initialisation rather than failing. Unlike
+`read_only` and `distribution` this one is therefore not inert: a spanning replica must not be
+placed where it cannot run. It defaults false, which reads an operator too old to send it as one
+that could not have detected a backend either.
+
 **`distribution` is the one orchestrator name on the wire.** Every other field is deliberately
 neutral, and this one is not: `eks`, `rke2`, `gke` name a Kubernetes flavour. It is carried because
 an operator needs to know what they are running and there is no neutral way to say it, and it is

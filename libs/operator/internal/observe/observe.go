@@ -52,16 +52,20 @@ type Observer struct {
 	// this operator applies nothing. It belongs on the upward loop rather than being inferred
 	// downstream: whether the reconcile loop is running is a fact only this process holds, and
 	// the plane cannot tell an operator that declines to act from one that has not acted yet.
-	ReadOnly bool
-	Discoverer      Discoverer
-	Sender          Sender
-	Interval        time.Duration
-	Log             *slog.Logger
+	ReadOnly   bool
+	Discoverer Discoverer
+	Sender     Sender
+	Interval   time.Duration
+	Log        *slog.Logger
 
 	// Devices is where each tick publishes which pod holds which accelerator, for the reconcile
 	// loop to read. Optional: left nil, this loop behaves exactly as it did before and the
 	// reconcile loop reports no allocations rather than guessing at them.
 	Devices *DeviceIndex
+
+	// Capabilities is where each tick publishes what the cluster can do, for the reconcile loop
+	// to gate on. Optional: left nil, the reconcile loop falls back to its configured flag.
+	Capabilities *Capability
 
 	// Timeout bounds a single discovery. Without it a discoverer that blocks forever takes the
 	// whole loop with it silently: the process stays up, the hub session stays healthy because
@@ -189,6 +193,7 @@ func (o *Observer) Tick(ctx context.Context) error {
 	}
 	snapshot.normalise()
 	o.Devices.Publish(snapshot.Devices)
+	o.Capabilities.Publish(snapshot.Multinode)
 	next := o.project(snapshot)
 
 	o.mu.Lock()
@@ -216,6 +221,7 @@ func (o *Observer) Resync(ctx context.Context) error {
 	} else {
 		snapshot.normalise()
 		o.Devices.Publish(snapshot.Devices)
+		o.Capabilities.Publish(snapshot.Multinode)
 		next := o.project(snapshot)
 		o.mu.Lock()
 		o.last, o.seen = next, true

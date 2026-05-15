@@ -13,6 +13,7 @@
     "nodes": 12,
     "devices": 96,
     "read_only": false,
+    "multinode": false,
     "observed_at": "2026-08-19T14:02:11.400Z"
   }
 }

@@ -35,6 +35,10 @@ export function SyncCard({ sync }: { sync: ClusterSync }) {
       <CardContent className="divide-y">
         <Row label="State" value={humanize(sync.state)} />
         <Row label="Operator" value={sync.operator_version ?? "—"} />
+        <Row
+          label="Multi-node"
+          value={sync.multinode ? "Supported" : "No backend"}
+        />
         {sync.read_only && (
           <div className="py-2">
             <p className="font-mono text-2xs tracking-wider text-amber-600 uppercase dark:text-amber-400">

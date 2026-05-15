@@ -57,6 +57,10 @@ type SyncedResourceReconciler struct {
 	// that cannot read them does not know what any replica is holding.
 	Devices DeviceIndex
 
+	// Capabilities says what the cluster was observed to be able to do. Optional: left nil, the
+	// gates fall back to the configured flags alone, which is what the tests want.
+	Capabilities Capabilities
+
 	reportMu sync.Mutex
 	reported map[string]reportKey
 	staged   map[string]stageState
@@ -70,6 +74,27 @@ type SyncedResourceReconciler struct {
 type DeviceIndex interface {
 	// DevicesForPod is the UUIDs of the accelerators one pod holds, or nil when unknown.
 	DevicesForPod(namespace, name string) []string
+}
+
+// Capabilities is the half of the observation loop's cluster reading this loop gates on.
+type Capabilities interface {
+	// Multinode says a leader-worker backend was seen in the cluster's API groups.
+	Multinode() bool
+}
+
+// multinodeEnabled says whether this cluster can render a replica that spans machines.
+//
+// Observation first, configuration as an override that can only widen. Detection is the honest
+// answer — the CRDs are either served or they are not — and it keeps working when somebody
+// installs a backend without touching this operator's values. The configured flag stays because
+// detection matches on group name, so a backend named something unanticipated can still be
+// asserted by hand; it cannot turn the capability off, because a cluster that demonstrably has a
+// backend is not made incapable by a stale value.
+func (r *SyncedResourceReconciler) multinodeEnabled() bool {
+	if r.Render.MultinodeEnabled {
+		return true
+	}
+	return r.Capabilities != nil && r.Capabilities.Multinode()
 }
 
 // +kubebuilder:rbac:groups=placeholder.hangar.dev,resources=syncedresources,verbs=get;list;watch;create;update;patch;delete

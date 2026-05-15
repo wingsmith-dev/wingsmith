@@ -83,7 +83,7 @@ func TestAPipelinedReplicaSpansNodes(t *testing.T) {
 
 // A cluster that has not installed Grove or LeaderWorkerSet renders a multi-node replica as a
 // single pod holding a fraction of the devices the engine expects. It starts, then hangs in
-// collective initialisation saying nothing. Refusing names the setting instead.
+// collective initialisation saying nothing. Refusing names the backend to install instead.
 func TestMultinodeIsRefusedWhereItCannotBeRendered(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	rec := declared(t, "recipe", testRecipeID, pipelined())
@@ -95,10 +95,31 @@ func TestMultinodeIsRefusedWhereItCannotBeRendered(t *testing.T) {
 	if condition.Reason != "MultinodeNotEnabled" {
 		t.Fatalf("reason = %q, want MultinodeNotEnabled", condition.Reason)
 	}
-	if !strings.Contains(condition.Message, "multinode") {
-		t.Errorf("the message should name the setting to turn on, got %q", condition.Message)
+	if !strings.Contains(condition.Message, "Grove") {
+		t.Errorf("the message should name the backend to install, got %q", condition.Message)
 	}
 }
+
+// Detection is what enables multi-node, not the configured flag: a cluster that reports a
+// leader-worker backend renders one even though nothing set multinode.enabled. This is the whole
+// point of observing the capability — installing Grove is enough, on its own.
+func TestMultinodeIsEnabledByObservingABackend(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, pipelined())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	_, out, _ := runReconcileCapable(t, capableOfMultinode{}, dep, rec, art,
+		completedPrefetch(), gpuNode("gpu-0", 1, true), gpuNode("gpu-1", 1, true))
+
+	condition := readyCondition(t, out)
+	if condition.Reason == "MultinodeNotEnabled" {
+		t.Fatalf("a cluster reporting a backend must not be refused: %q", condition.Message)
+	}
+}
+
+// capableOfMultinode is an observation loop that has seen a leader-worker backend.
+type capableOfMultinode struct{}
+
+func (capableOfMultinode) Multinode() bool { return true }
 
 // A replica that fits on one machine belongs on one machine. Every node it spans is another hop
 // between pipeline stages, and spreading one that did not need spreading buys nothing.

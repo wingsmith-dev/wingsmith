@@ -119,6 +119,12 @@ class ClusterSyncState(BaseMixin):
     never start, instead of leaving somebody to infer it from a replica count that
     never moves.
 
+    `multinode` is what the operator found in the cluster's API groups: a
+    leader-worker backend, so Dynamo can render a replica across machines. Observed
+    rather than configured because the CRDs are either served or they are not, and
+    a flag asserting it is a second copy of the same truth that can be wrong in the
+    direction that hangs.
+
     `distribution`, `cloud` and `observed_region` are what the cluster turned out
     to be. They live here rather than on `Cluster` for the same reason
     `reachable` does — they are observed, and writing them onto the registry row
@@ -140,6 +146,7 @@ class ClusterSyncState(BaseMixin):
     cloud: Mapped[str | None] = mapped_column(String(32), nullable=True)
     observed_region: Mapped[str | None] = mapped_column(String(64), nullable=True)
     read_only: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    multinode: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     connected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disconnected_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

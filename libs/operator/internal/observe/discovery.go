@@ -180,6 +180,12 @@ type Snapshot struct {
 	// card's owner and the workload holding it disagree.
 	Devices PodDevices
 
+	// Multinode says a leader-worker backend is installed, so Dynamo can render a replica that
+	// spans machines. Discovered rather than configured: whether the CRDs are present is a fact
+	// about this cluster that the operator can read directly, and a flag asserting it is a
+	// second copy of the same truth that can be wrong.
+	Multinode bool
+
 	At time.Time
 }
 
