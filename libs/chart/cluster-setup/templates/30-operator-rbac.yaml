@@ -54,12 +54,15 @@ rules:
   - apiGroups: [nvidia.com]
     resources: [dynamographdeployments/status]
     verbs: [get]
-  # Read-only, and not an object this operator renders. It is where the Dynamo operator writes
-  # down that it could not do what a graph deployment asked, and the graph's own condition only
-  # names the child rather than repeating why.
+  # Not an object this operator renders. It is where the Dynamo operator writes down that it
+  # could not do what a graph deployment asked, and the graph's own condition only names the
+  # child rather than repeating why. `delete` is here for one narrow reason: Dynamo creates one
+  # of these per spec hash and never collects the one it superseded, so an edited recipe leaves
+  # a crash-looping worker holding a full replica's worth of accelerators and the replacement
+  # can never schedule. See supersede.go for the guards on which one is removed.
   - apiGroups: [nvidia.com]
     resources: [dynamocomponentdeployments]
-    verbs: [get, list, watch]
+    verbs: [delete, get, list, watch]
   - apiGroups: [placeholder.hangar.dev]
     resources: [syncedresources]
     verbs: [create, delete, get, list, patch, update, watch]

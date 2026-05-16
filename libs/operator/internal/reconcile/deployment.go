@@ -167,6 +167,14 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 		return ctrl.Result{}, err
 	}
 
+	// A recipe edit renders the same graph deployment under the same name, and Dynamo answers it
+	// by creating a component deployment under a new spec hash and abandoning the previous one —
+	// which keeps its accelerators. See supersede.go; on a full node the new pod can never
+	// schedule until the abandoned one is gone.
+	if err := r.pruneSuperseded(ctx, obj.GetName()); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	applied := fmt.Sprintf("serving %s at revision %d", recipe.Name, recipe.Version)
 	if err := r.markReady(ctx, res, "Applied", applied); err != nil {
 		return ctrl.Result{}, err
