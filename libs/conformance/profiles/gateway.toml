@@ -1,0 +1,40 @@
+# Our own gateway, reached the way `just bench` reaches it: a port-forward on this
+# machine. Costs nothing to run against — it is our hardware — and it is the only
+# endpoint here that can be checked without a vendor key.
+#
+#   kubectl --context acme -n hangar port-forward svc/hangar-gateway 8080:80
+#   export HANGAR_GATEWAY_TOKEN=$(kubectl --context acme -n hangar \
+#       get secret hangar-secrets -o jsonpath='{.data.HANGAR_GATEWAY_TOKEN}' | base64 -d)
+#   just conformance gateway
+
+name = "gateway"
+base_url = "http://127.0.0.1:8080"
+model = "gpt-oss-120b"
+token_env = "HANGAR_GATEWAY_TOKEN"
+
+context_window = 131072
+modalities = ["text"]
+protocols = ["chat_completions"]
+
+# What a customer must never see in an error body. These are the names of everything
+# between the gateway and the engine — if any of them reaches a 4xx body, that is a
+# finding today and it needs no reference endpoint to establish.
+leak_needles = [
+    "hangar",
+    "acme",
+    "dynamo",
+    "vllm",
+    "svc.cluster.local",
+    "hangar-system",
+    "ghcr.io",
+]
+
+# gpt-oss carries reasoning effort in the system prompt, not in a parameter. vLLM's
+# own recipe for this model sets it with {"role": "system", "content": "Reasoning:
+# high"} and documents no flag for it, so an endpoint sent `reasoning_effort` returns
+# 200 and ignores it — which would record as conforming to a contract it never saw.
+#   https://github.com/vllm-project/recipes/blob/main/models/openai/gpt-oss-20b.yaml
+[thinking]
+syntax = "system_prompt"
+efforts = ["low", "medium", "high"]
+prompt_template = "Reasoning: {effort}"

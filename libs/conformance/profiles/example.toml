@@ -1,0 +1,26 @@
+# A profile is a claim about one endpoint, plus the vendor knowledge no probe is
+# allowed to contain. Copy it per model. The two that matter most are `thinking`
+# and `paths` — they are the reason the probes never branch on a vendor name.
+
+name = "example"
+base_url = "http://localhost:8080"
+model = "gpt-oss-120b"
+token_env = "HANGAR_GATEWAY_TOKEN"
+
+# What the endpoint claims about itself. Used where there is no reference endpoint
+# to diff against, and as a cross-check where there is.
+context_window = 131072
+modalities = ["text"]
+protocols = ["chat_completions"]
+
+# Strings that would tell a customer who is really serving the request. Ours, not
+# the model vendor's — see probes/errors.py.
+leak_needles = ["hangar", "acme", "dynamo", "vllm", "internal.svc"]
+
+[thinking]
+# none | kimi | chat_template | reasoning_effort
+syntax = "none"
+
+[paths]
+cached_tokens = "usage.prompt_tokens_details.cached_tokens"
+reasoning = "choices.0.message.reasoning_content"
