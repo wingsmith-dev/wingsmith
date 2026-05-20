@@ -57,6 +57,12 @@ export function shortTokens(value: number): string {
  *
  * Pipeline degree appears only when it is greater than one, because `pp1` on every
  * single-node recipe is noise that makes the interesting case harder to spot.
+ *
+ * This is the recipe's name and nothing else. It used to double as the model id API
+ * clients send, which is why the fit leaked onto the public surface; that is now
+ * `served_model_name`, resolved by the plane and defaulting to the artifact's slug.
+ * The two are different concepts and both are legitimate — a recipe named for its
+ * fit is exactly what a list of recipes over one artifact needs.
  */
 export function derivedRecipeName(
   artifact: Artifact,

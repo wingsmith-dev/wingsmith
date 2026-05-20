@@ -312,16 +312,23 @@ class FakeServing:
 class FakeRecipe:
     """Named the way the console names a derived one: for the fit, not the model."""
 
-    def __init__(self, name="llama-3-3-70b-instruct-fp8-tp2-32k", engine_args=None) -> None:
+    def __init__(self, name="llama-3-3-70b-instruct-fp8-tp2-32k", engine_args=None, served_model_name=None) -> None:
         self.name = name
         self.engine_args = engine_args or {}
+        self.served_model_name = served_model_name
         self.created_at = EPOCH
         self.updated_at = None
 
 
+class FakeWorkload:
+    def __init__(self, served_model_name=None) -> None:
+        self.served_model_name = served_model_name
+
+
 class FakeArtifact:
-    def __init__(self, name="meta-llama/Llama-3.3-70B-Instruct") -> None:
+    def __init__(self, name="meta-llama/Llama-3.3-70B-Instruct", digest="sha256:beef") -> None:
         self.name = name
+        self.digest = digest
         self.created_at = EPOCH
         self.updated_at = None
 
@@ -329,7 +336,9 @@ class FakeArtifact:
 class FakeRow(tuple):
     """A `Row` is a tuple with labels; the resolution reads it positionally."""
 
-    def __new__(cls, endpoint, target, deployment, cluster, serving, quota=None, recipe=None, artifact=None):
+    def __new__(
+        cls, endpoint, target, deployment, cluster, serving, quota=None, recipe=None, artifact=None, workload=None
+    ):
         return super().__new__(
             cls,
             (
@@ -341,6 +350,7 @@ class FakeRow(tuple):
                 quota,
                 recipe if recipe is not None else FakeRecipe(),
                 artifact if artifact is not None else FakeArtifact(),
+                workload if workload is not None else FakeWorkload(),
             ),
         )
 
@@ -362,7 +372,7 @@ def upstream_row(phase="active", endpoint=None, **kwargs) -> FakeRow:
     )
 
 
-def tunnelled_row(phase="active", endpoint=None, recipe=None, **kwargs) -> FakeRow:
+def tunnelled_row(phase="active", endpoint=None, recipe=None, workload=None, **kwargs) -> FakeRow:
     """A cluster that publishes no serving address, which is every cluster we run."""
     return FakeRow(
         endpoint or FakeEndpoint(),
@@ -371,6 +381,7 @@ def tunnelled_row(phase="active", endpoint=None, recipe=None, **kwargs) -> FakeR
         FakeCluster(phase=phase),
         None,
         recipe=recipe,
+        workload=workload,
     )
 
 
@@ -382,16 +393,35 @@ async def test_an_active_cluster_with_a_serving_address_is_an_upstream():
 
 @pytest.mark.asyncio
 async def test_an_upstream_carries_the_name_the_engine_answers_to():
-    """Not the endpoint's name: the frontend serves under the recipe's.
+    """Not the endpoint's name: the frontend serves under the artifact's slug.
 
-    The console derives a recipe named for its configuration, so a client calling
-    the endpoint by name asks the frontend for a model it has never heard of. The
-    gateway rewrites `model` to this, and cannot without being told it.
+    A client calling the endpoint by name asks the frontend for a model it has
+    never heard of. The gateway rewrites `model` to this, and cannot without being
+    told it. The slug rather than the recipe's derived fit name, so that re-fitting
+    the same weights does not rename the model every caller codes against.
     """
     table = await resolution([tunnelled_row()]).resolved()
     upstream = table.endpoints[0].upstreams[0]
-    assert upstream.served_model_name == "llama-3-3-70b-instruct-fp8-tp2-32k"
+    assert upstream.served_model_name == "meta-llama/llama-3.3-70b-instruct"
     assert upstream.served_model_name != table.endpoints[0].name
+
+
+@pytest.mark.asyncio
+async def test_a_workloads_declared_name_beats_the_recipes():
+    """The workload is the object a person creates; a recipe is shared by many."""
+    row = tunnelled_row(
+        recipe=FakeRecipe(served_model_name="acme/llama-70b"),
+        workload=FakeWorkload(served_model_name="acme/llama-70b-canary"),
+    )
+    table = await resolution([row]).resolved()
+    assert table.endpoints[0].upstreams[0].served_model_name == "acme/llama-70b-canary"
+
+
+@pytest.mark.asyncio
+async def test_a_recipes_declared_name_beats_the_derived_slug():
+    row = tunnelled_row(recipe=FakeRecipe(served_model_name="acme/llama-70b"))
+    table = await resolution([row]).resolved()
+    assert table.endpoints[0].upstreams[0].served_model_name == "acme/llama-70b"
 
 
 @pytest.mark.asyncio
@@ -407,24 +437,24 @@ async def test_two_clusters_running_different_recipes_carry_their_own_served_nam
     """Why this rides the upstream and not the endpoint: there is no single answer."""
     endpoint = FakeEndpoint()
     rows = [
-        tunnelled_row(endpoint=endpoint, recipe=FakeRecipe(name="llama-fp8-tp2-32k")),
-        tunnelled_row(endpoint=endpoint, recipe=FakeRecipe(name="llama-bf16-tp4-128k")),
+        tunnelled_row(endpoint=endpoint, recipe=FakeRecipe(served_model_name="acme/llama-fp8")),
+        tunnelled_row(endpoint=endpoint, recipe=FakeRecipe(served_model_name="acme/llama-bf16")),
     ]
     table = await resolution(rows).resolved()
     served = [u.served_model_name for u in table.endpoints[0].upstreams]
-    assert served == ["llama-fp8-tp2-32k", "llama-bf16-tp4-128k"]
+    assert served == ["acme/llama-fp8", "acme/llama-bf16"]
 
 
 @pytest.mark.asyncio
-async def test_renaming_a_recipe_moves_the_revision_the_gateway_polls():
+async def test_renaming_a_recipes_served_model_moves_the_revision_the_gateway_polls():
     """Otherwise a gateway behind a 304 keeps rewriting to a name that is gone."""
     before = await resolution([tunnelled_row()]).resolved()
     renamed = tunnelled_row()
-    renamed[6].name = "llama-fp8-tp4-32k"
+    renamed[6].served_model_name = "acme/llama-70b"
     renamed[6].updated_at = EPOCH + dt.timedelta(hours=1)
     after = await resolution([renamed]).resolved()
     assert after.revision != before.revision
-    assert after.endpoints[0].upstreams[0].served_model_name == "llama-fp8-tp4-32k"
+    assert after.endpoints[0].upstreams[0].served_model_name == "acme/llama-70b"
 
 
 @pytest.mark.asyncio

@@ -384,6 +384,25 @@ export function WorkloadDetailPage() {
                           {recipe?.name ?? workload.recipe_id}
                         </Link>
                       </Field>
+                      {/* The recipe's name describes the fit; this is what a
+                          client puts in the `model` field of a request, and the
+                          two are deliberately different strings. */}
+                      <Field label="Model ID">
+                        <span className="font-mono">
+                          {workload.resolved_served_model_name ||
+                            recipe?.resolved_served_model_name ||
+                            "—"}
+                        </span>
+                        {workload.served_model_name ? (
+                          <span className="ml-2 text-2xs text-muted-foreground/60">
+                            set on this workload
+                          </span>
+                        ) : recipe?.served_model_name ? (
+                          <span className="ml-2 text-2xs text-muted-foreground/60">
+                            set on the recipe
+                          </span>
+                        ) : null}
+                      </Field>
                       <Field label="Hardware">
                         {recipe
                           ? `${recipe.shape.device_count}× ${recipe.shape.device_class}`

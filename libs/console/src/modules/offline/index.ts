@@ -1183,6 +1183,8 @@ registerFixtures([
       const parent: Workload = {
         id: parentId,
         name,
+        served_model_name: null,
+        resolved_served_model_name: name,
         kind: "service",
         phase: "running",
         project_id: project.id,

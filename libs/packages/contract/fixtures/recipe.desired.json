@@ -18,6 +18,7 @@
       "served-model-name": "qwen3.8-27b",
       "max-num-seqs": "256"
     },
+    "served_model_name": "qwen/qwen3.8-27b",
     "quantization": "fp8",
     "dtype": "bfloat16",
     "parallelism": {

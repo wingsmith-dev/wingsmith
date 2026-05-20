@@ -288,15 +288,21 @@ type RecipeResources struct {
 // The device shape is deliberately absent — it arrives on the deployment's Placement, derived from
 // this recipe, and carrying it twice invites the two copies to disagree.
 type RecipeDesired struct {
-	RecipeID           string            `json:"recipe_id"`
-	ClusterID          string            `json:"cluster_id"`
-	ArtifactID         string            `json:"artifact_id"`
-	Name               string            `json:"name"`
-	Version            int               `json:"version"`
-	Engine             string            `json:"engine"`
-	EngineVersion      string            `json:"engine_version"`
-	EngineImage        *string           `json:"engine_image"`
-	EngineArgs         map[string]string `json:"engine_args"`
+	RecipeID      string            `json:"recipe_id"`
+	ClusterID     string            `json:"cluster_id"`
+	ArtifactID    string            `json:"artifact_id"`
+	Name          string            `json:"name"`
+	Version       int               `json:"version"`
+	Engine        string            `json:"engine"`
+	EngineVersion string            `json:"engine_version"`
+	EngineImage   *string           `json:"engine_image"`
+	EngineArgs    map[string]string `json:"engine_args"`
+	// ServedModelName is the model id an API client sends, already resolved by the plane: the
+	// recipe's own declaration, or the artifact's lowercase Hugging Face slug when it declares
+	// none. Never empty, and never derived here — the plane owns the order so that one function
+	// answers "what is this model called" for the console, the gateway and the engine alike.
+	// EngineArgs still wins over it, because engine_args is laid over the derived flags.
+	ServedModelName    string            `json:"served_model_name"`
 	Quantization       *string           `json:"quantization"`
 	Dtype              *string           `json:"dtype"`
 	Parallelism        RecipeParallelism `json:"parallelism"`
@@ -394,10 +400,14 @@ type DeploymentDesired struct {
 	MaxReplicas int                  `json:"max_replicas"`
 	Placement   PlacementConstraints `json:"placement"`
 	ArtifactIDs []string             `json:"artifact_ids"`
-	Generation  int64                `json:"generation"`
-	UpdatedAt   string               `json:"updated_at"`
-	Authority   string               `json:"authority,omitempty"`
-	Adopt       *Adopt               `json:"adopt,omitempty"`
+	// ServedModelName is this deployment's override of the recipe's, empty when the workload
+	// declares none. It rides here rather than on RecipeDesired because a recipe is shared by
+	// every workload naming it and this override is not.
+	ServedModelName string `json:"served_model_name"`
+	Generation      int64  `json:"generation"`
+	UpdatedAt       string `json:"updated_at"`
+	Authority       string `json:"authority,omitempty"`
+	Adopt           *Adopt `json:"adopt,omitempty"`
 }
 
 // DeploymentDeleted withdraws a deployment.

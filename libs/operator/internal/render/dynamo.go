@@ -423,7 +423,7 @@ func engineArgs(in Inputs) ([]string, error) {
 
 	derived := map[string]string{
 		"model":             model,
-		"served-model-name": in.Recipe.Name,
+		"served-model-name": servedModelName(in),
 		"max-model-len":     strconv.Itoa(in.Recipe.ContextLength),
 	}
 	if rev := hfRevision(in.Artifact); rev != "" {
@@ -472,6 +472,24 @@ func engineArgs(in Inputs) ([]string, error) {
 		args = append(args, "--no-enable-prefix-caching")
 	}
 	return args, nil
+}
+
+// servedModelName is the model id an API client sends, as the plane resolved it.
+//
+// Nothing is derived here. The deployment's override wins over the recipe's default because the
+// workload is the object a person creates and a recipe is shared by every workload that names it;
+// both strings arrive already resolved, so this is a precedence rule and not a second copy of the
+// plane's. The recipe's name is the last resort, and only for a frame from a plane too old to
+// carry the field — it is what this renderer used unconditionally before, so an old plane keeps
+// getting exactly what it used to get.
+func servedModelName(in Inputs) string {
+	if name := strings.TrimSpace(in.Deployment.ServedModelName); name != "" {
+		return name
+	}
+	if name := strings.TrimSpace(in.Recipe.ServedModelName); name != "" {
+		return name
+	}
+	return in.Recipe.Name
 }
 
 // modelRef is what --model is pointed at.

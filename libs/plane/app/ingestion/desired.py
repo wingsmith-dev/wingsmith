@@ -32,6 +32,7 @@ from app.db.models import Component
 from app.db.models import Deployment
 from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
+from app.core.serving import declared_served_model
 from app.hub.messages import Adopt
 from app.hub.messages import CacheDesired
 from app.hub.messages import RecipeDesired
@@ -47,6 +48,8 @@ from app.hub.messages import RecipeParallelism
 from app.hub.messages import PlacementConstraints
 from app.ingestion.time import now
 from app.ingestion.statements import cluster_ref_clause
+from app.modules.recipes.services import serving_block
+from app.modules.recipes.services import resolved_engine_args
 
 
 logger = getLogger(__name__)
@@ -289,7 +292,7 @@ async def _recipes(
     workload, workload to the recipe every cluster it was expanded onto shares.
     """
     query = (
-        select(Recipe, Artifact.uid)
+        select(Recipe, Artifact.uid, Artifact)
         .join(Workload, Workload.recipe_id == Recipe.id)
         .join(Deployment, Deployment.workload_id == Workload.id)
         .join(Artifact, Recipe.artifact_id == Artifact.id)
@@ -299,10 +302,21 @@ async def _recipes(
     )
     if only is not None:
         query = query.where(Recipe.uid == only)
-    return [_recipe(recipe, cluster_uid, artifact_uid) for recipe, artifact_uid in (await db.execute(query)).all()]
+    return [
+        _recipe(recipe, cluster_uid, artifact_uid, artifact)
+        for recipe, artifact_uid, artifact in (await db.execute(query)).all()
+    ]
 
 
-def _recipe(recipe: Recipe, cluster_uid: str, artifact_uid: str) -> RecipeDesired:
+def _recipe(recipe: Recipe, cluster_uid: str, artifact_uid: str, artifact: Artifact) -> RecipeDesired:
+    """The recipe as the cluster is told it, with the served model name resolved here.
+
+    Resolved in the plane rather than derived in the operator so that one function
+    owns the order — `app.core.serving` — and the cluster renders the string it is
+    given. The `engine_args` hatch is deliberately left out of the resolution: the
+    operator lays `engine_args` over the derived flags itself, so folding it in
+    would put the same value on the wire twice.
+    """
     return RecipeDesired(
         recipe_id=recipe.uid,
         cluster_id=cluster_uid,
@@ -312,7 +326,8 @@ def _recipe(recipe: Recipe, cluster_uid: str, artifact_uid: str) -> RecipeDesire
         engine=recipe.engine,
         engine_version=recipe.engine_version,
         engine_image=recipe.engine_image,
-        engine_args={key: str(value) for key, value in (recipe.engine_args or {}).items()},
+        engine_args=resolved_engine_args(recipe.engine, recipe.engine_args, serving_block(recipe.serving)),
+        served_model_name=declared_served_model(recipe, artifact),
         quantization=recipe.quantization,
         dtype=recipe.dtype,
         parallelism=RecipeParallelism(
@@ -432,6 +447,7 @@ async def _deployments(
                 max_replicas=deployment.max_replicas,
                 placement=_placement(workload, recipe, allowed),
                 artifact_ids=artifact_ids,
+                served_model_name=(workload.served_model_name or "").strip(),
                 generation=deployment.generation,
                 updated_at=format_ts(deployment.updated_at or deployment.created_at),
                 authority=deployment.authority if deployment.authority in ("observed", "managed") else "observed",

@@ -125,9 +125,25 @@ class EndpointRepository:
         one to the other, so the table has to carry it. Both hops are NOT NULL
         FKs and 1:1, so they multiply no rows either; they are outer joins only
         because everything below `EndpointTarget` already is.
+
+        The workload rides along for the same reason and over a join that is
+        already there for the recipe hop: it is the level a served-model-name
+        override is usually declared at, and resolving the name without it would
+        have the gateway rewrite an inbound `model` to the recipe's answer while
+        the engine serves the workload's.
         """
         query = (
-            select(Endpoint, EndpointTarget, Deployment, Cluster, ClusterServing, ServingQuota, Recipe, Artifact)
+            select(
+                Endpoint,
+                EndpointTarget,
+                Deployment,
+                Cluster,
+                ClusterServing,
+                ServingQuota,
+                Recipe,
+                Artifact,
+                Workload,
+            )
             .outerjoin(EndpointTarget, EndpointTarget.endpoint_id == Endpoint.id)
             .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)

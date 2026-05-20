@@ -23,6 +23,7 @@ from app.db.notify import DeclaredChange
 from app.db.notify import DatabaseNotifier
 from app.ingestion import statements
 from app.core.schemas import ListResponse
+from app.core.serving import served_model
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -257,6 +258,7 @@ class WorkloadService:
         rows: list[Deployment],
         recipe_name: str | None = None,
         artifact_tag: str | None = None,
+        resolved_served_model_name: str = "",
     ) -> WorkloadSchema:
         return WorkloadSchema(
             id=workload.uid,
@@ -270,6 +272,8 @@ class WorkloadService:
             gang_size=workload.gang_size,
             recipe_id=recipe_uid,
             adapter_artifact_ids=adapter_uids,
+            served_model_name=workload.served_model_name,
+            resolved_served_model_name=resolved_served_model_name,
             overrides=workload.overrides,
             labels=workload.labels,
             requires_single_topology_domain=workload.requires_single_topology_domain,
@@ -347,6 +351,9 @@ class WorkloadService:
                     rows=[d[0] for d in group],
                     recipe_name=row.recipe_name,
                     artifact_tag=row.artifact_tag,
+                    resolved_served_model_name=served_model(row.Recipe, row.Artifact, workload)
+                    if row.Artifact is not None
+                    else "",
                 )
             )
         return items
@@ -603,6 +610,7 @@ class WorkloadService:
             preemptible=data.preemptible,
             paused=False,
             adapter_artifact_ids=await self._adapter_ids(data.adapter_artifacts),
+            served_model_name=data.served_model_name,
             overrides=data.overrides,
             labels=data.labels,
             requires_single_topology_domain=data.requires_single_topology_domain,

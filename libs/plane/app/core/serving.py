@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Protocol
+
 from app.db.models import Recipe
 from app.db.models import Artifact
 
@@ -18,27 +20,80 @@ plane's answer never silently disagrees with the command line.
 """
 
 
-def served_model(recipe: Recipe, artifact: Artifact) -> str:
+class HasServedModelName(Protocol):
+    """A recipe or a workload, read only for its declared override.
+
+    A structural type rather than a union because the two objects share nothing
+    else and the tests fake both. Nothing here needs a row.
+    """
+
+    served_model_name: str | None
+
+
+def derived_served_model(artifact: Artifact) -> str:
+    """The lowercase Hugging Face repository slug the artifact names.
+
+    `moonshotai/Kimi-K3` becomes `moonshotai/kimi-k3`. Lowercase because that is
+    what a caller types and what every registry treats as canonical, and the
+    organisation is kept because a bare `kimi-k3` is not a model id anybody can
+    look up.
+
+    The artifact's `name` is the slug when it holds one. An artifact adopted by
+    watching a cluster serve it carries the reference in `digest` as
+    `hf:org/model` instead, so that is read when the name is not a slug at all.
+    """
+    name = (artifact.name or "").strip()
+    if "/" not in name:
+        digest = (artifact.digest or "").strip()
+        if digest.lower().startswith("hf:"):
+            name = digest[3:].lstrip("/") or name
+    return name.lower()
+
+
+def served_model(recipe: Recipe, artifact: Artifact, workload: HasServedModelName | None = None) -> str:
     """The `model_name` the engine reports itself under, most authoritative first.
 
-    An explicit served-model-name wins because it is the operator saying so, and
-    it wins on the command line too — `engine_args` renders after the derived
-    arguments precisely so it can. `Recipe.name` comes next: it is the name the
-    deployment is built and served under, and it is what the engine emits. The
-    artifact is the last resort because it holds the repository a model is fetched
-    from rather than the name it serves under — `google/gemma-4-31B-it` against a
-    `model_name` of `gemma-4-31b-it` — so reaching it usually means matching no
-    series at all.
+    `engine_args` first, because it wins on the command line — the operator
+    renders the derived flags and then lays `engine_args` over them, so anything
+    decided here that it contradicts is a lie about the running process. It is the
+    escape hatch for a flag this plane has never heard of and an escape hatch that
+    loses to a default is not one.
 
-    Here in `core/` rather than in a module because three of them ask the same
+    Then the workload's declared `served_model_name`, then the recipe's. Both are
+    explicit and both are declared; the workload wins because the workload is the
+    object a person creates, and a recipe is shared by every workload that names
+    it.
+
+    Last, the artifact's lowercase Hugging Face slug. This used to be `Recipe.name`
+    instead, which put the fit on the public API surface — `kimi-k3-mxfp4-tp8-1024k`
+    — so re-fitting the same model at a different tensor degree renamed the model
+    every client codes against. The slug is a fact about the weights and survives
+    a re-fit.
+
+    Here in `core/` rather than in a module because four of them ask the same
     question for different reasons: metrics and benchmarks narrow a series by it,
-    and endpoints put it on the routing table so the gateway can rewrite an
-    inbound `model` to it. It is machinery — the one place that knows how a
-    recipe becomes the string an engine answers to — and a module that owned it
-    would have the other two importing across the domain to reach it.
+    endpoints put it on the routing table so the gateway can rewrite an inbound
+    `model` to it, and the desired-state builder sends it to the cluster. It is
+    machinery — the one place that knows how a recipe becomes the string an engine
+    answers to — and a module that owned it would have the others importing across
+    the domain to reach it.
     """
     for key in SERVED_MODEL_ARGS:
-        override = recipe.engine_args.get(key)
+        override = (recipe.engine_args or {}).get(key)
         if override:
             return str(override)
-    return str(recipe.name or artifact.name)
+    return declared_served_model(recipe, artifact, workload)
+
+
+def declared_served_model(recipe: Recipe, artifact: Artifact, workload: HasServedModelName | None = None) -> str:
+    """`served_model` without the `engine_args` hatch, for what the plane declares.
+
+    The wire carries this rather than the full answer: the operator lays
+    `engine_args` over the derived flags itself, so sending the resolved hatch
+    would only give the same value twice and a chance for the two to disagree.
+    """
+    if workload is not None and (workload.served_model_name or "").strip():
+        return str(workload.served_model_name).strip()
+    if (recipe.served_model_name or "").strip():
+        return str(recipe.served_model_name).strip()
+    return derived_served_model(artifact) or str(recipe.name)

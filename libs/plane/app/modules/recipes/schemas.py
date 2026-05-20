@@ -146,6 +146,8 @@ class RecipeSchema(Struct):
     engine_image: str | None
     engine_args: dict
     imported_args: dict
+    served_model_name: str | None
+    resolved_served_model_name: str
     quantization: str | None
     dtype: str | None
     parallelism: RecipeParallelismSchema
@@ -206,6 +208,7 @@ class RecipeCreateRequest(Struct):
     engine_image: str | None = None
     engine_args: dict = {}
     imported_args: dict = {}
+    served_model_name: str | None = None
     quantization: str | None = None
     dtype: str | None = None
     tensor_parallel: int = 1
@@ -245,6 +248,7 @@ class RecipeUpdateRequest(Struct):
     engine_image: str | None | UnsetType = UNSET
     engine_args: dict | UnsetType = UNSET
     imported_args: dict | UnsetType = UNSET
+    served_model_name: str | None | UnsetType = UNSET
     quantization: str | None | UnsetType = UNSET
     dtype: str | None | UnsetType = UNSET
     tensor_parallel: int | UnsetType = UNSET

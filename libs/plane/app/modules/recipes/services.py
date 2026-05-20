@@ -20,6 +20,7 @@ from app.db.notify import Notifier
 from app.db.notify import DeclaredChange
 from app.db.notify import DatabaseNotifier
 from app.core.schemas import ListResponse
+from app.core.serving import served_model
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -218,6 +219,24 @@ EOS suppression is a single flag on every engine — those are the operator's to
 render, and it is entitled to fail a reconcile rather than drop one silently."""
 
 
+SERVING_IMPLIED_FLAGS: dict[str, dict[str, tuple[str, ...]]] = {
+    "vllm": {
+        "tool_call_parser": ("enable-auto-tool-choice",),
+    },
+}
+"""Valueless flags a typed field cannot live without, per engine.
+
+vLLM parses tool calls with `--tool-call-parser` and *dispatches* them only with
+`--enable-auto-tool-choice`; set the first alone and the engine loads a parser it
+never runs, so the recipe reads as configured and the endpoint returns the call as
+prose in `content`. Every one of the fifteen models in the vLLM recipe corpus that
+declares tool calling ships the two flags together, and none ships either alone.
+
+They are here rather than as a second typed field because they are not a second
+decision. A recipe able to express one without the other can only express a broken
+state, and the field that renders them already carries the intent."""
+
+
 def _members(name: str, values: list[str], allowed: frozenset[str]) -> None:
     unknown = [v for v in values if v not in allowed]
     if unknown:
@@ -360,6 +379,23 @@ def serving_args(engine: str, serving: RecipeServingSchema) -> dict[str, str]:
     return args
 
 
+def serving_companion_args(engine: str, serving: RecipeServingSchema) -> dict[str, str]:
+    """The valueless flags a typed field cannot work without, keyed without dashes.
+
+    Separate from `serving_args` because the precedence is the other way round. A
+    typed field beats `engine_args`, since it is the value the plane can validate and
+    display. A companion flag does not: it is inferred rather than declared, so a
+    recipe that spells it out by hand — for an engine build that wants a value there,
+    or to hold a flag this table gets wrong — keeps what it wrote.
+    """
+    implied = SERVING_IMPLIED_FLAGS.get(engine.strip().lower(), {})
+    args: dict[str, str] = {}
+    if serving.tool_call_parser:
+        for flag in implied.get("tool_call_parser", ()):
+            args[flag] = ""
+    return args
+
+
 def engine_image_repos() -> dict[str, str]:
     """`ENGINE_IMAGE_REPOS` parsed into `engine -> repository`.
 
@@ -420,6 +456,8 @@ def resolved_engine_args(engine: str, engine_args: dict | None, serving: RecipeS
     something the cluster does not do.
     """
     resolved = {str(key).removeprefix("--"): str(value) for key, value in (engine_args or {}).items()}
+    for flag, value in serving_companion_args(engine, serving).items():
+        resolved.setdefault(flag, value)
     resolved.update(serving_args(engine, serving))
     return resolved
 
@@ -460,7 +498,7 @@ class RecipeService:
                 DeclaredChange(cluster_id=cluster_uid, kind=RECIPE_KIND, uid=recipe.uid),
             )
 
-    def schema(self, recipe: Recipe, artifact_uid: str) -> RecipeSchema:
+    def schema(self, recipe: Recipe, artifact_uid: str, artifact: Artifact) -> RecipeSchema:
         fraction = recipe.kv_cache_fraction
         serving = serving_block(recipe.serving)
         return RecipeSchema(
@@ -474,6 +512,8 @@ class RecipeService:
             engine_image=recipe.engine_image,
             engine_args=recipe.engine_args,
             imported_args=recipe.imported_args,
+            served_model_name=recipe.served_model_name,
+            resolved_served_model_name=served_model(recipe, artifact),
             quantization=recipe.quantization,
             dtype=recipe.dtype,
             parallelism=RecipeParallelismSchema(
@@ -514,18 +554,18 @@ class RecipeService:
             revision=_revision(recipe),
         )
 
-    async def _one(self, ref: str) -> tuple[Recipe, str]:
+    async def _one(self, ref: str) -> tuple[Recipe, str, Artifact]:
         row = await self.repo.get(ref)
         if row is None:
             raise NotFound(f"no recipe {ref!r}")
-        return row[0], row.artifact_uid
+        return row[0], row.artifact_uid, row[2]
 
     async def get(self, ref: str) -> RecipeSchema:
         return self.schema(*await self._one(ref))
 
     async def usage(self, ref: str) -> RecipeUsageSchema:
         """How many workloads name this recipe, counted at read time."""
-        recipe, _ = await self._one(ref)
+        recipe, _, _artifact = await self._one(ref)
         return RecipeUsageSchema(
             recipe_id=recipe.uid,
             workload_count=await self.repo.workload_usage_count(recipe),
@@ -540,7 +580,7 @@ class RecipeService:
         left out of `graded_run_count` — the peak is the maximum of what could be
         read, or `None` when nothing could.
         """
-        recipe, _ = await self._one(ref)
+        recipe, _, _artifact = await self._one(ref)
         rows = await self.repo.benchmark_runs(recipe)
         peak: float | None = None
         graded = 0
@@ -583,7 +623,7 @@ class RecipeService:
             labels=labels,
         )
         kept, next_cursor = page(rows, size, lambda r: r[0].seq)
-        items = [self.schema(r[0], r.artifact_uid) for r in kept]
+        items = [self.schema(r[0], r.artifact_uid, r[2]) for r in kept]
         return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
 
     async def create(self, data: RecipeCreateRequest) -> RecipeSchema:
@@ -629,6 +669,7 @@ class RecipeService:
             engine_image=resolve_engine_image(data.engine, data.engine_version, data.engine_image),
             engine_args=data.engine_args,
             imported_args=data.imported_args,
+            served_model_name=data.served_model_name,
             quantization=data.quantization,
             dtype=data.dtype,
             tensor_parallel=data.tensor_parallel,
@@ -663,7 +704,7 @@ class RecipeService:
         return await self.get(recipe.uid)
 
     async def update(self, ref: str, data: RecipeUpdateRequest, if_match: str | None = None) -> RecipeSchema:
-        recipe, _ = await self._one(ref)
+        recipe, _, _artifact = await self._one(ref)
         if if_match is not None and if_match != _revision(recipe):
             raise Conflict("recipe changed since it was read", {"revision": _revision(recipe)})
 
@@ -745,7 +786,7 @@ class RecipeService:
         `demand_deployment.recipe_id` is `RESTRICT`: a running deployment must
         keep the description of what it is running.
         """
-        recipe, _ = await self._one(ref)
+        recipe, _, _artifact = await self._one(ref)
         try:
             await self.repo.delete(recipe)
             await self.db.commit()

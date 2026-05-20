@@ -49,6 +49,11 @@ class WorkloadRepository:
     Recipe, project and priority class are joined rather than loaded because a
     workload read without them is half an answer: they are what it asked to run,
     for whom, and at what priority.
+
+    The recipe and artifact entities ride along beside their labels because the
+    served model name is resolved from all three objects — see
+    `app.core.serving.served_model` — and a label per field it reads is one more
+    thing to keep in step every time that order changes.
     """
 
     def __init__(self, db: AsyncSession) -> None:
@@ -64,6 +69,8 @@ class WorkloadRepository:
                 Project.uid.label("project_uid"),
                 PriorityClass.name.label("priority_class"),
                 Cluster.uid.label("pinned_cluster_uid"),
+                Recipe,
+                Artifact,
             )
             .join(Recipe, Workload.recipe_id == Recipe.id)
             .join(Project, Workload.project_id == Project.id)

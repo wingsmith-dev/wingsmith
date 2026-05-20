@@ -15,6 +15,8 @@ from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Artifact
 from app.db.models import Endpoint
+from app.db.models import Workload
+from app.core.serving import served_model
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
 from app.modules.metrics import sources
@@ -25,7 +27,6 @@ from app.modules.metrics.registry import BY_NAME
 from app.modules.metrics.registry import family
 from app.modules.metrics.services import MetricsService
 from app.modules.metrics.services import _merge
-from app.core.serving import served_model
 
 
 UTILIZATION = BY_NAME["gpu.utilization"]
@@ -371,23 +372,36 @@ def test_an_explicit_served_model_name_wins_because_the_operator_said_so():
     assert served_model(recipe, artifact) == "gemma-custom"
 
 
-def test_the_recipe_name_is_next_because_it_is_what_the_engine_emits():
+def test_a_workloads_declared_name_is_next_because_it_is_the_object_a_person_creates():
+    recipe = Recipe(name="gemma-4-31b-it", engine_args={}, served_model_name="google/gemma-4-31b-it")
+    artifact = Artifact(name="google/gemma-4-31B-it")
+    workload = Workload(served_model_name="acme/gemma-canary")
+    assert served_model(recipe, artifact, workload) == "acme/gemma-canary"
+
+
+def test_a_recipes_declared_name_is_next_after_the_workloads():
+    recipe = Recipe(name="gemma-4-31b-it", engine_args={}, served_model_name="acme/gemma")
+    artifact = Artifact(name="google/gemma-4-31B-it")
+    assert served_model(recipe, artifact, Workload()) == "acme/gemma"
+
+
+def test_the_artifact_slug_is_the_default_and_carries_no_fit():
+    """The fit moves and the weights do not, so the slug is what a client codes against."""
     recipe = Recipe(name="gemma-4-31b-it", engine_args={})
     artifact = Artifact(name="google/gemma-4-31B-it")
-    assert served_model(recipe, artifact) == "gemma-4-31b-it"
+    assert served_model(recipe, artifact) == "google/gemma-4-31b-it"
 
 
-def test_the_artifact_is_the_last_resort_and_usually_matches_nothing():
-    """It holds the repository a model is fetched from, not the name it serves under."""
-    recipe = Recipe(name=None, engine_args={})
-    artifact = Artifact(name="google/gemma-4-31B-it")
-    assert served_model(recipe, artifact) == "google/gemma-4-31B-it"
+def test_an_adopted_artifact_reads_its_slug_out_of_the_reference_digest():
+    recipe = Recipe(name="gemma-4-31b-it", engine_args={})
+    artifact = Artifact(name="gemma-4-31b-it", digest="hf:google/Gemma-4-31B-it")
+    assert served_model(recipe, artifact) == "google/gemma-4-31b-it"
 
 
 def test_an_empty_served_model_name_falls_through_rather_than_selecting_nothing():
     recipe = Recipe(name="gemma-4-31b-it", engine_args={"served_model_name": ""})
     artifact = Artifact(name="google/gemma-4-31B-it")
-    assert served_model(recipe, artifact) == "gemma-4-31b-it"
+    assert served_model(recipe, artifact) == "google/gemma-4-31b-it"
 
 
 # --- resolving a store for a cluster ----------------------------------------
@@ -545,7 +559,7 @@ async def test_the_worker_join_reads_the_labels_off_the_workload():
 @pytest.mark.asyncio
 async def test_an_unobserved_worker_falls_back_to_the_served_model():
     scope = await deployment_scope({})
-    assert scope.match == {"deployment": ("gemma-4-31b-it",)}
+    assert scope.match == {"deployment": ("google/gemma-4-31b-it",)}
 
 
 # --- the workload scope ------------------------------------------------------
@@ -734,7 +748,7 @@ async def test_the_serving_family_falls_back_to_the_served_model_exactly_as_a_de
     svc = workload_service([workload_row(labels={})], [cluster()], [])
     backend = SequenceBackend({})
     await workload_answer(svc, backend)
-    assert backend.requests[0].scope.match == {"deployment": ("gemma-4-31b-it",)}
+    assert backend.requests[0].scope.match == {"deployment": ("google/gemma-4-31b-it",)}
 
 
 async def test_the_cards_are_selected_by_the_devices_the_workload_holds_now():

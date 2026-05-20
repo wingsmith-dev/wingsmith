@@ -380,7 +380,7 @@ class EndpointService:
             upstreams: list[ResolvedUpstreamSchema] = []
             uids: dict[UUID, str] = {}
 
-            for _, target, deployment, cluster, serving, _, recipe, artifact in grouped[endpoint_id]:
+            for _, target, deployment, cluster, serving, _, recipe, artifact, workload in grouped[endpoint_id]:
                 if target is None:
                     continue
                 own.extend([_stamp(target), _stamp(deployment), _stamp(cluster), _stamp(serving)])
@@ -401,7 +401,7 @@ class EndpointService:
                         cluster_id=cluster.uid,
                         cluster_name=cluster.name,
                         url=serving.url if serving is not None else "",
-                        served_model_name=served_model(recipe, artifact)
+                        served_model_name=served_model(recipe, artifact, workload)
                         if recipe is not None and artifact is not None
                         else "",
                         credential_id=str(serving.credential_id)

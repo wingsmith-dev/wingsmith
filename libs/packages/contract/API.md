@@ -212,15 +212,21 @@ moves. An endpoint with no usable targets is returned with an empty upstream lis
 omitted — "no such model" and "this model has nowhere to go" are different answers.
 
 **Each upstream carries `served_model_name`, and it is usually not the endpoint's name.** A client
-addresses an endpoint by its public name; the engine behind it answers to the recipe's name, which
-for a recipe the console derived is a description of the fit — `llama-3-3-70b-instruct-fp8-tp2-32k`
-— and moves whenever the fit is redone. The gateway rewrites the request's `model` to this before
-forwarding, so the public name never has to equal the served one and a re-fit is invisible to
-callers. It rides the upstream rather than the endpoint because one endpoint can front two clusters
-running different recipes, and there is no single answer to put one level up. An override belongs in
-the recipe's `engine_args` under the flag's own spelling, `served-model-name`: those keys are
-rendered onto the engine command line verbatim, so the hyphenated form is the only one that both
-reaches the engine and is read here.
+addresses an endpoint by its public name; the engine behind it answers to the model id the plane
+resolved for it — by default the artifact's lowercase Hugging Face slug, `moonshotai/kimi-k3`. The
+gateway rewrites the request's `model` to this before forwarding, so the public name never has to
+equal the served one. It rides the upstream rather than the endpoint because one endpoint can front
+two clusters running different recipes, and there is no single answer to put one level up.
+
+It used to be the recipe's name, which for a recipe the console derived is a description of the fit
+— `llama-3-3-70b-instruct-fp8-tp2-32k` — and moved whenever the fit was redone. The slug is a fact
+about the weights and survives a re-fit.
+
+An override is declared rather than smuggled: `served_model_name` on the workload wins, then
+`served_model_name` on the recipe, then the derived slug. The recipe's `engine_args` under the
+flag's own spelling, `served-model-name`, still beats all three and remains the last-resort hatch —
+those keys are rendered onto the engine command line verbatim, so the hyphenated form is the only
+one that both reaches the engine and is read here.
 
 A cluster contributes upstreams only while its `phase` is `active`. `draining` and `disabled` are
 somebody declaring that the cluster must stop taking work, and traffic is the first thing that has

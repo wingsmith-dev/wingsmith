@@ -1009,3 +1009,62 @@ def test_a_diagnosis_arriving_on_an_unchanged_shortfall_is_news() -> None:
     before = _Stored(observed.phase, observed.reason, observed.message, observed.ready_replicas)
     assert observed.last_error is not None, "the fixture carries no error to notice"
     assert _moved(before, observed)
+
+
+# --- the served model name on the wire ---------------------------------------
+
+
+def _wire_recipe(**kwargs):
+    from app.db.models import Recipe
+    from app.db.models import Artifact
+    from app.ingestion.desired import _recipe
+
+    base = {
+        "uid": "rec_01j9x2ffffffffffffffffffff",
+        "name": "kimi-k3-mxfp4-tp8-1024k",
+        "version": 1,
+        "engine": "vllm",
+        "engine_version": "0.6.0",
+        "engine_image": None,
+        "engine_args": {},
+        "quantization": None,
+        "dtype": None,
+        "tensor_parallel": 8,
+        "pipeline_parallel": 1,
+        "expert_parallel": 1,
+        "context_length": 1048576,
+        "max_batch_tokens": None,
+        "kv_cache_dtype": None,
+        "kv_cache_fraction": None,
+        "prefix_cache_enabled": True,
+        "prefix_cache_config": {},
+        "cpu_cores": None,
+        "memory_mib": None,
+        "disk_gib": None,
+        "labels": {},
+        "overlay": {},
+        "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
+        "updated_at": None,
+    }
+    artifact = Artifact(name="moonshotai/Kimi-K3", digest="sha256:beef")
+    return _recipe(Recipe(**(base | kwargs)), "clu_1", "art_1", artifact)
+
+
+def test_the_wire_carries_the_artifact_slug_when_no_one_declared_a_name() -> None:
+    """The recipe's own name describes the fit and must not reach a caller."""
+    assert _wire_recipe().served_model_name == "moonshotai/kimi-k3"
+
+
+def test_a_recipes_declaration_is_what_the_wire_carries() -> None:
+    assert _wire_recipe(served_model_name="acme/kimi").served_model_name == "acme/kimi"
+
+
+def test_the_engine_args_hatch_is_left_off_the_wire() -> None:
+    """The operator lays engine_args over the derived flags itself.
+
+    Resolving it here as well would put the same value on the frame twice, and two
+    copies of one fact are two things that can disagree.
+    """
+    wire = _wire_recipe(engine_args={"served-model-name": "acme/kimi-hotfix"})
+    assert wire.served_model_name == "moonshotai/kimi-k3"
+    assert wire.engine_args["served-model-name"] == "acme/kimi-hotfix"

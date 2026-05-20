@@ -13,6 +13,7 @@ from app.core.ids import new_uid
 from app.core.vram import extract_shape
 from app.core.vram import shape_metadata
 from app.db.models import Recipe
+from app.db.models import Artifact
 from app.db.notify import MemoryNotifier
 from app.hub.messages import RecipeDesired
 from app.core.exceptions import Invalid
@@ -32,11 +33,11 @@ from app.modules.recipes.services import RecipeService
 from app.modules.recipes.services import _revision
 from app.modules.recipes.services import sizing_for
 from app.modules.recipes.services import check_shape
-from app.modules.recipes.services import check_quantization
 from app.modules.recipes.services import serving_args
 from app.modules.recipes.services import check_serving
 from app.modules.recipes.services import check_capacity
 from app.modules.recipes.services import check_footprint
+from app.modules.recipes.services import check_quantization
 from app.modules.recipes.services import resolve_engine_image
 from app.modules.recipes.services import resolved_engine_args
 from app.modules.recipes.repository import RecipeRepository
@@ -308,7 +309,7 @@ class _StubRepo:
         self._rows = rows
 
     async def get(self, ref):
-        return _GetRow((self._recipe, new_uid(ARTIFACT)))
+        return _GetRow((self._recipe, new_uid(ARTIFACT), Artifact(name="google/Gemma-4-31B-it")))
 
     async def benchmark_runs(self, recipe):
         return self._rows
@@ -424,7 +425,23 @@ def a_recipe(**kwargs) -> Recipe:
 
 
 def rendered(recipe: Recipe) -> RecipeSchema:
-    return RecipeService(db=None, notifier=MemoryNotifier()).schema(recipe, new_uid(ARTIFACT))
+    artifact = Artifact(name="google/Gemma-4-31B-it", digest="sha256:beef")
+    return RecipeService(db=None, notifier=MemoryNotifier()).schema(recipe, new_uid(ARTIFACT), artifact)
+
+
+def test_a_recipe_that_declares_no_served_model_name_resolves_the_artifact_slug():
+    """The recipe's name describes the fit; the slug is what a caller sends."""
+    assert rendered(a_recipe()).resolved_served_model_name == "google/gemma-4-31b-it"
+
+
+def test_a_declared_served_model_name_is_what_resolves():
+    assert rendered(a_recipe(served_model_name="acme/gemma")).resolved_served_model_name == "acme/gemma"
+
+
+def test_the_engine_args_hatch_still_beats_the_declaration():
+    """It is laid over the derived flags in the render, so the plane must agree with it."""
+    built = rendered(a_recipe(served_model_name="acme/gemma", engine_args={"served-model-name": "acme/gemma-canary"}))
+    assert built.resolved_served_model_name == "acme/gemma-canary"
 
 
 def test_a_recipe_with_no_serving_block_still_round_trips():
@@ -647,6 +664,35 @@ def test_the_flag_a_typed_field_speaks_for_is_the_engines_own_spelling():
     assert serving_args("vllm", serving(max_images_per_request=4)) == {"limit-mm-per-prompt": "image=4"}
 
 
+def test_a_vllm_tool_parser_brings_the_flag_that_makes_it_run():
+    """vLLM parses tool calls with one flag and dispatches them with another.
+
+    Set only the parser and the engine loads something it never runs: the model
+    emits a tool call, nothing turns it into `tool_calls`, and it reaches the caller
+    as prose in `content` behind a recipe that reads as configured. This was found
+    that way round, on a live endpoint, by `libs/conformance`.
+    """
+    resolved = resolved_engine_args("vllm", {}, serving(tool_call_parser="openai"))
+    assert resolved == {"tool-call-parser": "openai", "enable-auto-tool-choice": ""}
+
+
+def test_only_the_engines_that_need_the_companion_flag_get_it():
+    """SGLang dispatches on the parser alone, so adding vLLM's flag would be a lie."""
+    assert resolved_engine_args("sglang", {}, serving(tool_call_parser="qwen25")) == {"tool-call-parser": "qwen25"}
+    assert serving_args("vllm", serving(reasoning={"parser": "qwen3"})) == {"reasoning-parser": "qwen3"}
+
+
+def test_an_explicit_auto_tool_choice_is_not_overwritten_by_the_implied_one():
+    """`engine_args` stays the escape hatch, including for a value we would render empty."""
+    resolved = resolved_engine_args(
+        "vllm",
+        {"--enable-auto-tool-choice": "true"},
+        serving(tool_call_parser="openai"),
+    )
+    assert resolved["tool-call-parser"] == "openai"
+    assert resolved["enable-auto-tool-choice"] == "true"
+
+
 def test_a_default_serving_block_speaks_for_no_flag_at_all():
     """Which is what keeps this additive on every recipe that already exists."""
     assert serving_args("vllm", RecipeServingSchema()) == {}
@@ -758,3 +804,56 @@ def test_a_malformed_repo_pair_does_not_break_the_write_path():
         assert resolve_engine_image("vllm", "1.4.1", None) == "repo/vllm:1.4.1"
     finally:
         settings.ENGINE_IMAGE_REPOS = original
+
+
+def test_the_typed_serving_block_reaches_the_cluster():
+    """The flags a recipe declares must be the flags the engine is started with.
+
+    `RecipeDesired` carries no `serving` block — the operator renders a command
+    line and has no use for a typed one — so the resolved arguments are what goes
+    on the wire. Sending `engine_args` raw instead made the whole serving block a
+    view: the console rendered `--tool-call-parser` and no cluster was ever told.
+    `libs/conformance` found it that way round, against a live endpoint whose
+    recipe read as configured and whose engine had never heard of the flag.
+    """
+    from app.ingestion.desired import _recipe
+
+    recipe = SimpleNamespace(
+        uid="r-1",
+        name="gpt-oss-120b-mxfp4-tp4",
+        version=3,
+        engine="vllm",
+        engine_version="0.10.0",
+        engine_image=None,
+        engine_args={"--async-scheduling": ""},
+        serving={"tool_call_parser": "openai"},
+        served_model_name=None,
+        quantization=None,
+        dtype=None,
+        tensor_parallel=4,
+        pipeline_parallel=1,
+        expert_parallel=1,
+        context_length=131072,
+        max_batch_tokens=None,
+        kv_cache_dtype=None,
+        kv_cache_fraction=None,
+        prefix_cache_enabled=True,
+        prefix_cache_config={},
+        cpu_cores=None,
+        memory_mib=None,
+        disk_gib=None,
+        labels={},
+        overlay={},
+        updated_at=None,
+        created_at=dt.datetime(2026, 9, 1, tzinfo=dt.UTC),
+    )
+    artifact = SimpleNamespace(name="openai/gpt-oss-120b", digest="")
+
+    desired = _recipe(recipe, "cluster-1", "artifact-1", artifact)
+
+    assert desired.engine_args == {
+        "async-scheduling": "",
+        "tool-call-parser": "openai",
+        "enable-auto-tool-choice": "",
+    }
+    assert desired.served_model_name == "openai/gpt-oss-120b"

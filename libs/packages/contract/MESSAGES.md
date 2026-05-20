@@ -188,6 +188,25 @@ artifacts: recipes precede the deployments that reference them. A receiver that 
 whose recipe has not landed — possible after a resume, not after a resync — waits rather than
 renders, because a render against a missing recipe is a guess.
 
+**The model id an API client sends is declared, not derived from the recipe's name.**
+`recipe.desired.served_model_name` is what the engine is told to answer to, resolved by the plane
+and never derived in the cluster. It is the recipe's own declaration when it has one, and the
+artifact's lowercase Hugging Face slug — `moonshotai/kimi-k3` — when it has none. It used to be
+the recipe's name verbatim, which put the fit on the public API surface
+(`kimi-k3-mxfp4-tp8-1024k`) and renamed the model for every caller whenever the same weights were
+re-fitted at a different tensor degree.
+
+`deployment.desired.served_model_name` overrides it for that one deployment and is empty when
+nothing overrides. It is on the deployment rather than the recipe because a recipe is shared by
+every workload that names it: one workload serving a canary under its own name must not rename the
+model every other deployment of that recipe answers to.
+
+Precedence in the cluster is deployment, then recipe, then — only for a frame from a plane too old
+to carry either — the recipe's name. `engine_args["served-model-name"]` still beats all of them,
+because `engine_args` is laid over the derived flags and an escape hatch that loses to a default
+is not one. The plane leaves that hatch out of what it resolves, so the same value never travels
+twice.
+
 The device shape is deliberately absent from `recipe.desired`. It reaches the cluster on the
 deployment's `placement`, derived from that same recipe. Two copies of one fact on one wire is two
 things that can disagree, and the placement copy is the one placement already reads.

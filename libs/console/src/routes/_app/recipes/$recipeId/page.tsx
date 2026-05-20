@@ -298,6 +298,27 @@ export function RecipeDetailPage() {
               <div className="space-y-4 lg:col-span-2">
                 <Card>
                   <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Model ID</CardTitle>
+                    <p className="font-mono text-2xs text-muted-foreground/60">
+                      What a client sends in the `model` field of a request. Not
+                      the recipe's name — that describes the fit and moves when
+                      the fit is redone.
+                    </p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="font-mono text-sm">
+                      {recipe.resolved_served_model_name}
+                    </div>
+                    <p className="mt-1 font-mono text-2xs text-muted-foreground/50">
+                      {recipe.served_model_name
+                        ? "Declared on this recipe."
+                        : "Derived from the artifact. Declare one to override it."}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-2">
                     <CardTitle className="flex items-center gap-2 text-sm">
                       Configuration
                       <EnforcementBadge kind="obeyed" />

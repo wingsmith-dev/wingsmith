@@ -336,3 +336,73 @@ func TestComponentSuffixMatchesWorker(t *testing.T) {
 		t.Fatalf("componentSuffix = %q, want %q", componentSuffix, want)
 	}
 }
+
+// TestServedModelName is the precedence a client's `model` field resolves through. The plane sends
+// both strings already resolved, so what is asserted here is ordering and nothing else.
+func TestServedModelName(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*Inputs)
+		want   string
+	}{
+		{
+			name:   "the recipe's resolved name is the default",
+			mutate: func(in *Inputs) { in.Recipe.ServedModelName = "qwen/qwen3-8b" },
+			want:   "qwen/qwen3-8b",
+		},
+		{
+			name: "the deployment's override beats the recipe's",
+			mutate: func(in *Inputs) {
+				in.Recipe.ServedModelName = "qwen/qwen3-8b"
+				in.Deployment.ServedModelName = "acme/qwen-canary"
+			},
+			want: "acme/qwen-canary",
+		},
+		{
+			name: "whitespace is not an override",
+			mutate: func(in *Inputs) {
+				in.Recipe.ServedModelName = "qwen/qwen3-8b"
+				in.Deployment.ServedModelName = "   "
+			},
+			want: "qwen/qwen3-8b",
+		},
+		{
+			// A plane too old to carry either field. This renderer used the recipe name
+			// unconditionally before, so such a plane keeps getting what it used to get.
+			name:   "an old plane still gets the recipe name",
+			mutate: func(in *Inputs) {},
+			want:   "qwen3-8b",
+		},
+		{
+			// engine_args is laid over the derived flags, and an escape hatch that loses
+			// to a default is not one.
+			name: "engine args still win over everything",
+			mutate: func(in *Inputs) {
+				in.Recipe.ServedModelName = "qwen/qwen3-8b"
+				in.Deployment.ServedModelName = "acme/qwen-canary"
+				in.Recipe.EngineArgs = map[string]string{"--served-model-name": "acme/qwen-hotfix"}
+			},
+			want: "acme/qwen-hotfix",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := testInputs()
+			tc.mutate(&in)
+			obj, err := DynamoGraphDeployment(in, testOptions())
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			args := renderedPod(t, obj).Containers[0].Args
+			got := ""
+			for i, arg := range args {
+				if arg == "--served-model-name" && i+1 < len(args) {
+					got = args[i+1]
+				}
+			}
+			if got != tc.want {
+				t.Fatalf("--served-model-name = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

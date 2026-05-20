@@ -558,6 +558,15 @@ class Recipe(BaseMixin):
     engine_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
     engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     imported_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    served_model_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    """The model id an API client sends, when this recipe declares one. Null means derive it.
+
+    Spelled the way vLLM and the OpenAI API spell it, and the way the escape hatch in
+    `engine_args["served-model-name"]` already spells it: one vocabulary for one string, rather
+    than a third name for the thing the flag is called. Null is the ordinary case and resolves to
+    the artifact's lowercase Hugging Face slug — see `app.core.serving.served_model`, which owns
+    the order and is the only thing entitled to answer this question.
+    """
     quantization: Mapped[str | None] = mapped_column(String(32), nullable=True)
     dtype: Mapped[str | None] = mapped_column(String(32), nullable=True)
     tensor_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
@@ -652,6 +661,13 @@ class Workload(BaseMixin):
     preemptible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     paused: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     adapter_artifact_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
+    served_model_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    """This workload's override of the model id clients send, beating the recipe's when set.
+
+    Both levels exist because a recipe is shared and a workload is not: the recipe says what the
+    model is normally called, and a workload serving the same recipe as a canary or under a
+    tenant's own name says so here without forking the recipe. Null is the ordinary case.
+    """
     overrides: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     requires_single_topology_domain: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

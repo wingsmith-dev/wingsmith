@@ -21,7 +21,9 @@ class RecipeRepository:
         self.db = db
 
     def _base(self) -> Select:
-        return select(Recipe, Artifact.uid.label("artifact_uid")).join(Artifact, Recipe.artifact_id == Artifact.id)
+        return select(Recipe, Artifact.uid.label("artifact_uid"), Artifact).join(
+            Artifact, Recipe.artifact_id == Artifact.id
+        )
 
     def get_query(self, ref: str) -> Select:
         """An id or a name. A name resolves to the highest version of it.

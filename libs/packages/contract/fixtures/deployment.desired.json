@@ -31,6 +31,7 @@
     "artifact_ids": [
       "art_01j9x2eeeeeeeeeeeeeeeeeeee"
     ],
+    "served_model_name": "acme/llama-70b-canary",
     "generation": 14,
     "updated_at": "2026-08-19T13:58:02.000Z",
     "authority": "managed",

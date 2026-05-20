@@ -75,6 +75,8 @@ class WorkloadSchema(Struct):
     gang_size: int
     recipe_id: str
     adapter_artifact_ids: list[str]
+    served_model_name: str | None
+    resolved_served_model_name: str
     overrides: dict
     labels: dict
     requires_single_topology_domain: bool | None
@@ -195,6 +197,7 @@ class WorkloadCreateRequest(Struct):
     gang_size: int = 1
     deadline_at: dt.datetime | None = None
     adapter_artifacts: list[str] = []
+    served_model_name: str | None = None
     overrides: dict = {}
     labels: dict = {}
     requires_single_topology_domain: bool | None = None
@@ -213,6 +216,7 @@ class WorkloadUpdateRequest(Struct):
 
     name: str | UnsetType = UNSET
     adapter_artifacts: list[str] | UnsetType = UNSET
+    served_model_name: str | None | UnsetType = UNSET
     overrides: dict | UnsetType = UNSET
     labels: dict | UnsetType = UNSET
     priority_class: str | UnsetType = UNSET

@@ -8,6 +8,7 @@ from app.api.app import create_app
 from app.core.devices import DIALECT_DCGM
 from app.core.devices import DeviceClass
 from app.core.devices import DeviceTable
+from app.core.serving import served_model
 from app.core.exceptions import NotFound
 from app.modules.metrics import promql
 from app.modules.metrics import sources
@@ -33,7 +34,6 @@ from app.modules.metrics.registry import Metric
 from app.modules.metrics.registry import family
 from app.modules.metrics.services import FLEET_METRICS
 from app.modules.metrics.services import MetricsService
-from app.core.serving import served_model
 from app.modules.metrics.prometheus import PrometheusBackend
 
 
@@ -365,14 +365,16 @@ def test_answer_distinguishes_absent_from_zero():
 
 
 class FakeRecipe:
-    def __init__(self, name: str, engine_args: dict | None = None) -> None:
+    def __init__(self, name: str, engine_args: dict | None = None, served_model_name: str | None = None) -> None:
         self.name = name
         self.engine_args = engine_args or {}
+        self.served_model_name = served_model_name
 
 
 class FakeArtifact:
-    def __init__(self, name: str) -> None:
+    def __init__(self, name: str, digest: str = "sha256:beef") -> None:
         self.name = name
+        self.digest = digest
 
 
 def test_served_model_prefers_the_operators_explicit_name():
@@ -380,19 +382,15 @@ def test_served_model_prefers_the_operators_explicit_name():
     assert served_model(recipe, FakeArtifact("google/gemma-4-31B-it")) == "gemma-canary"
 
 
-def test_served_model_falls_back_to_the_recipe_before_the_artifact():
-    """The artifact is a repository path and the engine serves under the bare name.
-
-    Reaching for `google/gemma-4-31B-it` built `model_name="google/gemma-4-31B-it"`,
-    which matched no series in the fleet's store and emptied every serving panel
-    while the data was sitting there under `gemma-4-31b-it`.
-    """
-    recipe = FakeRecipe("gemma-4-31b-it")
-    assert served_model(recipe, FakeArtifact("google/gemma-4-31B-it")) == "gemma-4-31b-it"
+def test_served_model_falls_back_to_the_recipes_declaration_before_the_artifact():
+    """The declared name is the operator's; the slug is only what nobody declared."""
+    recipe = FakeRecipe("gemma-4-31b-it-fp8-tp2-32k", served_model_name="acme/gemma")
+    assert served_model(recipe, FakeArtifact("google/gemma-4-31B-it")) == "acme/gemma"
 
 
-def test_served_model_uses_the_artifact_only_when_nothing_else_names_it():
-    assert served_model(FakeRecipe(""), FakeArtifact("Qwen/Qwen3.8-27B")) == "Qwen/Qwen3.8-27B"
+def test_served_model_uses_the_artifact_slug_when_nothing_declares_a_name():
+    """Lowercased, organisation kept: `Qwen/Qwen3.8-27B` is not a model id a caller types."""
+    assert served_model(FakeRecipe(""), FakeArtifact("Qwen/Qwen3.8-27B")) == "qwen/qwen3.8-27b"
 
 
 DYNAMO_LABELS = {

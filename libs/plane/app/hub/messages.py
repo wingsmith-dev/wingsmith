@@ -412,6 +412,13 @@ class RecipeDesired(Struct):
     The device shape is deliberately absent. It reaches the cluster on the
     deployment's `placement`, derived from this recipe, and carrying it twice
     invites the two copies to disagree.
+
+    `served_model_name` is the model id an API client sends, already resolved: the
+    recipe's own declaration, or the artifact's lowercase Hugging Face slug when it
+    declares none. The plane resolves it so the operator holds no derivation logic
+    and renders the string it is told. It is never empty, and `engine_args` still
+    wins over it at render time — the escape hatch is laid over the derived flags,
+    which is why the resolved hatch is deliberately not folded in here.
     """
 
     recipe_id: str
@@ -423,6 +430,7 @@ class RecipeDesired(Struct):
     engine_version: str
     engine_image: str | None
     engine_args: dict[str, str]
+    served_model_name: str
     quantization: str | None
     dtype: str | None
     parallelism: RecipeParallelism
@@ -484,6 +492,12 @@ class DeploymentDesired(Struct):
 
     There is deliberately no workload id here and no total-versus-share field of
     any kind. Nothing in a cluster ever needs to know it is one of several.
+
+    `served_model_name` is this deployment's override of the recipe's, empty when
+    the workload declares none. It is here and not on `recipe.desired` because a
+    recipe is shared by every workload that names it and a workload's override is
+    not: folding it into the recipe frame would make one workload's canary name
+    the name every deployment of that recipe serves under.
     """
 
     deployment_id: str
@@ -498,6 +512,7 @@ class DeploymentDesired(Struct):
     max_replicas: int
     placement: PlacementConstraints
     artifact_ids: list[str]
+    served_model_name: str
     generation: int
     updated_at: str
     authority: Literal["observed", "managed"] = "observed"

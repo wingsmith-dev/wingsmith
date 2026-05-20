@@ -528,6 +528,14 @@ export interface Recipe {
   engine_args: Record<string, unknown>
   /** Read off a running process. Recorded, never rendered, never enforced. */
   imported_args: Record<string, unknown>
+  /**
+   * The model id API clients send, when this recipe declares one. Null means
+   * derive it from the artifact. Distinct from `name`: the name describes the
+   * fit and moves when the fit is redone, this is what callers code against.
+   */
+  served_model_name: string | null
+  /** What `served_model_name` actually resolves to. Never empty. */
+  resolved_served_model_name: string
   quantization: string | null
   dtype: string | null
   parallelism: RecipeParallelism
@@ -585,6 +593,8 @@ export interface RecipeCreateRequest {
   lifecycle?: string
   engine_image?: string | null
   engine_args?: Record<string, unknown>
+  /** The model id clients send. Omit to derive it from the artifact. */
+  served_model_name?: string | null
   quantization?: string | null
   dtype?: string | null
   tensor_parallel?: number
@@ -615,6 +625,8 @@ export interface RecipeUpdateRequest {
   engine_version?: string
   engine_image?: string | null
   engine_args?: Record<string, unknown>
+  /** The model id clients send. Omit to derive it from the artifact. */
+  served_model_name?: string | null
   quantization?: string | null
   dtype?: string | null
   tensor_parallel?: number
@@ -730,6 +742,10 @@ export interface Workload {
   gang_size: number
   recipe_id: string
   adapter_artifact_ids: string[]
+  /** This workload's override of the model id clients send. Null defers to the recipe. */
+  served_model_name: string | null
+  /** What clients actually send for this workload, resolved by the plane. */
+  resolved_served_model_name: string
   overrides: Record<string, unknown>
   labels: Record<string, string>
   /**
@@ -835,6 +851,8 @@ export interface WorkloadCreateRequest {
   gang_size?: number
   deadline_at?: string | null
   adapter_artifacts?: string[]
+  /** Overrides the recipe's served model name for this workload alone. */
+  served_model_name?: string | null
   overrides?: Record<string, unknown>
   labels?: Record<string, string>
   requires_single_topology_domain?: boolean | null
@@ -850,6 +868,8 @@ export interface WorkloadCreateRequest {
 export interface WorkloadUpdateRequest {
   name?: string
   adapter_artifacts?: string[]
+  /** Overrides the recipe's served model name for this workload alone. */
+  served_model_name?: string | null
   overrides?: Record<string, unknown>
   labels?: Record<string, string>
   priority_class?: string
