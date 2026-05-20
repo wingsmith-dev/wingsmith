@@ -998,6 +998,20 @@ class EndpointTarget(BaseMixin):
     weight: Mapped[int] = mapped_column(Integer, nullable=False, server_default="100")
     role: Mapped[str] = mapped_column(String(16), nullable=False, server_default="primary")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    served_model_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    """What the engine behind this target answers to, when the plane's answer is wrong.
+
+    Null is the ordinary case and means "ask the deployment". This is the correction, and it
+    exists because the routing table is ours: the engine's name is invisible to clients, so the
+    only thing that matters is that this table agrees with the process. When it does not — a
+    recipe carrying an `engine_args` override the plane derived around, an adopted workload
+    already serving under a name nobody here chose — the fix is a write here.
+
+    Per target rather than per endpoint because one endpoint fronts many deployments and they
+    need not agree; per target rather than on the deployment because the deployment is disposable
+    and this correction should outlive a recipe bump. The gateway rewrites the inbound `model` to
+    it, so changing it costs a routing-table poll and nothing restarts.
+    """
 
     endpoint: Mapped[Endpoint] = relationship("Endpoint", back_populates="targets", lazy="noload")
     deployment: Mapped[Deployment] = relationship("Deployment", lazy="noload")

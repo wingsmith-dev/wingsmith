@@ -19,6 +19,7 @@ class EndpointTargetSchema(Struct):
     weight: int
     role: str
     enabled: bool
+    served_model_name: str | None
 
 
 class EndpointSchema(Struct):
@@ -46,10 +47,17 @@ class EndpointSchema(Struct):
 
 
 class EndpointTargetRequest(Struct):
+    """One deployment behind one endpoint.
+
+    `served_model_name` corrects what the engine answers to when the plane derived it wrong.
+    Null, the default, means the deployment's own answer stands.
+    """
+
     deployment: str
     weight: int = 100
     role: str = "primary"
     enabled: bool = True
+    served_model_name: str | None = None
 
 
 class EndpointCreateRequest(Struct):

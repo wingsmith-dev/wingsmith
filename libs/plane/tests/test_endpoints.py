@@ -95,7 +95,13 @@ def test_failover_order_is_an_ordered_list_of_deployments():
 
 
 def test_targets_are_the_weighted_many_to_many():
-    assert set(EndpointTargetSchema.__struct_fields__) == {"deployment_id", "weight", "role", "enabled"}
+    assert set(EndpointTargetSchema.__struct_fields__) == {
+        "deployment_id",
+        "weight",
+        "role",
+        "enabled",
+        "served_model_name",
+    }
 
 
 def test_accepted_vocabularies():
@@ -272,10 +278,11 @@ class FakeEndpoint:
 
 
 class FakeTarget:
-    def __init__(self, weight=100, role="primary", enabled=True) -> None:
+    def __init__(self, weight=100, role="primary", enabled=True, served_model_name=None) -> None:
         self.weight = weight
         self.role = role
         self.enabled = enabled
+        self.served_model_name = served_model_name
         self.created_at = EPOCH
         self.updated_at = None
 

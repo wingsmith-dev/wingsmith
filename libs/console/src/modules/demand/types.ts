@@ -982,6 +982,16 @@ export interface EndpointTarget {
   weight: number
   role: string
   enabled: boolean
+  /**
+   * What the engine behind this target answers to, when the plane's answer is
+   * wrong. Null means the deployment's own answer stands.
+   *
+   * The routing table is the plane's and the engine's name is invisible to
+   * clients, so the only property that matters is that the two agree. This is
+   * where a disagreement is corrected, and it costs a gateway poll — correcting
+   * it on the recipe instead respecs the pod and reloads the weights.
+   */
+  served_model_name: string | null
 }
 
 /**
@@ -1057,6 +1067,7 @@ export interface EndpointTargetRequest {
   weight?: number
   role?: string
   enabled?: boolean
+  served_model_name?: string | null
 }
 
 export interface EndpointCreateRequest {

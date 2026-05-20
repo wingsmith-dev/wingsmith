@@ -134,6 +134,7 @@ class EndpointService:
                     weight=t.weight,
                     role=t.role,
                     enabled=t.enabled,
+                    served_model_name=t.served_model_name,
                 )
                 for t in endpoint.targets
                 if t.deployment_id in uids
@@ -212,6 +213,7 @@ class EndpointService:
                 weight=t.weight,
                 role=t.role,
                 enabled=t.enabled,
+                served_model_name=(t.served_model_name or "").strip() or None,
             )
             for t in targets
         ]
@@ -401,9 +403,12 @@ class EndpointService:
                         cluster_id=cluster.uid,
                         cluster_name=cluster.name,
                         url=serving.url if serving is not None else "",
-                        served_model_name=served_model(recipe, artifact, workload)
-                        if recipe is not None and artifact is not None
-                        else "",
+                        served_model_name=(target.served_model_name or "").strip()
+                        or (
+                            served_model(recipe, artifact, workload)
+                            if recipe is not None and artifact is not None
+                            else ""
+                        ),
                         credential_id=str(serving.credential_id)
                         if serving is not None and serving.credential_id
                         else None,

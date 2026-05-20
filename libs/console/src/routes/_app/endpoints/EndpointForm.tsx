@@ -55,6 +55,7 @@ export function EndpointForm({
       weight: t.weight,
       role: t.role,
       enabled: t.enabled,
+      served_model_name: t.served_model_name,
     })) ?? []
   )
   const [failover, setFailover] = useState<string[]>(

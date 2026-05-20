@@ -22,9 +22,7 @@ const TARGET_ROLES = ["primary", "canary", "fallback"]
 type DeploymentChoice = { value: string; label: string }
 
 /** A deployment reads as its own name with the workload behind it, never a bare id. */
-function deploymentChoices(
-  deployments: Deployment[]
-): DeploymentChoice[] {
+function deploymentChoices(deployments: Deployment[]): DeploymentChoice[] {
   return deployments.map((d) => ({
     value: d.id,
     label: d.workload_name ? `${d.name} · ${d.workload_name}` : d.name,
@@ -127,77 +125,92 @@ export function TargetsField({
       ) : (
         <div className="space-y-2">
           {value.map((row, index) => (
-            <div
-              key={index}
-              className="grid grid-cols-[1fr_5rem_7.5rem_auto] items-center gap-2"
-            >
-              <DeploymentSelect
-                value={row.deployment}
-                choices={choices}
-                ariaLabel="Deployment"
-                onChange={(deployment) => patch(index, { deployment })}
-              />
+            <div key={index} className="space-y-1.5">
+              <div className="grid grid-cols-[1fr_5rem_7.5rem_auto] items-center gap-2">
+                <DeploymentSelect
+                  value={row.deployment}
+                  choices={choices}
+                  ariaLabel="Deployment"
+                  onChange={(deployment) => patch(index, { deployment })}
+                />
+                <Input
+                  type="number"
+                  min={0}
+                  value={row.weight ?? ""}
+                  placeholder="weight"
+                  aria-label="Weight"
+                  onChange={(e) =>
+                    patch(index, {
+                      weight:
+                        e.target.value === ""
+                          ? undefined
+                          : Number(e.target.value),
+                    })
+                  }
+                  className="font-mono text-xs"
+                />
+                <Select
+                  value={row.role ?? "primary"}
+                  onValueChange={(role) => patch(index, { role })}
+                >
+                  <SelectTrigger
+                    aria-label="Role"
+                    className="w-full font-mono text-xs"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TARGET_ROLES.map((role) => (
+                      <SelectItem
+                        key={role}
+                        value={role}
+                        className="font-mono text-xs"
+                      >
+                        {role}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <div className="flex items-center gap-1.5">
+                  <Switch
+                    checked={row.enabled !== false}
+                    onCheckedChange={(enabled) => patch(index, { enabled })}
+                    aria-label="Enabled"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Remove target"
+                    onClick={() =>
+                      onChange(value.filter((_, i) => i !== index))
+                    }
+                  >
+                    <IconX />
+                  </Button>
+                </div>
+              </div>
               <Input
-                type="number"
-                min={0}
-                value={row.weight ?? ""}
-                placeholder="weight"
-                aria-label="Weight"
+                value={row.served_model_name ?? ""}
+                placeholder="served model name — blank to use the deployment's"
+                aria-label="Served model name"
                 onChange={(e) =>
                   patch(index, {
-                    weight:
-                      e.target.value === ""
-                        ? undefined
-                        : Number(e.target.value),
+                    served_model_name: e.target.value.trim() || null,
                   })
                 }
                 className="font-mono text-xs"
               />
-              <Select
-                value={row.role ?? "primary"}
-                onValueChange={(role) => patch(index, { role })}
-              >
-                <SelectTrigger
-                  aria-label="Role"
-                  className="w-full font-mono text-xs"
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TARGET_ROLES.map((role) => (
-                    <SelectItem
-                      key={role}
-                      value={role}
-                      className="font-mono text-xs"
-                    >
-                      {role}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="flex items-center gap-1.5">
-                <Switch
-                  checked={row.enabled !== false}
-                  onCheckedChange={(enabled) => patch(index, { enabled })}
-                  aria-label="Enabled"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Remove target"
-                  onClick={() => onChange(value.filter((_, i) => i !== index))}
-                >
-                  <IconX />
-                </Button>
-              </div>
             </div>
           ))}
         </div>
       )}
 
       <p className="text-2xs text-muted-foreground/70">
-        Deployment, weight, role, and whether the gateway may use it.
+        Deployment, weight, role, and whether the gateway may use it. The served
+        model name is what the engine behind that deployment answers to — set it
+        only to correct a mismatch, which the gateway picks up on its next poll
+        without restarting anything.
       </p>
     </div>
   )

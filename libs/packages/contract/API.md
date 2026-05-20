@@ -228,6 +228,18 @@ flag's own spelling, `served-model-name`, still beats all three and remains the 
 those keys are rendered onto the engine command line verbatim, so the hyphenated form is the only
 one that both reaches the engine and is read here.
 
+**`served_model_name` on the endpoint target beats every one of them, and it is the correction.**
+Everything above derives the same string a second time, in the plane, from the rule the operator
+renders with — and two derivations of one value drift. They have: a recipe carrying the
+`engine_args` hatch served `moonshotai/kimi-k3` while the table published the fit name, so the
+gateway rewrote `model` to something the frontend had never heard of and every request 404'd from
+inside the cluster. The target's override is where that is fixed, because the engine's name is
+invisible to clients and the only property that has to hold is that this table and that process
+agree. Null, the ordinary case, means the chain above stands. Setting it costs a gateway poll;
+correcting the same mismatch on the recipe respecs the pod and reloads the weights, which for a
+checkpoint the size of Kimi K3 is twenty-two minutes of downtime to change a string nobody outside
+the cluster can see.
+
 A cluster contributes upstreams only while its `phase` is `active`. `draining` and `disabled` are
 somebody declaring that the cluster must stop taking work, and traffic is the first thing that has
 to obey it — a target on such a cluster disappears from the resolution exactly as a disabled target
