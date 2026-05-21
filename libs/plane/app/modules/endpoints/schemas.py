@@ -33,6 +33,8 @@ class EndpointSchema(Struct):
 
     id: str
     name: str
+    model_slug: str | None
+    resolved_model_slug: str
     display_name: str | None
     project_id: str
     visibility: str
@@ -63,6 +65,7 @@ class EndpointTargetRequest(Struct):
 class EndpointCreateRequest(Struct):
     name: str
     project: str
+    model_slug: str | None = None
     display_name: str | None = None
     visibility: str = "private"
     routing_strategy: str = "weighted"
@@ -75,10 +78,12 @@ class EndpointCreateRequest(Struct):
 class EndpointUpdateRequest(Struct):
     """A partial update. An absent field is untouched; an explicit null clears.
 
-    `name` and `project` are absent by design. The name is the contract clients
-    hold — an endpoint exists so that deployments can be replaced without anyone
-    noticing, and renaming it would spend that on the one object that must not
-    move. The project owns quota and priority, so moving an endpoint between
+    `name` and `project` are absent by design. The name is the internal handle —
+    it is in URLs, in metrics labels and in every link the console holds — and an
+    endpoint exists so that deployments can be replaced without anyone noticing.
+    `model_slug` is what clients actually send and it *is* patchable, which is the
+    point of the split: the public model id can be corrected without moving the
+    handle everything else is holding. The project owns quota and priority, so moving an endpoint between
     projects is a different endpoint. Supplying `targets` replaces the whole set:
     a target is identified by its deployment, and a patch that merged element-wise
     could not express removing one. `failover_order` orders that set, so it is
@@ -86,6 +91,7 @@ class EndpointUpdateRequest(Struct):
     replaced is an order over nothing.
     """
 
+    model_slug: str | None | UnsetType = UNSET
     display_name: str | None | UnsetType = UNSET
     visibility: str | UnsetType = UNSET
     routing_strategy: str | UnsetType = UNSET

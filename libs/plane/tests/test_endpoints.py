@@ -266,9 +266,10 @@ class FakeRepo:
 class FakeEndpoint:
     id = 1
 
-    def __init__(self, uid="end_1", name="chat", enabled=True) -> None:
+    def __init__(self, uid="end_1", name="chat", enabled=True, model_slug=None) -> None:
         self.uid = uid
         self.name = name
+        self.model_slug = model_slug
         self.enabled = enabled
         self.visibility = "public"
         self.routing_strategy = "weighted"
@@ -563,6 +564,26 @@ async def test_the_hyphenated_flag_is_what_overrides_the_served_name():
     recipe = FakeRecipe(engine_args={"served-model-name": "llama-canary"})
     table = await resolution([tunnelled_row(recipe=recipe)]).resolved()
     assert table.endpoints[0].upstreams[0].served_model_name == "llama-canary"
+
+
+@pytest.mark.asyncio
+async def test_the_resolved_name_is_the_slug_because_that_is_what_the_gateway_routes_on():
+    """`model` is a public contract; the endpoint's name is an internal handle.
+
+    The gateway builds its route map on whatever the resolved table calls the
+    endpoint, so reporting the slug here is the entire mechanism by which a public
+    model id can be corrected without an engine flag or a pod respec.
+    """
+    endpoint = FakeEndpoint(name="kimi-k3-overhead-test", model_slug="moonshotai/kimi-k3")
+    table = await resolution([tunnelled_row(endpoint=endpoint)]).resolved()
+    assert table.endpoints[0].name == "moonshotai/kimi-k3"
+
+
+@pytest.mark.asyncio
+async def test_an_endpoint_with_no_slug_still_routes_on_its_name():
+    endpoint = FakeEndpoint(name="chat")
+    table = await resolution([tunnelled_row(endpoint=endpoint)]).resolved()
+    assert table.endpoints[0].name == "chat"
 
 
 @pytest.mark.asyncio

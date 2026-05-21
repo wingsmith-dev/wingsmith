@@ -1327,6 +1327,8 @@ export const endpoints: Endpoint[] = [
   {
     id: uid("end_"),
     name: "chat",
+    model_slug: null,
+    resolved_model_slug: "chat",
     display_name: "Chat completions",
     project_id: projects[0].id,
     visibility: "public",
@@ -1358,6 +1360,8 @@ export const endpoints: Endpoint[] = [
   {
     id: uid("end_"),
     name: "embeddings",
+    model_slug: null,
+    resolved_model_slug: "embeddings",
     display_name: null,
     project_id: projects[0].id,
     visibility: "private",

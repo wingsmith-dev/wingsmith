@@ -70,6 +70,23 @@ def check_targets(targets: list[EndpointTargetRequest]) -> None:
         raise Invalid("no enabled target carries any weight")
 
 
+def public_model(endpoint: Endpoint) -> str:
+    """The model id clients send for this endpoint: its slug, else its name.
+
+    The one place the rule lives, because two callers need it to agree and they
+    answer different questions with it. `EndpointSchema.resolved_model_slug` shows
+    an operator what a caller must type; the resolved table reports it as the
+    endpoint's `name`, which is the key the gateway builds its route map on
+    (`next[route.Name]` in `routing/table.go`). If those two ever disagreed, the
+    console would document a model id that does not route.
+
+    That the routing key comes from this field and not from `Endpoint.name` is the
+    whole reason a public id can be corrected without touching a cluster: the
+    gateway is told what to route on every time it polls.
+    """
+    return (endpoint.model_slug or "").strip() or str(endpoint.name)
+
+
 def check_shape(visibility: str, routing_strategy: str) -> None:
     if visibility not in VISIBILITIES:
         raise Invalid(f"unknown visibility {visibility!r}", {"allowed": sorted(VISIBILITIES)})
@@ -123,6 +140,8 @@ class EndpointService:
         return EndpointSchema(
             id=endpoint.uid,
             name=endpoint.name,
+            model_slug=endpoint.model_slug,
+            resolved_model_slug=public_model(endpoint),
             display_name=endpoint.display_name,
             project_id=project_uid,
             visibility=endpoint.visibility,
@@ -243,6 +262,7 @@ class EndpointService:
             uid=new_uid(ENDPOINT),
             project_id=project.id,
             name=data.name,
+            model_slug=(data.model_slug or "").strip() or None,
             display_name=data.display_name,
             visibility=data.visibility,
             routing_strategy=data.routing_strategy,
@@ -421,7 +441,7 @@ class EndpointService:
             items.append(
                 ResolvedEndpointSchema(
                     id=endpoint.uid,
-                    name=endpoint.name,
+                    name=public_model(endpoint),
                     visibility=endpoint.visibility,
                     routing_strategy=endpoint.routing_strategy,
                     upstreams=upstreams,

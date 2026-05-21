@@ -1046,6 +1046,17 @@ export const OUTPUT_LENGTH_PARAMS = [
 export interface Endpoint {
   id: string
   name: string
+  /**
+   * The model id clients send, when it should not be `name`. Null means it is.
+   *
+   * `name` is the internal handle — URLs, metrics labels, every link in here —
+   * and is not patchable. This is the public contract, and it is, because the
+   * resolved table reports it as the endpoint's name and that is the key the
+   * gateway routes on. Changing it costs one gateway poll.
+   */
+  model_slug: string | null
+  /** What `model_slug` resolves to. Never empty — falls back to `name`. */
+  resolved_model_slug: string
   display_name: string | null
   project_id: string
   visibility: string
@@ -1073,6 +1084,7 @@ export interface EndpointTargetRequest {
 export interface EndpointCreateRequest {
   name: string
   project: string
+  model_slug?: string | null
   display_name?: string | null
   visibility?: string
   routing_strategy?: string
@@ -1084,6 +1096,7 @@ export interface EndpointCreateRequest {
 }
 
 export interface EndpointUpdateRequest {
+  model_slug?: string | null
   display_name?: string | null
   visibility?: string
   routing_strategy?: string

@@ -41,6 +41,7 @@ export function EndpointForm({
 
   const [name, setName] = useState(endpoint?.name ?? "")
   const [project, setProject] = useState(endpoint?.project_id ?? "")
+  const [modelSlug, setModelSlug] = useState(endpoint?.model_slug ?? "")
   const [displayName, setDisplayName] = useState(endpoint?.display_name ?? "")
   const [visibility, setVisibility] = useState(
     endpoint?.visibility ?? "private"
@@ -69,6 +70,7 @@ export function EndpointForm({
   const error = create.error ?? update.error
 
   const shared = {
+    model_slug: modelSlug.trim() || null,
     display_name: displayName || null,
     visibility,
     routing_strategy: routing,
@@ -139,6 +141,13 @@ export function EndpointForm({
       )}
 
       <FormGrid>
+        <TextField
+          label="Model slug"
+          value={modelSlug}
+          onChange={setModelSlug}
+          placeholder={endpoint?.name ?? "defaults to the name"}
+          hint="What clients send as `model`. Blank uses the endpoint name. Changing it takes effect on the gateway's next poll — nothing restarts."
+        />
         <TextField
           label="Display name"
           value={displayName}

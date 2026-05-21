@@ -956,6 +956,21 @@ class Endpoint(BaseMixin):
         DBUUID, ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    model_slug: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    """The model id clients send, when it should not be `name`. Null means it is.
+
+    `name` is the internal handle — it is in URLs, in metrics labels and in the console, it is
+    unique, and it is deliberately not patchable, because an endpoint exists so that deployments
+    can be replaced without anybody noticing and renaming it spends exactly that. None of which a
+    caller should have to care about: `model` in an OpenAI request is a public contract, it wants
+    to read `moonshotai/kimi-k3` rather than whatever the endpoint was called when it was made,
+    and it has to be changeable without breaking the handle everything else holds.
+
+    So the two are split and this one is patchable. It is what the resolved table reports as the
+    endpoint's name, which is the key the gateway routes on, so changing it costs one poll — no
+    engine flag, no pod respec, nothing on any cluster. Unique where set, because `model` is the
+    only key an OpenAI-compatible client sends and it must resolve to exactly one endpoint.
+    """
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     visibility: Mapped[str] = mapped_column(String(16), nullable=False, server_default="private")
     routing_strategy: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weighted")

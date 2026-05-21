@@ -201,6 +201,18 @@ never appears, because a metrics source is public as endpoint, kind and label on
 principals only — an operator token is `403 forbidden`, since a cluster agent has no use for the
 plane's process configuration.
 
+**An endpoint's `model_slug` is the model id clients send; its `name` is an internal handle.**
+`name` is in URLs, in metrics labels and in every link the console holds, and it is not patchable —
+an endpoint exists so that deployments can be replaced without anybody noticing, and renaming it
+spends exactly that. `model` in an OpenAI request is a public contract and wants neither of those
+properties: it wants to read `moonshotai/kimi-k3` rather than whatever the endpoint was called when
+somebody made it, and it has to be correctable afterwards. So they are two fields, and this is the
+one that can be patched. Null means the name still stands.
+
+The resolved table reports it as the endpoint's `name`, which is the key the gateway builds its
+route map on — so changing a public model id is a plane-side write and one gateway poll, with no
+engine flag, no pod respec and nothing on any cluster.
+
 **`GET /v1/endpoints/resolved` is derived and belongs to no object.** An endpoint declares a name
 and a set of targets; the resolution is what that means right now — each enabled target followed
 to its deployment, that deployment's cluster, and the serving address the cluster carries. It is
