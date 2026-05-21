@@ -158,7 +158,13 @@ describe("summariseEndpointHealth", () => {
 })
 
 function target(id: string): Endpoint["targets"][number] {
-  return { deployment_id: id, weight: 100, role: "primary", enabled: true }
+  return {
+    deployment_id: id,
+    weight: 100,
+    role: "primary",
+    enabled: true,
+    served_model_name: null,
+  }
 }
 
 describe("stuckDeployments", () => {
