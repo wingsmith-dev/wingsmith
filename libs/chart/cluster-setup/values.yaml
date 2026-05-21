@@ -177,6 +177,27 @@ frontend:
     repository: nvcr.io/nvidia/ai-dynamo/vllm-runtime
     tag: "1.4.1"
     pullPolicy: IfNotPresent
+  # The Anthropic Messages API (`/v1/messages`), which the frontend serves natively
+  # and leaves off by default. On, because a cluster that serves an OpenAI surface
+  # and not this one cannot be used by Anthropic-protocol clients at all — Claude
+  # Code among them — and the alternative is a translating proxy per client, which
+  # puts a second implementation of the wire on somebody's laptop.
+  #
+  # NVIDIA marks it experimental. It is additive: a route that did not exist before,
+  # reached only by callers that ask for it, so turning it on cannot change what an
+  # OpenAI-compatible caller already gets.
+  anthropicApi:
+    enabled: true
+    # Drops the Claude Code billing preamble from the system prompt. Dynamo's own
+    # flag, and its own reasoning: fewer tokens, and a prompt that starts the same
+    # way every time is a prompt the prefix cache can actually hit.
+    stripClaudeCodePreamble: true
+
+  # Anything else to put on the frontend container, for a flag this chart has not
+  # grown a field for. `DYN_*` names are what the frontend reads; `--help` on
+  # `python3 -m dynamo.frontend` lists them beside their flags.
+  env: {}
+
   # A router, not a runtime: it holds streams open and copies bytes, and every
   # token of every response passes through it. No CPU limit, for the same reason
   # the agent has none — throttling the data path is latency on every token.

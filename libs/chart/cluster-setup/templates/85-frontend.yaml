@@ -59,6 +59,20 @@ spec:
             - name: main
               image: {{ printf "%s:%s" .Values.frontend.image.repository .Values.frontend.image.tag | quote }}
               imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+              env:
+                # The Anthropic Messages API is a second protocol on the same
+                # frontend, so it needs no second deployment and no proxy. Set as
+                # env rather than args because `DynamoGraphDeployment` owns the
+                # command line — appending args here would fight the operator for
+                # it, and every one of these flags has an env var for that reason.
+                - name: DYN_ENABLE_ANTHROPIC_API
+                  value: {{ .Values.frontend.anthropicApi.enabled | quote }}
+                - name: DYN_STRIP_ANTHROPIC_PREAMBLE
+                  value: {{ .Values.frontend.anthropicApi.stripClaudeCodePreamble | quote }}
+                {{- range $name, $value := .Values.frontend.env }}
+                - name: {{ $name }}
+                  value: {{ $value | quote }}
+                {{- end }}
               resources:
                 {{- toYaml .Values.frontend.resources | nindent 16 }}
 {{- end }}
