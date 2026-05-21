@@ -17,7 +17,28 @@ what anyone who read this code rather than the operator would have written — b
 it does not survive the render, and a recipe carrying it gets an engine that
 refuses to start on an unrecognised argument. Both are read here so that the
 plane's answer never silently disagrees with the command line.
+
+Matched against `flag_name`, never against the raw key. Real recipes store the
+leading dashes — `{"--served-model-name": "moonshotai/kimi-k3"}` — because that is
+what a person copying a command line writes, and the operator strips them before
+rendering. Comparing the raw key to these names missed every one of those, which
+is not a lookup that fails loudly: the plane fell through to the recipe's declared
+name, published it on the routing table, and the gateway rewrote `model` to a
+string the engine had never been told to answer to. Kimi K3 served every request
+as a 404 from inside the cluster with the deployment healthy and the tunnel open.
 """
+
+
+def flag_name(key: str) -> str:
+    """An `engine_args` key as the operator will key it: without the leading dashes.
+
+    The one normalisation, spelled once. `render/dynamo.go` does
+    `strings.TrimPrefix(key, "--")` and renders `"--" + key`, so a recipe may hold
+    `served-model-name` or `--served-model-name` and mean the same flag. Anything
+    in the plane that reads a specific flag out of `engine_args` has to agree with
+    that or it is reading a different dictionary than the engine was given.
+    """
+    return key.lstrip("-")
 
 
 class HasServedModelName(Protocol):
@@ -78,8 +99,9 @@ def served_model(recipe: Recipe, artifact: Artifact, workload: HasServedModelNam
     answers to — and a module that owned it would have the others importing across
     the domain to reach it.
     """
+    args = {flag_name(key): value for key, value in (recipe.engine_args or {}).items()}
     for key in SERVED_MODEL_ARGS:
-        override = (recipe.engine_args or {}).get(key)
+        override = args.get(key)
         if override:
             return str(override)
     return declared_served_model(recipe, artifact, workload)

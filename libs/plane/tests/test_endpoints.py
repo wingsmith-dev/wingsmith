@@ -563,3 +563,18 @@ async def test_the_hyphenated_flag_is_what_overrides_the_served_name():
     recipe = FakeRecipe(engine_args={"served-model-name": "llama-canary"})
     table = await resolution([tunnelled_row(recipe=recipe)]).resolved()
     assert table.endpoints[0].upstreams[0].served_model_name == "llama-canary"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("key", ["--served-model-name", "served-model-name"])
+async def test_the_hatch_is_read_with_or_without_the_leading_dashes(key):
+    """A real recipe holds the dashes, because that is what a command line looks like.
+
+    This is the spelling every recipe in the fleet actually carried, and matching
+    the raw key missed all of them. The miss was silent — the plane fell through to
+    the recipe's declared name and published it — so the first symptom was Kimi K3
+    404ing from inside the cluster with a healthy deployment and an open tunnel.
+    """
+    recipe = FakeRecipe(engine_args={key: "moonshotai/kimi-k3"})
+    table = await resolution([tunnelled_row(recipe=recipe)]).resolved()
+    assert table.endpoints[0].upstreams[0].served_model_name == "moonshotai/kimi-k3"
