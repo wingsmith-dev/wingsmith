@@ -213,6 +213,11 @@ func run() error {
 	g.Go(func() error { return healthSrv.Run(gctx) })
 	g.Go(func() error { return client.Run(gctx) })
 	g.Go(func() error { return observer.Run(gctx) })
+	// Read-only has no reconciler and nothing it rendered to state. A snapshot from here would be
+	// an empty claim of completeness over deployments somebody else owns.
+	if reconciler != nil {
+		g.Go(func() error { return reconciler.RunDemandResync(gctx, cfg.ResyncInterval) })
+	}
 	g.Go(func() error {
 		if cfg.ReadOnly {
 			log.Info("starting manager without the reconcile loop", "read_only", true)

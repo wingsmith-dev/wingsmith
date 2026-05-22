@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -81,6 +82,38 @@ func (r *SyncedResourceReconciler) ResyncDemand(ctx context.Context) error {
 	r.Log.Info("streamed observed demand", "replicas", len(replicas),
 		"allocations", len(allocations), "complete", complete)
 	return nil
+}
+
+// RunDemandResync streams the snapshot on an interval, for as long as the operator is running.
+//
+// On a timer rather than only on a fresh session, because a session is the wrong trigger and the
+// only one this had at first. The hub resumes a stream whenever it can — `full_resync: false` is
+// the normal reconnect — so hanging the repair off a fresh session means it runs almost never, and
+// never on any schedule. Drift that nothing is looking for is drift that stays.
+//
+// The same interval the observer restates the supply side on, for the same reason: this is the
+// mechanism that converges the two pictures, and how stale the plane may be is one property of the
+// cluster rather than two.
+//
+// A failed snapshot is logged and waited out rather than returned. It costs a stale row until the
+// next tick, which is the cheap half of the trade this whole file is built around — and killing the
+// operator over a report it could not send would stop it reconciling anything.
+func (r *SyncedResourceReconciler) RunDemandResync(ctx context.Context, every time.Duration) error {
+	if every <= 0 {
+		return nil
+	}
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := r.ResyncDemand(ctx); err != nil {
+				r.Log.Warn("periodic demand resync failed", "error", err)
+			}
+		}
+	}
 }
 
 // demandSnapshot reads every deployment this cluster holds and returns what is running under them.

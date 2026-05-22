@@ -3,7 +3,9 @@ package reconcile
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -18,6 +20,7 @@ import (
 // streamingReporter records a correlated snapshot the way the hub would receive it.
 type streamingReporter struct {
 	recordingReporter
+	mu     sync.Mutex
 	begun  []wire.ResyncBegin
 	ended  []wire.StreamEnd
 	stream []syncpkg.MessageType
@@ -27,6 +30,8 @@ type streamingReporter struct {
 func (s *streamingReporter) SendCorrelated(
 	t syncpkg.MessageType, subject string, payload any, replyTo string,
 ) (string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.err != nil {
 		return "", s.err
 	}
@@ -174,5 +179,52 @@ func TestADemandResyncIncludesAdoptedDeployments(t *testing.T) {
 	}
 	if !rep.ended[0].Complete {
 		t.Error("an adopted deployment that read cleanly should not spoil completeness")
+	}
+}
+
+// The trigger matters as much as the snapshot. Hanging the repair off a fresh session means it
+// runs almost never — the hub resumes a stream whenever it can — so the ticker is what makes
+// convergence a property of time rather than of a reconnect that may not come.
+func TestTheDemandResyncRunsOnItsInterval(t *testing.T) {
+	rep := &streamingReporter{}
+	r := demandReconciler(t, rep, declared(t, "deployment", testDeploymentID, testDeploymentDesired()))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- r.RunDemandResync(ctx, time.Millisecond) }()
+
+	deadline := time.After(2 * time.Second)
+	for {
+		rep.mu.Lock()
+		sent := len(rep.ended)
+		rep.mu.Unlock()
+		if sent >= 2 {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("streamed %d snapshots in two seconds, want the ticker to keep firing", sent)
+		default:
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Errorf("run returned %v, want a clean stop on cancel", err)
+	}
+}
+
+// An interval of zero is not "every instant"; it is a caller that does not want the loop.
+func TestADemandResyncIntervalOfZeroDoesNotRun(t *testing.T) {
+	rep := &streamingReporter{}
+	r := demandReconciler(t, rep, declared(t, "deployment", testDeploymentID, testDeploymentDesired()))
+
+	if err := r.RunDemandResync(context.Background(), 0); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if len(rep.begun) != 0 {
+		t.Errorf("opened %d streams, want none", len(rep.begun))
 	}
 }
