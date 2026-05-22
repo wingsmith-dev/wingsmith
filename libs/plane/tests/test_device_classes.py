@@ -70,7 +70,7 @@ def test_a_class_we_own_none_of_still_appears_so_it_can_be_planned_for():
 
 def test_hardware_the_table_does_not_name_is_reported_rather_than_dropped():
     """The urgent half of the merge: a class in the fleet with no entry."""
-    items = catalog([H100], {"quantum-9999": (4, 4, 4, 1, ["iad-1"])})
+    items = catalog([H100], {"quantum-9999": (4, 4, 4, 0, 1, ["iad-1"])})
     unnamed = next(i for i in items if i.name == "quantum-9999")
     assert unnamed.in_catalog is False
     assert unnamed.label == "quantum-9999"
@@ -79,12 +79,12 @@ def test_hardware_the_table_does_not_name_is_reported_rather_than_dropped():
 
 
 def test_the_classes_we_own_most_of_come_first():
-    items = catalog([H100, L4], {"l4-24gb-pcie": (8, 8, 8, 2, ["iad-1"])})
+    items = catalog([H100, L4], {"l4-24gb-pcie": (8, 8, 8, 0, 2, ["iad-1"])})
     assert [i.name for i in items] == ["l4-24gb-pcie", "h100-80gb-sxm"]
 
 
 def test_present_narrows_to_what_the_fleet_actually_holds():
-    inventory = {"l4-24gb-pcie": (8, 7, 6, 2, ["iad-1", "sfo-2"])}
+    inventory = {"l4-24gb-pcie": (8, 7, 6, 1, 2, ["iad-1", "sfo-2"])}
     assert [i.name for i in catalog([H100, L4], inventory, present=True)] == ["l4-24gb-pcie"]
     assert [i.name for i in catalog([H100, L4], inventory, present=False)] == ["h100-80gb-sxm"]
 
@@ -95,14 +95,15 @@ def test_architecture_filters_a_vendor_generation():
 
 
 def test_inventory_counts_are_carried_apart_rather_than_rolled_into_a_health_ratio():
-    item = schema("l4-24gb-pcie", L4, (8, 7, 6, 2, ["sfo-2", "iad-1"]))
+    item = schema("l4-24gb-pcie", L4, (8, 7, 6, 1, 2, ["sfo-2", "iad-1"]))
     assert (item.inventory.devices, item.inventory.healthy, item.inventory.allocatable) == (8, 7, 6)
+    assert item.inventory.allocated == 1
     assert item.inventory.nodes == 2
     assert item.inventory.clusters == ["iad-1", "sfo-2"]
 
 
 def test_a_null_cluster_aggregate_does_not_become_a_null_in_the_schema():
-    assert schema("x", None, (0, 0, 0, 0, None)).inventory.clusters == []
+    assert schema("x", None, (0, 0, 0, 0, 0, None)).inventory.clusters == []
 
 
 def test_label_is_the_only_string_meant_for_a_person():
@@ -121,6 +122,13 @@ def test_inventory_query_groups_by_class_rather_than_listing_devices(repo):
     statement = sql(repo.query())
     assert "GROUP BY supply_device.device_class" in statement
     assert "count(" in statement
+
+
+def test_allocated_is_counted_from_holds_rather_than_inferred_from_the_free_count(repo):
+    """Free and held are separate predicates, so neither implies the other."""
+    statement = sql(repo.query())
+    assert "bind_allocation_device" in statement
+    assert "released_at IS NULL" in statement
 
 
 def test_inventory_query_scopes_to_one_cluster(repo):

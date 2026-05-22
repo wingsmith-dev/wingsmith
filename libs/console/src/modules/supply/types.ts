@@ -159,11 +159,19 @@ export interface Device {
   updated_at: string | null
 }
 
-/** `DeviceClassInventorySchema` — what the fleet holds of one class, counted on read. */
+/**
+ * `DeviceClassInventorySchema` — what the fleet holds of one class, counted on read.
+ *
+ * `allocatable` is free — claimable and unclaimed — and `allocated` is held by
+ * a live allocation. Neither is the complement of the other: a device that is
+ * unschedulable and unheld is in neither count, and a held device can be
+ * unhealthy. Never derive one from the other.
+ */
 export interface DeviceClassInventory {
   devices: number
   healthy: number
   allocatable: number
+  allocated: number
   nodes: number
   clusters: string[]
 }

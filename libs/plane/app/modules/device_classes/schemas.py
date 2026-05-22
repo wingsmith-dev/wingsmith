@@ -7,11 +7,17 @@ class DeviceClassInventorySchema(Struct):
     Observed, and counted from `supply_device` rather than stored: a catalog
     entry is a dictionary definition and has no state of its own, so the numbers
     beside it are a read of the fleet and never a field on the class.
+
+    `allocatable` is free — claimable and unclaimed — and `allocated` is held by
+    an unreleased allocation. They are counted apart because neither is the
+    complement of the other: a device that is not claimable and not held is
+    neither, and a device can be held while unhealthy.
     """
 
     devices: int
     healthy: int
     allocatable: int
+    allocated: int
     nodes: int
     clusters: list[str]
 

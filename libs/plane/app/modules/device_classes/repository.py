@@ -9,6 +9,7 @@ from app.db.models import Node
 from app.db.models import Device
 from app.db.models import Cluster
 from app.db.supply import device_free
+from app.db.supply import device_held
 from app.core.filters import ref_ids
 
 
@@ -32,6 +33,7 @@ class DeviceClassRepository:
                 func.count(Device.id),
                 func.count(case((Device.health == "healthy", 1))),
                 func.count(case((device_free(), 1))),
+                func.count(case((device_held(), 1))),
                 func.count(func.distinct(Device.node_id)),
                 func.array_agg(func.distinct(Cluster.name)),
             )

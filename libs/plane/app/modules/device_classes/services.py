@@ -10,8 +10,8 @@ from .schemas import DeviceClassInventorySchema
 from .repository import DeviceClassRepository
 
 
-Counts = tuple[int, int, int, int, list[str] | None]
-"""One row of the inventory aggregate: devices, healthy, allocatable, nodes, clusters."""
+Counts = tuple[int, int, int, int, int, list[str] | None]
+"""One row: devices, healthy, allocatable, allocated, nodes, clusters."""
 
 
 def schema(name: str, entry: DeviceClass | None, counts: Counts | None) -> DeviceClassSchema:
@@ -29,8 +29,9 @@ def schema(name: str, entry: DeviceClass | None, counts: Counts | None) -> Devic
             devices=counts[0] if counts else 0,
             healthy=counts[1] if counts else 0,
             allocatable=counts[2] if counts else 0,
-            nodes=counts[3] if counts else 0,
-            clusters=sorted(c for c in (counts[4] or []) if c) if counts else [],
+            allocated=counts[3] if counts else 0,
+            nodes=counts[4] if counts else 0,
+            clusters=sorted(c for c in (counts[5] or []) if c) if counts else [],
         ),
     )
 

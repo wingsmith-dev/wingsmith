@@ -423,6 +423,15 @@ export function deviceClasses(cluster?: string): DeviceClass[] {
     .map((name) => {
       const entry = CATALOG.find((c) => c.name === name)
       const owned = scoped.filter((device) => device.device_class === name)
+      const held = new Set(
+        allocations
+          .filter((allocation) => allocation.live)
+          .flatMap((allocation) =>
+            allocation.devices
+              .filter((entry) => entry.released_at === null)
+              .map((entry) => entry.device)
+          )
+      )
       return {
         name,
         label: entry?.label ?? name,
@@ -435,7 +444,9 @@ export function deviceClasses(cluster?: string): DeviceClass[] {
         inventory: {
           devices: owned.length,
           healthy: owned.filter((d) => d.health === "healthy").length,
-          allocatable: owned.filter((d) => d.allocatable).length,
+          allocatable: owned.filter((d) => d.allocatable && !held.has(d.id))
+            .length,
+          allocated: owned.filter((d) => held.has(d.id)).length,
           nodes: new Set(owned.map((d) => d.node)).size,
           clusters: [...new Set(owned.map((d) => d.cluster_name))].sort(),
         },

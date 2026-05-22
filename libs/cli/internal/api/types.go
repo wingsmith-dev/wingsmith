@@ -290,6 +290,7 @@ type DeviceClassInventory struct {
 	Devices     int      `json:"devices"`
 	Healthy     int      `json:"healthy"`
 	Allocatable int      `json:"allocatable"`
+	Allocated   int      `json:"allocated"`
 	Nodes       int      `json:"nodes"`
 	Clusters    []string `json:"clusters"`
 }

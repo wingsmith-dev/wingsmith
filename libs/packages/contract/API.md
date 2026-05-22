@@ -312,8 +312,11 @@ strings against different dictionaries, which is the one thing a shared table ex
 
 Each entry carries `name` — the identifier, and the only string that travels on the wire — and
 `label`, the only string to put in front of a person. Alongside them is `inventory`: how many
-devices of that class the fleet holds, how many are healthy, how many are allocatable, and which
-clusters they are in. Counted from observed state on read, never stored.
+devices of that class the fleet holds, how many are healthy, how many are allocatable — free, so
+claimable and unclaimed — how many are allocated, and which clusters they are in. Counted from
+observed state on read, never stored. `allocatable` and `allocated` are separate counts and neither
+is the complement of the other: a device that is unschedulable and unheld is in neither, and a held
+device may be unhealthy.
 
 The collection is the union of two sets, and a client must expect both. A class in the table with
 no devices is hardware we could take delivery of tomorrow. A class in the fleet with no table entry

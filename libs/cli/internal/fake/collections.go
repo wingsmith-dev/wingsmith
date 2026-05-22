@@ -117,6 +117,8 @@ func (b *Backend) deviceClasses(cluster string) []api.DeviceClass {
 		}
 		if d.Allocatable {
 			entry.Inventory.Allocatable++
+		} else {
+			entry.Inventory.Allocated++
 		}
 		nodes[d.DeviceClass][d.Node] = true
 		clusters[d.DeviceClass][d.ClusterName] = true

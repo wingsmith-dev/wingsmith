@@ -387,8 +387,8 @@ being scheduled onto, and it is the row to act on.`,
 			if !c.InCatalog {
 				kv.Add("", s.Dim("not in devices.json — add it there and release both halves"))
 			}
-			kv.Addf("devices", "%d total · %d healthy · %d allocatable",
-				c.Inventory.Devices, c.Inventory.Healthy, c.Inventory.Allocatable)
+			kv.Addf("devices", "%d total · %d healthy · %d free · %d allocated",
+				c.Inventory.Devices, c.Inventory.Healthy, c.Inventory.Allocatable, c.Inventory.Allocated)
 			kv.Addf("spread", "%d nodes · %s", c.Inventory.Nodes, orDash(strings.Join(c.Inventory.Clusters, ", ")))
 			for dialect, names := range c.Aliases {
 				kv.Addf("alias "+dialect, "%s", strings.Join(names, ", "))

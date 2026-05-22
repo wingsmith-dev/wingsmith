@@ -73,13 +73,14 @@ export function DevicesPage() {
     (acc, c) => {
       acc.devices += c.inventory.devices
       acc.free += c.inventory.allocatable
+      acc.allocated += c.inventory.allocated
       acc.healthy += c.inventory.healthy
       return acc
     },
-    { devices: 0, free: 0, healthy: 0 }
+    { devices: 0, free: 0, allocated: 0, healthy: 0 }
   )
   const faulted = totals.devices - totals.healthy
-  const allocated = Math.max(0, totals.healthy - totals.free)
+  const allocated = totals.allocated
 
   return (
     <div className="flex flex-col">
