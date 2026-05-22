@@ -47,8 +47,10 @@ from app.ingestion.time import now
 from app.ingestion.time import parse_ts
 from app.ingestion.resync import NODE
 from app.ingestion.resync import DEVICE
+from app.ingestion.resync import REPLICA
 from app.ingestion.resync import TOPOLOGY
 from app.ingestion.resync import WORKLOAD
+from app.ingestion.resync import ALLOCATION
 from app.ingestion.resync import ResyncEpoch
 from app.ingestion.resync import decide
 from app.ingestion.statements import MalformedObservation
@@ -200,7 +202,7 @@ class DatabaseSink:
 
     async def _allocation(
         self, db: AsyncSession, cluster_id: UUID, cluster_uid: str, payload: AllocationObserved
-    ) -> None:
+    ) -> bool:
         """Writes one allocation and reconciles its device membership in the same transaction.
 
         Three statements rather than one because an allocation is a row and a set:
@@ -223,7 +225,7 @@ class DatabaseSink:
                 payload.project_id,
                 cluster_uid,
             )
-            return
+            return False
 
         replica_id = await self._uid_ref(db, Replica, payload.replica_id)
         statement = statements.upsert_allocation(
@@ -233,6 +235,7 @@ class DatabaseSink:
         await db.execute(statements.release_allocation_devices(allocation_id, cluster_id, payload))
         if payload.device_ids:
             await db.execute(statements.attach_allocation_devices(allocation_id, cluster_id, payload))
+        return True
 
     # ----------------------------------------------------------------- observed
 
@@ -372,11 +375,12 @@ class DatabaseSink:
                     )
                     return None
                 await db.execute(statements.upsert_replica(cluster_id, deployment[0], payload))
-                return None
+                return REPLICA, statements.observed_uid(payload.replica_id, "rep_")
             case "allocation.observed":
                 assert isinstance(payload, AllocationObserved)
-                await self._allocation(db, cluster_id, frame.cluster_id, payload)
-                return None
+                if not await self._allocation(db, cluster_id, frame.cluster_id, payload):
+                    return None
+                return ALLOCATION, statements.observed_uid(payload.allocation_id, "alc_")
             case "cache.observed":
                 assert isinstance(payload, CacheObserved)
                 artifact_id = await self._uid_ref(db, Artifact, payload.artifact_id)
@@ -485,20 +489,8 @@ class DatabaseSink:
             )
             return
         if epoch.scope in DEMAND_SCOPES:
-            logger.warning(
-                "ingestion.resync.demand_not_pruned cluster=%s request=%s scope=%s received=%d "
-                "demand-side observed state was applied as upserts and NOT pruned against this "
-                "snapshot: only the supply side (nodes, devices, topology domains, discovered "
-                "workloads) is. Replicas are reaped instead by `deployment.observed.replica_ids`, "
-                "per deployment and outside the resync, and allocations cascade with them — so a "
-                "cluster whose operator still sends that field leaves nothing stale here.",
-                cluster_id,
-                request_id,
-                epoch.scope,
-                epoch.received,
-            )
+            await self._prune_demand(cluster_id, epoch)
         if epoch.scope not in SUPPLY_SCOPES:
-            logger.info("ingestion.resync.nothing_to_prune cluster=%s scope=%s", cluster_id, epoch.scope)
             return
 
         async with self.sessions.begin() as db:
@@ -525,6 +517,34 @@ class DatabaseSink:
             devices.rowcount,
             domains.rowcount,
             workloads.rowcount,
+        )
+
+    async def _prune_demand(self, cluster_id: str, epoch: ResyncEpoch) -> None:
+        """Forgets the replicas and allocations a complete demand snapshot did not name.
+
+        The half that was missing, and the reason a paused workload kept holding
+        cards. Demand state used to be reaped only by
+        `deployment.observed.replica_ids` — a per-deployment claim, carried on a
+        frame that stops arriving the moment the deployment is torn down. Every
+        way of losing that frame left a row nothing would ever collect again: a
+        pause, a delete, an operator restarted while the pod was going away.
+
+        Cluster-wide and under the same guard as the supply side. `decide` has
+        already established that the snapshot arrived whole and unpoisoned, so
+        absence from it is evidence rather than silence. Nothing here reads a
+        transition, which is the point: the cluster states what it holds and the
+        plane converges on it, from any starting state and after any outage.
+        """
+        async with self.sessions.begin() as db:
+            resolved = await self._cluster_id(db, cluster_id)
+            replicas = await db.execute(statements.prune_cluster_replicas(resolved, epoch.present[REPLICA]))
+            allocations = await db.execute(statements.prune_cluster_allocations(resolved, epoch.present[ALLOCATION]))
+        logger.info(
+            "ingestion.resync.demand_pruned cluster=%s received=%d replicas=%d allocations=%d",
+            cluster_id,
+            epoch.received,
+            replicas.rowcount,
+            allocations.rowcount,
         )
 
     def _epoch_for(self, frame: SinkFrame) -> ResyncEpoch | None:

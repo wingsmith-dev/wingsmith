@@ -1143,6 +1143,35 @@ def prune_discovered_workloads(cluster_id: UUID, keep: set[str]) -> Delete:
     )
 
 
+def prune_cluster_replicas(cluster_id: UUID, keep: set[str]) -> Delete:
+    """Forgets every replica on this cluster a complete demand snapshot did not name.
+
+    The gap this closes: demand-side observed state used to be pruned only per
+    deployment, against the `replica_ids` on that deployment's own frame — which
+    stops arriving the moment the deployment is torn down. A paused workload's
+    replicas stayed `ready` for ever, the allocations under them stayed `held`,
+    and the cards they named were never given back. Nothing that reads a
+    transition can repair that, because the transition is exactly what a
+    restarted operator did not see.
+
+    Cluster-wide and guarded the way the supply side is: `decide` has already
+    established that the snapshot arrived whole, so absence is evidence. The
+    allocations cascade, both from here and from the deployment above.
+    """
+    return delete(Replica).where(Replica.cluster_id == cluster_id, Replica.uid.notin_(keep or {""}))
+
+
+def prune_cluster_allocations(cluster_id: UUID, keep: set[str]) -> Delete:
+    """Releases every allocation on this cluster a complete demand snapshot did not name.
+
+    Mostly redundant with the replica prune above, because an allocation
+    cascades with its replica — and deliberately kept anyway. An allocation
+    whose replica the plane never recorded has nothing to cascade from, and that
+    is precisely the row that used to hold a card for ever.
+    """
+    return delete(Allocation).where(Allocation.cluster_id == cluster_id, Allocation.uid.notin_(keep or {""}))
+
+
 def upsert_sync_state(cluster_id: UUID, values: dict[str, Any], bump: bool = False) -> Insert:
     """Writes the observed half of a cluster.
 

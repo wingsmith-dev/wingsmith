@@ -238,14 +238,13 @@ cluster then spreads the replica over whichever machines are free.
 | `cache.observed` | artifact residency, per node, and eviction pressure |
 | `component.observed` | rollout status per component |
 
-**`deployment.observed` carries `replica_ids`, and it is the only thing that lets the plane forget
-a replica.** Demand-side observed state is not pruned against a resync the way supply is, so a
-replica that simply stops being reported — a rolled pod, a restarted one, a deployment scaled down
-— has nothing to remove its row. It stayed in the plane's database for ever and kept counting
-towards the rollup, which is how a deployment of one came to read three ready of one. The frame
-names this deployment's whole replica set on this cluster every time it is sent, and the plane
-deletes the ones it does not name; the allocations those replicas held cascade with them, which is
-the same leak on the device side.
+**`deployment.observed` carries `replica_ids`, and it is how the plane forgets a replica while the
+deployment still exists.** A replica that simply stops being reported — a rolled pod, a restarted
+one, a deployment scaled down — has nothing else to remove its row. It stayed in the plane's
+database for ever and kept counting towards the rollup, which is how a deployment of one came to
+read three ready of one. The frame names this deployment's whole replica set on this cluster every
+time it is sent, and the plane deletes the ones it does not name; the allocations those replicas
+held cascade with them, which is the same leak on the device side.
 
 This is a per-deployment claim rather than a snapshot, and that is what makes it safe without the
 resync guard: absence from the list is evidence about one deployment on one cluster, and the frame
@@ -253,6 +252,27 @@ either arrived whole or did not arrive at all. `null` is an operator that predat
 prunes nothing; `[]` is a claim that there are none, which is what a scale to zero says. For the
 same reason the operator must not suppress a `deployment.observed` whose counts are unchanged but
 whose replica set is not — a pod replaced one-for-one changes no count and still needs the prune.
+
+**A per-deployment claim cannot say that a deployment is gone, which is why there is a `demand`
+resync as well.** Every path that removes a deployment from a cluster also removes the frame that
+would have reported it: a pause, a delete, a teardown, or an operator restarted while the pod was
+going away. The last frame sent then stays true for ever — replicas `ready` that are not running,
+allocations `held` on accelerators nobody is using, and no later frame that could contradict
+either. Nothing built on transitions can repair that, because the transition is precisely what was
+not witnessed.
+
+So the operator streams a `demand`-scoped resync of every replica and allocation the cluster
+holds, and the plane prunes both against it, cluster-wide, under exactly the guard the `supply`
+snapshot has: the stream declares its own length and completeness, and a snapshot that did not
+provably arrive whole prunes nothing. The operator must not claim `complete` for a snapshot in
+which any deployment could not be read — the frames that deployment would have contributed are the
+ones whose absence would otherwise be read as "gone". An incomplete snapshot costs a stale row
+until the next resync; a wrongly complete one deletes a running replica's allocation and offers its
+accelerators to somebody else.
+
+The two mechanisms overlap deliberately. `replica_ids` is cheap and immediate and keeps a serving
+deployment's rollup honest between snapshots; the snapshot is the one that can shrink the plane's
+picture, and is the only one that converges from an arbitrary starting state.
 
 **`deployment.observed` carries `reason` and `message`, and the operator sends one on every
 outcome — including the ones that are not errors.** A deployment spends most of its life before it

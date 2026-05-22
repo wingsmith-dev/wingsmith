@@ -800,44 +800,70 @@ async def test_a_truncated_snapshot_deletes_nothing() -> None:
     assert not [s for s in sessions.executed if str(s).upper().startswith("DELETE")]
 
 
-async def test_a_demand_resync_warns_that_nothing_on_that_side_was_pruned(caplog) -> None:
-    """A `demand` snapshot closes cleanly and deletes nothing, and silence would read as success.
+async def test_a_demand_resync_prunes_the_replicas_and_allocations_it_did_not_name(caplog) -> None:
+    """The gap this closes: demand state that nothing would ever collect again.
 
-    Replicas are reaped per deployment against `replica_ids` instead, outside
-    the resync entirely — so the snapshot really does delete nothing and the
-    log is the only thing that says which mechanism is responsible.
+    It used to be reaped only by `deployment.observed.replica_ids` — a claim
+    carried per deployment, on a frame that stops arriving the moment the
+    deployment is torn down. A paused workload's replicas stayed `ready` and the
+    cards under them stayed held, for ever. A complete demand snapshot is now
+    evidence in its own right, exactly as the supply one is.
     """
-    sink = DatabaseSink(FakeSessions())
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
     await sink.begin_resync(CLUSTER, "demand", "req-6")
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         await sink.end_resync(CLUSTER, "req-6", 0, True)
 
-    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
-    assert len(warnings) == 1
-    assert "ingestion.resync.demand_not_pruned" in warnings[0].getMessage()
-    assert "NOT pruned" in warnings[0].getMessage()
+    deletes = [str(s) for s in sessions.executed if str(s).upper().startswith("DELETE")]
+    assert any("demand_replica" in d for d in deletes)
+    assert any("bind_allocation" in d for d in deletes)
+    assert any("demand_pruned" in r.getMessage() for r in caplog.records)
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
 
-async def test_a_supply_only_resync_says_nothing_about_demand(caplog) -> None:
-    sink = DatabaseSink(FakeSessions())
-    await sink.begin_resync(CLUSTER, "supply", "req-7")
+async def test_an_incomplete_demand_resync_prunes_nothing(caplog) -> None:
+    """The guard is the same one the supply side has, and it is the whole safety story.
+
+    A snapshot that did not arrive whole is indistinguishable from a cluster that
+    has stopped running everything, and deleting on that reading is the one
+    outcome this code exists to prevent.
+    """
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
+    await sink.begin_resync(CLUSTER, "demand", "req-9")
     with caplog.at_level(logging.WARNING):
+        await sink.end_resync(CLUSTER, "req-9", 3, False)
+
+    assert not [s for s in sessions.executed if str(s).upper().startswith("DELETE")]
+    assert any("no_prune" in r.getMessage() for r in caplog.records)
+
+
+async def test_a_supply_only_resync_leaves_demand_state_alone(caplog) -> None:
+    """A snapshot may only be evidence about what it claimed to carry."""
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
+    await sink.begin_resync(CLUSTER, "supply", "req-7")
+    with caplog.at_level(logging.INFO):
         await sink.end_resync(CLUSTER, "req-7", 0, True)
 
-    assert not [r for r in caplog.records if "demand_not_pruned" in r.getMessage()]
+    deletes = [str(s) for s in sessions.executed if str(s).upper().startswith("DELETE")]
+    assert not any("demand_replica" in d or "bind_allocation" in d for d in deletes)
 
 
-async def test_a_full_resync_prunes_the_supply_half_and_warns_about_the_other(caplog) -> None:
-    """`all` carries both scopes, so the prune and the warning both belong to it."""
+async def test_a_full_resync_prunes_both_halves(caplog) -> None:
+    """`all` carries both scopes, so both prunes belong to it."""
     sessions = FakeSessions()
     sink = DatabaseSink(sessions)
     await sink.begin_resync(CLUSTER, "all", "req-8")
     await sink.apply_observed(observed_frame("node.observed", reply_to="req-8"))
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.INFO):
         await sink.end_resync(CLUSTER, "req-8", 1, True)
 
-    assert [s for s in sessions.executed if str(s).upper().startswith("DELETE")]
-    assert any("demand_not_pruned" in r.getMessage() for r in caplog.records)
+    deletes = [str(s) for s in sessions.executed if str(s).upper().startswith("DELETE")]
+    assert any("supply_node" in d for d in deletes)
+    assert any("demand_replica" in d for d in deletes)
+    assert any("bind_allocation" in d for d in deletes)
 
 
 async def test_frames_outside_an_epoch_are_not_counted() -> None:

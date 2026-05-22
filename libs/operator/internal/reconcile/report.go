@@ -471,10 +471,15 @@ func (h *reportingHandler) Handle(ctx context.Context, e *syncpkg.Envelope) erro
 }
 
 // Resync implements sync.Handler.
+//
+// Forgetting is not enough on its own and never was. It makes the next pass restate every
+// deployment this cluster still has, which repairs a stale value — but says nothing about a
+// deployment it no longer has, and that is the row the plane cannot otherwise collect. The
+// snapshot is the half that can shrink the plane's picture as well as correct it.
 func (h *reportingHandler) Resync(ctx context.Context) error {
 	if err := h.inner.Resync(ctx); err != nil {
 		return err
 	}
 	h.reconciler.ForgetAll()
-	return nil
+	return h.reconciler.ResyncDemand(ctx)
 }

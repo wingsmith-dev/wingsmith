@@ -17,6 +17,8 @@ NODE = "node"
 DEVICE = "device"
 TOPOLOGY = "topology"
 WORKLOAD = "workload"
+REPLICA = "replica"
+ALLOCATION = "allocation"
 
 
 @dataclass
@@ -31,7 +33,14 @@ class ResyncEpoch:
     scope: str
     request_id: str
     present: dict[str, set[str]] = field(
-        default_factory=lambda: {NODE: set(), DEVICE: set(), TOPOLOGY: set(), WORKLOAD: set()}
+        default_factory=lambda: {
+            NODE: set(),
+            DEVICE: set(),
+            TOPOLOGY: set(),
+            WORKLOAD: set(),
+            REPLICA: set(),
+            ALLOCATION: set(),
+        }
     )
     received: int = 0
     poisoned: bool = False
