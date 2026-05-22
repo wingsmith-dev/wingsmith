@@ -46,6 +46,10 @@ const (
 	phaseDegraded = "degraded"
 	phaseRunning  = "running"
 	phaseFailed   = "failed"
+	// Reported only by teardown, and deliberately outside the plane's admission mapping: it
+	// says what is running here and claims nothing about how far through the scheduler the
+	// deployment got, which is still true of a deployment that is merely paused.
+	phaseTerminating = "terminating"
 )
 
 // stageRank orders the steps a reconcile passes through on its way to applying, as opposed to the
@@ -261,6 +265,42 @@ func (r *SyncedResourceReconciler) departed(id string, held map[string]wire.Allo
 		out = append(out, released)
 	}
 	return out
+}
+
+// reportTornDown says this deployment has nothing left on this cluster.
+//
+// Teardown is the one transition the plane cannot work out for itself. Demand state is never
+// pruned against a resync, and the per-deployment prune rides on `deployment.observed.replica_ids`
+// — a frame this operator stops sending the moment the deployment is removed. So the last frame
+// before it went away stayed true for ever: a paused workload kept its replicas `ready` and its
+// allocations `held`, and the cards they were on were never handed back.
+//
+// The empty set is the whole message. `ReplicaIDs` is empty and never nil, which the wire defines
+// as the claim that there are none, and every allocation this deployment was holding is restated
+// holding nothing — the same release path a rolled pod takes, for the case where the deployment
+// itself is what went away.
+func (r *SyncedResourceReconciler) reportTornDown(id string) {
+	reporter := r.reporter()
+	if reporter == nil || id == "" {
+		return
+	}
+
+	observedAt := time.Now().UTC().Format(time.RFC3339Nano)
+	r.send(reporter, id, wire.DeploymentObserved{
+		DeploymentID: id,
+		ClusterID:    r.ClusterID,
+		Phase:        phaseTerminating,
+		ReplicaIDs:   []string{},
+		ObservedAt:   observedAt,
+	})
+
+	for _, released := range r.departed(id, nil) {
+		if err := reporter.Send(TypeAllocationObserved, released.AllocationID, released); err != nil {
+			r.Log.Warn("could not release allocation on teardown",
+				"deployment", released.DeploymentID, "allocation", released.AllocationID, "error", err)
+			return
+		}
+	}
 }
 
 func (r *SyncedResourceReconciler) markHolding(id string, held map[string]wire.AllocationObserved) {

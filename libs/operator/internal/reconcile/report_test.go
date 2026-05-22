@@ -428,3 +428,93 @@ func TestOnlyTheFrameReadBackFromPodsClaimsAReplicaSet(t *testing.T) {
 		t.Error("nothing claimed a replica set, so the plane has nothing to prune against")
 	}
 }
+
+// The gap this closes: demand state is never pruned against a resync, and the per-deployment prune
+// rides on a frame the operator stops sending the moment the deployment is torn down. So a paused
+// workload's replicas stayed `ready` in the plane for ever, and the cards they were on stayed held.
+func TestTeardownClaimsAnEmptyReplicaSet(t *testing.T) {
+	rep := &recordingReporter{}
+	r, dep := runRenderedReporting(t, rep)
+	tearDown(t, r, dep)
+
+	last := lastSent(t, rep)
+	if last.Phase != phaseTerminating {
+		t.Errorf("phase = %q, want %q", last.Phase, phaseTerminating)
+	}
+	if last.ReplicaIDs == nil {
+		t.Fatal("replica_ids is nil, which is the frame that makes no claim — teardown has to claim none")
+	}
+	if len(last.ReplicaIDs) != 0 {
+		t.Errorf("replica_ids = %v, want empty", last.ReplicaIDs)
+	}
+	if last.ReadyReplicas != 0 {
+		t.Errorf("ready = %d, want 0", last.ReadyReplicas)
+	}
+}
+
+// The other half of the same gap: an allocation is held for as long as it is reported, and a
+// deployment that goes away stops reporting rather than releasing. The devices stayed committed.
+func TestTeardownReleasesWhatItWasHolding(t *testing.T) {
+	rep := &recordingReporter{}
+	r, dep := runRenderedReporting(t, rep)
+	r.markHolding(testDeploymentID, map[string]wire.AllocationObserved{
+		"alc_1": {
+			AllocationID: "alc_1",
+			ClusterID:    "ap-cluster-1",
+			DeploymentID: testDeploymentID,
+			ProjectID:    "prj_1",
+			ReplicaID:    "rep_1",
+			NodeID:       "nod_1",
+			DeviceIDs:    []string{"dev_1"},
+		},
+	})
+	before := len(rep.allocationFrames)
+	tearDown(t, r, dep)
+
+	released := rep.allocationFrames[before:]
+	if len(released) != 1 {
+		t.Fatalf("sent %d allocation frames on teardown, want 1", len(released))
+	}
+	if released[0].AllocationID != "alc_1" {
+		t.Errorf("allocation = %q, want alc_1", released[0].AllocationID)
+	}
+	if released[0].ProjectID != "prj_1" {
+		t.Errorf("project = %q, want prj_1 — a release with no project is dropped on arrival", released[0].ProjectID)
+	}
+	if released[0].DeviceIDs == nil || len(released[0].DeviceIDs) != 0 {
+		t.Errorf("device_ids = %v, want empty and not nil", released[0].DeviceIDs)
+	}
+}
+
+// runRenderedReporting reconciles a deployment far enough that it actually renders, which is what
+// puts the teardown finalizer on the declared copy. A deployment still waiting on its recipe never
+// rendered and has nothing to tear down.
+func runRenderedReporting(t *testing.T, rep Reporter) (*SyncedResourceReconciler, *v1alpha1.SyncedResource) {
+	t.Helper()
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	r, _ := runReconcileReporting(t, rep, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+
+	var out v1alpha1.SyncedResource
+	key := types.NamespacedName{Namespace: dep.GetNamespace(), Name: dep.GetName()}
+	if err := r.Client.Get(context.Background(), key, &out); err != nil {
+		t.Fatalf("read back the declared copy: %v", err)
+	}
+	if len(out.Finalizers) == 0 {
+		t.Fatal("nothing was rendered, so there is no teardown to observe")
+	}
+	return r, &out
+}
+
+func tearDown(t *testing.T, r *SyncedResourceReconciler, dep *v1alpha1.SyncedResource) {
+	t.Helper()
+	ctx := context.Background()
+	if err := r.Client.Delete(ctx, dep); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.Namespace, Name: dep.Name}}
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("reconcile after delete: %v", err)
+	}
+}

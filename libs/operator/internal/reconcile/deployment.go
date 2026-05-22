@@ -274,7 +274,8 @@ func (r *SyncedResourceReconciler) teardown(ctx context.Context, res *v1alpha1.S
 		return ctrl.Result{}, nil
 	}
 
-	if id := deploymentID(res); id != "" {
+	id := deploymentID(res)
+	if id != "" {
 		if err := r.pruneRendered(ctx, id, ""); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -285,7 +286,10 @@ func (r *SyncedResourceReconciler) teardown(ctx context.Context, res *v1alpha1.S
 	if err := r.Client.Patch(ctx, res, patch); err != nil {
 		return ctrl.Result{}, fmt.Errorf("release finalizer on %s: %w", res.Name, err)
 	}
-	r.forgetReported(deploymentID(res))
+	// Before forgetting, because the release frames are built from what this deployment was
+	// remembered to be holding and `forgetReported` is what drops that memory.
+	r.reportTornDown(id)
+	r.forgetReported(id)
 	return ctrl.Result{}, nil
 }
 
