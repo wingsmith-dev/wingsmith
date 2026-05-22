@@ -713,6 +713,29 @@ async def test_a_deployment_write_announces_itself_to_the_hub(db: AsyncSession) 
     ]
 
 
+async def test_resuming_a_workload_announces_the_clusters_it_was_parked_on(db: AsyncSession) -> None:
+    """The gap this closes: a resume that no cluster ever heard about.
+
+    Pausing announces every deployment it disabled. Resuming used to hand the job to
+    `_reconcile`, which announces a cluster only when its share moved — and a pause
+    leaves the shares exactly where they were, so a workload coming back to the split
+    it left announced nothing. The row read `enabled` while the cluster still had no
+    copy of it, and the model never came back up.
+    """
+    notifier = MemoryNotifier()
+    cluster, _, _, created = await a_deployment(db)
+    service = WorkloadService(db, notifier=notifier)
+
+    await service.set_paused(created.workload_id, True)
+    notifier.changes.clear()
+    await service.set_paused(created.workload_id, False)
+
+    assert [(c.cluster_id, c.kind, c.uid) for c in notifier.changes] == [
+        (cluster.id, "deployment", created.id)
+    ]
+    assert (await DeploymentService(db).get(created.id)).enabled is True
+
+
 async def test_live_dispatch_renders_what_a_resync_would_have_sent(db: AsyncSession) -> None:
     """The divergence this seam exists not to introduce.
 

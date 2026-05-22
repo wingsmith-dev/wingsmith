@@ -863,6 +863,13 @@ class WorkloadService:
         and a pause that destroyed them would make resuming a re-placement with a
         different answer. Resuming re-expands, because the clusters that could take
         it may not be the ones that could when it was parked.
+
+        Both halves announce every deployment they touched, and the resuming half
+        has to say so itself. `_reconcile` announces a cluster only when its share
+        moved, and a pause leaves the shares exactly where they were — so a workload
+        that comes back to the split it left moves nothing, announces nothing, and
+        the clusters never hear that the deployments are enabled again. The row read
+        `enabled` while the cluster still had no copy of it.
         """
         row = await self._one(ref)
         workload = row[0]
@@ -893,6 +900,12 @@ class WorkloadService:
             deployment_row[0].enabled = True
             deployment_row[0].generation += 1
         result = await self._reconcile(workload, deployment_rows)
+        announced = {uid for _, uid, _ in result["_announce"]}
+        result["_announce"].extend(
+            (deployment_row.cluster_uid, deployment_row[0].uid, deployment_row[0].generation)
+            for deployment_row in deployment_rows
+            if deployment_row[0].uid not in announced
+        )
         result["paused"] = False
         return await self._finish(result)
 
