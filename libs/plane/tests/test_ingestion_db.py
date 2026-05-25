@@ -22,7 +22,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
 from app.hub.sink import SinkFrame
-from app.core.auth import STATIC_OPERATOR
+from app.auth import STATIC_OPERATOR
 from app.hub.state import new_id
 from app.hub.session import SessionConfig
 from app.hub.session import OperatorSession

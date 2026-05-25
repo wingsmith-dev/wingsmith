@@ -15,9 +15,9 @@ import pytest
 from litestar.di import Provide
 from litestar.testing import create_test_client
 
-from app.core.auth import STATIC_OPERATOR
-from app.core.auth import admin_principal
-from app.core.auth import mint_enrolment_token
+from app.auth import STATIC_OPERATOR
+from app.auth import AuthManager
+from app.auth import AuthManager
 from app.core.context import RequestContext
 from app.core.handlers import EXCEPTION_HANDLERS
 from app.core.throttle import FailureBudget
@@ -69,8 +69,8 @@ def test_a_verified_token_is_answered_with_a_200():
 
 def test_an_admin_principal_is_refused():
     """A human credential that can turn tokens into identities can sweep for them."""
-    token, _ = mint_enrolment_token()
-    with client(admin_principal()) as http:
+    token, _ = AuthManager.mint_enrolment_token()
+    with client(AuthManager.admin_principal()) as http:
         response = http.post("/clusters/tunnel-auth", json={"token": token})
     assert response.status_code == 403
     assert response.json()["code"] == "forbidden"
@@ -140,7 +140,7 @@ async def test_a_token_nobody_issued_is_refused(svc):
     created = await svc.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
     await svc.issue_enrolment_token(created.id, host="hangar.example")
 
-    stranger, _ = mint_enrolment_token()
+    stranger, _ = AuthManager.mint_enrolment_token()
     with pytest.raises(NotAuthorized):
         await svc.verify_tunnel_token(stranger)
 

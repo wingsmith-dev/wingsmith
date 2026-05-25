@@ -25,7 +25,7 @@ from app.core.ids import PREFIXES
 from app.core.ids import ALERT_THRESHOLD
 from app.core.ids import is_uid
 from app.core.ids import new_uid
-from app.core.auth import STATIC_OPERATOR
+from app.auth import STATIC_OPERATOR
 from app.db.models import AlertThreshold
 from app.core.context import RequestContext
 from app.reactor.rules import ABOVE

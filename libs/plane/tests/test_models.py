@@ -60,7 +60,11 @@ MACHINERY = {
     "hub_cluster_claim",
 }
 
-EXPECTED = SUPPLY | DEMAND | BINDING | MACHINERY
+AUTH = {
+    "auth_refresh_token",
+}
+
+EXPECTED = SUPPLY | DEMAND | BINDING | MACHINERY | AUTH
 
 
 def test_model_layer_imports_cleanly() -> None:

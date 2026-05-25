@@ -31,8 +31,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.core.ids import NODE
 from app.core.ids import TENANT
 from app.core.ids import new_uid
-from app.core.auth import ENROLMENT_PREFIX
-from app.core.auth import hash_enrolment_token
+from app.auth import ENROLMENT_PREFIX
+from app.auth import AuthManager
 from app.db.notify import MemoryNotifier
 from app.hub.server import _resolve_connection
 from app.core.exceptions import Invalid
@@ -303,13 +303,13 @@ async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSe
     assert issued.enrolment_token_set is True
     assert f"value: {issued.enrolment_token}" in issued.values_yaml
 
-    resolved = await service.repo.by_token_hash(hash_enrolment_token(issued.enrolment_token))
+    resolved = await service.repo.by_token_hash(AuthManager.hash_enrolment_token(issued.enrolment_token))
     assert resolved is not None and resolved.uid == created.id
 
     rotated = await service.issue_enrolment_token(created.id, host="hangar.example")
     assert rotated.enrolment_token != issued.enrolment_token
-    assert await service.repo.by_token_hash(hash_enrolment_token(issued.enrolment_token)) is None
-    assert (await service.repo.by_token_hash(hash_enrolment_token(rotated.enrolment_token))).uid == created.id
+    assert await service.repo.by_token_hash(AuthManager.hash_enrolment_token(issued.enrolment_token)) is None
+    assert (await service.repo.by_token_hash(AuthManager.hash_enrolment_token(rotated.enrolment_token))).uid == created.id
 
     later = await service.setup_instructions(created.id, host="hangar.example")
     assert later.enrolment_token is None
@@ -341,7 +341,7 @@ async def test_enrolment_token_also_stores_a_bcrypt_verifier_and_rotation_replac
     assert row.remote_write_hash != first
     assert bcrypt.checkpw(rotated.enrolment_token.encode(), row.remote_write_hash.encode())
     assert not bcrypt.checkpw(issued.enrolment_token.encode(), row.remote_write_hash.encode())
-    assert row.token_hash == hash_enrolment_token(rotated.enrolment_token)
+    assert row.token_hash == AuthManager.hash_enrolment_token(rotated.enrolment_token)
 
     assert row.remote_write_hash not in rotated.values_yaml
 

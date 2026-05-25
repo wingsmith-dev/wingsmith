@@ -1,8 +1,8 @@
 from litestar.testing import create_test_client
 
 from app.config import settings
-from app.core.auth import STATIC_OPERATOR
-from app.core.auth import resolve_principal
+from app.auth import STATIC_OPERATOR
+from app.auth import AuthManager
 from app.core.routes import HealthRoutes
 from app.core.exceptions import NotAuthorized
 
@@ -12,11 +12,11 @@ def test_settings_default_database_url() -> None:
 
 
 def test_operator_token_resolves_to_the_operator_principal() -> None:
-    assert resolve_principal(settings.OPERATOR_TOKEN or "hangar-local-operator-token") == STATIC_OPERATOR
+    assert AuthManager.resolve_principal(settings.OPERATOR_TOKEN or "hangar-local-operator-token") == STATIC_OPERATOR
 
 
 def test_no_token_resolves_under_local_defaults_because_admin_auth_is_disabled() -> None:
-    assert resolve_principal(None).kind == "admin"
+    assert AuthManager.resolve_principal(None).kind == "admin"
 
 
 def test_wrong_token_is_rejected_when_admin_auth_would_be_enabled(monkeypatch) -> None:
@@ -24,7 +24,7 @@ def test_wrong_token_is_rejected_when_admin_auth_would_be_enabled(monkeypatch) -
     try:
         raised = False
         try:
-            resolve_principal("not-a-real-token")
+            AuthManager.resolve_principal("not-a-real-token")
         except NotAuthorized:
             raised = True
         assert raised

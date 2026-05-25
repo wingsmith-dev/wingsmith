@@ -1,6 +1,5 @@
-"""Auth: the operator/admin seam in `app.core.auth`, its wiring into the HTTP
-API (`app.core.context`, `app.core.auth_routes`) and the hub
-(`app.hub.server`).
+"""Auth: the operator/admin seam in `app.auth.manager`, its wiring into the HTTP
+API (`app.core.context`, `app.auth.routes`) and the hub (`app.hub.server`).
 """
 
 import asyncio
@@ -13,25 +12,15 @@ from websockets.asyncio.client import connect
 
 from app.config import settings
 from app.api.app import create_app
-from app.core.auth import LOCAL_OPERATOR_TOKEN
-from app.core.auth import hash_password
-from app.core.auth import verify_password
-from app.core.auth import resolve_operator
-from app.core.auth import resolve_principal
-from app.core.auth import admin_auth_enabled
-from app.core.auth import operator_principal
-from app.core.auth import issue_session_token
-from app.core.auth import hash_enrolment_token
-from app.core.auth import looks_like_enrolment
-from app.core.auth import mint_enrolment_token
-from app.core.auth import verify_session_token
+from app.auth import LOCAL_OPERATOR_TOKEN
+from app.auth import AuthManager
 from app.hub.server import serve_forever
 from app.hub.server import _resolve_connection
 from app.config.settings import Settings
 from app.config.settings import validate
 from app.config.settings import resolved_admin_auth
 from app.core.exceptions import NotAuthorized
-from app.core.auth_routes import LOGIN_GUESSES
+from app.auth import LOGIN_GUESSES
 
 
 PASSWORD = "correct horse battery staple"
@@ -51,7 +40,7 @@ def _reset_auth_settings(monkeypatch):
 
 def enable_admin_auth(monkeypatch, password: str = PASSWORD) -> None:
     monkeypatch.setattr(settings, "ADMIN_AUTH", "enabled")
-    monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", hash_password(password))
+    monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", AuthManager.hash_admin_password(password))
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "test-signing-secret")
 
 
@@ -59,18 +48,18 @@ def enable_admin_auth(monkeypatch, password: str = PASSWORD) -> None:
 
 
 def test_password_hash_round_trips():
-    digest = hash_password(PASSWORD)
+    digest = AuthManager.hash_admin_password(PASSWORD)
     assert digest != PASSWORD
-    assert verify_password(PASSWORD, digest)
+    assert AuthManager.verify_admin_password(PASSWORD, digest)
 
 
 def test_wrong_password_does_not_verify():
-    digest = hash_password(PASSWORD)
-    assert not verify_password("wrong password", digest)
+    digest = AuthManager.hash_admin_password(PASSWORD)
+    assert not AuthManager.verify_admin_password("wrong password", digest)
 
 
 def test_empty_hash_never_verifies():
-    assert not verify_password(PASSWORD, "")
+    assert not AuthManager.verify_admin_password(PASSWORD, "")
 
 
 # --- session tokens ----------------------------------------------------------
@@ -78,44 +67,44 @@ def test_empty_hash_never_verifies():
 
 def test_session_token_round_trips(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
-    token = issue_session_token("admin")
-    principal = verify_session_token(token)
+    token = AuthManager.issue_session_token("admin")
+    principal = AuthManager.verify_session_token(token)
     assert principal is not None
     assert principal.kind == "admin"
 
 
 def test_expired_session_token_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
-    token = issue_session_token("admin", ttl_seconds=-1)
-    assert verify_session_token(token) is None
+    token = AuthManager.issue_session_token("admin", ttl_seconds=-1)
+    assert AuthManager.verify_session_token(token) is None
 
 
 def test_tampered_session_signature_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
-    token = issue_session_token("admin")
+    token = AuthManager.issue_session_token("admin")
     prefix, payload, signature = token.split(".")
     tampered = f"{prefix}.{payload}.{signature[:-1]}{'a' if signature[-1] != 'a' else 'b'}"
-    assert verify_session_token(tampered) is None
+    assert AuthManager.verify_session_token(tampered) is None
 
 
 def test_tampered_session_payload_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
-    token = issue_session_token("admin")
+    token = AuthManager.issue_session_token("admin")
     prefix, payload, signature = token.split(".")
     forged = f"{prefix}.{payload}extra.{signature}"
-    assert verify_session_token(forged) is None
+    assert AuthManager.verify_session_token(forged) is None
 
 
 def test_malformed_session_token_is_rejected():
-    assert verify_session_token("not-a-session-token") is None
-    assert verify_session_token("hgrs1.onlyonepart") is None
+    assert AuthManager.verify_session_token("not-a-session-token") is None
+    assert AuthManager.verify_session_token("hgrs1.onlyonepart") is None
 
 
 def test_session_token_signed_under_a_different_secret_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit-a")
-    token = issue_session_token("admin")
+    token = AuthManager.issue_session_token("admin")
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit-b")
-    assert verify_session_token(token) is None
+    assert AuthManager.verify_session_token(token) is None
 
 
 # --- resolve_operator / resolve_principal ------------------------------------
@@ -123,54 +112,54 @@ def test_session_token_signed_under_a_different_secret_is_rejected(monkeypatch):
 
 def test_resolve_operator_accepts_the_local_default_in_local_env(monkeypatch):
     monkeypatch.setattr(settings, "APP_ENV", "local")
-    assert resolve_operator(LOCAL_OPERATOR_TOKEN) is not None
+    assert AuthManager.resolve_operator(LOCAL_OPERATOR_TOKEN) is not None
 
 
 def test_resolve_operator_rejects_wrong_token(monkeypatch):
     monkeypatch.setattr(settings, "OPERATOR_TOKEN", "the-real-token")
-    assert resolve_operator("some-other-token") is None
+    assert AuthManager.resolve_operator("some-other-token") is None
 
 
 def test_resolve_operator_rejects_no_token(monkeypatch):
     monkeypatch.setattr(settings, "OPERATOR_TOKEN", "the-real-token")
-    assert resolve_operator(None) is None
-    assert resolve_operator("") is None
+    assert AuthManager.resolve_operator(None) is None
+    assert AuthManager.resolve_operator("") is None
 
 
 def test_resolve_operator_accepts_the_configured_token(monkeypatch):
     monkeypatch.setattr(settings, "OPERATOR_TOKEN", "the-real-token")
-    principal = resolve_operator("the-real-token")
+    principal = AuthManager.resolve_operator("the-real-token")
     assert principal is not None
     assert principal.kind == "operator"
 
 
 def test_resolve_principal_with_admin_auth_disabled_accepts_no_token():
-    principal = resolve_principal(None)
+    principal = AuthManager.resolve_principal(None)
     assert principal.kind == "admin"
 
 
 def test_resolve_principal_with_admin_auth_enabled_rejects_no_token(monkeypatch):
     enable_admin_auth(monkeypatch)
     with pytest.raises(NotAuthorized):
-        resolve_principal(None)
+        AuthManager.resolve_principal(None)
 
 
 def test_resolve_principal_with_admin_auth_enabled_rejects_wrong_token(monkeypatch):
     enable_admin_auth(monkeypatch)
     with pytest.raises(NotAuthorized):
-        resolve_principal("garbage")
+        AuthManager.resolve_principal("garbage")
 
 
 def test_resolve_principal_accepts_a_session_token_regardless_of_admin_auth_mode(monkeypatch):
     enable_admin_auth(monkeypatch)
-    token = issue_session_token("admin")
-    principal = resolve_principal(token)
+    token = AuthManager.issue_session_token("admin")
+    principal = AuthManager.resolve_principal(token)
     assert principal.kind == "admin"
 
 
 def test_resolve_principal_prefers_operator_token_over_admin_bypass(monkeypatch):
     monkeypatch.setattr(settings, "OPERATOR_TOKEN", "op-token")
-    principal = resolve_principal("op-token")
+    principal = AuthManager.resolve_principal("op-token")
     assert principal.kind == "operator"
 
 
@@ -180,7 +169,7 @@ def test_resolve_principal_prefers_operator_token_over_admin_bypass(monkeypatch)
 def test_admin_auth_defaults_disabled_in_local():
     s = Settings(APP_ENV="local")
     assert resolved_admin_auth(s) == "disabled"
-    assert not admin_auth_enabled() or settings.APP_ENV != "local"
+    assert not AuthManager.admin_auth_enabled() or settings.APP_ENV != "local"
 
 
 def test_admin_auth_defaults_enabled_outside_local():
@@ -274,7 +263,8 @@ def test_admin_login_succeeds_with_the_right_password(monkeypatch):
         response = client.post("/v1/auth/login", json={"password": PASSWORD})
     assert response.status_code == 201 or response.status_code == 200
     body = response.json()
-    assert "token" in body and body["expires_in"] > 0
+    assert "access_token" in body and body["expires_in"] > 0
+    assert "refresh_token" in body
 
 
 def test_admin_login_fails_with_the_wrong_password(monkeypatch):
@@ -330,7 +320,7 @@ def test_session_token_from_login_is_accepted_on_a_protected_route(monkeypatch):
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:
         login = client.post("/v1/auth/login", json={"password": PASSWORD})
-        token = login.json()["token"]
+        token = login.json()["access_token"]
         response = client.get("/v1/clusters", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
 
@@ -338,7 +328,7 @@ def test_session_token_from_login_is_accepted_on_a_protected_route(monkeypatch):
 def test_expired_session_token_is_401_on_a_protected_route(monkeypatch):
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:
-        token = issue_session_token("admin", ttl_seconds=-1)
+        token = AuthManager.issue_session_token("admin", ttl_seconds=-1)
         response = client.get("/v1/clusters", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401
 
@@ -373,31 +363,31 @@ def test_cors_rejects_an_unconfigured_origin(monkeypatch):
 
 
 def test_mint_enrolment_token_is_prefixed_and_hashes_to_its_digest():
-    token, digest = mint_enrolment_token()
+    token, digest = AuthManager.mint_enrolment_token()
     assert token.startswith("hgro1.")
-    assert digest == hash_enrolment_token(token)
+    assert digest == AuthManager.hash_enrolment_token(token)
     assert len(digest) == 64
 
 
 def test_minted_enrolment_tokens_are_unique():
-    a, ha = mint_enrolment_token()
-    b, hb = mint_enrolment_token()
+    a, ha = AuthManager.mint_enrolment_token()
+    b, hb = AuthManager.mint_enrolment_token()
     assert a != b and ha != hb
 
 
 def test_looks_like_enrolment_only_accepts_the_prefix():
-    token, _ = mint_enrolment_token()
-    assert looks_like_enrolment(token)
-    assert not looks_like_enrolment(None)
-    assert not looks_like_enrolment("")
-    assert not looks_like_enrolment("some-fleet-token")
+    token, _ = AuthManager.mint_enrolment_token()
+    assert AuthManager.looks_like_enrolment(token)
+    assert not AuthManager.looks_like_enrolment(None)
+    assert not AuthManager.looks_like_enrolment("")
+    assert not AuthManager.looks_like_enrolment("some-fleet-token")
 
 
 def test_bound_operator_principal_carries_the_cluster_in_scope():
-    bound = operator_principal(cluster_uid="clu_123", cluster_name="ap")
+    bound = AuthManager.operator_principal(cluster_uid="clu_123", cluster_name="ap")
     assert bound.scope == "clu_123"
     assert bound.name == "ap"
-    assert operator_principal().scope is None
+    assert AuthManager.operator_principal().scope is None
 
 
 @pytest.mark.asyncio

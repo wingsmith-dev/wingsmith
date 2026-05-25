@@ -15,8 +15,8 @@ from litestar.testing import TestClient
 
 from app.config import settings
 from app.api.app import create_app
-from app.core.auth import hash_password
-from app.core.auth import issue_session_token
+from app.auth import AuthManager
+from app.auth import AuthManager
 from app.core.system_routes import effective_config
 
 
@@ -37,7 +37,7 @@ SECRETS = {
 def _configured(monkeypatch):
     for name, value in SECRETS.items():
         monkeypatch.setattr(settings, name, value)
-    monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", hash_password("sentinel-password-gggg"))
+    monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", AuthManager.hash_admin_password("sentinel-password-gggg"))
     monkeypatch.setattr(settings, "ADMIN_AUTH", "disabled")
     monkeypatch.setattr(settings, "APP_ENV", "staging")
     yield
@@ -212,7 +212,7 @@ def test_config_requires_a_credential_when_admin_auth_is_enabled(monkeypatch):
 def test_config_accepts_an_admin_session_token(monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_AUTH", "enabled")
     with TestClient(app=create_app()) as client:
-        token = issue_session_token("admin")
+        token = AuthManager.issue_session_token("admin")
         response = client.get("/v1/system/config", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
 

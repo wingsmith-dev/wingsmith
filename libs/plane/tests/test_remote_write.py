@@ -16,9 +16,9 @@ from sqlalchemy import text
 
 from app.config import settings
 from app.reactor import remote_write
-from app.core.auth import REMOTE_WRITE_BCRYPT_ROUNDS
-from app.core.auth import mint_enrolment_token
-from app.core.auth import hash_remote_write_token
+from app.auth import REMOTE_WRITE_BCRYPT_ROUNDS
+from app.auth import AuthManager
+from app.auth import AuthManager
 
 from tests.conftest import seed_cluster
 
@@ -107,15 +107,15 @@ async def test_reconcile_is_a_noop_with_no_service_account(monkeypatch):
 
 
 def test_bcrypt_hash_verifies_against_the_token_that_minted_it():
-    token, _ = mint_enrolment_token()
-    digest = hash_remote_write_token(token)
+    token, _ = AuthManager.mint_enrolment_token()
+    digest = AuthManager.hash_remote_write_token(token)
     assert bcrypt.checkpw(token.encode(), digest.encode())
     assert not bcrypt.checkpw(b"another-token", digest.encode())
 
 
 def test_bcrypt_cost_is_the_one_the_decision_records():
     """Traefik verifies this on every remote-write request; the cost is a choice."""
-    digest = hash_remote_write_token("hgro1.whatever")
+    digest = AuthManager.hash_remote_write_token("hgro1.whatever")
     assert digest.startswith(f"$2b${REMOTE_WRITE_BCRYPT_ROUNDS:02d}$")
 
 
