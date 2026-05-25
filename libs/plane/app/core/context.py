@@ -3,9 +3,8 @@ from collections.abc import AsyncGenerator
 from litestar import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import Principal
-from app.core.auth import bearer_token
-from app.core.auth import resolve_principal
+from app.auth import Principal
+from app.auth import AuthManager
 from app.db.session import provide_session
 
 
@@ -31,6 +30,6 @@ class RequestContext[T]:
 
 async def request_context(request: Request) -> AsyncGenerator[RequestContext, None]:
     """Litestar dependency providing the caller identity and a db session."""
-    principal = resolve_principal(bearer_token(request.headers.get("Authorization")))
+    principal = AuthManager.resolve_principal(AuthManager.bearer_token(request.headers.get("Authorization")))
     async for session in provide_session():
         yield RequestContext(principal=principal, db=session)

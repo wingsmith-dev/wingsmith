@@ -9,7 +9,7 @@ from app.db import engine
 from app.api import routes
 from app.utils import logs
 from app.config import settings
-from app.core.auth import admin_auth_enabled
+from app.auth import AuthManager
 from app.core.params import reject_unknown_params
 from app.core.context import request_context
 from app.core.handlers import EXCEPTION_HANDLERS
@@ -21,7 +21,7 @@ logger = getLogger(__name__)
 
 async def on_startup() -> None:
     logger.info("api.startup")
-    if not admin_auth_enabled():
+    if not AuthManager.admin_auth_enabled():
         logger.warning(
             "api.admin_auth_disabled *** ADMIN AUTHENTICATION IS DISABLED *** "
             "every request to this API resolves to a full-scope admin principal "
@@ -58,7 +58,7 @@ def create_app() -> Litestar:
     """Builds the HTTP application.
 
     Every handler gets a `context` dependency carrying the caller identity,
-    resolved through the single seam in `app.core.auth.resolve_principal`.
+    resolved through the single seam in `app.auth.manager.AuthManager.resolve_principal`.
     """
     validate(settings)
     logs.configure("api")

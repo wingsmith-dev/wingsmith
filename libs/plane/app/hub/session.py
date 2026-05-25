@@ -30,7 +30,7 @@ from app.hub.sink import MemorySink
 from app.hub.sink import DesiredSource
 from app.hub.sink import OperationSource
 from app.hub.sink import EmptyDesiredSource
-from app.core.auth import Principal
+from app.auth import Principal
 from app.hub.state import SessionState
 from app.hub.state import SessionRegistry
 from app.hub.state import new_id

@@ -4,7 +4,7 @@ from litestar import Litestar
 from app.api.spa import ConsoleRoutes
 from app.api.spa import has_console
 from app.core.routes import HealthRoutes
-from app.core.auth_routes import AuthRoutes
+from app.auth import AuthRoutes
 from app.core.system_routes import SystemRoutes
 from app.modules.nodes.routes import NodeRoutes
 from app.modules.pools.routes import PoolRoutes

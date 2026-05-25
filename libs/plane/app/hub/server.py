@@ -13,12 +13,8 @@ from websockets.asyncio.server import serve
 from app.db import engine
 from app.utils import logs
 from app.config import settings
-from app.core.auth import Principal
-from app.core.auth import bearer_token
-from app.core.auth import resolve_operator
-from app.core.auth import operator_principal
-from app.core.auth import hash_enrolment_token
-from app.core.auth import looks_like_enrolment
+from app.auth import Principal
+from app.auth import AuthManager
 from app.db.engine import session_factory
 from app.hub.state import SessionRegistry
 from app.hub.state import reaper_loop
@@ -80,8 +76,8 @@ def _process_request(connection: ServerConnection, request: Request) -> Response
         return connection.respond(http.HTTPStatus.OK, "ok\n")
     if request.path != settings.HUB_PATH:
         return connection.respond(http.HTTPStatus.NOT_FOUND, "not found\n")
-    token = bearer_token(request.headers.get("Authorization"))
-    if resolve_operator(token) is None and not looks_like_enrolment(token):
+    token = AuthManager.bearer_token(request.headers.get("Authorization"))
+    if AuthManager.resolve_operator(token) is None and not AuthManager.looks_like_enrolment(token):
         return connection.respond(http.HTTPStatus.UNAUTHORIZED, "unauthorized\n")
     return None
 
@@ -94,21 +90,21 @@ async def _resolve_connection(token: str | None) -> Principal | None:
     database by its hash and, on a hit, binds the session to that one cluster.
     An enrolment-shaped token that resolves to nothing gets no session.
     """
-    principal = resolve_operator(token)
+    principal = AuthManager.resolve_operator(token)
     if principal is not None:
         return principal
-    if not looks_like_enrolment(token):
+    if not AuthManager.looks_like_enrolment(token):
         return None
     assert token is not None
     async with session_factory()() as db:
-        cluster = await ClusterRepository(db).by_token_hash(hash_enrolment_token(token))
+        cluster = await ClusterRepository(db).by_token_hash(AuthManager.hash_enrolment_token(token))
     if cluster is None:
         return None
-    return operator_principal(cluster_uid=cluster.uid, cluster_name=cluster.name)
+    return AuthManager.operator_principal(cluster_uid=cluster.uid, cluster_name=cluster.name)
 
 
 async def _handler(connection: ServerConnection) -> None:
-    principal = await _resolve_connection(bearer_token(connection.request.headers.get("Authorization")))
+    principal = await _resolve_connection(AuthManager.bearer_token(connection.request.headers.get("Authorization")))
     if principal is None:
         await connection.close(code=4401, reason="unauthorized")
         return

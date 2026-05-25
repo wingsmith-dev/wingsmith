@@ -12,10 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
-from app.core.auth import hash_enrolment_token
-from app.core.auth import looks_like_enrolment
-from app.core.auth import mint_enrolment_token
-from app.core.auth import hash_remote_write_token
+from app.auth import AuthManager
 from app.db.models import Cluster
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState
@@ -566,9 +563,9 @@ class ClusterService:
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
 
-        token, token_hash = mint_enrolment_token()
+        token, token_hash = AuthManager.mint_enrolment_token()
         cluster.token_hash = token_hash
-        cluster.remote_write_hash = hash_remote_write_token(token)
+        cluster.remote_write_hash = AuthManager.hash_remote_write_token(token)
         await self.db.commit()
         await self.db.refresh(cluster)
         return self._render_setup(cluster, host, enrolment_token=token)
@@ -616,10 +613,10 @@ class ClusterService:
         lookup: a cluster holding a stale token must not be able to refuse a
         cluster holding a good one.
         """
-        if not looks_like_enrolment(token):
+        if not AuthManager.looks_like_enrolment(token):
             self._spend_tunnel_guess("not a cluster enrolment token")
 
-        digest = hash_enrolment_token(token)
+        digest = AuthManager.hash_enrolment_token(token)
         cluster = await self.repo.by_token_hash(digest)
         if cluster is None or not hmac.compare_digest(cluster.token_hash or "", digest):
             logger.warning("cluster.tunnel_auth.refused reason=unknown_token")
