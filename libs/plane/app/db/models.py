@@ -1705,6 +1705,35 @@ class Credential(BaseMixin):
 
 
 # =========================
+# Auth
+# =========================
+
+
+class AuthRefreshToken(BaseMixin):
+    """A stored refresh token that survives server restarts and can be revoked.
+
+    Only the sha256 of the plaintext is stored; the plaintext is returned to the
+    client once at login/rotate and never recoverable. `name` is the principal the
+    session runs as (currently always `admin`).
+
+    `replaced_by` makes rotation an auditable chain: a token that has been rotated
+    points at the hash of its successor, which itself may point further. A token
+    with only `revoked_at` was explicitly logged out; one with both was rotated and
+    then the successor's chain was revoked.
+    """
+
+    __tablename__ = "auth_refresh_token"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    """sha256 of the plaintext refresh token."""
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    replaced_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+
+# =========================
 # Hub
 # =========================
 

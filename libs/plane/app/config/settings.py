@@ -149,7 +149,7 @@ class Settings:
 
     No default outside `local`: an unset token in any other `APP_ENV` refuses to
     boot rather than fall back to something guessable. In `local`, an unset
-    token resolves to `app.core.auth.LOCAL_OPERATOR_TOKEN` so a fresh checkout
+    token resolves to `app.auth.const.LOCAL_OPERATOR_TOKEN` so a fresh checkout
     still runs without any configuration.
     """
 
@@ -188,13 +188,13 @@ class Settings:
     ADMIN_AUTH: str = ""
     """`enabled` or `disabled`. Empty means "not explicitly set", which resolves
     to `disabled` when `APP_ENV == "local"` and `enabled` everywhere else — see
-    `app.core.auth.admin_auth_enabled`. This is the one switch that turns admin
+    `app.auth.manager.AuthManager.admin_auth_enabled`. This is the one switch that turns admin
     authentication on the HTTP API off entirely; it never affects the hub, whose
     operator-token check cannot be disabled.
     """
 
     ADMIN_PASSWORD_HASH: str = ""
-    """Bcrypt hash of the admin password, e.g. `python -m app.core.auth hash`."""
+    """Bcrypt hash of the admin password, e.g. `python -m app.auth.manager hash`."""
 
     SESSION_SIGNING_SECRET: str = ""
     """HMAC key signing admin session tokens. Required outside `local` whenever
@@ -203,6 +203,14 @@ class Settings:
 
     SESSION_TTL_SECONDS: int = 900
     """Lifetime of a session token minted by `POST /v1/auth/login`."""
+
+    REFRESH_TTL_SECONDS: int = 2592000
+    """Lifetime of a refresh token minted alongside a session token.
+
+    Thirty days: long enough that an operator signs in once a month, short
+    enough that a compromised refresh token does not outlive a quarterly
+    password rotation. Stored server-side, so revocation works regardless.
+    """
 
     PUBLIC_HOST: str = ""
     """Public hostname that fronts the hub ingress, e.g. `hangar.example.com`.
