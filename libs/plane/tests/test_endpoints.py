@@ -263,10 +263,14 @@ class FakeRepo:
         return self.rows
 
 
+from app.core.exceptions import Invalid
+from app.modules.endpoints.services import check_surface
+
+
 class FakeEndpoint:
     id = 1
 
-    def __init__(self, uid="end_1", name="chat", enabled=True, model_slug=None) -> None:
+    def __init__(self, uid="end_1", name="chat", enabled=True, model_slug=None, surface=None) -> None:
         self.uid = uid
         self.name = name
         self.model_slug = model_slug
@@ -274,6 +278,7 @@ class FakeEndpoint:
         self.visibility = "public"
         self.routing_strategy = "weighted"
         self.failover_order = []
+        self.surface = surface or {}
         self.created_at = EPOCH
         self.updated_at = None
 
@@ -599,3 +604,105 @@ async def test_the_hatch_is_read_with_or_without_the_leading_dashes(key):
     recipe = FakeRecipe(engine_args={key: "moonshotai/kimi-k3"})
     table = await resolution([tunnelled_row(recipe=recipe)]).resolved()
     assert table.endpoints[0].upstreams[0].served_model_name == "moonshotai/kimi-k3"
+
+
+KIMI_POLICY = {
+    "policy": {
+        "parameters": {
+            "temperature": {"enum": [1]},
+            "top_p": {"enum": [0.95]},
+            "presence_penalty": {"enum": [0]},
+            "frequency_penalty": {"enum": [0]},
+            "logprobs": {"enum": [False]},
+        },
+        "deny": ["tool_choice.named"],
+    }
+}
+"""What Moonshot answered 400 to on 2026-09-01, written as a policy."""
+
+
+@pytest.mark.asyncio
+async def test_an_endpoint_that_sold_no_terms_resolves_with_no_policy():
+    """The default, and the reason this is per endpoint rather than per gateway.
+
+    Conforming on one model must never narrow another, so absence has to reach
+    the gateway as null and mean "forward what you were given".
+    """
+    table = await resolution([tunnelled_row(endpoint=FakeEndpoint())]).resolved()
+    assert table.endpoints[0].policy is None
+
+
+@pytest.mark.asyncio
+async def test_a_sold_policy_reaches_the_resolved_table():
+    endpoint = FakeEndpoint(name="moonshotai/kimi-k3", surface=KIMI_POLICY)
+    table = await resolution([tunnelled_row(endpoint=endpoint)]).resolved()
+    policy = table.endpoints[0].policy
+    assert policy is not None
+    assert policy.version == 1
+    assert policy.parameters["temperature"].enum == [1]
+    assert policy.parameters["logprobs"].enum == [False]
+    assert policy.deny == ["tool_choice.named"]
+
+
+def test_a_rule_that_constrains_nothing_is_refused():
+    """An empty rule would read as a pin and enforce nothing, which is the one
+    failure mode a conformance policy must not have: silently not conforming."""
+    with pytest.raises(Invalid):
+        check_surface({"policy": {"parameters": {"temperature": {}}}})
+
+
+def test_an_inverted_range_is_refused():
+    with pytest.raises(Invalid):
+        check_surface({"policy": {"parameters": {"temperature": {"min": 5, "max": 1}}}})
+
+
+def test_an_unknown_field_is_refused_rather_than_ignored():
+    """A typo in a policy is a conformance gap that looks like a working config,
+    so it is refused on write rather than dropped on read."""
+    with pytest.raises(Invalid):
+        check_surface({"policy": {"parmeters": {"temperature": {"enum": [1]}}}})
+
+
+def test_a_surface_without_a_policy_is_valid():
+    check_surface({})
+    check_surface({"output_length_params": ["max_tokens"]})
+
+
+@pytest.mark.parametrize(
+    "surface",
+    [
+        {"auth_mode": "nonsense"},
+        {"protocols": ["anthropic.messages"]},
+        {"streaming_transport": "websocket"},
+        {"error_shape": "wrapped"},
+        {"cors_enabled": "yes"},
+        {"max_request_bytes": -1},
+        {"request_timeout_seconds": 0},
+        {"output_length_params": ["max_toknes"]},
+    ],
+)
+def test_a_surface_value_the_gateway_could_not_read_is_refused(surface):
+    """The surface is patchable and half of it the gateway acts on.
+
+    A bad `streaming_transport` is also a term an operator reads off a page and
+    repeats to a customer, so a typo here has to fail on write — nothing
+    downstream would catch it.
+    """
+    with pytest.raises(Invalid):
+        check_surface(surface)
+
+
+def test_a_whole_valid_surface_is_accepted():
+    check_surface(
+        {
+            "protocols": ["openai.chat", "openai.responses"],
+            "auth_mode": "api_key",
+            "error_shape": "passthrough",
+            "streaming_transport": "sse",
+            "cors_enabled": True,
+            "max_request_bytes": 33554432,
+            "request_timeout_seconds": 600,
+            "output_length_params": ["max_tokens", "max_completion_tokens"],
+            "policy": KIMI_POLICY["policy"],
+        }
+    )

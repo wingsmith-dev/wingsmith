@@ -169,6 +169,16 @@ func withRouting(resolver Resolver) http.Handler {
 		}
 		markEndpoint(r, route.ID, route.Name)
 
+		// The endpoint's own terms, before an upstream is chosen. A policy is a
+		// property of the name that was sold, so every upstream behind it must
+		// answer a request the same way — checking after Pick would let the same
+		// call be a 400 or a 200 depending on which cluster took it.
+		if code, message, ok := checkPolicy(route.Policy, body); !ok {
+			MarkOutcome(r, metrics.OutcomeClientError)
+			writeError(w, http.StatusBadRequest, code, message)
+			return
+		}
+
 		upstream, err := route.Pick()
 		if err != nil {
 			MarkOutcome(r, metrics.OutcomeNoUpstream)

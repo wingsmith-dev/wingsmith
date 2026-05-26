@@ -5,6 +5,8 @@ import datetime as dt
 from uuid import UUID
 
 from msgspec import UNSET
+from msgspec import convert
+from msgspec import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +32,7 @@ from .schemas import EndpointTargetRequest
 from .schemas import EndpointUpdateRequest
 from .schemas import ResolvedEndpointSchema
 from .schemas import ResolvedUpstreamSchema
+from .schemas import ParameterPolicySchema
 from .repository import EndpointRepository
 
 
@@ -92,6 +95,88 @@ def check_shape(visibility: str, routing_strategy: str) -> None:
         raise Invalid(f"unknown visibility {visibility!r}", {"allowed": sorted(VISIBILITIES)})
     if routing_strategy not in STRATEGIES:
         raise Invalid(f"unknown routing strategy {routing_strategy!r}", {"allowed": sorted(STRATEGIES)})
+
+
+def parameter_policy(surface: dict | None) -> ParameterPolicySchema | None:
+    """The endpoint's request terms, or None when it has not sold any.
+
+    Read on every table build and validated on every write, both through this one
+    function, so a policy that would not survive the gateway cannot be stored.
+    """
+    raw = (surface or {}).get("policy")
+    if raw is None:
+        return None
+    try:
+        return convert(raw, ParameterPolicySchema)
+    except ValidationError as exc:
+        raise Invalid(f"surface.policy is not a parameter policy: {exc}", {"field": "surface.policy"}) from exc
+
+
+SURFACE_CHOICES = {
+    "protocols": frozenset({"openai.chat", "openai.completions", "openai.responses", "openai.embeddings"}),
+    "auth_mode": frozenset({"none", "api_key", "mtls"}),
+    "error_shape": frozenset({"passthrough"}),
+    "streaming_transport": frozenset({"sse", "none"}),
+    "output_length_params": frozenset({"max_tokens", "max_completion_tokens", "max_output_tokens"}),
+}
+"""The values each surface field may take, matching the console's own constants.
+
+Checked here because the surface is patchable and half of it the gateway acts on.
+An unchecked `streaming_transport` is a term an operator reads off a page and
+repeats to a customer, and nothing downstream would have caught it.
+"""
+
+SURFACE_LISTS = frozenset({"protocols", "output_length_params"})
+SURFACE_SCALARS = {"auth_mode", "error_shape", "streaming_transport"}
+
+
+def check_surface(surface: dict) -> None:
+    """Refuse a surface that is not one the gateway and console can read."""
+    if not isinstance(surface, dict):
+        raise Invalid("surface must be an object", {"field": "surface"})
+
+    for field in SURFACE_LISTS:
+        values = surface.get(field)
+        if values is None:
+            continue
+        if not isinstance(values, list) or any(v not in SURFACE_CHOICES[field] for v in values):
+            raise Invalid(
+                f"surface.{field} has a value that is not allowed",
+                {"field": f"surface.{field}", "allowed": sorted(SURFACE_CHOICES[field])},
+            )
+
+    for field in SURFACE_SCALARS:
+        value = surface.get(field)
+        if value is not None and value not in SURFACE_CHOICES[field]:
+            raise Invalid(
+                f"surface.{field} {value!r} is not allowed",
+                {"field": f"surface.{field}", "allowed": sorted(SURFACE_CHOICES[field])},
+            )
+
+    if surface.get("cors_enabled") is not None and not isinstance(surface["cors_enabled"], bool):
+        raise Invalid("surface.cors_enabled must be true or false", {"field": "surface.cors_enabled"})
+
+    for field in ("max_request_bytes", "request_timeout_seconds"):
+        value = surface.get(field)
+        if value is None:
+            continue
+        if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+            raise Invalid(f"surface.{field} must be a positive whole number", {"field": f"surface.{field}"})
+
+    policy = parameter_policy(surface)
+    if policy is None:
+        return
+    for name, rule in policy.parameters.items():
+        if rule.enum is None and rule.min is None and rule.max is None:
+            raise Invalid(
+                f"surface.policy.parameters.{name} constrains nothing — give enum, min or max",
+                {"field": f"surface.policy.parameters.{name}"},
+            )
+        if rule.min is not None and rule.max is not None and rule.min > rule.max:
+            raise Invalid(
+                f"surface.policy.parameters.{name} has min above max",
+                {"field": f"surface.policy.parameters.{name}"},
+            )
 
 
 def _revision(endpoint: Endpoint) -> str:
@@ -293,6 +378,8 @@ class EndpointService:
             raise Conflict("endpoint changed since it was read", {"revision": _revision(endpoint)})
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
+        if "surface" in fields:
+            check_surface(fields["surface"])
         check_shape(
             fields.get("visibility", endpoint.visibility),
             fields.get("routing_strategy", endpoint.routing_strategy),
@@ -447,6 +534,7 @@ class EndpointService:
                     upstreams=upstreams,
                     failover_order=[uids[d] for d in endpoint.failover_order if d in uids],
                     limits=declared_limits(quota) if quota is not None else None,
+                    policy=parameter_policy(endpoint.surface),
                     revision=_revision_of(own),
                 )
             )

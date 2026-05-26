@@ -99,6 +99,48 @@ class EndpointUpdateRequest(Struct):
     targets: list[EndpointTargetRequest] | UnsetType = UNSET
     failover_order: list[str] | UnsetType = UNSET
     labels: dict | UnsetType = UNSET
+    surface: dict | UnsetType = UNSET
+
+
+class ParameterRuleSchema(Struct):
+    """What one request parameter may be set to.
+
+    `enum` pins a parameter to an exact set of values; `min`/`max` bound a range.
+    Both may be given, and an absent field constrains nothing.
+
+    A rule is data and never an expression. This is read on every request, and it
+    is also the thing somebody reads across a negotiating table — neither survives
+    a small language.
+    """
+
+    enum: list | None = None
+    min: float | None = None
+    max: float | None = None
+
+
+class ParameterPolicySchema(Struct):
+    """The request terms this endpoint enforces, on top of whatever the engine does.
+
+    It exists because "consistent with the original model provider" is a term of
+    sale, and a provider is sometimes stricter than the engine we run: Moonshot
+    answers 400 to any `temperature` but 1, where an ordinary OpenAI-compatible
+    server accepts the whole range. Conforming means refusing a request the engine
+    would happily serve.
+
+    Absent is the default and means no opinion — every endpoint that has not sold
+    a consistency term behaves exactly as it did before this existed. That default
+    is the whole design: the policy is per endpoint precisely so that conforming
+    on one model never narrows another.
+
+    `version` is what a reader that does not understand a future rule reports
+    rather than guesses. The gateway enforces what it knows and counts what it
+    does not, because a policy it cannot fully read is a conformance gap somebody
+    must see — never a reason to drop traffic.
+    """
+
+    version: int = 1
+    parameters: dict[str, ParameterRuleSchema] = {}
+    deny: list[str] = []
 
 
 class ResolvedUpstreamSchema(Struct):
@@ -151,6 +193,10 @@ class ResolvedEndpointSchema(Struct):
     zeros. The commitment rides here because it is small, changes on the order of
     weeks and is needed on every request, which is the shape of everything else
     already on this object.
+
+    `policy` rides here for the same reasons and is null far more often — it
+    is set only on an endpoint that has sold a consistency term. Null means the
+    gateway forwards what it is given, which is what every other endpoint wants.
     """
 
     id: str
@@ -160,6 +206,7 @@ class ResolvedEndpointSchema(Struct):
     upstreams: list[ResolvedUpstreamSchema]
     failover_order: list[str]
     limits: ResolvedLimitsSchema | None
+    policy: ParameterPolicySchema | None
     revision: str
 
 

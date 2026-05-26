@@ -30,15 +30,38 @@ type Upstream struct {
 	Role            string `json:"role"`
 }
 
+// ParameterRule is what one request parameter may be set to. An absent field
+// constrains nothing, so the zero value permits everything.
+type ParameterRule struct {
+	Enum []any    `json:"enum"`
+	Min  *float64 `json:"min"`
+	Max  *float64 `json:"max"`
+}
+
+// ParameterPolicy is the request terms an endpoint sells, as the plane resolved
+// them. Nil means no opinion, which is every endpoint that has not sold a
+// consistency term.
+//
+// Version is the plane's, not ours. A policy naming a version above the one this
+// build understands is still enforced as far as it is understood — dropping
+// traffic because the plane learned a new rule first would trade a conformance
+// gap for an outage.
+type ParameterPolicy struct {
+	Version    int                      `json:"version"`
+	Parameters map[string]ParameterRule `json:"parameters"`
+	Deny       []string                 `json:"deny"`
+}
+
 // Endpoint is one public name and every address currently behind it.
 type Endpoint struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
-	Visibility      string     `json:"visibility"`
-	RoutingStrategy string     `json:"routing_strategy"`
-	Upstreams       []Upstream `json:"upstreams"`
-	FailoverOrder   []string   `json:"failover_order"`
-	Revision        string     `json:"revision"`
+	ID              string           `json:"id"`
+	Name            string           `json:"name"`
+	Visibility      string           `json:"visibility"`
+	RoutingStrategy string           `json:"routing_strategy"`
+	Upstreams       []Upstream       `json:"upstreams"`
+	FailoverOrder   []string         `json:"failover_order"`
+	Policy          *ParameterPolicy `json:"policy"`
+	Revision        string           `json:"revision"`
 }
 
 // Table is the whole routing table at one revision.

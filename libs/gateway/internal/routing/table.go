@@ -25,6 +25,11 @@ import (
 	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
 )
 
+// supportedPolicyVersion is the highest endpoint policy version this build
+// reads. It is duplicated from serving deliberately: routing reports what it
+// cannot enforce, serving enforces it, and neither should import the other.
+const supportedPolicyVersion = 1
+
 // ErrUnknownEndpoint is returned when no endpoint answers to a name.
 var ErrUnknownEndpoint = errors.New("unknown endpoint")
 
@@ -87,6 +92,11 @@ type Route struct {
 	Name      string
 	Strategy  string
 	Upstreams []Upstream
+	// Policy is the request terms this endpoint sells, or nil for the ordinary
+	// endpoint that sells none. It rides the table rather than being fetched per
+	// request for the same reason everything else here does: the table refreshes
+	// on a timer and is never joined on the request path.
+	Policy *plane.ParameterPolicy
 
 	totalWeight int
 	cursor      *picker
@@ -352,7 +362,17 @@ func (r *Router) Load(ctx context.Context) error {
 			ID:        endpoint.ID,
 			Name:      endpoint.Name,
 			Strategy:  endpoint.RoutingStrategy,
+			Policy:    endpoint.Policy,
 			Upstreams: make([]Upstream, 0, len(endpoint.Upstreams)),
+		}
+
+		// Reported here rather than per request. A policy written against a
+		// newer plane is enforced as far as this build reads it, and the part it
+		// cannot read is a conformance gap somebody has to see — once a refresh,
+		// not once a completion.
+		if p := endpoint.Policy; p != nil && p.Version > supportedPolicyVersion {
+			slog.Warn("gateway: endpoint policy is newer than this build",
+				"endpoint", endpoint.Name, "policy_version", p.Version, "supported", supportedPolicyVersion)
 		}
 
 		for _, upstream := range order(endpoint) {
