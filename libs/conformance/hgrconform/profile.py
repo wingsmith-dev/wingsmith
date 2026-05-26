@@ -100,6 +100,22 @@ class Profile:
     The claims matter as much as the endpoint. `context_window` and `modalities` are
     what a probe checks the endpoint against when there is no reference endpoint to
     diff it with; with a reference, they are only a cross-check.
+
+    `extra_body` is merged into every request this endpoint is sent, under whatever
+    the probe set itself. It exists for the fields that select *which server* answers
+    rather than what is asked of it, and a broker is the case: OpenRouter serves one
+    model id from many upstreams and picks per request, so an unpinned reference is
+    not the model's original provider — it is whichever re-host was cheapest that
+    second. That is vendor knowledge of the purest kind, which is why it is a profile
+    field and not something a probe could ever be allowed to know.
+
+    `routes` is the same idea for the URL. A probe names a surface by its canonical
+    path — `/v1/messages` is the Anthropic surface, everywhere, by definition — and
+    the profile says where this vendor happens to mount it. Moonshot serves that one
+    from `/anthropic/v1/messages` and answers 404 at the canonical path; without the
+    rewrite the run records "this endpoint has no Anthropic surface", which is both
+    false and exactly the kind of finding that survives review because it looks
+    like data.
     """
 
     name: str
@@ -111,6 +127,8 @@ class Profile:
     protocols: tuple[str, ...] = ("chat_completions",)
     leak_needles: tuple[str, ...] = ()
     timeout: float = 120.0
+    extra_body: dict[str, Any] = field(default_factory=dict)
+    routes: dict[str, str] = field(default_factory=dict)
     thinking: Thinking = field(default_factory=Thinking)
     paths: Paths = field(default_factory=Paths)
     source: Path | None = None
@@ -146,6 +164,8 @@ def load_profile(path: Path) -> Profile:
         protocols=tuple(raw.get("protocols", ["chat_completions"])),
         leak_needles=tuple(raw.get("leak_needles", [])),
         timeout=float(raw.get("timeout", 120.0)),
+        extra_body=raw.get("extra_body", {}),
+        routes=raw.get("routes", {}),
         thinking=Thinking(
             syntax=syntax,
             default_on=thinking_raw.get("default_on"),

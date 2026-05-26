@@ -76,7 +76,7 @@ def usage(session: Session) -> dict[str, Any]:
 
     response = session.post(
         "/v1/chat/completions",
-        session.body(max_tokens=16, temperature=0.0, stream=False),
+        session.body(max_tokens=16, stream=False),
     )
     reported = response.at("usage")
     fields = sorted(k for k in reported if not k.startswith("__")) if isinstance(reported, dict) else []
@@ -123,7 +123,7 @@ def prompt_accounting(session: Session) -> dict[str, Any]:
     for name, messages in CASES.items():
         response = session.post(
             "/v1/chat/completions",
-            session.body(messages=messages, max_tokens=1, temperature=0.0, stream=False),
+            session.body(messages=messages, max_tokens=1, stream=False),
         )
         statuses[name] = response.status
         prompt = response.at("usage.prompt_tokens")

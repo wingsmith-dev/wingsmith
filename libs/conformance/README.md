@@ -29,7 +29,7 @@ Kimi's suite asserts that `temperature=1.1` must be rejected, because Kimi pins 
 parameter. Point it at another model and every assertion is wrong. Point *this* at
 another model and you write a profile.
 
-Three rules follow from it:
+Four rules follow from it:
 
 - **Vendor knowledge lives in the profile, never in a probe.** A probe containing
   `if vendor ==` is a bug. Thinking syntax, the cached-token field path, the claimed
@@ -38,6 +38,13 @@ Three rules follow from it:
   and for the same reason.
 - **Every exchange is stored verbatim.** A finding that cannot be traced to bytes is
   one nobody can defend in front of the person whose acceptance document it is.
+- **A probe sends no sampling parameter unless the probe is about sampling.** Found
+  2026-09-01 against Moonshot, which pins K3: `temperature` may only be `1`, `top_p`
+  only `0.95`, both penalties only `0`, `logprobs` only `false`. `tokens` and `cache`
+  were each passing `temperature=0` for determinism they never needed — prompt token
+  counts and cache residency are both functions of the prompt alone — so on a pinned
+  endpoint all three probes returned 400 and observed nothing. A default chosen for a
+  probe's own convenience is still a vendor assumption, and it fails the same way.
 - **Raw HTTP, no SDK.** Half of what is asked here is wire shape. `json.loads` folds
   a repeated key into one, which makes "the response must not contain duplicate
   fields" unobservable through any ordinary parse; an SDK does worse.
@@ -131,6 +138,16 @@ on `/v1/messages` — `["chatcmpl-tool-9b6a75...", "get_weather:0", "chatcmpl-to
 OpenRouter brokers per request, and one of its upstreams runs the same defective parser we
 were testing for. A brokered reference can flap, so a difference seen once needs a second
 run to confirm it.
+
+Both halves of that were then measured, and the second half was wrong in an instructive way.
+Parsing the `provider` field out of every recorded exchange of one unpinned run: Together
+answered 136 requests, Phala 63, Sail Research 5, Morph 2, DigitalOcean 1, and Moonshot none
+at all — `moonshotai/kimi-k3` is served there by eighteen endpoints across fifteen providers.
+So the profile now pins the upstream, and a pinned run is answered by Moonshot 246 times out
+of 246. But the `name_index` ids did not go away with the re-hosts: Moonshot mints
+`get_weather:0` itself. The shape is the provider's own convention and its counter simply does
+not reset, which is the defect — not the shape. Consistency here means minting `name_index`
+ids that stay unique, not opaque ones.
 
 That leaves an open question, and it is left open. The rule above is that probes observe
 and never assert, and that the verdict is a diff against the original provider. That

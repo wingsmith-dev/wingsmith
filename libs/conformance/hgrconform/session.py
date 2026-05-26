@@ -184,9 +184,28 @@ class Session:
         request.update(overrides)
         return request
 
+    def _route(self, path: str) -> str:
+        """The path this vendor actually serves a canonical surface from."""
+        return self.profile.routes.get(path, path)
+
+    def _with_extra(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Merge the profile's `extra_body` underneath what the probe asked for.
+
+        Applied here rather than in `body()` because a probe is free to build its own
+        request — the Anthropic surface and the deliberately malformed ones do — and a
+        request that escaped unpinned would be answered by a different server than the
+        rest of the run, which is the one thing `extra_body` exists to prevent. The
+        probe's own keys win, so this can only add fields, never rewrite the question.
+        """
+        if not self.profile.extra_body:
+            return dict(body)
+        return self.profile.extra_body | dict(body)
+
     def post(self, path: str, body: dict[str, Any], headers: dict[str, str] | None = None) -> Response:
         started = time.monotonic()
         assert self._client is not None
+        body = self._with_extra(body)
+        path = self._route(path)
         try:
             raw = self._client.post(
                 f"{self.profile.base_url}{path}",
@@ -216,6 +235,7 @@ class Session:
     def get(self, path: str, headers: dict[str, str] | None = None) -> Response:
         started = time.monotonic()
         assert self._client is not None
+        path = self._route(path)
         try:
             raw = self._client.get(
                 f"{self.profile.base_url}{path}",
@@ -238,7 +258,8 @@ class Session:
         """Send a streaming request and keep every chunk, in order, unmerged."""
         started = time.monotonic()
         assert self._client is not None
-        request = dict(body) | {"stream": True}
+        request = self._with_extra(body) | {"stream": True}
+        path = self._route(path)
         chunks: list[Any] = []
         lines: list[str] = []
         error = ""

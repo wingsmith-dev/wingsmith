@@ -1,0 +1,43 @@
+# Kimi K3 from Moonshot itself — the original model provider, and so the reference
+# every other Kimi K3 endpoint is judged against.
+#
+#   export MOONSHOT_API_KEY=...
+#   just conformance kimi-k3-acme --reference moonshot-kimi-k3
+#
+# `api.moonshot.ai` is the international host. `api.moonshot.cn` is a separate
+# account namespace and rejects this key, so the two are not interchangeable.
+#
+# Every claim below is read back from this endpoint's own /v1/models entry for
+# `kimi-k3` rather than from documentation: context_length 1048576,
+# supports_image_in, supports_reasoning, supports_thinking_type "only", and
+# think_efforts low/high/max defaulting to max.
+
+name = "moonshot-kimi-k3"
+base_url = "https://api.moonshot.ai"
+model = "kimi-k3"
+token_env = "MOONSHOT_API_KEY"
+
+context_window = 1048576
+modalities = ["text", "image"]
+protocols = ["chat_completions", "responses", "messages"]
+timeout = 180.0
+
+# `default_effort` is max, and the endpoint advertises the three levels it accepts.
+[thinking]
+syntax = "kimi"
+default_on = true
+efforts = ["low", "high", "max"]
+
+# Native names — this is the endpoint the other profiles' path maps are translating
+# back to.
+[paths]
+cached_tokens = "usage.prompt_tokens_details.cached_tokens"
+reasoning = "choices.0.message.reasoning_content"
+reasoning_delta = "choices.0.delta.reasoning_content"
+
+# Moonshot mounts the Anthropic surface beside the OpenAI one rather than under the
+# same /v1, and returns a 404 at the canonical path. Verified: /v1/chat/completions
+# and /v1/responses answer 200, /v1/messages answers 404, /anthropic/v1/messages
+# answers 200.
+[routes]
+"/v1/messages" = "/anthropic/v1/messages"

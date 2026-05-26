@@ -91,7 +91,6 @@ def automatic(session: Session) -> dict[str, Any]:
         session.body(
             messages=[{"role": "user", "content": f"{prefix}\n\nAnswer with the single word: one."}],
             max_tokens=16,
-            temperature=0,
         ),
     )
     second = session.post(
@@ -99,7 +98,6 @@ def automatic(session: Session) -> dict[str, Any]:
         session.body(
             messages=[{"role": "user", "content": f"{prefix}\n\nAnswer with the single word: two."}],
             max_tokens=16,
-            temperature=0,
         ),
     )
     hinted = session.post(
@@ -107,7 +105,6 @@ def automatic(session: Session) -> dict[str, Any]:
         session.body(
             messages=[{"role": "user", "content": f"{prefix}\n\nAnswer with the single word: three."}],
             max_tokens=16,
-            temperature=0,
             prompt_cache_key="hgrconform-cache-probe",
         ),
     )
