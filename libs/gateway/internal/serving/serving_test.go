@@ -122,6 +122,94 @@ func TestMalformedRequestsAreRejectedInTheOpenAIShape(t *testing.T) {
 	}
 }
 
+func TestAtMostFourStopSequencesReachTheEngine(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+		"chat": routeTo(t, server.URL, nil),
+	}}})
+
+	for _, tc := range []struct {
+		name       string
+		path       string
+		stop       string
+		wantStatus int
+		wantCalls  int
+	}{
+		{"one string", "/v1/chat/completions", `"done"`, http.StatusOK, 1},
+		{"four strings", "/v1/chat/completions", `["a","b","c","d"]`, http.StatusOK, 2},
+		{"five strings", "/v1/chat/completions", `["a","b","c","d","e"]`, http.StatusBadRequest, 2},
+		{"legacy completions", "/v1/completions", `["a","b","c","d","e"]`, http.StatusBadRequest, 2},
+		{"another protocol", "/v1/responses", `["a","b","c","d","e"]`, http.StatusOK, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := `{"model":"chat","stop":` + tc.stop + `}`
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(body)))
+			if rec.Code != tc.wantStatus {
+				t.Fatalf("status = %d, want %d (body %s)", rec.Code, tc.wantStatus, rec.Body)
+			}
+			if calls != tc.wantCalls {
+				t.Fatalf("upstream calls = %d, want %d", calls, tc.wantCalls)
+			}
+		})
+	}
+}
+
+func TestTopLevelUpstreamErrorsAreWrappedInTheOpenAIShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"message":"bad stop","type":"Internal Server Error","code":500}`))
+	}))
+	defer server.Close()
+	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+		"chat": routeTo(t, server.URL, nil),
+	}}})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"chat"}`)))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rec.Code)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	errorObject, ok := body["error"].(map[string]any)
+	if !ok || errorObject["message"] != "bad stop" || errorObject["code"] != float64(500) {
+		t.Fatalf("body = %#v, want the original error under error", body)
+	}
+	if _, exists := body["message"]; exists {
+		t.Fatalf("body = %#v, top-level message survived", body)
+	}
+}
+
+func TestAnUpstreamOpenAIErrorPassesThroughUntouched(t *testing.T) {
+	want := `{"error":{"message":"bad request","type":"invalid_request_error","code":"bad_param"}}`
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(want))
+	}))
+	defer server.Close()
+	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+		"chat": routeTo(t, server.URL, nil),
+	}}})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"chat"}`)))
+	if rec.Code != http.StatusBadRequest || rec.Body.String() != want {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+	}
+}
+
 func TestModelListIsAnsweredLocally(t *testing.T) {
 	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
 		"chat": {}, "code": {},

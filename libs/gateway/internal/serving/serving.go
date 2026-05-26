@@ -110,7 +110,8 @@ func New(cfg Config) http.Handler {
 
 // modelEnvelope picks the routing key out of an otherwise untouched body.
 type modelEnvelope struct {
-	Model string `json:"model"`
+	Model string          `json:"model"`
+	Stop  json.RawMessage `json:"stop"`
 }
 
 // withRouting dispatches a request to the cluster serving its `model`.
@@ -144,6 +145,12 @@ func withRouting(resolver Resolver) http.Handler {
 		if envelope.Model == "" {
 			MarkOutcome(r, metrics.OutcomeClientError)
 			writeError(w, http.StatusBadRequest, "missing_model", "You must provide a model identifier.")
+			return
+		}
+		if tooManyStopSequences(r.URL.Path, envelope.Stop) {
+			MarkOutcome(r, metrics.OutcomeClientError)
+			writeError(w, http.StatusBadRequest, "too_many_stop_sequences",
+				"You may provide at most four stop sequences.")
 			return
 		}
 
@@ -276,7 +283,7 @@ func NewReverseProxy(upstream *url.URL, headers http.Header) *httputil.ReversePr
 		// Read the tail of every response for its usage object, which is where
 		// the token counts come from. Nothing is buffered: the window is fixed
 		// and it is filled after the bytes have gone out.
-		ModifyResponse: observeUsage,
+		ModifyResponse: modifyResponse,
 		// No round-trip timeout. Generation legitimately runs for minutes at
 		// long contexts, and a client that asked for 4k tokens is not hung.
 		Transport: &http.Transport{
