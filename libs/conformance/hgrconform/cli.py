@@ -90,6 +90,8 @@ def cmd_diff(args: argparse.Namespace) -> int:
     return _diff(read_run(path), args.verbose)
 
 
+# TODO: this exit code is never read by anything but a person — see "Known gap: this
+# detects, it does not guard" in the README before wiring it to a cron or a deploy gate.
 def _diff(run: Run, verbose: bool) -> int:
     """Report every key on which the two endpoints disagreed, and return 1 if any did."""
     if REFERENCE not in run.endpoints:

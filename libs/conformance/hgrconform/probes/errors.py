@@ -21,19 +21,41 @@ from hgrconform.probes.registry import probe
     id="errors.shape",
     title="The status and body shape of a rejected request",
     requirement="I. Error Message Information — error responses, and their structure",
-    compare=("bad_parameter_status", "unknown_model_status", "malformed_status", "error_fields"),
+    compare=(
+        "bad_parameter_status",
+        "unknown_model_status",
+        "malformed_status",
+        "error_fields",
+        "envelopes",
+        "consistent_envelope",
+    ),
 )
 def shape(session: Session) -> dict[str, Any]:
     bad_parameter = session.post("/v1/chat/completions", session.body(temperature=9000))
     unknown_model = session.post("/v1/chat/completions", session.body(model="hgrconform-no-such-model"))
     malformed = session.post("/v1/chat/completions", {"model": session.profile.model})
 
+    responses = {
+        "bad_parameter": bad_parameter,
+        "unknown_model": unknown_model,
+        "malformed": malformed,
+    }
+    envelopes = {
+        name: "nested_error"
+        if isinstance(response.at("error"), dict)
+        else "top_level_error"
+        if isinstance(response.body, dict) and isinstance(response.body.get("message"), str)
+        else "unknown"
+        for name, response in responses.items()
+    }
     error = bad_parameter.at("error")
     return {
         "bad_parameter_status": bad_parameter.status,
         "unknown_model_status": unknown_model.status,
         "malformed_status": malformed.status,
         "error_fields": sorted(k for k in error if not k.startswith("__")) if isinstance(error, dict) else [],
+        "envelopes": envelopes,
+        "consistent_envelope": len(set(envelopes.values())) == 1,
     }
 
 

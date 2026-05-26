@@ -1,6 +1,6 @@
-"""Tool calling: the protocol, the round trip, and the two ways it goes wrong.
+"""Tool calling: the protocol, the round trip, the identity of a call, and the two ways it goes wrong.
 
-Four rows of the standard land here, and they are not the same kind of question.
+Five rows of the standard land here, and they are not the same kind of question.
 Protocol and round trip are mechanical — either the endpoint accepts the four
 `tool_choice` modes and reassembles a streamed call correctly, or it does not.
 Parallel calls and hallucination are behavioural, and behaviour varies between two
@@ -15,10 +15,29 @@ that what remains in `compare` is close to deterministic.
 What is never compared is the argument text. Two endpoints serving one model will
 phrase `{"city": "Lisbon"}` and `{"city":"Lisbon"}` differently and mean the same
 thing; what matters is that it parsed and that it satisfied the schema we sent.
+
+The identity of a call is the fifth question and the one that needs the most care to
+ask. A tool call id is the only thing pairing a result with the call it answers, so
+it must be unique for as long as the conversation lives — but every probe that looks
+at a single response sees an id that is unique within that response and learns
+nothing. A parser that restarts its counter at every assistant turn mints
+`get_weather:0` three turns running and passes every mechanical check above while
+making the conversation unusable, because the second result a client returns names
+the first call. That is only visible across turns, and only to a probe that keeps
+every id it was given. `tools.id_uniqueness` and `tools.messages_id_uniqueness` are
+the same question asked of the two surfaces on which a client would carry a
+conversation, because a gateway can translate one surface from the other and inherit
+its ids, or mint its own and diverge.
+
+An id is a generated string and so may never itself be compared. What is compared is
+whether the ids collided, and their *shape* — an id built out of the tool name and a
+small integer is the fingerprint of a counter that is scoped to one response, and it
+is worth reporting even on the run where three turns happened not to collide.
 """
 
 from __future__ import annotations
 
+import re
 import json
 
 from typing import Any
@@ -64,6 +83,93 @@ CLOCK: dict[str, Any] = {
 ASK_WEATHER = "What is the weather in Lisbon? Use the tool."
 ASK_BOTH = "What is the weather in Lisbon, and what time is it in Tokyo? Use the tools."
 SMALL_TALK = "Say the word hello. Do not use any tool."
+
+TURN_CITIES = ("Lisbon", "Tokyo", "Paris")
+MESSAGES_PATH = "/v1/messages"
+ANTHROPIC_VERSION = "2023-06-01"
+INDEX_SUFFIX = re.compile(r"^[^0-9A-Za-z]?\d+$")
+DECLARED = (WEATHER["function"]["name"], CLOCK["function"]["name"])
+
+
+def _plain(value: Any) -> Any:
+    """A parsed body with the parser's own bookkeeping keys removed, ready to send back.
+
+    The session records a repeated JSON key under a private marker so the duplicate
+    field requirement stays observable. That marker must not survive into a request:
+    an assistant message echoed back verbatim carries it, nested inside whatever
+    depth the endpoint put it at, and the endpoint would be asked to accept a field
+    it never sent.
+    """
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items() if not k.startswith("__")}
+    if isinstance(value, list):
+        return [_plain(item) for item in value]
+    return value
+
+
+def _anthropic(tool: dict[str, Any]) -> dict[str, Any]:
+    """The same tool declaration in the Messages API's own spelling.
+
+    Translated rather than written out a second time, so that the two id probes are
+    provably asking about one tool and cannot drift into asking about two.
+    """
+    function = tool["function"]
+    return {
+        "name": function["name"],
+        "description": function.get("description", ""),
+        "input_schema": function["parameters"],
+    }
+
+
+def _id_shape(value: Any, names: tuple[str, ...]) -> str:
+    """One tool call id, classified into the kinds that differ in how long they stay unique.
+
+    `opaque` is the only shape that carries no relationship to the call it names, and
+    so the only one that can be unique for the life of a conversation without the
+    minting side holding any state. The other three are derived from the tool name
+    and are therefore only as unique as whatever counter was appended to it — which
+    is exactly the thing a single response cannot show.
+    """
+    if not isinstance(value, str):
+        return "absent"
+    if not value:
+        return "empty"
+    for name in names:
+        if value == name:
+            return "bare_name"
+        if value.startswith(name):
+            return "name_index" if INDEX_SUFFIX.match(value[len(name) :]) else "name_prefixed"
+    return "opaque"
+
+
+def _identity(ids: list[Any], names: tuple[str, ...]) -> dict[str, Any]:
+    """What a run of turns saw of the ids it was given, as facts and nothing else.
+
+    `unique_across_turns` is `None` rather than `False` when no call was made at all,
+    because a conversation with nothing to pair is not a pairing defect and must not
+    diff as one. The shape collapses to a single word where every id agrees and to
+    `mixed` where they do not, which is itself a finding: an endpoint that mints one
+    kind of id on the first turn and another kind afterwards is translating rather
+    than generating.
+    """
+    seen = [value for value in ids if isinstance(value, str) and value]
+    shapes = {_id_shape(value, names) for value in ids}
+    derived = {"bare_name", "name_index", "name_prefixed"}
+    if not shapes:
+        collapsed = "none"
+    elif len(shapes) == 1:
+        collapsed = next(iter(shapes))
+    else:
+        collapsed = "mixed"
+    return {
+        "unique_across_turns": None if not seen else len(set(seen)) == len(seen),
+        "id_shape": collapsed,
+        "derived_from_tool_name": bool(shapes & derived),
+        "unique_id_count": len(set(seen)),
+        "total_id_count": len(ids),
+        "repeated_ids": sorted({value for value in seen if seen.count(value) > 1}),
+        "ids": ids,
+    }
 
 
 def _calls(response: Any) -> list[dict[str, Any]]:
@@ -236,7 +342,15 @@ def streaming(session: Session) -> dict[str, Any]:
     id="tools.round_trip",
     title="A tool result sent back produces a final answer that uses it",
     requirement="I. Tool Calling — tool-result return support; multi-turn tool conversations",
-    compare=("status", "accepted", "has_content", "used_result", "finish_reason"),
+    compare=(
+        "status",
+        "accepted",
+        "has_content",
+        "used_result",
+        "finish_reason",
+        "minted_id_shape",
+        "pairable_id",
+    ),
 )
 def round_trip(session: Session) -> dict[str, Any]:
     """Feeds a fabricated result back and checks the model actually read it.
@@ -245,6 +359,13 @@ def round_trip(session: Session) -> dict[str, Any]:
     observation rather than a coincidence. Whether the *first* turn produced a call
     is not this probe's question — if it did not, the probe records that and stops,
     because a round trip with nothing to return is not a failure of the round trip.
+
+    One turn can say something about identity even though it cannot say whether ids
+    stay unique. `pairable_id` is whether the id this probe echoed was the endpoint's
+    own — a `tool_call_id` invented here because the endpoint minted none would pair
+    with nothing, and an endpoint can answer such a request happily and still be
+    unusable to a client that has more than one call outstanding. `minted_id_shape`
+    is the first half of the finding `tools.id_uniqueness` completes.
     """
     first = session.post(
         "/v1/chat/completions",
@@ -263,17 +384,20 @@ def round_trip(session: Session) -> dict[str, Any]:
             "has_content": False,
             "used_result": False,
             "finish_reason": None,
+            "minted_id_shape": "none",
+            "pairable_id": None,
             "no_call_on_first_turn": True,
         }
 
     assistant = dig(first.body, "choices.0.message")
-    call_id = calls[0].get("id") or "call_0"
+    minted = calls[0].get("id")
+    call_id = minted or "call_0"
     second = session.post(
         "/v1/chat/completions",
         session.body(
             messages=[
                 {"role": "user", "content": ASK_WEATHER},
-                {k: v for k, v in assistant.items() if not k.startswith("__")},
+                _plain(assistant),
                 {
                     "role": "tool",
                     "tool_call_id": call_id,
@@ -292,7 +416,158 @@ def round_trip(session: Session) -> dict[str, Any]:
         "has_content": bool(content.strip()),
         "used_result": "41" in content,
         "finish_reason": second.at("choices.0.finish_reason"),
+        "minted_id_shape": _id_shape(minted, DECLARED),
+        "pairable_id": isinstance(minted, str) and bool(minted),
+        "minted_id": minted,
         "no_call_on_first_turn": False,
+    }
+
+
+@probe(
+    id="tools.id_uniqueness",
+    title="Whether tool call ids stay unique across turns of one conversation",
+    requirement="I. Tool Calling — sequential calls; tool-result pairing across a multi-turn conversation",
+    compare=("statuses", "called_every_turn", "unique_across_turns", "id_shape", "derived_from_tool_name"),
+)
+def id_uniqueness(session: Session) -> dict[str, Any]:
+    """Three turns of the same tool, each result fed back, keeping every id it was given.
+
+    Three is the smallest number that separates the two things a shorter run
+    conflates. One turn shows an id and says nothing. Two turns show whether the
+    second is a repeat, which a counter that resets per response and a counter that
+    is merely low both satisfy. Three shows the pattern.
+
+    The same tool every turn on purpose. A conversation that alternates tools would
+    hide a per-tool counter behind two names that never collide with each other, and
+    a per-tool counter is the defect this exists to see.
+
+    `tool_choice: required` on every turn, so the run does not depend on the model
+    choosing to call again after it already has an answer. That makes the turn count
+    a contract rather than a behaviour, and `called_every_turn` comparable.
+    """
+    messages: list[dict[str, Any]] = []
+    ids: list[Any] = []
+    statuses: list[int] = []
+    calls_per_turn: list[int] = []
+
+    for index, city in enumerate(TURN_CITIES):
+        prompt = f"What is the weather in {city}? Use the tool." if not index else f"And in {city}? Use the tool."
+        messages.append({"role": "user", "content": prompt})
+        response = session.post(
+            "/v1/chat/completions",
+            session.body(
+                messages=messages,
+                tools=[WEATHER],
+                tool_choice="required",
+                max_tokens=256,
+            ),
+        )
+        statuses.append(response.status)
+        calls = _calls(response.body)
+        calls_per_turn.append(len(calls))
+        if not calls:
+            break
+
+        ids.extend(call.get("id") for call in calls)
+        messages.append(_plain(dig(response.body, "choices.0.message")))
+        for call in calls:
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call.get("id") or f"call_{len(ids)}",
+                    "content": json.dumps({"city": city, "temperature_c": 41, "sky": "clear"}),
+                }
+            )
+
+    return {
+        "statuses": statuses,
+        "turns_requested": len(TURN_CITIES),
+        "calls_per_turn": calls_per_turn,
+        "called_every_turn": len(calls_per_turn) == len(TURN_CITIES) and all(calls_per_turn),
+        **_identity(ids, DECLARED),
+    }
+
+
+@probe(
+    id="tools.messages_id_uniqueness",
+    title="The same question on the Anthropic Messages surface, where a client pairs by tool_use_id",
+    requirement="I. Protocol Support 3 — Anthropic Messages API; I. Tool Calling — tool-result pairing",
+    compare=(
+        "statuses",
+        "called_every_turn",
+        "unique_across_turns",
+        "id_shape",
+        "derived_from_tool_name",
+        "stop_reasons",
+    ),
+    requires=("messages",),
+)
+def messages_id_uniqueness(session: Session) -> dict[str, Any]:
+    """Asked separately because the surface can answer it differently, and matters more here.
+
+    `/v1/chat/completions` carries a tool result in its own message role, so a client
+    that loses track of an id can still be understood by position. The Messages API
+    cannot: a `tool_result` block names a `tool_use_id` and nothing else, and a
+    conversation carrying two blocks with one id is malformed rather than ambiguous.
+    So a gateway that translates this surface out of the other one and inherits its
+    ids inherits the defect into the place where it is fatal.
+
+    Blocks are echoed back exactly as they arrived, thinking blocks included, because
+    a client does the same and an endpoint that rejects its own output is the finding.
+    """
+    tool = _anthropic(WEATHER)
+    headers = session.headers | {"anthropic-version": ANTHROPIC_VERSION}
+    messages: list[dict[str, Any]] = []
+    ids: list[Any] = []
+    statuses: list[int] = []
+    stop_reasons: list[Any] = []
+    uses_per_turn: list[int] = []
+
+    for index, city in enumerate(TURN_CITIES):
+        prompt = f"What is the weather in {city}? Use the tool." if not index else f"And in {city}? Use the tool."
+        messages.append({"role": "user", "content": prompt})
+        response = session.post(
+            MESSAGES_PATH,
+            {
+                "model": session.profile.model,
+                "max_tokens": 512,
+                "messages": messages,
+                "tools": [tool],
+                "tool_choice": {"type": "any"},
+            },
+            headers=headers,
+        )
+        statuses.append(response.status)
+        stop_reasons.append(response.at("stop_reason"))
+        blocks = [block for block in (response.at("content") or []) if isinstance(block, dict)]
+        uses = [block for block in blocks if block.get("type") == "tool_use"]
+        uses_per_turn.append(len(uses))
+        if not uses:
+            break
+
+        ids.extend(use.get("id") for use in uses)
+        messages.append({"role": "assistant", "content": _plain(blocks)})
+        messages.append(
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": use.get("id") or f"toolu_{len(ids)}",
+                        "content": json.dumps({"city": city, "temperature_c": 41, "sky": "clear"}),
+                    }
+                    for use in uses
+                ],
+            }
+        )
+
+    return {
+        "statuses": statuses,
+        "stop_reasons": stop_reasons,
+        "turns_requested": len(TURN_CITIES),
+        "uses_per_turn": uses_per_turn,
+        "called_every_turn": len(uses_per_turn) == len(TURN_CITIES) and all(uses_per_turn),
+        **_identity(ids, DECLARED),
     }
 
 

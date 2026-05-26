@@ -78,12 +78,19 @@ def stub():
 
 
 def _profile(name: str, url: str, needles: tuple[str, ...] = ()) -> Profile:
+    """The stub, described the way a committed profile describes a real endpoint.
+
+    It claims the Messages surface because the stub answers it, and a probe that
+    `requires` a protocol the profile does not claim is skipped rather than run —
+    which would leave the probes that ask about that surface untested here.
+    """
     return Profile(
         name=name,
         base_url=url,
         model="gpt-oss-120b",
         token_env="HGRCONFORM_TEST_TOKEN",
         context_window=4096,
+        protocols=("chat_completions", "messages"),
         leak_needles=needles,
     )
 

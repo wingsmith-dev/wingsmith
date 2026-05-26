@@ -82,9 +82,9 @@ regression test on the rule above, and it is the check to run after writing a pr
 
 | Probes | Rows of the standard |
 |---|---|
-| `auth`, `basics`, `errors`, `protocol` | authentication, response correctness, error bodies, the three API surfaces |
-| `streaming`, `length`, `sampling` | streaming and usage location, the three `max_tokens` spellings, parameter acceptance |
-| `structured`, `tools` | `response_format` in three modes, tool-call protocol, round trip, restraint |
+| `auth`, `basics`, `errors`, `protocol` | authentication, response correctness, error envelopes, the three API surfaces |
+| `streaming`, `length`, `sampling` | streaming and usage location, output caps and reasoning-only exhaustion, parameter acceptance |
+| `structured`, `tools` | `response_format` in three modes, tool-call protocol, round trip, restraint, tool call id uniqueness across turns on both the chat and Messages surfaces |
 | `thinking`, `cache`, `multimodal`, `tokens` | thinking mode, cached tokens, image input, token accounting |
 | `eos`, `limits` | EOS suppression rate, burst policy |
 
@@ -101,6 +101,44 @@ Not here, on purpose:
 - **The acceptance ledger itself** — the document that says which requirement is
   answered by which of the above. It spans all of them, its schema is the part most
   likely to be wrong on the first attempt, and the probes are useful without it.
+
+## Known gap: this detects, it does not guard
+
+Recorded 2026-09-01, found while debugging Kimi K3 on Dynamo. The `kimi_k3` tool parser
+mints call ids as `<tool_name>:<index>` with the index resetting on every assistant
+response, so `Bash:0` recurs turn after turn and breaks Anthropic `tool_use` /
+`tool_result` pairing. `tools.id_uniqueness` and `tools.messages_id_uniqueness` now
+observe exactly that. The gap is that nothing would have told anyone.
+
+`hgrconform` is run by hand and only by hand. Nothing invokes it on a schedule, on a
+deployment, or before a runtime image takes traffic, so a regression is found when
+somebody happens to look. The exit code already works — `diff` returns 1 on any
+difference — so what is missing is an invoker, not a verdict.
+
+The naive invoker would be worse than none, and this is the part that matters. There is
+no baseline here and no way to say a difference is accepted; every endpoint differs from
+its reference on something benign, so wiring "any difference fails" to a cron goes red on
+day one for reasons nobody cares about and is ignored by the end of the week — taking any
+real signal down with it. What is wanted instead: an accepted run stored per target, an
+alarm on differences that are *new* against it, and accepting a difference being an
+explicit act that leaves a record. Half the machinery is already here — runs are written
+timestamped per target under the results directory, and `hgrconform diff` re-diffs a
+stored run without touching the endpoint.
+
+A reference is not automatically trustworthy either. Diffing that same Kimi K3 deployment
+against an OpenRouter reference, the reference itself returned *mixed* tool-call id shapes
+on `/v1/messages` — `["chatcmpl-tool-9b6a75...", "get_weather:0", "chatcmpl-tool-806091..."]`.
+OpenRouter brokers per request, and one of its upstreams runs the same defective parser we
+were testing for. A brokered reference can flap, so a difference seen once needs a second
+run to confirm it.
+
+That leaves an open question, and it is left open. The rule above is that probes observe
+and never assert, and that the verdict is a diff against the original provider. That
+serves provider *conventions* well. But tool-call id uniqueness is not a convention, it
+is a protocol *invariant*: an id derived from the tool name cannot be unique across turns,
+and knowing that needs no reference at all. It is the first case here where the invariant
+is more trustworthy than the reference. Whether this design should grow a place for
+invariants is for the maintainer to decide — recorded, not answered.
 
 ## Probes that need no reference
 

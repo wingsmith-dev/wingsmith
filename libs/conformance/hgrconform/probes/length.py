@@ -23,7 +23,7 @@ PROMPT = "Count slowly from one to two hundred, one number per line."
     id="length.parameters",
     title="Which output-length parameters are accepted, and which are honoured",
     requirement="I. Output Length Control 1-3 — max_tokens, max_completion_tokens, max_output_tokens",
-    compare=("accepted", "honoured", "finish_reasons"),
+    compare=("accepted", "honoured", "finish_reasons", "visible_content", "reasoning_only"),
 )
 def parameters(session: Session) -> dict[str, Any]:
     """Accepted and honoured are separate observations, because they differ in practice.
@@ -36,6 +36,8 @@ def parameters(session: Session) -> dict[str, Any]:
     accepted: dict[str, int] = {}
     honoured: dict[str, bool] = {}
     finish: dict[str, Any] = {}
+    visible: dict[str, bool] = {}
+    reasoning_only: dict[str, bool] = {}
 
     for parameter in ("max_tokens", "max_completion_tokens", "max_output_tokens"):
         body = session.body(messages=[{"role": "user", "content": PROMPT}], **{parameter: LIMIT})
@@ -44,11 +46,17 @@ def parameters(session: Session) -> dict[str, Any]:
         completion_tokens = response.at("usage.completion_tokens")
         honoured[parameter] = bool(response.ok and isinstance(completion_tokens, int) and completion_tokens <= LIMIT)
         finish[parameter] = response.at("choices.0.finish_reason")
+        content = response.at("choices.0.message.content")
+        reasoning = response.at(session.profile.paths.reasoning)
+        visible[parameter] = bool(content)
+        reasoning_only[parameter] = bool(response.ok and reasoning and not content)
 
     return {
         "accepted": accepted,
         "honoured": honoured,
         "finish_reasons": finish,
+        "visible_content": visible,
+        "reasoning_only": reasoning_only,
         "limit": LIMIT,
     }
 
@@ -85,4 +93,3 @@ def context_overflow(session: Session) -> dict[str, Any]:
         "error_type": error.get("type"),
         "truncated": bool(response.ok),
     }
-
