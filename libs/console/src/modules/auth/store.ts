@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import { setAuthToken } from "./token"
+import { setAuthToken, setRefreshToken, getRefreshToken } from "./token"
 import { BASE_URL, API_PREFIX } from "@/lib/api/http"
 
 export interface Operator {
@@ -21,13 +21,15 @@ const ADMIN_OPERATOR: Operator = {
 }
 
 interface LoginResponse {
-  token: string
+  access_token: string
+  refresh_token: string
   expires_in: number
 }
 
 interface AuthState {
   operator: Operator | null
   accessToken: string | null
+  refreshToken: string | null
   isAuthenticated: boolean
   signIn: (password: string) => Promise<void>
   signOut: () => void
@@ -35,9 +37,10 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       operator: null,
       accessToken: null,
+      refreshToken: null,
       isAuthenticated: false,
       /**
        * Deliberately not routed through `httpTransport`: that attaches the bearer
@@ -57,27 +60,58 @@ export const useAuthStore = create<AuthState>()(
               : `Sign in failed with status ${response.status}.`
           )
         }
-        const { token } = (await response.json()) as LoginResponse
-        setAuthToken(token)
+        const body = (await response.json()) as LoginResponse
+        setAuthToken(body.access_token)
+        setRefreshToken(body.refresh_token)
         set({
           operator: ADMIN_OPERATOR,
-          accessToken: token,
+          accessToken: body.access_token,
+          refreshToken: body.refresh_token,
           isAuthenticated: true,
         })
       },
       signOut: () => {
+        const refresh = get().refreshToken ?? getRefreshToken()
+        if (refresh) {
+          void fetch(`${BASE_URL}${API_PREFIX}/auth/logout`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ refresh_token: refresh }),
+          }).catch(() => {})
+        }
         setAuthToken(null)
-        set({ operator: null, accessToken: null, isAuthenticated: false })
+        setRefreshToken(null)
+        set({
+          operator: null,
+          accessToken: null,
+          refreshToken: null,
+          isAuthenticated: false,
+        })
       },
     }),
     {
       name: "hangar.auth",
-      // The token outlives a reload but not its own expiry, and nothing here
-      // knows when that is. An expired one rehydrates, 401s on first use, and is
-      // cleared by the handler installed in `session.ts`.
+      // The access token outlives a reload but not its own expiry, and nothing
+      // here knows when that is. An expired one rehydrates, the refresh token
+      // is used to mint a new pair on the next 401, and only if that fails is
+      // the session cleared by the handler installed in `session.ts`.
       onRehydrateStorage: () => (state) => {
         setAuthToken(state?.accessToken ?? null)
+        setRefreshToken(state?.refreshToken ?? null)
       },
     }
   )
 )
+
+/**
+ * The payload of a successful refresh. Called by the transport after it has
+ * rotated the pair through `POST /v1/auth/refresh`.
+ */
+export function applyRefreshedTokens(
+  accessToken: string,
+  refreshToken: string
+): void {
+  setAuthToken(accessToken)
+  setRefreshToken(refreshToken)
+  useAuthStore.setState({ accessToken, refreshToken })
+}

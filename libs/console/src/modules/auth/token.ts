@@ -1,8 +1,9 @@
 /**
  * Isolated so the HTTP transport can read a token without importing the auth
- * store, and so real auth can replace the body of these two functions.
+ * store, and so real auth can replace the body of these functions.
  */
 let token: string | null = null
+let refreshToken: string | null = null
 
 export function getAuthToken(): string | null {
   return token
@@ -10,6 +11,14 @@ export function getAuthToken(): string | null {
 
 export function setAuthToken(next: string | null): void {
   token = next
+}
+
+export function getRefreshToken(): string | null {
+  return refreshToken
+}
+
+export function setRefreshToken(next: string | null): void {
+  refreshToken = next
 }
 
 /**

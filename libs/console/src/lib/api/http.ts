@@ -1,4 +1,9 @@
-import { getAuthToken, reportUnauthorized } from "@/modules/auth/token"
+import {
+  getAuthToken,
+  getRefreshToken,
+  reportUnauthorized,
+} from "@/modules/auth/token"
+import { applyRefreshedTokens } from "@/modules/auth/store"
 import {
   ConflictError,
   ForbiddenError,
@@ -68,10 +73,61 @@ function toError(status: number, payload: unknown): PlaneError {
   }
 }
 
+interface RefreshResponse {
+  access_token: string
+  refresh_token: string
+  expires_in: number
+}
+
+/**
+ * Serializes concurrent 401s onto a single refresh attempt. Without this, five
+ * in-flight requests that all fail simultaneously would each call the refresh
+ * endpoint, and the plane's rotation would invalidate four of the five new
+ * tokens before they were used.
+ */
+let refreshing: Promise<boolean> | null = null
+
+async function tryRefresh(): Promise<boolean> {
+  if (refreshing) return refreshing
+  refreshing = doRefresh()
+  try {
+    return await refreshing
+  } finally {
+    refreshing = null
+  }
+}
+
+async function doRefresh(): Promise<boolean> {
+  const token = getRefreshToken()
+  if (!token) return false
+  try {
+    const response = await fetch(`${BASE_URL}${API_PREFIX}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: token }),
+    })
+    if (!response.ok) return false
+    const body = (await response.json()) as RefreshResponse
+    applyRefreshedTokens(body.access_token, body.refresh_token)
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function request<T>(
   method: HttpMethod,
   path: string,
   options: RequestOptions = {}
+): Promise<T> {
+  return doRequest<T>(method, path, options, true)
+}
+
+async function doRequest<T>(
+  method: HttpMethod,
+  path: string,
+  options: RequestOptions,
+  canRefresh: boolean
 ): Promise<T> {
   const url = `${BASE_URL}${API_PREFIX}${path}${buildQueryString(options.query)}`
   const token = getAuthToken()
@@ -100,7 +156,15 @@ async function request<T>(
 
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    if (response.status === 401) reportUnauthorized()
+    if (response.status === 401) {
+      if (canRefresh) {
+        const refreshed = await tryRefresh()
+        if (refreshed) {
+          return doRequest<T>(method, path, options, false)
+        }
+      }
+      reportUnauthorized()
+    }
     throw toError(response.status, payload)
   }
   return payload as T
