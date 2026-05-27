@@ -177,6 +177,20 @@ frontend:
     repository: nvcr.io/nvidia/ai-dynamo/vllm-runtime
     tag: "1.4.1"
     pullPolicy: IfNotPresent
+  # Secrets in the `dynamo` namespace the kubelet presents when pulling the image
+  # above. Empty for the default, which nvcr.io serves anonymously.
+  #
+  # It exists because a frontend image is not always NVIDIA's. Both bugs that made
+  # Kimi K3 unusable -- tool-call ids reused across turns, and extended thinking
+  # forced on through `/v1/messages` -- are in the frontend binary, so the fix is a
+  # patched runtime and the fix ships as an image. `hangar-runtime/kimi-k3/` builds
+  # it and it lands in a private GHCR repository, which needs a credential where
+  # nvcr.io needs none.
+  #
+  # Naming one here is also what renders the credential into `dynamo` at all: a
+  # pull Secret is namespaced, and the copy the operator and agent use is in the
+  # release namespace, where no frontend pod can read it.
+  imagePullSecrets: []
   # The Anthropic Messages API (`/v1/messages`), which the frontend serves natively
   # and leaves off by default. On, because a cluster that serves an OpenAI surface
   # and not this one cannot be used by Anthropic-protocol clients at all — Claude

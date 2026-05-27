@@ -55,6 +55,16 @@ spec:
           # no accelerator, and the GPU pool is tainted, so it lands on ordinary
           # nodes without being told to. Pinning it to the system pool would only
           # add a value that has to be right on every cluster.
+          {{- with .Values.frontend.imagePullSecrets }}
+          # Only needed when the image above is not the anonymous nvcr.io default.
+          # A pull Secret is namespaced and the kubelet reads it from the pod's own
+          # namespace, so this names one in `dynamo` and not the one in the release
+          # namespace that the operator and agent ServiceAccounts carry.
+          imagePullSecrets:
+            {{- range . }}
+            - name: {{ . }}
+            {{- end }}
+          {{- end }}
           containers:
             - name: main
               image: {{ printf "%s:%s" .Values.frontend.image.repository .Values.frontend.image.tag | quote }}
