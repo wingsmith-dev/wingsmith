@@ -36,6 +36,7 @@ from app.db.models import ClusterSyncState
 from app.db.models import PolicyAttachment
 
 from .snapshot import DeviceHold
+from .snapshot import ReservedUnit
 from .snapshot import QuotaSnapshot
 from .snapshot import DeviceSnapshot
 from .snapshot import PolicySnapshot
@@ -50,6 +51,25 @@ HEALTHY = "healthy"
 Everything else — `degraded`, `unhealthy`, `unknown` — is not free, and `unknown`
 belongs on that side of the line: a device we have no current report for is a
 device we cannot promise.
+"""
+
+MANAGED = "managed"
+"""Only a deployment the plane converges reserves anything.
+
+An `observed` deployment was adopted: the object already exists in its cluster and
+the plane writes nothing to it, so counting it as a promise would be claiming
+capacity we never asked for. Whatever it actually holds arrives as an allocation
+like anything else.
+"""
+
+RESERVING_PHASES = frozenset({"pending", "placed", "running"})
+"""Admission phases in which a deployment still stands as a claim on capacity.
+
+`failed` is out because a deployment the cluster refused holds nothing and is owed
+nothing, and leaving it in would let one bad rollout fence off a cluster until
+somebody deleted it by hand. `running` is in, and costs nothing: a running
+deployment's devices are already observed, so `declared - observed` is zero for it
+without needing a phase to say so.
 """
 
 SUBJECT_PROJECT = "project"
@@ -94,6 +114,7 @@ class PlacementRepository:
         devices = await self._devices(device_class)
         domains = await self._domains()
         taken = await self._taken_names()
+        reserved = await self._reserved(device_class)
         return tuple(
             ClusterSnapshot(
                 uid=cluster.uid,
@@ -106,6 +127,7 @@ class PlacementRepository:
                 devices=tuple(devices.get(cluster.id, ())),
                 domains=tuple(domains.get(cluster.id, ())),
                 labels=dict(cluster.labels),
+                reserved=tuple(reserved.get(cluster.id, ())),
                 taken_names=taken.get(cluster.id, {}),
             )
             for cluster, reachable in rows
@@ -187,6 +209,154 @@ class PlacementRepository:
                 )
             )
         return by_cluster
+
+    async def _reserved(self, device_class: str | None = None) -> dict[UUID, list[ReservedUnit]]:
+        """Capacity each cluster owes a deployment that no allocation covers yet.
+
+        This is the whole answer to the accumulation bug. A deployment is written
+        the moment placement chooses a cluster; the allocations that prove it are
+        written later, by ingestion, when the cluster reports what it bound. In
+        between, the cluster reads as free as it was before the choice, so the next
+        placement makes the same choice again and two workloads pile onto one
+        cluster that only ever had room for one.
+
+        Derived from the deployment rather than stored beside it. `declared` is what
+        this cluster's share costs — its replicas times the recipe's device shape —
+        and `observed` is what ingestion has confirmed. A reservation is the
+        difference, which means it needs no lifetime of its own: it appears when the
+        deployment is written, shrinks as allocations arrive, and reaches zero
+        without anything having to release it. A deployment that is deleted takes
+        its reservation with it because there was never a second row to leave behind.
+
+        `max(0, ...)` and not a bare subtraction, because a cluster is entitled to
+        report more devices than the share asked for — a rollout with both the old
+        and new replicas alive holds two sets at once — and a negative reservation
+        would then hand back capacity that is genuinely in use.
+
+        Narrowed to the device class the same way `_devices` is: a promise of H100s
+        does not make a cluster's A100s any less free. `None` widens it to every
+        class, which is what the listing wants and what no placement ever does.
+        """
+        query = (
+            select(
+                Deployment.cluster_id,
+                Deployment.uid,
+                Deployment.name,
+                Deployment.id,
+                Deployment.desired_replicas,
+                Workload.uid,
+                Workload.name,
+                Project.uid,
+                Recipe.device_class,
+                Recipe.device_count,
+                Recipe.requires_single_topology_domain,
+                Recipe.topology_domain_kind,
+                Workload.requires_single_topology_domain,
+                Workload.topology_domain_kind,
+            )
+            .join(Workload, Deployment.workload_id == Workload.id)
+            .join(Recipe, Workload.recipe_id == Recipe.id)
+            .join(Project, Workload.project_id == Project.id)
+            .where(
+                Deployment.enabled.is_(True),
+                Deployment.authority == MANAGED,
+                Deployment.admission_phase.in_(RESERVING_PHASES),
+                Workload.paused.is_(False),
+            )
+        )
+        if device_class is not None:
+            query = query.where(Recipe.device_class == device_class)
+
+        rows = (await self.db.execute(query)).all()
+        if not rows:
+            return {}
+
+        observed = await self._observed_by_deployment(device_class)
+        reserved: dict[UUID, list[ReservedUnit]] = {}
+        for (
+            cluster_id,
+            deployment_uid,
+            deployment_name,
+            deployment_id,
+            replicas,
+            workload_uid,
+            workload_name,
+            project_uid,
+            unit_class,
+            device_count,
+            recipe_domain,
+            recipe_kind,
+            workload_domain,
+            workload_kind,
+        ) in rows:
+            declared = max(replicas, 0) * max(device_count, 1)
+            owed = max(declared - observed.get(deployment_id, 0), 0)
+            if owed <= 0:
+                continue
+            reserved.setdefault(cluster_id, []).append(
+                ReservedUnit(
+                    workload=workload_uid,
+                    workload_name=workload_name,
+                    project=project_uid,
+                    device_class=unit_class,
+                    devices=owed,
+                    deployment=deployment_uid,
+                    deployment_name=deployment_name,
+                    requires_single_domain=(recipe_domain if workload_domain is None else workload_domain),
+                    domain_kind=(recipe_kind if workload_kind is None else workload_kind),
+                )
+            )
+        return reserved
+
+    async def reservations(
+        self, cluster: str | None = None, device_class: str | None = None
+    ) -> list[tuple[str, str, ReservedUnit]]:
+        """The derived reservations, flattened and named, for the read side.
+
+        Shares `_reserved` with the snapshot rather than growing a second query, so
+        what the console shows is by construction what the engine decided on. A
+        board that had its own idea of what was pending would disagree with the
+        scheduler the first time either of them changed.
+        """
+        derived = await self._reserved(device_class)
+        if not derived:
+            return []
+        rows = (await self.db.execute(select(Cluster.id, Cluster.uid, Cluster.name))).all()
+        wanted = None if cluster is None else cluster
+        flat: list[tuple[str, str, ReservedUnit]] = []
+        for cluster_id, uid, name in sorted(rows, key=lambda row: row[2]):
+            if wanted is not None and wanted not in (uid, name):
+                continue
+            for unit in sorted(
+                derived.get(cluster_id, ()), key=lambda u: (u.deployment_name or "", u.deployment or "")
+            ):
+                flat.append((uid, name, unit))
+        return flat
+
+    async def _observed_by_deployment(self, device_class: str | None = None) -> dict[UUID, int]:
+        """Live devices each deployment actually holds, counted from the member rows.
+
+        The same choice `_allocated` makes and for the same reason: `device_count` is
+        what was asked for and the rows are what was given, and a partially released
+        allocation makes the two disagree. Here the disagreement is the point — it is
+        exactly the part of the declaration still outstanding.
+        """
+        query = (
+            select(Allocation.deployment_id, AllocationDevice.id)
+            .join(AllocationDevice, AllocationDevice.allocation_id == Allocation.id)
+            .where(
+                Allocation.deployment_id.is_not(None),
+                Allocation.released_at.is_(None),
+                AllocationDevice.released_at.is_(None),
+            )
+        )
+        if device_class is not None:
+            query = query.where(Allocation.device_class == device_class)
+        rows = (await self.db.execute(query)).all()
+        counted: dict[UUID, int] = {}
+        for deployment_id, _ in rows:
+            counted[deployment_id] = counted.get(deployment_id, 0) + 1
+        return counted
 
     async def _taken_names(self) -> dict[UUID, dict[str, str]]:
         """Which deployment name is spoken for in which cluster, and by whom.

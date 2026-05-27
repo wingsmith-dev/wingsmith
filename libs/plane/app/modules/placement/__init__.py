@@ -24,6 +24,7 @@ from .decision import PreemptionVictim
 from .decision import ExpansionDecision
 from .decision import PlacementDecision
 from .snapshot import DeviceHold
+from .snapshot import ReservedUnit
 from .snapshot import QuotaSnapshot
 from .snapshot import DeviceSnapshot
 from .snapshot import PolicySnapshot
@@ -48,6 +49,7 @@ __all__ = [
     "PreemptionVictim",
     "QuotaSnapshot",
     "Rejection",
+    "ReservedUnit",
     "Share",
     "TopologyDomainSnapshot",
     "WorkloadDemand",

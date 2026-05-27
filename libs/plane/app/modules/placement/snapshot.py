@@ -73,6 +73,43 @@ class TopologyDomainSnapshot(Snap):
     spans_nodes: bool = False
 
 
+class ReservedUnit(Snap):
+    """Capacity a deployment has already been promised that nothing observed covers yet.
+
+    The window this closes is the one between the plane writing a deployment and
+    the cluster reporting what it bound. For that whole interval the devices are
+    spoken for and no `Allocation` says so, so the next placement reads the cluster
+    as empty and puts a second workload on top of the first. Creating two workloads
+    back to back piled both onto the same cluster for exactly this reason.
+
+    Derived, never stored. A deployment *is* the declaration; this is the part of it
+    ingestion has not caught up with — `max(0, declared - observed)` — which decays
+    to zero on its own as the allocations arrive. That is why there is no reservation
+    table, no expiry and no second writer: modelling the promise separately from the
+    deployment that makes it would be the same declared fact written twice, and the
+    two would drift the first time one of them was missed.
+
+    A count and never a set of devices. Which accelerators a reservation lands on is
+    the cluster's answer and it has not given it yet (rule 3), so naming devices here
+    would be the plane inventing a decision that is not its to take.
+
+    The shape is carried because a reservation for a gang and a reservation for four
+    loose replicas cost the same devices and cost them differently: one takes a whole
+    fabric and the other spreads. `requires_single_domain` is what lets the engine
+    charge a pending gang against a domain instead of against a total.
+    """
+
+    workload: str
+    project: str
+    device_class: str
+    devices: int
+    deployment: str | None = None
+    deployment_name: str | None = None
+    workload_name: str | None = None
+    requires_single_domain: bool = False
+    domain_kind: str | None = None
+
+
 class ClusterSnapshot(Snap):
     """One cluster's placement-relevant surface: what it is, and what it holds free.
 
@@ -92,6 +129,14 @@ class ClusterSnapshot(Snap):
     devices: tuple[DeviceSnapshot, ...] = ()
     domains: tuple[TopologyDomainSnapshot, ...] = ()
     labels: dict[str, str] = {}
+    reserved: tuple[ReservedUnit, ...] = ()
+    """Devices promised to a deployment here that no allocation covers yet.
+
+    Kept beside `devices` rather than folded into them, because a reservation names
+    no device and inventing one to mark held would put a decision the cluster owns
+    into the plane's mouth. The engine nets the two: `devices` is what is observed,
+    this is what is owed, and available capacity is the difference.
+    """
     taken_names: dict[str, str] = {}
     """Deployment name -> the uid of the workload that owns it, in this cluster.
 
