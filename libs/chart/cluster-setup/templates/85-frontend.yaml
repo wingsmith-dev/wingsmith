@@ -11,8 +11,16 @@
 #
 # So it is cluster setup in the same sense as NATS and the model cache — a
 # singleton a cluster installs once to become one the plane can serve from, not a
-# per-workload object. Nothing about it varies with what is running: it discovers
-# workers over NATS as they register, and a model added or removed never edits it.
+# per-workload object. No manifest edit is needed when a model is added: it
+# discovers workers itself, and a model added or removed never edits this file.
+#
+# It discovers them through the Kubernetes API and not over NATS, whatever this
+# comment said before. `DYN_DISCOVERY_BACKEND=kubernetes` on the running pods, and
+# the frontend lists objects labelled `nvidia.com/dynamo-namespace` — the Dynamo
+# namespace is a label value, and `globalDynamoNamespace` above is what sets it to
+# the shared one on both halves. What does vary with what is running is the binary:
+# every model on a cluster must be servable by this one image, tokenizer and parser
+# registries included. See `docs/plans/06-frontend-topology.md`.
 #
 # Two things find it by Dynamo's own labels rather than by name, because the name
 # is the part that varies between clusters: the serving agent
@@ -84,6 +92,17 @@ spec:
                   value: {{ .Values.frontend.anthropicApi.enabled | quote }}
                 - name: DYN_STRIP_ANTHROPIC_PREAMBLE
                   value: {{ .Values.frontend.anthropicApi.stripClaudeCodePreamble | quote }}
+                # The same fixed seed the operator sets on every worker, and it has
+                # to be the same on both ends or it buys nothing. KV-aware routing
+                # decides which worker already holds a prefix by hashing block
+                # contents; Python salts hashes per process by default, so a
+                # frontend and a worker that disagree on the salt hash identical
+                # blocks differently and every cache hit is missed — silently, as a
+                # performance loss nothing reports. Set here rather than left to
+                # `frontend.env`, because a default that has to be right on every
+                # cluster is not a per-cluster value.
+                - name: PYTHONHASHSEED
+                  value: "0"
                 {{- range $name, $value := .Values.frontend.env }}
                 - name: {{ $name }}
                   value: {{ $value | quote }}
