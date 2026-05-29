@@ -98,14 +98,14 @@ func (l Layout) devices(dep wire.DeploymentDesired) int {
 	return 1
 }
 
-// workerComponent is the Dynamo component name for the engine.
+// WorkerComponent is the Dynamo component name for the engine.
 //
 // One worker, aggregated: prefill and decode share an engine loop. Disaggregating them is a
 // topology decision with a real trade — it buys latency isolation and pays for it in KV capacity,
 // because each worker loads its own copy of the weights — and nothing on the recipe expresses that
 // choice yet. Rendering it silently would be picking a side of that trade on the operator's own
 // authority.
-const workerComponent = "VllmDecodeWorker"
+const WorkerComponent = "VllmDecodeWorker"
 
 // DynamoGraphDeployment renders one deployment into the object that serves it.
 //
@@ -124,7 +124,7 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 	}
 
 	component := map[string]any{
-		"name":                  workerComponent,
+		"name":                  WorkerComponent,
 		"type":                  "decode",
 		"replicas":              int64(Replicas(in.Deployment)),
 		"globalDynamoNamespace": true,
@@ -190,7 +190,7 @@ const maxObjectNameBytes = 63
 // componentSuffix is what Dynamo appends to the graph's name to name one component's objects:
 // a dash, the component lowercased, a dash, and an eight character spec hash.
 //
-// Written out rather than lowercased from `workerComponent`, because a const has to be a const.
+// Written out rather than lowercased from `WorkerComponent`, because a const has to be a const.
 // `TestComponentSuffixMatchesWorker` is what keeps the two from drifting.
 const componentSuffix = "-vllmdecodeworker-" + specHashPlaceholder
 

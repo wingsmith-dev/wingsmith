@@ -110,6 +110,19 @@ func (r rollout) message() string {
 // serving or not and is also the unit the plane models as a replica — reading the Deployment
 // would give counts with no way to say which replica is on which node, and the allocation view
 // needs the latter.
+//
+// Selected on the component as well as the graph, and that second label is what keeps the counts
+// honest once a graph holds more than the engine. Dynamo stamps the graph label on every pod it
+// derives, so a graph carrying a frontend beside its worker would have the frontend counted as a
+// replica of the model — and `desired` is the worker count, so two frontend pods becoming ready
+// in seconds would report a deployment as `running` while its weights are still loading. The
+// plane would then mark it ready and the gateway would prefer it, which is live traffic at a
+// deployment that has no worker.
+//
+// A hand-written disaggregated topology, which `Recipe.Overlay.Dynamo` allows by replacing
+// `spec.components` wholesale, names its own components and its prefill pods are not counted
+// here. That under-reports rather than over-reports, and the direction is deliberate: a shortfall
+// reads as degraded and still serves, where a surplus reads as ready and does not.
 func (r *SyncedResourceReconciler) observeRollout(
 	ctx context.Context,
 	dep wire.DeploymentDesired,
@@ -119,7 +132,10 @@ func (r *SyncedResourceReconciler) observeRollout(
 	var pods corev1.PodList
 	err := r.Client.List(ctx, &pods,
 		client.InNamespace(r.Render.Namespace),
-		client.MatchingLabels{graphDeploymentLabel: name},
+		client.MatchingLabels{
+			graphDeploymentLabel: name,
+			componentNameLabel:   render.WorkerComponent,
+		},
 	)
 	if err != nil {
 		return rollout{}, fmt.Errorf("list pods for %s: %w", dep.DeploymentID, err)

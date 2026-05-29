@@ -124,6 +124,31 @@ func completedPrefetch() *batchv1.Job {
 	}
 }
 
+// frontendPods builds n pods of a Frontend component sharing the worker's graph, labelled the way
+// the Dynamo operator labels every pod it derives from one graph.
+func frontendPods(n int) []*corev1.Pod {
+	out := make([]*corev1.Pod, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-frontend-def-%d", render.Name(testDeploymentID), i),
+				Namespace: "dynamo",
+				Labels: map[string]string{
+					graphDeploymentLabel: render.Name(testDeploymentID),
+					componentNameLabel:   "Frontend",
+					"pod-template-hash":  "def",
+				},
+			},
+			Spec: corev1.PodSpec{NodeName: "cpu-0"},
+			Status: corev1.PodStatus{
+				Phase:      corev1.PodRunning,
+				Conditions: []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}},
+			},
+		})
+	}
+	return out
+}
+
 // readyPods builds n pods labelled the way the Dynamo operator labels the ones it creates.
 func readyPods(n int) []*corev1.Pod {
 	out := make([]*corev1.Pod, 0, n)
@@ -134,6 +159,7 @@ func readyPods(n int) []*corev1.Pod {
 				Namespace: "dynamo",
 				Labels: map[string]string{
 					graphDeploymentLabel: render.Name(testDeploymentID),
+					componentNameLabel:   render.WorkerComponent,
 					"pod-template-hash":  "abc",
 				},
 			},
@@ -764,5 +790,38 @@ func TestAnObjectLabelledForAnotherDeploymentIsLeftAlone(t *testing.T) {
 	}
 	if !rendered(t, r, name) {
 		t.Fatal("an object belonging to another deployment was deleted")
+	}
+}
+
+// A frontend is not a replica of the model it fronts.
+//
+// Dynamo stamps the graph label on every pod it derives, so a graph holding a frontend beside its
+// worker offers both to the same lookup. Counting the frontend would report a deployment as
+// serving the moment two pods holding no weights went ready — while the worker is still forty
+// minutes from its first token — and the plane marks a deployment ready off exactly this count.
+func TestFrontendPodsAreNotCountedAsReplicasOfTheModel(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	for _, pod := range readyPods(1) {
+		objects = append(objects, pod)
+	}
+	for _, pod := range frontendPods(2) {
+		objects = append(objects, pod)
+	}
+
+	reporter := &recordingReporter{}
+	runReconcileReporting(t, reporter, objects...)
+
+	last := lastSent(t, reporter)
+	if last.ReadyReplicas != 1 {
+		t.Errorf("ready = %d, want the one worker and neither frontend", last.ReadyReplicas)
+	}
+	if last.Phase != "degraded" {
+		t.Errorf("phase = %q, want degraded while one of two workers is up", last.Phase)
+	}
+	if len(last.ReplicaIDs) != 1 {
+		t.Errorf("reported %d replica ids, want only the worker's", len(last.ReplicaIDs))
 	}
 }

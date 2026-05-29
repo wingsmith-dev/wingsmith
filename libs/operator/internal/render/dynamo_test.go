@@ -331,7 +331,7 @@ func TestTheDerivedComponentNameFitsALabelValue(t *testing.T) {
 // componentSuffix is written out because a const cannot be lowercased, so nothing but this stops it
 // drifting from the component it stands for.
 func TestComponentSuffixMatchesWorker(t *testing.T) {
-	want := "-" + strings.ToLower(workerComponent) + "-" + specHashPlaceholder
+	want := "-" + strings.ToLower(WorkerComponent) + "-" + specHashPlaceholder
 	if componentSuffix != want {
 		t.Fatalf("componentSuffix = %q, want %q", componentSuffix, want)
 	}
