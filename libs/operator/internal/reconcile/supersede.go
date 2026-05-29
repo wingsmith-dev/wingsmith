@@ -57,10 +57,11 @@ const componentNameLabel = "nvidia.com/dynamo-component"
 //     the previous one, and a status that names nothing is a graph Dynamo has not reconciled yet.
 //   - Only objects whose controlling owner is this exact graph deployment, by UID. A name is
 //     reusable; a UID is not.
-//   - Only objects strictly older than every object in the current set. This is what closes the
-//     race in the other direction: if Dynamo has created the new component but not yet written
-//     the status naming it, the new one is younger than what the stale status still names, and is
-//     left alone. Waiting one pass costs nothing and deleting the new one costs a reload.
+//   - Only objects strictly older than every current object *of their own component*. This is
+//     what closes the race in the other direction: if Dynamo has created the new component but
+//     not yet written the status naming it, the new one is younger than what the stale status
+//     still names, and is left alone. Waiting one pass costs nothing and deleting the new one
+//     costs a reload.
 //
 // Pruning happens on observing the supersession, not on observing the new pod fail to schedule.
 // The tempting alternative — hold the old one until the new one is Pending on insufficient
@@ -106,8 +107,8 @@ func (r *SyncedResourceReconciler) pruneSuperseded(ctx context.Context, graphNam
 		return fmt.Errorf("list component deployments for %s: %w", graphName, err)
 	}
 
-	floor, ok := oldestCurrent(list.Items, current)
-	if !ok {
+	floors := oldestCurrentByComponent(list.Items, current)
+	if len(floors) == 0 {
 		// The status names a generation none of whose objects are visible yet. Nothing here can
 		// be called superseded against a set that is not there.
 		return nil
@@ -116,10 +117,15 @@ func (r *SyncedResourceReconciler) pruneSuperseded(ctx context.Context, graphNam
 	uid := graph.GetUID()
 	for i := range list.Items {
 		obj := &list.Items[i]
+		floor, known := floors[obj.GetLabels()[componentNameLabel]]
 		switch {
 		case current[obj.GetName()]:
 			continue
 		case !controlledBy(obj, uid):
+			continue
+		// No current generation for this component means no floor to be older than. An object
+		// whose component the status does not name yet is not something to reason about.
+		case !known:
 			continue
 		case !obj.GetCreationTimestamp().Time.Before(floor.Time):
 			continue
@@ -159,24 +165,39 @@ func currentComponents(graph *unstructured.Unstructured) map[string]bool {
 	return out
 }
 
-// oldestCurrent is the earliest creation time among the objects the status calls current.
+// oldestCurrentByComponent is the earliest creation time among the current objects of each
+// component, keyed by component name.
 //
-// The floor a candidate has to be older than. Taking the earliest rather than the latest is the
-// conservative reading when a graph has several components: a candidate older than all of them is
-// unambiguously from a previous generation, whichever component it belongs to.
-func oldestCurrent(items []unstructured.Unstructured, current map[string]bool) (metav1.Time, bool) {
-	var floor metav1.Time
-	found := false
+// Per component, and that is the whole of it. One floor across the graph was the conservative
+// reading while a graph held one component, and it becomes a floor that prunes nothing the moment
+// a graph holds two: a component nobody edits keeps the object it was created with, so its
+// creation time — the graph's own birth — becomes a floor no superseded object can be older than.
+// Every candidate is then skipped, silently and forever, which is the accumulation this whole
+// function exists to stop. Timestamps here are second-granularity, so even the first generation
+// ties rather than passing.
+//
+// An object carrying no component label contributes no floor and is looked up under the empty
+// key, which never matches a labelled component. It is left alone, as `declaresComponent` also
+// leaves it alone: it is not something this render produced.
+func oldestCurrentByComponent(
+	items []unstructured.Unstructured,
+	current map[string]bool,
+) map[string]metav1.Time {
+	floors := map[string]metav1.Time{}
 	for i := range items {
 		if !current[items[i].GetName()] {
 			continue
 		}
+		component := items[i].GetLabels()[componentNameLabel]
+		if component == "" {
+			continue
+		}
 		created := items[i].GetCreationTimestamp()
-		if !found || created.Time.Before(floor.Time) {
-			floor, found = created, true
+		if floor, seen := floors[component]; !seen || created.Time.Before(floor.Time) {
+			floors[component] = created
 		}
 	}
-	return floor, found
+	return floors
 }
 
 // controlledBy reports whether the graph deployment with this UID is the object's controller.

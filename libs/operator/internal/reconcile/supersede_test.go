@@ -249,3 +249,44 @@ func TestPruneSupersededWithoutAGraphIsNotAnError(t *testing.T) {
 		t.Fatalf("pruneSuperseded on an absent graph: %v", err)
 	}
 }
+
+// A component nobody edits must not become a floor that stops every other component being pruned.
+//
+// The floor is per component for this reason alone. One floor across the graph was harmless while
+// a graph held one component: adding a second — a frontend, created with the graph and never
+// edited since — pins the earliest current creation at the graph's own birth, and every
+// superseded worker is younger than that. The prune then finds nothing to do, silently and
+// forever, and the abandoned generation keeps its accelerators.
+func TestPruneSupersededIsNotBlockedByALongLivedSecondComponent(t *testing.T) {
+	const frontendComponent = "Frontend"
+	current := "kimi-k3-vllmdecodeworker-0a26de60"
+	stale := "kimi-k3-vllmdecodeworker-24273190"
+	frontend := "kimi-k3-frontend-9f13c7a2"
+
+	graph := graphDeployment()
+	graph.Object["spec"] = map[string]any{"components": []any{
+		map[string]any{"name": testComponent},
+		map[string]any{"name": frontendComponent},
+	}}
+	graph.Object["status"] = map[string]any{"components": map[string]any{
+		testComponent:     map[string]any{"componentNames": []any{current}},
+		frontendComponent: map[string]any{"componentNames": []any{frontend}},
+	}}
+
+	c := pruneSupersededOn(t, graph,
+		// Created with the graph, and older than every generation of the worker.
+		componentDeployment(componentOpts{name: frontend, component: frontendComponent, age: 10 * time.Hour}),
+		componentDeployment(componentOpts{name: current, age: time.Hour}),
+		componentDeployment(componentOpts{name: stale, age: 5 * time.Hour}),
+	)
+
+	if componentExists(t, c, stale) {
+		t.Error("the superseded worker survived; the frontend's age became a floor nothing is older than")
+	}
+	if !componentExists(t, c, current) {
+		t.Error("the current worker was deleted")
+	}
+	if !componentExists(t, c, frontend) {
+		t.Error("the frontend was deleted; it is the current generation of its own component")
+	}
+}
