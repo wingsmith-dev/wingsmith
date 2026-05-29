@@ -23,6 +23,7 @@ from app.core.exceptions import NotFound
 
 from .engine import place
 from .engine import expand
+from .schemas import ReservationSchema
 from .schemas import PlacementExpandRequest
 from .schemas import PlacementPreviewRequest
 from .decision import ExpansionDecision
@@ -163,6 +164,34 @@ class PlacementService:
             paused=workload.paused,
             existing=await self.repo.shares(workload.id),
         )
+
+    async def reservations(
+        self, cluster: str | None = None, device_class: str | None = None
+    ) -> list[ReservationSchema]:
+        """What every cluster is currently owed, for the console to paint.
+
+        The same derivation placement decides on, asked without a request to decide
+        about. Reading it from one place matters: a board that computed its own idea
+        of what is pending would drift from the engine the first time either changed,
+        and an operator would be looking at a number the scheduler does not use.
+        """
+        rows = await self.repo.reservations(cluster=cluster, device_class=device_class)
+        return [
+            ReservationSchema(
+                cluster=cluster_uid,
+                cluster_name=cluster_name,
+                project=unit.project,
+                workload=unit.workload,
+                workload_name=unit.workload_name,
+                deployment=unit.deployment,
+                deployment_name=unit.deployment_name,
+                device_class=unit.device_class,
+                devices=unit.devices,
+                requires_single_domain=unit.requires_single_domain,
+                domain_kind=unit.domain_kind,
+            )
+            for cluster_uid, cluster_name, unit in rows
+        ]
 
     async def preview_expansion(self, data: PlacementExpandRequest) -> ExpansionDecision:
         """The split a workload would get, asked without writing a row."""
