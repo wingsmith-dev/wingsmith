@@ -8,6 +8,7 @@ from msgspec import structs
 
 from app.modules import placement
 from app.modules.placement import DeviceHold
+from app.modules.placement import ReservedUnit
 from app.modules.placement import QuotaSnapshot
 from app.modules.placement import DeviceSnapshot
 from app.modules.placement import PolicySnapshot
@@ -137,10 +138,12 @@ def test_gang_that_fits_in_aggregate_but_not_contiguously_is_rejected_with_the_n
     assert reason.detail == {
         "largest_domain_free_devices": 6,
         "free_devices": 12,
+        "reserved_devices": 0,
+        "available_devices": 12,
         "requested_devices": 8,
         "domain_kind": "nvlink",
     }
-    assert "6 free h100 in its largest nvlink domain, 8 requested contiguously" in reason.message
+    assert "6 available h100 in its largest nvlink domain, 8 requested contiguously" in reason.message
 
 
 def test_a_domain_spanning_nodes_still_satisfies_a_gang():
@@ -694,3 +697,199 @@ def test_expansion_is_deterministic():
     first = expand(demand(desired_scale=5, strategy="spread"), snapshot)
     second = expand(demand(desired_scale=5, strategy="spread"), snapshot)
     assert first.shares == second.shares
+
+
+# ---------------------------------------------------------------------------
+# Reserved capacity
+# ---------------------------------------------------------------------------
+
+
+def owed(devices_count, workload="wkl_other", **kw):
+    return ReservedUnit(
+        workload=workload,
+        project=kw.pop("project", "proj_a"),
+        device_class=kw.pop("device_class", "h100"),
+        devices=devices_count,
+        deployment=kw.pop("deployment", "dep_other"),
+        deployment_name=kw.pop("deployment_name", "other"),
+        **kw,
+    )
+
+
+def test_a_reservation_comes_off_the_capacity_a_cluster_offers():
+    snap = supply(cluster("clu_a", "iad-1", devices("a", count=8), reserved=(owed(6),)))
+
+    decision = place(request(4), snap)
+
+    assert decision.placed is False
+    verdict = verdict_for(decision, "iad-1")
+    assert verdict.free_devices == 8
+    assert verdict.reserved_devices == 6
+    assert verdict.available_devices == 2
+    assert verdict.reasons[0].code == codes.INSUFFICIENT_CAPACITY
+
+
+def test_a_rejection_says_the_devices_are_promised_and_not_missing():
+    snap = supply(cluster("clu_a", "iad-1", devices("a", count=8), reserved=(owed(6),)))
+
+    reason = place(request(4), snap).verdicts[0].reasons[0]
+
+    assert "6 reserved by deployments not yet bound" in reason.message
+    assert reason.detail["free_devices"] == 8
+    assert reason.detail["reserved_devices"] == 6
+    assert reason.detail["available_devices"] == 2
+
+
+def test_the_second_of_two_workloads_does_not_land_on_top_of_the_first():
+    """The bug this exists for, written as the sequence that produced it.
+
+    Two workloads created back to back. The first is placed on the emptier cluster
+    and its deployment is written; nothing has bound a device yet. Without the
+    reservation both reads are identical and the second workload picks the same
+    cluster, and the two of them are now over its eight accelerators.
+    """
+    first = place(
+        request(6),
+        supply(cluster("clu_a", "iad-1", devices("a", count=8)), cluster("clu_b", "sfo-1", devices("b", count=8))),
+    )
+    assert first.cluster_name == "iad-1"
+
+    after = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8), reserved=(owed(6, workload="wkl_1", deployment="dep_1"),)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    second = place(request(6, workload="wkl_2"), after)
+
+    assert second.cluster_name == "sfo-1"
+
+
+def test_a_workload_does_not_compete_with_its_own_reservation():
+    snap = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8), reserved=(owed(6, workload="wkl_1", deployment="dep_1"),))
+    )
+
+    decision = place(request(4, workload="wkl_1"), snap)
+
+    assert decision.placed is True
+    assert verdict_for(decision, "iad-1").reserved_devices == 0
+
+
+def test_a_scale_up_stays_where_it_is_rather_than_moving_off_its_own_promise():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", devices("a", count=8), reserved=(owed(4, workload="wkl_1", deployment="dep_1"),)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(workload="wkl_1", desired_scale=3, existing={"clu_a": 2}), snapshot)
+    assert shares_of(decision) == {"iad-1": 3}
+
+
+def test_a_pending_gang_takes_the_fabric_it_will_land_in_out_of_reach():
+    """Twenty free devices, and only one fabric that could ever hold eight of them.
+
+    That fabric is already promised to a gang the cluster has not bound yet, so the
+    cluster has the aggregate room and nowhere contiguous to put this one. Burning
+    the largest fabric first is what makes the rejection the honest `topology` and
+    not a `capacity` the totals would have waved through.
+    """
+    doms = (nvlink("dom-a", "nvl-a"), nvlink("dom-b", "nvl-b"), nvlink("dom-c", "nvl-c"))
+    devs = (
+        devices("c1", count=8, domain="dom-a", prefix="a")
+        + devices("c1", count=6, domain="dom-b", prefix="b")
+        + devices("c1", count=6, domain="dom-c", prefix="c")
+    )
+    reserved = (owed(8, requires_single_domain=True, domain_kind="nvlink"),)
+    snap = supply(cluster("clu_a", "iad-1", devs, doms, reserved=reserved))
+
+    decision = place(request(8, kind="gang", requires_single_domain=True, domain_kind="nvlink"), snap)
+
+    assert decision.placed is False
+    verdict = verdict_for(decision, "iad-1")
+    assert verdict.available_devices == 12
+    assert verdict.largest_domain_free_devices == 6
+    assert verdict.reasons[0].code == codes.INSUFFICIENT_TOPOLOGY
+
+
+def test_the_same_fabric_is_reachable_once_nothing_is_promised_it():
+    doms = (nvlink("dom-a", "nvl-a"), nvlink("dom-b", "nvl-b"), nvlink("dom-c", "nvl-c"))
+    devs = (
+        devices("c1", count=8, domain="dom-a", prefix="a")
+        + devices("c1", count=6, domain="dom-b", prefix="b")
+        + devices("c1", count=6, domain="dom-c", prefix="c")
+    )
+    snap = supply(cluster("clu_a", "iad-1", devs, doms))
+
+    decision = place(request(8, kind="gang", requires_single_domain=True, domain_kind="nvlink"), snap)
+
+    assert decision.placed is True
+    assert verdict_for(decision, "iad-1").domain == "dom-a"
+
+
+def test_a_spreading_reservation_is_charged_to_the_cluster_and_not_to_a_fabric():
+    """Eight free in one fabric, and four pending replicas that will spread.
+
+    Charging the four to the fabric as well as to the cluster would count them
+    twice and reject a gang the cluster can still hold.
+    """
+    doms = (nvlink("dom-a", "nvl-a"),)
+    devs = devices("c1", count=8, domain="dom-a", prefix="a")
+    snap = supply(cluster("clu_a", "iad-1", devs, doms))
+    assert place(request(8, kind="gang", requires_single_domain=True, domain_kind="nvlink"), snap).placed is True
+
+    snap = supply(cluster("clu_a", "iad-1", devs, doms, reserved=(owed(4),)))
+    decision = place(request(8, kind="gang", requires_single_domain=True, domain_kind="nvlink"), snap)
+
+    assert decision.placed is False
+    verdict = verdict_for(decision, "iad-1")
+    assert verdict.largest_domain_free_devices == 8
+    assert verdict.available_devices == 4
+    assert verdict.reasons[0].code == codes.INSUFFICIENT_CAPACITY
+
+
+def test_a_cluster_scoped_quota_counts_the_projects_own_pending_draw():
+    snapshot = CapacitySnapshot(
+        clusters=(cluster("clu_a", "iad-1", devices("a", count=16), reserved=(owed(6),)),),
+        quotas=(QuotaSnapshot(project="proj_a", device_class="h100", cluster="clu_a", limit_devices=8),),
+    )
+
+    decision = place(request(4), snapshot)
+
+    assert decision.placed is False
+    assert verdict_for(decision, "iad-1").quota_headroom == 2
+    assert codes.QUOTA_EXHAUSTED in codes_for(decision, "iad-1")
+
+
+def test_a_global_quota_counts_a_pending_draw_in_every_cluster():
+    snapshot = CapacitySnapshot(
+        clusters=(
+            cluster("clu_a", "iad-1", devices("a", count=16)),
+            cluster("clu_b", "sfo-1", devices("b", count=16), reserved=(owed(6),)),
+        ),
+        quotas=(QuotaSnapshot(project="proj_a", device_class="h100", limit_devices=8),),
+    )
+
+    decision = place(request(4), snapshot)
+
+    assert decision.placed is False
+    assert verdict_for(decision, "iad-1").quota_headroom == 2
+
+
+def test_another_projects_reservation_does_not_touch_this_ones_quota():
+    snapshot = CapacitySnapshot(
+        clusters=(cluster("clu_a", "iad-1", devices("a", count=16), reserved=(owed(6, project="proj_b"),)),),
+        quotas=(QuotaSnapshot(project="proj_a", device_class="h100", cluster="clu_a", limit_devices=8),),
+    )
+
+    decision = place(request(4), snapshot)
+
+    assert decision.placed is True
+    assert verdict_for(decision, "iad-1").quota_headroom == 8
+
+
+def test_a_reservation_is_not_preemptible():
+    """A promise is not a hold, so there is nothing to evict and nothing to reclaim."""
+    snap = supply(cluster("clu_a", "iad-1", devices("a", count=8), reserved=(owed(6),)))
+
+    decision = place(request(4, preempts=True, priority_value=100), snap)
+
+    assert decision.placed is False
+    assert verdict_for(decision, "iad-1").preemption is None

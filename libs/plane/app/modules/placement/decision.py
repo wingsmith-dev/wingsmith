@@ -85,6 +85,16 @@ class ClusterVerdict(Verdict):
     cluster_name: str
     feasible: bool
     free_devices: int
+    reserved_devices: int = 0
+    """Devices this cluster already owes a deployment that has not bound them yet.
+
+    Reported beside `free_devices` rather than folded into it, because the two are
+    different kinds of fact and an operator reading "0 free" when eight accelerators
+    are visibly idle has been told something untrue. Free is observed; reserved is
+    promised; `available_devices` is what is actually on offer.
+    """
+    available_devices: int = 0
+    """`free_devices` net of `reserved_devices`. The number every fit is decided on."""
     reasons: tuple[Rejection, ...] = ()
     domain: str | None = None
     domain_identifier: str | None = None

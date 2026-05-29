@@ -720,3 +720,162 @@ async def test_draining_takes_a_workload_off_one_cluster(sessions) -> None:
         after = await WorkloadService(db).get(workload.id)
     assert victim not in {d.cluster_name for d in after.deployments}
     assert after.scale.desired == 2
+
+
+# ---------------------------------------------------------------------------
+# Reserved capacity: what a cluster owes before it has said what it bound
+# ---------------------------------------------------------------------------
+
+
+async def bind_devices(sessions, cluster: uuid.UUID, deployment_uid: str, count: int) -> None:
+    """Reports, as the cluster would, that a deployment now holds `count` devices.
+
+    The half of the story observed state tells. Everything before this row exists is
+    a promise the plane made to itself.
+    """
+    async with sessions.begin() as db:
+        deployment, workload = (
+            await db.execute(
+                text("select id, workload_id from demand_deployment where uid = :uid"),
+                {"uid": deployment_uid},
+            )
+        ).one()
+        project = (await db.execute(text("select id from bind_project"))).scalar_one()
+        allocation = (
+            await db.execute(
+                text(
+                    "insert into bind_allocation"
+                    " (uid, cluster_id, workload_id, deployment_id, project_id, device_class, device_count)"
+                    " values (:uid, :cluster, :workload, :deployment, :project, :cls, :count) returning id"
+                ),
+                {
+                    "uid": ids.new_uid(ids.ALLOCATION),
+                    "cluster": cluster,
+                    "workload": workload,
+                    "deployment": deployment,
+                    "project": project,
+                    "cls": DEVICE_CLASS,
+                    "count": count,
+                },
+            )
+        ).scalar_one()
+        devices = (
+            (
+                await db.execute(
+                    text("select id from supply_device where cluster_id = :c order by device_index limit :n"),
+                    {"c": cluster, "n": count},
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for device in devices:
+            await db.execute(
+                text("insert into bind_allocation_device (allocation_id, device_id) values (:a, :d)"),
+                {"a": allocation, "d": device},
+            )
+
+
+async def test_a_second_workload_does_not_land_on_capacity_the_first_was_already_given(sessions) -> None:
+    """The accumulation bug, driven through the caller that actually writes.
+
+    Two clusters of eight, a recipe wanting four, and two workloads created one
+    after the other at two replicas each. The first fills a cluster exactly. Nothing
+    has bound a device yet — allocations come from the cluster, and the cluster has
+    not spoken — so the only record that the capacity is gone is the deployment
+    itself. Read from observed state alone, both clusters look empty both times and
+    both workloads pile onto the same one.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "alpha", devices=8)
+    await seed_supply(sessions, "beta", devices=8)
+
+    async with sessions() as db:
+        first = await WorkloadService(db).create(create(name="first", **scale(2)))
+    async with sessions() as db:
+        second = await WorkloadService(db).create(create(name="second", **scale(2)))
+
+    assert {w.deployments[0].cluster_name for w in (first, second)} == {"alpha", "beta"}
+    assert first.scale.placed == 2
+    assert second.scale.placed == 2
+
+
+async def test_the_next_workload_is_told_the_devices_are_promised_and_not_missing(sessions) -> None:
+    await seed_demand(sessions)
+    await seed_supply(sessions, "alpha", devices=8)
+
+    async with sessions() as db:
+        await WorkloadService(db).create(create(name="first", **scale(2)))
+    async with sessions() as db:
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+
+    assert decision.placed is False
+    verdict = next(v for v in decision.verdicts if v.cluster_name == "alpha")
+    assert verdict.free_devices == 8
+    assert verdict.reserved_devices == 8
+    assert verdict.available_devices == 0
+    assert "8 reserved by deployments not yet bound" in verdict.reasons[0].message
+
+
+async def test_a_reservation_shrinks_as_the_cluster_reports_what_it_bound(sessions) -> None:
+    """Declared minus observed, which is what makes the promise self-extinguishing.
+
+    Binding four of the eight leaves four still owed. Nothing was released and
+    nothing expired; the same subtraction just returns a smaller number, and it
+    reaches zero on its own once the cluster has reported the whole share.
+    """
+    await seed_demand(sessions)
+    cluster = await seed_supply(sessions, "alpha", devices=8)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(name="first", **scale(2)))
+    await bind_devices(sessions, cluster, workload.deployments[0].id, count=4)
+
+    async with sessions() as db:
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+
+    verdict = next(v for v in decision.verdicts if v.cluster_name == "alpha")
+    assert verdict.free_devices == 4
+    assert verdict.reserved_devices == 4
+    assert verdict.available_devices == 0
+
+
+async def test_a_reservation_is_gone_once_the_whole_share_is_bound(sessions) -> None:
+    await seed_demand(sessions)
+    cluster = await seed_supply(sessions, "alpha", devices=8)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(name="first", **scale(2)))
+    await bind_devices(sessions, cluster, workload.deployments[0].id, count=8)
+
+    async with sessions() as db:
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+
+    verdict = next(v for v in decision.verdicts if v.cluster_name == "alpha")
+    assert verdict.free_devices == 0
+    assert verdict.reserved_devices == 0
+
+
+async def test_scaling_up_does_not_move_a_workload_off_its_own_reservation(sessions) -> None:
+    """A workload never competes with itself for capacity it has already been given.
+
+    Without the exclusion the re-expansion reads its own pending replicas as somebody
+    else's, finds its home cluster full, and moves the share to a cluster that is
+    merely emptier — reshuffling a service in the middle of coming up.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "first", devices=12)
+    await seed_supply(sessions, "second", devices=12)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(**scale(2)))
+    assert [d.cluster_name for d in workload.deployments] == ["first"]
+
+    async with sessions() as db:
+        operation = await _scale_op(db, workload.id, min=3, desired=3, max=3)
+    assert operation.phase == "succeeded"
+
+    async with sessions() as db:
+        after = await WorkloadService(db).get(workload.id)
+    assert [d.cluster_name for d in after.deployments] == ["first"]
+    assert after.scale.placed == 3
