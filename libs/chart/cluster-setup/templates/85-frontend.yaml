@@ -26,10 +26,15 @@
 # operator applies from its own image at runtime, not one this chart vendors into
 # `crds/`. On a cluster that does not have it yet, this object cannot apply and
 # Helm fails the release with "no matches for kind DynamoGraphDeployment". A first
-# install therefore leaves `frontend.enabled` false and a second `helm upgrade`
-# turns it on, once the Dynamo operator has registered its own types. That is
-# stated in values.yaml and in NOTES.txt, because the failure is otherwise read as
-# a broken chart rather than as a step in the wrong order.
+# install therefore has to pass `--set frontend.enabled=false`, and a second
+# `helm upgrade` takes the default, once the Dynamo operator has registered its
+# own types. That is stated in values.yaml and in NOTES.txt, because the failure is
+# otherwise read as a broken chart rather than as a step in the wrong order.
+#
+# The default itself is `true`, and that is deliberate: the constraint binds one
+# install of one new cluster, and defaulting to false to accommodate it left every
+# cluster after that install without a frontend by omission. A cluster with
+# workloads and nothing serving them is the worse failure, because it is silent.
 apiVersion: nvidia.com/v1beta1
 kind: DynamoGraphDeployment
 metadata:

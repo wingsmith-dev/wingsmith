@@ -147,24 +147,31 @@ agent:
       memory: 512Mi
 
 # The one OpenAI-compatible frontend every model on this cluster is served
-# through. The agent forwards to it, so serving needs it — but it is off by
-# default because of an ordering constraint that cannot be worked around here:
-# it renders a DynamoGraphDeployment, and that CRD is applied by the Dynamo
-# operator at runtime rather than shipped in this chart's `crds/`. Enabling it on
-# a fresh cluster fails the release with "no matches for kind
-# DynamoGraphDeployment".
+# through. The agent forwards to it, so serving needs it.
 #
-# So serving arrives in a second pass, and this switch and `agent.enabled` move
-# TOGETHER — an agent with no frontend is refused, because it would be a cluster
-# that holds tunnels and 502s every request. The sequence is:
+# On by default, because off is not a state a managed cluster should ever rest
+# in: a cluster with workloads and no frontend has nothing serving them, and the
+# default was the reason two clusters sat that way. A cluster is a serving
+# cluster; the frontend is what makes it one.
 #
-#   1. install with agent.enabled=false and frontend.enabled=false — the control
-#      path only. The operator enrols and the cluster goes `active`.
-#   2. upgrade with both true — the data path, once the Dynamo operator from
-#      step 1 has registered its own types.
+# There is still an ordering constraint on the FIRST install of a brand-new
+# cluster, and it is real: this renders a DynamoGraphDeployment, and that CRD is
+# applied by the Dynamo operator at runtime rather than shipped in this chart's
+# `crds/`, so a fresh install with it on fails the release with "no matches for
+# kind DynamoGraphDeployment". That is why the default is a default and not a
+# constant. The sequence for a cluster that does not exist yet:
+#
+#   1. install with `--set frontend.enabled=false --set agent.enabled=false` —
+#      the control path only. The operator enrols and the cluster goes `active`.
+#   2. upgrade, taking these defaults — the data path, once the Dynamo operator
+#      from step 1 has registered its own types.
+#
+# `_helpers.tpl` refuses an agent with no frontend and says so at length, which
+# is what makes step 1 a message rather than a mystery. Every upgrade after it
+# gets a frontend without anyone having to remember this switch.
 # Why it belongs to the cluster and not to a deployment: templates/85-frontend.yaml.
 frontend:
-  enabled: false
+  enabled: true
   # Two, so a `helm upgrade` does not take this cluster's inference with it. It
   # holds no model state — the workers do — so a replica is cheap and stateless.
   replicas: 2
