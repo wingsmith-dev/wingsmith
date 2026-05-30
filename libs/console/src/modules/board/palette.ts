@@ -10,6 +10,13 @@
 export interface BrickColor {
   /** The device cell itself. */
   fill: string
+  /**
+   * The same cell, for capacity promised to this workload but not yet bound to
+   * it. Deliberately its own tone rather than an opacity applied to `fill`: it
+   * has to stay clearly the workload's colour against both themes while never
+   * being mistakable for the solid fill beside it.
+   */
+  ghost: string
   /** The cell's edge, for the hovered and selected states. */
   edge: string
   /** A legend or inspector swatch. */
@@ -23,6 +30,7 @@ export interface BrickColor {
 const PALETTE: BrickColor[] = [
   {
     fill: "bg-sky-500/80",
+    ghost: "bg-sky-500/25 dark:bg-sky-500/30",
     edge: "ring-sky-400",
     swatch: "bg-sky-500",
     text: "text-sky-700 dark:text-sky-300",
@@ -30,6 +38,7 @@ const PALETTE: BrickColor[] = [
   },
   {
     fill: "bg-violet-500/80",
+    ghost: "bg-violet-500/25 dark:bg-violet-500/30",
     edge: "ring-violet-400",
     swatch: "bg-violet-500",
     text: "text-violet-700 dark:text-violet-300",
@@ -37,6 +46,7 @@ const PALETTE: BrickColor[] = [
   },
   {
     fill: "bg-teal-500/80",
+    ghost: "bg-teal-500/25 dark:bg-teal-500/30",
     edge: "ring-teal-400",
     swatch: "bg-teal-500",
     text: "text-teal-700 dark:text-teal-300",
@@ -44,6 +54,7 @@ const PALETTE: BrickColor[] = [
   },
   {
     fill: "bg-fuchsia-500/80",
+    ghost: "bg-fuchsia-500/25 dark:bg-fuchsia-500/30",
     edge: "ring-fuchsia-400",
     swatch: "bg-fuchsia-500",
     text: "text-fuchsia-700 dark:text-fuchsia-300",
@@ -51,6 +62,7 @@ const PALETTE: BrickColor[] = [
   },
   {
     fill: "bg-indigo-500/80",
+    ghost: "bg-indigo-500/25 dark:bg-indigo-500/30",
     edge: "ring-indigo-400",
     swatch: "bg-indigo-500",
     text: "text-indigo-700 dark:text-indigo-300",
@@ -58,6 +70,7 @@ const PALETTE: BrickColor[] = [
   },
   {
     fill: "bg-cyan-500/80",
+    ghost: "bg-cyan-500/25 dark:bg-cyan-500/30",
     edge: "ring-cyan-400",
     swatch: "bg-cyan-500",
     text: "text-cyan-700 dark:text-cyan-300",
@@ -65,6 +78,7 @@ const PALETTE: BrickColor[] = [
   },
   {
     fill: "bg-pink-500/80",
+    ghost: "bg-pink-500/25 dark:bg-pink-500/30",
     edge: "ring-pink-400",
     swatch: "bg-pink-500",
     text: "text-pink-700 dark:text-pink-300",
@@ -72,6 +86,7 @@ const PALETTE: BrickColor[] = [
   },
   {
     fill: "bg-blue-500/80",
+    ghost: "bg-blue-500/25 dark:bg-blue-500/30",
     edge: "ring-blue-400",
     swatch: "bg-blue-500",
     text: "text-blue-700 dark:text-blue-300",

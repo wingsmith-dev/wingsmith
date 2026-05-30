@@ -186,6 +186,163 @@ describe("buildBoard", () => {
     expect(board.counts.held).toBe(3)
   })
 
+  it("nets a cluster's reservations off what it can offer", () => {
+    const parts = fleet()
+    const board = buildBoard({
+      ...parts,
+      assignments: new Map(),
+      reservations: [
+        make.reservation("iad-1", 3, { workloadName: "llama-70b-prod" }),
+      ],
+    })
+    const iad = board.regions
+      .flatMap((region) => region.clusters)
+      .find((entry) => entry.cluster.name === "iad-1")!
+
+    expect(iad.counts.free).toBe(4)
+    expect(iad.counts.reserved).toBe(3)
+    expect(iad.counts.available).toBe(1)
+    expect(iad.reservations.map((entry) => entry.workload_name)).toEqual([
+      "llama-70b-prod",
+    ])
+  })
+
+  it("paints the promise onto free cells and counts them as free, not held", () => {
+    const parts = fleet()
+    const board = buildBoard({
+      ...parts,
+      assignments: new Map(),
+      reservations: [make.reservation("iad-1", 3)],
+    })
+    const painted = [...board.devices.values()].filter(
+      (cell) => cell.holder?.origin === "reserved"
+    )
+    const fabric = board.fabrics.get(board.fabric_of.get("a0")!)!
+
+    expect(painted.map((cell) => cell.device.id)).toEqual(["a0", "a1", "a2"])
+    expect(board.counts.held).toBe(0)
+    expect(fabric.counts.free).toBe(4)
+    expect(fabric.counts.reserved).toBe(3)
+    expect(fabric.counts.available).toBe(1)
+  })
+
+  it("nets the largest block, so the number agrees with the picture", () => {
+    const parts = fleet()
+    const board = buildBoard({
+      ...parts,
+      assignments: new Map(),
+      reservations: [make.reservation("iad-1", 3)],
+    })
+    const iad = board.regions
+      .flatMap((region) => region.clusters)
+      .find((entry) => entry.cluster.name === "iad-1")!
+
+    expect(iad.counts.available).toBe(1)
+    expect(iad.largest_block).toBe(1)
+  })
+
+  it("never paints over a device something already holds", () => {
+    const parts = fleet()
+    const assignments = liveAssignments([
+      make.allocation("alc_1", {
+        cluster: "iad-1",
+        workload: "wkl_a",
+        devices: parts.devices.slice(0, 2),
+      }),
+    ])
+    const board = buildBoard({
+      ...parts,
+      assignments,
+      reservations: [make.reservation("iad-1", 4)],
+    })
+
+    expect(board.devices.get("a0")!.holder!.origin).toBe("live")
+    expect(board.devices.get("a1")!.holder!.origin).toBe("live")
+    expect(board.devices.get("a2")!.holder!.origin).toBe("reserved")
+    expect(board.devices.get("a3")!.holder!.origin).toBe("reserved")
+    expect(board.counts.held).toBe(2)
+  })
+
+  it("runs out rather than wrapping when a cluster owes more than it holds", () => {
+    const parts = fleet()
+    const board = buildBoard({
+      ...parts,
+      assignments: new Map(),
+      reservations: [make.reservation("iad-1", 9)],
+    })
+    const iad = board.regions
+      .flatMap((region) => region.clusters)
+      .find((entry) => entry.cluster.name === "iad-1")!
+    const painted = [...board.devices.values()].filter(
+      (cell) => cell.holder?.origin === "reserved"
+    )
+
+    expect(painted).toHaveLength(4)
+    expect(iad.counts.reserved).toBe(9)
+    expect(iad.counts.available).toBe(0)
+  })
+
+  it("paints nothing for a class the cluster does not have free", () => {
+    const parts = fleet()
+    const board = buildBoard({
+      ...parts,
+      assignments: new Map(),
+      reservations: [make.reservation("iad-1", 2, { class: "l40s-48gb-pcie" })],
+    })
+
+    expect(
+      [...board.devices.values()].some(
+        (cell) => cell.holder?.origin === "reserved"
+      )
+    ).toBe(false)
+  })
+
+  it("gives two reservations different cells, in a stable order", () => {
+    const parts = fleet()
+    const rows = [
+      make.reservation("iad-1", 1, { deployment: "dep_small" }),
+      make.reservation("iad-1", 2, { deployment: "dep_big" }),
+    ]
+    const paint = (reservations: typeof rows) =>
+      [
+        ...buildBoard({
+          ...parts,
+          assignments: new Map(),
+          reservations,
+        }).devices.values(),
+      ]
+        .filter((cell) => cell.holder?.origin === "reserved")
+        .map((cell) => `${cell.device.id}:${cell.holder!.allocation}`)
+
+    expect(paint(rows)).toEqual([
+      "a0:reserved:dep_big",
+      "a1:reserved:dep_big",
+      "a2:reserved:dep_small",
+    ])
+    expect(paint([...rows].reverse())).toEqual(paint(rows))
+  })
+
+  it("never lets one cluster's spare capacity pay another's promise", () => {
+    const parts = fleet()
+    const board = buildBoard({
+      ...parts,
+      assignments: new Map(),
+      reservations: [make.reservation("iad-1", 10)],
+    })
+
+    expect(board.counts.free).toBe(6)
+    expect(board.counts.reserved).toBe(10)
+    expect(board.counts.available).toBe(2)
+  })
+
+  it("reads as it did before when nothing is owed", () => {
+    const parts = fleet()
+    const board = buildBoard({ ...parts, assignments: new Map() })
+
+    expect(board.counts.reserved).toBe(0)
+    expect(board.counts.available).toBe(board.counts.free)
+  })
+
   it("drops devices whose cluster was not loaded", () => {
     const parts = fleet()
     const board = buildBoard({

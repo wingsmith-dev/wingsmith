@@ -1,4 +1,4 @@
-import { isFree } from "./build"
+import { isBound, isFree } from "./build"
 import type {
   Assignments,
   Board,
@@ -167,6 +167,9 @@ export function fitFromDevice(
       `this is a ${cell.device.device_class}, brick is ${brick.device_class}`
     )
   }
+  if (cell.holder?.origin === "reserved") {
+    return no(`reserved for ${cell.holder.workload_name}`)
+  }
   if (!isFree(cell) || assignments.has(deviceId)) return no("already held")
 
   const fit = fitOnFabric(fabric, brick, assignments)
@@ -283,11 +286,17 @@ function no(reason: string): Fit {
  * replica is: one allocation, however many devices it took. It is what makes
  * "plan the rest of it" possible — the sandbox places the shortfall against
  * desired scale, not the whole workload over again.
+ *
+ * Reserved cells are skipped. A reservation is one row covering however many
+ * replicas are still owed, so counting it as an allocation would report one
+ * replica placed where several are pending and quietly shrink the shortfall the
+ * sandbox offers to plan.
  */
 export function replicasPlaced(board: Board, workload: string | null): number {
   if (!workload) return 0
   const seen = new Set<string>()
   for (const cell of board.devices.values()) {
+    if (!isBound(cell.holder)) continue
     if (cell.holder?.workload === workload) seen.add(cell.holder.allocation)
   }
   return seen.size
@@ -565,6 +574,16 @@ function placeReplica(
  * otherwise `max_clusters` closes it to the clusters already used once the
  * ceiling is reached. `pack` then prefers a cluster already carrying replicas of
  * this plan, and `spread` prefers the one carrying fewest.
+ *
+ * The capacity that breaks the remaining ties is what `isFree` reports, and that
+ * already excludes every cell the board painted for a reservation — so a cluster
+ * whose idle accelerators are all spoken for is not the sandbox's first answer,
+ * which is what the plane would also have concluded.
+ *
+ * Subtracting the reserved total here as well would charge the same promise
+ * twice: a cluster with thirteen free and eight owed would rank as though it had
+ * none left rather than five. The promise is counted exactly once, on the cells,
+ * and every reader of the board gets it by asking `isFree`.
  */
 function candidates(
   brick: Brick,

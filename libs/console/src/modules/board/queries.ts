@@ -4,6 +4,7 @@ import { fetchClusters } from "@/modules/clusters/api"
 import { fetchRecipes, fetchWorkloads } from "@/modules/demand/api"
 import type { Recipe, Workload } from "@/modules/demand/types"
 import { fetchAllocations } from "@/modules/machinery/api"
+import { useReservations } from "@/modules/placement/queries"
 import {
   fetchDevices,
   fetchNodes,
@@ -63,6 +64,19 @@ export function useFleetBoard(scope: BoardScope = {}) {
     fetchWorkloads({}, cursor, PAGE)
   )
 
+  /**
+   * The declared half, and the only thing on this page the plane derives rather
+   * than the cluster reports.
+   *
+   * It is scoped exactly the way the devices are, so a board filtered to one
+   * cluster or one device class does not carry a reserved total counted over
+   * hardware that is not on the screen.
+   */
+  const reservations = useReservations({
+    cluster: scope.cluster,
+    device_class: scope.class,
+  })
+
   const assignments: Assignments | undefined = useMemo(() => {
     if (!allocations.data) return undefined
     const names = new Map(
@@ -80,10 +94,11 @@ export function useFleetBoard(scope: BoardScope = {}) {
       devices: devices.data,
       domains: domains.data,
       nodes: nodes.data,
+      reservations: reservations.data ?? [],
     }
     return (overlay: Assignments) =>
       buildBoard({ ...parts, assignments: overlay })
-  }, [clusters.data, devices.data, domains.data, nodes.data])
+  }, [clusters.data, devices.data, domains.data, nodes.data, reservations.data])
 
   const board: Board | undefined = useMemo(
     () => (build && assignments ? build(assignments) : undefined),
@@ -103,13 +118,21 @@ export function useFleetBoard(scope: BoardScope = {}) {
 
   const parts = [clusters, nodes, devices, domains, allocations, workloads]
 
+  /**
+   * Reservations are reported but never waited for. Everything else here is what
+   * the board *is* — no devices means no board — while a missing reserved total
+   * costs one row of numerals. Holding the whole page behind it would make the
+   * declared half of the answer able to hide the observed half, which is
+   * backwards: the observed half is the one an operator can act on.
+   */
   return {
     board,
     planned,
     assignments,
     workloads: workloads.data,
     isLoading: parts.some((part) => part.isLoading),
-    error: parts.find((part) => part.error)?.error ?? null,
+    error:
+      parts.find((part) => part.error)?.error ?? reservations.error ?? null,
   }
 }
 

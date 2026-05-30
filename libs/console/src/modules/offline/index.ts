@@ -1,4 +1,9 @@
-import { page, registerFixtures, type FixtureContext } from "@/lib/api/fixtures"
+import {
+  page,
+  registerFixtures,
+  type FixtureContext,
+  type FixtureQuery,
+} from "@/lib/api/fixtures"
 import { ConflictError, NotFoundError } from "@/lib/api/transport"
 import { fitment } from "./fitment"
 import {
@@ -1346,5 +1351,74 @@ registerFixtures([
         chart_private: true,
       },
     }),
+  },
+])
+
+/**
+ * `GET /placement/reservations`, derived rather than stored beside the corpus.
+ *
+ * The plane's own definition is `max(0, declared - observed)` per deployment:
+ * the devices the deployment asked its cluster for, less the allocation devices
+ * ingestion has confirmed the cluster actually bound. That subtraction cannot be
+ * performed here, because the demo allocations are illustrative and were never
+ * meant to account for every replica the demo deployments declare — running it
+ * anyway makes almost every deployment look like it is owed its whole size, and
+ * a fleet where every cluster reports zero available is a fleet nobody can learn
+ * the screen from.
+ *
+ * So the corpus's own replica rollup stands in for what has been bound: replicas
+ * declared, less replicas the cluster reports ready, times the recipe's device
+ * shape. It is the same quantity — capacity promised and not yet converged —
+ * counted from the one book the offline fleet keeps consistently.
+ */
+function reservations(query: FixtureQuery) {
+  const cluster = query.get("cluster")
+  const deviceClass = query.get("device_class")
+  const rows = []
+
+  for (const deployment of deployments) {
+    if (!deployment.enabled) continue
+    const workload = parentOf(deployment)
+    const recipe = recipes.find((r) => r.id === workload?.recipe_id)
+    if (!workload || !recipe) continue
+
+    const pending = Math.max(
+      0,
+      deployment.desired_replicas - deployment.replicas.ready
+    )
+    const owed = pending * recipe.shape.device_count
+    if (owed === 0) continue
+
+    const named = clusters.find((c) => c.id === deployment.cluster_id)
+    rows.push({
+      cluster: deployment.cluster_id,
+      cluster_name: named?.name ?? deployment.cluster_id,
+      project: workload.project_id,
+      workload: workload.id,
+      workload_name: workload.name,
+      deployment: deployment.id,
+      deployment_name: deployment.name,
+      device_class: recipe.shape.device_class,
+      devices: owed,
+      requires_single_domain:
+        workload.requires_single_topology_domain ??
+        recipe.shape.requires_single_topology_domain,
+      domain_kind:
+        workload.topology_domain_kind ?? recipe.shape.topology_domain_kind,
+    })
+  }
+
+  return rows.filter(
+    (row) =>
+      eq(cluster, row.cluster, row.cluster_name) &&
+      eq(deviceClass, row.device_class)
+  )
+}
+
+registerFixtures([
+  {
+    method: "GET",
+    path: "/placement/reservations",
+    handler: ({ query }: FixtureContext) => reservations(query),
   },
 ])

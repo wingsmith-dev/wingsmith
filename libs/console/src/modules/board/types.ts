@@ -1,12 +1,20 @@
 import type { Cluster } from "@/modules/clusters/types"
 import type { WorkloadStrategy } from "@/modules/demand/types"
+import type { Reservation } from "@/modules/placement/types"
 import type { Device, TopologyDomain } from "@/modules/supply/types"
 
 /**
- * Where a holder came from. `live` is an allocation the cluster reports; the
- * other two exist only in the sandbox and are never sent anywhere.
+ * Where a holder came from, and how much to believe about it.
+ *
+ * `live` is an allocation the cluster reports — observed, and true of exactly
+ * these devices. `moved` and `proposed` exist only in the sandbox and are never
+ * sent anywhere. `reserved` is the odd one and the only one that is neither: the
+ * plane has declared that this cluster owes these devices to a deployment, which
+ * is as real as an allocation, but the cluster has not yet said *which*
+ * accelerators it will bind. The count is exact; the cells wearing it are a
+ * plausible guess the board made so that the promise has somewhere to be seen.
  */
-export type HolderOrigin = "live" | "moved" | "proposed"
+export type HolderOrigin = "live" | "moved" | "proposed" | "reserved"
 
 /**
  * What holds a device, flattened out of the allocation that holds it.
@@ -46,12 +54,34 @@ export interface BoardDevice {
   slices: BoardDevice[]
 }
 
+/**
+ * The tally, at every layer of the board.
+ *
+ * The first five are device facts and are counted off the cells. A device the
+ * board has painted for a reservation still counts as `free` and never as
+ * `held`, which is the distinction the whole feature turns on: nothing is
+ * holding it, something is owed it.
+ *
+ * `reserved` means two subtly different things by layer, and the difference is
+ * deliberate. On a fabric it is the cells the board painted there — indicative,
+ * because the cluster has not chosen. On a cluster it is replaced by the exact
+ * total the plane says is owed, which is the number to trust and the one that
+ * can exceed what the cluster has free. A cluster owing more than it holds
+ * therefore reports more `reserved` than its fabrics do, and that gap is real.
+ *
+ * `available` is `free` less `reserved`, floored at zero, and it exists because
+ * subtracting the two afterwards gives the wrong number the moment a tally is
+ * summed: a region's spare capacity is the sum of what each of its clusters can
+ * still offer, and one cluster's idle devices cannot pay another's promise.
+ */
 export interface BoardCounts {
   total: number
   held: number
   free: number
   fault: number
   cordoned: number
+  reserved: number
+  available: number
 }
 
 /**
@@ -89,8 +119,24 @@ export interface BoardCluster {
   cluster: Cluster
   fabrics: BoardFabric[]
   counts: BoardCounts
-  /** The biggest set of free devices sharing one fabric in this cluster. */
+  /**
+   * The biggest set of devices sharing one fabric that nothing holds and nothing
+   * is owed — the largest gang this cluster could still take.
+   *
+   * Net of reservations, because the board has painted them onto cells and a
+   * number that contradicted the picture beside it would be worse than either
+   * answer alone. It is therefore as indicative as the painting is.
+   */
   largest_block: number
+  /**
+   * What is on its way here, per deployment.
+   *
+   * The exact list, and the authority for every reserved number on the screen.
+   * The cells painted from it are chosen here and are indicative — the cluster
+   * has not said which accelerators it will bind — so where the two disagree,
+   * this is the one that is true and the painting is the one that is a guess.
+   */
+  reservations: Reservation[]
 }
 
 export interface BoardRegion {

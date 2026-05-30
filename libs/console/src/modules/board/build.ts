@@ -1,5 +1,6 @@
 import type { Cluster } from "@/modules/clusters/types"
 import type { Allocation } from "@/modules/machinery/types"
+import type { Reservation } from "@/modules/placement/types"
 import type { Device, SupplyNode, TopologyDomain } from "@/modules/supply/types"
 import type {
   Assignments,
@@ -69,6 +70,13 @@ export interface BoardInput {
   domains: TopologyDomain[]
   nodes: SupplyNode[]
   assignments: Assignments
+  /**
+   * What the plane says is already spoken for. Optional, and absent means none
+   * are known rather than none exist: the board is built from observed state and
+   * must still render when the reservations call has not answered or has failed,
+   * because a fleet drawn without its promises is worse than one drawn with none.
+   */
+  reservations?: Reservation[]
 }
 
 /**
@@ -84,7 +92,27 @@ export interface BoardInput {
  * dropped rather than invented.
  */
 export function buildBoard(input: BoardInput): Board {
+  const board = assemble(input)
+  const overlay = reservedOverlay(board, input.reservations ?? [])
+  if (overlay.size === 0) return board
+  return assemble({
+    ...input,
+    assignments: new Map([...input.assignments, ...overlay]),
+  })
+}
+
+/**
+ * One pass over the inputs. Everything `buildBoard` does twice, it does here.
+ *
+ * Split out because a reservation has to be laid onto cells that are free, and
+ * "free" is a fact about the finished board — which fabric a device sits in, in
+ * what order, with what already on it. Building once, choosing the cells, and
+ * building again is the honest way to say that; the alternative is a second
+ * implementation of fabric grouping that would drift from this one.
+ */
+function assemble(input: BoardInput): Board {
   const { clusters, devices, domains, nodes, assignments } = input
+  const owed = byCluster(input.reservations ?? [])
 
   const cordoned = new Set(
     nodes.filter((node) => node.cordoned).map((node) => node.id)
@@ -143,11 +171,13 @@ export function buildBoard(input: BoardInput): Board {
   const boardClusters: BoardCluster[] = clusters.map((cluster) => {
     const group = fabricsByCluster.get(cluster.id) ?? []
     group.sort((a, b) => a.label.localeCompare(b.label))
+    const reservations = owed.get(cluster.id) ?? []
     return {
       cluster,
       fabrics: group,
-      counts: sum(group.map((entry) => entry.counts)),
+      counts: promised(sum(group.map((entry) => entry.counts)), reservations),
       largest_block: Math.max(0, ...group.map((entry) => entry.free.length)),
+      reservations,
     }
   })
 
@@ -263,13 +293,194 @@ function cover(names: string[]): string {
 }
 
 /**
- * Free means nothing holds it and the cluster says it can be scheduled onto.
- * A partitioned device is never free itself — its slices are counted instead,
- * so an eight-way-split GPU does not read as one spare device.
+ * Free means nothing holds it, nothing is owed it, and the cluster says it can
+ * be scheduled onto. A partitioned device is never free itself — its slices are
+ * counted instead, so an eight-way-split GPU does not read as one spare device.
+ *
+ * A reserved cell is excluded, and that is what stops the sandbox from planning
+ * onto capacity the fleet has already promised somebody. It is still counted as
+ * `free` in the tally, because it genuinely is unheld — the two answers differ
+ * because the questions do: "what is nobody using" and "what could I take".
  */
 export function isFree(cell: BoardDevice): boolean {
   if (cell.slices.length > 0) return false
-  return cell.holder === null && cell.device.allocatable && !cell.cordoned
+  if (cell.holder) return false
+  return cell.device.allocatable && !cell.cordoned
+}
+
+/** Whether a holder is an allocation the cluster actually reported. */
+export function isBound(holder: Holder | null): boolean {
+  return !!holder && holder.origin !== "reserved"
+}
+
+/**
+ * Which cells to paint for each reservation, and it is a guess by construction.
+ *
+ * The plane knows a cluster owes six h100s and does not know which six — device
+ * selection is the cluster's, not ours (rule 3). Leaving the board blank was the
+ * first answer and it was the wrong one: a cluster reading "0 available" with
+ * eight visibly idle squares and nothing to point at is exactly the confusion
+ * this feature exists to remove. So the board picks plausible cells, and every
+ * label attached to one says the cluster has not chosen yet.
+ *
+ * Deterministic, so the picture does not shuffle under somebody every ten
+ * seconds: reservations are taken in a stable order, and each takes free cells
+ * of its own class in board order. A reservation that must land in one fabric
+ * gets the tightest fabric that can still hold it whole — the same best-fit rule
+ * the sandbox uses, and the likeliest thing the cluster will actually do —
+ * falling back to spreading when no single fabric can. A cluster owing more than
+ * it has free simply runs out: what there is gets painted and the rest does not,
+ * because `counts.reserved` already carries the true number and the two are
+ * different questions.
+ *
+ * Nothing here ever displaces a live holder. It only ever consumes what the
+ * fabric already reported as free.
+ */
+export function reservedOverlay(
+  board: Board,
+  reservations: Reservation[]
+): Assignments {
+  const overlay: Assignments = new Map()
+  if (reservations.length === 0) return overlay
+
+  const owed = byCluster(reservations)
+  for (const cluster of board.regions.flatMap((region) => region.clusters)) {
+    const rows = [...(owed.get(cluster.cluster.id) ?? [])].sort(order)
+    if (rows.length === 0) continue
+
+    const taken = new Set<string>()
+    for (const row of rows) {
+      const holder = reservedHolder(row)
+      for (const id of cellsFor(board, cluster, row, taken)) {
+        taken.add(id)
+        overlay.set(id, holder)
+      }
+    }
+  }
+  return overlay
+}
+
+/**
+ * A stable order for the reservations of one cluster, so the painting is the
+ * same on every poll. By size first, so the promise hardest to satisfy gets the
+ * whole fabric while there is one, then by name and uid to break ties.
+ */
+function order(a: Reservation, b: Reservation): number {
+  if (a.devices !== b.devices) return b.devices - a.devices
+  const named = (row: Reservation) =>
+    row.deployment_name ?? row.workload_name ?? ""
+  return (
+    named(a).localeCompare(named(b)) ||
+    (a.deployment ?? a.workload).localeCompare(b.deployment ?? b.workload)
+  )
+}
+
+function reservedHolder(row: Reservation): Holder {
+  return {
+    allocation: `reserved:${row.deployment ?? row.workload}`,
+    workload: row.workload,
+    workload_name: row.workload_name ?? row.workload,
+    project_slug: row.project,
+    device_class: row.device_class,
+    device_count: row.devices,
+    phase: "reserved",
+    gang_complete: false,
+    origin: "reserved",
+  }
+}
+
+/** The free cells of one fabric this reservation could use, in device order. */
+function openIn(
+  board: Board,
+  fabric: BoardFabric,
+  row: Reservation,
+  taken: Set<string>
+): string[] {
+  return fabric.free.filter(
+    (id) =>
+      !taken.has(id) &&
+      board.devices.get(id)?.device.device_class === row.device_class
+  )
+}
+
+/**
+ * The fabric kind is a preference and never a filter, which matters at the very
+ * end. A gang that names `nvswitch` should land on an nvswitch fabric wherever
+ * one can take it — but a cluster owing eight of them with nothing suitable free
+ * must still show the promise somewhere, or the reserved numeral goes back to
+ * having nothing on the board to point at, which is the whole bug. Better a
+ * roughly-placed square with an honest label than an invisible one.
+ */
+function cellsFor(
+  board: Board,
+  cluster: BoardCluster,
+  row: Reservation,
+  taken: Set<string>
+): string[] {
+  const kind = row.requires_single_domain ? row.domain_kind : null
+  const preferred = kind
+    ? cluster.fabrics.filter((fabric) => fabric.kind === kind)
+    : cluster.fabrics
+  const ordered = [
+    ...preferred,
+    ...cluster.fabrics.filter((fabric) => !preferred.includes(fabric)),
+  ]
+
+  if (row.requires_single_domain) {
+    const whole = (group: BoardFabric[]) =>
+      group
+        .map((fabric) => openIn(board, fabric, row, taken))
+        .filter((open) => open.length >= row.devices)
+        .sort((a, b) => a.length - b.length)[0]
+    const fits = whole(preferred) ?? whole(ordered)
+    if (fits) return fits.slice(0, row.devices)
+  }
+
+  const spread: string[] = []
+  for (const fabric of ordered) {
+    for (const id of openIn(board, fabric, row, taken)) {
+      if (spread.length === row.devices) return spread
+      spread.push(id)
+    }
+  }
+  return spread
+}
+
+/** Reservations bucketed by the cluster that owes them, in the order given. */
+function byCluster(reservations: Reservation[]): Map<string, Reservation[]> {
+  const owed = new Map<string, Reservation[]>()
+  for (const reservation of reservations) {
+    const bucket = owed.get(reservation.cluster)
+    if (bucket) bucket.push(reservation)
+    else owed.set(reservation.cluster, [reservation])
+  }
+  return owed
+}
+
+/**
+ * One cluster's tally with the exact number it owes put back in.
+ *
+ * The fabrics below it counted the cells the board painted, which is at most
+ * what the cluster had free; this replaces that with what the plane actually
+ * says is owed. Applied at the cluster and nowhere below, because the cluster is
+ * the layer the plane made the statement about. A region and the fleet get their
+ * numbers by summing these, which keeps the clamp where it belongs — an
+ * over-subscribed cluster contributes zero available capacity and never a
+ * negative that quietly cancels out somebody else's spare.
+ */
+function promised(
+  counts: BoardCounts,
+  reservations: Reservation[]
+): BoardCounts {
+  const reserved = reservations.reduce(
+    (total, reservation) => total + reservation.devices,
+    0
+  )
+  return {
+    ...counts,
+    reserved,
+    available: Math.max(0, counts.free - reserved),
+  }
 }
 
 function count(group: BoardDevice[]): BoardCounts {
@@ -279,6 +490,8 @@ function count(group: BoardDevice[]): BoardCounts {
     free: 0,
     fault: 0,
     cordoned: 0,
+    reserved: 0,
+    available: 0,
   }
   const walk = (cell: BoardDevice) => {
     if (cell.slices.length > 0) {
@@ -288,10 +501,14 @@ function count(group: BoardDevice[]): BoardCounts {
     counts.total += 1
     if (cell.device.health !== "healthy") counts.fault += 1
     else if (cell.cordoned) counts.cordoned += 1
-    else if (cell.holder) counts.held += 1
-    else if (cell.device.allocatable) counts.free += 1
+    else if (isBound(cell.holder)) counts.held += 1
+    else if (cell.device.allocatable) {
+      counts.free += 1
+      if (cell.holder) counts.reserved += 1
+    }
   }
   group.forEach(walk)
+  counts.available = Math.max(0, counts.free - counts.reserved)
   return counts
 }
 
@@ -303,7 +520,17 @@ function sum(all: BoardCounts[]): BoardCounts {
       free: acc.free + counts.free,
       fault: acc.fault + counts.fault,
       cordoned: acc.cordoned + counts.cordoned,
+      reserved: acc.reserved + counts.reserved,
+      available: acc.available + counts.available,
     }),
-    { total: 0, held: 0, free: 0, fault: 0, cordoned: 0 }
+    {
+      total: 0,
+      held: 0,
+      free: 0,
+      fault: 0,
+      cordoned: 0,
+      reserved: 0,
+      available: 0,
+    }
   )
 }

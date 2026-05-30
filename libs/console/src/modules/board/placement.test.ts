@@ -10,7 +10,14 @@ import type { Assignments, Board } from "./types"
  * test are about how replicas are spread across clusters, so anything that made
  * one cluster the obvious answer would hide which rule did the choosing.
  */
-function fleet(options: { fabrics?: Record<string, number> } = {}) {
+function fleet(
+  options: {
+    fabrics?: Record<string, number>
+    /** `{cluster name: devices owed}`, as the plane would report them. */
+    reserved?: Record<string, number>
+    reservedClass?: string
+  } = {}
+) {
   const shape = options.fabrics ?? { "iad-1": 3, "sjc-1": 2, "ams-1": 1 }
   const regions: Record<string, string> = {
     "iad-1": "us-east-1",
@@ -50,6 +57,10 @@ function fleet(options: { fabrics?: Record<string, number> } = {}) {
     domains,
     devices,
     assignments: new Map(),
+    reservations: Object.entries(options.reserved ?? {}).map(
+      ([name, devices]) =>
+        make.reservation(name, devices, { class: options.reservedClass })
+    ),
   })
   return { board, assignments: new Map() as Assignments, clusters }
 }
@@ -397,5 +408,239 @@ describe("planPlacement", () => {
     expect(plan.wanted).toBe(1)
     expect(plan.placed).toBe(1)
     expect(plan.replicas[0].fabric_identifier).toBe("iad-1-n02/nvswitch-0")
+  })
+})
+
+/**
+ * Reserved capacity is a global fact, so it reaches the one global decision the
+ * sandbox makes and stops there. Choosing a cluster may weigh it; choosing
+ * devices inside a cluster may not, because a reservation names no device and
+ * pretending otherwise would put a promise on a specific accelerator.
+ */
+describe("planning against reserved capacity", () => {
+  it("passes over a cluster whose free devices are already spoken for", () => {
+    const { board, assignments } = fleet({ reserved: { "iad-1": 24 } })
+    const plan = planPlacement(
+      board,
+      make.brick({ device_count: 8, replicas: 1, strategy: "pack" }),
+      assignments,
+      1
+    )
+
+    expect(plan.placed).toBe(1)
+    expect(used(board, plan.clusters)).toEqual(["sjc-1"])
+  })
+
+  it("ignores a reservation for hardware the brick does not want", () => {
+    const { board, assignments } = fleet({
+      reserved: { "iad-1": 24 },
+      reservedClass: "l40s-48gb-pcie",
+    })
+    const plan = planPlacement(
+      board,
+      make.brick({ device_count: 8, replicas: 1, strategy: "pack" }),
+      assignments,
+      1
+    )
+
+    expect(used(board, plan.clusters)).toEqual(["iad-1"])
+  })
+
+  it("leaves the rest of a partly promised cluster placeable", () => {
+    const { board, assignments } = fleet({ reserved: { "iad-1": 8 } })
+    const plan = planPlacement(
+      board,
+      make.brick({ device_count: 8, replicas: 2, strategy: "pack" }),
+      assignments,
+      2
+    )
+
+    expect(plan.placed).toBe(2)
+    expect(used(board, plan.clusters)).toEqual(["iad-1"])
+  })
+
+  /**
+   * The bug this change was most likely to introduce. Painting a reservation
+   * onto cells already removes it from `isFree`, so a ranking that also
+   * subtracted the reserved total would charge the same promise twice: iad-1
+   * would score 24 - 8 - 8 = 8 and lose to sjc-1's 16, and a whole fabric that
+   * is genuinely free would go unused.
+   */
+  it("charges a promise once, not twice, when ranking clusters", () => {
+    const { board, assignments } = fleet({ reserved: { "iad-1": 8 } })
+    const iad = board.regions
+      .flatMap((region) => region.clusters)
+      .find((entry) => entry.cluster.name === "iad-1")!
+
+    expect(iad.counts.free).toBe(24)
+    expect(iad.counts.reserved).toBe(8)
+    expect(iad.counts.available).toBe(16)
+    expect(iad.largest_block).toBe(8)
+
+    const plan = planPlacement(
+      board,
+      make.brick({ device_count: 8, replicas: 1, strategy: "pack" }),
+      assignments,
+      1
+    )
+
+    expect(used(board, plan.clusters)).toEqual(["iad-1"])
+  })
+
+  it("refuses what a fully promised fleet genuinely cannot take", () => {
+    const { board, assignments } = fleet({
+      reserved: { "iad-1": 24, "sjc-1": 16, "ams-1": 8 },
+    })
+    const plan = planPlacement(
+      board,
+      make.brick({ device_count: 8, replicas: 1 }),
+      assignments,
+      1
+    )
+
+    expect(plan.placed).toBe(0)
+    expect(plan.replicas[0].reason).toContain("none free")
+  })
+
+  it("still honours a floor a reservation would have ranked last", () => {
+    const { board, clusters, assignments } = fleet({
+      fabrics: { "iad-1": 3, "sjc-1": 2, "ams-1": 2 },
+      reserved: { "ams-1": 8 },
+    })
+    const ams = clusters.find((entry) => entry.name === "ams-1")!
+    const plan = planPlacement(
+      board,
+      make.brick({
+        device_count: 8,
+        replicas: 2,
+        strategy: "pack",
+        cluster_floors: { [ams.id]: 1 },
+      }),
+      assignments,
+      2
+    )
+
+    expect(plan.replicas[0].cluster_name).toBe("ams-1")
+    expect(plan.placed).toBe(2)
+  })
+})
+
+/**
+ * Which cells a promise lands on. The plane names none, so the board picks — and
+ * the picking has to be plausible enough to read and stable enough not to
+ * shuffle under somebody on every poll.
+ */
+describe("reservedOverlay", () => {
+  const paintedIn = (board: Board, cluster: string) =>
+    board.regions
+      .flatMap((region) => region.clusters)
+      .find((entry) => entry.cluster.name === cluster)!
+      .fabrics.map(
+        (fabric) =>
+          fabric.devices.filter((cell) => cell.holder?.origin === "reserved")
+            .length
+      )
+
+  it("keeps a gang that needs one fabric inside one fabric", () => {
+    const { board } = fleet({ reserved: { "iad-1": 8 } })
+
+    expect(paintedIn(board, "iad-1").sort()).toEqual([0, 0, 8])
+  })
+
+  it("takes the tightest fabric that can still hold the gang whole", () => {
+    const iad = make.cluster("iad-1", "us-east-1")
+    const big = make.node("iad-1-big", iad.id)
+    const small = make.node("iad-1-small", iad.id)
+    const bigFabric = make.domain("tpd_big", iad.id, big.id)
+    const smallFabric = make.domain("tpd_small", iad.id, small.id)
+    const devices = [
+      ...Array.from({ length: 16 }, (_, index) =>
+        make.device(`big-${index}`, {
+          cluster: iad.id,
+          node: big.id,
+          index,
+          domain: bigFabric,
+        })
+      ),
+      ...Array.from({ length: 8 }, (_, index) =>
+        make.device(`small-${index}`, {
+          cluster: iad.id,
+          node: small.id,
+          index,
+          domain: smallFabric,
+        })
+      ),
+    ]
+    const board = buildBoard({
+      clusters: [iad],
+      nodes: [big, small],
+      domains: [bigFabric, smallFabric],
+      devices,
+      assignments: new Map(),
+      reservations: [make.reservation(iad.id, 8)],
+    })
+
+    expect(
+      [...board.devices.values()]
+        .filter((cell) => cell.holder?.origin === "reserved")
+        .every((cell) => cell.device.id.startsWith("small-"))
+    ).toBe(true)
+  })
+
+  it("spreads a gang no single fabric can hold, rather than painting nothing", () => {
+    const { board } = fleet({ reserved: { "iad-1": 12 } })
+
+    expect(paintedIn(board, "iad-1").sort()).toEqual([0, 4, 8])
+  })
+
+  it("skips fabrics of the wrong kind for a gang that names one", () => {
+    const iad = make.cluster("iad-1", "us-east-1")
+    const nvNode = make.node("iad-1-nv", iad.id)
+    const pcieNode = make.node("iad-1-pcie", iad.id)
+    const nv = make.domain("tpd_nv", iad.id, nvNode.id, "nvswitch")
+    const pcie = make.domain("tpd_pcie", iad.id, pcieNode.id, "pcie")
+    const devices = [
+      ...Array.from({ length: 4 }, (_, index) =>
+        make.device(`nv-${index}`, {
+          cluster: iad.id,
+          node: nvNode.id,
+          index,
+          domain: nv,
+        })
+      ),
+      ...Array.from({ length: 4 }, (_, index) =>
+        make.device(`pcie-${index}`, {
+          cluster: iad.id,
+          node: pcieNode.id,
+          index,
+          domain: pcie,
+        })
+      ),
+    ]
+    const board = buildBoard({
+      clusters: [iad],
+      nodes: [nvNode, pcieNode],
+      domains: [nv, pcie],
+      devices,
+      assignments: new Map(),
+      reservations: [
+        make.reservation(iad.id, 4, { single: true, domainKind: "nvswitch" }),
+      ],
+    })
+
+    expect(
+      [...board.devices.values()]
+        .filter((cell) => cell.holder?.origin === "reserved")
+        .map((cell) => cell.device.id)
+    ).toEqual(["nv-0", "nv-1", "nv-2", "nv-3"])
+  })
+
+  it("does not let a reservation count as a replica already placed", () => {
+    const { board } = fleet({ reserved: { "iad-1": 8 } })
+    const painted = [...board.devices.values()].find(
+      (cell) => cell.holder?.origin === "reserved"
+    )!
+
+    expect(replicasPlaced(board, painted.holder!.workload)).toBe(0)
   })
 })

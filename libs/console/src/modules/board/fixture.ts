@@ -1,5 +1,6 @@
 import type { Cluster } from "@/modules/clusters/types"
 import type { Allocation } from "@/modules/machinery/types"
+import type { Reservation } from "@/modules/placement/types"
 import type { Device, SupplyNode, TopologyDomain } from "@/modules/supply/types"
 import type { Brick } from "./types"
 
@@ -200,6 +201,35 @@ export function allocation(
       live: !(options.releasedDevices ?? []).includes(entry.id),
       released_at: null,
     })),
+  }
+}
+
+export function reservation(
+  clusterId: string,
+  devices: number,
+  options: {
+    workload?: string
+    workloadName?: string
+    deployment?: string
+    class?: string
+    single?: boolean
+    domainKind?: string | null
+  } = {}
+): Reservation {
+  const workload = options.workload ?? "wkl_incoming"
+  return {
+    cluster: clusterId,
+    cluster_name: clusterId,
+    project: "prj_1",
+    workload,
+    workload_name: options.workloadName ?? workload,
+    deployment: options.deployment ?? "dep_1",
+    deployment_name: options.workloadName ?? workload,
+    device_class: options.class ?? "h100-80gb-sxm",
+    devices,
+    requires_single_domain: options.single ?? true,
+    domain_kind:
+      options.domainKind === undefined ? "nvswitch" : options.domainKind,
   }
 }
 
