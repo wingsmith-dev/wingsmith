@@ -1,6 +1,7 @@
 /**
  * `POST /v1/placement/preview` and `POST /v1/placement/expand` — the plane's own
- * answer to "where would this go", asked without creating anything.
+ * answer to "where would this go", asked without creating anything — and
+ * `GET /v1/placement/reservations`, which answers "what is about to arrive here".
  *
  * These are the authority and the console's arithmetic is not. The board can see
  * devices, fabrics and health; only the plane can see quota, priority classes,
@@ -67,6 +68,18 @@ export interface ClusterVerdict {
   cluster_name: string
   feasible: boolean
   free_devices: number
+  /**
+   * Devices this cluster already owes a deployment that has not bound them yet.
+   *
+   * Reported beside `free_devices` rather than folded into it, because the two
+   * are different kinds of fact: free is observed, reserved is promised. An
+   * operator told "0 free" while eight accelerators sit visibly idle has been
+   * told something untrue, and the reason the fit was refused is the number that
+   * was never on the screen.
+   */
+  reserved_devices: number
+  /** `free_devices` net of `reserved_devices`. The number every fit is decided on. */
+  available_devices: number
   reasons: Rejection[]
   domain: string | null
   domain_identifier: string | null
@@ -122,4 +135,36 @@ export interface PlacementPreviewRequest {
   project: string
   priority_class?: string | null
   replicas?: number
+}
+
+/**
+ * `ReservationSchema` — capacity a cluster owes a deployment that has not bound
+ * a device yet.
+ *
+ * Derived by the plane on every read and stored nowhere: it is the difference
+ * between what a deployment declares and what ingestion has confirmed the
+ * cluster actually bound, so it appears the moment placement chooses a cluster
+ * and decays to zero on its own as the allocations arrive.
+ *
+ * It is a count with a shape and no device address: which accelerators the
+ * promise lands on is the cluster's answer and it has not given it yet — rule 3,
+ * device selection is local. The board still paints cells for it, because a
+ * cluster reading "0 available" beside eight visibly idle squares and nothing to
+ * point at is the confusion this endpoint exists to remove. Those cells are the
+ * board's own plausible guess and everything rendering them has to say so; the
+ * number here is the only part that is exact.
+ */
+export interface Reservation {
+  cluster: string
+  cluster_name: string
+  project: string
+  workload: string
+  workload_name: string | null
+  deployment: string | null
+  deployment_name: string | null
+  device_class: string
+  /** Devices still owed. Never the deployment's whole declared size. */
+  devices: number
+  requires_single_domain: boolean
+  domain_kind: string | null
 }

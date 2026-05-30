@@ -1,5 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
-import { expandWorkload, previewPlacement } from "./api"
+import {
+  expandWorkload,
+  fetchReservations,
+  previewPlacement,
+  type ReservationFilters,
+} from "./api"
 
 /**
  * A decision is only true for as long as the fleet holds still, so it is cached
@@ -39,6 +44,28 @@ export function usePlacementPreview(
     enabled: enabled && !!recipe && !!project,
     staleTime: STALE_MS,
     retry: false,
+  })
+}
+
+/**
+ * Reservations decay as ingestion reports the allocations that satisfy them, so
+ * they are polled on the same cadence the board polls allocations. Any slower
+ * and the two numbers on one card would be read off different moments: a
+ * reservation that has already been bound, sitting beside the devices that bound
+ * it, reads as double the demand there actually is.
+ */
+const RESERVATIONS_POLL_MS = 10_000
+
+export function useReservations(filters: ReservationFilters = {}) {
+  return useQuery({
+    queryKey: [
+      "placement",
+      "reservations",
+      filters.cluster ?? null,
+      filters.device_class ?? null,
+    ],
+    queryFn: () => fetchReservations(filters),
+    refetchInterval: RESERVATIONS_POLL_MS,
   })
 }
 
