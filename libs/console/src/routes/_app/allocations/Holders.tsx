@@ -8,6 +8,8 @@ import { useMemo } from "react"
 interface Held {
   holder: Holder
   devices: number
+  /** Cells the board painted for a promise to this workload, counted apart. */
+  reserved: number
   clusters: Set<string>
   fabrics: Set<string>
 }
@@ -20,6 +22,12 @@ interface Held {
  * eight replicas is one colour on the board and reading it back as eight rows
  * would answer a question nobody asked. `fabrics` is what makes a split gang
  * visible: one workload, one cluster, more than one fabric.
+ *
+ * A workload with capacity reserved appears here too, since it is wearing a
+ * colour on the board and this list is that colour's key — but its reserved
+ * cells are counted in their own column and never added to the held total. One
+ * of those numbers is what a workload has and the other is what it is owed, and
+ * summing them would overstate the fleet by exactly the amount still converging.
  */
 export function Holders({ board }: { board: Board | undefined }) {
   const highlight = useBoardStore((s) => s.highlight)
@@ -31,23 +39,28 @@ export function Holders({ board }: { board: Board | undefined }) {
       for (const cell of board.devices.values()) {
         const holder = cell.holder
         if (!holder) continue
+        const promised = holder.origin === "reserved"
         const row = byWorkload.get(holder.workload)
         const fabric = board.fabric_of.get(cell.device.id) ?? ""
         if (row) {
-          row.devices += 1
+          if (promised) row.reserved += 1
+          else row.devices += 1
           row.clusters.add(cell.device.cluster_name)
           row.fabrics.add(fabric)
         } else {
           byWorkload.set(holder.workload, {
             holder,
-            devices: 1,
+            devices: promised ? 0 : 1,
+            reserved: promised ? 1 : 0,
             clusters: new Set([cell.device.cluster_name]),
             fabrics: new Set([fabric]),
           })
         }
       }
     }
-    return [...byWorkload.values()].sort((a, b) => b.devices - a.devices)
+    return [...byWorkload.values()].sort(
+      (a, b) => b.devices + b.reserved - (a.devices + a.reserved)
+    )
   }, [board])
 
   if (rows.length === 0) {
@@ -97,6 +110,9 @@ export function Holders({ board }: { board: Board | undefined }) {
             </span>
             <span className="shrink-0 font-mono text-2xs tabular-nums">
               {row.devices}
+              {row.reserved > 0 && (
+                <span className="text-primary"> +{row.reserved}</span>
+              )}
             </span>
           </li>
         )

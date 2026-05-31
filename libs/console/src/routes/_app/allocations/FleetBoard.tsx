@@ -26,6 +26,7 @@ import { IconChevronRight, IconWorld } from "@tabler/icons-react"
 import { useMemo } from "react"
 import { toast } from "sonner"
 import { DeviceCell } from "./DeviceCell"
+import { HATCH } from "./Legend"
 import type { BoardMode } from "./route"
 
 /** Devices are grouped in fours, the way a node's GPUs are read off a chassis. */
@@ -158,6 +159,7 @@ export function FleetBoard({
   const pickUp = (cell: BoardDevice) => {
     const holder = cell.holder
     if (!holder || mode !== "sandbox") return
+    if (holder.origin === "reserved") return
     drag({
       kind: "allocation",
       allocation: holder.allocation,
@@ -368,6 +370,12 @@ function ClusterCard({
           <span className="truncate font-mono text-2xs text-muted-foreground/60">
             {[meta.region, meta.display_name].filter(Boolean).join(" · ")}
             {meta.reachable ? "" : " · unreachable"}
+            {cluster.reservations.length > 0 && (
+              <span className="text-primary">
+                {" · "}
+                {cluster.reservations.length} incoming
+              </span>
+            )}
           </span>
         </button>
 
@@ -469,21 +477,41 @@ function FabricRow({
         <span className="text-muted-foreground/60">
           {fabric.counts.held}/{fabric.counts.total} held
         </span>
+        {fabric.counts.reserved > 0 && (
+          <span className="text-primary">
+            {fabric.counts.reserved} reserved
+          </span>
+        )}
         <span
           className={cn(
             "w-10 text-right",
-            fabric.counts.free > 0
+            fabric.counts.available > 0
               ? "text-emerald-600 dark:text-emerald-400"
               : "text-muted-foreground/40"
           )}
         >
-          {fabric.counts.free} free
+          {fabric.counts.available} free
         </span>
       </div>
     </div>
   )
 }
 
+/**
+ * The numerals, and the only place reserved capacity appears at all.
+ *
+ * `reserved` and `available` are shown only when something is actually owed,
+ * which keeps the ordinary board unchanged and makes the pair mean something
+ * when it does appear: "8 free · 6 reserved · 2 available" is the whole
+ * explanation for a cluster that looks idle and refuses work, and printing
+ * "available 8" beside "free 8" every other minute of the day would train
+ * everybody to stop reading it.
+ *
+ * These numerals are the exact half of the answer. The board also paints cells
+ * for a reservation, but only the count here is authoritative: a cluster can owe
+ * more than it has free, in which case fewer cells are painted than this says.
+ * When the two disagree, this is the one to believe.
+ */
 function Tally({
   counts,
   compact = false,
@@ -494,6 +522,16 @@ function Tally({
   const items: [string, number, string][] = [
     ["held", counts.held, "text-foreground"],
     ["free", counts.free, "text-emerald-600 dark:text-emerald-400"],
+    ...(counts.reserved > 0
+      ? ([
+          ["reserved", counts.reserved, "text-primary"],
+          [
+            "available",
+            counts.available,
+            "text-emerald-600 dark:text-emerald-400",
+          ],
+        ] as [string, number, string][])
+      : []),
     ["fault", counts.fault, "text-destructive"],
     ["cordoned", counts.cordoned, "text-amber-600 dark:text-amber-400"],
     ["total", counts.total, "text-muted-foreground"],
@@ -520,6 +558,15 @@ function Tally({
   )
 }
 
+/**
+ * The bar earns a reserved segment where a device cell does not.
+ *
+ * A cell is one accelerator and naming one would be a claim; a bar is a
+ * proportion of a cluster and claims nothing about which end of it is spoken
+ * for. It is striped rather than solid because it is a promise and not an
+ * observation, and it is clamped to what is actually free so a cluster that owes
+ * more than it holds cannot draw a bar past its own width.
+ */
 function UtilBar({
   counts,
   className,
@@ -539,6 +586,10 @@ function UtilBar({
       <span
         className="h-full bg-primary"
         style={{ width: `${pct(counts.held)}%` }}
+      />
+      <span
+        className={cn("h-full bg-primary/25 text-primary/70", HATCH)}
+        style={{ width: `${pct(Math.min(counts.reserved, counts.free))}%` }}
       />
       <span
         className="h-full bg-amber-500/70"

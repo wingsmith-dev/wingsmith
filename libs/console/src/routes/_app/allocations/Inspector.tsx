@@ -7,6 +7,7 @@ import { brickColor } from "@/modules/board/palette"
 import { brickOfHolder, heldBy } from "@/modules/board/sandbox"
 import { useBoardStore } from "@/modules/board/store"
 import type { Board, BoardDevice, Holder } from "@/modules/board/types"
+import type { Reservation } from "@/modules/placement/types"
 import {
   deviceHealthTone,
   gibibytes,
@@ -110,7 +111,18 @@ export function Inspector({
               {cluster.counts.held}/{cluster.counts.total}
             </Field>
             <Field label="Free">{cluster.counts.free}</Field>
+            {cluster.counts.reserved > 0 && (
+              <>
+                <Field label="Reserved">
+                  <span className="text-primary">
+                    {cluster.counts.reserved}
+                  </span>
+                </Field>
+                <Field label="Available">{cluster.counts.available}</Field>
+              </>
+            )}
           </FieldGrid>
+          <Incoming reservations={cluster.reservations} />
           <Link
             to="/clusters/$clusterId"
             params={{ clusterId: cluster.cluster.id }}
@@ -128,16 +140,29 @@ export function Inspector({
       (entry) => entry.region === selection.region
     )
     return region ? (
-      <FieldGrid>
-        <Field label="Region">{region.region}</Field>
-        <Field label="Clusters">
-          {region.clusters.map((entry) => entry.cluster.name).join(", ")}
-        </Field>
-        <Field label="Devices">{region.counts.total}</Field>
-        <Field label="Held">{region.counts.held}</Field>
-        <Field label="Free">{region.counts.free}</Field>
-        <Field label="Fault">{region.counts.fault}</Field>
-      </FieldGrid>
+      <div className="space-y-3">
+        <FieldGrid>
+          <Field label="Region">{region.region}</Field>
+          <Field label="Clusters">
+            {region.clusters.map((entry) => entry.cluster.name).join(", ")}
+          </Field>
+          <Field label="Devices">{region.counts.total}</Field>
+          <Field label="Held">{region.counts.held}</Field>
+          <Field label="Free">{region.counts.free}</Field>
+          <Field label="Fault">{region.counts.fault}</Field>
+          {region.counts.reserved > 0 && (
+            <>
+              <Field label="Reserved">
+                <span className="text-primary">{region.counts.reserved}</span>
+              </Field>
+              <Field label="Available">{region.counts.available}</Field>
+            </>
+          )}
+        </FieldGrid>
+        <Incoming
+          reservations={region.clusters.flatMap((entry) => entry.reservations)}
+        />
+      </div>
     ) : (
       <Missing what="region" />
     )
@@ -160,6 +185,74 @@ export function Inspector({
       </CardHeader>
       <CardContent>{body()}</CardContent>
     </Card>
+  )
+}
+
+/**
+ * What is on its way here, named.
+ *
+ * The tally can only say "six reserved", and six devices missing from a cluster
+ * that visibly has them is not an explanation until somebody can say what took
+ * them. This is that list, and it is the whole reason a reserved number is worth
+ * showing at all: the thing that spent the capacity is a deployment nobody
+ * thought to look at.
+ *
+ * Every field below is one the plane actually stated — a cluster, a shape and a
+ * count — which is what makes this the place to check when the cells on the
+ * board and the reserved numeral do not agree. The cells are the board's guess
+ * at where each of these will land; this list is what was really promised.
+ */
+function Incoming({ reservations }: { reservations: Reservation[] }) {
+  if (reservations.length === 0) return null
+
+  const rows = [...reservations].sort((a, b) => b.devices - a.devices)
+
+  return (
+    <div className="space-y-1">
+      <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        Incoming
+      </div>
+      {rows.map((reservation) => (
+        <div
+          key={`${reservation.cluster}:${reservation.deployment ?? reservation.workload}`}
+          className="space-y-0.5 rounded-md bg-primary/5 px-1.5 py-1"
+        >
+          <div className="flex items-baseline gap-2 font-mono text-2xs">
+            {reservation.workload.startsWith("wkl_") ? (
+              <Link
+                to="/workloads/$workloadId"
+                params={{ workloadId: reservation.workload }}
+                className="min-w-0 flex-1 truncate font-semibold hover:underline"
+              >
+                {reservation.workload_name ?? reservation.workload}
+              </Link>
+            ) : (
+              <span className="min-w-0 flex-1 truncate font-semibold">
+                {reservation.workload_name ?? reservation.workload}
+              </span>
+            )}
+            <span className="shrink-0 text-primary tabular-nums">
+              {reservation.devices}
+            </span>
+          </div>
+          <div className="truncate font-mono text-2xs text-muted-foreground/60">
+            {[
+              reservation.deployment_name,
+              reservation.device_class,
+              reservation.requires_single_domain
+                ? `one ${reservation.domain_kind ?? "fabric"}`
+                : "may spread",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        </div>
+      ))}
+      <p className="font-mono text-2xs leading-relaxed text-muted-foreground/40">
+        Declared, not yet bound. The cells marked for these on the board are the
+        board&rsquo;s own guess; the cluster picks the actual accelerators.
+      </p>
+    </div>
   )
 }
 
@@ -233,7 +326,8 @@ function DeviceDetail({
                   "size-2 shrink-0 rounded-[2px]",
                   slice.holder
                     ? brickColor(slice.holder.workload).swatch
-                    : "bg-muted-foreground/25"
+                    : "bg-muted-foreground/25",
+                  slice.holder?.origin === "reserved" && "opacity-40"
                 )}
               />
               <span className="flex-1 truncate">
@@ -241,14 +335,22 @@ function DeviceDetail({
                   `slice ${slice.device.device_index}`}
               </span>
               <span className="truncate text-muted-foreground/60">
-                {slice.holder?.workload_name ?? "free"}
+                {slice.holder
+                  ? `${slice.holder.workload_name}${
+                      slice.holder.origin === "reserved" ? " · reserved" : ""
+                    }`
+                  : "free"}
               </span>
             </div>
           ))}
         </div>
       )}
 
-      {cell.holder && (
+      {cell.holder?.origin === "reserved" && (
+        <ReservedBlock holder={cell.holder} />
+      )}
+
+      {cell.holder && cell.holder.origin !== "reserved" && (
         <HolderBlock
           holder={cell.holder}
           onPickUp={
@@ -287,6 +389,44 @@ function DeviceDetail({
           <IconExternalLink className="size-3" />
         </Link>
       </div>
+    </div>
+  )
+}
+
+/**
+ * A reserved cell, explained.
+ *
+ * Deliberately not `HolderBlock`. That block offers "pick up" and "release",
+ * which are operations on an allocation, and a reservation has none — its
+ * allocation id is one this board invented so the cells could be grouped. It has
+ * no phase to report and no gang to be complete, and the one thing it does have
+ * to say is that this square is a guess.
+ */
+function ReservedBlock({ holder }: { holder: Holder }) {
+  const colour = brickColor(holder.workload)
+  return (
+    <div className={cn("space-y-2 rounded-md p-2", colour.wash)}>
+      <div className="flex items-center gap-2">
+        <span
+          className={cn(
+            "ring-dashed size-2.5 shrink-0 rounded-[2px] ring-1 ring-inset",
+            colour.ghost,
+            colour.edge
+          )}
+        />
+        <span className="min-w-0 flex-1 truncate font-mono text-2xs font-semibold">
+          {holder.workload_name}
+        </span>
+        <span className="font-mono text-2xs text-primary">reserved</span>
+      </div>
+      <div className="font-mono text-2xs text-muted-foreground/60">
+        {holder.device_count}× {holder.device_class} owed to this cluster
+      </div>
+      <p className="font-mono text-2xs leading-relaxed text-muted-foreground/50">
+        Declared, not yet bound. The board picked this device to show the
+        promise somewhere; the cluster chooses the actual accelerators and may
+        well choose others.
+      </p>
     </div>
   )
 }

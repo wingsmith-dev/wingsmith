@@ -29,6 +29,7 @@ const BOARD_KEYS = [
   ["topology-domains"],
   ["allocations"],
   ["workloads"],
+  ["placement", "reservations"],
 ]
 
 /**

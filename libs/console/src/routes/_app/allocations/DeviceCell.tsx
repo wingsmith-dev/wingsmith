@@ -51,6 +51,13 @@ export function DeviceCell(props: CellProps) {
   } = props
   const held = cell.holder
   const partitioned = cell.slices.length > 0
+  /**
+   * A reservation is not yours to move. It has no allocation the plane would
+   * recognise — the id on the holder is one this board invented so the cells
+   * could be grouped — so dragging one would put a fabricated allocation into
+   * the plan and ask the sandbox to relocate something that was never bound.
+   */
+  const movable = held && held.origin !== "reserved" ? held : null
 
   return (
     <button
@@ -58,11 +65,11 @@ export function DeviceCell(props: CellProps) {
       data-keeps-selection
       title={describe(cell)}
       aria-label={describe(cell)}
-      draggable={!!held && !!onPickUp}
+      draggable={!!movable && !!onPickUp}
       onDragStart={(event) => {
-        if (!held || !onPickUp) return
+        if (!movable || !onPickUp) return
         event.dataTransfer.effectAllowed = "move"
-        event.dataTransfer.setData("text/plain", held.allocation)
+        event.dataTransfer.setData("text/plain", movable.allocation)
         onPickUp(cell)
       }}
       onDragOver={(event) => {
@@ -87,7 +94,7 @@ export function DeviceCell(props: CellProps) {
         withinSelection &&
           "ring-1 ring-primary/50 ring-offset-1 ring-offset-background",
         selected && "ring-2 ring-primary ring-offset-1 ring-offset-background",
-        held && "cursor-grab active:cursor-grabbing"
+        movable && "cursor-grab active:cursor-grabbing"
       )}
     >
       {partitioned ? (
@@ -127,6 +134,18 @@ function face(cell: BoardDevice): string {
     return "bg-muted/30 ring-1 ring-dashed ring-border ring-inset hover:bg-emerald-500/15 hover:ring-emerald-500/50"
   }
   const colour = brickColor(cell.holder.workload)
+  /**
+   * Reserved wears the workload's own colour, because the fact worth seeing is
+   * "*this* workload is arriving *here*" and the colour is what says which
+   * workload. What separates it from a bound cell is weight: a washed-out fill
+   * over the free cell's own dashed ring, so it reads as an outline being
+   * filled in rather than as something already there. It cannot be mistaken for
+   * free (free carries no colour), for proposed (solid fill, dashed outline
+   * inset from the edge), or for cordoned and faulted (both hatched).
+   */
+  if (cell.holder.origin === "reserved") {
+    return cn(colour.ghost, "ring-dashed ring-1 ring-inset", colour.edge)
+  }
   return cn(
     colour.fill,
     cell.holder.origin === "live"
@@ -150,7 +169,18 @@ function describe(cell: BoardDevice): string {
   }
   if (cell.cordoned) lines.push("node cordoned")
   if (cell.slices.length > 0) lines.push(`${cell.slices.length} slices`)
-  if (cell.holder) {
+  if (cell.holder?.origin === "reserved") {
+    /**
+     * The caveat lives here and nowhere else, so it has to actually be said —
+     * on every reserved cell, in the accessible name as well as the tooltip. The
+     * board chose this square; the cluster has not, and a person reading the
+     * picture without this sentence would take it for a placement.
+     */
+    lines.push(
+      `reserved for ${cell.holder.workload_name}`,
+      "declared, not yet bound — the cluster picks the actual devices"
+    )
+  } else if (cell.holder) {
     lines.push(
       `held by ${cell.holder.workload_name}${
         cell.holder.origin === "live" ? "" : ` (${cell.holder.origin})`
