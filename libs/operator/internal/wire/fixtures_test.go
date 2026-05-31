@@ -219,3 +219,30 @@ func TestDecodeRejectsUnregisteredType(t *testing.T) {
 		t.Fatal("expected an error for an unregistered type")
 	}
 }
+
+// The frontend image travels under exactly this key, and that is worth pinning here rather than
+// leaving to the corpus alone: the plane, the operator and the console each name it themselves,
+// and a Go tag that drifts decodes to nil rather than failing — a cluster that quietly serves
+// every model through its default frontend and reports nothing about it.
+func TestTheFrontendImageDecodesFromItsOwnKey(t *testing.T) {
+	var recipe RecipeDesired
+	body := `{"recipe_id":"rec_1","frontend_image":"ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"}`
+	if err := json.Unmarshal([]byte(body), &recipe); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if recipe.FrontendImage == nil {
+		t.Fatal("frontend_image decoded to nil; the recipe's frontend would be the cluster's default")
+	}
+	if *recipe.FrontendImage != "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2" {
+		t.Fatalf("frontend_image = %q", *recipe.FrontendImage)
+	}
+	// A pointer, so that a plane too old to send the field is distinguishable from one that
+	// deliberately sent nothing.
+	var absent RecipeDesired
+	if err := json.Unmarshal([]byte(`{"recipe_id":"rec_1"}`), &absent); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if absent.FrontendImage != nil {
+		t.Fatalf("an absent frontend_image became %q", *absent.FrontendImage)
+	}
+}

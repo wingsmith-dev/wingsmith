@@ -89,7 +89,7 @@ func (e *Executor) benchmark(ctx context.Context, op wire.OperationDesired) (res
 
 	bench := e.Benchmark
 	if bench.Endpoint == "" {
-		endpoint, lookupErr := e.frontendEndpoint(ctx)
+		endpoint, lookupErr := e.frontendEndpoint(ctx, op.Target.ID)
 		if lookupErr != nil {
 			return nil, lookupErr
 		}
@@ -151,7 +151,16 @@ func (e *Executor) benchmark(ctx context.Context, op wire.OperationDesired) (res
 }
 
 // frontendComponentLabel is how Dynamo's operator marks the Service in front of a graph.
+//
+// The value this is matched against is render.FrontendComponent rather than a second copy of the
+// same string, because that name is what this lookup and the serving agent's both find a frontend
+// by, and a copy that drifts is a lookup that finds nothing rather than a compile error.
 const frontendComponentLabel = "nvidia.com/dynamo-component"
+
+// deploymentIDLabel is the label the operator puts on everything it renders for one deployment,
+// and — because Dynamo copies a component's pod-template labels onto the Service it derives — the
+// label that says which deployment a frontend Service belongs to.
+const deploymentIDLabel = "hangar.dev/deployment-id"
 
 // frontendEndpoint finds the OpenAI-compatible frontend to aim a run at.
 //
@@ -168,49 +177,97 @@ const frontendComponentLabel = "nvidia.com/dynamo-component"
 // its models with something Dynamo did not label has said so, and this lookup is not entitled to
 // overrule it.
 //
-// Two frontends is an error and not a guess. Picking one would attribute a measurement to a
-// deployment the load never reached.
-func (e *Executor) frontendEndpoint(ctx context.Context) (string, error) {
+// Which frontend, when there is more than one, is answered by the deployment id rather than
+// guessed. Dynamo copies a component's pod-template labels onto the Service it derives — verified
+// on site-c — so a frontend this operator rendered for one deployment carries that deployment's id,
+// and the run aims at the frontend the model is actually served through. That is not merely a
+// tie-break added for plurality: it is better than what a single shared frontend could give,
+// because a measurement taken through a process shared with every other model on the cluster
+// carries their queueing as if it were this model's.
+//
+// The unlabelled single frontend is the fallback and stays exactly as it was, because that is
+// what the chart installs and what every cluster runs today. The refusal survives for the case it
+// was written for and no wider: several frontends, none of them this deployment's, where picking
+// one would attribute a measurement to a deployment the load never reached.
+func (e *Executor) frontendEndpoint(ctx context.Context, deploymentID string) (string, error) {
 	var services corev1.ServiceList
 	if err := e.Client.List(ctx, &services, client.InNamespace(e.Render.Namespace)); err != nil {
 		return "", fmt.Errorf("look for the inference frontend in %s: %w", e.Render.Namespace, err)
 	}
 
-	var found []corev1.Service
+	var found, mine, shared []corev1.Service
 	for _, service := range services.Items {
-		if service.Spec.Selector[frontendComponentLabel] == "Frontend" {
-			found = append(found, service)
+		if service.Spec.Selector[frontendComponentLabel] != render.FrontendComponent {
+			continue
+		}
+		found = append(found, service)
+		switch id := frontendDeploymentID(service); {
+		case id == "":
+			shared = append(shared, service)
+		case id == deploymentID && deploymentID != "":
+			mine = append(mine, service)
 		}
 	}
 
-	switch len(found) {
-	case 0:
+	if len(mine) == 1 {
+		return serviceEndpoint(mine[0]), nil
+	}
+	if len(mine) == 0 && len(shared) == 1 {
+		return serviceEndpoint(shared[0]), nil
+	}
+	if len(found) == 0 {
 		return "", fmt.Errorf(
-			"no service in %s selects %s=Frontend, so there is nothing to benchmark against; "+
+			"no service in %s selects %s=%s, so there is nothing to benchmark against; "+
 				"set HANGAR_INFERENCE_ENDPOINT if this cluster fronts its models with something else",
-			e.Render.Namespace, frontendComponentLabel,
-		)
-	case 1:
-		service := found[0]
-		port := int32(8000)
-		for _, declared := range service.Spec.Ports {
-			if declared.Name == "http" || len(service.Spec.Ports) == 1 {
-				port = declared.Port
-				break
-			}
-		}
-		return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", service.Name, service.Namespace, port), nil
-	default:
-		names := make([]string, 0, len(found))
-		for _, service := range found {
-			names = append(names, service.Name)
-		}
-		return "", fmt.Errorf(
-			"%s holds %d inference frontends (%s) and nothing here can tell which one serves the "+
-				"deployment under test; set HANGAR_INFERENCE_ENDPOINT",
-			e.Render.Namespace, len(found), strings.Join(names, ", "),
+			e.Render.Namespace, frontendComponentLabel, render.FrontendComponent,
 		)
 	}
+
+	if len(mine) > 1 {
+		return "", fmt.Errorf(
+			"%s holds %d inference frontends labelled %s=%s (%s) and nothing here can tell them "+
+				"apart; set HANGAR_INFERENCE_ENDPOINT",
+			e.Render.Namespace, len(mine), deploymentIDLabel, deploymentID, serviceNames(mine),
+		)
+	}
+	return "", fmt.Errorf(
+		"%s holds %d inference frontends (%s), none of them labelled %s=%s, so nothing here can "+
+			"tell which one serves the deployment under test; set HANGAR_INFERENCE_ENDPOINT",
+		e.Render.Namespace, len(found), serviceNames(found), deploymentIDLabel, deploymentID,
+	)
+}
+
+func serviceNames(services []corev1.Service) string {
+	names := make([]string, 0, len(services))
+	for _, service := range services {
+		names = append(names, service.Name)
+	}
+	return strings.Join(names, ", ")
+}
+
+// frontendDeploymentID reads which deployment a frontend Service belongs to.
+//
+// The Service's own labels first, because that is where Dynamo copies the pod template's, and its
+// selector second — a Service that selects on the deployment id can only reach that deployment's
+// pods, so it is no less an answer. Empty means the Service says nothing, which is what the one
+// shared frontend a cluster installs looks like.
+func frontendDeploymentID(service corev1.Service) string {
+	if id := service.Labels[deploymentIDLabel]; id != "" {
+		return id
+	}
+	return service.Spec.Selector[deploymentIDLabel]
+}
+
+// serviceEndpoint is the in-cluster URL a load generator aims at.
+func serviceEndpoint(service corev1.Service) string {
+	port := int32(8000)
+	for _, declared := range service.Spec.Ports {
+		if declared.Name == "http" || len(service.Spec.Ports) == 1 {
+			port = declared.Port
+			break
+		}
+	}
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local:%d", service.Name, service.Namespace, port)
 }
 
 // startJob creates the run's job, or adopts the one already there.

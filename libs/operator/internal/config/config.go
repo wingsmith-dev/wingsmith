@@ -155,6 +155,64 @@ type Config struct {
 	// initialisation rather than failing. A cluster sets it once it has installed one of them.
 	Multinode bool
 
+	// FrontendEnabled renders one OpenAI-compatible frontend per model, beside the worker in the
+	// same graph, instead of relying on the single frontend `cluster-setup` installs.
+	//
+	// Off by default, and the default is the migration control rather than a preference. With it
+	// off the operator renders exactly what it always did, byte for byte, so this binary can
+	// reach every cluster before any cluster changes shape; a cluster moves when somebody sets
+	// this, and moves back by unsetting it. The reason to move is that a frontend is a binary
+	// which must tokenize and register every model reaching it, so one per cluster makes the
+	// image a fleet-wide lowest common denominator — and one model that needs a newer or patched
+	// build makes the whole fleet's frontend that model's problem.
+	FrontendEnabled bool
+
+	// FrontendImage is this cluster's default frontend runtime. Empty falls back to the recipe's
+	// engine image, which is usually the same build — the Dynamo runtime carries the frontend
+	// and the engines together — and a recipe that needs a different one says so itself.
+	FrontendImage string
+
+	// FrontendReplicas is how many pods one model's frontend runs. Two, so that a rollout does
+	// not take the model's only frontend with it: the frontend holds no weights, so the second
+	// replica is cheap and the outage it avoids is not.
+	FrontendReplicas int
+
+	// FrontendPullSecrets are Secrets in WorkloadNamespace the kubelet presents when pulling
+	// FrontendImage. Empty for the nvcr.io default, which is served anonymously.
+	//
+	// It exists because a frontend image is not always NVIDIA's: the Kimi K3 fix is a patched
+	// runtime in a private GHCR repository, and a private pull with no credential is an
+	// ImagePullBackOff that nothing reports upward. A pull Secret is namespaced and the kubelet
+	// reads it from the pod's own namespace, so these name Secrets where the workloads are, not
+	// where this operator is.
+	FrontendPullSecrets []string
+
+	// FrontendCPU, FrontendMemory and FrontendMemoryLimit are what one frontend pod requests.
+	// Empty takes the render's defaults, sized to what the cluster frontend has been observed to
+	// run inside. No CPU limit is ever set: the frontend copies every token of every response,
+	// so throttling it is latency on the data path.
+	FrontendCPU         string
+	FrontendMemory      string
+	FrontendMemoryLimit string
+
+	// FrontendAnthropicAPI serves the Anthropic Messages API (`/v1/messages`) beside the OpenAI
+	// surface, and FrontendAnthropicStripPreamble drops the Claude Code billing preamble from
+	// the system prompt. Both default on, matching the chart: the first because a cluster
+	// without it cannot be used by Anthropic-protocol clients at all and the alternative is a
+	// translating proxy per client, the second because a prompt that starts the same way every
+	// time is a prompt the prefix cache can hit.
+	FrontendAnthropicAPI           bool
+	FrontendAnthropicStripPreamble bool
+
+	// FrontendGlobalDynamoNamespace puts the rendered frontend in the shared Dynamo namespace,
+	// which is what every frontend and every worker on every cluster we run does today.
+	//
+	// On by default because that is the observed behaviour and not because it is settled.
+	// Whether a frontend can be narrowed to its own model's workers is unresolved and needs an
+	// experiment on a live cluster; this exists so that the answer is a value somebody sets on
+	// one cluster rather than a change to the renderer.
+	FrontendGlobalDynamoNamespace bool
+
 	// DCGMEndpoint is the in-cluster DCGM exporter's metrics URL, which the observation loop
 	// scrapes for device identity — the true accelerator UUID, which Kubernetes does not carry
 	// anywhere (ADR 0007). It is read cluster-locally and only for identity; the measurements on
@@ -247,6 +305,18 @@ func Load() (*Config, error) {
 		PrefetchMemory:        env("HANGAR_PREFETCH_MEMORY", ""),
 		PrefetchMemoryLimit:   env("HANGAR_PREFETCH_MEMORY_LIMIT", ""),
 		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
+
+		FrontendEnabled:                envBool("HANGAR_FRONTEND_ENABLED", false),
+		FrontendImage:                  env("HANGAR_FRONTEND_IMAGE", ""),
+		FrontendReplicas:               envInt("HANGAR_FRONTEND_REPLICAS", 2),
+		FrontendPullSecrets:            envList("HANGAR_FRONTEND_PULL_SECRETS"),
+		FrontendCPU:                    env("HANGAR_FRONTEND_CPU", ""),
+		FrontendMemory:                 env("HANGAR_FRONTEND_MEMORY", ""),
+		FrontendMemoryLimit:            env("HANGAR_FRONTEND_MEMORY_LIMIT", ""),
+		FrontendAnthropicAPI:           envBool("HANGAR_FRONTEND_ANTHROPIC_API", true),
+		FrontendAnthropicStripPreamble: envBool("HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE", true),
+		FrontendGlobalDynamoNamespace:  envBool("HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE", true),
+
 		Multinode:             envBool("HANGAR_MULTINODE", false),
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		BenchmarkArtifactBase: env("HANGAR_BENCHMARK_ARTIFACT_BASE", ""),
@@ -310,6 +380,13 @@ func (c *Config) validate() error {
 	}
 	if c.PoolLabelKey == "" {
 		return fmt.Errorf("HANGAR_POOL_LABEL_KEY must not be empty")
+	}
+	// Zero would render a frontend that exists and serves nothing, which is a deployment
+	// reachable by nothing and healthy in every reading of it. Turning the frontend off is
+	// HANGAR_FRONTEND_ENABLED and not a replica count, so say so rather than quietly substitute
+	// the default for what somebody wrote.
+	if c.FrontendEnabled && c.FrontendReplicas < 1 {
+		return fmt.Errorf("HANGAR_FRONTEND_REPLICAS must be at least 1; set HANGAR_FRONTEND_ENABLED=false to render no frontend")
 	}
 	if c.LogFormat != "json" && c.LogFormat != "text" {
 		return fmt.Errorf("HANGAR_LOG_FORMAT must be json or text")

@@ -406,3 +406,434 @@ func TestServedModelName(t *testing.T) {
 		})
 	}
 }
+
+// ------------------------------------------------------------------ one frontend per model
+
+func frontendOptions() Options {
+	opts := testOptions()
+	opts.FrontendEnabled = true
+	return opts
+}
+
+// componentNamed returns the rendered component with the given name, and fails when the graph
+// does not hold exactly one of it.
+func componentNamed(t *testing.T, obj *unstructured.Unstructured, name string) map[string]any {
+	t.Helper()
+	comps, found, err := unstructured.NestedSlice(obj.Object, "spec", "components")
+	if err != nil || !found {
+		t.Fatalf("spec.components missing: found %v, err %v", found, err)
+	}
+	var out map[string]any
+	for _, entry := range comps {
+		c, ok := entry.(map[string]any)
+		if ok && c["name"] == name {
+			if out != nil {
+				t.Fatalf("two components named %q", name)
+			}
+			out = c
+		}
+	}
+	if out == nil {
+		t.Fatalf("no component named %q in %v", name, comps)
+	}
+	return out
+}
+
+func componentPod(t *testing.T, c map[string]any) corev1.PodSpec {
+	t.Helper()
+	raw, found, err := unstructured.NestedMap(c, "podTemplate", "spec")
+	if err != nil || !found {
+		t.Fatalf("podTemplate.spec missing: found %v, err %v", found, err)
+	}
+	var pod corev1.PodSpec
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(raw, &pod); err != nil {
+		t.Fatalf("decode pod spec: %v", err)
+	}
+	return pod
+}
+
+// The migration control, and the only reason it is safe to ship this before any cluster has moved:
+// with the option off the rendered object is what it always was, one component and no frontend.
+func TestNoFrontendIsRenderedUntilTheClusterOptsIn(t *testing.T) {
+	obj, err := DynamoGraphDeployment(testInputs(), testOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	comps, _, err := unstructured.NestedSlice(obj.Object, "spec", "components")
+	if err != nil {
+		t.Fatalf("components: %v", err)
+	}
+	if len(comps) != 1 {
+		t.Fatalf("components = %v, want the worker alone", comps)
+	}
+	if first, _ := comps[0].(map[string]any); first["name"] != WorkerComponent {
+		t.Fatalf("the one component is %v, want the worker", first["name"])
+	}
+}
+
+// A frontend per model, in the graph the worker is already in. The component's name is what both
+// label-based lookups match on and its type is what earns it its ports and its command line, so
+// both are asserted: they are different fields saying different things.
+func TestAFrontendIsRenderedBesideTheWorker(t *testing.T) {
+	obj, err := DynamoGraphDeployment(testInputs(), frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	comps, _, err := unstructured.NestedSlice(obj.Object, "spec", "components")
+	if err != nil {
+		t.Fatalf("components: %v", err)
+	}
+	if len(comps) != 2 {
+		t.Fatalf("components = %v, want the worker and its frontend", comps)
+	}
+
+	frontend := componentNamed(t, obj, FrontendComponent)
+	if frontend["type"] != "frontend" {
+		t.Fatalf("type = %v, want frontend", frontend["type"])
+	}
+	// Two, so that a rollout does not take the model's only frontend with it.
+	if frontend["replicas"] != int64(2) {
+		t.Fatalf("replicas = %v, want the default two", frontend["replicas"])
+	}
+	// Today's behaviour on every cluster: one Dynamo namespace, everything discovering
+	// everything. Narrowing it is a setting and not yet an answer.
+	if frontend["globalDynamoNamespace"] != true {
+		t.Fatalf("globalDynamoNamespace = %v", frontend["globalDynamoNamespace"])
+	}
+	// The worker is untouched by any of this.
+	worker := componentNamed(t, obj, WorkerComponent)
+	if worker["globalDynamoNamespace"] != true || worker["replicas"] != int64(2) {
+		t.Fatalf("the worker component changed: %v", worker)
+	}
+}
+
+// The routing key. Dynamo copies a component's pod-template labels onto the Service it derives, so
+// hangar.dev/deployment-id here is what lets the agent pick this frontend for a request the
+// gateway has already resolved to this deployment. Without it the Service is anonymous and the
+// deployment is reachable by nothing.
+func TestTheFrontendPodTemplateCarriesTheOwnershipLabels(t *testing.T) {
+	obj, err := DynamoGraphDeployment(testInputs(), frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	labels, found, err := unstructured.NestedStringMap(
+		componentNamed(t, obj, FrontendComponent), "podTemplate", "metadata", "labels")
+	if err != nil || !found {
+		t.Fatalf("frontend podTemplate.metadata.labels missing: found %v, err %v", found, err)
+	}
+	if labels["hangar.dev/deployment-id"] != "dep_01J9X2" {
+		t.Fatalf("deployment-id label = %q; the agent has no way to pick this frontend", labels["hangar.dev/deployment-id"])
+	}
+	if labels["hangar.dev/managed-by"] != "hangar-operator" {
+		t.Fatalf("managed-by label = %q", labels["hangar.dev/managed-by"])
+	}
+}
+
+// The frontend holds no weights, so a GPU node selector or a toleration for the GPU taint would
+// put a router on an accelerator node and leave its cards doing nothing. Left alone it lands on
+// ordinary nodes without being told to, because the GPU pool is tainted.
+func TestTheFrontendIsKeptOffTheAcceleratorNodes(t *testing.T) {
+	obj, err := DynamoGraphDeployment(testInputs(), frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	pod := componentPod(t, componentNamed(t, obj, FrontendComponent))
+	if len(pod.NodeSelector) != 0 {
+		t.Fatalf("node selector = %v, want none", pod.NodeSelector)
+	}
+	if len(pod.Tolerations) != 0 {
+		t.Fatalf("tolerations = %v; a frontend that tolerates the GPU taint schedules onto a card it never uses", pod.Tolerations)
+	}
+	main := pod.Containers[0]
+	if _, ok := main.Resources.Requests["nvidia.com/gpu"]; ok {
+		t.Fatalf("the frontend asks for accelerators: %v", main.Resources.Requests)
+	}
+	// The worker still gets both, unchanged.
+	worker := componentPod(t, componentNamed(t, obj, WorkerComponent))
+	if worker.NodeSelector["hangar.io/pool"] != "gpu" || len(worker.Tolerations) != 1 {
+		t.Fatalf("the worker's scheduling changed: selector=%v tolerations=%v", worker.NodeSelector, worker.Tolerations)
+	}
+}
+
+// A frontend image is not always the engine image: the Kimi K3 fix is a patched frontend beside a
+// stock worker, because both defects are in the frontend binary.
+func TestTheFrontendImageIsResolvedMostSpecificFirst(t *testing.T) {
+	const patched = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+	const clusterDefault = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.1"
+
+	cases := []struct {
+		name    string
+		recipe  *string
+		cluster string
+		want    string
+	}{
+		{"the recipe wins", ptr(patched), clusterDefault, patched},
+		{"the cluster default is next", nil, clusterDefault, clusterDefault},
+		{"the engine image is the last resort", nil, "", prefetchImage},
+		{"an empty recipe field is not an override", ptr(""), clusterDefault, clusterDefault},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			in := testInputs()
+			in.Recipe.FrontendImage = tc.recipe
+			opts := frontendOptions()
+			opts.FrontendImage = tc.cluster
+			obj, err := DynamoGraphDeployment(in, opts)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			pod := componentPod(t, componentNamed(t, obj, FrontendComponent))
+			if pod.Containers[0].Image != tc.want {
+				t.Fatalf("frontend image = %q, want %q", pod.Containers[0].Image, tc.want)
+			}
+			// The frontend's image never reaches the engine.
+			worker := componentPod(t, componentNamed(t, obj, WorkerComponent))
+			if worker.Containers[0].Image != prefetchImage {
+				t.Fatalf("worker image = %q, want the engine's", worker.Containers[0].Image)
+			}
+		})
+	}
+}
+
+// The seed is the one that has to match the worker's. KV-aware routing hashes block contents,
+// Python salts hashes per process, and a frontend and worker that disagree miss every cache hit
+// with nothing reporting it.
+func TestTheFrontendCarriesTheSeedAndTheAnthropicSwitches(t *testing.T) {
+	opts := frontendOptions()
+	opts.AnthropicAPIEnabled = true
+	opts.AnthropicStripPreamble = false
+	obj, err := DynamoGraphDeployment(testInputs(), opts)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	main := componentPod(t, componentNamed(t, obj, FrontendComponent)).Containers[0]
+
+	seed, ok := envValue(main, "PYTHONHASHSEED")
+	if !ok || seed != "0" {
+		t.Fatalf("PYTHONHASHSEED = %q, %v; the frontend and the worker must salt identically", seed, ok)
+	}
+	worker := componentPod(t, componentNamed(t, obj, WorkerComponent)).Containers[0]
+	if workerSeed, _ := envValue(worker, "PYTHONHASHSEED"); workerSeed != seed {
+		t.Fatalf("the two ends disagree on the seed: frontend %q, worker %q", seed, workerSeed)
+	}
+
+	if v, ok := envValue(main, "DYN_ENABLE_ANTHROPIC_API"); !ok || v != "true" {
+		t.Fatalf("DYN_ENABLE_ANTHROPIC_API = %q, %v", v, ok)
+	}
+	if v, ok := envValue(main, "DYN_STRIP_ANTHROPIC_PREAMBLE"); !ok || v != "false" {
+		t.Fatalf("DYN_STRIP_ANTHROPIC_PREAMBLE = %q, %v", v, ok)
+	}
+	// Set as environment and not arguments: the CRD owns the frontend's command line.
+	if len(main.Command) != 0 || len(main.Args) != 0 {
+		t.Fatalf("the frontend was given a command line: %v %v", main.Command, main.Args)
+	}
+}
+
+// A private frontend image with no credential is an ImagePullBackOff nothing reports upward. The
+// worker path needs none and still gets none.
+func TestTheFrontendTakesThePullSecretsTheWorkerDoesNotNeed(t *testing.T) {
+	opts := frontendOptions()
+	opts.FrontendPullSecrets = []string{"ghcr-hangar"}
+	obj, err := DynamoGraphDeployment(testInputs(), opts)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	pod := componentPod(t, componentNamed(t, obj, FrontendComponent))
+	if len(pod.ImagePullSecrets) != 1 || pod.ImagePullSecrets[0].Name != "ghcr-hangar" {
+		t.Fatalf("imagePullSecrets = %v", pod.ImagePullSecrets)
+	}
+	if worker := componentPod(t, componentNamed(t, obj, WorkerComponent)); len(worker.ImagePullSecrets) != 0 {
+		t.Fatalf("the worker grew pull secrets: %v", worker.ImagePullSecrets)
+	}
+}
+
+// Both are settings so that a cluster can answer them without a code change — the replica count
+// because a rollout must not be an outage, the namespace because whether a frontend can be
+// narrowed to its own model is unresolved and needs an experiment.
+func TestTheFrontendReplicaCountAndNamespaceAreClusterSettings(t *testing.T) {
+	opts := frontendOptions()
+	opts.FrontendReplicas = 3
+	opts.FrontendGlobalNamespace = ptr(false)
+	obj, err := DynamoGraphDeployment(testInputs(), opts)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	frontend := componentNamed(t, obj, FrontendComponent)
+	if frontend["replicas"] != int64(3) {
+		t.Fatalf("replicas = %v", frontend["replicas"])
+	}
+	if frontend["globalDynamoNamespace"] != false {
+		t.Fatalf("globalDynamoNamespace = %v", frontend["globalDynamoNamespace"])
+	}
+	// Narrowing the frontend must not narrow the worker: the two flags are separate decisions
+	// and flipping both at once is the migration nobody asked for.
+	if worker := componentNamed(t, obj, WorkerComponent); worker["globalDynamoNamespace"] != true {
+		t.Fatalf("the worker's namespace flag followed the frontend's: %v", worker)
+	}
+}
+
+// A memory ceiling and no CPU one: the frontend copies every token of every response, so a CPU
+// limit is latency on the data path.
+func TestTheFrontendResourcesDefaultToWhatTheClusterFrontendRunsIn(t *testing.T) {
+	obj, err := DynamoGraphDeployment(testInputs(), frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	res := componentPod(t, componentNamed(t, obj, FrontendComponent)).Containers[0].Resources
+	if got := res.Requests.Cpu().String(); got != defaultFrontendCPU {
+		t.Fatalf("cpu request = %s", got)
+	}
+	if got := res.Requests.Memory().String(); got != defaultFrontendMemory {
+		t.Fatalf("memory request = %s", got)
+	}
+	if got := res.Limits.Memory().String(); got != defaultFrontendMemoryLimit {
+		t.Fatalf("memory limit = %s", got)
+	}
+	if _, capped := res.Limits[corev1.ResourceCPU]; capped {
+		t.Fatalf("a CPU limit was set on the data path: %v", res.Limits)
+	}
+}
+
+// A quantity that does not parse, or a ceiling under the request, is a pod the API server takes
+// and the scheduler never places. Saying so here names the setting.
+func TestTheFrontendRefusesResourcesThatWouldNotSchedule(t *testing.T) {
+	cases := []struct{ name, cpu, memory, limit, want string }{
+		{"cpu is not a quantity", "half", "", "", "frontend cpu request"},
+		{"memory is not a quantity", "", "lots", "", "frontend memory request"},
+		{"the limit is not a quantity", "", "", "plenty", "frontend memory limit"},
+		{"the limit is under the request", "", "4Gi", "1Gi", "below the request"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := frontendOptions()
+			opts.FrontendCPU, opts.FrontendMemory, opts.FrontendMemoryLimit = tc.cpu, tc.memory, tc.limit
+			_, err := DynamoGraphDeployment(testInputs(), opts)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want one naming %q", err, tc.want)
+			}
+		})
+	}
+}
+
+// The overlay merges over the graph and lists replace, so an overlay written before there was a
+// frontend to lose deletes it — leaving a graph that applies, workers that come up healthy, and a
+// model no request can reach. Nothing else catches that, so this is a refusal.
+func TestAnOverlayThatDeletesTheFrontendIsRefused(t *testing.T) {
+	in := testInputs()
+	in.Recipe.Overlay.Dynamo = map[string]any{
+		"components": []any{
+			map[string]any{"name": "VllmPrefillWorker", "replicas": int64(1)},
+			map[string]any{"name": WorkerComponent, "replicas": int64(3)},
+		},
+	}
+	_, err := DynamoGraphDeployment(in, frontendOptions())
+	if err == nil {
+		t.Fatal("an overlay that deletes the frontend rendered without complaint")
+	}
+	if !strings.Contains(err.Error(), in.Recipe.RecipeID) {
+		t.Errorf("the refusal does not name the recipe: %v", err)
+	}
+	if !strings.Contains(err.Error(), FrontendComponent) {
+		t.Errorf("the refusal does not name what was lost: %v", err)
+	}
+	if !strings.Contains(err.Error(), "spec.components") {
+		t.Errorf("the refusal does not say what to do about it: %v", err)
+	}
+}
+
+// The escape hatch stays open: an overlay may still hand-write a topology this renderer cannot
+// derive, so long as the frontend is still in it and still carries the label a request finds it by.
+func TestAnOverlayThatRestatesTheFrontendIsAccepted(t *testing.T) {
+	in := testInputs()
+	in.Recipe.Overlay.Dynamo = map[string]any{
+		"components": []any{
+			map[string]any{"name": "VllmPrefillWorker", "replicas": int64(1)},
+			map[string]any{"name": WorkerComponent, "replicas": int64(3)},
+			map[string]any{
+				"name": FrontendComponent, "type": "frontend", "replicas": int64(1),
+				"podTemplate": map[string]any{"metadata": map[string]any{"labels": map[string]any{
+					deploymentIDLabel: in.Deployment.DeploymentID,
+				}}},
+			},
+		},
+	}
+	if _, err := DynamoGraphDeployment(in, frontendOptions()); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+}
+
+// A frontend that is in the graph and anonymous fails exactly the way a missing one does: Dynamo
+// derives a Service from it carrying no `hangar.dev/deployment-id`, so nothing the gateway has
+// already resolved to this deployment can find it. Checking only that the component is present
+// would let the guard pass the defect it exists for.
+func TestAnOverlayThatRestatesTheFrontendWithoutItsRoutingLabelIsRefused(t *testing.T) {
+	in := testInputs()
+	in.Recipe.Overlay.Dynamo = map[string]any{
+		"components": []any{
+			map[string]any{"name": WorkerComponent, "replicas": int64(3)},
+			map[string]any{"name": FrontendComponent, "type": "frontend", "replicas": int64(1)},
+		},
+	}
+	_, err := DynamoGraphDeployment(in, frontendOptions())
+	if err == nil {
+		t.Fatal("an anonymous frontend rendered without complaint; nothing could route to it")
+	}
+	if !strings.Contains(err.Error(), deploymentIDLabel) {
+		t.Errorf("the refusal does not name the label that is missing: %v", err)
+	}
+	if !strings.Contains(err.Error(), in.Deployment.DeploymentID) {
+		t.Errorf("the refusal does not say what the label has to say: %v", err)
+	}
+}
+
+// A cluster that has not opted in has no frontend in the graph to lose, so an overlay that
+// replaces the components is what it always was: the intended way to hand-write a topology.
+func TestTheOverlayRefusalDoesNotApplyBeforeTheClusterOptsIn(t *testing.T) {
+	in := testInputs()
+	in.Recipe.Overlay.Dynamo = map[string]any{
+		"components": []any{map[string]any{"name": WorkerComponent, "replicas": int64(3)}},
+	}
+	if _, err := DynamoGraphDeployment(in, testOptions()); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+}
+
+// frontendSuffix is written out because a const cannot be lowercased, so nothing but this stops it
+// drifting from the component it stands for — and the component's name is what two label lookups
+// match on, so drift there is a lookup that finds nothing rather than a compile error.
+func TestFrontendSuffixMatchesTheComponent(t *testing.T) {
+	want := "-" + strings.ToLower(FrontendComponent) + "-" + specHashPlaceholder
+	if frontendSuffix != want {
+		t.Fatalf("frontendSuffix = %q, want %q", frontendSuffix, want)
+	}
+}
+
+// The name bound has to hold for every component the graph actually holds, not for the worker
+// alone. The worker's derived name is the longest today, so nothing moves — but a bound derived
+// from one component is right by coincidence, and the overflow it stops is silent: the API server
+// refuses a child object this operator never reads, and the deployment sits at zero replicas
+// ready with no pod and no explanation.
+func TestTheNameBoundHoldsForEveryComponentRendered(t *testing.T) {
+	in := testInputs()
+	in.Deployment.Name = strings.Repeat("a", 200)
+	obj, err := DynamoGraphDeployment(in, frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	comps, _, err := unstructured.NestedSlice(obj.Object, "spec", "components")
+	if err != nil {
+		t.Fatalf("components: %v", err)
+	}
+	if len(comps) < 2 {
+		t.Fatalf("components = %v, want more than the worker to bound against", comps)
+	}
+	for _, entry := range comps {
+		c, _ := entry.(map[string]any)
+		name, _ := c["name"].(string)
+		derived := obj.GetName() + "-" + strings.ToLower(name) + "-" + specHashPlaceholder
+		if len(derived) > maxObjectNameBytes {
+			t.Fatalf("the name derived for %s is %d bytes, over the %d a label value holds: %s",
+				name, len(derived), maxObjectNameBytes, derived)
+		}
+	}
+}

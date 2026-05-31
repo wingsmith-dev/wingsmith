@@ -148,7 +148,7 @@ func TestBenchmarkFindsTheFrontendTheClusterActuallyRuns(t *testing.T) {
 		).Build(),
 		Render: render.Options{Namespace: "dynamo"},
 	}
-	endpoint, err := e.frontendEndpoint(context.Background())
+	endpoint, err := e.frontendEndpoint(context.Background(), "dep_01J9X2")
 	if err != nil {
 		t.Fatalf("lookup: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestBenchmarkSaysSoWhenThereIsNoFrontend(t *testing.T) {
 		Client: fake.NewClientBuilder().Build(),
 		Render: render.Options{Namespace: "dynamo"},
 	}
-	_, err := e.frontendEndpoint(context.Background())
+	_, err := e.frontendEndpoint(context.Background(), "dep_01J9X2")
 	if err == nil || !strings.Contains(err.Error(), "HANGAR_INFERENCE_ENDPOINT") {
 		t.Errorf("the error does not name the way out: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestBenchmarkRefusesToGuessBetweenTwoFrontends(t *testing.T) {
 		).Build(),
 		Render: render.Options{Namespace: "dynamo"},
 	}
-	_, err := e.frontendEndpoint(context.Background())
+	_, err := e.frontendEndpoint(context.Background(), "dep_01J9X2")
 	if err == nil || !strings.Contains(err.Error(), "one-frontend") {
 		t.Errorf("the error does not name what it found: %v", err)
 	}
@@ -193,5 +193,130 @@ func frontendService(name, namespace string, port int32) *corev1.Service {
 			Selector: map[string]string{frontendComponentLabel: "Frontend"},
 			Ports:    []corev1.ServicePort{{Name: "http", Port: port}},
 		},
+	}
+}
+
+// deploymentFrontendService is what Dynamo derives from a frontend this operator rendered: the
+// component Service, carrying the pod template's ownership labels.
+func deploymentFrontendService(name, namespace, deploymentID string, port int32) *corev1.Service {
+	service := frontendService(name, namespace, port)
+	service.Labels = map[string]string{deploymentIDLabel: deploymentID}
+	return service
+}
+
+// One frontend per model means a run can aim at the frontend that actually serves the model under
+// test, rather than at a process shared with every other model on the cluster — whose queueing
+// would be measured as if it were this model's.
+func TestBenchmarkPicksTheFrontendForTheDeploymentUnderTest(t *testing.T) {
+	e := &Executor{
+		Client: fake.NewClientBuilder().WithObjects(
+			deploymentFrontendService("kimi-k3-frontend", "dynamo", "dep_kimi", 8000),
+			deploymentFrontendService("qwen3-frontend", "dynamo", "dep_qwen", 8000),
+		).Build(),
+		Render: render.Options{Namespace: "dynamo"},
+	}
+	endpoint, err := e.frontendEndpoint(context.Background(), "dep_kimi")
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if endpoint != "http://kimi-k3-frontend.dynamo.svc.cluster.local:8000" {
+		t.Errorf("wrong endpoint: %s", endpoint)
+	}
+}
+
+// A deployment whose frontend is labelled must not be answered with the shared one standing beside
+// it: that is the measurement through somebody else's process this change exists to stop.
+func TestBenchmarkPrefersTheLabelledFrontendOverTheSharedOne(t *testing.T) {
+	e := &Executor{
+		Client: fake.NewClientBuilder().WithObjects(
+			frontendService("inference-frontend", "dynamo", 8000),
+			deploymentFrontendService("kimi-k3-frontend", "dynamo", "dep_kimi", 8000),
+		).Build(),
+		Render: render.Options{Namespace: "dynamo"},
+	}
+	endpoint, err := e.frontendEndpoint(context.Background(), "dep_kimi")
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if !strings.Contains(endpoint, "kimi-k3-frontend") {
+		t.Errorf("the run was aimed at %s, not at the deployment's own frontend", endpoint)
+	}
+}
+
+// The migration case, and the reason the fallback is not merely a nicety: a cluster part-way
+// through has one shared frontend and some models with their own, and a deployment that has not
+// moved is still served by the shared one.
+func TestBenchmarkFallsBackToTheOneUnlabelledFrontend(t *testing.T) {
+	e := &Executor{
+		Client: fake.NewClientBuilder().WithObjects(
+			frontendService("inference-frontend", "dynamo", 8000),
+			deploymentFrontendService("kimi-k3-frontend", "dynamo", "dep_kimi", 8000),
+		).Build(),
+		Render: render.Options{Namespace: "dynamo"},
+	}
+	endpoint, err := e.frontendEndpoint(context.Background(), "dep_qwen")
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if !strings.Contains(endpoint, "inference-frontend") {
+		t.Errorf("the run was aimed at %s, not at the shared frontend", endpoint)
+	}
+}
+
+// Dynamo copies the pod template's labels onto the Service it derives, and a Service selecting on
+// the deployment id can only reach that deployment's pods. Either says the same thing.
+func TestBenchmarkReadsTheDeploymentIdOffTheSelectorToo(t *testing.T) {
+	labelled := frontendService("kimi-k3-frontend", "dynamo", 8000)
+	labelled.Spec.Selector[deploymentIDLabel] = "dep_kimi"
+	e := &Executor{
+		Client: fake.NewClientBuilder().WithObjects(
+			labelled,
+			deploymentFrontendService("qwen3-frontend", "dynamo", "dep_qwen", 8000),
+		).Build(),
+		Render: render.Options{Namespace: "dynamo"},
+	}
+	endpoint, err := e.frontendEndpoint(context.Background(), "dep_kimi")
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if !strings.Contains(endpoint, "kimi-k3-frontend") {
+		t.Errorf("wrong endpoint: %s", endpoint)
+	}
+}
+
+// The refusal survives for the case it was written for and no wider: several frontends, none of
+// them this deployment's, where picking one would attribute a measurement to a deployment the load
+// never reached.
+func TestBenchmarkStillRefusesWhenNoFrontendIsThisDeploymentsAndTwoAreShared(t *testing.T) {
+	e := &Executor{
+		Client: fake.NewClientBuilder().WithObjects(
+			frontendService("one-frontend", "dynamo", 8000),
+			frontendService("two-frontend", "dynamo", 8000),
+			deploymentFrontendService("kimi-k3-frontend", "dynamo", "dep_kimi", 8000),
+		).Build(),
+		Render: render.Options{Namespace: "dynamo"},
+	}
+	_, err := e.frontendEndpoint(context.Background(), "dep_qwen")
+	if err == nil || !strings.Contains(err.Error(), "HANGAR_INFERENCE_ENDPOINT") {
+		t.Fatalf("the error does not name the way out: %v", err)
+	}
+	if !strings.Contains(err.Error(), "dep_qwen") {
+		t.Errorf("the refusal does not say which deployment it could not place: %v", err)
+	}
+}
+
+// A deployment whose frontend was rendered twice — two graphs, one id — is the one case where the
+// label answers nothing, and guessing between them is the same mistake as before.
+func TestBenchmarkRefusesTwoFrontendsWearingTheSameDeploymentId(t *testing.T) {
+	e := &Executor{
+		Client: fake.NewClientBuilder().WithObjects(
+			deploymentFrontendService("kimi-a-frontend", "dynamo", "dep_kimi", 8000),
+			deploymentFrontendService("kimi-b-frontend", "dynamo", "dep_kimi", 8000),
+		).Build(),
+		Render: render.Options{Namespace: "dynamo"},
+	}
+	_, err := e.frontendEndpoint(context.Background(), "dep_kimi")
+	if err == nil || !strings.Contains(err.Error(), "kimi-a-frontend") {
+		t.Fatalf("the error does not name what it found: %v", err)
 	}
 }

@@ -53,6 +53,70 @@ type Options struct {
 	// collective initialisation. Refusing is the only honest behaviour, so this defaults off and
 	// a cluster turns it on when it has installed the thing that makes it true.
 	MultinodeEnabled bool
+
+	// FrontendEnabled renders a frontend beside the worker, one per model.
+	//
+	// Off by default, and that default is the migration control rather than an opinion. Every
+	// cluster we run today is served by one frontend the chart installs, and with this false the
+	// rendered object is byte-identical to what that arrangement has always produced — so the
+	// operator can ship before any cluster has moved, and a cluster moves by setting one value.
+	// It is the only flag here whose false case has to stay exactly as it was.
+	FrontendEnabled bool
+
+	// FrontendImage is this cluster's default frontend runtime, used when the recipe names none.
+	//
+	// A per-cluster fact for the same reason the pool labels are: the plane says which model to
+	// serve, and which build of the frontend a cluster happens to run is local. Empty falls back
+	// to the recipe's engine image, which is right often enough — the Dynamo runtime carries the
+	// frontend and the engines in one image — and wrong exactly when the frontend needs a patch
+	// the engine does not, which is what RecipeDesired.FrontendImage exists for.
+	FrontendImage string
+
+	// FrontendReplicas is how many frontend pods one model gets. Two by default, so that a
+	// rollout does not take the model's only frontend with it: the frontend holds no weights, so
+	// a second replica costs a few hundred megabytes and buys the model an upgrade that is not
+	// an outage.
+	FrontendReplicas int
+
+	// FrontendPullSecrets are Secrets in the workload namespace the kubelet presents when
+	// pulling FrontendImage.
+	//
+	// The worker path sets none and has never needed any, because an engine image comes from
+	// nvcr.io, which serves anonymously. A frontend image does not have to: the Kimi K3 fix is a
+	// patched runtime in a private GHCR repository, and a private pull with no credential is an
+	// ImagePullBackOff rather than an error anything reports upward. A pull Secret is namespaced
+	// and the kubelet reads it from the pod's own namespace, so these name Secrets in the
+	// namespace this operator renders into, not in its own.
+	FrontendPullSecrets []string
+
+	// FrontendCPU, FrontendMemory and FrontendMemoryLimit are what one frontend pod asks for.
+	// Empty takes the render's own defaults, which are what the cluster frontend has been
+	// observed to run inside. No CPU limit is ever set: the frontend holds streams open and
+	// copies every token of every response, so throttling it is latency on the data path.
+	FrontendCPU         string
+	FrontendMemory      string
+	FrontendMemoryLimit string
+
+	// AnthropicAPIEnabled serves the Anthropic Messages API (`/v1/messages`) beside the OpenAI
+	// one, and AnthropicStripPreamble drops the Claude Code billing preamble from the system
+	// prompt. Both are additive — a route that did not exist before, and a prompt that starts
+	// the same way every time, which is a prompt the prefix cache can hit — and both are set as
+	// environment rather than arguments because DynamoGraphDeployment owns the command line.
+	AnthropicAPIEnabled    bool
+	AnthropicStripPreamble bool
+
+	// FrontendGlobalNamespace sets globalDynamoNamespace on the frontend component. Nil means
+	// true, which is today's behaviour on every cluster: the chart's frontend and every worker
+	// this operator renders both run with it on, and both pods carry DYN_NAMESPACE=dynamo, so
+	// everything on a cluster discovers everything else.
+	//
+	// It is a setting and not a constant because whether the namespace can be narrowed — a
+	// frontend that sees only its own model's workers — is unresolved and cannot be settled by
+	// reading anything. It needs an experiment on a live cluster: whether a worker registered in
+	// a per-deployment namespace is discovered by a second frontend at all, and whether two
+	// frontends in one namespace both attempt registration of every model. The point of the
+	// field is that the answer becomes one value on one cluster rather than a code change.
+	FrontendGlobalNamespace *bool
 }
 
 // Inputs is everything one render reads. Grouping them makes the dependency explicit: a
@@ -107,12 +171,29 @@ func (l Layout) devices(dep wire.DeploymentDesired) int {
 // authority.
 const WorkerComponent = "VllmDecodeWorker"
 
+// FrontendComponent is the Dynamo component name for the OpenAI-compatible frontend.
+//
+// The string is not ours to choose. Dynamo puts a component's name in the `nvidia.com/dynamo-
+// component` label and in the Service selector derived from it, and two things in this repository
+// find a frontend by that label rather than by name — the serving agent's resolver and this
+// operator's own benchmark executor — because the name is the part that varies between clusters
+// while the label does not. Renaming this breaks both, and it breaks them as a lookup that finds
+// nothing rather than as a compile error.
+const FrontendComponent = "Frontend"
+
 // DynamoGraphDeployment renders one deployment into the object that serves it.
 //
-// No Frontend component is rendered. A cluster runs exactly one shared frontend across every
-// model on it, because the model name lives in the request body where no ingress can route on it,
-// so a frontend per deployment would leave nothing able to choose between them. The workers here
-// join that shared frontend through globalDynamoNamespace.
+// The graph holds the model's worker and, where the cluster has opted in, the frontend that model
+// is served through. One frontend per model rather than one per cluster, because a frontend is a
+// binary and that binary has to tokenize and register every model reaching it: on 2026-09-01 a
+// model arrived on site-c that the cluster's frontend could not tokenize, and the only way to serve
+// it was to change the image every other model on that cluster was served through. A frontend per
+// model turns a fleet event into one deployment's business.
+//
+// Nothing has to route on the request body for this to work, which is what the earlier argument
+// for the singleton assumed. The gateway has already resolved which deployment a request belongs
+// to before it forwards it, so it forwards that deployment id and the in-cluster agent picks the
+// frontend by label. No frontend is chosen by asking anything what models it serves.
 func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured, error) {
 	pod, err := podSpec(in, opts)
 	if err != nil {
@@ -140,6 +221,15 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 		component["multinode"] = map[string]any{"nodeCount": int64(n)}
 	}
 
+	components := []any{component}
+	if opts.FrontendEnabled {
+		frontend, err := frontendComponent(in, opts)
+		if err != nil {
+			return nil, err
+		}
+		components = append(components, frontend)
+	}
+
 	obj := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": GVK.GroupVersion().String(),
 		"kind":       GVK.Kind,
@@ -153,12 +243,17 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 			},
 		},
 		"spec": map[string]any{
-			"components": []any{component},
+			"components": components,
 		},
 	}}
 
 	if err := applyDynamoOverlay(obj, in.Recipe.Overlay.Dynamo); err != nil {
 		return nil, err
+	}
+	if opts.FrontendEnabled {
+		if err := checkFrontendSurvivedOverlay(obj, in); err != nil {
+			return nil, err
+		}
 	}
 	return obj, nil
 }
@@ -182,7 +277,16 @@ func Name(id string) string {
 // A constant 40 was three over, and the failure landed on an object this operator does not own and
 // never read — so the deployment reported `placed · 0 of 1 replicas ready` for as long as it
 // existed, with no pod ever created and nothing anywhere saying why.
-const maxWorkloadName = maxObjectNameBytes - len(componentSuffix)
+//
+// The bound is the longest of the components actually rendered, and not the worker's alone. The
+// worker's is the longest today — `Frontend` is half the length of `VllmDecodeWorker`, so the
+// number does not move and no existing name changes — but a bound derived from one component is a
+// bound that is right by coincidence. A component renamed or added past it would overflow the
+// same 63 bytes, in the same place, with the same silence.
+const maxWorkloadName = maxObjectNameBytes - longestComponentSuffix
+
+// longestComponentSuffix is the worst case over every component this renderer emits.
+const longestComponentSuffix = max(len(componentSuffix), len(frontendSuffix))
 
 // maxObjectNameBytes is the label-value limit the derived name is actually held to.
 const maxObjectNameBytes = 63
@@ -193,6 +297,10 @@ const maxObjectNameBytes = 63
 // Written out rather than lowercased from `WorkerComponent`, because a const has to be a const.
 // `TestComponentSuffixMatchesWorker` is what keeps the two from drifting.
 const componentSuffix = "-vllmdecodeworker-" + specHashPlaceholder
+
+// frontendSuffix is the same for the frontend component. `TestFrontendSuffixMatchesTheComponent`
+// is what keeps this one from drifting.
+const frontendSuffix = "-frontend-" + specHashPlaceholder
 
 // specHashPlaceholder stands in for the hash Dynamo derives per component. Only its length is
 // used; the value is never rendered.
@@ -235,6 +343,12 @@ func slugify(in string) string {
 	return out
 }
 
+// deploymentIDLabel is the ownership label that says which deployment an object belongs to, and
+// the one of the four that is also a routing key: Dynamo copies a component's pod-template labels
+// onto the Service it derives, and this is what the in-cluster agent matches to pick a frontend
+// for a request the gateway has already resolved to this deployment.
+const deploymentIDLabel = "hangar.dev/deployment-id"
+
 // ownershipLabels mark everything this operator renders for a deployment as ours.
 //
 // They go on the pod template as well as on the graph deployment, and that is what makes them
@@ -244,10 +358,10 @@ func slugify(in string) string {
 // created came back up the wire as a sighting to be adopted.
 func ownershipLabels(in Inputs) map[string]any {
 	return map[string]any{
-		"hangar.dev/deployment-id": in.Deployment.DeploymentID,
-		"hangar.dev/recipe":        in.Recipe.RecipeID,
-		"hangar.dev/project":       in.Deployment.ProjectID,
-		"hangar.dev/managed-by":    "hangar-operator",
+		deploymentIDLabel:       in.Deployment.DeploymentID,
+		"hangar.dev/recipe":     in.Recipe.RecipeID,
+		"hangar.dev/project":    in.Deployment.ProjectID,
+		"hangar.dev/managed-by": "hangar-operator",
 	}
 }
 
@@ -357,6 +471,234 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	}
 
 	return applyPodOverlay(spec, in.Recipe.Overlay.PodSpec)
+}
+
+// Defaults for the frontend pod, matching what the cluster frontend has been observed to run
+// inside. They are small because the frontend holds no weights: it routes, and what it keeps on
+// disk is one deployment card and tokenizer per model it serves.
+const (
+	defaultFrontendReplicas    = 2
+	defaultFrontendCPU         = "200m"
+	defaultFrontendMemory      = "512Mi"
+	defaultFrontendMemoryLimit = "2Gi"
+)
+
+// frontendComponent renders the frontend this model is served through.
+//
+// The pod template carries ownershipLabels, and that is the load-bearing part rather than the
+// bookkeeping it looks like. Dynamo copies a component's pod-template labels onto the Service it
+// derives — verified on site-c, where the worker Service carries every one of them — and
+// `hangar.dev/deployment-id` on that Service is the entire key by which the in-cluster agent
+// picks this frontend for a request the gateway has already resolved to this deployment. Without
+// the labels here the Service is anonymous and the deployment is reachable by nothing.
+//
+// globalDynamoNamespace is a setting rather than a constant, for the reason on
+// Options.FrontendGlobalNamespace: today every frontend and every worker on a cluster share one
+// Dynamo namespace, and whether that can be narrowed needs a cluster experiment nobody has run.
+func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
+	pod, err := frontendPodSpec(in, opts)
+	if err != nil {
+		return nil, err
+	}
+	podMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(pod)
+	if err != nil {
+		return nil, fmt.Errorf("convert frontend pod spec: %w", err)
+	}
+
+	replicas := opts.FrontendReplicas
+	if replicas < 1 {
+		replicas = defaultFrontendReplicas
+	}
+
+	global := true
+	if opts.FrontendGlobalNamespace != nil {
+		global = *opts.FrontendGlobalNamespace
+	}
+
+	return map[string]any{
+		// `type: frontend` is what earns the component its ports and the command it runs;
+		// `name: Frontend` is what the two label-based lookups match on. Different fields
+		// saying different things, and both load-bearing.
+		"name":                  FrontendComponent,
+		"type":                  "frontend",
+		"replicas":              int64(replicas),
+		"globalDynamoNamespace": global,
+		"podTemplate": map[string]any{
+			"metadata": map[string]any{"labels": ownershipLabels(in)},
+			"spec":     podMap,
+		},
+	}, nil
+}
+
+// frontendPodSpec is what one frontend pod is.
+//
+// Deliberately not podSpec. That function puts the accelerator node selector and the
+// `nvidia.com/gpu` toleration on everything it renders, which is right for an engine and wrong
+// here twice over: a frontend that tolerates the GPU taint schedules onto an accelerator node to
+// hold no weights, occupying a machine whose whole value is the cards in it. Left alone it lands
+// on ordinary nodes without being told to, because the GPU pool is tainted and this pod says
+// nothing about tolerating it.
+//
+// No command and no arguments either. DynamoGraphDeployment derives the frontend's command line
+// from `type: frontend`, so every flag worth setting is set as environment instead — which is why
+// the Anthropic options below are `DYN_*` variables and not arguments.
+//
+// The recipe's pod overlay is deliberately not applied here. It merges by container name and both
+// containers are called `main`, so laying it over this one would put the engine's volumes, its
+// Hugging Face cache mount and its device requests onto a process that wants none of them — an
+// overlay written about the engine, silently applied to something else.
+func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
+	image, err := frontendImage(in, opts)
+	if err != nil {
+		return nil, err
+	}
+	resources, err := frontendResources(opts)
+	if err != nil {
+		return nil, err
+	}
+
+	var pullSecrets []corev1.LocalObjectReference
+	for _, name := range opts.FrontendPullSecrets {
+		pullSecrets = append(pullSecrets, corev1.LocalObjectReference{Name: name})
+	}
+
+	return &corev1.PodSpec{
+		ImagePullSecrets: pullSecrets,
+		Containers: []corev1.Container{{
+			Name:  "main",
+			Image: image,
+			Env: []corev1.EnvVar{
+				{Name: "DYN_ENABLE_ANTHROPIC_API", Value: strconv.FormatBool(opts.AnthropicAPIEnabled)},
+				{Name: "DYN_STRIP_ANTHROPIC_PREAMBLE", Value: strconv.FormatBool(opts.AnthropicStripPreamble)},
+				// The same fixed seed the worker gets, and it is worth nothing unless it
+				// is the same on both. KV-aware routing decides which worker already
+				// holds a prefix by hashing block contents; Python salts hashes per
+				// process, so a frontend and a worker that disagree on the salt hash
+				// identical blocks differently and miss every cache hit — silently, as a
+				// performance loss nothing reports.
+				{Name: "PYTHONHASHSEED", Value: "0"},
+			},
+			Resources: resources,
+		}},
+	}, nil
+}
+
+// frontendImage resolves which runtime the frontend runs, most specific first.
+//
+// The recipe wins because a frontend image is not always the engine image: on site-c the Kimi K3
+// frontend runs a patched build from a private registry while its decode worker stays on NVIDIA's
+// stock one, because both defects that made the model unusable are in the frontend binary. The
+// cluster default is next, and the engine image is the last resort — right often enough, since
+// the Dynamo runtime carries the frontend and the engines together, and the only honest answer
+// when nothing else has been said.
+func frontendImage(in Inputs, opts Options) (string, error) {
+	if in.Recipe.FrontendImage != nil {
+		if image := strings.TrimSpace(*in.Recipe.FrontendImage); image != "" {
+			return image, nil
+		}
+	}
+	if image := strings.TrimSpace(opts.FrontendImage); image != "" {
+		return image, nil
+	}
+	if in.Recipe.EngineImage != nil {
+		if image := strings.TrimSpace(*in.Recipe.EngineImage); image != "" {
+			return image, nil
+		}
+	}
+	return "", fmt.Errorf("recipe %s names no frontend image and no engine image to fall back on", in.Recipe.RecipeID)
+}
+
+// frontendResources is what one frontend pod asks the scheduler for.
+//
+// A memory ceiling and no CPU one, which is the same trade the chart makes and for the same
+// reason: the frontend copies every token of every response, so a CPU limit is latency on the
+// data path, while unbounded memory on a pod that downloads model repository files is a node
+// nobody can schedule onto.
+func frontendResources(opts Options) (corev1.ResourceRequirements, error) {
+	cpuText := opts.FrontendCPU
+	if cpuText == "" {
+		cpuText = defaultFrontendCPU
+	}
+	memoryText := opts.FrontendMemory
+	if memoryText == "" {
+		memoryText = defaultFrontendMemory
+	}
+	ceilingText := opts.FrontendMemoryLimit
+	if ceilingText == "" {
+		ceilingText = defaultFrontendMemoryLimit
+	}
+
+	cpu, err := resource.ParseQuantity(cpuText)
+	if err != nil {
+		return corev1.ResourceRequirements{}, fmt.Errorf("frontend cpu request %q is not a quantity: %w", cpuText, err)
+	}
+	memory, err := resource.ParseQuantity(memoryText)
+	if err != nil {
+		return corev1.ResourceRequirements{}, fmt.Errorf("frontend memory request %q is not a quantity: %w", memoryText, err)
+	}
+	ceiling, err := resource.ParseQuantity(ceilingText)
+	if err != nil {
+		return corev1.ResourceRequirements{}, fmt.Errorf("frontend memory limit %q is not a quantity: %w", ceilingText, err)
+	}
+	if ceiling.Cmp(memory) < 0 {
+		return corev1.ResourceRequirements{}, fmt.Errorf("frontend memory limit %s is below the request %s", ceilingText, memoryText)
+	}
+
+	return corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{corev1.ResourceCPU: cpu, corev1.ResourceMemory: memory},
+		Limits:   corev1.ResourceList{corev1.ResourceMemory: ceiling},
+	}, nil
+}
+
+// checkFrontendSurvivedOverlay refuses a render whose overlay left the deployment unreachable.
+//
+// A refusal, where nothing else about the overlay is refused, and the asymmetry is the point. The
+// Dynamo overlay is a recursive map merge over someone else's CRD, so lists replace rather than
+// merge — which is the intended way to hand-write a disaggregated topology, and which means an
+// overlay that writes `spec.components` at all discards every component this renderer put there.
+// Under one frontend per cluster that cost the deployment nothing, because the frontend was not
+// in the graph. Now it is, and an overlay written before this change removes the only thing that
+// makes the deployment reachable, leaving a graph that applies cleanly, workers that come up
+// healthy, and a model no request can arrive at. Nothing in Kubernetes and nothing in Dynamo
+// reports that; the only place it can be caught is here.
+//
+// The routing label is checked and not only the component's presence, because a frontend that is
+// there and anonymous fails in exactly the way a missing one does. Dynamo copies a component's
+// pod-template labels onto the Service it derives, and `hangar.dev/deployment-id` on that Service
+// is how the agent picks this frontend for a request the gateway has already resolved to this
+// deployment. A restated component that carries no labels — which is what restating one from the
+// example in an error message looks like — is a Service nothing can match, so accepting it would
+// let the guard pass a graph with the defect the guard exists for.
+func checkFrontendSurvivedOverlay(obj *unstructured.Unstructured, in Inputs) error {
+	components, found, err := unstructured.NestedSlice(obj.Object, "spec", "components")
+	if err != nil || !found {
+		return fmt.Errorf("recipe %s left the rendered object with no spec.components", in.Recipe.RecipeID)
+	}
+	for _, entry := range components {
+		component, ok := entry.(map[string]any)
+		if !ok || component["name"] != FrontendComponent {
+			continue
+		}
+		labels, _, err := unstructured.NestedStringMap(component, "podTemplate", "metadata", "labels")
+		if err != nil || labels[deploymentIDLabel] != in.Deployment.DeploymentID {
+			return fmt.Errorf(
+				"recipe %s restates the %s component in its Dynamo overlay without "+
+					"%s=%s on its pod template — Dynamo copies those labels onto the Service it "+
+					"derives, and that label is how a request already resolved to this deployment "+
+					"finds this frontend, so the deployment would come up healthy and be reachable "+
+					"by nothing; carry the labels the render puts on the component",
+				in.Recipe.RecipeID, FrontendComponent, deploymentIDLabel, in.Deployment.DeploymentID,
+			)
+		}
+		return nil
+	}
+	return fmt.Errorf(
+		"recipe %s writes spec.components in its Dynamo overlay, which replaces the rendered "+
+			"list wholesale and takes the %s component with it — the deployment would come up "+
+			"healthy and be reachable by nothing; restate the %s component in the overlay, or "+
+			"express the change without rewriting spec.components",
+		in.Recipe.RecipeID, FrontendComponent, FrontendComponent,
+	)
 }
 
 // NodeSelector puts the replica on accelerator nodes, plus whatever the plane constrained.

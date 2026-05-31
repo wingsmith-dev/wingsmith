@@ -47,6 +47,13 @@ type rollout struct {
 	// health: it is a shortfall nothing has explained yet, which for the first minute of a
 	// rollout is the normal reading. See diagnose.go.
 	trouble *trouble
+
+	// frontendUnready says this deployment's own frontend is not serving, on a cluster that
+	// renders one per model. Kept apart from the counts rather than folded into them, because a
+	// frontend is not a replica of the model and counting it as one is the defect
+	// `observeRollout` selects on the component to avoid. It exists so that a complete set of
+	// ready workers cannot report `running` while nothing can reach them.
+	frontendUnready bool
 }
 
 // phase is the observed phase these counts amount to.
@@ -66,7 +73,10 @@ func (r rollout) phase() string {
 		return phaseFailed
 	case r.ready == 0:
 		return phasePlaced
-	case r.ready < r.desired:
+	// A model whose every worker is ready and whose frontend is not is not running, whatever the
+	// replica counts say — under one frontend per model the frontend is the only way in, so
+	// `running` here would have the plane admit it and the gateway prefer it.
+	case r.ready < r.desired, r.frontendUnready:
 		return phaseDegraded
 	default:
 		return phaseRunning
@@ -142,7 +152,75 @@ func (r *SyncedResourceReconciler) observeRollout(
 	}
 	out := r.rolloutFrom(pods.Items, dep, render.Replicas(dep), recipe.Engine, recipe.EngineVersion)
 	out.trouble = r.diagnose(ctx, name, pods.Items, out)
+	serving, found := r.frontendState(ctx, name)
+	out.frontendUnready = !serving
+	if out.trouble == nil {
+		out.trouble = found
+	}
 	return out, nil
+}
+
+// frontendTrouble is why this deployment's own frontend is not serving.
+//
+// It exists because nothing else in this operator would ever say so. `diagnose` is called only on
+// a shortfall of ready workers, and the frontend is deliberately not one of those — so a cluster
+// rendering one frontend per model can have every worker ready, every count complete, and a
+// frontend that never started, and the plane is told `running · Serving` for a deployment the
+// agent cannot route to. That is the same silence the renderer's overlay refusal exists to stop,
+// one layer further on: there the frontend is deleted before it is applied, here it is applied and
+// never comes up, and both leave a healthy-looking deployment reachable by nothing.
+//
+// The case it was built for is the one the whole change was built for. A frontend image is not
+// always NVIDIA's — the Kimi K3 fix is a patched build in a private repository — and a private
+// pull with no credential in the workload namespace is an ImagePullBackOff for ever, on a pod
+// nothing here was reading.
+//
+// Silent unless a pod says something, and that restraint is deliberate in both directions. No
+// frontend pods at all is Dynamo not having derived them yet, and a pod merely starting is a pod
+// starting; reporting either would make the first pass of every rollout a failure. What is
+// reported is a pod the cluster has already given up on, through the same reading of waiting
+// reasons and scheduling conditions the worker path uses, so the vocabulary stays the closed set
+// in MESSAGES.md and no new reason has to reach the plane for this to be legible.
+func (r *SyncedResourceReconciler) frontendState(ctx context.Context, name string) (bool, *trouble) {
+	if !r.Render.FrontendEnabled {
+		return true, nil
+	}
+
+	var pods corev1.PodList
+	err := r.Client.List(ctx, &pods,
+		client.InNamespace(r.Render.Namespace),
+		client.MatchingLabels{
+			graphDeploymentLabel: name,
+			componentNameLabel:   render.FrontendComponent,
+		},
+	)
+	if err != nil {
+		// Not a reconcile failure, for the same reason `rejectedBy` treats its own list that
+		// way: a cluster this cannot read is one this operator still reconciles, less well.
+		// Serving is the answer on a read that failed, because a transient API error must not
+		// take a serving deployment out of the routing table.
+		r.Log.Debug("could not read the frontend pods", "graph", name, "error", err)
+		return true, nil
+	}
+
+	for i := range pods.Items {
+		if podReady(&pods.Items[i]) {
+			return true, nil
+		}
+	}
+
+	// Not serving, whether or not anything can say why, and those are two answers rather than
+	// one. `degraded` needs only the first: no ready frontend means nothing can reach this
+	// model, and a rollout that reported `running` through the window before its frontend comes
+	// up would have the plane admit it and the gateway prefer it — the 503 the agent then
+	// answers is the same silence one layer on. The second answer is rarer and stays as
+	// restrained as the worker path: no pods at all is Dynamo not having derived them yet, and a
+	// pod merely starting is a pod starting, so neither becomes a reason the plane is told.
+	found := troubleFromPods(pods.Items)
+	if found != nil {
+		found.message = "no frontend is serving this deployment: " + found.message
+	}
+	return false, found
 }
 
 // observeAdoptedRollout reads what is running for a deployment this operator did not render.

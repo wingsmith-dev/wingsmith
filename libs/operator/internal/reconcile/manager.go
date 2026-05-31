@@ -101,6 +101,9 @@ func SetupWithManager(mgr ctrl.Manager, cfg *config.Config, logger *slog.Logger)
 
 // RenderOptions lifts the per-cluster rendering conventions out of configuration.
 func RenderOptions(cfg *config.Config) render.Options {
+	// Copied rather than pointed at the Config, so that the rendered options cannot be changed
+	// by anything that later edits the configuration they came from.
+	globalDynamoNamespace := cfg.FrontendGlobalDynamoNamespace
 	return render.Options{
 		Namespace:           cfg.WorkloadNamespace,
 		PoolLabelKey:        cfg.PoolLabelKey,
@@ -112,5 +115,16 @@ func RenderOptions(cfg *config.Config) render.Options {
 		PrefetchMemory:      cfg.PrefetchMemory,
 		PrefetchMemoryLimit: cfg.PrefetchMemoryLimit,
 		MultinodeEnabled:    cfg.Multinode,
+
+		FrontendEnabled:         cfg.FrontendEnabled,
+		FrontendImage:           cfg.FrontendImage,
+		FrontendReplicas:        cfg.FrontendReplicas,
+		FrontendPullSecrets:     cfg.FrontendPullSecrets,
+		FrontendCPU:             cfg.FrontendCPU,
+		FrontendMemory:          cfg.FrontendMemory,
+		FrontendMemoryLimit:     cfg.FrontendMemoryLimit,
+		AnthropicAPIEnabled:     cfg.FrontendAnthropicAPI,
+		AnthropicStripPreamble:  cfg.FrontendAnthropicStripPreamble,
+		FrontendGlobalNamespace: &globalDynamoNamespace,
 	}
 }

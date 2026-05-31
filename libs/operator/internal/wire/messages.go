@@ -288,14 +288,24 @@ type RecipeResources struct {
 // The device shape is deliberately absent — it arrives on the deployment's Placement, derived from
 // this recipe, and carrying it twice invites the two copies to disagree.
 type RecipeDesired struct {
-	RecipeID      string            `json:"recipe_id"`
-	ClusterID     string            `json:"cluster_id"`
-	ArtifactID    string            `json:"artifact_id"`
-	Name          string            `json:"name"`
-	Version       int               `json:"version"`
-	Engine        string            `json:"engine"`
-	EngineVersion string            `json:"engine_version"`
-	EngineImage   *string           `json:"engine_image"`
+	RecipeID      string  `json:"recipe_id"`
+	ClusterID     string  `json:"cluster_id"`
+	ArtifactID    string  `json:"artifact_id"`
+	Name          string  `json:"name"`
+	Version       int     `json:"version"`
+	Engine        string  `json:"engine"`
+	EngineVersion string  `json:"engine_version"`
+	EngineImage   *string `json:"engine_image"`
+	// FrontendImage is the runtime the OpenAI-compatible frontend for this model runs, when it
+	// must differ from the engine's.
+	//
+	// A field of its own rather than a reuse of EngineImage, because the two are genuinely
+	// different builds: Kimi K3 on site-c serves through a patched frontend while its decode worker
+	// stays on NVIDIA's stock image, because both defects that made the model unusable are in
+	// the frontend binary and none is in the engine. Nil is the ordinary case and means the
+	// cluster's own default, which is why this is a pointer — an empty string from a plane too
+	// old to send the field must not read as a deliberate blank image.
+	FrontendImage *string           `json:"frontend_image"`
 	EngineArgs    map[string]string `json:"engine_args"`
 	// ServedModelName is the model id an API client sends, already resolved by the plane: the
 	// recipe's own declaration, or the artifact's lowercase Hugging Face slug when it declares

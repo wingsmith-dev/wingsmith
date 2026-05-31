@@ -25,6 +25,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
+	"github.com/hangar-dev/hangar/libs/operator/internal/config"
 	"github.com/hangar-dev/hangar/libs/operator/internal/render"
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
@@ -823,5 +824,215 @@ func TestFrontendPodsAreNotCountedAsReplicasOfTheModel(t *testing.T) {
 	}
 	if len(last.ReplicaIDs) != 1 {
 		t.Errorf("reported %d replica ids, want only the worker's", len(last.ReplicaIDs))
+	}
+}
+
+// A per-cluster setting nobody carries into the render is a setting that does nothing, and the
+// frontend settings fail that way silently: the graph renders, the workers come up, and the
+// frontend is either absent or wearing this cluster's defaults instead of its own.
+func TestRenderOptionsCarriesTheFrontendSettings(t *testing.T) {
+	cfg := &config.Config{
+		WorkloadNamespace:              "dynamo",
+		PoolLabelKey:                   "hangar.io/pool",
+		FrontendEnabled:                true,
+		FrontendImage:                  "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2",
+		FrontendReplicas:               3,
+		FrontendPullSecrets:            []string{"ghcr-hangar"},
+		FrontendCPU:                    "500m",
+		FrontendMemory:                 "1Gi",
+		FrontendMemoryLimit:            "4Gi",
+		FrontendAnthropicAPI:           true,
+		FrontendAnthropicStripPreamble: true,
+		FrontendGlobalDynamoNamespace:  false,
+	}
+	opts := RenderOptions(cfg)
+
+	if !opts.FrontendEnabled || opts.FrontendImage != cfg.FrontendImage || opts.FrontendReplicas != 3 {
+		t.Fatalf("frontend options not carried: %+v", opts)
+	}
+	if len(opts.FrontendPullSecrets) != 1 || opts.FrontendPullSecrets[0] != "ghcr-hangar" {
+		t.Fatalf("pull secrets = %v", opts.FrontendPullSecrets)
+	}
+	if opts.FrontendCPU != "500m" || opts.FrontendMemory != "1Gi" || opts.FrontendMemoryLimit != "4Gi" {
+		t.Fatalf("frontend resources = %q %q %q", opts.FrontendCPU, opts.FrontendMemory, opts.FrontendMemoryLimit)
+	}
+	if !opts.AnthropicAPIEnabled || !opts.AnthropicStripPreamble {
+		t.Fatalf("anthropic switches = %v %v", opts.AnthropicAPIEnabled, opts.AnthropicStripPreamble)
+	}
+	// A pointer, because nil means the shared namespace every cluster runs today. A cluster
+	// that has said false must not read as one that said nothing.
+	if opts.FrontendGlobalNamespace == nil || *opts.FrontendGlobalNamespace {
+		t.Fatalf("global dynamo namespace = %v", opts.FrontendGlobalNamespace)
+	}
+}
+
+// ------------------------------------------------- the frontend a cluster renders per model
+
+// stuckFrontendPods builds n frontend pods the kubelet has given up pulling, which is what a
+// private frontend image looks like when the workload namespace holds no Secret for it.
+func stuckFrontendPods(n int) []*corev1.Pod {
+	out := frontendPods(n)
+	for _, pod := range out {
+		pod.Status = corev1.PodStatus{
+			Phase: corev1.PodPending,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "main",
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+					Reason:  "ImagePullBackOff",
+					Message: `Back-off pulling image "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"`,
+				}},
+			}},
+		}
+	}
+	return out
+}
+
+// startingFrontendPods builds n frontend pods that are simply coming up, which every rollout
+// passes through and which nothing should call a failure.
+func startingFrontendPods(n int) []*corev1.Pod {
+	out := frontendPods(n)
+	for _, pod := range out {
+		pod.Status = corev1.PodStatus{
+			Phase: corev1.PodPending,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name:  "main",
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "ContainerCreating"}},
+			}},
+		}
+	}
+	return out
+}
+
+// observedRollout reads one deployment's rollout against the pods given, under the render options
+// given. `observeRollout` rather than a whole reconcile, because the render options are the
+// variable under test and the reconcile helpers share one set of them.
+func observedRollout(t *testing.T, opts render.Options, pods ...*corev1.Pod) rollout {
+	t.Helper()
+	objects := make([]client.Object, 0, len(pods))
+	for _, pod := range pods {
+		objects = append(objects, pod)
+	}
+	r := &SyncedResourceReconciler{
+		Client:    fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).WithObjects(objects...).Build(),
+		Scheme:    clientgoscheme.Scheme,
+		Log:       slog.Default(),
+		Namespace: "hangar-system",
+		Render:    opts,
+		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+	}
+	out, err := r.observeRollout(context.Background(), testDeploymentDesired(), testRecipeDesired())
+	if err != nil {
+		t.Fatalf("observe: %v", err)
+	}
+	return out
+}
+
+func frontendRender() render.Options {
+	opts := testRender
+	opts.FrontendEnabled = true
+	return opts
+}
+
+// The failure one frontend per model introduces, and the one nothing else here would report. The
+// workers are all ready, so `diagnose` is never called; without this the plane is told
+// `running · Serving` for a deployment whose only way in never started, the gateway prefers it,
+// and every request 502s. It is the same shape as the overlay that deletes the frontend, which
+// the renderer refuses for the same reason.
+func TestAFrontendThatCannotStartIsNotAServingDeployment(t *testing.T) {
+	pods := append(readyPods(2), stuckFrontendPods(2)...)
+	out := observedRollout(t, frontendRender(), pods...)
+
+	if out.ready != 2 || out.desired != 2 {
+		t.Fatalf("counts = %d of %d; the frontend must not move the model's replica counts", out.ready, out.desired)
+	}
+	if out.phase() != phaseFailed {
+		t.Errorf("phase = %q, want failed while nothing can reach the model", out.phase())
+	}
+	if out.reason() != "ImagePullFailed" {
+		t.Errorf("reason = %q, want the pod's own waiting reason", out.reason())
+	}
+	if !strings.Contains(out.message(), "no frontend is serving") {
+		t.Errorf("message does not say the frontend is the part that failed: %q", out.message())
+	}
+}
+
+// A cluster that has not opted in is served by the one frontend the chart installs, which belongs
+// to no deployment and is not in this graph. Reading a shortfall there would report a failure
+// against a frontend that was never this deployment's — so with the option off, nothing is read
+// and the counts are the whole answer, exactly as before.
+func TestTheFrontendIsNotReadUntilTheClusterOptsIn(t *testing.T) {
+	pods := append(readyPods(2), stuckFrontendPods(2)...)
+	out := observedRollout(t, testRender, pods...)
+
+	if out.phase() != phaseRunning || out.reason() != "Serving" {
+		t.Errorf("phase = %q, reason = %q; a cluster that has not moved must read as it always did",
+			out.phase(), out.reason())
+	}
+}
+
+// The ordinary case, and the one that must not become noisy: a frontend that is up leaves the
+// deployment saying exactly what its replica counts say.
+func TestAReadyFrontendLeavesTheDeploymentServing(t *testing.T) {
+	pods := append(readyPods(2), frontendPods(2)...)
+	out := observedRollout(t, frontendRender(), pods...)
+
+	if out.phase() != phaseRunning || out.reason() != "Serving" {
+		t.Errorf("phase = %q, reason = %q", out.phase(), out.reason())
+	}
+}
+
+// A frontend nobody can place is not fatal — a node joining fixes it with nothing about the
+// deployment having changed — but it is still a model nothing can reach, so the deployment must
+// not read `running` for as long as it lasts. This is the case the counts alone get wrong in the
+// other direction: every worker ready, and degraded is the honest word.
+func TestAFrontendNobodyCanPlaceLeavesTheDeploymentDegraded(t *testing.T) {
+	frontends := frontendPods(1)
+	frontends[0].Status = corev1.PodStatus{
+		Phase: corev1.PodPending,
+		Conditions: []corev1.PodCondition{{
+			Type:    corev1.PodScheduled,
+			Status:  corev1.ConditionFalse,
+			Reason:  corev1.PodReasonUnschedulable,
+			Message: "0/3 nodes are available: 3 Insufficient cpu",
+		}},
+	}
+	out := observedRollout(t, frontendRender(), append(readyPods(2), frontends...)...)
+
+	if out.phase() != phaseDegraded {
+		t.Errorf("phase = %q, want degraded: every worker is ready and no request can reach one", out.phase())
+	}
+	if out.reason() != "PodUnschedulable" {
+		t.Errorf("reason = %q", out.reason())
+	}
+}
+
+// A frontend still coming up is a shortfall and not a diagnosis, and the two answers are kept
+// apart on purpose.
+//
+// `degraded`, because until a frontend is ready nothing can reach the model however many workers
+// are — and `degraded` is what a rolling update passes through, not a failure. It costs nothing
+// to say so: the gateway orders candidates by readiness and never removes the last one, so a
+// deployment with one upstream still takes traffic while it says this, and one with two prefers
+// the upstream that can actually answer.
+//
+// `Progressing` and not a reason, because a pod that is merely creating its container has said
+// nothing, and neither has a graph Dynamo has not derived the frontend from yet. Turning either
+// into a diagnosis would put a failure word under the first pass of every rollout, which is how a
+// check like this stops being read.
+func TestAFrontendStillComingUpIsDegradedAndNotADiagnosis(t *testing.T) {
+	starting := observedRollout(t, frontendRender(), append(readyPods(2), startingFrontendPods(2)...)...)
+	if starting.phase() != phaseDegraded || starting.reason() != "Progressing" {
+		t.Errorf("phase = %q, reason = %q while the frontend is still creating its container",
+			starting.phase(), starting.reason())
+	}
+	none := observedRollout(t, frontendRender(), readyPods(2)...)
+	if none.phase() != phaseDegraded || none.reason() != "Progressing" {
+		t.Errorf("phase = %q, reason = %q before Dynamo has derived the frontend at all",
+			none.phase(), none.reason())
+	}
+	// The same graph on a cluster that has not opted in is untouched by any of this.
+	off := observedRollout(t, testRender, readyPods(2)...)
+	if off.phase() != phaseRunning {
+		t.Errorf("phase = %q on a cluster rendering no frontend of its own", off.phase())
 	}
 }
