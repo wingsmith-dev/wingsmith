@@ -604,6 +604,102 @@ async def test_naming_an_engine_image_in_the_same_patch_wins(db: AsyncSession) -
     assert patched.engine_image == pinned
 
 
+async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) -> None:
+    """Declared on create, patched, and cleared — and never confused with the engine image.
+
+    The two images are the same shape and one column apart, which is exactly the
+    kind of pair a write path collapses by accident. Clearing matters as much as
+    setting: null is how a recipe hands the choice back to the cluster once it no
+    longer needs a build of its own, and a patch that could not say null would
+    leave a dead image address pinned to the model for good.
+    """
+    artifact = await an_artifact(db)
+    service = RecipeService(db)
+    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+    created = await service.create(
+        RecipeCreateRequest(
+            artifact=artifact.id,
+            name="kimi-k3-mxfp4-tp8-1024k",
+            engine="vllm",
+            engine_version="1.4.0-patched.1",
+            device_class="h100",
+            context_length=8192,
+            frontend_image=pinned,
+        )
+    )
+    assert created.frontend_image == pinned
+    assert created.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+    assert (await service.get(created.id)).frontend_image == pinned
+
+    later = "ghcr.io/hangar-dev/vllm-runtime:1.4.1-patched.1-hgr3"
+    patched = await service.update(created.id, RecipeUpdateRequest(frontend_image=later))
+    assert patched.frontend_image == later
+    assert patched.engine_image == created.engine_image
+    assert_patched(created, patched)
+
+    cleared = await service.update(created.id, RecipeUpdateRequest(frontend_image=None))
+    assert cleared.frontend_image is None
+    assert cleared.engine_image == created.engine_image
+
+
+async def test_bumping_the_engine_version_moves_the_worker_and_leaves_the_frontend(db: AsyncSession) -> None:
+    """The two images move on different schedules, and the update path must let them.
+
+    `update` re-derives `engine_image` from the new version whenever the stored one is
+    the plane's own derivation, which is what makes a version bump reach the cluster.
+    `frontend_image` has no derivation to re-run and must be left exactly where it is:
+    a frontend pinned because it is the only build that tokenizes this model is pinned
+    against the engine moving, not with it. Re-deriving it, or clearing it on the way
+    past, would put Kimi K3 back on the frontend that answered `/v1/models` empty — and
+    the engine-image tests above cannot see that, because they never set the field.
+    """
+    artifact = await an_artifact(db)
+    recipe = await a_recipe(db, artifact.id)
+    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+
+    service = RecipeService(db)
+    await service.update(recipe.id, RecipeUpdateRequest(frontend_image=pinned))
+    patched = await service.update(recipe.id, RecipeUpdateRequest(engine_version="1.4.2"))
+
+    assert patched.engine_version == "1.4.2"
+    assert patched.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.2"
+    assert patched.frontend_image == pinned
+
+
+async def test_a_recipe_without_a_frontend_image_reads_back_null(db: AsyncSession) -> None:
+    """The ordinary recipe declares nothing, and nothing is what it must report.
+
+    Not the engine image: what a cluster serves its frontends through is the
+    operator's fact, and a plane that guessed at it would be right only for the
+    clusters where the two happen to be published together.
+    """
+    artifact = await an_artifact(db)
+    recipe = await a_recipe(db, artifact.id)
+    assert recipe.engine_image is not None
+    assert recipe.frontend_image is None
+
+
+async def test_the_frontend_image_reaches_the_cluster_on_the_desired_stream(db: AsyncSession) -> None:
+    """A frontend image nobody on a cluster can read is a field that does nothing.
+
+    The operator is what renders the Frontend component, so this frame is the only
+    place the declaration can arrive.
+    """
+    cluster, _, recipe, _ = await a_deployment(db)
+    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+
+    frames = [item async for item in stream_desired(db, cluster.id, "demand")]
+    payloads = [payload for kind, payload in frames if kind == "recipe.desired"]
+    assert [p.frontend_image for p in payloads] == [None]
+
+    await RecipeService(db).update(recipe.id, RecipeUpdateRequest(frontend_image=pinned))
+
+    frames = [item async for item in stream_desired(db, cluster.id, "demand")]
+    payloads = [payload for kind, payload in frames if kind == "recipe.desired"]
+    assert [p.frontend_image for p in payloads] == [pinned]
+    assert payloads[0].engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0"
+
+
 async def test_the_overlay_reaches_the_cluster_on_the_desired_stream(db: AsyncSession) -> None:
     cluster, _, recipe, _ = await a_deployment(db)
     await RecipeService(db).update(recipe.id, RecipeUpdateRequest(overlay={"dynamo": {"router": {"mode": "kv"}}}))

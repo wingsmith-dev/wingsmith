@@ -316,6 +316,14 @@ def _recipe(recipe: Recipe, cluster_uid: str, artifact_uid: str, artifact: Artif
     given. The `engine_args` hatch is deliberately left out of the resolution: the
     operator lays `engine_args` over the derived flags itself, so folding it in
     would put the same value on the wire twice.
+
+    `frontend_image` has an order too, and it is one step long: the recipe's own
+    declaration when it has one, otherwise empty. Empty means the cluster
+    decides, and it does not mean the engine image — a frontend and a worker are
+    separately versioned binaries, which is the entire reason the field exists, so
+    falling back to `engine_image` here would hand every model the one image the Kimi
+    K3 frontend fix exists to avoid. The default belongs to the operator because only
+    the operator knows what the cluster it runs in serves through.
     """
     return RecipeDesired(
         recipe_id=recipe.uid,
@@ -326,6 +334,7 @@ def _recipe(recipe: Recipe, cluster_uid: str, artifact_uid: str, artifact: Artif
         engine=recipe.engine,
         engine_version=recipe.engine_version,
         engine_image=recipe.engine_image,
+        frontend_image=recipe.frontend_image,
         engine_args=resolved_engine_args(recipe.engine, recipe.engine_args, serving_block(recipe.serving)),
         served_model_name=declared_served_model(recipe, artifact),
         quantization=recipe.quantization,

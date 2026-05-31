@@ -144,6 +144,7 @@ class RecipeSchema(Struct):
     engine: str
     engine_version: str
     engine_image: str | None
+    frontend_image: str | None
     engine_args: dict
     imported_args: dict
     served_model_name: str | None
@@ -206,6 +207,7 @@ class RecipeCreateRequest(Struct):
     version: int = 1
     lifecycle: str = "published"
     engine_image: str | None = None
+    frontend_image: str | None = None
     engine_args: dict = {}
     imported_args: dict = {}
     served_model_name: str | None = None
@@ -246,6 +248,7 @@ class RecipeUpdateRequest(Struct):
     engine: str | UnsetType = UNSET
     engine_version: str | UnsetType = UNSET
     engine_image: str | None | UnsetType = UNSET
+    frontend_image: str | None | UnsetType = UNSET
     engine_args: dict | UnsetType = UNSET
     imported_args: dict | UnsetType = UNSET
     served_model_name: str | None | UnsetType = UNSET

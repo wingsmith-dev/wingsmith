@@ -675,6 +675,18 @@ devices *offer*, net of the utilization envelope and the per-device CUDA reserve
 `memory_mib_per_device` by `device_count` for the nameplate, and note that comparing `required_gb`
 against the nameplate over-promises by about fifteen percent.
 
+Those fields are the *recommendation* — the fewest cards carrying the full window — and `layouts`
+is the rest of the answer: every count on that class that serves, ascending, each with its own
+`device_count`, `node_count`, `tensor_parallel`, `pipeline_parallel`, `aggregate_gb`,
+`required_gb`, `context_length`, `reduced`, `supply_short` and `reason`. The recommended count is
+one of them. Counts below it are the trade of context for cards — four H200 at 32k rather than
+eight at 131k is a shape somebody declares on purpose, and it leaves half the node for another
+workload — and counts above it stop at one node, or at the recommendation when a replica already
+spans several, because widening past the fabric to buy KV cache is a throughput decision nothing
+here can price. A class that fits nowhere carries no layouts, and a layout the fleet holds too few
+cards for is listed with `supply_short` rather than hidden. `weights_gb` and `kv_counted` are not
+repeated per layout: they belong to the artifact and are the same for every entry.
+
 `sizable` is false only when the artifact carries no parameter count at all; `items` is then empty
 and `note` says why. A missing attention shape is not that case — the weights alone still bound
 which cards are too small, so the matrix is returned with every row's `kv_counted` false,

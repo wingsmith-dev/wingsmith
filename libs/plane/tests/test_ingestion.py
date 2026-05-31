@@ -1085,6 +1085,29 @@ def test_a_recipes_declaration_is_what_the_wire_carries() -> None:
     assert _wire_recipe(served_model_name="acme/kimi").served_model_name == "acme/kimi"
 
 
+def test_the_wire_carries_the_recipes_own_frontend_image() -> None:
+    """A model that needs its own frontend build says so on the recipe, and the
+    frame is where the operator reads it: the plane declares the override and the
+    cluster renders it, the same way it does for the engine image."""
+    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+    assert _wire_recipe(frontend_image=pinned).frontend_image == pinned
+
+
+def test_a_recipe_with_no_frontend_image_sends_nothing_not_the_engine_image() -> None:
+    """Empty is a real answer and it means the cluster decides.
+
+    Kimi K3 is why the field is not one field: the tokenizer fix is compiled into
+    the frontend binary and the worker correctly stays on the base image, so a
+    plane that filled an absent frontend image in with the engine's would be
+    stating the exact thing that broke — and on any cluster whose frontends are
+    not published from the engine's repository it would be an ImagePullBackOff.
+    """
+    engine = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+    wire = _wire_recipe(engine_image=engine)
+    assert wire.engine_image == engine
+    assert wire.frontend_image is None
+
+
 def test_the_engine_args_hatch_is_left_off_the_wire() -> None:
     """The operator lays engine_args over the derived flags itself.
 

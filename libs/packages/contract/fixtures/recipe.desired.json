@@ -14,6 +14,7 @@
     "engine": "vllm",
     "engine_version": "1.3.1",
     "engine_image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1",
+    "frontend_image": "ghcr.io/hangar-dev/vllm-runtime:1.3.1-hgr1",
     "engine_args": {
       "served-model-name": "qwen3.8-27b",
       "max-num-seqs": "256"

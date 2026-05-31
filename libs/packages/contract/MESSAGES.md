@@ -150,7 +150,7 @@ when a node came back, which is the inference `.event` frames exist to avoid.
 |---|---|
 | `deployment.desired` | name, recipe reference, this cluster's scale bounds, priority, placement constraints |
 | `deployment.deleted` | id |
-| `recipe.desired` | how to serve an artifact: engine, image, declared args, parallelism, cache settings |
+| `recipe.desired` | how to serve an artifact: engine, worker and frontend images, declared args, parallelism, cache settings |
 | `artifact.desired` | what weights should be resident, and where they come from |
 | `component.desired` | what is installed and at what version |
 | `cache.desired` | the artifact warm-set for this cluster |
@@ -206,6 +206,33 @@ to carry either — the recipe's name. `engine_args["served-model-name"]` still 
 because `engine_args` is laid over the derived flags and an escape hatch that loses to a default
 is not one. The plane leaves that hatch out of what it resolves, so the same value never travels
 twice.
+
+**A recipe carries two images, because a frontend and a worker are two binaries.**
+`recipe.desired.engine_image` is what loads the weights. `recipe.desired.frontend_image` is what
+this model's own Dynamo frontend runs, and it is a field of its own rather than a reuse of the
+first because the two are versioned separately and the difference is not theoretical. Kimi K3
+arrived on a worker running the stock `vllm-runtime:1.4.0-patched.1` and served: 191.74 GiB
+across eight devices, loaded and healthy. The cluster's frontend, one version later, refused the
+model's tokenizer — `Unsupported tiktoken model_type 'kimi_k3'` — and answered `/v1/models` with an
+empty list. The tokenizer table is compiled into the frontend binary, so the fix was a frontend
+build and the worker correctly stayed where it was. One image field cannot say that, and a plane
+that only had one would have had to move the image every model on that cluster is served through
+in order to reach one of them.
+
+`frontend_image` is empty in the ordinary case, and **empty means the cluster decides**. What a
+cluster runs its frontends on is a local fact: the operator holds it and the plane does not, so
+the plane declares an override or declares nothing. It never substitutes `engine_image` for an
+absent `frontend_image`, because on a cluster whose frontends are not published from the engine's
+repository that is an `ImagePullBackOff` chosen a continent away, and because a value the plane
+invented is indistinguishable on arrival from one somebody pinned.
+
+The cluster resolves it most specific first: this recipe's `frontend_image`, then whatever that
+cluster is configured to serve its frontends through, then — last, and only when neither has been
+said — the recipe's `engine_image`. That last step is not the plane's rule leaking back in. It is
+right often enough to be the honest default, since the Dynamo runtime image carries the frontend
+and the engines together, and it is reached only after the two places that could have said
+something better both declined. An empty string is not an override at any level and is treated as
+absent, per §2.
 
 The device shape is deliberately absent from `recipe.desired`. It reaches the cluster on the
 deployment's `placement`, derived from that same recipe. Two copies of one fact on one wire is two

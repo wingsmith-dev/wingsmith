@@ -556,6 +556,26 @@ class Recipe(BaseMixin):
     engine: Mapped[str] = mapped_column(String(64), nullable=False)
     engine_version: Mapped[str] = mapped_column(String(64), nullable=False)
     engine_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    frontend_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    """The image this model's own Dynamo frontend runs. Null means the cluster decides.
+
+    Separate from `engine_image` because a frontend and a worker are separately versioned
+    binaries that only happen to be published from one repository. The worker loads the weights;
+    the frontend tokenizes the request and registers the model, and the tables it needs to do that
+    are compiled into it. Kimi K3 is the case: a worker on the stock
+    `nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1` served it, while every released
+    frontend refused the `kimi_k3` tiktoken type and answered `/v1/models` with an empty list. The
+    fix was a frontend build and nothing else. Folded into `engine_image`, that one model would
+    have moved the image every model on the cluster is served through.
+
+    Null is this recipe declining to have an opinion, not an instruction to reuse `engine_image`.
+    The operator resolves it against what that cluster runs its frontends on — a local fact the
+    plane does not hold and must not guess at — and only falls back to the engine image once that
+    has declined too. So there is no `resolve_` for this field the way there is for `engine_image`:
+    the plane can derive an engine image because `ENGINE_IMAGE_REPOS` tells it where workers come
+    from, and nothing tells it the same about frontends, so an address invented here is an
+    `ImagePullBackOff` chosen by the wrong side of the wire.
+    """
     engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     imported_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     served_model_name: Mapped[str | None] = mapped_column(String(255), nullable=True)

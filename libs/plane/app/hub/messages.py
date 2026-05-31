@@ -413,6 +413,11 @@ class RecipeDesired(Struct):
     deployment's `placement`, derived from this recipe, and carrying it twice
     invites the two copies to disagree.
 
+    `frontend_image` is a second image and not a spelling of `engine_image`, because a
+    frontend and a worker are separately versioned binaries. It is empty in the ordinary
+    case, and empty means the cluster decides — never "use the engine image", which is a
+    default only the operator is entitled to pick.
+
     `served_model_name` is the model id an API client sends, already resolved: the
     recipe's own declaration, or the artifact's lowercase Hugging Face slug when it
     declares none. The plane resolves it so the operator holds no derivation logic
@@ -429,6 +434,7 @@ class RecipeDesired(Struct):
     engine: str
     engine_version: str
     engine_image: str | None
+    frontend_image: str | None
     engine_args: dict[str, str]
     served_model_name: str
     quantization: str | None

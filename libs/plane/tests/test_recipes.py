@@ -806,6 +806,32 @@ def test_a_malformed_repo_pair_does_not_break_the_write_path():
         settings.ENGINE_IMAGE_REPOS = original
 
 
+def test_a_declared_frontend_image_is_carried_verbatim():
+    """There is no `resolve_frontend_image`, and the absence is the design.
+
+    The plane knows which repository an engine's workers come from because
+    `ENGINE_IMAGE_REPOS` tells it. Nothing tells it what a cluster serves its
+    frontends through — that is the operator's fact — so the only frontend image
+    this side can state is one a person pinned.
+    """
+    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+    assert rendered(a_recipe(frontend_image=pinned)).frontend_image == pinned
+
+
+def test_a_recipe_naming_no_frontend_image_does_not_borrow_the_engines():
+    """Empty means the cluster decides, and it must not quietly mean `engine_image`.
+
+    Kimi K3 is the case the field exists for and it is the case where the two
+    differ: the frontend carries the tokenizer fix, the worker stays on the base
+    image. A read path that filled the gap with the engine image would report the
+    one answer that is wrong precisely when it matters.
+    """
+    engine = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+    built = rendered(a_recipe(engine_image=engine))
+    assert built.engine_image == engine
+    assert built.frontend_image is None
+
+
 def test_the_typed_serving_block_reaches_the_cluster():
     """The flags a recipe declares must be the flags the engine is started with.
 
@@ -825,6 +851,7 @@ def test_the_typed_serving_block_reaches_the_cluster():
         engine="vllm",
         engine_version="0.10.0",
         engine_image=None,
+        frontend_image=None,
         engine_args={"--async-scheduling": ""},
         serving={"tool_call_parser": "openai"},
         served_model_name=None,
