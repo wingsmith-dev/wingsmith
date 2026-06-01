@@ -28,6 +28,30 @@ data:
 
   HANGAR_MULTINODE: {{ .Values.multinode.enabled | quote }}
 
+  # One frontend per model, rendered by the operator. See operator.frontend in
+  # values.yaml for what turning this on changes cluster-wide, and why it is not
+  # safe yet on a cluster serving more than one model.
+  HANGAR_FRONTEND_ENABLED: {{ .Values.operator.frontend.enabled | quote }}
+  HANGAR_FRONTEND_REPLICAS: {{ .Values.operator.frontend.replicas | quote }}
+  HANGAR_FRONTEND_ANTHROPIC_API: {{ .Values.operator.frontend.anthropicApi.enabled | quote }}
+  HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE: {{ .Values.operator.frontend.anthropicApi.stripClaudeCodePreamble | quote }}
+  HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE: {{ .Values.operator.frontend.globalDynamoNamespace | quote }}
+  {{- with .Values.operator.frontend.image }}
+  HANGAR_FRONTEND_IMAGE: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.operator.frontend.imagePullSecrets }}
+  HANGAR_FRONTEND_PULL_SECRETS: {{ join "," . | quote }}
+  {{- end }}
+  {{- with .Values.operator.frontend.resources.requests.cpu }}
+  HANGAR_FRONTEND_CPU: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.operator.frontend.resources.requests.memory }}
+  HANGAR_FRONTEND_MEMORY: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.operator.frontend.resources.limits.memory }}
+  HANGAR_FRONTEND_MEMORY_LIMIT: {{ . | quote }}
+  {{- end }}
+
   HANGAR_DCGM_ENDPOINT: {{ include "cluster-setup.dcgmEndpoint" . | quote }}
   {{- with (include "cluster-setup.dcgmSelector" .) }}
   HANGAR_DCGM_SELECTOR: {{ . | quote }}
