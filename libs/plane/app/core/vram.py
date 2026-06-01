@@ -1000,6 +1000,35 @@ def fit(sizing: Sizing, device: DeviceClass, intent: Intent) -> Fit:
     return attempts[-1]
 
 
+def ladder(sizing: Sizing, device: DeviceClass, intent: Intent) -> list[Fit]:
+    """Every count of one class worth offering, ascending, not only the smallest.
+
+    :func:`fit` answers "what is the least hardware this needs", which is one answer to a
+    question that has several. A 70B on H200 is a fit at four cards with a trimmed window
+    and a fit at eight with the full one, and both are things somebody deploys on
+    purpose: four leaves half the node for another workload, eight buys context and
+    concurrency. Returning only the recommendation made the second half of that choice
+    invisible, and the console then had nothing to offer but the whole node.
+
+    Counts below the recommendation are here because they are the interesting ones — the
+    recommendation is the smallest count at the *full* window, so anything smaller that
+    still serves is a deliberate trade of context for cards. Counts above it stop at one
+    node, or at the recommendation when that already spans several: widening a replica
+    past the fabric to buy KV cache is a throughput decision nothing here can price, and
+    it is not a menu item.
+
+    No-fits are dropped rather than listed. This is a set of choices, and a count that
+    cannot hold the weights is not one; :func:`fit` still explains a class that fits
+    nowhere, and it is the row's own verdict that says so.
+    """
+    chosen = fit(sizing, device, intent)
+    if not chosen.fits:
+        return []
+    ceiling = min(intent.max_devices, max(chosen.device_count, intent.devices_per_node))
+    options = [fit_at(sizing, device, intent, count) for count in device_counts(ceiling)]
+    return [option for option in options if option.fits]
+
+
 def fitment(sizing: Sizing, devices: Sequence[DeviceClass], intent: Intent) -> list[Fit]:
     """Fit an artifact against many classes at once, most useful answer first.
 

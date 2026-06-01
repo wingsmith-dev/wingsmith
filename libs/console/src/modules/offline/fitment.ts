@@ -14,6 +14,7 @@
 
 import type {
   ArtifactFit,
+  ArtifactFitLayout,
   ArtifactFitment,
   FitmentScope,
 } from "@/modules/demand/types"
@@ -262,6 +263,8 @@ function fitAt(
     cluster_count: device.inventory.clusters.length,
     in_catalog: device.in_catalog,
     kv_counted: sizing.shape !== null,
+    /** Filled in by `fit`, which is the only caller that knows the whole ladder. */
+    layouts: [],
     node_count: layout.node_count,
     devices_per_node: devicesPerNode,
     tensor_parallel: layout.tensor_parallel,
@@ -347,6 +350,47 @@ function fitAt(
   }
 }
 
+/**
+ * Every count on one class that serves, ascending — the choice `fit` narrows to one.
+ *
+ * Mirrors `ladder` in `app/core/vram.py`: counts below the recommendation are the trade
+ * of context for cards, counts above it stop at one node, and no-fits are dropped
+ * because this is a menu rather than a verdict.
+ */
+function ladder(
+  sizing: Sizing,
+  device: DeviceClass,
+  contextLength: number,
+  concurrency: number,
+  chosen: ArtifactFit,
+  maxDevices: number,
+  devicesPerNode: number
+): ArtifactFitLayout[] {
+  if (!chosen.fits) return []
+  const ceiling = Math.min(
+    maxDevices,
+    Math.max(chosen.device_count, devicesPerNode)
+  )
+  return deviceCounts(ceiling)
+    .map((count) =>
+      fitAt(sizing, device, contextLength, concurrency, count, devicesPerNode)
+    )
+    .filter((option) => option.fits)
+    .map((option) => ({
+      device_count: option.device_count,
+      node_count: option.node_count,
+      tensor_parallel: option.tensor_parallel,
+      pipeline_parallel: option.pipeline_parallel,
+      aggregate_gb: option.aggregate_gb,
+      required_gb: option.required_gb,
+      context_length: option.context_length,
+      reduced: option.reduced,
+      supply_short:
+        option.devices_total > 0 && option.devices_total < option.device_count,
+      reason: option.reason,
+    }))
+}
+
 /** Smallest count carrying the full window, else the smallest carrying any, else the widest attempt. */
 function fit(
   sizing: Sizing,
@@ -357,6 +401,7 @@ function fit(
   devicesPerNode: number
 ): ArtifactFit {
   const attempts: ArtifactFit[] = []
+  let best: ArtifactFit | null = null
   for (const count of deviceCounts(maxDevices)) {
     const attempt = fitAt(
       sizing,
@@ -366,11 +411,27 @@ function fit(
       count,
       devicesPerNode
     )
-    if (attempt.fits && !attempt.reduced) return short(attempt)
+    if (attempt.fits && !attempt.reduced) {
+      best = attempt
+      break
+    }
     attempts.push(attempt)
   }
-  const chosen = attempts.find((a) => a.fits) ?? attempts[attempts.length - 1]
-  return short(chosen)
+  const chosen =
+    best ?? attempts.find((a) => a.fits) ?? attempts[attempts.length - 1]
+  const verdict = short(chosen)
+  return {
+    ...verdict,
+    layouts: ladder(
+      sizing,
+      device,
+      contextLength,
+      concurrency,
+      verdict,
+      maxDevices,
+      devicesPerNode
+    ),
+  }
 }
 
 /**

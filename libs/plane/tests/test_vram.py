@@ -14,6 +14,7 @@ from app.core.vram import ModelShape
 from app.core.vram import fit
 from app.core.vram import fit_at
 from app.core.vram import is_moe
+from app.core.vram import ladder
 from app.core.vram import fitment
 from app.core.vram import sizing_of
 from app.core.vram import usable_gb
@@ -477,6 +478,64 @@ def test_a_truncated_context_is_offered_rather_than_hidden():
     if verdict.fits and verdict.reduced:
         assert verdict.context_length < 163840
         assert "rather than" in verdict.reason
+
+
+def test_the_ladder_offers_every_count_that_serves_and_not_only_the_smallest():
+    """The recommendation is one answer; how much of a node to spend is the question."""
+    sizing = sizing_of_config(llama_config(max_position_embeddings=131072), 70_000_000_000)
+    device = klass("h200-141gb-sxm")
+    intent = Intent(context_length=131072, devices_per_node=8)
+
+    options = ladder(sizing, device, intent)
+    counts = [option.device_count for option in options]
+
+    assert counts == sorted(counts)
+    assert fit(sizing, device, intent).device_count in counts
+    assert len(counts) > 1
+    assert all(option.fits for option in options)
+
+
+def test_the_ladder_stops_at_a_node_when_a_replica_fits_inside_one():
+    """Widening past the fabric to buy KV cache is a call nothing here can price."""
+    sizing = sizing_of_config(llama_config(max_position_embeddings=8192), 13_000_000_000)
+    device = klass("h200-141gb-sxm")
+
+    options = ladder(sizing, device, Intent(context_length=8192, devices_per_node=8))
+    assert max(option.device_count for option in options) == 8
+
+
+def test_the_ladder_reaches_the_recommendation_when_it_spans_several_nodes():
+    sizing = sizing_of_config(llama_config(max_position_embeddings=8192), 400_000_000_000)
+    device = klass("h100-80gb-sxm")
+    intent = Intent(context_length=8192, devices_per_node=8)
+
+    chosen = fit(sizing, device, intent)
+    assert chosen.node_count > 1
+    assert max(option.device_count for option in ladder(sizing, device, intent)) == chosen.device_count
+
+
+def test_the_ladder_keeps_a_trimmed_window_as_a_choice_rather_than_dropping_it():
+    """Fewer cards at a shorter window is a trade somebody makes on purpose."""
+    sizing = sizing_of_config(llama_config(max_position_embeddings=131072), 70_000_000_000)
+    device = klass("h200-141gb-sxm")
+    intent = Intent(context_length=131072, concurrency=32, devices_per_node=8)
+
+    options = ladder(sizing, device, intent)
+    chosen = fit(sizing, device, intent)
+    smaller = [option for option in options if option.device_count < chosen.device_count]
+
+    assert smaller, "a count below the recommendation should still be offered"
+    assert all(option.reduced for option in smaller)
+    assert all(option.context_length < intent.context_length for option in smaller)
+
+
+def test_a_class_that_fits_nowhere_offers_no_ladder():
+    sizing = sizing_of_config(llama_config(), 2_800_000_000_000)
+    device = klass("l4-24gb-pcie")
+    intent = Intent(context_length=8192, max_devices=8)
+
+    assert not fit(sizing, device, intent).fits
+    assert ladder(sizing, device, intent) == []
 
 
 def test_fitment_ranks_the_cheapest_workable_class_first():

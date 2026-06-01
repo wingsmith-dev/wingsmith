@@ -18,6 +18,7 @@ from app.core.vram import Fit
 from app.core.vram import Intent
 from app.core.vram import Sizing
 from app.core.vram import fit
+from app.core.vram import ladder
 from app.core.vram import sizing_of
 from app.db.models import Artifact
 from app.db.models import ArtifactBaseline
@@ -56,6 +57,7 @@ from .schemas import ArtifactUpdateRequest
 from .schemas import ArtifactBaselineSchema
 from .schemas import ArtifactFitmentRequest
 from .schemas import ArtifactLocationSchema
+from .schemas import ArtifactFitLayoutSchema
 from .schemas import ArtifactLocationRequest
 from .schemas import ArtifactBaselineCreateRequest
 from .schemas import ArtifactBaselineUpdateRequest
@@ -209,7 +211,28 @@ def _rank(result: Fit, short: bool) -> tuple:
     )
 
 
-def _fit_schema(result: Fit, devices_per_node: int, row: Row | None, catalog: DeviceTable) -> ArtifactFitSchema:
+def _layout_schema(option: Fit, row: Row | None) -> ArtifactFitLayoutSchema:
+    return ArtifactFitLayoutSchema(
+        device_count=option.device_count,
+        node_count=option.node_count,
+        tensor_parallel=option.tensor_parallel,
+        pipeline_parallel=option.pipeline_parallel,
+        aggregate_gb=round(option.aggregate_gb, 2),
+        required_gb=round(option.required_gb, 2),
+        context_length=option.context_length,
+        reduced=option.reduced,
+        supply_short=_short(option, row),
+        reason=option.reason,
+    )
+
+
+def _fit_schema(
+    result: Fit,
+    devices_per_node: int,
+    row: Row | None,
+    catalog: DeviceTable,
+    options: list[Fit],
+) -> ArtifactFitSchema:
     return ArtifactFitSchema(
         device_class=result.device_class,
         label=catalog.label_for(result.device_class),
@@ -232,6 +255,7 @@ def _fit_schema(result: Fit, devices_per_node: int, row: Row | None, catalog: De
         cluster_count=row.cluster_count if row else 0,
         supply_short=_short(result, row),
         in_catalog=catalog.get(result.device_class) is not None,
+        layouts=[_layout_schema(option, row) for option in options],
     )
 
 
@@ -494,7 +518,7 @@ class ArtifactService:
         caller assumed, then the default. The caller's figure fills gaps rather than
         overruling either — an NVL72 is 72 devices whether or not somebody said eight."""
 
-        results: list[tuple[Fit, int]] = []
+        results: list[tuple[Fit, int, DeviceClass, Intent]] = []
         for candidate in candidates:
             devices_per_node = observed_nodes.get(candidate.name) or candidate.devices_per_node or fallback_node
             intent = Intent(
@@ -503,10 +527,13 @@ class ArtifactService:
                 devices_per_node=devices_per_node,
                 max_devices=max_devices,
             )
-            results.append((fit(sizing, candidate, intent), devices_per_node))
-        results.sort(key=lambda pair: _rank(pair[0], _short(pair[0], fleet.get(pair[0].device_class))))
+            results.append((fit(sizing, candidate, intent), devices_per_node, candidate, intent))
+        results.sort(key=lambda row: _rank(row[0], _short(row[0], fleet.get(row[0].device_class))))
         limit = DEFAULT_FITMENT_LIMIT if query.limit is None else query.limit
         head = results if limit <= 0 else results[:limit]
+        """The ladder is walked for the rows that are returned and not for every class
+        ranked. It is a handful of divisions per class, but it answers a question nobody
+        asked of the twenty rows the limit dropped."""
 
         return ArtifactFitmentSchema(
             sizable=True,
@@ -514,8 +541,14 @@ class ArtifactService:
             considered=len(results),
             note=_note(query.scope, candidates, sizing.shape is None),
             items=[
-                _fit_schema(result, devices_per_node, fleet.get(result.device_class), catalog)
-                for result, devices_per_node in head
+                _fit_schema(
+                    result,
+                    devices_per_node,
+                    fleet.get(result.device_class),
+                    catalog,
+                    ladder(sizing, candidate, intent),
+                )
+                for result, devices_per_node, candidate, intent in head
             ],
             **header,
         )

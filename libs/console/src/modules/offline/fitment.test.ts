@@ -53,6 +53,53 @@ describe("offline fitment", () => {
     expect(flags).toEqual([...flags].sort((a, b) => Number(a) - Number(b)))
   })
 
+  it("offers every count that serves and not only the fewest", () => {
+    const result = fitment(llama, deviceClasses(), {
+      scope: "catalog",
+      limit: 0,
+    })
+    const fit = result.items.find((item) => item.fits)!
+
+    const counts = fit.layouts.map((layout) => layout.device_count)
+    expect(counts.length).toBeGreaterThan(1)
+    expect(counts).toEqual([...counts].sort((a, b) => a - b))
+    expect(counts).toContain(fit.device_count)
+    expect(counts[counts.length - 1]).toBeGreaterThan(fit.device_count)
+    for (const layout of fit.layouts)
+      expect(layout.tensor_parallel * layout.pipeline_parallel).toBe(
+        layout.device_count
+      )
+  })
+
+  it("carries no layouts for a class that fits nowhere", () => {
+    const result = fitment(llama, deviceClasses(), {
+      scope: "catalog",
+      limit: 0,
+      max_devices: 1,
+    })
+    for (const item of result.items)
+      if (!item.fits) expect(item.layouts).toEqual([])
+  })
+
+  it("says which layouts the fleet holds too few cards for", () => {
+    const classes = deviceClasses().map((entry) =>
+      entry.inventory.devices > 0
+        ? {
+            ...entry,
+            inventory: { ...entry.inventory, devices: 4, allocatable: 4 },
+          }
+        : entry
+    )
+    const result = fitment(llama, classes, { scope: "fleet", limit: 0 })
+    const fit = result.items.find(
+      (item) => item.fits && !item.supply_short && item.layouts.length > 1
+    )!
+
+    expect(fit).toBeDefined()
+    for (const layout of fit.layouts)
+      expect(layout.supply_short).toBe(layout.device_count > 4)
+  })
+
   it("asks a different question in each scope", () => {
     const fleet = fitment(llama, deviceClasses(), { scope: "fleet", limit: 0 })
     const catalog = fitment(llama, deviceClasses(), {

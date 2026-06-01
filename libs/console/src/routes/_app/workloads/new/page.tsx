@@ -188,9 +188,21 @@ export function NewWorkloadPage() {
     setOpen(2)
   }
 
+  /**
+   * Picking a class is not the whole of step two when that class serves at more than
+   * one count. The step stays open on it so the counts are visible where the choice is
+   * made, and closes when the count is picked — collapsing on the class alone is what
+   * made the recommendation look like the only shape on offer.
+   */
   const pickHow = (choice: How) => {
+    const refining =
+      choice.kind === "derive" &&
+      how?.kind === "derive" &&
+      how.footprint.device_class === choice.footprint.device_class
+    const counts =
+      choice.kind === "derive" ? (choice.fit?.layouts.length ?? 1) : 1
     setHow(choice)
-    setOpen(3)
+    setOpen(refining || counts <= 1 ? 3 : 2)
   }
 
   /**
@@ -293,7 +305,7 @@ export function NewWorkloadPage() {
         <Step
           index={2}
           title="How to serve it"
-          hint="Which card, how many, and how they are split. The plane sizes this from the weights."
+          hint="Which card, how many, and how they are split. The plane sizes this from the weights and the count is yours to move."
           ready={!!artifact}
           open={open === 2}
           onReopen={() => setOpen(2)}
@@ -322,9 +334,7 @@ export function NewWorkloadPage() {
                 bare
                 mode="select"
                 artifact={artifact}
-                selected={
-                  how?.kind === "derive" ? how.footprint.device_class : null
-                }
+                selected={how?.kind === "derive" ? how.footprint : null}
                 onPick={(picked, row) =>
                   pickHow({ kind: "derive", footprint: picked, fit: row })
                 }

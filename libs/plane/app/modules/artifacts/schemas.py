@@ -114,6 +114,40 @@ make the second look like a bug in the first.
 """
 
 
+class ArtifactFitLayoutSchema(Struct):
+    """One way to lay this artifact out on one class of card, of the several that work.
+
+    A row's own fields are the recommendation — the fewest cards carrying the full
+    window. These are the rest of the choices on the same class, ascending, and they are
+    a real choice rather than a rounding: four H200 at 32k and eight at 131k are both
+    deployable, and which one is right depends on whether the window or the free half of
+    the node is worth more today.
+
+    Counts run from the smallest that serves up to one node, or up to the recommendation
+    when a replica already spans several. Nothing here that cannot serve is listed, so
+    every entry is a shape a recipe may declare as it stands.
+
+    `reduced` is what the trade costs: true means this count buys its cards back by
+    serving a shorter window than the one asked for, and `context_length` says which.
+    `supply_short` is the fleet saying it holds fewer devices of the class than this
+    layout needs — a shape that is arithmetically fine and cannot be placed today.
+
+    `weights_gb` and `kv_counted` are absent because they belong to the artifact and not
+    to the layout; they are on the row and are the same for every entry here.
+    """
+
+    device_count: int
+    node_count: int
+    tensor_parallel: int
+    pipeline_parallel: int
+    aggregate_gb: float
+    required_gb: float
+    context_length: int
+    reduced: bool
+    supply_short: bool
+    reason: str
+
+
 class ArtifactFitSchema(Struct):
     """Whether this artifact serves on one class of card, and what we have of it.
 
@@ -151,6 +185,11 @@ class ArtifactFitSchema(Struct):
     same as `devices_allocatable` being low, which waiting fixes. This one is fixed by
     buying cards.
 
+    `layouts` is the rest of the answer. The fields above are the recommendation — the
+    fewest cards carrying the full window — and `layouts` carries every count on this
+    class that serves, so a caller can trade context for cards without asking a second
+    question. The recommended count is one of them.
+
     `kv_counted` false means the artifact published no attention shape, so
     `required_gb` is the weights and nothing else and `context_length` is zero. That
     row is a floor — the true requirement is strictly larger — and rendering it as a
@@ -178,6 +217,7 @@ class ArtifactFitSchema(Struct):
     cluster_count: int
     supply_short: bool
     in_catalog: bool
+    layouts: list[ArtifactFitLayoutSchema]
 
 
 class ArtifactFitmentSchema(Struct):

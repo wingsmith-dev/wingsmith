@@ -1008,6 +1008,39 @@ async def test_a_fitment_fits_the_fleet_by_default_and_carries_what_we_have_of_i
     assert fit.label == "NVIDIA H100 80GB SXM"
 
 
+async def test_a_row_carries_the_other_counts_that_serve_and_not_only_the_recommendation():
+    """Half a node and the whole node are both deployable; the row offers both."""
+    result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())
+
+    fit = result.items[0]
+    counts = [layout.device_count for layout in fit.layouts]
+    assert counts == sorted(counts)
+    assert fit.device_count in counts
+    assert counts[-1] > fit.device_count
+    assert all(layout.tensor_parallel * layout.pipeline_parallel == layout.device_count for layout in fit.layouts)
+
+
+async def test_a_layout_the_fleet_holds_too_few_cards_for_says_so_on_its_own():
+    """A wider layout can be short on a class the recommendation is fine on."""
+    fleet = [FleetRow("h100-80gb-sxm", 81559, 2, 2, 1)]
+    result = await fitment_service(fleet=fleet).fitment("llama-70b", ArtifactFitmentRequest())
+
+    fit = result.items[0]
+    assert not fit.supply_short
+    assert [layout.supply_short for layout in fit.layouts if layout.device_count > 2]
+    assert all(layout.supply_short for layout in fit.layouts if layout.device_count > 2)
+
+
+async def test_a_class_that_fits_nowhere_carries_no_layouts():
+    huge = sized_artifact(parameter_count=2_800_000_000_000)
+    fleet = [FleetRow("l4-24gb-pcie", 24576, 8, 8, 1)]
+    result = await fitment_service(huge, fleet=fleet).fitment("llama-70b", ArtifactFitmentRequest(max_devices=8))
+
+    fit = result.items[0]
+    assert not fit.fits
+    assert fit.layouts == []
+
+
 async def test_the_catalog_scope_answers_a_procurement_question_the_fleet_cannot():
     """A class we own none of is a fit worth showing, not a row worth filtering."""
     fleet = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest())

@@ -140,6 +140,32 @@ export const FITMENT_SCOPES = ["fleet", "catalog"] as const
 export type FitmentScope = (typeof FITMENT_SCOPES)[number]
 
 /**
+ * `ArtifactFitLayoutSchema` — one of the several ways a class can hold this artifact.
+ *
+ * A fit's own fields are the recommendation: the fewest cards carrying the full
+ * window. These are the rest of them, ascending, and the difference between them is a
+ * real decision — four H200 at 32k leaves half the node for somebody else, eight at
+ * 131k does not. Every entry serves; nothing that cannot is listed.
+ *
+ * `weights_gb` and `kv_counted` are not repeated here. They belong to the artifact
+ * rather than to the layout and are the same for every entry.
+ */
+export interface ArtifactFitLayout {
+  device_count: number
+  node_count: number
+  tensor_parallel: number
+  pipeline_parallel: number
+  aggregate_gb: number
+  required_gb: number
+  context_length: number
+  /** This count buys its cards back with a shorter window than the one asked for. */
+  reduced: boolean
+  /** The fleet holds fewer devices of the class than this layout needs. */
+  supply_short: boolean
+  reason: string
+}
+
+/**
  * `ArtifactFitSchema` — whether this artifact serves on one class of card.
  *
  * The fit half is durable and the three counts are the fleet half. They stay apart
@@ -196,6 +222,11 @@ export interface ArtifactFit {
   supply_short: boolean
   /** False for hardware the contract table has never named, fitted from what a cluster reported. */
   in_catalog: boolean
+  /**
+   * Every count on this class that serves, the recommendation included. The fields
+   * above are one of these; this is the choice between context and cards.
+   */
+  layouts: ArtifactFitLayout[]
 }
 
 /**

@@ -24,6 +24,7 @@ import { useArtifactFitment } from "@/modules/demand/queries"
 import type {
   Artifact,
   ArtifactFit,
+  ArtifactFitLayout,
   FitmentScope,
   RecipeFootprint,
 } from "@/modules/demand/types"
@@ -262,8 +263,12 @@ export function ArtifactFitmentPanel({
    */
   bare?: boolean
   mode?: FitmentMode
-  /** Device class of the chosen row, in `select` mode. */
-  selected?: string | null
+  /**
+   * The chosen footprint, in `select` mode. The whole footprint and not just the class,
+   * because a class is no longer the answer on its own — the count is part of it, and a
+   * row that highlighted on class alone could not say which of its layouts is picked.
+   */
+  selected?: RecipeFootprint | null
   /** The per-row button's words, in `explore` mode. */
   actionLabel?: string
 }) {
@@ -450,7 +455,11 @@ export function ArtifactFitmentPanel({
                   quantization={declaredQuantization}
                   onPick={onPick}
                   selecting={selecting}
-                  selected={selected === fit.device_class}
+                  selected={
+                    selected?.device_class === fit.device_class
+                      ? selected
+                      : null
+                  }
                   actionLabel={actionLabel}
                 />
               ))}
@@ -496,12 +505,110 @@ export function ArtifactFitmentPanel({
   )
 }
 
+/**
+ * How many cards of the chosen class, when more than one count serves.
+ *
+ * The row's own numbers are the fewest cards that carry the full window, which is one
+ * answer to a question that has several. A node of H200 will hold a 70B on two cards
+ * and hold it better on eight, and a 120B at 32k on four rather than at 131k on eight —
+ * those are trades between context, throughput and what is left of the node for
+ * somebody else, and none of them is the plane's to make. Offering only the cheapest
+ * one is what made a whole node look like the only thing on the menu.
+ *
+ * Under the selected row rather than in a column, because it is a second question and
+ * it is only worth asking once the class is settled. A layout the fleet is too small
+ * for is shown and not offered, for the same reason a short row is: waiting does not
+ * turn four cards into eight.
+ */
+function LayoutChoices({
+  fit,
+  chosen,
+  onPick,
+}: {
+  fit: ArtifactFit
+  /** Device count of the picked layout, so the strip says which one is live. */
+  chosen: number
+  onPick: (layout: ArtifactFitLayout) => void
+}) {
+  return (
+    <div className="space-y-1.5">
+      <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        How many
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {fit.layouts.map((layout) => {
+          const picked = layout.device_count === chosen
+          const perNode = Math.min(fit.devices_per_node, layout.device_count)
+          return (
+            <Tooltip key={layout.device_count}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  disabled={layout.supply_short}
+                  onClick={() => onPick(layout)}
+                  className={cn(
+                    "flex flex-col items-start rounded-md border px-2 py-1 text-left transition-colors",
+                    picked
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary/50 hover:bg-primary/5",
+                    layout.supply_short &&
+                      "cursor-not-allowed opacity-50 hover:border-border hover:bg-transparent"
+                  )}
+                >
+                  <span className="font-mono text-xs tabular-nums">
+                    {layout.node_count > 1
+                      ? `${layout.node_count} nodes x ${perNode}`
+                      : `${layout.device_count} dev`}
+                  </span>
+                  <span className="font-mono text-2xs text-muted-foreground/60 tabular-nums">
+                    tp{layout.tensor_parallel}
+                    {layout.pipeline_parallel > 1 &&
+                      `/pp${layout.pipeline_parallel}`}
+                    {layout.context_length > 0 && (
+                      <>
+                        {" · "}
+                        <span
+                          className={cn(layout.reduced && "text-amber-500")}
+                        >
+                          {formatTokens(layout.context_length)}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-80">
+                {layout.reason}
+                {layout.device_count === fit.device_count && (
+                  <span className="mt-1 block text-muted-foreground">
+                    The fewest cards that carry the full window.
+                  </span>
+                )}
+                {layout.supply_short && (
+                  <span className="mt-1 block text-amber-500">
+                    The fleet holds {fit.devices_total} of this class and this
+                    layout needs {layout.device_count}.
+                  </span>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          )
+        })}
+      </div>
+      <p className="font-mono text-2xs text-muted-foreground/50">
+        Fewer cards serve a shorter window and leave the rest of the node for
+        something else. More buy context and concurrency.
+      </p>
+    </div>
+  )
+}
+
 function FitRow({
   fit,
   quantization,
   onPick,
   selecting = false,
-  selected = false,
+  selected = null,
   actionLabel = "Deploy",
 }: {
   fit: ArtifactFit
@@ -509,18 +616,20 @@ function FitRow({
   quantization: string
   onPick?: (footprint: RecipeFootprint, fit: ArtifactFit) => void
   selecting?: boolean
-  selected?: boolean
+  /** The chosen footprint when it is this row's class, null when another row holds it. */
+  selected?: RecipeFootprint | null
   actionLabel?: string
 }) {
   const state = fitTone(fit)
-  const pick = () =>
+  /** The row's own numbers unless a layout says otherwise, which is what the strip does. */
+  const pick = (layout?: ArtifactFitLayout) =>
     onPick?.(
       {
         device_class: fit.device_class,
-        device_count: fit.device_count,
-        tensor_parallel: fit.tensor_parallel,
-        pipeline_parallel: fit.pipeline_parallel,
-        context_length: fit.context_length,
+        device_count: layout?.device_count ?? fit.device_count,
+        tensor_parallel: layout?.tensor_parallel ?? fit.tensor_parallel,
+        pipeline_parallel: layout?.pipeline_parallel ?? fit.pipeline_parallel,
+        context_length: layout?.context_length ?? fit.context_length,
         quantization,
       },
       fit
@@ -531,98 +640,69 @@ function FitRow({
    * clickable area should be the thing you are comparing.
    */
   const choosable = selecting && fit.fits && !fit.supply_short && !!onPick
+  /** A strip of one is not a choice, and a class nobody picked is not asking a question. */
+  const choices = selecting && !!selected && fit.layouts.length > 1
   return (
-    <tr
-      onClick={choosable ? pick : undefined}
-      className={cn(
-        "border-b last:border-0",
-        (!fit.fits || fit.supply_short) && "opacity-55",
-        choosable && "cursor-pointer hover:bg-primary/5",
-        selected && "bg-primary/10 hover:bg-primary/10"
-      )}
-    >
-      {selecting && (
-        <td className="pl-2">
-          <span
-            className={cn(
-              "flex size-3.5 items-center justify-center rounded-full border",
-              selected
-                ? "border-primary bg-primary"
-                : choosable
-                  ? "border-muted-foreground/40"
-                  : "border-muted-foreground/20"
+    <>
+      <tr
+        onClick={choosable ? () => pick() : undefined}
+        className={cn(
+          "border-b last:border-0",
+          (!fit.fits || fit.supply_short) && "opacity-55",
+          choosable && "cursor-pointer hover:bg-primary/5",
+          selected && "bg-primary/10 hover:bg-primary/10",
+          choices && "border-b-0"
+        )}
+      >
+        {selecting && (
+          <td className="pl-2">
+            <span
+              className={cn(
+                "flex size-3.5 items-center justify-center rounded-full border",
+                selected
+                  ? "border-primary bg-primary"
+                  : choosable
+                    ? "border-muted-foreground/40"
+                    : "border-muted-foreground/20"
+              )}
+            >
+              {selected && (
+                <span className="size-1.5 rounded-full bg-primary-foreground" />
+              )}
+            </span>
+          </td>
+        )}
+        <td className="p-2">
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-xs">{fit.label}</span>
+            {!fit.in_catalog && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="font-mono text-2xs">
+                    observed
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Hardware the contract device table does not name. Fitted
+                  against the memory a cluster reported for it.
+                </TooltipContent>
+              </Tooltip>
             )}
-          >
-            {selected && (
-              <span className="size-1.5 rounded-full bg-primary-foreground" />
-            )}
+          </div>
+          <span className="font-mono text-2xs text-muted-foreground/50">
+            {fit.device_class}
           </span>
         </td>
-      )}
-      <td className="p-2">
-        <div className="flex items-center gap-1.5">
-          <span className="font-mono text-xs">{fit.label}</span>
-          {!fit.in_catalog && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Badge variant="outline" className="font-mono text-2xs">
-                  observed
-                </Badge>
-              </TooltipTrigger>
-              <TooltipContent>
-                Hardware the contract device table does not name. Fitted against
-                the memory a cluster reported for it.
-              </TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-        <span className="font-mono text-2xs text-muted-foreground/50">
-          {fit.device_class}
-        </span>
-      </td>
-      <td className="p-2">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className="inline-flex items-center gap-1.5">
-              <StatusDot tone={state.tone} />
-              <span className="font-mono text-2xs">{state.text}</span>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent className="max-w-80">
-            {fit.reason}
-            {fit.supply_short && (
-              <span className="mt-1 block text-amber-500">
-                {shortfall(fit)}
-              </span>
-            )}
-          </TooltipContent>
-        </Tooltip>
-      </td>
-      <td className="p-2">
-        {fit.fits ? (
+        <td className="p-2">
           <Tooltip>
             <TooltipTrigger asChild>
-              <div className="flex flex-col">
-                <span
-                  className={cn(
-                    "font-mono text-xs tabular-nums",
-                    fit.supply_short && "text-amber-500"
-                  )}
-                >
-                  {fit.node_count > 1
-                    ? `${fit.node_count} nodes x ${Math.min(fit.devices_per_node, fit.device_count)}`
-                    : `1 node x ${fit.device_count}`}
-                </span>
-                <span className="font-mono text-2xs text-muted-foreground/50 tabular-nums">
-                  {fit.device_count} dev · tp{fit.tensor_parallel}/pp
-                  {fit.pipeline_parallel}
-                </span>
-              </div>
+              <span className="inline-flex items-center gap-1.5">
+                <StatusDot tone={state.tone} />
+                <span className="font-mono text-2xs">{state.text}</span>
+              </span>
             </TooltipTrigger>
             <TooltipContent className="max-w-80">
-              {fit.node_count > 1
-                ? `${fit.node_count} nodes of ${Math.min(fit.devices_per_node, fit.device_count)}, on one backend fabric — tensor-parallel ${fit.tensor_parallel} inside each node, pipeline-parallel ${fit.pipeline_parallel} across them.`
-                : `One node of ${fit.device_count}, tensor-parallel ${fit.tensor_parallel}. A node of this class holds ${fit.devices_per_node} devices.`}
+              {fit.reason}
               {fit.supply_short && (
                 <span className="mt-1 block text-amber-500">
                   {shortfall(fit)}
@@ -630,26 +710,72 @@ function FitRow({
               )}
             </TooltipContent>
           </Tooltip>
-        ) : (
-          <Dash>{null}</Dash>
-        )}
-      </td>
-      <td className="p-2">
-        <MemoryBar fit={fit} />
-      </td>
-      <td className="p-2">
-        <FleetCell fit={fit} />
-      </td>
-      <td className="p-2 text-right">
-        {/* A row the fleet cannot supply is not offered. Placement would refuse it,
+        </td>
+        <td className="p-2">
+          {fit.fits ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex flex-col">
+                  <span
+                    className={cn(
+                      "font-mono text-xs tabular-nums",
+                      fit.supply_short && "text-amber-500"
+                    )}
+                  >
+                    {fit.node_count > 1
+                      ? `${fit.node_count} nodes x ${Math.min(fit.devices_per_node, fit.device_count)}`
+                      : `1 node x ${fit.device_count}`}
+                  </span>
+                  <span className="font-mono text-2xs text-muted-foreground/50 tabular-nums">
+                    {fit.device_count} dev · tp{fit.tensor_parallel}/pp
+                    {fit.pipeline_parallel}
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-80">
+                {fit.node_count > 1
+                  ? `${fit.node_count} nodes of ${Math.min(fit.devices_per_node, fit.device_count)}, on one backend fabric — tensor-parallel ${fit.tensor_parallel} inside each node, pipeline-parallel ${fit.pipeline_parallel} across them.`
+                  : `One node of ${fit.device_count}, tensor-parallel ${fit.tensor_parallel}. A node of this class holds ${fit.devices_per_node} devices.`}
+                {fit.supply_short && (
+                  <span className="mt-1 block text-amber-500">
+                    {shortfall(fit)}
+                  </span>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Dash>{null}</Dash>
+          )}
+        </td>
+        <td className="p-2">
+          <MemoryBar fit={fit} />
+        </td>
+        <td className="p-2">
+          <FleetCell fit={fit} />
+        </td>
+        <td className="p-2 text-right">
+          {/* A row the fleet cannot supply is not offered. Placement would refuse it,
             and the count is a hard bound rather than a busy one — waiting does not
             turn five cards into sixty-four. */}
-        {fit.fits && !fit.supply_short && onPick && !selecting && (
-          <Button size="sm" variant="outline" onClick={pick}>
-            {actionLabel}
-          </Button>
-        )}
-      </td>
-    </tr>
+          {fit.fits && !fit.supply_short && onPick && !selecting && (
+            <Button size="sm" variant="outline" onClick={() => pick()}>
+              {actionLabel}
+            </Button>
+          )}
+        </td>
+      </tr>
+      {choices && (
+        <tr className="border-b bg-primary/10 last:border-0">
+          <td />
+          <td colSpan={6} className="px-2 pb-2.5">
+            <LayoutChoices
+              fit={fit}
+              chosen={selected!.device_count}
+              onPick={(layout) => pick(layout)}
+            />
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
