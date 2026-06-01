@@ -204,6 +204,31 @@ func withRouting(resolver Resolver) http.Handler {
 			body = rewritten
 		}
 
+		// The deployment this request was resolved to, forwarded so the agent
+		// can hand it to that model's own frontend instead of asking each
+		// frontend what it serves. The gateway is the only hop that has parsed
+		// the body, so it is the only hop that can name it.
+		//
+		// Written unconditionally, and deleted just as unconditionally when
+		// there is nothing to write. That is a security requirement and not
+		// tidiness: httputil.ReverseProxy clones the inbound headers verbatim
+		// onto the outbound request, so a value a caller sent under this name
+		// would ride all the way into the cluster and choose which model's
+		// frontend answers them — a caller picking somebody else's deployment,
+		// across tenants, using a header they made up. The Set covers the case
+		// where the gateway has an answer and the Del covers the case where it
+		// does not, and between them the caller's own value never survives this
+		// line.
+		//
+		// Not the per-credential header map on the pooled proxy, which is where
+		// every other stamped header lives: that map is built once per handler,
+		// and the deployment differs per request.
+		if upstream.DeploymentID != "" {
+			r.Header.Set(tunnel.HeaderDeploymentID, upstream.DeploymentID)
+		} else {
+			r.Header.Del(tunnel.HeaderDeploymentID)
+		}
+
 		// Replayable, using the buffer that was read to find the model rather
 		// than a second copy of it. Without a GetBody, HTTP/2 refuses to retry
 		// anything with a body after an agent sends GOAWAY — which is every

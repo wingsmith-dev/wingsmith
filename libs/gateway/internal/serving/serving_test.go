@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/hangar-dev/hangar/libs/packages/tunnel"
 )
 
 type stubResolver struct {
@@ -387,5 +388,91 @@ func TestSeparatorsAndSpacingAreNotTokens(t *testing.T) {
 	}
 	if NewTokenGuard(" , ,, ") != nil {
 		t.Fatal("a value that is all separators must leave the gateway open, not admit nothing")
+	}
+}
+
+// routeToDeployment is routeTo with the upstream carrying the deployment the
+// plane resolved, which is what a real table always holds and what
+// routing.NewUpstream — built for tests and for anything embedding the router —
+// leaves empty.
+func routeToDeployment(t *testing.T, address, deploymentID string) routing.Route {
+	t.Helper()
+	route := routeTo(t, address, nil)
+	route.Upstreams[0].DeploymentID = deploymentID
+	return route
+}
+
+// TestTheResolvedDeploymentIsForwardedAndACallersOwnIsNot is the security half
+// of the header, and the half a happy-path test would miss.
+//
+// httputil.ReverseProxy copies the inbound headers onto the outbound request
+// verbatim, so anything a caller sends under this name reaches the agent unless
+// this hop overwrites it. The agent hands a request to the frontend the header
+// names, so a caller who could set it would be choosing which model's frontend —
+// which tenant's frontend — answers them, using a string they made up. The Set
+// and the Del between them are what make the caller's value unreachable, and the
+// Del is the case that is easy to leave out because it looks like a no-op.
+func TestTheResolvedDeploymentIsForwardedAndACallersOwnIsNot(t *testing.T) {
+	var seen http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	for _, tc := range []struct {
+		name       string
+		deployment string
+		sent       string
+		want       string
+	}{
+		{
+			name:       "the upstream's deployment is stamped on",
+			deployment: "dep_01j9x2",
+			want:       "dep_01j9x2",
+		},
+		{
+			name:       "a caller's own value is overwritten by the resolved one",
+			deployment: "dep_01j9x2",
+			sent:       "dep_somebody_elses",
+			want:       "dep_01j9x2",
+		},
+		{
+			name: "an upstream with no deployment deletes the caller's value rather than passing it",
+			sent: "dep_somebody_elses",
+			want: "",
+		},
+		{
+			name: "nothing is added when there is nothing to say",
+			want: "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			seen = nil
+			handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+				"chat": routeToDeployment(t, server.URL, tc.deployment),
+			}}})
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+				strings.NewReader(`{"model":"chat"}`))
+			if tc.sent != "" {
+				req.Header.Set(tunnel.HeaderDeploymentID, tc.sent)
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+			}
+			if got := seen.Get(tunnel.HeaderDeploymentID); got != tc.want {
+				t.Fatalf("upstream saw %s = %q, want %q", tunnel.HeaderDeploymentID, got, tc.want)
+			}
+			if tc.want == "" {
+				if _, present := seen[tunnel.HeaderDeploymentID]; present {
+					t.Fatalf("the header is present as %v, want it absent rather than empty",
+						seen[tunnel.HeaderDeploymentID])
+				}
+			}
+		})
 	}
 }

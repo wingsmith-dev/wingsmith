@@ -1,6 +1,6 @@
 // Package dynamo is the agent's local half: it finds this cluster's
-// OpenAI-compatible Dynamo frontend Service and forwards tunnelled requests to
-// it.
+// OpenAI-compatible Dynamo frontend Services and forwards tunnelled requests to
+// them.
 //
 // It is the cluster-local end of rule 4. A request arrives over a connection
 // the agent dialled outwards, and from here on it never leaves the cluster:
@@ -30,6 +30,22 @@ const ComponentLabel = "nvidia.com/dynamo-component"
 // componentFrontend is the value of ComponentLabel on the frontend component.
 const componentFrontend = "Frontend"
 
+// DeploymentIDLabel is what tells one deployment's frontend from another's, and
+// it is ours rather than Dynamo's.
+//
+// The operator stamps it on a component's pod template, and Dynamo copies a
+// component's pod-template labels onto the Service it derives from that
+// component — verified on cluster-site-c, where the worker Service
+// carries the deployment id, the recipe and the project the operator set on the
+// worker's pods. That copy is the whole mechanism: without it there is nothing
+// on a Service to key on, and this hop would be back to asking each frontend
+// what models it serves.
+//
+// A frontend Service with no such label is the cluster's shared frontend — the
+// one `cluster-setup` installs, which belongs to the cluster and not to any
+// deployment — and it is the fallback for everything this map cannot answer.
+const DeploymentIDLabel = "hangar.dev/deployment-id"
+
 // defaultPort is Dynamo's frontend port, used when a Service declares several
 // ports and names none of them `http`.
 const defaultPort = 8000
@@ -44,6 +60,18 @@ const defaultInterval = 30 * time.Second
 // a failure to talk to the API server: the cluster answered, and the answer was
 // that this cluster is not serving anything.
 var ErrNoFrontend = errors.New("no inference frontend found in this cluster")
+
+// ErrNoDeploymentFrontend means this cluster is serving, but not this
+// deployment: frontends were discovered, none of them is the one the request
+// names, and there is no shared frontend to fall back to.
+//
+// Separate from ErrNoFrontend because the two facts are different and a reader
+// has to tell them apart. "This cluster serves nothing" is a cluster that has
+// not come up, and every model on it is affected. "This model's frontend has not
+// come up" is one deployment mid-rollout while everything beside it answers
+// normally — the ordinary shape of the seconds after a deployment is created,
+// and the one case where retrying the same request shortly is exactly right.
+var ErrNoDeploymentFrontend = errors.New("no inference frontend for this deployment in this cluster")
 
 // Services is the slice of Kubernetes this package needs. It is one method wide
 // so that the agent can hand it a typed client and a test can hand it a
@@ -66,7 +94,7 @@ type Config struct {
 	Interval time.Duration
 }
 
-// Resolver yields the frontend's current base URL.
+// Resolver yields the current frontend addresses.
 //
 // Configuration used to carry the address outright, with a default of
 // `dynamo-frontend`, and that default was wrong on every cluster we run: one
@@ -77,6 +105,13 @@ type Config struct {
 //
 // So this asks the cluster. The lookup is by Dynamo's own component label
 // rather than by name, because the name is the part that varies.
+//
+// It holds a set rather than one address. A cluster used to run exactly one
+// frontend and the binary behind it had to be able to tokenize every model on
+// the cluster, which made a frontier model's runtime a fleet-wide lowest common
+// denominator; the answer is a frontend per model, and from here that is a set
+// of Services keyed by the deployment each one belongs to. A cluster running
+// only the shared frontend has a set of one and behaves exactly as it did.
 type Resolver struct {
 	services  Services
 	namespace string
@@ -87,7 +122,38 @@ type Resolver struct {
 	fixed *url.URL
 
 	mu      sync.RWMutex
-	current *url.URL
+	current frontends
+}
+
+// frontends is one discovery pass: the cluster's shared frontend, and the
+// frontend each deployment renders for itself.
+//
+// Kept as one value and replaced wholesale, so a reader never sees half of a
+// refresh — the shared frontend from the new pass beside a deployment map from
+// the old one is a state the cluster was never in.
+type frontends struct {
+	// shared is the frontend no deployment owns, or nil when this cluster
+	// renders none. It is the fallback and, on a cluster that has not adopted
+	// per-model frontends, it is the whole set.
+	shared *url.URL
+	// byDeployment is one frontend per deployment that renders its own.
+	byDeployment map[string]*url.URL
+}
+
+func (f frontends) empty() bool { return f.shared == nil && len(f.byDeployment) == 0 }
+
+// describe renders the set for a log line, sorted so that two identical sets
+// never read as a change.
+func (f frontends) describe() string {
+	parts := make([]string, 0, len(f.byDeployment)+1)
+	if f.shared != nil {
+		parts = append(parts, "shared="+f.shared.String())
+	}
+	for deployment, address := range f.byDeployment {
+		parts = append(parts, deployment+"="+address.String())
+	}
+	sort.Strings(parts)
+	return strings.Join(parts, " ")
 }
 
 // New builds a resolver. An override is parsed here rather than on first use,
@@ -133,7 +199,14 @@ func parseEndpoint(endpoint string) (*url.URL, error) {
 	return parsed, nil
 }
 
-// URL returns the address to forward to, or ErrNoFrontend when none is known.
+// URL returns the address for a request that names no deployment, or
+// ErrNoFrontend when there is none.
+//
+// That is the cluster's shared frontend and never a per-deployment one. Picking
+// one of those would be guessing which model a request is for, and the frontend
+// is the last hop that could notice it had guessed wrong — it would answer with
+// a model-not-found for a model that is running perfectly well two Services
+// away.
 func (r *Resolver) URL() (*url.URL, error) {
 	if r.fixed != nil {
 		return r.fixed, nil
@@ -141,17 +214,50 @@ func (r *Resolver) URL() (*url.URL, error) {
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if r.current == nil {
+	if r.current.shared == nil {
 		return nil, ErrNoFrontend
 	}
-	return r.current, nil
+	return r.current.shared, nil
+}
+
+// URLFor returns the frontend serving one deployment.
+//
+// The fallback to the shared frontend is not a courtesy, it is the migration:
+// every cluster runs one shared frontend today and none of them renders a
+// per-deployment one yet, so every request falls through this path and reaches
+// exactly the address it reached before. A cluster that has adopted per-model
+// frontends answers from the map instead, and one that is halfway through does
+// both, per deployment, with no flag anywhere saying which.
+//
+// An empty id is the same question as URL: the gateway had no answer, so
+// neither does this.
+func (r *Resolver) URLFor(deploymentID string) (*url.URL, error) {
+	if r.fixed != nil {
+		return r.fixed, nil
+	}
+	if deploymentID == "" {
+		return r.URL()
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if address, ok := r.current.byDeployment[deploymentID]; ok {
+		return address, nil
+	}
+	if r.current.shared != nil {
+		return r.current.shared, nil
+	}
+	if r.current.empty() {
+		return nil, ErrNoFrontend
+	}
+	return nil, fmt.Errorf("%w: %s", ErrNoDeploymentFrontend, deploymentID)
 }
 
 // Refresh runs discovery once.
 //
-// A failed lookup leaves the address that is already loaded in place. An API
+// A failed lookup leaves the set that is already loaded in place. An API
 // server that is unreachable, or a graph that is mid-redeploy, must not stop
-// traffic reaching a frontend that is answering perfectly well.
+// traffic reaching frontends that are answering perfectly well.
 func (r *Resolver) Refresh(ctx context.Context) error {
 	if r.fixed != nil {
 		return nil
@@ -164,8 +270,8 @@ func (r *Resolver) Refresh(ctx context.Context) error {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.current == nil || r.current.String() != found.String() {
-		slog.Info("frontend: forwarding to", "url", found.String())
+	if before, after := r.current.describe(), found.describe(); before != after {
+		slog.Info("frontend: forwarding to", "frontends", after)
 	}
 	r.current = found
 	return nil
@@ -182,7 +288,7 @@ func (r *Resolver) Run(ctx context.Context) {
 	defer ticker.Stop()
 	for {
 		if err := r.Refresh(ctx); err != nil && ctx.Err() == nil {
-			slog.Warn("frontend: discovery failed, keeping the last known address", "err", err)
+			slog.Warn("frontend: discovery failed, keeping the last known addresses", "err", err)
 		}
 		select {
 		case <-ctx.Done():
@@ -192,49 +298,111 @@ func (r *Resolver) Run(ctx context.Context) {
 	}
 }
 
-// discover finds the one Service selecting Dynamo's frontend component.
+// discover finds every Service selecting Dynamo's frontend component and keys
+// them by the deployment each one belongs to.
 //
-// Two frontends is an error and not a guess: this hop cannot tell which of them
-// serves the model a request names, and picking one would send traffic
-// somewhere the caller did not ask for.
-func (r *Resolver) discover(ctx context.Context) (*url.URL, error) {
+// Two frontends used to be an error and not a guess, and the refusal was right
+// while nothing on a Service said which model it fronted. What changed is that
+// something does: the operator renders a frontend into the same graph as its
+// worker and the ownership labels ride onto the Service, so plurality is now
+// answerable rather than ambiguous. What is still an error is two Services
+// claiming the same key — two shared frontends, or two frontends for one
+// deployment — because that is the original ambiguity with none of the new
+// information, and picking one would send traffic somewhere the caller did not
+// ask for.
+//
+// Finding nothing is still an error rather than an empty set, so that a cluster
+// whose API server has gone quiet keeps forwarding to the frontends it last
+// saw. Refresh is what holds onto them; returning an empty set here would
+// discard them instead.
+func (r *Resolver) discover(ctx context.Context) (frontends, error) {
 	services, err := r.services.List(ctx, metav1.ListOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("look for the inference frontend in %s: %w", r.namespace, err)
+		return frontends{}, fmt.Errorf("look for the inference frontend in %s: %w", r.namespace, err)
 	}
 
-	var found []corev1.Service
+	found := map[string][]corev1.Service{}
 	for _, service := range services.Items {
 		if r.namespace != "" && service.Namespace != r.namespace {
 			continue
 		}
-		if service.Spec.Selector[ComponentLabel] == componentFrontend {
-			found = append(found, service)
+		if service.Spec.Selector[ComponentLabel] != componentFrontend {
+			continue
 		}
+		key := deploymentOf(service)
+		found[key] = append(found[key], service)
 	}
 
-	switch len(found) {
-	case 0:
-		return nil, fmt.Errorf(
+	if len(found) == 0 {
+		return frontends{}, fmt.Errorf(
 			"%w: no service in %s selects %s=%s; set the endpoint override if this cluster "+
 				"fronts its models with something else",
 			ErrNoFrontend, r.namespace, ComponentLabel, componentFrontend)
-	case 1:
-		service := found[0]
-		address := fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
-			service.Name, service.Namespace, servicePort(service))
-		return url.Parse(address)
-	default:
-		names := make([]string, 0, len(found))
-		for _, service := range found {
-			names = append(names, service.Name)
-		}
-		sort.Strings(names)
-		return nil, fmt.Errorf(
-			"%s holds %d inference frontends (%s) and nothing here can tell which one a request "+
-				"belongs to; set the endpoint override",
-			r.namespace, len(found), strings.Join(names, ", "))
 	}
+
+	discovered := frontends{byDeployment: map[string]*url.URL{}}
+	for key, services := range found {
+		if len(services) > 1 {
+			return frontends{}, ambiguous(r.namespace, key, services)
+		}
+		address, err := serviceURL(services[0])
+		if err != nil {
+			return frontends{}, err
+		}
+		if key == "" {
+			discovered.shared = address
+			continue
+		}
+		discovered.byDeployment[key] = address
+	}
+	return discovered, nil
+}
+
+// deploymentOf reads the routing key off a frontend Service, or empty for the
+// cluster's shared frontend.
+//
+// Both the Service's own labels and its selector are consulted, and they are
+// not two guesses: the labels are where Dynamo was observed to copy a
+// component's pod-template labels, and the selector is where the same copy
+// would put them if it were derived from the pod template's selector instead.
+// Either placement means the same thing — this Service fronts that deployment's
+// pods and nothing else's — and reading only one of them and being wrong would
+// send every request to the shared frontend with nothing anywhere reporting a
+// failure. A Service can carry no other deployment's id in either place, so
+// there is no false answer to reach.
+func deploymentOf(service corev1.Service) string {
+	if id := service.Labels[DeploymentIDLabel]; id != "" {
+		return id
+	}
+	return service.Spec.Selector[DeploymentIDLabel]
+}
+
+// ambiguous is the refusal for two Services claiming one key. It names them,
+// because the names are the only part a person can act on.
+func ambiguous(namespace, deployment string, services []corev1.Service) error {
+	names := make([]string, 0, len(services))
+	for _, service := range services {
+		names = append(names, service.Name)
+	}
+	sort.Strings(names)
+
+	if deployment == "" {
+		return fmt.Errorf(
+			"%s holds %d shared inference frontends (%s) and nothing here can tell which one a "+
+				"request belongs to; a frontend with no %s label is this cluster's fallback and "+
+				"there can be only one, so label the others or set the endpoint override",
+			namespace, len(services), strings.Join(names, ", "), DeploymentIDLabel)
+	}
+	return fmt.Errorf(
+		"%s holds %d inference frontends (%s) labelled %s=%s and nothing here can tell which one "+
+			"a request belongs to; set the endpoint override",
+		namespace, len(services), strings.Join(names, ", "), DeploymentIDLabel, deployment)
+}
+
+// serviceURL is the in-cluster address of one frontend Service.
+func serviceURL(service corev1.Service) (*url.URL, error) {
+	return url.Parse(fmt.Sprintf("http://%s.%s.svc.cluster.local:%d",
+		service.Name, service.Namespace, servicePort(service)))
 }
 
 // servicePort picks the HTTP port: the one named `http`, else the only one

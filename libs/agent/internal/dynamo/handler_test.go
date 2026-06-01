@@ -3,6 +3,7 @@ package dynamo
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hangar-dev/hangar/libs/packages/tunnel"
 )
 
 // fixedTarget is a Target that answers with whatever it was given, so the
@@ -253,4 +256,186 @@ func call(t *testing.T, handler http.Handler) string {
 		t.Fatalf("status = %d, body %s", recorder.Code, recorder.Body)
 	}
 	return recorder.Body.String()
+}
+
+// theResolverAnswersPerDeployment is a compile-time assertion and not
+// decoration. main.go hands the handler a *Resolver as a Target, so a Resolver
+// that stopped satisfying DeploymentTarget would still build, still start, and
+// still serve — every request quietly falling back to the shared frontend, with
+// nothing in a log saying the per-model routing had stopped happening.
+var theResolverAnswersPerDeployment DeploymentTarget = (*Resolver)(nil)
+
+// setTarget is a Target that answers per deployment, which is what a cluster
+// rendering a frontend per model looks like from the handler.
+type setTarget struct {
+	shared       *url.URL
+	byDeployment map[string]*url.URL
+}
+
+func (s setTarget) URL() (*url.URL, error) {
+	if s.shared == nil {
+		return nil, ErrNoFrontend
+	}
+	return s.shared, nil
+}
+
+func (s setTarget) URLFor(deploymentID string) (*url.URL, error) {
+	if address, ok := s.byDeployment[deploymentID]; ok {
+		return address, nil
+	}
+	if s.shared != nil {
+		return s.shared, nil
+	}
+	return nil, ErrNoDeploymentFrontend
+}
+
+// TestTheHeaderPicksTheFrontendAndNeverReachesIt is the routing decision and the
+// cleanup of it, together, because they are one contract: the agent acts on the
+// header and then it is spent. Dynamo has never heard of a deployment and a
+// header naming one is noise on its side of the hop.
+func TestTheHeaderPicksTheFrontendAndNeverReachesIt(t *testing.T) {
+	shared, sharedSeen := namedFrontend(t, "shared")
+	kimi, kimiSeen := namedFrontend(t, "kimi")
+
+	handler := NewHandler(setTarget{
+		shared:       targetFor(t, shared).url,
+		byDeployment: map[string]*url.URL{"dep_01j9x2": targetFor(t, kimi).url},
+	})
+
+	for _, tc := range []struct {
+		name       string
+		deployment string
+		want       string
+		seen       *http.Header
+	}{
+		{
+			name:       "the deployment's own frontend",
+			deployment: "dep_01j9x2",
+			want:       "kimi",
+			seen:       kimiSeen,
+		},
+		{
+			name:       "a deployment this cluster renders no frontend for falls back",
+			deployment: "dep_never_heard_of",
+			want:       "shared",
+			seen:       sharedSeen,
+		},
+		{
+			name: "no header at all falls back",
+			want: "shared",
+			seen: sharedSeen,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+				strings.NewReader(`{"model":"qwen3"}`))
+			if tc.deployment != "" {
+				request.Header.Set(tunnel.HeaderDeploymentID, tc.deployment)
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d, body %s", recorder.Code, recorder.Body)
+			}
+			if recorder.Body.String() != tc.want {
+				t.Fatalf("body = %q, want the %s frontend", recorder.Body, tc.want)
+			}
+			if got := tc.seen.Get(tunnel.HeaderDeploymentID); got != "" {
+				t.Fatalf("the frontend saw %s = %q, want it stripped at this hop",
+					tunnel.HeaderDeploymentID, got)
+			}
+		})
+	}
+}
+
+// TestASingleFrontendClusterIgnoresTheHeaderEntirely is what lets this ship
+// dark. Every cluster runs one shared frontend and none renders a per-deployment
+// one yet, so a gateway that has started sending the header must change nothing
+// at all: the same address, the same body, and a frontend that cannot tell the
+// two requests apart.
+func TestASingleFrontendClusterIgnoresTheHeaderEntirely(t *testing.T) {
+	var seen []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		seen = append(seen, r.Method+" "+r.URL.Path+" "+string(body)+" "+
+			r.Header.Get(tunnel.HeaderDeploymentID))
+		_, _ = w.Write([]byte("ok"))
+	}))
+	defer upstream.Close()
+
+	handler := NewHandler(targetFor(t, upstream))
+	for _, deployment := range []string{"", "dep_01j9x2"} {
+		request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+			strings.NewReader(`{"model":"qwen3"}`))
+		if deployment != "" {
+			request.Header.Set(tunnel.HeaderDeploymentID, deployment)
+		}
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusOK || recorder.Body.String() != "ok" {
+			t.Fatalf("status = %d, body %s", recorder.Code, recorder.Body)
+		}
+	}
+
+	if len(seen) != 2 || seen[0] != seen[1] {
+		t.Fatalf("the frontend saw %q, want two requests it cannot tell apart", seen)
+	}
+	if !strings.HasSuffix(seen[0], " ") {
+		t.Fatalf("the frontend saw %q, want no deployment header on it", seen[0])
+	}
+}
+
+// TestANamedDeploymentWithNoFrontendAndNoFallbackIsItsOwn503 pins the second
+// refusal. Both are 503 and both are worth retrying; the code is what tells a
+// caller — and whoever reads the log — that one model is mid-rollout rather than
+// that the cluster is serving nothing.
+func TestANamedDeploymentWithNoFrontendAndNoFallbackIsItsOwn503(t *testing.T) {
+	handler := NewHandler(setTarget{byDeployment: map[string]*url.URL{}})
+
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"qwen3"}`))
+	request.Header.Set(tunnel.HeaderDeploymentID, "dep_still_starting")
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", recorder.Code)
+	}
+	var envelope errorEnvelope
+	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if envelope.Error.Code != "deployment_frontend_not_ready" {
+		t.Fatalf("code = %q, want it distinguishable from no_frontend", envelope.Error.Code)
+	}
+
+	// The same handler, the same absence, and a request that names no
+	// deployment: this is the cluster-serves-nothing answer and it must not have
+	// been replaced by the one above.
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"qwen3"}`)))
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", recorder.Code)
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &envelope); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if envelope.Error.Code != "no_frontend" {
+		t.Fatalf("code = %q, want the cluster-wide refusal", envelope.Error.Code)
+	}
+}
+
+// namedFrontend is a frontend that answers with its own name and records the
+// headers it was sent, so a test can say which one took a request.
+func namedFrontend(t *testing.T, name string) (*httptest.Server, *http.Header) {
+	t.Helper()
+	var seen http.Header
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.Header.Clone()
+		_, _ = w.Write([]byte(name))
+	}))
+	t.Cleanup(server.Close)
+	return server, &seen
 }
