@@ -121,10 +121,17 @@ func gpuNode(name string, devices int64, ready bool) *corev1.Node {
 	}
 }
 
+// completedPrefetch is the download this cluster has already finished, labelled the way the render
+// labels it — which is how every lookup finds it, the name being only a rendering.
 func completedPrefetch() *batchv1.Job {
+	art := testArtifactDesired()
 	return &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: render.PrefetchJobName(testArtifactID), Namespace: "dynamo"},
-		Status:     batchv1.JobStatus{Succeeded: 1},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      render.PrefetchJobName(art),
+			Namespace: "dynamo",
+			Labels:    map[string]string{render.ArtifactLabel: art.ArtifactID},
+		},
+		Status: batchv1.JobStatus{Succeeded: 1},
 	}
 }
 

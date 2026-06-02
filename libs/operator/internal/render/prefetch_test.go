@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
@@ -52,7 +53,7 @@ func TestPrefetchJobHuggingFace(t *testing.T) {
 	if job.Namespace != "dynamo" {
 		t.Fatalf("namespace = %q", job.Namespace)
 	}
-	if job.Name != "prefetch-art-01j9x2aaaaaaaaaaaaaaaaaaaa" {
+	if job.Name != "qwen3-8b-prefetch-art-01j9x2aaaaaaaaaaaaaaaaaaaa" {
 		t.Fatalf("name = %q", job.Name)
 	}
 	if got := job.Labels["hangar.dev/artifact"]; got != hfArtifact().ArtifactID {
@@ -210,25 +211,175 @@ func TestPrefetchJobIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestPrefetchJobName(t *testing.T) {
+// sourced is an artifact with one source and nothing else, for the cases that only care what the
+// name and the labels read off it.
+func sourced(id, uri string) wire.ArtifactDesired {
+	return wire.ArtifactDesired{ArtifactID: id, Sources: []wire.ArtifactSource{{URI: uri}}}
+}
+
+// TestAPrefetchJobNameLeadsWithTheModel is the whole point of the shape: a `kubectl get jobs` in
+// the workload namespace has to read as who is downloading, not as a column of opaque ids.
+func TestAPrefetchJobNameLeadsWithTheModel(t *testing.T) {
 	cases := []struct {
-		id   string
+		art  wire.ArtifactDesired
 		want string
 	}{
-		{id: "art_01J9X2", want: "prefetch-art-01j9x2"},
-		{id: "ART_ABC", want: "prefetch-art-abc"},
-		{id: strings.Repeat("a", 80), want: "prefetch-" + strings.Repeat("a", 54)},
+		{sourced("art_01J9X2", "hf://moonshotai/Kimi-K3"), "kimi-k3-prefetch-art-01j9x2"},
+		{sourced("ART_ABC", "hf://Qwen/Qwen3-8B@main"), "qwen3-8b-prefetch-art-abc"},
+		{sourced("art_01J9X2", "s3://weights/custom/llama.safetensors"), "llama-safetensors-prefetch-art-01j9x2"},
 	}
 	for _, tc := range cases {
-		got := PrefetchJobName(tc.id)
-		if got != tc.want {
-			t.Fatalf("PrefetchJobName(%q) = %q, want %q", tc.id, got, tc.want)
+		if got := PrefetchJobName(tc.art); got != tc.want {
+			t.Errorf("PrefetchJobName(%s) = %q, want %q", tc.art.Sources[0].URI, got, tc.want)
 		}
+	}
+}
+
+// TestAnArtifactWithNoReadableSourceStillGetsAName. The model is decoration over the id, so its
+// absence must fall back to the older shape rather than render a placeholder segment or nothing.
+func TestAnArtifactWithNoReadableSourceStillGetsAName(t *testing.T) {
+	for _, art := range []wire.ArtifactDesired{
+		{ArtifactID: "art_01J9X2"},
+		{ArtifactID: "art_01J9X2", Sources: []wire.ArtifactSource{{Kind: "s3"}}},
+		{ArtifactID: "art_01J9X2", Sources: []wire.ArtifactSource{{URI: "s3://weights/---"}}},
+	} {
+		if got := PrefetchJobName(art); got != "prefetch-art-01j9x2" {
+			t.Errorf("name = %q, want the bare shape when no model can be read", got)
+		}
+	}
+}
+
+// TestTheArtifactIDSurvivesTruncation is the property that makes the name safe to change at all:
+// the id is what distinguishes one job from another, and the model is only for the reader — so a
+// long model must lose characters and a long id must never lose them to it.
+func TestTheArtifactIDSurvivesTruncation(t *testing.T) {
+	long := sourced("art_01J9X2AAAAAAAAAAAAAAAAAAAA", "hf://acme/"+strings.Repeat("verylongmodel", 6))
+	got := PrefetchJobName(long)
+	if !strings.HasSuffix(got, "prefetch-art-01j9x2aaaaaaaaaaaaaaaaaaaa") {
+		t.Errorf("name = %q, want the whole artifact id intact", got)
+	}
+	if !strings.HasPrefix(got, "verylongmodel") {
+		t.Errorf("name = %q, want what fits of the model in front of it", got)
+	}
+
+	// An id that fills the limit on its own leaves no room to say anything about the model.
+	if got := PrefetchJobName(sourced(strings.Repeat("a", 80), "hf://acme/kimi")); got != "prefetch-"+strings.Repeat("a", 54) {
+		t.Errorf("name = %q, want the id alone", got)
+	}
+}
+
+func TestEveryPrefetchJobNameIsDNS1123Safe(t *testing.T) {
+	for _, art := range []wire.ArtifactDesired{
+		hfArtifact(),
+		sourced("art_01J9X2", "hf://acme/"+strings.Repeat("verylongmodel", 6)),
+		sourced(strings.Repeat("a", 80), "hf://acme/kimi"),
+		sourced("art_01J9X2", "s3://weights/.hidden."),
+		{ArtifactID: "art_01J9X2"},
+	} {
+		got := PrefetchJobName(art)
 		if len(got) > 63 {
-			t.Fatalf("name %q is %d characters", got, len(got))
+			t.Errorf("name %q is %d characters", got, len(got))
 		}
-		if strings.HasSuffix(got, "-") || strings.ToLower(got) != got {
-			t.Fatalf("name %q is not DNS-1123 safe", got)
+		if strings.ToLower(got) != got {
+			t.Errorf("name %q is not lower case", got)
+		}
+		if strings.HasPrefix(got, "-") || strings.HasSuffix(got, "-") {
+			t.Errorf("name %q begins or ends on a separator", got)
+		}
+	}
+}
+
+// TestAPrefetchJobSaysWhichModelItIsPulling covers the reader the name cannot always serve: a
+// truncated slug still leaves the label whole, and the annotation still holds the exact source.
+func TestAPrefetchJobSaysWhichModelItIsPulling(t *testing.T) {
+	art := hfArtifact()
+	job, err := PrefetchJob(art, prefetchImage, testOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+
+	for what, meta := range map[string]metav1.ObjectMeta{
+		"job": job.ObjectMeta, "pod": job.Spec.Template.ObjectMeta,
+	} {
+		if got := meta.Labels[ModelLabel]; got != "qwen3-8b" {
+			t.Errorf("%s model label = %q", what, got)
+		}
+		if got := meta.Annotations[ModelSourceAnnotation]; got != "hf://Qwen/Qwen3-8B" {
+			t.Errorf("%s model source annotation = %q", what, got)
+		}
+	}
+
+	// The Job's labels take the warm-set's origin and the pod template's must not, or the two
+	// would be one map and an immutable pod selector would move with it.
+	OwnedMeta(job, &metav1.ObjectMeta{Name: "cch-1", Namespace: "hangar-system"})
+	if _, ok := job.Spec.Template.Labels[OwnerNameLabel]; ok {
+		t.Error("the owner label leaked into the pod template; job and pod share one label map")
+	}
+}
+
+// TestAnArtifactWithNoModelIsNotLabelledWithNothing — an empty label value is a legal label and a
+// misleading one, reading as a model named "" rather than as a model nobody could name.
+func TestAnArtifactWithNoModelIsNotLabelledWithNothing(t *testing.T) {
+	job, err := PrefetchJob(wire.ArtifactDesired{
+		ArtifactID: "art_01J9X2",
+		Sources:    []wire.ArtifactSource{{URI: "s3://weights/---"}},
+	}, prefetchImage, testOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if _, ok := job.Labels[ModelLabel]; ok {
+		t.Errorf("model label = %q, want no label at all", job.Labels[ModelLabel])
+	}
+	if got := job.Annotations[ModelSourceAnnotation]; got != "s3://weights/---" {
+		t.Errorf("source annotation = %q, want the URI the slug could not be read from", got)
+	}
+}
+
+// TestARunningPrefetchSaysHowFarItHasGot. The bars stay off — they bury the one line worth reading
+// — but a job that prints nothing for forty minutes cannot be told from a stuck one.
+func TestARunningPrefetchSaysHowFarItHasGot(t *testing.T) {
+	for _, art := range []wire.ArtifactDesired{hfArtifact(), sourced("art_custom", "s3://weights/custom/model.bin")} {
+		job, err := PrefetchJob(art, prefetchImage, testOptions())
+		if err != nil {
+			t.Fatalf("render: %v", err)
+		}
+		args := job.Spec.Template.Spec.Containers[0].Args[0]
+		if !strings.Contains(args, "prefetch progress bytes=") {
+			t.Errorf("the fetch prints no progress at all:\n%s", args)
+		}
+		if !strings.Contains(args, "elapsed_seconds=") {
+			t.Errorf("progress carries no elapsed time to read a stall against:\n%s", args)
+		}
+		if !strings.Contains(args, "daemon=True") {
+			t.Errorf("the progress thread could hold the job open past the fetch:\n%s", args)
+		}
+		if v, ok := envValue(job.Spec.Template.Spec.Containers[0], "HF_HUB_DISABLE_PROGRESS_BARS"); !ok || v != "1" {
+			t.Errorf("progress bars were reinstated: %q, %v", v, ok)
+		}
+	}
+}
+
+// TestProgressIsCountedOnlyUnderTheModelBeingFetched — HF_HOME is the shared volume every artifact
+// lands in, so a walk over its root would report each concurrent job the other's bytes.
+func TestProgressIsCountedOnlyUnderTheModelBeingFetched(t *testing.T) {
+	command, err := prefetchCommand(hfArtifact())
+	if err != nil {
+		t.Fatalf("command: %v", err)
+	}
+	if !strings.Contains(command, `"models--" + repo.replace("/", "--")`) {
+		t.Errorf("progress is not scoped to this artifact's own cache directory:\n%s", command)
+	}
+}
+
+func TestSlug(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"Kimi-K3", "kimi-k3"},
+		{"Llama-3.1-8B-Instruct.safetensors", "llama-3-1-8b-instruct-safetensors"},
+		{"..weird..name..", "weird-name"},
+		{"----", ""},
+	} {
+		if got := slug(c.in); got != c.want {
+			t.Errorf("slug(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }
@@ -304,7 +455,7 @@ func TestAnUnpinnedSourceDownloadsTheBranchHead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("command: %v", err)
 	}
-	if !strings.Contains(command, `revision = "" or None`) {
+	if !strings.Contains(command, `"" or None`) {
 		t.Errorf("an unpinned source must resolve normally:\n%s", command)
 	}
 }

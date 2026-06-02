@@ -2,15 +2,19 @@ package reconcile
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/render"
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
@@ -27,14 +31,28 @@ func warmSet(entries ...wire.CacheWarmEntry) wire.CacheDesired {
 	}
 }
 
+// prefetchJobs is every download job claiming one artifact, found the way the reconciler finds
+// them. By label and not by name, so that a test asserting "one job exists" keeps asserting it
+// after the name changes shape again.
+func prefetchJobs(t *testing.T, c client.Client, artifactID string) []batchv1.Job {
+	t.Helper()
+	var jobs batchv1.JobList
+	if err := c.List(context.Background(), &jobs,
+		client.InNamespace(testRender.Namespace),
+		client.MatchingLabels{render.ArtifactLabel: artifactID},
+	); err != nil {
+		t.Fatalf("list prefetch jobs: %v", err)
+	}
+	return jobs.Items
+}
+
 func prefetchJob(t *testing.T, c client.Client, artifactID string) (*batchv1.Job, bool) {
 	t.Helper()
-	var job batchv1.Job
-	key := types.NamespacedName{Namespace: testRender.Namespace, Name: render.PrefetchJobName(artifactID)}
-	if err := c.Get(context.Background(), key, &job); err != nil {
+	jobs := prefetchJobs(t, c, artifactID)
+	if len(jobs) == 0 {
 		return nil, false
 	}
-	return &job, true
+	return &jobs[0], true
 }
 
 // TestWarmSetDispatchesAPrefetchPerArtifact is the inversion the package doc describes: an
@@ -130,7 +148,7 @@ func TestAnEmptyEngineImageIsTreatedAsAbsent(t *testing.T) {
 // re-running a completed download to close a cosmetic difference would re-pull tens of gigabytes.
 func TestAnExistingPrefetchIsLeftAlone(t *testing.T) {
 	existing := completedPrefetch()
-	existing.Labels = map[string]string{"first-run": "yes"}
+	existing.Labels["first-run"] = "yes"
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 
 	r, out, _ := runReconcile(t, cache,
@@ -298,4 +316,241 @@ func TestResidencyIsReportedOncePerTransition(t *testing.T) {
 	if len(rep.cacheFrames) != before {
 		t.Errorf("frames = %d, want %d: an unchanged residency was reported twice", len(rep.cacheFrames), before)
 	}
+}
+
+// legacyPrefetch is the job an operator from before the rename left running on a live cluster: the
+// old `prefetch-<id>` name, and the artifact label every version has always written.
+func legacyPrefetch(status batchv1.JobStatus) *batchv1.Job {
+	return &batchv1.Job{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "prefetch-" + render.Name(testArtifactID),
+			Namespace: testRender.Namespace,
+			Labels: map[string]string{
+				render.ArtifactLabel:  testArtifactID,
+				render.ManagedByLabel: "hangar-operator",
+			},
+		},
+		Status: status,
+	}
+}
+
+// TestAPrefetchUnderTheOldNameIsStillFound is the migration this rename had to survive. Every job
+// already running on every cluster was named before the model led the name, and a lookup that
+// rebuilt the string would have seen none of them: this reconcile would have started a second pull
+// into the same shared cache — the concurrent download the job exists to prevent — while reporting
+// the weights it was already holding as absent.
+func TestAPrefetchUnderTheOldNameIsStillFound(t *testing.T) {
+	existing := legacyPrefetch(batchv1.JobStatus{Active: 1})
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+
+	rep := &recordingReporter{}
+	r, _, _ := runReconcileWith(t, rep, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		existing,
+	)
+
+	jobs := prefetchJobs(t, r.Client, testArtifactID)
+	if len(jobs) != 1 {
+		names := make([]string, 0, len(jobs))
+		for i := range jobs {
+			names = append(names, jobs[i].Name)
+		}
+		t.Fatalf("%d jobs pulling one artifact into one cache: %v", len(jobs), names)
+	}
+	if jobs[0].Name != existing.Name {
+		t.Errorf("job = %q, want the one that was already running", jobs[0].Name)
+	}
+	if got := lastCache(t, rep, testArtifactID).State; got != "fetching" {
+		t.Errorf("state = %q, want fetching: a running download read as absent", got)
+	}
+}
+
+// TestWeightsUnderTheOldNameAreResident — the same migration read from the deployment side, where
+// missing the job holds every deployment of those weights behind a fetch that already finished.
+func TestWeightsUnderTheOldNameAreResident(t *testing.T) {
+	cache := declared(t, "cache", testCacheID, warmSet())
+	r, _, _ := runReconcile(t, cache, legacyPrefetch(batchv1.JobStatus{Succeeded: 1}))
+
+	resident, err := r.weightsResident(context.Background(), testArtifactID)
+	if err != nil {
+		t.Fatalf("weightsResident: %v", err)
+	}
+	if !resident {
+		t.Error("weights on disk read as absent because the job was named before the rename")
+	}
+}
+
+// TestOneArtifactResolvesToOneJob. Two jobs for one artifact is a state this operator does not
+// create but can inherit — a rename, a hand-run pull — and residency that flickered with list
+// order would report the weights arriving and leaving on alternate reconciles.
+func TestOneArtifactResolvesToOneJob(t *testing.T) {
+	done := legacyPrefetch(batchv1.JobStatus{Succeeded: 1})
+	running := completedPrefetch()
+	running.Status = batchv1.JobStatus{Active: 1}
+	running.CreationTimestamp = metav1.NewTime(done.CreationTimestamp.Add(-time.Hour))
+	cache := declared(t, "cache", testCacheID, warmSet())
+	r, _, _ := runReconcile(t, cache, done, running)
+
+	job, err := r.prefetchJobFor(context.Background(), testArtifactID)
+	if err != nil {
+		t.Fatalf("prefetchJobFor: %v", err)
+	}
+	if job == nil || job.Name != done.Name {
+		t.Fatalf("job = %v, want the succeeded one whatever else is in flight", job)
+	}
+
+	resident, err := r.weightsResident(context.Background(), testArtifactID)
+	if err != nil || !resident {
+		t.Errorf("weightsResident = %v, %v; a finished download must outrank a running one", resident, err)
+	}
+}
+
+// failedPrefetch is a download that has given up: the JobFailed condition set, which is what the
+// API server writes once a Job is past its BackoffLimit.
+func failedPrefetch(attempts int) *batchv1.Job {
+	job := completedPrefetch()
+	job.Status = batchv1.JobStatus{
+		Failed: 3,
+		Conditions: []batchv1.JobCondition{{
+			Type:    batchv1.JobFailed,
+			Status:  corev1.ConditionTrue,
+			Reason:  "BackoffLimitExceeded",
+			Message: "Job has reached the specified backoff limit",
+		}},
+	}
+	if attempts > 0 {
+		job.Annotations = map[string]string{render.AttemptAnnotation: strconv.Itoa(attempts)}
+	}
+	return job
+}
+
+// TestAFailedDownloadIsStartedAgain is the deadlock this pair of fixes exists for. A 306 GiB model
+// on site-b sat eight hours behind a Job that had tipped over its BackoffLimit when the node under it
+// went NotReady. Nothing retried it, because the reconciler read the existence of a Job object as
+// the download being handled, and no status was ever consulted.
+func TestAFailedDownloadIsStartedAgain(t *testing.T) {
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	r, _, _ := runReconcileWith(t, &recordingReporter{}, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		failedPrefetch(0),
+	)
+
+	jobs := prefetchJobs(t, r.Client, testArtifactID)
+	if len(jobs) != 1 {
+		t.Fatalf("jobs = %d, want 1: the failed download was not replaced by exactly one running one", len(jobs))
+	}
+	if prefetchFailure(&jobs[0]) != "" {
+		t.Fatal("the job left behind is the one that had already failed")
+	}
+	if got := jobs[0].Annotations[render.AttemptAnnotation]; got != "1" {
+		t.Errorf("attempt = %q, want 1: the restart was not counted, so the bound cannot hold", got)
+	}
+
+	// The bound must actually advance across restarts, which is the whole reason the count rides on
+	// the object: a replacement that started again from zero would retry for ever.
+	req := types.NamespacedName{Namespace: cache.GetNamespace(), Name: cache.GetName()}
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: req}); err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+	if jobs := prefetchJobs(t, r.Client, testArtifactID); len(jobs) != 1 {
+		t.Errorf("jobs = %d, want 1: a healthy download was replaced a second time", len(jobs))
+	}
+}
+
+// TestTheRestartBoundAdvancesAcrossFailures — each restart has to count the last one, or the bound
+// is a bound in name only and an unfetchable artifact pulls on a registry for ever.
+func TestTheRestartBoundAdvancesAcrossFailures(t *testing.T) {
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	r, _, _ := runReconcileWith(t, &recordingReporter{}, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		failedPrefetch(1),
+	)
+
+	jobs := prefetchJobs(t, r.Client, testArtifactID)
+	if len(jobs) != 1 {
+		t.Fatalf("jobs = %d, want 1", len(jobs))
+	}
+	if got := jobs[0].Annotations[render.AttemptAnnotation]; got != "2" {
+		t.Errorf("attempt = %q, want 2: the restart started the count again instead of continuing it", got)
+	}
+}
+
+// TestADownloadThatKeepsFailingIsGivenUpOn — weights that cannot be fetched at all fail identically
+// every time, and an unbounded retry there is this cluster pulling on somebody else's registry for
+// ever. Giving up has to leave the warm set saying so rather than reporting itself dispatched.
+func TestADownloadThatKeepsFailingIsGivenUpOn(t *testing.T) {
+	rep := &recordingReporter{}
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	r, out, _ := runReconcileWith(t, rep, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		failedPrefetch(maxPrefetchAttempts-1),
+	)
+
+	if jobs := prefetchJobs(t, r.Client, testArtifactID); len(jobs) != 1 {
+		t.Errorf("jobs = %d, want 1: the exhausted download was cleared away and tried again", len(jobs))
+	}
+	if got := conditionReason(out); got != "WarmSetIncomplete" {
+		t.Errorf("reason = %q, want WarmSetIncomplete: the warm set called itself dispatched over a download nothing will run", got)
+	}
+}
+
+// TestAFailedDownloadIsNotReportedAsRunning — the failure that made the deadlock take investigation
+// rather than a glance. A Job past its BackoffLimit was folded in with the active ones, so the
+// cluster went on telling the plane the download was running long after it had stopped trying.
+func TestAFailedDownloadIsNotReportedAsRunning(t *testing.T) {
+	rep := &recordingReporter{}
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	runReconcileWith(t, rep, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		failedPrefetch(maxPrefetchAttempts-1),
+	)
+
+	frame := lastCache(t, rep, testArtifactID)
+	if frame.State == "fetching" {
+		t.Error("a download that had given up was reported as still running")
+	}
+	if frame.Reason != "PrefetchFailed" {
+		t.Errorf("reason = %q, want PrefetchFailed", frame.Reason)
+	}
+	if !strings.Contains(frame.Message, "backoff limit") {
+		t.Errorf("message = %q, want the job's own account of the failure", frame.Message)
+	}
+	if frame.Resident {
+		t.Error("a failed download reported the weights as resident")
+	}
+}
+
+// TestPodsFailingWhileTheJobHasAttemptsLeftIsStillFetching — the condition and not a pod count is
+// what says a download has stopped. Restarting on a dead pod would throw away a download in
+// progress every time one is preempted.
+func TestPodsFailingWhileTheJobHasAttemptsLeftIsStillFetching(t *testing.T) {
+	rep := &recordingReporter{}
+	job := completedPrefetch()
+	job.Status = batchv1.JobStatus{Active: 1, Failed: 1}
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	r, _, _ := runReconcileWith(t, rep, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		job,
+	)
+
+	if jobs := prefetchJobs(t, r.Client, testArtifactID); len(jobs) != 1 {
+		t.Errorf("jobs = %d, want 1: a download still retrying was cleared away", len(jobs))
+	}
+	if frame := lastCache(t, rep, testArtifactID); frame.State != "fetching" {
+		t.Errorf("state = %q, want fetching", frame.State)
+	}
+}
+
+// conditionReason is the reason the reconciler last set on a synced resource.
+func conditionReason(res *v1alpha1.SyncedResource) string {
+	if n := len(res.Status.Conditions); n > 0 {
+		return res.Status.Conditions[n-1].Reason
+	}
+	return ""
 }

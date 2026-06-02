@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	batchv1 "k8s.io/api/batch/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apimeta "k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -345,17 +344,15 @@ func (r *SyncedResourceReconciler) pruneRendered(ctx context.Context, id, keep s
 //
 // The Job's own completion is the signal rather than anything this operator records separately.
 // A count kept here would be a second copy of a fact the API server already holds, and the two
-// would disagree the first time the Job was deleted by hand.
+// would disagree the first time the Job was deleted by hand. Found by label, for the reason on
+// prefetchJobFor: a name is a rendering, and a deployment held behind a fetch that already
+// finished is the worst reading of the wrong one.
 func (r *SyncedResourceReconciler) weightsResident(ctx context.Context, artifactID string) (bool, error) {
-	var job batchv1.Job
-	key := types.NamespacedName{Namespace: r.Render.Namespace, Name: render.PrefetchJobName(artifactID)}
-	switch err := r.Client.Get(ctx, key, &job); {
-	case apierrors.IsNotFound(err):
-		return false, nil
-	case err != nil:
-		return false, fmt.Errorf("read prefetch job for %s: %w", artifactID, err)
+	job, err := r.prefetchJobFor(ctx, artifactID)
+	if err != nil {
+		return false, err
 	}
-	return job.Status.Succeeded > 0, nil
+	return job != nil && job.Status.Succeeded > 0, nil
 }
 
 func (r *SyncedResourceReconciler) recipe(ctx context.Context, id string) (*wire.RecipeDesired, error) {

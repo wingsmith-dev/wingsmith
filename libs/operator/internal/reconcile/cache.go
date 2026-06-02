@@ -7,8 +7,9 @@ import (
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -60,8 +61,12 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 					"the download cannot start until one does", entry.ArtifactID))
 			continue
 		}
-		if err := r.ensurePrefetch(ctx, res, *artifact, image); err != nil {
+		exhausted, err := r.ensurePrefetch(ctx, res, *artifact, image)
+		if err != nil {
 			return ctrl.Result{}, err
+		}
+		if exhausted {
+			pending++
 		}
 		r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes, "", "")
 	}
@@ -74,36 +79,175 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 		fmt.Sprintf("%d artifacts have a prefetch job", len(warm.Entries)))
 }
 
-// ensurePrefetch creates an artifact's download job if it does not already exist.
+// maxPrefetchAttempts bounds how many times a download is started again after failing outright.
+//
+// A bound and not a retry loop, because the two failures behind this are opposite and only one of
+// them is worth repeating. A download killed with the node under it should start again — nothing
+// about the artifact is wrong. A download of weights that cannot be fetched at all — a repository
+// that has moved, a gated one nobody holds the token for — fails identically every time, and an
+// unbounded retry there is this cluster pulling on somebody else's registry for ever, at whatever
+// fraction of a large model it reaches before dying.
+//
+// Four rather than one, because the Job already spends its own BackoffLimit on the transient case:
+// reaching here means three pod attempts have already failed, so what this counts is whole
+// downloads lost, and the loss that motivated it — a node going NotReady — takes every attempt on
+// that node with it at once.
+const maxPrefetchAttempts = 4
+
+// ensurePrefetch creates an artifact's download job if it does not already exist, and starts it
+// again if the last one failed outright.
 //
 // Create rather than apply, and never an update. A Job's pod template is immutable once created,
 // so a server-side apply that differed in any field would be rejected by the API server on every
 // pass; and re-running a completed download to close a cosmetic difference would re-pull tens of
 // gigabytes for nothing. An artifact is content-addressed, so a job that succeeded for one is
 // still correct.
-func (r *SyncedResourceReconciler) ensurePrefetch(ctx context.Context, owner *v1alpha1.SyncedResource, art wire.ArtifactDesired, image string) error {
-	key := types.NamespacedName{Namespace: r.Render.Namespace, Name: render.PrefetchJobName(art.ArtifactID)}
-	var existing batchv1.Job
-	switch err := r.Client.Get(ctx, key, &existing); {
-	case err == nil:
-		return nil
-	case !apierrors.IsNotFound(err):
-		return fmt.Errorf("read prefetch job for %s: %w", art.ArtifactID, err)
+//
+// A *failed* one is not, and treating the mere existence of a Job object as a handled download was
+// a deadlock with no way out of it. site-b sat eight hours on a 306 GiB model whose Job had tipped
+// over its BackoffLimit when the node under it went NotReady: nothing retried it, the warm set
+// reported itself Ready over it, and the deployment gate waited on a completion that could no
+// longer come. Nothing in the cluster was wrong by then — only the record of it.
+//
+// It returns whether the artifact has run out of attempts, which the caller counts as pending. A
+// download that will not be tried again must not leave the warm set reporting itself dispatched.
+func (r *SyncedResourceReconciler) ensurePrefetch(ctx context.Context, owner *v1alpha1.SyncedResource, art wire.ArtifactDesired, image string) (exhausted bool, err error) {
+	existing, err := r.prefetchJobFor(ctx, art.ArtifactID)
+	if err != nil {
+		return false, err
+	}
+
+	attempt, failure := 0, ""
+	if existing != nil {
+		if failure = prefetchFailure(existing); failure == "" {
+			return false, nil
+		}
+		attempt = prefetchAttempt(existing) + 1
+		if attempt >= maxPrefetchAttempts {
+			r.Log.Error("giving up on a download that keeps failing", "artifact", art.ArtifactID,
+				"job", existing.Name, "attempts", attempt, "failure", failure)
+			return true, nil
+		}
 	}
 
 	job, err := render.PrefetchJob(art, image, r.Render)
 	if err != nil {
-		return fmt.Errorf("render prefetch job for %s: %w", art.ArtifactID, err)
+		return false, fmt.Errorf("render prefetch job for %s: %w", art.ArtifactID, err)
+	}
+	if attempt > 0 {
+		job.Name = render.PrefetchAttemptName(art, attempt)
+		job.Annotations[render.AttemptAnnotation] = strconv.Itoa(attempt)
 	}
 	// Labelled with its declared origin for the same reason the graph deployment is: the Job is
 	// created in the workload namespace and the warm-set that asked for it is not, so the watch
 	// that wakes this loop when the download finishes has nothing else to follow back.
 	render.OwnedMeta(job, owner)
 	if err := r.Client.Create(ctx, job); err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("create prefetch job for %s: %w", art.ArtifactID, err)
+		return false, fmt.Errorf("create prefetch job for %s: %w", art.ArtifactID, err)
 	}
-	r.Log.Info("fetching weights", "artifact", art.ArtifactID, "job", key.Name)
-	return nil
+
+	if existing == nil {
+		r.Log.Info("fetching weights", "artifact", art.ArtifactID, "job", job.Name)
+		return false, nil
+	}
+
+	// Deleted after the replacement exists, and never before it. The count of how many times this
+	// download has been restarted lives on the Job, so a pass that deleted first would hand the
+	// next one a clean slate and the bound would never advance.
+	//
+	// Background propagation rather than foreground: a Job carrying JobFailed has already given up
+	// and has no pod still writing into the shared cache, so there is nothing here to wait for, and
+	// waiting would hold the outgoing name against the incoming one.
+	policy := metav1.DeletePropagationBackground
+	if err := r.Client.Delete(ctx, existing, &client.DeleteOptions{PropagationPolicy: &policy}); err != nil && !apierrors.IsNotFound(err) {
+		return false, fmt.Errorf("delete failed prefetch job for %s: %w", art.ArtifactID, err)
+	}
+	r.Log.Info("restarting a failed download", "artifact", art.ArtifactID,
+		"job", job.Name, "replaced", existing.Name, "attempt", attempt, "failure", failure)
+	return false, nil
+}
+
+// prefetchFailure is the Job's own account of why it failed, and empty when it has not.
+//
+// Read from the JobFailed condition rather than from Status.Failed, because those two say
+// different things. Status.Failed counts pods that have died, and a Job with one dead pod and two
+// attempts left is still running — restarting it there would throw away a download in progress on
+// every transient pod failure. The condition is set only once the Job has given up.
+func prefetchFailure(job *batchv1.Job) string {
+	for _, condition := range job.Status.Conditions {
+		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+			if condition.Message != "" {
+				return condition.Message
+			}
+			if condition.Reason != "" {
+				return condition.Reason
+			}
+			return "the download failed"
+		}
+	}
+	return ""
+}
+
+// prefetchAttempt reads how many times this download has already been restarted.
+func prefetchAttempt(job *batchv1.Job) int {
+	n, err := strconv.Atoi(job.Annotations[render.AttemptAnnotation])
+	if err != nil || n < 0 {
+		return 0
+	}
+	return n
+}
+
+// prefetchJobFor finds an artifact's download job by label rather than by reconstructing its name.
+//
+// By label because the name is a rendering and not a key. It leads with the model now and it did
+// not before, so a lookup that rebuilt the string would see none of the jobs already running on a
+// live cluster — and the consequences are not cosmetic. ensurePrefetch would create a second job
+// pulling the same weights into the same shared cache, which is the concurrent download the job
+// exists to prevent; reportResidency and weightsResident would call weights absent that are on
+// disk, and hold every deployment of them behind a fetch that already finished.
+//
+// One artifact must resolve to one job on every pass, and this operator can inherit a state it does
+// not create — a rename, a hand-run pull, a job restored from a backup. A succeeded job therefore
+// wins over any other, because completed weights are the fact worth reporting whatever else is in
+// flight, and the oldest wins among equals. Creation timestamps are only second-granular, so the
+// name breaks a tie rather than list order: residency must not flicker between two answers on
+// alternate reconciles.
+func (r *SyncedResourceReconciler) prefetchJobFor(ctx context.Context, artifactID string) (*batchv1.Job, error) {
+	var jobs batchv1.JobList
+	if err := r.Client.List(ctx, &jobs,
+		client.InNamespace(r.Render.Namespace),
+		client.MatchingLabels{render.ArtifactLabel: artifactID},
+	); err != nil {
+		return nil, fmt.Errorf("read prefetch job for %s: %w", artifactID, err)
+	}
+
+	var best *batchv1.Job
+	for i := range jobs.Items {
+		if job := &jobs.Items[i]; best == nil || prefetchOutranks(job, best) {
+			best = job
+		}
+	}
+	return best, nil
+}
+
+// prefetchOutranks orders two jobs claiming one artifact: succeeded first, then whichever has not
+// failed, then oldest, then name.
+//
+// The failed test comes before the age test and not after it, because the one moment two jobs
+// legitimately share an artifact is a restart, where the outgoing one is both older and dead. Age
+// alone would answer with the corpse — reporting the artifact as failed for as long as the delete
+// took, and handing ensurePrefetch back the same job it had just replaced.
+func prefetchOutranks(job, over *batchv1.Job) bool {
+	if (job.Status.Succeeded > 0) != (over.Status.Succeeded > 0) {
+		return job.Status.Succeeded > 0
+	}
+	if failed, otherFailed := prefetchFailure(job) != "", prefetchFailure(over) != ""; failed != otherFailed {
+		return !failed
+	}
+	if !job.CreationTimestamp.Equal(&over.CreationTimestamp) {
+		return job.CreationTimestamp.Before(&over.CreationTimestamp)
+	}
+	return job.Name < over.Name
 }
 
 // runtimeImage finds the image to fetch an artifact with.
@@ -157,26 +301,40 @@ func (r *SyncedResourceReconciler) reportResidency(ctx context.Context, artifact
 		return
 	}
 
-	state, bytes := "absent", int64(0)
-	var job batchv1.Job
-	key := types.NamespacedName{Namespace: r.Render.Namespace, Name: render.PrefetchJobName(artifactID)}
-	switch err := r.Client.Get(ctx, key, &job); {
-	case apierrors.IsNotFound(err):
-	case err != nil:
+	job, err := r.prefetchJobFor(ctx, artifactID)
+	if err != nil {
 		r.Log.Warn("could not read prefetch job for residency", "artifact", artifactID, "error", err)
 		return
+	}
+
+	state, bytes, failure := "absent", int64(0), ""
+	switch {
+	case job == nil:
 	case job.Status.Succeeded > 0:
 		state, bytes = "resident", size
-	case job.Status.Active > 0 || job.Status.Failed > 0:
-		state = "fetching"
+	default:
+		// A Job that has given up stays `absent`, because absent is what the weights are. Only
+		// the reason separates it from one that has not started, and that is the whole repair:
+		// this arm used to fold a failed download into `fetching`, so a cluster that had stopped
+		// trying went on telling the plane the download was running. Nothing was going to
+		// contradict it, and the deployment behind it waited on a completion that could not come.
+		//
+		// Failed pods still read as `fetching` while the Job has attempts left, because it is
+		// still fetching — the condition below, and not a pod count, is what says it has stopped.
+		failure = prefetchFailure(job)
+		if failure == "" && (job.Status.Active > 0 || job.Status.Failed > 0) {
+			state = "fetching"
+		}
 	}
 
 	if reason == "" {
-		switch state {
-		case "resident":
+		switch {
+		case state == "resident":
 			reason, message = "Resident", "the weights are on this cluster"
-		case "fetching":
+		case state == "fetching":
 			reason, message = "Fetching", "the download is running"
+		case failure != "":
+			reason, message = "PrefetchFailed", "the download failed and has not been started again yet: "+failure
 		default:
 			reason, message = "PrefetchPending", "the download has not started yet"
 		}
