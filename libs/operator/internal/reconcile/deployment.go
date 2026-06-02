@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	batchv1 "k8s.io/api/batch/v1"
@@ -155,6 +156,15 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	}
 
 	if err := r.Client.Patch(ctx, obj, client.Apply, fieldOwner, client.ForceOwnership); err != nil {
+		if immutableTopology(err) {
+			return r.fail(ctx, res, "TopologyImmutable", fmt.Sprintf(
+				"%s already exists with a different set of components, and Dynamo refuses to "+
+					"change the set on a live graph. Delete the graph deployment to have this "+
+					"operator render it again from the current recipe: "+
+					"kubectl -n %s delete dynamographdeployment %s. The model reloads its "+
+					"weights, so this is a deliberate redeploy and not something to do while it "+
+					"is serving.", obj.GetName(), obj.GetNamespace(), obj.GetName()))
+		}
 		return ctrl.Result{}, fmt.Errorf("apply %s: %w", obj.GetName(), err)
 	}
 	r.Log.Info("applied", "deployment", dep.DeploymentID, "generation", dep.Generation,
@@ -446,6 +456,35 @@ func (r *SyncedResourceReconciler) wait(ctx context.Context, res *v1alpha1.Synce
 // and logging a failure forever describes a transient fault, and a payload that does not decode or
 // a recipe that names no image is not transient. The next write of desired state is what fixes it,
 // and that arrives as a new revision rather than as a retry.
+// immutableTopology reports whether an apply was refused because the graph already exists with a
+// different set of components.
+//
+// Dynamo's validating webhook holds `spec.components` immutable after creation, so a cluster that
+// turns one frontend per model on cannot gain a frontend on the graphs it is already running:
+//
+//	admission webhook "vdynamographdeployment.kb.io" denied the request:
+//	spec.components: Forbidden: component topology is immutable and cannot be modified
+//	after creation: components added: [Frontend]
+//
+// Without this the apply returns an error, the controller requeues it, and the same rejection
+// repeats for as long as the deployment exists — a log full of one line, a deployment that never
+// changes, and nothing anywhere saying that the remedy is to recreate the graph.
+//
+// It is deliberately not recreated here. The graph holds the running worker, so deleting it is a
+// full reload of the weights — tens of minutes on the hardware this runs on — and an operator that
+// did that on its own would take a serving model down as a side effect of a configuration flag
+// somebody flipped. Saying so and stopping is the honest half.
+//
+// Matched on the webhook's own words, which is fragile and is the lesser fragility: the string is
+// someone else's and may change, and if it does this returns false and the behaviour is exactly
+// what it was before — a retry loop rather than a wrong answer.
+func immutableTopology(err error) bool {
+	if !apierrors.IsInvalid(err) && !apierrors.IsForbidden(err) {
+		return false
+	}
+	return strings.Contains(err.Error(), "component topology is immutable")
+}
+
 func (r *SyncedResourceReconciler) fail(ctx context.Context, res *v1alpha1.SyncedResource, reason, message string) (ctrl.Result, error) {
 	patch := client.MergeFrom(res.DeepCopy())
 	res.Status.Phase = "Failed"

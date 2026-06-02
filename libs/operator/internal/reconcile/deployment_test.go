@@ -17,11 +17,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
@@ -1034,5 +1037,66 @@ func TestAFrontendStillComingUpIsDegradedAndNotADiagnosis(t *testing.T) {
 	off := observedRollout(t, testRender, readyPods(2)...)
 	if off.phase() != phaseRunning {
 		t.Errorf("phase = %q on a cluster rendering no frontend of its own", off.phase())
+	}
+}
+
+// Dynamo holds a graph's set of components immutable after creation, so a cluster that turns one
+// frontend per model on cannot gain a frontend on the graphs it is already running. Observed on
+// cluster-site-c: every reconcile of an existing deployment was refused, requeued, and
+// refused again, and the only thing anywhere that said so was the same log line repeating.
+//
+// The remedy is a human's — deleting the graph reloads the weights — so what this pins is that the
+// operator stops, says which object and which command, and reports it rather than retrying.
+func TestAnImmutableComponentSetIsReportedAndNotRetriedForever(t *testing.T) {
+	scheme := clientgoscheme.Scheme
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("scheme: %v", err)
+	}
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+
+	refusal := apierrors.NewInvalid(
+		schema.GroupKind{Group: "nvidia.com", Kind: "DynamoGraphDeployment"},
+		render.WorkloadName(testDeploymentDesired()),
+		field.ErrorList{field.Forbidden(field.NewPath("spec", "components"),
+			"component topology is immutable and cannot be modified after creation: components added: [Frontend]")},
+	)
+	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)).
+		WithStatusSubresource(dep).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Patch: func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+				if obj.GetObjectKind().GroupVersionKind().Kind == render.GVK.Kind {
+					return refusal
+				}
+				return cl.Patch(ctx, obj, patch, opts...)
+			},
+		}).Build()
+
+	r := &SyncedResourceReconciler{
+		Client: c, Scheme: scheme, Log: slog.Default(),
+		Namespace: "hangar-system", Render: frontendRender(),
+		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.GetNamespace(), Name: dep.GetName()}}
+	result, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("reconcile returned an error, so the controller would retry this for ever: %v", err)
+	}
+	if result.RequeueAfter != 0 {
+		t.Errorf("RequeueAfter = %s, want no retry of a refusal only a human can clear", result.RequeueAfter)
+	}
+
+	var out v1alpha1.SyncedResource
+	if err := c.Get(context.Background(), req.NamespacedName, &out); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	condition := readyCondition(t, &out)
+	if condition.Reason != "TopologyImmutable" {
+		t.Errorf("reason = %q, want TopologyImmutable", condition.Reason)
+	}
+	if !strings.Contains(condition.Message, "delete dynamographdeployment") {
+		t.Errorf("message = %q, want the command that clears it", condition.Message)
 	}
 }
