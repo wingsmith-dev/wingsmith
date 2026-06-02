@@ -7,9 +7,9 @@ import { Panel, PanelEmpty } from "./Panel"
 /**
  * Replicas waiting on each accelerator, from the mockup.
  *
- * A deployment carries no device class — the shape lives on the recipe behind
- * the workload — so the console cannot attribute a pending replica to the
- * hardware it is waiting for without fetching every recipe on the page. The
+ * A deployment carries no device class — the shape lives on the workload's
+ * serving block — so the console cannot attribute a pending replica to the
+ * hardware it is waiting for without fetching every workload on the page. The
  * fleet-wide unschedulable count in the stat row above is real; only this
  * per-class attribution is the mockup's own.
  *

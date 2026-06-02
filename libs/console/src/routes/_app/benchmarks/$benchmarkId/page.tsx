@@ -218,15 +218,10 @@ export function BenchmarkDetailPage() {
                     <Field label="Generation">
                       {run.provenance.deployment_generation}
                     </Field>
-                    <Field label="Recipe">
-                      <Dash>{run.provenance.recipe_id}</Dash>
-                    </Field>
-                    <Field label="Recipe version">
-                      <Dash>
-                        {run.provenance.recipe_version === null
-                          ? null
-                          : String(run.provenance.recipe_version)}
-                      </Dash>
+                    <Field label="Serving digest">
+                      <span className="font-mono text-2xs break-all">
+                        <Dash>{run.provenance.serving_digest}</Dash>
+                      </span>
                     </Field>
                   </FieldGrid>
                   {run.endpoint_id && (

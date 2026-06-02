@@ -1,7 +1,7 @@
 /**
- * Deriving a recipe from an artifact and a fitment row, so that nobody types one.
+ * Deriving a serving block from an artifact and a fitment row, so that nobody types one.
  *
- * `RecipeForm` asks twenty-five questions. Six of them the fitment already answered
+ * The serving block asks twenty-five questions. Six of them the fitment already answered
  * from the weights, and most of the rest are either derivable or a default that only
  * an expert should ever move. What is left once those are taken out is a name, and a
  * name is not a question worth asking either — so this module answers all of them and
@@ -13,21 +13,26 @@
  * default applies instead of one invented here.
  */
 
+import { emptyServing } from "./display"
 import type {
   Artifact,
-  Recipe,
-  RecipeCreateRequest,
-  RecipeFootprint,
+  ServingBehaviour,
+  ServingDefaults,
+  ServingFootprint,
+  UpstreamServing,
+  Workload,
+  WorkloadServing,
+  WorkloadServingRequest,
 } from "./types"
 
-/** The engine a derived recipe is built for until something offers a choice. */
+/** The engine a derived serving block is built for until something offers a choice. */
 export const DEFAULT_ENGINE = "vllm"
 
 /**
- * Engine version is required by `RecipeCreateRequest` and is not derivable from an
+ * Engine version is required by `WorkloadServingRequest` and is not derivable from an
  * artifact — the console does not know what builds exist. `latest` is the honest
  * stand-in: it says "whatever the operator ships" rather than pinning a version this
- * code invented, and it is visible and editable on the recipe afterwards.
+ * code invented, and it is visible and editable on the workload afterwards.
  */
 export const DEFAULT_ENGINE_VERSION = "latest"
 
@@ -48,40 +53,9 @@ export function shortTokens(value: number): string {
 }
 
 /**
- * A name that describes the configuration rather than the day it was made.
- *
- * `llama-3-3-70b-instruct-fp8-tp2-32k` reads as what it is, which is the whole reason
- * a derived recipe can go unnamed: the four things that distinguish one recipe over an
- * artifact from another are exactly the four things in the fit, so putting them in the
- * name makes two derived recipes over one artifact tell themselves apart in a list.
- *
- * Pipeline degree appears only when it is greater than one, because `pp1` on every
- * single-node recipe is noise that makes the interesting case harder to spot.
- *
- * This is the recipe's name and nothing else. It used to double as the model id API
- * clients send, which is why the fit leaked onto the public surface; that is now
- * `served_model_name`, resolved by the plane and defaulting to the artifact's slug.
- * The two are different concepts and both are legitimate — a recipe named for its
- * fit is exactly what a list of recipes over one artifact needs.
- */
-export function derivedRecipeName(
-  artifact: Artifact,
-  footprint: RecipeFootprint
-): string {
-  const parts = [slugify(artifact.name)]
-  if (footprint.quantization) parts.push(footprint.quantization)
-  parts.push(`tp${footprint.tensor_parallel}`)
-  if (footprint.pipeline_parallel > 1)
-    parts.push(`pp${footprint.pipeline_parallel}`)
-  if (footprint.context_length > 0)
-    parts.push(shortTokens(footprint.context_length))
-  return parts.join("-")
-}
-
-/**
  * The name a workload gets when nobody typed one.
  *
- * The artifact rather than the recipe, because a workload is the thing you asked to
+ * The artifact rather than the fit, because a workload is the thing you asked to
  * run and you asked for the weights — the fit is how, not what. Collisions are the
  * plane's to reject; this only avoids the ones it can see, by suffixing past names
  * already in the list.
@@ -108,92 +82,171 @@ export function derivedWorkloadName(
  * tensor groups are already node-sized and the pipeline stages are what cross the
  * fabric, which is exactly what a fabric is for.
  */
-export function requiresSingleDomain(footprint: RecipeFootprint): boolean {
+export function requiresSingleDomain(footprint: ServingFootprint): boolean {
   return footprint.pipeline_parallel <= 1 && footprint.tensor_parallel > 1
 }
 
 /**
- * The request that a fitment row plus an artifact imply.
+ * What the plane proposed for these weights, and who proposed it.
  *
- * Deliberately sparse. `dtype`, `max_batch_tokens`, `kv_cache_dtype`,
- * `kv_cache_fraction`, `cpu_cores`, `memory_mib`, `disk_gib`, `device_memory_mib_min`
- * and `topology_domain_kind` are all absent, because the console has no honest value
- * for any of them and the plane's default is better than a number typed here. They
- * remain editable on the recipe afterwards, which is what `RecipeForm` is for now.
- *
- * `prefix_cache_enabled` is the one opinion: on. It is free on a repeated prompt and
- * the engines default it on themselves.
+ * Two sources and they are never merged into one number. `defaults` is the plane's
+ * own arithmetic over `config.json` — what the weights need. `upstream` is a third
+ * party's measurement of a different question — what a configuration did when they
+ * served it — and every field of it is a claim with a permalink behind it. The
+ * console seeds from both and says which one a value came from, because "vLLM
+ * verified this on H200" is the most useful thing on the form and "we divided a
+ * memory figure by a card" is a different kind of statement.
  */
-export function derivedRecipeRequest(
-  artifact: Artifact,
-  footprint: RecipeFootprint,
-  overrides: { name?: string; engine?: string; engine_version?: string } = {}
-): RecipeCreateRequest {
+export interface ServingProposal {
+  defaults?: ServingDefaults | null
+  upstream?: UpstreamServing | null
+}
+
+/**
+ * Which fields the proposal actually answered, for a form that has to attribute
+ * every value it did not derive itself.
+ */
+export type SeededFrom = "derived" | "weights" | "upstream"
+
+/**
+ * The typed behaviour block a corpus entry implies.
+ *
+ * Only the parsers, and only when the corpus names one: everything else in the
+ * block is a rendered flag nobody upstream has an opinion about, and a default
+ * invented here would be indistinguishable from a tested one on the form.
+ */
+export function proposedBehaviour(
+  upstream?: UpstreamServing | null
+): ServingBehaviour {
+  const block = emptyServing()
+  if (!upstream) return block
   return {
-    artifact: artifact.id,
-    name: overrides.name?.trim() || derivedRecipeName(artifact, footprint),
-    engine: overrides.engine || DEFAULT_ENGINE,
-    engine_version: overrides.engine_version || DEFAULT_ENGINE_VERSION,
-    device_class: footprint.device_class,
-    device_count: footprint.device_count,
-    context_length: footprint.context_length,
-    tensor_parallel: footprint.tensor_parallel,
-    pipeline_parallel: footprint.pipeline_parallel,
-    quantization: footprint.quantization || null,
-    requires_single_topology_domain: requiresSingleDomain(footprint),
-    prefix_cache_enabled: true,
+    ...block,
+    reasoning: { ...block.reasoning, parser: upstream.reasoning_parser },
+    tool_call_parser: upstream.tool_call_parser,
   }
 }
 
 /**
- * An existing recipe with the same spec, so that deploying the same thing twice does
- * not leave two recipes behind.
+ * The serving block that a fitment row plus an artifact imply.
  *
- * The same instinct as content-addressing an artifact, one level up: a recipe is
- * identified by what it says, so two identical ones are one. Matched on the six fields
- * a fit determines plus the engine — not on name, which a person may have changed, and
- * not on the fields left off the derived request, which the plane defaulted and someone
- * may since have tuned. That last one is a deliberate looseness: reusing a recipe whose
- * KV fraction was hand-tuned is the desirable outcome, not a mismatch.
+ * The fit answers the six things it is — which card, how many, how they are split,
+ * at what window and precision — and everything else comes from the proposal or is
+ * left at the plane's default. Left alone matters: `max_batch_tokens`,
+ * `kv_cache_fraction`, `resources` and `topology_domain_kind` are never guessed,
+ * because neither the console nor the corpus has an honest value and the plane's
+ * own default beats a number invented here.
  *
- * Deprecated recipes are skipped — reusing one silently would resurrect a config
- * somebody retired on purpose.
+ * `prefix_cache_enabled` is the one opinion: on. It is free on a repeated prompt and
+ * the engines default it on themselves.
  */
-export function matchExistingRecipe(
-  recipes: Recipe[],
+export function derivedServingRequest(
   artifact: Artifact,
-  footprint: RecipeFootprint,
-  engine: string = DEFAULT_ENGINE
-): Recipe | undefined {
-  return recipes.find(
-    (recipe) =>
-      recipe.artifact_id === artifact.id &&
-      recipe.lifecycle !== "deprecated" &&
-      recipe.engine === engine &&
-      recipe.shape.device_class === footprint.device_class &&
-      recipe.shape.device_count === footprint.device_count &&
-      recipe.context_length === footprint.context_length &&
-      recipe.parallelism.tensor === footprint.tensor_parallel &&
-      recipe.parallelism.pipeline === footprint.pipeline_parallel &&
-      (recipe.quantization ?? "") === (footprint.quantization ?? "")
-  )
+  footprint: ServingFootprint,
+  proposal: ServingProposal = {},
+  overrides: { engine?: string; engine_version?: string } = {}
+): WorkloadServingRequest {
+  const { defaults, upstream } = proposal
+  return {
+    artifact: artifact.id,
+    engine: overrides.engine || upstream?.engine || DEFAULT_ENGINE,
+    engine_version:
+      overrides.engine_version ||
+      upstream?.engine_version_min ||
+      DEFAULT_ENGINE_VERSION,
+    context_length: footprint.context_length,
+    shape: {
+      device_class: footprint.device_class,
+      device_count: footprint.device_count,
+      device_memory_mib_min: defaults?.device_memory_mib_min ?? 0,
+      requires_single_topology_domain:
+        upstream?.requires_single_topology_domain ||
+        requiresSingleDomain(footprint),
+      topology_domain_kind: null,
+    },
+    parallelism: {
+      tensor: footprint.tensor_parallel,
+      pipeline: footprint.pipeline_parallel,
+      expert: 1,
+    },
+    quantization: footprint.quantization || null,
+    dtype: defaults?.dtype ?? null,
+    cache: {
+      kv_cache_dtype: upstream?.kv_cache_dtype ?? null,
+      kv_cache_fraction: null,
+      prefix_cache_enabled: true,
+      prefix_cache_config: {},
+    },
+    serving: proposedBehaviour(upstream),
+  }
 }
 
-/** The footprint an existing recipe already describes, for the reuse shortcut. */
-export function footprintOfRecipe(recipe: Recipe): RecipeFootprint {
-  return {
-    device_class: recipe.shape.device_class,
-    device_count: recipe.shape.device_count,
-    tensor_parallel: recipe.parallelism.tensor,
-    pipeline_parallel: recipe.parallelism.pipeline,
-    context_length: recipe.context_length,
-    quantization: recipe.quantization ?? "",
+/**
+ * Where each seeded field came from, for the form to attribute beside it.
+ *
+ * Attribution is the whole point of seeding: a value nobody can trace is a value
+ * nobody will move, and a form full of those is how an operator ends up running a
+ * configuration they never chose and cannot defend.
+ */
+export function servingProvenance(
+  proposal: ServingProposal = {}
+): Record<string, SeededFrom> {
+  const { defaults, upstream } = proposal
+  const at: Record<string, SeededFrom> = {
+    device_class: "derived",
+    device_count: "derived",
+    tensor_parallel: "derived",
+    pipeline_parallel: "derived",
+    context_length: "derived",
+    quantization: "derived",
   }
+  if (defaults?.dtype) at.dtype = "weights"
+  if (defaults?.device_memory_mib_min) at.device_memory_mib_min = "weights"
+  if (upstream?.engine) at.engine = "upstream"
+  if (upstream?.engine_version_min) at.engine_version = "upstream"
+  if (upstream?.kv_cache_dtype) at.kv_cache_dtype = "upstream"
+  if (upstream?.reasoning_parser) at.reasoning_parser = "upstream"
+  if (upstream?.tool_call_parser) at.tool_call_parser = "upstream"
+  if (upstream?.requires_single_topology_domain)
+    at.requires_single_topology_domain = "upstream"
+  return at
+}
+
+/**
+ * Workloads already running exactly this configuration.
+ *
+ * Informational and never a fork. The plane's answer is `serving_digest` — one
+ * hash over everything that reaches an engine — but a digest is the plane's to
+ * compute and there is nothing to compute it over until the workload exists, so
+ * this compares the fields the flow actually sets and says what it found. It
+ * decides nothing: creating a second workload on one configuration is a normal
+ * thing to want, and the two will carry the same digest either way.
+ *
+ * The old fork asked a person to resolve this and got it wrong whenever a field
+ * outside its comparison had been tuned by hand. This asks nothing.
+ */
+export function workloadsMatching(
+  workloads: Workload[],
+  artifact: Artifact,
+  footprint: ServingFootprint,
+  engine: string = DEFAULT_ENGINE
+): Workload[] {
+  return workloads.filter(
+    (workload) =>
+      workload.serving.artifact_id === artifact.id &&
+      workload.serving.engine === engine &&
+      workload.serving.shape.device_class === footprint.device_class &&
+      workload.serving.shape.device_count === footprint.device_count &&
+      workload.serving.context_length === footprint.context_length &&
+      workload.serving.parallelism.tensor === footprint.tensor_parallel &&
+      workload.serving.parallelism.pipeline === footprint.pipeline_parallel &&
+      (workload.serving.quantization ?? "") === (footprint.quantization ?? "")
+  )
 }
 
 /** `2 x H100 · tp2 · 32k · fp8` — a footprint on one line, for a collapsed step. */
 export function footprintSummary(
-  footprint: RecipeFootprint,
+  footprint: ServingFootprint,
   label?: string
 ): string {
   const parts = [
@@ -206,4 +259,16 @@ export function footprintSummary(
     parts.push(shortTokens(footprint.context_length))
   if (footprint.quantization) parts.push(footprint.quantization)
   return parts.join(" · ")
+}
+
+/** The footprint a workload's serving block already describes. */
+export function footprintOfServing(serving: WorkloadServing): ServingFootprint {
+  return {
+    device_class: serving.shape.device_class,
+    device_count: serving.shape.device_count,
+    tensor_parallel: serving.parallelism.tensor,
+    pipeline_parallel: serving.parallelism.pipeline,
+    context_length: serving.context_length,
+    quantization: serving.quantization ?? "",
+  }
 }

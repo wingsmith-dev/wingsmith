@@ -3,7 +3,6 @@ import type {
   Artifact,
   Deployment,
   Endpoint,
-  Recipe,
   Workload,
   WorkloadDeployment,
   WorkloadScale,
@@ -848,20 +847,21 @@ export const artifacts: Artifact[] = [
   },
 ]
 
-export const recipes: Recipe[] = [
-  {
-    id: uid("rec_"),
+/**
+ * The serving blocks the three workloads below carry.
+ *
+ * Named separately only so the workload literals stay readable: there is no object
+ * here and no id — a serving configuration belongs to the workload that declares
+ * it, and two identical ones are identical because their digests are.
+ */
+const serving = {
+  llama: {
     artifact_id: artifacts[0].id,
-    served_model_name: null,
-    resolved_served_model_name: "meta-llama/llama-3.3-70b-instruct",
-    name: "llama-70b-fp8-tp8",
-    version: 3,
-    lifecycle: "published",
     engine: "vllm",
     engine_version: "0.9.1",
     engine_image: "ghcr.io/hangar/vllm:0.9.1",
+    frontend_image: null,
     engine_args: { "--enable-chunked-prefill": true },
-    imported_args: {},
     quantization: "fp8",
     dtype: "bfloat16",
     parallelism: { tensor: 8, pipeline: 1, expert: 1 },
@@ -873,9 +873,11 @@ export const recipes: Recipe[] = [
       prefix_cache_enabled: true,
       prefix_cache_config: { blocks: 4096 },
     },
+    imported_args: {},
     serving: emptyServing(),
     capabilities: emptyCapabilities(),
-    resolved_engine_args: {},
+    resolved_engine_args: { "enable-chunked-prefill": "true" },
+    overlay: { pod_spec: {}, dynamo: {} },
     shape: {
       device_class: "h100-80gb-sxm",
       device_count: 8,
@@ -884,24 +886,14 @@ export const recipes: Recipe[] = [
       topology_domain_kind: "nvswitch",
     },
     resources: { cpu_cores: 64, memory_mib: 262_144, disk_gib: 512 },
-    labels: { tier: "prod" },
-    created_at: CREATED,
-    updated_at: null,
-    revision: REV,
   },
-  {
-    id: uid("rec_"),
+  bge: {
     artifact_id: artifacts[1].id,
-    served_model_name: null,
-    resolved_served_model_name: "meta-llama/llama-3.3-70b-instruct",
-    name: "bge-m3-l40s",
-    version: 1,
-    lifecycle: "published",
     engine: "vllm",
     engine_version: "0.9.1",
     engine_image: null,
+    frontend_image: null,
     engine_args: {},
-    imported_args: {},
     quantization: null,
     dtype: "float16",
     parallelism: { tensor: 1, pipeline: 1, expert: 1 },
@@ -913,9 +905,11 @@ export const recipes: Recipe[] = [
       prefix_cache_enabled: false,
       prefix_cache_config: {},
     },
+    imported_args: {},
     serving: emptyServing(),
     capabilities: emptyCapabilities(),
     resolved_engine_args: {},
+    overlay: { pod_spec: {}, dynamo: {} },
     shape: {
       device_class: "l40s-48gb-pcie",
       device_count: 1,
@@ -924,24 +918,14 @@ export const recipes: Recipe[] = [
       topology_domain_kind: null,
     },
     resources: { cpu_cores: null, memory_mib: null, disk_gib: null },
-    labels: {},
-    created_at: CREATED,
-    updated_at: null,
-    revision: REV,
   },
-  {
-    id: uid("rec_"),
+  eval: {
     artifact_id: artifacts[0].id,
-    served_model_name: null,
-    resolved_served_model_name: "meta-llama/llama-3.3-70b-instruct",
-    name: "llama-70b-a100-eval",
-    version: 1,
-    lifecycle: "published",
     engine: "vllm",
     engine_version: "0.9.1",
     engine_image: null,
+    frontend_image: null,
     engine_args: {},
-    imported_args: {},
     quantization: null,
     dtype: "bfloat16",
     parallelism: { tensor: 2, pipeline: 1, expert: 1 },
@@ -953,9 +937,11 @@ export const recipes: Recipe[] = [
       prefix_cache_enabled: false,
       prefix_cache_config: {},
     },
+    imported_args: {},
     serving: emptyServing(),
     capabilities: emptyCapabilities(),
     resolved_engine_args: {},
+    overlay: { pod_spec: {}, dynamo: {} },
     shape: {
       device_class: "a100-80gb-sxm",
       device_count: 2,
@@ -964,12 +950,13 @@ export const recipes: Recipe[] = [
       topology_domain_kind: "nvlink",
     },
     resources: { cpu_cores: 32, memory_mib: 131_072, disk_gib: 256 },
-    labels: { tier: "batch" },
-    created_at: CREATED,
-    updated_at: null,
-    revision: REV,
   },
-]
+} satisfies Record<string, Workload["serving"]>
+
+/** `svg_` plus sixty-four hex, the way the plane spells one. */
+function digest(seed: string): string {
+  return `svg_${seed.repeat(64).slice(0, 64)}`
+}
 
 /**
  * Workload ids are minted before the deployments so a deployment can name its
@@ -1221,22 +1208,17 @@ function scale(
 
 function workload(
   id: string,
-  fields: Omit<
-    Workload,
-    "id" | "scale" | "deployments" | "recipe_name" | "artifact_tag"
-  > & {
+  fields: Omit<Workload, "id" | "scale" | "deployments" | "artifact_tag"> & {
     bounds: { min: number; max: number; desired: number }
-    recipe_name?: string | null
     artifact_tag?: string | null
   }
 ): Workload {
-  const { bounds, recipe_name = null, artifact_tag = null, ...rest } = fields
+  const { bounds, artifact_tag = null, ...rest } = fields
   const shares = deployments
     .filter((d) => d.workload_id === id)
     .map((d) => share(d))
   return {
     ...rest,
-    recipe_name,
     artifact_tag,
     id,
     scale: scale(rest.kind, bounds, shares),
@@ -1254,14 +1236,12 @@ export const workloads: Workload[] = [
     preemptible: false,
     paused: false,
     gang_size: 1,
-    recipe_id: recipes[0].id,
-    served_model_name: null,
-    resolved_served_model_name: "meta-llama/llama-3.3-70b-instruct",
+    serving_digest: digest("a"),
+    serving: serving.llama,
+    served_model_name: "meta-llama/llama-3.3-70b-instruct",
     adapter_artifact_ids: [],
     overrides: { "--max-num-seqs": 256 },
     labels: { tier: "prod" },
-    requires_single_topology_domain: true,
-    topology_domain_kind: "nvswitch",
     strategy: "spread",
     cluster_floors: { [clusters[2].id]: 2 },
     max_clusters: 2,
@@ -1283,14 +1263,12 @@ export const workloads: Workload[] = [
     preemptible: false,
     paused: false,
     gang_size: 1,
-    recipe_id: recipes[1].id,
-    served_model_name: null,
-    resolved_served_model_name: "meta-llama/llama-3.3-70b-instruct",
+    serving_digest: digest("b"),
+    serving: serving.bge,
+    served_model_name: "meta-llama/llama-3.3-70b-instruct",
     adapter_artifact_ids: [],
     overrides: {},
     labels: {},
-    requires_single_topology_domain: null,
-    topology_domain_kind: null,
     strategy: "pack",
     cluster_floors: {},
     max_clusters: null,
@@ -1312,14 +1290,12 @@ export const workloads: Workload[] = [
     preemptible: true,
     paused: false,
     gang_size: 8,
-    recipe_id: recipes[2].id,
-    served_model_name: null,
-    resolved_served_model_name: "meta-llama/llama-3.3-70b-instruct",
+    serving_digest: digest("c"),
+    serving: serving.eval,
+    served_model_name: "meta-llama/llama-3.3-70b-instruct",
     adapter_artifact_ids: [artifacts[1].id],
     overrides: {},
     labels: { tier: "batch" },
-    requires_single_topology_domain: null,
-    topology_domain_kind: null,
     strategy: "pack",
     cluster_floors: {},
     max_clusters: 1,
@@ -1338,9 +1314,7 @@ export const endpoints: Endpoint[] = [
   {
     id: uid("end_"),
     name: "chat",
-    model_slug: null,
-    resolved_model_slug: "chat",
-    display_name: "Chat completions",
+    slug: "meta-llama/llama-3.3-70b-instruct",
     project_id: projects[0].id,
     visibility: "public",
     routing_strategy: "weighted",
@@ -1371,9 +1345,7 @@ export const endpoints: Endpoint[] = [
   {
     id: uid("end_"),
     name: "embeddings",
-    model_slug: null,
-    resolved_model_slug: "embeddings",
-    display_name: null,
+    slug: "baai/bge-m3",
     project_id: projects[0].id,
     visibility: "private",
     routing_strategy: "weighted",
@@ -1811,7 +1783,7 @@ const deploymentTimeline: PlaneEvent[] = [
     severity: "info",
     subject: { type: "deployment", id: deployments[0].id },
     operation_id: null,
-    message: "llama-70b-prod was created on iad-1 from recipe llama-70b",
+    message: "llama-70b-prod was created on iad-1",
     details: {
       deployment_id: deployments[0].id,
       name: "llama-70b-prod",
@@ -2207,8 +2179,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
     provenance: {
       model: "llama-70b",
       deployment_generation: 7,
-      recipe_id: recipes[0].id,
-      recipe_version: 3,
+      serving_digest: workloads[0].serving_digest,
       engine_args: { "--max-num-seqs": 256, "--kv-cache-dtype": "fp8" },
       serving: {},
     },
@@ -2289,8 +2260,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
     provenance: {
       model: "llama-70b",
       deployment_generation: 7,
-      recipe_id: recipes[0].id,
-      recipe_version: 3,
+      serving_digest: workloads[0].serving_digest,
       engine_args: { "--max-num-seqs": 256, "--kv-cache-dtype": "fp8" },
       serving: {},
     },
@@ -2371,8 +2341,7 @@ export const benchmarkRuns: BenchmarkRun[] = [
     provenance: {
       model: "mixtral-8x22b",
       deployment_generation: 2,
-      recipe_id: recipes[1].id,
-      recipe_version: 1,
+      serving_digest: workloads[1].serving_digest,
       engine_args: {},
       serving: {},
     },

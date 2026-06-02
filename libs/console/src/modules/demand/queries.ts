@@ -9,12 +9,10 @@ import {
   createArtifact,
   createArtifactBaseline,
   createEndpoint,
-  createRecipe,
   createWorkload,
   deleteArtifact,
   deleteArtifactBaseline,
   deleteEndpoint,
-  deleteRecipe,
   deleteWorkload,
   fetchArtifact,
   fetchArtifactBaselines,
@@ -25,10 +23,6 @@ import {
   fetchDeployments,
   fetchEndpoint,
   fetchEndpoints,
-  fetchRecipe,
-  fetchRecipeBenchmarkSummary,
-  fetchRecipeUsage,
-  fetchRecipes,
   fetchWorkload,
   fetchWorkloadPlacement,
   fetchWorkloads,
@@ -38,15 +32,14 @@ import {
   updateArtifactBaseline,
   updateDeployment,
   updateEndpoint,
-  updateRecipe,
   updateWorkload,
   type ArtifactFilters,
   type DeploymentFilters,
   type EndpointFilters,
-  type RecipeFilters,
   type WorkloadFilters,
 } from "./api"
-import type { FitmentParams } from "./types"
+import { artifactSource } from "./display"
+import type { Artifact, FitmentParams } from "./types"
 import type {
   ArtifactBaselineCreateRequest,
   ArtifactBaselineUpdateRequest,
@@ -57,9 +50,6 @@ import type {
   DeploymentUpdateRequest,
   EndpointCreateRequest,
   EndpointUpdateRequest,
-  RecipeCreateRequest,
-  RecipeUpdateRequest,
-  RecipeUsage,
   Workload,
   WorkloadCreateRequest,
   WorkloadUpdateRequest,
@@ -83,8 +73,8 @@ export function useArtifact(ref: string) {
 }
 
 /**
- * One artifact's dependants — recipes, workloads and downstream artifacts —
- * counted at read time by the plane rather than stored on the object.
+ * One artifact's dependants — workloads and downstream artifacts — counted at
+ * read time by the plane rather than stored on the object.
  */
 export function useArtifactUsage(ref: string) {
   return useQuery({
@@ -140,29 +130,29 @@ export function useDerivedArtifacts(baseArtifact: string) {
 }
 
 /**
- * The distinct quantizations declared for each artifact, read from its recipes.
- * Quantization is a recipe property, not an artifact one, so the list column
- * fans out one recipe read per artifact and collapses the set per id.
+ * The distinct quantizations declared for each artifact, read from the workloads
+ * serving it. Quantization is a serving property, not an artifact one, so the list
+ * column fans out one workload read per artifact and collapses the set per id.
  */
 export function useArtifactQuantizations(ids: string[]) {
   const results = useQueries({
     queries: ids.map((id) => ({
-      queryKey: ["recipes", "by-artifact", id],
-      queryFn: () => fetchRecipes({ artifact: id }, undefined, 200),
+      queryKey: ["workloads", "by-artifact", id],
+      queryFn: () => fetchWorkloads({ artifact: id }, undefined, 200),
       enabled: !!id,
     })),
   })
   const byId = new Map<string, string[]>()
   results.forEach((result, index) => {
     const quants = (result.data?.items ?? [])
-      .map((recipe) => recipe.quantization)
+      .map((workload) => workload.serving.quantization)
       .filter((q): q is string => !!q)
     byId.set(ids[index], [...new Set(quants)])
   })
   return byId
 }
 
-/** Every artifact, drained — recipes and adapter lists reference them by id. */
+/** Every artifact, drained — workloads and adapter lists reference them by id. */
 export function useArtifactOptions() {
   return useAllPages(["artifacts", "options"], (cursor) =>
     fetchArtifacts({}, cursor, 200)
@@ -174,6 +164,29 @@ export function useArtifactOptions() {
  * whole repo tree, so it happens when someone asks for it and its `isPending`
  * and `error` belong to that one press, not to a cache key.
  */
+/**
+ * The serving parameters an artifact implies, and what the corpus has run.
+ *
+ * A read of `/artifacts/resolve` against the source the artifact was registered
+ * from, so that a form has an answer for every field before anybody types. It is
+ * a query rather than the mutation beside it because nothing here is a press: the
+ * same weights resolve to the same proposal every time, and it is fetched the
+ * moment an artifact is chosen so the defaults are already there.
+ *
+ * Disabled for an artifact whose bytes came from somewhere the plane cannot go
+ * back and ask, which is the same condition the refresh button is disabled on.
+ */
+export function useArtifactServingDefaults(artifact: Artifact | null) {
+  const source = artifact ? artifactSource(artifact) : null
+  return useQuery({
+    queryKey: ["artifacts", "resolve", source],
+    queryFn: () => resolveArtifact(source!),
+    enabled: !!source,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  })
+}
+
 export function useResolveArtifact() {
   return useMutation({
     mutationFn: (source: string) => resolveArtifact(source),
@@ -232,7 +245,7 @@ export function useDeleteArtifact() {
     mutationFn: (ref: string) => deleteArtifact(ref),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["artifacts"] })
-      client.invalidateQueries({ queryKey: ["recipes"] })
+      client.invalidateQueries({ queryKey: ["workloads"] })
     },
   })
 }
@@ -280,98 +293,6 @@ export function useDeleteArtifactBaseline(ref: string) {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["artifacts", "baselines", ref] })
       client.invalidateQueries({ queryKey: ["benchmarks"] })
-    },
-  })
-}
-
-export function useRecipes(filters: RecipeFilters = {}) {
-  return useCursorList(["recipes", filters], (cursor) =>
-    fetchRecipes(filters, cursor)
-  )
-}
-
-export function useRecipe(ref: string) {
-  return useQuery({
-    queryKey: ["recipes", "detail", ref],
-    queryFn: () => fetchRecipe(ref),
-    enabled: !!ref,
-  })
-}
-
-export function useRecipeOptions() {
-  return useAllPages(["recipes", "options"], (cursor) =>
-    fetchRecipes({}, cursor, 200)
-  )
-}
-
-/** How many workloads name this recipe, counted at read time by the plane. */
-export function useRecipeUsage(ref: string) {
-  return useQuery({
-    queryKey: ["recipes", "usage", ref],
-    queryFn: () => fetchRecipeUsage(ref),
-    enabled: !!ref,
-  })
-}
-
-/**
- * Usage for a set of recipes, one read each. The list surfaces a workload count
- * per row and the plane counts usage per recipe — there is no batched rollup, so
- * this fans out and reads back a map by id.
- */
-export function useRecipeUsages(ids: string[]) {
-  const results = useQueries({
-    queries: ids.map((id) => ({
-      queryKey: ["recipes", "usage", id],
-      queryFn: () => fetchRecipeUsage(id),
-      enabled: !!id,
-    })),
-  })
-  const byId = new Map<string, RecipeUsage>()
-  results.forEach((result, index) => {
-    if (result.data) byId.set(ids[index], result.data)
-  })
-  return byId
-}
-
-/**
- * Offline benchmark rollup for a recipe — peak measured output-token throughput
- * over graded runs. Held-in-plane offline measurement, never live serving telemetry.
- */
-export function useRecipeBenchmarkSummary(ref: string) {
-  return useQuery({
-    queryKey: ["recipes", "benchmarks-summary", ref],
-    queryFn: () => fetchRecipeBenchmarkSummary(ref),
-    enabled: !!ref,
-  })
-}
-
-export function useCreateRecipe() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (body: RecipeCreateRequest) => createRecipe(body),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["recipes"] }),
-  })
-}
-
-export function useUpdateRecipe() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (vars: {
-      ref: string
-      body: RecipeUpdateRequest
-      revision?: string
-    }) => updateRecipe(vars.ref, vars.body, vars.revision),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["recipes"] }),
-  })
-}
-
-export function useDeleteRecipe() {
-  const client = useQueryClient()
-  return useMutation({
-    mutationFn: (ref: string) => deleteRecipe(ref),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: ["recipes"] })
-      client.invalidateQueries({ queryKey: ["workloads"] })
     },
   })
 }
@@ -425,7 +346,7 @@ export function useWorkloadPlacement(ref: string, project?: string) {
   })
 }
 
-/** Every workload, drained — deployments and endpoint targets resolve recipe through them. */
+/** Every workload, drained — deployments and endpoint targets resolve serving through them. */
 export function useWorkloadOptions() {
   return useAllPages(["workloads", "options"], (cursor) =>
     fetchWorkloads({}, cursor, 200)

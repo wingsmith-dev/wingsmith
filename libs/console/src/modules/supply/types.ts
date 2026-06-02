@@ -179,7 +179,7 @@ export interface DeviceClassInventory {
 /**
  * `DeviceClassSchema` — one GPU model, as the plane names it.
  *
- * `name` is the identifier: the string that appears on a pool, a recipe shape,
+ * `name` is the identifier: the string that appears on a pool, a serving shape,
  * a quota and a device, and the only one that goes back over the wire. `label`
  * is the only one to put in front of a person.
  *

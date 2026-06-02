@@ -31,7 +31,6 @@ import { Route as AppPoolsRouteRouteImport } from './routes/_app/pools/route'
 import { Route as AppPriorityClassesRouteRouteImport } from './routes/_app/priority-classes/route'
 import { Route as AppProjectsRouteRouteImport } from './routes/_app/projects/route'
 import { Route as AppQuotasRouteRouteImport } from './routes/_app/quotas/route'
-import { Route as AppRecipesRouteRouteImport } from './routes/_app/recipes/route'
 import { Route as AppSettingsRouteRouteImport } from './routes/_app/settings/route'
 import { Route as AppTenantsRouteRouteImport } from './routes/_app/tenants/route'
 import { Route as AppWorkloadsRouteRouteImport } from './routes/_app/workloads/route'
@@ -44,7 +43,6 @@ import { Route as AppEndpointsEndpointIdRouteRouteImport } from './routes/_app/e
 import { Route as AppNodesNodeIdRouteRouteImport } from './routes/_app/nodes/$nodeId/route'
 import { Route as AppOperationsOperationIdRouteRouteImport } from './routes/_app/operations/$operationId/route'
 import { Route as AppPoolsPoolIdRouteRouteImport } from './routes/_app/pools/$poolId/route'
-import { Route as AppRecipesRecipeIdRouteRouteImport } from './routes/_app/recipes/$recipeId/route'
 import { Route as AppWorkloadsWorkloadIdRouteRouteImport } from './routes/_app/workloads/$workloadId/route'
 import { Route as AppWorkloadsNewRouteRouteImport } from './routes/_app/workloads/new/route'
 import { Route as AppBenchmarksRequestsRequestIdRouteRouteImport } from './routes/_app/benchmarks/requests/$requestId/route'
@@ -158,11 +156,6 @@ const AppQuotasRouteRoute = AppQuotasRouteRouteImport.update({
   path: '/quotas',
   getParentRoute: () => AppRoute,
 } as any)
-const AppRecipesRouteRoute = AppRecipesRouteRouteImport.update({
-  id: '/recipes',
-  path: '/recipes',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppSettingsRouteRoute = AppSettingsRouteRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -229,11 +222,6 @@ const AppPoolsPoolIdRouteRoute = AppPoolsPoolIdRouteRouteImport.update({
   path: '/$poolId',
   getParentRoute: () => AppPoolsRouteRoute,
 } as any)
-const AppRecipesRecipeIdRouteRoute = AppRecipesRecipeIdRouteRouteImport.update({
-  id: '/$recipeId',
-  path: '/$recipeId',
-  getParentRoute: () => AppRecipesRouteRoute,
-} as any)
 const AppWorkloadsWorkloadIdRouteRoute =
   AppWorkloadsWorkloadIdRouteRouteImport.update({
     id: '/$workloadId',
@@ -274,7 +262,6 @@ export interface FileRoutesByFullPath {
   '/priority-classes': typeof AppPriorityClassesRouteRoute
   '/projects': typeof AppProjectsRouteRoute
   '/quotas': typeof AppQuotasRouteRoute
-  '/recipes': typeof AppRecipesRouteRouteWithChildren
   '/settings': typeof AppSettingsRouteRoute
   '/tenants': typeof AppTenantsRouteRoute
   '/workloads': typeof AppWorkloadsRouteRouteWithChildren
@@ -287,7 +274,6 @@ export interface FileRoutesByFullPath {
   '/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
   '/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
-  '/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
   '/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
   '/workloads/new': typeof AppWorkloadsNewRouteRoute
   '/benchmarks/requests/$requestId': typeof AppBenchmarksRequestsRequestIdRouteRoute
@@ -314,7 +300,6 @@ export interface FileRoutesByTo {
   '/priority-classes': typeof AppPriorityClassesRouteRoute
   '/projects': typeof AppProjectsRouteRoute
   '/quotas': typeof AppQuotasRouteRoute
-  '/recipes': typeof AppRecipesRouteRouteWithChildren
   '/settings': typeof AppSettingsRouteRoute
   '/tenants': typeof AppTenantsRouteRoute
   '/workloads': typeof AppWorkloadsRouteRouteWithChildren
@@ -327,7 +312,6 @@ export interface FileRoutesByTo {
   '/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
   '/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
-  '/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
   '/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
   '/workloads/new': typeof AppWorkloadsNewRouteRoute
   '/benchmarks/requests/$requestId': typeof AppBenchmarksRequestsRequestIdRouteRoute
@@ -356,7 +340,6 @@ export interface FileRoutesById {
   '/_app/priority-classes': typeof AppPriorityClassesRouteRoute
   '/_app/projects': typeof AppProjectsRouteRoute
   '/_app/quotas': typeof AppQuotasRouteRoute
-  '/_app/recipes': typeof AppRecipesRouteRouteWithChildren
   '/_app/settings': typeof AppSettingsRouteRoute
   '/_app/tenants': typeof AppTenantsRouteRoute
   '/_app/workloads': typeof AppWorkloadsRouteRouteWithChildren
@@ -369,7 +352,6 @@ export interface FileRoutesById {
   '/_app/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
   '/_app/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/_app/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
-  '/_app/recipes/$recipeId': typeof AppRecipesRecipeIdRouteRoute
   '/_app/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
   '/_app/workloads/new': typeof AppWorkloadsNewRouteRoute
   '/_app/benchmarks/requests/$requestId': typeof AppBenchmarksRequestsRequestIdRouteRoute
@@ -398,7 +380,6 @@ export interface FileRouteTypes {
     | '/priority-classes'
     | '/projects'
     | '/quotas'
-    | '/recipes'
     | '/settings'
     | '/tenants'
     | '/workloads'
@@ -411,7 +392,6 @@ export interface FileRouteTypes {
     | '/nodes/$nodeId'
     | '/operations/$operationId'
     | '/pools/$poolId'
-    | '/recipes/$recipeId'
     | '/workloads/$workloadId'
     | '/workloads/new'
     | '/benchmarks/requests/$requestId'
@@ -438,7 +418,6 @@ export interface FileRouteTypes {
     | '/priority-classes'
     | '/projects'
     | '/quotas'
-    | '/recipes'
     | '/settings'
     | '/tenants'
     | '/workloads'
@@ -451,7 +430,6 @@ export interface FileRouteTypes {
     | '/nodes/$nodeId'
     | '/operations/$operationId'
     | '/pools/$poolId'
-    | '/recipes/$recipeId'
     | '/workloads/$workloadId'
     | '/workloads/new'
     | '/benchmarks/requests/$requestId'
@@ -479,7 +457,6 @@ export interface FileRouteTypes {
     | '/_app/priority-classes'
     | '/_app/projects'
     | '/_app/quotas'
-    | '/_app/recipes'
     | '/_app/settings'
     | '/_app/tenants'
     | '/_app/workloads'
@@ -492,7 +469,6 @@ export interface FileRouteTypes {
     | '/_app/nodes/$nodeId'
     | '/_app/operations/$operationId'
     | '/_app/pools/$poolId'
-    | '/_app/recipes/$recipeId'
     | '/_app/workloads/$workloadId'
     | '/_app/workloads/new'
     | '/_app/benchmarks/requests/$requestId'
@@ -660,13 +636,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppQuotasRouteRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/recipes': {
-      id: '/_app/recipes'
-      path: '/recipes'
-      fullPath: '/recipes'
-      preLoaderRoute: typeof AppRecipesRouteRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -750,13 +719,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/pools/$poolId'
       preLoaderRoute: typeof AppPoolsPoolIdRouteRouteImport
       parentRoute: typeof AppPoolsRouteRoute
-    }
-    '/_app/recipes/$recipeId': {
-      id: '/_app/recipes/$recipeId'
-      path: '/$recipeId'
-      fullPath: '/recipes/$recipeId'
-      preLoaderRoute: typeof AppRecipesRecipeIdRouteRouteImport
-      parentRoute: typeof AppRecipesRouteRoute
     }
     '/_app/workloads/$workloadId': {
       id: '/_app/workloads/$workloadId'
@@ -887,18 +849,6 @@ const AppPoolsRouteRouteWithChildren = AppPoolsRouteRoute._addFileChildren(
   AppPoolsRouteRouteChildren,
 )
 
-interface AppRecipesRouteRouteChildren {
-  AppRecipesRecipeIdRouteRoute: typeof AppRecipesRecipeIdRouteRoute
-}
-
-const AppRecipesRouteRouteChildren: AppRecipesRouteRouteChildren = {
-  AppRecipesRecipeIdRouteRoute: AppRecipesRecipeIdRouteRoute,
-}
-
-const AppRecipesRouteRouteWithChildren = AppRecipesRouteRoute._addFileChildren(
-  AppRecipesRouteRouteChildren,
-)
-
 interface AppWorkloadsRouteRouteChildren {
   AppWorkloadsWorkloadIdRouteRoute: typeof AppWorkloadsWorkloadIdRouteRoute
   AppWorkloadsNewRouteRoute: typeof AppWorkloadsNewRouteRoute
@@ -932,7 +882,6 @@ interface AppRouteChildren {
   AppPriorityClassesRouteRoute: typeof AppPriorityClassesRouteRoute
   AppProjectsRouteRoute: typeof AppProjectsRouteRoute
   AppQuotasRouteRoute: typeof AppQuotasRouteRoute
-  AppRecipesRouteRoute: typeof AppRecipesRouteRouteWithChildren
   AppSettingsRouteRoute: typeof AppSettingsRouteRoute
   AppTenantsRouteRoute: typeof AppTenantsRouteRoute
   AppWorkloadsRouteRoute: typeof AppWorkloadsRouteRouteWithChildren
@@ -958,7 +907,6 @@ const AppRouteChildren: AppRouteChildren = {
   AppPriorityClassesRouteRoute: AppPriorityClassesRouteRoute,
   AppProjectsRouteRoute: AppProjectsRouteRoute,
   AppQuotasRouteRoute: AppQuotasRouteRoute,
-  AppRecipesRouteRoute: AppRecipesRouteRouteWithChildren,
   AppSettingsRouteRoute: AppSettingsRouteRoute,
   AppTenantsRouteRoute: AppTenantsRouteRoute,
   AppWorkloadsRouteRoute: AppWorkloadsRouteRouteWithChildren,

@@ -7,6 +7,7 @@ import type {
   BenchmarkRequestCreateRequest,
   BenchmarkRun,
   BenchmarkVerdict,
+  ServingBenchmarkSummary,
 } from "./types"
 
 export interface BenchmarkFilters {
@@ -30,6 +31,20 @@ export function fetchBenchmarks(
 
 export function fetchBenchmark(ref: string): Promise<BenchmarkRun> {
   return api.get<BenchmarkRun>(`/benchmarks/${encodeURIComponent(ref)}`)
+}
+
+/**
+ * What one serving configuration has been measured at, rolled up now.
+ *
+ * An unknown digest answers with zero counts rather than a 404, so this is safe
+ * to call for any workload without checking first.
+ */
+export function fetchServingBenchmarkSummary(
+  digest: string
+): Promise<ServingBenchmarkSummary> {
+  return api.get<ServingBenchmarkSummary>(
+    `/benchmarks/serving/${encodeURIComponent(digest)}`
+  )
 }
 
 /**

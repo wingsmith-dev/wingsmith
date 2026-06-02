@@ -155,7 +155,7 @@ export function useDeviceClassLabel(): (name: string) => string {
 /**
  * The options for a class picker, with `current` guaranteed present.
  *
- * A pool or a recipe can carry a class the catalog does not list — hardware
+ * A pool or a workload can carry a class the catalog does not list — hardware
  * nobody has named yet still resolves and still gets scheduled onto. Dropping
  * it from the list would mean opening the edit form and silently changing the
  * value, so it is always offered, marked as the unlisted thing it is.

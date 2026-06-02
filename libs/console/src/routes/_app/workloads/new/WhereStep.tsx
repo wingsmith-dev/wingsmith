@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils"
 import { useMemo } from "react"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
-import type { ArtifactFit } from "@/modules/demand/types"
+import type { ArtifactFit, ServingFootprint } from "@/modules/demand/types"
 import { usePlacementPreview } from "@/modules/placement/queries"
 import type { ClusterVerdict } from "@/modules/placement/types"
 
@@ -27,12 +27,11 @@ import type { ClusterVerdict } from "@/modules/placement/types"
  * The derived value is pre-selected and unticking it is allowed. That direction matters:
  * the shape implies the requirement, so the common case needs no thought, and the case
  * the derivation cannot see — a pipeline-parallel replica somebody still wants inside one
- * rack for latency — is a tick rather than a recipe edit after the fact.
+ * rack for latency — is a tick rather than an edit after the fact.
  *
- * An unchanged box sends nothing at all. The workload's column is a nullable override of
- * the recipe's, and null means the recipe's answer stands rather than that there is no
- * requirement, so writing the derived value into it would freeze today's derivation onto
- * a workload that should follow its recipe.
+ * An unchanged box sends the derived answer, because there is now one column and it is
+ * not nullable: the workload's serving block carries the requirement outright, so what
+ * is written is whatever the box reads.
  */
 function FabricChoice({
   derived,
@@ -61,7 +60,7 @@ function FabricChoice({
           {derived
             ? "The shape needs it: a tensor group reaching over the backend fabric is the one split that does not work."
             : "Not needed by this shape — pipeline stages cross a network perfectly well. Tick it to ask for one anyway."}
-          {value !== null && " Overriding the recipe."}
+          {value !== null && " Overriding what the shape derived."}
         </p>
       </div>
     </label>
@@ -92,12 +91,11 @@ export interface WhereChoice {
   /** The one cluster, for `pin`. */
   pinned: string | null
   /**
-   * Whether every device of a replica must sit in one fabric, overriding the recipe.
+   * Whether every device of a replica must sit in one fabric.
    *
-   * Null is the ordinary value and means the recipe's own answer stands — which is not
-   * the same as "no requirement", and is why this is not a plain boolean. The shape
-   * implies the requirement in the common case, so an override is the exception and is
-   * sent only when someone actually disagrees with what was derived.
+   * Null means "whatever the shape derived" — which is not the same as false, and is
+   * why this is not a plain boolean. The shape implies the requirement in the common
+   * case, so a value here is somebody disagreeing with what was derived.
    */
   fabric: boolean | null
 }
@@ -154,7 +152,7 @@ const MODES: { value: WhereMode; label: string; caption: string }[] = [
 export function WhereStep({
   value,
   onChange,
-  recipe,
+  footprint,
   project,
   replicas,
   fit,
@@ -163,13 +161,13 @@ export function WhereStep({
   value: WhereChoice
   onChange: (choice: WhereChoice) => void
   /**
-   * The recipe placement would be asked about, or null when the deploy would derive a
-   * new one. Preview needs an id, and nothing has been written yet.
+   * The shape to ask the plane about, or null while nothing has been chosen.
+   * Preview takes the shape itself, so the verdict arrives before the write.
    */
-  recipe: string | null
+  footprint: ServingFootprint | null
   project: string | null
   replicas: number
-  /** The chosen fitment row, which is all there is to go on without a recipe. */
+  /** The chosen fitment row, which is all there is to go on before a shape is picked. */
   fit: ArtifactFit | null
   /**
    * What the chosen shape implies about fabric, which is what the checkbox starts on.
@@ -185,9 +183,30 @@ export function WhereStep({
    * a preview computed against a different class is a preview of a different question.
    */
   const preview = usePlacementPreview(
-    { recipe, project, replicas },
+    {
+      shape: footprint
+        ? {
+            device_class: footprint.device_class,
+            device_count: footprint.device_count,
+            tensor_parallel: footprint.tensor_parallel,
+            requires_single_topology_domain: value.fabric ?? derivedFabric,
+          }
+        : null,
+      project,
+      replicas,
+    },
     value.mode !== "pin"
   )
+
+  /** The clusters a narrowing choice leaves in play, for filtering the verdict list. */
+  const inPlay =
+    value.mode === "region" && value.regions.length > 0
+      ? (clusters ?? [])
+          .filter((cluster) => value.regions.includes(cluster.region))
+          .map((cluster) => cluster.id)
+      : value.mode === "clusters"
+        ? value.allowed
+        : []
 
   /**
    * Regions the fleet actually has, not a fixed list. A region with no cluster in it is
@@ -201,20 +220,10 @@ export function WhereStep({
     [clusters]
   )
 
-  /** The clusters a narrowing choice leaves in play, for filtering the verdict list. */
-  const inPlay =
-    value.mode === "region" && value.regions.length > 0
-      ? (clusters ?? [])
-          .filter((cluster) => value.regions.includes(cluster.region))
-          .map((cluster) => cluster.id)
-      : value.mode === "clusters"
-        ? value.allowed
-        : []
-
   return (
     <div className="space-y-3">
       {value.mode !== "pin" &&
-        (recipe ? (
+        (footprint && project ? (
           <RealVerdict
             loading={preview.isLoading}
             summary={preview.data?.summary}
@@ -359,11 +368,14 @@ export function WhereStep({
 }
 
 /**
- * The plane's own answer, when there is a recipe to ask about.
+ * The plane's own answer, for a configuration that does not exist yet.
  *
  * `verdicts` carry the losing clusters' reasoning too, and it is shown rather than
  * summarised: "6 free h100 in the largest nvlink domain, 8 asked for" is a next action
  * and "no capacity" is not.
+ *
+ * The decision comes back under the workload id `wkl_preview` and that id is
+ * deliberately not rendered: nothing was created, and a link to it is a 404.
  */
 function RealVerdict({
   loading,
@@ -434,14 +446,13 @@ function RealVerdict({
 }
 
 /**
- * What can be said before a recipe exists, said as exactly that and no more.
+ * What can be said before a shape or a project has been chosen, and no more.
  *
- * Placement preview takes a recipe id, and a deploy that derives a new recipe has none
- * to give until the moment it writes one. So this is not a verdict and does not pretend
- * to be: the fit knows how many devices of the class are allocatable across how many
- * clusters, and it explicitly does not know whether `device_count` of them share a
- * topology domain. Calling this a placement decision would be the one lie the fitment
- * panel already goes out of its way not to tell.
+ * Not a verdict and it does not pretend to be: the fit knows how many devices of the
+ * class are allocatable across how many clusters, and it explicitly does not know
+ * whether `device_count` of them share a topology domain. Calling this a placement
+ * decision would be the one lie the fitment panel already goes out of its way not to
+ * tell.
  */
 function CapacityHint({ fit }: { fit: ArtifactFit | null }) {
   if (!fit)
@@ -468,10 +479,9 @@ function CapacityHint({ fit }: { fit: ArtifactFit | null }) {
             </Badge>
           </TooltipTrigger>
           <TooltipContent className="max-w-80">
-            Placement preview needs a recipe, and this deploy would derive a new
-            one. Free devices say nothing about whether {fit.device_count} of
-            them share a topology domain — placement answers that when you
-            deploy, and the workload page shows what it decided.
+            Free devices say nothing about whether {fit.device_count} of them
+            share a topology domain — placement answers that when you deploy,
+            and the workload page shows what it decided.
           </TooltipContent>
         </Tooltip>
       </div>

@@ -55,8 +55,8 @@ function ClaimField({
 /**
  * What the publisher said this release does.
  *
- * The reference a recipe is judged against, never our configuration: a recipe
- * declaring a 256K context is only a finding when there is a published number
+ * The reference a workload is judged against, never our configuration: a serving
+ * block declaring a 256K context is only a finding when there is a published number
  * beside it. Everything here is a claim, so the provenance triple is part of the
  * block rather than an afterthought.
  */
@@ -74,7 +74,7 @@ export function UpstreamFields({
     <DeclaredSection
       title="Upstream"
       kind="asserted"
-      hint="What the publisher states, not what we measured and not what we configured. Nothing here reaches a cluster; the gap between it and a recipe is what conformance reports."
+      hint="What the publisher states, not what we measured and not what we configured. Nothing here reaches a cluster; the gap between it and what we serve is what conformance reports."
     >
       <FormGrid>
         <TextField
@@ -96,7 +96,7 @@ export function UpstreamFields({
           value={value.context_length}
           onChange={(context_length) => set({ context_length })}
           min={1}
-          hint="As published. The recipe's own is a separate number."
+          hint="As published. What a workload serves at is a separate number."
         />
         <NumberField
           label="Max output tokens"
@@ -180,7 +180,7 @@ export function UpstreamCard({ upstream }: { upstream: ArtifactUpstream }) {
       <CardContent className="space-y-3">
         {!claimed ? (
           <p className="font-mono text-2xs text-muted-foreground/50">
-            Nobody recorded the publisher's claim, so a recipe built on these
+            Nobody recorded the publisher's claim, so a workload built on these
             weights has nothing to be compared against.
           </p>
         ) : (

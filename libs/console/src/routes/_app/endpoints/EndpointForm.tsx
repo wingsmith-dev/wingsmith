@@ -41,8 +41,7 @@ export function EndpointForm({
 
   const [name, setName] = useState(endpoint?.name ?? "")
   const [project, setProject] = useState(endpoint?.project_id ?? "")
-  const [modelSlug, setModelSlug] = useState(endpoint?.model_slug ?? "")
-  const [displayName, setDisplayName] = useState(endpoint?.display_name ?? "")
+  const [slug, setSlug] = useState(endpoint?.slug ?? "")
   const [visibility, setVisibility] = useState(
     endpoint?.visibility ?? "private"
   )
@@ -70,8 +69,7 @@ export function EndpointForm({
   const error = create.error ?? update.error
 
   const shared = {
-    model_slug: modelSlug.trim() || null,
-    display_name: displayName || null,
+    slug: slug.trim(),
     visibility,
     routing_strategy: routing,
     enabled,
@@ -142,17 +140,11 @@ export function EndpointForm({
 
       <FormGrid>
         <TextField
-          label="Model slug"
-          value={modelSlug}
-          onChange={setModelSlug}
-          placeholder={endpoint?.name ?? "defaults to the name"}
-          hint="What clients send as `model`. Blank uses the endpoint name. Changing it takes effect on the gateway's next poll — nothing restarts."
-        />
-        <TextField
-          label="Display name"
-          value={displayName}
-          onChange={setDisplayName}
-          mono={false}
+          label="Slug"
+          value={slug}
+          onChange={setSlug}
+          placeholder="defaults to the model behind the first target"
+          hint="What clients send as `model`. Blank takes the slug of the weights behind the first target, which is what you want unless you are publishing an alias. The engine answers to the artifact's slug either way — the gateway rewrites between them on its next poll, so changing this restarts nothing."
         />
         <SelectField
           label="Visibility"

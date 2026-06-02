@@ -35,21 +35,30 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
-import { workloadPhaseTone } from "@/modules/demand/display"
 import {
+  parallelismLabel,
+  servingOverrides,
+  workloadPhaseTone,
+} from "@/modules/demand/display"
+import { ServingCards } from "@/components/demand/serving-config"
+import {
+  useArtifact,
   useDeleteWorkload,
   useEndpoints,
-  useRecipe,
   useWorkload,
   useWorkloadPlacement,
 } from "@/modules/demand/queries"
 import type {
   Endpoint,
+  Workload,
   WorkloadDeployment,
   WorkloadPlacementNode,
   WorkloadReplicaPlacement,
 } from "@/modules/demand/types"
-import { useWorkloadBenchmarks } from "@/modules/benchmarks/queries"
+import {
+  useServingBenchmarkSummary,
+  useWorkloadBenchmarks,
+} from "@/modules/benchmarks/queries"
 import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
 import { NewBenchmarkRequestDialog } from "@/components/benchmarks/new-request"
 import { useOperations, useWorkloadEvents } from "@/modules/machinery/queries"
@@ -94,7 +103,7 @@ import { toast } from "sonner"
 export function WorkloadDetailPage() {
   const { workloadId } = useParams({ from: "/_app/workloads/$workloadId" })
   const { data: workload, isLoading, error } = useWorkload(workloadId)
-  const { data: recipe } = useRecipe(workload?.recipe_id ?? "")
+  const { data: artifact } = useArtifact(workload?.serving.artifact_id ?? "")
   const { data: placement } = useWorkloadPlacement(workloadId)
   const endpoints = useEndpoints({ workload: workload?.id })
   const deploymentIds = useMemo(
@@ -102,6 +111,12 @@ export function WorkloadDetailPage() {
     [workload]
   )
   const { data: benchmarks } = useWorkloadBenchmarks(deploymentIds)
+  /**
+   * What this configuration has been measured at, asked by digest rather than by
+   * workload. Safe to ask unconditionally — an unmeasured digest is a zero count,
+   * not a 404.
+   */
+  const measured = useServingBenchmarkSummary(workload?.serving_digest)
   const operations = useOperations({ target: workload?.id })
   const settled =
     (workload?.phase === "running" || workload?.phase === "failed") &&
@@ -377,59 +392,87 @@ export function WorkloadDetailPage() {
                     </FieldGrid>
                   </Panel>
 
-                  <Panel title="Recipe & artifact">
+                  <Panel
+                    title="Serving & artifact"
+                    subtitle="How these weights are served. There is no object behind it — two workloads configured the same way carry the same digest."
+                  >
                     <FieldGrid>
-                      <Field label="Recipe">
-                        <Link to="/recipes" className="hover:underline">
-                          {recipe?.name ?? workload.recipe_id}
+                      <Field label="Artifact">
+                        <Link
+                          to="/artifacts/$artifactId"
+                          params={{ artifactId: workload.serving.artifact_id }}
+                          className="hover:underline"
+                        >
+                          {artifact?.name ??
+                            workload.artifact_tag ??
+                            workload.serving.artifact_id}
                         </Link>
                       </Field>
-                      {/* The recipe's name describes the fit; this is what a
-                          client puts in the `model` field of a request, and the
-                          two are deliberately different strings. */}
-                      <Field label="Model ID">
+                      {/* The name the ENGINE registers under, which is not the
+                          workload's name and not what a client sends either.
+                          A client sends the endpoint's slug; the gateway
+                          rewrites it to this. The two are equal unless somebody
+                          published an alias, and saying which is which here is
+                          the point — this panel used to say "Model ID" for a
+                          value that was one of three fields depending on what
+                          had been declared where. */}
+                      <Field label="Engine serves as">
                         <span className="font-mono">
-                          {workload.resolved_served_model_name ||
-                            recipe?.resolved_served_model_name ||
-                            "—"}
+                          {workload.served_model_name || "—"}
                         </span>
-                        {workload.served_model_name ? (
-                          <span className="ml-2 text-2xs text-muted-foreground/60">
-                            set on this workload
-                          </span>
-                        ) : recipe?.served_model_name ? (
-                          <span className="ml-2 text-2xs text-muted-foreground/60">
-                            set on the recipe
-                          </span>
-                        ) : null}
+                        <span className="ml-2 text-2xs text-muted-foreground/60">
+                          from the artifact&rsquo;s slug
+                        </span>
                       </Field>
                       <Field label="Hardware">
-                        {recipe
-                          ? `${recipe.shape.device_count}× ${recipe.shape.device_class}`
-                          : "—"}
+                        {workload.serving.shape.device_count}×{" "}
+                        {workload.serving.shape.device_class}
                       </Field>
                       <Field label="Engine">
-                        {recipe
-                          ? `${recipe.engine} ${recipe.engine_version}`
-                          : "—"}
+                        {workload.serving.engine}{" "}
+                        {workload.serving.engine_version}
+                      </Field>
+                      <Field label="Parallelism">
+                        {parallelismLabel(workload.serving.parallelism)}
                       </Field>
                       <Field label="Quantization">
                         <Dash>
-                          {recipe
-                            ? [recipe.quantization, recipe.dtype]
-                                .filter(Boolean)
-                                .join(" · ") || null
-                            : null}
+                          {[
+                            workload.serving.quantization,
+                            workload.serving.dtype,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || null}
                         </Dash>
                       </Field>
                       <Field label="Context length">
-                        {recipe?.context_length ?? "—"}
+                        {workload.serving.context_length.toLocaleString()}
+                      </Field>
+                      <Field label="Single domain">
+                        {workload.serving.shape.requires_single_topology_domain
+                          ? (workload.serving.shape.topology_domain_kind ??
+                            "yes")
+                          : "not required"}
                       </Field>
                       <Field label="Adapters">
                         {workload.adapter_artifact_ids?.length || "none"}
                       </Field>
+                      <Field label="Digest" className="sm:col-span-2">
+                        <span className="font-mono text-2xs break-all text-muted-foreground/70">
+                          {workload.serving_digest}
+                        </span>
+                      </Field>
                     </FieldGrid>
                   </Panel>
+
+                  <EngineArgsPanel workload={workload} />
+
+                  <ServingCards
+                    serving={workload.serving.serving}
+                    capabilities={workload.serving.capabilities}
+                    resolvedArgs={workload.serving.resolved_engine_args}
+                    engineArgs={workload.serving.engine_args}
+                  />
 
                   <Panel
                     title="Activity"
@@ -474,8 +517,25 @@ export function WorkloadDetailPage() {
                 />
                 {/* TODO-API sustainable concurrency is a data-plane analytic, not a benchmark field */}
                 <StatTile label="Sustainable concurrency" value="72" />
-                {/* TODO-API peak throughput is read from a harness summary the plane never normalises */}
-                <StatTile label="Peak throughput tested" value="19.3k tok/s" />
+                {/*
+                  Rolled up by the plane per `serving_digest`, so it counts every
+                  graded run of this configuration — including runs taken against a
+                  different workload that happens to be configured identically, which
+                  is the point of measuring a configuration rather than a name.
+                */}
+                <StatTile
+                  label="Peak throughput tested"
+                  value={
+                    measured.data?.peak_output_tokens_per_second != null
+                      ? `${Math.round(measured.data.peak_output_tokens_per_second).toLocaleString()} tok/s`
+                      : "—"
+                  }
+                  small={measured.data?.peak_output_tokens_per_second == null}
+                />
+                <StatTile
+                  label="Graded runs, this config"
+                  value={String(measured.data?.graded_run_count ?? 0)}
+                />
                 {/* TODO-API tuning recommendation is not computed by the plane */}
                 <StatTile
                   label="Recommendation"
@@ -564,9 +624,10 @@ export function WorkloadDetailPage() {
                 <div className="flex min-w-0 flex-col gap-4">
                   <Panel title="New run">
                     <p className="text-2xs text-muted-foreground/70">
-                      Requests a workload-level measurement of this recipe. The
-                      plane expands the ask into one run per placed deployment
-                      and grades it against the frozen standard.
+                      Requests a workload-level measurement of this serving
+                      configuration. The plane expands the ask into one run per
+                      placed deployment and grades it against the frozen
+                      standard.
                     </p>
                     <WriteAction>
                       <Button
@@ -744,7 +805,7 @@ export function WorkloadDetailPage() {
 
                   <Panel
                     title="Revision history"
-                    subtitle="Recipe and configuration changes over time"
+                    subtitle="Serving configuration changes over time"
                   >
                     {/* TODO-API revision history not exposed — only the current revision is on the workload */}
                     <DataTable
@@ -921,6 +982,60 @@ function SeeAllEvents({ onClick }: { onClick: () => void }) {
     >
       See all
     </button>
+  )
+}
+
+/**
+ * The engine's command line, resolved as the operator keys it.
+ *
+ * Carried over from the recipe page, because the question it answers did not go
+ * away with the object: `engine_args` is what somebody declared and
+ * `resolved_engine_args` is what the typed behaviour block made of it, and the
+ * only way to tell which value took effect is to see both.
+ */
+function EngineArgsPanel({ workload }: { workload: Workload }) {
+  const resolved = workload.serving.resolved_engine_args ?? {}
+  const declared = workload.serving.engine_args ?? {}
+  const overrides = servingOverrides(
+    workload.serving.engine,
+    declared,
+    workload.serving.serving
+  )
+  return (
+    <Panel
+      title="Engine arguments"
+      subtitle="The declared engine args with the typed serving block laid over the top, keyed the way the operator keys them."
+    >
+      <div className="space-y-3">
+        {Object.keys(resolved).length === 0 ? (
+          <p className="font-mono text-2xs text-muted-foreground/50">
+            None — the engine runs on its own defaults.
+          </p>
+        ) : (
+          <pre className="overflow-x-auto rounded-lg border bg-background/60 p-4 font-mono text-2xs leading-relaxed">
+            {Object.entries(resolved)
+              .map(([key, value]) => `${key}: ${value}`)
+              .join("\n")}
+          </pre>
+        )}
+        {overrides.length > 0 && (
+          <p className="text-2xs text-amber-700 dark:text-amber-400">
+            {overrides.map((o) => `--${o.flag}`).join(", ")} came from the typed
+            serving block; the engine args spelling of each is ignored.
+          </p>
+        )}
+        {Object.keys(declared).length > 0 && (
+          <div className="space-y-1.5">
+            <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+              As declared
+            </div>
+            <pre className="overflow-x-auto rounded-lg border bg-background/60 p-3 font-mono text-2xs">
+              {JSON.stringify(declared, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
+    </Panel>
   )
 }
 
@@ -1908,7 +2023,7 @@ interface RevisionRow {
 const MOCK_REVISIONS: RevisionRow[] = [
   {
     version: "v12",
-    change: "llama-3.1-70b-chat-fp8 (recipe updated)",
+    change: "llama-3.1-70b-chat-fp8 (serving updated)",
     rollout: "Rolling",
     status: "Active",
     statusTone: "ok",

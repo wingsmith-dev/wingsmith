@@ -156,8 +156,8 @@ export interface Board {
 }
 
 /**
- * A whole workload to place — the brick. Either a real one, read off its recipe
- * and its scale, or one somebody typed into the shape builder.
+ * A whole workload to place — the brick. Either a real one, read off its serving
+ * block and its scale, or one somebody typed into the shape builder.
  *
  * It names no cluster and no fabric: what a brick is and where it could go are
  * different questions, and the board answers the second one.
@@ -176,14 +176,12 @@ export interface Brick {
   /** Null for a hand-built shape that belongs to no workload. */
   workload: string | null
   /**
-   * The recipe this shape came from, and the project to ask on behalf of.
+   * The project to ask on behalf of, when there is a workload to ask about.
    *
-   * Present together, they make the brick a question the plane can answer —
-   * `POST /placement/preview` needs both, because quota and policy are per
-   * project and the shape is the recipe's. Absent, the brick is a hypothesis and
-   * only the board's own arithmetic applies to it.
+   * With `workload` set it makes the brick a question the plane can answer —
+   * quota and policy are per project. Absent, the brick is a hypothesis and only
+   * the board's own arithmetic applies to it.
    */
-  recipe: string | null
   project: string | null
   priority_class: string | null
   project_slug: string

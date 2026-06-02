@@ -3,9 +3,9 @@ import type {
   Artifact,
   ArtifactUpstream,
   EndpointSurface,
-  RecipeCapabilities,
-  RecipeReasoning,
-  RecipeServing,
+  ServingCapabilities,
+  ServingReasoning,
+  ServingBehaviour,
 } from "./types"
 
 const WORKLOAD_PHASE_TONES: Record<string, StatusTone> = {
@@ -23,19 +23,6 @@ const WORKLOAD_PHASE_TONES: Record<string, StatusTone> = {
 export function workloadPhaseTone(phase: string): StatusTone {
   return WORKLOAD_PHASE_TONES[phase] ?? "warn"
 }
-
-const RECIPE_LIFECYCLE_TONES: Record<string, StatusTone> = {
-  published: "ok",
-  draft: "neutral",
-  deprecated: "warn",
-}
-
-/** The tone for a recipe's lifecycle: published | draft | deprecated. */
-export function recipeLifecycleTone(lifecycle: string): StatusTone {
-  return RECIPE_LIFECYCLE_TONES[lifecycle] ?? "neutral"
-}
-
-export const RECIPE_LIFECYCLES = ["published", "draft", "deprecated"] as const
 
 export const WORKLOAD_PHASES = ["pending", "admitted", "placed", "running"]
 export const WORKLOAD_KINDS = ["service", "task", "gang"]
@@ -139,7 +126,7 @@ export function parallelismLabel(p: {
 export const LIFECYCLE_STEPS = [
   { key: "declared", label: "Declared" },
   { key: "accepted", label: "Accepted" },
-  { key: "dependencies", label: "Recipe & weights" },
+  { key: "dependencies", label: "Weights" },
   { key: "capacity", label: "Capacity" },
   { key: "rendering", label: "Rendering" },
   { key: "applied", label: "Applied" },
@@ -150,7 +137,6 @@ export type LifecycleStep = (typeof LIFECYCLE_STEPS)[number]["key"]
 
 const REASON_STEPS: Record<string, LifecycleStep> = {
   Accepted: "accepted",
-  RecipeNotDeclared: "dependencies",
   ArtifactNotDeclared: "dependencies",
   WeightsNotResident: "dependencies",
   WarmSetIncomplete: "dependencies",
@@ -206,7 +192,6 @@ export function lifecycleStepFor(
  */
 const REASON_TEXT: Record<string, string> = {
   Accepted: "The cluster has the instruction and is working on it",
-  RecipeNotDeclared: "Waiting for the recipe to reach the cluster",
   ArtifactNotDeclared: "Waiting for the artifact to reach the cluster",
   WeightsNotResident: "Downloading the weights onto the cluster",
   WarmSetIncomplete: "Weights are still being fetched",
@@ -252,7 +237,7 @@ export const SERVING_FLAGS: Record<string, Record<string, string>> = {
  *
  * vLLM parses tool calls with `--tool-call-parser` and dispatches them only with
  * `--enable-auto-tool-choice`. Set the first alone and the engine loads a parser
- * it never runs, so the recipe reads as configured while the endpoint returns the
+ * it never runs, so the workload reads as configured while the endpoint returns the
  * call as prose in `content`.
  *
  * These fill a gap rather than win one, which is the opposite of how a typed field
@@ -290,7 +275,7 @@ export interface ServingOverride {
 /** The flags the typed serving block speaks for, on this engine. */
 export function servingArgs(
   engine: string,
-  serving: RecipeServing
+  serving: ServingBehaviour
 ): Record<string, string> {
   const flags = SERVING_FLAGS[engine.trim().toLowerCase()] ?? {}
   const args: Record<string, string> = {}
@@ -321,7 +306,7 @@ export function servingArgs(
 export function servingOverrides(
   engine: string,
   engineArgs: Record<string, unknown>,
-  serving: RecipeServing
+  serving: ServingBehaviour
 ): ServingOverride[] {
   const flags = SERVING_FLAGS[engine.trim().toLowerCase()] ?? {}
   const derived = servingArgs(engine, serving)
@@ -348,7 +333,7 @@ export function servingOverrides(
 /** The valueless flags the typed serving block implies, on this engine. */
 export function servingCompanionArgs(
   engine: string,
-  serving: RecipeServing
+  serving: ServingBehaviour
 ): Record<string, string> {
   const implied = SERVING_COMPANION_FLAGS[engine.trim().toLowerCase()] ?? {}
   const args: Record<string, string> = {}
@@ -369,7 +354,7 @@ export function servingCompanionArgs(
 export function resolvedEngineArgs(
   engine: string,
   engineArgs: Record<string, unknown>,
-  serving: RecipeServing
+  serving: ServingBehaviour
 ): Record<string, string> {
   const resolved: Record<string, string> = {
     ...servingCompanionArgs(engine, serving),
@@ -381,7 +366,7 @@ export function resolvedEngineArgs(
 }
 
 /** Whether anything about reasoning was declared rather than left at its default. */
-export function reasoningDeclared(reasoning: RecipeReasoning): boolean {
+export function reasoningDeclared(reasoning: ServingReasoning): boolean {
   return Boolean(
     reasoning.default_on ||
     reasoning.parser ||
@@ -440,7 +425,7 @@ export const SURFACE_ENFORCEMENT: Record<keyof EndpointSurface, SurfaceField> =
     },
     streaming_transport: {
       enforcement: "obeyed",
-      note: "Whether the gateway passes SSE through or buffers to one response. Not the same claim as the recipe's `streaming_supported`.",
+      note: "Whether the gateway passes SSE through or buffers to one response. Not the same claim as the workload's `streaming_supported`.",
     },
     cors_enabled: {
       enforcement: "obeyed",
@@ -472,10 +457,11 @@ export function formatScore(value: number): string {
 }
 
 /**
- * The blocks a recipe that says nothing carries. Every default is the behaviour
- * of an undeclared recipe, so filling a form with these changes nothing.
+ * The blocks a serving configuration that says nothing carries. Every default is
+ * the behaviour of an undeclared block, so filling a form with these changes
+ * nothing.
  */
-export function emptyServing(): RecipeServing {
+export function emptyServing(): ServingBehaviour {
   return {
     reasoning: {
       default_on: false,
@@ -493,7 +479,7 @@ export function emptyServing(): RecipeServing {
   }
 }
 
-export function emptyCapabilities(): RecipeCapabilities {
+export function emptyCapabilities(): ServingCapabilities {
   return {
     reasoning_supported: false,
     streaming_supported: true,

@@ -13,48 +13,39 @@ import { Button } from "@/components/ui/button"
 import { formatError, shortenId } from "@/lib/format"
 import { useProjectOptions } from "@/modules/binding/queries"
 import {
-  DEFAULT_ENGINE,
-  derivedRecipeRequest,
+  derivedServingRequest,
   requiresSingleDomain,
   derivedWorkloadName,
-  footprintOfRecipe,
   footprintSummary,
-  matchExistingRecipe,
+  servingProvenance,
+  workloadsMatching,
+  type ServingProposal,
 } from "@/modules/demand/deploy"
 import {
   useArtifact,
-  useCreateRecipe,
+  useArtifactServingDefaults,
   useCreateWorkload,
-  useRecipes,
   useWorkloads,
 } from "@/modules/demand/queries"
 import type {
   Artifact,
   ArtifactFit,
-  Recipe,
-  RecipeFootprint,
+  ServingFootprint,
+  UpstreamServing,
+  Workload,
 } from "@/modules/demand/types"
-import { useNavigate, useSearch } from "@tanstack/react-router"
+import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { ArtifactPicker } from "./ArtifactPicker"
-import { RecipeReuse } from "./RecipeReuse"
 import type { NewWorkloadSearch } from "./route"
 import { Step } from "./Step"
 import { AUTO_WHERE, WhereStep, type WhereChoice } from "./WhereStep"
 
-/**
- * How the weights will be served — either a recipe that already exists or a footprint
- * a fit proposed and no recipe has been written for yet.
- *
- * The two are kept apart rather than normalised to a footprint, because the difference
- * is load-bearing downstream: an existing recipe has an id, so placement preview can be
- * asked a real question, and a deploy against it writes nothing but a workload.
- */
 /** The six numbers a fitment row is, if the link carried all of them. */
 function footprintFromSearch(
   search: NewWorkloadSearch
-): RecipeFootprint | null {
+): ServingFootprint | null {
   if (!search.class || !search.devices) return null
   return {
     device_class: search.class,
@@ -66,14 +57,17 @@ function footprintFromSearch(
   }
 }
 
-type How =
-  | { kind: "existing"; recipe: Recipe }
-  /**
-   * `fit` is null when the footprint arrived in the URL from an artifact page's Deploy
-   * rather than from a row clicked here. The six numbers are the whole of the footprint,
-   * but the fleet counts alongside them are not in the link, so the Where step says less.
-   */
-  | { kind: "derive"; footprint: RecipeFootprint; fit: ArtifactFit | null }
+/**
+ * The chosen shape, and the fitment row it came from.
+ *
+ * `fit` is null when the footprint arrived in the URL from an artifact page's Deploy
+ * rather than from a row clicked here. The six numbers are the whole of the footprint,
+ * but the fleet counts alongside them are not in the link, so the Where step says less.
+ */
+interface How {
+  footprint: ServingFootprint
+  fit: ArtifactFit | null
+}
 
 /**
  * Deploying something, as three questions and an answer.
@@ -95,7 +89,6 @@ export function NewWorkloadPage() {
   const navigate = useNavigate()
   const search = useSearch({ from: "/_app/workloads/new" })
   const { data: projects } = useProjectOptions()
-  const createRecipe = useCreateRecipe()
   const createWorkload = useCreateWorkload()
 
   /** An artifact named in the link. Resolved here so the picker can be skipped. */
@@ -115,9 +108,7 @@ export function NewWorkloadPage() {
 
   const [picked, setArtifact] = useState<Artifact | null>(null)
   const [how, setHow] = useState<How | null>(
-    linkedFootprint
-      ? { kind: "derive", footprint: linkedFootprint, fit: null }
-      : null
+    linkedFootprint ? { footprint: linkedFootprint, fit: null } : null
   )
   const [project, setProject] = useState("")
   const [replicas, setReplicas] = useState<number | null>(1)
@@ -129,33 +120,42 @@ export function NewWorkloadPage() {
   )
 
   const artifact = picked ?? linked.data ?? null
-  const recipes = useRecipes(artifact ? { artifact: artifact.id } : {})
-  const existing = artifact ? (recipes.items ?? []) : []
+  /**
+   * What the plane proposes for these weights, fetched the moment one is chosen.
+   *
+   * The whole point of the flow is that nobody should have to know the right
+   * parameters. The fit answers the shape; this answers everything under it, and
+   * `upstream` says who tested what — a field nobody touches is still right, and
+   * it can say why.
+   */
+  const proposed = useArtifactServingDefaults(artifact)
+  const proposal: ServingProposal = {
+    defaults: proposed.data?.serving,
+    upstream: proposed.data?.upstream,
+  }
   /** Only to avoid a name the list can already see taken. The plane owns collisions. */
   const workloads = useWorkloads({})
   const taken = useMemo(
     () => (workloads.items ?? []).map((workload) => workload.name),
     [workloads.items]
   )
-
-  const footprint = how
-    ? how.kind === "existing"
-      ? footprintOfRecipe(how.recipe)
-      : how.footprint
-    : null
-  const fit = how?.kind === "derive" ? how.fit : null
-  const recipeId = how?.kind === "existing" ? how.recipe.id : null
   /**
-   * What the chosen shape says about fabric, before anyone overrides it. Derived from the
-   * footprint for a new recipe and read off an existing one, so the box the Where step
-   * starts on is what would actually be written either way.
+   * Workloads already running exactly this. Shown, never acted on: the digest the
+   * plane computes is what makes two of them one configuration, and a second
+   * workload on one configuration is a normal thing to want.
    */
-  const derivedFabric =
-    how?.kind === "existing"
-      ? how.recipe.shape.requires_single_topology_domain
-      : how
-        ? requiresSingleDomain(how.footprint)
-        : false
+  const identical =
+    artifact && how
+      ? workloadsMatching(workloads.items ?? [], artifact, how.footprint)
+      : []
+
+  const footprint = how?.footprint ?? null
+  const fit = how?.fit ?? null
+  /**
+   * What the chosen shape says about fabric, before anyone overrides it. The box the
+   * Where step starts on is what would actually be written.
+   */
+  const derivedFabric = how ? requiresSingleDomain(how.footprint) : false
 
   const suggestedName = artifact ? derivedWorkloadName(artifact, taken) : ""
   const effectiveName = touchedName ? name : suggestedName
@@ -172,7 +172,7 @@ export function NewWorkloadPage() {
   const sole = projects?.length === 1 ? projects[0] : undefined
   const effectiveProject = project || sole?.id || ""
 
-  const pending = createRecipe.isPending || createWorkload.isPending
+  const pending = createWorkload.isPending
   const ready =
     !!artifact &&
     !!how &&
@@ -196,49 +196,37 @@ export function NewWorkloadPage() {
    */
   const pickHow = (choice: How) => {
     const refining =
-      choice.kind === "derive" &&
-      how?.kind === "derive" &&
-      how.footprint.device_class === choice.footprint.device_class
-    const counts =
-      choice.kind === "derive" ? (choice.fit?.layouts.length ?? 1) : 1
+      how?.footprint.device_class === choice.footprint.device_class
+    const counts = choice.fit?.layouts.length ?? 1
     setHow(choice)
     setOpen(refining || counts <= 1 ? 3 : 2)
   }
 
   /**
-   * Derive the recipe if one is needed, then create the workload.
+   * One call, carrying the serving block the fit implies.
    *
-   * Two calls rather than one, because the plane has no deploy endpoint yet. The dedup
-   * happens here for the same reason — `matchExistingRecipe` over the artifact's recipes
-   * so that deploying the same thing twice reuses the recipe instead of leaving a second
-   * identical one behind. That check belongs in the plane, where it could be a
-   * constraint rather than a race, and this is the console standing in for it.
+   * Nothing is deduplicated here and nothing needs to be: two workloads configured
+   * the same way carry the same `serving_digest`, which the plane computes, and that
+   * is the whole of what recipe reuse ever bought.
    */
   const submit = async () => {
     if (!artifact || !how) return
     const cluster = where.mode === "pin" ? where.pinned : null
 
+    const derived = derivedServingRequest(artifact, how.footprint, proposal)
+
     try {
-      let recipe: string
-      if (how.kind === "existing") {
-        recipe = how.recipe.id
-      } else {
-        const match = matchExistingRecipe(
-          existing,
-          artifact,
-          how.footprint,
-          DEFAULT_ENGINE
-        )
-        recipe =
-          match?.id ??
-          (
-            await createRecipe.mutateAsync(
-              derivedRecipeRequest(artifact, how.footprint)
-            )
-          ).id
-      }
       const workload = await createWorkload.mutateAsync({
-        recipe,
+        serving: {
+          ...derived,
+          shape: {
+            ...derived.shape,
+            // Inside the shape because that is what carries it: the fit derives
+            // the answer and the Where step is where somebody disagrees.
+            requires_single_topology_domain:
+              where.fabric ?? derived.shape.requires_single_topology_domain,
+          },
+        },
         name: effectiveName,
         project: effectiveProject,
         kind: "service",
@@ -247,10 +235,6 @@ export function NewWorkloadPage() {
         // for the mode that means them, so switching modes cannot leave one behind.
         allowed_regions: where.mode === "region" ? where.regions : [],
         allowed_clusters: where.mode === "clusters" ? where.allowed : [],
-        // Sent only when it disagrees with the recipe. Null is the ordinary value and
-        // means the recipe's own requirement stands, so writing the derived answer here
-        // would pin today's derivation onto a workload that should follow its recipe.
-        requires_single_topology_domain: where.fabric,
         // Absent on purpose: every workload carries one and the project's default
         // answers it. Repeating it here is how defaults drift.
         min_scale: replicas ?? 1,
@@ -316,32 +300,30 @@ export function NewWorkloadPage() {
                   {footprintSummary(footprint, fit?.label)}
                 </span>
                 <Badge variant="outline" className="font-mono text-2xs">
-                  {how?.kind === "existing"
-                    ? `${how.recipe.name} v${how.recipe.version}`
-                    : "new recipe, derived"}
+                  derived from the fit
                 </Badge>
               </div>
             )
           }
         >
           {artifact && (
-            <div className="space-y-4">
-              <RecipeReuse
-                recipes={existing}
-                onPick={(recipe) => pickHow({ kind: "existing", recipe })}
-              />
-              <ArtifactFitmentPanel
-                bare
-                mode="select"
-                artifact={artifact}
-                selected={how?.kind === "derive" ? how.footprint : null}
-                onPick={(picked, row) =>
-                  pickHow({ kind: "derive", footprint: picked, fit: row })
-                }
-              />
-            </div>
+            <ArtifactFitmentPanel
+              bare
+              mode="select"
+              artifact={artifact}
+              selected={how?.footprint ?? null}
+              onPick={(picked, row) => pickHow({ footprint: picked, fit: row })}
+            />
           )}
         </Step>
+
+        {how && (
+          <Proposed
+            proposal={proposal}
+            loading={proposed.isLoading}
+            identical={identical}
+          />
+        )}
 
         <Step
           index={3}
@@ -407,7 +389,7 @@ export function NewWorkloadPage() {
           <WhereStep
             value={where}
             onChange={setWhere}
-            recipe={recipeId}
+            footprint={footprint}
             project={effectiveProject || null}
             replicas={replicas ?? 1}
             fit={fit}
@@ -428,5 +410,123 @@ export function NewWorkloadPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+/**
+ * What will be written under the shape, and where each number came from.
+ *
+ * The complaint this flow exists to answer is that defining a serving
+ * configuration assumes the operator knows the right parameters, and they do not.
+ * So the answer is filled in and then attributed: `weights` is the plane's own
+ * arithmetic over `config.json`, `upstream` is a third party's tested
+ * configuration with a permalink behind it, and anything unlabelled came off the
+ * fitment row. A field nobody touches is still right, and it can say why.
+ *
+ * The identical-configuration line is informational and resolves nothing. Two
+ * workloads with one configuration carry one `serving_digest`, which is what
+ * reuse means now; whether a second one should exist is not this form's question.
+ */
+function Proposed({
+  proposal,
+  loading,
+  identical,
+}: {
+  proposal: ServingProposal
+  loading: boolean
+  identical: Workload[]
+}) {
+  const upstream = proposal.upstream ?? null
+  const at = servingProvenance(proposal)
+  const seeded = Object.entries(at).filter(([, from]) => from !== "derived")
+
+  return (
+    <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
+      {loading && (
+        <p className="font-mono text-2xs text-muted-foreground/50">
+          reading what these weights imply…
+        </p>
+      )}
+
+      {!loading && seeded.length === 0 && (
+        <p className="font-mono text-2xs text-muted-foreground/60">
+          Nothing is proposed for these weights beyond the fit. Every parameter
+          under the shape is the plane's own default, and all of them are
+          editable on the workload afterwards.
+        </p>
+      )}
+
+      {seeded.length > 0 && (
+        <div className="space-y-1">
+          <p className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+            Filled in for you
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {seeded.map(([field, from]) => (
+              <Badge
+                key={field}
+                variant="outline"
+                className="font-mono text-2xs"
+              >
+                {field.replace(/_/g, " ")}
+                <span className="ml-1 text-muted-foreground/50">
+                  {from === "weights" ? "from the weights" : "from vLLM"}
+                </span>
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {upstream && <UpstreamClaim upstream={upstream} />}
+
+      {identical.length > 0 && (
+        <p className="border-t pt-2 font-mono text-2xs text-muted-foreground/70">
+          {identical.length} other workload
+          {identical.length === 1 ? "" : "s"} run this exact configuration:{" "}
+          {identical.slice(0, 4).map((workload, index) => (
+            <span key={workload.id}>
+              {index > 0 && ", "}
+              <Link
+                to="/workloads/$workloadId"
+                params={{ workloadId: workload.id }}
+                className="underline hover:text-foreground"
+              >
+                {workload.name}
+              </Link>
+            </span>
+          ))}
+          {identical.length > 4 && ` and ${identical.length - 4} more`}. Nothing
+          stops a second one — they carry the same serving digest.
+        </p>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Who ran this, and on what.
+ *
+ * `verified_hardware` is the most useful sentence on the page and also the most
+ * easily misread: it says the configuration works on that node shape, and says
+ * nothing at all about whether the fleet owns one.
+ */
+function UpstreamClaim({ upstream }: { upstream: UpstreamServing }) {
+  return (
+    <p className="font-mono text-2xs text-muted-foreground/70">
+      {upstream.source} publishes a tested configuration for {upstream.model_id}
+      {upstream.verified_hardware.length > 0 &&
+        ` — verified on ${upstream.verified_hardware.join(", ")}`}
+      .{" "}
+      <a
+        href={upstream.source_uri}
+        target="_blank"
+        rel="noreferrer"
+        className="underline hover:text-foreground"
+      >
+        Read it
+      </a>
+      {upstream.nightly_required && " · needs a nightly engine build"}
+    </p>
   )
 }

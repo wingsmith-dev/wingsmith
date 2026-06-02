@@ -16,6 +16,7 @@ import {
   workloadPhaseTone,
 } from "@/modules/demand/display"
 import { useDeleteWorkload, useWorkloads } from "@/modules/demand/queries"
+import { footprintOfServing, footprintSummary } from "@/modules/demand/deploy"
 import type { Workload } from "@/modules/demand/types"
 import { WorkloadForm } from "./WorkloadForm"
 import { useState } from "react"
@@ -81,14 +82,12 @@ function columns(
       ),
     },
     {
-      key: "recipe",
-      header: "Recipe / artifact",
+      key: "serving",
+      header: "Serving / artifact",
       cell: (workload) => (
         <div className="flex flex-col gap-0.5">
           <span className="font-mono text-xs">
-            {workload.recipe_name ?? (
-              <Id value={shortenId(workload.recipe_id)} />
-            )}
+            {footprintSummary(footprintOfServing(workload.serving))}
           </span>
           <span className="font-mono text-2xs text-muted-foreground/60">
             {workload.artifact_tag ?? workload.kind}
@@ -139,9 +138,9 @@ function columns(
 }
 
 /**
- * What was asked to run, globally. A workload names no cluster: it declares a
- * recipe, a kind and a total, and the clusters column shows where placement put
- * it — which is a list, and sometimes an empty one.
+ * What was asked to run, globally. A workload names no cluster: it declares
+ * weights, how to serve them, a kind and a total, and the clusters column shows
+ * where placement put it — which is a list, and sometimes an empty one.
  *
  * The three kinds of thing stay apart here as they do everywhere else.
  * `scale.desired` is declared, `scale.ready` is what the clusters report,
@@ -159,7 +158,7 @@ export function WorkloadsPage() {
     project: search.project,
     kind: search.kind,
     phase: search.phase,
-    recipe: search.recipe,
+    artifact: search.artifact,
     cluster: search.cluster,
   })
 

@@ -22,7 +22,7 @@ import {
   ARTIFACT_KINDS,
   type Artifact,
   type ArtifactLocationRequest,
-  type RecipeDefaults,
+  type ServingDefaults,
   type ResolveNote,
 } from "@/modules/demand/types"
 import { IconAlertTriangle, IconInfoCircle } from "@tabler/icons-react"
@@ -58,7 +58,7 @@ export function ArtifactForm({
 
   const [source, setSource] = useState("")
   const [resolved, setResolved] = useState<string | null>(null)
-  const [recipe, setRecipe] = useState<RecipeDefaults | null>(null)
+  const [serving, setServing] = useState<ServingDefaults | null>(null)
   const [notes, setNotes] = useState<ResolveNote[]>([])
   const [existing, setExisting] = useState<string | null>(null)
   /**
@@ -124,7 +124,7 @@ export function ArtifactForm({
     resolve.mutate(slug, {
       onSuccess: (draft) => {
         setResolved(slug)
-        setRecipe(draft.recipe)
+        setServing(draft.serving)
         setNotes(draft.notes)
         setExisting(draft.existing_id)
         setDigest(draft.digest)
@@ -150,7 +150,7 @@ export function ArtifactForm({
 
   const clearSource = () => {
     setResolved(null)
-    setRecipe(null)
+    setServing(null)
     setNotes([])
     setExisting(null)
     setDigest("")
@@ -299,7 +299,7 @@ export function ArtifactForm({
         />
       </FormGrid>
 
-      {recipe && <RecipeSuggestion recipe={recipe} />}
+      {serving && <ServingSuggestion serving={serving} />}
 
       <LocationsField value={locations} onChange={setLocations} />
 
@@ -388,27 +388,27 @@ function ResolveError({ error }: { error: unknown }) {
 
 /**
  * Sizing implied by the weights, shown and never submitted. It belongs to the
- * recipe someone writes next; an artifact has no opinion on how it is served.
+ * workload someone declares next; an artifact has no opinion on how it is served.
  *
  * The two halves are ordered the way they are derived. Context, quantization and
  * dtype are the repo's own — the window it declares, not one trimmed to fit
  * anything. Devices and memory are what serving that would take. It never runs
  * the other way: choosing a smaller window because of what a card holds is a
- * recipe's decision, made against real device classes, not an artifact's.
+ * serving decision, made against real device classes, not an artifact's.
  */
-function RecipeSuggestion({ recipe }: { recipe: RecipeDefaults }) {
+function ServingSuggestion({ serving }: { serving: ServingDefaults }) {
   const rows: [string, string][] = [
     [
       "Context length",
-      recipe.context_length ? recipe.context_length.toLocaleString() : "—",
+      serving.context_length ? serving.context_length.toLocaleString() : "—",
     ],
-    ["Quantization", recipe.quantization ?? "none"],
-    ["Dtype", recipe.dtype ?? "—"],
-    ["Devices needed", String(recipe.device_count)],
+    ["Quantization", serving.quantization ?? "none"],
+    ["Dtype", serving.dtype ?? "—"],
+    ["Devices needed", String(serving.device_count)],
     [
       "Memory per device",
-      recipe.device_memory_mib_min
-        ? formatBytes(recipe.device_memory_mib_min * 1024 * 1024)
+      serving.device_memory_mib_min
+        ? formatBytes(serving.device_memory_mib_min * 1024 * 1024)
         : "—",
     ],
   ]
@@ -418,7 +418,8 @@ function RecipeSuggestion({ recipe }: { recipe: RecipeDefaults }) {
       <p className="text-2xs text-muted-foreground/70">
         The first three are read off the repo's config; the last two are the
         hardware that configuration would need. Nothing here is saved on the
-        artifact — it carries over when you write a recipe for these weights.
+        artifact — it carries over into the workload you declare for these
+        weights.
       </p>
       <dl className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
         {rows.map(([label, value]) => (

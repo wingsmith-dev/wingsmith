@@ -210,7 +210,7 @@ export function fitOnTarget(
  * placing one.
  *
  * Its topology requirement is not on the allocation — the plane keeps that on
- * the workload and the recipe — so it is read off where the allocation actually
+ * the workload — so it is read off where the allocation actually
  * sits: everything in one fabric is treated as a gang that has to stay in one.
  * That is a guess, and it is the conservative one.
  */
@@ -224,7 +224,6 @@ export function brickOfHolder(board: Board, holder: Holder): Brick {
     label: holder.workload_name,
     detail: `${devices.length}× ${holder.device_class}`,
     workload: holder.workload,
-    recipe: null,
     project: null,
     priority_class: null,
     project_slug: holder.project_slug,

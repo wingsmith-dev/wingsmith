@@ -10,6 +10,7 @@ import {
   fetchBenchmarkVerdict,
   fetchBenchmarks,
   fetchHarnesses,
+  fetchServingBenchmarkSummary,
   type BenchmarkFilters,
 } from "./api"
 import {
@@ -63,6 +64,22 @@ export function useDeploymentBenchmarks(deployment: string | undefined) {
       pollMs: POLL_MS,
     }
   )
+}
+
+/**
+ * What a serving configuration has been measured at, by digest.
+ *
+ * Keyed on the digest and not on the workload, which is what makes it stable: two
+ * workloads configured identically share one rollup, and it survives the workload
+ * being renamed or deleted. An unknown digest is a zero count, so this is asked
+ * unconditionally rather than gated on whether any run exists.
+ */
+export function useServingBenchmarkSummary(digest: string | undefined) {
+  return useQuery({
+    queryKey: ["benchmarks", "serving", digest],
+    queryFn: () => fetchServingBenchmarkSummary(digest!),
+    enabled: !!digest,
+  })
 }
 
 /**

@@ -103,7 +103,7 @@ export function loadSummary(parameters: Record<string, unknown>): string {
  */
 export const LEVEL_CLAIM: Record<BenchmarkLevel, string> = {
   deployment: "one cluster's configuration",
-  workload: "the recipe, across every cluster it was placed on",
+  workload: "the serving configuration, across every cluster it was placed on",
   endpoint: "what a caller gets through the public name",
 }
 

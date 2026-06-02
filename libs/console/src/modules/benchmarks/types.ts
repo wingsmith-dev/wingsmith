@@ -2,8 +2,9 @@
  * What a run is a measurement *of*, and the three are different claims.
  *
  * A deployment run measures one cluster's configuration — the device class, the
- * tensor-parallel degree, the engine flags. A workload run measures the recipe,
- * which is the same experiment however many clusters it was placed on. An
+ * tensor-parallel degree, the engine flags. A workload run measures the serving
+ * configuration, which is the same experiment however many clusters it was placed
+ * on. An
  * endpoint run measures what a caller actually gets through the public name,
  * across whatever the gateway routed it to. Averaging any two of the three
  * describes nothing that exists, which is why the level travels with every
@@ -20,8 +21,11 @@ export type VerdictOutcome = "pass" | "fail" | "inconclusive" | "not_applicable"
 
 /**
  * What was running when a run was taken. Snapshotted by the plane at creation
- * rather than joined, because a recipe is mutable and a deployment is
+ * rather than joined, because a serving block is mutable and a deployment is
  * disposable — a run resolved by join would start describing something else.
+ *
+ * `serving_digest` is the whole of that attribution now, and it is strictly
+ * stronger than the recipe id and version it replaces: a digest cannot drift.
  *
  * Every field is empty on an endpoint-level run. A request to a public name is
  * routed by weight across every enabled upstream, so an attribution to one of
@@ -31,11 +35,32 @@ export type VerdictOutcome = "pass" | "fail" | "inconclusive" | "not_applicable"
 export interface BenchmarkProvenance {
   model: string
   deployment_generation: number
-  recipe_id: string | null
-  recipe_version: number | null
+  serving_digest: string | null
   engine_args: Record<string, unknown>
-  /** The recipe's declared serving block — which protocols answered, and how. */
+  /** The declared serving behaviour block — which protocols answered, and how. */
   serving: Record<string, unknown>
+}
+
+/**
+ * `ServingBenchmarkSummarySchema` — offline measurement rolled up per
+ * `serving_digest`, computed at read time.
+ *
+ * Addressed by the digest rather than by the workload that carries it, because
+ * the digest is what a measurement is about: every run sharing it measured the
+ * same running process. It keeps answering after the workload has been renamed,
+ * rescaled or deleted, which the recipe rollup this replaces could not.
+ *
+ * An unknown digest is a zero count and not a 404 — "how much measurement stands
+ * behind this configuration" has "none" as an answer — so it is safe to ask about
+ * anything. `peak_output_tokens_per_second` is null when no graded run carried a
+ * reading, which is a named absence and not a zero. Held-in-plane offline
+ * measurement, never live serving telemetry.
+ */
+export interface ServingBenchmarkSummary {
+  serving_digest: string
+  run_count: number
+  graded_run_count: number
+  peak_output_tokens_per_second: number | null
 }
 
 /**
@@ -115,8 +140,7 @@ export interface BenchmarkRun {
 export interface BenchmarkCoverage {
   deployment_id: string | null
   cluster_id: string | null
-  recipe_id: string | null
-  recipe_version: number | null
+  serving_digest: string | null
   artifact_id: string | null
 }
 

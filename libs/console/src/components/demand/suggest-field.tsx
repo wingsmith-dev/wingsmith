@@ -9,7 +9,7 @@ const CUSTOM = "__custom__"
  *
  * Parsers and grammar backends are free strings on the wire on purpose — an
  * engine build knows names that postdate this console — so a plain select would
- * make a recipe unwritable rather than making it correct. The list is the common
+ * make a serving block unwritable rather than making it correct. The list is the common
  * case and the escape hatch is one click away.
  */
 export function SuggestField({

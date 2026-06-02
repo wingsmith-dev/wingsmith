@@ -26,12 +26,12 @@ import type {
   Brick,
   PlacementPlan,
 } from "@/modules/board/types"
-import { useProjectOptions } from "@/modules/binding/queries"
 import {
   useArtifactFitment,
   useArtifactOptions,
 } from "@/modules/demand/queries"
 import type { ArtifactFit } from "@/modules/demand/types"
+import { useProjectOptions } from "@/modules/binding/queries"
 import {
   usePlacementPreview,
   useWorkloadExpansion,
@@ -49,29 +49,35 @@ import { toast } from "sonner"
 import { Verdicts } from "./Verdicts"
 
 /**
- * The bricks: what could run, in the three forms the plane can describe it.
+ * The bricks: what could run, in the two forms the plane can describe it.
  *
  * A **workload** is a commitment — it has a scale, spread rules and replicas
- * already holding devices. A **recipe** is a shape with no scale, which is what
- * makes it the right brick: a recipe declares `device_class`, `device_count` and
- * whether they must share a fabric, and an artifact declares none of that. An
- * **artifact** sits one step further back and answers a different question —
- * fitment says which cards could hold these weights at all — so its rows arrive
- * here as candidate shapes rather than as placements.
+ * already holding devices, and it carries its own serving block, so the shape is
+ * read straight off it. An **artifact** sits one step further back and answers a
+ * different question — fitment says which cards could hold these weights at all —
+ * so its rows arrive here as candidate shapes rather than as placements.
  *
- * Where the answer comes from matters and is labelled. A brick naming a recipe
- * and a project is a question the plane can answer, and its verdicts are
- * authoritative: only the plane sees quota, priority, policy, residency and what
- * would have to be preempted. Everything else is the board's own arithmetic over
- * devices and fabrics, marked `est.` because it can be right about hardware and
- * wrong about admission.
+ * Where the answer comes from matters and is labelled. A brick the plane can be
+ * asked about — a declared workload, or any shape once somebody says which project
+ * to charge — gets an authoritative verdict: only the plane sees quota, priority,
+ * policy, residency and what would have to be preempted. Everything else is the
+ * board's own arithmetic over devices and fabrics, marked `est.` because it can be
+ * right about hardware and wrong about admission. Where the two disagree the plane
+ * is the answer and the board was always a guess.
  */
 export function Tray({ board }: { board: Board | undefined }) {
-  const { bricks, shapes, isLoading } = useBricks()
+  const { bricks, isLoading } = useBricks()
   const armed = useBoardStore((s) => s.armed)
   const arm = useBoardStore((s) => s.arm)
   const custom = useBoardStore((s) => s.custom)
 
+  /**
+   * Who an undeclared shape would be charged to.
+   *
+   * A workload names its own project; a shape nobody has declared does not, and
+   * the plane will not answer without one because quota and policy are per
+   * project. So it is asked once here rather than per row.
+   */
   const { data: projects } = useProjectOptions()
   const [project, setProject] = useState<string | null>(null)
   const asProject = project ?? projects?.[0]?.slug ?? null
@@ -117,7 +123,7 @@ export function Tray({ board }: { board: Board | undefined }) {
         {!isLoading && (
           <Group
             label="Workloads"
-            empty="Nothing is declared yet. Place a recipe below to see where it would go."
+            empty="Nothing is declared yet. Size an artifact below to see where it would go."
             count={bricks.length}
           >
             {bricks.map((brick) => (
@@ -126,59 +132,40 @@ export function Tray({ board }: { board: Board | undefined }) {
           </Group>
         )}
 
-        {!isLoading && (
-          <Group
-            label="Recipes"
-            empty="No recipes. Build a shape by hand instead."
-            count={shapes.length}
+        <div className="flex items-center gap-2 px-1.5 pt-1">
+          <Label className="font-mono text-2xs text-muted-foreground/60">
+            as project
+          </Label>
+          <Select
+            value={asProject ?? ""}
+            onValueChange={setProject}
+            disabled={!projects?.length}
           >
-            {shapes.length > 0 && (
-              <div className="flex items-center gap-2 px-1.5 pb-1">
-                <Label className="font-mono text-2xs text-muted-foreground/60">
-                  as project
-                </Label>
-                <Select
-                  value={asProject ?? ""}
-                  onValueChange={setProject}
-                  disabled={!projects?.length}
+            <SelectTrigger size="sm" className="h-6 flex-1 font-mono text-2xs">
+              <SelectValue placeholder="pick one" />
+            </SelectTrigger>
+            <SelectContent>
+              {(projects ?? []).map((entry) => (
+                <SelectItem
+                  key={entry.id}
+                  value={entry.slug}
+                  className="font-mono text-xs"
                 >
-                  <SelectTrigger
-                    size="sm"
-                    className="h-6 flex-1 font-mono text-2xs"
-                  >
-                    <SelectValue placeholder="pick one" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(projects ?? []).map((entry) => (
-                      <SelectItem
-                        key={entry.id}
-                        value={entry.slug}
-                        className="font-mono text-xs"
-                      >
-                        {entry.slug}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {shapes.map((shape) => (
-              <ShapeRow
-                key={shape.key}
-                shape={shape}
-                project={asProject}
-                {...rowProps}
-              />
-            ))}
-          </Group>
-        )}
+                  {entry.slug}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         <Group label="Artifacts" empty="" count={1}>
-          <ArtifactShapes {...rowProps} />
+          <ArtifactShapes project={asProject} {...rowProps} />
         </Group>
 
         <Group label="Hand-built" empty="" count={1}>
-          {custom && <BrickRow brick={custom} {...rowProps} />}
+          {custom && (
+            <BrickRow brick={{ ...custom, project: asProject }} {...rowProps} />
+          )}
           <ShapeBuilder />
         </Group>
       </CardContent>
@@ -208,64 +195,12 @@ function Group({
 }
 
 /**
- * A recipe, with the one number it does not carry: how many of it.
- *
- * Replicas live on the workload, so asking a recipe where it would fit means
- * saying how many first, and who for — `POST /placement/preview` takes a project
- * because quota and policy are per project.
- */
-function ShapeRow({
-  shape,
-  project,
-  board,
-  assignments,
-}: {
-  shape: Brick
-  project: string | null
-  board: Board | undefined
-  assignments: Assignments
-}) {
-  const [replicas, setReplicas] = useState(1)
-
-  const brick = useMemo(
-    () => ({
-      ...shape,
-      project,
-      replicas: Math.max(1, replicas),
-      label: replicas > 1 ? `${replicas} × ${shape.label}` : shape.label,
-    }),
-    [shape, project, replicas]
-  )
-
-  return (
-    <div className="flex items-start gap-1">
-      <BrickRow
-        brick={brick}
-        board={board}
-        assignments={assignments}
-        className="flex-1"
-      />
-      <Input
-        type="number"
-        min={1}
-        value={replicas}
-        aria-label={`Replicas of ${shape.label}`}
-        title="replicas"
-        onClick={(event) => event.stopPropagation()}
-        onChange={(event) => setReplicas(Number(event.target.value))}
-        className="mt-1 h-6 w-11 shrink-0 px-1 text-center font-mono text-2xs"
-      />
-    </div>
-  )
-}
-
-/**
  * One brick, and where it would go.
  *
  * Collapsed, it shows the board's own count: replicas held over replicas wanted,
  * and how many more the devices could take. Expanding asks the plane, and its
  * answer replaces the estimate — lazily, because each call costs the plane a pass
- * over quota, policy and every cluster's capacity, and a tray of thirty recipes
+ * over quota, policy and every cluster's capacity, and a tray of thirty bricks
  * should not ask thirty times to fill a column nobody has looked at.
  */
 function BrickRow({
@@ -286,7 +221,13 @@ function BrickRow({
 
   const [open, setOpen] = useState(false)
   const colour = brickColor(brick.workload ?? brick.key)
-  const askable = !!brick.recipe && (!!brick.workload || !!brick.project)
+  /**
+   * A declared workload is asked about by name; anything else is asked about by
+   * shape, which `POST /placement/preview` now takes. Either way it needs a
+   * project, because capacity is read per project — a shape with nobody to charge
+   * it to is the one case that still falls back to the board's own arithmetic.
+   */
+  const askable = !!brick.workload || !!brick.project
 
   const expansion = useWorkloadExpansion(
     brick.workload,
@@ -294,7 +235,12 @@ function BrickRow({
   )
   const preview = usePlacementPreview(
     {
-      recipe: brick.recipe,
+      shape: {
+        device_class: brick.device_class,
+        device_count: brick.device_count,
+        requires_single_topology_domain: brick.requires_single_topology_domain,
+        topology_domain_kind: brick.topology_domain_kind,
+      },
       project: brick.project,
       priority_class: brick.priority_class,
       replicas: brick.replicas,
@@ -492,12 +438,14 @@ function BrickRow({
  * these weights at the window they publish, and how many of them. The plane says
  * so itself — a fit is not a promise a replica can be placed, because contiguity
  * inside a topology domain decides that — so these rows are shapes to try on the
- * board, and they carry no recipe to ask the plane about.
+ * board — and, once a project is named, ones the plane will rule on directly.
  */
 function ArtifactShapes({
+  project,
   board,
   assignments,
 }: {
+  project: string | null
   board: Board | undefined
   assignments: Assignments
 }) {
@@ -550,7 +498,7 @@ function ArtifactShapes({
       {bricks.map((brick) => (
         <BrickRow
           key={brick.key}
-          brick={brick}
+          brick={{ ...brick, project }}
           board={board}
           assignments={assignments}
         />
@@ -573,7 +521,6 @@ function brickOfFit(fit: ArtifactFit, artifact: string): Brick {
         : "weights only · window uncosted",
     ].join(" · "),
     workload: null,
-    recipe: null,
     project: null,
     priority_class: null,
     project_slug: "sizing",
@@ -598,7 +545,7 @@ function brickOfFit(fit: ArtifactFit, artifact: string): Brick {
 
 /**
  * A shape nobody has declared yet. The point of the sandbox is asking whether
- * eight of something would fit before there is a recipe to ask on behalf of.
+ * eight of something would fit before there is a workload to ask on behalf of.
  */
 function ShapeBuilder() {
   const { data: classes } = useDeviceClasses({ present: true })
@@ -639,7 +586,6 @@ function ShapeBuilder() {
         "hand-built",
       ].join(" · "),
       workload: null,
-      recipe: null,
       project: null,
       priority_class: null,
       project_slug: "sandbox",

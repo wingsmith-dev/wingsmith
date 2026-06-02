@@ -130,9 +130,37 @@ export interface ExpansionDecision {
   summary: string
 }
 
+/**
+ * A device shape stated directly, for asking about something that does not exist.
+ *
+ * Field-for-field the shape a workload carries, and spelled with the workload's own
+ * column names so one builder can read either without translating. Only
+ * `device_class` is required; the plane defaults the rest.
+ */
+export interface PlacementShapeRequest {
+  device_class: string
+  device_count?: number
+  device_memory_mib_min?: number
+  tensor_parallel?: number
+  requires_single_topology_domain?: boolean
+  topology_domain_kind?: string | null
+}
+
+/**
+ * A placement question asked without creating anything.
+ *
+ * Exactly one of `workload` and `shape`, and the pair is the point: `workload` asks
+ * about something that exists, `shape` asks about something that does not — which is
+ * the question a create form has, where the person is choosing a fit and wants the
+ * verdict before they commit rather than after. Naming both, or neither, is a `400`.
+ *
+ * `project` is required in both forms. Capacity is read per project, so there is no
+ * project-independent answer to give.
+ */
 export interface PlacementPreviewRequest {
-  recipe: string
   project: string
+  workload?: string
+  shape?: PlacementShapeRequest
   priority_class?: string | null
   replicas?: number
 }

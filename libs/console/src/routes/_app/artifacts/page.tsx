@@ -147,13 +147,13 @@ function columns(
       align: "right",
       secondary: true,
       cell: (artifact) => {
-        const n = usages.get(artifact.id)?.recipe_count ?? 0
+        const n = usages.get(artifact.id)?.workload_count ?? 0
         return (
           <span className="font-mono text-2xs text-muted-foreground">
             {n === 0 ? (
-              <span className="text-muted-foreground/50">0 recipes</span>
+              <span className="text-muted-foreground/50">0 workloads</span>
             ) : (
-              `${n} ${n === 1 ? "recipe" : "recipes"}`
+              `${n} ${n === 1 ? "workload" : "workloads"}`
             )}
           </span>
         )
@@ -259,10 +259,7 @@ export function ArtifactsPage() {
       storage: items.reduce((sum, a) => sum + a.size_bytes, 0),
       inUse: items.filter((a) => {
         const usage = usages.get(a.id)
-        return (
-          !!usage &&
-          usage.recipe_count + usage.workload_count + usage.downstream_count > 0
-        )
+        return !!usage && usage.workload_count + usage.downstream_count > 0
       }).length,
       attention: items.filter((a) => artifactStatus(a) === "failed").length,
     }
@@ -358,7 +355,7 @@ export function ArtifactsPage() {
         onOpenChange={(open) => !open && setDoomed(undefined)}
         kind="artifact"
         name={doomed?.name ?? ""}
-        note="Recipes that reference it will refuse to resolve."
+        note="Workloads that serve it will refuse to resolve."
         error={remove.error}
         pending={remove.isPending}
         onConfirm={() =>

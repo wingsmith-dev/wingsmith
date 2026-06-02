@@ -9,7 +9,7 @@ export interface ArtifactLocation {
 /**
  * `ArtifactUpstreamSchema` — what the publisher said this release does.
  *
- * The reference, never our configuration: a recipe's `context_length` is only a
+ * The reference, never our configuration: a workload's `context_length` is only a
  * finding when there is something to compare it against. It is `metadata`'s
  * opposite in the way `imported_args` is `engine_args` — one is a claim somebody
  * signed, the other is a bag — which is why the provenance triple
@@ -117,12 +117,11 @@ export interface Artifact {
 
 /**
  * `ArtifactUsageSchema` — what depends on this artifact, counted at read time.
- * `recipe_count` is recipes serving these weights, `workload_count` the distinct
- * workloads reaching them, `downstream_count` the artifacts derived from this one.
+ * `workload_count` is the distinct workloads serving these weights,
+ * `downstream_count` the artifacts derived from this one.
  */
 export interface ArtifactUsage {
   artifact_id: string
-  recipe_count: number
   workload_count: number
   downstream_count: number
 }
@@ -256,13 +255,13 @@ export interface ArtifactFitment {
 }
 
 /**
- * One row of a fitment, carried into the recipe form as a starting point.
+ * One row of a fitment, carried into a workload's serving block as a starting point.
  *
  * The fit told us these four things and nothing else — which card, how many, at what
- * window, at what precision. Everything else on a recipe is still the person's to
- * declare, which is why this is four fields rather than a whole draft recipe.
+ * window, at what precision. Everything else about serving is still the person's to
+ * declare, which is why this is six fields rather than a whole draft.
  */
-export interface RecipeFootprint {
+export interface ServingFootprint {
   device_class: string
   device_count: number
   tensor_parallel: number
@@ -326,21 +325,81 @@ export interface ArtifactUpdateRequest {
 }
 
 /**
- * `RecipeDefaults` — serving parameters implied by the weights. A suggestion the
- * plane never applies: a recipe is declared state someone owns, so these are
- * carried into the recipe form and nowhere else.
+ * `ServingDefaults` — serving parameters implied by the weights. A suggestion the
+ * plane never applies: a workload's serving block is declared state someone owns,
+ * so these seed that form and go nowhere else.
  *
  * `context_length`, `quantization` and `dtype` are read off the repository;
  * `device_count` and `device_memory_mib_min` are what serving that needs. The
  * derivation only runs that way — an artifact never trims its own context to fit
  * a card, because it knows nothing about which cards exist.
  */
-export interface RecipeDefaults {
+export interface ServingDefaults {
   device_count: number
   device_memory_mib_min: number
   context_length: number | null
   quantization: string | null
   dtype: string | null
+}
+
+/**
+ * `UpstreamDeploymentSchema` — what the corpus's own rules render for one node shape.
+ *
+ * A large model has no single tested parallelism, it has one per node it can run
+ * on, so this is a list rather than a number. Nothing here is a fact about our
+ * fleet: it says the layout works, not that we own such a node.
+ */
+export interface UpstreamDeployment {
+  hardware: string
+  display_name: string
+  gpu_count: number
+  tensor_parallel: number
+  nodes_declared: number
+  nodes_by_memory: number
+  strategies: string[]
+}
+
+/**
+ * `UpstreamServingSchema` — serving parameters somebody upstream has run,
+ * attributed to them.
+ *
+ * Kept apart from `ServingDefaults` on purpose. That is the plane's own arithmetic
+ * over `config.json`; this is a third party's measurement of a different question —
+ * not "what do these weights need" but "what did this configuration do when we
+ * served it". Merging them would produce a form where no field can say where its
+ * number came from, and the numbers do not always agree.
+ *
+ * Every field is a claim and `source_uri` is a permalink at a pinned commit, which
+ * is why the console shows the attribution beside any value it seeds from here.
+ * `verified_hardware` names the node shapes the publisher ran on — evidence the
+ * configuration works, and no evidence at all that we own such a node.
+ */
+export interface UpstreamServing {
+  source: string
+  source_uri: string
+  model_id: string
+  variant: string
+  precision: string | null
+  engine: string
+  engine_version_min: string | null
+  nightly_required: boolean
+  tensor_parallel: number | null
+  default_strategy: string | null
+  deployments: UpstreamDeployment[]
+  replica_memory_mib_min: number | null
+  context_length: number | null
+  max_model_len: number | null
+  kv_cache_dtype: string | null
+  tool_call_parser: string | null
+  reasoning_parser: string | null
+  /** The whole tested command line, including flags nothing here has a field for. */
+  args: string[]
+  env: Record<string, unknown>
+  features_on: string[]
+  features_opt_in: string[]
+  strategies: string[]
+  requires_single_topology_domain: boolean
+  verified_hardware: string[]
 }
 
 /**
@@ -376,7 +435,9 @@ export interface ResolvedArtifact {
   verified: boolean
   metadata: Record<string, unknown>
   locations: ArtifactLocationRequest[]
-  recipe: RecipeDefaults
+  serving: ServingDefaults
+  /** Null when no corpus entry names these weights. Never our own arithmetic. */
+  upstream: UpstreamServing | null
   existing_id: string | null
   notes: ResolveNote[]
 }
@@ -409,7 +470,7 @@ export const ARTIFACT_KINDS = [
   "weights",
 ] as const
 
-export interface RecipeShape {
+export interface ServingShape {
   device_class: string
   device_count: number
   device_memory_mib_min: number
@@ -417,34 +478,34 @@ export interface RecipeShape {
   topology_domain_kind: string | null
 }
 
-export interface RecipeParallelism {
+export interface ServingParallelism {
   tensor: number
   pipeline: number
   expert: number
 }
 
 /** KV and prefix cache configuration. Unrelated to the weight cache. */
-export interface RecipeCache {
+export interface ServingCache {
   kv_cache_dtype: string | null
   kv_cache_fraction: number | null
   prefix_cache_enabled: boolean
   prefix_cache_config: Record<string, unknown>
 }
 
-export interface RecipeResources {
+export interface ServingResources {
   cpu_cores: number | null
   memory_mib: number | null
   disk_gib: number | null
 }
 
 /**
- * `RecipeReasoningSchema` — how this recipe thinks, as rendered flags.
+ * `ServingReasoningSchema` — how this workload thinks, as rendered flags.
  *
- * Its own object for the reason `RecipeCache` is: the fields are meaningless
+ * Its own object for the reason `ServingCache` is: the fields are meaningless
  * individually and all of them are conditioned on the model being able to think
- * at all. What the recipe *can* do is `capabilities.reasoning_supported`.
+ * at all. What it *can* do is `capabilities.reasoning_supported`.
  */
-export interface RecipeReasoning {
+export interface ServingReasoning {
   default_on: boolean
   parser: string | null
   transport: string
@@ -454,15 +515,15 @@ export interface RecipeReasoning {
 }
 
 /**
- * `RecipeServingSchema` — what the served API does, as the engine is told to do it.
+ * `ServingBehaviourSchema` — what the served API does, as the engine is told to do it.
  *
  * Every field renders to a flag or a rendered value, so honouring any of it
- * means a replica restart — which is why it sits on the recipe beside `cache`
- * rather than on the endpoint. Every default is the behaviour of a recipe that
- * says nothing, so the block is inert until somebody fills it in.
+ * means a replica restart — which is why it sits in the serving block beside
+ * `cache` rather than on the endpoint. Every default is the behaviour of a block
+ * that says nothing, so it is inert until somebody fills it in.
  */
-export interface RecipeServing {
-  reasoning: RecipeReasoning
+export interface ServingBehaviour {
+  reasoning: ServingReasoning
   stream_usage: string
   context_overflow: string
   structured_output_backend: string | null
@@ -471,7 +532,7 @@ export interface RecipeServing {
 }
 
 /**
- * `RecipeCapabilitiesSchema` — what this engine x artifact is *claimed* to do.
+ * `ServingCapabilitiesSchema` — what this engine x artifact is *claimed* to do.
  *
  * The same split as `engine_args` against `imported_args`, one level up: nothing
  * here becomes a flag or reaches a cluster, because a cluster has no use for a
@@ -479,7 +540,7 @@ export interface RecipeServing {
  * block that is internally consistent and entirely false is accepted, stored,
  * and falsified by the first conformance run.
  */
-export interface RecipeCapabilities {
+export interface ServingCapabilities {
   reasoning_supported: boolean
   streaming_supported: boolean
   structured_output_modes: string[]
@@ -546,141 +607,112 @@ export const STRUCTURED_OUTPUT_BACKENDS = [
   "xgrammar",
 ] as const
 
-export interface Recipe {
-  id: string
+/**
+ * `OverlaySchema` — passthrough for what the plane deliberately does not model.
+ *
+ * `pod_spec` merges over the rendered pod with strategic-merge semantics;
+ * `dynamo` merges over the rendered graph deployment, where maps merge and lists
+ * replace.
+ */
+export interface ServingOverlay {
+  pod_spec: Record<string, unknown>
+  dynamo: Record<string, unknown>
+}
+
+/**
+ * `WorkloadServingSchema` — how one workload serves its weights, as one block.
+ *
+ * Everything an engine is told, and nothing about how much of it runs or where.
+ * There is no object behind it and no id to point at: two workloads configured
+ * the same way carry the same `serving_digest`, and that is the whole of what
+ * used to be recipe reuse.
+ *
+ * `serving` inside `serving` is not a slip and is not a name this console chose.
+ * The outer block is the whole configuration; the inner one is the typed
+ * API-behaviour group that lands in the `serving` column and is hashed into the
+ * digest under that name. Renaming it here for readability would leave the HTTP
+ * body, the column and the digest field list each calling one thing something
+ * different — and because TypeScript erases, the rename would typecheck green and
+ * read `undefined` in a browser. `ServingBehaviour` is the type name; `serving`
+ * is the property, because that is what arrives.
+ */
+export interface WorkloadServing {
   artifact_id: string
-  name: string
-  version: number
-  /** Where the recipe sits in its lifecycle: draft | published | deprecated. */
-  lifecycle: string
   engine: string
   engine_version: string
   engine_image: string | null
-  engine_args: Record<string, unknown>
-  /** Read off a running process. Recorded, never rendered, never enforced. */
-  imported_args: Record<string, unknown>
   /**
-   * The model id API clients send, when this recipe declares one. Null means
-   * derive it from the artifact. Distinct from `name`: the name describes the
-   * fit and moves when the fit is redone, this is what callers code against.
+   * A second image, not a spelling of `engine_image`: a frontend and a worker are
+   * separately versioned binaries. Null means the cluster decides.
    */
-  served_model_name: string | null
-  /** What `served_model_name` actually resolves to. Never empty. */
-  resolved_served_model_name: string
+  frontend_image: string | null
+  engine_args: Record<string, unknown>
+  /** Read off a running process. Recorded in full, never rendered, never hashed. */
+  imported_args: Record<string, unknown>
   quantization: string | null
   dtype: string | null
-  parallelism: RecipeParallelism
+  parallelism: ServingParallelism
   context_length: number
   max_batch_tokens: number | null
-  cache: RecipeCache
-  serving: RecipeServing
-  capabilities: RecipeCapabilities
+  cache: ServingCache
+  serving: ServingBehaviour
+  /** Asserted, never rendered, and it never reaches a cluster. */
+  capabilities: ServingCapabilities
   /**
-   * `engine_args` with the flags the typed `serving` block dictates laid over
-   * the top, keyed the way the operator keys them — without the leading dashes.
+   * `engine_args` with the flags the typed `serving` block dictates laid over the
+   * top, keyed the way the operator keys them — without the leading dashes.
    * Derived on every read and stored nowhere, so that "which value actually took
    * effect" is something to read rather than something to reconstruct.
    */
   resolved_engine_args: Record<string, string>
-  shape: RecipeShape
-  resources: RecipeResources
-  labels: Record<string, string>
-  created_at: string
-  updated_at: string | null
-  revision: string
-}
-
-/** How many workloads name this recipe, derived at read time. */
-export interface RecipeUsage {
-  recipe_id: string
-  workload_count: number
+  shape: ServingShape
+  resources: ServingResources
+  overlay: ServingOverlay
 }
 
 /**
- * Offline benchmark measurement rolled up per recipe. `peak_output_tokens_per_second`
- * is null when no graded run carried a reading — a named absence, not a zero. Held-in-plane
- * offline measurement, never live serving telemetry.
+ * The write shape of `serving`, grouped exactly like the read shape.
+ *
+ * Deliberately the same object in both directions: what a caller sends and what
+ * it gets back are one shape, so a form can round-trip a block without a
+ * translation layer that is one rename away from being wrong.
+ *
+ * `artifact` is here rather than on the workload because the weights and the
+ * configuration that serves them are one declaration: repointing at other bytes
+ * is a different serving block and a different digest.
  */
-export interface RecipeBenchmarkSummary {
-  recipe_id: string
-  run_count: number
-  graded_run_count: number
-  peak_output_tokens_per_second: number | null
-}
-
-/**
- * The write shape is flat where the read shape is nested — parallelism, cache,
- * shape and resources are top-level fields on the request and grouped objects
- * on the response.
- */
-export interface RecipeCreateRequest {
+export interface WorkloadServingRequest {
   artifact: string
-  name: string
   engine: string
   engine_version: string
-  device_class: string
   context_length: number
-  version?: number
-  lifecycle?: string
+  shape: ServingShape
   engine_image?: string | null
+  frontend_image?: string | null
   engine_args?: Record<string, unknown>
-  /** The model id clients send. Omit to derive it from the artifact. */
-  served_model_name?: string | null
+  imported_args?: Record<string, unknown>
   quantization?: string | null
   dtype?: string | null
-  tensor_parallel?: number
-  pipeline_parallel?: number
-  expert_parallel?: number
+  parallelism?: ServingParallelism
   max_batch_tokens?: number | null
-  kv_cache_dtype?: string | null
-  kv_cache_fraction?: number | null
-  prefix_cache_enabled?: boolean
-  prefix_cache_config?: Record<string, unknown>
-  device_count?: number
-  device_memory_mib_min?: number
-  requires_single_topology_domain?: boolean
-  topology_domain_kind?: string | null
-  cpu_cores?: number | null
-  memory_mib?: number | null
-  disk_gib?: number | null
-  labels?: Record<string, string>
-  serving?: RecipeServing
-  capabilities?: RecipeCapabilities
+  cache?: ServingCache
+  resources?: ServingResources
+  overlay?: ServingOverlay
+  serving?: ServingBehaviour
+  capabilities?: ServingCapabilities
 }
 
-/** The artifact is absent: repointing a recipe at other bytes is a new recipe. */
-export interface RecipeUpdateRequest {
-  name?: string
-  lifecycle?: string
-  engine?: string
-  engine_version?: string
-  engine_image?: string | null
-  engine_args?: Record<string, unknown>
-  /** The model id clients send. Omit to derive it from the artifact. */
-  served_model_name?: string | null
-  quantization?: string | null
-  dtype?: string | null
-  tensor_parallel?: number
-  pipeline_parallel?: number
-  expert_parallel?: number
-  context_length?: number
-  max_batch_tokens?: number | null
-  kv_cache_dtype?: string | null
-  kv_cache_fraction?: number | null
-  prefix_cache_enabled?: boolean
-  prefix_cache_config?: Record<string, unknown>
-  device_class?: string
-  device_count?: number
-  device_memory_mib_min?: number
-  requires_single_topology_domain?: boolean
-  topology_domain_kind?: string | null
-  cpu_cores?: number | null
-  memory_mib?: number | null
-  disk_gib?: number | null
-  labels?: Record<string, string>
-  serving?: RecipeServing
-  capabilities?: RecipeCapabilities
-}
+/**
+ * A partial update. The artifact is absent: other bytes are a different workload.
+ *
+ * The sub-blocks replace whole, which is why this is `Partial` over the groups
+ * rather than over their fields — `parallelism`, `cache`, `shape`, `resources`,
+ * `serving` and `capabilities` are each meaningless in halves, so sending one
+ * means stating it.
+ */
+export type WorkloadServingUpdate = Partial<
+  Omit<WorkloadServingRequest, "artifact">
+>
 
 /** `Workload.kind` — one scheduling supertype across serving and batch. */
 export type WorkloadKind = "service" | "task" | "gang" | (string & {})
@@ -771,20 +803,25 @@ export interface Workload {
   preemptible: boolean
   paused: boolean
   gang_size: number
-  recipe_id: string
+  /**
+   * `svg_<64 hex>` over everything in `serving` that reaches an engine, recomputed
+   * by the plane on every write and never accepted from a client. Two workloads
+   * that would produce the same running process carry the same digest; nothing
+   * else identifies a configuration.
+   */
+  serving_digest: string
+  serving: WorkloadServing
   adapter_artifact_ids: string[]
-  /** This workload's override of the model id clients send. Null defers to the recipe. */
-  served_model_name: string | null
-  /** What clients actually send for this workload, resolved by the plane. */
-  resolved_served_model_name: string
+  /**
+   * The model id the engine registers under. Read from the artifact's slug, never declared here.
+   *
+   * Reported and not accepted. A workload used to carry a nullable override of this and the plane
+   * resolved between the two, which is how the id a client sends and the id a frontend registered
+   * came apart. What a *client* sends is still changeable — that is the endpoint's `slug`.
+   */
+  served_model_name: string
   overrides: Record<string, unknown>
   labels: Record<string, string>
-  /**
-   * The workload's own topology requirement, overriding the recipe's when set.
-   * Null means the recipe's answer stands, not that there is no requirement.
-   */
-  requires_single_topology_domain: boolean | null
-  topology_domain_kind: string | null
   strategy: WorkloadStrategy
   /** `{cluster_uid: minimum share}`. An unknown uid is ignored, never an error. */
   cluster_floors: Record<string, number>
@@ -799,9 +836,7 @@ export interface Workload {
   updated_at: string | null
   revision: string
   deployments: WorkloadDeployment[]
-  /** The recipe's name, resolved by the plane so the list needn't fetch each recipe. */
-  recipe_name: string | null
-  /** The artifact tag behind the recipe, resolved alongside `recipe_name`. */
+  /** The artifact's tag, resolved by the plane so a list needn't fetch each one. */
   artifact_tag: string | null
 }
 
@@ -851,13 +886,13 @@ export interface WorkloadPlacement {
  * What it takes to run something, without saying where.
  *
  * `cluster` is optional and absent is the normal case: placement picks from the
- * recipe's shape, the project's quota, the policies on the workload and what the
- * clusters report free. Naming one is an override that forces a single deployment.
+ * serving block's shape, the project's quota, the policies on the workload and what
+ * the clusters report free. Naming one is an override that forces a single deployment.
  *
  * The three scale numbers are TOTALS across every cluster this workload may use.
  */
 export interface WorkloadCreateRequest {
-  recipe: string
+  serving: WorkloadServingRequest
   name: string
   project: string
   cluster?: string | null
@@ -882,25 +917,23 @@ export interface WorkloadCreateRequest {
   gang_size?: number
   deadline_at?: string | null
   adapter_artifacts?: string[]
-  /** Overrides the recipe's served model name for this workload alone. */
-  served_model_name?: string | null
   overrides?: Record<string, unknown>
   labels?: Record<string, string>
-  requires_single_topology_domain?: boolean | null
-  topology_domain_kind?: string | null
 }
 
 /**
- * A partial update. Recipe and cluster are absent by design — a deployment is
- * recipe x cluster, so changing either is a new one. Scale is absent too: it is
- * long-running and can sit pending on quota forever, so it is the
- * `workload.scale` operation and not a field write.
+ * A partial update. Cluster is absent by design — a deployment is workload x
+ * cluster, so changing it is a new one. Scale is absent too: it is long-running
+ * and can sit pending on quota forever, so it is the `workload.scale` operation
+ * and not a field write.
+ *
+ * `serving` is present, and a write to it recomputes `serving_digest` and rolls
+ * the replicas. The artifact is not: other bytes are a different workload.
  */
 export interface WorkloadUpdateRequest {
   name?: string
   adapter_artifacts?: string[]
-  /** Overrides the recipe's served model name for this workload alone. */
-  served_model_name?: string | null
+  serving?: WorkloadServingUpdate
   overrides?: Record<string, unknown>
   labels?: Record<string, string>
   priority_class?: string
@@ -909,8 +942,6 @@ export interface WorkloadUpdateRequest {
   strategy?: WorkloadStrategy
   cluster_floors?: Record<string, number>
   max_clusters?: number | null
-  requires_single_topology_domain?: boolean | null
-  topology_domain_kind?: string | null
 }
 
 /**
@@ -921,7 +952,7 @@ export interface WorkloadUpdateRequest {
  * dividing one out of the other, is always a bug. Placement sets all three equal,
  * so there is no range here to render.
  *
- * Recipe, adapters, overrides and labels are not here: they are workload facts,
+ * Serving, adapters, overrides and labels are not here: they are workload facts,
  * read through `workload_id`. Admission is here, because it is per-cluster — a
  * workload can be running in one region and queued on quota in another.
  */
@@ -958,7 +989,7 @@ export interface Deployment {
  * The observed half: where the deployment is, and what is holding it there.
  *
  * `reason` and `message` are deliberately not errors. Most of a deployment's life
- * before it serves is spent waiting on an ordering — the recipe has to arrive, the
+ * before it serves is spent waiting on an ordering — the artifact has to arrive, the
  * weights have to be resident, a node has to advertise enough accelerators — and
  * every one of those is expected. `last_error_*` is for the things that went wrong.
  *
@@ -1020,7 +1051,7 @@ export interface EndpointTarget {
    * The routing table is the plane's and the engine's name is invisible to
    * clients, so the only property that matters is that the two agree. This is
    * where a disagreement is corrected, and it costs a gateway poll — correcting
-   * it on the recipe instead respecs the pod and reloads the weights.
+   * it on the workload instead respecs the pod and reloads the weights.
    */
   served_model_name: string | null
 }
@@ -1029,7 +1060,7 @@ export interface EndpointTarget {
  * `EndpointSurfaceSchema` — the terms on which the served API is exposed.
  *
  * Global and read by the gateway; nothing here reaches a cluster. A field
- * belongs here rather than on the recipe when honouring it needs no engine flag.
+ * belongs here rather than on the workload when honouring it needs no engine flag.
  *
  * Half of it the gateway acts on and half of it is a disclosure it only reports,
  * which is why `SURFACE_ENFORCEMENT` exists and why nothing in this console
@@ -1078,17 +1109,17 @@ export interface Endpoint {
   id: string
   name: string
   /**
-   * The model id clients send, when it should not be `name`. Null means it is.
+   * The model id clients send. Never empty.
    *
-   * `name` is the internal handle — URLs, metrics labels, every link in here —
-   * and is not patchable. This is the public contract, and it is, because the
-   * resolved table reports it as the endpoint's name and that is the key the
-   * gateway routes on. Changing it costs one gateway poll.
+   * `name` is the internal handle — URLs, metrics labels, every link in here — and is not
+   * patchable. This is the public contract, and it is, because the resolved table reports it as
+   * the endpoint's name and that is the key the gateway routes on. Changing it costs one gateway
+   * poll and touches no cluster.
+   *
+   * Defaulted from the artifact behind the first target, so an endpoint over one model answers to
+   * that model without anybody typing its name twice. Setting it is publishing an alias.
    */
-  model_slug: string | null
-  /** What `model_slug` resolves to. Never empty — falls back to `name`. */
-  resolved_model_slug: string
-  display_name: string | null
+  slug: string
   project_id: string
   visibility: string
   routing_strategy: string
@@ -1115,8 +1146,8 @@ export interface EndpointTargetRequest {
 export interface EndpointCreateRequest {
   name: string
   project: string
-  model_slug?: string | null
-  display_name?: string | null
+  /** Empty takes the slug of the weights behind the first target. Give one only for an alias. */
+  slug?: string
   visibility?: string
   routing_strategy?: string
   enabled?: boolean
@@ -1127,8 +1158,7 @@ export interface EndpointCreateRequest {
 }
 
 export interface EndpointUpdateRequest {
-  model_slug?: string | null
-  display_name?: string | null
+  slug?: string
   visibility?: string
   routing_strategy?: string
   enabled?: boolean

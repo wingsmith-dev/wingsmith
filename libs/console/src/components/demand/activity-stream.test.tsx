@@ -43,14 +43,14 @@ describe("ActivityStream", () => {
             id: "evt_cache",
             kind: "cache.absent",
             subject: { type: "artifact", id: "row-art-1" },
-            message: "no recipe on this cluster names an engine image",
+            message: "nothing on this cluster names an engine image",
             details: { reason: "NoRuntimeImage" },
           }),
         ]}
       />
     )
     expect(
-      screen.getByText(/no recipe on this cluster names an engine image/)
+      screen.getByText(/nothing on this cluster names an engine image/)
     ).toBeInTheDocument()
   })
 
@@ -122,7 +122,9 @@ describe("ActivityStream", () => {
     )
 
     await userEvent.selectOptions(screen.getByRole("combobox"), "row-dep-1")
-    expect(screen.queryByText(/the download is running/)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/the download is running/)
+    ).not.toBeInTheDocument()
 
     await userEvent.selectOptions(screen.getByRole("combobox"), "weights")
     expect(screen.getByText(/the download is running/)).toBeInTheDocument()

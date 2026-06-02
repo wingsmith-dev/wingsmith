@@ -36,13 +36,13 @@ import {
   type TimeWindow,
 } from "@/modules/metrics/windows"
 import { useEndpointEvents } from "@/modules/machinery/queries"
-import type { Artifact, Deployment, Recipe } from "@/modules/demand/types"
+import type { Artifact, Deployment, Workload } from "@/modules/demand/types"
+import { footprintOfServing, footprintSummary } from "@/modules/demand/deploy"
 import {
   useArtifactOptions,
   useDeleteEndpoint,
   useDeploymentOptions,
   useEndpoint,
-  useRecipeOptions,
   useWorkloadOptions,
 } from "@/modules/demand/queries"
 import { EndpointForm } from "../EndpointForm"
@@ -199,18 +199,19 @@ function ReplicaBar({ ready, total }: { ready: number; total: number }) {
   )
 }
 
-/** `fp8 · awq` from a recipe's quantization and dtype, or null if neither is set. */
-function quantLabel(recipe?: Recipe): string | null {
-  const parts = [recipe?.quantization, recipe?.dtype].filter((p): p is string =>
-    Boolean(p)
-  )
+/** `fp8 · awq` from a serving block's quantization and dtype, or null if neither is set. */
+function quantLabel(workload?: Workload): string | null {
+  const parts = [
+    workload?.serving.quantization,
+    workload?.serving.dtype,
+  ].filter((p): p is string => Boolean(p))
   return parts.length > 0 ? parts.join(" · ") : null
 }
 
-/** What one endpoint target resolves to across deployment → workload → recipe → artifact. */
+/** What one endpoint target resolves to across deployment → workload → artifact. */
 interface ResolvedTarget {
   deployment?: Deployment
-  recipe?: Recipe
+  workload?: Workload
   artifact?: Artifact
   /** The cluster region this target lands in, off the workload's deployment row. */
   region?: string | null
@@ -227,7 +228,6 @@ export function EndpointDetailPage() {
 
   const { data: deploymentOptions } = useDeploymentOptions()
   const { data: workloadOptions } = useWorkloadOptions()
-  const { data: recipeOptions } = useRecipeOptions()
   const { data: artifactOptions } = useArtifactOptions()
 
   /**
@@ -264,7 +264,7 @@ export function EndpointDetailPage() {
   /**
    * Resolves each endpoint target through the object graph the endpoint itself
    * does not carry: a target names only a deployment, and cluster, replicas,
-   * recipe and artifact all hang off that deployment's workload and recipe. Every
+   * serving and artifact all hang off that deployment's workload. Every
    * lookup is defensive — a sparse payload or an un-drained option list leaves the
    * entry undefined and the cells fall back to a dash rather than throwing.
    */
@@ -273,9 +273,6 @@ export function EndpointDetailPage() {
       (deploymentOptions ?? []).map((d) => [d.id, d])
     )
     const workloadById = new Map((workloadOptions ?? []).map((w) => [w.id, w]))
-    const recipeById = new Map<string, Recipe>(
-      (recipeOptions ?? []).map((r) => [r.id, r])
-    )
     const artifactById = new Map<string, Artifact>(
       (artifactOptions ?? []).map((a) => [a.id, a])
     )
@@ -286,27 +283,18 @@ export function EndpointDetailPage() {
       const workload = deployment?.workload_id
         ? workloadById.get(deployment.workload_id)
         : undefined
-      const recipe = workload?.recipe_id
-        ? recipeById.get(workload.recipe_id)
-        : undefined
-      const artifact = recipe?.artifact_id
-        ? artifactById.get(recipe.artifact_id)
+      const artifact = workload?.serving.artifact_id
+        ? artifactById.get(workload.serving.artifact_id)
         : undefined
       const region = workload?.deployments.find(
         (d) => d.id === target.deployment_id
       )?.region
-      map.set(target.deployment_id, { deployment, recipe, artifact, region })
+      map.set(target.deployment_id, { deployment, workload, artifact, region })
     }
     return map
-  }, [
-    endpoint?.targets,
-    deploymentOptions,
-    workloadOptions,
-    recipeOptions,
-    artifactOptions,
-  ])
+  }, [endpoint?.targets, deploymentOptions, workloadOptions, artifactOptions])
 
-  /** The recipe/artifact behind the primary target, for the right-hand card. */
+  /** The serving block and artifact behind the primary target, for the right-hand card. */
   const backing = useMemo<ResolvedTarget | undefined>(() => {
     const targets = endpoint?.targets ?? []
     const primary = targets.find((t) => t.role === "primary") ?? targets[0]
@@ -712,16 +700,16 @@ export function EndpointDetailPage() {
                 </Card>
 
                 {/* Deployments — one row per target, resolved through the
-                    deployment → workload → recipe → artifact graph. Cluster and
-                    replicas are the deployment's observed state; recipe and
-                    artifact are its workload's. All lookups are defensive. */}
+                    deployment → workload → artifact graph. Cluster and replicas
+                    are the deployment's observed state; serving and artifact are
+                    its workload's. All lookups are defensive. */}
                 <Card className="gap-0 overflow-hidden p-0">
                   <div className="border-b bg-muted/30 px-4 py-3">
                     <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
                       deployments
                     </span>
                     <span className="ml-2 font-mono text-2xs text-muted-foreground/40">
-                      cluster and replicas are the deployment's; recipe and
+                      cluster and replicas are the deployment's; serving and
                       artifact its workload's
                     </span>
                   </div>
@@ -732,16 +720,16 @@ export function EndpointDetailPage() {
                         <TableHead>Role</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Replicas</TableHead>
-                        <TableHead>Recipe</TableHead>
+                        <TableHead>Serving</TableHead>
                         <TableHead>Artifact</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {endpoint.targets.map((target) => {
-                        const { deployment, recipe, artifact } =
+                        const { deployment, workload, artifact } =
                           resolved.get(target.deployment_id) ?? {}
                         const rollup = deployment?.replicas
-                        const quant = quantLabel(recipe)
+                        const quant = quantLabel(workload)
                         return (
                           <TableRow key={target.deployment_id}>
                             <TableCell>
@@ -802,13 +790,15 @@ export function EndpointDetailPage() {
                               )}
                             </TableCell>
                             <TableCell>
-                              {recipe ? (
+                              {workload ? (
                                 <Link
-                                  to="/recipes/$recipeId"
-                                  params={{ recipeId: recipe.id }}
+                                  to="/workloads/$workloadId"
+                                  params={{ workloadId: workload.id }}
                                   className="inline-flex items-center gap-1 font-mono text-2xs hover:underline"
                                 >
-                                  {recipe.name}
+                                  {footprintSummary(
+                                    footprintOfServing(workload.serving)
+                                  )}
                                   <IconArrowUpRight className="size-3 text-muted-foreground" />
                                 </Link>
                               ) : (
@@ -864,26 +854,34 @@ export function EndpointDetailPage() {
                   </CardHeader>
                   <CardContent>
                     <FieldGrid>
-                      {/* What a caller sends, which is the only addressing fact
-                          this object holds. The gateway routes on the `model`
-                          in the request body and never branches on the path, so
-                          the name is the routing key and the URL is not ours:
-                          the gateway has no Ingress of its own and is called by
-                          whatever sits in front of it. */}
-                      <Field label="Model identifier" className="sm:col-span-2">
-                        <CopyableId value={endpoint.name} className="text-2xs">
-                          {endpoint.name}
+                      {/* The slug and not the name, which is what this panel
+                          showed before and what made the object hard to read:
+                          the gateway builds its route map on the slug, so a
+                          page documenting the name was documenting a model id
+                          that need not route. The gateway reads the `model` in
+                          the request body and never branches on the path, so
+                          this is the whole of the addressing, and the URL is
+                          not ours — the gateway has no Ingress of its own and
+                          is called by whatever sits in front of it. */}
+                      <Field label="Slug" className="sm:col-span-2">
+                        <CopyableId value={endpoint.slug} className="text-2xs">
+                          {endpoint.slug}
                         </CopyableId>
                         <p className="mt-1 font-mono text-2xs text-muted-foreground/50">
                           Send this as <code>model</code> on the standard
-                          OpenAI-compatible routes. The gateway reads the body,
-                          never the path, and has no public name of its own —
-                          the host belongs to whatever fronts it.
+                          OpenAI-compatible routes. It is the gateway's routing
+                          key, so correcting it takes effect on the next poll
+                          and restarts nothing. The engine behind it answers to
+                          its artifact&rsquo;s slug, which is a different string
+                          whenever this one is an alias; the gateway rewrites
+                          between the two.
                         </p>
                       </Field>
-                      <Field label="Name">{endpoint.name}</Field>
-                      <Field label="Display name">
-                        <Dash>{endpoint.display_name}</Dash>
+                      <Field label="Name">
+                        {endpoint.name}
+                        <p className="mt-1 font-mono text-2xs text-muted-foreground/50">
+                          The internal handle. Not what clients send.
+                        </p>
                       </Field>
                       <Field label="Project">{endpoint.project_id}</Field>
                       <Field label="Visibility">{endpoint.visibility}</Field>
@@ -906,26 +904,26 @@ export function EndpointDetailPage() {
                   </CardContent>
                 </Card>
 
-                {/* Recipe & artifact — resolved through the primary target's
+                {/* Serving & artifact — resolved through the primary target's
                     deployment. The endpoint carries none of this directly; it is
-                    the backing workload's recipe and that recipe's artifact. */}
+                    the backing workload's serving block and its artifact. */}
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">
-                      Recipe &amp; artifact
+                      Serving &amp; artifact
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    {backing?.recipe || backing?.artifact ? (
+                    {backing?.workload || backing?.artifact ? (
                       <FieldGrid>
-                        <Field label="Recipe">
-                          {backing.recipe ? (
+                        <Field label="Workload">
+                          {backing.workload ? (
                             <Link
-                              to="/recipes/$recipeId"
-                              params={{ recipeId: backing.recipe.id }}
+                              to="/workloads/$workloadId"
+                              params={{ workloadId: backing.workload.id }}
                               className="inline-flex items-center gap-1 font-mono text-2xs hover:underline"
                             >
-                              {backing.recipe.name}
+                              {backing.workload.name}
                               <IconArrowUpRight className="size-3 text-muted-foreground" />
                             </Link>
                           ) : (
@@ -934,10 +932,10 @@ export function EndpointDetailPage() {
                         </Field>
                         <Field label="Engine">
                           <Dash>
-                            {backing.recipe
+                            {backing.workload
                               ? [
-                                  backing.recipe.engine,
-                                  backing.recipe.engine_version,
+                                  backing.workload.serving.engine,
+                                  backing.workload.serving.engine_version,
                                 ]
                                   .filter(Boolean)
                                   .join(" ")
@@ -945,12 +943,12 @@ export function EndpointDetailPage() {
                           </Dash>
                         </Field>
                         <Field label="Quantization">
-                          <Dash>{quantLabel(backing.recipe)}</Dash>
+                          <Dash>{quantLabel(backing.workload)}</Dash>
                         </Field>
                         <Field label="Context length">
                           <Dash>
-                            {backing.recipe?.context_length != null
-                              ? backing.recipe.context_length.toLocaleString()
+                            {backing.workload?.serving.context_length != null
+                              ? backing.workload.serving.context_length.toLocaleString()
                               : null}
                           </Dash>
                         </Field>
@@ -978,7 +976,8 @@ export function EndpointDetailPage() {
                       </FieldGrid>
                     ) : (
                       <p className="font-mono text-2xs text-muted-foreground/60">
-                        No backing recipe resolved for this endpoint's targets.
+                        No backing workload resolved for this endpoint's
+                        targets.
                       </p>
                     )}
                   </CardContent>

@@ -57,9 +57,18 @@ export interface DecisionRequest {
  * `fingerprint` is the whole safety of a promotion: it is `If-Match` for a spec
  * the plane does not own. Scale is deliberately absent — the bounds come from
  * what is already running, so cataloguing a workload never rescales it.
+ *
+ * `artifact` is the only part of the serving configuration a caller states,
+ * because it is the only part the cluster cannot tell us. Everything else is read
+ * off the sighting — the same reading `GET /serving-draft` returns — so that what
+ * is declared is what is running. Submitting a serving block here would declare a
+ * configuration for a process that is already up, and the first reconcile would
+ * either refuse it or restart the model, which is the one outcome adoption exists
+ * to avoid. Editing it is an ordinary `PATCH /workloads/{ref}` afterwards, where a
+ * restart is what the caller asked for.
  */
 export interface PromoteRequest {
-  recipe: string
+  artifact: string
   project: string
   fingerprint: string
   name?: string | null
@@ -92,13 +101,13 @@ export interface ArtifactDraft {
 }
 
 /**
- * A recipe proposed from what a cluster reported about a running workload.
+ * A serving block proposed from what a cluster reported about a running workload.
  *
  * `confident` is false when the engine could not be identified, which makes every
  * field below it a guess rather than a reading; `notes` names what could not be
  * determined, so the person confirming knows where to look.
  */
-export interface RecipeDraft {
+export interface ServingDraft {
   artifact_ref: string | null
   artifact_name: string | null
   name: string

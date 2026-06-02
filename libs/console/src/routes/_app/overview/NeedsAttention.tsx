@@ -16,12 +16,12 @@ import { SegTabs } from "./SegTabs"
  * `/v1/discovered` reports *workloads* a cluster was already running, and
  * nothing else: there is no sighting object for an image-cache layer the
  * artifact catalogue has never seen, and no sighting for a set of engine
- * arguments that matches no recipe. Both rows below are the mockup's own
+ * arguments that matches no declared workload. Both rows below are the mockup's own
  * numbers, kept so the panel reads as designed.
  *
  * TODO-API: catalogue-gap sightings. Needs either `/v1/discovered/artifacts`
  * (unregistered image or weight digests observed in a cluster's cache) and
- * `/v1/discovered/recipes` (observed engine argv matching no recipe), or a
+ * `/v1/discovered/serving` (observed engine argv matching no workload), or a
  * `kind` discriminator on `/v1/discovered` widening it past workloads.
  */
 const MOCK_CATALOGUE_GAPS: AttentionItem[] = [
@@ -36,14 +36,14 @@ const MOCK_CATALOGUE_GAPS: AttentionItem[] = [
     action: { label: "Review", link: { to: "/artifacts" } },
   },
   {
-    id: "mock:discovered-recipe",
+    id: "mock:discovered-serving",
     group: "discovered",
     tone: "neutral",
-    kind: "recipe",
-    title: "Deployment params don't match any known recipe",
-    detail: "vllm 0.6.3 · tp=4 · max-model-len=32768 · promote to recipe?",
-    pill: "recipe",
-    action: { label: "Review", link: { to: "/recipes" } },
+    kind: "workload",
+    title: "Deployment params match no declared workload",
+    detail: "vllm 0.6.3 · tp=4 · max-model-len=32768 · adopt it?",
+    pill: "serving",
+    action: { label: "Review", link: { to: "/discovered" } },
   },
 ]
 

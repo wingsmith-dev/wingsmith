@@ -9,7 +9,7 @@ import type {
 /**
  * Both routes are `POST` and neither writes anything.
  *
- * That is not a mistake in the contract: the question carries a body — a recipe,
+ * That is not a mistake in the contract: the question carries a body — a workload,
  * a project, a priority class, a scale — and none of that fits a GET's cache
  * semantics when the answer changes every time a cluster reports.
  */

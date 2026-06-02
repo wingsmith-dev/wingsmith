@@ -5,7 +5,8 @@ import { Progress } from "@/components/ui/progress"
 import { CLUSTER_PHASE_TONE, humanize } from "@/modules/clusters/display"
 import { useClusterRollup } from "@/modules/clusters/queries"
 import type { Cluster, ClusterHeadroom } from "@/modules/clusters/types"
-import { useRecipeOptions, useWorkloadOptions } from "@/modules/demand/queries"
+import { useWorkloadOptions } from "@/modules/demand/queries"
+import { footprintOfServing, footprintSummary } from "@/modules/demand/deploy"
 import {
   useClusterDeployments,
   useClusterDevices,
@@ -168,14 +169,14 @@ function NodePoolsTable({
 }
 
 /**
- * Deployments running on this cluster. The recipe column is a workload fact,
+ * Deployments running on this cluster. The serving column is a workload fact,
  * not a deployment fact: it resolves through the deployment's `workload_id` to
- * the workload's `recipe_id` and then to the recipe's name.
+ * the workload's serving block.
  */
 function DeploymentsTable({
   clusterId,
   deployments,
-  recipeName,
+  servingName,
 }: {
   clusterId: string
   deployments: {
@@ -183,7 +184,7 @@ function DeploymentsTable({
     isLoading: boolean
     error: unknown
   }
-  recipeName: (workloadId: string) => string | null
+  servingName: (workloadId: string) => string | null
 }) {
   const rows = deployments.data ?? []
   const replicas = rows.reduce((sum, d) => sum + d.replicas.ready, 0)
@@ -208,7 +209,7 @@ function DeploymentsTable({
             <tr className="border-b">
               <Th>Deployment</Th>
               <Th>Workload</Th>
-              <Th>Recipe</Th>
+              <Th>Serving</Th>
               <Th>Replicas</Th>
               <Th>Status</Th>
             </tr>
@@ -216,7 +217,7 @@ function DeploymentsTable({
           <tbody>
             {rows.map((d) => {
               const short = d.replicas.ready < d.desired_replicas
-              const recipe = recipeName(d.workload_id)
+              const serving = servingName(d.workload_id)
               return (
                 <tr key={d.id} className="border-b last:border-0">
                   <Td>
@@ -238,7 +239,7 @@ function DeploymentsTable({
                     </Link>
                   </Td>
                   <Td className="font-mono text-2xs text-muted-foreground">
-                    {recipe ?? (
+                    {serving ?? (
                       <span className="text-muted-foreground/40">—</span>
                     )}
                   </Td>
@@ -338,17 +339,16 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
   const events = useClusterEvents(cluster.id)
   const rollup = useClusterRollup(cluster.id)
   const workloads = useWorkloadOptions()
-  const recipes = useRecipeOptions()
 
   /**
-   * A deployment's recipe is a workload fact: resolve `workload_id` to the
-   * workload's `recipe_id`, then that to the recipe's name. Absent while the
-   * option lists load, or if either object is not (yet) visible.
+   * A deployment's serving configuration is a workload fact: resolve
+   * `workload_id` and summarise the block it carries. Absent while the option
+   * list loads, or if the workload is not (yet) visible.
    */
-  const recipeName = (workloadId: string): string | null => {
-    const recipeId = workloads.data?.find((w) => w.id === workloadId)?.recipe_id
-    if (!recipeId) return null
-    return recipes.data?.find((r) => r.id === recipeId)?.name ?? null
+  const servingName = (workloadId: string): string | null => {
+    const workload = workloads.data?.find((w) => w.id === workloadId)
+    if (!workload) return null
+    return footprintSummary(footprintOfServing(workload.serving))
   }
 
   const actionables = deriveClusterActionables({
@@ -431,7 +431,7 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
           <DeploymentsTable
             clusterId={cluster.id}
             deployments={deployments}
-            recipeName={recipeName}
+            servingName={servingName}
           />
           <Actionables
             actionables={actionables}

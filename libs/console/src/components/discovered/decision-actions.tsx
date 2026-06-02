@@ -10,7 +10,7 @@ import {
 } from "@/modules/discovered/queries"
 import type { DiscoveredWorkload } from "@/modules/discovered/types"
 import { PromoteDialog } from "./promote-dialog"
-import { RecipeDraftDialog } from "./recipe-draft-dialog"
+import { ServingDraftDialog } from "./serving-draft-dialog"
 import { toast } from "sonner"
 
 /**
@@ -95,7 +95,7 @@ export function DecisionActions({
             >
               Remove
             </Button>
-            <RecipeDraftDialog workload={workload} />
+            <ServingDraftDialog workload={workload} />
             <PromoteDialog workload={workload} />
           </>
         )}

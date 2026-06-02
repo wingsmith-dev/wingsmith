@@ -1,4 +1,8 @@
 import {
+  CapabilityFields,
+  ServingFields,
+} from "@/components/demand/serving-config"
+import {
   FormDialog,
   FormGrid,
   JsonField,
@@ -8,6 +12,7 @@ import {
   SwitchField,
   TextField,
 } from "@/components/layout/form"
+import { DeviceClassField } from "@/components/supply/device-class"
 import { formatError } from "@/lib/format"
 import {
   usePriorityClassOptions,
@@ -18,12 +23,14 @@ import { useClusterOptions } from "@/modules/clusters/queries"
 import {
   WORKLOAD_KINDS,
   WORKLOAD_STRATEGIES,
+  emptyCapabilities,
+  emptyServing,
   scaleUnit,
   splittable,
 } from "@/modules/demand/display"
 import {
+  useArtifactOptions,
   useCreateWorkload,
-  useRecipeOptions,
   useUpdateWorkload,
 } from "@/modules/demand/queries"
 import type { Workload } from "@/modules/demand/types"
@@ -39,12 +46,18 @@ import { toast } from "sonner"
  * pin, which is offered last and labelled as what it is — an override that
  * takes the decision away from the scheduler and forces a single cluster.
  *
- * Recipe, project and kind are create-only. A workload is recipe × kind the way
- * a deployment is recipe × cluster; changing either is a new workload, and the
- * endpoint in front of it is the stable name that makes that cheap.
+ * The artifact, the project and the kind are create-only. A workload is weights ×
+ * kind the way a deployment is workload × cluster; changing either is a new
+ * workload, and the endpoint in front of it is the stable name that makes that
+ * cheap. The rest of the serving block is not create-only — editing it recomputes
+ * `serving_digest` and rolls the replicas, which is the point of it living here.
  *
  * Scale is create-only too. Changing it afterwards is `workload.scale`, an
  * operation with a phase, because it can sit pending on quota indefinitely.
+ *
+ * This is the long way in. The deploy flow at `/workloads/new` answers most of
+ * these from a fitment row and is the path for an ordinary service; this form is
+ * for a task, a gang, a deadline, or a field that flow does not ask about.
  */
 export function WorkloadForm({
   open,
@@ -59,11 +72,75 @@ export function WorkloadForm({
   const create = useCreateWorkload()
   const update = useUpdateWorkload()
   const { data: clusters } = useClusterOptions()
-  const { data: recipes } = useRecipeOptions()
+  const { data: artifacts } = useArtifactOptions()
   const { data: projects } = useProjectOptions()
   const { data: priorities } = usePriorityClassOptions()
 
-  const [recipe, setRecipe] = useState(workload?.recipe_id ?? "")
+  const serving = workload?.serving
+  const [artifact, setArtifact] = useState(workload?.serving.artifact_id ?? "")
+  const [engine, setEngine] = useState(serving?.engine ?? "vllm")
+  const [engineVersion, setEngineVersion] = useState(
+    serving?.engine_version ?? ""
+  )
+  const [engineImage, setEngineImage] = useState(serving?.engine_image ?? "")
+  const [deviceClass, setDeviceClass] = useState(
+    serving?.shape.device_class ?? ""
+  )
+  const [deviceCount, setDeviceCount] = useState<number | null>(
+    serving?.shape.device_count ?? 1
+  )
+  const [deviceMemory, setDeviceMemory] = useState<number | null>(
+    serving?.shape.device_memory_mib_min ?? 0
+  )
+  const [singleDomain, setSingleDomain] = useState(
+    serving?.shape.requires_single_topology_domain ?? false
+  )
+  const [domainKind, setDomainKind] = useState(
+    serving?.shape.topology_domain_kind ?? ""
+  )
+  const [contextLength, setContextLength] = useState<number | null>(
+    serving?.context_length ?? 8192
+  )
+  const [maxBatchTokens, setMaxBatchTokens] = useState<number | null>(
+    serving?.max_batch_tokens ?? null
+  )
+  const [tensor, setTensor] = useState<number | null>(
+    serving?.parallelism.tensor ?? 1
+  )
+  const [pipeline, setPipeline] = useState<number | null>(
+    serving?.parallelism.pipeline ?? 1
+  )
+  const [expert, setExpert] = useState<number | null>(
+    serving?.parallelism.expert ?? 1
+  )
+  const [quantization, setQuantization] = useState(serving?.quantization ?? "")
+  const [dtype, setDtype] = useState(serving?.dtype ?? "")
+  const [kvCacheDtype, setKvCacheDtype] = useState(
+    serving?.cache.kv_cache_dtype ?? ""
+  )
+  const [kvCacheFraction, setKvCacheFraction] = useState<number | null>(
+    serving?.cache.kv_cache_fraction ?? null
+  )
+  const [prefixCache, setPrefixCache] = useState(
+    serving?.cache.prefix_cache_enabled ?? true
+  )
+  const [cpuCores, setCpuCores] = useState<number | null>(
+    serving?.resources.cpu_cores ?? null
+  )
+  const [memoryMib, setMemoryMib] = useState<number | null>(
+    serving?.resources.memory_mib ?? null
+  )
+  const [diskGib, setDiskGib] = useState<number | null>(
+    serving?.resources.disk_gib ?? null
+  )
+  const [engineArgs, setEngineArgs] = useState<unknown>(
+    serving?.engine_args ?? {}
+  )
+  const [argsValid, setArgsValid] = useState(true)
+  const [behaviour, setBehaviour] = useState(serving?.serving ?? emptyServing())
+  const [capabilities, setCapabilities] = useState(
+    serving?.capabilities ?? emptyCapabilities()
+  )
   const [project, setProject] = useState(workload?.project_id ?? "")
   const [name, setName] = useState(workload?.name ?? "")
   const [kind, setKind] = useState(workload?.kind ?? "service")
@@ -100,6 +177,48 @@ export function WorkloadForm({
   const unit = scaleUnit(kind)
   const fansOut = splittable(kind) && !pinned
 
+  /**
+   * The write shape is the read shape, so the groups go back the way they came.
+   * `behaviour` is this form's local name for the block that travels as
+   * `serving`; the key is what the plane hashes into the digest, so only the
+   * variable is renamed and never the field.
+   */
+  const servingBody = {
+    engine,
+    engine_version: engineVersion,
+    engine_image: engineImage || null,
+    engine_args: (engineArgs as Record<string, unknown>) ?? {},
+    quantization: quantization || null,
+    dtype: dtype || null,
+    parallelism: {
+      tensor: tensor ?? 1,
+      pipeline: pipeline ?? 1,
+      expert: expert ?? 1,
+    },
+    context_length: contextLength ?? 0,
+    max_batch_tokens: maxBatchTokens,
+    cache: {
+      kv_cache_dtype: kvCacheDtype || null,
+      kv_cache_fraction: kvCacheFraction,
+      prefix_cache_enabled: prefixCache,
+      prefix_cache_config: serving?.cache.prefix_cache_config ?? {},
+    },
+    shape: {
+      device_class: deviceClass,
+      device_count: deviceCount ?? 1,
+      device_memory_mib_min: deviceMemory ?? 0,
+      requires_single_topology_domain: singleDomain,
+      topology_domain_kind: domainKind || null,
+    },
+    resources: {
+      cpu_cores: cpuCores,
+      memory_mib: memoryMib,
+      disk_gib: diskGib,
+    },
+    serving: behaviour,
+    capabilities,
+  }
+
   const done = (verb: string) => {
     onOpenChange(false)
     toast.success(`Workload ${verb}`, { description: name })
@@ -112,6 +231,7 @@ export function WorkloadForm({
           ref: workload.id,
           body: {
             name,
+            serving: servingBody,
             priority_class: priorityClass || undefined,
             preemptible,
             deadline_at: deadline || null,
@@ -135,7 +255,7 @@ export function WorkloadForm({
     const total = kind === "gang" ? (gangSize ?? 1) : (desiredScale ?? 1)
     create.mutate(
       {
-        recipe,
+        serving: { artifact, ...servingBody },
         name,
         project,
         kind,
@@ -167,21 +287,31 @@ export function WorkloadForm({
       open={open}
       onOpenChange={onOpenChange}
       title={editing ? "Edit workload" : "New workload"}
-      description="A recipe, a total, and the clusters it may use. Placement decides which ones."
+      description="Weights, how to serve them, a total, and the clusters it may use. Placement decides which ones."
       error={error}
       pending={pending}
-      disabled={!name || (!editing && (!recipe || !project)) || !overridesValid}
+      disabled={
+        !name ||
+        !engine ||
+        !engineVersion ||
+        !deviceClass ||
+        !contextLength ||
+        (!editing && (!artifact || !project)) ||
+        !argsValid ||
+        !overridesValid
+      }
       onSubmit={submit}
     >
       {!editing && (
         <FormGrid>
           <SelectField
-            label="Recipe"
-            value={recipe}
-            onChange={setRecipe}
-            options={(recipes ?? []).map((r) => ({
-              value: r.id,
-              label: `${r.name} v${r.version}`,
+            label="Artifact"
+            value={artifact}
+            onChange={setArtifact}
+            hint="Fixed at creation — other bytes are another workload."
+            options={(artifacts ?? []).map((a) => ({
+              value: a.id,
+              label: a.name,
             }))}
           />
           <SelectField
@@ -292,11 +422,148 @@ export function WorkloadForm({
         onChange={setPreemptible}
       />
 
+      <FormGrid>
+        <TextField label="Engine" value={engine} onChange={setEngine} />
+        <TextField
+          label="Engine version"
+          value={engineVersion}
+          onChange={setEngineVersion}
+        />
+        <TextField
+          label="Engine image"
+          value={engineImage}
+          onChange={setEngineImage}
+          placeholder="Resolved from the engine and version"
+          hint="Leave empty unless you are pinning a specific build. The plane resolves the image from the engine and version above, and the same image fetches the weights — a workload with no image is one whose weights never download."
+        />
+        <DeviceClassField value={deviceClass} onChange={setDeviceClass} />
+        <NumberField
+          label="Device count"
+          value={deviceCount}
+          onChange={setDeviceCount}
+          min={1}
+        />
+        <NumberField
+          label="Device memory min (MiB)"
+          value={deviceMemory}
+          onChange={setDeviceMemory}
+          min={0}
+        />
+        <TextField
+          label="Topology domain kind"
+          value={domainKind}
+          onChange={setDomainKind}
+          placeholder="nvlink"
+        />
+        <NumberField
+          label="Context length"
+          value={contextLength}
+          onChange={setContextLength}
+          min={1}
+        />
+        <NumberField
+          label="Max batch tokens"
+          value={maxBatchTokens}
+          onChange={setMaxBatchTokens}
+          min={0}
+        />
+        <NumberField
+          label="Tensor parallel"
+          value={tensor}
+          onChange={setTensor}
+          min={1}
+        />
+        <NumberField
+          label="Pipeline parallel"
+          value={pipeline}
+          onChange={setPipeline}
+          min={1}
+        />
+        <NumberField
+          label="Expert parallel"
+          value={expert}
+          onChange={setExpert}
+          min={1}
+        />
+        <TextField
+          label="Quantization"
+          value={quantization}
+          onChange={setQuantization}
+          placeholder="fp8"
+        />
+        <TextField
+          label="dtype"
+          value={dtype}
+          onChange={setDtype}
+          placeholder="bfloat16"
+        />
+        <TextField
+          label="KV cache dtype"
+          value={kvCacheDtype}
+          onChange={setKvCacheDtype}
+        />
+        <NumberField
+          label="KV cache fraction"
+          value={kvCacheFraction}
+          onChange={setKvCacheFraction}
+        />
+        <NumberField
+          label="CPU cores"
+          value={cpuCores}
+          onChange={setCpuCores}
+          min={0}
+        />
+        <NumberField
+          label="Memory (MiB)"
+          value={memoryMib}
+          onChange={setMemoryMib}
+          min={0}
+        />
+        <NumberField
+          label="Disk (GiB)"
+          value={diskGib}
+          onChange={setDiskGib}
+          min={0}
+        />
+      </FormGrid>
+
+      <SwitchField
+        label="Requires a single topology domain"
+        hint="Tensor-parallel work that must not span a fabric boundary."
+        checked={singleDomain}
+        onChange={setSingleDomain}
+      />
+      <SwitchField
+        label="Prefix cache"
+        checked={prefixCache}
+        onChange={setPrefixCache}
+      />
+
+      <JsonField
+        label="Engine args"
+        value={engineArgs}
+        rows={4}
+        hint="The escape hatch for a flag nothing below models. A flag that is modelled below is set there instead."
+        onChange={(value, valid) => {
+          setEngineArgs(value ?? {})
+          setArgsValid(valid)
+        }}
+      />
+
+      <ServingFields
+        engine={engine}
+        value={behaviour}
+        onChange={setBehaviour}
+        engineArgs={(engineArgs as Record<string, unknown>) ?? {}}
+      />
+
+      <CapabilityFields value={capabilities} onChange={setCapabilities} />
+
       <JsonField
         label="Overrides"
         value={overrides}
         rows={4}
-        hint="Departures from the recipe, applied on every cluster this runs on."
+        hint="Departures from the serving block, applied on every cluster this runs on."
         onChange={(value, valid) => {
           setOverrides(value ?? {})
           setOverridesValid(valid)

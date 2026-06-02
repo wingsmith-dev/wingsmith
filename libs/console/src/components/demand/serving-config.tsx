@@ -28,16 +28,16 @@ import {
   STRUCTURED_OUTPUT_MODES,
   TOOL_CALL_PARSERS,
   TOOL_CHOICE_MODES,
-  type RecipeCapabilities,
-  type RecipeServing,
+  type ServingCapabilities,
+  type ServingBehaviour,
 } from "@/modules/demand/types"
 
 /**
- * The rendered half of a recipe's behaviour, as typed controls.
+ * The rendered half of a workload's serving behaviour, as typed controls.
  *
  * Before these fields existed every one of them went into `engine_args`, where
  * the plane could neither validate them nor say what it had asked for. Honouring
- * any of them means a replica restart, which is why they sit on the recipe.
+ * any of them means a replica restart, which is why they sit in the serving block.
  */
 export function ServingFields({
   engine,
@@ -46,13 +46,13 @@ export function ServingFields({
   engineArgs,
 }: {
   engine: string
-  value: RecipeServing
-  onChange: (value: RecipeServing) => void
+  value: ServingBehaviour
+  onChange: (value: ServingBehaviour) => void
   engineArgs: Record<string, unknown>
 }) {
-  const set = (patch: Partial<RecipeServing>) =>
+  const set = (patch: Partial<ServingBehaviour>) =>
     onChange({ ...value, ...patch })
-  const setReasoning = (patch: Partial<RecipeServing["reasoning"]>) =>
+  const setReasoning = (patch: Partial<ServingBehaviour["reasoning"]>) =>
     onChange({ ...value, reasoning: { ...value.reasoning, ...patch } })
 
   const overrides = servingOverrides(engine, engineArgs, value)
@@ -197,17 +197,17 @@ export function CapabilityFields({
   value,
   onChange,
 }: {
-  value: RecipeCapabilities
-  onChange: (value: RecipeCapabilities) => void
+  value: ServingCapabilities
+  onChange: (value: ServingCapabilities) => void
 }) {
-  const set = (patch: Partial<RecipeCapabilities>) =>
+  const set = (patch: Partial<ServingCapabilities>) =>
     onChange({ ...value, ...patch })
 
   return (
     <DeclaredSection
       title="Capabilities"
       kind="asserted"
-      hint="What this recipe claims it can do. Nothing here renders and nothing here is checked — a conformance run is what proves it wrong."
+      hint="What this workload claims it can do. Nothing here renders and nothing here is checked — a conformance run is what proves it wrong."
     >
       <FormGrid>
         <ChoiceSetField
@@ -231,7 +231,7 @@ export function CapabilityFields({
           value={value.input_modalities}
           onChange={(input_modalities) => set({ input_modalities })}
           options={INPUT_MODALITIES}
-          hint="What this recipe serves, which can be less than the weights can do."
+          hint="What this workload serves, which can be less than the weights can do."
         />
         <div className="space-y-4">
           <SelectField
@@ -296,15 +296,15 @@ export function CapabilityFields({
   )
 }
 
-/** The two blocks side by side on a recipe, never merged into one card. */
+/** The two blocks side by side on a workload, never merged into one card. */
 export function ServingCards({
   serving,
   capabilities,
   resolvedArgs,
   engineArgs,
 }: {
-  serving: RecipeServing
-  capabilities: RecipeCapabilities
+  serving: ServingBehaviour
+  capabilities: ServingCapabilities
   resolvedArgs: Record<string, string>
   engineArgs: Record<string, unknown>
 }) {

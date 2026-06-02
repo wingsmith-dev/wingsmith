@@ -239,7 +239,6 @@ export function brick(options: Partial<Brick> = {}): Brick {
     label: "test-workload",
     detail: "",
     workload: "wkl_1",
-    recipe: null,
     project: null,
     priority_class: null,
     project_slug: "core",

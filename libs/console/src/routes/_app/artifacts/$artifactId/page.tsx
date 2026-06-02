@@ -22,13 +22,14 @@ import {
   formatParameters,
   formatScore,
 } from "@/modules/demand/display"
+import { footprintOfServing, footprintSummary } from "@/modules/demand/deploy"
 import {
   useArtifact,
   useArtifactBaselines,
   useArtifactUsage,
   useDeleteArtifact,
   useDerivedArtifacts,
-  useRecipes,
+  useWorkloads,
 } from "@/modules/demand/queries"
 import { useEvents } from "@/modules/machinery/queries"
 import { severityTone } from "@/modules/machinery/display"
@@ -36,7 +37,7 @@ import type {
   Artifact,
   ArtifactBaseline,
   ArtifactUpstream,
-  Recipe,
+  Workload,
 } from "@/modules/demand/types"
 import { ArtifactForm } from "../ArtifactForm"
 import { IconArrowLeft, IconExternalLink } from "@tabler/icons-react"
@@ -87,7 +88,7 @@ function StatCard({
 export function ArtifactDetailPage() {
   const { artifactId } = useParams({ from: "/_app/artifacts/$artifactId" })
   const { data: artifact, isLoading, error } = useArtifact(artifactId)
-  const recipes = useRecipes({ artifact: artifactId })
+  const workloads = useWorkloads({ artifact: artifactId })
   const baselines = useArtifactBaselines(artifactId)
   const usage = useArtifactUsage(artifactId)
   const derived = useDerivedArtifacts(artifactId)
@@ -161,7 +162,7 @@ export function ArtifactDetailPage() {
           onOpenChange={setDoomed}
           kind="artifact"
           name={artifact.name}
-          note="Recipes that reference it will refuse to resolve."
+          note="Workloads that serve it will refuse to resolve."
           error={remove.error}
           pending={remove.isPending}
           onConfirm={() =>
@@ -190,12 +191,8 @@ export function ArtifactDetailPage() {
               {/* TODO-API Artifact carries no file manifest — showing registered locations as the file count. */}
               <StatCard label="Files" value={artifact.locations.length} />
               <StatCard
-                label="Recipes"
-                value={usage.data?.recipe_count ?? recipes.loaded}
-              />
-              <StatCard
                 label="Workloads"
-                value={usage.data?.workload_count ?? 0}
+                value={usage.data?.workload_count ?? workloads.loaded}
               />
               <StatCard
                 label="Verification"
@@ -224,7 +221,7 @@ export function ArtifactDetailPage() {
                   }
                 />
                 <FilesPanel artifact={artifact} />
-                <RecipesPanel artifactId={artifactId} recipes={recipes} />
+                <ServedByPanel artifactId={artifactId} workloads={workloads} />
                 <BaselinesPanel baselines={baselines} />
                 <LineagePanel artifact={artifact} derived={derived} />
               </div>
@@ -304,48 +301,35 @@ function FilesPanel({ artifact }: { artifact: Artifact }) {
   )
 }
 
-/** Recipes that reference this artifact. */
-function RecipesPanel({
+/** The workloads serving these weights, which is what a recipe list used to be. */
+function ServedByPanel({
   artifactId,
-  recipes,
+  workloads,
 }: {
   artifactId: string
-  recipes: ReturnType<typeof useRecipes>
+  workloads: ReturnType<typeof useWorkloads>
 }) {
-  const columns: Column<Recipe>[] = [
+  const columns: Column<Workload>[] = [
     {
       key: "name",
-      header: "Recipe",
-      cell: (recipe) => (
+      header: "Workload",
+      cell: (workload) => (
         <Link
-          to="/recipes/$recipeId"
-          params={{ recipeId: recipe.id }}
+          to="/workloads/$workloadId"
+          params={{ workloadId: workload.id }}
           className="inline-flex items-center gap-1.5 font-mono text-xs hover:text-primary"
         >
-          {recipe.name}
+          {workload.name}
           <IconExternalLink className="size-3 text-muted-foreground" />
         </Link>
       ),
     },
     {
-      key: "hardware",
-      header: "Hardware",
-      cell: (recipe) => (
+      key: "serving",
+      header: "Serving",
+      cell: (workload) => (
         <span className="font-mono text-2xs">
-          {recipe.shape.device_count}x {recipe.shape.device_class}
-        </span>
-      ),
-    },
-    {
-      key: "quant",
-      header: "Quantization",
-      secondary: true,
-      cell: (recipe) => (
-        <span className="font-mono text-2xs">
-          <Dash>
-            {[recipe.quantization, recipe.dtype].filter(Boolean).join(" · ") ||
-              null}
-          </Dash>
+          {footprintSummary(footprintOfServing(workload.serving))}
         </span>
       ),
     },
@@ -353,19 +337,27 @@ function RecipesPanel({
       key: "engine",
       header: "Engine",
       secondary: true,
-      cell: (recipe) => (
+      cell: (workload) => (
         <span className="font-mono text-2xs">
-          {recipe.engine} {recipe.engine_version}
+          {workload.serving.engine} {workload.serving.engine_version}
         </span>
+      ),
+    },
+    {
+      key: "phase",
+      header: "Phase",
+      secondary: true,
+      cell: (workload) => (
+        <span className="font-mono text-2xs">{workload.phase}</span>
       ),
     },
     {
       key: "updated",
       header: "Updated",
       align: "right",
-      cell: (recipe) => (
+      cell: (workload) => (
         <span className="font-mono text-2xs text-muted-foreground">
-          {formatRelative(recipe.updated_at ?? recipe.created_at)}
+          {formatRelative(workload.updated_at ?? workload.created_at)}
         </span>
       ),
     },
@@ -374,14 +366,14 @@ function RecipesPanel({
   return (
     <Card>
       <CardHeader className="flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm">Recipes</CardTitle>
+        <CardTitle className="text-sm">Served by</CardTitle>
         <Button
           asChild
           size="sm"
           variant="ghost"
           className="font-mono text-2xs"
         >
-          <Link to="/recipes" search={{ artifact: artifactId }}>
+          <Link to="/workloads" search={{ artifact: artifactId }}>
             View all
           </Link>
         </Button>
@@ -389,9 +381,9 @@ function RecipesPanel({
       <CardContent>
         <DataTable
           columns={columns}
-          list={recipes}
-          rowKey={(recipe) => recipe.id}
-          empty="No recipe references this artifact."
+          list={workloads}
+          rowKey={(workload) => workload.id}
+          empty="No workload serves this artifact."
         />
       </CardContent>
     </Card>

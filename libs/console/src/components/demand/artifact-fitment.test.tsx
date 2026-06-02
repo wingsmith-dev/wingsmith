@@ -4,7 +4,7 @@ import type {
   ArtifactFit,
   ArtifactFitLayout,
   ArtifactFitment,
-  RecipeFootprint,
+  ServingFootprint,
 } from "@/modules/demand/types"
 import { describe, expect, it, vi } from "vitest"
 import { ArtifactFitmentPanel } from "./artifact-fitment"
@@ -103,7 +103,7 @@ function response(fit: ArtifactFit = FIT): ArtifactFitment {
   }
 }
 
-function panel(selected: RecipeFootprint | null, onPick = vi.fn()) {
+function panel(selected: ServingFootprint | null, onPick = vi.fn()) {
   fitment.mockReturnValue({ data: response(), isLoading: false, error: null })
   render(
     <ArtifactFitmentPanel

@@ -26,7 +26,7 @@ import type {
   ArtifactFit,
   ArtifactFitLayout,
   FitmentScope,
-  RecipeFootprint,
+  ServingFootprint,
 } from "@/modules/demand/types"
 import { useState } from "react"
 
@@ -63,10 +63,10 @@ const CONCURRENCIES = [1, 8, 32, 128, 256]
  * offering fp16 as the default would silently oversize a repo that ships mxfp4.
  *
  * fp16 is absent on purpose. It is a dtype, so it is the one entry here that could not
- * also be declared on a recipe, and this list feeds both questions: how big is it at
- * this precision, and what should the recipe say. Nothing is lost by dropping it —
- * unquantized weights are already sized at fp16 under the empty value, which is the
- * same arithmetic under the name a recipe can actually carry.
+ * also be declared as a quantization, and this list feeds both questions: how big is it
+ * at this precision, and what should the serving block say. Nothing is lost by dropping
+ * it — unquantized weights are already sized at fp16 under the empty value, which is the
+ * same arithmetic under the name a serving block can actually carry.
  */
 const QUANTIZATIONS = ["", "fp8", "int8", "int4", "mxfp4", "awq"]
 
@@ -254,7 +254,7 @@ export function ArtifactFitmentPanel({
    * The row's own fit comes with the footprint, because a caller that has to say what
    * the fleet holds of the chosen class would otherwise have to find the row again.
    */
-  onPick?: (footprint: RecipeFootprint, fit: ArtifactFit) => void
+  onPick?: (footprint: ServingFootprint, fit: ArtifactFit) => void
   /**
    * Drop the card chrome and the title, for a caller that is already a card and has
    * already asked the question. Nested cards read as a box inside a box, and inside the
@@ -268,7 +268,7 @@ export function ArtifactFitmentPanel({
    * because a class is no longer the answer on its own — the count is part of it, and a
    * row that highlighted on class alone could not say which of its layouts is picked.
    */
-  selected?: RecipeFootprint | null
+  selected?: ServingFootprint | null
   /** The per-row button's words, in `explore` mode. */
   actionLabel?: string
 }) {
@@ -282,9 +282,10 @@ export function ArtifactFitmentPanel({
   const [everything, setEverything] = useState(false)
 
   /**
-   * What a recipe built from this row should declare, which is not what the matrix
-   * sized at. Sizing falls back to fp16 for weights that ship unquantized, because
-   * bytes-per-param needs a number; a recipe must not carry that fallback, because
+   * What a serving block built from this row should declare, which is not what the
+   * matrix sized at. Sizing falls back to fp16 for weights that ship unquantized,
+   * because bytes-per-param needs a number; the block must not carry that fallback,
+   * because
    * it becomes `--quantization` and fp16 is a dtype no engine accepts there. So the
    * footprint takes the explicit choice, then what the repo actually ships, then
    * nothing — and nothing is the right answer for unquantized weights.
@@ -612,12 +613,12 @@ function FitRow({
   actionLabel = "Deploy",
 }: {
   fit: ArtifactFit
-  /** What a recipe from this row declares — the repo's own, never the sizing fallback. */
+  /** What a block from this row declares — the repo's own, never the sizing fallback. */
   quantization: string
-  onPick?: (footprint: RecipeFootprint, fit: ArtifactFit) => void
+  onPick?: (footprint: ServingFootprint, fit: ArtifactFit) => void
   selecting?: boolean
   /** The chosen footprint when it is this row's class, null when another row holds it. */
-  selected?: RecipeFootprint | null
+  selected?: ServingFootprint | null
   actionLabel?: string
 }) {
   const state = fitTone(fit)

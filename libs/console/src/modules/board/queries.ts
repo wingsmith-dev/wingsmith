@@ -1,8 +1,8 @@
 import { useAllPages } from "@/lib/paginate"
 import { fetchProjects } from "@/modules/binding/api"
 import { fetchClusters } from "@/modules/clusters/api"
-import { fetchRecipes, fetchWorkloads } from "@/modules/demand/api"
-import type { Recipe, Workload } from "@/modules/demand/types"
+import { fetchWorkloads } from "@/modules/demand/api"
+import type { Workload } from "@/modules/demand/types"
 import { fetchAllocations } from "@/modules/machinery/api"
 import { useReservations } from "@/modules/placement/queries"
 import {
@@ -137,115 +137,41 @@ export function useFleetBoard(scope: BoardScope = {}) {
 }
 
 /**
- * The bricks, in two kinds, because demand comes in two kinds.
+ * The bricks: every workload as the shape it asks the fleet for.
  *
- * A workload brick is a real commitment: it has a scale, spread rules and
+ * A workload brick is a real commitment — it has a scale, spread rules and
  * replicas already holding devices, so planning it means planning the shortfall.
- * A recipe brick is only a shape — what it would take to run this thing — and
- * exists because "where would llama-70b fit" is a question worth asking before
- * there is a workload to ask on behalf of. A fleet with no workloads at all is
- * exactly when the board is most useful, and sourcing bricks from workloads
- * alone left it empty.
+ * There is no second kind any more: a serving configuration is not an object, so
+ * "where would llama-70b fit" before anything is declared is asked of an
+ * artifact's fitment or of the shape builder, both of which the tray offers.
  */
 export function useBricks() {
   const workloads = useAllPages(["workloads", "bricks"], (cursor) =>
     fetchWorkloads({}, cursor, PAGE)
-  )
-  const recipes = useAllPages(["recipes", "bricks"], (cursor) =>
-    fetchRecipes({}, cursor, PAGE)
   )
   const projects = useAllPages(["projects", "bricks"], (cursor) =>
     fetchProjects({}, cursor, PAGE)
   )
 
   const bricks = useMemo(() => {
-    const byId = new Map(
-      (recipes.data ?? []).map((recipe) => [recipe.id, recipe])
-    )
     const slugs = new Map(
       (projects.data ?? []).map((project) => [project.id, project.slug])
     )
-    return (workloads.data ?? [])
-      .map((workload) =>
-        brickOf(
-          workload,
-          byId.get(workload.recipe_id),
-          slugs.get(workload.project_id) ?? workload.project_id
-        )
-      )
-      .filter((brick): brick is Brick => brick !== null)
-  }, [workloads.data, recipes.data, projects.data])
-
-  /** Published recipes only: a draft is not something anybody is about to run. */
-  const shapes = useMemo(
-    () =>
-      (recipes.data ?? [])
-        .filter((recipe) => recipe.lifecycle !== "deprecated")
-        .map(brickOfRecipe),
-    [recipes.data]
-  )
+    return (workloads.data ?? []).map((workload) =>
+      brickOf(workload, slugs.get(workload.project_id) ?? workload.project_id)
+    )
+  }, [workloads.data, projects.data])
 
   return {
     bricks,
-    shapes,
-    isLoading: workloads.isLoading || recipes.isLoading,
+    isLoading: workloads.isLoading,
   }
 }
 
-/**
- * A recipe as a one-replica brick.
- *
- * It carries no strategy, no floors and no ceiling, because a recipe declares
- * none of those — they are the workload's. What it does declare is the whole
- * schedulable requirement: how many devices of what class, and whether they have
- * to share a fabric.
- */
-function brickOfRecipe(recipe: Recipe): Brick {
-  const shape = recipe.shape
-  return {
-    key: `rec:${recipe.id}`,
-    label: recipe.name,
-    detail: [
-      `${shape.device_count}× ${shape.device_class}`,
-      shape.requires_single_topology_domain
-        ? `one ${shape.topology_domain_kind ?? "fabric"}`
-        : "may spread",
-      recipe.lifecycle === "published" ? null : recipe.lifecycle,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    workload: null,
-    recipe: recipe.id,
-    /**
-     * Filled in by the tray, not here: quota and policy are per project, so the
-     * plane cannot be asked about a recipe until somebody says who for.
-     */
-    project: null,
-    priority_class: null,
-    project_slug: "unassigned",
-    device_class: shape.device_class,
-    device_count: shape.device_count,
-    requires_single_topology_domain: shape.requires_single_topology_domain,
-    topology_domain_kind: shape.topology_domain_kind,
-    replicas: 1,
-    strategy: "pack",
-    cluster_floors: {},
-    max_clusters: null,
-    pinned: false,
-  }
-}
-
-function brickOf(
-  workload: Workload,
-  recipe: Recipe | undefined,
-  project: string
-): Brick | null {
-  if (!recipe) return null
-  const shape = recipe.shape
-  const single =
-    workload.requires_single_topology_domain ??
-    shape.requires_single_topology_domain
-  const kind = workload.topology_domain_kind ?? shape.topology_domain_kind
+function brickOf(workload: Workload, project: string): Brick {
+  const shape = workload.serving.shape
+  const single = shape.requires_single_topology_domain
+  const kind = shape.topology_domain_kind
 
   const replicas = Math.max(workload.scale.desired, 0)
   const detail = [
@@ -263,7 +189,6 @@ function brickOf(
     label: workload.name,
     detail,
     workload: workload.id,
-    recipe: recipe.id,
     project: workload.project_id,
     priority_class: workload.priority_class,
     project_slug: project,

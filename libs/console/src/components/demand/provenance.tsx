@@ -10,7 +10,7 @@ export interface ProvenanceValue {
 /**
  * Who said this, from where, and when.
  *
- * One vocabulary across every claim-bearing surface in the model — a recipe's
+ * One vocabulary across every claim-bearing surface in the model — a workload's
  * `capabilities`, an artifact's `upstream`, a baseline row — because an
  * acceptance review is an argument about assertions, and two spellings of "who
  * said this and when" is one argument nobody can follow.

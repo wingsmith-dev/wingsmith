@@ -104,9 +104,9 @@ export function BenchmarkRequestPage() {
             {!request.homogeneous && (
               <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3 text-xs text-amber-700 dark:text-amber-300">
                 The coverage behind this target was not homogeneous — two of the
-                things measured ran different artifacts or recipe versions. An
-                accuracy score over that belongs to neither of them, and is
-                graded inconclusive rather than averaged.
+                things measured ran different artifacts or serving
+                configurations. An accuracy score over that belongs to neither
+                of them, and is graded inconclusive rather than averaged.
               </div>
             )}
 
@@ -204,18 +204,12 @@ export function BenchmarkRequestPage() {
                               {shortenId(entry.cluster_id)}
                             </Badge>
                           )}
-                          {entry.recipe_id && (
+                          {entry.serving_digest && (
                             <Badge
                               variant="outline"
                               className="font-mono text-2xs"
                             >
-                              {shortenId(entry.recipe_id)}
-                              {entry.recipe_version !== null && (
-                                <span className="text-muted-foreground/60">
-                                  {" "}
-                                  v{entry.recipe_version}
-                                </span>
-                              )}
+                              {shortenId(entry.serving_digest)}
                             </Badge>
                           )}
                           {entry.artifact_id && (

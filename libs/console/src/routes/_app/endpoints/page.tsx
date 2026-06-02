@@ -16,14 +16,12 @@ import {
   useDeleteEndpoint,
   useDeploymentOptions,
   useEndpoints,
-  useRecipeOptions,
   useWorkloadOptions,
 } from "@/modules/demand/queries"
 import type {
   Artifact,
   Deployment,
   Endpoint,
-  Recipe,
   Workload,
 } from "@/modules/demand/types"
 import { Sparkline } from "@/components/metrics/sparkline"
@@ -154,12 +152,11 @@ function StatTile({
 
 /**
  * What an endpoint's primary target resolves to across the object graph the
- * endpoint does not carry — deployment → workload → recipe → artifact — plus the
- * regions its targets land in, read off the workload's per-cluster deployments.
+ * endpoint does not carry — deployment → workload → artifact — plus the regions its
+ * targets land in, read off the workload's per-cluster deployments.
  */
 interface ResolvedEndpoint {
   workload?: Workload
-  recipe?: Recipe
   artifact?: Artifact
   regions: string[]
 }
@@ -172,12 +169,10 @@ interface ResolvedEndpoint {
 function makeResolver(
   deployments: Deployment[],
   workloads: Workload[],
-  recipes: Recipe[],
   artifacts: Artifact[]
 ): (endpoint: Endpoint) => ResolvedEndpoint {
   const deploymentById = new Map(deployments.map((d) => [d.id, d]))
   const workloadById = new Map(workloads.map((w) => [w.id, w]))
-  const recipeById = new Map(recipes.map((r) => [r.id, r]))
   const artifactById = new Map(artifacts.map((a) => [a.id, a]))
 
   return (endpoint: Endpoint) => {
@@ -189,11 +184,8 @@ function makeResolver(
     const workload = deployment?.workload_id
       ? workloadById.get(deployment.workload_id)
       : undefined
-    const recipe = workload?.recipe_id
-      ? recipeById.get(workload.recipe_id)
-      : undefined
-    const artifact = recipe?.artifact_id
-      ? artifactById.get(recipe.artifact_id)
+    const artifact = workload?.serving.artifact_id
+      ? artifactById.get(workload.serving.artifact_id)
       : undefined
 
     const regions = new Set<string>()
@@ -208,7 +200,7 @@ function makeResolver(
       if (region) regions.add(region)
     }
 
-    return { workload, recipe, artifact, regions: [...regions] }
+    return { workload, artifact, regions: [...regions] }
   }
 }
 
@@ -425,7 +417,6 @@ export function EndpointsPage() {
   const list = useEndpoints({ project: search.project })
   const { data: deploymentOptions } = useDeploymentOptions()
   const { data: workloadOptions } = useWorkloadOptions()
-  const { data: recipeOptions } = useRecipeOptions()
   const { data: artifactOptions } = useArtifactOptions()
   const remove = useDeleteEndpoint()
 
@@ -450,10 +441,9 @@ export function EndpointsPage() {
       makeResolver(
         deploymentOptions ?? [],
         workloadOptions ?? [],
-        recipeOptions ?? [],
         artifactOptions ?? []
       ),
-    [deploymentOptions, workloadOptions, recipeOptions, artifactOptions]
+    [deploymentOptions, workloadOptions, artifactOptions]
   )
 
   /**

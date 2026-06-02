@@ -1,7 +1,6 @@
 import {
   IconChartHistogram,
   IconActivity,
-  IconBinaryTree,
   IconBuildingBank,
   IconBolt,
   IconBox,
@@ -32,7 +31,6 @@ export type ResourceKind =
   | "pool"
   | "topology-domain"
   | "artifact"
-  | "recipe"
   | "workload"
   | "deployment"
   | "endpoint"
@@ -61,7 +59,6 @@ export const RESOURCE_ICONS: Record<ResourceKind, React.ElementType> = {
   pool: IconStack2,
   "topology-domain": IconTopologyStar3,
   artifact: IconPackages,
-  recipe: IconBinaryTree,
   workload: IconRocket,
   deployment: IconBox,
   endpoint: IconBolt,

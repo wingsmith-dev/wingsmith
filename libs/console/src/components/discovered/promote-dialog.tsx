@@ -22,7 +22,6 @@ import {
   usePriorityClassOptions,
   useProjectOptions,
 } from "@/modules/binding/queries"
-import { useRecipeOptions } from "@/modules/demand/queries"
 import { usePromoteWorkload } from "@/modules/discovered/queries"
 import { workloadLabel } from "@/modules/discovered/display"
 import type { DiscoveredWorkload } from "@/modules/discovered/types"
@@ -33,11 +32,16 @@ import { toast } from "sonner"
 const NONE = "__none__"
 
 /**
- * Promotion is the one decision here that produces declared state, so it asks
- * for the two things the plane cannot infer — which recipe describes what is
- * running, and who owns it — and nothing else. Replica bounds are taken from the
- * live workload rather than offered as a field: a promotion that also set scale
- * would rescale a serving model as a side effect of being catalogued.
+ * Promotion is the one decision here that produces declared state, so it asks for
+ * the two things the plane cannot infer — which weights these are, and who owns
+ * it — and nothing else. How the workload is served is read off what is running
+ * rather than picked from a list: there is no catalogue of serving configurations
+ * to pick from any more, and the cluster's own spec is a better answer than a
+ * person matching one by eye.
+ *
+ * Replica bounds are taken from the live workload rather than offered as a field:
+ * a promotion that also set scale would rescale a serving model as a side effect
+ * of being catalogued.
  *
  * The fingerprint is sent back exactly as it was shown. If the pod template moved
  * since this row was rendered the plane refuses, which is the point.
@@ -47,13 +51,18 @@ export function PromoteDialog({
   trigger,
   open: controlledOpen,
   onOpenChange,
-  recipeId,
+  artifact,
 }: {
   workload: DiscoveredWorkload
   trigger?: React.ReactNode
   open?: boolean
   onOpenChange?: (open: boolean) => void
-  recipeId?: string
+  /**
+   * The weights, resolved by the adoption flow's first step. The plane reads
+   * everything else off the sighting, so this is the whole of what a promotion
+   * states about the configuration.
+   */
+  artifact?: string
 }) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const open = controlledOpen ?? uncontrolledOpen
@@ -61,21 +70,17 @@ export function PromoteDialog({
     setUncontrolledOpen(next)
     onOpenChange?.(next)
   }
-  const [pickedRecipe, setRecipe] = useState("")
-  /** The flow resolves a recipe after this dialog is mounted, so the prop wins until picked. */
-  const recipe = pickedRecipe || recipeId || ""
   const [project, setProject] = useState(workload.project_id ?? "")
   const [name, setName] = useState(workload.name)
   const [priorityClass, setPriorityClass] = useState(NONE)
 
-  const { data: recipes } = useRecipeOptions()
   const { data: projects } = useProjectOptions()
   const { data: priorityClasses } = usePriorityClassOptions()
   const promote = usePromoteWorkload()
   const navigate = useNavigate()
 
   const fingerprint = workload.spec_fingerprint
-  const ready = recipe !== "" && project !== "" && !!fingerprint
+  const ready = project !== "" && !!artifact && !!fingerprint
 
   const submit = () => {
     if (!fingerprint) return
@@ -83,7 +88,7 @@ export function PromoteDialog({
       {
         ref: workload.id,
         body: {
-          recipe,
+          artifact: artifact!,
           project,
           fingerprint,
           name: name || null,
@@ -132,24 +137,12 @@ export function PromoteDialog({
         </DialogHeader>
 
         <div className="min-w-0 space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="promote-recipe">Recipe</Label>
-            <Select value={recipe} onValueChange={setRecipe}>
-              <SelectTrigger id="promote-recipe" className="font-mono text-xs">
-                <SelectValue placeholder="Which recipe describes this" />
-              </SelectTrigger>
-              <SelectContent>
-                {(recipes ?? []).map((option) => (
-                  <SelectItem
-                    key={option.id}
-                    value={option.id}
-                    className="font-mono text-xs"
-                  >
-                    {option.name} v{option.version}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-1.5 rounded-md border bg-muted/30 p-3">
+            <p className="font-mono text-2xs text-muted-foreground">
+              {artifact
+                ? "the serving block is read off what this cluster is running — only the weights are declared"
+                : "no weights identified yet — register them from the reading first"}
+            </p>
             <p className="font-mono text-2xs break-all text-muted-foreground/60">
               running {workload.images.join(", ") || "an unrecorded image"}
             </p>

@@ -19,7 +19,7 @@ import { Progress } from "@/components/ui/progress"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { parallelismLabel, workloadPhaseTone } from "@/modules/demand/display"
-import { useDeployment, useRecipe, useWorkload } from "@/modules/demand/queries"
+import { useDeployment, useWorkload } from "@/modules/demand/queries"
 import { DeploymentLifecycle } from "@/components/demand/deployment-lifecycle"
 import { useState } from "react"
 import { useOperations } from "@/modules/machinery/queries"
@@ -42,7 +42,6 @@ export function DeploymentDetailPage() {
   })
   const { data: deployment, isLoading, error } = useDeployment(deploymentId)
   const { data: workload } = useWorkload(deployment?.workload_id ?? "")
-  const { data: recipe } = useRecipe(workload?.recipe_id ?? "")
   const operations = useOperations({ target: deployment?.id })
   const benchmarks = useDeploymentBenchmarks(deployment?.id)
   // Settled means "stop polling", not "healthy": a failed deployment has
@@ -286,10 +285,8 @@ export function DeploymentDetailPage() {
                         </Field>
                         <Field label="Gang size">{workload?.gang_size}</Field>
                         <Field label="Project">{workload?.project_id}</Field>
-                        <Field label="Recipe">
-                          <Link to="/recipes" className="hover:underline">
-                            {recipe?.name ?? workload?.recipe_id}
-                          </Link>
+                        <Field label="Artifact">
+                          <Dash>{workload?.artifact_tag}</Dash>
                         </Field>
                         <Field label="Adapters">
                           {workload?.adapter_artifact_ids.length || "none"}
@@ -310,33 +307,42 @@ export function DeploymentDetailPage() {
                   </Card>
                 </div>
 
-                {recipe && (
+                {workload && (
                   <Card>
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-sm">Recipe</CardTitle>
+                      <CardTitle className="text-sm">Serving</CardTitle>
+                      <p className="font-mono text-2xs text-muted-foreground/60">
+                        The workload's, not the deployment's — every cluster
+                        runs the same configuration.
+                      </p>
                     </CardHeader>
                     <CardContent>
                       <FieldGrid>
-                        <Field label="Name">
-                          {recipe.name} v{recipe.version}
-                        </Field>
                         <Field label="Engine">
-                          {recipe.engine} {recipe.engine_version}
+                          {workload.serving.engine}{" "}
+                          {workload.serving.engine_version}
                         </Field>
                         <Field label="Shape">
-                          {recipe.shape.device_count}×{" "}
-                          {recipe.shape.device_class}
+                          {workload.serving.shape.device_count}×{" "}
+                          {workload.serving.shape.device_class}
                         </Field>
                         <Field label="Parallelism">
-                          {parallelismLabel(recipe.parallelism)}
+                          {parallelismLabel(workload.serving.parallelism)}
                         </Field>
                         <Field label="Context length">
-                          {recipe.context_length}
+                          {workload.serving.context_length}
                         </Field>
                         <Field label="Single domain">
-                          {recipe.shape.requires_single_topology_domain
-                            ? (recipe.shape.topology_domain_kind ?? "yes")
+                          {workload.serving.shape
+                            .requires_single_topology_domain
+                            ? (workload.serving.shape.topology_domain_kind ??
+                              "yes")
                             : "not required"}
+                        </Field>
+                        <Field label="Digest">
+                          <span className="font-mono text-2xs break-all">
+                            {workload.serving_digest}
+                          </span>
                         </Field>
                       </FieldGrid>
                     </CardContent>

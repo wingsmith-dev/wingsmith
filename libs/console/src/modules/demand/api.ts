@@ -14,11 +14,6 @@ import type {
   Endpoint,
   EndpointCreateRequest,
   EndpointUpdateRequest,
-  Recipe,
-  RecipeBenchmarkSummary,
-  RecipeCreateRequest,
-  RecipeUpdateRequest,
-  RecipeUsage,
   ResolvedArtifact,
   FitmentParams,
   Workload,
@@ -38,21 +33,19 @@ export interface ArtifactFilters {
   label?: string[]
 }
 
-export interface RecipeFilters {
-  artifact?: string
-  engine?: string
-  class?: string
-  /** draft | published | deprecated. */
-  lifecycle?: string
-  search?: string
-  label?: string[]
-}
-
 export interface WorkloadFilters {
   project?: string
   kind?: string
   phase?: string
-  recipe?: string
+  /** Workloads serving these weights — the reverse of the artifact's usage count. */
+  artifact?: string
+  /**
+   * Every workload configured exactly this way — an exact match on the whole
+   * `svg_...` string, which is what reuse is now.
+   */
+  serving_digest?: string
+  /** The device class the workload asks for, spelled the way the class routes spell it. */
+  class?: string
   /** Workloads with a share on this cluster. Global object, per-cluster question. */
   cluster?: string
   label?: string[]
@@ -88,7 +81,7 @@ export function fetchArtifact(ref: string): Promise<Artifact> {
   return api.get<Artifact>(`/artifacts/${encodeURIComponent(ref)}`)
 }
 
-/** Counted at read time, stored nowhere: recipes, workloads and downstream artifacts. */
+/** Counted at read time, stored nowhere: workloads and downstream artifacts. */
 export function fetchArtifactUsage(ref: string): Promise<ArtifactUsage> {
   return api.get<ArtifactUsage>(`/artifacts/${encodeURIComponent(ref)}/usage`)
 }
@@ -196,48 +189,6 @@ export function deleteArtifactBaseline(
 ): Promise<void> {
   return api.delete<void>(
     `/artifacts/${encodeURIComponent(ref)}/baselines/${encodeURIComponent(baseline)}`
-  )
-}
-
-export function fetchRecipes(
-  filters: RecipeFilters = {},
-  cursor?: string,
-  limit?: number
-): Promise<ListResponse<Recipe>> {
-  return api.list<Recipe>("/recipes", { ...filters, cursor, limit })
-}
-
-export function fetchRecipe(ref: string): Promise<Recipe> {
-  return api.get<Recipe>(`/recipes/${encodeURIComponent(ref)}`)
-}
-
-export function createRecipe(body: RecipeCreateRequest): Promise<Recipe> {
-  return api.post<Recipe>("/recipes", body)
-}
-
-export function updateRecipe(
-  ref: string,
-  body: RecipeUpdateRequest,
-  revision?: string
-): Promise<Recipe> {
-  return api.patch<Recipe>(`/recipes/${encodeURIComponent(ref)}`, body, {
-    ifMatch: revision,
-  })
-}
-
-export function deleteRecipe(ref: string): Promise<void> {
-  return api.delete<void>(`/recipes/${encodeURIComponent(ref)}`)
-}
-
-export function fetchRecipeUsage(ref: string): Promise<RecipeUsage> {
-  return api.get<RecipeUsage>(`/recipes/${encodeURIComponent(ref)}/usage`)
-}
-
-export function fetchRecipeBenchmarkSummary(
-  ref: string
-): Promise<RecipeBenchmarkSummary> {
-  return api.get<RecipeBenchmarkSummary>(
-    `/recipes/${encodeURIComponent(ref)}/benchmarks-summary`
   )
 }
 

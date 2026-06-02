@@ -40,9 +40,7 @@ const overviewItems: NavItem[] = [
  *
  * Ordered by how often it is opened, not by the order things are created in. You
  * register an artifact a handful of times and look at what is running every day,
- * so the operated thing comes before the thing that defines it. Recipes is last
- * because nothing routes through it any more — a deploy derives one, and the page
- * is where you go to read them back, not a step on the way anywhere. "Where do I
+ * so the operated thing comes before the thing that defines it. "Where do I
  * start" is Overview's problem, and Overview can stop saying it once there is
  * something running, which a sidebar item cannot.
  */
@@ -50,7 +48,6 @@ const servingItems: NavItem[] = [
   { label: "Endpoints", to: "/endpoints", kind: "endpoint" },
   { label: "Workloads", to: "/workloads", kind: "workload" },
   { label: "Artifacts", to: "/artifacts", kind: "artifact" },
-  { label: "Recipes", to: "/recipes", kind: "recipe" },
 ]
 
 const fleetItems: NavItem[] = [

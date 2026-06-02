@@ -33,12 +33,12 @@ import {
   projects,
   tenants,
   quotas,
-  recipes,
   workloads,
 } from "./data"
 import { revision, uid } from "./ids"
 import { collection } from "./registry"
 import type { Artifact, Deployment, Workload } from "@/modules/demand/types"
+import { emptyCapabilities, emptyServing } from "@/modules/demand/display"
 import type { PlaneConfig } from "@/modules/system/types"
 import type {
   BenchmarkCreateRequest,
@@ -49,6 +49,7 @@ import type {
   DecisionRequest,
   DiscoveredWorkload,
   PromoteRequest,
+  ServingDraft,
 } from "@/modules/discovered/types"
 
 const bool = (value: boolean | undefined, actual: boolean) =>
@@ -253,13 +254,29 @@ collection({
  */
 const HF_FIXTURES: Record<
   string,
-  { format: string; size: number; parameters: number; licence: string }
+  {
+    format: string
+    size: number
+    parameters: number
+    licence: string
+    /** Present only where a corpus has published a tested configuration. */
+    upstream?: {
+      tensor_parallel: number
+      tool_call_parser: string | null
+      verified_hardware: string[]
+    }
+  }
 > = {
   "openai/gpt-oss-20b": {
     format: "safetensors",
     size: 41_231_686_042,
     parameters: 20_900_000_000,
     licence: "apache-2.0",
+    upstream: {
+      tensor_parallel: 1,
+      tool_call_parser: "openai",
+      verified_hardware: ["H100", "H200"],
+    },
   },
   "Qwen/Qwen3-32B": {
     format: "safetensors",
@@ -458,13 +475,47 @@ registerFixtures([
           context_length: 131072,
         },
         locations: [{ scheme: "hf", uri, region: null, preferred: true }],
-        recipe: {
+        serving: {
           device_count: 1,
           device_memory_mib_min: 81920,
           context_length: 131072,
           quantization: null,
           dtype: "bfloat16",
         },
+        /**
+         * A corpus entry for the demo, so the create flow can show what it looks
+         * like when a value is somebody else's tested answer rather than ours.
+         * Absent for repos nobody upstream has published a configuration for,
+         * which is the ordinary case.
+         */
+        upstream: found.upstream
+          ? {
+              source: "vllm",
+              source_uri: `https://github.com/vllm-project/recipes/blob/${sha}/${slug}.md`,
+              model_id: slug,
+              variant: "default",
+              precision: null,
+              engine: "vllm",
+              engine_version_min: "0.9.1",
+              nightly_required: false,
+              tensor_parallel: found.upstream.tensor_parallel,
+              default_strategy: null,
+              deployments: [],
+              replica_memory_mib_min: null,
+              context_length: 131072,
+              max_model_len: 131072,
+              kv_cache_dtype: "fp8",
+              tool_call_parser: found.upstream.tool_call_parser,
+              reasoning_parser: null,
+              args: [],
+              env: {},
+              features_on: [],
+              features_opt_in: [],
+              strategies: [],
+              requires_single_topology_domain: true,
+              verified_hardware: found.upstream.verified_hardware,
+            }
+          : null,
         existing_id: artifacts.find((a) => a.digest === digest)?.id ?? null,
         notes: [
           {
@@ -496,19 +547,6 @@ collection({
     eq(q.get("project"), a.project_id),
 })
 
-collection({
-  path: "/recipes",
-  singular: "recipe",
-  rows: () => recipes,
-  names: (r) => [r.name],
-  searchable: (r) => [r.name, r.engine],
-  labels: (r) => r.labels,
-  filter: (r, q) =>
-    eq(q.get("artifact"), r.artifact_id) &&
-    eq(q.get("engine"), r.engine) &&
-    eq(q.get("class"), r.shape.device_class),
-})
-
 /** The parent of a deployment, or undefined if the corpus is inconsistent. */
 const parentOf = (deployment: Deployment) =>
   workloads.find((w) => w.id === deployment.workload_id)
@@ -524,7 +562,9 @@ collection({
     eq(q.get("project"), w.project_id) &&
     eq(q.get("kind"), w.kind) &&
     eq(q.get("phase"), w.phase) &&
-    eq(q.get("recipe"), w.recipe_id) &&
+    eq(q.get("artifact"), w.serving.artifact_id) &&
+    eq(q.get("class"), w.serving.shape.device_class) &&
+    eq(q.get("serving_digest"), w.serving_digest) &&
     (q.get("cluster") === undefined ||
       w.deployments.some((d) =>
         [d.cluster_id, d.cluster_name].includes(
@@ -555,7 +595,7 @@ collection({
   singular: "endpoint",
   rows: () => endpoints,
   names: (e) => [e.name],
-  searchable: (e) => [e.name, e.display_name],
+  searchable: (e) => [e.name, e.slug],
   labels: (e) => e.labels,
   filter: (e, q) => eq(q.get("project"), e.project_id),
 })
@@ -806,6 +846,36 @@ registerFixtures([
     }),
   },
   {
+    /**
+     * Registered before `/benchmarks/:ref` so the fixture router does not read
+     * `serving` as a run id, the same ordering `/artifacts/resolve` needs.
+     *
+     * An unknown digest answers zero rather than 404: the question is how much
+     * measurement stands behind a configuration, and "none" is an answer.
+     */
+    method: "GET",
+    path: "/benchmarks/serving/:digest",
+    handler: ({ params }: FixtureContext) => {
+      const runs = benchmarkRuns.filter(
+        (run) => run.provenance.serving_digest === params.digest
+      )
+      const graded = runs.filter((run) => run.phase === "succeeded")
+      const peaks = graded
+        .map((run) => {
+          const rate = run.summary?.["output_token_throughput"]
+          const value = (rate as { avg?: number } | undefined)?.avg
+          return typeof value === "number" ? value : null
+        })
+        .filter((value): value is number => value !== null)
+      return {
+        serving_digest: params.digest,
+        run_count: runs.length,
+        graded_run_count: graded.length,
+        peak_output_tokens_per_second: peaks.length ? Math.max(...peaks) : null,
+      }
+    },
+  },
+  {
     method: "POST",
     path: "/benchmarks",
     handler: ({ body }: FixtureContext) => {
@@ -858,8 +928,7 @@ registerFixtures([
         provenance: {
           model: deployment.name,
           deployment_generation: deployment.generation,
-          recipe_id: parentOf(deployment)?.recipe_id ?? "",
-          recipe_version: null,
+          serving_digest: parentOf(deployment)?.serving_digest ?? null,
           engine_args: {},
           serving: {},
         },
@@ -1017,72 +1086,81 @@ function decide(
 registerFixtures([
   {
     method: "GET",
-    path: "/discovered/:ref/recipe-draft",
-    handler: ({ params }: FixtureContext) => {
-      const workload = sighting(params.ref)
-      const args: Record<string, string> = {}
-      const list = workload.spec?.args ?? []
-      for (let i = 0; i < list.length; i++) {
-        if (!list[i].startsWith("--")) continue
-        const next = list[i + 1]
-        args[list[i].slice(2)] = next && !next.startsWith("--") ? next : ""
-        if (next && !next.startsWith("--")) i++
-      }
-      const match = /\/([a-z0-9]+)-runtime:([^@\s]+)/.exec(
-        workload.spec?.image ?? ""
-      )
-      const model = args["model"] ?? null
-      const context = args["max-model-len"]
-        ? Number(args["max-model-len"])
-        : null
-      return {
-        artifact_ref: model ? `hf:${model}` : null,
-        artifact_name: model,
-        name: args["served-model-name"] ?? workload.name,
-        engine: match?.[1] ?? null,
-        engine_version: match?.[2] ?? null,
-        engine_image: workload.spec?.image ?? null,
-        engine_args: {},
-        imported_args: {},
-        context_length: context,
-        tensor_parallel: Number(args["tensor-parallel-size"] ?? 1),
-        pipeline_parallel: 1,
-        expert_parallel: 1,
-        max_batch_tokens: args["max-num-seqs"]
-          ? Number(args["max-num-seqs"])
-          : null,
-        kv_cache_fraction: args["gpu-memory-utilization"]
-          ? Number(args["gpu-memory-utilization"])
-          : null,
-        quantization: null,
-        dtype: null,
-        device_count: workload.devices_per_replica,
-        device_class: "h100-sxm",
-        cpu_cores: null,
-        memory_mib: null,
-        confident: !!match && !!model && context !== null,
-        notes: match ? [] : ["could not tell which engine this runs"],
-        artifact: {
-          reference: model ? `hf:${model}` : null,
-          digest: model ? `hf:${model}` : null,
-          name: model,
-          kind: "weights",
-          format: null,
-          revision: args["revision"] ?? null,
-          parameter_count: null,
-          source_scheme: model ? "hf" : null,
-          source_uri: model ? `hf://${model}` : null,
-          verified: false,
-          metadata: { source: "discovered" },
-          existing_id:
-            artifacts.find((a) => a.digest === `hf:${model}`)?.id ?? null,
-          notes: model
-            ? ["the digest is this reference, not a hash of the bytes"]
-            : ["no --model argument, so there are no weights to identify"],
-        },
-      }
-    },
+    path: "/discovered/:ref/serving-draft",
+    handler: ({ params }: FixtureContext) => servingDraft(sighting(params.ref)),
   },
+])
+
+/**
+ * One reading of a sighting's argv, shared by the draft route and by promote.
+ *
+ * Two readings would be two answers: the plane derives the block it adopts from
+ * the same parse it showed, so a fixture that drafted one thing and promoted
+ * another would be the one bug this flow exists to make impossible.
+ */
+function servingDraft(workload: DiscoveredWorkload): ServingDraft {
+  const args: Record<string, string> = {}
+  const list = workload.spec?.args ?? []
+  for (let i = 0; i < list.length; i++) {
+    if (!list[i].startsWith("--")) continue
+    const next = list[i + 1]
+    args[list[i].slice(2)] = next && !next.startsWith("--") ? next : ""
+    if (next && !next.startsWith("--")) i++
+  }
+  const match = /\/([a-z0-9]+)-runtime:([^@\s]+)/.exec(
+    workload.spec?.image ?? ""
+  )
+  const model = args["model"] ?? null
+  const context = args["max-model-len"] ? Number(args["max-model-len"]) : null
+  return {
+    artifact_ref: model ? `hf:${model}` : null,
+    artifact_name: model,
+    name: args["served-model-name"] ?? workload.name,
+    engine: match?.[1] ?? null,
+    engine_version: match?.[2] ?? null,
+    engine_image: workload.spec?.image ?? null,
+    engine_args: {},
+    imported_args: args,
+    context_length: context,
+    tensor_parallel: Number(args["tensor-parallel-size"] ?? 1),
+    pipeline_parallel: 1,
+    expert_parallel: 1,
+    max_batch_tokens: args["max-num-seqs"]
+      ? Number(args["max-num-seqs"])
+      : null,
+    kv_cache_fraction: args["gpu-memory-utilization"]
+      ? Number(args["gpu-memory-utilization"])
+      : null,
+    quantization: null,
+    dtype: null,
+    device_count: workload.devices_per_replica,
+    device_class: "h100-sxm",
+    cpu_cores: null,
+    memory_mib: null,
+    confident: !!match && !!model && context !== null,
+    notes: match ? [] : ["could not tell which engine this runs"],
+    artifact: {
+      reference: model ? `hf:${model}` : null,
+      digest: model ? `hf:${model}` : null,
+      name: model,
+      kind: "weights",
+      format: null,
+      revision: args["revision"] ?? null,
+      parameter_count: null,
+      source_scheme: model ? "hf" : null,
+      source_uri: model ? `hf://${model}` : null,
+      verified: false,
+      metadata: { source: "discovered" },
+      existing_id:
+        artifacts.find((a) => a.digest === `hf:${model}`)?.id ?? null,
+      notes: model
+        ? ["the digest is this reference, not a hash of the bytes"]
+        : ["no --model argument, so there are no weights to identify"],
+    },
+  }
+}
+
+registerFixtures([
   {
     method: "POST",
     path: "/discovered/:ref/track",
@@ -1126,14 +1204,11 @@ registerFixtures([
           { expected: data.fingerprint, actual: workload.spec_fingerprint }
         )
       }
-      const recipe = recipes.find(
-        (r) => r.id === data.recipe || r.name === data.recipe
-      )
-      if (!recipe) throw new NotFoundError(`no recipe '${data.recipe}'`)
       const project = projects.find(
         (p) => p.id === data.project || p.slug === data.project
       )
       if (!project) throw new NotFoundError(`no project '${data.project}'`)
+      const read = servingDraft(workload)
 
       const now = new Date().toISOString()
       const name = data.name || workload.name
@@ -1188,8 +1263,7 @@ registerFixtures([
       const parent: Workload = {
         id: parentId,
         name,
-        served_model_name: null,
-        resolved_served_model_name: name,
+        served_model_name: name,
         kind: "service",
         phase: "running",
         project_id: project.id,
@@ -1198,14 +1272,58 @@ registerFixtures([
         preemptible: false,
         paused: false,
         gang_size: 1,
-        recipe_id: recipe.id,
-        recipe_name: recipe.name,
+        /**
+         * Read off the sighting, not off the request. `artifact` is the only part
+         * of the configuration a caller states, because it is the only part the
+         * cluster cannot tell us — everything else is what is already running, and
+         * declaring something else would restart the model the adoption exists to
+         * leave alone.
+         */
+        serving_digest: `svg_${"0".repeat(64)}`,
+        serving: {
+          artifact_id: data.artifact,
+          engine: read.engine ?? "vllm",
+          engine_version: read.engine_version ?? "latest",
+          engine_image: read.engine_image,
+          frontend_image: null,
+          engine_args: {},
+          imported_args: read.imported_args,
+          quantization: read.quantization,
+          dtype: read.dtype,
+          parallelism: {
+            tensor: read.tensor_parallel,
+            pipeline: read.pipeline_parallel,
+            expert: read.expert_parallel,
+          },
+          context_length: read.context_length ?? 0,
+          max_batch_tokens: read.max_batch_tokens,
+          cache: {
+            kv_cache_dtype: null,
+            kv_cache_fraction: read.kv_cache_fraction,
+            prefix_cache_enabled: true,
+            prefix_cache_config: {},
+          },
+          serving: emptyServing(),
+          capabilities: emptyCapabilities(),
+          resolved_engine_args: {},
+          shape: {
+            device_class: read.device_class ?? "",
+            device_count: read.device_count,
+            device_memory_mib_min: 0,
+            requires_single_topology_domain: false,
+            topology_domain_kind: null,
+          },
+          resources: {
+            cpu_cores: read.cpu_cores,
+            memory_mib: read.memory_mib,
+            disk_gib: null,
+          },
+          overlay: { pod_spec: {}, dynamo: {} },
+        },
         artifact_tag: null,
         adapter_artifact_ids: [],
         overrides: {},
         labels: workload.labels,
-        requires_single_topology_domain: null,
-        topology_domain_kind: null,
         strategy: "pack",
         cluster_floors: {},
         max_clusters: 1,
@@ -1367,7 +1485,7 @@ registerFixtures([
  * the screen from.
  *
  * So the corpus's own replica rollup stands in for what has been bound: replicas
- * declared, less replicas the cluster reports ready, times the recipe's device
+ * declared, less replicas the cluster reports ready, times the workload's device
  * shape. It is the same quantity — capacity promised and not yet converged —
  * counted from the one book the offline fleet keeps consistently.
  */
@@ -1379,14 +1497,14 @@ function reservations(query: FixtureQuery) {
   for (const deployment of deployments) {
     if (!deployment.enabled) continue
     const workload = parentOf(deployment)
-    const recipe = recipes.find((r) => r.id === workload?.recipe_id)
-    if (!workload || !recipe) continue
+    if (!workload) continue
+    const shape = workload.serving.shape
 
     const pending = Math.max(
       0,
       deployment.desired_replicas - deployment.replicas.ready
     )
-    const owed = pending * recipe.shape.device_count
+    const owed = pending * shape.device_count
     if (owed === 0) continue
 
     const named = clusters.find((c) => c.id === deployment.cluster_id)
@@ -1398,13 +1516,10 @@ function reservations(query: FixtureQuery) {
       workload_name: workload.name,
       deployment: deployment.id,
       deployment_name: deployment.name,
-      device_class: recipe.shape.device_class,
+      device_class: shape.device_class,
       devices: owed,
-      requires_single_domain:
-        workload.requires_single_topology_domain ??
-        recipe.shape.requires_single_topology_domain,
-      domain_kind:
-        workload.topology_domain_kind ?? recipe.shape.topology_domain_kind,
+      requires_single_domain: shape.requires_single_topology_domain,
+      domain_kind: shape.topology_domain_kind,
     })
   }
 
