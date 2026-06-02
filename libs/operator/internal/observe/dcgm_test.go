@@ -172,8 +172,8 @@ func TestDCGMClassResolvesThroughTheContractWhenGFDIsSilent(t *testing.T) {
 		t.Fatalf("model is %q", devices[0].Model)
 	}
 	// Memory comes from the dictionary here, and a zero would be worse than an absence: the plane
-	// filters a recipe's device_memory_mib_min against this number, so a zero makes every recipe
-	// that asks for memory unplaceable and blames the recipe for it.
+	// filters a workload's device_memory_mib_min against this number, so a zero makes every
+	// workload that asks for memory unplaceable and blames the workload for it.
 	if devices[0].MemoryTotalMB != 81559 {
 		t.Fatalf("memory without a gfd label is %d, not the class's own", devices[0].MemoryTotalMB)
 	}

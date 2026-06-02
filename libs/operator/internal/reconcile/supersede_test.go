@@ -121,7 +121,7 @@ func componentExists(t *testing.T, c client.Client, name string) bool {
 }
 
 // TestPruneSuperseded is the production defect and every guard against over-reaching on it. The
-// Dynamo operator names a component deployment after a hash of its spec, so a recipe edit makes a
+// Dynamo operator names a component deployment after a hash of its spec, so a serving edit makes a
 // new one and abandons the old — which keeps its accelerators and deadlocks a full node.
 func TestPruneSuperseded(t *testing.T) {
 	current := "kimi-k3-vllmdecodeworker-0a26de60"

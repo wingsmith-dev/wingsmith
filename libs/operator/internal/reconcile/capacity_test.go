@@ -13,12 +13,12 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
-// pipelined is the recipe of a replica whose devices do not have to share a node: one device per
-// tensor group, two stages passing activations between them.
-func pipelined() wire.RecipeDesired {
-	rec := testRecipeDesired()
-	rec.Parallelism = wire.RecipeParallelism{Tensor: 1, Pipeline: 2, Expert: 1}
-	return rec
+// pipelined is a deployment whose devices do not have to share a node: one device per tensor
+// group, two stages passing activations between them.
+func pipelined() wire.DeploymentDesired {
+	dep := testDeploymentDesired()
+	dep.Serving.Parallelism = wire.Parallelism{Tensor: 1, Pipeline: 2, Expert: 1}
+	return dep
 }
 
 // inFabric puts a node in a named clique, which is how the operator learns that a fabric reaches
@@ -40,9 +40,8 @@ func withMultinode(t *testing.T) {
 // was demonstrably working, on a cluster advertising its accelerators perfectly well.
 func TestTheDevicePluginIsBlamedOnlyWhenNothingIsAdvertised(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(),
+	_, out, _ := runReconcile(t, dep, art, completedPrefetch(),
 		gpuNode("gpu-0", 1, true), gpuNode("gpu-1", 1, true))
 
 	message := readyCondition(t, out).Message
@@ -58,10 +57,9 @@ func TestTheDevicePluginIsBlamedOnlyWhenNothingIsAdvertised(t *testing.T) {
 // pipeline stages instead of one tensor group, are a replica this cluster can serve.
 func TestAPipelinedReplicaSpansNodes(t *testing.T) {
 	withMultinode(t)
-	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, pipelined())
+	dep := declared(t, "deployment", testDeploymentID, pipelined())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(),
+	r, out, _ := runReconcile(t, dep, art, completedPrefetch(),
 		gpuNode("gpu-0", 1, true), gpuNode("gpu-1", 1, true))
 
 	if got := readyCondition(t, out).Reason; got != "Applied" {
@@ -85,10 +83,9 @@ func TestAPipelinedReplicaSpansNodes(t *testing.T) {
 // single pod holding a fraction of the devices the engine expects. It starts, then hangs in
 // collective initialisation saying nothing. Refusing names the backend to install instead.
 func TestMultinodeIsRefusedWhereItCannotBeRendered(t *testing.T) {
-	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, pipelined())
+	dep := declared(t, "deployment", testDeploymentID, pipelined())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(),
+	_, out, _ := runReconcile(t, dep, art, completedPrefetch(),
 		gpuNode("gpu-0", 1, true), gpuNode("gpu-1", 1, true))
 
 	condition := readyCondition(t, out)
@@ -104,10 +101,9 @@ func TestMultinodeIsRefusedWhereItCannotBeRendered(t *testing.T) {
 // leader-worker backend renders one even though nothing set multinode.enabled. This is the whole
 // point of observing the capability — installing Grove is enough, on its own.
 func TestMultinodeIsEnabledByObservingABackend(t *testing.T) {
-	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, pipelined())
+	dep := declared(t, "deployment", testDeploymentID, pipelined())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	_, out, _ := runReconcileCapable(t, capableOfMultinode{}, dep, rec, art,
+	_, out, _ := runReconcileCapable(t, capableOfMultinode{}, dep, art,
 		completedPrefetch(), gpuNode("gpu-0", 1, true), gpuNode("gpu-1", 1, true))
 
 	condition := readyCondition(t, out)
@@ -125,10 +121,9 @@ func (capableOfMultinode) Multinode() bool { return true }
 // between pipeline stages, and spreading one that did not need spreading buys nothing.
 func TestAReplicaThatFitsOneNodeIsNotSpread(t *testing.T) {
 	withMultinode(t)
-	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, pipelined())
+	dep := declared(t, "deployment", testDeploymentID, pipelined())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(),
+	r, out, _ := runReconcile(t, dep, art, completedPrefetch(),
 		gpuNode("gpu-0", 8, true), gpuNode("gpu-1", 8, true))
 
 	if got := readyCondition(t, out).Reason; got != "Applied" {
@@ -148,12 +143,11 @@ func TestAReplicaThatFitsOneNodeIsNotSpread(t *testing.T) {
 // spread over whatever the scheduler liked.
 func TestSingleDomainRefusesNodesWithNoFabricBetweenThem(t *testing.T) {
 	withMultinode(t)
-	desired := testDeploymentDesired()
+	desired := pipelined()
 	desired.Placement.Topology = "single_domain"
 	dep := declared(t, "deployment", testDeploymentID, desired)
-	rec := declared(t, "recipe", testRecipeID, pipelined())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(),
+	_, out, _ := runReconcile(t, dep, art, completedPrefetch(),
 		gpuNode("gpu-0", 1, true), gpuNode("gpu-1", 1, true))
 
 	condition := readyCondition(t, out)
@@ -170,12 +164,11 @@ func TestSingleDomainRefusesNodesWithNoFabricBetweenThem(t *testing.T) {
 // prevent — and the deployment would look placed while being exactly what was ruled out.
 func TestSingleDomainPinsTheReplicaToOneFabric(t *testing.T) {
 	withMultinode(t)
-	desired := testDeploymentDesired()
+	desired := pipelined()
 	desired.Placement.Topology = "single_domain"
 	dep := declared(t, "deployment", testDeploymentID, desired)
-	rec := declared(t, "recipe", testRecipeID, pipelined())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(),
+	r, out, _ := runReconcile(t, dep, art, completedPrefetch(),
 		inFabric(gpuNode("gpu-0", 1, true), "rack-a"),
 		inFabric(gpuNode("gpu-1", 1, true), "rack-a"),
 		inFabric(gpuNode("gpu-2", 1, true), "rack-b"))
@@ -196,9 +189,8 @@ func TestASingleNodeReplicaIsNotPinnedToAClique(t *testing.T) {
 	desired := testDeploymentDesired()
 	desired.Placement.Topology = "single_domain"
 	dep := declared(t, "deployment", testDeploymentID, desired)
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	r, out, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
 	if got := readyCondition(t, out).Reason; got != "Applied" {
 		t.Fatalf("reason = %q, want Applied", got)

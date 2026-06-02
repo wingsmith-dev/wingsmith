@@ -14,24 +14,22 @@ import (
 func testInputs() Inputs {
 	return Inputs{
 		Deployment: wire.DeploymentDesired{
-			DeploymentID: "dep_01J9X2",
-			Name:         "chat-iad",
-			ProjectID:    "prj_01J9X2",
-			RecipeID:     "rec_01J9X2",
-			MinReplicas:  2,
-			MaxReplicas:  8,
-			Generation:   7,
-			Placement:    wire.PlacementConstraints{DevicesPerReplica: 2},
-		},
-		Recipe: wire.RecipeDesired{
-			RecipeID:           "rec_01J9X2",
-			Name:               "qwen3-8b",
-			Version:            3,
-			Engine:             "vllm",
-			EngineImage:        ptr(prefetchImage),
-			ContextLength:      8192,
-			PrefixCacheEnabled: true,
-			Parallelism:        wire.RecipeParallelism{Tensor: 2, Pipeline: 1},
+			DeploymentID:    "dep_01J9X2",
+			Name:            "chat-iad",
+			ProjectID:       "prj_01J9X2",
+			MinReplicas:     2,
+			MaxReplicas:     8,
+			Generation:      7,
+			ServedModelName: "qwen3-8b",
+			Placement:       wire.PlacementConstraints{DevicesPerReplica: 2},
+			Serving: wire.ServingSpec{
+				Engine:             "vllm",
+				EngineImage:        ptr(prefetchImage),
+				ContextLength:      8192,
+				PrefixCacheEnabled: true,
+				Parallelism:        wire.Parallelism{Tensor: 2, Pipeline: 1},
+				Digest:             "svg_" + strings.Repeat("a", 64),
+			},
 		},
 		Artifact: hfArtifact(),
 	}
@@ -133,17 +131,17 @@ func TestDynamoGraphDeploymentEngineArgs(t *testing.T) {
 	}{
 		{
 			name:   "tensor parallel above one is rendered",
-			mutate: func(in *Inputs) { in.Recipe.Parallelism.Tensor = 4 },
+			mutate: func(in *Inputs) { in.Deployment.Serving.Parallelism.Tensor = 4 },
 			want:   []string{"--tensor-parallel-size", "4"},
 		},
 		{
 			name:   "tensor parallel of one is omitted",
-			mutate: func(in *Inputs) { in.Recipe.Parallelism.Tensor = 1 },
+			mutate: func(in *Inputs) { in.Deployment.Serving.Parallelism.Tensor = 1 },
 			absent: []string{"--tensor-parallel-size"},
 		},
 		{
 			name:   "prefix caching off is stated",
-			mutate: func(in *Inputs) { in.Recipe.PrefixCacheEnabled = false },
+			mutate: func(in *Inputs) { in.Deployment.Serving.PrefixCacheEnabled = false },
 			want:   []string{"--no-enable-prefix-caching"},
 		},
 		{
@@ -151,7 +149,7 @@ func TestDynamoGraphDeploymentEngineArgs(t *testing.T) {
 			// of, and an escape hatch that loses to a derived default is not one.
 			name: "engine args override a derived arg",
 			mutate: func(in *Inputs) {
-				in.Recipe.EngineArgs = map[string]string{"--max-model-len": "4096"}
+				in.Deployment.Serving.EngineArgs = map[string]string{"--max-model-len": "4096"}
 			},
 			want:   []string{"--max-model-len", "4096"},
 			absent: []string{"8192"},
@@ -185,7 +183,7 @@ func TestDynamoGraphDeploymentEngineArgs(t *testing.T) {
 // PYTHONHASHSEED and cost every prefix cache hit without reporting anything.
 func TestPodOverlayMergesByName(t *testing.T) {
 	in := testInputs()
-	in.Recipe.Overlay.PodSpec = map[string]any{
+	in.Deployment.Serving.Overlay.PodSpec = map[string]any{
 		"containers": []any{map[string]any{
 			"name": "main",
 			"env":  []any{map[string]any{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}},
@@ -215,7 +213,7 @@ func TestPodOverlayMergesByName(t *testing.T) {
 // the intended way to hand-write a topology this renderer cannot derive.
 func TestDynamoOverlayReplacesComponents(t *testing.T) {
 	in := testInputs()
-	in.Recipe.Overlay.Dynamo = map[string]any{
+	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
 		"components": []any{
 			map[string]any{"name": "VllmPrefillWorker", "replicas": int64(1)},
 			map[string]any{"name": "VllmDecodeWorker", "replicas": int64(3)},
@@ -241,7 +239,7 @@ func TestDynamoOverlayReplacesComponents(t *testing.T) {
 func TestDynamoGraphDeploymentRequiresEngineImage(t *testing.T) {
 	for _, image := range []*string{nil, ptr("")} {
 		in := testInputs()
-		in.Recipe.EngineImage = image
+		in.Deployment.Serving.EngineImage = image
 		if _, err := DynamoGraphDeployment(in, testOptions()); err == nil {
 			t.Fatalf("expected an error for engine image %v", image)
 		} else if !strings.Contains(err.Error(), "engine image") {
@@ -337,8 +335,9 @@ func TestComponentSuffixMatchesWorker(t *testing.T) {
 	}
 }
 
-// TestServedModelName is the precedence a client's `model` field resolves through. The plane sends
-// both strings already resolved, so what is asserted here is ordering and nothing else.
+// TestServedModelName is what a client's `model` field resolves to. The plane sends the string
+// already resolved, so what is asserted here is that the renderer derives nothing of its own and
+// that the escape hatch still wins.
 func TestServedModelName(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -346,41 +345,22 @@ func TestServedModelName(t *testing.T) {
 		want   string
 	}{
 		{
-			name:   "the recipe's resolved name is the default",
-			mutate: func(in *Inputs) { in.Recipe.ServedModelName = "qwen/qwen3-8b" },
+			name:   "the plane's resolved name is what is rendered",
+			mutate: func(in *Inputs) { in.Deployment.ServedModelName = "qwen/qwen3-8b" },
 			want:   "qwen/qwen3-8b",
 		},
 		{
-			name: "the deployment's override beats the recipe's",
-			mutate: func(in *Inputs) {
-				in.Recipe.ServedModelName = "qwen/qwen3-8b"
-				in.Deployment.ServedModelName = "acme/qwen-canary"
-			},
-			want: "acme/qwen-canary",
-		},
-		{
-			name: "whitespace is not an override",
-			mutate: func(in *Inputs) {
-				in.Recipe.ServedModelName = "qwen/qwen3-8b"
-				in.Deployment.ServedModelName = "   "
-			},
-			want: "qwen/qwen3-8b",
-		},
-		{
-			// A plane too old to carry either field. This renderer used the recipe name
-			// unconditionally before, so such a plane keeps getting what it used to get.
-			name:   "an old plane still gets the recipe name",
-			mutate: func(in *Inputs) {},
-			want:   "qwen3-8b",
+			name:   "the name is trimmed",
+			mutate: func(in *Inputs) { in.Deployment.ServedModelName = "  acme/qwen-canary  " },
+			want:   "acme/qwen-canary",
 		},
 		{
 			// engine_args is laid over the derived flags, and an escape hatch that loses
 			// to a default is not one.
 			name: "engine args still win over everything",
 			mutate: func(in *Inputs) {
-				in.Recipe.ServedModelName = "qwen/qwen3-8b"
 				in.Deployment.ServedModelName = "acme/qwen-canary"
-				in.Recipe.EngineArgs = map[string]string{"--served-model-name": "acme/qwen-hotfix"}
+				in.Deployment.Serving.EngineArgs = map[string]string{"--served-model-name": "acme/qwen-hotfix"}
 			},
 			want: "acme/qwen-hotfix",
 		},
@@ -562,20 +542,20 @@ func TestTheFrontendImageIsResolvedMostSpecificFirst(t *testing.T) {
 	const clusterDefault = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.1"
 
 	cases := []struct {
-		name    string
-		recipe  *string
-		cluster string
-		want    string
+		name     string
+		declared *string
+		cluster  string
+		want     string
 	}{
-		{"the recipe wins", ptr(patched), clusterDefault, patched},
+		{"the deployment wins", ptr(patched), clusterDefault, patched},
 		{"the cluster default is next", nil, clusterDefault, clusterDefault},
 		{"the engine image is the last resort", nil, "", prefetchImage},
-		{"an empty recipe field is not an override", ptr(""), clusterDefault, clusterDefault},
+		{"an empty declared field is not an override", ptr(""), clusterDefault, clusterDefault},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			in := testInputs()
-			in.Recipe.FrontendImage = tc.recipe
+			in.Deployment.Serving.FrontendImage = tc.declared
 			opts := frontendOptions()
 			opts.FrontendImage = tc.cluster
 			obj, err := DynamoGraphDeployment(in, opts)
@@ -720,7 +700,7 @@ func TestTheFrontendRefusesResourcesThatWouldNotSchedule(t *testing.T) {
 // model no request can reach. Nothing else catches that, so this is a refusal.
 func TestAnOverlayThatDeletesTheFrontendIsRefused(t *testing.T) {
 	in := testInputs()
-	in.Recipe.Overlay.Dynamo = map[string]any{
+	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
 		"components": []any{
 			map[string]any{"name": "VllmPrefillWorker", "replicas": int64(1)},
 			map[string]any{"name": WorkerComponent, "replicas": int64(3)},
@@ -730,8 +710,8 @@ func TestAnOverlayThatDeletesTheFrontendIsRefused(t *testing.T) {
 	if err == nil {
 		t.Fatal("an overlay that deletes the frontend rendered without complaint")
 	}
-	if !strings.Contains(err.Error(), in.Recipe.RecipeID) {
-		t.Errorf("the refusal does not name the recipe: %v", err)
+	if !strings.Contains(err.Error(), in.Deployment.DeploymentID) {
+		t.Errorf("the refusal does not name the deployment: %v", err)
 	}
 	if !strings.Contains(err.Error(), FrontendComponent) {
 		t.Errorf("the refusal does not name what was lost: %v", err)
@@ -745,7 +725,7 @@ func TestAnOverlayThatDeletesTheFrontendIsRefused(t *testing.T) {
 // derive, so long as the frontend is still in it and still carries the label a request finds it by.
 func TestAnOverlayThatRestatesTheFrontendIsAccepted(t *testing.T) {
 	in := testInputs()
-	in.Recipe.Overlay.Dynamo = map[string]any{
+	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
 		"components": []any{
 			map[string]any{"name": "VllmPrefillWorker", "replicas": int64(1)},
 			map[string]any{"name": WorkerComponent, "replicas": int64(3)},
@@ -768,7 +748,7 @@ func TestAnOverlayThatRestatesTheFrontendIsAccepted(t *testing.T) {
 // would let the guard pass the defect it exists for.
 func TestAnOverlayThatRestatesTheFrontendWithoutItsRoutingLabelIsRefused(t *testing.T) {
 	in := testInputs()
-	in.Recipe.Overlay.Dynamo = map[string]any{
+	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
 		"components": []any{
 			map[string]any{"name": WorkerComponent, "replicas": int64(3)},
 			map[string]any{"name": FrontendComponent, "type": "frontend", "replicas": int64(1)},
@@ -790,7 +770,7 @@ func TestAnOverlayThatRestatesTheFrontendWithoutItsRoutingLabelIsRefused(t *test
 // replaces the components is what it always was: the intended way to hand-write a topology.
 func TestTheOverlayRefusalDoesNotApplyBeforeTheClusterOptsIn(t *testing.T) {
 	in := testInputs()
-	in.Recipe.Overlay.Dynamo = map[string]any{
+	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
 		"components": []any{map[string]any{"name": WorkerComponent, "replicas": int64(3)}},
 	}
 	if _, err := DynamoGraphDeployment(in, testOptions()); err != nil {

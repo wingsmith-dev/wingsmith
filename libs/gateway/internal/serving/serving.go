@@ -191,7 +191,7 @@ func withRouting(resolver Resolver) http.Handler {
 		// The caller named an endpoint; the engine answers to something else.
 		// Rewritten after Pick because the served name belongs to the upstream
 		// and not to the endpoint — one endpoint can front two clusters running
-		// different recipes, and each wants its own name.
+		// different serving configurations, and each wants its own name.
 		if served := upstream.ServedModelName; served != "" && served != envelope.Model {
 			rewritten, err := withModel(body, served)
 			if err != nil {

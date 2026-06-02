@@ -111,7 +111,7 @@ func TestBenchmarkAppendsExtraFlagsVerbatim(t *testing.T) {
 	}
 }
 
-// A model name is attacker-adjacent input by the time it reaches a shell: it comes from a recipe
+// A model name is attacker-adjacent input by the time it reaches a shell: it comes from a serving
 // field somebody typed. It goes in quoted.
 func TestBenchmarkQuotesTheModelName(t *testing.T) {
 	body := script(t, benchParams(map[string]string{"model": "a'; rm -rf /; echo '"}))

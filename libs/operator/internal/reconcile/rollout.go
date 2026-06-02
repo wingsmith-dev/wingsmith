@@ -129,14 +129,13 @@ func (r rollout) message() string {
 // plane would then mark it ready and the gateway would prefer it, which is live traffic at a
 // deployment that has no worker.
 //
-// A hand-written disaggregated topology, which `Recipe.Overlay.Dynamo` allows by replacing
+// A hand-written disaggregated topology, which `Serving.Overlay.Dynamo` allows by replacing
 // `spec.components` wholesale, names its own components and its prefill pods are not counted
 // here. That under-reports rather than over-reports, and the direction is deliberate: a shortfall
 // reads as degraded and still serves, where a surplus reads as ready and does not.
 func (r *SyncedResourceReconciler) observeRollout(
 	ctx context.Context,
 	dep wire.DeploymentDesired,
-	recipe wire.RecipeDesired,
 ) (rollout, error) {
 	name := render.WorkloadName(dep)
 	var pods corev1.PodList
@@ -150,7 +149,7 @@ func (r *SyncedResourceReconciler) observeRollout(
 	if err != nil {
 		return rollout{}, fmt.Errorf("list pods for %s: %w", dep.DeploymentID, err)
 	}
-	out := r.rolloutFrom(pods.Items, dep, render.Replicas(dep), recipe.Engine, recipe.EngineVersion)
+	out := r.rolloutFrom(pods.Items, dep, render.Replicas(dep), dep.Serving.Engine, dep.Serving.EngineVersion)
 	out.trouble = r.diagnose(ctx, name, pods.Items, out)
 	serving, found := r.frontendState(ctx, name)
 	out.frontendUnready = !serving
@@ -227,8 +226,8 @@ func (r *SyncedResourceReconciler) frontendState(ctx context.Context, name strin
 //
 // Same fact as `observeRollout` and a different way of finding it, because the link this operator
 // relies on for its own objects does not exist here. `observeRollout` selects on the graph
-// deployment name Dynamo stamps on the pods it derives, which only holds for a workload rendered
-// from a recipe. An adopted object is whatever was already running — a plain Deployment or
+// deployment name Dynamo stamps on the pods it derives, which only holds for a workload this
+// operator rendered. An adopted object is whatever was already running — a plain Deployment or
 // StatefulSet, put there by something that never heard of this operator — so the only selector
 // guaranteed to find its pods is the one the object carries itself.
 //
@@ -236,8 +235,8 @@ func (r *SyncedResourceReconciler) frontendState(ctx context.Context, name strin
 // reports upward, so without this the plane holds a deployment it knows is enrolled, with no
 // replicas under it and no counts against it (`0/1` in the console for a workload that is serving).
 //
-// Engine and engine version are left empty rather than guessed. They come off the recipe, and an
-// adopted workload has none — the plane took it as it found it.
+// Engine and engine version are left empty rather than guessed. They come off the serving block,
+// and an adopted workload has none — the plane took it as it found it.
 func (r *SyncedResourceReconciler) observeAdoptedRollout(
 	ctx context.Context,
 	adopt *v1alpha1.AdoptRef,
@@ -364,7 +363,7 @@ func replicaCount(replicas *int32) int {
 // rolloutFrom turns a set of pods into the counts and replica frames the plane is sent.
 //
 // Shared by the rendered and the adopted paths, which disagree only on how the pods were found and
-// on whether there is a recipe behind them. Everything after that — what counts as ready, what a
+// on whether there is a serving block behind them. Everything after that — what counts as ready, what a
 // terminating pod does to the totals, how a pod maps onto the replica enum — is one rule, and
 // keeping it one function is what stops the adopted path from drifting into a second answer.
 func (r *SyncedResourceReconciler) rolloutFrom(
@@ -415,7 +414,7 @@ func (r *SyncedResourceReconciler) rolloutFrom(
 			Ready:              ready,
 			Engine:             engine,
 			EngineVersion:      engineVersion,
-			RecipeID:           dep.RecipeID,
+			ServingDigest:      dep.Serving.Digest,
 			RestartCount:       restarts(pod),
 			ObservedGeneration: dep.Generation,
 			StartedAt:          startedAt(pod),

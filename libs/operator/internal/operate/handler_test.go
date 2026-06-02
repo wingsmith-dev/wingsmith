@@ -58,7 +58,7 @@ func envelope(t *testing.T, kind string, payload any) *syncpkg.Envelope {
 // TestDeclaredStateReachesTheStore: everything that is not an operation passes straight through.
 func TestDeclaredStateReachesTheStore(t *testing.T) {
 	h, inner, _ := teeUnder(t)
-	for _, kind := range []string{"deployment.desired", "recipe.desired", "artifact.desired"} {
+	for _, kind := range []string{"deployment.desired", "artifact.desired", "component.desired"} {
 		if err := h.Handle(context.Background(), envelope(t, kind, map[string]string{})); err != nil {
 			t.Fatalf("handle %s: %v", kind, err)
 		}

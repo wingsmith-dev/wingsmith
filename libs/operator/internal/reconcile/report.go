@@ -95,8 +95,8 @@ type reportKey struct {
 // applies the same rule to nodes for the same reason (PROTOCOL §6): the stream is full-object and
 // at-least-once, so a repeat is not wrong, only wasteful.
 //
-// Only deployments are reported. A recipe or an artifact has no observed counterpart — the cluster
-// holds them, it does not do anything with them — and a cache's residency is reported by the cache
+// Only deployments are reported. An artifact has no observed counterpart — the cluster holds it,
+// it does not do anything with it — and a cache's residency is reported by the cache
 // path, from what is on disk rather than from what a reconcile concluded.
 //
 // A failure to send is swallowed on purpose. The frame is a progress report, and losing one must

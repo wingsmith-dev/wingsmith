@@ -55,11 +55,15 @@ type Upstream struct {
 	// cluster id is the whole of the routing key.
 	Tunnelled bool
 	// ServedModelName is what the engine behind this upstream answers to, which
-	// is almost never the endpoint the caller named: the plane sends the
-	// recipe's name, and a recipe the console derived is named for its
-	// configuration — `llama-3-3-70b-instruct-fp8-tp2-32k`. Requests are
-	// rewritten to it on the way through. Empty means the plane had nothing to
-	// say, and then the caller's own string is forwarded untouched.
+	// is often not the endpoint the caller named: the plane resolves it to the
+	// workload's own declaration, or to the artifact's lowercase Hugging Face
+	// slug when it declares none. Requests are rewritten to it on the way
+	// through. Empty means the plane had nothing to say, and then the caller's
+	// own string is forwarded untouched.
+	//
+	// It used to be a fit's name — `llama-3-3-70b-instruct-fp8-tp2-32k` — which
+	// put the hardware footprint on the public API surface, so re-fitting a model
+	// at a different tensor degree renamed the model every client codes against.
 	ServedModelName string
 
 	handler http.Handler

@@ -58,10 +58,10 @@ const deploymentIDLabel = "hangar.dev/deployment-id"
 
 // reconcileDeployment renders one deployment into the objects that serve it.
 //
-// Three things have to be true before anything is applied: the recipe it names has arrived, the
-// artifact that recipe serves has arrived, and those weights are already resident on this cluster.
-// None of the three is an error when absent — they are orderings, and the answer to each is to
-// wait.
+// Two things have to be true before anything is applied: the artifact it serves has arrived, and
+// those weights are already resident on this cluster. Neither is an error when absent — they are
+// orderings, and the answer to each is to wait. How to serve the model is not one of them: the
+// serving block rides on the deployment itself, so it is never absent and never late.
 func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res *v1alpha1.SyncedResource) (ctrl.Result, error) {
 	var dep wire.DeploymentDesired
 	if err := decodePayload(res, &dep); err != nil {
@@ -69,44 +69,37 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	}
 
 	// The instruction arrived and decoded. Reported before anything is checked, because the gap
-	// this closes is the one at the very front: a deployment whose recipe is slow to arrive spent
-	// its first minutes with the plane unable to say whether any cluster had even received it.
+	// this closes is the one at the very front: a deployment whose artifact is slow to arrive
+	// spent its first minutes with the plane unable to say whether any cluster had even received
+	// it.
 	r.stage(res, dep, "Accepted", fmt.Sprintf("reconciling revision %d", res.Spec.Revision))
 
-	recipe, err := r.recipe(ctx, dep.RecipeID)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if recipe == nil {
-		return r.wait(ctx, res, "RecipeNotDeclared",
-			fmt.Sprintf("recipe %s has not arrived yet", dep.RecipeID))
-	}
-
-	artifact, err := r.artifact(ctx, recipe.ArtifactID)
+	artifactID := servedArtifact(dep)
+	artifact, err := r.artifact(ctx, artifactID)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	if artifact == nil {
 		return r.wait(ctx, res, "ArtifactNotDeclared",
-			fmt.Sprintf("artifact %s has not arrived yet", recipe.ArtifactID))
+			fmt.Sprintf("artifact %s has not arrived yet", artifactID))
 	}
 
 	// The residency gate. Starting workers against a cold cache is not merely slow: several
 	// replicas resolving the same HuggingFace cache race on lock files that do not work over
 	// NFS, and the loser dies in a way that crash-loops the whole graph deployment. The plane
 	// declares what should be warm and the cache controller fetches it; this waits.
-	resident, err := r.weightsResident(ctx, recipe.ArtifactID)
+	resident, err := r.weightsResident(ctx, artifactID)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 	if !resident {
 		return r.wait(ctx, res, "WeightsNotResident",
-			fmt.Sprintf("waiting for %s to finish downloading", recipe.ArtifactID))
+			fmt.Sprintf("waiting for %s to finish downloading", artifactID))
 	}
 
 	// Capacity is checked before rendering rather than left to the scheduler, because the
 	// scheduler's answer to an impossible request is silence.
-	placed, err := schedulable(ctx, r.Client, dep, *recipe, render.NodeSelector(dep, r.Render))
+	placed, err := schedulable(ctx, r.Client, dep, render.NodeSelector(dep, r.Render))
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -126,13 +119,13 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 			placed.NodesPerReplica, placed.DevicesPerNode))
 	}
 
-	// Every ordering is satisfied and the capacity is there. What is left is turning the recipe
-	// into objects, which is the last step before the cluster has something to run.
-	r.stage(res, dep, "Rendering", fmt.Sprintf("building %s from %s", dep.DeploymentID, recipe.Name))
+	// Every ordering is satisfied and the capacity is there. What is left is turning the serving
+	// block into objects, which is the last step before the cluster has something to run.
+	r.stage(res, dep, "Rendering",
+		fmt.Sprintf("building %s from %s", dep.DeploymentID, dep.Serving.Digest))
 
 	obj, err := render.DynamoGraphDeployment(render.Inputs{
 		Deployment: dep,
-		Recipe:     *recipe,
 		Artifact:   *artifact,
 		Layout: render.Layout{
 			DevicesPerNode:  placed.DevicesPerNode,
@@ -159,7 +152,7 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 			return r.fail(ctx, res, "TopologyImmutable", fmt.Sprintf(
 				"%s already exists with a different set of components, and Dynamo refuses to "+
 					"change the set on a live graph. Delete the graph deployment to have this "+
-					"operator render it again from the current recipe: "+
+					"operator render it again from the current serving configuration: "+
 					"kubectl -n %s delete dynamographdeployment %s. The model reloads its "+
 					"weights, so this is a deliberate redeploy and not something to do while it "+
 					"is serving.", obj.GetName(), obj.GetNamespace(), obj.GetName()))
@@ -176,15 +169,15 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 		return ctrl.Result{}, err
 	}
 
-	// A recipe edit renders the same graph deployment under the same name, and Dynamo answers it
-	// by creating a component deployment under a new spec hash and abandoning the previous one —
-	// which keeps its accelerators. See supersede.go; on a full node the new pod can never
-	// schedule until the abandoned one is gone.
+	// An edit to the serving block renders the same graph deployment under the same name, and
+	// Dynamo answers it by creating a component deployment under a new spec hash and abandoning
+	// the previous one — which keeps its accelerators. See supersede.go; on a full node the new
+	// pod can never schedule until the abandoned one is gone.
 	if err := r.pruneSuperseded(ctx, obj.GetName()); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	applied := fmt.Sprintf("serving %s at revision %d", recipe.Name, recipe.Version)
+	applied := fmt.Sprintf("serving %s at generation %d", dep.ServedModelName, dep.Generation)
 	if err := r.markReady(ctx, res, "Applied", applied); err != nil {
 		return ctrl.Result{}, err
 	}
@@ -195,7 +188,7 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	//
 	// A failure to read it is not a failure to reconcile: the apply succeeded. The plain
 	// conclusion is reported in its place, which is what the plane used to get every time.
-	out, err := r.observeRollout(ctx, dep, *recipe)
+	out, err := r.observeRollout(ctx, dep)
 	if err != nil {
 		r.Log.Warn("could not read back what is running", "deployment", dep.DeploymentID, "error", err)
 		r.report(res, phasePlaced, "Applied", applied)
@@ -355,13 +348,16 @@ func (r *SyncedResourceReconciler) weightsResident(ctx context.Context, artifact
 	return job != nil && job.Status.Succeeded > 0, nil
 }
 
-func (r *SyncedResourceReconciler) recipe(ctx context.Context, id string) (*wire.RecipeDesired, error) {
-	var out wire.RecipeDesired
-	found, err := r.declared(ctx, "recipe", id, &out)
-	if err != nil || !found {
-		return nil, err
+// servedArtifact is the one artifact a deployment renders against.
+//
+// A deployment carries a list because a workload may one day serve weights and an adapter over
+// them, and nothing renders the second yet. The first is the weights, which is what the ordering
+// gate and the residency gate are both about.
+func servedArtifact(dep wire.DeploymentDesired) string {
+	if len(dep.ArtifactIDs) == 0 {
+		return ""
 	}
-	return &out, nil
+	return dep.ArtifactIDs[0]
 }
 
 func (r *SyncedResourceReconciler) artifact(ctx context.Context, id string) (*wire.ArtifactDesired, error) {
@@ -375,10 +371,14 @@ func (r *SyncedResourceReconciler) artifact(ctx context.Context, id string) (*wi
 
 // declared reads one declared object out of the durable local copy.
 //
-// A resource of the wrong kind under the expected name reads as absent rather than as an error.
-// Names are derived from prefixed ids that do not collide across kinds, so the only way to see one
-// is a bug, and treating it as absent waits instead of rendering something from the wrong payload.
+// A resource of the wrong kind under the expected name reads as absent rather than as an error, and
+// so does an empty id. Names are derived from prefixed ids that do not collide across kinds, so the
+// only way to see either is a bug, and treating it as absent waits instead of rendering something
+// from the wrong payload or asking the API server for a nameless object.
 func (r *SyncedResourceReconciler) declared(ctx context.Context, kind, id string, into any) (bool, error) {
+	if id == "" {
+		return false, nil
+	}
 	var res v1alpha1.SyncedResource
 	key := types.NamespacedName{Namespace: r.Namespace, Name: render.Name(id)}
 	switch err := r.Client.Get(ctx, key, &res); {
@@ -451,7 +451,7 @@ func (r *SyncedResourceReconciler) wait(ctx context.Context, res *v1alpha1.Synce
 //
 // It returns no error for the same reason the adoption refusal does not: requeueing with backoff
 // and logging a failure forever describes a transient fault, and a payload that does not decode or
-// a recipe that names no image is not transient. The next write of desired state is what fixes it,
+// a serving block that names no image is not transient. The next write of desired state is what fixes it,
 // and that arrives as a new revision rather than as a retry.
 // immutableTopology reports whether an apply was refused because the graph already exists with a
 // different set of components.

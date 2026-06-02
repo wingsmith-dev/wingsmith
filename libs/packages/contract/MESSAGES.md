@@ -148,9 +148,8 @@ when a node came back, which is the inference `.event` frames exist to avoid.
 
 | Type | Payload |
 |---|---|
-| `deployment.desired` | name, recipe reference, this cluster's scale bounds, priority, placement constraints |
+| `deployment.desired` | name, the `serving` block — engine, worker and frontend images, declared args, parallelism, cache settings — this cluster's scale bounds, priority, placement constraints |
 | `deployment.deleted` | id |
-| `recipe.desired` | how to serve an artifact: engine, worker and frontend images, declared args, parallelism, cache settings |
 | `artifact.desired` | what weights should be resident, and where they come from |
 | `component.desired` | what is installed and at what version |
 | `cache.desired` | the artifact warm-set for this cluster |
@@ -176,39 +175,56 @@ exist yet, and nothing reads it.
 `min_replicas`, echoed back so the plane can see that render and declaration agree. The plane sums
 it across a workload's deployments; the operator never does.
 
-**A recipe travels as its own declared object, not inlined on the deployments that name it.**
-`deployment.desired` references it by `recipe_id` and `recipe_revision`, the way it already
-references artifacts by id. This is the split KServe draws between `ServingRuntime` and
-`InferenceService`, for the same reason: recipes are shared. Several deployments of one model on
-one cluster differ in scale and placement rather than in engine configuration, so inlining would
-ship the same body repeatedly and turn one recipe edit into a rewrite of every frame naming it.
+**The serving configuration travels inlined, on `deployment.desired.serving`.**
+It used to be a declared object of its own, `recipe.desired`, referenced by `recipe_id` and
+`recipe_revision` — the split KServe draws between `ServingRuntime` and `InferenceService`, on the
+argument that recipes are shared and inlining would ship the same body repeatedly. That argument was
+wrong about this stream. The demand set is filtered and serialised per cluster, so a configuration
+two deployments shared was already written out once per cluster and saved nothing across them;
+only two deployments of one configuration on one cluster ever saved a body, and that is the canary
+case and nothing else.
 
-The cost is an ordering dependency, and the stream pays it the same way it already does for
-artifacts: recipes precede the deployments that reference them. A receiver that sees a deployment
-whose recipe has not landed — possible after a resume, not after a resync — waits rather than
-renders, because a render against a missing recipe is a guess.
+What the separate frame did buy was an ordering hazard. A deployment could arrive naming a
+configuration that had not landed and wait for it, and after a resume that replayed the deployment
+but not the recipe it waited for ever. Inlining removes the frame, the ordering rule, and the wait.
 
-**The model id an API client sends is declared, not derived from the recipe's name.**
-`recipe.desired.served_model_name` is what the engine is told to answer to, resolved by the plane
-and never derived in the cluster. It is the recipe's own declaration when it has one, and the
-artifact's lowercase Hugging Face slug — `moonshotai/kimi-k3` — when it has none. It used to be
-the recipe's name verbatim, which put the fit on the public API surface
-(`kimi-k3-mxfp4-tp8-1024k`) and renamed the model for every caller whenever the same weights were
-re-fitted at a different tensor degree.
+The stream still pays an ordering dependency for artifacts, and now only for artifacts:
+`artifact.desired` precedes the deployments that reference it, and a receiver that sees a deployment
+whose artifact has not landed — possible after a resume, not after a resync — waits rather than
+renders, because a render against missing weights is a guess.
 
-`deployment.desired.served_model_name` overrides it for that one deployment and is empty when
-nothing overrides. It is on the deployment rather than the recipe because a recipe is shared by
-every workload that names it: one workload serving a canary under its own name must not rename the
-model every other deployment of that recipe answers to.
+`serving.digest` names the configuration by its content, and is the same `serving_digest` the plane
+holds on the workload. It is not a revision counter and nothing orders by it: it is there so two
+deployments that would produce the same running process can be recognised as such, on either side of
+the wire, without comparing every field.
 
-Precedence in the cluster is deployment, then recipe, then — only for a frame from a plane too old
-to carry either — the recipe's name. `engine_args["served-model-name"]` still beats all of them,
-because `engine_args` is laid over the derived flags and an escape hatch that loses to a default
-is not one. The plane leaves that hatch out of what it resolves, so the same value never travels
-twice.
+**The model id an API client sends is declared, not derived from a name.**
+`deployment.desired.served_model_name` is what the engine is told to answer to, resolved by the
+plane and never derived in the cluster. It is the artifact's slug — `moonshotai/kimi-k3` — stored on
+the artifact when the weights are registered rather than reconstructed at read time. The workload's
+name is the floor below it, for an artifact registered before slugs existed or one whose locations
+say nothing resolvable. Something always answers, so the field is never empty on the wire and a
+receiver never has to invent a fallback.
 
-**A recipe carries two images, because a frontend and a worker are two binaries.**
-`recipe.desired.engine_image` is what loads the weights. `recipe.desired.frontend_image` is what
+The floor is a bad answer and is meant to look like one — it is a workload's name where a model id
+belongs — because the alternative is rendering `--served-model-name ` with nothing after it and a
+frontend that registers no model at all.
+
+Two levels have been removed from below this, and both for the same reason: a name that is not a
+fact about the weights renames the model for every caller whenever anything else changes. The
+recipe's name went first — it put the fit on the public API surface (`kimi-k3-mxfp4-tp8-1024k`), so
+re-fitting the same weights at a different tensor degree renamed the model every client codes
+against. The workload's own `served_model_name` went with it: it existed because the plane could not
+produce an organisation-qualified slug and somebody had to type `openai/gpt-oss-20b` by hand, which
+is a workaround wearing the clothes of a feature. The slug is a fact about the weights, it survives
+a re-fit, and it is now stored rather than guessed.
+
+`engine_args["served-model-name"]` still beats it, because `engine_args` is laid over the derived
+flags and an escape hatch that loses to a default is not one. The plane leaves that hatch out of
+what it resolves, so the same value never travels twice.
+
+**The serving block carries two images, because a frontend and a worker are two binaries.**
+`serving.engine_image` is what loads the weights. `serving.frontend_image` is what
 this model's own Dynamo frontend runs, and it is a field of its own rather than a reuse of the
 first because the two are versioned separately and the difference is not theoretical. Kimi K3
 arrived on a worker running the stock `vllm-runtime:1.4.0-patched.1` and served: 191.74 GiB
@@ -226,20 +242,21 @@ absent `frontend_image`, because on a cluster whose frontends are not published 
 repository that is an `ImagePullBackOff` chosen a continent away, and because a value the plane
 invented is indistinguishable on arrival from one somebody pinned.
 
-The cluster resolves it most specific first: this recipe's `frontend_image`, then whatever that
-cluster is configured to serve its frontends through, then — last, and only when neither has been
-said — the recipe's `engine_image`. That last step is not the plane's rule leaking back in. It is
+The cluster resolves it most specific first: this deployment's `serving.frontend_image`, then
+whatever that cluster is configured to serve its frontends through, then — last, and only when
+neither has been said — the same block's `engine_image`. That last step is not the plane's rule leaking back in. It is
 right often enough to be the honest default, since the Dynamo runtime image carries the frontend
 and the engines together, and it is reached only after the two places that could have said
 something better both declined. An empty string is not an override at any level and is treated as
 absent, per §2.
 
-The device shape is deliberately absent from `recipe.desired`. It reaches the cluster on the
-deployment's `placement`, derived from that same recipe. Two copies of one fact on one wire is two
-things that can disagree, and the placement copy is the one placement already reads.
+The device shape is deliberately absent from `serving`, and stays absent now that the block travels
+on the deployment itself. It reaches the cluster on the deployment's `placement`, derived from that
+same configuration. Two copies of one fact on one wire is two things that can disagree, and the
+placement copy is the one placement already reads.
 
 **How many machines a replica lands on is derived by the cluster, not declared by the plane.**
-`placement.devices_per_replica` says how large the replica is and `recipe.parallelism.tensor` says
+`placement.devices_per_replica` says how large the replica is and `serving.parallelism.tensor` says
 how much of it has to share a node; how those become pods depends on how big this cluster's
 machines are, which is a local fact. So a replica of four devices is one pod on a four-device
 cluster and two pods on a two-device one, and a tensor group larger than any node is refused
@@ -259,7 +276,7 @@ cluster then spreads the replica over whichever machines are free.
 | Type | Payload |
 |---|---|
 | `deployment.observed` | phase, `reason`, `message`, replica counts, `replica_ids`, last error |
-| `replica.observed` | which devices, readiness, engine version, restart count, observed generation |
+| `replica.observed` | which devices, readiness, engine version, the serving digest it came up on, restart count, observed generation |
 | `replica.event` | started, ready, failed, OOM, preempted |
 | `allocation.observed` | devices currently committed, and to what |
 | `cache.observed` | artifact residency, per node, and eviction pressure |
@@ -303,8 +320,8 @@ picture, and is the only one that converges from an arbitrary starting state.
 
 **`deployment.observed` carries `reason` and `message`, and the operator sends one on every
 outcome — including the ones that are not errors.** A deployment spends most of its life before it
-serves waiting for orderings to be satisfied: the recipe has not arrived, the weights are still
-downloading, no node advertises enough accelerators. Each of those is a correct, expected state and
+serves waiting for orderings to be satisfied: the weights have not arrived, the cache is still
+fetching, no node advertises enough accelerators. Each of those is a correct, expected state and
 none of them is a failure, so none of them belongs in `last_error`. Without them the plane sees a
 deployment at `pending` for twenty minutes and can say nothing about which of six things it is
 waiting on, while the operator knows exactly and says so in a log line in another cluster.
@@ -319,8 +336,7 @@ who takes them in this order is reading the deployment coming up.
 | `reason` | Phase | Means |
 |---|---|---|
 | `Accepted` | `pending` | The desired frame decoded and this cluster has begun reconciling it |
-| `RecipeNotDeclared` | `pending` | The recipe this deployment names has not reached the cluster |
-| `ArtifactNotDeclared` | `pending` | The artifact that recipe serves has not reached the cluster |
+| `ArtifactNotDeclared` | `pending` | The artifact this deployment serves has not reached the cluster |
 | `WeightsNotResident` | `pending` | The weights are not yet cached on this cluster |
 | `WarmSetIncomplete` | `pending` | The cache is fetching, and this artifact is not done |
 | `NoSchedulableCapacity` | `pending` | No node advertises enough accelerators of the class |
@@ -389,6 +405,13 @@ Kubernetes — alongside the `rep_` identifier. They are not redundant: the iden
 frames cross-reference, the name is what an operator types into `kubectl` when a replica is wedged,
 and neither is derivable from the other.
 
+**`replica.observed` carries `serving_digest`.** It is the `digest` off the
+`deployment.desired.serving` this replica was rendered from, echoed back unchanged — the cluster
+never computes it and never acts on it. It is what lets a replica, a benchmark run and a desired
+frame name one configuration the same way, so a replica still running the previous configuration is
+visible as such rather than inferred from an engine version that moves for other reasons. It
+replaces `recipe_id`, which named an object that no longer exists and was mutable besides.
+
 **`replica.observed` carries `observed_generation`.** A replica's phase says whether it is up; the
 generation says which version of the deployment it is up *at*. A rollout is exactly the interval in
 which those two disagree, so a reader without the generation cannot distinguish "four ready" mid-roll
@@ -410,8 +433,8 @@ node ids cannot tell them apart.
 same argument as `deployment.observed`, one layer down. `state: "absent"` cannot distinguish a
 download that has not started yet from one that nothing on the cluster is able to start, and the
 second of those never resolves on its own: the operator fetches weights with the engine image of a
-recipe that serves them, so an artifact no recipe on that cluster names an image for has no
-downloader and waits for ever. The plane used to see only `absent` and a deployment repeating
+deployment that serves them, so an artifact no `deployment.desired.serving` on that cluster names an
+image for has no downloader and waits for ever. The plane used to see only `absent` and a deployment repeating
 `WeightsNotResident`, with the reason recorded nowhere it could show. Both fields are free text and
 both are omitted when empty, so an operator that predates them decodes against a new plane and a new
 operator against an old one.

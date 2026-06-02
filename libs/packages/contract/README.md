@@ -10,7 +10,7 @@ The plane ↔ operator wire contract, and the single source of truth for it.
 | [`fixtures/`](fixtures/) | One canonical JSON document per message type |
 | [`devices.json`](devices.json) | The canonical device-class dictionary: one entry per card variant, with the vendor strings that map onto it per dialect |
 
-These messages are **our domain objects** — Cluster, Device, Artifact, Recipe, Deployment and the
+These messages are **our domain objects** — Cluster, Device, Artifact, Workload, Deployment and the
 rest. Kubernetes types must never appear here. If a message starts to look like a manifest,
 something has leaked in the wrong direction and the operator is the thing that should have
 absorbed it.

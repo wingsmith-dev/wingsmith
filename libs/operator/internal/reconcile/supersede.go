@@ -33,7 +33,7 @@ const componentNameLabel = "nvidia.com/dynamo-component"
 //
 // The defect this exists for is NVIDIA's, not ours, and it cannot be fixed where it lives. Dynamo
 // names each DynamoComponentDeployment `<graph>-<component>-<hash>`, where the hash is a digest of
-// that component's spec — so every edit to a recipe produces a *new* name, and Dynamo's create
+// that component's spec — so every edit to a serving block produces a *new* name, and Dynamo's create
 // path is "get by that name, not found, create". It never enumerates the ones it made before, so
 // it never deletes them. Their ownerReference points at the graph deployment, which is still
 // alive, so Kubernetes' garbage collector has no reason to touch them either. They simply
@@ -69,7 +69,7 @@ const componentNameLabel = "nvidia.com/dynamo-component"
 // a message string, only ever fires in the deadlock case, and leaves every non-saturated cluster
 // running a second copy of the model into the same global Dynamo namespace, where the frontend
 // can route to it. There is no blue/green to protect here: the plane declares one deployment at
-// one recipe revision, and this cluster's capacity check already admitted exactly one replica's
+// one generation, and this cluster's capacity check already admitted exactly one replica's
 // worth of devices. Holding two generations at once is only possible where there is slack, and
 // where there is not it is a guaranteed deadlock. At most one generation exists — the one the
 // graph deployment names.

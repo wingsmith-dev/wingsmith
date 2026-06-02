@@ -2,8 +2,8 @@
 //
 // This is the only package in the operator that knows what a DynamoGraphDeployment is, and the
 // only one that knows what a vLLM flag looks like. Everything upstream of it deals in the domain
-// — recipes, deployments, artifacts — which is rule 2 of the design: the wire format is our
-// objects, and the mapping to Kubernetes lives here and nowhere else.
+// — deployments, their serving configuration, artifacts — which is rule 2 of the design: the wire
+// format is our objects, and the mapping to Kubernetes lives here and nowhere else.
 //
 // The rendered object is built as unstructured rather than against NVIDIA's Go types. Vendoring
 // their API module to write four nested fields would tie this operator's build to their release
@@ -63,13 +63,14 @@ type Options struct {
 	// It is the only flag here whose false case has to stay exactly as it was.
 	FrontendEnabled bool
 
-	// FrontendImage is this cluster's default frontend runtime, used when the recipe names none.
+	// FrontendImage is this cluster's default frontend runtime, used when the deployment names
+	// none.
 	//
 	// A per-cluster fact for the same reason the pool labels are: the plane says which model to
 	// serve, and which build of the frontend a cluster happens to run is local. Empty falls back
-	// to the recipe's engine image, which is right often enough — the Dynamo runtime carries the
-	// frontend and the engines in one image — and wrong exactly when the frontend needs a patch
-	// the engine does not, which is what RecipeDesired.FrontendImage exists for.
+	// to the serving block's engine image, which is right often enough — the Dynamo runtime
+	// carries the frontend and the engines in one image — and wrong exactly when the frontend
+	// needs a patch the engine does not, which is what ServingSpec.FrontendImage exists for.
 	FrontendImage string
 
 	// FrontendReplicas is how many frontend pods one model gets. Two by default, so that a
@@ -120,11 +121,10 @@ type Options struct {
 }
 
 // Inputs is everything one render reads. Grouping them makes the dependency explicit: a
-// deployment alone renders nothing, because how to serve a model is on its recipe and where the
-// weights come from is on its artifact.
+// deployment carries how to serve the model on its own serving block, and where the weights come
+// from is on its artifact.
 type Inputs struct {
 	Deployment wire.DeploymentDesired
-	Recipe     wire.RecipeDesired
 	Artifact   wire.ArtifactDesired
 	Layout     Layout
 }
@@ -166,8 +166,8 @@ func (l Layout) devices(dep wire.DeploymentDesired) int {
 //
 // One worker, aggregated: prefill and decode share an engine loop. Disaggregating them is a
 // topology decision with a real trade — it buys latency isolation and pays for it in KV capacity,
-// because each worker loads its own copy of the weights — and nothing on the recipe expresses that
-// choice yet. Rendering it silently would be picking a side of that trade on the operator's own
+// because each worker loads its own copy of the weights — and nothing on the serving block
+// expresses that choice yet. Rendering it silently would be picking a side of that trade on the operator's own
 // authority.
 const WorkerComponent = "VllmDecodeWorker"
 
@@ -238,8 +238,8 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 			"namespace": opts.Namespace,
 			"labels":    ownershipLabels(in),
 			"annotations": map[string]any{
-				"hangar.dev/generation":      strconv.FormatInt(in.Deployment.Generation, 10),
-				"hangar.dev/recipe-revision": strconv.Itoa(in.Recipe.Version),
+				"hangar.dev/generation":     strconv.FormatInt(in.Deployment.Generation, 10),
+				"hangar.dev/serving-digest": in.Deployment.Serving.Digest,
 			},
 		},
 		"spec": map[string]any{
@@ -247,7 +247,7 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 		},
 	}}
 
-	if err := applyDynamoOverlay(obj, in.Recipe.Overlay.Dynamo); err != nil {
+	if err := applyDynamoOverlay(obj, in.Deployment.Serving.Overlay.Dynamo); err != nil {
 		return nil, err
 	}
 	if opts.FrontendEnabled {
@@ -359,7 +359,6 @@ const deploymentIDLabel = "hangar.dev/deployment-id"
 func ownershipLabels(in Inputs) map[string]any {
 	return map[string]any{
 		deploymentIDLabel:       in.Deployment.DeploymentID,
-		"hangar.dev/recipe":     in.Recipe.RecipeID,
 		"hangar.dev/project":    in.Deployment.ProjectID,
 		"hangar.dev/managed-by": "hangar-operator",
 	}
@@ -392,22 +391,22 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 
 	requests := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
 	limits := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
-	if n := in.Recipe.Resources.CPUCores; n != nil {
+	if n := in.Deployment.Serving.Resources.CPUCores; n != nil {
 		requests[corev1.ResourceCPU] = *resource.NewQuantity(int64(*n), resource.DecimalSI)
 	}
-	if n := in.Recipe.Resources.MemoryMiB; n != nil {
+	if n := in.Deployment.Serving.Resources.MemoryMiB; n != nil {
 		requests[corev1.ResourceMemory] = *resource.NewQuantity(*n*1024*1024, resource.BinarySI)
 	}
-	if n := in.Recipe.Resources.DiskGiB; n != nil {
+	if n := in.Deployment.Serving.Resources.DiskGiB; n != nil {
 		requests[corev1.ResourceEphemeralStorage] = *resource.NewQuantity(int64(*n)*1024*1024*1024, resource.BinarySI)
 	}
 
 	image := ""
-	if in.Recipe.EngineImage != nil {
-		image = *in.Recipe.EngineImage
+	if in.Deployment.Serving.EngineImage != nil {
+		image = *in.Deployment.Serving.EngineImage
 	}
 	if image == "" {
-		return nil, fmt.Errorf("recipe %s names no engine image", in.Recipe.RecipeID)
+		return nil, fmt.Errorf("deployment %s names no engine image", in.Deployment.DeploymentID)
 	}
 
 	args, err := engineArgs(in)
@@ -446,7 +445,7 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 			Name:       "main",
 			Image:      image,
 			WorkingDir: "/workspace/examples/backends/vllm",
-			Command:    []string{"python3", "-m", "dynamo." + engineModule(in.Recipe.Engine)},
+			Command:    []string{"python3", "-m", "dynamo." + engineModule(in.Deployment.Serving.Engine)},
 			Args:       args,
 			Env: []corev1.EnvVar{
 				{Name: "HF_HOME", Value: "/models/hf"},
@@ -470,7 +469,7 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 		}},
 	}
 
-	return applyPodOverlay(spec, in.Recipe.Overlay.PodSpec)
+	return applyPodOverlay(spec, in.Deployment.Serving.Overlay.PodSpec)
 }
 
 // Defaults for the frontend pod, matching what the cluster frontend has been observed to run
@@ -543,7 +542,7 @@ func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
 // from `type: frontend`, so every flag worth setting is set as environment instead — which is why
 // the Anthropic options below are `DYN_*` variables and not arguments.
 //
-// The recipe's pod overlay is deliberately not applied here. It merges by container name and both
+// The serving block's pod overlay is deliberately not applied here. It merges by container name and both
 // containers are called `main`, so laying it over this one would put the engine's volumes, its
 // Hugging Face cache mount and its device requests onto a process that wants none of them — an
 // overlay written about the engine, silently applied to something else.
@@ -585,27 +584,30 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 
 // frontendImage resolves which runtime the frontend runs, most specific first.
 //
-// The recipe wins because a frontend image is not always the engine image: on site-c the Kimi K3
-// frontend runs a patched build from a private registry while its decode worker stays on NVIDIA's
-// stock one, because both defects that made the model unusable are in the frontend binary. The
-// cluster default is next, and the engine image is the last resort — right often enough, since
-// the Dynamo runtime carries the frontend and the engines together, and the only honest answer
-// when nothing else has been said.
+// This deployment's own declaration wins because a frontend image is not always the engine image:
+// on site-c the Kimi K3 frontend runs a patched build from a private registry while its decode worker
+// stays on NVIDIA's stock one, because both defects that made the model unusable are in the
+// frontend binary. The cluster default is next, and the engine image is the last resort — right
+// often enough, since the Dynamo runtime carries the frontend and the engines together, and the
+// only honest answer when nothing else has been said.
 func frontendImage(in Inputs, opts Options) (string, error) {
-	if in.Recipe.FrontendImage != nil {
-		if image := strings.TrimSpace(*in.Recipe.FrontendImage); image != "" {
+	serving := in.Deployment.Serving
+	if serving.FrontendImage != nil {
+		if image := strings.TrimSpace(*serving.FrontendImage); image != "" {
 			return image, nil
 		}
 	}
 	if image := strings.TrimSpace(opts.FrontendImage); image != "" {
 		return image, nil
 	}
-	if in.Recipe.EngineImage != nil {
-		if image := strings.TrimSpace(*in.Recipe.EngineImage); image != "" {
+	if serving.EngineImage != nil {
+		if image := strings.TrimSpace(*serving.EngineImage); image != "" {
 			return image, nil
 		}
 	}
-	return "", fmt.Errorf("recipe %s names no frontend image and no engine image to fall back on", in.Recipe.RecipeID)
+	return "", fmt.Errorf(
+		"deployment %s names no frontend image and no engine image to fall back on",
+		in.Deployment.DeploymentID)
 }
 
 // frontendResources is what one frontend pod asks the scheduler for.
@@ -672,7 +674,9 @@ func frontendResources(opts Options) (corev1.ResourceRequirements, error) {
 func checkFrontendSurvivedOverlay(obj *unstructured.Unstructured, in Inputs) error {
 	components, found, err := unstructured.NestedSlice(obj.Object, "spec", "components")
 	if err != nil || !found {
-		return fmt.Errorf("recipe %s left the rendered object with no spec.components", in.Recipe.RecipeID)
+		return fmt.Errorf(
+			"deployment %s left the rendered object with no spec.components",
+			in.Deployment.DeploymentID)
 	}
 	for _, entry := range components {
 		component, ok := entry.(map[string]any)
@@ -682,22 +686,23 @@ func checkFrontendSurvivedOverlay(obj *unstructured.Unstructured, in Inputs) err
 		labels, _, err := unstructured.NestedStringMap(component, "podTemplate", "metadata", "labels")
 		if err != nil || labels[deploymentIDLabel] != in.Deployment.DeploymentID {
 			return fmt.Errorf(
-				"recipe %s restates the %s component in its Dynamo overlay without "+
+				"deployment %s restates the %s component in its Dynamo overlay without "+
 					"%s=%s on its pod template — Dynamo copies those labels onto the Service it "+
 					"derives, and that label is how a request already resolved to this deployment "+
 					"finds this frontend, so the deployment would come up healthy and be reachable "+
 					"by nothing; carry the labels the render puts on the component",
-				in.Recipe.RecipeID, FrontendComponent, deploymentIDLabel, in.Deployment.DeploymentID,
+				in.Deployment.DeploymentID, FrontendComponent, deploymentIDLabel,
+				in.Deployment.DeploymentID,
 			)
 		}
 		return nil
 	}
 	return fmt.Errorf(
-		"recipe %s writes spec.components in its Dynamo overlay, which replaces the rendered "+
+		"deployment %s writes spec.components in its Dynamo overlay, which replaces the rendered "+
 			"list wholesale and takes the %s component with it — the deployment would come up "+
 			"healthy and be reachable by nothing; restate the %s component in the overlay, or "+
 			"express the change without rewriting spec.components",
-		in.Recipe.RecipeID, FrontendComponent, FrontendComponent,
+		in.Deployment.DeploymentID, FrontendComponent, FrontendComponent,
 	)
 }
 
@@ -740,7 +745,7 @@ func splitDomain(domain string) (kind, key string, ok bool) {
 	return domain[:slash], domain[slash+1:], true
 }
 
-// engineModule maps a recipe engine onto the Dynamo entrypoint that runs it.
+// engineModule maps a declared engine onto the Dynamo entrypoint that runs it.
 func engineModule(engine string) string {
 	switch strings.ToLower(engine) {
 	case "sglang":
@@ -752,10 +757,10 @@ func engineModule(engine string) string {
 	}
 }
 
-// engineArgs builds the engine command line from the recipe.
+// engineArgs builds the engine command line from the deployment's serving block.
 //
-// Recipe fields are rendered first and engine_args second, so an explicit argument wins over the
-// derived one. That direction is deliberate: engine_args is the escape hatch for a flag this
+// The serving fields are rendered first and engine_args second, so an explicit argument wins over
+// the derived one. That direction is deliberate: engine_args is the escape hatch for a flag this
 // operator has never heard of, and an escape hatch that loses to a default is not one.
 func engineArgs(in Inputs) ([]string, error) {
 	model, err := modelRef(in.Artifact)
@@ -766,33 +771,33 @@ func engineArgs(in Inputs) ([]string, error) {
 	derived := map[string]string{
 		"model":             model,
 		"served-model-name": servedModelName(in),
-		"max-model-len":     strconv.Itoa(in.Recipe.ContextLength),
+		"max-model-len":     strconv.Itoa(in.Deployment.Serving.ContextLength),
 	}
 	if rev := hfRevision(in.Artifact); rev != "" {
 		derived["revision"] = rev
 	}
-	if tp := in.Recipe.Parallelism.Tensor; tp > 1 {
+	if tp := in.Deployment.Serving.Parallelism.Tensor; tp > 1 {
 		derived["tensor-parallel-size"] = strconv.Itoa(tp)
 	}
-	if pp := in.Recipe.Parallelism.Pipeline; pp > 1 {
+	if pp := in.Deployment.Serving.Parallelism.Pipeline; pp > 1 {
 		derived["pipeline-parallel-size"] = strconv.Itoa(pp)
 	}
-	if f := in.Recipe.KVCacheFraction; f != nil {
+	if f := in.Deployment.Serving.KVCacheFraction; f != nil {
 		derived["gpu-memory-utilization"] = strconv.FormatFloat(*f, 'f', -1, 64)
 	}
-	if v := in.Recipe.Quantization; v != nil && *v != "" {
+	if v := in.Deployment.Serving.Quantization; v != nil && *v != "" {
 		derived["quantization"] = *v
 	}
-	if v := in.Recipe.Dtype; v != nil && *v != "" {
+	if v := in.Deployment.Serving.Dtype; v != nil && *v != "" {
 		derived["dtype"] = *v
 	}
-	if v := in.Recipe.KVCacheDtype; v != nil && *v != "" {
+	if v := in.Deployment.Serving.KVCacheDtype; v != nil && *v != "" {
 		derived["kv-cache-dtype"] = *v
 	}
-	if v := in.Recipe.MaxBatchTokens; v != nil {
+	if v := in.Deployment.Serving.MaxBatchTokens; v != nil {
 		derived["max-num-batched-tokens"] = strconv.Itoa(*v)
 	}
-	for key, value := range in.Recipe.EngineArgs {
+	for key, value := range in.Deployment.Serving.EngineArgs {
 		derived[strings.TrimPrefix(key, "--")] = value
 	}
 
@@ -810,7 +815,7 @@ func engineArgs(in Inputs) ([]string, error) {
 		}
 	}
 	// vLLM enables prefix caching by default, so only the off case needs saying.
-	if !in.Recipe.PrefixCacheEnabled {
+	if !in.Deployment.Serving.PrefixCacheEnabled {
 		args = append(args, "--no-enable-prefix-caching")
 	}
 	return args, nil
@@ -818,20 +823,12 @@ func engineArgs(in Inputs) ([]string, error) {
 
 // servedModelName is the model id an API client sends, as the plane resolved it.
 //
-// Nothing is derived here. The deployment's override wins over the recipe's default because the
-// workload is the object a person creates and a recipe is shared by every workload that names it;
-// both strings arrive already resolved, so this is a precedence rule and not a second copy of the
-// plane's. The recipe's name is the last resort, and only for a frame from a plane too old to
-// carry the field — it is what this renderer used unconditionally before, so an old plane keeps
-// getting exactly what it used to get.
+// Nothing is derived here and there is nothing left to choose between: the plane collapses the
+// workload's own declaration and the artifact's slug before it sends, so the field is never empty
+// on the wire and this renders the string it is told. `engine_args["served-model-name"]` still
+// beats it, because engine_args is laid over the derived flags.
 func servedModelName(in Inputs) string {
-	if name := strings.TrimSpace(in.Deployment.ServedModelName); name != "" {
-		return name
-	}
-	if name := strings.TrimSpace(in.Recipe.ServedModelName); name != "" {
-		return name
-	}
-	return in.Recipe.Name
+	return strings.TrimSpace(in.Deployment.ServedModelName)
 }
 
 // modelRef is what --model is pointed at.
@@ -858,7 +855,7 @@ func modelRef(art wire.ArtifactDesired) (string, error) {
 	return "/models/" + art.ArtifactID, nil
 }
 
-// applyPodOverlay merges recipe-supplied pod configuration over the rendered spec.
+// applyPodOverlay merges the serving block's pod configuration over the rendered spec.
 //
 // Strategic merge rather than a plain JSON merge patch, because PodSpec declares merge keys:
 // containers, env, volumes and volumeMounts merge by name. Under RFC 7386 those are lists and a
@@ -888,7 +885,7 @@ func applyPodOverlay(spec *corev1.PodSpec, overlay map[string]any) (*corev1.PodS
 	return &out, nil
 }
 
-// applyDynamoOverlay merges recipe-supplied configuration over the rendered graph deployment.
+// applyDynamoOverlay merges the serving block's configuration over the rendered graph deployment.
 //
 // A plain recursive merge, and it has to be: DynamoGraphDeployment is someone else's CRD, so
 // there is no Go type here to read merge keys off. Maps merge, and anything else — including

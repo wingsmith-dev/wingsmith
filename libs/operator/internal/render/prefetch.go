@@ -167,8 +167,8 @@ print("cached at", dest, flush=True)
 // It runs on the cache pool rather than the accelerator pool: this is network and disk work, and
 // there is no reason to hold a GPU idle for the length of a multi-tens-of-gigabytes pull.
 //
-// The job is keyed on the artifact and takes no deployment and no recipe: residency is declared by
-// the cluster's warm-set, so an artifact is fetched because it should be present here, whether or
+// The job is keyed on the artifact and takes no deployment: residency is declared by the
+// cluster's warm-set, so an artifact is fetched because it should be present here, whether or
 // not anything serves it yet. A second deployment of the same weights then costs nothing and reads
 // residency as a precondition instead of doing the work again. The image is passed in rather than
 // derived because it must be the same runtime image the workers run — a different huggingface_hub
@@ -292,9 +292,9 @@ func prefetchResources(opts Options) (corev1.ResourceRequirements, error) {
 
 // PrefetchJobName is the object name for an artifact's prefetch job.
 //
-// Keyed on the artifact id rather than the recipe or deployment, because the download is per set of
-// weights: two recipes over one artifact want the same job, and the second reconcile must find the
-// first one's rather than start a competing pull.
+// Keyed on the artifact id rather than the deployment, because the download is per set of
+// weights: two deployments over one artifact want the same job, and the second reconcile must find
+// the first one's rather than start a competing pull.
 //
 // The model leads the name only so that a `kubectl get jobs` reads as who is downloading rather
 // than as a list of opaque ids. It is decoration in front of the key, not part of it — which is why
@@ -436,8 +436,8 @@ func prefetchSource(art wire.ArtifactDesired) (hf, other *wire.ArtifactSource) {
 //
 // Read off the artifact's own source, because that is the only name of the model the operator has
 // here. An artifact carries a digest, a size and a list of URIs; it does not carry the string a
-// human calls the model, and the recipes that do are a different object with a different lifetime
-// — an artifact in the warm-set need not have a recipe on this cluster at all.
+// human calls the model, and the deployments that do have a different lifetime — an artifact in
+// the warm-set need not be served by anything on this cluster at all.
 //
 // Empty when there is nothing to read, and the caller falls back to the artifact id alone. A job
 // named after a guess would be worse than one named after an id.

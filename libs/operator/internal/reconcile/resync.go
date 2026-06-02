@@ -156,10 +156,10 @@ func (r *SyncedResourceReconciler) demandSnapshot(
 }
 
 // observeDeclared reads what one declared deployment is running, by whichever route it was put
-// there — rendered from a recipe, or adopted from something that was already running.
+// there — rendered by this operator, or adopted from something that was already running.
 //
-// A deployment waiting on a recipe that has not arrived is not a failure: it has no pods yet, and
-// contributing nothing to the snapshot is the correct and complete answer for it.
+// A deployment waiting on an artifact that has not arrived is not a failure: it has no pods yet,
+// and contributing nothing to the snapshot is the correct and complete answer for it.
 func (r *SyncedResourceReconciler) observeDeclared(
 	ctx context.Context,
 	res *v1alpha1.SyncedResource,
@@ -184,17 +184,7 @@ func (r *SyncedResourceReconciler) observeDeclared(
 		return out, true
 	}
 
-	recipe, err := r.recipe(ctx, dep.RecipeID)
-	if err != nil {
-		r.Log.Warn("could not read the recipe for a demand resync",
-			"deployment", dep.DeploymentID, "recipe", dep.RecipeID, "error", err)
-		return rollout{}, false
-	}
-	if recipe == nil {
-		return rollout{}, true
-	}
-
-	out, err := r.observeRollout(ctx, dep, *recipe)
+	out, err := r.observeRollout(ctx, dep)
 	if err != nil {
 		r.Log.Warn("could not read what a deployment is running for a demand resync",
 			"deployment", dep.DeploymentID, "error", err)

@@ -29,8 +29,8 @@ const cliqueLabel = render.CliqueLabel
 
 // shape is how one replica's devices are laid out over machines.
 //
-// Derived, never declared. The plane sends the device count and the recipe sends the parallel
-// degrees; how many machines that becomes depends on how big this cluster's machines are, which
+// Derived, never declared. The plane sends the device count and the serving block sends the
+// parallel degrees; how many machines that becomes depends on how big this cluster's machines are, which
 // is a local fact and so a local decision — rule 3, the same reason device selection is the
 // cluster's and cluster selection is the plane's.
 type shape struct {
@@ -46,12 +46,12 @@ type shape struct {
 	SingleDomain bool
 }
 
-func shapeOf(dep wire.DeploymentDesired, recipe wire.RecipeDesired) shape {
+func shapeOf(dep wire.DeploymentDesired) shape {
 	devices := dep.Placement.DevicesPerReplica
 	if devices < 1 {
 		devices = 1
 	}
-	tensor := recipe.Parallelism.Tensor
+	tensor := dep.Serving.Parallelism.Tensor
 	if tensor < 1 {
 		tensor = 1
 	}
@@ -124,10 +124,9 @@ func schedulable(
 	ctx context.Context,
 	c client.Client,
 	dep wire.DeploymentDesired,
-	recipe wire.RecipeDesired,
 	selector map[string]string,
 ) (fit, error) {
-	want := shapeOf(dep, recipe)
+	want := shapeOf(dep)
 
 	var nodes corev1.NodeList
 	if err := c.List(ctx, &nodes); err != nil {

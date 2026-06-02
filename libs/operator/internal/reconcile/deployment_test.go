@@ -35,9 +35,9 @@ import (
 
 const (
 	testDeploymentID = "dep_01j9x2gggggggggggggggggggg"
-	testRecipeID     = "rec_01j9x2ffffffffffffffffffff"
 	testArtifactID   = "art_01j9x2eeeeeeeeeeeeeeeeeeee"
 	testImage        = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1"
+	testDigest       = "svg_1cd3f0e2a7b94c5d8e6f0a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f"
 )
 
 var testRender = render.Options{
@@ -73,28 +73,27 @@ func declared(t *testing.T, kind, id string, payload any) *v1alpha1.SyncedResour
 
 func testDeploymentDesired() wire.DeploymentDesired {
 	return wire.DeploymentDesired{
-		DeploymentID: testDeploymentID,
-		ClusterID:    "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
-		ProjectID:    "prj_01j9x2jjjjjjjjjjjjjjjjjjjj",
-		RecipeID:     testRecipeID,
-		MinReplicas:  2,
-		MaxReplicas:  8,
-		Generation:   14,
-		Placement:    wire.PlacementConstraints{DeviceClass: "h100-80gb-sxm", DevicesPerReplica: 2},
+		DeploymentID:    testDeploymentID,
+		ClusterID:       "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+		ProjectID:       "prj_01j9x2jjjjjjjjjjjjjjjjjjjj",
+		MinReplicas:     2,
+		MaxReplicas:     8,
+		Generation:      14,
+		ArtifactIDs:     []string{testArtifactID},
+		ServedModelName: "qwen3.8-27b",
+		Placement:       wire.PlacementConstraints{DeviceClass: "h100-80gb-sxm", DevicesPerReplica: 2},
+		Serving:         testServingSpec(),
 	}
 }
 
-func testRecipeDesired() wire.RecipeDesired {
+func testServingSpec() wire.ServingSpec {
 	image := testImage
-	return wire.RecipeDesired{
-		RecipeID:      testRecipeID,
-		ArtifactID:    testArtifactID,
-		Name:          "qwen3.8-27b",
-		Version:       7,
+	return wire.ServingSpec{
 		Engine:        "vllm",
 		EngineImage:   &image,
-		Parallelism:   wire.RecipeParallelism{Tensor: 2, Pipeline: 1, Expert: 1},
+		Parallelism:   wire.Parallelism{Tensor: 2, Pipeline: 1, Expert: 1},
 		ContextLength: 262144,
+		Digest:        testDigest,
 	}
 }
 
@@ -238,28 +237,18 @@ func readyCondition(t *testing.T, res *v1alpha1.SyncedResource) metav1.Condition
 	return metav1.Condition{}
 }
 
-func TestDeploymentWaitsForItsRecipe(t *testing.T) {
+func TestDeploymentWaitsForItsArtifact(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	_, out, result := runReconcile(t, dep)
 
-	if got := readyCondition(t, out).Reason; got != "RecipeNotDeclared" {
-		t.Errorf("reason = %q, want RecipeNotDeclared", got)
+	if got := readyCondition(t, out).Reason; got != "ArtifactNotDeclared" {
+		t.Errorf("reason = %q, want ArtifactNotDeclared", got)
 	}
 	if result.RequeueAfter == 0 {
-		t.Error("a deployment waiting on its recipe must ask to be called again")
+		t.Error("a deployment waiting on its artifact must ask to be called again")
 	}
 	if out.Status.ObservedRevision != 0 {
 		t.Error("nothing was applied, so the revision must not be marked observed")
-	}
-}
-
-func TestDeploymentWaitsForItsArtifact(t *testing.T) {
-	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
-	_, out, _ := runReconcile(t, dep, rec)
-
-	if got := readyCondition(t, out).Reason; got != "ArtifactNotDeclared" {
-		t.Errorf("reason = %q, want ArtifactNotDeclared", got)
 	}
 }
 
@@ -267,9 +256,8 @@ func TestDeploymentWaitsForItsArtifact(t *testing.T) {
 // do not hold over NFS, and the loser crash-loops the whole graph deployment.
 func TestDeploymentWaitsForResidentWeights(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, out, _ := runReconcile(t, dep, rec, art)
+	r, out, _ := runReconcile(t, dep, art)
 
 	if got := readyCondition(t, out).Reason; got != "WeightsNotResident" {
 		t.Errorf("reason = %q, want WeightsNotResident", got)
@@ -285,9 +273,8 @@ func TestDeploymentWaitsForResidentWeights(t *testing.T) {
 
 func TestDeploymentRendersOnceWeightsAreResident(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	r, out, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
 	condition := readyCondition(t, out)
 	if condition.Status != metav1.ConditionTrue {
@@ -331,9 +318,8 @@ func TestDeploymentRendersOnceWeightsAreResident(t *testing.T) {
 // fast path back; this is the floor under it.
 func TestAFullyServingDeploymentIsLookedAtAgainWithoutBeingWrittenTo(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	objects := []client.Object{dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
 	for _, pod := range readyPods(2) {
 		objects = append(objects, pod)
 	}
@@ -348,9 +334,8 @@ func TestAFullyServingDeploymentIsLookedAtAgainWithoutBeingWrittenTo(t *testing.
 // only the graph deployment is — so the drift floor is far too slow to fill a progress bar with.
 func TestARolloutStillFillingInIsLookedAtSoon(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	_, _, result := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	_, _, result := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
 	if result.RequeueAfter != waitForDependency {
 		t.Errorf("RequeueAfter = %s, want %s while nothing is ready yet", result.RequeueAfter, waitForDependency)
@@ -361,9 +346,8 @@ func TestARolloutStillFillingInIsLookedAtSoon(t *testing.T) {
 // that says a deployment is serving and one that says `placed · 0/0` while it serves.
 func TestWhatIsRunningIsReportedAndNotOnlyWhatWasApplied(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	objects := []client.Object{dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
 	for _, pod := range readyPods(2) {
 		objects = append(objects, pod)
 	}
@@ -423,9 +407,8 @@ func TestAReplicaPhaseIsAlwaysOneTheContractDefines(t *testing.T) {
 // because the field being non-nil is only interesting for what JSON it produces.
 func TestAReplicaFrameCarriesDeviceIDsAsAnArrayAndNeverNull(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	objects := []client.Object{dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
 	for _, pod := range readyPods(1) {
 		objects = append(objects, pod)
 	}
@@ -449,9 +432,8 @@ func TestAReplicaFrameCarriesDeviceIDsAsAnArrayAndNeverNull(t *testing.T) {
 // crash-looping replica both look like.
 func TestAPartialRolloutIsDegradedRatherThanRunning(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	objects := []client.Object{dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
 	for _, pod := range readyPods(1) {
 		objects = append(objects, pod)
 	}
@@ -471,9 +453,8 @@ func TestAPartialRolloutIsDegradedRatherThanRunning(t *testing.T) {
 // pair re-sent on every pass — forever, for every deployment in the fleet.
 func TestAServingDeploymentIsNotReportedAgainOnAnUnchangedPass(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	objects := []client.Object{dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
 	for _, pod := range readyPods(2) {
 		objects = append(objects, pod)
 	}
@@ -507,9 +488,8 @@ func TestAWorkerLoadingWeightsIsStartingRatherThanRunning(t *testing.T) {
 // to do it cannot cross the namespace boundary this render puts the two objects on.
 func TestDeletingADeclaredDeploymentRemovesWhatItRendered(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	r, out, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
 	ctx := context.Background()
 	key := types.NamespacedName{Namespace: "dynamo", Name: render.Name(testDeploymentID)}
@@ -544,9 +524,8 @@ func TestRenamingADeploymentRemovesWhatTheOldNameRendered(t *testing.T) {
 	desired := testDeploymentDesired()
 	desired.Name = "chat-iad"
 	dep := declared(t, "deployment", testDeploymentID, desired)
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	r, out, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
 	ctx := context.Background()
 	graph := &unstructured.Unstructured{}
@@ -602,9 +581,9 @@ func TestUnknownKindIsReportedRatherThanIgnored(t *testing.T) {
 	}
 }
 
-func TestRecipeIsHeldWithoutClusterWork(t *testing.T) {
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
-	_, out, _ := runReconcile(t, rec)
+func TestAnArtifactIsHeldWithoutClusterWork(t *testing.T) {
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	_, out, _ := runReconcile(t, art)
 
 	if out.Status.Phase != "Accepted" {
 		t.Errorf("phase = %q, want Accepted", out.Status.Phase)
@@ -619,9 +598,8 @@ func TestRecipeIsHeldWithoutClusterWork(t *testing.T) {
 // than left as pods pending forever.
 func TestDeploymentWaitsWhenNoNodeCanHoldAReplica(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 0, true))
+	_, out, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 0, true))
 
 	condition := readyCondition(t, out)
 	if condition.Reason != "NoSchedulableCapacity" {
@@ -636,9 +614,8 @@ func TestDeploymentWaitsWhenNoNodeCanHoldAReplica(t *testing.T) {
 // that has to fit inside one machine. Two devices at tensor-parallel two are one such group.
 func TestCapacityIsCountedPerNodeNotClusterWide(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(),
+	_, out, _ := runReconcile(t, dep, art, completedPrefetch(),
 		gpuNode("gpu-0", 1, true), gpuNode("gpu-1", 1, true))
 
 	if got := readyCondition(t, out).Reason; got != "NoSchedulableCapacity" {
@@ -650,11 +627,10 @@ func TestCapacityIsCountedPerNodeNotClusterWide(t *testing.T) {
 // reported, and counting them would promise capacity that is deliberately being removed.
 func TestCordonedNodesDoNotCountAsCapacity(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
 	draining := gpuNode("gpu-0", 8, true)
 	draining.Spec.Unschedulable = true
-	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), draining)
+	_, out, _ := runReconcile(t, dep, art, completedPrefetch(), draining)
 
 	if got := readyCondition(t, out).Reason; got != "NoSchedulableCapacity" {
 		t.Errorf("reason = %q, want NoSchedulableCapacity", got)
@@ -665,9 +641,8 @@ func TestNodesOutsideThePlacementSelectorAreNotCounted(t *testing.T) {
 	desired := testDeploymentDesired()
 	desired.Placement.NodeSelector = map[string]string{"region": "eu-west-1"}
 	dep := declared(t, "deployment", testDeploymentID, desired)
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	_, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	_, out, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
 	if got := readyCondition(t, out).Reason; got != "NoSchedulableCapacity" {
 		t.Errorf("reason = %q, want NoSchedulableCapacity: the only usable node is in another region", got)
@@ -675,15 +650,13 @@ func TestNodesOutsideThePlacementSelectorAreNotCounted(t *testing.T) {
 }
 
 // TestObservedDeploymentIsNeverApplied is the gate ADR 0009 turns on. Everything a managed
-// deployment needs in order to render is present here — recipe, artifact, resident weights, a node
-// with room — so if anything is written it is the authority mark that failed and not a missing
-// input.
+// deployment needs in order to render is present here — artifact, resident weights, a node with
+// room — so if anything is written it is the authority mark that failed and not a missing input.
 func TestObservedDeploymentIsNeverApplied(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	dep.Spec.Authority = v1alpha1.AuthorityObserved
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, out, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	r, out, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
 	graph := &unstructured.Unstructured{}
 	graph.SetGroupVersionKind(render.GVK)
@@ -701,9 +674,8 @@ func TestObservedDeploymentIsNeverApplied(t *testing.T) {
 func TestAnEmptyAuthorityIsObserved(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	dep.Spec.Authority = ""
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, _, _ := runReconcile(t, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	r, _, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
 	graph := &unstructured.Unstructured{}
 	graph.SetGroupVersionKind(render.GVK)
@@ -812,9 +784,8 @@ func TestAnObjectLabelledForAnotherDeploymentIsLeftAlone(t *testing.T) {
 // minutes from its first token — and the plane marks a deployment ready off exactly this count.
 func TestFrontendPodsAreNotCountedAsReplicasOfTheModel(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	objects := []client.Object{dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
 	for _, pod := range readyPods(1) {
 		objects = append(objects, pod)
 	}
@@ -930,7 +901,7 @@ func observedRollout(t *testing.T, opts render.Options, pods ...*corev1.Pod) rol
 		Render:    opts,
 		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
 	}
-	out, err := r.observeRollout(context.Background(), testDeploymentDesired(), testRecipeDesired())
+	out, err := r.observeRollout(context.Background(), testDeploymentDesired())
 	if err != nil {
 		t.Fatalf("observe: %v", err)
 	}
@@ -1060,7 +1031,6 @@ func TestAnImmutableComponentSetIsReportedAndNotRetriedForever(t *testing.T) {
 		t.Fatalf("scheme: %v", err)
 	}
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
 
 	refusal := apierrors.NewInvalid(
@@ -1070,7 +1040,7 @@ func TestAnImmutableComponentSetIsReportedAndNotRetriedForever(t *testing.T) {
 			"component topology is immutable and cannot be modified after creation: components added: [Frontend]")},
 	)
 	c := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)).
+		WithObjects(dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)).
 		WithStatusSubresource(dep).
 		WithInterceptorFuncs(interceptor.Funcs{
 			Patch: func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {

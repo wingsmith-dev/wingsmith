@@ -167,7 +167,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/device-classes` | the shared dictionary, read-only — see below |
 | `/v1/pools` | declared, with observed membership |
 | `/v1/artifacts` | declared, plus two read-only derived views, one operation, and a declared baseline sub-resource — see below |
-| `/v1/recipes`, `/v1/workloads`, `/v1/endpoints` | declared, plus a read-only resolution — see below |
+| `/v1/workloads`, `/v1/endpoints` | declared, plus a read-only resolution — see below |
 | `/v1/deployments` | declared, per-cluster, read-mostly — see below |
 | `/v1/discovered` | observed, read-only, plus the decision verbs — see below |
 | `/v1/replicas`, `/v1/allocations` | observed, read-only |
@@ -201,16 +201,25 @@ never appears, because a metrics source is public as endpoint, kind and label on
 principals only — an operator token is `403 forbidden`, since a cluster agent has no use for the
 plane's process configuration.
 
-**An endpoint's `model_slug` is the model id clients send; its `name` is an internal handle.**
+**An endpoint's `slug` is the model id clients send; its `name` is an internal handle.**
 `name` is in URLs, in metrics labels and in every link the console holds, and it is not patchable —
 an endpoint exists so that deployments can be replaced without anybody noticing, and renaming it
 spends exactly that. `model` in an OpenAI request is a public contract and wants neither of those
 properties: it wants to read `moonshotai/kimi-k3` rather than whatever the endpoint was called when
 somebody made it, and it has to be correctable afterwards. So they are two fields, and this is the
-one that can be patched. Null means the name still stands.
+one that can be patched.
 
-The resolved table reports it as the endpoint's `name`, which is the key the gateway builds its
-route map on — so changing a public model id is a plane-side write and one gateway poll, with no
+`slug` is never empty. Left out at creation it takes the slug of the weights behind the first
+target, which is the case that should be normal — an endpoint in front of one model answers to that
+model, and requiring a caller to type the name a second time is how the two come to differ.
+Declaring one is then unambiguously a request for an alias.
+
+There were four fields here — `name`, `model_slug`, `display_name`, and a `resolved_model_slug`
+computed on the way out purely to report which of the first two had won. That is what a nullable
+public identifier costs, and none of them on its own answered "what does a client send".
+
+The resolved table reports the slug as the endpoint's `name`, which is the key the gateway builds
+its route map on — so changing a public model id is a plane-side write and one gateway poll, with no
 engine flag, no pod respec and nothing on any cluster.
 
 **`GET /v1/endpoints/resolved` is derived and belongs to no object.** An endpoint declares a name
@@ -228,29 +237,39 @@ addresses an endpoint by its public name; the engine behind it answers to the mo
 resolved for it — by default the artifact's lowercase Hugging Face slug, `moonshotai/kimi-k3`. The
 gateway rewrites the request's `model` to this before forwarding, so the public name never has to
 equal the served one. It rides the upstream rather than the endpoint because one endpoint can front
-two clusters running different recipes, and there is no single answer to put one level up.
+two clusters running different serving configurations, and there is no single answer to put one
+level up.
 
-It used to be the recipe's name, which for a recipe the console derived is a description of the fit
-— `llama-3-3-70b-instruct-fp8-tp2-32k` — and moved whenever the fit was redone. The slug is a fact
-about the weights and survives a re-fit.
+**It is `Artifact.slug`, stored, and nothing else declares it.** The slug is written once on the
+way in, derived from the location that names the weights: `hf://moonshotai/Kimi-K3` becomes
+`moonshotai/kimi-k3`. Lowercase because that is what a caller types; the organisation kept because
+a bare `kimi-k3` is not a model id anybody can look up.
 
-An override is declared rather than smuggled: `served_model_name` on the workload wins, then
-`served_model_name` on the recipe, then the derived slug. The recipe's `engine_args` under the
-flag's own spelling, `served-model-name`, still beats all three and remains the last-resort hatch —
-those keys are rendered onto the engine command line verbatim, so the hyphenated form is the only
-one that both reaches the engine and is read here.
+There used to be a ladder — the workload's `served_model_name`, then the recipe's name, then a slug
+the plane re-derived at read time from the artifact's `name`. Every rung was wrong in its own way.
+The recipe's name described the fit, `llama-3-3-70b-instruct-fp8-tp2-32k`, and moved whenever the
+fit was redone. The read-time derivation could not produce an organisation at all, because a name
+is `gpt-oss-20b` and the `openai/` only ever existed in the location URI that nothing consulted —
+while the operator started every engine on a `--model` taken from that same location. So the plane
+published one string and the frontend registered another, and the failure is invisible from both
+ends: the deployment is healthy, the worker is ready, the tunnel is open, and the request comes back
+`model_not_found` from inside the cluster. Storing it once removes the disagreement rather than
+adjudicating it.
 
-**`served_model_name` on the endpoint target beats every one of them, and it is the correction.**
-Everything above derives the same string a second time, in the plane, from the rule the operator
-renders with — and two derivations of one value drift. They have: a recipe carrying the
-`engine_args` hatch served `moonshotai/kimi-k3` while the table published the fit name, so the
-gateway rewrote `model` to something the frontend had never heard of and every request 404'd from
-inside the cluster. The target's override is where that is fixed, because the engine's name is
-invisible to clients and the only property that has to hold is that this table and that process
-agree. Null, the ordinary case, means the chain above stands. Setting it costs a gateway poll;
-correcting the same mismatch on the recipe respecs the pod and reloads the weights, which for a
-checkpoint the size of Kimi K3 is twenty-two minutes of downtime to change a string nobody outside
-the cluster can see.
+The workload's `serving.engine_args` under the flag's own spelling, `served-model-name`, still beats
+it and remains the last-resort hatch — those keys are rendered onto the engine command line
+verbatim, so the hyphenated form is the only one that both reaches the engine and is read here. An
+escape hatch that loses to a default is not one.
+
+**`served_model_name` on the endpoint target beats it, and it is now only for adopted deployments.**
+It exists for a process the plane did not render — somebody else's engine, answering to a name we
+can observe and not choose. It was load-bearing while the plane derived the engine's name a second
+time from its own rule, because two derivations of one value drift and these did. With the slug
+stored on the artifact and rendered from the same column, the ordinary case has nothing to correct.
+Null, the ordinary case, means the artifact's slug stands. Setting it costs a gateway poll;
+correcting the same mismatch on the workload's serving block respecs the pod and reloads the
+weights, which for a checkpoint the size of Kimi K3 is twenty-two minutes of downtime to change a
+string nobody outside the cluster can see.
 
 A cluster contributes upstreams only while its `phase` is `active`. `draining` and `disabled` are
 somebody declaring that the cluster must stop taking work, and traffic is the first thing that has
@@ -304,7 +323,7 @@ permissions in one place instead of N.
 
 **`/v1/device-classes` is a dictionary, which is a fourth kind alongside declared, observed and
 derived.** A device class is the identity a GPU model is placed against — `h100-80gb-sxm` on a
-pool, a recipe shape, a quota and a device — and it is defined in `devices.json` in this package,
+pool, a workload's serving shape, a quota and a device — and it is defined in `devices.json` in this package,
 read by the plane and embedded in the operator. Nothing declares one and no cluster reports one, so
 there is no `POST` and no `PATCH`: adding hardware is a change to the contract table and a release
 of both halves. Editing it over the API would leave the plane and the operator resolving vendor
@@ -350,10 +369,10 @@ and that would only work for the one object it was added to:
 | `hangar.io/alert.severity` | `info` `warning` `error` `critical` | overrides the rule's severity |
 | `hangar.io/alert.for` | `45m` `2h` `900s` `900` | overrides how long it must hold before firing |
 
-Set them on the **workload**, not the recipe: a recipe is shared and versioned, so muting there
-would quieten every workload of that model at once. Labels are a workload fact and there is no
-per-cluster override of them; muting a workload mutes it in every cluster it runs in, which is what
-a workload-level knob should mean. Cluster conditions read the cluster's labels,
+They are set on the **workload**, which is the only object that carries them: a workload's serving
+configuration is its own and is not shared with anything, so muting one workload of a model never
+quietens another. There is no per-cluster override either; muting a workload mutes it in every
+cluster it runs in, which is what a workload-level knob should mean. Cluster conditions read the cluster's labels,
 and a workload nobody has imported yet reads the labels the cluster reports for it — which makes the
 manifest the only place that knob exists before promotion. An unparseable value is ignored rather
 than obeyed, and a tuned alert records what changed it under `details.tuned_by`. Muting an alert
@@ -451,16 +470,51 @@ null, or with `unavailable` set if no store is configured for them at all: an en
 called is not 100% available, and it is not 0% either.
 
 **`/v1/workloads` is what you create; `/v1/deployments` is what that became.** A Workload is the
-global declaration — a recipe, a total scale, a kind, a priority, and the regions or clusters it may
-use. A Deployment is that workload on **one** cluster, and it is still exactly what the operator
+global declaration — a serving configuration, a total scale, a kind, a priority, and the regions or
+clusters it may use. A Deployment is that workload on **one** cluster, and it is still exactly what the operator
 reconciles. "Run gpt-20b on asia and europe" is one workload, two deployments, one replica each.
 Nothing about a Deployment's meaning changed; a layer was added above it.
 
-The split follows the fact, not the object: what is true of the whole workload (recipe, adapters,
-overrides, labels, kind, priority class, preemptible, gang size, deadline, the topology-domain pair,
-and the min/max/desired totals) lives on the Workload, and what is true of one cluster (admission
-phase and reason, the queued/admitted/placed timestamps, generation, enabled, authority, adoption)
-lives on the Deployment.
+The split follows the fact, not the object: what is true of the whole workload (the serving
+configuration, adapters, overrides, labels, kind, priority class, preemptible, gang size, deadline,
+the topology-domain pair, and the min/max/desired totals) lives on the Workload, and what is true of
+one cluster (admission phase and reason, the queued/admitted/placed timestamps, generation, enabled,
+authority, adoption) lives on the Deployment.
+
+**How a workload is served is a block on the workload, not an object beside it.** There is no
+`/v1/recipes`: the engine, its images, the parallelism, the cache settings and the resource request
+are a nested `serving` object on the workload, sent on `POST /v1/workloads` and returned by
+`GET /v1/workloads` and `GET /v1/workloads/{ref}`. It mirrors `deployment.desired.serving` in
+`MESSAGES.md` field for field — `engine`, `engine_version`, `engine_image`, `frontend_image`,
+`engine_args`, `quantization`, `dtype`, `parallelism`, `context_length`, `max_batch_tokens`,
+`kv_cache_dtype`, `kv_cache_fraction`, `prefix_cache_enabled`, `prefix_cache_config`, `resources`
+and `overlay` — and adds `artifact`, which is the weights this configuration serves and is required,
+plus `capabilities` and `imported_args`. `served_model_name` stays on the workload beside the block
+rather than inside it, because it is a public name and not part of the footprint.
+
+Reuse is not something a caller arranges. Two workloads declaring the same configuration are not
+made to share a row; they simply have the same digest, and that is the whole mechanism.
+
+**`serving_digest` is derived, read-only, and is the identity of the configuration.** `svg_` followed
+by a sha256 over the canonical JSON of exactly the fields that reach an engine — the block above,
+with the artifact as its uid. The plane recomputes it on every write and a body carrying one is
+`409 invalid`: it is an answer, not an assertion. `imported_args`, `capabilities`,
+`served_model_name` and `labels` are deliberately outside it, as are scale and placement, because the
+question it answers is "would this produce the same running process" and none of those change the
+process.
+
+**`capabilities` is asserted and `imported_args` is observed, and neither is ever rendered.**
+`capabilities` is what somebody says this configuration can do — tools, vision, structured output —
+and it reaches no cluster and no engine flag. `imported_args` is the argv a discovered workload was
+actually running, recorded in full so that the person confirming an import can check it against the
+cluster; it is never turned into flags, because reading a flag off a running pod records it and
+asserting it is a separate act. Only `engine_args` is rendered.
+
+**`resolved_engine_args` is derived on read and stored nowhere.** It is the flags the operator would
+render: the ones the plane derives from the block — parallelism, context length, dtype, quantization,
+the KV-cache settings — with `engine_args` laid over the top, so a key the caller declared wins over
+the derived one under the same spelling. It is on the read shape only, it is never accepted on a
+write, and it is the one place to look before asking why an engine came up with a flag nobody typed.
 
 **Scale is declared as a total and read as a share.** `min`, `max` and `desired` on a workload count
 across every cluster it may use; each deployment's `min_replicas` / `max_replicas` /
@@ -554,28 +608,29 @@ foreign key cascades, and a delete that silently took quotas and allocations wit
 anyone asked for. `project_count` is on the read shape so a caller can see what a delete would
 refuse over.
 
-**`GET /v1/discovered/{ref}/recipe-draft` reads a sighting as the objects needed to adopt it.** A
+**`GET /v1/discovered/{ref}/serving-draft` reads a sighting as the objects needed to adopt it.** A
 `GET` because it is one: the same sighting derives the same draft every time, and asking changes
-nothing. It returns the proposed recipe — engine and version from the image tag, context length and
-parallelism from the container's argv — and, under `artifact`, the weights that recipe would point
-at. The draft's `imported_args` is the whole argv as flag/value pairs, including arguments that also
-populated a first-class field, because a record that keeps only what it has columns for cannot be
-checked against the cluster by the person confirming it. Its `engine_args` is always empty: reading a
-flag off a running pod records it, and asserting it is a separate act by a person. The artifact half exists because a recipe cannot be written without one and a workload the plane
-never declared has no artifact anywhere: `--model org/model` becomes an `hf://` source and a
+nothing. It returns the proposed `serving` block — engine and version from the image tag, context
+length and parallelism from the container's argv — and, under `artifact`, the weights that block
+would point at. The draft's `imported_args` is the whole argv as flag/value pairs, including
+arguments that also populated a first-class field, because a record that keeps only what it has
+columns for cannot be checked against the cluster by the person confirming it. Its `engine_args` is
+always empty: reading a flag off a running pod records it, and asserting it is a separate act by a
+person. The artifact half exists because a serving configuration cannot be written without one and a
+workload the plane never declared has no artifact anywhere: `--model org/model` becomes an `hf://` source and a
 `digest` of `hf:org/model`, with the revision appended when `--revision` was given. That digest is a
 name, not a hash, so the artifact is written with `verified: false` and stays that way until
 something resolves the bytes. `artifact.existing_id` is filled when the catalogue already holds
 those weights, which makes adopting one a confirmation instead of a duplicate. Nothing on this path
-writes; `POST /v1/artifacts` and `POST /v1/recipes` do, on their own modules' endpoints, so there is
-one way to create each object rather than two that must agree.
+writes; `POST /v1/artifacts` and `POST /v1/workloads` do, on their own modules' endpoints, so there
+is one way to create each object rather than two that must agree.
 
 **`GET /v1/artifacts/resolve?source=hf://org/model` answers what an artifact would be.** A `GET`
-for the same reason `recipe-draft` is one: the same source resolves to the same answer every time,
+for the same reason `serving-draft` is one: the same source resolves to the same answer every time,
 and asking changes nothing — no row is written, no id is minted, and calling it twice costs nothing
 but a Hub round trip. It returns the draft the create would have built: the derived digest, the
-name, format, size, licence and parameter count, the source locations, a `recipe` block of suggested
-device count and context length that is a suggestion and is never applied by anything, and
+name, format, size, licence and parameter count, the source locations, a `serving` block of
+suggested device count and context length that is a suggestion and is never applied by anything, and
 `existing_id` when the catalogue already holds that digest. It is a preview endpoint and not a
 second door into the catalogue: `POST /v1/artifacts` remains the only way to create one, so the
 claim above — one way to create each object rather than two that must agree — still holds. Unknown
@@ -584,13 +639,14 @@ to set, because the fix is a credential and not a retry; a malformed source is `
 Hub being down or refusing is `500`, since the failure is upstream of us and the caller's request
 was fine.
 
-The `recipe` block is derived in one direction only: **the serving parameters come from the
+The `serving` block is derived in one direction only: **the serving parameters come from the
 repository, and the device shape is derived from them.** `context_length` is the window the config
 declares, `quantization` and `dtype` are what the repository ships, and `device_count` and
 `device_memory_mib_min` are the hardware that configuration would need. An artifact knows nothing
 about what we operate, so it never trims a 131k window down to what a card happens to hold — sizing
-the weights to the hardware is a recipe's decision, made against real device classes, and this
-endpoint has no business pre-empting it.
+the weights to the hardware is the workload's decision, made against real device classes, and this
+endpoint has no business pre-empting it. What comes back seeds a workload's `serving` block; nothing
+is applied until somebody creates the workload.
 
 `notes` is a list of `{level, message}`, `level` being `info` or `warn`. Two different things get
 said here and a flat list of strings makes them look alike: that a repository ships a duplicate copy
@@ -632,7 +688,7 @@ rewrites only what is derived from it: `format`, `size_bytes`, `licence`, `param
 `verified`, and the derived keys of `metadata`. The case it exists for is the plane learning to read
 something it did not read before — an attention shape, a native quantization, an active parameter
 count — which leaves every artifact registered until then missing it, with no fix but deleting the
-artifact (breaking every recipe that names it) or retyping the metadata by hand. There is no body:
+artifact (breaking every workload that names it) or retyping the metadata by hand. There is no body:
 the source is already on the artifact, and letting a caller name a different one would be a way to
 move an artifact onto weights it was not registered from. A `POST` and not a `PATCH` because it
 reaches the network and can fail for reasons that have nothing to do with the request.
@@ -712,7 +768,7 @@ from under this one rather than edited across the boundary: the artifact in the 
 row's identity, not a hint about where to look.
 
 **`cluster` is optional on `POST /v1/workloads`**, and leaving it out is the normal path: the
-plane picks the clusters from the recipe's device shape, the project's quota, the policies attached
+plane picks the clusters from the workload's device shape, the project's quota, the policies attached
 to the workload, and what the clusters report free. Naming one is an override — it is checked for
 existence and nothing else, because an operator who names a cluster has said something the scheduler
 is not entitled to overrule — and it forces a single deployment. When nothing can hold the workload
@@ -749,8 +805,8 @@ outright would be the plane deciding that half of what you asked for is worth no
 
 **A deployment carries `status`, which is the cluster's answer rather than the plane's.**
 `admission_phase` on the deployment is what the plane decided for this cluster, and `status` holds
-what the cluster reports it actually did, including `reason` and `message`: the recipe has not
-arrived, the weights are still downloading, no node advertises enough accelerators. They are
+what the cluster reports it actually did, including `reason` and `message`: the weights have not
+arrived, the cache is still fetching, no node advertises enough accelerators. They are
 separate objects because they have separate writers, and reading `admission_phase` alone is how a
 deployment appears to be `placed` for the twenty minutes it spends waiting for its weights.
 Admission is per-cluster for the same reason: one workload can be running in one region and queued
@@ -764,11 +820,59 @@ has said anything — and is not the same as a deployment that is idle. `reason`
 operator owns and this API does not narrow: a cluster runs its own build, and a sub-state this plane
 predates must reach the screen rather than be rejected on the way in. The set is in `MESSAGES.md`.
 
-**`POST /v1/placement/preview`** asks the same question and writes nothing. It takes a recipe, a
-project, an optional priority class, a kind, a strategy and a total scale — or an existing workload
-reference — and returns the decision the create would have made, including the shares it would give
-each cluster. It exists because "why did it not land in iad-1" is asked before anything is created,
-and the decision already carries the reason per cluster.
+**`POST /v1/placement/preview`** asks the same question and writes nothing. It returns the decision
+the create would have made, including the shares it would give each cluster. It exists because "why
+did it not land in iad-1" is asked before anything is created, and the decision already carries the
+reason per cluster.
+
+It takes **exactly one of `workload` and `shape`**, and `project` is required with either. Naming
+both, or neither, is `400 invalid` — "a preview names exactly one of workload and shape" — rather
+than a precedence rule, because the two forms answer for different subjects and guessing which one
+was meant would return a verdict about something the caller did not ask about. `priority_class` and
+`replicas` are optional in both forms and override whatever the subject declares, which is what
+keeps this a hypothetical rather than a report on a placement that already happened.
+
+```json
+{
+  "project": "prj_...",
+  "shape": {
+    "device_class": "h100-80gb-sxm",
+    "device_count": 8,
+    "device_memory_mib_min": 81920,
+    "tensor_parallel": 8,
+    "requires_single_topology_domain": false,
+    "topology_domain_kind": null
+  },
+  "priority_class": "standard",
+  "replicas": 1
+}
+```
+
+Only `device_class` is required inside `shape`; the rest default to `1`, `0`, `1`, `false` and
+`null` in the order above.
+
+**The shape form exists because the question predates the object.** A create form asks "would this
+fit" before anything is committed, and for a while this endpoint could not answer it: narrowing the
+subject to a workload — on the argument that with recipes gone there was nothing smaller to name —
+was right about the objects and wrong about the question. A recipe used to be able to answer it only
+because a recipe was declarable before any workload referenced it, and removing the object silently
+removed that property with it. The console found it as a real regression: the verdict panel had
+nothing to run against on a form for a workload that does not exist yet.
+
+The fix is not to reinstate an object to be the subject of a question. It is that the question takes
+the shape directly, which is what it always wanted. That is strictly better than what stood before
+the removal, not merely equal to it — the create form used to get a real verdict only when it reused
+an existing recipe, and none at all when it was declaring a new footprint. Both paths get one now.
+
+**`shape` is spelled with the workload's own column names**, deliberately: `device_class`,
+`device_count`, `device_memory_mib_min`, `tensor_parallel`, `requires_single_topology_domain` and
+`topology_domain_kind` are the fields the object carries, so a preview cannot describe a shape
+differently from the object it previews. A second vocabulary here would be a second way to say the
+same thing, and the two would drift.
+
+**A shape-form decision is answered under the workload id `wkl_preview`.** It is a deliberate
+non-uid: nothing was created, and a plausible `wkl_01m0…` in that field would resolve to nothing for
+anyone who looked it up. Clients read it as the marker it is and must not render it as a link.
 
 Common query params: `limit`, `cursor`, `search`, `label` (repeatable, `k=v`), plus the object's
 own dimensions (`cluster`, `pool`, `class`, `health`, `phase`, `project`).
@@ -845,10 +949,32 @@ when their `harness`, `harness_version` and `image` match; across harnesses, or 
 redefined a percentile, they are not, and this API does not flatten them into shared columns to
 pretend otherwise. A client that reads `summary` has to cope with not recognising it.
 
-**`provenance` is what makes a run worth keeping.** `model`, `deployment_generation`, `recipe_id`,
-`recipe_version` and `engine_args` are snapshotted at creation, not resolved by join: a recipe is
-mutable and a deployment is disposable, and a run has to keep describing what it measured after
-both have moved on.
+**`provenance` is what makes a run worth keeping.** `model`, `deployment_generation`,
+`serving_digest` and `engine_args` are snapshotted at creation, not resolved by join: a workload's
+serving block is mutable and a deployment is disposable, and a run has to keep describing what it
+measured after both have moved on. The digest is stronger than the id and version pair it replaced,
+because a digest cannot drift: two runs carrying the same `serving_digest` measured the same
+configuration, whatever has since been edited on the workload they came from.
+
+**`GET /v1/benchmarks/serving/{digest}` is the rollup, and it is keyed on the configuration rather
+than on the object that declared it.** It answers `serving_digest`, `run_count`,
+`graded_run_count` and `peak_output_tokens_per_second` for one `svg_` digest. A digest is what a
+measurement is actually about: two workloads declaring the same engine, parallelism and cache
+settings over the same artifact run the same process, so keying this per workload would split one
+population in half and report each half's best as the peak. It also joins nothing, which is why it
+keeps answering after the workload has been renamed, rescaled or deleted — the per-recipe rollup
+this replaces could not, because the row it rolled up was mutable and the thing it named could go
+away.
+
+**An unknown digest is a zero count, not a `404`.** That is deliberate and it is unlike the rest of
+this surface. The question asked here is how much measurement stands behind a configuration, and
+"none" is a real answer to it — a digest nobody has benchmarked is not a missing object, it is an
+unmeasured one, and a `404` would make a client branch on the difference between the two when only
+one of them is interesting.
+
+`peak_output_tokens_per_second` is null when no graded run carried a reading this plane knows how to
+find. It is a named absence and never a zero: a configuration that was measured and whose throughput
+could not be read is not a configuration that achieved nothing.
 
 **`GET /v1/benchmarks/harnesses`** returns each harness with the parameters it accepts, their
 types and their defaults. Clients render their form from it rather than carrying a second copy of

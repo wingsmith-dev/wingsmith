@@ -30,9 +30,9 @@ import (
 // SyncedResourceReconciler converges the durable local copy of declared state onto the cluster.
 //
 // One controller over one CRD rather than one per domain kind. The kinds are not independent —
-// a deployment cannot render without its recipe, its artifact, and those weights already being
-// resident — so splitting them into separate controllers would buy separation and immediately
-// spend it on cross-controller lookups for the same objects.
+// a deployment cannot render without its artifact and those weights already being resident — so
+// splitting them into separate controllers would buy separation and immediately spend it on
+// cross-controller lookups for the same objects.
 type SyncedResourceReconciler struct {
 	Client client.Client
 	Scheme *runtime.Scheme
@@ -149,8 +149,8 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Every kind is re-examined on every pass rather than skipped once its revision has been
-	// observed. Desired state is only one of the inputs: a deployment also depends on a recipe
-	// that may have arrived since, on weights that may have finished downloading since, and on
+	// observed. Desired state is only one of the inputs: a deployment also depends on an
+	// artifact that may have arrived since, on weights that may have finished downloading since, and on
 	// a rendered object that something else may have edited since. Gating on the revision alone
 	// would make all three invisible until the plane happened to write again.
 
@@ -159,9 +159,9 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.reconcileDeployment(ctx, &res)
 	case "cache":
 		return r.reconcileCache(ctx, &res)
-	case "recipe", "artifact":
-		// Nothing to converge on its own. Both are read by the deployment path, and an edit to
-		// either re-triggers that path through the watch below rather than doing work here.
+	case "artifact":
+		// Nothing to converge on its own. It is read by the deployment path, and an edit to it
+		// re-triggers that path through the watch below rather than doing work here.
 		return r.observed(ctx, &res)
 	case "component":
 		// Cluster-level dependencies — GPU operator, device plugin, storage, ingress. Driving

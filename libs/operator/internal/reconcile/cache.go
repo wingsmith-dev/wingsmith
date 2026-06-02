@@ -3,6 +3,7 @@ package reconcile
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"time"
 
@@ -54,10 +55,10 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 		if image == "" {
 			pending++
 			// The one gate with no self-healing path. Every other wait here ends when a frame
-			// arrives; this one ends only when somebody gives a recipe an engine image, so the
-			// reason has to travel or the deployment waits forever on a silent cluster.
+			// arrives; this one ends only when somebody gives a deployment an engine image, so
+			// the reason has to travel or the deployment waits forever on a silent cluster.
 			r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes, "NoRuntimeImage",
-				fmt.Sprintf("no recipe on this cluster serving %s names an engine image to fetch it with; "+
+				fmt.Sprintf("no deployment on this cluster serving %s names an engine image to fetch it with; "+
 					"the download cannot start until one does", entry.ArtifactID))
 			continue
 		}
@@ -252,30 +253,34 @@ func prefetchOutranks(job, over *batchv1.Job) bool {
 
 // runtimeImage finds the image to fetch an artifact with.
 //
-// It is a recipe's engine image, not a general-purpose downloader, because the cache layout a
-// download produces has to be the one the engine later expects to read. A different version of the
-// same client can lay the same weights out differently, and the symptom is not an error — it is
-// every worker silently re-downloading what is already on disk.
+// It is the engine image of a deployment that serves the artifact, not a general-purpose
+// downloader, because the cache layout a download produces has to be the one the engine later
+// expects to read. A different version of the same client can lay the same weights out
+// differently, and the symptom is not an error — it is every worker silently re-downloading what
+// is already on disk.
 //
-// An artifact in the warm-set that no recipe serves has no such image to borrow, and there is no
-// safe default, so it waits. That is the honest answer: the cluster was told to hold weights and
-// not told what will read them.
+// An artifact in the warm-set that no deployment on this cluster serves has no such image to
+// borrow, and there is no safe default, so it waits. That is the honest answer: the cluster was
+// told to hold weights and not told what will read them.
 func (r *SyncedResourceReconciler) runtimeImage(ctx context.Context, artifactID string) (string, error) {
 	var list v1alpha1.SyncedResourceList
 	if err := r.Client.List(ctx, &list, client.InNamespace(r.Namespace)); err != nil {
 		return "", fmt.Errorf("list declared state: %w", err)
 	}
 	for i := range list.Items {
-		if list.Items[i].Spec.Kind != "recipe" {
+		if list.Items[i].Spec.Kind != "deployment" {
 			continue
 		}
-		var recipe wire.RecipeDesired
-		if err := decodePayload(&list.Items[i], &recipe); err != nil {
-			r.Log.Warn("skipping undecodable recipe", "name", list.Items[i].Name, "error", err)
+		var dep wire.DeploymentDesired
+		if err := decodePayload(&list.Items[i], &dep); err != nil {
+			r.Log.Warn("skipping undecodable deployment", "name", list.Items[i].Name, "error", err)
 			continue
 		}
-		if recipe.ArtifactID == artifactID && recipe.EngineImage != nil && *recipe.EngineImage != "" {
-			return *recipe.EngineImage, nil
+		if !slices.Contains(dep.ArtifactIDs, artifactID) {
+			continue
+		}
+		if image := dep.Serving.EngineImage; image != nil && *image != "" {
+			return *image, nil
 		}
 	}
 	return "", nil

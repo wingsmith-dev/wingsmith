@@ -10,8 +10,53 @@
     "name": "llama-70b-serving",
     "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
     "project_id": "prj_01j9x2jjjjjjjjjjjjjjjjjjjj",
-    "recipe_id": "rec_01j9x2ffffffffffffffffffff",
-    "recipe_revision": 7,
+    "serving": {
+      "engine": "vllm",
+      "engine_version": "1.3.1",
+      "engine_image": "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1",
+      "frontend_image": "ghcr.io/hangar-dev/vllm-runtime:1.3.1-hgr1",
+      "engine_args": {
+        "max-num-seqs": "256",
+        "enable-chunked-prefill": "true"
+      },
+      "quantization": "fp8",
+      "dtype": "bfloat16",
+      "parallelism": {
+        "tensor": 2,
+        "pipeline": 1,
+        "expert": 1
+      },
+      "context_length": 131072,
+      "max_batch_tokens": 32768,
+      "kv_cache_dtype": "fp8_e5m2",
+      "kv_cache_fraction": 0.9,
+      "prefix_cache_enabled": true,
+      "prefix_cache_config": {},
+      "resources": {
+        "cpu_cores": 16,
+        "memory_mib": 98304,
+        "disk_gib": 8
+      },
+      "digest": "svg_4f1c8ad2b90e7356c1d4b9a70f2e58369f2c1b7d4e6a0835c1d9b2f47a0e6538",
+      "overlay": {
+        "pod_spec": {
+          "containers": [
+            {
+              "name": "main",
+              "env": [
+                {
+                  "name": "VLLM_ATTENTION_BACKEND",
+                  "value": "FLASHINFER"
+                }
+              ]
+            }
+          ]
+        },
+        "dynamo": {
+          "backendFramework": "vllm"
+        }
+      }
+    },
     "lifecycle": "service",
     "priority_class": "production",
     "min_replicas": 2,

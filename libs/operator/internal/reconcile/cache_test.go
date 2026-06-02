@@ -61,7 +61,7 @@ func TestWarmSetDispatchesAPrefetchPerArtifact(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID, Priority: 1}))
 	r, out, _ := runReconcile(t, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
 	)
 
 	cond := readyCondition(t, out)
@@ -77,7 +77,7 @@ func TestWarmSetDispatchesAPrefetchPerArtifact(t *testing.T) {
 // this stream yet, which is a race and not an error.
 func TestAWarmSetEntryWithNoArtifactWaits(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
-	r, out, _ := runReconcile(t, cache, declared(t, "recipe", testRecipeID, testRecipeDesired()))
+	r, out, _ := runReconcile(t, cache, declared(t, "deployment", testDeploymentID, testDeploymentDesired()))
 
 	cond := readyCondition(t, out)
 	if cond.Status == metav1.ConditionTrue {
@@ -91,10 +91,10 @@ func TestAWarmSetEntryWithNoArtifactWaits(t *testing.T) {
 	}
 }
 
-// TestAnArtifactNoRecipeServesWaitsRatherThanGuessingAnImage. The cache layout a download produces
-// has to be the one the engine later expects to read; there is no safe default image, and the
-// symptom of the wrong one is not an error but every worker silently re-downloading.
-func TestAnArtifactNoRecipeServesWaits(t *testing.T) {
+// TestAnArtifactNoDeploymentServesWaitsRatherThanGuessingAnImage. The cache layout a download
+// produces has to be the one the engine later expects to read; there is no safe default image, and
+// the symptom of the wrong one is not an error but every worker silently re-downloading.
+func TestAnArtifactNoDeploymentServesWaits(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, out, _ := runReconcile(t, cache, declared(t, "artifact", testArtifactID, testArtifactDesired()))
 
@@ -110,34 +110,34 @@ func TestAnArtifactNoRecipeServesWaits(t *testing.T) {
 	}
 }
 
-// TestARecipeWithNoEngineImageIsNotAnImageToBorrow.
-func TestARecipeWithNoEngineImageIsNotAnImageToBorrow(t *testing.T) {
-	recipe := testRecipeDesired()
-	recipe.EngineImage = nil
+// TestADeploymentWithNoEngineImageIsNotAnImageToBorrow.
+func TestADeploymentWithNoEngineImageIsNotAnImageToBorrow(t *testing.T) {
+	dep := testDeploymentDesired()
+	dep.Serving.EngineImage = nil
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, out, _ := runReconcile(t, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, recipe),
+		declared(t, "deployment", testDeploymentID, dep),
 	)
 
 	if readyCondition(t, out).Reason != "WarmSetIncomplete" {
-		t.Fatal("a recipe with no engine image was treated as fetchable")
+		t.Fatal("a deployment with no engine image was treated as fetchable")
 	}
 	if _, ok := prefetchJob(t, r.Client, testArtifactID); ok {
 		t.Error("a prefetch was dispatched without an image to fetch with")
 	}
 }
 
-// TestAnEmptyEngineImageIsTreatedAsAbsent — a recipe field set to "" is how an omitted value
+// TestAnEmptyEngineImageIsTreatedAsAbsent — a serving field set to "" is how an omitted value
 // arrives, and it must not become an image reference of nothing.
 func TestAnEmptyEngineImageIsTreatedAsAbsent(t *testing.T) {
 	blank := ""
-	recipe := testRecipeDesired()
-	recipe.EngineImage = &blank
+	dep := testDeploymentDesired()
+	dep.Serving.EngineImage = &blank
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	_, out, _ := runReconcile(t, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, recipe),
+		declared(t, "deployment", testDeploymentID, dep),
 	)
 	if readyCondition(t, out).Reason != "WarmSetIncomplete" {
 		t.Fatal("an empty engine image was borrowed as if it named something")
@@ -153,7 +153,7 @@ func TestAnExistingPrefetchIsLeftAlone(t *testing.T) {
 
 	r, out, _ := runReconcile(t, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
 		existing,
 	)
 
@@ -190,7 +190,7 @@ func TestAWarmSetIsPartiallyDispatched(t *testing.T) {
 	))
 	r, out, _ := runReconcile(t, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
 	)
 
 	cond := readyCondition(t, out)
@@ -241,13 +241,13 @@ func lastCache(t *testing.T, r *recordingReporter, artifactID string) wire.Cache
 // there is no image to start it with — and kept that entirely to itself, reporting a bare `absent`
 // that is indistinguishable from a download about to begin.
 func TestAStalledWarmSetEntrySaysWhyItIsStalled(t *testing.T) {
-	recipe := testRecipeDesired()
-	recipe.EngineImage = nil
+	dep := testDeploymentDesired()
+	dep.Serving.EngineImage = nil
 	rep := &recordingReporter{}
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	runReconcileWith(t, rep, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, recipe),
+		declared(t, "deployment", testDeploymentID, dep),
 	)
 
 	frame := lastCache(t, rep, testArtifactID)
@@ -281,7 +281,7 @@ func TestADispatchedPrefetchReportsItIsPending(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	runReconcileWith(t, rep, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
 	)
 
 	frame := lastCache(t, rep, testArtifactID)
@@ -297,13 +297,13 @@ func TestADispatchedPrefetchReportsItIsPending(t *testing.T) {
 // so the plane's event log is transitions and not a heartbeat every fifteen seconds.
 func TestResidencyIsReportedOncePerTransition(t *testing.T) {
 	rep := &recordingReporter{}
-	recipe := testRecipeDesired()
-	recipe.EngineImage = nil
+	dep := testDeploymentDesired()
+	dep.Serving.EngineImage = nil
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	objects := []client.Object{
 		cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, recipe),
+		declared(t, "deployment", testDeploymentID, dep),
 	}
 	r, _, _ := runReconcileWith(t, rep, objects...)
 	before := len(rep.cacheFrames)
@@ -346,7 +346,7 @@ func TestAPrefetchUnderTheOldNameIsStillFound(t *testing.T) {
 	rep := &recordingReporter{}
 	r, _, _ := runReconcileWith(t, rep, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
 		existing,
 	)
 
@@ -433,7 +433,7 @@ func TestAFailedDownloadIsStartedAgain(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, _, _ := runReconcileWith(t, &recordingReporter{}, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
 		failedPrefetch(0),
 	)
 
@@ -465,7 +465,7 @@ func TestTheRestartBoundAdvancesAcrossFailures(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, _, _ := runReconcileWith(t, &recordingReporter{}, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
 		failedPrefetch(1),
 	)
 
@@ -486,7 +486,7 @@ func TestADownloadThatKeepsFailingIsGivenUpOn(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, out, _ := runReconcileWith(t, rep, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
 		failedPrefetch(maxPrefetchAttempts-1),
 	)
 
@@ -506,7 +506,7 @@ func TestAFailedDownloadIsNotReportedAsRunning(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	runReconcileWith(t, rep, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
 		failedPrefetch(maxPrefetchAttempts-1),
 	)
 
@@ -535,7 +535,7 @@ func TestPodsFailingWhileTheJobHasAttemptsLeftIsStillFetching(t *testing.T) {
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, _, _ := runReconcileWith(t, rep, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
 		job,
 	)
 

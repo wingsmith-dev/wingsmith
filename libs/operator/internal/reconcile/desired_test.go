@@ -27,11 +27,6 @@ func TestEveryDesiredTypeDecodesToAnIdentity(t *testing.T) {
 			"deployment", resourceName(testDeploymentID), 7,
 		},
 		{
-			wireRecipeDesired,
-			wire.RecipeDesired{RecipeID: testRecipeID, Version: 3},
-			"recipe", resourceName(testRecipeID), 3,
-		},
-		{
 			wireArtifactDesired,
 			wire.ArtifactDesired{ArtifactID: testArtifactID},
 			"artifact", resourceName(testArtifactID), 0,
@@ -136,7 +131,6 @@ func TestAFrameWithNoIDIsRefused(t *testing.T) {
 	}{
 		{wireDeploymentDesired, wire.DeploymentDesired{}},
 		{wireDeploymentDeleted, wire.DeploymentDeleted{}},
-		{wireRecipeDesired, wire.RecipeDesired{}},
 		{wireArtifactDesired, wire.ArtifactDesired{}},
 		{wireComponentDesired, wire.ComponentDesired{}},
 	} {

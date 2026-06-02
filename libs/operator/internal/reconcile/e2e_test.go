@@ -300,12 +300,11 @@ func (l *live) withCapacity(t *testing.T, devices int64) {
 	})
 }
 
-// ready declares the recipe, the artifact, the resident weights and the capacity a deployment
-// needs, so that a test about anything else starts from the case that should work.
+// ready declares the artifact, the resident weights and the capacity a deployment needs, so that
+// a test about anything else starts from the case that should work.
 func (l *live) ready(t *testing.T) *v1alpha1.SyncedResource {
 	t.Helper()
 	dep := l.declare(t, "deployment", testDeploymentID, testDeploymentDesired())
-	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
 	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
 	l.prefetchDone(t)
 	l.withCapacity(t, 8)
@@ -364,14 +363,8 @@ func TestE2EProgressIsReportedAsItHappens(t *testing.T) {
 	dep := l.declare(t, "deployment", testDeploymentID, testDeploymentDesired())
 
 	l.reconcile(t, dep.Name)
-	if !l.reports.sawReason("RecipeNotDeclared") {
-		t.Fatalf("reasons = %v, want RecipeNotDeclared first", l.reports.reasons())
-	}
-
-	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
-	l.reconcile(t, dep.Name)
 	if !l.reports.sawReason("ArtifactNotDeclared") {
-		t.Fatalf("reasons = %v, want ArtifactNotDeclared", l.reports.reasons())
+		t.Fatalf("reasons = %v, want ArtifactNotDeclared first", l.reports.reasons())
 	}
 
 	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
@@ -420,7 +413,6 @@ func TestE2EAnUnchangedConclusionIsNotReportedTwice(t *testing.T) {
 func TestE2ENoDevicesAtAllIsStatedRatherThanLeftPending(t *testing.T) {
 	l := newLive(t)
 	dep := l.declare(t, "deployment", testDeploymentID, testDeploymentDesired())
-	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
 	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
 	l.prefetchDone(t)
 
@@ -446,7 +438,6 @@ func TestE2ENoDevicesAtAllIsStatedRatherThanLeftPending(t *testing.T) {
 func TestE2ECapacitySpreadAcrossNodesDoesNotSatisfyOneReplica(t *testing.T) {
 	l := newLive(t)
 	dep := l.declare(t, "deployment", testDeploymentID, testDeploymentDesired())
-	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
 	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
 	l.prefetchDone(t)
 	l.withCapacity(t, 1) // the deployment asks for 2 per replica
@@ -467,7 +458,6 @@ func TestE2ECapacitySpreadAcrossNodesDoesNotSatisfyOneReplica(t *testing.T) {
 func TestE2EACordonedClusterIsNotCapacity(t *testing.T) {
 	l := newLive(t)
 	dep := l.declare(t, "deployment", testDeploymentID, testDeploymentDesired())
-	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
 	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
 	l.prefetchDone(t)
 	l.withCapacity(t, 8)
@@ -507,7 +497,6 @@ func TestE2EAnObservedDeploymentIsNeverApplied(t *testing.T) {
 	if err := l.client.Create(context.Background(), res); err != nil {
 		t.Fatalf("declare: %v", err)
 	}
-	l.declare(t, "recipe", testRecipeID, testRecipeDesired())
 	l.declare(t, "artifact", testArtifactID, testArtifactDesired())
 	l.prefetchDone(t)
 	l.withCapacity(t, 8)

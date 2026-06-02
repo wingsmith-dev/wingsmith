@@ -70,7 +70,6 @@ func TestADemandResyncStatesEveryReplicaAndAllocation(t *testing.T) {
 	rep := &streamingReporter{}
 	objects := []client.Object{
 		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
 	}
 	for _, pod := range readyPods(2) {
 		objects = append(objects, pod)
@@ -104,7 +103,6 @@ func TestADemandResyncOfATornDownDeploymentIsEmptyAndComplete(t *testing.T) {
 	rep := &streamingReporter{}
 	r := demandReconciler(t, rep,
 		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
-		declared(t, "recipe", testRecipeID, testRecipeDesired()),
 	)
 
 	if err := r.ResyncDemand(context.Background()); err != nil {

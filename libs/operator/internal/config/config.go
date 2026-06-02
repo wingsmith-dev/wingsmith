@@ -167,9 +167,10 @@ type Config struct {
 	// build makes the whole fleet's frontend that model's problem.
 	FrontendEnabled bool
 
-	// FrontendImage is this cluster's default frontend runtime. Empty falls back to the recipe's
-	// engine image, which is usually the same build — the Dynamo runtime carries the frontend
-	// and the engines together — and a recipe that needs a different one says so itself.
+	// FrontendImage is this cluster's default frontend runtime. Empty falls back to the serving
+	// block's engine image, which is usually the same build — the Dynamo runtime carries the
+	// frontend and the engines together — and a deployment that needs a different one says so
+	// itself.
 	FrontendImage string
 
 	// FrontendReplicas is how many pods one model's frontend runs. Two, so that a rollout does

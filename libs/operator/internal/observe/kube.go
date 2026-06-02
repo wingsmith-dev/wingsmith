@@ -352,8 +352,8 @@ func deviceClass(gfdProduct, dcgmModel string) string {
 // It is the fallback for a cluster that publishes no `nvidia.com/gpu.memory`, which is the ordinary
 // case for a device plugin installed without GPU feature discovery — the same case the device count
 // above already falls back to DCGM for. Memory was the one field left reporting zero there, and a
-// zero is worse than an absence: the plane filters a recipe's `device_memory_mib_min` against it, so
-// every recipe that asks for memory at all becomes unplaceable, and the refusal names the recipe's
+// zero is worse than an absence: the plane filters a workload's `device_memory_mib_min` against it,
+// so every workload that asks for memory at all becomes unplaceable, and the refusal names the
 // floor rather than the missing label.
 //
 // The dictionary is the right source because memory is part of a class's identity — an h100-80gb-sxm

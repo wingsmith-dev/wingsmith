@@ -225,24 +225,24 @@ func TestDecodeRejectsUnregisteredType(t *testing.T) {
 // and a Go tag that drifts decodes to nil rather than failing — a cluster that quietly serves
 // every model through its default frontend and reports nothing about it.
 func TestTheFrontendImageDecodesFromItsOwnKey(t *testing.T) {
-	var recipe RecipeDesired
-	body := `{"recipe_id":"rec_1","frontend_image":"ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"}`
-	if err := json.Unmarshal([]byte(body), &recipe); err != nil {
+	var dep DeploymentDesired
+	body := `{"deployment_id":"dep_1","serving":{"frontend_image":"ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"}}`
+	if err := json.Unmarshal([]byte(body), &dep); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if recipe.FrontendImage == nil {
-		t.Fatal("frontend_image decoded to nil; the recipe's frontend would be the cluster's default")
+	if dep.Serving.FrontendImage == nil {
+		t.Fatal("frontend_image decoded to nil; this deployment's frontend would be the cluster's default")
 	}
-	if *recipe.FrontendImage != "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2" {
-		t.Fatalf("frontend_image = %q", *recipe.FrontendImage)
+	if *dep.Serving.FrontendImage != "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2" {
+		t.Fatalf("frontend_image = %q", *dep.Serving.FrontendImage)
 	}
 	// A pointer, so that a plane too old to send the field is distinguishable from one that
 	// deliberately sent nothing.
-	var absent RecipeDesired
-	if err := json.Unmarshal([]byte(`{"recipe_id":"rec_1"}`), &absent); err != nil {
+	var absent DeploymentDesired
+	if err := json.Unmarshal([]byte(`{"deployment_id":"dep_1","serving":{}}`), &absent); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if absent.FrontendImage != nil {
-		t.Fatalf("an absent frontend_image became %q", *absent.FrontendImage)
+	if absent.Serving.FrontendImage != nil {
+		t.Fatalf("an absent frontend_image became %q", *absent.Serving.FrontendImage)
 	}
 }

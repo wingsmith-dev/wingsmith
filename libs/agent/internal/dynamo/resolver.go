@@ -36,8 +36,8 @@ const componentFrontend = "Frontend"
 // The operator stamps it on a component's pod template, and Dynamo copies a
 // component's pod-template labels onto the Service it derives from that
 // component — verified on cluster-site-c, where the worker Service
-// carries the deployment id, the recipe and the project the operator set on the
-// worker's pods. That copy is the whole mechanism: without it there is nothing
+// carries the deployment id and the project the operator set on the worker's
+// pods. That copy is the whole mechanism: without it there is nothing
 // on a Service to key on, and this hop would be back to asking each frontend
 // what models it serves.
 //

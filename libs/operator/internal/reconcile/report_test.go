@@ -90,8 +90,8 @@ func TestWaitingIsReportedToTheHub(t *testing.T) {
 		t.Errorf("first reason = %q, want Accepted", got)
 	}
 	got := rep.sent[1]
-	if got.Reason != "RecipeNotDeclared" {
-		t.Errorf("reason = %q, want RecipeNotDeclared", got.Reason)
+	if got.Reason != "ArtifactNotDeclared" {
+		t.Errorf("reason = %q, want ArtifactNotDeclared", got.Reason)
 	}
 	if got.Phase != phasePending {
 		t.Errorf("phase = %q, want %q", got.Phase, phasePending)
@@ -126,7 +126,7 @@ func TestAnUnchangedConclusionIsNotResent(t *testing.T) {
 	if len(rep.sent) != 2 {
 		t.Fatalf("sent %d frames over four passes, want 2", len(rep.sent))
 	}
-	if rep.sent[0].Reason != "Accepted" || rep.sent[1].Reason != "RecipeNotDeclared" {
+	if rep.sent[0].Reason != "Accepted" || rep.sent[1].Reason != "ArtifactNotDeclared" {
 		t.Fatalf("frames = %q, %q", rep.sent[0].Reason, rep.sent[1].Reason)
 	}
 }
@@ -204,11 +204,11 @@ func TestAnUnboundReporterReconcilesNormally(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	_, out, result := runReconcile(t, dep)
 
-	if got := readyCondition(t, out).Reason; got != "RecipeNotDeclared" {
-		t.Errorf("reason = %q, want RecipeNotDeclared", got)
+	if got := readyCondition(t, out).Reason; got != "ArtifactNotDeclared" {
+		t.Errorf("reason = %q, want ArtifactNotDeclared", got)
 	}
 	if result.RequeueAfter == 0 {
-		t.Error("a deployment waiting on its recipe must still ask to be called again")
+		t.Error("a deployment waiting on its artifact must still ask to be called again")
 	}
 }
 
@@ -241,8 +241,8 @@ func TestAFreshSessionForgetsWhatWasReported(t *testing.T) {
 	if len(rep.sent) != 3 {
 		t.Fatalf("sent %d frames, want the conclusion restated after the resync", len(rep.sent))
 	}
-	if got := rep.sent[2].Reason; got != "RecipeNotDeclared" {
-		t.Errorf("restated reason = %q, want RecipeNotDeclared", got)
+	if got := rep.sent[2].Reason; got != "ArtifactNotDeclared" {
+		t.Errorf("restated reason = %q, want ArtifactNotDeclared", got)
 	}
 }
 
@@ -362,9 +362,8 @@ func TestForgetAllIsSafeToCallTwice(t *testing.T) {
 // deployment of one came to read three ready of one.
 func TestAReplacedPodIsReportedEvenThoughNoCountMoved(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	objects := []client.Object{dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
+	objects := []client.Object{dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)}
 	for _, pod := range readyPods(2) {
 		objects = append(objects, pod)
 	}
@@ -404,22 +403,21 @@ func TestAReplacedPodIsReportedEvenThoughNoCountMoved(t *testing.T) {
 
 // A deployment with no pods yet has to be able to say so, because an empty claim and no claim at
 // all mean opposite things to the prune on the other end — and the frames that never looked at a
-// pod must make no claim, or a deployment waiting on its recipe would have its replicas deleted.
+// pod must make no claim, or a deployment waiting on its artifact would have its replicas deleted.
 func TestOnlyTheFrameReadBackFromPodsClaimsAReplicaSet(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
 
 	waiting := &recordingReporter{}
 	runReconcileReporting(t, waiting, dep)
 	for _, sent := range waiting.sent {
 		if sent.ReplicaIDs != nil {
-			t.Errorf("a deployment waiting on its recipe claimed %v replicas", sent.ReplicaIDs)
+			t.Errorf("a deployment waiting on its artifact claimed %v replicas", sent.ReplicaIDs)
 		}
 	}
 
 	rolled := &recordingReporter{}
-	runReconcileReporting(t, rolled, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	runReconcileReporting(t, rolled, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 	var claimed bool
 	for _, sent := range rolled.sent {
 		claimed = claimed || sent.ReplicaIDs != nil
@@ -487,14 +485,13 @@ func TestTeardownReleasesWhatItWasHolding(t *testing.T) {
 }
 
 // runRenderedReporting reconciles a deployment far enough that it actually renders, which is what
-// puts the teardown finalizer on the declared copy. A deployment still waiting on its recipe never
+// puts the teardown finalizer on the declared copy. A deployment still waiting on its artifact never
 // rendered and has nothing to tear down.
 func runRenderedReporting(t *testing.T, rep Reporter) (*SyncedResourceReconciler, *v1alpha1.SyncedResource) {
 	t.Helper()
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
-	rec := declared(t, "recipe", testRecipeID, testRecipeDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
-	r, _ := runReconcileReporting(t, rep, dep, rec, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+	r, _ := runReconcileReporting(t, rep, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
 
 	var out v1alpha1.SyncedResource
 	key := types.NamespacedName{Namespace: dep.GetNamespace(), Name: dep.GetName()}

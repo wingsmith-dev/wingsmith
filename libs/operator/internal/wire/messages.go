@@ -249,12 +249,12 @@ type CapacityObserved struct {
 
 // ---------------------------------------------------------------------------- demand, hub -> op
 
-// RecipeOverlay is the escape hatch for what this plane does not model.
+// Overlay is the escape hatch for what this plane does not model.
 //
 // Engines and their operators carry far more configuration than a control plane wants to mirror
-// field by field, and mirroring it is a losing race. The recipe models what the plane reasons
-// about and passes the rest through.
-type RecipeOverlay struct {
+// field by field, and mirroring it is a losing race. The serving configuration models what the
+// plane reasons about and passes the rest through.
+type Overlay struct {
 	// PodSpec is merged over the rendered pod with strategic-merge semantics, so containers,
 	// env, volumes and volume mounts merge by name.
 	PodSpec map[string]any `json:"pod_spec"`
@@ -264,35 +264,33 @@ type RecipeOverlay struct {
 	Dynamo map[string]any `json:"dynamo"`
 }
 
-// RecipeParallelism is how one replica is split across its devices.
-type RecipeParallelism struct {
+// Parallelism is how one replica is split across its devices.
+type Parallelism struct {
 	Tensor   int `json:"tensor"`
 	Pipeline int `json:"pipeline"`
 	Expert   int `json:"expert"`
 }
 
-// RecipeResources is the non-accelerator footprint of one replica.
-type RecipeResources struct {
+// Resources is the non-accelerator footprint of one replica.
+type Resources struct {
 	CPUCores  *int   `json:"cpu_cores"`
 	MemoryMiB *int64 `json:"memory_mib"`
 	DiskGiB   *int   `json:"disk_gib,omitempty"`
 }
 
-// RecipeDesired is how to serve an artifact, in enough detail for a cluster to render it.
+// ServingSpec is how to serve an artifact, in enough detail for a cluster to render it.
 //
-// The same split KServe draws between ServingRuntime and InferenceService: this object is the
-// engine and its configuration, and the deployment referencing it supplies scale and placement.
-// Recipes are shared, so they travel as their own declared object rather than inlined on every
-// deployment that names them.
+// It travels inlined on the deployment rather than as a declared object of its own. The separate
+// object it replaces was filtered and serialised per cluster anyway, so sharing one between two
+// deployments saved nothing on the wire and bought an ordering rule, a pending reason, and a
+// resume race in which a deployment waited forever on a configuration it was never sent.
+//
+// Digest is the identity: two deployments that would produce the same running process carry the
+// same digest, which is what reuse means now that nothing is shared by reference.
 //
 // The device shape is deliberately absent — it arrives on the deployment's Placement, derived from
-// this recipe, and carrying it twice invites the two copies to disagree.
-type RecipeDesired struct {
-	RecipeID      string  `json:"recipe_id"`
-	ClusterID     string  `json:"cluster_id"`
-	ArtifactID    string  `json:"artifact_id"`
-	Name          string  `json:"name"`
-	Version       int     `json:"version"`
+// this configuration, and carrying it twice invites the two copies to disagree.
+type ServingSpec struct {
 	Engine        string  `json:"engine"`
 	EngineVersion string  `json:"engine_version"`
 	EngineImage   *string `json:"engine_image"`
@@ -305,27 +303,24 @@ type RecipeDesired struct {
 	// the frontend binary and none is in the engine. Nil is the ordinary case and means the
 	// cluster's own default, which is why this is a pointer — an empty string from a plane too
 	// old to send the field must not read as a deliberate blank image.
-	FrontendImage *string           `json:"frontend_image"`
-	EngineArgs    map[string]string `json:"engine_args"`
-	// ServedModelName is the model id an API client sends, already resolved by the plane: the
-	// recipe's own declaration, or the artifact's lowercase Hugging Face slug when it declares
-	// none. Never empty, and never derived here — the plane owns the order so that one function
-	// answers "what is this model called" for the console, the gateway and the engine alike.
-	// EngineArgs still wins over it, because engine_args is laid over the derived flags.
-	ServedModelName    string            `json:"served_model_name"`
+	FrontendImage      *string           `json:"frontend_image"`
+	EngineArgs         map[string]string `json:"engine_args"`
 	Quantization       *string           `json:"quantization"`
 	Dtype              *string           `json:"dtype"`
-	Parallelism        RecipeParallelism `json:"parallelism"`
+	Parallelism        Parallelism       `json:"parallelism"`
 	ContextLength      int               `json:"context_length"`
 	MaxBatchTokens     *int              `json:"max_batch_tokens"`
 	KVCacheDtype       *string           `json:"kv_cache_dtype"`
 	KVCacheFraction    *float64          `json:"kv_cache_fraction"`
 	PrefixCacheEnabled bool              `json:"prefix_cache_enabled"`
 	PrefixCacheConfig  map[string]string `json:"prefix_cache_config"`
-	Resources          RecipeResources   `json:"resources"`
-	Labels             map[string]string `json:"labels"`
-	UpdatedAt          string            `json:"updated_at"`
-	Overlay            RecipeOverlay     `json:"overlay"`
+	Resources          Resources         `json:"resources"`
+	// Digest is `svg_` and a sha256 over the fields above, computed by the plane and never
+	// derived here. It names the footprint and nothing else: what a model is called, what it
+	// was imported with and what it asserts are all outside it, because the question it answers
+	// is whether two deployments would produce the same running process.
+	Digest  string  `json:"digest"`
+	Overlay Overlay `json:"overlay"`
 }
 
 // PlacementConstraints is the device shape and placement rules a deployment binds against.
@@ -394,14 +389,12 @@ type Adopt struct {
 }
 
 type DeploymentDesired struct {
-	DeploymentID   string `json:"deployment_id"`
-	Name           string `json:"name,omitempty"`
-	ClusterID      string `json:"cluster_id"`
-	ProjectID      string `json:"project_id"`
-	RecipeID       string `json:"recipe_id"`
-	RecipeRevision int    `json:"recipe_revision"`
-	Lifecycle      string `json:"lifecycle"`
-	PriorityClass  string `json:"priority_class"`
+	DeploymentID  string `json:"deployment_id"`
+	Name          string `json:"name,omitempty"`
+	ClusterID     string `json:"cluster_id"`
+	ProjectID     string `json:"project_id"`
+	Lifecycle     string `json:"lifecycle"`
+	PriorityClass string `json:"priority_class"`
 	// MinReplicas is this cluster's share of the workload's total scale, never the total, and
 	// it is the number that is actually rendered. MaxReplicas is a ceiling for an autoscaler
 	// that does not exist yet and nothing reads it. Neither may be summed with, or derived
@@ -409,10 +402,16 @@ type DeploymentDesired struct {
 	MinReplicas int                  `json:"min_replicas"`
 	MaxReplicas int                  `json:"max_replicas"`
 	Placement   PlacementConstraints `json:"placement"`
-	ArtifactIDs []string             `json:"artifact_ids"`
-	// ServedModelName is this deployment's override of the recipe's, empty when the workload
-	// declares none. It rides here rather than on RecipeDesired because a recipe is shared by
-	// every workload naming it and this override is not.
+	// Serving is how to run this deployment's model, inlined rather than referenced. It is
+	// never absent and never late: it arrives in the same frame as the deployment that needs
+	// it, so there is no ordering between the two and nothing to wait for.
+	Serving     ServingSpec `json:"serving"`
+	ArtifactIDs []string    `json:"artifact_ids"`
+	// ServedModelName is the model id an API client sends, already resolved by the plane: the
+	// workload's own declaration, or the artifact's lowercase Hugging Face slug when it declares
+	// none. Never empty, and never derived here — the plane owns the order so that one function
+	// answers "what is this model called" for the console, the gateway and the engine alike.
+	// Serving.EngineArgs still wins over it, because engine_args is laid over the derived flags.
 	ServedModelName string `json:"served_model_name"`
 	Generation      int64  `json:"generation"`
 	UpdatedAt       string `json:"updated_at"`
@@ -468,7 +467,7 @@ type CacheWarmEntry struct {
 }
 
 // CacheDesired is the weight-cache warm-set for one cluster. Unrelated to KV cache, which is
-// Recipe configuration.
+// serving configuration.
 type CacheDesired struct {
 	ClusterID      string           `json:"cluster_id"`
 	Entries        []CacheWarmEntry `json:"entries"`
@@ -531,7 +530,7 @@ type ReplicaObserved struct {
 	Ready              bool     `json:"ready"`
 	Engine             string   `json:"engine"`
 	EngineVersion      string   `json:"engine_version"`
-	RecipeID           string   `json:"recipe_id"`
+	ServingDigest      string   `json:"serving_digest"`
 	RestartCount       int      `json:"restart_count"`
 	ObservedGeneration int64    `json:"observed_generation"`
 	StartedAt          *string  `json:"started_at,omitempty"`
@@ -692,7 +691,6 @@ var MessageTypes = map[string]func() any{
 	"workload.discovered": func() any { return &WorkloadDiscovered{} },
 	"deployment.desired":  func() any { return &DeploymentDesired{} },
 	"deployment.deleted":  func() any { return &DeploymentDeleted{} },
-	"recipe.desired":      func() any { return &RecipeDesired{} },
 	"artifact.desired":    func() any { return &ArtifactDesired{} },
 	"component.desired":   func() any { return &ComponentDesired{} },
 	"cache.desired":       func() any { return &CacheDesired{} },

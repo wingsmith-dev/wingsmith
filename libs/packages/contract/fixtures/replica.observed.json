@@ -19,7 +19,7 @@
     "ready": true,
     "engine": "vllm",
     "engine_version": "0.9.3",
-    "recipe_id": "rec_01j9x2ffffffffffffffffffff",
+    "serving_digest": "svg_4f1c8ad2b90e7356c1d4b9a70f2e58369f2c1b7d4e6a0835c1d9b2f47a0e6538",
     "restart_count": 1,
     "observed_generation": 14,
     "started_at": "2026-08-19T13:41:07.512Z",
