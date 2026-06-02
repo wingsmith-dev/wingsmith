@@ -23,7 +23,6 @@ from app.db.models import Node
 from app.db.models import Quota
 from app.db.models import Device
 from app.db.models import Policy
-from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Workload
@@ -90,11 +89,11 @@ class PlacementRepository:
         every accelerator it owns to place one deployment reads the whole fleet
         for an answer that could only ever have concerned one slice of it.
 
-        `workload_id` is optional because two callers legitimately have no workload to
-        name: `preview`, which is asked about a recipe before anything exists, and the
-        create path, which has no primary key until it flushes. Both are answered without
-        workload-level policies, and create compensates by handing its own constraint
-        straight to the expansion.
+        `workload_id` is optional because two callers legitimately have no workload
+        whose policies apply: `preview`, which asks what a shape would cost without
+        committing to it, and the create path, which has no primary key until it
+        flushes. Both are answered without workload-level policies, and create
+        compensates by handing its own constraint straight to the expansion.
         """
         clusters = await self._clusters(device_class)
         return CapacitySnapshot(
@@ -221,7 +220,7 @@ class PlacementRepository:
         cluster that only ever had room for one.
 
         Derived from the deployment rather than stored beside it. `declared` is what
-        this cluster's share costs — its replicas times the recipe's device shape —
+        this cluster's share costs — its replicas times the workload's device shape —
         and `observed` is what ingestion has confirmed. A reservation is the
         difference, which means it needs no lifetime of its own: it appears when the
         deployment is written, shrinks as allocations arrive, and reaches zero
@@ -247,15 +246,12 @@ class PlacementRepository:
                 Workload.uid,
                 Workload.name,
                 Project.uid,
-                Recipe.device_class,
-                Recipe.device_count,
-                Recipe.requires_single_topology_domain,
-                Recipe.topology_domain_kind,
+                Workload.device_class,
+                Workload.device_count,
                 Workload.requires_single_topology_domain,
                 Workload.topology_domain_kind,
             )
             .join(Workload, Deployment.workload_id == Workload.id)
-            .join(Recipe, Workload.recipe_id == Recipe.id)
             .join(Project, Workload.project_id == Project.id)
             .where(
                 Deployment.enabled.is_(True),
@@ -265,7 +261,7 @@ class PlacementRepository:
             )
         )
         if device_class is not None:
-            query = query.where(Recipe.device_class == device_class)
+            query = query.where(Workload.device_class == device_class)
 
         rows = (await self.db.execute(query)).all()
         if not rows:
@@ -284,8 +280,6 @@ class PlacementRepository:
             project_uid,
             unit_class,
             device_count,
-            recipe_domain,
-            recipe_kind,
             workload_domain,
             workload_kind,
         ) in rows:
@@ -302,8 +296,8 @@ class PlacementRepository:
                     devices=owed,
                     deployment=deployment_uid,
                     deployment_name=deployment_name,
-                    requires_single_domain=(recipe_domain if workload_domain is None else workload_domain),
-                    domain_kind=(recipe_kind if workload_kind is None else workload_kind),
+                    requires_single_domain=workload_domain,
+                    domain_kind=workload_kind,
                 )
             )
         return reserved
@@ -516,9 +510,6 @@ class PlacementRepository:
         )
         return result.scalar_one_or_none()
 
-    async def recipe(self, recipe_id: UUID) -> Recipe | None:
-        return await self.db.get(Recipe, recipe_id)
-
     async def project(self, project_id: UUID) -> Project | None:
         return await self.db.get(Project, project_id)
 
@@ -539,12 +530,6 @@ class PlacementRepository:
             )
         ).all()
         return {uid: replicas for uid, replicas in rows}
-
-    async def recipe_by_ref(self, ref: str) -> Recipe | None:
-        """Newest version wins, matching how a deployment resolves the same reference."""
-        column = Recipe.uid if is_uid(ref) else Recipe.name
-        result = await self.db.execute(select(Recipe).where(column == ref).order_by(Recipe.version.desc()).limit(1))
-        return result.scalar_one_or_none()
 
     async def project_by_ref(self, ref: str) -> Project | None:
         column = Project.uid if is_uid(ref) else Project.slug

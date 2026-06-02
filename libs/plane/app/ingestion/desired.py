@@ -22,7 +22,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Pool
-from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import WarmSet
@@ -34,22 +33,22 @@ from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
 from app.core.serving import declared_served_model
 from app.hub.messages import Adopt
+from app.hub.messages import Overlay
+from app.hub.messages import Resources
+from app.hub.messages import Parallelism
+from app.hub.messages import ServingSpec
 from app.hub.messages import CacheDesired
-from app.hub.messages import RecipeDesired
-from app.hub.messages import RecipeOverlay
 from app.hub.messages import ArtifactSource
 from app.hub.messages import CacheWarmEntry
 from app.hub.messages import ArtifactDesired
-from app.hub.messages import RecipeResources
 from app.hub.messages import ComponentDesired
 from app.hub.messages import DeploymentDeleted
 from app.hub.messages import DeploymentDesired
-from app.hub.messages import RecipeParallelism
 from app.hub.messages import PlacementConstraints
 from app.ingestion.time import now
 from app.ingestion.statements import cluster_ref_clause
-from app.modules.recipes.services import serving_block
-from app.modules.recipes.services import resolved_engine_args
+from app.modules.workloads.services import serving_block
+from app.modules.workloads.services import resolved_engine_args
 
 
 logger = getLogger(__name__)
@@ -85,8 +84,6 @@ async def stream_desired(db: AsyncSession, cluster_uid: str, scope: str) -> Asyn
     if scope in DEMAND_SCOPES:
         for payload in await _artifacts(db, cluster_uid, cluster_id):
             yield "artifact.desired", payload
-        for payload in await _recipes(db, cluster_uid, cluster_id):
-            yield "recipe.desired", payload
         for payload in await _deployments(db, cluster_uid, cluster_id):
             yield "deployment.desired", payload
         cache = await _cache(db, cluster_uid, cluster_id)
@@ -110,16 +107,8 @@ async def desired_object(
     because from the cluster's side those are one fact: stop running this. The
     generation is the caller's, since there is no row left to read it from.
 
-    A recipe's absence says nothing, and that asymmetry is deliberate. There is no
-    `recipe.deleted` on the wire because a recipe only ever stops being reachable
-    from a cluster when the last deployment naming it went away, and that
-    deployment's own `deployment.deleted` is the frame the cluster acts on —
-    telling it to forget the recipe as well would be a second message about one
-    fact, arriving in an order nothing constrains.
-
     Returns `None` only when there is nothing this seam can say — an unknown
-    cluster, a recipe this cluster no longer runs, or a kind live dispatch does
-    not carry yet.
+    cluster, or a kind live dispatch does not carry yet.
 
     This renders the changed object alone. `desired_frames` is what dispatch
     calls, because an object is not always sendable on its own.
@@ -127,10 +116,6 @@ async def desired_object(
     cluster_id = await db.scalar(select(Cluster.id).where(cluster_ref_clause(cluster_uid)))
     if cluster_id is None:
         return None
-
-    if kind == "recipe":
-        recipes = await _recipes(db, cluster_uid, cluster_id, only=uid)
-        return ("recipe.desired", recipes[0]) if recipes else None
 
     if kind != "deployment":
         return None
@@ -151,20 +136,26 @@ async def desired_frames(
 ) -> list[tuple[str, Struct]]:
     """One changed object, preceded by whatever it cannot be understood without.
 
-    A deployment names a recipe, which names an artifact, whose weights have to be
-    resident before a replica may start. A resync sends all four in that order and
-    says why in `snapshot`; live dispatch used to send the deployment alone, on the
-    reasoning that everything else was already there. It is not, and the first
-    deployment of a new recipe is exactly when it is not: the recipe was announced
-    to no cluster when it was created, because no deployment yet named it, and
-    nothing re-announces it once one does. The cluster then holds a deployment
-    pointing at a recipe it has never been sent and waits for it forever.
+    A deployment names an artifact whose weights have to be resident before a
+    replica may start. A resync sends both in that order and says why in
+    `snapshot`; live dispatch used to send the deployment alone, on the reasoning
+    that everything else was already there. It is not, and the first deployment of
+    a newly registered artifact is exactly when it is not: an artifact is
+    announced to the clusters that need it, and no cluster needed it until this
+    deployment existed.
 
-    So a hint about a deployment resolves to the whole dependency chain, in the
-    same order and from the same queries the snapshot uses. Re-sending an object
-    the cluster already has is free — the stream is full-object and idempotent by
+    So a hint about a deployment resolves to its dependency chain, in the same
+    order and from the same queries the snapshot uses. Re-sending an object the
+    cluster already has is free — the stream is full-object and idempotent by
     construction (PROTOCOL §6) — and is the cheap side of the trade against a
     deployment stranded until the next reconnect.
+
+    The chain is one hop shorter than it was. A deployment used to name a recipe
+    as well, which is where the sharper version of this failure lived: the recipe
+    was announced to no cluster when it was created, nothing re-announced it once
+    a deployment named it, and a resume could strand a deployment on a recipe it
+    was never sent. The serving configuration is inlined on the deployment now, so
+    there is nothing left to arrive out of order.
 
     A `deployment.deleted` travels alone. Its dependencies are exactly what the
     cluster is being told to stop needing.
@@ -194,15 +185,12 @@ async def desired_frames(
     deployment = found[0]
     frames: list[tuple[str, Struct]] = []
 
-    recipes = await _recipes(db, cluster_uid, cluster_id, only=deployment.recipe_id)
-    artifact_uid = recipes[0].artifact_id if recipes else None
+    artifact_uid = deployment.artifact_ids[0] if deployment.artifact_ids else None
     if artifact_uid is not None:
         for artifact in await _artifacts(db, cluster_uid, cluster_id):
             if artifact.artifact_id == artifact_uid:
                 frames.append(("artifact.desired", artifact))
                 break
-    if recipes:
-        frames.append(("recipe.desired", recipes[0]))
 
     cache = await _cache(db, cluster_uid, cluster_id)
     if cache is not None:
@@ -232,8 +220,7 @@ def _artifact_ids_query(cluster_id: UUID):
     """Every artifact a cluster needs: its warm set, plus what its deployments serve."""
     warm = select(WarmSet.artifact_id).where(WarmSet.cluster_id == cluster_id)
     served = (
-        select(Recipe.artifact_id)
-        .join(Workload, Workload.recipe_id == Recipe.id)
+        select(Workload.artifact_id)
         .join(Deployment, Deployment.workload_id == Workload.id)
         .where(Deployment.cluster_id == cluster_id)
     )
@@ -280,44 +267,17 @@ async def _artifacts(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> li
     ]
 
 
-async def _recipes(
-    db: AsyncSession, cluster_uid: str, cluster_id: UUID, only: str | None = None
-) -> list[RecipeDesired]:
-    """Every recipe named by a deployment on this cluster.
+def _serving(workload: Workload) -> ServingSpec:
+    """The engine configuration as the cluster is told it, read off the workload.
 
-    Recipes are global and deployments are per-cluster, so what a cluster is told
-    about is the reachable set rather than the table: a cluster has no business
-    knowing how to serve a model it was never asked to run. The recipe hangs off
-    the workload now, so reachability is a two-hop walk — deployment to its
-    workload, workload to the recipe every cluster it was expanded onto shares.
-    """
-    query = (
-        select(Recipe, Artifact.uid, Artifact)
-        .join(Workload, Workload.recipe_id == Recipe.id)
-        .join(Deployment, Deployment.workload_id == Workload.id)
-        .join(Artifact, Recipe.artifact_id == Artifact.id)
-        .where(Deployment.cluster_id == cluster_id, Deployment.enabled == True)
-        .distinct()
-        .order_by(Recipe.seq)
-    )
-    if only is not None:
-        query = query.where(Recipe.uid == only)
-    return [
-        _recipe(recipe, cluster_uid, artifact_uid, artifact)
-        for recipe, artifact_uid, artifact in (await db.execute(query)).all()
-    ]
+    Inlined on the deployment rather than sent as an object of its own; the
+    reasoning lives on `ServingSpec` in `app.hub.messages`.
 
+    The device shape is deliberately not here. It reaches the cluster on the
+    deployment's `placement`, derived from these same columns, and putting it in
+    both places would be two copies of one fact on one wire.
 
-def _recipe(recipe: Recipe, cluster_uid: str, artifact_uid: str, artifact: Artifact) -> RecipeDesired:
-    """The recipe as the cluster is told it, with the served model name resolved here.
-
-    Resolved in the plane rather than derived in the operator so that one function
-    owns the order — `app.core.serving` — and the cluster renders the string it is
-    given. The `engine_args` hatch is deliberately left out of the resolution: the
-    operator lays `engine_args` over the derived flags itself, so folding it in
-    would put the same value on the wire twice.
-
-    `frontend_image` has an order too, and it is one step long: the recipe's own
+    `frontend_image` has an order too, and it is one step long: the workload's own
     declaration when it has one, otherwise empty. Empty means the cluster
     decides, and it does not mean the engine image — a frontend and a worker are
     separately versioned binaries, which is the entire reason the field exists, so
@@ -325,61 +285,52 @@ def _recipe(recipe: Recipe, cluster_uid: str, artifact_uid: str, artifact: Artif
     K3 frontend fix exists to avoid. The default belongs to the operator because only
     the operator knows what the cluster it runs in serves through.
     """
-    return RecipeDesired(
-        recipe_id=recipe.uid,
-        cluster_id=cluster_uid,
-        artifact_id=artifact_uid,
-        name=recipe.name,
-        version=recipe.version,
-        engine=recipe.engine,
-        engine_version=recipe.engine_version,
-        engine_image=recipe.engine_image,
-        frontend_image=recipe.frontend_image,
-        engine_args=resolved_engine_args(recipe.engine, recipe.engine_args, serving_block(recipe.serving)),
-        served_model_name=declared_served_model(recipe, artifact),
-        quantization=recipe.quantization,
-        dtype=recipe.dtype,
-        parallelism=RecipeParallelism(
-            tensor=recipe.tensor_parallel,
-            pipeline=recipe.pipeline_parallel,
-            expert=recipe.expert_parallel,
+    fraction = workload.kv_cache_fraction
+    return ServingSpec(
+        engine=workload.engine,
+        engine_version=workload.engine_version,
+        engine_image=workload.engine_image,
+        frontend_image=workload.frontend_image,
+        engine_args=resolved_engine_args(workload.engine, workload.engine_args, serving_block(workload.serving)),
+        quantization=workload.quantization,
+        dtype=workload.dtype,
+        parallelism=Parallelism(
+            tensor=workload.tensor_parallel,
+            pipeline=workload.pipeline_parallel,
+            expert=workload.expert_parallel,
         ),
-        context_length=recipe.context_length,
-        max_batch_tokens=recipe.max_batch_tokens,
-        kv_cache_dtype=recipe.kv_cache_dtype,
-        kv_cache_fraction=float(recipe.kv_cache_fraction) if recipe.kv_cache_fraction is not None else None,
-        prefix_cache_enabled=recipe.prefix_cache_enabled,
-        prefix_cache_config={key: str(value) for key, value in (recipe.prefix_cache_config or {}).items()},
-        resources=RecipeResources(
-            cpu_cores=recipe.cpu_cores,
-            memory_mib=recipe.memory_mib,
-            disk_gib=recipe.disk_gib,
+        context_length=workload.context_length,
+        max_batch_tokens=workload.max_batch_tokens,
+        kv_cache_dtype=workload.kv_cache_dtype,
+        kv_cache_fraction=float(fraction) if fraction is not None else None,
+        prefix_cache_enabled=workload.prefix_cache_enabled,
+        prefix_cache_config={key: str(value) for key, value in (workload.prefix_cache_config or {}).items()},
+        resources=Resources(
+            cpu_cores=workload.cpu_cores,
+            memory_mib=workload.memory_mib,
+            disk_gib=workload.disk_gib,
         ),
-        labels={key: str(value) for key, value in (recipe.labels or {}).items()},
-        overlay=RecipeOverlay(
-            pod_spec=(recipe.overlay or {}).get("pod_spec", {}) or {},
-            dynamo=(recipe.overlay or {}).get("dynamo", {}) or {},
+        digest=workload.serving_digest,
+        overlay=Overlay(
+            pod_spec=(workload.overlay or {}).get("pod_spec", {}) or {},
+            dynamo=(workload.overlay or {}).get("dynamo", {}) or {},
         ),
-        updated_at=format_ts(recipe.updated_at or recipe.created_at),
     )
 
 
-def _placement(workload: Workload, recipe: Recipe, pools: list[str]) -> PlacementConstraints:
+def _placement(workload: Workload, pools: list[str]) -> PlacementConstraints:
     """The constraints one cluster is told to honour when it places replicas.
 
-    Topology has two declarers and the workload wins where it has an opinion:
-    the columns moved up from `Deployment` unchanged, so their precedence over
-    the recipe moves with them. A null there is not a "no" — it is the workload
-    declining to override, and the recipe's own requirement stands.
+    Read entirely off the workload, which is now the only declarer of any of it.
+    `requires_single_topology_domain` used to be a nullable override layered over
+    a recipe's own requirement, so a null here meant "the recipe decides" rather
+    than "no". There is one level left, so the column is the answer.
     """
-    requires = workload.requires_single_topology_domain
-    if requires is None:
-        requires = recipe.requires_single_topology_domain
-    topology = "single_domain" if requires else "none"
+    topology = "single_domain" if workload.requires_single_topology_domain else "none"
     return PlacementConstraints(
-        device_class=recipe.device_class,
-        devices_per_replica=recipe.device_count,
-        min_device_memory_mb=recipe.device_memory_mib_min,
+        device_class=workload.device_class,
+        devices_per_replica=workload.device_count,
+        min_device_memory_mb=workload.device_memory_mib_min,
         topology=topology,
         allowed_pools=pools,
         node_selector={},
@@ -391,10 +342,9 @@ async def _deployments(
 ) -> list[DeploymentDesired]:
     """The deployments one cluster owns, each carrying only that cluster's share.
 
-    Recipe, adapters, lifecycle, project and priority are facts about what was
-    asked for and now live on the parent `Workload`, so every one of them is a
-    join away rather than a column here. The frame is byte-identical to the one
-    this rendered when they sat on the deployment row.
+    Serving configuration, adapters, lifecycle, project and priority are facts
+    about what was asked for and live on the parent `Workload`, so every one of
+    them is a join away rather than a column here.
 
     `min_replicas` and `max_replicas` are read straight off the deployment and
     are THIS CLUSTER'S SHARE of the workload's total. The total is never on the
@@ -405,16 +355,14 @@ async def _deployments(
         select(
             Deployment,
             Workload,
-            Recipe,
             Project.uid,
             PriorityClass.name,
-            Artifact.uid,
+            Artifact,
         )
         .join(Workload, Deployment.workload_id == Workload.id)
-        .join(Recipe, Workload.recipe_id == Recipe.id)
         .join(Project, Workload.project_id == Project.id)
         .join(PriorityClass, Workload.priority_class_id == PriorityClass.id)
-        .join(Artifact, Recipe.artifact_id == Artifact.id)
+        .join(Artifact, Workload.artifact_id == Artifact.id)
         .where(Deployment.cluster_id == cluster_id, Deployment.enabled == True)
         .order_by(Deployment.seq)
     )
@@ -440,23 +388,22 @@ async def _deployments(
 
     out: list[DeploymentDesired] = []
     for row in rows:
-        deployment, workload, recipe, project_uid, priority, artifact_uid = row[:6]
-        artifact_ids = [artifact_uid] + [adapters[a] for a in (workload.adapter_artifact_ids or []) if a in adapters]
+        deployment, workload, project_uid, priority, artifact = row[:5]
+        artifact_ids = [artifact.uid] + [adapters[a] for a in (workload.adapter_artifact_ids or []) if a in adapters]
         out.append(
             DeploymentDesired(
                 deployment_id=deployment.uid,
                 name=deployment.name,
                 cluster_id=cluster_uid,
                 project_id=project_uid,
-                recipe_id=recipe.uid,
-                recipe_revision=recipe.version,
                 lifecycle=workload.kind,
                 priority_class=priority,
                 min_replicas=deployment.min_replicas,
                 max_replicas=deployment.max_replicas,
-                placement=_placement(workload, recipe, allowed),
+                placement=_placement(workload, allowed),
+                serving=_serving(workload),
                 artifact_ids=artifact_ids,
-                served_model_name=(workload.served_model_name or "").strip(),
+                served_model_name=declared_served_model(workload, artifact),
                 generation=deployment.generation,
                 updated_at=format_ts(deployment.updated_at or deployment.created_at),
                 authority=deployment.authority if deployment.authority in ("observed", "managed") else "observed",
@@ -545,8 +492,7 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
     served = (
         await db.execute(
             select(Artifact.seq, Artifact.uid)
-            .join(Recipe, Recipe.artifact_id == Artifact.id)
-            .join(Workload, Workload.recipe_id == Recipe.id)
+            .join(Workload, Workload.artifact_id == Artifact.id)
             .join(Deployment, Deployment.workload_id == Workload.id)
             .where(
                 Deployment.cluster_id == cluster_id,

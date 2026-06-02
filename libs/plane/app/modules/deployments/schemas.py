@@ -26,8 +26,8 @@ class DeploymentStatusSchema(Struct):
 
     `phase` is where it is; `reason` and `message` are what is holding it there.
     Most of a deployment's life before it serves is spent waiting on an ordering —
-    the recipe has to arrive, the weights have to be resident, a node has to
-    advertise enough accelerators — and every one of those is an expected state
+    the weights have to be resident, a node has to advertise enough accelerators,
+    an image has to pull — and every one of those is an expected state
     rather than an error. They are kept apart from `last_error` for that reason:
     an error is a thing that went wrong and should be read as one, and folding a
     normal wait into it makes both unreadable.
@@ -62,8 +62,8 @@ class DeploymentSchema(Struct):
     the workload's total, never the total. Summing a share against a total, or
     dividing one out of the other, is always a bug.
 
-    Recipe, adapters, overrides and labels are not here: they are workload facts, read
-    through `workload_id`. Admission is here, because it is per-cluster — a workload can
+    The serving configuration, adapters, overrides and labels are not here: they are
+    workload facts, read through `workload_id`. Admission is here, because it is per-cluster — a workload can
     be running in one region and queued on quota in another.
 
     `adopted_workload_id` is the *discovered* workload this deployment was promoted from,

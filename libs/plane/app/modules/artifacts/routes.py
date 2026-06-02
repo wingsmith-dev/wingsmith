@@ -84,7 +84,7 @@ class ArtifactRoutes(Controller):
     async def artifact_usage(
         self, context: RequestContext, svc: ArtifactService, ref: str
     ) -> Response[ArtifactUsageSchema]:
-        """Recipe, workload and downstream counts for this artifact. Derived, stored nowhere."""
+        """Workload and downstream counts for this artifact. Derived, stored nowhere."""
         return Response(await svc.usage(ref))
 
     @get("/{ref:str}/fitment")

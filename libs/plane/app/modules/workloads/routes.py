@@ -41,17 +41,32 @@ class WorkloadRoutes(Controller):
         project: str | None = None,
         kind: str | None = None,
         phase: str | None = None,
-        recipe: str | None = None,
+        artifact: str | None = None,
+        serving_digest: str | None = None,
+        device_class: str | None = Parameter(query="class", default=None),
         cluster: str | None = None,
         label: list[str] | None = None,
     ) -> Response[ListResponse[WorkloadSchema]]:
+        """One page of workloads, narrowed by whatever the caller states.
+
+        `serving_digest` is an exact match on the whole `svg_...` string: it answers
+        "is anything already serving exactly this configuration", which is the
+        question a create form asks before it mints a second workload for one
+        engine. `artifact` narrows to the weights, so the two together are "which
+        workloads serve these weights, and which of them are the same fit".
+
+        `class` is the device class the workload asks for, spelled the way the
+        device-class routes spell it, and answers "what is asking for H100s".
+        """
         result = await svc.list(
             limit=limit,
             cursor=cursor,
             project=project,
             kind=kind,
             phase=phase,
-            recipe=recipe,
+            artifact=artifact,
+            serving_digest=serving_digest,
+            device_class=device_class,
             cluster=cluster,
             labels=parse_labels(label),
         )

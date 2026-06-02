@@ -237,7 +237,7 @@ class WorkloadDemand(Snap):
     """A workload's expansion inputs, with no ORM row anywhere in sight.
 
     `expand()` is the multi-cluster half of placement and has the same purity rule as
-    `place()`, so the workload arrives here already resolved: the recipe's device shape
+    `place()`, so the workload arrives here already resolved: the workload's device shape
     per unit, the priority's numbers, and the declared totals. `unit_device_count` is
     what one replica (or one gang rank set, once multiplied by `gang_size`) costs, and
     every share is a whole number of units.

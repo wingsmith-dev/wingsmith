@@ -1,10 +1,10 @@
 from litestar import Router
 from litestar import Litestar
 
+from app.auth import AuthRoutes
 from app.api.spa import ConsoleRoutes
 from app.api.spa import has_console
 from app.core.routes import HealthRoutes
-from app.auth import AuthRoutes
 from app.core.system_routes import SystemRoutes
 from app.modules.nodes.routes import NodeRoutes
 from app.modules.pools.routes import PoolRoutes
@@ -16,7 +16,6 @@ from app.modules.quotas.routes import QuotaRoutes
 from app.modules.quotas.routes import ServingQuotaRoutes
 from app.modules.devices.routes import DeviceRoutes
 from app.modules.metrics.routes import MetricsRoutes
-from app.modules.recipes.routes import RecipeRoutes
 from app.modules.tenants.routes import TenantRoutes
 from app.modules.clusters.routes import ClusterRoutes
 from app.modules.policies.routes import PolicyRoutes
@@ -45,7 +44,6 @@ V1_ROUTES = [
     TopologyDomainRoutes,
     PoolRoutes,
     ArtifactRoutes,
-    RecipeRoutes,
     WorkloadRoutes,
     DeploymentRoutes,
     PlacementRoutes,

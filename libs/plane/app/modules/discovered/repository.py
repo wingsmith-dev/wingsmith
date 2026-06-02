@@ -10,7 +10,6 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Device
-from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Artifact
@@ -129,13 +128,11 @@ class DiscoveredWorkloadRepository:
         await self.db.execute(delete(WorkloadAdoption).where(WorkloadAdoption.workload_uid == uid))
         await self.db.flush()
 
-    async def recipe_by_ref(self, ref: str) -> Row | None:
-        """The newest revision of a recipe named by name, or the one named by id."""
-        column = Recipe.uid if is_uid(ref) else Recipe.name
-        result = await self.db.execute(
-            select(Recipe.id, Recipe.uid).where(column == ref).order_by(Recipe.version.desc()).limit(1)
-        )
-        return result.first()
+    async def artifact_by_ref(self, ref: str) -> Artifact | None:
+        """The weights a promotion says it is adopting, by id or by name."""
+        column = Artifact.uid if is_uid(ref) else Artifact.name
+        result = await self.db.execute(select(Artifact).where(column == ref).limit(1))
+        return result.scalar_one_or_none()
 
     async def priority_class_by_name(self, name: str):
         result = await self.db.execute(select(PriorityClass).where(PriorityClass.name == name))
@@ -160,7 +157,7 @@ class DiscoveredWorkloadRepository:
         """The class of accelerator the workload is actually running on.
 
         Read from the devices of the nodes it holds rather than from anything the
-        workload says about itself: a recipe's `device_class` decides where the
+        workload says about itself: a workload's `device_class` decides where the
         thing can be placed, and the cluster is the only authority on what its own
         hardware is. Ambiguity resolves to nothing — a workload spanning two
         classes is a question for a person, not a field to guess at.

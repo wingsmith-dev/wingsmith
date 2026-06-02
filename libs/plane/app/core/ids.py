@@ -9,7 +9,6 @@ DEVICE = "dev_"
 TOPOLOGY_DOMAIN = "tpd_"
 POOL = "pol_"
 ARTIFACT = "art_"
-RECIPE = "rec_"
 DEPLOYMENT = "dep_"
 REPLICA = "rep_"
 ENDPOINT = "end_"
@@ -40,7 +39,6 @@ PREFIXES = frozenset(
         TOPOLOGY_DOMAIN,
         POOL,
         ARTIFACT,
-        RECIPE,
         DEPLOYMENT,
         REPLICA,
         ENDPOINT,

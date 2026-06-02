@@ -1,4 +1,4 @@
-"""Reading a sighting's serving spec as a recipe.
+"""Reading a sighting's pod template as a workload's serving block.
 
 Every cluster we operate runs Dynamo over vLLM, and this leans on that hard. It is not a
 general parser and does not pretend to be one: it knows what `python3 -m dynamo.vllm`
@@ -36,7 +36,7 @@ class ArtifactDraft(Struct):
     A cluster reports what it was told to load, never what it loaded. `--model
     Qwen/Qwen3-32B` is a name someone typed, not a hash of any bytes, so `digest`
     here is that reference and `verified` is false: the row is a real artifact and
-    recipes may point at it, and nothing should mistake it for content-addressed
+    workloads may point at it, and nothing should mistake it for content-addressed
     until something resolves the weights.
 
     `existing_id` is filled by the service, not by this module. Derivation is a
@@ -59,8 +59,13 @@ class ArtifactDraft(Struct):
     notes: list[str]
 
 
-class RecipeDraft(Struct):
-    """A proposed recipe, and an account of how much of it was actually read.
+class ServingDraft(Struct):
+    """A proposed serving block, and an account of how much of it was actually read.
+
+    It drafts the block a workload is created with, not an object of its own. There
+    is no recipe to save this into any more: the fields below land on the workload
+    the promotion mints, and two adoptions that read the same command line arrive at
+    the same `serving_digest` without either of them naming the other.
 
     `confident` is false when the engine could not be identified, because every
     field below it is then a guess dressed as a reading. `notes` names what could
@@ -163,7 +168,7 @@ def _cpu_cores(requests: dict[str, str]) -> int | None:
     """Kubernetes cpu as whole cores, rounding a millicore request up.
 
     A workload asking for `500m` is asking for less than a core and gets one here:
-    a recipe's `cpu_cores` is a floor for placement, and rounding down would
+    a workload's `cpu_cores` is a floor for placement, and rounding down would
     schedule a replica onto less cpu than the workload already runs with.
     """
     raw = requests.get("cpu")
@@ -274,7 +279,7 @@ def derive_artifact(model_ref: str | None, values: dict[str, str], quantization:
     """Reads the weights a workload was pointed at.
 
     A repository id becomes an `hf` source, because that is what the operator turns
-    back into `--model` when it renders a recipe — adopting weights by reference
+    back into `--model` when it renders a workload — adopting weights by reference
     and serving them by reference are the same string, and an artifact that cannot
     be rendered back is not worth writing.
 
@@ -358,8 +363,8 @@ def derive(
     name: str,
     devices_per_replica: int,
     device_class: str | None = None,
-) -> RecipeDraft:
-    """Proposes a recipe from what one cluster reported about one workload."""
+) -> ServingDraft:
+    """Proposes a serving block from what one cluster reported about one workload."""
     notes: list[str] = []
     args = list(spec.get("args") or [])
     values = parse_args(args)
@@ -402,7 +407,7 @@ def derive(
     # is somebody's decision, and the whole point of the split is that it stays visible as one.
     engine_args: dict[str, str] = {}
 
-    return RecipeDraft(
+    return ServingDraft(
         artifact_ref=f"hf:{model_ref}" if model_ref else None,
         artifact_name=model_ref,
         name=values.get("served-model-name") or labels.get(LABEL_GRAPH) or name,

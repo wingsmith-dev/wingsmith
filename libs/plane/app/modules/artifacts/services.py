@@ -26,6 +26,7 @@ from app.db.models import ArtifactLocation
 from app.core.devices import DeviceClass
 from app.core.devices import DeviceTable
 from app.core.schemas import ListResponse
+from app.core.serving import artifact_slug
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -372,7 +373,7 @@ class ArtifactService:
         extract before — an attention shape, a native quantization, an active parameter
         count — and every artifact registered until then is missing it. Without this
         route the only way to record it is to delete the artifact and register it again,
-        which breaks every recipe that names it, or to `PATCH` the metadata by hand,
+        which breaks every workload that names it, or to `PATCH` the metadata by hand,
         which is a person retyping what the plane can read.
 
         It is a `POST` and not a `PATCH` because it is an operation: it reaches the
@@ -424,6 +425,7 @@ class ArtifactService:
             digest=artifact.digest,
             verified=artifact.verified,
             name=artifact.name,
+            slug=artifact.slug,
             kind=artifact.kind,
             format=artifact.format,
             size_bytes=artifact.size_bytes,
@@ -450,10 +452,9 @@ class ArtifactService:
     async def usage(self, ref: str) -> ArtifactUsageSchema:
         """What depends on this artifact, counted at read time."""
         artifact, _, _ = await self._one(ref)
-        recipes, workloads, downstream = await self.repo.usage_counts(artifact)
+        workloads, downstream = await self.repo.usage_counts(artifact)
         return ArtifactUsageSchema(
             artifact_id=artifact.uid,
-            recipe_count=recipes,
             workload_count=workloads,
             downstream_count=downstream,
         )
@@ -624,6 +625,7 @@ class ArtifactService:
             digest=data.digest,
             verified=data.verified,
             name=data.name,
+            slug=data.slug.strip().lower() or artifact_slug(data.digest, data.locations),
             kind=data.kind,
             format=data.format,
             size_bytes=data.size_bytes,
@@ -685,8 +687,19 @@ class ArtifactService:
 
         if "metadata" in fields:
             artifact.metadata_ = fields.pop("metadata")
+        if "slug" in fields:
+            # Lowercased on the way in for the reason the create path does it: a slug differing
+            # from another only by case is two names for one model, and the gateway routes on it.
+            fields["slug"] = str(fields["slug"]).strip().lower()
         for key, value in fields.items():
             setattr(artifact, key, value)
+
+        # Re-derived when the locations moved and nobody said what the model is called. The slug
+        # is read off a location, so replacing the set can change the answer, and an artifact left
+        # holding the previous repository's name is a model the gateway rewrites requests to and
+        # no frontend has registered.
+        if not (artifact.slug or "").strip():
+            artifact.slug = artifact_slug(artifact.digest, artifact.locations)
 
         try:
             await self.db.commit()
@@ -696,10 +709,10 @@ class ArtifactService:
         return await self.get(artifact.uid)
 
     async def delete(self, ref: str) -> None:
-        """Refuses while a recipe still names the artifact.
+        """Refuses while a workload still names the artifact.
 
         The foreign key is `RESTRICT`, so the database would refuse anyway; the
-        point of catching it is that "a recipe still serves this" is an answer
+        point of catching it is that "a workload still serves this" is an answer
         and an integrity error is not.
         """
         artifact, _, _ = await self._one(ref)
@@ -708,7 +721,7 @@ class ArtifactService:
             await self.db.commit()
         except IntegrityError as exc:
             await self.db.rollback()
-            raise Conflict(f"artifact {ref!r} is still referenced by a recipe") from exc
+            raise Conflict(f"artifact {ref!r} is still referenced by a workload") from exc
 
 
 class ArtifactBaselineService:

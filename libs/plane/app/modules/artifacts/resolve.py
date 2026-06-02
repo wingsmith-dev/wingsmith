@@ -47,12 +47,13 @@ FALLBACK_CONTEXT_LENGTH = 8192
 """Context assumed when a config declares none, only so the sizing has a number."""
 
 
-class RecipeDefaults(Struct):
+class ServingDefaults(Struct):
     """Serving parameters implied by the weights, offered and never applied.
 
-    A recipe is a declared object a person owns; sizing it from `config.json` is a
+    A workload is a declared object a person owns; sizing it from `config.json` is a
     starting point, not a decision. The plane surfaces these so the console can
-    pre-fill a form, and a recipe only ever gets them because someone submitted them.
+    pre-fill the serving block of a create form, and a workload only ever gets them
+    because someone submitted them.
     """
 
     device_count: int
@@ -90,7 +91,7 @@ class UpstreamDeployment(Struct):
 class UpstreamRecipe(Struct):
     """Serving parameters somebody upstream has run, attributed to them.
 
-    Kept apart from `RecipeDefaults` on purpose. That struct is the plane's own
+    Kept apart from `ServingDefaults` on purpose. That struct is the plane's own
     arithmetic over `config.json`, and this is a third party's measurement of a
     different question — not "what do these weights need" but "what did this
     configuration do when we served it". Merging the two would produce a draft
@@ -104,9 +105,9 @@ class UpstreamRecipe(Struct):
 
     `args` is the whole tested command line — base flags, the variant's flags, and
     the flags of every feature that is on by default. The parsers are lifted out
-    of it because the recipe has typed fields for them; the list stays whole
-    because the flags we have no field for are exactly the ones a person needs to
-    see before they copy the configuration.
+    of it because a workload's serving block has typed fields for them; the list
+    stays whole because the flags we have no field for are exactly the ones a person
+    needs to see before they copy the configuration.
     """
 
     source: str
@@ -161,7 +162,7 @@ class ResolvedArtifact(Struct):
     verified: bool
     metadata: dict
     locations: list[ArtifactLocationRequest]
-    recipe: RecipeDefaults
+    serving: ServingDefaults
     upstream: UpstreamRecipe | None
     existing_id: str | None
     notes: list[ResolveNote]
@@ -245,8 +246,8 @@ def _shardable(count: int) -> int:
     return shards
 
 
-def suggest_recipe(model: HuggingFaceModel, notes: list[ResolveNote]) -> RecipeDefaults:
-    """Sizes a first recipe from the weights, then says what hardware that needs.
+def suggest_serving(model: HuggingFaceModel, notes: list[ResolveNote]) -> ServingDefaults:
+    """Sizes a first serving block from the weights, then says what hardware that needs.
 
     The direction matters. The serving parameters are the repo's own: its native
     quantization, its dtype, and the full context window it declares. Those are
@@ -262,9 +263,9 @@ def suggest_recipe(model: HuggingFaceModel, notes: list[ResolveNote]) -> RecipeD
     The suggestion and the sizing want different answers when a repo declares no
     quantization at all. Sizing needs a bytes-per-param bucket and fp16 is the right
     one for unquantized weights; the suggestion needs to stay empty, because it is
-    offered as the recipe's `--quantization` and fp16 is a dtype, not a quantization
+    offered as the workload's `--quantization` and fp16 is a dtype, not a quantization
     method any engine accepts. Defaulting the two together renders every unquantized
-    repo into a recipe the engine rejects before it binds a port.
+    repo into a workload the engine rejects before it binds a port.
     """
     quantization = native_quant_method(model.config, model.slug)
     sizing_quantization = quantization or DEFAULT_QUANTIZATION
@@ -278,7 +279,7 @@ def suggest_recipe(model: HuggingFaceModel, notes: list[ResolveNote]) -> RecipeD
                 message="the config carries no attention shape, so no device sizing is suggested",
             )
         )
-        return RecipeDefaults(
+        return ServingDefaults(
             device_count=1,
             device_memory_mib_min=0,
             context_length=None,
@@ -310,7 +311,7 @@ def suggest_recipe(model: HuggingFaceModel, notes: list[ResolveNote]) -> RecipeD
             )
         )
 
-    return RecipeDefaults(
+    return ServingDefaults(
         device_count=device_count,
         device_memory_mib_min=per_device_gb * _MIB_PER_GB,
         context_length=context_length,
@@ -331,13 +332,13 @@ _DISAGREEMENT_RATIO = 2.0
 Below this they are two honest answers to slightly different questions — ours
 sizes the declared context at concurrency one, theirs is a floor measured under
 whatever load they ran. Above it one of them is wrong about the weights, and
-that is a thing to look at before the recipe is submitted.
+that is a thing to look at before the workload is submitted.
 """
 
 
 def upstream_recipe(
     model: HuggingFaceModel,
-    defaults: RecipeDefaults,
+    defaults: ServingDefaults,
     notes: list[ResolveNote],
 ) -> UpstreamRecipe | None:
     """The vLLM recipe for these weights, or None when the corpus has none.
@@ -429,7 +430,7 @@ def _as_int(value: str | None) -> int | None:
 
 
 def _note_disagreement(
-    defaults: RecipeDefaults,
+    defaults: ServingDefaults,
     replica_memory_mib_min: int | None,
     notes: list[ResolveNote],
 ) -> None:
@@ -523,7 +524,7 @@ def resolved(model: HuggingFaceModel, existing_id: str | None = None) -> Resolve
         "shape": shape_metadata(shape) if shape else None,
     }
 
-    recipe = suggest_recipe(model, notes)
+    serving = suggest_serving(model, notes)
     uri = f"hf://{model.slug}@{model.revision}"
     return ResolvedArtifact(
         reference=f"hf:{model.slug}@{model.revision}",
@@ -540,8 +541,8 @@ def resolved(model: HuggingFaceModel, existing_id: str | None = None) -> Resolve
         verified=model.content_addressable,
         metadata=metadata,
         locations=[ArtifactLocationRequest(scheme=SCHEME, uri=uri, region=None, preferred=True)],
-        recipe=recipe,
-        upstream=upstream_recipe(model, recipe, notes),
+        serving=serving,
+        upstream=upstream_recipe(model, serving, notes),
         existing_id=existing_id,
         notes=notes,
     )

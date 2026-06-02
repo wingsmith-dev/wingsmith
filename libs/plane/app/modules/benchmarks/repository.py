@@ -13,7 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ids import BENCHMARK_RUN
 from app.core.ids import BENCHMARK_REQUEST
 from app.core.ids import is_uid
-from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Artifact
 from app.db.models import Endpoint
@@ -32,7 +31,7 @@ class BenchmarkRepository:
 
     The joins are for public ids only. Everything a run says about what it
     measured is on its own row, snapshotted at creation, so nothing here reaches
-    for the recipe to describe the run — only to name it.
+    for the workload to describe the run — only to name it.
     """
 
     def __init__(self, db: AsyncSession) -> None:
@@ -52,14 +51,12 @@ class BenchmarkRepository:
                 Cluster.uid.label("cluster_uid"),
                 Endpoint.uid.label("endpoint_uid"),
                 Operation.uid.label("operation_uid"),
-                Recipe.uid.label("recipe_uid"),
                 BenchmarkRequest.uid.label("request_uid"),
             )
             .outerjoin(Deployment, BenchmarkRun.deployment_id == Deployment.id)
             .outerjoin(Cluster, BenchmarkRun.cluster_id == Cluster.id)
             .outerjoin(Endpoint, BenchmarkRun.endpoint_id == Endpoint.id)
             .outerjoin(Operation, BenchmarkRun.operation_id == Operation.id)
-            .outerjoin(Recipe, BenchmarkRun.recipe_id == Recipe.id)
             .outerjoin(BenchmarkRequest, BenchmarkRun.request_id == BenchmarkRequest.id)
         )
 
@@ -115,10 +112,10 @@ class BenchmarkRepository:
         return list(result.all())
 
     async def deployment_targets(self, ref: str, cluster: str | None = None) -> list[Row]:
-        """Every deployment a reference names, with the recipe and artifact behind it.
+        """Every deployment a reference names, with the workload and artifact behind it.
 
         Plural because a deployment name is unique per cluster and not above it,
-        the same way an operation target is. The recipe and artifact come along
+        the same way an operation target is. The workload and artifact come along
         because the served model name is derived from both, and deriving it at
         creation is what lets the run record what it pointed at rather than
         leaving the operator to guess. The artifact's locations come with it
@@ -128,10 +125,9 @@ class BenchmarkRepository:
         """
         column = Deployment.uid if is_uid(ref) else Deployment.name
         query = (
-            select(Deployment, Recipe, Artifact, Cluster.uid.label("cluster_uid"))
+            select(Deployment, Workload, Artifact, Cluster.uid.label("cluster_uid"))
             .join(Workload, Deployment.workload_id == Workload.id)
-            .join(Recipe, Workload.recipe_id == Recipe.id)
-            .join(Artifact, Recipe.artifact_id == Artifact.id)
+            .join(Artifact, Workload.artifact_id == Artifact.id)
             .join(Cluster, Deployment.cluster_id == Cluster.id)
             .options(selectinload(Artifact.locations))
             .where(column == ref)
@@ -141,25 +137,24 @@ class BenchmarkRepository:
         return list((await self.db.execute(query)).all())
 
     async def workload_targets(self, ref: str) -> list[Row]:
-        """Every deployment a workload has been placed on, with the recipe and artifact behind it.
+        """Every deployment a workload has been placed on, with the workload and artifact behind it.
 
         A workload-level run is one run per placed deployment, and each of them
-        snapshots its own deployment's provenance. The recipe is the workload's
-        and is therefore the same across all of them — which is the reason
-        accuracy is a workload-level claim in the first place.
+        snapshots its own deployment's provenance. The serving configuration is
+        the workload's and is therefore the same across all of them — which is
+        the reason accuracy is a workload-level claim in the first place.
         """
         column = Workload.uid if is_uid(ref) else Workload.name
         query = (
             select(
                 Deployment,
-                Recipe,
+                Workload,
                 Artifact,
                 Cluster.uid.label("cluster_uid"),
                 Workload.uid.label("workload_uid"),
             )
             .join(Workload, Deployment.workload_id == Workload.id)
-            .join(Recipe, Workload.recipe_id == Recipe.id)
-            .join(Artifact, Recipe.artifact_id == Artifact.id)
+            .join(Artifact, Workload.artifact_id == Artifact.id)
             .join(Cluster, Deployment.cluster_id == Cluster.id)
             .options(selectinload(Artifact.locations))
             .where(column == ref)
@@ -177,15 +172,14 @@ class BenchmarkRepository:
         """
         column = Endpoint.uid if is_uid(ref) else Endpoint.name
         query = (
-            select(Endpoint, Deployment, Recipe, Artifact, Cluster.uid.label("cluster_uid"))
+            select(Endpoint, Deployment, Workload, Artifact, Cluster.uid.label("cluster_uid"))
             .outerjoin(
                 EndpointTarget,
                 (EndpointTarget.endpoint_id == Endpoint.id) & EndpointTarget.enabled.is_(True),
             )
             .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
-            .outerjoin(Recipe, Workload.recipe_id == Recipe.id)
-            .outerjoin(Artifact, Recipe.artifact_id == Artifact.id)
+            .outerjoin(Artifact, Workload.artifact_id == Artifact.id)
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)
             .where(column == ref)
         )
@@ -196,8 +190,8 @@ class BenchmarkRepository:
 
         The artifact's parameter count chooses which output-speed population the
         run is held to, and the request carries the criteria version, the tier
-        and the coverage flag. Both are outer joins: a run whose recipe has since
-        been deleted still grades, on the checks that do not need it.
+        and the coverage flag. Every join is outer: a run whose deployment has
+        since been deleted still grades, on the checks that do not need it.
         """
         return (
             select(
@@ -210,8 +204,9 @@ class BenchmarkRepository:
                 BenchmarkRequest.homogeneous.label("homogeneous"),
                 BenchmarkRequest.parameters.label("request_parameters"),
             )
-            .outerjoin(Recipe, BenchmarkRun.recipe_id == Recipe.id)
-            .outerjoin(Artifact, Recipe.artifact_id == Artifact.id)
+            .outerjoin(Deployment, BenchmarkRun.deployment_id == Deployment.id)
+            .outerjoin(Workload, Deployment.workload_id == Workload.id)
+            .outerjoin(Artifact, Workload.artifact_id == Artifact.id)
             .outerjoin(BenchmarkRequest, BenchmarkRun.request_id == BenchmarkRequest.id)
             .where(BenchmarkRun.uid == ref)
         )
@@ -267,6 +262,28 @@ class BenchmarkRepository:
 
     async def request_runs(self, ref: str) -> list[BenchmarkRun]:
         return list((await self.db.execute(self.request_runs_query(ref))).scalars().all())
+
+    def serving_runs_query(self, digest: str) -> Select:
+        """The graded, non-discarded runs recorded against one serving configuration.
+
+        Only the columns a throughput rollup needs — `summary` is offline
+        measurement held in-plane, read through the harness-and-version adapter,
+        and a discarded run is a warm-up that must not colour the peak.
+
+        Matched on the digest the run snapshotted, so it needs no join at all and
+        keeps answering after the workload that asked for the run has been
+        renamed, rescaled or deleted. The recipe rollup this replaces joined a
+        mutable row and could not say either of those things.
+        """
+        return (
+            select(BenchmarkRun.harness, BenchmarkRun.harness_version, BenchmarkRun.summary)
+            .where(BenchmarkRun.serving_digest == digest)
+            .where(BenchmarkRun.discard == False)
+            .order_by(BenchmarkRun.seq.asc())
+        )
+
+    async def serving_runs(self, digest: str) -> list[Row]:
+        return list((await self.db.execute(self.serving_runs_query(digest))).all())
 
     async def add_request(self, request: BenchmarkRequest) -> BenchmarkRequest:
         self.db.add(request)

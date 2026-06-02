@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import datetime as dt
 
 from uuid import UUID
 
 from msgspec import UNSET
-from msgspec import convert
 from msgspec import ValidationError
+from msgspec import convert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,9 +31,9 @@ from .schemas import EndpointTargetSchema
 from .schemas import EndpointCreateRequest
 from .schemas import EndpointTargetRequest
 from .schemas import EndpointUpdateRequest
+from .schemas import ParameterPolicySchema
 from .schemas import ResolvedEndpointSchema
 from .schemas import ResolvedUpstreamSchema
-from .schemas import ParameterPolicySchema
 from .repository import EndpointRepository
 
 
@@ -74,20 +75,18 @@ def check_targets(targets: list[EndpointTargetRequest]) -> None:
 
 
 def public_model(endpoint: Endpoint) -> str:
-    """The model id clients send for this endpoint: its slug, else its name.
+    """The model id clients send for this endpoint.
 
-    The one place the rule lives, because two callers need it to agree and they
-    answer different questions with it. `EndpointSchema.resolved_model_slug` shows
-    an operator what a caller must type; the resolved table reports it as the
-    endpoint's `name`, which is the key the gateway builds its route map on
-    (`next[route.Name]` in `routing/table.go`). If those two ever disagreed, the
-    console would document a model id that does not route.
+    A read of one column now. It used to be a rule — the slug, else the name — with a
+    `resolved_model_slug` computed on the way out so that an operator could see which of the two
+    had won. That is what a nullable public identifier costs: a second field to report the answer,
+    and two call sites that have to agree or the console documents a model id that does not route.
 
-    That the routing key comes from this field and not from `Endpoint.name` is the
-    whole reason a public id can be corrected without touching a cluster: the
-    gateway is told what to route on every time it polls.
+    Kept as a function because the routing key comes from here and not from `Endpoint.name`, and
+    that is the whole reason a public id can be corrected without touching a cluster: the gateway
+    is told what to route on every time it polls (`next[route.Name]` in `routing/table.go`).
     """
-    return (endpoint.model_slug or "").strip() or str(endpoint.name)
+    return str(endpoint.slug)
 
 
 def check_shape(visibility: str, routing_strategy: str) -> None:
@@ -192,8 +191,34 @@ def _stamp(row) -> dt.datetime | None:
     return row.updated_at or row.created_at
 
 
-def _revision_of(stamps: list[dt.datetime | None]) -> str:
-    """The newest stamp a resolution was built from, and how many there were.
+def _served(values: list[str]) -> str:
+    """The third revision term: what the engines behind this table answer to.
+
+    A short hash over the serving digests and resolved model names a resolution
+    was built from. It is content rather than a timestamp, and that is the whole
+    reason it exists: it moves when, and only when, what the gateway has to
+    rewrite an inbound `model` to has actually changed.
+
+    It replaces a stamp taken off the recipe row, which was a proxy for the same
+    question and wrong in both directions. Renaming a recipe, or editing a field
+    that never reached an engine, pushed the revision forward and made every
+    gateway re-fetch a table that had not changed. Meanwhile the workload's own
+    `served_model_name` was never stamped at all, so declaring one moved nothing
+    and a gateway sat behind a `304` rewriting to the name it had before.
+
+    Sorted and deduplicated so the value depends on the set and not on the row
+    order the database happened to return. Truncated because this is a change
+    detector, not a signature: a collision costs one stale `304` against a table
+    that also has two other terms moving under it.
+    """
+    if not values:
+        return "0"
+    body = "\x1f".join(sorted(set(values)))
+    return hashlib.sha256(body.encode("utf-8")).hexdigest()[:16]
+
+
+def _revision_of(stamps: list[dt.datetime | None], served: list[str]) -> str:
+    """The newest stamp a resolution was built from, how many there were, and what they serve.
 
     An empty table still needs a value a caller can send back as `If-None-Match`,
     and it needs the value to change the moment the table stops being empty —
@@ -207,13 +232,15 @@ def _revision_of(stamps: list[dt.datetime | None]) -> str:
     exists — and the asymmetry is what makes it dangerous, because create and
     update work and only delete silently does not. The count moves on any
     disappearance; the maximum still catches a simultaneous add and delete,
-    because the added row is freshly stamped. The value stays opaque to its
-    readers, which compare it as a string.
+    because the added row is freshly stamped.
+
+    The third term is `_served`, and it is content rather than time. The value
+    stays opaque to its readers, which compare it as a string.
     """
     live = [stamp for stamp in stamps if stamp is not None]
     if not live:
-        return "0-0"
-    return f"{int(max(live).timestamp() * 1_000_000)}-{len(live)}"
+        return f"0-0-{_served(served)}"
+    return f"{int(max(live).timestamp() * 1_000_000)}-{len(live)}-{_served(served)}"
 
 
 class EndpointService:
@@ -225,9 +252,7 @@ class EndpointService:
         return EndpointSchema(
             id=endpoint.uid,
             name=endpoint.name,
-            model_slug=endpoint.model_slug,
-            resolved_model_slug=public_model(endpoint),
-            display_name=endpoint.display_name,
+            slug=endpoint.slug,
             project_id=project_uid,
             visibility=endpoint.visibility,
             routing_strategy=endpoint.routing_strategy,
@@ -343,12 +368,24 @@ class EndpointService:
             raise NotFound(f"no project {data.project!r}")
         targets, failover_order = await self._resolve(data.targets, data.failover_order)
 
+        # Defaulted from the weights behind the first target, then from the endpoint's own name.
+        #
+        # The default is the point of the field rather than a convenience. An endpoint in front of
+        # one model answers to that model's name, and requiring a caller to type it is how the
+        # public id and the id the engine registered come to differ — which is not a visible
+        # failure but a 404 from inside the cluster, with the deployment healthy and the tunnel
+        # open. Declaring one is then unambiguously a request for an alias.
+        slug = (data.slug or "").strip().lower()
+        if not slug and targets:
+            slug = await self.repo.artifact_slug(targets[0].deployment_id)
+        if not slug:
+            slug = str(data.name)
+
         endpoint = Endpoint(
             uid=new_uid(ENDPOINT),
             project_id=project.id,
             name=data.name,
-            model_slug=(data.model_slug or "").strip() or None,
-            display_name=data.display_name,
+            slug=slug,
             visibility=data.visibility,
             routing_strategy=data.routing_strategy,
             failover_order=failover_order,
@@ -395,6 +432,14 @@ class EndpointService:
             await self.db.flush()
             endpoint.targets = rows
             endpoint.failover_order = order
+
+        if "slug" in fields:
+            # Lowercased and never emptied. This is the public model id, so a caller who clears it
+            # has said nothing about what clients should send, and the honest reading of that is
+            # "leave it" rather than "serve under the empty string".
+            slug = str(fields.pop("slug")).strip().lower()
+            if slug:
+                endpoint.slug = slug
 
         for key, value in fields.items():
             setattr(endpoint, key, value)
@@ -449,14 +494,21 @@ class EndpointService:
 
         Each upstream carries the name the engine behind it answers to, because
         the public name and the served name are not the same string and nothing
-        makes them agree. A recipe the console derived is named for its
-        configuration — `llama-3-3-70b-instruct-fp8-tp2-32k` — and the operator
-        renders that into `served-model-name`, so a client calling the endpoint
-        by name would be asking the frontend for a model it does not have. The
-        gateway rewrites it. The recipe's stamp goes into the revision for the
-        same reason the cluster's does: renaming a recipe changes what the
-        frontend answers to, and a gateway sitting behind a `304` would keep
-        rewriting to a name that no longer exists.
+        makes them agree: a workload may declare a `served_model_name` of its
+        own, and otherwise the name resolves to the artifact's Hugging Face slug.
+        A client calling the endpoint by its public name would be asking the
+        frontend for a model it does not have, so the gateway rewrites it.
+
+        That resolution goes into the revision as content — the workload's
+        `serving_digest` and the resolved name itself — rather than as a stamp
+        taken off the row it was read from. It used to be the recipe's
+        `updated_at`, and a stamp is a proxy for the question that is wrong in
+        both directions: it moved when a recipe was renamed or when a field that
+        never reaches an engine was edited, making every gateway re-fetch an
+        unchanged table, and it said nothing at all about the workload's own
+        `served_model_name`, which was never stamped — so declaring one left the
+        gateway behind a `304`, rewriting to the name it had before. A digest
+        moves on a real configuration change and on nothing else.
 
         The serving quota is one row per endpoint rather than one per target, so
         its stamp goes into `own` beside the endpoint's and not into the row loop.
@@ -481,6 +533,7 @@ class EndpointService:
             grouped[endpoint.id].append(row)
 
         stamps: list[dt.datetime | None] = []
+        resolved_names: list[str] = []
         items: list[ResolvedEndpointSchema] = []
         for endpoint_id in order:
             endpoint = endpoints[endpoint_id]
@@ -489,11 +542,14 @@ class EndpointService:
             upstreams: list[ResolvedUpstreamSchema] = []
             uids: dict[UUID, str] = {}
 
-            for _, target, deployment, cluster, serving, _, recipe, artifact, workload in grouped[endpoint_id]:
+            served: list[str] = []
+            for _, target, deployment, cluster, serving, _, artifact, workload in grouped[endpoint_id]:
                 if target is None:
                     continue
                 own.extend([_stamp(target), _stamp(deployment), _stamp(cluster), _stamp(serving)])
-                own.extend([_stamp(recipe), _stamp(artifact)])
+                own.append(_stamp(artifact))
+                if workload is not None:
+                    served.append(workload.serving_digest)
                 if deployment is not None:
                     uids[deployment.id] = deployment.uid
                 if not target.enabled or deployment is None or not deployment.enabled:
@@ -502,6 +558,10 @@ class EndpointService:
                     continue
                 if serving is not None and not serving.enabled:
                     continue
+                name = (target.served_model_name or "").strip() or (
+                    served_model(workload, artifact) if workload is not None and artifact is not None else ""
+                )
+                served.append(name)
                 upstreams.append(
                     ResolvedUpstreamSchema(
                         deployment_id=deployment.uid,
@@ -510,12 +570,7 @@ class EndpointService:
                         cluster_id=cluster.uid,
                         cluster_name=cluster.name,
                         url=serving.url if serving is not None else "",
-                        served_model_name=(target.served_model_name or "").strip()
-                        or (
-                            served_model(recipe, artifact, workload)
-                            if recipe is not None and artifact is not None
-                            else ""
-                        ),
+                        served_model_name=name,
                         credential_id=str(serving.credential_id)
                         if serving is not None and serving.credential_id
                         else None,
@@ -525,6 +580,7 @@ class EndpointService:
                 )
 
             stamps.extend(own)
+            resolved_names.extend(served)
             items.append(
                 ResolvedEndpointSchema(
                     id=endpoint.uid,
@@ -535,8 +591,8 @@ class EndpointService:
                     failover_order=[uids[d] for d in endpoint.failover_order if d in uids],
                     limits=declared_limits(quota) if quota is not None else None,
                     policy=parameter_policy(endpoint.surface),
-                    revision=_revision_of(own),
+                    revision=_revision_of(own, served),
                 )
             )
 
-        return ResolvedTableSchema(revision=_revision_of(stamps), endpoints=items)
+        return ResolvedTableSchema(revision=_revision_of(stamps, resolved_names), endpoints=items)

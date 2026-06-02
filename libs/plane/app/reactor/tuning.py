@@ -1,8 +1,8 @@
 """Per-object alerting overrides, read from labels that already exist.
 
 The ask this answers is "let us adjust what alerts without shipping code", and the
-tempting shape for it is a `monitoring_label` column on the recipe. That column is
-not here on purpose: `labels` is already a `JSONB` dict on `Recipe`, `Workload`,
+tempting shape for it is a `monitoring_label` column on the workload. That column is
+not here on purpose: `labels` is already a `JSONB` dict on `Workload`,
 `Cluster`, `Pool`, `Node`, `Endpoint` and `DiscoveredWorkload`, already declared,
 already editable through `PATCH` and already rendered in the console. A dedicated
 column would be a second place to say the same thing, needing its own migration,
@@ -15,13 +15,14 @@ So the reactor reads a reserved namespace out of the labels it already has:
     hangar.io/alert.severity   info | warning | error | critical
     hangar.io/alert.for        45m | 2h | 900s | 900
 
-The knob lives on the **workload**, not the recipe. A recipe is shared and
-versioned, so muting there would quieten every workload built from that model at
-once — a much bigger hammer than "this one is noisy". It is not on the deployment
-either: labels moved up when `Workload` became the umbrella, and per-cluster muting
-would mean the same noisy model had to be quietened once per region. `resolve`
-takes any number of label dicts most-specific-first, so a recipe-level default is a
-one-line change if it turns out to be wanted; nothing reads recipe labels today.
+The knob lives on the **workload**, and there is nothing above it to put it on: the
+recipe that was once shared between workloads is gone, and muting on a shared object
+would have quietened every workload built from that model at once — a much bigger
+hammer than "this one is noisy". It is not on the deployment either: labels moved up
+when `Workload` became the umbrella, and per-cluster muting would mean the same noisy
+model had to be quietened once per region. `resolve` takes any number of label dicts
+most-specific-first, so a project-level default is a one-line change if it turns out
+to be wanted; nothing reads anything above the workload today.
 
 Cluster conditions read `Cluster.labels` and stalled workloads read
 `DiscoveredWorkload.labels`. The latter come from the cluster rather than from us,
@@ -105,7 +106,7 @@ def resolve(*label_sources: Any) -> Override:
     """Merges label dicts most-specific-first, field by field.
 
     Field by field rather than whole-dict, so a deployment that only sets
-    `hangar.io/alert.for` still inherits the severity its recipe chose. Whole-dict
+    `hangar.io/alert.for` still inherits the severity its workload chose. Whole-dict
     precedence would make every override an all-or-nothing copy of the parent's.
     """
     muted = False

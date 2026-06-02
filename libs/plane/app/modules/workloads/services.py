@@ -3,16 +3,26 @@ from __future__ import annotations
 import datetime as dt
 
 from uuid import UUID
+from decimal import Decimal
+from dataclasses import replace
+
+import msgspec
 
 from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import devices
+from app.config import settings
 from app.core.ids import POLICY
 from app.core.ids import WORKLOAD
 from app.core.ids import DEPLOYMENT
 from app.core.ids import new_uid
+from app.core.vram import Sizing
+from app.core.vram import sizing_of
+from app.core.vram import impossible
 from app.db.models import Policy
+from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import PriorityClass
@@ -24,6 +34,7 @@ from app.db.notify import DatabaseNotifier
 from app.ingestion import statements
 from app.core.schemas import ListResponse
 from app.core.serving import served_model
+from app.core.serving import serving_digest
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -37,10 +48,21 @@ from app.modules.deployments.schemas import DeploymentStatusSchema
 from app.modules.deployments.schemas import DeploymentReplicaRollupSchema
 from app.modules.placement.repository import SUBJECT_WORKLOAD
 
+from .schemas import CacheSchema
+from .schemas import ShapeSchema
+from .schemas import OverlaySchema
+from .schemas import ServingSchema
 from .schemas import WorkloadSchema
+from .schemas import ReasoningSchema
+from .schemas import ResourcesSchema
+from .schemas import ParallelismSchema
+from .schemas import CapabilitiesSchema
 from .schemas import WorkloadScaleSchema
 from .schemas import WorkloadCreateRequest
+from .schemas import WorkloadServingSchema
+from .schemas import WorkloadServingUpdate
 from .schemas import WorkloadUpdateRequest
+from .schemas import WorkloadServingRequest
 from .schemas import WorkloadPlacementSchema
 from .schemas import WorkloadDeploymentSchema
 from .schemas import WorkloadPlacementNodeSchema
@@ -79,6 +101,625 @@ EMPTY = DeploymentReplicaRollupSchema(
     failed=0,
     at_current_generation=0,
 )
+
+
+DTYPE_VALUES = ("fp16", "float16", "bf16", "bfloat16", "fp32", "float32", "auto")
+"""Precisions a checkpoint is stored in. None of them is a quantization method."""
+
+
+def check_quantization(value: str | None) -> None:
+    """Rejects a dtype put in the quantization field.
+
+    The two are one keystroke apart in a form and mean opposite things: dtype is
+    the precision weights are already in, quantization is a scheme for making them
+    smaller than that. An engine takes only real methods on `--quantization`, so a
+    dtype there is not a degraded serve — it is a worker that exits before it binds
+    a port, and the cluster reports it as a crash loop with no mention of this
+    field. Cheap to catch when someone writes it, expensive to diagnose an hour
+    later from the other side of the wire.
+
+    Unquantized weights declare nothing here. Empty is the correct answer for the
+    majority of repos, which is why this rejects rather than translates: silently
+    moving the value to `dtype` would guess at an intent the caller did not state.
+    """
+    if value is not None and value.strip().lower() in DTYPE_VALUES:
+        raise Invalid(
+            f"{value} is a dtype, not a quantization method; set dtype instead, "
+            "and leave quantization empty for weights that ship unquantized",
+            {"quantization": value},
+        )
+
+
+def check_footprint(**fields: int | None) -> None:
+    """Rejects a negative resource request.
+
+    Separate from the shape check because these are per-replica sizing hints
+    rather than placement constraints: none of them decide which devices a workload
+    can run on, and none of them can be below zero either.
+    """
+    for name, value in fields.items():
+        if value is not None and value < 0:
+            raise Invalid(f"{name} cannot be negative", {name: value})
+
+
+def check_shape(
+    device_class: str,
+    device_count: int,
+    tensor_parallel: int,
+    pipeline_parallel: int,
+    expert_parallel: int,
+    context_length: int,
+    kv_cache_fraction: float | None,
+) -> None:
+    """Rejects a shape that cannot be placed.
+
+    Two rules, both from heterogeneity being a scheduling constraint rather than
+    an enrolment detail. A shape without a device class is not a shape — you
+    cannot tensor-parallel across an A100 and an H100 — and a device count that
+    is not a whole multiple of tensor × pipeline parallelism describes a layout
+    no scheduler can lay down.
+    """
+    if not device_class or not device_class.strip():
+        raise Invalid("a shape without a device class is not a shape")
+    for name, value in (
+        ("device_count", device_count),
+        ("tensor_parallel", tensor_parallel),
+        ("pipeline_parallel", pipeline_parallel),
+        ("expert_parallel", expert_parallel),
+        ("context_length", context_length),
+    ):
+        if value < 1:
+            raise Invalid(f"{name} must be at least 1", {name: value})
+    span = tensor_parallel * pipeline_parallel
+    if device_count % span:
+        raise Invalid(
+            "device_count must be a whole multiple of tensor × pipeline parallelism",
+            {"device_count": device_count, "tensor_parallel": tensor_parallel, "pipeline_parallel": pipeline_parallel},
+        )
+    if expert_parallel > device_count:
+        raise Invalid(
+            "expert_parallel exceeds the device count",
+            {"expert_parallel": expert_parallel, "device_count": device_count},
+        )
+    if kv_cache_fraction is not None and not 0 < kv_cache_fraction <= 1:
+        raise Invalid("kv_cache_fraction must be within (0, 1]", {"kv_cache_fraction": kv_cache_fraction})
+
+
+def sizing_for(artifact: Artifact, quantization: str | None) -> Sizing | None:
+    """The artifact's sizing facts, at the precision this workload means to serve it.
+
+    The workload's quantization wins wherever it declares one. Serving fp16 weights
+    at fp8 halves what has to be resident, so sizing against the repo's native
+    precision would refuse shapes that work — the workload is the thing that decides
+    how the weights are loaded, and the artifact only says how they ship.
+    """
+    sizing = sizing_of(artifact.metadata_, artifact.parameter_count)
+    if sizing is None or not quantization:
+        return sizing
+    return replace(sizing, quantization=quantization)
+
+
+def check_capacity(sizing: Sizing | None, device_class: str, device_count: int, tensor_parallel: int) -> None:
+    """Rejects a shape whose devices cannot physically hold the weights.
+
+    Separate from `check_shape` because it needs the artifact, and `check_shape`
+    runs on arithmetic alone before one has been loaded. Separate from a full fit
+    because of where the confidence runs out: `app.core.vram.impossible` is the half
+    of a fit with no fudge factor in it, and whether a context window and a batch
+    also fit is an estimate that belongs in a fitment view as advice. Enforcing the
+    estimate would eventually refuse a workload that serves perfectly well.
+
+    Silent about anything it cannot measure. An artifact whose repo published no
+    attention shape or parameter count, and a device class the catalogue does not
+    name, both pass — the plane does not refuse what it has no number for.
+
+    `tensor_parallel` is the workload's own, not the device count. A replica of sixteen
+    devices at tensor-eight by pipeline-two divides its heads by eight, and checking
+    against sixteen would refuse a layout that works.
+    """
+    if sizing is None:
+        return
+    device = devices.table().get(device_class)
+    if device is None:
+        return
+    reason = impossible(sizing, device, device_count, tensor_parallel=tensor_parallel)
+    if reason is not None:
+        raise Invalid(
+            f"this shape cannot serve the artifact: {reason}",
+            {
+                "device_class": device_class,
+                "device_count": device_count,
+                "tensor_parallel": tensor_parallel,
+                "quantization": sizing.quantization,
+            },
+        )
+
+
+TRANSPORTS = frozenset({"reasoning_content", "inline_tags"})
+STREAM_USAGE = frozenset({"final_chunk", "every_chunk", "on_request"})
+CONTEXT_OVERFLOW = frozenset({"reject", "truncate_input", "clamp_output"})
+STRUCTURED_OUTPUT_MODES = frozenset({"text", "json_object", "json_schema"})
+TOOL_CHOICE_MODES = frozenset({"auto", "none", "required", "named"})
+INPUT_MODALITIES = frozenset({"text", "image", "audio", "video"})
+PROMPT_CACHE_MODES = frozenset({"off", "automatic", "explicit"})
+
+SERVING_FLAGS: dict[str, dict[str, str]] = {
+    "vllm": {
+        "parser": "reasoning-parser",
+        "tool_call_parser": "tool-call-parser",
+        "structured_output_backend": "guided-decoding-backend",
+        "max_images_per_request": "limit-mm-per-prompt",
+    },
+    "sglang": {
+        "parser": "reasoning-parser",
+        "tool_call_parser": "tool-call-parser",
+        "structured_output_backend": "grammar-backend",
+    },
+}
+"""The engine argument each typed serving field speaks for, per engine.
+
+Keyed without the leading dashes, the way the operator keys them once it has
+trimmed them. Only the fields that genuinely map to one flag are here: an engine
+this plane has never heard of maps nothing, and neither `context_overflow` nor
+EOS suppression is a single flag on every engine — those are the operator's to
+render, and it is entitled to fail a reconcile rather than drop one silently."""
+
+
+SERVING_IMPLIED_FLAGS: dict[str, dict[str, tuple[str, ...]]] = {
+    "vllm": {
+        "tool_call_parser": ("enable-auto-tool-choice",),
+    },
+}
+"""Valueless flags a typed field cannot live without, per engine.
+
+vLLM parses tool calls with `--tool-call-parser` and *dispatches* them only with
+`--enable-auto-tool-choice`; set the first alone and the engine loads a parser it
+never runs, so the workload reads as configured and the endpoint returns the call as
+prose in `content`. Every one of the fifteen models in the vLLM recipe corpus that
+declares tool calling ships the two flags together, and none ships either alone.
+
+They are here rather than as a second typed field because they are not a second
+decision. A serving block able to express one without the other can only express a
+broken state, and the field that renders them already carries the intent."""
+
+
+def _members(name: str, values: list[str], allowed: frozenset[str]) -> None:
+    unknown = [v for v in values if v not in allowed]
+    if unknown:
+        raise Invalid(f"unknown {name}: {', '.join(sorted(unknown))}", {name: values, "allowed": sorted(allowed)})
+    if len(set(values)) != len(values):
+        raise Invalid(f"{name} is a set and repeats a member", {name: values})
+
+
+def _reasoning_declared(reasoning: ReasoningSchema) -> bool:
+    """Whether anything about reasoning was declared rather than left at its default."""
+    return bool(
+        reasoning.default_on
+        or reasoning.parser
+        or reasoning.transport == "inline_tags"
+        or reasoning.think_begin_token
+        or reasoning.think_end_token
+        or reasoning.suppress_eos_until_think_end
+    )
+
+
+def check_serving(
+    serving: ServingSchema,
+    capabilities: CapabilitiesSchema,
+    prefix_cache_enabled: bool,
+) -> None:
+    """Rejects a serving configuration that contradicts itself.
+
+    Every rule here is a consistency check between two things the workload declares
+    — never a check that a capability claim is true. The plane holds no table of
+    what an engine can do and is not being given one: a block that is internally
+    consistent and entirely false is accepted, and a conformance run is the only
+    thing that can falsify it.
+    """
+    reasoning = serving.reasoning
+    if reasoning.transport not in TRANSPORTS:
+        raise Invalid(
+            f"unknown reasoning transport {reasoning.transport!r}",
+            {"transport": reasoning.transport, "allowed": sorted(TRANSPORTS)},
+        )
+    if serving.stream_usage not in STREAM_USAGE:
+        raise Invalid(
+            f"unknown stream_usage {serving.stream_usage!r}",
+            {"stream_usage": serving.stream_usage, "allowed": sorted(STREAM_USAGE)},
+        )
+    if serving.context_overflow not in CONTEXT_OVERFLOW:
+        raise Invalid(
+            f"unknown context_overflow {serving.context_overflow!r}",
+            {"context_overflow": serving.context_overflow, "allowed": sorted(CONTEXT_OVERFLOW)},
+        )
+
+    if reasoning.transport == "inline_tags" and not (reasoning.think_begin_token and reasoning.think_end_token):
+        raise Invalid(
+            "inline_tags needs both think tokens, because a client parsing the trace needs the literals",
+            {
+                "think_begin_token": reasoning.think_begin_token,
+                "think_end_token": reasoning.think_end_token,
+            },
+        )
+    if reasoning.suppress_eos_until_think_end and not reasoning.think_end_token:
+        raise Invalid(
+            "suppress_eos_until_think_end needs the token it suppresses until",
+            {"think_end_token": reasoning.think_end_token},
+        )
+    if _reasoning_declared(reasoning) and not capabilities.reasoning_supported:
+        raise Invalid(
+            "a workload that is not claimed to reason cannot declare how it reasons",
+            {"reasoning": msgspec.to_builtins(reasoning), "reasoning_supported": False},
+        )
+
+    _members("structured_output_modes", capabilities.structured_output_modes, STRUCTURED_OUTPUT_MODES)
+    _members("tool_choice_modes", capabilities.tool_choice_modes, TOOL_CHOICE_MODES)
+    _members("input_modalities", capabilities.input_modalities, INPUT_MODALITIES)
+
+    if serving.structured_output_backend and "json_schema" not in capabilities.structured_output_modes:
+        raise Invalid(
+            "a structured output backend is meaningless without json_schema among the modes",
+            {
+                "structured_output_backend": serving.structured_output_backend,
+                "structured_output_modes": capabilities.structured_output_modes,
+            },
+        )
+    if bool(capabilities.tool_choice_modes) != capabilities.tool_calling_supported:
+        raise Invalid(
+            "tool_choice_modes is non-empty exactly when tool calling is supported",
+            {
+                "tool_choice_modes": capabilities.tool_choice_modes,
+                "tool_calling_supported": capabilities.tool_calling_supported,
+            },
+        )
+    if serving.tool_call_parser and not capabilities.tool_calling_supported:
+        raise Invalid(
+            "a tool call parser is meaningless on a workload that does not claim tool calling",
+            {"tool_call_parser": serving.tool_call_parser},
+        )
+
+    if "text" not in capabilities.input_modalities:
+        raise Invalid("text is always an input modality", {"input_modalities": capabilities.input_modalities})
+    if serving.max_images_per_request is not None:
+        if "image" not in capabilities.input_modalities:
+            raise Invalid(
+                "an image limit is meaningless without image among the input modalities",
+                {"input_modalities": capabilities.input_modalities},
+            )
+        if serving.max_images_per_request < 1:
+            raise Invalid(
+                "max_images_per_request must be at least 1",
+                {"max_images_per_request": serving.max_images_per_request},
+            )
+
+    if capabilities.prompt_cache_mode not in PROMPT_CACHE_MODES:
+        raise Invalid(
+            f"unknown prompt_cache_mode {capabilities.prompt_cache_mode!r}",
+            {"prompt_cache_mode": capabilities.prompt_cache_mode, "allowed": sorted(PROMPT_CACHE_MODES)},
+        )
+    if capabilities.prompt_cache_mode != "off" and not prefix_cache_enabled:
+        raise Invalid(
+            "a prompt cache contract needs the mechanism under it",
+            {"prompt_cache_mode": capabilities.prompt_cache_mode, "prefix_cache_enabled": prefix_cache_enabled},
+        )
+    if capabilities.prompt_cache_ttl_seconds is not None and capabilities.prompt_cache_ttl_seconds < 0:
+        raise Invalid(
+            "prompt_cache_ttl_seconds cannot be negative",
+            {"prompt_cache_ttl_seconds": capabilities.prompt_cache_ttl_seconds},
+        )
+
+
+def serving_args(engine: str, serving: ServingSchema) -> dict[str, str]:
+    """The engine arguments the typed serving block speaks for, keyed without dashes."""
+    flags = SERVING_FLAGS.get(engine.strip().lower(), {})
+    args: dict[str, str] = {}
+    for field_name, value in (
+        ("parser", serving.reasoning.parser),
+        ("tool_call_parser", serving.tool_call_parser),
+        ("structured_output_backend", serving.structured_output_backend),
+    ):
+        if value and field_name in flags:
+            args[flags[field_name]] = value
+    if serving.max_images_per_request is not None and "max_images_per_request" in flags:
+        args[flags["max_images_per_request"]] = f"image={serving.max_images_per_request}"
+    return args
+
+
+def serving_companion_args(engine: str, serving: ServingSchema) -> dict[str, str]:
+    """The valueless flags a typed field cannot work without, keyed without dashes.
+
+    Separate from `serving_args` because the precedence is the other way round. A
+    typed field beats `engine_args`, since it is the value the plane can validate and
+    display. A companion flag does not: it is inferred rather than declared, so a
+    workload that spells it out by hand — for an engine build that wants a value there,
+    or to hold a flag this table gets wrong — keeps what it wrote.
+    """
+    implied = SERVING_IMPLIED_FLAGS.get(engine.strip().lower(), {})
+    args: dict[str, str] = {}
+    if serving.tool_call_parser:
+        for flag in implied.get("tool_call_parser", ()):
+            args[flag] = ""
+    return args
+
+
+def engine_image_repos() -> dict[str, str]:
+    """`ENGINE_IMAGE_REPOS` parsed into `engine -> repository`.
+
+    Malformed pairs are dropped rather than raised on: this is read on the write
+    path of every workload, and one bad character in an environment variable must
+    not be the reason a workload cannot be created.
+    """
+    repos: dict[str, str] = {}
+    for pair in settings.ENGINE_IMAGE_REPOS.split(","):
+        engine, _, repository = pair.strip().partition("=")
+        if engine and repository:
+            repos[engine.strip().lower()] = repository.strip()
+    return repos
+
+
+def resolve_engine_image(engine: str, engine_version: str, declared: str | None) -> str | None:
+    """The image a workload serves with, resolved from its engine and version.
+
+    A declared image is returned untouched — pinning an exact image is the whole
+    reason the field is writable, and a workload that names one has already said
+    what it means. Everything else is the common case: an author picks `vllm` and
+    a version, and the repository those two imply is configuration, not a thing
+    to retype.
+
+    Returns `None` for an engine with no configured repository, which leaves the
+    workload exactly as it was before this existed. That is deliberate: inventing an
+    address for an engine the plane has never been told about would trade a
+    visible "no image" for an `ImagePullBackOff` on a cluster.
+    """
+    if declared:
+        return declared
+    repository = engine_image_repos().get((engine or "").strip().lower())
+    if not repository:
+        return None
+    tag = (engine_version or "").strip()
+    if not tag or tag == "latest":
+        tag = settings.ENGINE_IMAGE_TAG_DEFAULT
+    return f"{repository}:{tag}"
+
+
+def resolved_engine_args(engine: str, engine_args: dict | None, serving: ServingSchema) -> dict[str, str]:
+    """`engine_args` with the typed serving flags laid over the top.
+
+    The typed field wins the collision. `engine_args` stays the escape hatch for a
+    flag nothing here models, but a flag that *is* modelled has one declared home,
+    and a workload that pins `--reasoning-parser` by hand while also naming
+    `serving.reasoning.parser` is stating the same thing twice — the typed value is
+    the one the plane can validate, display and verify, so it is the one that
+    stands.
+
+    Derived on every read and stored nowhere: `engine_args` is left exactly as it
+    was written.
+
+    TODO: the operator renders the other way round today — `engineArgs`
+    (`libs/operator/internal/render/dynamo.go:319`) lays `engine_args` over its
+    derived flags last, so whichever way the serving block eventually reaches the
+    wire, the two have to be made to agree or this becomes a resolved view of
+    something the cluster does not do.
+    """
+    resolved = {str(key).removeprefix("--"): str(value) for key, value in (engine_args or {}).items()}
+    for flag, value in serving_companion_args(engine, serving).items():
+        resolved.setdefault(flag, value)
+    resolved.update(serving_args(engine, serving))
+    return resolved
+
+
+def serving_block(stored: dict | None) -> ServingSchema:
+    return msgspec.convert(stored or {}, ServingSchema)
+
+
+def capabilities_block(stored: dict | None) -> CapabilitiesSchema:
+    return msgspec.convert(stored or {}, CapabilitiesSchema)
+
+
+FRACTION_SCALE = Decimal("0.0001")
+"""The scale `demand_workload.kv_cache_fraction` is stored at, as `Numeric(5, 4)`.
+
+Written through on the way in so that the value a create holds in memory is the
+value Postgres hands back on the next read. The digest hashes this column as the
+string it round-trips as, so a `0.9` that stayed a float until the next update
+would hash differently from the `0.9000` the database returned — the same
+configuration with two identities, produced by nothing but a reload.
+"""
+
+
+def _fraction(value: float | None) -> Decimal | None:
+    if value is None:
+        return None
+    return Decimal(str(value)).quantize(FRACTION_SCALE)
+
+
+def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> None:
+    """Rejects a serving configuration that cannot be placed, run, or believed.
+
+    One entry point for create and update alike: an update is validated as the
+    whole configuration it would leave behind, never as the fields it names, so a
+    patch cannot arrive at a state a create would have refused.
+    """
+    check_shape(
+        device_class=data.shape.device_class,
+        device_count=data.shape.device_count,
+        tensor_parallel=data.parallelism.tensor,
+        pipeline_parallel=data.parallelism.pipeline,
+        expert_parallel=data.parallelism.expert,
+        context_length=data.context_length,
+        kv_cache_fraction=data.cache.kv_cache_fraction,
+    )
+    check_footprint(
+        device_memory_mib_min=data.shape.device_memory_mib_min,
+        max_batch_tokens=data.max_batch_tokens,
+        cpu_cores=data.resources.cpu_cores,
+        memory_mib=data.resources.memory_mib,
+        disk_gib=data.resources.disk_gib,
+    )
+    check_serving(data.serving, data.capabilities, data.cache.prefix_cache_enabled)
+    check_quantization(data.quantization)
+    check_capacity(
+        sizing_for(artifact, data.quantization),
+        data.shape.device_class,
+        data.shape.device_count,
+        data.parallelism.tensor,
+    )
+
+
+def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
+    """A validated serving block as the columns it is stored in.
+
+    The one place the nested request shape becomes flat columns, so create,
+    promotion and update all write the same fields from the same reading of them.
+    `serving_digest` is not here: it is derived from the row after these have
+    landed on it, by `app.core.serving`, which is the only thing entitled to
+    compute it.
+    """
+    return {
+        "artifact_id": artifact.id,
+        "engine": data.engine,
+        "engine_version": data.engine_version,
+        "engine_image": resolve_engine_image(data.engine, data.engine_version, data.engine_image),
+        "frontend_image": data.frontend_image,
+        "engine_args": data.engine_args,
+        "imported_args": data.imported_args,
+        "quantization": data.quantization,
+        "dtype": data.dtype,
+        "tensor_parallel": data.parallelism.tensor,
+        "pipeline_parallel": data.parallelism.pipeline,
+        "expert_parallel": data.parallelism.expert,
+        "context_length": data.context_length,
+        "max_batch_tokens": data.max_batch_tokens,
+        "kv_cache_dtype": data.cache.kv_cache_dtype,
+        "kv_cache_fraction": _fraction(data.cache.kv_cache_fraction),
+        "prefix_cache_enabled": data.cache.prefix_cache_enabled,
+        "prefix_cache_config": data.cache.prefix_cache_config,
+        "device_class": data.shape.device_class,
+        "device_count": data.shape.device_count,
+        "device_memory_mib_min": data.shape.device_memory_mib_min,
+        "requires_single_topology_domain": data.shape.requires_single_topology_domain,
+        "topology_domain_kind": data.shape.topology_domain_kind,
+        "cpu_cores": data.resources.cpu_cores,
+        "memory_mib": data.resources.memory_mib,
+        "disk_gib": data.resources.disk_gib,
+        "overlay": msgspec.to_builtins(data.overlay),
+        "serving": msgspec.to_builtins(data.serving),
+        "capabilities": msgspec.to_builtins(data.capabilities),
+    }
+
+
+def serving_request(workload: Workload, artifact: Artifact) -> WorkloadServingRequest:
+    """A stored workload read back as the request that would have created it.
+
+    A patch is applied to this and the result validated whole, which is what keeps
+    one description of a legal configuration rather than one for creates and a
+    weaker one for updates.
+    """
+    fraction = workload.kv_cache_fraction
+    return WorkloadServingRequest(
+        artifact=artifact.uid,
+        engine=workload.engine,
+        engine_version=workload.engine_version,
+        engine_image=workload.engine_image,
+        frontend_image=workload.frontend_image,
+        engine_args=workload.engine_args,
+        imported_args=workload.imported_args,
+        quantization=workload.quantization,
+        dtype=workload.dtype,
+        parallelism=ParallelismSchema(
+            tensor=workload.tensor_parallel,
+            pipeline=workload.pipeline_parallel,
+            expert=workload.expert_parallel,
+        ),
+        context_length=workload.context_length,
+        max_batch_tokens=workload.max_batch_tokens,
+        cache=CacheSchema(
+            kv_cache_dtype=workload.kv_cache_dtype,
+            kv_cache_fraction=None if fraction is None else float(fraction),
+            prefix_cache_enabled=workload.prefix_cache_enabled,
+            prefix_cache_config=workload.prefix_cache_config,
+        ),
+        shape=ShapeSchema(
+            device_class=workload.device_class,
+            device_count=workload.device_count,
+            device_memory_mib_min=workload.device_memory_mib_min,
+            requires_single_topology_domain=workload.requires_single_topology_domain,
+            topology_domain_kind=workload.topology_domain_kind,
+        ),
+        resources=ResourcesSchema(
+            cpu_cores=workload.cpu_cores,
+            memory_mib=workload.memory_mib,
+            disk_gib=workload.disk_gib,
+        ),
+        overlay=OverlaySchema(
+            pod_spec=(workload.overlay or {}).get("pod_spec", {}) or {},
+            dynamo=(workload.overlay or {}).get("dynamo", {}) or {},
+        ),
+        serving=serving_block(workload.serving),
+        capabilities=capabilities_block(workload.capabilities),
+    )
+
+
+def serving_view(workload: Workload, artifact_uid: str) -> WorkloadServingSchema:
+    """The serving block as a read returns it, with the resolved arguments beside it."""
+    fraction = workload.kv_cache_fraction
+    serving = serving_block(workload.serving)
+    return WorkloadServingSchema(
+        artifact_id=artifact_uid,
+        engine=workload.engine,
+        engine_version=workload.engine_version,
+        engine_image=workload.engine_image,
+        frontend_image=workload.frontend_image,
+        engine_args=workload.engine_args,
+        imported_args=workload.imported_args,
+        quantization=workload.quantization,
+        dtype=workload.dtype,
+        parallelism=ParallelismSchema(
+            tensor=workload.tensor_parallel,
+            pipeline=workload.pipeline_parallel,
+            expert=workload.expert_parallel,
+        ),
+        context_length=workload.context_length,
+        max_batch_tokens=workload.max_batch_tokens,
+        cache=CacheSchema(
+            kv_cache_dtype=workload.kv_cache_dtype,
+            kv_cache_fraction=None if fraction is None else float(fraction),
+            prefix_cache_enabled=workload.prefix_cache_enabled,
+            prefix_cache_config=workload.prefix_cache_config,
+        ),
+        serving=serving,
+        capabilities=capabilities_block(workload.capabilities),
+        resolved_engine_args=resolved_engine_args(workload.engine, workload.engine_args, serving),
+        shape=ShapeSchema(
+            device_class=workload.device_class,
+            device_count=workload.device_count,
+            device_memory_mib_min=workload.device_memory_mib_min,
+            requires_single_topology_domain=workload.requires_single_topology_domain,
+            topology_domain_kind=workload.topology_domain_kind,
+        ),
+        resources=ResourcesSchema(
+            cpu_cores=workload.cpu_cores,
+            memory_mib=workload.memory_mib,
+            disk_gib=workload.disk_gib,
+        ),
+        overlay=OverlaySchema(
+            pod_spec=(workload.overlay or {}).get("pod_spec", {}) or {},
+            dynamo=(workload.overlay or {}).get("dynamo", {}) or {},
+        ),
+    )
+
+
+def apply_serving(workload: Workload, data: WorkloadServingRequest, artifact: Artifact) -> None:
+    """Writes a validated serving configuration onto a workload, digest included.
+
+    The digest is computed from the row after the columns have landed on it rather
+    than from the request, so what is hashed is what was stored — a coercion the
+    write performs and the hash did not see would be a digest that names a
+    configuration nobody is running.
+    """
+    for key, value in serving_columns(data, artifact).items():
+        setattr(workload, key, value)
+    workload.serving_digest = serving_digest(workload, artifact)
 
 
 def constraint_name(workload_name: str) -> str:
@@ -249,16 +890,15 @@ class WorkloadService:
     def schema(
         self,
         workload: Workload,
-        recipe_uid: str,
+        serving: WorkloadServingSchema,
         project_uid: str,
         priority_class: str,
         pinned_cluster_uid: str | None,
         adapter_uids: list[str],
         deployments: list[WorkloadDeploymentSchema],
         rows: list[Deployment],
-        recipe_name: str | None = None,
         artifact_tag: str | None = None,
-        resolved_served_model_name: str = "",
+        served_model_name: str = "",
     ) -> WorkloadSchema:
         return WorkloadSchema(
             id=workload.uid,
@@ -270,14 +910,12 @@ class WorkloadService:
             preemptible=workload.preemptible,
             paused=workload.paused,
             gang_size=workload.gang_size,
-            recipe_id=recipe_uid,
+            serving_digest=workload.serving_digest,
+            serving=serving,
             adapter_artifact_ids=adapter_uids,
-            served_model_name=workload.served_model_name,
-            resolved_served_model_name=resolved_served_model_name,
+            served_model_name=served_model_name,
             overrides=workload.overrides,
             labels=workload.labels,
-            requires_single_topology_domain=workload.requires_single_topology_domain,
-            topology_domain_kind=workload.topology_domain_kind,
             strategy=workload.strategy,
             cluster_floors=workload.cluster_floors,
             max_clusters=workload.max_clusters,
@@ -297,7 +935,6 @@ class WorkloadService:
             updated_at=workload.updated_at,
             revision=_revision(workload, rows),
             deployments=deployments,
-            recipe_name=recipe_name,
             artifact_tag=artifact_tag,
         )
 
@@ -338,22 +975,20 @@ class WorkloadService:
         items = []
         for row in rows:
             workload = row[0]
+            artifact = workload.artifact
             group = grouped.get(workload.id, [])
             items.append(
                 self.schema(
                     workload=workload,
-                    recipe_uid=row.recipe_uid,
+                    serving=serving_view(workload, artifact.uid),
                     project_uid=row.project_uid,
                     priority_class=row.priority_class,
                     pinned_cluster_uid=row.pinned_cluster_uid,
                     adapter_uids=[adapters[i] for i in workload.adapter_artifact_ids if i in adapters],
                     deployments=[self._deployment(d, _rollup(rollup.get(d[0].id))) for d in group],
                     rows=[d[0] for d in group],
-                    recipe_name=row.recipe_name,
-                    artifact_tag=row.artifact_tag,
-                    resolved_served_model_name=served_model(row.Recipe, row.Artifact, workload)
-                    if row.Artifact is not None
-                    else "",
+                    artifact_tag=artifact.name,
+                    served_model_name=served_model(workload, artifact),
                 )
             )
         return items
@@ -381,7 +1016,9 @@ class WorkloadService:
         project: str | None = None,
         kind: str | None = None,
         phase: str | None = None,
-        recipe: str | None = None,
+        artifact: str | None = None,
+        serving_digest: str | None = None,
+        device_class: str | None = None,
         cluster: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> ListResponse[WorkloadSchema]:
@@ -396,7 +1033,9 @@ class WorkloadService:
             project=project,
             kind=kind,
             phase=phase,
-            recipe=recipe,
+            artifact=artifact,
+            serving_digest=serving_digest,
+            device_class=device_class,
             cluster=cluster,
             labels=labels,
         )
@@ -542,6 +1181,10 @@ class WorkloadService:
         yet — `Workload.id` is `server_default`, so there is no primary key to attach to
         until `repo.add` has flushed. Those are the same constraint expressed twice for
         one call only; every expansion after this one reads the attachment.
+
+        The serving block is validated before anything is placed, and its digest is
+        derived from the row rather than taken from the caller. A digest somebody else
+        computed is a claim about a configuration rather than a reading of one.
         """
         if data.kind not in KINDS:
             raise Invalid(f"unknown kind {data.kind!r}", {"allowed": sorted(KINDS)})
@@ -553,9 +1196,10 @@ class WorkloadService:
             raise Invalid("max_clusters must be at least 1", {"max_clusters": data.max_clusters})
         check_scale(data.min_scale, data.desired_scale, data.max_scale, data.kind, data.gang_size)
 
-        recipe = await self.repo.recipe_by_ref(data.recipe)
-        if recipe is None:
-            raise NotFound(f"no recipe {data.recipe!r}")
+        artifact = await self.repo.artifact_by_ref(data.serving.artifact)
+        if artifact is None:
+            raise NotFound(f"no artifact {data.serving.artifact!r}")
+        check_serving_request(data.serving, artifact)
         project = await self.repo.project_by_ref(data.project)
         if project is None:
             raise NotFound(f"no project {data.project!r}")
@@ -598,7 +1242,6 @@ class WorkloadService:
             kind=data.kind,
             project_id=project.id,
             priority_class_id=priority.id,
-            recipe_id=recipe.id,
             min_scale=data.min_scale,
             max_scale=data.max_scale,
             desired_scale=data.desired_scale,
@@ -610,13 +1253,11 @@ class WorkloadService:
             preemptible=data.preemptible,
             paused=False,
             adapter_artifact_ids=await self._adapter_ids(data.adapter_artifacts),
-            served_model_name=data.served_model_name,
             overrides=data.overrides,
             labels=data.labels,
-            requires_single_topology_domain=data.requires_single_topology_domain,
-            topology_domain_kind=data.topology_domain_kind,
             deadline_at=data.deadline_at,
         )
+        apply_serving(workload, data.serving, artifact)
 
         decision = await self._expand(workload, extra_policies=() if constraint is None else (constraint,))
         shares = [s for s in decision.shares if s.replicas > 0]
@@ -660,10 +1301,11 @@ class WorkloadService:
                 await self._record(
                     deployment,
                     "created",
-                    f"{data.name} was created on {share.cluster_name} from recipe {recipe.name}",
+                    f"{data.name} was created on {share.cluster_name} serving {artifact.name}",
                     {
                         "cluster": share.cluster_name,
-                        "recipe": recipe.uid,
+                        "artifact": artifact.uid,
+                        "serving_digest": workload.serving_digest,
                         "workload_id": workload.uid,
                         "desired_replicas": str(share.replicas),
                         "placement_reason": decision.summary or "",
@@ -678,6 +1320,36 @@ class WorkloadService:
             await self._announce(row.cluster_uid, row[0].uid, row[0].generation)
         return await self.get(workload.uid)
 
+    async def _apply_serving_patch(self, workload: Workload, patch: WorkloadServingUpdate) -> None:
+        """Merges a serving patch onto the stored configuration and rewrites the columns.
+
+        The whole configuration is validated, not the fields the caller named, so a
+        patch cannot reach a state a create would have refused — an engine version
+        bumped past what the shape can hold is caught here rather than by a cluster.
+
+        `engine_image` re-derives when the stored one is the image this plane
+        produced and the caller did not name a new one, so that moving
+        `engine_version` moves the image. Carrying the stored image forward as a
+        declared one made every workload pin itself the moment it was created: the
+        version bump was accepted, stored, and silently ignored, and the workload
+        reported the new version while the cluster went on pulling the old image. An
+        image somebody pinned by hand does not match what the old engine and version
+        resolve to, so it survives a version bump untouched, and naming
+        `engine_image` in the same patch always wins outright.
+        """
+        artifact = await self.repo.artifact_of(workload)
+        if artifact is None:
+            raise NotFound(f"workload {workload.uid} has no artifact")
+        declared = {key: value for key, value in patch.to_dict().items() if value is not UNSET}
+        was_derived = workload.engine_image == resolve_engine_image(workload.engine, workload.engine_version, None)
+        request = serving_request(workload, artifact)
+        for key, value in declared.items():
+            setattr(request, key, value)
+        if was_derived and "engine_image" not in declared:
+            request.engine_image = None
+        check_serving_request(request, artifact)
+        apply_serving(workload, request, artifact)
+
     async def update(self, ref: str, data: WorkloadUpdateRequest, if_match: str | None = None) -> WorkloadSchema:
         """A partial update of what was asked for, globally.
 
@@ -686,6 +1358,9 @@ class WorkloadService:
         `workload.scale` operation. `strategy`, `cluster_floors` and `max_clusters`
         are declared here and take effect at the next expansion rather than
         reshuffling a running workload the moment they are written.
+
+        A serving change bumps every deployment's generation, because it is the one
+        kind of write here that changes the process a cluster is running.
         """
         row = await self._one(ref)
         workload = row[0]
@@ -701,6 +1376,8 @@ class WorkloadService:
         if fields.get("max_clusters") is not None and fields.get("max_clusters", 1) < 1:
             raise Invalid("max_clusters must be at least 1", {"max_clusters": fields["max_clusters"]})
 
+        if "serving" in fields:
+            await self._apply_serving_patch(workload, fields.pop("serving"))
         if "priority_class" in fields:
             name = fields.pop("priority_class")
             found = await self.repo.priority_class_by_name(name)
@@ -712,7 +1389,7 @@ class WorkloadService:
         for key, value in fields.items():
             setattr(workload, key, value)
 
-        bumped = bool({"overrides", "adapter_artifacts", "labels"} & set(data.to_dict(exclude_unset=True)))
+        bumped = bool({"overrides", "adapter_artifacts", "labels", "serving"} & set(data.to_dict(exclude_unset=True)))
         if bumped:
             for deployment in deployments:
                 deployment.generation += 1

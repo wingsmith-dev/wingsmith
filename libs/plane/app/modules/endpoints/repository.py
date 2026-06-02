@@ -9,7 +9,6 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
-from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Artifact
@@ -46,20 +45,19 @@ class EndpointRepository:
         return self._base().where(column == ref)
 
     def serving_artifact_query(self, artifact: str) -> Select:
-        """The endpoints whose targets run a recipe over one artifact.
+        """The endpoints whose targets serve one artifact.
 
-        Three hops — target to deployment to workload to recipe — expressed as a
-        subquery so that filtering by model stays one round trip rather than a
-        fan-out over every endpoint's target list. The recipe is the workload's:
-        a deployment is that workload on one cluster and declares no recipe of
-        its own.
+        Two hops — target to deployment to workload — expressed as a subquery so
+        that filtering by model stays one round trip rather than a fan-out over
+        every endpoint's target list. The artifact is the workload's: a
+        deployment is that workload on one cluster and names no artifact of its
+        own.
         """
         return (
             select(EndpointTarget.endpoint_id)
             .join(Deployment, EndpointTarget.deployment_id == Deployment.id)
             .join(Workload, Deployment.workload_id == Workload.id)
-            .join(Recipe, Workload.recipe_id == Recipe.id)
-            .where(Recipe.artifact_id.in_(ref_ids(Artifact, artifact)))
+            .where(Workload.artifact_id.in_(ref_ids(Artifact, artifact)))
         )
 
     def serving_workload_query(self, workload: str) -> Select:
@@ -117,20 +115,16 @@ class EndpointRepository:
         is unaffected. It is here rather than on a surface of its own because the
         gateway enforces it on the request path and already polls this table.
 
-        The recipe and artifact come along for one reason: the name the engine
+        The workload and artifact come along for one reason: the name the engine
         answers to. A client calls an endpoint by its public name, and the
-        frontend behind it serves under the recipe's — usually a derived
-        configuration slug like `llama-3-3-70b-instruct-fp8-tp2-32k`, which no
-        one typed and which moves when the fit is redone. The gateway rewrites
-        one to the other, so the table has to carry it. Both hops are NOT NULL
-        FKs and 1:1, so they multiply no rows either; they are outer joins only
-        because everything below `EndpointTarget` already is.
+        frontend behind it serves under whatever the workload declares — or,
+        when it declares nothing, under the artifact's Hugging Face slug. The
+        gateway rewrites one to the other, so the table has to carry both. Both
+        hops are NOT NULL FKs and 1:1, so they multiply no rows; they are outer
+        joins only because everything below `EndpointTarget` already is.
 
-        The workload rides along for the same reason and over a join that is
-        already there for the recipe hop: it is the level a served-model-name
-        override is usually declared at, and resolving the name without it would
-        have the gateway rewrite an inbound `model` to the recipe's answer while
-        the engine serves the workload's.
+        The workload also carries `serving_digest`, which is what the resolution's
+        revision is versioned by — see `_revision_of`.
         """
         query = (
             select(
@@ -140,7 +134,6 @@ class EndpointRepository:
                 Cluster,
                 ClusterServing,
                 ServingQuota,
-                Recipe,
                 Artifact,
                 Workload,
             )
@@ -150,8 +143,7 @@ class EndpointRepository:
             .outerjoin(ClusterServing, ClusterServing.cluster_id == Cluster.id)
             .outerjoin(ServingQuota, ServingQuota.endpoint_id == Endpoint.id)
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
-            .outerjoin(Recipe, Workload.recipe_id == Recipe.id)
-            .outerjoin(Artifact, Recipe.artifact_id == Artifact.id)
+            .outerjoin(Artifact, Workload.artifact_id == Artifact.id)
             .where(Endpoint.enabled.is_(True))
             .order_by(Endpoint.seq.asc())
         )
@@ -202,6 +194,23 @@ class EndpointRepository:
             if deployment is not None:
                 found[ref] = deployment
         return found
+
+    async def artifact_slug(self, deployment_id: UUID) -> str:
+        """The model id the weights behind one deployment answer to.
+
+        Read so that an endpoint created over a deployment can default its own slug to it, which
+        is what makes the two agree without anybody typing the model's name twice. The join is
+        deployment -> workload -> artifact, because the deployment carries no identity of its own:
+        it is a placement of a workload, and what is being served is a property of the weights.
+        """
+        result = await self.db.execute(
+            select(Artifact.slug)
+            .join(Workload, Workload.artifact_id == Artifact.id)
+            .join(Deployment, Deployment.workload_id == Workload.id)
+            .where(Deployment.id == deployment_id)
+            .limit(1)
+        )
+        return (result.scalar_one_or_none() or "").strip()
 
     async def add(self, endpoint: Endpoint) -> Endpoint:
         self.db.add(endpoint)

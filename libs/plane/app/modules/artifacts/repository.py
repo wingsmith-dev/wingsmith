@@ -11,7 +11,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
 from app.db.models import Device
-from app.db.models import Recipe
 from app.db.models import Project
 from app.db.models import Artifact
 from app.db.models import Workload
@@ -110,23 +109,18 @@ class ArtifactRepository:
         result = await self.db.execute(select(Artifact).where(Artifact.digest == digest).limit(1))
         return result.scalar_one_or_none()
 
-    def recipe_usage_query(self, artifact: Artifact) -> Select:
-        """Counts the recipes that serve these weights."""
-        return select(func.count(Recipe.id)).where(Recipe.artifact_id == artifact.id)
-
     def workload_usage_query(self, artifact: Artifact) -> Select:
         """Counts the distinct workloads that reach this artifact.
 
-        Either through the recipe's weights or through the workload's own adapter
-        set, unioned so a workload naming the artifact both ways counts once.
+        Either as the weights the workload serves or through its own adapter set,
+        unioned so a workload naming the artifact both ways counts once.
         """
         return (
             select(func.count(func.distinct(Workload.id)))
             .select_from(Workload)
-            .join(Recipe, Workload.recipe_id == Recipe.id)
             .where(
                 or_(
-                    Recipe.artifact_id == artifact.id,
+                    Workload.artifact_id == artifact.id,
                     Workload.adapter_artifact_ids.contains([artifact.id]),
                 )
             )
@@ -136,12 +130,11 @@ class ArtifactRepository:
         """Counts the artifacts derived from this one."""
         return select(func.count(Artifact.id)).where(Artifact.base_artifact_id == artifact.id)
 
-    async def usage_counts(self, artifact: Artifact) -> tuple[int, int, int]:
-        """The recipe, workload and downstream counts, one round trip each."""
-        recipes = await self.db.execute(self.recipe_usage_query(artifact))
+    async def usage_counts(self, artifact: Artifact) -> tuple[int, int]:
+        """The workload and downstream counts, one round trip each."""
         workloads = await self.db.execute(self.workload_usage_query(artifact))
         downstream = await self.db.execute(self.downstream_query(artifact))
-        return int(recipes.scalar_one()), int(workloads.scalar_one()), int(downstream.scalar_one())
+        return int(workloads.scalar_one()), int(downstream.scalar_one())
 
     def baseline_list_query(
         self,

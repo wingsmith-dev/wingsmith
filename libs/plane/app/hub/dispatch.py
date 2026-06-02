@@ -114,8 +114,8 @@ class Renderer(Protocol):
     """Turns a hint back into the frames a resync would have sent for the same object.
 
     Plural because an object is not always sendable alone: a deployment is
-    preceded by the recipe, artifact and cache entry it cannot be reconciled
-    without. The order is the snapshot's order and the receiver depends on it.
+    preceded by the artifact and cache entry it cannot be reconciled without.
+    The order is the snapshot's order and the receiver depends on it.
     """
 
     async def render(self, change: DeclaredChange) -> list[tuple[str, Struct]]: ...
@@ -158,8 +158,8 @@ class Recorder(Protocol):
 class DatabaseRecorder:
     """Writes a dispatch to the event log, in a session of its own.
 
-    Only deployments. Every kind travels this path, but a recipe or an artifact
-    reaching a cluster is not a thing anybody is waiting on — a deployment is,
+    Only deployments. Every kind travels this path, but an artifact or an
+    operation reaching a cluster is not a thing anybody is waiting on — a deployment is,
     and "the plane sent it and the cluster has not answered" is the one state
     that used to be indistinguishable from "the plane never sent it".
 

@@ -6,10 +6,15 @@ from app.core.schemas import Struct
 class BenchmarkProvenanceSchema(Struct):
     """What was running when the run was taken, snapshotted rather than joined.
 
-    A recipe is mutable and a deployment is disposable, so a run that resolved
+    A workload is mutable and a deployment is disposable, so a run that resolved
     these by join would start describing something else the moment either moved
     on. Copied at creation, these are what make a table of runs a tuning record
     instead of a pile of unattributed numbers.
+
+    `serving_digest` is what the run is about, and it is the one field here that
+    cannot go stale by construction: it is the content of the configuration
+    rather than a handle on it. The pair it replaced — a recipe id and a version
+    — named a row that could be edited under the run.
 
     Every field is nullable-or-empty because an endpoint-level run has none of
     them. A request to a public name is routed by weight across every enabled
@@ -18,7 +23,7 @@ class BenchmarkProvenanceSchema(Struct):
     confident wrong attribution, and `level` on the request records why it is
     empty.
 
-    `serving` is the recipe's declared serving block beside its engine
+    `serving` is the workload's declared serving block beside its engine
     arguments: which protocols answer, whether thinking mode is on, what the
     context ceiling is. Without it a conformance result cannot be attributed to
     what the surface claimed to be.
@@ -26,8 +31,7 @@ class BenchmarkProvenanceSchema(Struct):
 
     model: str
     deployment_generation: int
-    recipe_id: str | None
-    recipe_version: int | None
+    serving_digest: str | None
     engine_args: dict
     serving: dict
 
@@ -119,8 +123,7 @@ class BenchmarkCoverageSchema(Struct):
 
     deployment_id: str | None
     cluster_id: str | None
-    recipe_id: str | None
-    recipe_version: int | None
+    serving_digest: str | None
     artifact_id: str | None
 
 
@@ -236,7 +239,8 @@ class BenchmarkRequestCreateRequest(Struct):
     `target` is a deployment, a workload or an endpoint, and `level` says which,
     because the three are different claims that must not be averaged: a
     deployment run measures one cluster's configuration, a workload run measures
-    the recipe, and an endpoint run measures what a caller actually gets. A
+    the serving configuration, and an endpoint run measures what a caller
+    actually gets. A
     harness is refused at a level it has nothing to say at.
 
     `criteria` pins the standard the runs will be graded against. It is
@@ -265,3 +269,31 @@ class BenchmarkRequestCreateRequest(Struct):
     reason: str | None = None
     parameters: dict = {}
     deadline: dt.datetime | None = None
+
+
+class ServingBenchmarkSummarySchema(Struct):
+    """Offline benchmark measurement rolled up per `serving_digest`, computed at read time.
+
+    Keyed on the digest rather than on a workload, because the digest is what a
+    measurement is actually about. Two workloads that declare the same engine,
+    the same parallelism and the same cache settings against the same artifact
+    produce the same running process, so a number taken against one of them is a
+    number about the other; rolling up per workload would split one population in
+    two and report each half as the peak. It also survives what a workload does
+    not — renaming, rescaling, deletion — because the digest is content rather
+    than identity, and a run keeps naming the configuration it measured after the
+    row that asked for it has gone. This is what the recipe rollup was reaching
+    for when it keyed on a mutable recipe id and version.
+
+    `peak_output_tokens_per_second` is the highest per-stream output-token
+    throughput any graded run of this configuration reported, read through the
+    same harness-and-version adapter the verdicts use and never through a
+    normalised metric schema. It is `None` when no run carried a reading this
+    plane knows how to find — a named absence, not a zero. This is held-in-plane
+    offline measurement, never live serving telemetry.
+    """
+
+    serving_digest: str
+    run_count: int
+    graded_run_count: int
+    peak_output_tokens_per_second: float | None

@@ -327,7 +327,7 @@ def _accuracy_checks(facts: RunFacts, criteria: Criteria) -> tuple[Check, ...]:
                 None,
                 None,
                 ">=",
-                "the request covered more than one artifact, recipe or recipe version",
+                "the request covered more than one artifact or serving configuration",
             ),
         )
 

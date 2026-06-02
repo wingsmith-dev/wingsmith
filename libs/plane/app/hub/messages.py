@@ -367,13 +367,13 @@ class CapacityObserved(Struct):
 # --------------------------------------------------------------------------- demand, hub -> op
 
 
-class RecipeOverlay(Struct):
+class Overlay(Struct):
     """Escape hatches for what this plane does not model.
 
     Engines and their operators carry far more configuration than any control
     plane wants to mirror field by field, and mirroring it is a losing race —
-    every vLLM release adds flags. So the recipe models what the plane reasons
-    about (shape, parallelism, context, cache) and passes the rest through.
+    every vLLM release adds flags. So the plane models what it reasons about
+    (shape, parallelism, context, cache) and passes the rest through.
 
     `pod_spec` is merged over the rendered pod with Kubernetes strategic-merge
     semantics, so containers, env, volumes and volume mounts merge by name and
@@ -388,68 +388,63 @@ class RecipeOverlay(Struct):
     dynamo: dict = {}
 
 
-class RecipeParallelism(Struct):
+class Parallelism(Struct):
     tensor: int
     pipeline: int
     expert: int
 
 
-class RecipeResources(Struct):
+class Resources(Struct):
     cpu_cores: int | None = None
     memory_mib: int | None = None
     disk_gib: int | None = None
 
 
-class RecipeDesired(Struct):
+class ServingSpec(Struct):
     """How to serve an artifact, in enough detail for a cluster to render it.
 
-    A declared object of its own rather than a block inlined on every deployment
-    that names it. Recipes are shared — several deployments of the same model on
-    the same cluster differ in scale and placement, not in engine configuration —
-    so inlining would ship the same body repeatedly and turn one recipe edit into
-    a rewrite of every frame referencing it.
+    Inlined on the deployment that asks for it rather than travelling as a
+    declared object of its own. It used to be `recipe.desired`, on the argument
+    that recipes are shared and inlining would ship one body repeatedly. The
+    argument did not survive contact with the sender: recipes were filtered and
+    serialised per cluster, so a configuration used in three clusters was three
+    frames either way, and the only case that ever saved a byte was two
+    deployments in ONE cluster naming one recipe. What the separate frame did buy
+    was an ordering rule, a `RecipeNotDeclared` pending reason, and a resume race
+    in which a deployment waited forever for a recipe it was never sent. Inlined,
+    a deployment is renderable the moment its artifact has landed.
 
-    The device shape is deliberately absent. It reaches the cluster on the
-    deployment's `placement`, derived from this recipe, and carrying it twice
-    invites the two copies to disagree.
+    The device shape is deliberately absent, and that rule is unchanged. It
+    reaches the cluster on the deployment's `placement`, derived from these same
+    fields; two copies of one fact on one wire is two chances to disagree.
 
     `frontend_image` is a second image and not a spelling of `engine_image`, because a
     frontend and a worker are separately versioned binaries. It is empty in the ordinary
     case, and empty means the cluster decides — never "use the engine image", which is a
     default only the operator is entitled to pick.
 
-    `served_model_name` is the model id an API client sends, already resolved: the
-    recipe's own declaration, or the artifact's lowercase Hugging Face slug when it
-    declares none. The plane resolves it so the operator holds no derivation logic
-    and renders the string it is told. It is never empty, and `engine_args` still
-    wins over it at render time — the escape hatch is laid over the derived flags,
-    which is why the resolved hatch is deliberately not folded in here.
+    `digest` is the `serving_digest` of the workload this came from. The cluster does
+    not act on it; it is carried so that a replica, a benchmark run and a frame all
+    name the configuration the same way.
     """
 
-    recipe_id: str
-    cluster_id: str
-    artifact_id: str
-    name: str
-    version: int
     engine: str
     engine_version: str
     engine_image: str | None
     frontend_image: str | None
     engine_args: dict[str, str]
-    served_model_name: str
     quantization: str | None
     dtype: str | None
-    parallelism: RecipeParallelism
+    parallelism: Parallelism
     context_length: int
     max_batch_tokens: int | None
     kv_cache_dtype: str | None
     kv_cache_fraction: float | None
     prefix_cache_enabled: bool
     prefix_cache_config: dict[str, str]
-    resources: RecipeResources
-    labels: dict[str, str]
-    updated_at: str
-    overlay: RecipeOverlay = field(default_factory=RecipeOverlay)
+    resources: Resources
+    digest: str
+    overlay: Overlay = field(default_factory=Overlay)
 
 
 class PlacementConstraints(Struct):
@@ -499,24 +494,28 @@ class DeploymentDesired(Struct):
     There is deliberately no workload id here and no total-versus-share field of
     any kind. Nothing in a cluster ever needs to know it is one of several.
 
-    `served_model_name` is this deployment's override of the recipe's, empty when
-    the workload declares none. It is here and not on `recipe.desired` because a
-    recipe is shared by every workload that names it and a workload's override is
-    not: folding it into the recipe frame would make one workload's canary name
-    the name every deployment of that recipe serves under.
+    `served_model_name` is the model id an API client sends, already resolved: the
+    workload's own declaration, or the artifact's lowercase Hugging Face slug when
+    it declares none. The plane resolves it so the operator holds no derivation
+    logic and renders the string it is told. It is never empty, and
+    `engine_args` still wins over it at render time — the escape hatch is laid
+    over the derived flags, which is why the resolved hatch is deliberately not
+    folded in here.
+
+    `serving` carries the engine configuration this deployment renders. It is
+    inlined rather than referenced; see `ServingSpec` for why.
     """
 
     deployment_id: str
     name: str
     cluster_id: str
     project_id: str
-    recipe_id: str
-    recipe_revision: int
     lifecycle: Literal["service", "task", "gang"]
     priority_class: str
     min_replicas: int
     max_replicas: int
     placement: PlacementConstraints
+    serving: ServingSpec
     artifact_ids: list[str]
     served_model_name: str
     generation: int
@@ -627,7 +626,7 @@ class ReplicaObserved(Struct):
     ready: bool
     engine: str
     engine_version: str
-    recipe_id: str
+    serving_digest: str
     restart_count: int
     observed_generation: int
     observed_at: str
@@ -801,7 +800,6 @@ MESSAGE_TYPES: dict[str, type[Struct]] = {
     "workload.discovered": WorkloadDiscovered,
     "deployment.desired": DeploymentDesired,
     "deployment.deleted": DeploymentDeleted,
-    "recipe.desired": RecipeDesired,
     "artifact.desired": ArtifactDesired,
     "component.desired": ComponentDesired,
     "cache.desired": CacheDesired,

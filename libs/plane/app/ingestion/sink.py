@@ -111,7 +111,7 @@ def _regressed(before, payload) -> bool:
 
     Applied blindly they cost more than a noisy timeline. The status row is
     last-writer-wins, so a replayed `pending` overwrites `running 1/1` and the
-    console shows a healthy deployment as waiting for its recipe until the next
+    console shows a healthy deployment as waiting for its weights until the next
     pass puts it back. Every hub reconnect produced that flicker.
 
     The stage set is ordered by contract (MESSAGES.md) and a deployment walks it

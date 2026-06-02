@@ -407,10 +407,31 @@ class Artifact(BaseMixin):
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     digest: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     # False when the digest is a reference rather than content — `hf:org/model` for weights we
-    # adopted by watching a cluster serve them. The row is a real artifact and recipes may point
+    # adopted by watching a cluster serve them. The row is a real artifact and workloads may point
     # at it, but nothing should mistake it for content-addressed until the bytes are resolved.
     verified: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    """What a person calls these weights. `Kimi K3`, `DeepSeek V4 Flash`. Display only."""
+    slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True, server_default="")
+    """What a machine calls them: `moonshotai/kimi-k3`, lowercase, organisation and all.
+
+    Stored rather than derived, and that is the whole point of the column. This string used to be
+    reconstructed at read time from `name`, else a `hf:`-prefixed `digest`, else the workload's
+    name — three guesses in `app.core.serving`, none of which could produce the organisation,
+    because the organisation only ever existed in the location URI that nothing consulted. So
+    every model resolved to a bare `gpt-oss-20b` while its engine was started on
+    `--model openai/gpt-oss-20b`, and the gateway rewrote inbound requests to a string no frontend
+    had registered. Exactly one model served, and only because a person had typed the right answer
+    into an override by hand.
+
+    Derived once, on the way in, from the artifact's preferred location: `hf://moonshotai/Kimi-K3`
+    becomes `moonshotai/kimi-k3`. Lowercase because that is what a caller types and what every
+    registry treats as canonical; the organisation is kept because a bare `kimi-k3` is not a model
+    id anybody can look up.
+
+    Not unique. Two artifacts may be the same repository at different revisions or quantisations —
+    identity is the digest, and it stays the digest. This is what the model is *called*.
+    """
     kind: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weights", index=True)
     format: Mapped[str | None] = mapped_column(String(64), nullable=True)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
@@ -427,7 +448,7 @@ class Artifact(BaseMixin):
 
     Context window, multimodality, parameter count as the publisher states them, plus the
     provenance triple that says who asserted it, from where, and when. It is `metadata`'s
-    opposite in exactly the way `Recipe.imported_args` is `Recipe.engine_args`: one is a claim
+    opposite in exactly the way `Workload.imported_args` is `Workload.engine_args`: one is a claim
     about the world that somebody signed, the other is a scratchpad. Nothing here reaches a
     cluster, nothing here is checked by ingestion, and a wrong value changes only what we told
     somebody.
@@ -509,134 +530,41 @@ class ArtifactBaseline(BaseMixin):
     artifact: Mapped[Artifact] = relationship("Artifact", back_populates="baselines", lazy="noload")
 
 
-class Recipe(BaseMixin):
-    """A fully-specified, reproducible way to serve an artifact.
-
-    The load-bearing object of the demand group: engine and version, quantization,
-    tensor/pipeline/expert parallelism, context length, KV and prefix cache
-    configuration, engine arguments, and the device shape that all of that
-    implies. `device_class` is required, not optional — you cannot tensor-parallel
-    across an A100 and an H100, so a shape without a class is not a shape.
-    Context length lives here rather than on any catalog entry because it
-    determines the footprint.
-
-    `engine_args` and `imported_args` are the same shape and different in kind.
-    `engine_args` is declared: somebody asserted it, and it renders onto the
-    command line. `imported_args` is observed: it was read off a running process
-    by the discovery path, it is recorded in full, and it is never rendered. The
-    split is provenance, and provenance is what makes taking management of an
-    adopted workload reviewable — folded into one map there is no way to tell
-    intent from incidental capture, and the first render is a guess about which
-    values somebody meant (ADR 0009).
-
-    `overlay` is the one opaque field on an otherwise fully-modelled object.
-    Engines and the Kubernetes operators that run them carry far more
-    configuration than a control plane wants to mirror field by field, and
-    mirroring it is a losing race against every engine release — so the recipe
-    models what the plane reasons about and passes the rest through untouched.
-    """
-
-    __tablename__ = "demand_recipe"
-    __table_args__ = (UniqueConstraint("name", "version", name="uq_demand_recipe_name_version"),)
-
-    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
-    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
-    artifact_id: Mapped[UUID] = mapped_column(
-        DBUUID, ForeignKey("demand_artifact.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
-    lifecycle: Mapped[str] = mapped_column(String(32), nullable=False, server_default="published", index=True)
-    """Declared publication state: `draft`, `published` or `deprecated`.
-
-    A plain writable field, not an operation: publishing a recipe changes nothing on any cluster,
-    it only governs whether the recipe is offered for new workloads. `deprecated` keeps existing
-    workloads running while steering new ones elsewhere.
-    """
-    engine: Mapped[str] = mapped_column(String(64), nullable=False)
-    engine_version: Mapped[str] = mapped_column(String(64), nullable=False)
-    engine_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    frontend_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    """The image this model's own Dynamo frontend runs. Null means the cluster decides.
-
-    Separate from `engine_image` because a frontend and a worker are separately versioned
-    binaries that only happen to be published from one repository. The worker loads the weights;
-    the frontend tokenizes the request and registers the model, and the tables it needs to do that
-    are compiled into it. Kimi K3 is the case: a worker on the stock
-    `nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1` served it, while every released
-    frontend refused the `kimi_k3` tiktoken type and answered `/v1/models` with an empty list. The
-    fix was a frontend build and nothing else. Folded into `engine_image`, that one model would
-    have moved the image every model on the cluster is served through.
-
-    Null is this recipe declining to have an opinion, not an instruction to reuse `engine_image`.
-    The operator resolves it against what that cluster runs its frontends on — a local fact the
-    plane does not hold and must not guess at — and only falls back to the engine image once that
-    has declined too. So there is no `resolve_` for this field the way there is for `engine_image`:
-    the plane can derive an engine image because `ENGINE_IMAGE_REPOS` tells it where workers come
-    from, and nothing tells it the same about frontends, so an address invented here is an
-    `ImagePullBackOff` chosen by the wrong side of the wire.
-    """
-    engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    imported_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    served_model_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    """The model id an API client sends, when this recipe declares one. Null means derive it.
-
-    Spelled the way vLLM and the OpenAI API spell it, and the way the escape hatch in
-    `engine_args["served-model-name"]` already spells it: one vocabulary for one string, rather
-    than a third name for the thing the flag is called. Null is the ordinary case and resolves to
-    the artifact's lowercase Hugging Face slug — see `app.core.serving.served_model`, which owns
-    the order and is the only thing entitled to answer this question.
-    """
-    quantization: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    dtype: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    tensor_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
-    pipeline_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
-    expert_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
-    context_length: Mapped[int] = mapped_column(Integer, nullable=False)
-    max_batch_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    kv_cache_dtype: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    kv_cache_fraction: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
-    prefix_cache_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    prefix_cache_config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    device_class: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    device_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
-    device_memory_mib_min: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    requires_single_topology_domain: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    topology_domain_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    cpu_cores: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    memory_mib: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
-    disk_gib: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    overlay: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    serving: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    """How the served API behaves: thinking mode, the reasoning and tool-call parsers, streaming
-    defaults, structured-output support, EOS suppression.
-
-    Every field here renders to a flag or a rendered value, travels on `recipe.desired`, and is
-    obeyed by the cluster — which is the whole test for what belongs here rather than in
-    `capabilities`. Until this column existed these settings vanished into the `engine_args`
-    passthrough, where the plane could neither validate them nor say what it had asked for.
-    """
-    capabilities: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    """What this recipe's serving configuration can do, asserted and never rendered.
-
-    The same split as `engine_args` against `imported_args`, one level up: nothing here reaches a
-    cluster, because a cluster has no use for a claim about itself. A wrong value changes only
-    what we told somebody, and the only thing that can falsify it is a conformance run.
-    """
-
-    artifact: Mapped[Artifact] = relationship("Artifact", lazy="noload")
-
-
 class Workload(BaseMixin):
     """What you asked to run, globally. The object a user creates, scales, and deletes.
 
-    A workload is not tied to a cluster. It declares a recipe, a kind, a priority, and TOTAL
-    scale across every cluster it is allowed to use; placement expands it into one `Deployment`
-    per cluster, and each deployment carries that cluster's share of the total. `kind`
-    discriminates `service | task | gang`, and nothing below this object is allowed to branch on
-    it — preemption and quota stay one code path across serving and batch. The only component
-    entitled to read `kind` is the operator, when it decides what Kubernetes object to render.
+    A workload is not tied to a cluster. It names an artifact, declares how to serve it, and
+    declares a kind, a priority and TOTAL scale across every cluster it is allowed to use;
+    placement expands it into one `Deployment` per cluster, and each deployment carries that
+    cluster's share of the total. `kind` discriminates `service | task | gang`, and nothing below
+    this object is allowed to branch on it — preemption and quota stay one code path across
+    serving and batch. The only component entitled to read `kind` is the operator, when it
+    decides what Kubernetes object to render.
+
+    The serving configuration lives here rather than on a `Recipe` of its own. The recipe was a
+    shared object whose sharing never paid: recipes were filtered and serialised per cluster, so
+    two deployments in two clusters were two frames either way, and the separate frame bought an
+    ordering rule, a `RecipeNotDeclared` pending reason and a resume race where a deployment
+    waited forever on a recipe it was never sent. What sharing did buy — not deploying the same
+    thing twice under two identities — is `serving_digest`, which is what the console was already
+    reconstructing by comparing eight fields to decide two recipes were the same one.
+
+    `engine_args` and `imported_args` are the same shape and different in kind. `engine_args` is
+    declared: somebody asserted it, and it renders onto the command line. `imported_args` is
+    observed: it was read off a running process by the discovery path, it is recorded in full,
+    and it is never rendered. The split is provenance, and provenance is what makes taking
+    management of an adopted workload reviewable — folded into one map there is no way to tell
+    intent from incidental capture, and the first render is a guess about which values somebody
+    meant (ADR 0009).
+
+    `overlay` is the one opaque field on an otherwise fully-modelled object. Engines and the
+    Kubernetes operators that run them carry far more configuration than a control plane wants to
+    mirror field by field, and mirroring it is a losing race against every engine release — so
+    the plane models what it reasons about and passes the rest through untouched.
+
+    `device_class` is required, not optional — you cannot tensor-parallel across an A100 and an
+    H100, so a shape without a class is not a shape. Context length is here rather than on the
+    artifact because it determines the footprint.
 
     Splittability is a property of `kind`, not a field: `service` and `task` may fan out,
     `gang` is atomic and always has exactly one deployment. The schema permits N; placement
@@ -665,9 +593,81 @@ class Workload(BaseMixin):
     priority_class_id: Mapped[UUID] = mapped_column(
         DBUUID, ForeignKey("bind_priority_class.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    recipe_id: Mapped[UUID] = mapped_column(
-        DBUUID, ForeignKey("demand_recipe.id", ondelete="RESTRICT"), nullable=False, index=True
+    artifact_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_artifact.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+    serving_digest: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
+    """`svg_` + sha256 over the fields that decide what process runs. Derived, never accepted.
+
+    It answers one question — would this produce the same running engine — so it covers only
+    fields that reach a cluster. `imported_args` is observed, `capabilities` is asserted,
+    `served_model_name` is a name rather than a footprint, and scale and placement are not
+    properties of the configuration at all; none of them are in it. `app.core.serving` owns the
+    computation and is the only thing entitled to write this.
+
+    It is what a benchmark run points at. A digest cannot drift, where the `recipe_id` and
+    `recipe_version` it replaces named a mutable row.
+    """
+    engine: Mapped[str] = mapped_column(String(64), nullable=False)
+    engine_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    engine_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    frontend_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    """The image this model's own Dynamo frontend runs. Null means the cluster decides.
+
+    Separate from `engine_image` because a frontend and a worker are separately versioned
+    binaries that only happen to be published from one repository. The worker loads the weights;
+    the frontend tokenizes the request and registers the model, and the tables it needs to do that
+    are compiled into it. Kimi K3 is the case: a worker on the stock
+    `nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1` served it, while every released
+    frontend refused the `kimi_k3` tiktoken type and answered `/v1/models` with an empty list. The
+    fix was a frontend build and nothing else. Folded into `engine_image`, that one model would
+    have moved the image every model on the cluster is served through.
+
+    Null is this workload declining to have an opinion, not an instruction to reuse
+    `engine_image`. The operator resolves it against what that cluster runs its frontends on — a
+    local fact the plane does not hold and must not guess at — and only falls back to the engine
+    image once that has declined too. So there is no `resolve_` for this field the way there is
+    for `engine_image`: the plane can derive an engine image because `ENGINE_IMAGE_REPOS` tells it
+    where workers come from, and nothing tells it the same about frontends, so an address invented
+    here is an `ImagePullBackOff` chosen by the wrong side of the wire.
+    """
+    engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    imported_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    quantization: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    dtype: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    tensor_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    pipeline_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    expert_parallel: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    context_length: Mapped[int] = mapped_column(Integer, nullable=False)
+    max_batch_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    kv_cache_dtype: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    kv_cache_fraction: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
+    prefix_cache_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    prefix_cache_config: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    device_class: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    device_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    device_memory_mib_min: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    cpu_cores: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    memory_mib: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    disk_gib: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    overlay: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    serving: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    """How the served API behaves: thinking mode, the reasoning and tool-call parsers, streaming
+    defaults, structured-output support, EOS suppression.
+
+    Every field here renders to a flag or a rendered value, travels inlined on
+    `deployment.desired`, and is obeyed by the cluster — which is the whole test for what belongs
+    here rather than in `capabilities`. Until this column existed these settings vanished into the
+    `engine_args` passthrough, where the plane could neither validate them nor say what it had
+    asked for.
+    """
+    capabilities: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    """What this serving configuration can do, asserted and never rendered.
+
+    The same split as `engine_args` against `imported_args`, one level up: nothing here reaches a
+    cluster, because a cluster has no use for a claim about itself. A wrong value changes only
+    what we told somebody, and the only thing that can falsify it is a conformance run.
+    """
     min_scale: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     max_scale: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     desired_scale: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
@@ -681,40 +681,33 @@ class Workload(BaseMixin):
     preemptible: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     paused: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     adapter_artifact_ids: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
-    served_model_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    """This workload's override of the model id clients send, beating the recipe's when set.
-
-    Both levels exist because a recipe is shared and a workload is not: the recipe says what the
-    model is normally called, and a workload serving the same recipe as a canary or under a
-    tenant's own name says so here without forking the recipe. Null is the ordinary case.
-    """
     overrides: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    requires_single_topology_domain: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    requires_single_topology_domain: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     topology_domain_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     deployments: Mapped[list[Deployment]] = relationship("Deployment", back_populates="workload", lazy="noload")
-    recipe: Mapped[Recipe] = relationship("Recipe", lazy="noload")
+    artifact: Mapped[Artifact] = relationship("Artifact", lazy="noload")
 
 
 class Deployment(BaseMixin):
     """One workload's share on one cluster. The unit the agent obeys.
 
-    A deployment is recipe x cluster, and that has not changed. What changed is what sits above
+    A deployment is workload x cluster. What changed is what sits above
     it: a `Workload` is now its parent rather than its supertype, and one workload has many
     deployments — one per cluster it was expanded onto. `min_replicas` / `max_replicas` /
     `desired_replicas` are THIS CLUSTER'S SHARE of the workload total, never the total. Nothing
     anywhere may sum a share against a total or re-derive one from the other.
 
-    Recipe, adapters, overrides, labels and the topology pair live on the workload: they are
+    Serving configuration, adapters, overrides, labels and the topology pair live on the workload: they are
     facts about what was asked for, and a cluster does not get its own answer to them. Admission
     is per-cluster and lives here, because a workload can be running in one region and queued on
     quota in another and there is no single phase that is true of both.
 
-    Deployments are disposable — recreated on every recipe bump, engine upgrade, and drain —
+    Deployments are disposable — recreated on every configuration bump, engine upgrade, and drain —
     which is why the public name lives on `Endpoint` instead. You do not create one: placement
     creates it when it expands a workload.
 
@@ -833,7 +826,7 @@ class Replica(BaseMixin):
     """One running instance of a deployment, observed. Written only by ingestion.
 
     Carries readiness and the engine version actually running — which may lag the
-    recipe's during a rollout — and the node it landed on. The devices it holds
+    workload's during a rollout — and the node it landed on. The devices it holds
     are in `Allocation`, not here, because a gang commits many devices at once.
     """
 
@@ -963,9 +956,10 @@ class Endpoint(BaseMixin):
     key an OpenAI-compatible client sends, so a name must resolve to exactly one
     endpoint within whatever scope the caller belongs to.
 
-    Not to be confused with the name the engine answers to. That is the recipe's,
-    it is usually a derived configuration slug, and the gateway rewrites between
-    the two — see `app.core.serving.served_model`.
+    Not to be confused with the name the engine answers to. That is `Artifact.slug`, and the
+    gateway rewrites between the two — see `app.core.serving.served_model`. They are equal
+    whenever nobody has asked for an alias, which makes the rewrite a no-op in the ordinary case
+    and a rename in the deliberate one.
     """
 
     __tablename__ = "demand_endpoint"
@@ -976,22 +970,27 @@ class Endpoint(BaseMixin):
         DBUUID, ForeignKey("bind_project.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
-    model_slug: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
-    """The model id clients send, when it should not be `name`. Null means it is.
+    """The internal handle. In URLs, in metrics labels, in the console; unique, and not patchable,
+    because an endpoint exists so that deployments can be replaced without anybody noticing and
+    renaming it spends exactly that."""
+    slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True, server_default="")
+    """The model id clients send. `moonshotai/kimi-k3`.
 
-    `name` is the internal handle — it is in URLs, in metrics labels and in the console, it is
-    unique, and it is deliberately not patchable, because an endpoint exists so that deployments
-    can be replaced without anybody noticing and renaming it spends exactly that. None of which a
-    caller should have to care about: `model` in an OpenAI request is a public contract, it wants
-    to read `moonshotai/kimi-k3` rather than whatever the endpoint was called when it was made,
-    and it has to be changeable without breaking the handle everything else holds.
+    Patchable where `name` is not, because `model` in an OpenAI request is a public contract: it
+    wants to read as the model, not as whatever the endpoint was called when it was made, and it
+    has to change without breaking the handle everything else holds. It is what the resolved table
+    reports, so changing it costs one gateway poll — no engine flag, no pod respec, nothing on any
+    cluster.
 
-    So the two are split and this one is patchable. It is what the resolved table reports as the
-    endpoint's name, which is the key the gateway routes on, so changing it costs one poll — no
-    engine flag, no pod respec, nothing on any cluster. Unique where set, because `model` is the
-    only key an OpenAI-compatible client sends and it must resolve to exactly one endpoint.
+    Defaulted from the artifact's slug when a caller declares none, which is the case that should
+    be normal: an endpoint in front of one model answers to that model's name, and saying so twice
+    is how the two drift. Declaring one is then an alias and reads as a deliberate act.
+
+    There were three fields here — `name`, `model_slug` and `display_name` — plus a fourth,
+    `resolved_model_slug`, computed on the way out to paper over `model_slug` being nullable. Four
+    spellings of the same question, and the answer to `what does a client send` was none of them
+    on its own.
     """
-    display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     visibility: Mapped[str] = mapped_column(String(16), nullable=False, server_default="private")
     routing_strategy: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weighted")
     failover_order: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
@@ -1001,7 +1000,7 @@ class Endpoint(BaseMixin):
     (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`), how a caller authenticates, and the
     rate-limit policy the gateway reads.
 
-    It sits here rather than on the recipe because honouring any of it needs no engine flag and an
+    It sits here rather than on the workload because honouring any of it needs no engine flag and an
     endpoint never syncs to a cluster. Some of it the gateway acts on and some of it is a
     disclosure the gateway only reports; the schema layer says which, per field.
     """
@@ -1039,12 +1038,12 @@ class EndpointTarget(BaseMixin):
     Null is the ordinary case and means "ask the deployment". This is the correction, and it
     exists because the routing table is ours: the engine's name is invisible to clients, so the
     only thing that matters is that this table agrees with the process. When it does not — a
-    recipe carrying an `engine_args` override the plane derived around, an adopted workload
+    workload carrying an `engine_args` override the plane derived around, an adopted workload
     already serving under a name nobody here chose — the fix is a write here.
 
     Per target rather than per endpoint because one endpoint fronts many deployments and they
     need not agree; per target rather than on the deployment because the deployment is disposable
-    and this correction should outlive a recipe bump. The gateway rewrites the inbound `model` to
+    and this correction should outlive a configuration bump. The gateway rewrites the inbound `model` to
     it, so changing it costs a routing-table poll and nothing restarts.
     """
 
@@ -1057,7 +1056,7 @@ class WarmSet(BaseMixin):
 
     The declared half of the weight cache. Its observed counterpart is
     `CacheEntry`, in the machinery group. The KV and prefix caches are unrelated
-    to this and are configuration on `Recipe` — collapsing the two would produce
+    to this and are configuration on `Workload` — collapsing the two would produce
     an object half desired-state and half runtime.
     """
 
@@ -1547,12 +1546,14 @@ class BenchmarkRun(BaseMixin):
     exactly what a same-tool comparison gets wrong without them.
 
     The provenance columns are the reason this table is worth keeping. A run
-    without `deployment_generation`, `recipe_id`, `recipe_version` and
-    `engine_args` is a number with nothing to attribute it to; with them the
-    table is the parameter-tuning record. They are snapshotted rather than
-    joined because the recipe they name is mutable and the deployment is
-    disposable, and a run must still describe what it measured after both have
-    moved on.
+    without `deployment_generation`, `serving_digest` and `engine_args` is a
+    number with nothing to attribute it to; with them the table is the
+    parameter-tuning record. `serving_digest` is what a run is about, and it
+    replaced a `recipe_id` and `recipe_version` pair that named a mutable row:
+    a digest is the configuration rather than a handle on it, so a run cannot
+    come to describe a configuration nobody measured. `engine_args` is still
+    snapshotted beside it, because the deployment is disposable and a run must
+    describe what it measured after that has gone.
 
     `operation_id` is nullable and `ON DELETE SET NULL`: the operation is how the
     run was carried out and the run is the record of it, so the record outlives
@@ -1594,10 +1595,7 @@ class BenchmarkRun(BaseMixin):
 
     model: Mapped[str] = mapped_column(String(255), nullable=False)
     deployment_generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
-    recipe_id: Mapped[UUID | None] = mapped_column(
-        DBUUID, ForeignKey("demand_recipe.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    recipe_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    serving_digest: Mapped[str | None] = mapped_column(String(71), nullable=True, index=True)
     engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     serving: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     step_index: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")

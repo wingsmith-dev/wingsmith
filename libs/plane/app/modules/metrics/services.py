@@ -20,10 +20,10 @@ The three scoping joins, and how much each can be trusted:
 
   When they are not — a deployment the plane declared, whose worker hash Dynamo
   has not minted yet — it falls back to `model_name`, which is the served model
-  and not the deployment. `Recipe.engine_args["served_model_name"]` names it
-  first, then `Recipe.name`, and only then the artifact, which holds the
-  repository a model is fetched from — `google/gemma-4-31B-it` against a
-  `model_name` of `gemma-4-31b-it` — and so selects nothing on its own.
+  and not the deployment. `Workload.engine_args["served-model-name"]` names it
+  first, and then the artifact's stored slug, which is the repository a model is
+  fetched from — `google/gemma-4-31B-it` against a `model_name` of
+  `gemma-4-31b-it` — and so selects nothing on its own.
 
   Both are reported to the client as scope `deployment`; which one answered is
   visible in the selector, not the schema.
@@ -61,8 +61,6 @@ from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Pool
 from app.db.models import Device
-from app.core.serving import served_model
-from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Artifact
@@ -72,6 +70,7 @@ from app.db.models import Allocation
 from app.db.models import Deployment
 from app.db.models import AllocationDevice
 from app.core.filters import ref_ids
+from app.core.serving import served_model
 from app.config.settings import settings
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
@@ -437,25 +436,24 @@ class MetricsService:
         series: bool = False,
     ) -> MetricsSchema:
         query = (
-            select(Deployment, Workload, Recipe, Artifact)
+            select(Deployment, Workload, Artifact)
             .join(Workload, Deployment.workload_id == Workload.id)
-            .join(Recipe, Workload.recipe_id == Recipe.id)
-            .join(Artifact, Recipe.artifact_id == Artifact.id)
+            .join(Artifact, Workload.artifact_id == Artifact.id)
             .where(Deployment.uid == ref if is_uid(ref) else Deployment.name == ref)
         )
         row = (await self.db.execute(query)).first()
         if row is None:
             raise NotFound(f"no deployment {ref!r}")
-        deployment, workload, recipe, artifact = row
+        deployment, workload, artifact = row
         cluster = await self._cluster(deployment.cluster_id)
-        served = served_model(recipe, artifact)
-        engine = ENGINES.get(recipe.engine)
+        served = served_model(workload, artifact)
+        engine = ENGINES.get(workload.engine)
         source = self._source(cluster)
         if engine is None or not engine.metrics:
             answer = await self._answer(
                 cluster, self._scope("deployment", source), deployment.uid, (), window, step, span
             )
-            answer.unavailable = f"no metric dialect registered for engine {recipe.engine!r}"
+            answer.unavailable = f"no metric dialect registered for engine {workload.engine!r}"
             return answer
         worker = worker_identity(workload.labels or {})
         if worker:
@@ -467,16 +465,15 @@ class MetricsService:
         )
 
     async def _workload(self, ref: str, project: str | None):
-        """The workload a reference names, with the recipe and artifact behind it.
+        """The workload a reference names, with the artifact behind it.
 
         A name is unique only within its project, so a bare one can name several
         workloads; that is a 400 listing the projects it could have meant rather
         than a guess, exactly as `GET /v1/workloads/{ref}` answers it.
         """
         query = (
-            select(Workload, Recipe, Artifact)
-            .join(Recipe, Workload.recipe_id == Recipe.id)
-            .join(Artifact, Recipe.artifact_id == Artifact.id)
+            select(Workload, Artifact)
+            .join(Artifact, Workload.artifact_id == Artifact.id)
             .where(Workload.uid == ref if is_uid(ref) else Workload.name == ref)
         )
         if project is not None:
@@ -550,12 +547,12 @@ class MetricsService:
         returns no labels of its own, so two clusters' curves for one metric
         would otherwise arrive identical and a chart could only draw one of them.
         """
-        workload, recipe, artifact = await self._workload(ref, project)
+        workload, artifact = await self._workload(ref, project)
         lookback = window or self.window
         answer = MetricsSchema(scope="workload", ref=workload.uid, cluster=None, source=None, window=lookback)
-        engine = ENGINES.get(recipe.engine)
+        engine = ENGINES.get(workload.engine)
         if engine is None or not engine.metrics:
-            answer.unavailable = f"no metric dialect registered for engine {recipe.engine!r}"
+            answer.unavailable = f"no metric dialect registered for engine {workload.engine!r}"
             return answer
         clusters = (
             (
@@ -576,7 +573,7 @@ class MetricsService:
 
         held = await self._held_devices(workload.id)
         worker = worker_identity(workload.labels or {})
-        served = served_model(recipe, artifact)
+        served = served_model(workload, artifact)
         metrics = family("gpu") + engine.metrics
         titles = {m.name: m for m in metrics}
         per_cluster: list[tuple[Cluster, dict[str, float | None]]] = []

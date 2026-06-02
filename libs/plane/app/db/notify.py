@@ -46,7 +46,6 @@ nothing either way.
 """
 
 DEPLOYMENT = "deployment"
-RECIPE = "recipe"
 OPERATION = "operation"
 """An operation is not declared state, and it still travels on this channel.
 

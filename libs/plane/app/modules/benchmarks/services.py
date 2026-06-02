@@ -13,8 +13,8 @@ from app.core.ids import OPERATION
 from app.core.ids import BENCHMARK_RUN
 from app.core.ids import BENCHMARK_REQUEST
 from app.core.ids import new_uid
-from app.db.models import Recipe
 from app.db.models import Artifact
+from app.db.models import Workload
 from app.db.models import Operation
 from app.db.models import BenchmarkRun
 from app.db.models import BenchmarkRequest
@@ -23,19 +23,20 @@ from app.db.notify import Notifier
 from app.db.notify import DeclaredChange
 from app.db.notify import DatabaseNotifier
 from app.core.schemas import ListResponse
+from app.core.serving import served_model
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
-from app.core.serving import served_model
 from app.modules.operations.services import PHASES
 from app.modules.operations.services import PENDING
 
 from . import buckets
 from . import verdicts
 from . import harnesses
+from . import summaries
 from .schemas import BenchmarkRunSchema
 from .schemas import BenchmarkBandSchema
 from .schemas import BenchmarkCheckSchema
@@ -47,6 +48,7 @@ from .schemas import BenchmarkParameterSchema
 from .schemas import BenchmarkProvenanceSchema
 from .schemas import BenchmarkRunCreateRequest
 from .schemas import BenchmarkRequestCreateRequest
+from .schemas import ServingBenchmarkSummarySchema
 from .repository import BenchmarkRepository
 
 
@@ -99,7 +101,6 @@ class RunNames(NamedTuple):
     cluster: str | None
     endpoint: str | None
     operation: str | None
-    recipe: str | None
     request: str | None
 
 
@@ -107,7 +108,7 @@ class Target(NamedTuple):
     """One thing a request expands a run against, with the provenance it will snapshot."""
 
     deployment: Any
-    recipe: Any
+    workload: Any
     artifact: Any
     cluster_uid: str | None = None
 
@@ -199,8 +200,7 @@ class BenchmarkService:
             provenance=BenchmarkProvenanceSchema(
                 model=run.model,
                 deployment_generation=run.deployment_generation,
-                recipe_id=names.recipe,
-                recipe_version=run.recipe_version,
+                serving_digest=run.serving_digest,
                 engine_args=run.engine_args or {},
                 serving=run.serving or {},
             ),
@@ -222,7 +222,6 @@ class BenchmarkService:
                 cluster=row.cluster_uid,
                 endpoint=row.endpoint_uid,
                 operation=row.operation_uid,
-                recipe=row.recipe_uid,
                 request=row.request_uid,
             ),
         )
@@ -232,6 +231,46 @@ class BenchmarkService:
         if row is None:
             raise NotFound(f"no benchmark run {ref!r}")
         return self._row_schema(row)
+
+    async def serving_summary(self, digest: str) -> ServingBenchmarkSummarySchema:
+        """Peak per-stream output-token throughput across one configuration's runs.
+
+        Anchored on `serving_digest` because that is what a measurement is about:
+        the digest is the content of the configuration, so every run that shares
+        it measured the same running process and belongs in the same population.
+        Anchoring on the workload instead would split that population whenever the
+        same configuration was declared twice, and would lose the runs outright
+        when the workload was deleted. It replaces a rollup keyed on a recipe id
+        and version, which named a row that could be edited under the numbers.
+
+        Offline benchmark measurement, read through the same harness-and-version
+        adapter the verdicts use. A run whose harness or version has no adapter,
+        or whose summary lacks the throughput path, contributes no reading and is
+        left out of `graded_run_count` — the peak is the maximum of what could be
+        read, or `None` when nothing could.
+
+        An unknown digest is not an error. It is a configuration nothing has
+        measured yet, which is a zero count and a named absence rather than a 404
+        about an object that was never an object.
+        """
+        rows = await self.repo.serving_runs(digest)
+        peak: float | None = None
+        graded = 0
+        for row in rows:
+            adapter = summaries.adapter_for(row.harness, row.harness_version)
+            if adapter is None:
+                continue
+            reading = summaries.read(adapter, row.summary, summaries.OUTPUT_SPEED_PER_STREAM)
+            if reading.value is None:
+                continue
+            graded += 1
+            peak = reading.value if peak is None else max(peak, reading.value)
+        return ServingBenchmarkSummarySchema(
+            serving_digest=digest,
+            run_count=len(rows),
+            graded_run_count=graded,
+            peak_output_tokens_per_second=peak,
+        )
 
     async def list(
         self,
@@ -487,11 +526,12 @@ class BenchmarkService:
         if slot.step is not None:
             resolved[STEPPED[data.mode]] = slot.step
 
-        recipe: Recipe | None = target.recipe
+        workload: Workload | None = target.workload
         artifact: Artifact | None = target.artifact
-        model = served_model(recipe, artifact) if recipe is not None and artifact is not None else ""
-        if recipe is not None and artifact is not None and "tokenizer" in resolved and not resolved.get("tokenizer"):
-            resolved["tokenizer"] = tokenizer_for(recipe, artifact)
+        known = workload is not None and artifact is not None
+        model = served_model(workload, artifact) if known else ""
+        if known and "tokenizer" in resolved and not resolved.get("tokenizer"):
+            resolved["tokenizer"] = tokenizer_for(workload, artifact)
 
         run_uid = new_uid(BENCHMARK_RUN)
         run = BenchmarkRun(
@@ -506,10 +546,9 @@ class BenchmarkService:
             reason=data.reason,
             model=model,
             deployment_generation=target.deployment.generation if target.deployment is not None else 0,
-            recipe_id=recipe.id if recipe is not None else None,
-            recipe_version=recipe.version if recipe is not None else None,
-            engine_args=dict(recipe.engine_args or {}) if recipe is not None else {},
-            serving=dict(recipe.serving or {}) if recipe is not None else {},
+            serving_digest=workload.serving_digest if workload is not None else None,
+            engine_args=dict(workload.engine_args or {}) if workload is not None else {},
+            serving=dict(workload.serving or {}) if workload is not None else {},
             step_index=slot.index,
             discard=data.mode == WARMUP,
             phase=PENDING,
@@ -617,21 +656,25 @@ def _coverage(target: Target) -> dict:
     return {
         "deployment_id": target.deployment.uid if target.deployment is not None else None,
         "cluster_id": target.cluster_uid,
-        "recipe_id": target.recipe.uid if target.recipe is not None else None,
-        "recipe_version": target.recipe.version if target.recipe is not None else None,
+        "serving_digest": target.workload.serving_digest if target.workload is not None else None,
         "artifact_id": target.artifact.uid if target.artifact is not None else None,
     }
 
 
 def _homogeneous(coverage: list[dict]) -> bool:
-    """True when every entry agrees on artifact, recipe and recipe version.
+    """True when every entry agrees on artifact and serving configuration.
 
     An accuracy verdict over a heterogeneous coverage is not attributable at
     all — two upstreams running different quantizations produce one score
     belonging to neither — so this boolean is what turns that into a stated
     `inconclusive` rather than a number a reader is left to misuse.
+
+    `serving_digest` is the whole configuration in one value, so this compares
+    two fields where it used to compare three and is stricter for it: the pair it
+    replaced named a recipe row that could have been edited between the two
+    entries and still read as the same recipe at the same version.
     """
-    keys = {(entry["artifact_id"], entry["recipe_id"], entry["recipe_version"]) for entry in coverage}
+    keys = {(entry["artifact_id"], entry["serving_digest"]) for entry in coverage}
     return len(keys) <= 1
 
 
@@ -726,8 +769,7 @@ def _request_schema(row: Row, runs: list[BenchmarkRun]) -> BenchmarkRequestSchem
             BenchmarkCoverageSchema(
                 deployment_id=entry.get("deployment_id"),
                 cluster_id=entry.get("cluster_id"),
-                recipe_id=entry.get("recipe_id"),
-                recipe_version=entry.get("recipe_version"),
+                serving_digest=entry.get("serving_digest"),
                 artifact_id=entry.get("artifact_id"),
             )
             for entry in request.coverage or []
@@ -758,7 +800,7 @@ def request_phase(phases: list[str]) -> str:
     return "succeeded"
 
 
-def tokenizer_for(recipe: Recipe, artifact: Artifact) -> str:
+def tokenizer_for(workload: Workload, artifact: Artifact) -> str:
     """The repository AIPerf should load a tokenizer from, or nothing if we cannot say.
 
     Most authoritative first, and the served model name is nowhere in the list —
@@ -766,9 +808,9 @@ def tokenizer_for(recipe: Recipe, artifact: Artifact) -> str:
     deployment served as `qwen3.8-27b` is not a Hugging Face repository and the
     lookup fails before a single request is sent.
 
-    An explicit `--tokenizer` wins, whether it reached the recipe hyphenated the
-    way discovery writes engine arguments or bare the way a hand-written recipe
-    does, because it is the engine being told which tokenizer it is using. The
+    An explicit `--tokenizer` wins, whether it reached the workload hyphenated
+    the way discovery writes engine arguments or bare the way a hand-written
+    one does, because it is the engine being told which tokenizer it is using. The
     artifact's metadata carries the same argument when discovery read it off a
     running workload.
 
@@ -783,7 +825,7 @@ def tokenizer_for(recipe: Recipe, artifact: Artifact) -> str:
     own default rather than inventing an id — a run that fails on a missing
     tokenizer is clearer than one that silently counted tokens with the wrong one.
     """
-    engine_args = recipe.engine_args or {}
+    engine_args = workload.engine_args or {}
     metadata = artifact.metadata_ or {}
     for declared in (
         engine_args.get("tokenizer"),

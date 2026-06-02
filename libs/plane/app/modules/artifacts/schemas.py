@@ -32,6 +32,7 @@ class ArtifactSchema(Struct):
     digest: str
     verified: bool
     name: str
+    slug: str
     kind: str
     format: str | None
     size_bytes: int
@@ -87,16 +88,17 @@ class ArtifactRefreshSchema(Struct):
 class ArtifactUsageSchema(Struct):
     """What depends on this artifact, counted at read time and stored nowhere.
 
-    `recipe_count` is the recipes that serve these weights (`Recipe.artifact_id`).
-    `workload_count` is the distinct workloads reaching this artifact either
-    through their recipe's weights or through their adapter set
-    (`Workload.adapter_artifact_ids`). `downstream_count` is the artifacts
-    derived from this one (`base_artifact_id`) — the quantizations and fine-tunes
-    that name it as their base.
+    `workload_count` is the distinct workloads reaching this artifact either as the
+    weights they serve (`Workload.artifact_id`) or through their adapter set
+    (`Workload.adapter_artifact_ids`). There is no second count beside it any more:
+    a recipe used to stand between the two, and with the serving configuration on
+    the workload there is one kind of dependant rather than two.
+
+    `downstream_count` is the artifacts derived from this one (`base_artifact_id`)
+    — the quantizations and fine-tunes that name it as their base.
     """
 
     artifact_id: str
-    recipe_count: int
     workload_count: int
     downstream_count: int
 
@@ -125,7 +127,7 @@ class ArtifactFitLayoutSchema(Struct):
 
     Counts run from the smallest that serves up to one node, or up to the recommendation
     when a replica already spans several. Nothing here that cannot serve is listed, so
-    every entry is a shape a recipe may declare as it stands.
+    every entry is a shape a workload may declare as it stands.
 
     `reduced` is what the trade costs: true means this count buys its cards back by
     serving a shorter window than the one asked for, and `context_length` says which.
@@ -253,7 +255,7 @@ class ArtifactFitmentRequest(Struct):
     `context_length` defaults to the artifact's own declared window rather than to a
     number chosen here. An artifact that publishes 131k is fitted at 131k, and
     quietly trimming it to make more cards look workable is the inversion
-    `resolve.suggest_recipe` already refuses to make.
+    `resolve.suggest_serving` already refuses to make.
 
     `quantization` defaults to however the weights ship. Overriding it is how the
     question "what if we quantized this" gets asked without registering anything.
@@ -363,6 +365,13 @@ class ArtifactCreateRequest(Struct):
     digest: str = ""
     source: str | None = None
     name: str = ""
+    slug: str = ""
+    """The model id this artifact answers to. Empty derives it from the preferred location.
+
+    Deriving is the normal case and declaring one is for weights whose location does not name
+    them — a checkpoint in a bucket, a fine-tune whose path is a build id. It is lowercased on the
+    way in, because a slug that differs from another only by case is two names for one model.
+    """
     kind: str = "weights"
     format: str | None = None
     size_bytes: int = 0
@@ -385,6 +394,7 @@ class ArtifactUpdateRequest(Struct):
     """
 
     name: str | UnsetType = UNSET
+    slug: str | UnsetType = UNSET
     kind: str | UnsetType = UNSET
     format: str | None | UnsetType = UNSET
     size_bytes: int | UnsetType = UNSET

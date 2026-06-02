@@ -25,7 +25,7 @@ class DeviceClassInventorySchema(Struct):
 class DeviceClassSchema(Struct):
     """One GPU model, as the plane names it.
 
-    `name` is the identifier — the string that appears on a pool, a recipe
+    `name` is the identifier — the string that appears on a pool, a workload's
     shape, a quota and a device, and the only one that travels on the wire.
     `label` is the one to put in front of a person.
 

@@ -33,9 +33,7 @@ class EndpointSchema(Struct):
 
     id: str
     name: str
-    model_slug: str | None
-    resolved_model_slug: str
-    display_name: str | None
+    slug: str
     project_id: str
     visibility: str
     routing_strategy: str
@@ -63,10 +61,13 @@ class EndpointTargetRequest(Struct):
 
 
 class EndpointCreateRequest(Struct):
+    """`slug` is the model id clients send. Empty takes the slug of the weights behind the first
+    target, which is what makes an endpoint over one model answer to that model without anybody
+    typing its name a second time. Give one only to publish an alias."""
+
     name: str
     project: str
-    model_slug: str | None = None
-    display_name: str | None = None
+    slug: str = ""
     visibility: str = "private"
     routing_strategy: str = "weighted"
     enabled: bool = True
@@ -81,7 +82,7 @@ class EndpointUpdateRequest(Struct):
     `name` and `project` are absent by design. The name is the internal handle —
     it is in URLs, in metrics labels and in every link the console holds — and an
     endpoint exists so that deployments can be replaced without anyone noticing.
-    `model_slug` is what clients actually send and it *is* patchable, which is the
+    `slug` is what clients actually send and it *is* patchable, which is the
     point of the split: the public model id can be corrected without moving the
     handle everything else is holding. The project owns quota and priority, so moving an endpoint between
     projects is a different endpoint. Supplying `targets` replaces the whole set:
@@ -91,8 +92,7 @@ class EndpointUpdateRequest(Struct):
     replaced is an order over nothing.
     """
 
-    model_slug: str | None | UnsetType = UNSET
-    display_name: str | None | UnsetType = UNSET
+    slug: str | UnsetType = UNSET
     visibility: str | UnsetType = UNSET
     routing_strategy: str | UnsetType = UNSET
     enabled: bool | UnsetType = UNSET
@@ -160,12 +160,12 @@ class ResolvedUpstreamSchema(Struct):
 
     `served_model_name` is the name the engine behind this one upstream answers
     to, and it is here because it is a fact about the upstream and not about the
-    endpoint: one endpoint can front two clusters running different recipes, so
-    there is no single answer to hang one level up. The gateway rewrites the
-    inbound `model` to it before forwarding. It is usually *not* the endpoint's
-    name — a recipe the console derived is named for its configuration
-    (`llama-3-3-70b-instruct-fp8-tp2-32k`), which is an internal detail of the
-    fit that no client should ever have to type or notice changing.
+    endpoint: one endpoint can front two clusters running different
+    configurations, so there is no single answer to hang one level up. The
+    gateway rewrites the inbound `model` to it before forwarding. It is usually
+    *not* the endpoint's name — a workload the console derived is named for its
+    configuration (`llama-3-3-70b-instruct-fp8-tp2-32k`), which is an internal
+    detail of the fit that no client should ever have to type or notice changing.
     """
 
     deployment_id: str

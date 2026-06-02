@@ -37,7 +37,7 @@ LEVELS: tuple[str, ...] = (DEPLOYMENT, WORKLOAD, ENDPOINT)
 
 A deployment run measures one cluster's configuration — the device class, the
 tensor-parallel degree, the quantization, the engine flags. A workload run
-measures the recipe, which since ADR 0010 is a workload-level fact and is the
+measures the serving configuration, which since ADR 0010 is a workload-level fact and is the
 same experiment however many clusters it was placed on. An endpoint run measures
 what a caller actually gets through the public name, across whatever the gateway
 routed it to. Averaging any two of the three describes nothing that exists.
@@ -153,7 +153,7 @@ CONFORMANCE = Harness(
 )
 """Not a load generator. A fixed, bounded catalogue of requests — most of them
 deliberately malformed — asserting on the response *shape*: which protocols answer,
-whether thinking mode and streaming behave as the recipe declares, whether structured
+whether thinking mode and streaming behave as the workload declares, whether structured
 output and tool calls come back in the documented envelope, and whether an error is the
 error we promised. Its output is naturally boolean per probe.
 

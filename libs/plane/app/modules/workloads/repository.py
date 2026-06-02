@@ -7,12 +7,12 @@ from sqlalchemy import Select
 from sqlalchemy import case
 from sqlalchemy import func
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Device
-from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Replica
@@ -46,14 +46,14 @@ class WorkloadRepository:
     whole page are fetched at once and keyed by workload, and the replica counts
     for all of them at once after that.
 
-    Recipe, project and priority class are joined rather than loaded because a
-    workload read without them is half an answer: they are what it asked to run,
-    for whom, and at what priority.
+    Project and priority class are joined rather than loaded because a workload read
+    without them is half an answer: they are who asked for it and at what priority.
 
-    The recipe and artifact entities ride along beside their labels because the
-    served model name is resolved from all three objects — see
-    `app.core.serving.served_model` — and a label per field it reads is one more
-    thing to keep in step every time that order changes.
+    The artifact is `selectinload`ed rather than joined and selected beside its own
+    labels, because the read needs the entity and not a column of it: the served
+    model name and the serving digest are both resolved from the whole object — see
+    `app.core.serving` — and a label per field they read is one more thing to keep in
+    step every time that order changes.
     """
 
     def __init__(self, db: AsyncSession) -> None:
@@ -63,20 +63,14 @@ class WorkloadRepository:
         return (
             select(
                 Workload,
-                Recipe.uid.label("recipe_uid"),
-                Recipe.name.label("recipe_name"),
-                Artifact.name.label("artifact_tag"),
                 Project.uid.label("project_uid"),
                 PriorityClass.name.label("priority_class"),
                 Cluster.uid.label("pinned_cluster_uid"),
-                Recipe,
-                Artifact,
             )
-            .join(Recipe, Workload.recipe_id == Recipe.id)
             .join(Project, Workload.project_id == Project.id)
             .join(PriorityClass, Workload.priority_class_id == PriorityClass.id)
-            .outerjoin(Artifact, Recipe.artifact_id == Artifact.id)
             .outerjoin(Cluster, Workload.pinned_cluster_id == Cluster.id)
+            .options(selectinload(Workload.artifact))
         )
 
     def placement_query(self, workload_id) -> Select:
@@ -130,10 +124,26 @@ class WorkloadRepository:
         project: str | None = None,
         kind: str | None = None,
         phase: str | None = None,
-        recipe: str | None = None,
+        artifact: str | None = None,
+        serving_digest: str | None = None,
+        device_class: str | None = None,
         cluster: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> Select:
+        """One page of workloads, narrowed by whatever the caller stated.
+
+        `serving_digest` is an exact equality on the whole `svg_...` string and is
+        never a prefix match, because a prefix of a hash means nothing. It is the
+        replacement for the console's `matchExistingRecipe`, which compared eight
+        fields in the browser to decide whether an existing recipe could be reused
+        and got it wrong whenever a ninth had been hand-tuned. "Does this
+        configuration already exist" is now one indexed equality test, asked of the
+        plane rather than reconstructed from a listing.
+
+        `device_class` answers "what is asking for H100s", which is a capacity
+        question a person genuinely has and which nothing could answer while the
+        shape lived on a separate object. Both columns are indexed.
+        """
         query = self._base().order_by(Workload.seq.asc()).limit(limit + 1)
         if after_seq is not None:
             query = query.where(Workload.seq > after_seq)
@@ -141,8 +151,12 @@ class WorkloadRepository:
             query = query.where(Workload.project_id.in_(ref_ids(Project, project, "slug")))
         if kind is not None:
             query = query.where(Workload.kind == kind)
-        if recipe is not None:
-            query = query.where(Workload.recipe_id.in_(ref_ids(Recipe, recipe)))
+        if artifact is not None:
+            query = query.where(Workload.artifact_id.in_(ref_ids(Artifact, artifact)))
+        if serving_digest is not None:
+            query = query.where(Workload.serving_digest == serving_digest)
+        if device_class is not None:
+            query = query.where(Workload.device_class == device_class)
         if cluster is not None:
             query = query.where(
                 select(Deployment.id)
@@ -270,14 +284,20 @@ class WorkloadRepository:
         result = await self.db.execute(select(Cluster).where(column == ref).limit(1))
         return result.scalar_one_or_none()
 
-    async def recipe_by_ref(self, ref: str) -> Recipe | None:
-        result = await self.db.execute(
-            select(Recipe)
-            .where((Recipe.uid if is_uid(ref) else Recipe.name) == ref)
-            .order_by(Recipe.version.desc())
-            .limit(1)
-        )
+    async def artifact_by_ref(self, ref: str) -> Artifact | None:
+        column = Artifact.uid if is_uid(ref) else Artifact.name
+        result = await self.db.execute(select(Artifact).where(column == ref).limit(1))
         return result.scalar_one_or_none()
+
+    async def artifact_of(self, workload: Workload) -> Artifact | None:
+        """The artifact a workload serves, by primary key.
+
+        A read already carries the entity through `selectinload`, but an update
+        arrives at the row through `_one` and then has to re-check the device shape
+        against the weights before it writes — this fetches it once, by key, rather
+        than depending on how the caller got here.
+        """
+        return await self.db.get(Artifact, workload.artifact_id)
 
     async def project_by_ref(self, ref: str) -> Project | None:
         column = Project.uid if is_uid(ref) else Project.slug

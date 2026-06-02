@@ -6,10 +6,10 @@ overhead, and the framework's pre-allocation headroom. On top of that, :func:`fi
 answers the question a person actually asks — *can this run on an H100, and how
 many* — and :func:`fitment` answers it for every card we know about at once.
 
-This lives in ``core`` rather than in ``modules/recipes`` because it is not about
-recipes. A recipe is one caller: it declares a device shape and this module says
+This lives in ``core`` rather than in ``modules/workloads`` because it is not about
+workloads. A workload is one caller: it declares a device shape and this module says
 whether that shape can hold the weights. Registering an artifact is another, and
-so is the fitment matrix, which has no recipe in it at all. Nothing here touches
+so is the fitment matrix, which has no workload in it at all. Nothing here touches
 the framework or the database; the device catalogue is the one thing it reads,
 because a fit is meaningless without knowing how big the card is.
 
@@ -82,7 +82,7 @@ DEFAULT_BATCH_TOKENS = 8192
 
 Sizes the activation peak, and is a different knob from ``concurrency``: concurrency is
 how many full-context sequences must be *resident*, this is how many tokens are being
-*computed* in one step. A recipe carries it as ``max_batch_tokens``.
+*computed* in one step. A workload carries it as ``max_batch_tokens``.
 """
 
 _DEFAULT_HIDDEN_SIZE = 4096
@@ -523,7 +523,7 @@ def fit_context_length(
 ) -> ContextFit:
     """Pick the largest context window that fits, halving down from the declared max.
 
-    Both suggesting a recipe and validating a submitted one size the window this
+    Both suggesting a configuration and validating a submitted one size the window this
     way, so the loop lives here next to the estimator rather than being written
     twice with two sets of rounding.
 
@@ -760,7 +760,7 @@ def weights_gb(sizing: Sizing) -> float:
     Every other number this module produces has a fudge factor in it. This one
     does not: the weights are on the cards before a single token is served, so a
     shape that cannot hold them is impossible rather than optimistic. That makes
-    it the only VRAM fact worth refusing somebody's recipe over.
+    it the only VRAM fact worth refusing somebody's configuration over.
     """
     return sizing.total_params * bytes_per_param(sizing.quantization) / _GIB
 

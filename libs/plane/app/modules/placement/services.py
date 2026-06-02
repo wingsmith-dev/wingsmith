@@ -12,9 +12,10 @@ one place to be forgotten.
 
 from __future__ import annotations
 
+from typing import Protocol
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Recipe
 from app.db.models import Project
 from app.db.models import Workload
 from app.db.models import PriorityClass
@@ -34,6 +35,34 @@ from .snapshot import PlacementRequest
 from .repository import PlacementRepository
 
 
+PREVIEW_UID = "wkl_preview"
+"""The identifier a preview of an uncreated shape is answered under.
+
+Deliberately not a mintable uid. A preview writes nothing and reaches no cluster,
+so the name only has to be stable and obviously not a row — inventing a plausible
+`wkl_01m0...` would put a reference in a decision that resolves to nothing, and
+the first person to paste it into a lookup would get a 404 and a wasted hour.
+"""
+
+
+class ShapeSource(Protocol):
+    """Anything that can state a device shape: a `Workload`, or a bare preview request.
+
+    A structural type rather than a union because the two share nothing else and
+    have no common base worth inventing. They agree on these six names — the
+    preview request is spelled with the workload's column names precisely so that
+    one builder reads either without translating — and that agreement is the whole
+    contract.
+    """
+
+    device_class: str
+    device_count: int
+    device_memory_mib_min: int
+    tensor_parallel: int
+    requires_single_topology_domain: bool
+    topology_domain_kind: str | None
+
+
 class PlacementService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -46,7 +75,7 @@ class PlacementService:
 
     def request(
         self,
-        recipe: Recipe,
+        workload_row: ShapeSource,
         project_uid: str,
         priority: PriorityClass,
         workload: str,
@@ -56,7 +85,7 @@ class PlacementService:
         domain_kind: str | None = None,
         deployment_name: str | None = None,
     ) -> PlacementRequest:
-        """The recipe's device shape, scaled by how many replicas are wanted.
+        """The workload's device shape, scaled by how many replicas are wanted.
 
         Multiplying is right because the plane places a workload, not a replica:
         a deployment of four tensor-parallel-eight replicas needs thirty-two
@@ -72,25 +101,31 @@ class PlacementService:
         already sized by the expansion — and a share lands in one cluster whole or
         not at all. Splitting is a decision taken above this, in `expand()`.
 
-        The topology requirement is the recipe's unless the caller states its
-        own. A recipe describes one replica of one engine; a gang deployment is
-        a shape the recipe cannot know about, so a value given here wins and a
-        null one falls through rather than clearing what the recipe asked for.
+        The topology requirement is the shape's unless the caller states its own.
+        The columns describe one replica of one engine; a gang deployment is a
+        shape they cannot know about, so a value given here wins and a null one
+        falls through rather than clearing what was declared.
+
+        `workload_row` is a `ShapeSource` rather than a `Workload` so that a
+        preview of something not yet created reaches the same builder. Both carry
+        the same six field names, which is why no translation happens here.
         """
         return PlacementRequest(
             workload=workload,
             project=project_uid,
-            device_class=recipe.device_class,
-            device_count=max(recipe.device_count, 1) * max(replicas, 1),
+            device_class=workload_row.device_class,
+            device_count=max(workload_row.device_count, 1) * max(replicas, 1),
             kind=kind,
             priority_value=priority.value,
             preempts=priority.preempts,
-            device_memory_mib_min=recipe.device_memory_mib_min,
-            tensor_parallel=max(recipe.tensor_parallel, 1),
+            device_memory_mib_min=workload_row.device_memory_mib_min,
+            tensor_parallel=max(workload_row.tensor_parallel, 1),
             requires_single_domain=(
-                recipe.requires_single_topology_domain if requires_single_domain is None else requires_single_domain
+                workload_row.requires_single_topology_domain
+                if requires_single_domain is None
+                else requires_single_domain
             ),
-            domain_kind=recipe.topology_domain_kind if domain_kind is None else domain_kind,
+            domain_kind=workload_row.topology_domain_kind if domain_kind is None else domain_kind,
             deployment_name=deployment_name,
             atomic=True,
         )
@@ -99,7 +134,7 @@ class PlacementService:
         """Spread one workload's total scale over the clusters it may use.
 
         This is the call that turns "run gpt-20b on asia and europe" into shares.
-        It resolves the workload's recipe and priority, reads capacity once, and
+        It resolves the workload's project and priority, reads capacity once, and
         hands both to the pure expansion; persisting the shares — creating,
         resizing and removing the per-cluster deployments — belongs to whoever
         asked, inside its own write, exactly as `decide()` does.
@@ -120,13 +155,11 @@ class PlacementService:
     async def demand(self, workload: Workload) -> WorkloadDemand:
         """A workload as the expansion sees it: device shape, totals, and constraints.
 
-        The recipe answers what one unit costs and the priority class answers what
-        this workload may take from others; both are resolved here so nothing an ORM
-        row could lazily load reaches the engine.
+        The workload's own columns answer what one unit costs and the priority
+        class answers what this workload may take from others; the project and the
+        priority are resolved here so nothing an ORM row could lazily load reaches
+        the engine.
         """
-        recipe = await self.repo.recipe(workload.recipe_id)
-        if recipe is None:
-            raise NotFound(f"workload {workload.uid} has no recipe")
         project = await self.repo.project(workload.project_id)
         if project is None:
             raise NotFound(f"workload {workload.uid} has no project")
@@ -140,21 +173,15 @@ class PlacementService:
             workload=workload.uid,
             project=project.uid,
             name=workload.name,
-            device_class=recipe.device_class,
-            unit_device_count=max(recipe.device_count, 1),
+            device_class=workload.device_class,
+            unit_device_count=max(workload.device_count, 1),
             kind=workload.kind,
             priority_value=priority.value,
             preempts=priority.preempts,
-            device_memory_mib_min=recipe.device_memory_mib_min,
-            tensor_parallel=max(recipe.tensor_parallel, 1),
-            requires_single_domain=(
-                recipe.requires_single_topology_domain
-                if workload.requires_single_topology_domain is None
-                else workload.requires_single_topology_domain
-            ),
-            domain_kind=(
-                recipe.topology_domain_kind if workload.topology_domain_kind is None else workload.topology_domain_kind
-            ),
+            device_memory_mib_min=workload.device_memory_mib_min,
+            tensor_parallel=max(workload.tensor_parallel, 1),
+            requires_single_domain=workload.requires_single_topology_domain,
+            domain_kind=workload.topology_domain_kind,
             desired_scale=workload.desired_scale,
             gang_size=max(workload.gang_size, 1),
             strategy=workload.strategy,
@@ -203,26 +230,40 @@ class PlacementService:
     async def preview(self, data: PlacementPreviewRequest) -> PlacementDecision:
         """Answers the question without writing a row.
 
-        `workload` is the recipe's own id rather than an invented one: nothing is
-        being created, so naming a workload that will never exist would put a
-        dangling reference in the operator's hands.
+        Two forms, one answer. `workload` asks about a shape that exists and hands
+        the engine that workload's own uid. `shape` asks about one that does not
+        exist yet — the create-form question — and hands the engine `PREVIEW_UID`,
+        because nothing is being created and inventing a plausible `wkl_...` would
+        put a reference in a decision that resolves to nothing.
+
+        Project, priority and replica count are taken from the request in both
+        forms rather than off any row. That is what makes this a question — what
+        would this shape cost for that project, at that priority, at that scale —
+        as against a report of what a workload already has.
         """
-        recipe = await self._recipe(data.recipe)
+        if (data.workload is None) == (data.shape is None):
+            raise Invalid("a preview names exactly one of workload and shape")
         project = await self._project(data.project)
         priority = await self._priority(data.priority_class, project)
+        if data.shape is not None:
+            source: ShapeSource = data.shape
+            named = PREVIEW_UID
+        else:
+            workload = await self._workload(str(data.workload))
+            source, named = workload, workload.uid
         request = self.request(
-            recipe=recipe,
+            workload_row=source,
             project_uid=project.uid,
             priority=priority,
-            workload=recipe.uid,
+            workload=named,
             replicas=data.replicas,
         )
         return await self.decide(request, project.id)
 
-    async def _recipe(self, ref: str) -> Recipe:
-        found = await self.repo.recipe_by_ref(ref)
+    async def _workload(self, ref: str) -> Workload:
+        found = await self.repo.workload_by_ref(ref)
         if found is None:
-            raise NotFound(f"no recipe {ref!r}")
+            raise NotFound(f"no workload {ref!r}")
         return found
 
     async def _project(self, ref: str) -> Project:

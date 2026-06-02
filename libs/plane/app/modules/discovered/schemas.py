@@ -41,7 +41,7 @@ class DecisionRequest(Struct):
 
     There is no field here that could reach a cluster. Tracking a workload adds
     it to the inventory and assigns it an owner; it does not declare it, does not
-    render a recipe against it, and does not emit `deployment.desired` — so an
+    render anything against it, and does not emit `deployment.desired` — so an
     adopted model keeps the weights it already has resident.
     """
 
@@ -60,9 +60,18 @@ class PromoteRequest(Struct):
     Scale is not a parameter. The bounds are taken from what the workload is
     already running, because a promotion that also decided the replica count would
     scale a live workload as a side effect of being catalogued.
+
+    `artifact` is the only part of the serving configuration a caller states, because
+    it is the only part the cluster cannot tell us. Everything else is read off the
+    sighting — the same reading `GET /serving-draft` returns — so that what is
+    declared is what is running. A caller who submitted their own serving block would
+    be declaring a configuration for a process that is already up, and the first
+    reconcile would either refuse it or restart the model, which is the one outcome
+    adoption exists to avoid. Editing it is an ordinary `PATCH /workloads/{ref}`
+    afterwards, where a restart is what the caller asked for.
     """
 
-    recipe: str
+    artifact: str
     project: str
     fingerprint: str
     name: str | None = None

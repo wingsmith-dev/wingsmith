@@ -9,7 +9,7 @@ from app.core.context import RequestContext
 from app.core.schemas import ListResponse
 from app.modules.workloads.schemas import WorkloadSchema
 
-from .derive import RecipeDraft
+from .derive import ServingDraft
 from .depends import discovered_svc_generator
 from .schemas import PromoteRequest
 from .schemas import DecisionRequest
@@ -70,15 +70,16 @@ class DiscoveredWorkloadRoutes(Controller):
     ) -> Response[DiscoveredWorkloadSchema]:
         return Response(await svc.get(ref, cluster=cluster))
 
-    @get("/{ref:str}/recipe-draft")
-    async def draft_recipe(
+    @get("/{ref:str}/serving-draft")
+    async def draft_serving(
         self,
         context: RequestContext,
         svc: DiscoveredWorkloadService,
         ref: str,
         cluster: str | None = None,
-    ) -> Response[RecipeDraft]:
-        return Response(await svc.recipe_draft(ref, cluster=cluster))
+    ) -> Response[ServingDraft]:
+        """Reads the sighting as a proposed serving block for a workload. Writes nothing."""
+        return Response(await svc.serving_draft(ref, cluster=cluster))
 
     @post("/{ref:str}/track")
     async def track_discovered(

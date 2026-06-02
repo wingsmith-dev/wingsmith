@@ -24,7 +24,6 @@ from app.db.models import Node
 from app.db.models import Pool
 from app.db.models import Event
 from app.db.models import Device
-from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Replica
 from app.db.models import Artifact
@@ -105,12 +104,7 @@ def workload_clause(ref: str):
     """
     deployments = select(Deployment.id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
     replicas = select(Replica.id).where(Replica.deployment_id.in_(deployments))
-    artifact = (
-        select(Artifact.id)
-        .join(Recipe, Recipe.artifact_id == Artifact.id)
-        .join(Workload, Workload.recipe_id == Recipe.id)
-        .where(Workload.uid == ref)
-    )
+    artifact = select(Artifact.id).join(Workload, Workload.artifact_id == Artifact.id).where(Workload.uid == ref)
     clusters = (
         select(Deployment.cluster_id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
     )

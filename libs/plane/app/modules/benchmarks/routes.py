@@ -17,6 +17,7 @@ from .schemas import BenchmarkRequestSchema
 from .schemas import BenchmarkVerdictSchema
 from .schemas import BenchmarkRunCreateRequest
 from .schemas import BenchmarkRequestCreateRequest
+from .schemas import ServingBenchmarkSummarySchema
 from .services import BenchmarkService
 
 
@@ -118,6 +119,23 @@ class BenchmarkRoutes(Controller):
         aggregate number over a whole sweep evidences none of them.
         """
         return Response(await svc.bands(ref))
+
+    @get("/serving/{digest:str}")
+    async def get_serving_summary(
+        self, context: RequestContext, svc: BenchmarkService, digest: str
+    ) -> Response[ServingBenchmarkSummarySchema]:
+        """What one serving configuration has been measured at, rolled up now.
+
+        Addressed by `serving_digest` rather than by the workload that carries it,
+        because the digest is what a measurement is about: every run sharing it
+        measured the same running process. It keeps answering after the workload
+        has been renamed, rescaled or deleted, which the recipe rollup this
+        replaces could not.
+
+        An unknown digest is a zero count and not a 404. The question is how much
+        measurement stands behind a configuration, and "none" is an answer.
+        """
+        return Response(await svc.serving_summary(digest))
 
     @get("/{ref:str}")
     async def get_run(self, context: RequestContext, svc: BenchmarkService, ref: str) -> Response[BenchmarkRunSchema]:

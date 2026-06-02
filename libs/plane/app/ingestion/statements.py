@@ -451,7 +451,7 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
     so a replica re-reported after a reconnect keeps the identity it was first
     given. The devices it holds are not written here — a replica's commitment is
     an `Allocation`, which `allocation.observed` carries — and `engine` is not
-    stored because it is the recipe's, not the replica's; `engine_version` is,
+    stored because it is the workload's, not the replica's; `engine_version` is,
     because that is the one that lags during a rollout.
     """
     values: dict[str, Any] = {
@@ -989,7 +989,7 @@ def cache_progressed(cluster_id: UUID, artifact_id: UUID, payload: CacheObserved
     Residency had a row and no timeline. The row answers "are the weights there
     now"; nothing answered "what has been happening to them", and that is the
     question a stuck deployment actually asks. A workload whose weights were
-    never fetched — because no recipe on that cluster named an engine image to
+    never fetched — because nothing on that cluster named an engine image to
     fetch them with — showed as a deployment repeating `WeightsNotResident`
     forever, with the reason it would never stop repeating recorded nowhere the
     plane could show.
