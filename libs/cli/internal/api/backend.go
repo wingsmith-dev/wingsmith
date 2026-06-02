@@ -27,8 +27,6 @@ type Backend interface {
 
 	Artifacts(ctx context.Context, opts ListOpts) (Page[Artifact], error)
 	Artifact(ctx context.Context, ref string) (Artifact, error)
-	Recipes(ctx context.Context, opts ListOpts) (Page[Recipe], error)
-	Recipe(ctx context.Context, ref string) (Recipe, error)
 	Workloads(ctx context.Context, opts ListOpts) (Page[Workload], error)
 	Workload(ctx context.Context, ref string) (Workload, error)
 	CreateWorkload(ctx context.Context, req WorkloadCreateRequest) (Workload, error)

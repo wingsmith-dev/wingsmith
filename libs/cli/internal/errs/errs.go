@@ -222,7 +222,7 @@ var explanations = map[Code]Explanation{
 		Fixes:   []string{"hgr quota ls"},
 	},
 	CodeCapacityUnavailable: {
-		Summary:  "No cluster has devices matching the recipe's requirement.",
+		Summary:  "No cluster has devices matching the workload's device shape.",
 		Detail:   "Cluster selection is global and coarse: a device class unavailable in one region is often available in another.",
 		Fixes:    []string{"hgr device ls", "hgr cluster ls"},
 		Retryabl: true,

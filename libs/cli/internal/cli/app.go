@@ -128,8 +128,8 @@ func newRootCmd(app *App) *cobra.Command {
 		Short: "Hangar — control plane for many GPU clusters and many models",
 		Long: `hgr is the Hangar command line.
 
-Enrol and operate GPU clusters, publish model artifacts and recipes, place
-deployments, and put endpoints in front of them — all through the Hangar
+Enrol and operate GPU clusters, publish model artifacts, declare workloads and
+place deployments, and put endpoints in front of them — all through the Hangar
 control plane's API, which is the only thing this binary talks to.
 
 Every command is noun-verb and every command has a machine contract: pipe it

@@ -53,7 +53,7 @@ func drain(r *os.File) string {
 func TestEveryNounListsAndGets(t *testing.T) {
 	nouns := []string{
 		"cluster", "node", "device", "topology-domain", "pool",
-		"artifact", "recipe", "workload", "deployment", "endpoint",
+		"artifact", "workload", "deployment", "endpoint",
 		"project", "quota", "serving-quota", "priority-class", "policy",
 		"allocation", "operation", "component", "event",
 		"discovered", "alert-threshold",
@@ -372,7 +372,7 @@ func TestAdoptingAWorkloadDeclaresNothing(t *testing.T) {
 	if tracked["status"] != "tracked" {
 		t.Fatalf("status is %v, want tracked", tracked["status"])
 	}
-	for _, declared := range []string{"generation", "recipe_id", "desired_replicas", "revision"} {
+	for _, declared := range []string{"generation", "serving_digest", "desired_replicas", "revision"} {
 		if _, ok := tracked[declared]; ok {
 			t.Errorf("a tracked sighting carries %q, which only a declared object has", declared)
 		}
@@ -421,7 +421,7 @@ func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
 	}
 
 	out, _, code := run(t, "discovered", "promote", "llama-70b-vllm",
-		"--recipe", "llama-70b", "--project", "core", "-o", "json")
+		"--artifact", "llama-3.1-70b", "--project", "core", "-o", "json")
 	if code != 0 {
 		t.Fatalf("promote exit %d: %s", code, out)
 	}
@@ -445,7 +445,7 @@ func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
 func TestPromotionAdoptsTheScaleItFound(t *testing.T) {
 	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	out, _, code := run(t, "discovered", "promote", "qwen2-72b",
-		"--recipe", "llama-70b", "--project", "core", "-o", "json")
+		"--artifact", "llama-3.1-70b", "--project", "core", "-o", "json")
 	if code != 0 {
 		t.Fatalf("promote exit %d: %s", code, out)
 	}
@@ -489,14 +489,14 @@ func promotedDeployment(t *testing.T, workload map[string]any) map[string]any {
 	return deployment
 }
 
-// TestPromotionNeedsToKnowWhatItIsAdopting: without a recipe and an owner the plane would be
+// TestPromotionNeedsToKnowWhatItIsAdopting: without an artifact and an owner the plane would be
 // holding a deployment it cannot describe.
 func TestPromotionNeedsToKnowWhatItIsAdopting(t *testing.T) {
 	_, errOut, code := run(t, "discovered", "promote", "llama-70b-vllm")
 	if code == 0 {
-		t.Fatal("promote succeeded with no recipe and no project")
+		t.Fatal("promote succeeded with no artifact and no project")
 	}
-	if !strings.Contains(errOut, "--recipe") {
+	if !strings.Contains(errOut, "--artifact") {
 		t.Fatalf("the error does not say what is missing: %s", errOut)
 	}
 }

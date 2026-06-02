@@ -21,7 +21,6 @@ func TestPagesDecodeExactly(t *testing.T) {
 	checkPage[TopologyDomain](t, "topology-domains.json")
 	checkPage[Pool](t, "pools.json")
 	checkPage[Artifact](t, "artifacts.json")
-	checkPage[Recipe](t, "recipes.json")
 	checkPage[Workload](t, "workloads.json")
 	checkPage[Deployment](t, "deployments.json")
 	checkPage[DiscoveredWorkload](t, "discovered.json")

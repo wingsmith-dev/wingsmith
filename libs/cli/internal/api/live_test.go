@@ -39,7 +39,6 @@ func TestLiveEveryCollectionAnswers(t *testing.T) {
 		"topology-domains": func() (int, error) { p, err := c.TopologyDomains(ctx, ListOpts{}); return p.Count, err },
 		"pools":            func() (int, error) { p, err := c.Pools(ctx, ListOpts{}); return p.Count, err },
 		"artifacts":        func() (int, error) { p, err := c.Artifacts(ctx, ListOpts{}); return p.Count, err },
-		"recipes":          func() (int, error) { p, err := c.Recipes(ctx, ListOpts{}); return p.Count, err },
 		"workloads":        func() (int, error) { p, err := c.Workloads(ctx, ListOpts{}); return p.Count, err },
 		"deployments":      func() (int, error) { p, err := c.Deployments(ctx, ListOpts{}); return p.Count, err },
 		"endpoints":        func() (int, error) { p, err := c.Endpoints(ctx, ListOpts{}); return p.Count, err },

@@ -95,7 +95,7 @@ control plane never carries them.`,
 			t.Render(w)
 		},
 		next: func(a api.Artifact) []errs.Action {
-			return []errs.Action{{Description: "Recipes that serve it", Command: "hgr recipe ls --artifact " + a.ID}}
+			return []errs.Action{{Description: "Workloads that serve it", Command: "hgr workload ls --artifact " + a.ID}}
 		},
 	}
 }
@@ -118,95 +118,6 @@ func shorten(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
-}
-
-func recipeNoun() noun[api.Recipe] {
-	return noun[api.Recipe]{
-		name:    "recipe",
-		aliases: []string{"recipes"},
-		group:   "demand",
-		short:   "A reproducible way to serve one artifact",
-		long: `A recipe is engine, parallelism, cache configuration and the hardware
-shape they imply.
-
-The shape is class-first on purpose: a tensor-parallel-8 recipe means nothing
-spread across an A100 and an H100, so a device count without a device class is
-not a shape.`,
-		example: `  hgr recipe ls
-  hgr recipe ls --engine vllm --class h100-80
-  hgr recipe get llama-70b-tp8`,
-		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Recipe], error) {
-			return b.Recipes(ctx, o)
-		},
-		get:   func(ctx context.Context, b api.Backend, ref string) (api.Recipe, error) { return b.Recipe(ctx, ref) },
-		keys:  func(r api.Recipe) []string { return []string{r.Name, r.ID} },
-		empty: "no recipes defined",
-		columns: []ui.Column{
-			{Title: "name"},
-			{Title: "id", Wide: true},
-			{Title: "v", Align: ui.AlignRight},
-			{Title: "engine"},
-			{Title: "class"},
-			{Title: "devices", Align: ui.AlignRight},
-			{Title: "tp/pp/ep"},
-			{Title: "context", Align: ui.AlignRight},
-			{Title: "one domain"},
-		},
-		row: func(s ui.Style, r api.Recipe) []string {
-			return []string{
-				r.Name, r.ID, strconv.Itoa(r.Version), r.Engine + " " + r.EngineVersion,
-				r.Shape.DeviceClass, strconv.Itoa(r.Shape.DeviceCount),
-				fmt.Sprintf("%d/%d/%d", r.Parallelism.Tensor, r.Parallelism.Pipeline, r.Parallelism.Expert),
-				strconv.Itoa(r.ContextLength), boolWord(r.Shape.RequiresSingleTopologyDomain),
-			}
-		},
-		bind: func(f *filters, cmd *cobra.Command) {
-			cmd.Flags().StringVar(&f.artifact, "artifact", "", "limit to one artifact")
-			cmd.Flags().StringVar(&f.engine, "engine", "", "filter by engine, e.g. vllm")
-			cmd.Flags().StringVar(&f.class, "class", "", "filter by device class")
-			f.bindSearch(cmd, "substring match on name or engine")
-			f.bindLabels(cmd)
-		},
-		detail: func(app *App, w io.Writer, s ui.Style, r api.Recipe) {
-			fmt.Fprintf(w, "%s %s\n", s.Bold(r.Name), s.Dim(r.ID))
-			kv := app.KV()
-			kv.Add("artifact", r.ArtifactID)
-			kv.Addf("version", "%d", r.Version)
-			kv.Addf("engine", "%s %s", r.Engine, r.EngineVersion)
-			kv.Add("image", orDash(str(r.EngineImage)))
-			kv.Add("engine args", labelString(r.EngineArgs))
-			kv.Add("quantization", orDash(str(r.Quantization)))
-			kv.Add("dtype", orDash(str(r.Dtype)))
-			kv.Addf("parallelism", "tensor %d · pipeline %d · expert %d", r.Parallelism.Tensor, r.Parallelism.Pipeline, r.Parallelism.Expert)
-			kv.Addf("context", "%d", r.ContextLength)
-			kv.Add("max batch tokens", num(r.MaxBatchTokens))
-			kv.Add("labels", labelString(r.Labels))
-			kv.Add("revision", r.Revision)
-			kv.Render(w)
-
-			fmt.Fprintf(w, "\n%s\n", s.Dim("shape"))
-			skv := app.KV()
-			skv.Add("device class", r.Shape.DeviceClass)
-			skv.Addf("device count", "%d", r.Shape.DeviceCount)
-			skv.Add("min device memory", mib(r.Shape.DeviceMemoryMiBMin))
-			skv.Add("single topology domain", yesNo(s, r.Shape.RequiresSingleTopologyDomain))
-			skv.Add("domain kind", orDash(str(r.Shape.TopologyDomainKind)))
-			skv.Render(w)
-
-			fmt.Fprintf(w, "\n%s\n", s.Dim("cache and resources"))
-			ckv := app.KV()
-			ckv.Add("kv cache dtype", orDash(str(r.Cache.KVCacheDtype)))
-			ckv.Add("kv cache fraction", fraction(r.Cache.KVCacheFraction))
-			ckv.Add("prefix cache", boolWord(r.Cache.PrefixCacheEnabled))
-			ckv.Add("cpu", num(r.Resources.CPUCores))
-			ckv.Add("memory", mibPtr(r.Resources.MemoryMiB))
-			ckv.Add("disk", gib(r.Resources.DiskGiB))
-			ckv.Render(w)
-		},
-		next: func(r api.Recipe) []errs.Action {
-			return []errs.Action{{Description: "What runs it", Command: "hgr workload ls --recipe " + r.ID}}
-		},
-	}
 }
 
 // authorityWord renders who owns a deployment, and leans on colour to make the difference
@@ -242,11 +153,11 @@ func deploymentNoun() noun[api.Deployment] {
 		aliases: []string{"deployments", "deploy"},
 		group:   "demand",
 		short:   "One workload's share on one cluster",
-		long: `A deployment is recipe × cluster: the unit the operator reconciles.
+		long: `A deployment is one workload on one cluster: the unit the operator reconciles.
 
 You do not create one. Placement creates it when it expands a workload, one per
 cluster the workload landed on, and the replica bounds on it are THIS CLUSTER'S
-share of the workload total — never the total. Recipe, adapters, overrides and
+share of the workload total — never the total. Serving, adapters, overrides and
 labels are workload facts and are read there; admission is here, because a
 workload can be running in one region and queued on quota in another.`,
 		example: `  hgr deployment ls
@@ -408,7 +319,8 @@ func workloadNoun() noun[api.Workload] {
 		aliases: []string{"workloads", "wkl"},
 		group:   "demand",
 		short:   "What you asked to run, across every cluster it may use",
-		long: `A workload is a recipe, a kind, a priority and a total scale — and no cluster.
+		long: `A workload is an artifact, the way to serve it, a kind, a priority and a
+total scale — and no cluster.
 
 Placement expands it into one deployment per cluster, and each of those carries
 that cluster's share of the total. "Run gpt-20b on asia and europe" is one
@@ -421,7 +333,7 @@ replicas for a service, ranks for a gang, completions for a task.`,
 		example: `  hgr workload ls
   hgr workload ls --kind gang --phase pending
   hgr workload get chat
-  hgr workload create chat --recipe llama-70b --project core --scale 8
+  hgr workload create chat --artifact llama-3.1-70b --class h100-80 --scale 8
   hgr workload scale chat 12`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Workload], error) {
 			return b.Workloads(ctx, o)
@@ -438,6 +350,7 @@ replicas for a service, ranks for a gang, completions for a task.`,
 			{Title: "phase"},
 			{Title: "project", Wide: true},
 			{Title: "priority"},
+			{Title: "serving"},
 			{Title: "clusters", Align: ui.AlignRight},
 			{Title: "scale", Align: ui.AlignRight},
 			{Title: "ready", Align: ui.AlignRight},
@@ -448,6 +361,7 @@ replicas for a service, ranks for a gang, completions for a task.`,
 		row: func(s ui.Style, wl api.Workload) []string {
 			return []string{
 				wl.Name, wl.ID, wl.Kind, phaseColor(s, wl.Phase), wl.ProjectID, wl.PriorityClass,
+				footprintSummary(wl.Serving),
 				strconv.Itoa(len(wl.Deployments)),
 				scaleCell(s, wl.Scale),
 				strconv.Itoa(wl.Scale.Ready),
@@ -458,7 +372,9 @@ replicas for a service, ranks for a gang, completions for a task.`,
 			cmd.Flags().StringVar(&f.project, "project", "", "limit to one project")
 			cmd.Flags().StringVar(&f.kind, "kind", "", "filter by kind: service|task|gang")
 			cmd.Flags().StringVar(&f.phase, "phase", "", "filter by phase: pending|admitted|placed|running")
-			cmd.Flags().StringVar(&f.recipe, "recipe", "", "limit to one recipe")
+			cmd.Flags().StringVar(&f.artifact, "artifact", "", "limit to one artifact")
+			cmd.Flags().StringVar(&f.class, "class", "", "limit to one device class")
+			cmd.Flags().StringVar(&f.digest, "serving-digest", "", "workloads running one exact configuration")
 			cmd.Flags().StringVar(&f.cluster, "cluster", "", "workloads with a share on one cluster")
 			f.bindLabels(cmd)
 		},
@@ -481,7 +397,7 @@ replicas for a service, ranks for a gang, completions for a task.`,
 			kv := app.KV()
 			kv.Add("kind", wl.Kind)
 			kv.Add("phase", phaseColor(s, wl.Phase))
-			kv.Add("recipe", wl.RecipeID)
+			kv.Add("artifact", wl.Serving.ArtifactID)
 			kv.Add("project", wl.ProjectID)
 			kv.Add("priority class", wl.PriorityClass)
 			kv.Add("preemptible", boolWord(wl.Preemptible))
@@ -492,11 +408,11 @@ replicas for a service, ranks for a gang, completions for a task.`,
 			kv.Add("adapters", orDash(strings.Join(wl.AdapterArtifactIDs, " ")))
 			kv.Add("overrides", labelString(wl.Overrides))
 			kv.Add("labels", labelString(wl.Labels))
-			kv.Add("single topology domain", orDash(boolPtrWord(wl.RequiresSingleTopologyDomain)))
-			kv.Add("domain kind", orDash(str(wl.TopologyDomainKind)))
 			kv.Add("deadline", ago(wl.DeadlineAt))
 			kv.Add("revision", wl.Revision)
 			kv.Render(w)
+
+			writeServing(app, w, s, wl)
 
 			fmt.Fprintf(w, "\n%s\n", s.Dim("scale"))
 			skv := app.KV()
@@ -543,6 +459,8 @@ replicas for a service, ranks for a gang, completions for a task.`,
 		next: func(wl api.Workload) []errs.Action {
 			out := []errs.Action{
 				{Description: "Its shares, per cluster", Command: "hgr deployment ls --workload " + wl.Name},
+				{Description: "Everything running this exact configuration",
+					Command: "hgr workload ls --serving-digest " + wl.ServingDigest},
 			}
 			if wl.Paused {
 				return append(out, errs.Action{Description: "Let it run again", Command: "hgr workload resume " + wl.Name})
@@ -565,16 +483,78 @@ func scaleCell(s ui.Style, sc api.WorkloadScale) string {
 	return cell
 }
 
-func boolPtrWord(v *bool) string {
-	if v == nil {
-		return ""
+// footprintSummary is a serving configuration on one line — `8 x h100-80 · tp8 ·
+// 128k · fp8` — the one cell that says how a workload is served.
+// It formats the same fields in the same order as the console's own
+// footprintSummary, so the two surfaces name a footprint identically.
+func footprintSummary(sv api.ServingSpec) string {
+	parts := []string{
+		fmt.Sprintf("%d x %s", sv.Shape.DeviceCount, sv.Shape.DeviceClass),
+		fmt.Sprintf("tp%d", sv.Parallelism.Tensor),
 	}
-	return boolWord(*v)
+	if sv.Parallelism.Pipeline > 1 {
+		parts = append(parts, fmt.Sprintf("pp%d", sv.Parallelism.Pipeline))
+	}
+	if sv.ContextLength > 0 {
+		parts = append(parts, shortTokens(sv.ContextLength))
+	}
+	if q := str(sv.Quantization); q != "" {
+		parts = append(parts, q)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// shortTokens abbreviates a context length only when it divides exactly, so a
+// number nobody rounded is never shown rounded.
+func shortTokens(v int) string {
+	if v >= 1024 && v%1024 == 0 {
+		return strconv.Itoa(v/1024) + "k"
+	}
+	return strconv.Itoa(v)
+}
+
+// writeServing prints the serving configuration a workload carries, digest
+// first: the digest is the identity, and two workloads sharing one are running
+// the same process.
+func writeServing(app *App, w io.Writer, s ui.Style, wl api.Workload) {
+	sv := wl.Serving
+	fmt.Fprintf(w, "\n%s\n", s.Dim("serving"))
+	kv := app.KV()
+	kv.Add("digest", orDash(wl.ServingDigest))
+	kv.Add("footprint", footprintSummary(sv))
+	kv.Add("engine", strings.TrimSpace(sv.Engine+" "+sv.EngineVersion))
+	kv.Add("engine image", orDash(str(sv.EngineImage)))
+	kv.Add("frontend image", orDash(str(sv.FrontendImage)))
+	kv.Add("engine args", labelString(sv.EngineArgs))
+	kv.Add("resolved engine args", labelString(sv.ResolvedEngineArgs))
+	kv.Add("imported args", labelString(sv.ImportedArgs))
+	kv.Add("quantization", orDash(str(sv.Quantization)))
+	kv.Add("dtype", orDash(str(sv.Dtype)))
+	kv.Addf("parallelism", "tensor %d · pipeline %d · expert %d",
+		sv.Parallelism.Tensor, sv.Parallelism.Pipeline, sv.Parallelism.Expert)
+	kv.Addf("context", "%d", sv.ContextLength)
+	kv.Add("max batch tokens", num(sv.MaxBatchTokens))
+	kv.Render(w)
+
+	fmt.Fprintf(w, "\n%s\n", s.Dim("shape, cache and resources"))
+	ckv := app.KV()
+	ckv.Add("device class", sv.Shape.DeviceClass)
+	ckv.Addf("device count", "%d", sv.Shape.DeviceCount)
+	ckv.Add("min device memory", mib(sv.Shape.DeviceMemoryMiBMin))
+	ckv.Add("single topology domain", yesNo(s, sv.Shape.RequiresSingleTopologyDomain))
+	ckv.Add("domain kind", orDash(str(sv.Shape.TopologyDomainKind)))
+	ckv.Add("kv cache dtype", orDash(str(sv.Cache.KVCacheDtype)))
+	ckv.Add("kv cache fraction", fraction(sv.Cache.KVCacheFraction))
+	ckv.Add("prefix cache", boolWord(sv.Cache.PrefixCacheEnabled))
+	ckv.Add("cpu", num(sv.Resources.CPUCores))
+	ckv.Add("memory", mibPtr(sv.Resources.MemoryMiB))
+	ckv.Add("disk", gib(sv.Resources.DiskGiB))
+	ckv.Render(w)
 }
 
 func newWorkloadCreateCmd(app *App) *cobra.Command {
 	var (
-		recipe        string
+		artifact      string
 		project       string
 		cluster       string
 		priorityClass string
@@ -591,6 +571,28 @@ func newWorkloadCreateCmd(app *App) *cobra.Command {
 		labels        []string
 		singleFabric  bool
 		fabricKind    string
+
+		engine          string
+		engineVersion   string
+		engineImage     string
+		frontendImage   string
+		engineArgs      []string
+		quantization    string
+		dtype           string
+		tensor          int
+		pipeline        int
+		expert          int
+		contextLength   int
+		maxBatchTokens  int
+		kvCacheDtype    string
+		kvCacheFraction float64
+		prefixCache     bool
+		class           string
+		devices         int
+		deviceMemoryMin int
+		cpuCores        int
+		memoryMiB       int
+		diskGiB         int
 	)
 	cmd := &cobra.Command{
 		Use:     "create <name>",
@@ -606,16 +608,24 @@ default because it keeps a workload that fits in one cluster in one cluster;
 
 --cluster is the escape hatch, not the normal path: it pins the workload to one
 cluster, is never checked for capacity, and forces a single deployment. A gang is
-already single-cluster by construction, because its ranks are co-scheduled.`,
-		Example: `  hgr workload create chat --recipe llama-70b --project core --scale 8
-  hgr workload create chat --recipe llama-70b --project core --scale 8 --strategy spread
-  hgr workload create sweep --recipe llama-70b --project core --kind task --scale 200
-  hgr workload create train --recipe llama-70b --project core --kind gang --gang-size 64`,
+already single-cluster by construction, because its ranks are co-scheduled.
+
+The serving flags are the workload's own: there is no shared configuration to
+name and nothing to reuse by id. Two workloads given the same flags get the same
+serving_digest, which is the whole of what sharing used to buy.`,
+		Example: `  hgr workload create chat --artifact llama-3.1-70b --class h100-80 --scale 8
+  hgr workload create chat --artifact llama-3.1-70b --class h100-80 --devices 8 --tensor-parallel 8
+  hgr workload create sweep --artifact llama-3.1-70b --class h100-80 --kind task --scale 200
+  hgr workload create train --artifact llama-3.1-70b --class h100-80 --kind gang --gang-size 64`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if recipe == "" || project == "" {
-				return errs.New(errs.CodeInputRequired, "a workload needs --recipe and --project").
+			if artifact == "" || project == "" {
+				return errs.New(errs.CodeInputRequired, "a workload needs --artifact and --project").
 					WithCause("what to run, and who is charged for it")
+			}
+			if class == "" || contextLength <= 0 {
+				return errs.New(errs.CodeInputRequired, "a workload needs --class and --context-length").
+					WithCause("a device count without a device class is not a shape, and the engine is told a context length either way")
 			}
 			parsedFloors, err := api.ParseKV(floors, "floor")
 			if err != nil {
@@ -648,8 +658,53 @@ already single-cluster by construction, because its ranks are co-scheduled.`,
 				maxScale = scale
 			}
 
+			parsedEngineArgs, err := api.ParseKV(engineArgs, "engine-arg")
+			if err != nil {
+				return err
+			}
+			engineArgMap := map[string]any{}
+			for k, v := range parsedEngineArgs {
+				engineArgMap[k] = v
+			}
+
+			serving := api.ServingRequest{
+				Artifact: artifact, Engine: engine, EngineVersion: engineVersion,
+				ContextLength: contextLength,
+				Shape: api.ServingShape{
+					DeviceClass: class, DeviceCount: devices, DeviceMemoryMiBMin: deviceMemoryMin,
+					RequiresSingleTopologyDomain: singleFabric,
+					TopologyDomainKind:           optionalString(fabricKind),
+				},
+				EngineImage: optionalString(engineImage), FrontendImage: optionalString(frontendImage),
+				EngineArgs:   engineArgMap,
+				Quantization: optionalString(quantization), Dtype: optionalString(dtype),
+				Parallelism: api.ServingParallelism{Tensor: tensor, Pipeline: pipeline, Expert: expert},
+				Cache: api.ServingCache{
+					KVCacheDtype:       optionalString(kvCacheDtype),
+					PrefixCacheEnabled: prefixCache,
+					PrefixCacheConfig:  map[string]any{},
+				},
+				Overlay: api.ServingOverlay{PodSpec: map[string]any{}, Dynamo: map[string]any{}},
+			}
+			if cmd.Flags().Changed("max-batch-tokens") {
+				serving.MaxBatchTokens = &maxBatchTokens
+			}
+			if cmd.Flags().Changed("kv-cache-fraction") {
+				serving.Cache.KVCacheFraction = &kvCacheFraction
+			}
+			if cmd.Flags().Changed("cpu") {
+				serving.Resources.CPUCores = &cpuCores
+			}
+			if cmd.Flags().Changed("memory") {
+				serving.Resources.MemoryMiB = &memoryMiB
+			}
+			if cmd.Flags().Changed("disk") {
+				serving.Resources.DiskGiB = &diskGiB
+			}
+
 			req := api.WorkloadCreateRequest{
-				Recipe: recipe, Name: args[0], Project: project, Cluster: cluster,
+				Serving: serving,
+				Name:    args[0], Project: project, Cluster: cluster,
 				PriorityClass: priorityClass, Kind: kind,
 				MinScale: minScale, MaxScale: maxScale, DesiredScale: scale,
 				Strategy: strategy, ClusterFloors: clusterFloors,
@@ -658,16 +713,6 @@ already single-cluster by construction, because its ranks are co-scheduled.`,
 			}
 			if cmd.Flags().Changed("max-clusters") {
 				req.MaxClusters = &maxClusters
-			}
-			// Sent only when it was typed. The field is a nullable override of the recipe's
-			// own requirement, and null means the recipe's answer stands rather than that
-			// there is no requirement, so a default written in unasked would freeze the
-			// shape's derived answer onto a workload that should follow its recipe.
-			if cmd.Flags().Changed("single-fabric") {
-				req.RequiresSingleTopologyDomain = &singleFabric
-			}
-			if cmd.Flags().Changed("fabric-kind") {
-				req.TopologyDomainKind = fabricKind
 			}
 
 			ctx, cancel := app.RequestContext()
@@ -680,7 +725,7 @@ already single-cluster by construction, because its ranks are co-scheduled.`,
 		},
 	}
 	fl := cmd.Flags()
-	fl.StringVar(&recipe, "recipe", "", "the recipe to run")
+	fl.StringVar(&artifact, "artifact", "", "the weights to run")
 	fl.StringVar(&project, "project", "", "the project that owns it")
 	fl.StringVar(&cluster, "cluster", "", "pin to one cluster, overruling placement")
 	fl.StringVar(&priorityClass, "priority-class", "", "priority class, defaulting to the project's")
@@ -696,9 +741,41 @@ already single-cluster by construction, because its ranks are co-scheduled.`,
 	fl.StringArrayVar(&adapters, "adapter", nil, "adapter artifact to load (repeatable)")
 	fl.StringArrayVarP(&labels, "label", "l", nil, "label (KEY=VALUE, repeatable)")
 	fl.BoolVar(&singleFabric, "single-fabric", false,
-		"every device of a replica in one topology domain, overriding the recipe")
+		"every device of a replica in one topology domain")
 	fl.StringVar(&fabricKind, "fabric-kind", "", "which kind of domain --single-fabric means (nvlink, pcie_root, numa)")
+
+	fl.StringVar(&engine, "engine", "vllm", "inference engine")
+	fl.StringVar(&engineVersion, "engine-version", "", "engine version, e.g. 0.6.3")
+	fl.StringVar(&engineImage, "engine-image", "", "override the image the engine runs from")
+	fl.StringVar(&frontendImage, "frontend-image", "", "override the image the frontend runs from")
+	fl.StringArrayVar(&engineArgs, "engine-arg", nil,
+		"engine flag, beating every derived one (KEY=VALUE, repeatable)")
+	fl.StringVar(&quantization, "quantization", "", "weight quantization, e.g. fp8")
+	fl.StringVar(&dtype, "dtype", "", "compute dtype, e.g. bfloat16")
+	fl.IntVar(&tensor, "tensor-parallel", 1, "tensor-parallel degree")
+	fl.IntVar(&pipeline, "pipeline-parallel", 1, "pipeline-parallel degree")
+	fl.IntVar(&expert, "expert-parallel", 1, "expert-parallel degree")
+	fl.IntVar(&contextLength, "context-length", 0, "context length in tokens")
+	fl.IntVar(&maxBatchTokens, "max-batch-tokens", 0, "cap on tokens in one batch")
+	fl.StringVar(&kvCacheDtype, "kv-cache-dtype", "", "KV cache dtype, e.g. fp8")
+	fl.Float64Var(&kvCacheFraction, "kv-cache-fraction", 0, "share of device memory the KV cache may take")
+	fl.BoolVar(&prefixCache, "prefix-cache", true, "reuse prefixes across requests")
+	fl.StringVar(&class, "class", "", "device class every replica is placed on")
+	fl.IntVar(&devices, "devices", 1, "devices per replica")
+	fl.IntVar(&deviceMemoryMin, "device-memory-min", 0, "minimum device memory in MiB")
+	fl.IntVar(&cpuCores, "cpu", 0, "CPU cores per replica")
+	fl.IntVar(&memoryMiB, "memory", 0, "host memory per replica, in MiB")
+	fl.IntVar(&diskGiB, "disk", 0, "scratch disk per replica, in GiB")
 	return cmd
+}
+
+// optionalString reads an unset string flag as absent rather than as empty. The
+// fields it feeds are nullable on the wire and empty is not null.
+func optionalString(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
 }
 
 func newWorkloadDeleteCmd(app *App) *cobra.Command {
@@ -1061,7 +1138,7 @@ behind it are disposable; the endpoint is the contract.`,
 		detail: func(app *App, w io.Writer, s ui.Style, e api.Endpoint) {
 			fmt.Fprintf(w, "%s %s\n", s.Bold(e.Name), s.Dim(e.ID))
 			kv := app.KV()
-			kv.Add("display name", orDash(str(e.DisplayName)))
+			kv.Add("slug", e.Slug)
 			kv.Add("project", e.ProjectID)
 			kv.Add("visibility", e.Visibility)
 			kv.Add("routing", e.RoutingStrategy)

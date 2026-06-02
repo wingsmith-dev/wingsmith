@@ -17,7 +17,6 @@ func register(app *App, root *cobra.Command) {
 		poolNoun().command(app),
 
 		artifactNoun().command(app),
-		recipeNoun().command(app),
 		newWorkloadCmd(app),
 		deploymentNoun().command(app),
 		newDiscoveredCmd(app),

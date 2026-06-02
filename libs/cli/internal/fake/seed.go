@@ -312,37 +312,43 @@ func seed() *state {
 		},
 	})
 
-	recipeID := uid("rec_")
-	st.Recipes = append(st.Recipes, api.Recipe{
-		ID:             recipeID,
+	// The serving configuration is the workload's own. There is no object to
+	// point at and nothing to share: two workloads configured this way carry
+	// the same serving_digest, and that is all sharing ever meant.
+	serving := normalizeServing(api.ServingSpec{
 		ArtifactID:     artifactID,
-		Name:           "llama-70b-tp8",
-		Version:        1,
 		Engine:         "vllm",
 		EngineVersion:  "0.6.3",
 		EngineArgs:     map[string]any{},
 		ImportedArgs:   map[string]any{"--max-num-seqs": "256"},
 		Dtype:          strptr("bfloat16"),
-		Parallelism:    api.RecipeParallelism{Tensor: 8, Pipeline: 1, Expert: 1},
+		Parallelism:    api.ServingParallelism{Tensor: 8, Pipeline: 1, Expert: 1},
 		ContextLength:  131072,
 		MaxBatchTokens: intptr(65536),
-		Cache: api.RecipeCache{
-			KVCacheDtype:      strptr("fp8"),
-			KVCacheFraction:   floatptr(0.9),
-			PrefixCacheConfig: map[string]any{},
+		Cache: api.ServingCache{
+			KVCacheDtype:       strptr("fp8"),
+			KVCacheFraction:    floatptr(0.9),
+			PrefixCacheEnabled: true,
+			PrefixCacheConfig:  map[string]any{},
 		},
-		Shape: api.RecipeShape{
+		Shape: api.ServingShape{
 			DeviceClass:                  "h100-80",
 			DeviceCount:                  8,
 			DeviceMemoryMiBMin:           81920,
 			RequiresSingleTopologyDomain: true,
 			TopologyDomainKind:           strptr("nvswitch"),
 		},
-		Resources: api.RecipeResources{CPUCores: intptr(32), MemoryMiB: intptr(262144), DiskGiB: intptr(512)},
-		Labels:    map[string]any{"family": "llama"},
-		CreatedAt: created,
-		Revision:  revision(created),
+		Resources: api.ServingResources{CPUCores: intptr(32), MemoryMiB: intptr(262144), DiskGiB: intptr(512)},
+		Capabilities: api.ServingCapabilities{
+			StreamingSupported:    true,
+			StructuredOutputModes: []string{"text", "json_schema"},
+			ToolCallingSupported:  true,
+			ToolChoiceModes:       []string{"auto", "none"},
+			InputModalities:       []string{"text"},
+			PromptCacheMode:       "off",
+		},
 	})
+	digest := servingDigest(serving)
 
 	iad := st.Clusters[0].ID
 	sjc := st.Clusters[1].ID
@@ -354,10 +360,11 @@ func seed() *state {
 	workloadID := uid("wkl_")
 	st.Workloads = append(st.Workloads, api.Workload{
 		ID: workloadID, Name: "chat", Kind: "service", ProjectID: projectID,
-		PriorityClass: "production", GangSize: 1, RecipeID: recipeID,
+		PriorityClass: "production", GangSize: 1,
+		ServingDigest:      digest,
+		Serving:            serving,
 		AdapterArtifactIDs: []string{}, Overrides: map[string]any{},
-		Labels:                       map[string]any{"tier": "prod"},
-		RequiresSingleTopologyDomain: boolptr(true), TopologyDomainKind: strptr("nvlink"),
+		Labels:        map[string]any{"tier": "prod"},
 		Strategy:      "spread",
 		ClusterFloors: map[string]any{},
 		Scale: api.WorkloadScale{
@@ -385,7 +392,7 @@ func seed() *state {
 			ID: depPending, Name: "chat", WorkloadID: workloadID, WorkloadName: "chat", ClusterID: sjc,
 			MinReplicas: 1, MaxReplicas: 1, DesiredReplicas: 1,
 			AdmissionPhase:  "pending",
-			AdmissionReason: strptr("no device class in this cluster satisfies the recipe shape"),
+			AdmissionReason: strptr("no device class in this cluster satisfies the workload's shape"),
 			QueuedAt:        ptr(now.Add(-2 * time.Hour)),
 			Generation:      1, Enabled: true, Authority: "managed",
 			CreatedAt: now.Add(-2 * time.Hour), Revision: revision(now.Add(-2 * time.Hour)),
@@ -404,7 +411,7 @@ func seed() *state {
 
 	chatEndpoint := uid("end_")
 	st.Endpoints = append(st.Endpoints, api.Endpoint{
-		ID: chatEndpoint, Name: "chat", DisplayName: strptr("Chat"), ProjectID: projectID,
+		ID: chatEndpoint, Name: "chat", Slug: "meta-llama/llama-3.3-70b-instruct", ProjectID: projectID,
 		Visibility: "private", RoutingStrategy: "weighted", Enabled: true,
 		Targets: []api.EndpointTarget{
 			{DeploymentID: depRunning, Weight: 90, Role: "primary", Enabled: true},
@@ -537,7 +544,8 @@ func seed() *state {
 			},
 			Provenance: api.BenchmarkProvenance{
 				Model: benchDeployment.Name, DeploymentGeneration: int64(benchDeployment.Generation),
-				EngineArgs: map[string]any{"--max-num-seqs": 256},
+				ServingDigest: &digest,
+				EngineArgs:    map[string]any{"--max-num-seqs": 256},
 			},
 			Phase: api.OpSucceeded, CreatedAt: now.Add(-4 * time.Hour),
 			StartedAt: ptr(now.Add(-4 * time.Hour)), FinishedAt: ptr(now.Add(-3*time.Hour - 50*time.Minute)),
@@ -553,7 +561,8 @@ func seed() *state {
 			},
 			Provenance: api.BenchmarkProvenance{
 				Model: benchDeployment.Name, DeploymentGeneration: int64(benchDeployment.Generation),
-				EngineArgs: map[string]any{"--max-num-seqs": 256},
+				ServingDigest: &digest,
+				EngineArgs:    map[string]any{"--max-num-seqs": 256},
 			},
 			Phase: api.OpSucceeded, CreatedAt: now.Add(-5 * time.Hour),
 			StartedAt: ptr(now.Add(-5 * time.Hour)), FinishedAt: ptr(now.Add(-4*time.Hour - 52*time.Minute)),
@@ -568,7 +577,8 @@ func seed() *state {
 			},
 			Provenance: api.BenchmarkProvenance{
 				Model: benchDeployment.Name, DeploymentGeneration: int64(benchDeployment.Generation),
-				EngineArgs: map[string]any{},
+				ServingDigest: &digest,
+				EngineArgs:    map[string]any{},
 			},
 			Phase: api.OpFailed, CreatedAt: now.Add(-90 * time.Minute),
 			StartedAt: ptr(now.Add(-89 * time.Minute)), FinishedAt: ptr(now.Add(-58 * time.Minute)),
@@ -604,7 +614,7 @@ func seed() *state {
 		api.Event{
 			ID: "evt_01j9x2e0000000000000000010", ClusterID: strptr(iad), Kind: "deployment.created",
 			Severity: "info", Subject: api.EventSubject{Type: "deployment", ID: strptr(depRunning)},
-			Message: "chat was created on iad-1 from recipe llama-70b",
+			Message: "chat was created on iad-1 from artifact llama-3.1-70b-instruct",
 			Details: map[string]any{
 				"deployment_id": depRunning, "name": "chat",
 				"cluster": "iad-1", "desired_replicas": "4",

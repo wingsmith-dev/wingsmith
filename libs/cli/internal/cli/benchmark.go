@@ -116,12 +116,7 @@ func benchmarkDetail(app *App, w io.Writer, s ui.Style, r api.BenchmarkRun) {
 	pv := app.KV()
 	pv.Add("model", r.Provenance.Model)
 	pv.Addf("deployment generation", "%d", r.Provenance.DeploymentGeneration)
-	pv.Add("recipe", orDash(str(r.Provenance.RecipeID)))
-	version := ""
-	if r.Provenance.RecipeVersion != nil {
-		version = fmt.Sprintf("%d", *r.Provenance.RecipeVersion)
-	}
-	pv.Add("recipe version", orDash(version))
+	pv.Add("serving digest", orDash(str(r.Provenance.ServingDigest)))
 	pv.Add("engine args", labelString(r.Provenance.EngineArgs))
 	pv.Render(w)
 

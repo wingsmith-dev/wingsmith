@@ -328,7 +328,7 @@ func deviceClassNoun() noun[api.DeviceClass] {
 		short:    "The GPU model catalog, and how much of each we own",
 		long: `A device class is the identity a GPU model is placed against.
 
-It is the string on a pool, a recipe shape, a quota and a device — and it is a
+It is the string on a pool, a workload's shape, a quota and a device — and it is a
 dictionary entry, not something anyone declares or any cluster reports. The
 table lives in libs/packages/contract/devices.json and is shared with the
 operator, so a class is added by releasing both halves, never over the API.
@@ -399,7 +399,7 @@ being scheduled onto, and it is the row to act on.`,
 			return []errs.Action{
 				{Description: "Devices of this class", Command: "hgr device ls --class " + c.Class},
 				{Description: "Pools that provision it", Command: "hgr pool ls --class " + c.Class},
-				{Description: "Recipes that ask for it", Command: "hgr recipe ls --class " + c.Class},
+				{Description: "Workloads that ask for it", Command: "hgr workload ls --class " + c.Class},
 			}
 		},
 	}
@@ -443,8 +443,8 @@ func topologyNoun() noun[api.TopologyDomain] {
 
 A device carries an embedded summary of its own domain for display; nesting,
 membership and bandwidth are answered here and only here — which is what
-"eight devices in one NVLink island" needs before a tensor-parallel recipe can
-be placed.`,
+"eight devices in one NVLink island" needs before a tensor-parallel workload
+can be placed.`,
 		example: `  hgr topology-domain ls --cluster iad-1
   hgr topology-domain ls --kind nvswitch
   hgr topology-domain ls --spans-nodes`,

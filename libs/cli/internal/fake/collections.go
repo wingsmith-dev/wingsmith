@@ -2,6 +2,9 @@ package fake
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"sort"
 	"strings"
 	"time"
@@ -189,21 +192,6 @@ func (b *Backend) Artifact(ctx context.Context, ref string) (api.Artifact, error
 	})
 }
 
-func (b *Backend) Recipes(ctx context.Context, o api.ListOpts) (api.Page[api.Recipe], error) {
-	return collect(b, b.state.Recipes, o, func(r api.Recipe) bool {
-		return refEq(o.Artifact, r.ArtifactID) && eqFold(o.Engine, r.Engine) &&
-			eqFold(o.Class, r.Shape.DeviceClass) &&
-			contains(o.Search, r.Name, r.ID, r.Engine) &&
-			labelsMatch(r.Labels, o.Labels)
-	})
-}
-
-func (b *Backend) Recipe(ctx context.Context, ref string) (api.Recipe, error) {
-	return find(b, "recipe", b.state.Recipes, ref, func(r api.Recipe) []string {
-		return []string{r.Name, r.ID}
-	})
-}
-
 // Workloads answers with the deployments and the rollup filled in from the
 // per-cluster rows, rather than from a copy stored beside them. A workload's
 // scale is a sum of its shares, and a fake that kept its own answer to that
@@ -216,7 +204,9 @@ func (b *Backend) Workloads(ctx context.Context, o api.ListOpts) (api.Page[api.W
 	}
 	return collect(b, hydrated, o, func(wl api.Workload) bool {
 		return refEq(o.Project, wl.ProjectID) && eqFold(o.Kind, wl.Kind) &&
-			eqFold(o.Phase, wl.Phase) && refEq(o.Recipe, wl.RecipeID) &&
+			eqFold(o.Phase, wl.Phase) && refEq(o.Artifact, wl.Serving.ArtifactID) &&
+			eqFold(o.Class, wl.Serving.Shape.DeviceClass) &&
+			eqFold(o.ServingDigest, wl.ServingDigest) &&
 			workloadOnCluster(wl, cluster) &&
 			contains(o.Search, wl.Name, wl.ID) &&
 			labelsMatch(wl.Labels, o.Labels)
@@ -323,7 +313,7 @@ func (b *Backend) CreateWorkload(ctx context.Context, req api.WorkloadCreateRequ
 	if strings.TrimSpace(req.Name) == "" {
 		return api.Workload{}, errs.New(errs.CodeInputRequired, "a workload needs a name")
 	}
-	recipe, err := b.Recipe(ctx, req.Recipe)
+	artifact, err := b.Artifact(ctx, req.Serving.Artifact)
 	if err != nil {
 		return api.Workload{}, err
 	}
@@ -354,6 +344,7 @@ func (b *Backend) CreateWorkload(ctx context.Context, req api.WorkloadCreateRequ
 	}
 
 	now := time.Now().UTC()
+	serving := normalizeServing(servingOf(artifact.ID, req.Serving))
 	floors := map[string]any{}
 	for k, v := range req.ClusterFloors {
 		floors[k] = v
@@ -365,13 +356,13 @@ func (b *Backend) CreateWorkload(ctx context.Context, req api.WorkloadCreateRequ
 	workload := api.Workload{
 		ID: b.newUID("wkl_"), Name: req.Name, Kind: kind, ProjectID: project.ID,
 		PriorityClass: orElse(req.PriorityClass, "production"),
-		Preemptible:   req.Preemptible, GangSize: max(req.GangSize, 1), RecipeID: recipe.ID,
+		Preemptible:   req.Preemptible, GangSize: max(req.GangSize, 1),
+		Serving:            serving,
+		ServingDigest:      servingDigest(serving),
 		AdapterArtifactIDs: req.AdapterArtifacts,
 		Overrides:          req.Overrides, Labels: req.Labels,
-		RequiresSingleTopologyDomain: req.RequiresSingleTopologyDomain,
-		TopologyDomainKind:           optional(req.TopologyDomainKind),
-		Strategy:                     orElse(req.Strategy, "pack"),
-		ClusterFloors:                floors, MaxClusters: req.MaxClusters, PinnedClusterID: pinned,
+		Strategy:      orElse(req.Strategy, "pack"),
+		ClusterFloors: floors, MaxClusters: req.MaxClusters, PinnedClusterID: pinned,
 		Scale: api.WorkloadScale{
 			Unit: scaleUnit(kind), Min: req.MinScale, Max: req.MaxScale, Desired: req.DesiredScale,
 		},
@@ -448,12 +439,6 @@ func (b *Backend) UpdateWorkload(ctx context.Context, ref string, req api.Worklo
 		}
 		if req.MaxClusters != nil {
 			wl.MaxClusters = req.MaxClusters
-		}
-		if req.RequiresSingleTopologyDomain != nil {
-			wl.RequiresSingleTopologyDomain = req.RequiresSingleTopologyDomain
-		}
-		if req.TopologyDomainKind != nil {
-			wl.TopologyDomainKind = req.TopologyDomainKind
 		}
 		now := time.Now().UTC()
 		wl.UpdatedAt = &now
@@ -651,7 +636,7 @@ func (b *Backend) PromoteWorkload(ctx context.Context, ref string, req api.Promo
 		return api.Workload{}, errs.New(errs.CodeConflict,
 			"%q changed since it was read; re-read it and promote again", found.Name)
 	}
-	recipe, err := b.Recipe(ctx, req.Recipe)
+	artifact, err := b.Artifact(ctx, req.Artifact)
 	if err != nil {
 		return api.Workload{}, err
 	}
@@ -661,14 +646,26 @@ func (b *Backend) PromoteWorkload(ctx context.Context, ref string, req api.Promo
 	}
 
 	now := time.Now().UTC()
+	// The serving configuration is read off what is running, never chosen here:
+	// a promotion that picked a shape would be a promotion that could restart
+	// the thing it is only cataloguing.
+	serving := normalizeServing(api.ServingSpec{
+		ArtifactID: artifact.ID,
+		Shape:      api.ServingShape{DeviceClass: "unknown", DeviceCount: found.DevicesPerReplica},
+	})
+	if len(found.Images) > 0 {
+		serving.EngineImage = &found.Images[0]
+	}
 	name := req.Name
 	if name == "" {
 		name = found.Name
 	}
 	workload := api.Workload{
 		ID: b.newUID("wkl_"), Name: name, Kind: "service", ProjectID: project.ID,
-		PriorityClass: orElse(req.PriorityClass, "production"),
-		GangSize:      1, RecipeID: recipe.ID,
+		PriorityClass:      orElse(req.PriorityClass, "production"),
+		GangSize:           1,
+		Serving:            serving,
+		ServingDigest:      servingDigest(serving),
 		AdapterArtifactIDs: []string{},
 		Overrides:          map[string]any{},
 		Labels:             found.Labels,
@@ -732,7 +729,7 @@ func optional(v string) *string {
 func (b *Backend) Endpoints(ctx context.Context, o api.ListOpts) (api.Page[api.Endpoint], error) {
 	return collect(b, b.state.Endpoints, o, func(e api.Endpoint) bool {
 		return refEq(o.Project, e.ProjectID) &&
-			contains(o.Search, e.Name, e.ID, deref(e.DisplayName)) &&
+			contains(o.Search, e.Name, e.ID, e.Slug) &&
 			labelsMatch(e.Labels, o.Labels)
 	})
 }
@@ -1235,18 +1232,19 @@ func (b *Backend) BenchmarkVerdict(ctx context.Context, ref, criteria string) (a
 	return verdictFor(run, b.parameterCountOf(run), nil, criteria), nil
 }
 
-// parameterCountOf reads the run's artifact through its provenance recipe, so a
-// run above the large-model threshold grades per service tier as the plane does.
+// parameterCountOf reads the run's artifact through the serving digest its
+// provenance names, so a run above the large-model threshold grades per service
+// tier as the plane does.
 func (b *Backend) parameterCountOf(run api.BenchmarkRun) *int64 {
-	if run.Provenance.RecipeID == nil {
+	if run.Provenance.ServingDigest == nil {
 		return nil
 	}
-	for _, recipe := range b.state.Recipes {
-		if recipe.ID != *run.Provenance.RecipeID {
+	for _, wl := range b.state.Workloads {
+		if wl.ServingDigest != *run.Provenance.ServingDigest {
 			continue
 		}
 		for _, artifact := range b.state.Artifacts {
-			if artifact.ID == recipe.ArtifactID {
+			if artifact.ID == wl.Serving.ArtifactID {
 				return artifact.ParameterCount
 			}
 		}
@@ -1799,4 +1797,101 @@ func policyBinds(p api.Policy, subjectType, subject string) bool {
 		}
 	}
 	return false
+}
+
+// normalizeServing fills the containers the wire always carries, so a serving
+// block built from flags serialises with the same keys as one read back from
+// the plane.
+func normalizeServing(sv api.ServingSpec) api.ServingSpec {
+	sv.Engine = orElse(sv.Engine, "vllm")
+	sv.EngineArgs = orEmpty(sv.EngineArgs)
+	sv.ImportedArgs = orEmpty(sv.ImportedArgs)
+	sv.Cache.PrefixCacheConfig = orEmpty(sv.Cache.PrefixCacheConfig)
+	sv.Overlay.PodSpec = orEmpty(sv.Overlay.PodSpec)
+	sv.Overlay.Dynamo = orEmpty(sv.Overlay.Dynamo)
+	sv.Behaviour.StreamUsage = orElse(sv.Behaviour.StreamUsage, "final_chunk")
+	sv.Behaviour.ContextOverflow = orElse(sv.Behaviour.ContextOverflow, "reject")
+	sv.Behaviour.Reasoning.Transport = orElse(sv.Behaviour.Reasoning.Transport, "reasoning_content")
+	if sv.Parallelism.Tensor == 0 {
+		sv.Parallelism.Tensor = 1
+	}
+	if sv.Parallelism.Pipeline == 0 {
+		sv.Parallelism.Pipeline = 1
+	}
+	if sv.Parallelism.Expert == 0 {
+		sv.Parallelism.Expert = 1
+	}
+	if sv.Shape.DeviceCount == 0 {
+		sv.Shape.DeviceCount = 1
+	}
+	if sv.Capabilities.StructuredOutputModes == nil {
+		sv.Capabilities.StructuredOutputModes = []string{"text"}
+	}
+	if sv.Capabilities.ToolChoiceModes == nil {
+		sv.Capabilities.ToolChoiceModes = []string{}
+	}
+	if sv.Capabilities.InputModalities == nil {
+		sv.Capabilities.InputModalities = []string{"text"}
+	}
+	sv.Capabilities.PromptCacheMode = orElse(sv.Capabilities.PromptCacheMode, "off")
+	sv.ResolvedEngineArgs = resolvedEngineArgs(sv)
+	return sv
+}
+
+// servingOf turns the block a caller sent into the block a read returns. The
+// artifact is resolved to its id here, and the derivations are the plane's:
+// nothing a client sent decides them.
+func servingOf(artifactID string, req api.ServingRequest) api.ServingSpec {
+	return api.ServingSpec{
+		ArtifactID: artifactID,
+		Engine:     req.Engine, EngineVersion: req.EngineVersion,
+		EngineImage: req.EngineImage, FrontendImage: req.FrontendImage,
+		EngineArgs: req.EngineArgs, ImportedArgs: req.ImportedArgs,
+		Quantization: req.Quantization, Dtype: req.Dtype,
+		Parallelism:   req.Parallelism,
+		ContextLength: req.ContextLength, MaxBatchTokens: req.MaxBatchTokens,
+		Cache: req.Cache, Behaviour: req.Behaviour, Capabilities: req.Capabilities,
+		Shape: req.Shape, Resources: req.Resources, Overlay: req.Overlay,
+	}
+}
+
+// resolvedEngineArgs is the declared args with the flags the shape dictates laid
+// over them, keyed the way the operator keys them — without the leading dashes.
+// The plane derives more than this; what matters to a client is that a declared
+// arg is never overwritten by a derived one.
+func resolvedEngineArgs(sv api.ServingSpec) map[string]any {
+	out := map[string]any{"tensor-parallel-size": sv.Parallelism.Tensor}
+	if sv.ContextLength > 0 {
+		out["max-model-len"] = sv.ContextLength
+	}
+	for k, v := range sv.EngineArgs {
+		out[strings.TrimLeft(k, "-")] = v
+	}
+	return out
+}
+
+// servingDigest is the identity of a serving configuration: the same
+// configuration over the same artifact digests the same, which is the whole
+// mechanism that replaced matching one object against another by hand.
+//
+// Observed and asserted fields are excluded, exactly as the plane excludes them:
+// the digest answers "would this produce the same running process", so only what
+// reaches an engine is in it.
+func servingDigest(sv api.ServingSpec) string {
+	sv.ImportedArgs = nil
+	sv.Capabilities = api.ServingCapabilities{}
+	sv.ResolvedEngineArgs = nil
+	body, err := json.Marshal(sv)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(body)
+	return "svg_" + hex.EncodeToString(sum[:])
+}
+
+func orEmpty(m map[string]any) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	return m
 }

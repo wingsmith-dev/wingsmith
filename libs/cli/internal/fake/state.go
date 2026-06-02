@@ -23,7 +23,6 @@ type state struct {
 	TopologyDomains []api.TopologyDomain     `json:"topology_domains"`
 	Pools           []api.Pool               `json:"pools"`
 	Artifacts       []api.Artifact           `json:"artifacts"`
-	Recipes         []api.Recipe             `json:"recipes"`
 	Workloads       []api.Workload           `json:"workloads"`
 	Deployments     []api.Deployment         `json:"deployments"`
 	Discovered      []api.DiscoveredWorkload `json:"discovered"`

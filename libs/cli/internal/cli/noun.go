@@ -366,7 +366,6 @@ type filters struct {
 	name       string
 	engine     string
 	artifact   string
-	recipe     string
 	condition  string
 	domain     string
 	target     string
@@ -385,6 +384,7 @@ type filters struct {
 	rule       string
 	request    string
 	scope      string
+	digest     string
 
 	ready            bool
 	cordoned         bool
@@ -440,12 +440,13 @@ func (f *filters) opts(cmd *cobra.Command) (api.ListOpts, error) {
 		Cluster: f.cluster, Pool: f.pool, Node: f.node, Class: f.class, Health: f.health,
 		Architecture: f.arch,
 		Phase:        f.phase, Region: f.region, Project: f.project, Tenant: f.tenant, Kind: f.kind,
-		Type: f.typ, Name: f.name, Engine: f.engine, Artifact: f.artifact, Recipe: f.recipe,
+		Type: f.typ, Name: f.name, Engine: f.engine, Artifact: f.artifact,
 		Condition: f.condition, TopologyDomain: f.domain, Target: f.target, Actor: f.actor,
 		Subject: f.subject, Severity: f.severity, Device: f.device, Replica: f.replica,
 		Namespace: f.namespace, Status: f.status, Format: f.format,
 		Deployment: f.deployment, Workload: f.workload, Harness: f.harness,
 		Endpoint: f.endpoint, Rule: f.rule, Request: f.request, Scope: f.scope,
+		ServingDigest: f.digest,
 
 		Ready:            optBool(cmd, "ready", f.ready),
 		Cordoned:         optBool(cmd, "cordoned", f.cordoned),

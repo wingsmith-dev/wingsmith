@@ -97,7 +97,7 @@ grouped in help the way the model groups them.
 | Group | Nouns | Kind |
 |---|---|---|
 | Supply | `cluster`, `node`, `device`, `topology-domain`, `pool` | observed, except Cluster and Pool (declared halves too) |
-| Demand | `artifact`, `recipe`, `deployment`, `endpoint` | declared |
+| Demand | `artifact`, `workload`, `deployment`, `endpoint`, `discovered` | declared, except Discovered (observed) |
 | Binding | `project`, `quota`, `priority-class`, `policy` | declared |
 | Machinery | `operation`, `allocation`, `component`, `event` | imperative, observed, and mixed |
 

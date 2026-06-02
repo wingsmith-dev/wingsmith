@@ -10,14 +10,95 @@
       "preemptible": false,
       "paused": false,
       "gang_size": 1,
-      "recipe_id": "rec_01m0dsda4ajr5xyjw40ppn0bfd",
+      "serving_digest": "svg_3f1c8a5d9b2e4760a1c3d5e7f90b2d4a6c8e0f13579bdf2468ace0135791bdf3",
+      "serving": {
+        "artifact_id": "art_01m0dsda4ajr5xyjw40ppn0bfd",
+        "engine": "vllm",
+        "engine_version": "0.6.3",
+        "engine_image": null,
+        "frontend_image": null,
+        "engine_args": {},
+        "imported_args": {
+          "--max-num-seqs": "256"
+        },
+        "quantization": "fp8",
+        "dtype": "bfloat16",
+        "parallelism": {
+          "tensor": 8,
+          "pipeline": 1,
+          "expert": 1
+        },
+        "context_length": 131072,
+        "max_batch_tokens": 65536,
+        "cache": {
+          "kv_cache_dtype": "fp8",
+          "kv_cache_fraction": 0.9,
+          "prefix_cache_enabled": true,
+          "prefix_cache_config": {}
+        },
+        "serving": {
+          "reasoning": {
+            "default_on": false,
+            "parser": null,
+            "transport": "reasoning_content",
+            "think_begin_token": null,
+            "think_end_token": null,
+            "suppress_eos_until_think_end": false
+          },
+          "stream_usage": "final_chunk",
+          "context_overflow": "reject",
+          "structured_output_backend": null,
+          "tool_call_parser": null,
+          "max_images_per_request": null
+        },
+        "capabilities": {
+          "reasoning_supported": false,
+          "streaming_supported": true,
+          "structured_output_modes": [
+            "text",
+            "json_schema"
+          ],
+          "tool_calling_supported": true,
+          "tool_choice_modes": [
+            "auto",
+            "none"
+          ],
+          "parallel_tool_calls": false,
+          "input_modalities": [
+            "text"
+          ],
+          "prompt_cache_mode": "off",
+          "prompt_cache_ttl_seconds": null,
+          "asserted_by": null,
+          "asserted_at": null,
+          "source_uri": null
+        },
+        "resolved_engine_args": {
+          "max-model-len": 131072,
+          "tensor-parallel-size": 8
+        },
+        "shape": {
+          "device_class": "h100-80",
+          "device_count": 8,
+          "device_memory_mib_min": 81920,
+          "requires_single_topology_domain": true,
+          "topology_domain_kind": "nvswitch"
+        },
+        "resources": {
+          "cpu_cores": 32,
+          "memory_mib": 262144,
+          "disk_gib": 512
+        },
+        "overlay": {
+          "pod_spec": {},
+          "dynamo": {}
+        }
+      },
       "adapter_artifact_ids": [],
       "overrides": {},
       "labels": {
         "env": "prod"
       },
-      "requires_single_topology_domain": null,
-      "topology_domain_kind": null,
       "strategy": "pack",
       "cluster_floors": {},
       "max_clusters": null,
@@ -76,14 +157,89 @@
       "preemptible": false,
       "paused": false,
       "gang_size": 1,
-      "recipe_id": "rec_01m0dsda4h3z3rn285f0j2z0vj",
+      "serving_digest": "svg_a2b4c6d8e0f1234567890abcdef1234567890abcdef1234567890abcdef12345",
+      "serving": {
+        "artifact_id": "art_01m0dsda4h3z3rn285f0j2z0vj",
+        "engine": "vllm",
+        "engine_version": "0.6.3",
+        "engine_image": null,
+        "frontend_image": null,
+        "engine_args": {},
+        "imported_args": {},
+        "quantization": null,
+        "dtype": "bfloat16",
+        "parallelism": {
+          "tensor": 4,
+          "pipeline": 1,
+          "expert": 1
+        },
+        "context_length": 32768,
+        "max_batch_tokens": null,
+        "cache": {
+          "kv_cache_dtype": null,
+          "kv_cache_fraction": null,
+          "prefix_cache_enabled": true,
+          "prefix_cache_config": {}
+        },
+        "serving": {
+          "reasoning": {
+            "default_on": false,
+            "parser": null,
+            "transport": "reasoning_content",
+            "think_begin_token": null,
+            "think_end_token": null,
+            "suppress_eos_until_think_end": false
+          },
+          "stream_usage": "final_chunk",
+          "context_overflow": "reject",
+          "structured_output_backend": null,
+          "tool_call_parser": null,
+          "max_images_per_request": null
+        },
+        "capabilities": {
+          "reasoning_supported": false,
+          "streaming_supported": true,
+          "structured_output_modes": [
+            "text"
+          ],
+          "tool_calling_supported": false,
+          "tool_choice_modes": [],
+          "parallel_tool_calls": false,
+          "input_modalities": [
+            "text"
+          ],
+          "prompt_cache_mode": "off",
+          "prompt_cache_ttl_seconds": null,
+          "asserted_by": null,
+          "asserted_at": null,
+          "source_uri": null
+        },
+        "resolved_engine_args": {
+          "max-model-len": 32768,
+          "tensor-parallel-size": 4
+        },
+        "shape": {
+          "device_class": "h100-80",
+          "device_count": 4,
+          "device_memory_mib_min": 81920,
+          "requires_single_topology_domain": false,
+          "topology_domain_kind": null
+        },
+        "resources": {
+          "cpu_cores": 16,
+          "memory_mib": 131072,
+          "disk_gib": 256
+        },
+        "overlay": {
+          "pod_spec": {},
+          "dynamo": {}
+        }
+      },
       "adapter_artifact_ids": [],
       "overrides": {},
       "labels": {
         "env": "prod"
       },
-      "requires_single_topology_domain": null,
-      "topology_domain_kind": null,
       "strategy": "pack",
       "cluster_floors": {},
       "max_clusters": null,
@@ -142,14 +298,89 @@
       "preemptible": false,
       "paused": false,
       "gang_size": 1,
-      "recipe_id": "rec_01m0dsda4qfzh1qc29k8by77cq",
+      "serving_digest": "svg_9e8d7c6b5a4938271605f4e3d2c1b0a998877665544332211ffeeddccbbaa9988",
+      "serving": {
+        "artifact_id": "art_01m0dsda4qfzh1qc29k8by77cq",
+        "engine": "vllm",
+        "engine_version": "0.6.2",
+        "engine_image": null,
+        "frontend_image": null,
+        "engine_args": {},
+        "imported_args": {},
+        "quantization": null,
+        "dtype": null,
+        "parallelism": {
+          "tensor": 2,
+          "pipeline": 1,
+          "expert": 1
+        },
+        "context_length": 32768,
+        "max_batch_tokens": null,
+        "cache": {
+          "kv_cache_dtype": null,
+          "kv_cache_fraction": null,
+          "prefix_cache_enabled": false,
+          "prefix_cache_config": {}
+        },
+        "serving": {
+          "reasoning": {
+            "default_on": false,
+            "parser": null,
+            "transport": "reasoning_content",
+            "think_begin_token": null,
+            "think_end_token": null,
+            "suppress_eos_until_think_end": false
+          },
+          "stream_usage": "final_chunk",
+          "context_overflow": "reject",
+          "structured_output_backend": null,
+          "tool_call_parser": null,
+          "max_images_per_request": null
+        },
+        "capabilities": {
+          "reasoning_supported": false,
+          "streaming_supported": true,
+          "structured_output_modes": [
+            "text"
+          ],
+          "tool_calling_supported": false,
+          "tool_choice_modes": [],
+          "parallel_tool_calls": false,
+          "input_modalities": [
+            "text"
+          ],
+          "prompt_cache_mode": "off",
+          "prompt_cache_ttl_seconds": null,
+          "asserted_by": null,
+          "asserted_at": null,
+          "source_uri": null
+        },
+        "resolved_engine_args": {
+          "max-model-len": 32768,
+          "tensor-parallel-size": 2
+        },
+        "shape": {
+          "device_class": "a100-80",
+          "device_count": 2,
+          "device_memory_mib_min": 81920,
+          "requires_single_topology_domain": false,
+          "topology_domain_kind": null
+        },
+        "resources": {
+          "cpu_cores": null,
+          "memory_mib": null,
+          "disk_gib": null
+        },
+        "overlay": {
+          "pod_spec": {},
+          "dynamo": {}
+        }
+      },
       "adapter_artifact_ids": [],
       "overrides": {},
       "labels": {
         "hangar.io/alert": "off"
       },
-      "requires_single_topology_domain": null,
-      "topology_domain_kind": null,
       "strategy": "pack",
       "cluster_floors": {},
       "max_clusters": null,

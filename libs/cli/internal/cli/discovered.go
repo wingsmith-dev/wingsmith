@@ -43,14 +43,14 @@ plane did not put there.
 
 A discovery is a sighting, not a deployment. Tracking one adds it to the
 inventory and assigns it an owner — it does not declare it, does not render a
-recipe against it, and never reaches the cluster. Nothing restarts, and a model
-whose weights are already loaded stays loaded.`,
+serving spec against it, and never reaches the cluster. Nothing restarts, and a
+model whose weights are already loaded stays loaded.`,
 		example: `  hgr discovered ls
   hgr discovered ls --status new
   hgr discovered ls --cluster iad-1 -o wide
   hgr discovered track llama-70b-vllm --project core
   hgr discovered rm llama-70b-vllm
-  hgr discovered promote llama-70b-vllm --recipe llama-70b-vllm --project core`,
+  hgr discovered promote llama-70b-vllm --artifact llama-3.1-70b --project core`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.DiscoveredWorkload], error) {
 			return b.DiscoveredWorkloads(ctx, o)
 		},
@@ -144,7 +144,7 @@ whose weights are already loaded stays loaded.`,
 			case "tracked":
 				return []errs.Action{
 					{Description: "Let the plane manage it",
-						Command: "hgr discovered promote " + d.Name + " --recipe <recipe> --project <project>"},
+						Command: "hgr discovered promote " + d.Name + " --artifact <artifact> --project <project>"},
 					{Description: "Stop showing it", Command: "hgr discovered ignore " + d.Name},
 				}
 			}
@@ -169,8 +169,9 @@ func newDecisionCmd(app *App, decision string) *cobra.Command {
 	long := `Track a workload the operator found running.
 
 This records a decision and declares nothing. No deployment is created, no
-recipe is resolved, and no desired state reaches the cluster — so the workload
-keeps running exactly as it is, with its weights where they already are.`
+serving spec is resolved, and no desired state reaches the cluster — so the
+workload keeps running exactly as it is, with its weights where they already
+are.`
 	if decision == decisionIgnored {
 		short = "Stop listing a discovered workload"
 		long = `Ignore a workload the operator found running.
@@ -317,7 +318,7 @@ func newRestoreWorkloadCmd(app *App) *cobra.Command {
 // type a value whose whole purpose is that nobody chose it.
 func newPromoteCmd(app *App) *cobra.Command {
 	var (
-		recipe        string
+		artifact      string
 		project       string
 		name          string
 		priorityClass string
@@ -334,17 +335,17 @@ that true: the deployment is pinned to the digest of what is running right now,
 and the cluster refuses to reconcile it while the live workload digests to
 anything else.
 
-Changing the recipe or the overrides afterwards will roll it, as it should — that
-is a change you asked for. Promotion itself is not.
+Changing the serving configuration or the overrides afterwards will roll it, as
+it should — that is a change you asked for. Promotion itself is not.
 
 Scale is not an argument. The bounds are taken from what the workload is already
 running, so cataloguing it cannot scale it as a side effect.`,
-		Example: `  hgr discovered promote llama-70b-vllm --recipe llama-70b-vllm --project core
-  hgr discovered promote qwen2-72b --recipe qwen2-72b --project core --name qwen-sjc`,
+		Example: `  hgr discovered promote llama-70b-vllm --artifact llama-3.1-70b --project core
+  hgr discovered promote qwen2-72b --artifact llama-3.1-70b --project core --name qwen-sjc`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if recipe == "" || project == "" {
-				return errs.New(errs.CodeInputRequired, "promote needs --recipe and --project").
+			if artifact == "" || project == "" {
+				return errs.New(errs.CodeInputRequired, "promote needs --artifact and --project").
 					WithCause("the plane has to know what this workload is and who owns it")
 			}
 			ctx, cancel := app.RequestContext()
@@ -360,7 +361,7 @@ running, so cataloguing it cannot scale it as a side effect.`,
 					WithCause("the cluster's operator has not reported what this workload is running")
 			}
 			workload, err := app.Backend.PromoteWorkload(ctx, found.ID, api.PromoteRequest{
-				Recipe:        recipe,
+				Artifact:      artifact,
 				Project:       project,
 				Fingerprint:   *found.SpecFingerprint,
 				Name:          name,
@@ -373,7 +374,7 @@ running, so cataloguing it cannot scale it as a side effect.`,
 		},
 	}
 	fl := cmd.Flags()
-	fl.StringVar(&recipe, "recipe", "", "the recipe this workload is an instance of")
+	fl.StringVar(&artifact, "artifact", "", "the weights this workload is running")
 	fl.StringVar(&project, "project", "", "the project that owns it")
 	fl.StringVar(&name, "name", "", "workload name, defaulting to the discovered workload's own")
 	fl.StringVar(&priorityClass, "priority-class", "", "priority class, defaulting to the project's")

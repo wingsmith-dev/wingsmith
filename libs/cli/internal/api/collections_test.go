@@ -44,9 +44,6 @@ func collections() []collection {
 		{"/v1/artifacts",
 			func(c context.Context, cl *Client, o ListOpts) error { _, e := cl.Artifacts(c, o); return e },
 			func(c context.Context, cl *Client, r string) error { _, e := cl.Artifact(c, r); return e }},
-		{"/v1/recipes",
-			func(c context.Context, cl *Client, o ListOpts) error { _, e := cl.Recipes(c, o); return e },
-			func(c context.Context, cl *Client, r string) error { _, e := cl.Recipe(c, r); return e }},
 		{"/v1/workloads",
 			func(c context.Context, cl *Client, o ListOpts) error { _, e := cl.Workloads(c, o); return e },
 			func(c context.Context, cl *Client, r string) error { _, e := cl.Workload(c, r); return e }},
@@ -160,7 +157,7 @@ func TestEveryCollectionInTheClientIsCovered(t *testing.T) {
 		"/v1/allocations", "/v1/artifacts", "/v1/benchmarks", "/v1/clusters", "/v1/components",
 		"/v1/deployments", "/v1/device-classes", "/v1/devices", "/v1/discovered", "/v1/endpoints",
 		"/v1/events", "/v1/nodes", "/v1/operations", "/v1/policies", "/v1/pools",
-		"/v1/priority-classes", "/v1/projects", "/v1/quotas", "/v1/recipes", "/v1/tenants",
+		"/v1/priority-classes", "/v1/projects", "/v1/quotas", "/v1/tenants",
 		"/v1/topology-domains", "/v1/workloads",
 	}
 	sort.Strings(declared)

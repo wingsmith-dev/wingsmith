@@ -43,7 +43,6 @@ type ListOpts struct {
 	Name           string
 	Engine         string
 	Artifact       string
-	Recipe         string
 	Condition      string
 	TopologyDomain string
 	Target         string
@@ -61,6 +60,7 @@ type ListOpts struct {
 	Rule           string
 	Request        string
 	Scope          string
+	ServingDigest  string
 
 	Ready            *bool
 	Cordoned         *bool
@@ -360,25 +360,28 @@ type Artifact struct {
 	Locations      []ArtifactLocation `json:"locations"`
 }
 
-// RecipeParallelism is the tensor/pipeline/expert split.
-type RecipeParallelism struct {
+// ServingParallelism is the tensor/pipeline/expert split.
+type ServingParallelism struct {
 	Tensor   int `json:"tensor"`
 	Pipeline int `json:"pipeline"`
 	Expert   int `json:"expert"`
 }
 
-// RecipeCache is KV and prefix cache configuration, unrelated to the cluster
+// ServingCache is KV and prefix cache configuration, unrelated to the cluster
 // weight cache.
-type RecipeCache struct {
+type ServingCache struct {
 	KVCacheDtype       *string        `json:"kv_cache_dtype"`
 	KVCacheFraction    *float64       `json:"kv_cache_fraction"`
 	PrefixCacheEnabled bool           `json:"prefix_cache_enabled"`
 	PrefixCacheConfig  map[string]any `json:"prefix_cache_config"`
 }
 
-// RecipeShape is the hardware a recipe implies, class first: a count without
-// a class is not a shape.
-type RecipeShape struct {
+// ServingShape is the hardware a serving configuration implies, class first: a
+// count without a class is not a shape.
+//
+// The topology pair is here rather than beside the scale numbers because it is a
+// property of one replica's layout, the same way the counts are.
+type ServingShape struct {
 	DeviceClass                  string  `json:"device_class"`
 	DeviceCount                  int     `json:"device_count"`
 	DeviceMemoryMiBMin           int     `json:"device_memory_mib_min"`
@@ -386,16 +389,16 @@ type RecipeShape struct {
 	TopologyDomainKind           *string `json:"topology_domain_kind"`
 }
 
-// RecipeResources is the non-accelerator footprint.
-type RecipeResources struct {
+// ServingResources is the non-accelerator footprint.
+type ServingResources struct {
 	CPUCores  *int `json:"cpu_cores"`
 	MemoryMiB *int `json:"memory_mib"`
 	DiskGiB   *int `json:"disk_gib"`
 }
 
-// RecipeReasoning is how a recipe thinks, as flags the engine is told. What it
-// *can* do is RecipeCapabilities; this is what it was asked to do.
-type RecipeReasoning struct {
+// ServingReasoning is how a model thinks, as flags the engine is told. What it
+// *can* do is ServingCapabilities; this is what it was asked to do.
+type ServingReasoning struct {
 	DefaultOn                bool    `json:"default_on"`
 	Parser                   *string `json:"parser"`
 	Transport                string  `json:"transport"`
@@ -404,24 +407,28 @@ type RecipeReasoning struct {
 	SuppressEOSUntilThinkEnd bool    `json:"suppress_eos_until_think_end"`
 }
 
-// RecipeServing is what the served API does, as the engine will actually be
-// told to behave. Every field renders to a flag, which is why it lives on the
-// recipe beside `cache` rather than on the endpoint: honouring any of it means
-// a replica restart.
-type RecipeServing struct {
-	Reasoning               RecipeReasoning `json:"reasoning"`
-	StreamUsage             string          `json:"stream_usage"`
-	ContextOverflow         string          `json:"context_overflow"`
-	StructuredOutputBackend *string         `json:"structured_output_backend"`
-	ToolCallParser          *string         `json:"tool_call_parser"`
-	MaxImagesPerRequest     *int            `json:"max_images_per_request"`
+// ServingBehaviour is what the served API does, as the engine will actually be
+// told to behave. Every field renders to a flag, which is why it lives beside
+// `cache` rather than on the endpoint: honouring any of it means a replica
+// restart.
+//
+// It is the block the plane stores under `serving`, and the wire name is kept —
+// the Go name is not `Serving` only because it is reached through a field of
+// that name already.
+type ServingBehaviour struct {
+	Reasoning               ServingReasoning `json:"reasoning"`
+	StreamUsage             string           `json:"stream_usage"`
+	ContextOverflow         string           `json:"context_overflow"`
+	StructuredOutputBackend *string          `json:"structured_output_backend"`
+	ToolCallParser          *string          `json:"tool_call_parser"`
+	MaxImagesPerRequest     *int             `json:"max_images_per_request"`
 }
 
-// RecipeCapabilities is what this engine × artifact is claimed to be able to
+// ServingCapabilities is what this engine × artifact is claimed to be able to
 // do. Asserted, never rendered: nothing here becomes a flag or reaches a
 // cluster, and a block that is internally consistent and entirely false is
 // accepted, stored, and falsified by the first conformance run.
-type RecipeCapabilities struct {
+type ServingCapabilities struct {
 	ReasoningSupported    bool       `json:"reasoning_supported"`
 	StreamingSupported    bool       `json:"streaming_supported"`
 	StructuredOutputModes []string   `json:"structured_output_modes"`
@@ -436,42 +443,76 @@ type RecipeCapabilities struct {
 	SourceURI             *string    `json:"source_uri"`
 }
 
-// RecipeOverlay is passthrough for what the plane deliberately does not model.
-type RecipeOverlay struct {
+// ServingOverlay is passthrough for what the plane deliberately does not model.
+type ServingOverlay struct {
 	PodSpec map[string]any `json:"pod_spec"`
 	Dynamo  map[string]any `json:"dynamo"`
 }
 
-// Recipe is a reproducible way to serve one artifact.
-type Recipe struct {
-	ID             string             `json:"id"`
-	ArtifactID     string             `json:"artifact_id"`
-	Name           string             `json:"name"`
-	Version        int                `json:"version"`
-	Engine         string             `json:"engine"`
-	EngineVersion  string             `json:"engine_version"`
-	EngineImage    *string            `json:"engine_image"`
-	EngineArgs     map[string]any     `json:"engine_args"`
+// ServingSpec is the whole reproducible way one artifact is served: engine,
+// parallelism, cache configuration and the hardware shape they imply.
+//
+// It is not an object. It has no name, no version and no id — a workload
+// carries exactly one of these and `serving_digest` is its identity, so two
+// workloads configured the same way digest the same and nothing has to be
+// matched by hand.
+type ServingSpec struct {
+	ArtifactID    string         `json:"artifact_id"`
+	Engine        string         `json:"engine"`
+	EngineVersion string         `json:"engine_version"`
+	EngineImage   *string        `json:"engine_image"`
+	FrontendImage *string        `json:"frontend_image"`
+	EngineArgs    map[string]any `json:"engine_args"`
+	// ImportedArgs is the argv a sighting was observed running with. Recorded in
+	// full, never rendered: declaring a flag is EngineArgs and reading one is
+	// this.
 	ImportedArgs   map[string]any     `json:"imported_args"`
 	Quantization   *string            `json:"quantization"`
 	Dtype          *string            `json:"dtype"`
-	Parallelism    RecipeParallelism  `json:"parallelism"`
+	Parallelism    ServingParallelism `json:"parallelism"`
 	ContextLength  int                `json:"context_length"`
 	MaxBatchTokens *int               `json:"max_batch_tokens"`
-	Cache          RecipeCache        `json:"cache"`
-	Serving        RecipeServing      `json:"serving"`
-	Capabilities   RecipeCapabilities `json:"capabilities"`
+	Cache          ServingCache       `json:"cache"`
+	// Behaviour carries the wire name `serving` inside a block already called
+	// `serving`. That is deliberate: the outer block is the whole configuration
+	// and the inner one is the typed API-behaviour group that lands in the
+	// `serving` column, and a third name here would leave the body, the column
+	// and the digest field list each calling it something else.
+	Behaviour    ServingBehaviour    `json:"serving"`
+	Capabilities ServingCapabilities `json:"capabilities"`
 	// ResolvedEngineArgs is derived on every read and stored nowhere: the
-	// declared engine args with the flags `serving` dictates laid over them,
+	// declared engine args with the flags Behaviour dictates laid over them,
 	// keyed the way the operator keys them.
-	ResolvedEngineArgs map[string]any  `json:"resolved_engine_args"`
-	Shape              RecipeShape     `json:"shape"`
-	Resources          RecipeResources `json:"resources"`
-	Overlay            RecipeOverlay   `json:"overlay"`
-	Labels             map[string]any  `json:"labels"`
-	CreatedAt          time.Time       `json:"created_at"`
-	UpdatedAt          *time.Time      `json:"updated_at"`
-	Revision           string          `json:"revision"`
+	ResolvedEngineArgs map[string]any   `json:"resolved_engine_args"`
+	Shape              ServingShape     `json:"shape"`
+	Resources          ServingResources `json:"resources"`
+	Overlay            ServingOverlay   `json:"overlay"`
+}
+
+// ServingRequest is the serving configuration a workload is created with.
+//
+// Shaped like the block a read returns, minus the derivations the plane owns:
+// there is no digest here and no resolved args, because neither is ever accepted
+// from a client.
+type ServingRequest struct {
+	Artifact       string              `json:"artifact"`
+	Engine         string              `json:"engine"`
+	EngineVersion  string              `json:"engine_version"`
+	ContextLength  int                 `json:"context_length"`
+	Shape          ServingShape        `json:"shape"`
+	EngineImage    *string             `json:"engine_image,omitempty"`
+	FrontendImage  *string             `json:"frontend_image,omitempty"`
+	EngineArgs     map[string]any      `json:"engine_args,omitempty"`
+	ImportedArgs   map[string]any      `json:"imported_args,omitempty"`
+	Quantization   *string             `json:"quantization,omitempty"`
+	Dtype          *string             `json:"dtype,omitempty"`
+	Parallelism    ServingParallelism  `json:"parallelism"`
+	MaxBatchTokens *int                `json:"max_batch_tokens,omitempty"`
+	Cache          ServingCache        `json:"cache"`
+	Resources      ServingResources    `json:"resources"`
+	Overlay        ServingOverlay      `json:"overlay"`
+	Behaviour      ServingBehaviour    `json:"serving"`
+	Capabilities   ServingCapabilities `json:"capabilities"`
 }
 
 // WorkloadScale is the declared total and what the shares actually add up to.
@@ -514,8 +555,8 @@ type WorkloadDeployment struct {
 	Status          *DeploymentStatus       `json:"status"`
 }
 
-// Workload is what you asked to run, globally: a recipe, a kind, a priority and
-// a total scale across every cluster it may use.
+// Workload is what you asked to run, globally: an artifact, the way to serve it,
+// a kind, a priority and a total scale across every cluster it may use.
 //
 // It carries no cluster. Placement expands it into one Deployment per cluster,
 // and each of those carries that cluster's share of the total — which is why
@@ -525,39 +566,42 @@ type WorkloadDeployment struct {
 // splittable: service and task fan out, a gang is atomic and always has exactly
 // one deployment. Phase is derived from the deployments and nothing writes it.
 type Workload struct {
-	ID                           string               `json:"id"`
-	Name                         string               `json:"name"`
-	Kind                         string               `json:"kind"`
-	Phase                        string               `json:"phase"`
-	ProjectID                    string               `json:"project_id"`
-	PriorityClass                string               `json:"priority_class"`
-	Preemptible                  bool                 `json:"preemptible"`
-	Paused                       bool                 `json:"paused"`
-	GangSize                     int                  `json:"gang_size"`
-	RecipeID                     string               `json:"recipe_id"`
-	AdapterArtifactIDs           []string             `json:"adapter_artifact_ids"`
-	Overrides                    map[string]any       `json:"overrides"`
-	Labels                       map[string]any       `json:"labels"`
-	RequiresSingleTopologyDomain *bool                `json:"requires_single_topology_domain"`
-	TopologyDomainKind           *string              `json:"topology_domain_kind"`
-	Strategy                     string               `json:"strategy"`
-	ClusterFloors                map[string]any       `json:"cluster_floors"`
-	MaxClusters                  *int                 `json:"max_clusters"`
-	PinnedClusterID              *string              `json:"pinned_cluster_id"`
-	Scale                        WorkloadScale        `json:"scale"`
-	StartedAt                    *time.Time           `json:"started_at"`
-	FinishedAt                   *time.Time           `json:"finished_at"`
-	DeadlineAt                   *time.Time           `json:"deadline_at"`
-	CreatedAt                    time.Time            `json:"created_at"`
-	UpdatedAt                    *time.Time           `json:"updated_at"`
-	Revision                     string               `json:"revision"`
-	Deployments                  []WorkloadDeployment `json:"deployments"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Kind          string `json:"kind"`
+	Phase         string `json:"phase"`
+	ProjectID     string `json:"project_id"`
+	PriorityClass string `json:"priority_class"`
+	Preemptible   bool   `json:"preemptible"`
+	Paused        bool   `json:"paused"`
+	GangSize      int    `json:"gang_size"`
+	// ServingDigest is derived from Serving on every write and is never accepted
+	// from a client. It is what a benchmark run and a wire frame both name, so
+	// "the same configuration" is one string rather than a comparison of eight
+	// fields.
+	ServingDigest      string               `json:"serving_digest"`
+	Serving            ServingSpec          `json:"serving"`
+	AdapterArtifactIDs []string             `json:"adapter_artifact_ids"`
+	Overrides          map[string]any       `json:"overrides"`
+	Labels             map[string]any       `json:"labels"`
+	Strategy           string               `json:"strategy"`
+	ClusterFloors      map[string]any       `json:"cluster_floors"`
+	MaxClusters        *int                 `json:"max_clusters"`
+	PinnedClusterID    *string              `json:"pinned_cluster_id"`
+	Scale              WorkloadScale        `json:"scale"`
+	StartedAt          *time.Time           `json:"started_at"`
+	FinishedAt         *time.Time           `json:"finished_at"`
+	DeadlineAt         *time.Time           `json:"deadline_at"`
+	CreatedAt          time.Time            `json:"created_at"`
+	UpdatedAt          *time.Time           `json:"updated_at"`
+	Revision           string               `json:"revision"`
+	Deployments        []WorkloadDeployment `json:"deployments"`
 }
 
 // WorkloadCreateRequest is what it takes to run something, without saying where.
 //
 // Cluster is an override rather than the normal path: absent, placement picks
-// from the recipe's shape, the project's quota, the policies on the workload and
+// from the serving shape, the project's quota, the policies on the workload and
 // what the clusters report free. Naming one is a deliberate escape from the
 // scheduler — it still has to exist, but it is never checked for capacity, and a
 // named cluster forces a single deployment.
@@ -565,48 +609,48 @@ type Workload struct {
 // The three scale numbers are TOTALS across every cluster this workload may use,
 // counted in replicas for service, ranks for gang, completions for task.
 type WorkloadCreateRequest struct {
-	Recipe                       string         `json:"recipe"`
-	Name                         string         `json:"name"`
-	Project                      string         `json:"project"`
-	Cluster                      string         `json:"cluster,omitempty"`
-	PriorityClass                string         `json:"priority_class,omitempty"`
-	Kind                         string         `json:"kind,omitempty"`
-	MinScale                     int            `json:"min_scale"`
-	MaxScale                     int            `json:"max_scale"`
-	DesiredScale                 int            `json:"desired_scale"`
-	Strategy                     string         `json:"strategy,omitempty"`
-	ClusterFloors                map[string]int `json:"cluster_floors,omitempty"`
-	MaxClusters                  *int           `json:"max_clusters,omitempty"`
-	Enabled                      bool           `json:"enabled"`
-	Preemptible                  bool           `json:"preemptible"`
-	GangSize                     int            `json:"gang_size,omitempty"`
-	DeadlineAt                   *time.Time     `json:"deadline_at,omitempty"`
-	AdapterArtifacts             []string       `json:"adapter_artifacts,omitempty"`
-	Overrides                    map[string]any `json:"overrides,omitempty"`
-	Labels                       map[string]any `json:"labels,omitempty"`
-	RequiresSingleTopologyDomain *bool          `json:"requires_single_topology_domain,omitempty"`
-	TopologyDomainKind           string         `json:"topology_domain_kind,omitempty"`
+	// Serving is the whole of what to run, stated rather than named: there is no
+	// shared serving object to point at, and two workloads asking for the same
+	// thing land on the same serving_digest.
+	Serving          ServingRequest `json:"serving"`
+	Name             string         `json:"name"`
+	Project          string         `json:"project"`
+	Cluster          string         `json:"cluster,omitempty"`
+	PriorityClass    string         `json:"priority_class,omitempty"`
+	Kind             string         `json:"kind,omitempty"`
+	MinScale         int            `json:"min_scale"`
+	MaxScale         int            `json:"max_scale"`
+	DesiredScale     int            `json:"desired_scale"`
+	Strategy         string         `json:"strategy,omitempty"`
+	ClusterFloors    map[string]int `json:"cluster_floors,omitempty"`
+	MaxClusters      *int           `json:"max_clusters,omitempty"`
+	Enabled          bool           `json:"enabled"`
+	Preemptible      bool           `json:"preemptible"`
+	GangSize         int            `json:"gang_size,omitempty"`
+	DeadlineAt       *time.Time     `json:"deadline_at,omitempty"`
+	AdapterArtifacts []string       `json:"adapter_artifacts,omitempty"`
+	Overrides        map[string]any `json:"overrides,omitempty"`
+	Labels           map[string]any `json:"labels,omitempty"`
 }
 
 // WorkloadUpdateRequest is a partial update: an absent field is untouched.
 //
-// Recipe and cluster are absent by design — a deployment is recipe × cluster, so
-// changing either is a new deployment, which is cheap because the endpoint in
-// front of it is the stable name. Scale is absent because changing it is
+// Serving and cluster are absent by design — a deployment is a workload's
+// serving configuration on one cluster, so changing either is a new deployment,
+// which is cheap because the endpoint in front of it is the stable name. Scale
+// is absent because changing it is
 // long-running and can sit pending on quota forever, so it is the workload.scale
 // operation rather than a field write.
 type WorkloadUpdateRequest struct {
-	Name                         *string         `json:"name,omitempty"`
-	AdapterArtifacts             *[]string       `json:"adapter_artifacts,omitempty"`
-	Overrides                    *map[string]any `json:"overrides,omitempty"`
-	Labels                       *map[string]any `json:"labels,omitempty"`
-	PriorityClass                *string         `json:"priority_class,omitempty"`
-	Preemptible                  *bool           `json:"preemptible,omitempty"`
-	Strategy                     *string         `json:"strategy,omitempty"`
-	ClusterFloors                *map[string]int `json:"cluster_floors,omitempty"`
-	MaxClusters                  *int            `json:"max_clusters,omitempty"`
-	RequiresSingleTopologyDomain *bool           `json:"requires_single_topology_domain,omitempty"`
-	TopologyDomainKind           *string         `json:"topology_domain_kind,omitempty"`
+	Name             *string         `json:"name,omitempty"`
+	AdapterArtifacts *[]string       `json:"adapter_artifacts,omitempty"`
+	Overrides        *map[string]any `json:"overrides,omitempty"`
+	Labels           *map[string]any `json:"labels,omitempty"`
+	PriorityClass    *string         `json:"priority_class,omitempty"`
+	Preemptible      *bool           `json:"preemptible,omitempty"`
+	Strategy         *string         `json:"strategy,omitempty"`
+	ClusterFloors    *map[string]int `json:"cluster_floors,omitempty"`
+	MaxClusters      *int            `json:"max_clusters,omitempty"`
 }
 
 // DeploymentReplicaRollup counts observed replicas rather than listing them.
@@ -626,7 +670,7 @@ type DeploymentReplicaRollup struct {
 // workload's total, never the total. Nothing here sums a share against a total
 // or re-derives one from the other.
 //
-// Recipe, adapters, overrides and labels are not on it: they are workload facts,
+// Serving, adapters, overrides and labels are not on it: they are workload facts,
 // read through WorkloadID. Admission is on it, because it is per-cluster — a
 // workload can be running in one region and queued on quota in another, and
 // there is no single phase true of both.
@@ -697,7 +741,8 @@ type DeploymentStatus struct {
 // never declared. Status is `new` until somebody decides: `tracked` puts it in
 // the inventory, `ignored` takes it out of the list.
 //
-// There is no generation and no recipe here, and that is the point. Adopting one
+// There is no generation and no serving configuration here, and that is the
+// point. Adopting one
 // records a decision and declares nothing, so nothing reconciles and nothing
 // restarts — a model whose weights are already resident stays that way.
 type DiscoveredWorkload struct {
@@ -743,7 +788,7 @@ type DecisionRequest struct {
 // Name names the workload, and the deployment placement pins to the running object takes the same
 // name in that one cluster.
 type PromoteRequest struct {
-	Recipe        string `json:"recipe"`
+	Artifact      string `json:"artifact"`
 	Project       string `json:"project"`
 	Fingerprint   string `json:"fingerprint"`
 	Name          string `json:"name,omitempty"`
@@ -762,9 +807,12 @@ type EndpointTarget struct {
 // Endpoint is the stable public name clients call. Global and plane-only:
 // there is no cluster on it at any depth.
 type Endpoint struct {
-	ID              string           `json:"id"`
-	Name            string           `json:"name"`
-	DisplayName     *string          `json:"display_name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Slug is what a client sends as `model`, and the key the gateway routes on. Name is the
+	// internal handle and routes nothing — the two are separate so that a public model id can be
+	// corrected without moving the handle every link and metric label holds.
+	Slug            string           `json:"slug"`
 	ProjectID       string           `json:"project_id"`
 	Visibility      string           `json:"visibility"`
 	RoutingStrategy string           `json:"routing_strategy"`
@@ -1095,12 +1143,14 @@ type Operation struct {
 // BenchmarkProvenance is what was running when a run was taken, snapshotted at
 // creation. Without it a run is a number with nothing to attribute it to.
 type BenchmarkProvenance struct {
-	Model                string         `json:"model"`
-	DeploymentGeneration int64          `json:"deployment_generation"`
-	RecipeID             *string        `json:"recipe_id"`
-	RecipeVersion        *int           `json:"recipe_version"`
-	EngineArgs           map[string]any `json:"engine_args"`
-	// Serving is the recipe's declared serving block as it stood when the run
+	Model                string `json:"model"`
+	DeploymentGeneration int64  `json:"deployment_generation"`
+	// ServingDigest names the serving configuration the run was taken against.
+	// A digest and not an id and a version: the pair it replaces named a
+	// mutable object, and a digest cannot drift.
+	ServingDigest *string        `json:"serving_digest"`
+	EngineArgs    map[string]any `json:"engine_args"`
+	// Serving is the workload's declared serving block as it stood when the run
 	// was taken. Without it a conformance result cannot be attributed to what
 	// the surface claimed to be.
 	Serving map[string]any `json:"serving"`
@@ -1254,8 +1304,7 @@ func BandFor(inputTokens int) string {
 type BenchmarkCoverage struct {
 	DeploymentID  *string `json:"deployment_id"`
 	ClusterID     *string `json:"cluster_id"`
-	RecipeID      *string `json:"recipe_id"`
-	RecipeVersion *int    `json:"recipe_version"`
+	ServingDigest *string `json:"serving_digest"`
 	ArtifactID    *string `json:"artifact_id"`
 }
 

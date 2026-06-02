@@ -240,19 +240,10 @@ func (c *Client) Artifact(ctx context.Context, ref string) (Artifact, error) {
 	return one[Artifact](ctx, c, "/v1/artifacts", ref, nil)
 }
 
-func (c *Client) Recipes(ctx context.Context, o ListOpts) (Page[Recipe], error) {
-	q := newQuery(o).str("artifact", o.Artifact).str("engine", o.Engine).str("class", o.Class).
-		str("search", o.Search).labels(o.Labels)
-	return list[Recipe](ctx, c, "/v1/recipes", q.values(), o)
-}
-
-func (c *Client) Recipe(ctx context.Context, ref string) (Recipe, error) {
-	return one[Recipe](ctx, c, "/v1/recipes", ref, nil)
-}
-
 func (c *Client) Workloads(ctx context.Context, o ListOpts) (Page[Workload], error) {
 	q := newQuery(o).str("project", o.Project).str("kind", o.Kind).str("phase", o.Phase).
-		str("recipe", o.Recipe).str("cluster", o.Cluster).labels(o.Labels)
+		str("artifact", o.Artifact).str("class", o.Class).str("serving_digest", o.ServingDigest).
+		str("cluster", o.Cluster).labels(o.Labels)
 	return list[Workload](ctx, c, "/v1/workloads", q.values(), o)
 }
 

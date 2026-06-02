@@ -27,7 +27,6 @@ func TestSeedMatchesServerShape(t *testing.T) {
 	check(t, "topology-domains.json", func() (any, error) { return b.TopologyDomains(ctx, api.ListOpts{}) })
 	check(t, "pools.json", func() (any, error) { return b.Pools(ctx, api.ListOpts{}) })
 	check(t, "artifacts.json", func() (any, error) { return b.Artifacts(ctx, api.ListOpts{}) })
-	check(t, "recipes.json", func() (any, error) { return b.Recipes(ctx, api.ListOpts{}) })
 	check(t, "workloads.json", func() (any, error) { return b.Workloads(ctx, api.ListOpts{}) })
 	check(t, "deployments.json", func() (any, error) { return b.Deployments(ctx, api.ListOpts{}) })
 	check(t, "discovered.json", func() (any, error) { return b.DiscoveredWorkloads(ctx, api.ListOpts{}) })
