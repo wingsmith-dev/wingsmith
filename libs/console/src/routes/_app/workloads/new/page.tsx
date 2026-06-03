@@ -70,16 +70,18 @@ interface How {
 }
 
 /**
- * Deploying something, as three questions and an answer.
+ * Deploying something, as four cards: artifact, topology, params, placement.
  *
- * A page and not a dialog. The fitment table is the picker for question two and it is
+ * A page and not a dialog. The fitment table is the picker for the topology and it is
  * six columns wide with three filters of its own; squeezed into a modal it becomes the
  * thing people click past. On a page it can be read, which is the point of having
  * derived it.
  *
- * The questions are what, how and how much. Where is deliberately not one of them — it
- * is rendered as placement's answer with an override hung off it, because a cluster
- * offered as an ordinary field is how rule 3 stops being true in practice.
+ * Placement is a card and not a question: it renders as placement's answer with an
+ * override hung off it, because a cluster offered as an ordinary field is how rule 3
+ * stops being true in practice. The replica count and the name sit there with it —
+ * they are the same sentence, and a card of their own said nothing the card below
+ * did not already say better.
  *
  * Kind is fixed to `service`. A task or a gang has a deadline, a completion count or
  * co-scheduled ranks to declare, none of which a fitment row implies, and the workload
@@ -255,7 +257,7 @@ export function NewWorkloadPage() {
     <div className="flex flex-col">
       <PageHeader
         title="New workload"
-        description="declared · what to run, how to serve it, and how much of it"
+        description="declared · the artifact, its topology, its parameters and its placement"
         readActions={
           <Button
             variant="ghost"
@@ -270,7 +272,7 @@ export function NewWorkloadPage() {
       <div className="mx-auto w-full max-w-4xl space-y-3 p-4">
         <Step
           index={1}
-          title="What to run"
+          title="Artifact"
           hint="The weights. Everything below is derived from them."
           open={open === 1}
           onReopen={() => setOpen(1)}
@@ -288,8 +290,8 @@ export function NewWorkloadPage() {
 
         <Step
           index={2}
-          title="How to serve it"
-          hint="Which card, how many, and how they are split. The plane sizes this from the weights and the count is yours to move."
+          title="Topology"
+          hint="The shape of the devices — which card, how many, and how they are split. The plane sizes this from the weights and the count is yours to move."
           ready={!!artifact}
           open={open === 2}
           onReopen={() => setOpen(2)}
@@ -317,18 +319,24 @@ export function NewWorkloadPage() {
           )}
         </Step>
 
-        {how && (
+        <Step
+          index={3}
+          title="Params"
+          hint="The engine parameters, pre-populated from the vLLM recipe. Every one of them is editable on the workload afterwards."
+          ready={!!how}
+          open={open >= 3}
+        >
           <Proposed
             proposal={proposal}
             loading={proposed.isLoading}
             identical={identical}
           />
-        )}
+        </Step>
 
         <Step
-          index={3}
-          title="How much"
-          hint="A total across every cluster, never a per-cluster number."
+          index={4}
+          title="Placement"
+          hint="Not a question — placement's answer, with how much of it to run. Override the cluster only when you know something placement does not."
           ready={!!how}
           open={open >= 3}
         >
@@ -339,7 +347,7 @@ export function NewWorkloadPage() {
                 value={replicas}
                 onChange={setReplicas}
                 min={1}
-                hint="Placement decides how these divide over clusters."
+                hint="A total across every cluster. Placement decides how these divide."
               />
               <TextField
                 label="Name"
@@ -376,25 +384,19 @@ export function NewWorkloadPage() {
                 before anything can run.
               </p>
             )}
-          </div>
-        </Step>
 
-        <Step
-          index={4}
-          title="Where"
-          hint="Not a question — placement's answer. Override it only when you know something it does not."
-          ready={!!how && !!effectiveProject}
-          open={open >= 3}
-        >
-          <WhereStep
-            value={where}
-            onChange={setWhere}
-            footprint={footprint}
-            project={effectiveProject || null}
-            replicas={replicas ?? 1}
-            fit={fit}
-            derivedFabric={derivedFabric}
-          />
+            {effectiveProject && (
+              <WhereStep
+                value={where}
+                onChange={setWhere}
+                footprint={footprint}
+                project={effectiveProject}
+                replicas={replicas ?? 1}
+                fit={fit}
+                derivedFabric={derivedFabric}
+              />
+            )}
+          </div>
         </Step>
 
         <div className="flex items-center justify-between gap-3 pt-4">
