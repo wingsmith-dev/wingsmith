@@ -1,4 +1,5 @@
 import { LocationsField } from "@/components/demand/artifact-locations"
+import { UpstreamFields } from "@/components/demand/artifact-upstream"
 import {
   FormDialog,
   FormGrid,
@@ -12,7 +13,11 @@ import { NotFoundError } from "@/lib/api"
 import { formatError } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { useProjectOptions } from "@/modules/binding/queries"
-import { formatBytes, formatParameters } from "@/modules/demand/display"
+import {
+  emptyUpstream,
+  formatBytes,
+  formatParameters,
+} from "@/modules/demand/display"
 import {
   useCreateArtifact,
   useResolveArtifact,
@@ -22,6 +27,7 @@ import {
   ARTIFACT_KINDS,
   type Artifact,
   type ArtifactLocationRequest,
+  type ArtifactUpstream,
   type ServingDefaults,
   type ResolveNote,
 } from "@/modules/demand/types"
@@ -89,6 +95,9 @@ export function ArtifactForm({
       preferred: l.preferred,
     })) ?? []
   )
+  const [upstream, setUpstream] = useState<ArtifactUpstream>(
+    artifact?.upstream ?? emptyUpstream()
+  )
   const [jsonValid, setJsonValid] = useState(true)
 
   const pending = create.isPending || update.isPending
@@ -104,6 +113,7 @@ export function ArtifactForm({
     project: project === UNSET ? null : project,
     metadata: (metadata as Record<string, unknown>) ?? {},
     locations,
+    upstream,
   }
 
   const done = (verb: string) => {
@@ -136,6 +146,10 @@ export function ArtifactForm({
         setParameterCount(draft.parameter_count)
         setMetadata(draft.metadata)
         setLocations(draft.locations)
+        // Only what the repo states. `reasoning` and `tool_calling` come back
+        // unstated, because a `config.json` says nothing about either and this
+        // form is where a person asserts them.
+        setUpstream(draft.publisher)
         setPopulated((n) => n + 1)
         if (draft.existing_id) {
           toast.info("These weights are already registered", {
@@ -302,6 +316,8 @@ export function ArtifactForm({
       {serving && <ServingSuggestion serving={serving} />}
 
       <LocationsField value={locations} onChange={setLocations} />
+
+      <UpstreamFields value={upstream} onChange={setUpstream} />
 
       <JsonField
         key={populated}

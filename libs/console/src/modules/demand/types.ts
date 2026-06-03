@@ -438,6 +438,11 @@ export interface ResolvedArtifact {
   serving: ServingDefaults
   /** Null when no corpus entry names these weights. Never our own arithmetic. */
   upstream: UpstreamServing | null
+  /**
+   * What the publisher claims, as opposed to `upstream`, which is what an engine ran.
+   * Two third parties answering two questions, which is why they are two fields.
+   */
+  publisher: ArtifactUpstream
   existing_id: string | null
   notes: ResolveNote[]
 }

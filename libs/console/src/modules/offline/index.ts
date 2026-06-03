@@ -38,7 +38,11 @@ import {
 import { revision, uid } from "./ids"
 import { collection } from "./registry"
 import type { Artifact, Deployment, Workload } from "@/modules/demand/types"
-import { emptyCapabilities, emptyServing } from "@/modules/demand/display"
+import {
+  emptyCapabilities,
+  emptyServing,
+  emptyUpstream,
+} from "@/modules/demand/display"
 import type { PlaneConfig } from "@/modules/system/types"
 import type {
   BenchmarkCreateRequest,
@@ -516,6 +520,17 @@ registerFixtures([
               verified_hardware: found.upstream.verified_hardware,
             }
           : null,
+        publisher: {
+          ...emptyUpstream(),
+          provider: slug.split("/")[0],
+          provider_model_id: slug,
+          context_length: 131072,
+          input_modalities: ["text"],
+          licence: found?.licence ?? null,
+          source_uri: `https://huggingface.co/${slug}`,
+          recorded_by: "huggingface",
+          recorded_at: new Date().toISOString(),
+        },
         existing_id: artifacts.find((a) => a.digest === digest)?.id ?? null,
         notes: [
           {

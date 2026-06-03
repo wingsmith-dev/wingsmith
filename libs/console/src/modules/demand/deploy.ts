@@ -16,6 +16,7 @@
 import { emptyCapabilities, emptyServing } from "./display"
 import type {
   Artifact,
+  ArtifactUpstream,
   ServingBehaviour,
   ServingCapabilities,
   ServingDefaults,
@@ -107,51 +108,98 @@ export interface ServingProposal {
  * Which fields the proposal actually answered, for a form that has to attribute
  * every value it did not derive itself.
  */
-export type SeededFrom = "derived" | "weights" | "upstream"
+export type SeededFrom = "derived" | "weights" | "upstream" | "publisher"
 
 /**
- * The typed behaviour block a corpus entry implies.
+ * Whether the publisher has denied a capability outright.
+ *
+ * Three states and only one of them blocks: `false` is somebody asserting these
+ * weights cannot do it, null is the publisher never having spoken, and the
+ * difference matters because a `config.json` says nothing about tools or thinking.
+ * Treating silence as a denial would strip a parser vLLM has tested.
+ */
+function denied(claim: boolean | null | undefined): boolean {
+  return claim === false
+}
+
+/**
+ * The typed behaviour block a corpus entry implies, minus anything the publisher denied.
  *
  * Only the parsers, and only when the corpus names one: everything else in the
  * block is a rendered flag nobody upstream has an opinion about, and a default
  * invented here would be indistinguishable from a tested one on the form.
+ *
+ * A parser is dropped when the artifact's claims deny the capability it parses.
+ * The two sources answer different questions — the publisher says what the model
+ * is, the corpus says what one engine ran — and where they disagree the claim
+ * wins, because the plane refuses a parser without the capability under it and a
+ * request nobody can submit is worse than a flag nobody set.
  */
 export function proposedBehaviour(
-  upstream?: UpstreamServing | null
+  upstream?: UpstreamServing | null,
+  claims?: ArtifactUpstream | null
 ): ServingBehaviour {
   const block = emptyServing()
   if (!upstream) return block
   return {
     ...block,
-    reasoning: { ...block.reasoning, parser: upstream.reasoning_parser },
-    tool_call_parser: upstream.tool_call_parser,
+    reasoning: {
+      ...block.reasoning,
+      parser: denied(claims?.reasoning) ? null : upstream.reasoning_parser,
+    },
+    tool_call_parser: denied(claims?.tool_calling)
+      ? null
+      : upstream.tool_call_parser,
   }
 }
 
 /**
- * The capability claims that the same corpus entry implies.
+ * What this workload is claimed to do, from the publisher first and the recipe second.
  *
  * The behaviour block and the capability block are one statement in two halves, and
- * the plane rejects a half: a tool call parser is only meaningful on a workload that
- * claims tool calling, and the same for a reasoning parser. So a parser taken from
- * upstream carries its claim with it. Nothing else is claimed — a parser is evidence
- * of the one capability it parses and of nothing else.
+ * the plane rejects a half: a tool call parser is meaningless on a workload that does
+ * not claim tool calling. So the claim travels with the parser.
+ *
+ * The two sources are not interchangeable. The artifact's `upstream` is what the
+ * publisher said about the weights, and it is the better answer wherever it speaks —
+ * modalities and structured output have no other honest source here. The vLLM recipe
+ * only narrows or corroborates: a named parser is evidence of the one capability it
+ * parses, which is enough to claim it where the publisher was silent and not enough
+ * to claim it where the publisher said no.
  *
  * `tool_choice_modes` is not a second decision. The plane requires it to be non-empty
  * exactly when tool calling is claimed, and an engine that emits tool calls at all
  * accepts the three unnamed modes.
  */
 export function proposedCapabilities(
-  upstream?: UpstreamServing | null
+  upstream?: UpstreamServing | null,
+  claims?: ArtifactUpstream | null
 ): ServingCapabilities {
   const block = emptyCapabilities()
-  if (!upstream) return block
-  const tools = !!upstream.tool_call_parser
+  const tools =
+    !denied(claims?.tool_calling) &&
+    (claims?.tool_calling === true || !!upstream?.tool_call_parser)
+  const reasoning =
+    !denied(claims?.reasoning) &&
+    (claims?.reasoning === true || !!upstream?.reasoning_parser)
+  const modalities = claims?.input_modalities?.length
+    ? claims.input_modalities
+    : block.input_modalities
   return {
     ...block,
-    reasoning_supported: !!upstream.reasoning_parser,
+    reasoning_supported: reasoning,
     tool_calling_supported: tools,
     tool_choice_modes: tools ? ["auto", "none", "required"] : [],
+    structured_output_modes: claims?.structured_output_modes?.length
+      ? claims.structured_output_modes
+      : block.structured_output_modes,
+    // Text is always an input modality and the plane says so. A claim that lost it
+    // — an empty list, or a publisher who named only the second one — would be
+    // refused, and the artifact page is where that gets corrected, not here.
+    input_modalities: modalities.includes("text")
+      ? modalities
+      : ["text", ...modalities],
+    source_uri: claims?.source_uri ?? null,
   }
 }
 
@@ -205,8 +253,8 @@ export function derivedServingRequest(
       prefix_cache_enabled: true,
       prefix_cache_config: {},
     },
-    serving: proposedBehaviour(upstream),
-    capabilities: proposedCapabilities(upstream),
+    serving: proposedBehaviour(upstream, artifact.upstream),
+    capabilities: proposedCapabilities(upstream, artifact.upstream),
   }
 }
 
@@ -218,7 +266,8 @@ export function derivedServingRequest(
  * configuration they never chose and cannot defend.
  */
 export function servingProvenance(
-  proposal: ServingProposal = {}
+  proposal: ServingProposal = {},
+  claims?: ArtifactUpstream | null
 ): Record<string, SeededFrom> {
   const { defaults, upstream } = proposal
   const at: Record<string, SeededFrom> = {
@@ -238,6 +287,21 @@ export function servingProvenance(
   if (upstream?.tool_call_parser) at.tool_call_parser = "upstream"
   if (upstream?.requires_single_topology_domain)
     at.requires_single_topology_domain = "upstream"
+
+  // A capability is attributed to whoever actually claimed it, and the publisher
+  // outranks the corpus: "the publisher says it calls tools" and "vLLM shipped a
+  // parser for it" are different strengths of evidence and the form should not
+  // render them as one.
+  if (claims?.tool_calling === true) at.tool_calling_supported = "publisher"
+  else if (upstream?.tool_call_parser && claims?.tool_calling !== false)
+    at.tool_calling_supported = "upstream"
+  if (claims?.reasoning === true) at.reasoning_supported = "publisher"
+  else if (upstream?.reasoning_parser && claims?.reasoning !== false)
+    at.reasoning_supported = "upstream"
+  if ((claims?.input_modalities?.length ?? 0) > 1)
+    at.input_modalities = "publisher"
+  if (claims?.structured_output_modes?.length)
+    at.structured_output_modes = "publisher"
   return at
 }
 

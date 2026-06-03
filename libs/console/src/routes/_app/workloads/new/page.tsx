@@ -19,6 +19,7 @@ import {
   footprintSummary,
   servingProvenance,
   workloadsMatching,
+  type SeededFrom,
   type ServingProposal,
 } from "@/modules/demand/deploy"
 import {
@@ -327,6 +328,7 @@ export function NewWorkloadPage() {
           open={open >= 3}
         >
           <Proposed
+            artifact={artifact}
             proposal={proposal}
             loading={proposed.isLoading}
             identical={identical}
@@ -429,17 +431,26 @@ export function NewWorkloadPage() {
  * workloads with one configuration carry one `serving_digest`, which is what
  * reuse means now; whether a second one should exist is not this form's question.
  */
+const SEEDED_LABEL: Record<SeededFrom, string> = {
+  derived: "from the fit",
+  weights: "from the weights",
+  upstream: "from vLLM",
+  publisher: "from the publisher",
+}
+
 function Proposed({
+  artifact,
   proposal,
   loading,
   identical,
 }: {
+  artifact: Artifact | null
   proposal: ServingProposal
   loading: boolean
   identical: Workload[]
 }) {
   const upstream = proposal.upstream ?? null
-  const at = servingProvenance(proposal)
+  const at = servingProvenance(proposal, artifact?.upstream)
   const seeded = Object.entries(at).filter(([, from]) => from !== "derived")
 
   return (
@@ -472,7 +483,7 @@ function Proposed({
               >
                 {field.replace(/_/g, " ")}
                 <span className="ml-1 text-muted-foreground/50">
-                  {from === "weights" ? "from the weights" : "from vLLM"}
+                  {SEEDED_LABEL[from]}
                 </span>
               </Badge>
             ))}

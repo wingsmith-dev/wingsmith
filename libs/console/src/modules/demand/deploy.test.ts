@@ -13,7 +13,10 @@ import {
   slugify,
   workloadsMatching,
 } from "./deploy"
+import { emptyUpstream } from "./display"
 import type {
+  Artifact,
+  ArtifactUpstream,
   ServingDefaults,
   ServingFootprint,
   UpstreamServing,
@@ -21,6 +24,11 @@ import type {
 } from "./types"
 
 const artifact = artifacts[0]
+
+const claiming = (over: Partial<ArtifactUpstream>): Artifact => ({
+  ...artifact,
+  upstream: { ...emptyUpstream(), ...over },
+})
 
 const footprint: ServingFootprint = {
   device_class: "nvidia-h100-80gb",
@@ -268,12 +276,82 @@ describe("proposedCapabilities", () => {
   })
 })
 
+describe("the publisher's claims against the corpus's parsers", () => {
+  it("claims what the publisher claims, with no parser needed as evidence", () => {
+    const claims = proposedCapabilities(
+      upstream(),
+      claiming({ tool_calling: true }).upstream
+    )
+    expect(claims.tool_calling_supported).toBe(true)
+  })
+
+  it("drops a parser the publisher says these weights cannot use", () => {
+    /**
+     * Otherwise the request is unsubmittable: the plane refuses a tool call
+     * parser without the capability under it, and the claim is the half that
+     * somebody actually asserted.
+     */
+    const denied = claiming({ tool_calling: false })
+    const recipe = upstream({ tool_call_parser: "hermes" })
+    expect(
+      proposedBehaviour(recipe, denied.upstream).tool_call_parser
+    ).toBeNull()
+    expect(
+      proposedCapabilities(recipe, denied.upstream).tool_calling_supported
+    ).toBe(false)
+  })
+
+  it("reads silence as silence, so a tested parser still travels", () => {
+    const silent = claiming({ tool_calling: null })
+    const recipe = upstream({ tool_call_parser: "hermes" })
+    expect(proposedBehaviour(recipe, silent.upstream).tool_call_parser).toBe(
+      "hermes"
+    )
+    expect(
+      proposedCapabilities(recipe, silent.upstream).tool_calling_supported
+    ).toBe(true)
+  })
+
+  it("carries the modalities and the output modes the publisher named", () => {
+    const claims = proposedCapabilities(
+      upstream(),
+      claiming({
+        input_modalities: ["image"],
+        structured_output_modes: ["text", "json_schema"],
+      }).upstream
+    )
+    // Text is always an input modality and the plane refuses a list without it.
+    expect(claims.input_modalities).toEqual(["text", "image"])
+    expect(claims.structured_output_modes).toContain("json_schema")
+  })
+
+  it("sends the artifact's claims with the request they belong to", () => {
+    const request = derivedServingRequest(
+      claiming({ reasoning: true }),
+      footprint,
+      { upstream: upstream({ reasoning_parser: "qwen3" }) }
+    )
+    expect(request.capabilities?.reasoning_supported).toBe(true)
+    expect(request.serving?.reasoning.parser).toBe("qwen3")
+  })
+})
+
 describe("servingProvenance", () => {
   it("attributes each seeded field to what proposed it", () => {
     const at = servingProvenance({ defaults, upstream: upstream() })
     expect(at.dtype).toBe("weights")
     expect(at.engine_version).toBe("upstream")
     expect(at.kv_cache_dtype).toBe("upstream")
+    expect(
+      servingProvenance({ upstream: upstream({ tool_call_parser: "hermes" }) })
+        .tool_calling_supported
+    ).toBe("upstream")
+    expect(
+      servingProvenance(
+        { upstream: upstream() },
+        claiming({ tool_calling: true }).upstream
+      ).tool_calling_supported
+    ).toBe("publisher")
     expect(at.device_class).toBe("derived")
   })
 
