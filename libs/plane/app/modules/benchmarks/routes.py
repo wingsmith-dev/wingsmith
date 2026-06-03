@@ -5,6 +5,7 @@ from litestar import Controller
 from litestar import get
 from litestar import post
 from litestar.di import Provide
+from litestar.params import Parameter
 
 from app.core.context import RequestContext
 from app.core.schemas import ListResponse
@@ -51,9 +52,17 @@ class BenchmarkRoutes(Controller):
         harness: str | None = None,
         phase: str | None = None,
         actor: str | None = None,
-        request: str | None = None,
+        request_uid: str | None = Parameter(query="request", default=None, required=False),
         since: dt.datetime | None = None,
     ) -> Response[ListResponse[BenchmarkRunSchema]]:
+        """`request` is aliased because Litestar owns that name on a handler.
+
+        A parameter called `request` is given the `Request` object, not the query
+        string, and a `Request` is never `None` — so the filter it feeds was
+        applied on every call and every `GET /v1/benchmarks` answered 500 with
+        `cannot adapt type 'Request'`. The query key stays `request`, because
+        that is what the filter is called everywhere else.
+        """
         result = await svc.list(
             limit=limit,
             cursor=cursor,
@@ -62,7 +71,7 @@ class BenchmarkRoutes(Controller):
             harness=harness,
             phase=phase,
             actor=actor,
-            request=request,
+            request=request_uid,
             since=since,
         )
         return Response(result)

@@ -416,3 +416,26 @@ def test_the_serving_summary_is_keyed_on_the_digest_and_its_peak_can_be_absent()
 def test_the_rollup_is_addressed_by_digest_beside_the_runs():
     methods = {name for name, member in vars(BenchmarkRoutes).items() if hasattr(member, "fn")}
     assert "get_serving_summary" in methods
+
+
+def test_the_request_filter_is_aliased_away_from_litestars_own_name() -> None:
+    """A handler parameter called `request` is handed the Request, not the query value.
+
+    It is never None, so the filter it fed was applied on every call and every
+    `GET /v1/benchmarks` answered 500 with `cannot adapt type 'Request' using
+    placeholder '%s'`. The bug is invisible in a unit test of the service and
+    only shows against a database, which is why it reached production.
+    """
+    import inspect
+
+    from litestar.params import ParameterKwarg
+
+    from app.modules.benchmarks.routes import BenchmarkRoutes
+
+    handler = BenchmarkRoutes.list_runs
+    signature = inspect.signature(getattr(handler, "fn", handler))
+    assert "request" not in signature.parameters, "Litestar owns this name on a handler"
+
+    default = signature.parameters["request_uid"].default
+    assert isinstance(default, ParameterKwarg)
+    assert default.query == "request", "the query key callers use must not change"
