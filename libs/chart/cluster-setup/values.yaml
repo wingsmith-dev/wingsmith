@@ -32,11 +32,12 @@ enrolmentToken:
   # Opt-out for a hand-driven install where you created `existingSecret` yourself.
   existing: false
 
-# Registry credential for the two images this chart owns, the operator and the
-# agent. `name` empty means no pull secret is referenced at all, which is right
-# when those images are public or sit in a registry the nodes already authenticate
-# to. Set `name` to reference one, and `create` to have the chart build it from
-# `username` and `token` — a GHCR token needs only `read:packages`.
+# Registry credential for the operator, agent, and any private workload runtime
+# a cluster opts into below. `name` empty means no pull secret is referenced at
+# all, which is right when those images are public or sit in a registry the nodes
+# already authenticate to. Set `name` to reference one, and `create` to have the
+# chart build it from `username` and `token` — a GHCR token needs only
+# `read:packages`.
 #
 # Not applied to the metrics agent or the subcharts: they pull from quay.io,
 # nvcr.io and Docker Hub, and the subcharts carry their own pull-secret values.
@@ -108,6 +109,11 @@ operator:
     tag: ""
     pullPolicy: Always
   leaderElection: true
+  engine:
+    # Secrets in `dynamo` presented when pulling a workload's `engine_image`.
+    # Empty for the NVIDIA runtime images, which are anonymous; set this when a
+    # model needs a private build such as the GLM 5.3 runtime in GHCR.
+    imagePullSecrets: []
   # One OpenAI-compatible frontend per model, rendered by the operator into the
   # same graph as the model's worker, instead of the one cluster-wide frontend
   # `frontend.enabled` above installs.

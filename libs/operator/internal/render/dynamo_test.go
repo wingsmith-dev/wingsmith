@@ -609,21 +609,29 @@ func TestTheFrontendCarriesTheSeedAndTheAnthropicSwitches(t *testing.T) {
 	}
 }
 
-// A private frontend image with no credential is an ImagePullBackOff nothing reports upward. The
-// worker path needs none and still gets none.
-func TestTheFrontendTakesThePullSecretsTheWorkerDoesNotNeed(t *testing.T) {
+// A private image with no credential is an ImagePullBackOff nothing reports upward. Engine
+// credentials reach both the worker and the frontend that can fall back to that same image;
+// frontend-only credentials stay off the worker.
+func TestTheFrontendAndEngineTakeTheirPullSecrets(t *testing.T) {
 	opts := frontendOptions()
-	opts.FrontendPullSecrets = []string{"ghcr-hangar"}
+	opts.FrontendPullSecrets = []string{"ghcr-frontend", "ghcr-shared"}
+	opts.EnginePullSecrets = []string{"ghcr-engine", "ghcr-shared"}
 	obj, err := DynamoGraphDeployment(testInputs(), opts)
 	if err != nil {
 		t.Fatalf("render: %v", err)
 	}
 	pod := componentPod(t, componentNamed(t, obj, FrontendComponent))
-	if len(pod.ImagePullSecrets) != 1 || pod.ImagePullSecrets[0].Name != "ghcr-hangar" {
+	if len(pod.ImagePullSecrets) != 3 ||
+		pod.ImagePullSecrets[0].Name != "ghcr-frontend" ||
+		pod.ImagePullSecrets[1].Name != "ghcr-shared" ||
+		pod.ImagePullSecrets[2].Name != "ghcr-engine" {
 		t.Fatalf("imagePullSecrets = %v", pod.ImagePullSecrets)
 	}
-	if worker := componentPod(t, componentNamed(t, obj, WorkerComponent)); len(worker.ImagePullSecrets) != 0 {
-		t.Fatalf("the worker grew pull secrets: %v", worker.ImagePullSecrets)
+	worker := componentPod(t, componentNamed(t, obj, WorkerComponent))
+	if len(worker.ImagePullSecrets) != 2 ||
+		worker.ImagePullSecrets[0].Name != "ghcr-engine" ||
+		worker.ImagePullSecrets[1].Name != "ghcr-shared" {
+		t.Fatalf("worker imagePullSecrets = %v", worker.ImagePullSecrets)
 	}
 }
 

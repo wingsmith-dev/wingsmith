@@ -28,6 +28,10 @@ data:
 
   HANGAR_MULTINODE: {{ .Values.multinode.enabled | quote }}
 
+  {{- with .Values.operator.engine.imagePullSecrets }}
+  HANGAR_ENGINE_PULL_SECRETS: {{ join "," . | quote }}
+  {{- end }}
+
   # One frontend per model, rendered by the operator. See operator.frontend in
   # values.yaml for what turning this on changes cluster-wide, and why it is not
   # safe yet on a cluster serving more than one model.

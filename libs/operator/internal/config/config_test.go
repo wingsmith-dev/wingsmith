@@ -93,8 +93,9 @@ func TestTheFrontendIsOffByDefaultAndItsSwitchesAreOn(t *testing.T) {
 	if !c.FrontendGlobalDynamoNamespace {
 		t.Error("the frontend would be narrowed to its own namespace by default, which nothing has shown to work")
 	}
-	if c.FrontendImage != "" || len(c.FrontendPullSecrets) != 0 {
-		t.Errorf("frontend image = %q, pull secrets = %v", c.FrontendImage, c.FrontendPullSecrets)
+	if c.FrontendImage != "" || len(c.FrontendPullSecrets) != 0 || len(c.EnginePullSecrets) != 0 {
+		t.Errorf("frontend image = %q, frontend pull secrets = %v, engine pull secrets = %v",
+			c.FrontendImage, c.FrontendPullSecrets, c.EnginePullSecrets)
 	}
 }
 
@@ -104,6 +105,7 @@ func TestTheFrontendSettingsAreReadFromTheEnvironment(t *testing.T) {
 	t.Setenv("HANGAR_FRONTEND_ENABLED", "true")
 	t.Setenv("HANGAR_FRONTEND_IMAGE", "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2")
 	t.Setenv("HANGAR_FRONTEND_REPLICAS", "3")
+	t.Setenv("HANGAR_ENGINE_PULL_SECRETS", "ghcr-engine, ghcr-mirror")
 	t.Setenv("HANGAR_FRONTEND_PULL_SECRETS", "ghcr-hangar, ghcr-mirror")
 	t.Setenv("HANGAR_FRONTEND_CPU", "500m")
 	t.Setenv("HANGAR_FRONTEND_MEMORY", "1Gi")
@@ -125,7 +127,10 @@ func TestTheFrontendSettingsAreReadFromTheEnvironment(t *testing.T) {
 	// A pull secret list written with spaces after the commas is the ordinary way somebody
 	// writes one into a ConfigMap.
 	if len(c.FrontendPullSecrets) != 2 || c.FrontendPullSecrets[1] != "ghcr-mirror" {
-		t.Errorf("pull secrets = %v", c.FrontendPullSecrets)
+		t.Errorf("frontend pull secrets = %v", c.FrontendPullSecrets)
+	}
+	if len(c.EnginePullSecrets) != 2 || c.EnginePullSecrets[0] != "ghcr-engine" {
+		t.Errorf("engine pull secrets = %v", c.EnginePullSecrets)
 	}
 	if c.FrontendAnthropicAPI || c.FrontendAnthropicStripPreamble || c.FrontendGlobalDynamoNamespace {
 		t.Errorf("the booleans did not turn off: %+v", c)

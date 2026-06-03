@@ -815,6 +815,7 @@ func TestRenderOptionsCarriesTheFrontendSettings(t *testing.T) {
 	cfg := &config.Config{
 		WorkloadNamespace:              "dynamo",
 		PoolLabelKey:                   "hangar.io/pool",
+		EnginePullSecrets:              []string{"ghcr-engine"},
 		FrontendEnabled:                true,
 		FrontendImage:                  "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2",
 		FrontendReplicas:               3,
@@ -832,7 +833,10 @@ func TestRenderOptionsCarriesTheFrontendSettings(t *testing.T) {
 		t.Fatalf("frontend options not carried: %+v", opts)
 	}
 	if len(opts.FrontendPullSecrets) != 1 || opts.FrontendPullSecrets[0] != "ghcr-hangar" {
-		t.Fatalf("pull secrets = %v", opts.FrontendPullSecrets)
+		t.Fatalf("frontend pull secrets = %v", opts.FrontendPullSecrets)
+	}
+	if len(opts.EnginePullSecrets) != 1 || opts.EnginePullSecrets[0] != "ghcr-engine" {
+		t.Fatalf("engine pull secrets = %v", opts.EnginePullSecrets)
 	}
 	if opts.FrontendCPU != "500m" || opts.FrontendMemory != "1Gi" || opts.FrontendMemoryLimit != "4Gi" {
 		t.Fatalf("frontend resources = %q %q %q", opts.FrontendCPU, opts.FrontendMemory, opts.FrontendMemoryLimit)

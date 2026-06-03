@@ -155,6 +155,11 @@ type Config struct {
 	// initialisation rather than failing. A cluster sets it once it has installed one of them.
 	Multinode bool
 
+	// EnginePullSecrets are Secrets in WorkloadNamespace the kubelet presents when pulling a
+	// deployment's EngineImage. Empty for the anonymous NVIDIA runtime; set on clusters that run
+	// private engine builds such as the GLM 5.3 runtime in GHCR.
+	EnginePullSecrets []string
+
 	// FrontendEnabled renders one OpenAI-compatible frontend per model, beside the worker in the
 	// same graph, instead of relying on the single frontend `cluster-setup` installs.
 	//
@@ -306,6 +311,7 @@ func Load() (*Config, error) {
 		PrefetchMemory:        env("HANGAR_PREFETCH_MEMORY", ""),
 		PrefetchMemoryLimit:   env("HANGAR_PREFETCH_MEMORY_LIMIT", ""),
 		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
+		EnginePullSecrets:     envList("HANGAR_ENGINE_PULL_SECRETS"),
 
 		FrontendEnabled:                envBool("HANGAR_FRONTEND_ENABLED", false),
 		FrontendImage:                  env("HANGAR_FRONTEND_IMAGE", ""),

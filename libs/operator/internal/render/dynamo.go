@@ -54,6 +54,11 @@ type Options struct {
 	// a cluster turns it on when it has installed the thing that makes it true.
 	MultinodeEnabled bool
 
+	// EnginePullSecrets are Secrets in the workload namespace the kubelet presents when pulling
+	// the serving block's EngineImage. Frontends receive them too because, when neither a
+	// deployment nor the cluster names a frontend image, they run that same engine image.
+	EnginePullSecrets []string
+
 	// FrontendEnabled renders a frontend beside the worker, one per model.
 	//
 	// Off by default, and that default is the migration control rather than an opinion. Every
@@ -82,12 +87,11 @@ type Options struct {
 	// FrontendPullSecrets are Secrets in the workload namespace the kubelet presents when
 	// pulling FrontendImage.
 	//
-	// The worker path sets none and has never needed any, because an engine image comes from
-	// nvcr.io, which serves anonymously. A frontend image does not have to: the Kimi K3 fix is a
-	// patched runtime in a private GHCR repository, and a private pull with no credential is an
-	// ImagePullBackOff rather than an error anything reports upward. A pull Secret is namespaced
-	// and the kubelet reads it from the pod's own namespace, so these name Secrets in the
-	// namespace this operator renders into, not in its own.
+	// A frontend image does not have to be public: the Kimi K3 fix is a patched runtime in a
+	// private GHCR repository, and a private pull with no credential is an ImagePullBackOff rather
+	// than an error anything reports upward. A pull Secret is namespaced and the kubelet reads it
+	// from the pod's own namespace, so these name Secrets in the namespace this operator renders
+	// into, not in its own.
 	FrontendPullSecrets []string
 
 	// FrontendCPU, FrontendMemory and FrontendMemoryLimit are what one frontend pod asks for.
@@ -420,7 +424,8 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	shm := resource.MustParse("16Gi")
 
 	spec := &corev1.PodSpec{
-		NodeSelector: podNodeSelector(in, opts),
+		ImagePullSecrets: imagePullSecrets(opts.EnginePullSecrets),
+		NodeSelector:     podNodeSelector(in, opts),
 		Tolerations: []corev1.Toleration{{
 			Key:      "nvidia.com/gpu",
 			Operator: corev1.TolerationOpEqual,
@@ -556,13 +561,11 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 		return nil, err
 	}
 
-	var pullSecrets []corev1.LocalObjectReference
-	for _, name := range opts.FrontendPullSecrets {
-		pullSecrets = append(pullSecrets, corev1.LocalObjectReference{Name: name})
-	}
-
 	return &corev1.PodSpec{
-		ImagePullSecrets: pullSecrets,
+		// Engine credentials are included because the frontend falls back to EngineImage when no
+		// frontend-specific image is configured. Duplicates are removed when both settings name
+		// the same fleet-wide credential.
+		ImagePullSecrets: imagePullSecrets(opts.FrontendPullSecrets, opts.EnginePullSecrets),
 		Containers: []corev1.Container{{
 			Name:  "main",
 			Image: image,
@@ -580,6 +583,27 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 			Resources: resources,
 		}},
 	}, nil
+}
+
+// imagePullSecrets converts configured names into the pod form, preserving their order while
+// removing duplicates. One registry credential commonly serves both the frontend and engine
+// images, and presenting the same LocalObjectReference twice says nothing useful to the kubelet.
+func imagePullSecrets(groups ...[]string) []corev1.LocalObjectReference {
+	seen := make(map[string]struct{})
+	var refs []corev1.LocalObjectReference
+	for _, names := range groups {
+		for _, name := range names {
+			if name == "" {
+				continue
+			}
+			if _, exists := seen[name]; exists {
+				continue
+			}
+			seen[name] = struct{}{}
+			refs = append(refs, corev1.LocalObjectReference{Name: name})
+		}
+	}
+	return refs
 }
 
 // frontendImage resolves which runtime the frontend runs, most specific first.
