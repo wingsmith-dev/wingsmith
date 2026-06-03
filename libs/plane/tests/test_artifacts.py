@@ -27,7 +27,7 @@ from app.integrations.huggingface import HuggingFaceWeightFile
 from app.integrations.huggingface import HuggingFaceUnavailable
 from app.integrations.huggingface import content_digest
 from app.modules.artifacts.routes import ArtifactRoutes
-from app.modules.artifacts.resolve import RecipeDefaults
+from app.modules.artifacts.resolve import ServingDefaults
 from app.modules.artifacts.resolve import slug_of
 from app.modules.artifacts.resolve import normalise_source
 from app.modules.artifacts.schemas import ArtifactSchema
@@ -203,24 +203,23 @@ def test_downstream_count_is_children_that_name_this_artifact_as_base(repo):
     assert "demand_artifact.base_artifact_id" in text
 
 
-def test_recipe_usage_counts_recipes_that_serve_these_weights(repo):
-    text = sql(repo.recipe_usage_query(Artifact(uid=new_uid(ARTIFACT))))
-    assert "count(demand_recipe.id)" in text
-    assert "demand_recipe.artifact_id" in text
+def test_workload_usage_unions_the_served_weights_and_the_adapter_set(repo):
+    """One count over both ways a workload can reach these weights.
 
-
-def test_workload_usage_unions_recipe_weights_and_adapter_set(repo):
+    The serving configuration is a column on the workload now, so the weights it
+    serves are `demand_workload.artifact_id` and there is no second table to join
+    through. A workload naming the artifact as both still counts once.
+    """
     text = sql(repo.workload_usage_query(Artifact(uid=new_uid(ARTIFACT))))
     assert "count(distinct(demand_workload.id))" in text
-    assert "JOIN demand_recipe" in text
-    assert "demand_recipe.artifact_id" in text
+    assert "demand_workload.artifact_id" in text
     assert "demand_workload.adapter_artifact_ids @>" in text
 
 
-def test_usage_schema_carries_the_three_derived_counts():
+def test_usage_schema_carries_the_two_derived_counts():
+    """One kind of dependant, not two: nothing stands between a workload and the weights."""
     assert set(ArtifactUsageSchema.__struct_fields__) == {
         "artifact_id",
-        "recipe_count",
         "workload_count",
         "downstream_count",
     }
@@ -236,7 +235,7 @@ def test_conditional_update_reads_if_match_from_the_header():
     assert parameter.default.header == "If-Match"
 
 
-def test_delete_refuses_while_a_recipe_still_names_the_artifact():
+def test_delete_refuses_while_a_workload_still_names_the_artifact():
     from app.modules.artifacts.services import ArtifactService
 
     assert "Refuses" in (ArtifactService.delete.__doc__ or "")
@@ -380,19 +379,19 @@ async def test_the_draft_carries_the_shape_read_out_of_the_config():
 
 async def test_a_prequantized_repo_is_sized_at_its_native_quantization():
     draft = await service().resolve("openai/gpt-oss-20b")
-    assert draft.recipe.quantization == "mxfp4"
-    assert draft.recipe.dtype == "bfloat16"
-    assert draft.recipe.device_count == 1
-    assert 0 < draft.recipe.device_memory_mib_min < 40 * 1024
+    assert draft.serving.quantization == "mxfp4"
+    assert draft.serving.dtype == "bfloat16"
+    assert draft.serving.device_count == 1
+    assert 0 < draft.serving.device_memory_mib_min < 40 * 1024
 
 
 async def test_the_suggested_context_is_the_declared_one_and_devices_follow_from_it():
     """The artifact sizes hardware to the weights, never the weights to hardware."""
     draft = await service().resolve("openai/gpt-oss-20b")
-    assert draft.recipe.context_length == draft.metadata["context_length"] == 131072
+    assert draft.serving.context_length == draft.metadata["context_length"] == 131072
     assert not any("offered instead" in note.message for note in draft.notes)
     kv_at_full_context = 6 * 1024
-    assert draft.recipe.device_memory_mib_min > kv_at_full_context
+    assert draft.serving.device_memory_mib_min > kv_at_full_context
 
 
 async def test_weights_too_large_for_one_device_shard_across_a_power_of_two():
@@ -410,22 +409,23 @@ async def test_weights_too_large_for_one_device_shard_across_a_power_of_two():
     model = hf_model(parameter_count=int(weights_gb * 1024**3 / 0.5))
 
     draft = await service(hub=FakeHub(model)).resolve("openai/gpt-oss-20b")
-    assert draft.recipe.device_count == 4
-    assert draft.recipe.device_memory_mib_min * draft.recipe.device_count > weights_gb * 1024
-    assert draft.recipe.context_length == 131072
+    assert draft.serving.device_count == 4
+    assert draft.serving.device_memory_mib_min * draft.serving.device_count > weights_gb * 1024
+    assert draft.serving.context_length == 131072
     assert any("spreads it across 4 devices" in note.message for note in draft.notes)
 
 
-async def test_a_recipe_suggestion_is_offered_and_never_applied():
+async def test_a_serving_suggestion_is_offered_and_never_applied():
+    """The draft seeds a workload form. Registering weights declares no way to serve them."""
     draft = await service().resolve("openai/gpt-oss-20b")
-    assert isinstance(draft.recipe, RecipeDefaults)
-    assert "recipe" not in ArtifactCreateRequest.__struct_fields__
+    assert isinstance(draft.serving, ServingDefaults)
+    assert not {"recipe", "serving"} & set(ArtifactCreateRequest.__struct_fields__)
 
 
 async def test_unquantized_weights_suggest_no_quantization_but_still_size_as_fp16():
     """A repo that declares no quantization must not be offered one.
 
-    The suggestion becomes the recipe's `--quantization`, and an engine takes only
+    The suggestion becomes the workload's `--quantization`, and an engine takes only
     real quantization methods there — `fp16` is a dtype and is rejected before the
     worker binds a port. Sizing still needs a bytes-per-param bucket, and fp16 is
     the right one for unquantized weights, so the two answers differ here.
@@ -435,13 +435,13 @@ async def test_unquantized_weights_suggest_no_quantization_but_still_size_as_fp1
 
     draft = await service(hub=FakeHub(model)).resolve(model.slug)
 
-    assert draft.recipe.quantization is None
+    assert draft.serving.quantization is None
     assert draft.metadata["quantization"] is None
-    assert draft.recipe.dtype == "bfloat16"
+    assert draft.serving.dtype == "bfloat16"
 
     quantized = await service().resolve("openai/gpt-oss-20b")
-    assert quantized.recipe.quantization == "mxfp4"
-    assert draft.recipe.device_memory_mib_min > quantized.recipe.device_memory_mib_min
+    assert quantized.serving.quantization == "mxfp4"
+    assert draft.serving.device_memory_mib_min > quantized.serving.device_memory_mib_min
 
 
 async def test_weights_the_hub_cannot_address_are_a_named_digest_and_unverified():

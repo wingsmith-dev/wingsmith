@@ -1,0 +1,826 @@
+"""The serving configuration a workload carries, and everything that reads it.
+
+These tests were written against `Recipe` and moved here with the fields, because the
+object went and the rules did not: a dtype in the quantization box is still a worker
+that never binds a port, a device count that does not divide the parallel layout is
+still unplaceable, and a serving block that contradicts its own capability claims is
+still a lie the plane can catch before a cluster does.
+
+What is new here is `serving_digest`. The identity of a serving configuration is its
+content, so the tests that used to ask whether two recipes were the same object now ask
+whether two workloads hash the same — including across a write and the reload after it,
+which is a question a separate object never had to answer.
+
+The workload's own surface — its request shapes, its routes, its repository — is
+`test_workloads.py`. This file is the configuration, not the object that holds it.
+"""
+
+import datetime as dt
+
+from types import SimpleNamespace
+from decimal import Decimal
+
+import pytest
+import msgspec
+
+from app.config import settings
+from app.core.ids import ARTIFACT
+from app.core.ids import WORKLOAD
+from app.core.ids import new_uid
+from app.core.vram import extract_shape
+from app.core.vram import shape_metadata
+from app.db.models import Artifact
+from app.db.models import Workload
+from app.core.serving import served_model
+from app.core.serving import serving_digest
+from app.hub.messages import ServingSpec
+from app.core.exceptions import Invalid
+from app.ingestion.desired import _serving
+from app.modules.workloads.schemas import CacheSchema
+from app.modules.workloads.schemas import ShapeSchema
+from app.modules.workloads.schemas import ServingSchema
+from app.modules.workloads.schemas import ReasoningSchema
+from app.modules.workloads.schemas import ResourcesSchema
+from app.modules.workloads.schemas import ParallelismSchema
+from app.modules.workloads.schemas import CapabilitiesSchema
+from app.modules.workloads.schemas import WorkloadServingSchema
+from app.modules.workloads.schemas import WorkloadServingRequest
+from app.modules.workloads.services import sizing_for
+from app.modules.workloads.services import check_shape
+from app.modules.workloads.services import serving_args
+from app.modules.workloads.services import serving_view
+from app.modules.workloads.services import apply_serving
+from app.modules.workloads.services import check_serving
+from app.modules.workloads.services import check_capacity
+from app.modules.workloads.services import check_footprint
+from app.modules.workloads.services import check_quantization
+from app.modules.workloads.services import resolve_engine_image
+from app.modules.workloads.services import resolved_engine_args
+from app.modules.workloads.services import check_serving_request
+
+
+EPOCH = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+
+
+def shape(**kwargs) -> dict:
+    base = {
+        "device_class": "h100",
+        "device_count": 8,
+        "tensor_parallel": 8,
+        "pipeline_parallel": 1,
+        "expert_parallel": 1,
+        "context_length": 32768,
+        "kv_cache_fraction": None,
+    }
+    return base | kwargs
+
+
+def serving(**kwargs) -> ServingSchema:
+    reasoning = kwargs.pop("reasoning", None)
+    block = ServingSchema(**kwargs)
+    if reasoning is not None:
+        block.reasoning = ReasoningSchema(**reasoning)
+    return block
+
+
+def capabilities(**kwargs) -> CapabilitiesSchema:
+    return CapabilitiesSchema(**kwargs)
+
+
+def a_workload(**kwargs) -> Workload:
+    """A Workload row as SQLAlchemy hands one back, with no server defaults applied.
+
+    Every column here is one the recipe used to own. They are set explicitly rather
+    than left to the model's defaults because a row read back from Postgres has all
+    of them, and a factory that left holes would let a `None` pass a test that the
+    database would never produce.
+    """
+    base = {
+        "uid": new_uid(WORKLOAD),
+        "name": "llama-vllm",
+        "engine": "vllm",
+        "engine_version": "0.6.0",
+        "engine_image": None,
+        "frontend_image": None,
+        "engine_args": {},
+        "imported_args": {},
+        "quantization": None,
+        "dtype": None,
+        "tensor_parallel": 1,
+        "pipeline_parallel": 1,
+        "expert_parallel": 1,
+        "context_length": 8192,
+        "max_batch_tokens": None,
+        "kv_cache_dtype": None,
+        "kv_cache_fraction": None,
+        "prefix_cache_enabled": False,
+        "prefix_cache_config": {},
+        "device_class": "h100",
+        "device_count": 1,
+        "device_memory_mib_min": 0,
+        "requires_single_topology_domain": False,
+        "topology_domain_kind": None,
+        "cpu_cores": None,
+        "memory_mib": None,
+        "disk_gib": None,
+        "labels": {},
+        "overlay": {},
+        "serving": {},
+        "capabilities": {},
+        "serving_digest": "",
+        "created_at": EPOCH,
+        "updated_at": None,
+    }
+    return Workload(**(base | kwargs))
+
+
+def a_request(**kwargs) -> WorkloadServingRequest:
+    """The same configuration as `a_workload`, in the shape a caller sends it."""
+    fields = {
+        "artifact": new_uid(ARTIFACT),
+        "engine": "vllm",
+        "engine_version": "0.6.0",
+        "context_length": 8192,
+        "shape": ShapeSchema(device_class="h100"),
+    }
+    return WorkloadServingRequest(**(fields | kwargs))
+
+
+def rendered(workload: Workload):
+    """The serving block as a read returns it."""
+    return serving_view(workload, new_uid(ARTIFACT))
+
+
+# --------------------------------------------------------------------------- quantization
+
+
+def test_a_dtype_in_the_quantization_field_is_refused():
+    """`--quantization fp16` is not a degraded serve, it is a worker that never starts.
+
+    vLLM rejects it building the engine config, before the port is bound, so the
+    cluster reports only a crash loop and a failing probe. Catching it here is the
+    difference between an error on the form and an hour spent in pod logs.
+    """
+    for value in ("fp16", "bfloat16", "BF16", " float16 ", "auto"):
+        with pytest.raises(Invalid):
+            check_quantization(value)
+
+
+def test_a_real_quantization_method_and_an_empty_one_are_both_allowed():
+    """Empty is the right answer for unquantized weights, not a missing value."""
+    for value in ("mxfp4", "fp8", "awq", "gptq", None, ""):
+        check_quantization(value)
+
+
+# --------------------------------------------------------------------------- shape
+
+
+def test_a_shape_without_a_device_class_is_not_a_shape():
+    """Tensor-parallel-8 means nothing spread across an A100 and an H100."""
+    with pytest.raises(Invalid):
+        check_shape(**shape(device_class=""))
+    with pytest.raises(Invalid):
+        check_shape(**shape(device_class="   "))
+
+
+def test_a_placeable_shape_is_accepted():
+    assert check_shape(**shape()) is None
+    assert check_shape(**shape(device_count=16, tensor_parallel=8, pipeline_parallel=2)) is None
+
+
+def test_a_device_count_that_does_not_divide_the_parallel_layout_is_refused():
+    with pytest.raises(Invalid):
+        check_shape(**shape(device_count=6, tensor_parallel=4))
+
+
+def test_expert_parallelism_cannot_exceed_the_devices_there_are():
+    with pytest.raises(Invalid):
+        check_shape(**shape(expert_parallel=16))
+
+
+@pytest.mark.parametrize("field", ["device_count", "tensor_parallel", "pipeline_parallel", "context_length"])
+def test_the_counts_that_must_be_at_least_one(field):
+    with pytest.raises(Invalid):
+        check_shape(**shape(**{field: 0}))
+
+
+@pytest.mark.parametrize("fraction", [0, -0.1, 1.5])
+def test_kv_cache_fraction_outside_zero_to_one_is_refused(fraction):
+    with pytest.raises(Invalid):
+        check_shape(**shape(kv_cache_fraction=fraction))
+
+
+def test_kv_cache_fraction_is_optional_and_a_whole_device_is_allowed():
+    assert check_shape(**shape(kv_cache_fraction=None)) is None
+    assert check_shape(**shape(kv_cache_fraction=1)) is None
+
+
+def test_negative_footprint_hints_are_refused():
+    assert check_footprint(cpu_cores=None, memory_mib=8, disk_gib=0) is None
+    with pytest.raises(Invalid):
+        check_footprint(device_memory_mib_min=-1)
+    with pytest.raises(Invalid):
+        check_footprint(max_batch_tokens=-8)
+
+
+def test_a_whole_serving_request_is_checked_at_once():
+    """One entry point, so a patch cannot arrive at a state a create would have refused.
+
+    Every rule above is reachable through it, and each of them is reached from a
+    different corner of the nested request — the shape from `shape`, the parallel
+    layout from `parallelism`, the fraction from `cache`.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT), name="llama", digest="sha256:beef")
+    assert check_serving_request(a_request(), artifact) is None
+
+    with pytest.raises(Invalid):
+        check_serving_request(a_request(quantization="fp16"), artifact)
+    with pytest.raises(Invalid):
+        check_serving_request(a_request(shape=ShapeSchema(device_class="")), artifact)
+    with pytest.raises(Invalid):
+        check_serving_request(
+            a_request(shape=ShapeSchema(device_class="h100", device_count=6), parallelism=ParallelismSchema(tensor=4)),
+            artifact,
+        )
+    with pytest.raises(Invalid):
+        check_serving_request(a_request(cache=CacheSchema(kv_cache_fraction=1.5)), artifact)
+    with pytest.raises(Invalid):
+        check_serving_request(a_request(resources=ResourcesSchema(cpu_cores=-1)), artifact)
+
+
+# --------------------------------------------------------------------------- the typed serving block
+
+
+def test_a_workload_with_no_serving_block_still_round_trips():
+    """Every row written before the block existed reads back as the defaults."""
+    for stored in ({}, None):
+        block = rendered(a_workload(serving=stored, capabilities=stored))
+        assert block.serving == ServingSchema()
+        assert block.capabilities == CapabilitiesSchema()
+        assert block.serving.reasoning.parser is None
+        assert block.serving.context_overflow == "reject"
+        assert block.capabilities.input_modalities == ["text"]
+        decoded = msgspec.json.decode(msgspec.json.encode(block.serving), type=ServingSchema)
+        assert decoded == block.serving
+
+
+def test_an_absent_serving_block_is_the_defaults_at_the_request_boundary_too():
+    data = a_request()
+    assert data.serving == ServingSchema()
+    assert data.capabilities == CapabilitiesSchema()
+    assert check_serving(data.serving, data.capabilities, prefix_cache_enabled=False) is None
+
+
+def test_a_serving_block_round_trips():
+    declared = serving(
+        reasoning={
+            "default_on": True,
+            "parser": "qwen3",
+            "transport": "inline_tags",
+            "think_begin_token": "<think>",
+            "think_end_token": "</think>",
+            "suppress_eos_until_think_end": True,
+        },
+        stream_usage="every_chunk",
+        context_overflow="clamp_output",
+        structured_output_backend="xgrammar",
+        tool_call_parser="hermes",
+        max_images_per_request=4,
+    )
+    claimed = capabilities(
+        reasoning_supported=True,
+        structured_output_modes=["text", "json_object", "json_schema"],
+        tool_calling_supported=True,
+        tool_choice_modes=["auto", "required"],
+        parallel_tool_calls=True,
+        input_modalities=["text", "image"],
+        prompt_cache_mode="automatic",
+        prompt_cache_ttl_seconds=300,
+        asserted_by="operator",
+        asserted_at=EPOCH,
+        source_uri="https://example.invalid/model-card",
+    )
+    assert check_serving(declared, claimed, prefix_cache_enabled=True) is None
+
+    block = rendered(a_workload(serving=msgspec.to_builtins(declared), capabilities=msgspec.to_builtins(claimed)))
+    assert block.serving == declared
+    assert block.capabilities == claimed
+
+    decoded = msgspec.json.decode(msgspec.json.encode(block), type=type(block))
+    assert decoded.serving == declared
+    assert decoded.capabilities == claimed
+    assert decoded.capabilities.asserted_at == EPOCH
+
+
+def test_the_serving_block_is_typed_rather_than_another_free_dict():
+    """The reason it exists at all: before it, this went into `engine_args`.
+
+    The plane could then neither validate it nor say what it had asked for. A typed
+    block that accepted an unknown key would be the same free dict wearing a name.
+    """
+    assert WorkloadServingSchema.__annotations__["serving"] is ServingSchema
+    assert WorkloadServingSchema.__annotations__["capabilities"] is CapabilitiesSchema
+    assert "reasoning" in ServingSchema.__struct_fields__
+    with pytest.raises(msgspec.ValidationError):
+        msgspec.convert({"thinking": True}, ServingSchema)
+
+
+def test_a_reasoning_parser_named_with_thinking_off_is_refused():
+    """The contradiction: how it reasons, declared on a workload claiming it cannot."""
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(reasoning={"parser": "qwen3"}),
+            capabilities(reasoning_supported=False),
+            prefix_cache_enabled=False,
+        )
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(reasoning={"default_on": True}),
+            capabilities(reasoning_supported=False),
+            prefix_cache_enabled=False,
+        )
+    assert (
+        check_serving(
+            serving(reasoning={"parser": "qwen3"}),
+            capabilities(reasoning_supported=True),
+            prefix_cache_enabled=False,
+        )
+        is None
+    )
+
+
+def test_inline_traces_without_the_tokens_a_client_would_parse_are_refused():
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(reasoning={"transport": "inline_tags", "think_begin_token": "<think>"}),
+            capabilities(reasoning_supported=True),
+            prefix_cache_enabled=False,
+        )
+
+
+def test_suppressing_eos_needs_the_token_it_suppresses_until():
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(reasoning={"suppress_eos_until_think_end": True}),
+            capabilities(reasoning_supported=True),
+            prefix_cache_enabled=False,
+        )
+
+
+def test_a_tool_parser_on_a_workload_that_does_not_claim_tool_calling_is_refused():
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(tool_call_parser="hermes"),
+            capabilities(tool_calling_supported=False),
+            prefix_cache_enabled=False,
+        )
+
+
+def test_tool_choice_modes_are_non_empty_exactly_when_tool_calling_is_supported():
+    with pytest.raises(Invalid):
+        check_serving(serving(), capabilities(tool_calling_supported=True), prefix_cache_enabled=False)
+    with pytest.raises(Invalid):
+        check_serving(serving(), capabilities(tool_choice_modes=["auto"]), prefix_cache_enabled=False)
+
+
+def test_a_structured_output_backend_without_json_schema_among_the_modes_is_refused():
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(structured_output_backend="xgrammar"),
+            capabilities(structured_output_modes=["text", "json_object"]),
+            prefix_cache_enabled=False,
+        )
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        {"structured_output_modes": ["text", "yaml"]},
+        {"structured_output_modes": ["text", "text"]},
+        {"tool_calling_supported": True, "tool_choice_modes": ["auto", "sometimes"]},
+        {"input_modalities": ["image"]},
+        {"input_modalities": ["text", "smell"]},
+        {"prompt_cache_mode": "sometimes"},
+        {"prompt_cache_ttl_seconds": -1},
+    ],
+)
+def test_an_unknown_or_repeated_member_of_a_claimed_set_is_refused(block):
+    with pytest.raises(Invalid):
+        check_serving(serving(), capabilities(**block), prefix_cache_enabled=True)
+
+
+def test_an_image_limit_needs_image_among_the_modalities():
+    with pytest.raises(Invalid):
+        check_serving(serving(max_images_per_request=4), capabilities(), prefix_cache_enabled=False)
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(max_images_per_request=0),
+            capabilities(input_modalities=["text", "image"]),
+            prefix_cache_enabled=False,
+        )
+
+
+def test_a_prompt_cache_contract_needs_the_mechanism_under_it():
+    """The contract is a claim to a caller; `prefix_cache_enabled` is the flag that makes it true."""
+    with pytest.raises(Invalid):
+        check_serving(serving(), capabilities(prompt_cache_mode="explicit"), prefix_cache_enabled=False)
+    assert check_serving(serving(), capabilities(prompt_cache_mode="explicit"), prefix_cache_enabled=True) is None
+
+
+@pytest.mark.parametrize(
+    "block",
+    [{"stream_usage": "sometimes"}, {"context_overflow": "shrug"}, {"reasoning": {"transport": "telepathy"}}],
+)
+def test_an_unknown_member_of_a_rendered_enum_is_refused(block):
+    with pytest.raises(Invalid):
+        check_serving(serving(**block), capabilities(reasoning_supported=True), prefix_cache_enabled=False)
+
+
+# --------------------------------------------------------------------------- resolved arguments
+
+
+def test_a_typed_serving_field_beats_the_same_flag_in_engine_args():
+    """The escape hatch keeps the flags nothing models, and loses the ones it does."""
+    workload = a_workload(
+        engine_args={"--reasoning-parser": "deepseek_r1", "--tool-call-parser": "llama3_json", "max-num-seqs": "64"},
+        serving=msgspec.to_builtins(
+            serving(reasoning={"parser": "qwen3"}, tool_call_parser="hermes", structured_output_backend="xgrammar")
+        ),
+    )
+    block = rendered(workload)
+    assert block.resolved_engine_args["reasoning-parser"] == "qwen3"
+    assert block.resolved_engine_args["tool-call-parser"] == "hermes"
+    assert block.resolved_engine_args["guided-decoding-backend"] == "xgrammar"
+    assert block.resolved_engine_args["max-num-seqs"] == "64"
+    assert block.engine_args == workload.engine_args
+
+
+def test_engine_args_keeps_every_flag_the_serving_block_does_not_model():
+    block = rendered(a_workload(engine_args={"--enforce-eager": "", "swap-space": "8"}))
+    assert block.engine_args == {"--enforce-eager": "", "swap-space": "8"}
+    assert block.resolved_engine_args == {"enforce-eager": "", "swap-space": "8"}
+
+
+def test_the_flag_a_typed_field_speaks_for_is_the_engines_own_spelling():
+    block = serving(structured_output_backend="xgrammar")
+    assert serving_args("vllm", block) == {"guided-decoding-backend": "xgrammar"}
+    assert serving_args("sglang", block) == {"grammar-backend": "xgrammar"}
+    assert serving_args("trtllm", block) == {}
+    assert serving_args("vllm", serving(max_images_per_request=4)) == {"limit-mm-per-prompt": "image=4"}
+
+
+def test_a_vllm_tool_parser_brings_the_flag_that_makes_it_run():
+    """vLLM parses tool calls with one flag and dispatches them with another.
+
+    Set only the parser and the engine loads something it never runs: the model
+    emits a tool call, nothing turns it into `tool_calls`, and it reaches the caller
+    as prose in `content` behind a workload that reads as configured. This was found
+    that way round, on a live endpoint, by `libs/conformance`.
+    """
+    resolved = resolved_engine_args("vllm", {}, serving(tool_call_parser="openai"))
+    assert resolved == {"tool-call-parser": "openai", "enable-auto-tool-choice": ""}
+
+
+def test_only_the_engines_that_need_the_companion_flag_get_it():
+    """SGLang dispatches on the parser alone, so adding vLLM's flag would be a lie."""
+    assert resolved_engine_args("sglang", {}, serving(tool_call_parser="qwen25")) == {"tool-call-parser": "qwen25"}
+    assert serving_args("vllm", serving(reasoning={"parser": "qwen3"})) == {"reasoning-parser": "qwen3"}
+
+
+def test_an_explicit_auto_tool_choice_is_not_overwritten_by_the_implied_one():
+    """`engine_args` stays the escape hatch, including for a value we would render empty."""
+    resolved = resolved_engine_args(
+        "vllm",
+        {"--enable-auto-tool-choice": "true"},
+        serving(tool_call_parser="openai"),
+    )
+    assert resolved["tool-call-parser"] == "openai"
+    assert resolved["enable-auto-tool-choice"] == "true"
+
+
+def test_a_default_serving_block_speaks_for_no_flag_at_all():
+    """Which is what keeps this additive on every workload that already exists."""
+    assert serving_args("vllm", ServingSchema()) == {}
+    assert resolved_engine_args("vllm", {"--dtype": "bfloat16"}, ServingSchema()) == {"dtype": "bfloat16"}
+
+
+# --------------------------------------------------------------------------- capacity
+
+
+def artifact_row(*, parameter_count: int | None, quantization: str = "fp16", with_shape: bool = True):
+    shape_of = extract_shape(
+        {
+            "num_hidden_layers": 32,
+            "num_attention_heads": 32,
+            "num_key_value_heads": 8,
+            "hidden_size": 4096,
+            "max_position_embeddings": 8192,
+        }
+    )
+    assert shape_of is not None
+    metadata = {"quantization": quantization}
+    if with_shape:
+        metadata["shape"] = shape_metadata(shape_of)
+    return SimpleNamespace(parameter_count=parameter_count, metadata_=metadata)
+
+
+def test_a_shape_that_cannot_hold_the_weights_is_refused():
+    """The arithmetic half of a fit: 130 GB of weights do not go on one 80 GB card."""
+    sizing = sizing_for(artifact_row(parameter_count=70_000_000_000), "fp16")
+    with pytest.raises(Invalid):
+        check_capacity(sizing, "h100-80gb-sxm", 1, 1)
+    assert check_capacity(sizing, "h100-80gb-sxm", 4, 4) is None
+
+
+def test_the_workloads_quantization_decides_what_has_to_be_resident():
+    """Serving fp16 weights at fp8 halves the footprint, and the workload owns that call."""
+    artifact = artifact_row(parameter_count=70_000_000_000, quantization="fp16")
+    with pytest.raises(Invalid):
+        check_capacity(sizing_for(artifact, "fp16"), "h100-80gb-sxm", 1, 1)
+    assert check_capacity(sizing_for(artifact, "int4"), "h100-80gb-sxm", 1, 1) is None
+
+
+def test_a_capacity_check_is_silent_about_what_it_cannot_measure():
+    """An unsizeable artifact or an unknown class is not grounds to refuse a workload."""
+    assert check_capacity(None, "h100-80gb-sxm", 1, 1) is None
+    assert check_capacity(sizing_for(artifact_row(parameter_count=None), "fp16"), "h100-80gb-sxm", 1, 1) is None
+    assert (
+        check_capacity(sizing_for(artifact_row(parameter_count=70_000_000_000, with_shape=False), "fp16"), "h100", 1, 1)
+        is None
+    )
+    sizing = sizing_for(artifact_row(parameter_count=405_000_000_000), "fp16")
+    assert check_capacity(sizing, "some-card-the-table-has-never-heard-of", 1, 1) is None
+
+
+def test_a_context_window_that_does_not_fit_is_not_a_refusal():
+    """The estimate has a 15% fudge in it, so enforcing it would refuse working workloads."""
+    sizing = sizing_for(artifact_row(parameter_count=70_000_000_000), "fp16")
+    assert check_capacity(sizing, "h100-80gb-sxm", 2, 2) is None
+
+
+# --------------------------------------------------------------------------- images
+
+
+def test_engine_image_is_resolved_from_the_engine_and_version():
+    """The common case: an author picks an engine, not a registry address."""
+    assert resolve_engine_image("vllm", "1.4.1", None) == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.1"
+
+
+def test_a_declared_engine_image_always_wins():
+    """Pinning an exact image is the reason the field is writable."""
+    assert resolve_engine_image("vllm", "1.4.1", "my.registry/vllm:dev") == "my.registry/vllm:dev"
+
+
+def test_latest_resolves_to_a_real_tag():
+    """`latest` is not a tag these registries publish; taking it verbatim is a pull failure."""
+    resolved = resolve_engine_image("vllm", "latest", None)
+    assert resolved is not None
+    assert resolved.endswith(f":{settings.ENGINE_IMAGE_TAG_DEFAULT}")
+
+
+def test_an_empty_version_resolves_to_a_real_tag():
+    resolved = resolve_engine_image("vllm", "", None)
+    assert resolved is not None
+    assert resolved.endswith(f":{settings.ENGINE_IMAGE_TAG_DEFAULT}")
+
+
+def test_an_unknown_engine_has_no_default():
+    """Inventing an address would trade a visible gap for an ImagePullBackOff."""
+    assert resolve_engine_image("some-engine-nobody-configured", "1.0", None) is None
+
+
+def test_the_engine_name_is_matched_case_insensitively():
+    assert resolve_engine_image("VLLM", "1.4.1", None) is not None
+
+
+def test_a_malformed_repo_pair_does_not_break_the_write_path():
+    """One bad character in an env var must not be why a workload cannot be created."""
+    original = settings.ENGINE_IMAGE_REPOS
+    settings.ENGINE_IMAGE_REPOS = "garbage,,vllm=repo/vllm"
+    try:
+        assert resolve_engine_image("vllm", "1.4.1", None) == "repo/vllm:1.4.1"
+    finally:
+        settings.ENGINE_IMAGE_REPOS = original
+
+
+def test_a_declared_frontend_image_is_carried_verbatim():
+    """There is no `resolve_frontend_image`, and the absence is the design.
+
+    The plane knows which repository an engine's workers come from because
+    `ENGINE_IMAGE_REPOS` tells it. Nothing tells it what a cluster serves its
+    frontends through — that is the operator's fact — so the only frontend image
+    this side can state is one a person pinned.
+    """
+    pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
+    assert rendered(a_workload(frontend_image=pinned)).frontend_image == pinned
+
+
+def test_a_workload_naming_no_frontend_image_does_not_borrow_the_engines():
+    """Empty means the cluster decides, and it must not quietly mean `engine_image`.
+
+    Kimi K3 is the case the field exists for and it is the case where the two
+    differ: the frontend carries the tokenizer fix, the worker stays on the base
+    image. A read path that filled the gap with the engine image would report the
+    one answer that is wrong precisely when it matters.
+    """
+    engine = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+    block = rendered(a_workload(engine_image=engine))
+    assert block.engine_image == engine
+    assert block.frontend_image is None
+
+
+# --------------------------------------------------------------------------- the wire
+
+
+def test_a_capability_claim_never_reaches_a_cluster():
+    """A cluster has no use for a claim about itself, exactly as with `imported_args`."""
+    assert "capabilities" not in ServingSpec.__struct_fields__
+    assert "imported_args" not in ServingSpec.__struct_fields__
+
+
+def test_the_serving_spec_carries_no_identity_and_no_routing():
+    """It is inlined on the deployment, so every field naming an object is the deployment's.
+
+    `RecipeDesired` carried its own id, the cluster it was sent to, the artifact it
+    served, a name, a version and labels. None of that describes a process, and each
+    of them was a second place for the deployment's answer to disagree.
+    """
+    fields = set(ServingSpec.__struct_fields__)
+    assert not fields & {"recipe_id", "cluster_id", "artifact_id", "name", "version", "labels", "updated_at"}
+    assert not fields & {"served_model_name", "device_class", "devices_per_replica"}
+    assert "digest" in fields
+
+
+def test_the_typed_serving_block_reaches_the_cluster():
+    """The flags a workload declares must be the flags the engine is started with.
+
+    `ServingSpec` carries no typed block — the operator renders a command line and
+    has no use for a typed one — so the resolved arguments are what goes on the
+    wire. Sending `engine_args` raw instead made the whole serving block a view: the
+    console rendered `--tool-call-parser` and no cluster was ever told.
+    `libs/conformance` found it that way round, against a live endpoint whose
+    configuration read as configured and whose engine had never heard of the flag.
+    """
+    workload = a_workload(
+        engine_version="0.10.0",
+        engine_args={"--async-scheduling": ""},
+        serving={"tool_call_parser": "openai"},
+        tensor_parallel=4,
+        device_count=4,
+        context_length=131072,
+        prefix_cache_enabled=True,
+        serving_digest="svg_" + "a" * 64,
+    )
+
+    spec = _serving(workload)
+
+    assert spec.engine_args == {
+        "async-scheduling": "",
+        "tool-call-parser": "openai",
+        "enable-auto-tool-choice": "",
+    }
+    assert spec.digest == workload.serving_digest
+
+
+# --------------------------------------------------------------------------- the digest
+
+
+def test_two_workloads_asking_for_the_same_thing_carry_one_digest():
+    """The identity of a serving configuration is its content, stated literally.
+
+    `matchExistingRecipe` compared eight fields in a browser to decide whether an
+    existing recipe could be reused, and got it wrong whenever a ninth had been
+    hand-tuned. Comparing contents to find an object is the tell that the contents
+    are the object.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    one, other = a_workload(), a_workload(name="a-different-name")
+
+    assert serving_digest(one, artifact) == serving_digest(other, artifact)
+    assert serving_digest(one, artifact).startswith("svg_")
+    assert len(serving_digest(one, artifact)) == len("svg_") + 64
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("engine", "sglang"),
+        ("engine_version", "0.7.0"),
+        ("engine_image", "my.registry/vllm:dev"),
+        ("frontend_image", "my.registry/frontend:dev"),
+        ("engine_args", {"--enforce-eager": ""}),
+        ("quantization", "fp8"),
+        ("dtype", "bfloat16"),
+        ("tensor_parallel", 2),
+        ("pipeline_parallel", 2),
+        ("expert_parallel", 2),
+        ("context_length", 4096),
+        ("max_batch_tokens", 8192),
+        ("kv_cache_dtype", "fp8"),
+        ("kv_cache_fraction", Decimal("0.9000")),
+        ("prefix_cache_enabled", True),
+        ("prefix_cache_config", {"mode": "kv"}),
+        ("device_class", "h200"),
+        ("device_count", 2),
+        ("device_memory_mib_min", 40960),
+        ("cpu_cores", 8),
+        ("memory_mib", 65536),
+        ("disk_gib", 100),
+        ("overlay", {"dynamo": {"replicas": 2}}),
+        ("serving", {"tool_call_parser": "openai"}),
+    ],
+)
+def test_every_field_that_decides_what_process_runs_moves_the_digest(field, value):
+    """The digest answers "would this produce the same running process".
+
+    Parametrised over the whole list rather than spot-checked, because a field
+    quietly dropped from it is a digest that says two different engines are the
+    same configuration — and nothing downstream would notice until a benchmark
+    result was attributed to the wrong fit.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    assert serving_digest(a_workload(**{field: value}), artifact) != serving_digest(a_workload(), artifact)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("name", "something-else"),
+        ("labels", {"tier": "gold"}),
+        ("imported_args", {"--max-num-seqs": "256"}),
+        ("capabilities", {"tool_calling_supported": True}),
+    ],
+)
+def test_what_is_not_a_footprint_is_not_in_the_digest(field, value):
+    """The absences are the point of the field.
+
+    `imported_args` was read off somebody else's running process and is never
+    rendered; `capabilities` is asserted and never reaches a cluster; a name is a
+    name. Two workloads differing only in these ask for the same engine.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    assert serving_digest(a_workload(**{field: value}), artifact) == serving_digest(a_workload(), artifact)
+
+
+def test_the_weights_are_part_of_the_configuration():
+    """Same engine, same shape, different model is not the same running process."""
+    workload = a_workload()
+    assert serving_digest(workload, Artifact(uid=new_uid(ARTIFACT))) != serving_digest(
+        workload, Artifact(uid=new_uid(ARTIFACT))
+    )
+
+
+def test_a_fraction_is_quantised_on_the_way_in_so_a_reload_hashes_the_same():
+    """A create and the next read of the same row must not be two configurations.
+
+    `kv_cache_fraction` is `Numeric(5, 4)`, so a float written straight through comes
+    back as `Decimal("0.9000")`, and the digest hashes the column as the string it
+    round-trips as. Without quantising on the way in, the digest a create returned
+    and the digest the next write computed would differ for a row nobody touched —
+    one configuration with two identities, produced by nothing but a reload.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    written = a_workload()
+    apply_serving(written, a_request(cache=CacheSchema(kv_cache_fraction=0.9)), artifact)
+    assert written.kv_cache_fraction == Decimal("0.9000")
+
+    reloaded = a_workload()
+    apply_serving(reloaded, a_request(cache=CacheSchema(kv_cache_fraction=0.9)), artifact)
+    reloaded.kv_cache_fraction = Decimal("0.9000")
+    assert serving_digest(reloaded, artifact) == written.serving_digest
+
+    unquantised = a_workload()
+    apply_serving(unquantised, a_request(cache=CacheSchema(kv_cache_fraction=0.9)), artifact)
+    unquantised.kv_cache_fraction = 0.9
+    assert serving_digest(unquantised, artifact) != written.serving_digest
+
+
+def test_the_digest_is_read_off_the_row_and_never_off_the_request():
+    """What is hashed is what was stored, coercions included.
+
+    A digest computed from the request would name a configuration nobody is running
+    the moment the write path coerces anything — which it does, on every fraction.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    workload = a_workload()
+    apply_serving(workload, a_request(engine_version="0.7.0"), artifact)
+
+    assert workload.engine_version == "0.7.0"
+    assert workload.serving_digest == serving_digest(workload, artifact)
+
+
+def test_the_slug_of_the_weights_is_what_the_engine_answers_to():
+    """A fact about the weights, which survives a re-fit.
+
+    It used to be `Recipe.name` — `kimi-k3-mxfp4-tp8-1024k` — so re-fitting the same
+    model at a different tensor degree renamed the model every client codes against.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT), name="Kimi-K3", slug="moonshotai/kimi-k3")
+    assert served_model(a_workload(), artifact) == "moonshotai/kimi-k3"
+
+
+def test_the_engine_args_hatch_still_beats_what_the_plane_would_say():
+    """It is laid over the derived flags in the render, so the plane must agree with it."""
+    artifact = Artifact(uid=new_uid(ARTIFACT), name="Kimi-K3", slug="moonshotai/kimi-k3")
+    workload = a_workload(engine_args={"--served-model-name": "acme/kimi-canary"})
+    assert served_model(workload, artifact) == "acme/kimi-canary"

@@ -28,11 +28,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.ext.asyncio import create_async_engine
 
+from app.auth import ENROLMENT_PREFIX
+from app.auth import AuthManager
 from app.core.ids import NODE
 from app.core.ids import TENANT
 from app.core.ids import new_uid
-from app.auth import ENROLMENT_PREFIX
-from app.auth import AuthManager
 from app.db.notify import MemoryNotifier
 from app.hub.server import _resolve_connection
 from app.core.exceptions import Invalid
@@ -50,8 +50,6 @@ from app.modules.quotas.schemas import QuotaCreateRequest
 from app.modules.quotas.schemas import QuotaUpdateRequest
 from app.modules.events.services import EventService
 from app.modules.quotas.services import QuotaService
-from app.modules.recipes.schemas import RecipeCreateRequest
-from app.modules.recipes.schemas import RecipeUpdateRequest
 from app.modules.tenants.schemas import TenantCreateRequest
 from app.modules.tenants.schemas import TenantUpdateRequest
 from app.modules.clusters.schemas import ClusterCreateRequest
@@ -62,7 +60,6 @@ from app.modules.policies.schemas import PolicyUpdateRequest
 from app.modules.policies.schemas import PolicyAttachmentRequest
 from app.modules.projects.schemas import ProjectCreateRequest
 from app.modules.projects.schemas import ProjectUpdateRequest
-from app.modules.recipes.services import RecipeService
 from app.modules.tenants.services import TenantService
 from app.modules.artifacts.schemas import ArtifactCreateRequest
 from app.modules.artifacts.schemas import ArtifactUpdateRequest
@@ -73,8 +70,13 @@ from app.modules.endpoints.schemas import EndpointTargetRequest
 from app.modules.endpoints.schemas import EndpointUpdateRequest
 from app.modules.policies.services import PolicyService
 from app.modules.projects.services import ProjectService
+from app.modules.workloads.schemas import CacheSchema
+from app.modules.workloads.schemas import ShapeSchema
+from app.modules.workloads.schemas import OverlaySchema
 from app.modules.workloads.schemas import WorkloadCreateRequest
+from app.modules.workloads.schemas import WorkloadServingUpdate
 from app.modules.workloads.schemas import WorkloadUpdateRequest
+from app.modules.workloads.schemas import WorkloadServingRequest
 from app.modules.artifacts.services import ArtifactService
 from app.modules.components.schemas import ComponentCreateRequest
 from app.modules.components.schemas import ComponentUpdateRequest
@@ -193,44 +195,64 @@ async def an_artifact(db: AsyncSession, digest: str = "sha256:aaaa", name: str =
     return await ArtifactService(db).create(ArtifactCreateRequest(digest=digest, name=name))
 
 
-async def a_recipe(db: AsyncSession, artifact_id: str, name: str = "llama-vllm"):
-    return await RecipeService(db).create(
-        RecipeCreateRequest(
-            artifact=artifact_id,
-            name=name,
-            engine="vllm",
-            engine_version="0.6.0",
-            device_class="h100",
-            context_length=8192,
-        )
+def a_serving(artifact_ref: str, **extra) -> WorkloadServingRequest:
+    """The serving block every fixture workload is created with.
+
+    Stated inline rather than named, because there is no shared object to name any
+    more: two workloads built from this helper carry the same `serving_digest`
+    without either of them having to find the other first.
+    """
+    fields = {
+        "artifact": artifact_ref,
+        "engine": "vllm",
+        "engine_version": "0.6.0",
+        "context_length": 8192,
+        "shape": ShapeSchema(device_class="h100"),
+    }
+    return WorkloadServingRequest(**(fields | extra))
+
+
+async def an_environment(db: AsyncSession):
+    """One cluster, one project, one artifact and the default priority class.
+
+    Separated from `a_workload` because several tests need a second workload beside
+    the first, and every one of these seeds is unique by name — calling the whole
+    fixture twice is a conflict rather than a second workload.
+    """
+    cluster = await a_cluster(db)
+    project = await a_project(db)
+    artifact = await an_artifact(db)
+    await PriorityClassService(db).create(
+        PriorityClassCreateRequest(name="standard", value=100, is_default=True),
     )
+    return cluster, project, artifact
 
 
-async def a_workload(db: AsyncSession, name: str = "llama-prod", **extra):
+async def a_workload(db: AsyncSession, name: str = "llama-prod", serving=None, **extra):
     """A workload pinned to one cluster, which is the shape every deployment test wants.
 
     Pinning is placement's declared escape hatch, and it is what these fixtures
     need: there is no supply seeded here, so an unpinned workload would expand to
     nothing and there would be no per-cluster copy to assert on.
     """
-    cluster = await a_cluster(db)
-    project = await a_project(db)
-    artifact = await an_artifact(db)
-    recipe = await a_recipe(db, artifact.id)
-    await PriorityClassService(db).create(
-        PriorityClassCreateRequest(name="standard", value=100, is_default=True),
-    )
+    cluster, project, artifact = await an_environment(db)
     workload = await WorkloadService(db).create(
-        WorkloadCreateRequest(cluster=cluster.id, recipe=recipe.id, name=name, project=project.id, **extra)
+        WorkloadCreateRequest(
+            cluster=cluster.id,
+            serving=serving or a_serving(artifact.id),
+            name=name,
+            project=project.id,
+            **extra,
+        )
     )
-    return cluster, project, recipe, workload
+    return cluster, project, artifact, workload
 
 
 async def a_deployment(db: AsyncSession, name: str = "llama-prod", **extra):
     """The one per-cluster copy a pinned workload expands into."""
-    cluster, project, recipe, workload = await a_workload(db, name=name, **extra)
+    cluster, project, artifact, workload = await a_workload(db, name=name, **extra)
     deployment = await DeploymentService(db).get(workload.deployments[0].id)
-    return cluster, project, recipe, deployment
+    return cluster, project, artifact, deployment
 
 
 def assert_patched(before, after) -> None:
@@ -519,89 +541,162 @@ async def test_artifacts_lifecycle(db: AsyncSession) -> None:
     assert (await service.list()).count == 0
 
 
-async def test_recipes_lifecycle(db: AsyncSession) -> None:
-    artifact = await an_artifact(db)
-    service = RecipeService(db)
-    created = await a_recipe(db, artifact.id)
-    assert created.artifact_id == artifact.id
+async def test_the_serving_configuration_is_created_read_and_patched(db: AsyncSession) -> None:
+    """The lifecycle the recipe used to have, on the object that absorbed it.
 
-    assert (await service.get(created.id)).engine == "vllm"
+    A serving configuration is no longer created, listed and deleted on its own: it
+    is written with the workload, read back on it, and patched through it. What has
+    to survive the move is that a patch reaches the stored columns and moves the
+    stamp the next conditional update is checked against.
+    """
+    _, _, artifact, created = await a_workload(db)
+    service = WorkloadService(db)
+    assert created.serving.artifact_id == artifact.id
+    assert created.serving.engine == "vllm"
+    assert created.serving_digest.startswith("svg_")
+
+    assert (await service.get(created.id)).serving.engine == "vllm"
     assert (await service.list()).count == 1
 
-    patched = await service.update(created.id, RecipeUpdateRequest(engine_version="0.7.0"))
-    assert patched.engine_version == "0.7.0"
+    patched = await service.update(created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="0.7.0")))
+    assert patched.serving.engine_version == "0.7.0"
+    assert patched.serving_digest != created.serving_digest
     assert_patched(created, patched)
 
     await service.delete(created.id)
     assert (await service.list()).count == 0
 
 
-async def test_a_recipe_carries_an_overlay_the_plane_never_reads_inside(db: AsyncSession) -> None:
-    """Opaque both ways: what goes in comes back out, and a patch replaces it whole."""
-    artifact = await an_artifact(db)
-    service = RecipeService(db)
-    overlay = {"pod_spec": {"containers": [{"name": "engine", "env": [{"name": "NCCL_DEBUG", "value": "INFO"}]}]}}
-    created = await service.create(
-        RecipeCreateRequest(
-            artifact=artifact.id,
-            name="llama-overlaid",
-            engine="vllm",
-            engine_version="0.6.0",
-            device_class="h100",
-            context_length=8192,
-            overlay=overlay,
+async def test_the_same_configuration_written_twice_carries_one_digest(db: AsyncSession) -> None:
+    """The whole mechanism the recipe's sharing was for, and the reason it is gone.
+
+    The console used to compare eight fields in the browser to decide whether an
+    existing recipe could be reused. Identity is the content: two workloads asking
+    for the same engine, weights and shape land on the same digest without either of
+    them having to find the other, and one field changing is a different digest.
+    """
+    cluster, project, artifact = await an_environment(db)
+    service = WorkloadService(db)
+    one = await service.create(
+        WorkloadCreateRequest(cluster=cluster.id, serving=a_serving(artifact.id), name="chat-a", project=project.id)
+    )
+    same = await service.create(
+        WorkloadCreateRequest(cluster=cluster.id, serving=a_serving(artifact.id), name="chat-b", project=project.id)
+    )
+    other = await service.create(
+        WorkloadCreateRequest(
+            cluster=cluster.id,
+            serving=a_serving(artifact.id, context_length=4096),
+            name="chat-c",
+            project=project.id,
         )
     )
-    assert created.overlay.pod_spec == overlay["pod_spec"]
-    assert created.overlay.dynamo == {}
 
-    patched = await service.update(created.id, RecipeUpdateRequest(overlay={"dynamo": {"replicas": 2}}))
-    assert patched.overlay.dynamo == {"replicas": 2}
-    assert patched.overlay.pod_spec == {}
+    assert one.serving_digest == same.serving_digest
+    assert other.serving_digest != one.serving_digest
+    assert [w.name for w in (await service.list(serving_digest=one.serving_digest)).items] == ["chat-a", "chat-b"]
 
-    plain = await a_recipe(db, artifact.id, name="llama-plain")
-    assert (plain.overlay.pod_spec, plain.overlay.dynamo) == ({}, {})
+
+async def test_a_reloaded_workload_hashes_to_the_digest_it_was_created_with(db: AsyncSession) -> None:
+    """A create and the next read of the same row must not be two configurations.
+
+    `kv_cache_fraction` is `Numeric(5, 4)`, so a Python float written straight
+    through comes back as `Decimal("0.9000")`, and the digest hashes the column as
+    the string it round-trips as. Without quantising on the way in, the digest a
+    create returned and the digest the next update computed would differ for a row
+    nobody touched — one configuration with two identities, produced by a reload.
+    """
+    cluster, project, artifact = await an_environment(db)
+    service = WorkloadService(db)
+    created = await service.create(
+        WorkloadCreateRequest(
+            cluster=cluster.id,
+            serving=a_serving(artifact.id, cache=CacheSchema(kv_cache_fraction=0.9)),
+            name="fractional",
+            project=project.id,
+        )
+    )
+
+    reloaded = await service.get(created.id)
+    assert reloaded.serving_digest == created.serving_digest
+    assert reloaded.serving.cache.kv_cache_fraction == 0.9
+
+    untouched = await service.update(created.id, WorkloadUpdateRequest(labels={"tier": "gold"}))
+    assert untouched.serving_digest == created.serving_digest
+
+
+async def test_a_workload_carries_an_overlay_the_plane_never_reads_inside(db: AsyncSession) -> None:
+    """Opaque both ways: what goes in comes back out, and a patch replaces it whole."""
+    cluster, project, artifact = await an_environment(db)
+    service = WorkloadService(db)
+    pod_spec = {"containers": [{"name": "engine", "env": [{"name": "NCCL_DEBUG", "value": "INFO"}]}]}
+    created = await service.create(
+        WorkloadCreateRequest(
+            cluster=cluster.id,
+            serving=a_serving(artifact.id, overlay=OverlaySchema(pod_spec=pod_spec)),
+            name="llama-overlaid",
+            project=project.id,
+        )
+    )
+    assert created.serving.overlay.pod_spec == pod_spec
+    assert created.serving.overlay.dynamo == {}
+
+    patched = await service.update(
+        created.id,
+        WorkloadUpdateRequest(serving=WorkloadServingUpdate(overlay=OverlaySchema(dynamo={"replicas": 2}))),
+    )
+    assert patched.serving.overlay.dynamo == {"replicas": 2}
+    assert patched.serving.overlay.pod_spec == {}
+
+    plain = await service.create(
+        WorkloadCreateRequest(
+            cluster=cluster.id, serving=a_serving(artifact.id), name="llama-plain", project=project.id
+        )
+    )
+    assert (plain.serving.overlay.pod_spec, plain.serving.overlay.dynamo) == ({}, {})
 
 
 async def test_bumping_the_engine_version_moves_the_derived_image(db: AsyncSession) -> None:
     """A version bump used to be stored and then silently ignored.
 
     `create` resolves an image and persists it; the update then passed that stored
-    value back as the declared one, which always wins. So the recipe reported the
+    value back as the declared one, which always wins. So the workload reported the
     new engine version while every cluster went on pulling the old image.
     """
-    artifact = await an_artifact(db)
-    recipe = await a_recipe(db, artifact.id)
-    assert recipe.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0"
+    _, _, _, workload = await a_workload(db)
+    assert workload.serving.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0"
 
-    patched = await RecipeService(db).update(recipe.id, RecipeUpdateRequest(engine_version="1.4.2"))
-    assert patched.engine_version == "1.4.2"
-    assert patched.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.2"
+    patched = await WorkloadService(db).update(
+        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="1.4.2"))
+    )
+    assert patched.serving.engine_version == "1.4.2"
+    assert patched.serving.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.2"
 
 
 async def test_a_hand_pinned_engine_image_survives_a_version_bump(db: AsyncSession) -> None:
     """The override is the whole reason the field is writable, so re-deriving must not eat it."""
-    artifact = await an_artifact(db)
-    recipe = await a_recipe(db, artifact.id)
+    _, _, _, workload = await a_workload(db)
     pinned = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
 
-    service = RecipeService(db)
-    await service.update(recipe.id, RecipeUpdateRequest(engine_image=pinned))
-    patched = await service.update(recipe.id, RecipeUpdateRequest(engine_version="1.4.2"))
+    service = WorkloadService(db)
+    await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_image=pinned)))
+    patched = await service.update(
+        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="1.4.2"))
+    )
 
-    assert patched.engine_version == "1.4.2"
-    assert patched.engine_image == pinned
+    assert patched.serving.engine_version == "1.4.2"
+    assert patched.serving.engine_image == pinned
 
 
 async def test_naming_an_engine_image_in_the_same_patch_wins(db: AsyncSession) -> None:
-    artifact = await an_artifact(db)
-    recipe = await a_recipe(db, artifact.id)
+    _, _, _, workload = await a_workload(db)
     pinned = "my.registry/vllm:dev"
 
-    patched = await RecipeService(db).update(
-        recipe.id, RecipeUpdateRequest(engine_version="1.4.2", engine_image=pinned)
+    patched = await WorkloadService(db).update(
+        workload.id,
+        WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="1.4.2", engine_image=pinned)),
     )
-    assert patched.engine_image == pinned
+    assert patched.serving.engine_image == pinned
 
 
 async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) -> None:
@@ -609,37 +704,40 @@ async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) ->
 
     The two images are the same shape and one column apart, which is exactly the
     kind of pair a write path collapses by accident. Clearing matters as much as
-    setting: null is how a recipe hands the choice back to the cluster once it no
+    setting: null is how a workload hands the choice back to the cluster once it no
     longer needs a build of its own, and a patch that could not say null would
     leave a dead image address pinned to the model for good.
     """
-    artifact = await an_artifact(db)
-    service = RecipeService(db)
+    cluster, project, artifact = await an_environment(db)
+    service = WorkloadService(db)
     pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
     created = await service.create(
-        RecipeCreateRequest(
-            artifact=artifact.id,
+        WorkloadCreateRequest(
+            cluster=cluster.id,
+            serving=a_serving(
+                artifact.id, engine_version="1.4.0-patched.1", frontend_image=pinned
+            ),
             name="kimi-k3-mxfp4-tp8-1024k",
-            engine="vllm",
-            engine_version="1.4.0-patched.1",
-            device_class="h100",
-            context_length=8192,
-            frontend_image=pinned,
+            project=project.id,
         )
     )
-    assert created.frontend_image == pinned
-    assert created.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
-    assert (await service.get(created.id)).frontend_image == pinned
+    assert created.serving.frontend_image == pinned
+    assert created.serving.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+    assert (await service.get(created.id)).serving.frontend_image == pinned
 
     later = "ghcr.io/hangar-dev/vllm-runtime:1.4.1-patched.1-hgr3"
-    patched = await service.update(created.id, RecipeUpdateRequest(frontend_image=later))
-    assert patched.frontend_image == later
-    assert patched.engine_image == created.engine_image
+    patched = await service.update(
+        created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(frontend_image=later))
+    )
+    assert patched.serving.frontend_image == later
+    assert patched.serving.engine_image == created.serving.engine_image
     assert_patched(created, patched)
 
-    cleared = await service.update(created.id, RecipeUpdateRequest(frontend_image=None))
-    assert cleared.frontend_image is None
-    assert cleared.engine_image == created.engine_image
+    cleared = await service.update(
+        created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(frontend_image=None))
+    )
+    assert cleared.serving.frontend_image is None
+    assert cleared.serving.engine_image == created.serving.engine_image
 
 
 async def test_bumping_the_engine_version_moves_the_worker_and_leaves_the_frontend(db: AsyncSession) -> None:
@@ -653,62 +751,68 @@ async def test_bumping_the_engine_version_moves_the_worker_and_leaves_the_fronte
     past, would put Kimi K3 back on the frontend that answered `/v1/models` empty — and
     the engine-image tests above cannot see that, because they never set the field.
     """
-    artifact = await an_artifact(db)
-    recipe = await a_recipe(db, artifact.id)
+    _, _, _, workload = await a_workload(db)
     pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
 
-    service = RecipeService(db)
-    await service.update(recipe.id, RecipeUpdateRequest(frontend_image=pinned))
-    patched = await service.update(recipe.id, RecipeUpdateRequest(engine_version="1.4.2"))
+    service = WorkloadService(db)
+    await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(frontend_image=pinned)))
+    patched = await service.update(
+        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="1.4.2"))
+    )
 
-    assert patched.engine_version == "1.4.2"
-    assert patched.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.2"
-    assert patched.frontend_image == pinned
+    assert patched.serving.engine_version == "1.4.2"
+    assert patched.serving.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.2"
+    assert patched.serving.frontend_image == pinned
 
 
-async def test_a_recipe_without_a_frontend_image_reads_back_null(db: AsyncSession) -> None:
-    """The ordinary recipe declares nothing, and nothing is what it must report.
+async def test_a_workload_without_a_frontend_image_reads_back_null(db: AsyncSession) -> None:
+    """The ordinary workload declares nothing, and nothing is what it must report.
 
     Not the engine image: what a cluster serves its frontends through is the
     operator's fact, and a plane that guessed at it would be right only for the
     clusters where the two happen to be published together.
     """
-    artifact = await an_artifact(db)
-    recipe = await a_recipe(db, artifact.id)
-    assert recipe.engine_image is not None
-    assert recipe.frontend_image is None
+    _, _, _, workload = await a_workload(db)
+    assert workload.serving.engine_image is not None
+    assert workload.serving.frontend_image is None
 
 
 async def test_the_frontend_image_reaches_the_cluster_on_the_desired_stream(db: AsyncSession) -> None:
     """A frontend image nobody on a cluster can read is a field that does nothing.
 
     The operator is what renders the Frontend component, so this frame is the only
-    place the declaration can arrive.
+    place the declaration can arrive. It arrives inlined on the deployment now —
+    there is no second frame to keep in step with it.
     """
-    cluster, _, recipe, _ = await a_deployment(db)
+    cluster, _, _, deployment = await a_deployment(db)
     pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
 
     frames = [item async for item in stream_desired(db, cluster.id, "demand")]
-    payloads = [payload for kind, payload in frames if kind == "recipe.desired"]
-    assert [p.frontend_image for p in payloads] == [None]
+    payloads = [payload for kind, payload in frames if kind == "deployment.desired"]
+    assert [p.serving.frontend_image for p in payloads] == [None]
 
-    await RecipeService(db).update(recipe.id, RecipeUpdateRequest(frontend_image=pinned))
+    await WorkloadService(db).update(
+        deployment.workload_id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(frontend_image=pinned))
+    )
 
     frames = [item async for item in stream_desired(db, cluster.id, "demand")]
-    payloads = [payload for kind, payload in frames if kind == "recipe.desired"]
-    assert [p.frontend_image for p in payloads] == [pinned]
-    assert payloads[0].engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0"
+    payloads = [payload for kind, payload in frames if kind == "deployment.desired"]
+    assert [p.serving.frontend_image for p in payloads] == [pinned]
+    assert payloads[0].serving.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0"
 
 
 async def test_the_overlay_reaches_the_cluster_on_the_desired_stream(db: AsyncSession) -> None:
-    cluster, _, recipe, _ = await a_deployment(db)
-    await RecipeService(db).update(recipe.id, RecipeUpdateRequest(overlay={"dynamo": {"router": {"mode": "kv"}}}))
+    cluster, _, _, deployment = await a_deployment(db)
+    await WorkloadService(db).update(
+        deployment.workload_id,
+        WorkloadUpdateRequest(serving=WorkloadServingUpdate(overlay=OverlaySchema(dynamo={"router": {"mode": "kv"}}))),
+    )
 
     frames = [item async for item in stream_desired(db, cluster.id, "demand")]
-    payloads = [payload for kind, payload in frames if kind == "recipe.desired"]
+    payloads = [payload for kind, payload in frames if kind == "deployment.desired"]
 
-    assert [p.overlay.dynamo for p in payloads] == [{"router": {"mode": "kv"}}]
-    assert payloads[0].overlay.pod_spec == {}
+    assert [p.serving.overlay.dynamo for p in payloads] == [{"router": {"mode": "kv"}}]
+    assert payloads[0].serving.overlay.pod_spec == {}
 
 
 async def test_pools_lifecycle(db: AsyncSession) -> None:
@@ -852,26 +956,27 @@ async def test_live_dispatch_renders_what_a_resync_would_have_sent(db: AsyncSess
 async def test_live_dispatch_sends_the_dependencies_a_deployment_cannot_reconcile_without(
     db: AsyncSession,
 ) -> None:
-    """The bug: the first deployment of a recipe stranded itself.
+    """The chain is one hop shorter than it was, and the remaining hops still matter.
 
-    A recipe announces to every cluster with a deployment naming it, which at the
-    moment it is created is none. Nothing re-announces it when one finally does, so
-    the cluster received a deployment pointing at a recipe it had never been sent
-    and waited for it forever — `RecipeNotDeclared`, every fifteen seconds, until
-    somebody restarted the operator and a full resync fixed it by accident.
+    A recipe used to be the sharper version of this failure: it announced to every
+    cluster with a deployment naming it, which at the moment it was created was
+    none, and nothing re-announced it when one finally did — so the cluster held a
+    deployment pointing at a recipe it had never been sent and waited for it for
+    ever, `RecipeNotDeclared` every fifteen seconds. The serving configuration is
+    inlined on the deployment now, so there is nothing left to arrive out of order.
 
-    The artifact and the cache entry are here for the same reason and are not
-    hypothetical: the operator will not start a replica against a cold cache, so a
-    deployment whose weights nothing has declared warm never gets past residency.
+    The artifact and the cache entry are not hypothetical either: the operator will
+    not start a replica against a cold cache, so a deployment whose weights nothing
+    has declared warm never gets past residency.
     """
     cluster, _, _, created = await a_deployment(db)
 
     frames = await desired_frames(db, cluster.id, "deployment", created.id)
     kinds = [kind for kind, _ in frames]
 
-    assert kinds == ["artifact.desired", "recipe.desired", "cache.desired", "deployment.desired"]
-    assert kinds.index("recipe.desired") < kinds.index("deployment.desired")
-    assert kinds.index("artifact.desired") < kinds.index("recipe.desired")
+    assert kinds == ["artifact.desired", "cache.desired", "deployment.desired"]
+    assert kinds.index("artifact.desired") < kinds.index("deployment.desired")
+    assert "recipe.desired" not in kinds
 
 
 async def test_a_deployment_makes_its_own_weights_warm(db: AsyncSession) -> None:
@@ -882,15 +987,15 @@ async def test_a_deployment_makes_its_own_weights_warm(db: AsyncSession) -> None
     nothing had started. A derived entry is unpinned and at priority zero: warm
     because something deploys it, and evictable once nothing does.
     """
-    cluster, _, recipe, _ = await a_deployment(db)
+    cluster, _, artifact, _ = await a_deployment(db)
 
     frames = [item async for item in stream_desired(db, cluster.id, "demand")]
     caches = [payload for kind, payload in frames if kind == "cache.desired"]
 
     assert caches, "a cluster running a deployment declares a cache"
     served = {entry.artifact_id for entry in caches[0].entries}
-    assert recipe.artifact_id in served
-    entry = next(e for e in caches[0].entries if e.artifact_id == recipe.artifact_id)
+    assert artifact.id in served
+    entry = next(e for e in caches[0].entries if e.artifact_id == artifact.id)
     assert (entry.pin, entry.priority) == (False, 0)
 
 
@@ -902,7 +1007,7 @@ async def test_an_observed_deployment_does_not_make_its_weights_warm(db: AsyncSe
     from it made the cluster download a second copy of what was running on it, and
     the first version of this union did exactly that to three production models.
     """
-    cluster, _, recipe, created = await a_deployment(db)
+    cluster, _, artifact, created = await a_deployment(db)
     service = DeploymentService(db, notifier=MemoryNotifier())
     await service.set_authority(created.id, DeploymentAuthorityRequest(authority="observed"))
 
@@ -910,7 +1015,7 @@ async def test_an_observed_deployment_does_not_make_its_weights_warm(db: AsyncSe
     caches = [payload for kind, payload in frames if kind == "cache.desired"]
 
     served = {entry.artifact_id for cache in caches for entry in cache.entries}
-    assert recipe.artifact_id not in served
+    assert artifact.id not in served
 
 
 async def test_a_deployment_that_is_gone_dispatches_as_a_deletion(db: AsyncSession) -> None:
@@ -949,10 +1054,10 @@ async def test_deployments_lifecycle(db: AsyncSession) -> None:
 
 async def test_workloads_lifecycle(db: AsyncSession) -> None:
     """The object a user actually declares, and the expansion it owns."""
-    cluster, project, recipe, created = await a_workload(db)
+    cluster, project, artifact, created = await a_workload(db)
     service = WorkloadService(db)
     assert created.project_id == project.id
-    assert created.recipe_id == recipe.id
+    assert created.serving.artifact_id == artifact.id
     assert [d.cluster_id for d in created.deployments] == [cluster.id]
     assert created.scale.unit == "replicas"
     assert created.scale.placed == 1
@@ -1018,11 +1123,13 @@ async def _two_serving_deployments(db: AsyncSession):
     survives one cluster going quiet — so the routing scenarios below all start
     from a workload that talks to two deployments in two clusters, both serving.
     """
-    cluster_a, project, recipe, workload_a = await a_workload(db, name="chat-alpha")
+    cluster_a, project, artifact, workload_a = await a_workload(db, name="chat-alpha")
     deployment_a = await DeploymentService(db).get(workload_a.deployments[0].id)
     cluster_b = await ClusterService(db).create(ClusterCreateRequest(name="beta", region="eu-west-1", phase="active"))
     workload_b = await WorkloadService(db, notifier=MemoryNotifier()).create(
-        WorkloadCreateRequest(cluster=cluster_b.id, recipe=recipe.id, name="chat-beta", project=project.id)
+        WorkloadCreateRequest(
+            cluster=cluster_b.id, serving=a_serving(artifact.id), name="chat-beta", project=project.id
+        )
     )
     deployment_b = await DeploymentService(db).get(workload_b.deployments[0].id)
     await ClusterService(db).set_serving(cluster_a.id, ClusterServingRequest(url="http://alpha.svc:8000"))
@@ -1456,16 +1563,17 @@ async def test_stale_if_match_conflicts(db: AsyncSession) -> None:
 
 async def test_stale_if_match_conflicts_on_every_module(db: AsyncSession) -> None:
     """The same check for the modules whose `_revision` is its own copy of the helper."""
-    project = await a_project(db)
-    artifact = await an_artifact(db)
-    recipe = await a_recipe(db, artifact.id)
+    cluster, project, artifact = await an_environment(db)
+    workload = await WorkloadService(db).create(
+        WorkloadCreateRequest(cluster=cluster.id, serving=a_serving(artifact.id), name="llama-prod", project=project.id)
+    )
 
     with pytest.raises(Conflict):
         await ProjectService(db).update(project.id, ProjectUpdateRequest(name="x"), if_match="0")
     with pytest.raises(Conflict):
         await ArtifactService(db).update(artifact.id, ArtifactUpdateRequest(name="x"), if_match="0")
     with pytest.raises(Conflict):
-        await RecipeService(db).update(recipe.id, RecipeUpdateRequest(engine_version="x"), if_match="0")
+        await WorkloadService(db).update(workload.id, WorkloadUpdateRequest(name="x"), if_match="0")
 
 
 async def test_repeated_patches_keep_moving_the_stamp(db: AsyncSession) -> None:
@@ -1481,93 +1589,95 @@ async def test_repeated_patches_keep_moving_the_stamp(db: AsyncSession) -> None:
     assert second.updated_at >= first.updated_at
 
 
-async def test_a_recipe_write_announces_to_every_cluster_running_it(db: AsyncSession) -> None:
-    """A recipe has no cluster of its own, so the fan-out has to be derived.
+async def test_a_serving_change_announces_to_the_cluster_running_it(db: AsyncSession) -> None:
+    """A serving change is the one write that changes the process a cluster is running.
 
-    Two clusters serving the same recipe both keep rendering the old engine
-    configuration until they are told, and each of them needs telling exactly
-    once — the reachable set is distinct clusters, not deployments.
+    It used to be a fan-out nothing else needed: a recipe had no cluster of its own,
+    so every cluster with a deployment naming it had to be found and told exactly
+    once. The configuration is on the workload now, so the reachable set is the
+    workload's own expansion — and the cluster still has to be told, or it keeps
+    rendering the old engine configuration for ever.
     """
     notifier = MemoryNotifier()
-    alpha, project, recipe, _ = await a_deployment(db)
-    beta = await ClusterService(db).create(ClusterCreateRequest(name="beta", region="eu-west-1"))
-    await WorkloadService(db, notifier=MemoryNotifier()).create(
-        WorkloadCreateRequest(cluster=beta.id, recipe=recipe.id, name="llama-prod-beta", project=project.id)
-    )
-    await WorkloadService(db, notifier=MemoryNotifier()).create(
-        WorkloadCreateRequest(cluster=beta.id, recipe=recipe.id, name="llama-canary", project=project.id)
+    cluster, _, _, created = await a_deployment(db)
+
+    await WorkloadService(db, notifier=notifier).update(
+        created.workload_id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="0.7.0"))
     )
 
-    await RecipeService(db, notifier=notifier).update(recipe.id, RecipeUpdateRequest(engine_version="0.7.0"))
-
-    assert sorted((c.cluster_id, c.kind, c.uid) for c in notifier.changes) == sorted(
-        [(alpha.id, "recipe", recipe.id), (beta.id, "recipe", recipe.id)]
-    )
+    assert [(c.cluster_id, c.kind, c.uid) for c in notifier.changes] == [(cluster.id, "deployment", created.id)]
+    assert (await DeploymentService(db).get(created.id)).generation == created.generation + 1
 
 
-async def test_a_recipe_no_deployment_names_announces_to_nobody(db: AsyncSession) -> None:
+async def test_a_workload_no_cluster_took_announces_to_nobody(db: AsyncSession) -> None:
     """Nothing to wake is not an error — there is no cluster that has been told about it."""
     notifier = MemoryNotifier()
-    artifact = await an_artifact(db)
-    service = RecipeService(db, notifier=notifier)
-    created = await a_recipe(db, artifact.id)
+    _, project, artifact = await an_environment(db)
+    created = await WorkloadService(db).create(
+        WorkloadCreateRequest(serving=a_serving(artifact.id), name="unplaced", project=project.id)
+    )
+    assert created.deployments == []
 
-    await service.update(created.id, RecipeUpdateRequest(engine_version="0.7.0"))
+    await WorkloadService(db, notifier=notifier).update(
+        created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="0.7.0"))
+    )
 
     assert notifier.changes == []
 
 
-async def test_live_dispatch_renders_the_recipe_a_resync_would_have_sent(db: AsyncSession) -> None:
-    """The same invariant the deployment path rests on, for the object the operator renders from."""
-    cluster, _, recipe, _ = await a_deployment(db)
-    await RecipeService(db, notifier=MemoryNotifier()).update(recipe.id, RecipeUpdateRequest(engine_version="0.7.0"))
+async def test_a_kind_live_dispatch_does_not_carry_answers_nothing(db: AsyncSession) -> None:
+    """One dispatchable object, and inventing a second would say twice what it says.
 
-    frames = [item async for item in stream_desired(db, cluster.id, "demand")]
-    from_resync = [payload for kind, payload in frames if kind == "recipe.desired"]
-    kind, from_dispatch = await desired_object(db, cluster.id, "recipe", recipe.id)
-
-    assert kind == "recipe.desired"
-    assert from_dispatch == from_resync[0]
-
-
-async def test_a_recipe_this_cluster_does_not_run_dispatches_nothing(db: AsyncSession) -> None:
-    """No `recipe.deleted` exists, and inventing one would say twice what the deployment already said.
-
-    A recipe leaves a cluster's reachable set when the last deployment naming it
-    goes, and that deployment's own deletion is the frame the cluster acts on.
+    There is no `recipe.desired` and no `recipe.deleted` to keep in step any more: a
+    serving configuration reaches a cluster inlined on the deployment, and the
+    deployment's own frame is the one the cluster acts on.
     """
-    cluster, _, _, _ = await a_deployment(db)
-    artifact = await an_artifact(db, digest="sha256:bbbb", name="mistral")
-    unrelated = await a_recipe(db, artifact.id, name="mistral-vllm")
+    cluster, _, artifact, _ = await a_deployment(db)
 
-    assert await desired_object(db, cluster.id, "recipe", unrelated.id) is None
+    assert await desired_object(db, cluster.id, "artifact", artifact.id) is None
+    assert await desired_object(db, cluster.id, "recipe", artifact.id) is None
 
 
 async def test_a_workloads_topology_requirement_round_trips(db: AsyncSession) -> None:
-    """Declared on the workload, not inherited from the recipe, and readable back.
+    """Declared once, on the shape, and readable back.
 
-    It moved up with `kind`: the justification for keeping it per-cluster was that
-    the deployment was the only object that knew whether it was served or ganged,
-    and that stopped being true.
+    It used to be declared twice — a requirement on the recipe and a nullable
+    override of it on the workload — so a null meant "the recipe decides" rather
+    than "no". There is one level left and the column is the answer.
     """
-    _, _, _, created = await a_workload(
+    _, _, artifact, created = await a_workload(
         db,
         name="gang-8",
-        requires_single_topology_domain=True,
-        topology_domain_kind="nvswitch",
+        serving=None,
     )
-    assert created.requires_single_topology_domain is True
-    assert created.topology_domain_kind == "nvswitch"
+    assert created.serving.shape.requires_single_topology_domain is False
 
-    read = await WorkloadService(db).get(created.id)
-    assert read.requires_single_topology_domain is True
-    assert read.topology_domain_kind == "nvswitch"
+    read = await WorkloadService(db).update(
+        created.id,
+        WorkloadUpdateRequest(
+            serving=WorkloadServingUpdate(
+                shape=ShapeSchema(
+                    device_class="h100",
+                    requires_single_topology_domain=True,
+                    topology_domain_kind="nvswitch",
+                )
+            )
+        ),
+    )
+    assert read.serving.shape.requires_single_topology_domain is True
+    assert read.serving.shape.topology_domain_kind == "nvswitch"
+
+    reread = await WorkloadService(db).get(created.id)
+    assert reread.serving.shape.requires_single_topology_domain is True
+    assert reread.serving.shape.topology_domain_kind == "nvswitch"
+    assert artifact is not None
 
 
-async def test_a_workload_without_a_topology_requirement_leaves_it_null(db: AsyncSession) -> None:
+async def test_a_workload_without_a_topology_requirement_asks_for_none(db: AsyncSession) -> None:
+    """No requirement, not an absent one: the column is `NOT NULL` and defaults to false."""
     _, _, _, created = await a_workload(db, name="plain")
-    assert created.requires_single_topology_domain is None
-    assert created.topology_domain_kind is None
+    assert created.serving.shape.requires_single_topology_domain is False
+    assert created.serving.shape.topology_domain_kind is None
 
 
 # ------------------------------------------------------- the deployment timeline
@@ -1581,7 +1691,7 @@ async def _timeline(db: AsyncSession, deployment_uid: str) -> list[tuple[str, st
 
 async def test_creating_a_deployment_leaves_a_record_of_it_having_been_asked_for(db: AsyncSession) -> None:
     """The first minutes of a deployment used to be unreadable: a row, and nothing about it."""
-    cluster, _, _recipe, created = await a_deployment(db)
+    cluster, _, _artifact, created = await a_deployment(db)
 
     timeline = await _timeline(db, created.id)
     assert [kind for kind, _ in timeline] == ["deployment.created"]
@@ -1625,7 +1735,7 @@ async def test_a_deleted_deployment_keeps_its_timeline(db: AsyncSession) -> None
     assert kinds == ["deployment.created", "deployment.deleted"]
 
 
-async def test_the_recipe_a_cluster_receives_can_actually_fetch_the_weights(db: AsyncSession) -> None:
+async def test_the_serving_block_a_cluster_receives_can_actually_fetch_the_weights(db: AsyncSession) -> None:
     """The frame is well-formed and still useless without this field.
 
     `engine_image` is what the operator fetches an artifact with, and it was
@@ -1635,38 +1745,34 @@ async def test_the_recipe_a_cluster_receives_can_actually_fetch_the_weights(db: 
     and the deployment waited on `WeightsNotResident` for ever. Nothing in the
     dispatch path noticed, because every frame it sent was valid.
 
-    The fixture recipe declares no image, which is exactly the shape that broke.
+    The fixture workload declares no image, which is exactly the shape that broke.
     """
     cluster, _, _, created = await a_deployment(db)
 
     frames = await desired_frames(db, cluster.id, "deployment", created.id)
-    recipes = [payload for kind, payload in frames if kind == "recipe.desired"]
+    deployments = [payload for kind, payload in frames if kind == "deployment.desired"]
 
-    assert recipes, "a deployment's recipe reaches the cluster"
-    assert recipes[0].engine_image, "the cluster cannot fetch weights without one"
-    assert ":" in recipes[0].engine_image, "an image without a tag is not an address"
+    assert deployments, "a deployment's serving configuration reaches the cluster"
+    assert deployments[0].serving.engine_image, "the cluster cannot fetch weights without one"
+    assert ":" in deployments[0].serving.engine_image, "an image without a tag is not an address"
 
 
-async def test_a_recipe_never_reaches_a_cluster_naming_the_latest_tag(db: AsyncSession) -> None:
+async def test_a_workload_never_reaches_a_cluster_naming_the_latest_tag(db: AsyncSession) -> None:
     """`latest` is not a tag these registries publish; it is an ImagePullBackOff.
 
     The console offers a version box and `latest` is what gets typed into it. Taken
     verbatim it fails on the cluster minutes later, which is the slowest possible
     place to learn it.
     """
-    cluster, _, _, created = await a_deployment(db, name="latest-tagged")
-    artifact = await an_artifact(db, digest="sha256:bbbb", name="other-weights")
-    recipe = await RecipeService(db).create(
-        RecipeCreateRequest(
-            artifact=artifact.id,
+    cluster, project, artifact = await an_environment(db)
+    workload = await WorkloadService(db).create(
+        WorkloadCreateRequest(
+            cluster=cluster.id,
+            serving=a_serving(artifact.id, engine_version="latest"),
             name="latest-vllm",
-            engine="vllm",
-            engine_version="latest",
-            device_class="h100",
-            context_length=8192,
+            project=project.id,
         )
     )
 
-    assert recipe.engine_image is not None
-    assert not recipe.engine_image.endswith(":latest")
-    assert created is not None and cluster is not None
+    assert workload.serving.engine_image is not None
+    assert not workload.serving.engine_image.endswith(":latest")

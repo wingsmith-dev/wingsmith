@@ -81,7 +81,7 @@ COLLECTIONS = (
     "topology-domains",
     "pools",
     "artifacts",
-    "recipes",
+    "workloads",
     "deployments",
     "endpoints",
     "projects",
@@ -228,3 +228,55 @@ def test_health_is_unaffected():
 
     assert response.status_code == 200
     assert response.json() == {"status": True}
+
+
+def test_a_slug_is_read_from_the_location_because_that_is_where_the_organisation_is():
+    """`hf://openai/gpt-oss-20b` -> `openai/gpt-oss-20b`, and this is the whole repair.
+
+    Every artifact in the fleet was named `gpt-oss-20b`, `Kimi-K3`, `GLM-5.3-Flash` — bare, no
+    organisation — because a name is what a person types. The organisation was only ever written
+    in the location, which nothing read, so the plane published a model id no frontend had
+    registered while the operator started the engine on `--model` taken from that same location.
+    """
+    from app.core.serving import model_slug
+
+    assert model_slug("hf://openai/gpt-oss-20b") == "openai/gpt-oss-20b"
+    assert model_slug("hf://moonshotai/Kimi-K3") == "moonshotai/kimi-k3"
+
+
+def test_a_pinned_revision_is_not_part_of_what_a_model_is_called():
+    """Two revisions of one repository are one model id, and `model` must resolve to one endpoint.
+
+    The revision says which bytes; the slug says which model. Keeping the `@sha` would give a
+    caller a name that changes every time the weights are re-pinned.
+    """
+    from app.core.serving import model_slug
+
+    assert model_slug("hf://deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b") == (
+        "deepseek-ai/deepseek-v4-flash-0731"
+    )
+
+
+def test_the_preferred_location_names_the_model_and_the_first_one_answers_otherwise():
+    from app.core.serving import artifact_slug
+
+    class Loc:
+        def __init__(self, uri, preferred=False):
+            self.uri = uri
+            self.preferred = preferred
+
+    mirror, home = Loc("s3://weights-mirror/kimi"), Loc("hf://moonshotai/Kimi-K3", preferred=True)
+    assert artifact_slug("sha256:beef", [mirror, home]) == "moonshotai/kimi-k3"
+    assert artifact_slug("sha256:beef", [mirror]) == "weights-mirror/kimi"
+
+
+def test_an_adopted_artifact_is_named_by_its_reference_digest():
+    """Weights adopted by watching a cluster serve them have no location at all.
+
+    The reference is the digest — `hf:org/model`, which is also why such a row is unverified — so
+    that is read next rather than leaving the model with no name.
+    """
+    from app.core.serving import artifact_slug
+
+    assert artifact_slug("hf:Qwen/Qwen3-Embedding-8B", []) == "qwen/qwen3-embedding-8b"
+    assert artifact_slug("sha256:beef", []) == ""

@@ -152,9 +152,15 @@ def test_the_promote_request_cannot_ask_for_a_different_spec() -> None:
 
     A field here for the image, the overrides or the replica count would make
     promotion capable of causing the restart the whole path exists to avoid.
+
+    `artifact` is the one part of the serving configuration a caller states, because
+    the weights are the only part the cluster names by something this catalogue does
+    not hold. A `serving` block here would let a caller declare a configuration for a
+    process that is already up, which is the restart the path exists to avoid.
     """
     fields = set(PromoteRequest.__struct_fields__)
-    assert fields == {"recipe", "project", "fingerprint", "name", "priority_class"}
+    assert fields == {"artifact", "project", "fingerprint", "name", "priority_class"}
+    assert not fields & {"serving", "engine", "engine_args", "shape", "serving_digest"}
 
 
 def test_the_sighting_and_the_decision_are_different_tables() -> None:
@@ -218,9 +224,9 @@ async def test_listing_rejects_a_status_that_is_not_a_decision() -> None:
         await svc.list(status="adopted")
 
 
-def test_the_schema_names_no_recipe_and_no_generation() -> None:
+def test_the_schema_names_no_serving_configuration_and_no_generation() -> None:
     fields = set(DiscoveredWorkloadSchema.__struct_fields__)
-    assert not fields & {"recipe_id", "generation", "desired_replicas", "enabled", "overrides"}
+    assert not fields & {"serving", "serving_digest", "generation", "desired_replicas", "enabled", "overrides"}
     assert "status" in fields
 
 
@@ -239,6 +245,18 @@ def test_the_controller_reads_and_decides_and_does_nothing_else() -> None:
     assert handlers
     methods = {m for h in handlers for m in h.http_methods}
     assert methods == {"GET", "POST", "DELETE"}
+
+
+def test_the_draft_is_read_as_a_serving_block_and_writes_nothing() -> None:
+    """The reading a promotion declares, offered under the name of what it drafts.
+
+    There is no recipe to draft any more: the fields land on the workload the
+    promotion mints, so the path is `/serving-draft` and it is a GET — the same
+    sighting derives the same draft every time, and asking does not change it.
+    """
+    handler = DiscoveredWorkloadRoutes.draft_serving
+    assert handler.paths.pop().endswith("/serving-draft")
+    assert handler.http_methods == {"GET"}
 
 
 def test_the_repository_writes_only_the_decision_table() -> None:

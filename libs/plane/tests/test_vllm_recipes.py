@@ -206,7 +206,7 @@ async def test_weights_the_corpus_does_not_cover_resolve_without_it_and_without_
     draft = await service(hub=FakeHub(model)).resolve(model.slug)
 
     assert draft.upstream is None
-    assert draft.recipe.device_count >= 1
+    assert draft.serving.device_count >= 1
     assert not any("vLLM recipe" in note.message for note in draft.notes)
 
 
@@ -216,8 +216,8 @@ def test_the_upstream_recipe_never_moves_the_plane_s_own_sizing():
     draft = resolved(model)
 
     assert draft.upstream.replica_memory_mib_min == 16 * 1024
-    assert draft.recipe.device_memory_mib_min != draft.upstream.replica_memory_mib_min
-    assert draft.recipe.device_count == 1
+    assert draft.serving.device_memory_mib_min != draft.upstream.replica_memory_mib_min
+    assert draft.serving.device_count == 1
 
 
 def test_a_sizing_that_disagrees_with_the_measurement_by_more_than_double_is_warned():
@@ -352,9 +352,9 @@ def test_the_published_floor_is_compared_as_a_replica_total_not_per_device(corpu
     these two an order of magnitude apart and warned on a draft that is right.
     """
     draft = resolved(hf_model(slug="moonshotai/Kimi-K3", parameter_count=2_800_000_000_000))
-    ours = draft.recipe.device_count * draft.recipe.device_memory_mib_min
+    ours = draft.serving.device_count * draft.serving.device_memory_mib_min
 
-    assert draft.recipe.device_count > 1
+    assert draft.serving.device_count > 1
     assert 0.5 < ours / draft.upstream.replica_memory_mib_min < 2.0
     assert not any("disagree" in note.message for note in draft.notes)
 

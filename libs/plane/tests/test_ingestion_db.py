@@ -21,8 +21,8 @@ from msgspec import structs
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 
-from app.hub.sink import SinkFrame
 from app.auth import STATIC_OPERATOR
+from app.hub.sink import SinkFrame
 from app.hub.state import new_id
 from app.hub.session import SessionConfig
 from app.hub.session import OperatorSession
@@ -373,8 +373,8 @@ async def seed_deployment(sessions, cluster) -> None:
 
     Every insert is an idempotent upsert on `uid`. Only rows reachable from
     `supply_cluster` are truncated between tests, so the tenant, project,
-    priority class, artifact, recipe and workload above the deployment survive
-    into the next one and a plain insert would collide on the second call.
+    priority class, artifact and workload above the deployment survive into the
+    next one and a plain insert would collide on the second call.
     """
     async with sessions.begin() as db:
         await db.execute(
@@ -394,16 +394,15 @@ async def seed_deployment(sessions, cluster) -> None:
                   INSERT INTO demand_artifact (uid, digest, name)
                   VALUES ('art_bench', 'sha256:bench', 'llama-3-70b')
                   ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
-                ), r AS (
-                  INSERT INTO demand_recipe (uid, artifact_id, name, engine, engine_version,
-                                             context_length, device_class, engine_args)
-                  SELECT 'rec_bench', a.id, 'llama-70b', 'vllm', '0.8.4', 8192, 'h100-80gb-sxm',
-                         '{"served_model_name": "llama-70b"}'::jsonb
-                  FROM a
-                  ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
                 ), w AS (
-                  INSERT INTO demand_workload (uid, name, kind, project_id, priority_class_id, recipe_id)
-                  SELECT :workload, 'llama-70b-prod', 'service', p.id, c.id, r.id FROM p, c, r
+                  INSERT INTO demand_workload (uid, name, kind, project_id, priority_class_id,
+                                               artifact_id, serving_digest, engine, engine_version,
+                                               context_length, device_class, engine_args)
+                  SELECT :workload, 'llama-70b-prod', 'service', p.id, c.id, a.id,
+                         'svg_00000000000000000000000000000000000000000000000000000000000000bc',
+                         'vllm', '0.8.4', 8192, 'h100-80gb-sxm',
+                         '{"served_model_name": "llama-70b"}'::jsonb
+                  FROM p, c, a
                   ON CONFLICT (uid) DO UPDATE SET kind = excluded.kind RETURNING id
                 )
                 INSERT INTO demand_deployment (uid, workload_id, cluster_id, name, generation)
@@ -909,7 +908,7 @@ async def test_a_live_session_writes_state_and_marks_the_cluster(sessions, clust
 
 
 async def seed_warm_artifact(sessions, cluster) -> None:
-    """The artifact `seed_deployment` already hangs a recipe off, ready to be reported on."""
+    """The artifact `seed_deployment` already hangs a workload off, ready to be reported on."""
     await seed_deployment(sessions, cluster)
 
 
@@ -946,7 +945,7 @@ async def test_the_reason_a_download_is_stalled_reaches_the_plane(sessions, clus
             resident=False,
             nodes=[],
             reason="NoRuntimeImage",
-            message="no recipe on this cluster names an engine image",
+            message="no workload on this cluster names an engine image",
         )
     )
 

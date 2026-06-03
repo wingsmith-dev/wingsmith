@@ -11,7 +11,6 @@ from unittest.mock import patch
 import pytest
 import msgspec
 
-from app.db.models import Recipe
 from app.db.models import Cluster
 from app.db.models import Artifact
 from app.db.models import Endpoint
@@ -366,42 +365,41 @@ def test_a_breakdown_dimension_reaches_the_scope():
 # --- the served model name --------------------------------------------------
 
 
+GEMMA = Artifact(name="google/gemma-4-31B-it", slug="google/gemma-4-31b-it")
+
+
+def a_fit(**kwargs) -> Workload:
+    """A workload named for its fit, which is what these tests keep off the wire.
+
+    The serving configuration used to be a `Recipe` beside the workload and is
+    columns on the workload now, so `engine_args` and the name are one object's.
+    """
+    return Workload(name="gemma-4-31b-it-fp8-tp2-32k", **({"engine_args": {}} | kwargs))
+
+
 def test_an_explicit_served_model_name_wins_because_the_operator_said_so():
-    recipe = Recipe(name="gemma-4-31b-it", engine_args={"served_model_name": "gemma-custom"})
-    artifact = Artifact(name="google/gemma-4-31B-it")
-    assert served_model(recipe, artifact) == "gemma-custom"
-
-
-def test_a_workloads_declared_name_is_next_because_it_is_the_object_a_person_creates():
-    recipe = Recipe(name="gemma-4-31b-it", engine_args={}, served_model_name="google/gemma-4-31b-it")
-    artifact = Artifact(name="google/gemma-4-31B-it")
-    workload = Workload(served_model_name="acme/gemma-canary")
-    assert served_model(recipe, artifact, workload) == "acme/gemma-canary"
-
-
-def test_a_recipes_declared_name_is_next_after_the_workloads():
-    recipe = Recipe(name="gemma-4-31b-it", engine_args={}, served_model_name="acme/gemma")
-    artifact = Artifact(name="google/gemma-4-31B-it")
-    assert served_model(recipe, artifact, Workload()) == "acme/gemma"
+    workload = a_fit(engine_args={"served_model_name": "gemma-custom"})
+    assert served_model(workload, GEMMA) == "gemma-custom"
 
 
 def test_the_artifact_slug_is_the_default_and_carries_no_fit():
     """The fit moves and the weights do not, so the slug is what a client codes against."""
-    recipe = Recipe(name="gemma-4-31b-it", engine_args={})
-    artifact = Artifact(name="google/gemma-4-31B-it")
-    assert served_model(recipe, artifact) == "google/gemma-4-31b-it"
+    assert served_model(a_fit(), GEMMA) == "google/gemma-4-31b-it"
 
 
-def test_an_adopted_artifact_reads_its_slug_out_of_the_reference_digest():
-    recipe = Recipe(name="gemma-4-31b-it", engine_args={})
-    artifact = Artifact(name="gemma-4-31b-it", digest="hf:google/Gemma-4-31B-it")
-    assert served_model(recipe, artifact) == "google/gemma-4-31b-it"
+def test_the_workloads_name_is_the_floor_and_never_an_empty_string():
+    """A bad answer that looks like one, and it is still a string.
+
+    An artifact registered before slugs existed resolves to nothing, and returning
+    the empty string here renders an engine with `--served-model-name ` and a
+    frontend that registers no model at all.
+    """
+    assert served_model(a_fit(), Artifact(name="gemma", slug="")) == "gemma-4-31b-it-fp8-tp2-32k"
 
 
 def test_an_empty_served_model_name_falls_through_rather_than_selecting_nothing():
-    recipe = Recipe(name="gemma-4-31b-it", engine_args={"served_model_name": ""})
-    artifact = Artifact(name="google/gemma-4-31B-it")
-    assert served_model(recipe, artifact) == "google/gemma-4-31b-it"
+    workload = a_fit(engine_args={"served_model_name": ""})
+    assert served_model(workload, GEMMA) == "google/gemma-4-31b-it"
 
 
 # --- resolving a store for a cluster ----------------------------------------
@@ -535,10 +533,9 @@ async def deployment_scope(labels: dict) -> Scope:
     from app.db.models import Deployment
 
     deployment = Deployment(uid="dep_01j9x2aaaaaaaaaaaaaaaaaaaa", cluster_id=None)
-    workload = Workload(labels=labels)
-    recipe = Recipe(name="gemma-4-31b-it", engine="vllm", engine_args={})
-    artifact = Artifact(name="google/gemma-4-31B-it")
-    svc = MetricsService(db=OneRowSession((deployment, workload, recipe, artifact)))  # type: ignore[arg-type]
+    workload = Workload(name="gemma-4-31b-it", engine="vllm", engine_args={}, labels=labels)
+    artifact = Artifact(name="google/gemma-4-31B-it", slug="google/gemma-4-31b-it")
+    svc = MetricsService(db=OneRowSession((deployment, workload, artifact)))  # type: ignore[arg-type]
     backend = StubBackend()
     with (
         patch.object(sources.settings, "METRICS_SOURCES", SOURCES),
@@ -618,10 +615,15 @@ AP = "clu_01j9x2bbbbbbbbbbbbbbbbbbbb"
 def workload_row(labels=None, engine="vllm"):
     from app.db.models import Workload
 
-    workload = Workload(uid=WORKLOAD, name="gemma-serve", labels=DYNAMO_LABELS if labels is None else labels)
-    recipe = Recipe(name="gemma-4-31b-it", engine=engine, engine_args={})
-    artifact = Artifact(name="google/gemma-4-31B-it")
-    return (workload, recipe, artifact)
+    workload = Workload(
+        uid=WORKLOAD,
+        name="gemma-serve",
+        engine=engine,
+        engine_args={},
+        labels=DYNAMO_LABELS if labels is None else labels,
+    )
+    artifact = Artifact(name="google/gemma-4-31B-it", slug="google/gemma-4-31b-it")
+    return (workload, artifact)
 
 
 def workload_service(*results) -> MetricsService:

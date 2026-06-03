@@ -452,7 +452,7 @@ def test_every_rejected_cluster_reports_its_own_reasoning():
     assert "aaa-1:" in decision.summary and "zzz-1:" in decision.summary
 
 
-def a_recipe(**overrides):
+def a_workload(**overrides):
     fields = {
         "device_class": "h100",
         "device_count": 4,
@@ -472,12 +472,12 @@ def a_priority(value: int = 100, preempts: bool = False):
 def test_replicas_multiply_the_device_count_but_not_the_domain_requirement():
     """A deployment is placed whole; a replica's collective is not the deployment.
 
-    Three replicas of a four-device recipe need twelve devices in the cluster, but
+    Three replicas of a four-device workload need twelve devices in the cluster, but
     only each four have to share an NVLink domain — the replicas do not talk to
     each other over it.
     """
     request = PlacementService(db=None).request(
-        recipe=a_recipe(),
+        workload_row=a_workload(),
         project_uid="prj_1",
         priority=a_priority(),
         workload="serve",
@@ -490,7 +490,7 @@ def test_replicas_multiply_the_device_count_but_not_the_domain_requirement():
 
 def test_a_request_carries_the_priority_it_will_preempt_at():
     request = PlacementService(db=None).request(
-        recipe=a_recipe(),
+        workload_row=a_workload(),
         project_uid="prj_1",
         priority=a_priority(value=900, preempts=True),
         workload="serve",
@@ -498,9 +498,9 @@ def test_a_request_carries_the_priority_it_will_preempt_at():
     assert (request.priority_value, request.preempts) == (900, True)
 
 
-def test_a_null_deployment_requirement_falls_through_to_the_recipe():
+def test_a_null_deployment_requirement_falls_through_to_the_workload():
     request = PlacementService(db=None).request(
-        recipe=a_recipe(),
+        workload_row=a_workload(),
         project_uid="prj_1",
         priority=a_priority(),
         workload="serve",
@@ -511,9 +511,9 @@ def test_a_null_deployment_requirement_falls_through_to_the_recipe():
     assert request.domain_kind == "nvlink"
 
 
-def test_a_deployment_can_declare_a_shape_the_recipe_does_not_have():
+def test_a_deployment_can_declare_a_shape_the_workload_does_not_have():
     request = PlacementService(db=None).request(
-        recipe=a_recipe(requires_single_topology_domain=False, topology_domain_kind=None),
+        workload_row=a_workload(requires_single_topology_domain=False, topology_domain_kind=None),
         project_uid="prj_1",
         priority=a_priority(),
         workload="gang",
@@ -525,9 +525,9 @@ def test_a_deployment_can_declare_a_shape_the_recipe_does_not_have():
     assert request.domain_kind == "nvswitch"
 
 
-def test_a_deployment_can_relax_a_requirement_the_recipe_asserts():
+def test_a_deployment_can_relax_a_requirement_the_workload_asserts():
     request = PlacementService(db=None).request(
-        recipe=a_recipe(),
+        workload_row=a_workload(),
         project_uid="prj_1",
         priority=a_priority(),
         workload="serve",

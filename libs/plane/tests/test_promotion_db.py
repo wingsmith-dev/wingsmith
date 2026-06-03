@@ -25,6 +25,7 @@ from app.modules.deployments.services import DeploymentService
 from tests.conftest import CLUSTER
 from tests.conftest import fetch
 from tests.test_ingestion_db import observed
+from tests.test_ingestion_db import apply_supply
 
 
 pytestmark = pytest.mark.database
@@ -34,15 +35,17 @@ FINGERPRINT = "sha256:9f2c1b7d4e6a08"
 
 
 async def seed_demand(sessions) -> None:
-    """A tenant, project, priority class, artifact and recipe — the minimum a deployment needs.
+    """A tenant, project, priority class and artifact — the minimum a deployment needs.
+
+    The artifact is the only part of the serving configuration a promotion is given.
+    Everything else is read off the sighting, so there is no second row to seed here
+    and no ordering between them to get wrong.
 
     Truncated first: the shared `sessions` fixture resets the supply side, and the
     binding and demand tables outlive it.
     """
     async with sessions.begin() as db:
-        await db.execute(
-            text("TRUNCATE bind_tenant, bind_priority_class, demand_artifact, demand_recipe RESTART IDENTITY CASCADE")
-        )
+        await db.execute(text("TRUNCATE bind_tenant, bind_priority_class, demand_artifact RESTART IDENTITY CASCADE"))
         tenant = uuid.uuid4()
         project = uuid.uuid4()
         priority = uuid.uuid4()
@@ -72,25 +75,26 @@ async def seed_demand(sessions) -> None:
             ),
             {"id": artifact, "uid": ids.new_uid(ids.ARTIFACT)},
         )
-        await db.execute(
-            text(
-                "insert into demand_recipe"
-                " (id, uid, artifact_id, name, version, engine, engine_version, context_length, device_class)"
-                " values (:id, :uid, :artifact, 'llama-70b-vllm', 1, 'vllm', '0.9.1', 8192, 'h100-80gb-sxm')"
-            ),
-            {"id": uuid.uuid4(), "uid": ids.new_uid(ids.RECIPE), "artifact": artifact},
-        )
 
 
 async def sighted(sessions) -> DatabaseSink:
+    """The sighting, over the supply it is running on.
+
+    The nodes come first because the serving block a promotion declares is read off
+    the sighting, and the device class in it is read off the devices of the nodes the
+    workload holds — the cluster is the only authority on what its own hardware is.
+    A sighting with no supply under it reads as a workload nobody can say enough
+    about to declare.
+    """
     sink = DatabaseSink(sessions)
+    await apply_supply(sink)
     await sink.apply_observed(observed("workload.discovered", spec_fingerprint=FINGERPRINT))
     return sink
 
 
 def request(**overrides) -> PromoteRequest:
     fields = {
-        "recipe": "llama-70b-vllm",
+        "artifact": "llama-70b",
         "project": "core",
         "fingerprint": FINGERPRINT,
     }
@@ -156,6 +160,7 @@ async def test_promotion_is_refused_without_a_digest_to_pin_to(sessions, cluster
     """
     await seed_demand(sessions)
     sink = DatabaseSink(sessions)
+    await apply_supply(sink)
     await sink.apply_observed(observed("workload.discovered", spec_fingerprint=""))
 
     async with sessions() as db:

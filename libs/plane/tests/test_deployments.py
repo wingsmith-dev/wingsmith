@@ -36,7 +36,7 @@ def test_update_request_leaves_absent_fields_unset():
 
 
 def test_a_deployment_declares_nothing_the_workload_already_declares():
-    """Recipe, scale and cluster are the workload's; a share is not patchable."""
+    """The serving configuration, scale and cluster are the workload's; a share is not patchable."""
     fields = set(DeploymentUpdateRequest.__struct_fields__)
     assert fields == {"enabled"}
 
@@ -54,7 +54,8 @@ def test_workload_facts_are_named_not_copied():
     """A share carries the parent's identity, not the parent's spec."""
     fields = set(DeploymentSchema.__struct_fields__)
     assert {"workload_id", "workload_name"} <= fields
-    assert not fields & {"recipe_id", "adapter_artifacts", "overrides", "labels", "type", "kind", "priority_class"}
+    assert not fields & {"serving", "serving_digest", "adapter_artifacts", "overrides", "labels", "type", "kind"}
+    assert not fields & {"priority_class", "engine", "engine_args", "device_class"}
     assert not fields & {"requires_single_topology_domain", "topology_domain_kind"}
 
 
@@ -170,7 +171,7 @@ def test_conditional_update_reads_if_match_from_the_header():
 def test_list_handler_offers_every_declared_filter():
     parameters = set(inspect.signature(DeploymentRoutes.list_deployments.fn).parameters)
     assert {"cluster", "workload", "project", "phase", "limit", "cursor"} <= parameters
-    assert not parameters & {"recipe", "workload_type", "label"}
+    assert not parameters & {"serving_digest", "workload_type", "label"}
 
 
 def test_the_repository_cannot_create_or_delete():

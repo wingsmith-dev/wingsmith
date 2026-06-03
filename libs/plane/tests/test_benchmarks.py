@@ -17,6 +17,7 @@ from app.modules.benchmarks.routes import BenchmarkRoutes
 from app.modules.benchmarks.schemas import BenchmarkRunSchema
 from app.modules.benchmarks.schemas import BenchmarkProvenanceSchema
 from app.modules.benchmarks.schemas import BenchmarkRunCreateRequest
+from app.modules.benchmarks.schemas import ServingBenchmarkSummarySchema
 from app.modules.benchmarks.services import OPERATION_TYPE
 from app.modules.benchmarks.services import BenchmarkService
 from app.modules.benchmarks.services import tokenizer_for
@@ -160,15 +161,19 @@ def test_the_cluster_filter_accepts_an_id_or_a_name(repo):
 
 
 def test_every_join_a_run_is_named_by_is_outer(repo):
-    """All six outlive-able, and two of them are absent by design.
+    """All five outlive-able, and two of them are absent by design.
 
-    A recipe may be deleted and an operation is only the errand, so both were
-    already outer. The deployment and the cluster joined the list when the
-    endpoint level arrived: a run against a public name has neither, and an
-    inner join on either would hide exactly the runs the level exists for.
+    An operation is only the errand and a request only the batch it arrived in,
+    so both were already outer. The deployment and the cluster joined the list
+    when the endpoint level arrived: a run against a public name has neither, and
+    an inner join on either would hide exactly the runs the level exists for.
+
+    There is one fewer join than there was, and not because one was relaxed: a
+    run names its serving configuration by the digest it snapshotted, which is a
+    value and joins to nothing.
     """
     query = sql(repo.get_query(new_uid(BENCHMARK_RUN)))
-    assert query.count("LEFT OUTER JOIN") == 6
+    assert query.count("LEFT OUTER JOIN") == 5
     assert "JOIN demand_deployment" in query
     assert "JOIN demand_endpoint" in query
     assert " JOIN " not in query.replace("LEFT OUTER JOIN", "")
@@ -221,11 +226,17 @@ def test_the_result_is_carried_as_an_opaque_dict():
 
 
 def test_provenance_is_snapshotted_onto_the_run():
-    """A recipe is mutable and a deployment is disposable; a joined run would drift off what it measured."""
+    """A workload is mutable and a deployment is disposable; a joined run would drift off what it measured.
+
+    The serving configuration is named by the digest the run snapshotted, which
+    is the one field here that cannot go stale: it is the content of the
+    configuration rather than a handle on it, where the id and version it
+    replaces named a row that could be edited under the run.
+    """
     fields = {field.name: field.type for field in msgspec.structs.fields(BenchmarkRunSchema)}
     assert fields["provenance"] is BenchmarkProvenanceSchema
     snapshot = {field.name for field in msgspec.structs.fields(BenchmarkProvenanceSchema)}
-    assert snapshot == {"model", "deployment_generation", "recipe_id", "recipe_version", "engine_args", "serving"}
+    assert snapshot == {"model", "deployment_generation", "serving_digest", "engine_args", "serving"}
 
 
 # ---------------------------------------------------------------- a run whose operation ended
@@ -267,7 +278,7 @@ def test_a_failure_message_from_the_cluster_wins_over_the_default():
 # ---------------------------------------------------------------- tokenizer
 
 
-def _recipe(**engine_args):
+def _workload(**engine_args):
     return SimpleNamespace(name="qwen3.8-27b", engine_args=engine_args)
 
 
@@ -281,40 +292,127 @@ def _artifact(digest="", name="", metadata=None, locations=()):
 
 
 def test_the_tokenizer_comes_off_the_artifact_and_not_the_served_name():
-    resolved = tokenizer_for(_recipe(), _artifact(digest="hf:Qwen/Qwen3-32B"))
+    resolved = tokenizer_for(_workload(), _artifact(digest="hf:Qwen/Qwen3-32B"))
     assert resolved == "Qwen/Qwen3-32B"
 
 
 def test_a_pinned_revision_is_stripped_from_the_tokenizer_reference():
-    resolved = tokenizer_for(_recipe(), _artifact(digest="hf:Qwen/Qwen3-32B@main"))
+    resolved = tokenizer_for(_workload(), _artifact(digest="hf:Qwen/Qwen3-32B@main"))
     assert resolved == "Qwen/Qwen3-32B"
 
 
-def test_the_recipe_wins_over_the_artifact_when_it_names_a_tokenizer():
-    recipe = _recipe(tokenizer="org/other-tokenizer")
-    assert tokenizer_for(recipe, _artifact(digest="hf:Qwen/Qwen3-32B")) == "org/other-tokenizer"
+def test_the_workload_wins_over_the_artifact_when_it_names_a_tokenizer():
+    workload = _workload(tokenizer="org/other-tokenizer")
+    assert tokenizer_for(workload, _artifact(digest="hf:Qwen/Qwen3-32B")) == "org/other-tokenizer"
 
 
 def test_a_content_addressed_artifact_falls_back_to_its_repository_shaped_name():
-    assert tokenizer_for(_recipe(), _artifact(digest="sha256:abc", name="Qwen/Qwen3-32B")) == "Qwen/Qwen3-32B"
+    assert tokenizer_for(_workload(), _artifact(digest="sha256:abc", name="Qwen/Qwen3-32B")) == "Qwen/Qwen3-32B"
 
 
 def test_nothing_repository_shaped_resolves_to_nothing_rather_than_a_guess():
-    assert tokenizer_for(_recipe(), _artifact(digest="sha256:abc", name="qwen3.8-27b")) == ""
+    assert tokenizer_for(_workload(), _artifact(digest="sha256:abc", name="qwen3.8-27b")) == ""
 
 
 def test_a_tokenizer_discovery_read_off_the_running_workload_is_used():
     artifact = _artifact(digest="hf:Qwen/Qwen3.8-27B", metadata={"tokenizer": "org/other"})
-    assert tokenizer_for(_recipe(), artifact) == "org/other"
+    assert tokenizer_for(_workload(), artifact) == "org/other"
 
 
 def test_an_engine_argument_written_the_way_discovery_writes_them_is_read():
-    recipe = SimpleNamespace(name="qwen3.8-27b", engine_args={"--tokenizer": "org/other"})
-    assert tokenizer_for(recipe, _artifact(digest="hf:Qwen/Qwen3.8-27B")) == "org/other"
+    workload = SimpleNamespace(name="qwen3.8-27b", engine_args={"--tokenizer": "org/other"})
+    assert tokenizer_for(workload, _artifact(digest="hf:Qwen/Qwen3.8-27B")) == "org/other"
 
 
 # The operator points `--model` at the artifact's `hf://` source, so that is the repository whose
 # tokenizer the engine actually loaded. Reading it from anywhere else is how the two drift.
 def test_the_hf_location_the_engine_pulled_from_is_the_tokenizer():
     artifact = _artifact(digest="sha256:abc", locations=["s3://weights/x", "hf://Qwen/Qwen3.8-27B"])
-    assert tokenizer_for(_recipe(), artifact) == "Qwen/Qwen3.8-27B"
+    assert tokenizer_for(_workload(), artifact) == "Qwen/Qwen3.8-27B"
+
+
+# ---------------------------------------------------------------- the serving rollup
+
+
+DIGEST = "svg_" + "a" * 64
+
+
+class _Row:
+    def __init__(self, harness, harness_version, summary):
+        self.harness = harness
+        self.harness_version = harness_version
+        self.summary = summary
+
+
+class _StubRepo:
+    def __init__(self, rows):
+        self._rows = rows
+
+    async def serving_runs(self, digest):
+        return self._rows
+
+
+def test_the_rollup_reads_only_graded_non_discarded_runs(repo):
+    """No join at all: the digest is a value the run snapshotted, not a row it points at."""
+    text = sql(repo.serving_runs_query(DIGEST))
+    assert "ops_benchmark_run.serving_digest" in text
+    assert "ops_benchmark_run.discard = false" in text
+    assert "ops_benchmark_run.summary" in text
+    assert "ops_benchmark_run.harness" in text
+    assert " JOIN " not in text
+
+
+async def test_serving_summary_takes_the_peak_and_skips_unreadable_runs():
+    """Only runs whose harness-and-version adapter resolves a throughput contribute."""
+    rows = [
+        _Row("aiperf", "0.4.0", {"output_token_throughput_per_user": {"avg": 120.0}}),
+        _Row("aiperf", "0.4.0", {"output_token_throughput_per_user": {"avg": 260.0}}),
+        _Row("aiperf", None, {"output_token_throughput_per_user": {"avg": 999.0}}),
+        _Row("aiperf", "0.4.0", {"nothing_here": True}),
+    ]
+    svc = BenchmarkService(db=None)
+    svc.repo = _StubRepo(rows)
+    summary = await svc.serving_summary(DIGEST)
+    assert summary.serving_digest == DIGEST
+    assert summary.run_count == 4
+    assert summary.graded_run_count == 2
+    assert summary.peak_output_tokens_per_second == 260.0
+
+
+async def test_serving_summary_peak_is_none_when_nothing_can_be_read():
+    svc = BenchmarkService(db=None)
+    svc.repo = _StubRepo([_Row("unknown-harness", "1.0.0", {"x": 1})])
+    summary = await svc.serving_summary(DIGEST)
+    assert summary.graded_run_count == 0
+    assert summary.peak_output_tokens_per_second is None
+
+
+async def test_an_unmeasured_configuration_is_a_zero_count_and_not_a_miss():
+    """A digest is content, not an object, so there is nothing for a 404 to be about.
+
+    The question the rollup answers is how much measurement stands behind a
+    configuration, and "none" is an answer. The recipe rollup this replaces was
+    addressed by a row id, where absence really was a missing object.
+    """
+    svc = BenchmarkService(db=None)
+    svc.repo = _StubRepo([])
+    summary = await svc.serving_summary(DIGEST)
+    assert summary.run_count == 0
+    assert summary.graded_run_count == 0
+    assert summary.peak_output_tokens_per_second is None
+
+
+def test_the_serving_summary_is_keyed_on_the_digest_and_its_peak_can_be_absent():
+    assert set(ServingBenchmarkSummarySchema.__struct_fields__) == {
+        "serving_digest",
+        "run_count",
+        "graded_run_count",
+        "peak_output_tokens_per_second",
+    }
+    annotation = ServingBenchmarkSummarySchema.__annotations__["peak_output_tokens_per_second"]
+    assert type(None) in annotation.__args__
+
+
+def test_the_rollup_is_addressed_by_digest_beside_the_runs():
+    methods = {name for name, member in vars(BenchmarkRoutes).items() if hasattr(member, "fn")}
+    assert "get_serving_summary" in methods

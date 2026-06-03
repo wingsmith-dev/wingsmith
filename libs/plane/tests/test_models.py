@@ -20,7 +20,6 @@ DEMAND = {
     "demand_artifact",
     "demand_artifact_location",
     "demand_artifact_baseline",
-    "demand_recipe",
     "demand_workload",
     "demand_deployment",
     "demand_deployment_status",
@@ -116,11 +115,30 @@ def test_no_telemetry_columns_anywhere() -> None:
             assert not any(term in column for term in banned), f"{name}.{column}"
 
 
-def test_recipe_requires_a_device_class() -> None:
-    from app.db.models import Recipe
+def test_workload_requires_a_device_class() -> None:
+    """A count without a class is not a shape: you cannot tensor-parallel across two models."""
+    from app.db.models import Workload
 
-    assert inspect(Recipe).columns["device_class"].nullable is False
-    assert inspect(Recipe).columns["context_length"].nullable is False
+    assert inspect(Workload).columns["device_class"].nullable is False
+    assert inspect(Workload).columns["context_length"].nullable is False
+
+
+def test_the_workload_carries_the_serving_configuration_itself() -> None:
+    """There is no `Recipe` to point at, and no `recipe_id` left pointing at one."""
+    from app.db.models import Workload
+
+    columns = set(inspect(Workload).columns.keys())
+    assert {"engine", "engine_version", "engine_args", "context_length", "serving_digest"} <= columns
+    assert {"tensor_parallel", "pipeline_parallel", "expert_parallel"} <= columns
+    assert {"artifact_id", "capabilities", "imported_args", "overlay"} <= columns
+    assert not columns & {"recipe_id", "recipe_version"}
+
+
+def test_the_topology_pair_is_one_answer_and_not_an_override() -> None:
+    """It was nullable while it overrode a recipe's value. There is nothing to override now."""
+    from app.db.models import Workload
+
+    assert inspect(Workload).columns["requires_single_topology_domain"].nullable is False
 
 
 def test_workload_carries_the_discriminator_and_the_global_declaration() -> None:
@@ -128,7 +146,7 @@ def test_workload_carries_the_discriminator_and_the_global_declaration() -> None
     from app.db.models import Workload
 
     columns = set(inspect(Workload).columns.keys())
-    assert {"kind", "priority_class_id", "gang_size", "recipe_id"} <= columns
+    assert {"kind", "priority_class_id", "gang_size", "artifact_id"} <= columns
     assert {"min_scale", "max_scale", "desired_scale", "strategy", "max_clusters"} <= columns
     assert not columns & {"admission_phase", "admission_reason", "cluster_id", "queued_at", "placed_at"}
 
@@ -138,7 +156,7 @@ def test_a_deployment_carries_the_per_cluster_facts() -> None:
 
     columns = set(inspect(Deployment).columns.keys())
     assert {"cluster_id", "admission_phase", "admission_reason", "queued_at", "admitted_at", "placed_at"} <= columns
-    assert not columns & {"recipe_id", "overrides", "labels", "adapter_artifact_ids"}
+    assert not columns & {"serving_digest", "overrides", "labels", "adapter_artifact_ids"}
 
 
 def test_a_workload_has_many_deployments_and_not_one() -> None:
@@ -249,13 +267,13 @@ def test_artifact_baseline_is_unique_per_dataset_and_metric() -> None:
 
 def test_the_serving_columns_are_not_null_with_an_empty_default() -> None:
     """No reader should have to choose between `is None` and `== {}`."""
-    from app.db.models import Recipe
     from app.db.models import Artifact
     from app.db.models import Endpoint
+    from app.db.models import Workload
 
     for model, column, default in (
-        (Recipe, "serving", "{}"),
-        (Recipe, "capabilities", "{}"),
+        (Workload, "serving", "{}"),
+        (Workload, "capabilities", "{}"),
         (Endpoint, "surface", "{}"),
         (Artifact, "upstream", "{}"),
     ):

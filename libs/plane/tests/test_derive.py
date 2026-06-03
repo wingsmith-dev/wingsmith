@@ -1,4 +1,4 @@
-"""Reading a Dynamo/vLLM workload as a recipe.
+"""Reading a Dynamo/vLLM workload as a serving block.
 
 The specs here are copied from what the two inference clusters actually report, not
 invented: a parser for a format we control nothing about is only worth what it does on the
@@ -38,7 +38,7 @@ LABELS = {
 }
 
 
-def test_a_dynamo_vllm_worker_reads_as_a_complete_recipe() -> None:
+def test_a_dynamo_vllm_worker_reads_as_a_complete_serving_block() -> None:
     draft = derive(
         spec=QWEN,
         labels=LABELS,
@@ -169,7 +169,7 @@ def test_weights_read_as_an_artifact_named_by_reference() -> None:
     assert art.reference == "hf:Qwen/Qwen3.8-27B"
     assert art.digest == art.reference
     assert art.source_scheme == "hf"
-    # What the operator turns back into `--model` when it renders a recipe.
+    # What the operator turns back into `--model` when it renders the serving block.
     assert art.source_uri == "hf://Qwen/Qwen3.8-27B"
     assert art.verified is False
     assert any("not a hash of the bytes" in note for note in art.notes)

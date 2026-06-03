@@ -19,9 +19,13 @@ from sqlalchemy import text
 from app.core import ids
 from app.core.exceptions import Invalid
 from app.modules.clusters.services import ClusterService
+from app.modules.placement.schemas import PlacementShapeRequest
 from app.modules.placement.schemas import PlacementPreviewRequest
+from app.modules.workloads.schemas import ShapeSchema
 from app.modules.workloads.schemas import WorkloadCreateRequest
+from app.modules.workloads.schemas import WorkloadServingRequest
 from app.modules.operations.schemas import OperationCreateRequest
+from app.modules.placement.services import PREVIEW_UID
 from app.modules.placement.services import PlacementService
 from app.modules.workloads.services import WorkloadService
 from app.modules.operations.services import OperationService
@@ -36,13 +40,17 @@ DEVICE_CLASS = "h100-80gb-sxm"
 
 
 async def seed_demand(sessions) -> None:
-    """A tenant, project, priority class, artifact and recipe asking for four devices."""
+    """A tenant, project, priority class and the artifact everything here serves.
+
+    The four-device shape used to be a `Recipe` seeded alongside them, which is
+    what a preview named. Nothing is seeded in its place: a preview states the
+    shape it is asking about, which is the same question a recipe made askable and
+    the one a create form has. `seed_workload` exists for the tests that need a
+    workload row to hang something off.
+    """
     async with sessions.begin() as db:
         await db.execute(
-            text(
-                "TRUNCATE bind_tenant, bind_priority_class, bind_policy, demand_artifact, demand_recipe"
-                " RESTART IDENTITY CASCADE"
-            )
+            text("TRUNCATE bind_tenant, bind_priority_class, bind_policy, demand_artifact RESTART IDENTITY CASCADE")
         )
         tenant, project, priority, artifact = (uuid.uuid4() for _ in range(4))
         await db.execute(
@@ -70,15 +78,38 @@ async def seed_demand(sessions) -> None:
             ),
             {"id": artifact, "uid": ids.new_uid(ids.ARTIFACT)},
         )
+
+
+async def seed_workload(db, name: str, digest_seed: str) -> uuid.UUID:
+    """One workload row carrying the serving configuration, written directly.
+
+    Not through `WorkloadService`, deliberately: creating a workload expands it
+    onto a cluster, and a subject seeded that way would be holding the very
+    capacity the test is about to ask after.
+    """
+    artifact = (await db.execute(text("select id from demand_artifact"))).scalar_one()
+    project = (await db.execute(text("select id from bind_project"))).scalar_one()
+    priority = (await db.execute(text("select id from bind_priority_class"))).scalar_one()
+    return (
         await db.execute(
             text(
-                "insert into demand_recipe"
-                " (id, uid, artifact_id, name, version, engine, engine_version, context_length,"
-                "  device_class, device_count)"
-                " values (:id, :uid, :artifact, 'llama-70b-vllm', 1, 'vllm', '0.9.1', 8192, :cls, 4)"
+                "insert into demand_workload"
+                " (uid, name, kind, project_id, priority_class_id, artifact_id, serving_digest,"
+                "  engine, engine_version, context_length, device_class, device_count)"
+                " values (:uid, :name, 'service', :project, :priority, :artifact, :digest,"
+                "  'vllm', '0.9.1', 8192, :cls, 4) returning id"
             ),
-            {"id": uuid.uuid4(), "uid": ids.new_uid(ids.RECIPE), "artifact": artifact, "cls": DEVICE_CLASS},
+            {
+                "uid": ids.new_uid(ids.WORKLOAD),
+                "name": name,
+                "project": project,
+                "priority": priority,
+                "artifact": artifact,
+                "digest": "svg_" + digest_seed * 64,
+                "cls": DEVICE_CLASS,
+            },
         )
+    ).scalar_one()
 
 
 async def seed_supply(
@@ -142,22 +173,7 @@ async def hold_one_device(sessions, cluster: uuid.UUID) -> None:
     """
     async with sessions.begin() as db:
         project = (await db.execute(text("select id from bind_project"))).scalar_one()
-        priority = (await db.execute(text("select id from bind_priority_class"))).scalar_one()
-        recipe = (await db.execute(text("select id from demand_recipe"))).scalar_one()
-        workload = (
-            await db.execute(
-                text(
-                    "insert into demand_workload (uid, name, kind, project_id, priority_class_id, recipe_id)"
-                    " values (:uid, 'holder', 'service', :project, :priority, :recipe) returning id"
-                ),
-                {
-                    "uid": ids.new_uid(ids.WORKLOAD),
-                    "project": project,
-                    "priority": priority,
-                    "recipe": recipe,
-                },
-            )
-        ).scalar_one()
+        workload = await seed_workload(db, "holder", "b")
         allocation = (
             await db.execute(
                 text(
@@ -181,8 +197,40 @@ async def hold_one_device(sessions, cluster: uuid.UUID) -> None:
         )
 
 
+def four_devices(**overrides) -> PlacementShapeRequest:
+    """The shape a preview asks about, stated rather than named.
+
+    A recipe was a declared object you could ask about before any workload
+    referenced it, and this is what asking looks like without one. Field for field
+    the workload columns `serving()` sets, because a preview that described a
+    shape differently from the object it previews would answer about something the
+    create then refuses.
+    """
+    fields = {"device_class": DEVICE_CLASS, "device_count": 4}
+    fields.update(overrides)
+    return PlacementShapeRequest(**fields)
+
+
+def serving(**overrides) -> WorkloadServingRequest:
+    """The four-device vLLM configuration every workload here asks for.
+
+    Stated on the create rather than named, because there is no shared serving
+    object to point at any more. Two of these produce the same `serving_digest`,
+    which is the whole of what naming a recipe used to buy.
+    """
+    fields = {
+        "artifact": "llama-70b",
+        "engine": "vllm",
+        "engine_version": "0.9.1",
+        "context_length": 8192,
+        "shape": ShapeSchema(device_class=DEVICE_CLASS, device_count=4),
+    }
+    fields.update(overrides)
+    return WorkloadServingRequest(**fields)
+
+
 def create(**overrides) -> WorkloadCreateRequest:
-    fields = {"recipe": "llama-70b-vllm", "project": "core", "name": "llama-prod"}
+    fields = {"serving": serving(), "project": "core", "name": "llama-prod"}
     fields.update(overrides)
     return WorkloadCreateRequest(**fields)
 
@@ -192,22 +240,88 @@ def scale(total: int) -> dict:
     return {"min_scale": total, "desired_scale": total, "max_scale": total}
 
 
-async def test_placement_takes_the_tightest_fit_of_the_clusters_that_work(sessions) -> None:
-    """Best fit, not most free — the roomiest cluster is only the tiebreak.
+async def test_placement_takes_the_roomiest_of_the_clusters_that_work(sessions) -> None:
+    """The roomiest, and every cluster that could have held it says why it did not win.
 
-    Filling the four-device cluster leaves the eight-device one whole, and a large
-    contiguous block kept whole is what the next big request needs.
+    Tightness is scoped to a topology domain and nothing else — `_rank` in the
+    engine, and the alternation tests beside it in `test_placement.py`. Best-fit
+    packing across whole clusters drains one before touching the next, which sends
+    every small workload to the same cluster until it is full; an aggregate fit
+    therefore ranks on room and a gang still takes the smallest fabric that holds
+    it. This suite asserted the old rule and the engine changed under it.
     """
     await seed_demand(sessions)
     await seed_supply(sessions, "small", devices=4)
     await seed_supply(sessions, "large", devices=8)
 
     async with sessions() as db:
-        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
 
     assert decision.placed
-    assert decision.cluster_name == "small"
+    assert decision.cluster_name == "large"
     assert {v.cluster_name for v in decision.verdicts} == {"small", "large"}
+
+
+async def test_a_preview_answers_about_a_shape_no_workload_declares(sessions) -> None:
+    """The question a create form asks, and the one a recipe used to make askable.
+
+    A recipe was a declared object you could ask about before anything referenced
+    it. Deleting it briefly left the endpoint able to answer only about workloads
+    that already exist, which is the wrong half of the question: somebody choosing
+    a fit wants the verdict BEFORE they commit, not after.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "alpha", devices=8)
+
+    async with sessions() as db:
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
+
+    assert await fetch(sessions, "select uid from demand_workload") == []
+    assert decision.placed
+    assert decision.request == PREVIEW_UID, "a decision must not name a workload that will never exist"
+
+
+async def test_a_preview_names_exactly_one_of_a_workload_and_a_shape(sessions) -> None:
+    """Both is two questions and neither is none; either way there is nothing to place."""
+    await seed_demand(sessions)
+    async with sessions.begin() as db:
+        await seed_workload(db, "llama-70b-vllm", "a")
+
+    async with sessions() as db:
+        with pytest.raises(Invalid):
+            await PlacementService(db).preview(PlacementPreviewRequest(project="core"))
+        with pytest.raises(Invalid):
+            await PlacementService(db).preview(
+                PlacementPreviewRequest(workload="llama-70b-vllm", shape=four_devices(), project="core")
+            )
+
+
+async def test_a_shape_and_the_workload_that_carries_it_get_the_same_answer(sessions) -> None:
+    """One scheduler, asked two ways. This is what stops the two forms drifting apart.
+
+    The shape form exists so a fit can be previewed before it is created; if it
+    answered differently from the workload it becomes, the preview would be
+    advertising a placement the create does not make. Everything but the id the
+    decision is filed under has to match — same cluster, same verdicts, same
+    reasons, in the same order.
+    """
+    await seed_demand(sessions)
+    await seed_supply(sessions, "small", devices=4)
+    await seed_supply(sessions, "large", devices=8)
+    async with sessions.begin() as db:
+        await seed_workload(db, "llama-70b-vllm", "a")
+
+    async with sessions() as db:
+        svc = PlacementService(db)
+        by_shape = await svc.preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
+        by_workload = await svc.preview(PlacementPreviewRequest(workload="llama-70b-vllm", project="core"))
+
+    assert by_shape.request != by_workload.request, "the two forms differ in what the decision is filed under"
+    assert (by_shape.placed, by_shape.cluster_name) == (by_workload.placed, by_workload.cluster_name)
+    assert [(v.cluster_name, [r.code for r in v.reasons]) for v in by_shape.verdicts] == [
+        (v.cluster_name, [r.code for r in v.reasons]) for v in by_workload.verdicts
+    ]
+    assert by_shape.summary.removeprefix(by_shape.request) == by_workload.summary.removeprefix(by_workload.request)
 
 
 async def test_a_workload_with_no_cluster_is_expanded_onto_the_one_placement_picked(sessions) -> None:
@@ -318,7 +432,7 @@ async def test_the_reason_a_cluster_lost_survives_into_the_expansion(sessions) -
     await seed_supply(sessions, "tight", devices=2)
 
     async with sessions() as db:
-        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
 
     assert not decision.placed
     verdict = decision.verdicts[0]
@@ -456,7 +570,7 @@ async def test_a_device_held_by_another_workload_is_not_free(sessions) -> None:
     await hold_one_device(sessions, cluster)
 
     async with sessions() as db:
-        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
 
     assert not decision.placed
     assert decision.verdicts[0].free_devices == 3
@@ -497,7 +611,7 @@ async def test_a_quota_ceiling_rules_out_a_cluster_that_has_the_devices(sessions
 
     async with sessions() as db:
         workload = await WorkloadService(db).create(create())
-        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
 
     assert workload.deployments == []
     codes = {r.code for v in decision.verdicts for r in v.reasons}
@@ -518,7 +632,7 @@ async def test_a_cordoned_node_offers_no_capacity(sessions) -> None:
         await db.execute(text("update supply_node set cordoned = true"))
 
     async with sessions() as db:
-        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
 
     assert not decision.placed
     assert decision.verdicts[0].free_devices == 0
@@ -532,7 +646,7 @@ async def test_a_not_ready_node_offers_no_capacity(sessions) -> None:
         await db.execute(text("update supply_node set ready = false, condition = 'not_ready'"))
 
     async with sessions() as db:
-        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
 
     assert not decision.placed
     assert decision.verdicts[0].free_devices == 0
@@ -807,7 +921,7 @@ async def test_the_next_workload_is_told_the_devices_are_promised_and_not_missin
     async with sessions() as db:
         await WorkloadService(db).create(create(name="first", **scale(2)))
     async with sessions() as db:
-        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
 
     assert decision.placed is False
     verdict = next(v for v in decision.verdicts if v.cluster_name == "alpha")
@@ -832,7 +946,7 @@ async def test_a_reservation_shrinks_as_the_cluster_reports_what_it_bound(sessio
     await bind_devices(sessions, cluster, workload.deployments[0].id, count=4)
 
     async with sessions() as db:
-        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
 
     verdict = next(v for v in decision.verdicts if v.cluster_name == "alpha")
     assert verdict.free_devices == 4
@@ -849,7 +963,7 @@ async def test_a_reservation_is_gone_once_the_whole_share_is_bound(sessions) -> 
     await bind_devices(sessions, cluster, workload.deployments[0].id, count=8)
 
     async with sessions() as db:
-        decision = await PlacementService(db).preview(PlacementPreviewRequest(recipe="llama-70b-vllm", project="core"))
+        decision = await PlacementService(db).preview(PlacementPreviewRequest(shape=four_devices(), project="core"))
 
     verdict = next(v for v in decision.verdicts if v.cluster_name == "alpha")
     assert verdict.free_devices == 0

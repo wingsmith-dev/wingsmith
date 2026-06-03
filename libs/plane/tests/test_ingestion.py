@@ -318,7 +318,7 @@ def test_replica_upsert_targets_the_natural_key() -> None:
 
 
 def test_replica_stores_the_engine_version_and_not_the_engine() -> None:
-    """The engine is the recipe's; the version is what lags during a rollout."""
+    """The engine is the workload's; the version is what lags during a rollout."""
     observed = payload("replica.observed")
     _, params = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, observed))
     values = scalar_params(params)
@@ -954,7 +954,7 @@ def test_a_replayed_stage_does_not_drag_a_serving_deployment_back_to_pending() -
     """The operator's stage memory is per process, so a restart or a fresh hub session replays
     `Accepted` for a deployment that has been serving for a week. The status row is
     last-writer-wins, so applying it overwrote `running 1/1` and the console showed a healthy
-    deployment as waiting for its recipe until the next pass put it back."""
+    deployment as still coming up until the next pass put it back."""
     observed = payload("deployment.observed")
     stage = structs.replace(observed, phase="pending", reason="Accepted", ready_replicas=0)
     serving = _Stored("running", "Serving", "1 of 1 replicas ready", 1, stage.generation)
@@ -1040,18 +1040,22 @@ def test_a_diagnosis_arriving_on_an_unchanged_shortfall_is_news() -> None:
 # --- the served model name on the wire ---------------------------------------
 
 
-def _wire_recipe(**kwargs):
-    from app.db.models import Recipe
-    from app.db.models import Artifact
-    from app.ingestion.desired import _recipe
+def _workload(**kwargs):
+    """A workload carrying the serving configuration a recipe used to hold.
+
+    The name is still the fit — `kimi-k3-mxfp4-tp8-1024k` — because that is the
+    string these tests exist to keep off the wire. It is a workload's name now
+    rather than a recipe's, and it is no more a model id than it was.
+    """
+    from app.db.models import Workload
 
     base = {
-        "uid": "rec_01j9x2ffffffffffffffffffff",
+        "uid": "wkl_01j9x2ffffffffffffffffffff",
         "name": "kimi-k3-mxfp4-tp8-1024k",
-        "version": 1,
         "engine": "vllm",
         "engine_version": "0.6.0",
         "engine_image": None,
+        "frontend_image": None,
         "engine_args": {},
         "quantization": None,
         "dtype": None,
@@ -1064,36 +1068,74 @@ def _wire_recipe(**kwargs):
         "kv_cache_fraction": None,
         "prefix_cache_enabled": True,
         "prefix_cache_config": {},
+        "device_class": "h200",
+        "device_count": 8,
+        "device_memory_mib_min": 0,
         "cpu_cores": None,
         "memory_mib": None,
         "disk_gib": None,
         "labels": {},
         "overlay": {},
+        "serving": {},
+        "serving_digest": "svg_" + "0" * 64,
         "created_at": dt.datetime(2026, 1, 1, tzinfo=dt.UTC),
         "updated_at": None,
     }
-    artifact = Artifact(name="moonshotai/Kimi-K3", digest="sha256:beef")
-    return _recipe(Recipe(**(base | kwargs)), "clu_1", "art_1", artifact)
+    return Workload(**(base | kwargs))
+
+
+def _kimi_artifact():
+    from app.db.models import Artifact
+
+    return Artifact(name="moonshotai/Kimi-K3", digest="sha256:beef", slug="moonshotai/kimi-k3")
+
+
+def _wire_serving(**kwargs):
+    """The `ServingSpec` inlined on `deployment.desired`, built the way the sender builds it."""
+    from app.ingestion.desired import _serving
+
+    return _serving(_workload(**kwargs))
+
+
+def _wire_served_model(**kwargs):
+    """The `served_model_name` the sender puts on the frame beside that spec.
+
+    It is resolved on the deployment rather than inside the serving block: the
+    block is what renders, and the name is what a caller asks for.
+    """
+    from app.core.serving import declared_served_model
+
+    return declared_served_model(_workload(**kwargs), _kimi_artifact())
 
 
 def test_the_wire_carries_the_artifact_slug_when_no_one_declared_a_name() -> None:
-    """The recipe's own name describes the fit and must not reach a caller."""
-    assert _wire_recipe().served_model_name == "moonshotai/kimi-k3"
+    """The name that describes the fit must not reach a caller."""
+    assert _wire_served_model() == "moonshotai/kimi-k3"
 
 
-def test_a_recipes_declaration_is_what_the_wire_carries() -> None:
-    assert _wire_recipe(served_model_name="acme/kimi").served_model_name == "acme/kimi"
+def test_the_workload_cannot_declare_a_name_over_the_wire() -> None:
+    """The frame carries the artifact's slug and there is no second field to disagree with it.
+
+    A workload used to be able to declare its own `served_model_name`, which the sender preferred
+    over the artifact. Two writeable spellings of one public identifier is how the id a client
+    sends and the id a frontend registered come apart, and that failure is invisible from both
+    ends: a healthy deployment behind an open tunnel answering `model_not_found` from inside the
+    cluster.
+    """
+    from app.db.models import Workload
+
+    assert "served_model_name" not in Workload.__table__.columns
 
 
-def test_the_wire_carries_the_recipes_own_frontend_image() -> None:
-    """A model that needs its own frontend build says so on the recipe, and the
+def test_the_wire_carries_the_workloads_own_frontend_image() -> None:
+    """A model that needs its own frontend build says so on the workload, and the
     frame is where the operator reads it: the plane declares the override and the
     cluster renders it, the same way it does for the engine image."""
     pinned = "ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-hgr2"
-    assert _wire_recipe(frontend_image=pinned).frontend_image == pinned
+    assert _wire_serving(frontend_image=pinned).frontend_image == pinned
 
 
-def test_a_recipe_with_no_frontend_image_sends_nothing_not_the_engine_image() -> None:
+def test_a_workload_with_no_frontend_image_sends_nothing_not_the_engine_image() -> None:
     """Empty is a real answer and it means the cluster decides.
 
     Kimi K3 is why the field is not one field: the tokenizer fix is compiled into
@@ -1103,7 +1145,7 @@ def test_a_recipe_with_no_frontend_image_sends_nothing_not_the_engine_image() ->
     not published from the engine's repository it would be an ImagePullBackOff.
     """
     engine = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
-    wire = _wire_recipe(engine_image=engine)
+    wire = _wire_serving(engine_image=engine)
     assert wire.engine_image == engine
     assert wire.frontend_image is None
 
@@ -1114,6 +1156,17 @@ def test_the_engine_args_hatch_is_left_off_the_wire() -> None:
     Resolving it here as well would put the same value on the frame twice, and two
     copies of one fact are two things that can disagree.
     """
-    wire = _wire_recipe(engine_args={"served-model-name": "acme/kimi-hotfix"})
-    assert wire.served_model_name == "moonshotai/kimi-k3"
-    assert wire.engine_args["served-model-name"] == "acme/kimi-hotfix"
+    args = {"served-model-name": "acme/kimi-hotfix"}
+    assert _wire_served_model(engine_args=args) == "moonshotai/kimi-k3"
+    assert _wire_serving(engine_args=args).engine_args["served-model-name"] == "acme/kimi-hotfix"
+
+
+def test_the_serving_block_carries_the_digest_that_names_the_configuration() -> None:
+    """The frame that replaced `recipe.desired` still names what it is, by content.
+
+    The cluster does not act on it. It is carried so that a replica reporting
+    what it runs, a benchmark run recording what it measured, and this frame all
+    spell the configuration the same way — which the recipe id could not, being a
+    handle on a row somebody could edit underneath all three.
+    """
+    assert _wire_serving().digest == "svg_" + "0" * 64

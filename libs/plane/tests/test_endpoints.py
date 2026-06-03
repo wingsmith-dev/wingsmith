@@ -1,5 +1,8 @@
+import uuid
 import inspect
 import datetime as dt
+
+from types import SimpleNamespace
 
 import pytest
 
@@ -21,6 +24,7 @@ from app.modules.endpoints.services import SERVING_PHASES
 from app.modules.endpoints.services import EndpointService
 from app.modules.endpoints.services import _revision
 from app.modules.endpoints.services import check_shape
+from app.modules.endpoints.services import check_surface
 from app.modules.endpoints.services import check_targets
 from app.modules.endpoints.repository import EndpointRepository
 
@@ -83,9 +87,24 @@ def test_the_public_name_and_the_owning_project_are_not_patchable():
     assert "project" not in fields
 
 
-def test_display_name_can_be_cleared_by_null_but_absence_leaves_it_alone():
-    assert EndpointUpdateRequest(display_name=None).to_dict(exclude_unset=True) == {"display_name": None}
+def test_the_public_id_is_patchable_and_the_handle_is_not():
+    """An endpoint has two names and only one of them may move.
+
+    `name` is the handle — URLs, metric labels, every link the console holds — and it is absent
+    from the update request by construction. `slug` is what a client sends, and correcting it is
+    the whole reason the two are separate: it costs one gateway poll and touches no cluster.
+
+    There used to be a third, `display_name`, and a fourth reported on the way out. Four spellings
+    of one question is what this asserts is gone.
+    """
+    assert EndpointUpdateRequest(slug="acme/llama-70b").to_dict(exclude_unset=True) == {"slug": "acme/llama-70b"}
     assert EndpointUpdateRequest().to_dict(exclude_unset=True) == {}
+    assert "name" not in EndpointUpdateRequest.__struct_fields__
+    assert "display_name" not in EndpointUpdateRequest.__struct_fields__
+    assert set(EndpointSchema.__struct_fields__) >= {"name", "slug"}
+    assert "model_slug" not in EndpointSchema.__struct_fields__
+    assert "resolved_model_slug" not in EndpointSchema.__struct_fields__
+    assert "display_name" not in EndpointSchema.__struct_fields__
 
 
 def test_failover_order_is_an_ordered_list_of_deployments():
@@ -184,13 +203,19 @@ def test_list_query_filters_compile_into_one_statement(repo):
     assert "ORDER BY demand_endpoint.seq ASC" in text
 
 
-def test_artifact_filter_walks_targets_to_deployments_to_workloads_to_recipes_as_a_subquery(repo):
-    """The recipe is the workload's; a deployment is that workload on one cluster."""
+def test_artifact_filter_walks_targets_to_deployments_to_workloads_as_a_subquery(repo):
+    """The artifact is the workload's; a deployment is that workload on one cluster.
+
+    One hop shorter than it was. The walk used to end at the recipe, because the
+    recipe held the artifact; the workload holds it now, so there is nothing left
+    between the deployment and the weights it serves.
+    """
     text = sql(repo.list_query(limit=10, artifact="llama-70b"))
     assert "demand_endpoint.id IN (SELECT demand_endpoint_target.endpoint_id" in text
     assert "JOIN demand_deployment ON demand_endpoint_target.deployment_id = demand_deployment.id" in text
     assert "JOIN demand_workload ON demand_deployment.workload_id = demand_workload.id" in text
-    assert "JOIN demand_recipe ON demand_workload.recipe_id = demand_recipe.id" in text
+    assert "demand_workload.artifact_id IN" in text
+    assert "demand_recipe" not in text
     assert "demand_artifact.name = " in text
 
 
@@ -263,17 +288,16 @@ class FakeRepo:
         return self.rows
 
 
-from app.core.exceptions import Invalid
-from app.modules.endpoints.services import check_surface
-
-
 class FakeEndpoint:
     id = 1
 
-    def __init__(self, uid="end_1", name="chat", enabled=True, model_slug=None, surface=None) -> None:
+    def __init__(self, uid="end_1", name="chat", enabled=True, slug="", surface=None) -> None:
         self.uid = uid
         self.name = name
-        self.model_slug = model_slug
+        # Defaulted to the name so that a fake built without an opinion behaves like a real
+        # endpoint created without one: a slug is never empty on a row, because the create path
+        # falls back to the artifact and then to the name before it writes.
+        self.slug = slug or name
         self.enabled = enabled
         self.visibility = "public"
         self.routing_strategy = "weighted"
@@ -322,26 +346,44 @@ class FakeServing:
         self.updated_at = None
 
 
-class FakeRecipe:
-    """Named the way the console names a derived one: for the fit, not the model."""
+DIGEST = "svg_" + "a" * 64
 
-    def __init__(self, name="llama-3-3-70b-instruct-fp8-tp2-32k", engine_args=None, served_model_name=None) -> None:
+
+class FakeWorkload:
+    """Named the way the console names a derived fit: for the shape, not the model.
+
+    It carries what a `FakeRecipe` used to as well as what a workload already did.
+    The serving configuration moved onto the workload, so the `engine_args` hatch,
+    the declared name and the digest the revision is built from are one object's
+    fields now rather than two objects' — and the fit-shaped name is still here,
+    because it is the string these tests exist to keep off the routing table.
+    """
+
+    def __init__(
+        self,
+        name="llama-3-3-70b-instruct-fp8-tp2-32k",
+        engine_args=None,
+        served_model_name=None,
+        serving_digest=DIGEST,
+    ) -> None:
         self.name = name
         self.engine_args = engine_args or {}
         self.served_model_name = served_model_name
+        self.serving_digest = serving_digest
         self.created_at = EPOCH
         self.updated_at = None
 
 
-class FakeWorkload:
-    def __init__(self, served_model_name=None) -> None:
-        self.served_model_name = served_model_name
-
-
 class FakeArtifact:
-    def __init__(self, name="meta-llama/Llama-3.3-70B-Instruct", digest="sha256:beef") -> None:
+    def __init__(
+        self,
+        name="meta-llama/Llama-3.3-70B-Instruct",
+        digest="sha256:beef",
+        slug="meta-llama/llama-3.3-70b-instruct",
+    ) -> None:
         self.name = name
         self.digest = digest
+        self.slug = slug
         self.created_at = EPOCH
         self.updated_at = None
 
@@ -349,9 +391,7 @@ class FakeArtifact:
 class FakeRow(tuple):
     """A `Row` is a tuple with labels; the resolution reads it positionally."""
 
-    def __new__(
-        cls, endpoint, target, deployment, cluster, serving, quota=None, recipe=None, artifact=None, workload=None
-    ):
+    def __new__(cls, endpoint, target, deployment, cluster, serving, quota=None, artifact=None, workload=None):
         return super().__new__(
             cls,
             (
@@ -361,7 +401,6 @@ class FakeRow(tuple):
                 cluster,
                 serving,
                 quota,
-                recipe if recipe is not None else FakeRecipe(),
                 artifact if artifact is not None else FakeArtifact(),
                 workload if workload is not None else FakeWorkload(),
             ),
@@ -385,7 +424,7 @@ def upstream_row(phase="active", endpoint=None, **kwargs) -> FakeRow:
     )
 
 
-def tunnelled_row(phase="active", endpoint=None, recipe=None, workload=None, **kwargs) -> FakeRow:
+def tunnelled_row(phase="active", endpoint=None, workload=None, artifact=None, **kwargs) -> FakeRow:
     """A cluster that publishes no serving address, which is every cluster we run."""
     return FakeRow(
         endpoint or FakeEndpoint(),
@@ -393,7 +432,7 @@ def tunnelled_row(phase="active", endpoint=None, recipe=None, workload=None, **k
         FakeDeployment(**kwargs),
         FakeCluster(phase=phase),
         None,
-        recipe=recipe,
+        artifact=artifact,
         workload=workload,
     )
 
@@ -410,8 +449,9 @@ async def test_an_upstream_carries_the_name_the_engine_answers_to():
 
     A client calling the endpoint by name asks the frontend for a model it has
     never heard of. The gateway rewrites `model` to this, and cannot without being
-    told it. The slug rather than the recipe's derived fit name, so that re-fitting
-    the same weights does not rename the model every caller codes against.
+    told it. The slug rather than the workload's derived fit name, so that
+    re-fitting the same weights does not rename the model every caller codes
+    against.
     """
     table = await resolution([tunnelled_row()]).resolved()
     upstream = table.endpoints[0].upstreams[0]
@@ -420,38 +460,48 @@ async def test_an_upstream_carries_the_name_the_engine_answers_to():
 
 
 @pytest.mark.asyncio
-async def test_a_workloads_declared_name_beats_the_recipes():
-    """The workload is the object a person creates; a recipe is shared by many."""
+async def test_the_engines_name_is_the_artifacts_slug_and_the_workload_cannot_overrule_it():
+    """There used to be a ladder here: the workload's declaration, then the recipe's, then a slug
+    the plane re-derived at read time. It is one column now, on the artifact.
+
+    The ladder is what broke the fleet. The plane's derivation could not produce an organisation —
+    it read the artifact's bare `name` — while the operator started every engine on a `--model`
+    taken from the artifact's location, which had one. The gateway rewrote to the plane's answer
+    and the frontend had registered the operator's, so a healthy deployment behind an open tunnel
+    answered `model_not_found` from inside the cluster.
+
+    A workload declaring a different name is not an override any more, because there is nothing
+    left to override: the string is a fact about the weights.
+    """
     row = tunnelled_row(
-        recipe=FakeRecipe(served_model_name="acme/llama-70b"),
-        workload=FakeWorkload(served_model_name="acme/llama-70b-canary"),
+        workload=FakeWorkload(served_model_name="acme/llama-70b"),
+        artifact=FakeArtifact(slug="meta-llama/llama-3.3-70b-instruct"),
     )
     table = await resolution([row]).resolved()
-    assert table.endpoints[0].upstreams[0].served_model_name == "acme/llama-70b-canary"
+    assert table.endpoints[0].upstreams[0].served_model_name == "meta-llama/llama-3.3-70b-instruct"
 
 
 @pytest.mark.asyncio
-async def test_a_recipes_declared_name_beats_the_derived_slug():
-    row = tunnelled_row(recipe=FakeRecipe(served_model_name="acme/llama-70b"))
-    table = await resolution([row]).resolved()
-    assert table.endpoints[0].upstreams[0].served_model_name == "acme/llama-70b"
-
-
-@pytest.mark.asyncio
-async def test_an_explicit_served_model_name_wins_over_the_recipe_name():
+async def test_an_explicit_served_model_name_wins_over_the_declared_name():
     """`engine_args` is the operator saying so, and it renders onto the engine."""
-    recipe = FakeRecipe(engine_args={"served_model_name": "llama-canary"})
-    table = await resolution([tunnelled_row(recipe=recipe)]).resolved()
+    workload = FakeWorkload(engine_args={"served_model_name": "llama-canary"})
+    table = await resolution([tunnelled_row(workload=workload)]).resolved()
     assert table.endpoints[0].upstreams[0].served_model_name == "llama-canary"
 
 
 @pytest.mark.asyncio
-async def test_two_clusters_running_different_recipes_carry_their_own_served_names():
-    """Why this rides the upstream and not the endpoint: there is no single answer."""
+async def test_two_clusters_serving_different_weights_carry_their_own_served_names():
+    """Why this rides the upstream and not the endpoint: there is no single answer.
+
+    One public name over two deployments of *different* artifacts — a quantised build beside a
+    full-precision one — is the canary case, and each engine answers to its own weights' slug.
+    That is why the routing table carries the name per upstream: an endpoint-level field would
+    have to pick one and rewrite half the traffic to a string nothing had registered.
+    """
     endpoint = FakeEndpoint()
     rows = [
-        tunnelled_row(endpoint=endpoint, recipe=FakeRecipe(served_model_name="acme/llama-fp8")),
-        tunnelled_row(endpoint=endpoint, recipe=FakeRecipe(served_model_name="acme/llama-bf16")),
+        tunnelled_row(endpoint=endpoint, artifact=FakeArtifact(slug="acme/llama-fp8")),
+        tunnelled_row(endpoint=endpoint, artifact=FakeArtifact(slug="acme/llama-bf16")),
     ]
     table = await resolution(rows).resolved()
     served = [u.served_model_name for u in table.endpoints[0].upstreams]
@@ -459,15 +509,37 @@ async def test_two_clusters_running_different_recipes_carry_their_own_served_nam
 
 
 @pytest.mark.asyncio
-async def test_renaming_a_recipes_served_model_moves_the_revision_the_gateway_polls():
-    """Otherwise a gateway behind a 304 keeps rewriting to a name that is gone."""
+async def test_renaming_the_served_model_moves_the_revision_the_gateway_polls():
+    """Otherwise a gateway behind a 304 keeps rewriting to a name that is gone.
+
+    Nothing is re-stamped here, and that is the assertion. The revision used to take a row's
+    `updated_at`, which moved for edits no engine ever sees and did not move for the rename
+    itself. The third term is content now: the serving digests and the resolved names themselves.
+
+    The rename is on the artifact, because that is where the name lives. A slug corrected on an
+    artifact that three clusters serve has to reach every gateway on the next poll, and the row
+    the gateway would otherwise watch — the endpoint's — has not been touched at all.
+    """
     before = await resolution([tunnelled_row()]).resolved()
-    renamed = tunnelled_row()
-    renamed[6].served_model_name = "acme/llama-70b"
-    renamed[6].updated_at = EPOCH + dt.timedelta(hours=1)
+    renamed = tunnelled_row(artifact=FakeArtifact(slug="acme/llama-70b"))
+    assert renamed[6].updated_at is None
     after = await resolution([renamed]).resolved()
     assert after.revision != before.revision
     assert after.endpoints[0].upstreams[0].served_model_name == "acme/llama-70b"
+
+
+@pytest.mark.asyncio
+async def test_a_configuration_change_alone_moves_the_revision():
+    """The other half of the same term: the digest is what a re-fit changes.
+
+    A workload re-fitted at a different tensor degree serves the same model under
+    the same name, so the resolved names say nothing happened. The digest does,
+    and a gateway sitting behind a 304 would otherwise never re-read the table.
+    """
+    before = await resolution([tunnelled_row()]).resolved()
+    refitted = tunnelled_row(workload=FakeWorkload(serving_digest="svg_" + "b" * 64))
+    after = await resolution([refitted]).resolved()
+    assert after.revision != before.revision
 
 
 @pytest.mark.asyncio
@@ -566,8 +638,8 @@ async def test_the_hyphenated_flag_is_what_overrides_the_served_name():
     Reading only the underscore form meant a correctly-spelled override was
     invisible to the plane while being the name the engine actually answered to.
     """
-    recipe = FakeRecipe(engine_args={"served-model-name": "llama-canary"})
-    table = await resolution([tunnelled_row(recipe=recipe)]).resolved()
+    workload = FakeWorkload(engine_args={"served-model-name": "llama-canary"})
+    table = await resolution([tunnelled_row(workload=workload)]).resolved()
     assert table.endpoints[0].upstreams[0].served_model_name == "llama-canary"
 
 
@@ -579,30 +651,110 @@ async def test_the_resolved_name_is_the_slug_because_that_is_what_the_gateway_ro
     endpoint, so reporting the slug here is the entire mechanism by which a public
     model id can be corrected without an engine flag or a pod respec.
     """
-    endpoint = FakeEndpoint(name="kimi-k3-overhead-test", model_slug="moonshotai/kimi-k3")
+    endpoint = FakeEndpoint(name="kimi-k3-overhead-test", slug="moonshotai/kimi-k3")
     table = await resolution([tunnelled_row(endpoint=endpoint)]).resolved()
     assert table.endpoints[0].name == "moonshotai/kimi-k3"
 
 
+class _CreatedRow(tuple):
+    """What `repo.get` hands back: the endpoint, labelled with its project."""
+
+    @property
+    def project_uid(self):
+        return "prj_1"
+
+
+class FakeCreateRepo:
+    """Enough of the repository for `create` to run with no database under it."""
+
+    def __init__(self, artifact_slug="", deployment=None) -> None:
+        self.artifact_slug_value = artifact_slug
+        self.deployment = deployment
+        self.added = None
+
+    async def project_by_ref(self, ref):
+        return SimpleNamespace(id=uuid.uuid4(), uid="prj_1")
+
+    async def deployments_by_ref(self, refs):
+        if self.deployment is None:
+            return {}
+        return {ref: self.deployment for ref in refs}
+
+    async def artifact_slug(self, deployment_id):
+        return self.artifact_slug_value
+
+    async def add(self, endpoint):
+        endpoint.created_at = EPOCH
+        self.added = endpoint
+        return endpoint
+
+    async def get(self, ref):
+        return _CreatedRow((self.added,))
+
+    async def deployment_uids(self, ids):
+        return {}
+
+
+def creating(repo) -> EndpointService:
+    svc = EndpointService.__new__(EndpointService)
+    svc.db = SimpleNamespace(commit=_noop, rollback=_noop, flush=_noop)
+    svc.repo = repo
+    return svc
+
+
+async def _noop():
+    return None
+
+
 @pytest.mark.asyncio
-async def test_an_endpoint_with_no_slug_still_routes_on_its_name():
-    endpoint = FakeEndpoint(name="chat")
-    table = await resolution([tunnelled_row(endpoint=endpoint)]).resolved()
-    assert table.endpoints[0].name == "chat"
+async def test_an_endpoint_that_declares_no_slug_takes_the_name_of_the_weights_behind_it():
+    """The default is the point of the field, not a convenience.
+
+    An endpoint in front of one model answers to that model's name, and making a
+    caller type it a second time is exactly how the public id and the id the
+    engine registered come to differ — which is not a visible failure but a 404
+    from inside the cluster with the deployment healthy and the tunnel open.
+    """
+    repo = FakeCreateRepo(artifact_slug="moonshotai/kimi-k3", deployment=SimpleNamespace(id=uuid.uuid4()))
+    created = await creating(repo).create(
+        EndpointCreateRequest(name="kimi-k3-overhead-test", project="acme", targets=[target()])
+    )
+    assert created.slug == "moonshotai/kimi-k3"
+
+
+@pytest.mark.asyncio
+async def test_an_endpoint_with_nothing_to_derive_a_slug_from_still_routes_on_its_name():
+    """The floor, and why the column is never null: a route needs a key.
+
+    An endpoint with no targets yet has no weights to read a name off, and an
+    empty slug would publish a route on the empty string.
+    """
+    created = await creating(FakeCreateRepo()).create(EndpointCreateRequest(name="chat", project="acme"))
+    assert created.slug == "chat"
+
+
+@pytest.mark.asyncio
+async def test_a_declared_slug_is_taken_as_an_alias_and_lowercased():
+    repo = FakeCreateRepo(artifact_slug="moonshotai/kimi-k3", deployment=SimpleNamespace(id=uuid.uuid4()))
+    created = await creating(repo).create(
+        EndpointCreateRequest(name="chat", project="acme", slug="Acme/Chat", targets=[target()])
+    )
+    assert created.slug == "acme/chat"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("key", ["--served-model-name", "served-model-name"])
 async def test_the_hatch_is_read_with_or_without_the_leading_dashes(key):
-    """A real recipe holds the dashes, because that is what a command line looks like.
+    """A real workload holds the dashes, because that is what a command line looks like.
 
-    This is the spelling every recipe in the fleet actually carried, and matching
-    the raw key missed all of them. The miss was silent — the plane fell through to
-    the recipe's declared name and published it — so the first symptom was Kimi K3
-    404ing from inside the cluster with a healthy deployment and an open tunnel.
+    This is the spelling every serving configuration in the fleet actually carried,
+    and matching the raw key missed all of them. The miss was silent — the plane
+    fell through to the declared name and published it — so the first symptom was
+    Kimi K3 404ing from inside the cluster with a healthy deployment and an open
+    tunnel.
     """
-    recipe = FakeRecipe(engine_args={key: "moonshotai/kimi-k3"})
-    table = await resolution([tunnelled_row(recipe=recipe)]).resolved()
+    workload = FakeWorkload(engine_args={key: "moonshotai/kimi-k3"})
+    table = await resolution([tunnelled_row(workload=workload)]).resolved()
     assert table.endpoints[0].upstreams[0].served_model_name == "moonshotai/kimi-k3"
 
 

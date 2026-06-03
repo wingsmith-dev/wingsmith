@@ -88,7 +88,7 @@ def test_every_harness_declares_the_levels_it_grades_at():
 
 
 def test_a_probe_suite_has_nothing_to_say_about_a_workload():
-    """A workload is a recipe, not a public surface; there is no endpoint to probe."""
+    """A workload is a serving configuration, not a public surface; there is no endpoint to probe."""
     with pytest.raises(Invalid):
         harnesses.resolve("conformance", harnesses.WORKLOAD)
 
@@ -643,9 +643,9 @@ def test_a_service_tier_is_normalised_and_an_unknown_one_is_refused():
 
 
 def test_coverage_is_homogeneous_only_when_every_entry_agrees():
-    one = {"artifact_id": "art_1", "recipe_id": "rec_1", "recipe_version": 3, "deployment_id": "dep_1"}
+    one = {"artifact_id": "art_1", "serving_digest": "svg_" + "a" * 64, "deployment_id": "dep_1"}
     same = dict(one, deployment_id="dep_2")
-    other = dict(one, recipe_version=4)
+    other = dict(one, serving_digest="svg_" + "b" * 64)
     assert homogeneous([one, same]) is True
     assert homogeneous([one, other]) is False
     assert homogeneous([]) is True

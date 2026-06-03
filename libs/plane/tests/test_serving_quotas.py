@@ -43,6 +43,7 @@ from app.modules.quotas.services import validate_serving
 from app.modules.quotas.services import output_length_params
 from app.modules.endpoints.schemas import ResolvedEndpointSchema
 from app.modules.quotas.repository import ServingQuotaRepository
+from app.modules.endpoints.services import _served
 from app.modules.endpoints.services import _revision_of
 from app.modules.endpoints.repository import EndpointRepository
 
@@ -474,8 +475,30 @@ def test_a_withdrawn_commitment_moves_the_revision_even_when_it_was_not_the_newe
 
 def test_the_routing_tables_revision_learned_the_same_lesson():
     later = EPOCH + dt.timedelta(days=1)
-    assert _revision_of([EPOCH, later]) != _revision_of([later])
-    assert _revision_of([]) == "0-0"
+    served = ["acme/llama-70b"]
+    assert _revision_of([EPOCH, later], served) != _revision_of([later], served)
+    assert _revision_of([], served) == f"0-0-{_served(served)}"
+
+
+def test_the_revision_moves_when_what_the_engines_answer_to_moves():
+    """The third term is content, and it is the only one that can see this change.
+
+    Renaming nothing and restamping nothing, a resolution whose engines now answer
+    to a different model id is a different routing table: the gateway rewrites an
+    inbound `model` to that string, so a gateway holding the old one behind a `304`
+    rewrites to a name the engine was never told to answer to.
+    """
+    stamps = [EPOCH]
+    assert _revision_of(stamps, ["acme/llama-70b"]) != _revision_of(stamps, ["acme/llama-8b"])
+
+
+def test_the_revision_depends_on_the_served_set_and_not_on_the_row_order():
+    """Two resolutions of one table must agree, however the rows came back."""
+    stamps = [EPOCH]
+    one = _revision_of(stamps, ["acme/llama-70b", "acme/llama-8b"])
+    other = _revision_of(stamps, ["acme/llama-8b", "acme/llama-70b"])
+    assert one == other
+    assert _revision_of(stamps, ["acme/llama-70b", "acme/llama-70b"]) == _revision_of(stamps, ["acme/llama-70b"])
 
 
 def test_a_stamp_prefers_the_last_write_and_survives_a_missing_row():

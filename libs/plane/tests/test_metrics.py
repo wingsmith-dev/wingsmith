@@ -364,33 +364,52 @@ def test_answer_distinguishes_absent_from_zero():
     assert "unavailable" in MetricsSchema.__struct_fields__
 
 
-class FakeRecipe:
-    def __init__(self, name: str, engine_args: dict | None = None, served_model_name: str | None = None) -> None:
+class FakeWorkload:
+    def __init__(self, name: str, engine_args: dict | None = None) -> None:
         self.name = name
         self.engine_args = engine_args or {}
-        self.served_model_name = served_model_name
 
 
 class FakeArtifact:
-    def __init__(self, name: str, digest: str = "sha256:beef") -> None:
+    def __init__(self, name: str, slug: str = "", digest: str = "sha256:beef") -> None:
         self.name = name
+        self.slug = slug
         self.digest = digest
 
 
-def test_served_model_prefers_the_operators_explicit_name():
-    recipe = FakeRecipe("gemma-4-31b-it", {"served_model_name": "gemma-canary"})
-    assert served_model(recipe, FakeArtifact("google/gemma-4-31B-it")) == "gemma-canary"
+def test_served_model_prefers_the_operators_explicit_flag():
+    """`engine_args` still wins, because it wins on the command line.
+
+    The operator renders the derived flags and then lays `engine_args` over them, so a plane that
+    decided otherwise would be publishing a name the running process does not answer to. An escape
+    hatch that loses to a default is not one.
+    """
+    workload = FakeWorkload("gemma-4-31b-it", {"served_model_name": "gemma-canary"})
+    assert served_model(workload, FakeArtifact("Gemma 4 31B", "google/gemma-4-31b-it")) == "gemma-canary"
 
 
-def test_served_model_falls_back_to_the_recipes_declaration_before_the_artifact():
-    """The declared name is the operator's; the slug is only what nobody declared."""
-    recipe = FakeRecipe("gemma-4-31b-it-fp8-tp2-32k", served_model_name="acme/gemma")
-    assert served_model(recipe, FakeArtifact("google/gemma-4-31B-it")) == "acme/gemma"
+def test_served_model_is_the_artifacts_slug():
+    """One column, read. The workload has nothing to say about it any more.
+
+    It used to be a ladder — the workload's declared name, then the recipe's, then a slug the
+    plane re-derived from the artifact's bare `name` at read time. The derivation could not
+    produce an organisation, because the organisation is only ever written in the location URI,
+    so the plane published `gemma-4-31b-it` while the engine had been started on
+    `--model google/gemma-4-31B-it` and registered itself accordingly.
+    """
+    assert served_model(FakeWorkload(""), FakeArtifact("Qwen3.8 27B", "qwen/qwen3.8-27b")) == "qwen/qwen3.8-27b"
 
 
-def test_served_model_uses_the_artifact_slug_when_nothing_declares_a_name():
-    """Lowercased, organisation kept: `Qwen/Qwen3.8-27B` is not a model id a caller types."""
-    assert served_model(FakeRecipe(""), FakeArtifact("Qwen/Qwen3.8-27B")) == "qwen/qwen3.8-27b"
+def test_served_model_falls_back_to_the_workload_name_when_the_artifact_has_no_slug():
+    """A bad answer that is meant to look like one, for an artifact registered before slugs.
+
+    It is a workload's name where a model id belongs, which reads wrong on the routing table and
+    is supposed to. Returning empty instead would render `--served-model-name ` and a frontend
+    that registers nothing at all.
+    """
+    assert served_model(FakeWorkload("gemma-4-31b-it-fp8-tp2-32k"), FakeArtifact("Gemma", "")) == (
+        "gemma-4-31b-it-fp8-tp2-32k"
+    )
 
 
 DYNAMO_LABELS = {
