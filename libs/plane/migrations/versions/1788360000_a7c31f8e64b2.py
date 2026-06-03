@@ -128,6 +128,27 @@ class _Artifact:
         self.uid = uid
 
 
+BACKFILL = """
+    UPDATE {table} t
+       SET serving_digest = d.digest
+      FROM unnest(CAST(:ids AS uuid[]), CAST(:digests AS text[])) AS d(recipe_id, digest)
+     WHERE d.recipe_id = t.recipe_id
+"""
+"""Both backfills, which differ only in the table they write.
+
+The casts are load-bearing and were not there the first time. A bare
+`unnest(:ids)` sends an untyped parameter, and Postgres cannot choose between the
+`unnest` overloads for it — `function unnest(unknown) is not unique`. Casting the
+result instead of the argument (`unnest(:ids)::uuid`) does not help, because the
+ambiguity is in resolving the call, not in the type that comes out of it.
+
+The two-argument `unnest(a, b) AS d(...)` form is used rather than two `unnest`
+calls in one select list, because the pair-wise form is what this actually means:
+the Nth id goes with the Nth digest. Two calls side by side happen to line up for
+equal-length arrays and stop meaning anything if that ever changes.
+"""
+
+
 def _digests(bind: sa.engine.Connection) -> dict[str, str]:
     """`{recipe_id: serving_digest}`, computed by the application's own function.
 
@@ -172,14 +193,7 @@ def upgrade() -> None:
     digests = _digests(bind)
     if digests:
         bind.execute(
-            sa.text(
-                """
-                UPDATE demand_workload w
-                   SET serving_digest = d.digest
-                  FROM (SELECT unnest(:ids)::uuid AS recipe_id, unnest(:digests) AS digest) d
-                 WHERE d.recipe_id = w.recipe_id
-                """
-            ),
+            sa.text(BACKFILL.format(table="demand_workload")),
             {"ids": list(digests.keys()), "digests": list(digests.values())},
         )
 
@@ -216,14 +230,7 @@ def upgrade() -> None:
     op.add_column("ops_benchmark_run", sa.Column("serving_digest", sa.String(length=71), nullable=True))
     if digests:
         bind.execute(
-            sa.text(
-                """
-                UPDATE ops_benchmark_run b
-                   SET serving_digest = d.digest
-                  FROM (SELECT unnest(:ids)::uuid AS recipe_id, unnest(:digests) AS digest) d
-                 WHERE d.recipe_id = b.recipe_id
-                """
-            ),
+            sa.text(BACKFILL.format(table="ops_benchmark_run")),
             {"ids": list(digests.keys()), "digests": list(digests.values())},
         )
     op.create_index("ix_ops_benchmark_run_serving_digest", "ops_benchmark_run", ["serving_digest"])
