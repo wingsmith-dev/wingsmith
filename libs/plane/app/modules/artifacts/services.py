@@ -1,3 +1,5 @@
+import datetime as dt
+
 from dataclasses import replace
 
 import msgspec
@@ -58,8 +60,10 @@ from .schemas import ArtifactUpdateRequest
 from .schemas import ArtifactBaselineSchema
 from .schemas import ArtifactFitmentRequest
 from .schemas import ArtifactLocationSchema
+from .schemas import ArtifactUpstreamSchema
 from .schemas import ArtifactFitLayoutSchema
 from .schemas import ArtifactLocationRequest
+from .schemas import ArtifactUpstreamRequest
 from .schemas import ArtifactBaselineCreateRequest
 from .schemas import ArtifactBaselineUpdateRequest
 from .repository import ArtifactRepository
@@ -79,6 +83,9 @@ that happened to be looked at.
 IGNORED_PROVENANCE = ("recorded_by", "recorded_at")
 """Body fields a caller may send and the plane refuses to read. See the create schema."""
 
+_UPSTREAM_FIELDS = frozenset(ArtifactUpstreamSchema.__struct_fields__)
+"""What the claim column is allowed to hold. Anything else in it is ignored on read."""
+
 REFRESHED = ("format", "size_bytes", "licence", "parameter_count", "verified")
 """The scalar half a re-read of the source may move. Everything absent here is deliberate.
 
@@ -95,6 +102,21 @@ def _revision(row: Artifact | ArtifactBaseline) -> str:
     """The value `If-Match` is checked against, derived from the last write."""
     stamp = row.updated_at or row.created_at
     return str(int(stamp.timestamp() * 1_000_000))
+
+
+def _upstream(row: Artifact) -> ArtifactUpstreamSchema:
+    """The claim block as a struct, keyed defensively.
+
+    Read key by key rather than converted wholesale: the column predates the
+    schema and holds `{}` on every artifact registered before this, so a strict
+    decode would turn every one of those reads into a 500.
+    """
+    stored = row.upstream or {}
+    return msgspec.convert(
+        {k: v for k, v in stored.items() if k in _UPSTREAM_FIELDS},
+        ArtifactUpstreamSchema,
+        strict=False,
+    )
 
 
 def _location(row: ArtifactLocation) -> ArtifactLocationSchema:
@@ -277,9 +299,20 @@ def _apply(data: ArtifactCreateRequest, draft: ResolvedArtifact) -> ArtifactCrea
         licence=data.licence or draft.licence,
         parameter_count=data.parameter_count if data.parameter_count is not None else draft.parameter_count,
         locations=data.locations or list(draft.locations),
+        upstream=data.upstream or _recorded(draft.publisher),
         verified=draft.verified,
         metadata=metadata,
     )
+
+
+def _recorded(claims: ArtifactUpstreamRequest) -> ArtifactUpstreamRequest:
+    """Stamps a resolved claim block with when it was recorded.
+
+    Here rather than in `resolve`, because resolving is a read anybody may do and
+    a `recorded_at` on a draft nobody registered dates a record that does not
+    exist.
+    """
+    return msgspec.structs.replace(claims, recorded_at=dt.datetime.now(dt.UTC).isoformat())
 
 
 def _reread(artifact: Artifact, draft: ResolvedArtifact) -> list[str]:
@@ -304,6 +337,17 @@ def _reread(artifact: Artifact, draft: ResolvedArtifact) -> list[str]:
             metadata[key] = value
             changed.append(f"metadata.{key}")
     artifact.metadata_ = metadata
+
+    claims = dict(artifact.upstream or {})
+    for key, value in msgspec.to_builtins(draft.publisher).items():
+        # Only the blanks. A re-read is the Hub speaking again, and the Hub does not
+        # get to overwrite a claim a person asserted — including the `false` that a
+        # publisher_claims block always leaves null.
+        if value in (None, [], "") or claims.get(key) not in (None, [], ""):
+            continue
+        claims[key] = value
+        changed.append(f"upstream.{key}")
+    artifact.upstream = claims
     return changed
 
 
@@ -438,6 +482,7 @@ class ArtifactService:
             updated_at=artifact.updated_at,
             revision=_revision(artifact),
             locations=[_location(loc) for loc in artifact.locations],
+            upstream=_upstream(artifact),
         )
 
     async def _one(self, ref: str) -> tuple[Artifact, str | None, str | None]:
@@ -634,6 +679,7 @@ class ArtifactService:
             base_artifact_id=base_id,
             project_id=project_id,
             metadata_=data.metadata,
+            upstream=msgspec.to_builtins(data.upstream) if data.upstream else {},
             locations=[
                 ArtifactLocation(scheme=loc.scheme, uri=loc.uri, region=loc.region, preferred=loc.preferred)
                 for loc in data.locations
@@ -685,6 +731,8 @@ class ArtifactService:
                 for loc in locations
             ]
 
+        if "upstream" in fields:
+            artifact.upstream = msgspec.to_builtins(fields.pop("upstream"))
         if "metadata" in fields:
             artifact.metadata_ = fields.pop("metadata")
         if "slug" in fields:

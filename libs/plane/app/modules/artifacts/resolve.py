@@ -29,6 +29,7 @@ from .schemas import INFO
 from .schemas import WARN
 from .schemas import ResolveNote
 from .schemas import ArtifactLocationRequest
+from .schemas import ArtifactUpstreamRequest
 
 
 SCHEME = "hf"
@@ -164,6 +165,13 @@ class ResolvedArtifact(Struct):
     locations: list[ArtifactLocationRequest]
     serving: ServingDefaults
     upstream: UpstreamRecipe | None
+    publisher: ArtifactUpstreamRequest
+    """What the publisher said, as opposed to `upstream`, which is what an engine ran.
+
+    Two different third parties and two different questions, which is why they are
+    two fields: the Hub states what the model is, and the vLLM corpus states what
+    one tested configuration of it did.
+    """
     existing_id: str | None
     notes: list[ResolveNote]
 
@@ -230,6 +238,53 @@ def _architecture_of(config: dict) -> str | None:
         return architectures[0]
     model_type = eff.get("model_type")
     return model_type if isinstance(model_type, str) else None
+
+
+_MODALITY_CONFIGS = {
+    "vision_config": "image",
+    "audio_config": "audio",
+    "video_config": "video",
+}
+"""Sub-configs whose presence is the publisher stating a second input modality.
+
+A weaker signal than a model card and a much stronger one than a name: a repo
+that ships a `vision_config` has a vision tower in the checkpoint, which is a
+fact about the bytes rather than a claim about them.
+"""
+
+
+def publisher_claims(model: HuggingFaceModel, shape_context: int | None) -> ArtifactUpstreamRequest:
+    """What the Hub says about these weights, as claims attributed to the Hub.
+
+    Only what the repo actually states. `reasoning` and `tool_calling` stay null,
+    because `config.json` says nothing about either and inventing a `false` here
+    would deny a capability the publisher never spoke about — the engine recipe
+    is where evidence for those comes from, one level down.
+
+    `recorded_at` is left for the writer to stamp: this module is pure, and a
+    timestamp minted during a read that is then never written is a lie about when
+    the claim was recorded.
+    """
+    owner = model.slug.split("/")[0] if "/" in model.slug else None
+    modalities = ["text"]
+    for key, modality in _MODALITY_CONFIGS.items():
+        if isinstance(model.config.get(key), dict):
+            modalities.append(modality)
+    return ArtifactUpstreamRequest(
+        provider=owner,
+        provider_model_id=model.slug,
+        context_length=shape_context,
+        max_output_tokens=None,
+        input_modalities=modalities,
+        reasoning=None,
+        tool_calling=None,
+        structured_output_modes=[],
+        licence=model.licence,
+        released_at=None,
+        source_uri=f"https://huggingface.co/{model.slug}",
+        recorded_by="huggingface",
+        recorded_at=None,
+    )
 
 
 def _shardable(count: int) -> int:
@@ -543,6 +598,7 @@ def resolved(model: HuggingFaceModel, existing_id: str | None = None) -> Resolve
         locations=[ArtifactLocationRequest(scheme=SCHEME, uri=uri, region=None, preferred=True)],
         serving=serving,
         upstream=upstream_recipe(model, serving, notes),
+        publisher=publisher_claims(model, shape.context_length if shape else None),
         existing_id=existing_id,
         notes=notes,
     )

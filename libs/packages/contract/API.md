@@ -683,6 +683,21 @@ means the reference names the weights rather than fixing them, which is also the
 adopted by reference from a running workload. It is set at creation and absent from `PATCH`:
 re-verifying an artifact means resolving the bytes again, which is an operation, not an edit.
 
+**`upstream` on an artifact is what the publisher claims, and it is `metadata`'s opposite.** One is
+a scratchpad, the other is an assertion somebody signed: the context window, the input modalities,
+whether the model reasons and whether it calls tools, as the publisher states them, alongside the
+provenance triple — `recorded_by`, `recorded_at`, `source_uri` — that says who said so and from
+where. Nothing in it reaches a cluster and nothing in it is checked; a wrong value changes only what
+we told somebody. `POST /v1/artifacts` fills it from the resolved source when the caller sends none,
+and `PATCH` replaces it whole, the way locations are replaced — a block sent in halves would carry
+one claim's provenance over another claim's fields.
+
+`reasoning` and `tool_calling` are tri-state, and null is not `false`. Null is the publisher not
+having said, which is the ordinary case for a `config.json`: a workload may still claim either
+capability on the strength of an engine recipe that names a parser for it, and collapsing silence
+into a denial would block a configuration that works. A `false` is somebody asserting the model
+cannot do it, and that does block one.
+
 **`POST /v1/artifacts/{ref}/refresh` is that operation.** It re-reads the artifact's own source and
 rewrites only what is derived from it: `format`, `size_bytes`, `licence`, `parameter_count`,
 `verified`, and the derived keys of `metadata`. The case it exists for is the plane learning to read
@@ -701,6 +716,10 @@ message}` remarks, unfiltered — a repository that has since become gated says 
 overlaid key by key rather than replaced, so labels a person put on the artifact survive; the
 derived keys are rewritten even to null, because a key the repository no longer publishes is a fact
 about the repository.
+
+`upstream` is refreshed differently again: a re-read fills only the claims that are still blank and
+overwrites none of them. The Hub speaking a second time does not get to overwrite what a person
+asserted — including the `false` that a resolve never writes.
 
 **A source that now resolves to a different digest is `409 conflict`, never applied.** That is not a
 stale record to be corrected, it is different bytes, and different bytes are a different artifact —

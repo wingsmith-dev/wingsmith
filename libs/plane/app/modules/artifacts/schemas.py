@@ -20,6 +20,47 @@ class ArtifactLocationSchema(Struct):
     preferred: bool
 
 
+class ArtifactUpstreamSchema(Struct):
+    """What the model's publisher says these weights are. Asserted, never observed.
+
+    `metadata`'s opposite in the way `imported_args` is `engine_args`: a claim
+    somebody signed, against a scratchpad. Nothing here reaches a cluster and
+    nothing here is checked — a wrong value changes only what we told somebody.
+
+    `reasoning` and `tool_calling` are tri-state on purpose. Null is "the
+    publisher did not say", which is not `false`: a workload may still claim the
+    capability on the strength of an engine recipe that names a parser for it,
+    and collapsing the two would turn silence into a denial that blocks it.
+
+    The provenance triple — `recorded_by`, `recorded_at`, `source_uri` — is what
+    separates this from a guess. A resolve fills it with the Hub; a person
+    editing the block replaces it with themselves.
+    """
+
+    provider: str | None = None
+    provider_model_id: str | None = None
+    context_length: int | None = None
+    max_output_tokens: int | None = None
+    input_modalities: list[str] = []
+    reasoning: bool | None = None
+    tool_calling: bool | None = None
+    structured_output_modes: list[str] = []
+    licence: str | None = None
+    released_at: str | None = None
+    source_uri: str | None = None
+    recorded_by: str | None = None
+    recorded_at: str | None = None
+
+
+ArtifactUpstreamRequest = ArtifactUpstreamSchema
+"""The write shape is the read shape. Replaced wholesale, the way locations are.
+
+One struct in both directions because the block is a single assertion: a caller
+that could send half of it would produce a record whose provenance triple belongs
+to one claim and whose capability fields belong to another.
+"""
+
+
 class ArtifactSchema(Struct):
     """Immutable, content-addressed bytes. Identity is the digest.
 
@@ -45,6 +86,7 @@ class ArtifactSchema(Struct):
     updated_at: dt.datetime | None
     revision: str
     locations: list[ArtifactLocationSchema]
+    upstream: ArtifactUpstreamSchema
 
 
 INFO = "info"
@@ -381,6 +423,7 @@ class ArtifactCreateRequest(Struct):
     project: str | None = None
     metadata: dict = {}
     locations: list[ArtifactLocationRequest] = []
+    upstream: ArtifactUpstreamRequest | None = None
     verified: bool = True
 
 
@@ -403,3 +446,4 @@ class ArtifactUpdateRequest(Struct):
     project: str | None | UnsetType = UNSET
     metadata: dict | UnsetType = UNSET
     locations: list[ArtifactLocationRequest] | UnsetType = UNSET
+    upstream: ArtifactUpstreamRequest | UnsetType = UNSET

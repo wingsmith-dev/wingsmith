@@ -37,6 +37,7 @@ from app.modules.artifacts.schemas import ArtifactUpdateRequest
 from app.modules.artifacts.schemas import ArtifactFitmentRequest
 from app.modules.artifacts.schemas import ArtifactLocationSchema
 from app.modules.artifacts.schemas import ArtifactLocationRequest
+from app.modules.artifacts.schemas import ArtifactUpstreamRequest
 from app.modules.artifacts.schemas import ArtifactBaselineCreateRequest
 from app.modules.artifacts.schemas import ArtifactBaselineUpdateRequest
 from app.modules.artifacts.services import KINDS
@@ -464,6 +465,37 @@ async def test_resolve_surfaces_an_artifact_the_catalogue_already_holds():
     assert draft.existing_id == "art_01jexistingexistingexisti"
 
 
+async def test_the_draft_carries_what_the_publisher_claims_attributed_to_the_hub():
+    draft = await service().resolve("openai/gpt-oss-20b")
+    assert draft.publisher.provider == "openai"
+    assert draft.publisher.provider_model_id == "openai/gpt-oss-20b"
+    assert draft.publisher.context_length == 131072
+    assert draft.publisher.licence == "apache-2.0"
+    assert draft.publisher.input_modalities == ["text"]
+    assert draft.publisher.recorded_by == "huggingface"
+    assert draft.publisher.source_uri == "https://huggingface.co/openai/gpt-oss-20b"
+
+
+async def test_a_config_that_says_nothing_about_thinking_or_tools_claims_neither():
+    """Null is the publisher not having said, and it is not `false`.
+
+    A `false` here would deny a capability nobody denied, and the workload that
+    seeds its claims from this block would be refused a tool call parser the
+    engine recipe names.
+    """
+    draft = await service().resolve("openai/gpt-oss-20b")
+    assert draft.publisher.reasoning is None
+    assert draft.publisher.tool_calling is None
+    assert draft.publisher.structured_output_modes == []
+
+
+async def test_a_vision_tower_in_the_checkpoint_is_a_second_input_modality():
+    config = {**GPT_OSS_CONFIG, "vision_config": {"hidden_size": 1152}}
+    model = hf_model(slug="qwen/qwen3-vl", config=config)
+    draft = await service(hub=FakeHub(model)).resolve(model.slug)
+    assert draft.publisher.input_modalities == ["text", "image"]
+
+
 async def test_an_unknown_model_is_not_found():
     with pytest.raises(NotFound):
         await service(hub=FakeHub(error=HuggingFaceNotFound("nope"))).resolve("openai/nope")
@@ -562,6 +594,23 @@ async def test_a_refresh_leaves_the_labels_a_person_put_on_the_artifact():
     assert artifact.metadata_["shape"] is not None
 
 
+async def test_a_refresh_fills_the_claims_that_are_still_blank():
+    artifact = registered()
+    result = await refresh_service(artifact).refresh("gpt-oss-20b")
+    assert "upstream.provider" in result.changed
+    assert artifact.upstream["provider_model_id"] == "openai/gpt-oss-20b"
+    assert artifact.upstream["context_length"] == 131072
+
+
+async def test_a_refresh_never_overwrites_a_claim_somebody_asserted():
+    """The Hub speaking twice does not outrank a person who asserted a capability."""
+    artifact = registered(upstream={"provider": "our-fork", "tool_calling": True})
+    await refresh_service(artifact).refresh("gpt-oss-20b")
+    assert artifact.upstream["provider"] == "our-fork"
+    assert artifact.upstream["tool_calling"] is True
+    assert artifact.upstream["context_length"] == 131072
+
+
 async def test_a_refresh_does_not_rewrite_what_a_person_decided_the_weights_are_for():
     artifact = registered(name="our-house-model", kind="weights")
     await refresh_service(artifact).refresh("our-house-model")
@@ -637,6 +686,23 @@ async def test_creating_from_a_source_alone_derives_the_digest():
     assert result.licence == "apache-2.0"
     assert result.format == "safetensors"
     assert [loc.uri for loc in result.locations] == [f"hf://openai/gpt-oss-20b@{'c' * 40}"]
+
+
+async def test_creating_from_a_source_records_the_publishers_claims_and_when():
+    """The provenance triple is what separates a claim from a guess, so it is stamped."""
+    result = await service().create(ArtifactCreateRequest(source="hf://openai/gpt-oss-20b"))
+    assert result.upstream.provider == "openai"
+    assert result.upstream.context_length == 131072
+    assert result.upstream.recorded_by == "huggingface"
+    assert result.upstream.recorded_at is not None
+
+
+async def test_claims_the_caller_sent_are_not_replaced_by_the_hubs():
+    claims = ArtifactUpstreamRequest(provider="our-fork", tool_calling=True, recorded_by="operator")
+    result = await service().create(ArtifactCreateRequest(source="openai/gpt-oss-20b", upstream=claims))
+    assert result.upstream.provider == "our-fork"
+    assert result.upstream.tool_calling is True
+    assert result.upstream.recorded_by == "operator"
 
 
 async def test_a_source_and_a_digest_are_two_ways_to_disagree():
