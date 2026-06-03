@@ -13,10 +13,11 @@
  * default applies instead of one invented here.
  */
 
-import { emptyServing } from "./display"
+import { emptyCapabilities, emptyServing } from "./display"
 import type {
   Artifact,
   ServingBehaviour,
+  ServingCapabilities,
   ServingDefaults,
   ServingFootprint,
   UpstreamServing,
@@ -128,6 +129,33 @@ export function proposedBehaviour(
 }
 
 /**
+ * The capability claims that the same corpus entry implies.
+ *
+ * The behaviour block and the capability block are one statement in two halves, and
+ * the plane rejects a half: a tool call parser is only meaningful on a workload that
+ * claims tool calling, and the same for a reasoning parser. So a parser taken from
+ * upstream carries its claim with it. Nothing else is claimed — a parser is evidence
+ * of the one capability it parses and of nothing else.
+ *
+ * `tool_choice_modes` is not a second decision. The plane requires it to be non-empty
+ * exactly when tool calling is claimed, and an engine that emits tool calls at all
+ * accepts the three unnamed modes.
+ */
+export function proposedCapabilities(
+  upstream?: UpstreamServing | null
+): ServingCapabilities {
+  const block = emptyCapabilities()
+  if (!upstream) return block
+  const tools = !!upstream.tool_call_parser
+  return {
+    ...block,
+    reasoning_supported: !!upstream.reasoning_parser,
+    tool_calling_supported: tools,
+    tool_choice_modes: tools ? ["auto", "none", "required"] : [],
+  }
+}
+
+/**
  * The serving block that a fitment row plus an artifact imply.
  *
  * The fit answers the six things it is — which card, how many, how they are split,
@@ -178,6 +206,7 @@ export function derivedServingRequest(
       prefix_cache_config: {},
     },
     serving: proposedBehaviour(upstream),
+    capabilities: proposedCapabilities(upstream),
   }
 }
 

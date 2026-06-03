@@ -7,6 +7,7 @@ import {
   footprintOfServing,
   footprintSummary,
   proposedBehaviour,
+  proposedCapabilities,
   requiresSingleDomain,
   servingProvenance,
   slugify,
@@ -238,6 +239,32 @@ describe("proposedBehaviour", () => {
 
   it("is the inert block when nothing upstream names these weights", () => {
     expect(proposedBehaviour(null)).toEqual(proposedBehaviour(undefined))
+  })
+})
+
+describe("proposedCapabilities", () => {
+  it("claims the capability every proposed parser is meaningless without", () => {
+    const claims = proposedCapabilities(
+      upstream({ tool_call_parser: "hermes", reasoning_parser: "qwen3" })
+    )
+    expect(claims.tool_calling_supported).toBe(true)
+    expect(claims.tool_choice_modes.length).toBeGreaterThan(0)
+    expect(claims.reasoning_supported).toBe(true)
+  })
+
+  it("claims nothing when the corpus names no parser", () => {
+    const claims = proposedCapabilities(upstream())
+    expect(claims.tool_calling_supported).toBe(false)
+    expect(claims.tool_choice_modes).toEqual([])
+    expect(claims.reasoning_supported).toBe(false)
+  })
+
+  it("sends the claim with the parser, because the plane rejects one half", () => {
+    const request = derivedServingRequest(artifact, footprint, {
+      upstream: upstream({ tool_call_parser: "hermes" }),
+    })
+    expect(request.serving?.tool_call_parser).toBe("hermes")
+    expect(request.capabilities?.tool_calling_supported).toBe(true)
   })
 })
 
