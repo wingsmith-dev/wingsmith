@@ -147,6 +147,36 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 		return ctrl.Result{}, err
 	}
 
+	// Nothing is written when what is running was already built from these inputs. The apply
+	// below is otherwise unconditional, and an unconditional apply makes every change to the
+	// renderer a fleet-wide reload: Dynamo hashes a component's whole pod template to name the
+	// DynamoComponentDeployment it creates, so a single byte of difference — on 2026-09-02 it was
+	// an ownership label nothing read, dropped when Recipe was deleted — abandons the running
+	// worker and starts a new one. Every model in the fleet reloaded its weights, and on a
+	// saturated cluster it deadlocked: the new pod cannot schedule until the old one releases the
+	// accelerators it is still holding.
+	//
+	// This is what the serving digest was for. Its definition is *would this produce the same
+	// running process*, computed by the plane over its own declaration, so a comparison against
+	// it is insensitive to how this operator happens to render that declaration today.
+	//
+	// The cost, stated plainly: while the declaration and the layout stand still, this operator
+	// no longer corrects drift on the graph deployment, and a fix to the renderer does not reach
+	// a running workload. Both are deliberate — a render that reaches a running workload without
+	// anybody declaring a change is exactly the behaviour above. To force one, bump the
+	// deployment's generation, or delete the graph deployment as `TopologyImmutable` describes;
+	// either is a decision somebody made rather than a side effect of a rollout restart.
+	current, err := r.renderIsCurrent(ctx, obj)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if current {
+		r.Log.Info("already built from these inputs; not applying",
+			"deployment", dep.DeploymentID, "generation", dep.Generation,
+			"digest", dep.Serving.Digest, "namespace", obj.GetNamespace())
+		return r.afterApply(ctx, res, dep, obj)
+	}
+
 	if err := r.Client.Patch(ctx, obj, client.Apply, fieldOwner, client.ForceOwnership); err != nil {
 		if immutableTopology(err) {
 			return r.fail(ctx, res, "TopologyImmutable", fmt.Sprintf(
@@ -162,6 +192,22 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	r.Log.Info("applied", "deployment", dep.DeploymentID, "generation", dep.Generation,
 		"replicas", dep.MinReplicas, "namespace", obj.GetNamespace())
 
+	return r.afterApply(ctx, res, dep, obj)
+}
+
+// afterApply is everything that follows a graph deployment being current, written or not.
+//
+// It is reached from both sides of the apply because none of it is about the write. Collecting a
+// renamed object, collecting one Dynamo abandoned, and reporting what is actually running are all
+// statements about the cluster as it is now — a pass that wrote nothing still owes the plane the
+// rollout, and a superseded component holding accelerators is no less stuck for the fact that
+// this pass was not the one that created it.
+func (r *SyncedResourceReconciler) afterApply(
+	ctx context.Context,
+	res *v1alpha1.SyncedResource,
+	dep wire.DeploymentDesired,
+	obj *unstructured.Unstructured,
+) (ctrl.Result, error) {
 	// A rename renders under a new object name, and the object the old name created is still
 	// serving. Nothing else would ever collect it: the declared copy is not being deleted, so
 	// teardown never runs, and the apply above only ever touches the current name.
@@ -197,12 +243,52 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 
 	r.reportRollout(res, dep, out)
 
-	if out.ready < out.desired {
-		// Still filling in. The drift floor is far too slow to watch a rollout with, and pods
-		// are not watched — only the graph deployment is.
+	if out.ready < out.desired || (out.frontendUnready && out.trouble == nil) {
+		// Still filling in. Pod events are the fast path; this short requeue is the floor under
+		// missed events, a restarting watch, or a worker or frontend pod that has not been created
+		// yet. A named failure can rest on the drift floor because the watch will wake its recovery.
 		return ctrl.Result{RequeueAfter: waitForDependency}, nil
 	}
 	return ctrl.Result{RequeueAfter: resyncAfterApply}, nil
+}
+
+// renderIsCurrent reports whether the live graph deployment was already built from these inputs.
+//
+// The three annotations `render` stamps are read off the live object and compared to the ones on
+// the object just rendered. All three have to match, and any of them missing is a no: an object
+// from an operator that predates one of these annotations has to be applied once so that it
+// carries them, and the pass that does it is the last one that ever writes it unprompted.
+//
+// Read with a plain Get rather than from a cache, because the answer decides whether to write. A
+// stale read here is a reload of a model, which is the expensive direction to be wrong in.
+//
+// Not found is not current — there is nothing running to leave alone. Neither is a cluster whose
+// CRD is absent, which the apply reports better than a comparison could.
+func (r *SyncedResourceReconciler) renderIsCurrent(
+	ctx context.Context,
+	rendered *unstructured.Unstructured,
+) (bool, error) {
+	live := &unstructured.Unstructured{}
+	live.SetGroupVersionKind(render.GVK)
+	err := r.Client.Get(ctx, client.ObjectKeyFromObject(rendered), live)
+	switch {
+	case apierrors.IsNotFound(err), apimeta.IsNoMatchError(err):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("read graph deployment %s: %w", rendered.GetName(), err)
+	}
+
+	want, got := rendered.GetAnnotations(), live.GetAnnotations()
+	for _, key := range []string{
+		render.GenerationAnnotation,
+		render.ServingDigestAnnotation,
+		render.LayoutAnnotation,
+	} {
+		if want[key] == "" || got[key] != want[key] {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // pruneUnlabelled collects an object this operator rendered before it stamped the label that finds

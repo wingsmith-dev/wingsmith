@@ -330,8 +330,9 @@ func TestAFullyServingDeploymentIsLookedAtAgainWithoutBeingWrittenTo(t *testing.
 	}
 }
 
-// A rollout that has not finished is watched at the pace of a rollout. Pods are not watched —
-// only the graph deployment is — so the drift floor is far too slow to fill a progress bar with.
+// A rollout that has not finished keeps a short polling floor under the pod watch. A missed event,
+// a restarting watch, or a pod that has not been created yet must not leave progress stale for the
+// full drift interval.
 func TestARolloutStillFillingInIsLookedAtSoon(t *testing.T) {
 	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
 	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
@@ -1079,5 +1080,109 @@ func TestAnImmutableComponentSetIsReportedAndNotRetriedForever(t *testing.T) {
 	}
 	if !strings.Contains(condition.Message, "delete dynamographdeployment") {
 		t.Errorf("message = %q, want the command that clears it", condition.Message)
+	}
+}
+
+// graphOf reads back the graph deployment a reconcile rendered.
+func graphOf(t *testing.T, r *SyncedResourceReconciler) *unstructured.Unstructured {
+	t.Helper()
+	graph := &unstructured.Unstructured{}
+	graph.SetGroupVersionKind(render.GVK)
+	key := types.NamespacedName{Namespace: "dynamo", Name: render.Name(testDeploymentID)}
+	if err := r.Client.Get(context.Background(), key, graph); err != nil {
+		t.Fatalf("read graph deployment: %v", err)
+	}
+	return graph
+}
+
+// reconcileAgain runs a second pass against the cluster the first one left behind.
+func reconcileAgain(t *testing.T, r *SyncedResourceReconciler, res *v1alpha1.SyncedResource) {
+	t.Helper()
+	req := ctrl.Request{NamespacedName: types.NamespacedName{
+		Namespace: res.GetNamespace(), Name: res.GetName()}}
+	if _, err := r.Reconcile(context.Background(), req); err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+}
+
+// The 2026-09-02 fleet reload, as a test.
+//
+// Dynamo names each DynamoComponentDeployment after a hash of the component's whole pod template,
+// so any difference in what this operator renders — including an ownership label nothing reads —
+// abandons the running worker and starts a replacement that reloads the model's weights. An
+// unconditional apply therefore makes every operator upgrade a fleet-wide reload, and on a
+// saturated cluster a deadlock: the replacement cannot schedule until the original releases its
+// accelerators, and the original is not being deleted.
+//
+// The live pod-template label below stands in for a renderer that has moved on. Nothing the plane
+// declared has changed, so nothing is written and the running workload is left exactly as it is.
+func TestARendererChangeDoesNotRollAWorkloadWhoseDeclarationStandsStill(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	r, out, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+
+	graph := graphOf(t, r)
+	components, _, err := unstructured.NestedSlice(graph.Object, "spec", "components")
+	if err != nil || len(components) == 0 {
+		t.Fatalf("spec.components: %v", err)
+	}
+	component := components[0].(map[string]any)
+	if err := unstructured.SetNestedStringMap(component, map[string]string{
+		"hangar.dev/deployment-id": testDeploymentID,
+		"hangar.dev/managed-by":    "hangar-operator",
+		"hangar.dev/project":       "prj_01J9X2",
+		"hangar.dev/recipe":        "rec_01J9X2",
+	}, "podTemplate", "metadata", "labels"); err != nil {
+		t.Fatalf("set labels: %v", err)
+	}
+	if err := unstructured.SetNestedSlice(graph.Object, components, "spec", "components"); err != nil {
+		t.Fatalf("set components: %v", err)
+	}
+	if err := r.Client.Update(context.Background(), graph); err != nil {
+		t.Fatalf("update graph: %v", err)
+	}
+	before := graphOf(t, r).GetResourceVersion()
+
+	reconcileAgain(t, r, out)
+
+	after := graphOf(t, r)
+	if after.GetResourceVersion() != before {
+		t.Fatalf("graph was written on a pass that declared nothing new (resourceVersion %s -> %s); "+
+			"every model in the fleet reloads its weights for this",
+			before, after.GetResourceVersion())
+	}
+}
+
+// The other half of the same rule. A guard that never lets a render through is not a guard, it is
+// a broken operator — a declared change has to reach the cluster on the next pass.
+func TestADeclaredChangeStillReachesTheCluster(t *testing.T) {
+	desired := testDeploymentDesired()
+	dep := declared(t, "deployment", testDeploymentID, desired)
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	r, out, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true))
+
+	want := fmt.Sprint(desired.Generation)
+	if got := graphOf(t, r).GetAnnotations()[render.GenerationAnnotation]; got != want {
+		t.Fatalf("%s = %q, want %s", render.GenerationAnnotation, got, want)
+	}
+
+	next := desired
+	next.Generation++
+	payload, err := json.Marshal(next)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	out.Spec.Payload = &apiextensionsv1.JSON{Raw: payload}
+	out.Spec.Revision++
+	if err := r.Client.Update(context.Background(), out); err != nil {
+		t.Fatalf("update declared: %v", err)
+	}
+
+	reconcileAgain(t, r, out)
+
+	want = fmt.Sprint(next.Generation)
+	if got := graphOf(t, r).GetAnnotations()[render.GenerationAnnotation]; got != want {
+		t.Fatalf("%s = %q, want %s — the declared change never reached the cluster",
+			render.GenerationAnnotation, got, want)
 	}
 }

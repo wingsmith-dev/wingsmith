@@ -133,6 +133,25 @@ type Inputs struct {
 	Layout     Layout
 }
 
+// The three annotations that say which inputs a rendered graph was built from.
+//
+// They exist so that a later pass can ask "is what is running already built from this?" without
+// comparing the rendered object to the live one. That distinction is the whole point: a
+// comparison of outputs makes every change to this renderer a change to every running workload,
+// and a comparison of inputs does not. See `renderIsCurrent` in the reconciler.
+//
+// Between them they cover everything a render reads. Generation and the serving digest are the
+// plane's — the plane bumps the generation on any declared change, including scale and the
+// served model name, and the digest is its own hash of what decides the running process,
+// artifact included. The layout is this cluster's, computed here by the capacity check and
+// invisible to the plane, which is why it needs a third annotation rather than riding on either
+// of theirs.
+const (
+	GenerationAnnotation    = "hangar.dev/generation"
+	ServingDigestAnnotation = "hangar.dev/serving-digest"
+	LayoutAnnotation        = "hangar.dev/layout"
+)
+
 // Layout is how one replica's devices are spread over machines, as the capacity check concluded.
 //
 // Passed in rather than re-derived here, because what was admitted and what is applied have to be
@@ -145,6 +164,14 @@ type Layout struct {
 	NodesPerReplica int
 	// Domain is the fabric every pod of the replica must land in, empty when unpinned.
 	Domain string
+}
+
+// Fingerprint is the layout as one comparable string: nodes, devices per node, and the fabric.
+//
+// Spelled rather than hashed because it is stamped on the object as an annotation and a person
+// reading `2x8/nvlink-domain/ab12` learns something a sha256 would not have told them.
+func (l Layout) Fingerprint() string {
+	return fmt.Sprintf("%dx%d/%s", l.NodesPerReplica, l.DevicesPerNode, l.Domain)
 }
 
 // nodes is how many machines one replica spans, never less than one.
@@ -242,8 +269,9 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 			"namespace": opts.Namespace,
 			"labels":    ownershipLabels(in),
 			"annotations": map[string]any{
-				"hangar.dev/generation":     strconv.FormatInt(in.Deployment.Generation, 10),
-				"hangar.dev/serving-digest": in.Deployment.Serving.Digest,
+				GenerationAnnotation:    strconv.FormatInt(in.Deployment.Generation, 10),
+				ServingDigestAnnotation: in.Deployment.Serving.Digest,
+				LayoutAnnotation:        in.Layout.Fingerprint(),
 			},
 		},
 		"spec": map[string]any{

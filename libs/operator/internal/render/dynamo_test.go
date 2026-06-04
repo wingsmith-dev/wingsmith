@@ -1,6 +1,8 @@
 package render
 
 import (
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 
@@ -822,6 +824,50 @@ func TestTheNameBoundHoldsForEveryComponentRendered(t *testing.T) {
 		if len(derived) > maxObjectNameBytes {
 			t.Fatalf("the name derived for %s is %d bytes, over the %d a label value holds: %s",
 				name, len(derived), maxObjectNameBytes, derived)
+		}
+	}
+}
+
+// Dynamo names each DynamoComponentDeployment `<graph>-<component>-<hash>`, where the hash covers
+// the whole component pod template — labels included. So the set below is not bookkeeping: it is
+// an input to a name, and changing it renames every component in the fleet, which Dynamo answers
+// by abandoning the running one and starting a replacement that reloads the model's weights.
+//
+// That is exactly what happened on 2026-09-02. Deleting Recipe removed `hangar.dev/recipe` from
+// `ownershipLabels`, no code anywhere read it, and every decode worker on every cluster rolled.
+// On site-c, which was full, the roll deadlocked: the replacement could not schedule until the
+// original released its eight cards, and the original was not going anywhere.
+//
+// The reconciler no longer applies a graph deployment whose inputs are unchanged, so a set edited
+// here reaches only workloads whose declaration moves afterwards. This test is the second half of
+// that: it makes an edit to the set deliberate rather than a side effect of tidying up somewhere
+// else. Adding or removing a label is allowed — update the list and know that you are paying a
+// reload for anything that redeploys.
+func TestThePodTemplateLabelSetIsExactlyThese(t *testing.T) {
+	want := []string{
+		"hangar.dev/deployment-id",
+		"hangar.dev/managed-by",
+		"hangar.dev/project",
+	}
+
+	obj, err := DynamoGraphDeployment(testInputs(), frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, name := range []string{WorkerComponent, FrontendComponent} {
+		labels, found, err := unstructured.NestedStringMap(
+			componentNamed(t, obj, name), "podTemplate", "metadata", "labels")
+		if err != nil || !found {
+			t.Fatalf("%s podTemplate.metadata.labels missing: found %v, err %v", name, found, err)
+		}
+		got := make([]string, 0, len(labels))
+		for key := range labels {
+			got = append(got, key)
+		}
+		sort.Strings(got)
+		if !slices.Equal(got, want) {
+			t.Fatalf("%s pod-template labels = %v, want %v — every workload that redeploys "+
+				"reloads its weights for this change", name, got, want)
 		}
 	}
 }

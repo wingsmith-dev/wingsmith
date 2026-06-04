@@ -290,3 +290,127 @@ func TestPruneSupersededIsNotBlockedByALongLivedSecondComponent(t *testing.T) {
 		t.Error("the frontend was deleted; it is the current generation of its own component")
 	}
 }
+
+// declaring adds components to the graph's spec, so that `declaresComponent` recognises objects
+// labelled for them. `graphDeployment` declares the worker alone.
+func declaring(obj *unstructured.Unstructured, names ...string) *unstructured.Unstructured {
+	components, _, _ := unstructured.NestedSlice(obj.Object, "spec", "components")
+	for _, name := range names {
+		components = append(components, map[string]any{"name": name})
+	}
+	if err := unstructured.SetNestedSlice(obj.Object, components, "spec", "components"); err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// rolling marks a graph the way Dynamo does while it is part-way through replacing a component.
+func rolling(obj *unstructured.Unstructured) *unstructured.Unstructured {
+	status, _ := obj.Object["status"].(map[string]any)
+	if status == nil {
+		status = map[string]any{}
+		obj.Object["status"] = status
+	}
+	status["rollingUpdate"] = map[string]any{"phase": "InProgress"}
+	return obj
+}
+
+// TestPruneSupersededDuringARollingUpdate is the site-c deadlock of 2026-09-02.
+//
+// While a roll is in progress Dynamo names both generations of the rolling component as current,
+// so neither is superseded by the status and nothing is pruned. On a node with no spare cards the
+// replacement stays Pending on `Insufficient nvidia.com/gpu` for as long as the original holds
+// them, and the original is current, so the roll never finishes on its own.
+func TestPruneSupersededDuringARollingUpdate(t *testing.T) {
+	next := "kimi-k3-vllmdecodeworker-9e753aa8"
+	previous := "kimi-k3-vllmdecodeworker-23d3a70e"
+	frontendNext := "kimi-k3-frontend-11111111"
+	frontendPrev := "kimi-k3-frontend-22222222"
+
+	cases := []struct {
+		name    string
+		graph   *unstructured.Unstructured
+		objects []*unstructured.Unstructured
+		gone    []string
+		kept    []string
+	}{
+		{
+			name:  "the previous generation goes even while the status still calls it current",
+			graph: rolling(graphDeployment(previous, next)),
+			objects: []*unstructured.Unstructured{
+				componentDeployment(componentOpts{name: next, age: time.Minute}),
+				componentDeployment(componentOpts{name: previous, age: 4 * time.Hour}),
+			},
+			gone: []string{previous},
+			kept: []string{next},
+		},
+		{
+			name:  "the same two generations outside a roll are both left alone",
+			graph: graphDeployment(previous, next),
+			objects: []*unstructured.Unstructured{
+				componentDeployment(componentOpts{name: next, age: time.Minute}),
+				componentDeployment(componentOpts{name: previous, age: 4 * time.Hour}),
+			},
+			kept: []string{previous, next},
+		},
+		{
+			name:  "a roll of one component does not touch another that is not rolling",
+			graph: rolling(declaring(graphDeployment(previous, next, frontendPrev), render.FrontendComponent)),
+			objects: []*unstructured.Unstructured{
+				componentDeployment(componentOpts{name: next, age: time.Minute}),
+				componentDeployment(componentOpts{name: previous, age: 4 * time.Hour}),
+				componentDeployment(componentOpts{
+					name: frontendPrev, component: render.FrontendComponent, age: 4 * time.Hour}),
+			},
+			gone: []string{previous},
+			kept: []string{next, frontendPrev},
+		},
+		{
+			name:  "two components rolling at once each keep their own newest",
+			graph: rolling(declaring(
+				graphDeployment(previous, next, frontendPrev, frontendNext), render.FrontendComponent)),
+			objects: []*unstructured.Unstructured{
+				componentDeployment(componentOpts{name: next, age: time.Minute}),
+				componentDeployment(componentOpts{name: previous, age: 4 * time.Hour}),
+				componentDeployment(componentOpts{
+					name: frontendNext, component: render.FrontendComponent, age: time.Minute}),
+				componentDeployment(componentOpts{
+					name: frontendPrev, component: render.FrontendComponent, age: 4 * time.Hour}),
+			},
+			gone: []string{previous, frontendPrev},
+			kept: []string{next, frontendNext},
+		},
+		{
+			// Creation timestamps are second-granularity. Two objects of one component born in
+			// the same second cannot be ordered, and deleting the wrong one costs a reload — so
+			// the tie keeps both and the next pass looks again.
+			name:  "a tie on creation time prunes nothing",
+			graph: rolling(graphDeployment(previous, next)),
+			objects: []*unstructured.Unstructured{
+				componentDeployment(componentOpts{name: next, age: time.Minute}),
+				componentDeployment(componentOpts{name: previous, age: time.Minute}),
+			},
+			kept: []string{previous, next},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			objects := []client.Object{tc.graph}
+			for _, obj := range tc.objects {
+				objects = append(objects, obj)
+			}
+			c := pruneSupersededOn(t, objects...)
+			for _, name := range tc.gone {
+				if componentExists(t, c, name) {
+					t.Errorf("%s still exists; it holds the accelerators the roll needs", name)
+				}
+			}
+			for _, name := range tc.kept {
+				if !componentExists(t, c, name) {
+					t.Errorf("%s was deleted; that is a model reloading its weights", name)
+				}
+			}
+		})
+	}
+}

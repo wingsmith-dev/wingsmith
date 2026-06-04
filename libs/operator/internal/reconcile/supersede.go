@@ -63,6 +63,16 @@ const componentNameLabel = "nvidia.com/dynamo-component"
 //     still names, and is left alone. Waiting one pass costs nothing and deleting the new one
 //     costs a reload.
 //
+// A rolling update is the case where the status alone is not enough, and it is why `keep` is not
+// simply `current`. While `status.rollingUpdate.phase` is `InProgress`, Dynamo names *both*
+// generations of the rolling component in `componentNames` — observed on site-c on 2026-09-02, where
+// the list held `...-23d3a70e` and `...-9e753aa8` together. Nothing is superseded against that
+// set, so on a full node the roll never finishes: the new pod sits in `FailedScheduling:
+// Insufficient nvidia.com/gpu` and the old one holds all eight cards for as long as anybody is
+// willing to watch it. During a roll the newest current object of a component is the one kept and
+// the rest of that component's current objects are treated as superseded, which is the same
+// conclusion the paragraph below reaches for the ordinary case, reached one status earlier.
+//
 // Pruning happens on observing the supersession, not on observing the new pod fail to schedule.
 // The tempting alternative — hold the old one until the new one is Pending on insufficient
 // accelerators — reads the scheduler's refusal as the trigger, which makes correctness depend on
@@ -107,7 +117,8 @@ func (r *SyncedResourceReconciler) pruneSuperseded(ctx context.Context, graphNam
 		return fmt.Errorf("list component deployments for %s: %w", graphName, err)
 	}
 
-	floors := oldestCurrentByComponent(list.Items, current)
+	keep := keptByComponent(graph, list.Items, current)
+	floors := oldestCurrentByComponent(list.Items, keep)
 	if len(floors) == 0 {
 		// The status names a generation none of whose objects are visible yet. Nothing here can
 		// be called superseded against a set that is not there.
@@ -119,7 +130,7 @@ func (r *SyncedResourceReconciler) pruneSuperseded(ctx context.Context, graphNam
 		obj := &list.Items[i]
 		floor, known := floors[obj.GetLabels()[componentNameLabel]]
 		switch {
-		case current[obj.GetName()]:
+		case keep[obj.GetName()]:
 			continue
 		case !controlledBy(obj, uid):
 			continue
@@ -142,6 +153,72 @@ func (r *SyncedResourceReconciler) pruneSuperseded(ctx context.Context, graphNam
 		}
 	}
 	return nil
+}
+
+// keptByComponent narrows the current set to the objects that are not superseded.
+//
+// Outside a rolling update this is the current set unchanged, which is the whole of what the
+// status was ever asked for. During one it is the newest current object of each component: a roll
+// is Dynamo saying it has built the next generation and not yet retired the previous, and the
+// previous is the one holding accelerators the next cannot get.
+//
+// A tie prunes nothing. Creation timestamps are second-granularity, so two objects of one
+// component created in the same second cannot be ordered, and the safe reading of "cannot tell
+// which is newer" is to keep both and look again next pass.
+func keptByComponent(
+	graph *unstructured.Unstructured,
+	items []unstructured.Unstructured,
+	current map[string]bool,
+) map[string]bool {
+	if !rollingUpdateInProgress(graph) {
+		return current
+	}
+
+	newest := map[string]*unstructured.Unstructured{}
+	tied := map[string]bool{}
+	for i := range items {
+		obj := &items[i]
+		if !current[obj.GetName()] {
+			continue
+		}
+		component := obj.GetLabels()[componentNameLabel]
+		if component == "" {
+			continue
+		}
+		held, seen := newest[component]
+		switch {
+		case !seen:
+			newest[component] = obj
+		case held.GetCreationTimestamp().Time.Before(obj.GetCreationTimestamp().Time):
+			newest[component] = obj
+			delete(tied, component)
+		case obj.GetCreationTimestamp().Time.Equal(held.GetCreationTimestamp().Time):
+			tied[component] = true
+		}
+	}
+
+	keep := map[string]bool{}
+	for name := range current {
+		keep[name] = true
+	}
+	for i := range items {
+		obj := &items[i]
+		component := obj.GetLabels()[componentNameLabel]
+		if component == "" || tied[component] || !current[obj.GetName()] {
+			continue
+		}
+		if held, seen := newest[component]; seen && held.GetName() != obj.GetName() {
+			delete(keep, obj.GetName())
+		}
+	}
+	return keep
+}
+
+// rollingUpdateInProgress reports whether Dynamo says it is part-way through replacing a
+// component of this graph.
+func rollingUpdateInProgress(graph *unstructured.Unstructured) bool {
+	phase, found, err := unstructured.NestedString(graph.Object, "status", "rollingUpdate", "phase")
+	return err == nil && found && phase == "InProgress"
 }
 
 // currentComponents is the set of component deployment names the graph's status calls current.
@@ -181,11 +258,11 @@ func currentComponents(graph *unstructured.Unstructured) map[string]bool {
 // leaves it alone: it is not something this render produced.
 func oldestCurrentByComponent(
 	items []unstructured.Unstructured,
-	current map[string]bool,
+	kept map[string]bool,
 ) map[string]metav1.Time {
 	floors := map[string]metav1.Time{}
 	for i := range items {
-		if !current[items[i].GetName()] {
+		if !kept[items[i].GetName()] {
 			continue
 		}
 		component := items[i].GetLabels()[componentNameLabel]
