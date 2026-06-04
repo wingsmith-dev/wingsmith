@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -18,8 +19,11 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/render"
@@ -208,6 +212,11 @@ func (r *SyncedResourceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&v1alpha1.SyncedResource{}).
 		Watches(&batchv1.Job{}, back).
 		Watches(graph, back).
+		Watches(
+			&corev1.Pod{},
+			handler.EnqueueRequestsFromMapFunc(r.declaredForPod),
+			builder.WithPredicates(deploymentPodEvents()),
+		).
 		Named("syncedresource").
 		Complete(r)
 }
@@ -226,6 +235,75 @@ func (r *SyncedResourceReconciler) declaredFor(_ context.Context, obj client.Obj
 		return nil
 	}
 	return []ctrl.Request{{NamespacedName: types.NamespacedName{Namespace: namespace, Name: name}}}
+}
+
+// declaredForPod maps a pod Dynamo derived back to the deployment declaration that rendered it.
+//
+// Pods do not carry the cross-namespace owner labels from the graph deployment. They do carry the
+// plane's deployment id from their component pod template, which is the stronger key: it survives
+// a workload rename and converts directly to the durable SyncedResource name.
+func (r *SyncedResourceReconciler) declaredForPod(_ context.Context, obj client.Object) []ctrl.Request {
+	id := obj.GetLabels()[deploymentIDLabel]
+	if id == "" {
+		return nil
+	}
+	return []ctrl.Request{{NamespacedName: types.NamespacedName{
+		Namespace: r.Namespace,
+		Name:      resourceName(id),
+	}}}
+}
+
+// deploymentPodEvents admits only changes that can move a deployment's observed status.
+//
+// The manager cache is scoped to the operator and workload namespaces, so this is not a
+// cluster-wide pod watch. The predicate keeps metadata-only updates in the workload namespace from
+// turning into reconciles while still waking on scheduling, readiness, waiting reasons, restarts,
+// replacement and deletion.
+func deploymentPodEvents() predicate.Funcs {
+	ours := func(obj client.Object) bool {
+		return obj != nil && obj.GetLabels()[deploymentIDLabel] != ""
+	}
+	return predicate.Funcs{
+		CreateFunc: func(e event.CreateEvent) bool { return ours(e.Object) },
+		DeleteFunc: func(e event.DeleteEvent) bool { return ours(e.Object) },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			before, beforeOK := e.ObjectOld.(*corev1.Pod)
+			after, afterOK := e.ObjectNew.(*corev1.Pod)
+			return afterOK && ours(after) && (!beforeOK || podStatusKey(before) != podStatusKey(after))
+		},
+		GenericFunc: func(event.GenericEvent) bool { return false },
+	}
+}
+
+// podStatusKey is the part of a pod that deployment observation reads.
+//
+// Container messages are deliberately absent. Kubelet rewrites the backoff sentence as attempts
+// accumulate, but the waiting reason is the state transition and is what diagnose.go maps onto the
+// wire's closed set. Including the message would send the same failure repeatedly with a new
+// countdown.
+func podStatusKey(pod *corev1.Pod) string {
+	var key strings.Builder
+	fmt.Fprintf(&key, "%s|%s|%t|", pod.Status.Phase, pod.Spec.NodeName, !pod.DeletionTimestamp.IsZero())
+	if pod.Status.StartTime != nil {
+		key.WriteString(pod.Status.StartTime.UTC().Format(time.RFC3339Nano))
+	}
+	key.WriteByte('|')
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type != corev1.PodReady && condition.Type != corev1.PodScheduled {
+			continue
+		}
+		fmt.Fprintf(&key, "%s:%s:%s|", condition.Type, condition.Status, condition.Reason)
+	}
+	statuses := append(append([]corev1.ContainerStatus{}, pod.Status.InitContainerStatuses...),
+		pod.Status.ContainerStatuses...)
+	for _, status := range statuses {
+		waiting := ""
+		if status.State.Waiting != nil {
+			waiting = status.State.Waiting.Reason
+		}
+		fmt.Fprintf(&key, "%s:%s:%d|", status.Name, waiting, status.RestartCount)
+	}
+	return key.String()
 }
 
 // reconcileAdopted handles desired state promoted from a workload that was already running.

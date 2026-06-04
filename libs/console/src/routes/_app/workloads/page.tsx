@@ -13,7 +13,7 @@ import { useClusterOptions } from "@/modules/clusters/queries"
 import {
   WORKLOAD_KINDS,
   WORKLOAD_PHASES,
-  workloadPhaseTone,
+  workloadOperationalStatus,
 } from "@/modules/demand/display"
 import { useDeleteWorkload, useWorkloads } from "@/modules/demand/queries"
 import { footprintOfServing, footprintSummary } from "@/modules/demand/deploy"
@@ -47,11 +47,19 @@ function columns(
     {
       key: "phase",
       header: "Status",
-      cell: (workload) => (
-        <StatusLabel tone={workloadPhaseTone(workload.phase)}>
-          {workload.paused ? "paused" : workload.phase}
-        </StatusLabel>
-      ),
+      cell: (workload) => {
+        const status = workloadOperationalStatus(workload)
+        return (
+          <div className="space-y-0.5">
+            <StatusLabel tone={status.tone}>{status.phase}</StatusLabel>
+            {status.needsAttention && (
+              <div className="font-mono text-2xs text-muted-foreground">
+                {[status.reason, status.placement].filter(Boolean).join(" · ")}
+              </div>
+            )}
+          </div>
+        )
+      },
     },
     {
       key: "clusters",
@@ -171,7 +179,9 @@ export function WorkloadsPage() {
   const readyReplicas = workloads.reduce((sum, w) => sum + w.scale.ready, 0)
   const desiredReplicas = workloads.reduce((sum, w) => sum + w.scale.desired, 0)
   const needsAttention = workloads.filter(
-    (w) => w.phase === "failed" || w.scale.ready < w.scale.desired
+    (w) =>
+      workloadOperationalStatus(w).needsAttention ||
+      w.scale.ready < w.scale.desired
   ).length
 
   return (

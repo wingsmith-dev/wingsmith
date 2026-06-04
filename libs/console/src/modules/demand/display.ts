@@ -6,6 +6,8 @@ import type {
   ServingCapabilities,
   ServingReasoning,
   ServingBehaviour,
+  Workload,
+  WorkloadDeployment,
 } from "./types"
 
 const WORKLOAD_PHASE_TONES: Record<string, StatusTone> = {
@@ -203,10 +205,103 @@ const REASON_TEXT: Record<string, string> = {
   PayloadUndecodable: "The cluster could not read this deployment",
   RenderFailed: "The cluster could not turn this into anything runnable",
   NoClusterWork: "Held as declared state — authority is observed",
+  PodUnschedulable: "The cluster cannot schedule a replica",
+  CrashLooping: "A replica is repeatedly crashing",
+  ContainerConfigInvalid: "A replica has invalid container configuration",
+  ImagePullFailed: "The cluster could not pull an image",
+  ClusterRejected: "The cluster rejected the rendered workload",
+  NoReplicasStarted: "No replica started",
+  FingerprintMismatch: "The running workload no longer matches its declaration",
+  LiveObjectUnreadable: "The cluster could not inspect the running workload",
 }
 
 export function reasonText(reason: string): string {
   return REASON_TEXT[reason] ?? reason
+}
+
+export interface OperationalStatus {
+  phase: string
+  tone: StatusTone
+  reason: string | null
+  placement: string
+  needsAttention: boolean
+}
+
+/**
+ * The state an operator needs first, with placement retained as a separate fact.
+ *
+ * `admission_phase` answers whether placement handed the work to a cluster. The
+ * observed status answers what happened after that. A fatal observation must win
+ * the Status column without erasing the useful fact that the deployment was
+ * placed successfully.
+ */
+export function deploymentOperationalStatus(
+  deployment: WorkloadDeployment
+): OperationalStatus {
+  const observed = deployment.status
+  const failed =
+    observed?.phase === "failed" || Boolean(observed?.last_error_code)
+  const degraded = observed?.phase === "degraded"
+  const phase = failed
+    ? "failed"
+    : degraded
+      ? "degraded"
+      : deployment.admission_phase
+  const reason =
+    failed || degraded
+      ? reasonText(
+          observed?.last_error_code ??
+            observed?.reason ??
+            observed?.phase ??
+            phase
+        )
+      : null
+
+  return {
+    phase,
+    tone: workloadPhaseTone(phase),
+    reason,
+    placement: deployment.placed_at ? "placed" : deployment.admission_phase,
+    needsAttention: failed || degraded,
+  }
+}
+
+/** The loudest per-cluster observation on a global workload. */
+export function workloadOperationalStatus(
+  workload: Workload
+): OperationalStatus {
+  if (workload.paused) {
+    return {
+      phase: "paused",
+      tone: "warn",
+      reason: null,
+      placement:
+        workload.scale.placed >= workload.scale.desired
+          ? "placed"
+          : `${workload.scale.placed}/${workload.scale.desired} placed`,
+      needsAttention: false,
+    }
+  }
+
+  const deployments = workload.deployments.map(deploymentOperationalStatus)
+  const observed =
+    deployments.find((status) => status.phase === "failed") ??
+    deployments.find((status) => status.phase === "degraded")
+  const placement =
+    workload.scale.placed >= workload.scale.desired
+      ? "placed"
+      : `${workload.scale.placed}/${workload.scale.desired} placed`
+
+  if (observed) {
+    return { ...observed, placement }
+  }
+  return {
+    phase: workload.phase,
+    tone: workloadPhaseTone(workload.phase),
+    reason: null,
+    placement,
+    needsAttention: workload.phase === "failed",
+  }
 }
 
 /**

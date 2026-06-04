@@ -8,7 +8,7 @@ import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { shortenId } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { workloadPhaseTone } from "@/modules/demand/display"
+import { deploymentOperationalStatus } from "@/modules/demand/display"
 import type { WorkloadDeployment } from "@/modules/demand/types"
 import { Link } from "@tanstack/react-router"
 
@@ -155,17 +155,21 @@ function columns(
       : []),
     {
       key: "admission",
-      header: "Admission",
-      cell: (deployment) => (
-        <div className="space-y-0.5">
-          <StatusLabel tone={workloadPhaseTone(deployment.admission_phase)}>
-            {deployment.admission_phase}
-          </StatusLabel>
-          <div className="font-mono text-2xs text-muted-foreground">
-            <Dash>{deployment.admission_reason}</Dash>
+      header: "Status",
+      cell: (deployment) => {
+        const status = deploymentOperationalStatus(deployment)
+        const detail = status.needsAttention
+          ? [status.reason, status.placement].filter(Boolean).join(" · ")
+          : deployment.admission_reason
+        return (
+          <div className="space-y-0.5">
+            <StatusLabel tone={status.tone}>{status.phase}</StatusLabel>
+            <div className="font-mono text-2xs text-muted-foreground">
+              <Dash>{detail}</Dash>
+            </div>
           </div>
-        </div>
-      ),
+        )
+      },
     },
     {
       key: "generation",

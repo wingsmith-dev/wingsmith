@@ -38,7 +38,7 @@ import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import {
   parallelismLabel,
   servingOverrides,
-  workloadPhaseTone,
+  workloadOperationalStatus,
 } from "@/modules/demand/display"
 import { ServingCards } from "@/components/demand/serving-config"
 import {
@@ -146,6 +146,7 @@ export function WorkloadDetailPage() {
   }
 
   const scale = workload?.scale
+  const operational = workload ? workloadOperationalStatus(workload) : null
 
   return (
     <div className="flex flex-col">
@@ -267,7 +268,7 @@ export function WorkloadDetailPage() {
         </div>
       )}
 
-      {workload && scale && (
+      {workload && scale && operational && (
         <Tabs value={view} onValueChange={setView} className="flex-col gap-0">
           <TabsList variant="underline" className="px-4">
             <ViewTab value="overview" icon={IconLayoutDashboard}>
@@ -292,10 +293,23 @@ export function WorkloadDetailPage() {
 
           <div className="space-y-4 p-4">
             <div className="flex flex-wrap items-center gap-3">
-              <StatusLabel tone={workloadPhaseTone(workload.phase)}>
-                {workload.phase}
+              <StatusLabel tone={operational.tone}>
+                {operational.phase}
               </StatusLabel>
-              {workload.paused && <StatusLabel tone="warn">paused</StatusLabel>}
+              {operational.needsAttention && (
+                <span
+                  className={cn(
+                    "font-mono text-2xs",
+                    operational.tone === "danger"
+                      ? "text-destructive"
+                      : "text-amber-600 dark:text-amber-400"
+                  )}
+                >
+                  {[operational.reason, operational.placement]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </span>
+              )}
               <span className="font-mono text-2xs text-muted-foreground/60">
                 {workload.kind} · {workload.deployments.length} cluster
                 {workload.deployments.length === 1 ? "" : "s"}
@@ -355,8 +369,8 @@ export function WorkloadDetailPage() {
                   <Panel title="Details">
                     <FieldGrid>
                       <Field label="Status">
-                        <StatusLabel tone={workloadPhaseTone(workload.phase)}>
-                          {workload.phase}
+                        <StatusLabel tone={operational.tone}>
+                          {operational.phase}
                         </StatusLabel>
                       </Field>
                       <Field label="Autoscaling">
