@@ -90,6 +90,81 @@ export function DeleteDialog({
   )
 }
 
+/**
+ * A confirmation for a change that deletes nothing and is felt outside the
+ * plane exactly as if it had.
+ *
+ * Disabling an endpoint fails every client calling that name, and an accidental
+ * click is the same outage as a deliberate one. `tone` is what separates that
+ * from turning it back on, which needs no ceremony.
+ */
+export function ConfirmDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel,
+  pendingLabel,
+  tone = "destructive",
+  icon,
+  error,
+  pending,
+  onConfirm,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  title: string
+  description: React.ReactNode
+  confirmLabel: string
+  pendingLabel: string
+  tone?: "destructive" | "default"
+  icon?: ResourceKind
+  error?: unknown
+  pending?: boolean
+  onConfirm: () => void
+}) {
+  const readOnly = useReadOnly()
+  return (
+    <AlertDialog open={open} onOpenChange={onOpenChange}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            {icon && (
+              <ResourceIcon kind={icon} className="text-muted-foreground" />
+            )}
+            {title}
+          </AlertDialogTitle>
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        </AlertDialogHeader>
+
+        {!!error && (
+          <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+            {formatError(error)}
+          </p>
+        )}
+
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={(e) => {
+              e.preventDefault()
+              onConfirm()
+            }}
+            disabled={pending || readOnly}
+            className={
+              tone === "destructive"
+                ? "bg-destructive text-white hover:bg-destructive/90"
+                : undefined
+            }
+          >
+            {pending ? pendingLabel : confirmLabel}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  )
+}
+
 export interface RowAction {
   label: string
   onSelect: () => void
