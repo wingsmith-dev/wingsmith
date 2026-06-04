@@ -199,6 +199,11 @@ class NodeObserved(Struct):
     kernel_version: str
     driver_version: str
     runtime_version: str
+    """The node's container runtime — `containerd://1.7.20`, off the kubelet.
+
+    A machine's runtime, not a workload's: `ServingSpec.engine_runtime_image` is the
+    Dynamo build the engine runs in, and this is what would start a container of it.
+    """
     operator_version: str
     device_ids: list[str]
     labels: dict[str, str]
@@ -418,7 +423,7 @@ class ServingSpec(Struct):
     reaches the cluster on the deployment's `placement`, derived from these same
     fields; two copies of one fact on one wire is two chances to disagree.
 
-    `frontend_image` is a second image and not a spelling of `engine_image`, because a
+    `frontend_image` is a second image and not a spelling of `engine_runtime_image`, because a
     frontend and a worker are separately versioned binaries. It is empty in the ordinary
     case, and empty means the cluster decides — never "use the engine image", which is a
     default only the operator is entitled to pick.
@@ -429,8 +434,15 @@ class ServingSpec(Struct):
     """
 
     engine: str
-    engine_version: str
-    engine_image: str | None
+    """Which engine the worker launches inside the runtime — a module and a flag dialect."""
+    engine_runtime_version: str
+    """A tag of the Dynamo runtime the engine runs in — `1.4.1` — never the engine's version.
+
+    The two count in different sequences: the vLLM inside `vllm-runtime:1.4.1` is on
+    `0.28.0`. The engine's own version is on no frame at all — which build NVIDIA
+    compiled in is a property of that image, and the cluster does not report it.
+    """
+    engine_runtime_image: str | None
     frontend_image: str | None
     engine_args: dict[str, str]
     quantization: str | None
@@ -445,6 +457,17 @@ class ServingSpec(Struct):
     resources: Resources
     digest: str
     overlay: Overlay = field(default_factory=Overlay)
+    engine_version: str = ""
+    """The same value as `engine_runtime_version`, under the name an older operator reads.
+
+    A cluster picks up a new operator on its own `helm upgrade`, so a new plane talks to
+    operators on both sides of the rename. One that read only the new keys would find
+    nothing, render no prefetch job, and leave the pods waiting on a download nobody
+    started — a silent stall rather than a rejected frame. Written by `serving_spec` and
+    read by nothing here. Delete both once no operator in the fleet is that old.
+    """
+    engine_image: str | None = None
+    """The same value as `engine_runtime_image`, under the name an older operator reads."""
 
 
 class PlacementConstraints(Struct):
@@ -625,12 +648,26 @@ class ReplicaObserved(Struct):
     phase: Literal["pending", "starting", "ready", "draining", "terminated", "failed"]
     ready: bool
     engine: str
-    engine_version: str
     serving_digest: str
     restart_count: int
     observed_generation: int
     observed_at: str
     started_at: str | None = None
+    engine_runtime_version: str = ""
+    """A tag of the Dynamo runtime this replica started under, echoed from the deployment.
+
+    Defaulted rather than required so that an operator older than the rename, which sends
+    the value under `engine_version`, is not rejected outright — one missing required field
+    fails the whole frame, and the replica rollup for a plainly serving deployment would sit
+    at zero. Read through `runtime_version`, never directly.
+    """
+    engine_version: str = ""
+    """The same value under the name an operator older than the rename sends it as."""
+
+    @property
+    def runtime_version(self) -> str:
+        """The new spelling when the operator sent one, else the old."""
+        return self.engine_runtime_version or self.engine_version
 
 
 class ReplicaEvent(Struct):

@@ -107,7 +107,15 @@ it possible would write a value nobody chose into every existing workload.
 DIGEST_SOURCE = """
     SELECT r.id AS recipe_id,
            a.uid AS artifact_uid,
-           r.engine, r.engine_version, r.engine_image, r.frontend_image,
+           r.engine,
+           -- Aliased to the attribute names `serving_digest` reads today. The columns
+           -- were renamed by `f1a7c94e2b68` long after this migration ran, and this one
+           -- imports the live function on purpose, so the row it is handed has to keep
+           -- the shape that function expects. The digest is unchanged either way: its
+           -- hash keys are frozen at `engine_version` and `engine_image` for ever.
+           r.engine_version AS engine_runtime_version,
+           r.engine_image AS engine_runtime_image,
+           r.frontend_image,
            r.engine_args, r.quantization, r.dtype,
            r.tensor_parallel, r.pipeline_parallel, r.expert_parallel,
            r.context_length, r.max_batch_tokens,

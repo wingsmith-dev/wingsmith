@@ -1,6 +1,9 @@
 package wire
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 // ---------------------------------------------------------------------------- session
 
@@ -291,13 +294,30 @@ type Resources struct {
 // The device shape is deliberately absent — it arrives on the deployment's Placement, derived from
 // this configuration, and carrying it twice invites the two copies to disagree.
 type ServingSpec struct {
-	Engine        string  `json:"engine"`
-	EngineVersion string  `json:"engine_version"`
-	EngineImage   *string `json:"engine_image"`
+	// Engine is which engine the worker launches inside the runtime: a module name and a flag
+	// dialect, and no version at all.
+	Engine string `json:"engine"`
+	// EngineRuntimeVersion is a tag of the Dynamo runtime the engine runs in -- 1.4.1 -- and is
+	// never the engine's own version. The vLLM inside vllm-runtime:1.4.1 is on 0.28.0; the two
+	// count in different sequences, and which build NVIDIA compiled in is not on this wire.
+	EngineRuntimeVersion string `json:"engine_runtime_version"`
+	// EngineRuntimeImage is the whole address when the plane pins one instead of deriving it.
+	EngineRuntimeImage *string `json:"engine_runtime_image"`
+
+	// LegacyEngineVersion and LegacyEngineImage are what a plane that predates the rename sends.
+	//
+	// A cluster picks up a new operator on its own helm upgrade, so it meets planes on both sides
+	// of this change, and reading only the new keys would leave a deployment with no image: the
+	// operator renders no prefetch job and the pods wait forever on a download nobody started.
+	// Read through RuntimeVersion and RuntimeImage, never directly. Delete both once no plane in
+	// the fleet sends the old spelling.
+	LegacyEngineVersion string  `json:"engine_version,omitempty"`
+	LegacyEngineImage   *string `json:"engine_image,omitempty"`
+
 	// FrontendImage is the runtime the OpenAI-compatible frontend for this model runs, when it
 	// must differ from the engine's.
 	//
-	// A field of its own rather than a reuse of EngineImage, because the two are genuinely
+	// A field of its own rather than a reuse of EngineRuntimeImage, because the two are genuinely
 	// different builds: Kimi K3 on site-c serves through a patched frontend while its decode worker
 	// stays on NVIDIA's stock image, because both defects that made the model unusable are in
 	// the frontend binary and none is in the engine. Nil is the ordinary case and means the
@@ -321,6 +341,30 @@ type ServingSpec struct {
 	// is whether two deployments would produce the same running process.
 	Digest  string  `json:"digest"`
 	Overlay Overlay `json:"overlay"`
+}
+
+// RuntimeVersion is the Dynamo runtime tag this deployment asks for.
+//
+// The new spelling wins and the old one is the fallback, so a cluster reads a plane on either
+// side of the rename. Empty from both means the plane pinned an image instead, which
+// RuntimeImage answers.
+func (s ServingSpec) RuntimeVersion() string {
+	if v := strings.TrimSpace(s.EngineRuntimeVersion); v != "" {
+		return v
+	}
+	return strings.TrimSpace(s.LegacyEngineVersion)
+}
+
+// RuntimeImage is the image the engine worker runs, or nil when the plane declared none.
+//
+// Same precedence as RuntimeVersion, and for the same reason: reading only the new key against an
+// older plane yields nil, and a deployment with no image gets no prefetch job and waits on a
+// download nobody was told to start.
+func (s ServingSpec) RuntimeImage() *string {
+	if s.EngineRuntimeImage != nil && strings.TrimSpace(*s.EngineRuntimeImage) != "" {
+		return s.EngineRuntimeImage
+	}
+	return s.LegacyEngineImage
 }
 
 // PlacementConstraints is the device shape and placement rules a deployment binds against.
@@ -520,21 +564,24 @@ type DeploymentObserved struct {
 
 // ReplicaObserved is one running instance on named devices.
 type ReplicaObserved struct {
-	ReplicaID          string   `json:"replica_id"`
-	Name               string   `json:"name"`
-	DeploymentID       string   `json:"deployment_id"`
-	ClusterID          string   `json:"cluster_id"`
-	NodeID             string   `json:"node_id"`
-	DeviceIDs          []string `json:"device_ids"`
-	Phase              string   `json:"phase"`
-	Ready              bool     `json:"ready"`
-	Engine             string   `json:"engine"`
-	EngineVersion      string   `json:"engine_version"`
-	ServingDigest      string   `json:"serving_digest"`
-	RestartCount       int      `json:"restart_count"`
-	ObservedGeneration int64    `json:"observed_generation"`
-	StartedAt          *string  `json:"started_at,omitempty"`
-	ObservedAt         string   `json:"observed_at"`
+	ReplicaID            string   `json:"replica_id"`
+	Name                 string   `json:"name"`
+	DeploymentID         string   `json:"deployment_id"`
+	ClusterID            string   `json:"cluster_id"`
+	NodeID               string   `json:"node_id"`
+	DeviceIDs            []string `json:"device_ids"`
+	Phase                string   `json:"phase"`
+	Ready                bool     `json:"ready"`
+	Engine               string   `json:"engine"`
+	EngineRuntimeVersion string   `json:"engine_runtime_version"`
+	// LegacyEngineVersion carries the same value under the name a plane that predates the rename
+	// requires. Sent as well as, never instead of; delete once no such plane is running.
+	LegacyEngineVersion string  `json:"engine_version"`
+	ServingDigest       string  `json:"serving_digest"`
+	RestartCount        int     `json:"restart_count"`
+	ObservedGeneration  int64   `json:"observed_generation"`
+	StartedAt           *string `json:"started_at,omitempty"`
+	ObservedAt          string  `json:"observed_at"`
 }
 
 // ReplicaEvent reports something that happened to a replica at a point in time.

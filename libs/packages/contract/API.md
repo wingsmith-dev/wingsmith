@@ -485,7 +485,7 @@ authority, adoption) lives on the Deployment.
 `/v1/recipes`: the engine, its images, the parallelism, the cache settings and the resource request
 are a nested `serving` object on the workload, sent on `POST /v1/workloads` and returned by
 `GET /v1/workloads` and `GET /v1/workloads/{ref}`. It mirrors `deployment.desired.serving` in
-`MESSAGES.md` field for field — `engine`, `engine_version`, `engine_image`, `frontend_image`,
+`MESSAGES.md` field for field — `engine`, `engine_runtime_version`, `engine_runtime_image`, `frontend_image`,
 `engine_args`, `quantization`, `dtype`, `parallelism`, `context_length`, `max_batch_tokens`,
 `kv_cache_dtype`, `kv_cache_fraction`, `prefix_cache_enabled`, `prefix_cache_config`, `resources`
 and `overlay` — and adds `artifact`, which is the weights this configuration serves and is required,

@@ -10,7 +10,7 @@ import type {
 import {
   emptyCapabilities,
   emptyServing,
-  emptySurface,
+
   emptyUpstream,
 } from "@/modules/demand/display"
 import type {
@@ -858,8 +858,8 @@ const serving = {
   llama: {
     artifact_id: artifacts[0].id,
     engine: "vllm",
-    engine_version: "0.9.1",
-    engine_image: "ghcr.io/hangar/vllm:0.9.1",
+    engine_runtime_version: "0.9.1",
+    engine_runtime_image: "ghcr.io/hangar/vllm:0.9.1",
     frontend_image: null,
     engine_args: { "--enable-chunked-prefill": true },
     quantization: "fp8",
@@ -890,8 +890,8 @@ const serving = {
   bge: {
     artifact_id: artifacts[1].id,
     engine: "vllm",
-    engine_version: "0.9.1",
-    engine_image: null,
+    engine_runtime_version: "0.9.1",
+    engine_runtime_image: null,
     frontend_image: null,
     engine_args: {},
     quantization: null,
@@ -922,8 +922,8 @@ const serving = {
   eval: {
     artifact_id: artifacts[0].id,
     engine: "vllm",
-    engine_version: "0.9.1",
-    engine_image: null,
+    engine_runtime_version: "0.9.1",
+    engine_runtime_image: null,
     frontend_image: null,
     engine_args: {},
     quantization: null,
@@ -1336,7 +1336,6 @@ export const endpoints: Endpoint[] = [
       },
     ],
     failover_order: [deployments[0].id, deployments[1].id],
-    surface: emptySurface(),
     labels: { tier: "prod" },
     created_at: CREATED,
     updated_at: null,
@@ -1360,7 +1359,6 @@ export const endpoints: Endpoint[] = [
       },
     ],
     failover_order: [],
-    surface: emptySurface(),
     labels: {},
     created_at: CREATED,
     updated_at: null,

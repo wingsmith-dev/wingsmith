@@ -51,7 +51,14 @@ function Read({ draft }: { draft: ServingDraft }) {
           label="engine"
           value={
             <Dash>
-              {draft.engine && `${draft.engine} ${draft.engine_version ?? ""}`}
+              {draft.engine &&
+                [
+                  draft.engine,
+                  draft.engine_runtime_version &&
+                    `runtime ${draft.engine_runtime_version}`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
             </Dash>
           }
         />

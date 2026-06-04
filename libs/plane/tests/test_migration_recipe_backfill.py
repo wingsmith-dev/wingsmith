@@ -203,8 +203,13 @@ def test_the_backfilled_digest_is_the_one_the_plane_would_compute(scratch) -> No
         row = cur.fetchone()
 
     stored, artifact_uid = row[0], row[1]
+    # The SELECT above speaks the schema at `AFTER`, which predates the rename of
+    # `engine_version` to `engine_runtime_version`; these names are today's attributes,
+    # because `serving_digest` reads them off the object. That the two differ and the
+    # digest still matches is the point: the hash keys are frozen, so renaming a column
+    # does not move the identity of a configuration.
     names = (
-        "engine", "engine_version", "engine_image", "frontend_image", "engine_args", "quantization", "dtype",
+        "engine", "engine_runtime_version", "engine_runtime_image", "frontend_image", "engine_args", "quantization", "dtype",
         "tensor_parallel", "pipeline_parallel", "expert_parallel", "context_length", "max_batch_tokens",
         "kv_cache_dtype", "kv_cache_fraction", "prefix_cache_enabled", "prefix_cache_config", "device_class",
         "device_count", "device_memory_mib_min", "cpu_cores", "memory_mib", "disk_gib", "overlay", "serving",

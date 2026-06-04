@@ -318,9 +318,9 @@ export function DeploymentDetailPage() {
                     </CardHeader>
                     <CardContent>
                       <FieldGrid>
-                        <Field label="Engine">
-                          {workload.serving.engine}{" "}
-                          {workload.serving.engine_version}
+                        <Field label="Engine">{workload.serving.engine}</Field>
+                        <Field label="Engine runtime">
+                          {workload.serving.engine_runtime_version}
                         </Field>
                         <Field label="Shape">
                           {workload.serving.shape.device_count}×{" "}

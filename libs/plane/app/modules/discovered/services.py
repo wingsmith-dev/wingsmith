@@ -63,7 +63,7 @@ def serving_from_draft(draft: ServingDraft, artifact_ref: str) -> WorkloadServin
         name
         for name, value in (
             ("engine", draft.engine),
-            ("engine_version", draft.engine_version),
+            ("engine_runtime_version", draft.engine_runtime_version),
             ("context_length", draft.context_length),
             ("device_class", draft.device_class),
         )
@@ -77,8 +77,8 @@ def serving_from_draft(draft: ServingDraft, artifact_ref: str) -> WorkloadServin
     return WorkloadServingRequest(
         artifact=artifact_ref,
         engine=str(draft.engine),
-        engine_version=str(draft.engine_version),
-        engine_image=draft.engine_image,
+        engine_runtime_version=str(draft.engine_runtime_version),
+        engine_runtime_image=draft.engine_runtime_image,
         engine_args={},
         imported_args=draft.imported_args,
         quantization=draft.quantization,

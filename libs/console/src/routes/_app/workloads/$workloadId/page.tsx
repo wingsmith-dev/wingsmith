@@ -442,9 +442,9 @@ export function WorkloadDetailPage() {
                         {workload.serving.shape.device_count}×{" "}
                         {workload.serving.shape.device_class}
                       </Field>
-                      <Field label="Engine">
-                        {workload.serving.engine}{" "}
-                        {workload.serving.engine_version}
+                      <Field label="Engine">{workload.serving.engine}</Field>
+                      <Field label="Engine runtime">
+                        {workload.serving.engine_runtime_version}
                       </Field>
                       <Field label="Parallelism">
                         {parallelismLabel(workload.serving.parallelism)}
@@ -1851,15 +1851,6 @@ const workloadEndpointColumns = [
     cell: (e: Endpoint) => (
       <span className="font-mono text-2xs text-muted-foreground">
         {e.visibility}
-      </span>
-    ),
-  },
-  {
-    key: "auth",
-    header: "Auth",
-    cell: (e: Endpoint) => (
-      <span className="font-mono text-2xs text-muted-foreground">
-        {e.surface?.auth_mode ?? "—"}
       </span>
     ),
   },

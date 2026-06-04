@@ -144,7 +144,7 @@ export function EndpointForm({
           value={slug}
           onChange={setSlug}
           placeholder="defaults to the model behind the first target"
-          hint="What clients send as `model`. Blank takes the slug of the weights behind the first target, which is what you want unless you are publishing an alias. The engine answers to the artifact's slug either way — the gateway rewrites between them on its next poll, so changing this restarts nothing."
+          hint="What clients send as `model`. Blank defaults to the first target's model."
         />
         <SelectField
           label="Visibility"

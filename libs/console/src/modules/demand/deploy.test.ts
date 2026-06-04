@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { artifacts, workloads } from "@/modules/offline/data"
 import {
+  DEFAULT_ENGINE_RUNTIME_VERSION,
   derivedServingRequest,
   derivedWorkloadName,
   footprintOfServing,
@@ -174,7 +175,7 @@ describe("derivedServingRequest", () => {
     /**
      * The one upstream field that must not be seeded. The image a recipe names is
      * a third party's runtime with no ai-dynamo in it, so copying it into
-     * engine_image swaps a Transformers architecture error for a missing
+     * engine_runtime_image swaps a Transformers architecture error for a missing
      * dynamo.vllm module -- a different failure at the same distance from
      * serving. It reaches the form as a warning instead.
      */
@@ -183,8 +184,8 @@ describe("derivedServingRequest", () => {
       upstream: upstream({ docker_image: "vllm/vllm-openai:glm53-flash" }),
     }) as unknown as Record<string, unknown>
 
-    expect(request.engine_image).toBeUndefined()
-    expect(request.frontend_image).toBeUndefined()
+    expect(request.engine_runtime_image).toBeNull()
+    expect(request.frontend_image).toBeNull()
     expect(request.docker_image).toBeUndefined()
   })
 
@@ -210,15 +211,54 @@ describe("derivedServingRequest", () => {
     expect(request.quantization).toBeNull()
   })
 
-  it("takes the engine version the corpus tested over the stand-in", () => {
+  it("never pins the runtime tag to the engine version the corpus names", () => {
+    /**
+     * engine_version_min is vLLM's number and engine_runtime_version is a tag of the
+     * Dynamo runtime image. Seeding one from the other is what this used to do, and it
+     * made upstream evidence actively harmful: a model the corpus covered resolved to
+     * vllm-runtime:0.9.1, an address nobody publishes, while a model it did not cover
+     * fell through to latest and served.
+     */
     const request = derivedServingRequest(artifact, footprint, {
       defaults,
       upstream: upstream(),
     })
-    expect(request.engine_version).toBe("0.9.1")
+    expect(request.engine_runtime_version).toBe(DEFAULT_ENGINE_RUNTIME_VERSION)
+    expect(request.engine_runtime_version).not.toBe("0.9.1")
     expect(request.cache?.kv_cache_dtype).toBe("fp8")
     expect(request.dtype).toBe("bfloat16")
     expect(request.shape.device_memory_mib_min).toBe(81_920)
+  })
+
+  it("takes what was typed over what was proposed, and empty means say nothing", () => {
+    const proposal = { defaults, upstream: upstream() }
+    const typed = derivedServingRequest(artifact, footprint, proposal, {
+      engine_runtime_version: "1.4.1",
+      dtype: "float16",
+      kv_cache_dtype: "",
+    })
+    expect(typed.engine_runtime_version).toBe("1.4.1")
+    expect(typed.dtype).toBe("float16")
+    // Cleared, not reverted to the corpus's fp8: an empty field is a decision.
+    expect(typed.cache?.kv_cache_dtype).toBeNull()
+    // And a field nobody touched still follows the proposal.
+    expect(typed.shape.device_memory_mib_min).toBe(81_920)
+  })
+
+  it("sends the capability under a parser somebody typed, not only one vLLM named", () => {
+    /**
+     * The plane refuses a tool call parser without the claim beneath it, so an override
+     * that carried the parser alone would produce a request nobody can submit.
+     */
+    const request = derivedServingRequest(
+      artifact,
+      footprint,
+      { upstream: upstream() },
+      { tool_call_parser: "hermes" }
+    )
+    expect(request.serving?.tool_call_parser).toBe("hermes")
+    expect(request.capabilities?.tool_calling_supported).toBe(true)
+    expect(request.capabilities?.tool_choice_modes.length).toBeGreaterThan(0)
   })
 
   it("keeps the fit's own answers over the proposal's", () => {
@@ -358,7 +398,9 @@ describe("servingProvenance", () => {
   it("attributes each seeded field to what proposed it", () => {
     const at = servingProvenance({ defaults, upstream: upstream() })
     expect(at.dtype).toBe("weights")
-    expect(at.engine_version).toBe("upstream")
+    // Never attributed to the corpus, because the corpus does not give this value:
+    // engine_version_min is vLLM's number and this field is a Dynamo runtime tag.
+    expect(at.engine_runtime_version).toBeUndefined()
     expect(at.kv_cache_dtype).toBe("upstream")
     expect(
       servingProvenance({ upstream: upstream({ tool_call_parser: "hermes" }) })
@@ -377,6 +419,23 @@ describe("servingProvenance", () => {
     const at = servingProvenance()
     expect(Object.values(at).every((from) => from === "derived")).toBe(true)
   })
+
+  it("stops attributing a field once somebody has typed into it", () => {
+    /**
+     * "from vLLM" beside a value vLLM did not give is the one wrong label on the form
+     * that is a claim about a third party, and it would survive into whatever argument
+     * the configuration is later defended with.
+     */
+    const proposal = { defaults, upstream: upstream() }
+    expect(servingProvenance(proposal).kv_cache_dtype).toBe("upstream")
+    expect(
+      servingProvenance(proposal, null, { kv_cache_dtype: "fp8" })
+        .kv_cache_dtype
+    ).toBeUndefined()
+    expect(
+      servingProvenance(proposal, null, { dtype: "" }).dtype
+    ).toBeUndefined()
+  })
 })
 
 describe("the decoded serving block", () => {
@@ -392,8 +451,8 @@ describe("the decoded serving block", () => {
     for (const key of [
       "artifact_id",
       "engine",
-      "engine_version",
-      "engine_image",
+      "engine_runtime_version",
+      "engine_runtime_image",
       "frontend_image",
       "engine_args",
       "imported_args",

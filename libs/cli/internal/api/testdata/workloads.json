@@ -14,8 +14,8 @@
       "serving": {
         "artifact_id": "art_01m0dsda4ajr5xyjw40ppn0bfd",
         "engine": "vllm",
-        "engine_version": "0.6.3",
-        "engine_image": null,
+        "engine_runtime_version": "0.6.3",
+        "engine_runtime_image": null,
         "frontend_image": null,
         "engine_args": {},
         "imported_args": {
@@ -161,8 +161,8 @@
       "serving": {
         "artifact_id": "art_01m0dsda4h3z3rn285f0j2z0vj",
         "engine": "vllm",
-        "engine_version": "0.6.3",
-        "engine_image": null,
+        "engine_runtime_version": "0.6.3",
+        "engine_runtime_image": null,
         "frontend_image": null,
         "engine_args": {},
         "imported_args": {},
@@ -302,8 +302,8 @@
       "serving": {
         "artifact_id": "art_01m0dsda4qfzh1qc29k8by77cq",
         "engine": "vllm",
-        "engine_version": "0.6.2",
-        "engine_image": null,
+        "engine_runtime_version": "0.6.2",
+        "engine_runtime_image": null,
         "frontend_image": null,
         "engine_args": {},
         "imported_args": {},

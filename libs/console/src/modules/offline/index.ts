@@ -516,7 +516,8 @@ registerFixtures([
         upstream: found.upstream
           ? {
               source: "vllm",
-              source_uri: `https://github.com/vllm-project/recipes/blob/${sha}/${slug}.md`,
+              source_uri: `https://github.com/vllm-project/recipes/blob/main/${slug}.md`,
+              snapshot_uri: `https://github.com/vllm-project/recipes/blob/${sha}/${slug}.md`,
               model_id: slug,
               variant: "default",
               precision: null,
@@ -1154,8 +1155,8 @@ function servingDraft(workload: DiscoveredWorkload): ServingDraft {
     artifact_name: model,
     name: args["served-model-name"] ?? workload.name,
     engine: match?.[1] ?? null,
-    engine_version: match?.[2] ?? null,
-    engine_image: workload.spec?.image ?? null,
+    engine_runtime_version: match?.[2] ?? null,
+    engine_runtime_image: workload.spec?.image ?? null,
     engine_args: {},
     imported_args: args,
     context_length: context,
@@ -1320,8 +1321,8 @@ registerFixtures([
         serving: {
           artifact_id: data.artifact,
           engine: read.engine ?? "vllm",
-          engine_version: read.engine_version ?? "latest",
-          engine_image: read.engine_image,
+          engine_runtime_version: read.engine_runtime_version ?? "latest",
+          engine_runtime_image: read.engine_runtime_image,
           frontend_image: null,
           engine_args: {},
           imported_args: read.imported_args,

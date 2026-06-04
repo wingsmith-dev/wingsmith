@@ -46,7 +46,7 @@ def a_serving(**kwargs) -> WorkloadServingRequest:
     fields = {
         "artifact": "llama-70b",
         "engine": "vllm",
-        "engine_version": "0.6.0",
+        "engine_runtime_version": "0.6.0",
         "context_length": 8192,
         "shape": ShapeSchema(device_class="h100"),
     }
@@ -124,8 +124,8 @@ def test_the_serving_configuration_is_declared_on_the_workload_and_patchable():
 
 
 def test_a_serving_patch_leaves_absent_fields_unset():
-    data = WorkloadServingUpdate(engine_version="0.7.0")
-    assert data.to_dict(exclude_unset=True) == {"engine_version": "0.7.0"}
+    data = WorkloadServingUpdate(engine_runtime_version="0.7.0")
+    assert data.to_dict(exclude_unset=True) == {"engine_runtime_version": "0.7.0"}
     assert WorkloadServingUpdate(quantization=None).to_dict(exclude_unset=True) == {"quantization": None}
     assert WorkloadServingUpdate().to_dict(exclude_unset=True) == {}
 
@@ -136,7 +136,7 @@ def test_device_class_is_required_at_the_request_boundary_too():
     with pytest.raises(TypeError):
         ShapeSchema()
     with pytest.raises(TypeError):
-        WorkloadServingRequest(artifact="a", engine="vllm", engine_version="0.6", context_length=8192)
+        WorkloadServingRequest(artifact="a", engine="vllm", engine_runtime_version="0.6", context_length=8192)
 
 
 def test_device_class_cannot_be_cleared_by_a_patch():

@@ -99,8 +99,10 @@ class UpstreamRecipe(Struct):
     where no field can say where its number came from, and the numbers do not
     always agree.
 
-    Every field is a claim, and `source_uri` is a permalink at a pinned commit so
-    the claim can be read back. Nothing here is a fact about our hardware:
+    Every field is a claim, and the two URIs are how it is read back: `source_uri`
+    is the recipe on the corpus's own branch, which is what a person following a
+    link wants, and `snapshot_uri` is the same file at the commit these values were
+    captured from, for when the two no longer agree. Nothing here is a fact about our hardware:
     `verified_hardware` names the node shapes vLLM ran on, which is evidence that
     the configuration works and no evidence at all that we own such a node.
 
@@ -113,21 +115,34 @@ class UpstreamRecipe(Struct):
 
     source: str
     source_uri: str
+    snapshot_uri: str
     model_id: str
     variant: str
     precision: str | None
     engine: str
     engine_version_min: str | None
+    """The lowest vLLM release that serves these weights, as the recipe declares it.
+
+    vLLM's own version — `0.28.0` — and not a workload's `engine_runtime_version`,
+    which names a tag of the Dynamo runtime image (`vllm-runtime:1.4.1`). The two
+    count in different sequences and one is not the other spelled differently, so
+    this is reported and never seeded into a serving block: `vllm-runtime:0.28.0`
+    is an address that has never existed.
+
+    What it is good for is the comparison the plane cannot make: it says which vLLM
+    a model needs, and no field anywhere says which vLLM a runtime image carries.
+    So it is shown to a person and evaluated by nobody.
+    """
     nightly_required: bool
     docker_image: str | None
     """The image the corpus serves this model from, when it names one of its own.
 
     Reported and never proposed. It is a third party's runtime with no `ai-dynamo`
-    in it, so a workload that set `engine_image` to this would fail on the
+    in it, so a workload that set `engine_runtime_image` to this would fail on the
     operator's `python3 -m dynamo.vllm` instead of on the weights — a different
     error, no closer to serving. What it is good for is the negative claim: a
     recipe that names an image is one the plane's derived
-    `<engine>:<engine_version>` cannot load, and that is worth saying before a
+    `<engine>:<engine_runtime_version>` cannot load, and that is worth saying before a
     workload is created rather than two minutes into a pod.
     """
     tensor_parallel: int | None
@@ -429,6 +444,7 @@ def upstream_recipe(
     return UpstreamRecipe(
         source=_UPSTREAM_SOURCE,
         source_uri=match.source_uri,
+        snapshot_uri=match.snapshot_uri,
         model_id=match.recipe.slug,
         variant=match.variant.key,
         precision=match.variant.precision or None,

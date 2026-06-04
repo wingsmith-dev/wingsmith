@@ -31,12 +31,23 @@ import type {
 export const DEFAULT_ENGINE = "vllm"
 
 /**
- * Engine version is required by `WorkloadServingRequest` and is not derivable from an
- * artifact — the console does not know what builds exist. `latest` is the honest
- * stand-in: it says "whatever the operator ships" rather than pinning a version this
- * code invented, and it is visible and editable on the workload afterwards.
+ * The Dynamo runtime tag a derived block asks for, which is not a version of the engine.
+ *
+ * The plane resolves `<repository>:<engine_runtime_version>` against
+ * `nvcr.io/nvidia/ai-dynamo/vllm-runtime`, whose tags are Dynamo releases — `1.4.1` —
+ * while vLLM's own versions are `0.x`. The two count in different sequences.
+ *
+ * Never seeded from the recipe's `engine_version_min`, which is vLLM's number. This
+ * code used to do exactly that, and it made upstream evidence actively harmful: a model
+ * the corpus covered was pinned to `vllm-runtime:0.28.0`, an address that has never
+ * existed, while a model it did not cover fell through to `latest` and served. The vLLM
+ * floor is shown beside the field as the claim it is, and no field carries it.
+ *
+ * `latest` is the honest stand-in for the tag: it says "whatever the plane is
+ * configured to ship" — `ENGINE_RUNTIME_TAG_DEFAULT` — rather than pinning a version
+ * this code invented, and it is editable here and on the workload afterwards.
  */
-export const DEFAULT_ENGINE_VERSION = "latest"
+export const DEFAULT_ENGINE_RUNTIME_VERSION = "latest"
 
 /** `Llama-3.3-70B-Instruct` -> `llama-3-3-70b-instruct`. */
 export function slugify(value: string): string {
@@ -170,18 +181,23 @@ export function proposedBehaviour(
  * `tool_choice_modes` is not a second decision. The plane requires it to be non-empty
  * exactly when tool calling is claimed, and an engine that emits tool calls at all
  * accepts the three unnamed modes.
+ *
+ * The parsers are read off `behaviour` rather than off the corpus, which is what makes
+ * a person's override submittable. `proposedBehaviour` has already dropped anything the
+ * publisher denied, so a denial still yields no parser and no claim; but a parser typed
+ * into the form by hand arrives here as a parser, and the claim the plane requires
+ * under it travels with it. Passing no block reads the corpus's own proposal, which is
+ * what every caller that is not the form wants.
  */
 export function proposedCapabilities(
   upstream?: UpstreamServing | null,
-  claims?: ArtifactUpstream | null
+  claims?: ArtifactUpstream | null,
+  behaviour?: ServingBehaviour
 ): ServingCapabilities {
   const block = emptyCapabilities()
-  const tools =
-    !denied(claims?.tool_calling) &&
-    (claims?.tool_calling === true || !!upstream?.tool_call_parser)
-  const reasoning =
-    !denied(claims?.reasoning) &&
-    (claims?.reasoning === true || !!upstream?.reasoning_parser)
+  const effective = behaviour ?? proposedBehaviour(upstream, claims)
+  const tools = claims?.tool_calling === true || !!effective.tool_call_parser
+  const reasoning = claims?.reasoning === true || !!effective.reasoning.parser
   const modalities = claims?.input_modalities?.length
     ? claims.input_modalities
     : block.input_modalities
@@ -204,14 +220,54 @@ export function proposedCapabilities(
 }
 
 /**
- * The serving block that a fitment row plus an artifact imply.
+ * The fields of a proposed serving block a person may disagree with, before it is sent.
+ *
+ * Every one of these has a proposed answer and every proposed answer can be wrong —
+ * the corpus measured a different build, the publisher never spoke, the engine is not
+ * the one the recipe used. `undefined` means untouched and the proposal stands; a
+ * string means somebody typed it, including the empty string, which is how a field is
+ * cleared back to "say nothing" rather than back to the proposal.
+ *
+ * Only what is proposed is here. The six numbers of the footprint belong to the
+ * topology step, and the fields nothing proposes — `max_batch_tokens`,
+ * `kv_cache_fraction`, `resources` — are left at the plane's default and edited on the
+ * workload, because a form that asks about them before anything is running is asking
+ * a question with no evidence behind it.
+ */
+export interface ServingOverrides {
+  engine?: string
+  engine_runtime_version?: string
+  engine_runtime_image?: string
+  frontend_image?: string
+  dtype?: string
+  kv_cache_dtype?: string
+  reasoning_parser?: string
+  tool_call_parser?: string
+}
+
+/** A field left untouched keeps its proposal; a field typed empty says nothing. */
+function chosen(
+  override: string | undefined,
+  proposed: string | null
+): string | null {
+  if (override === undefined) return proposed
+  return override.trim() || null
+}
+
+/**
+ * The serving block that a fitment row plus an artifact imply, and what was overridden.
  *
  * The fit answers the six things it is — which card, how many, how they are split,
- * at what window and precision — and everything else comes from the proposal or is
- * left at the plane's default. Left alone matters: `max_batch_tokens`,
+ * at what window and precision — and everything else comes from the proposal, from an
+ * override, or is left at the plane's default. Left alone matters: `max_batch_tokens`,
  * `kv_cache_fraction`, `resources` and `topology_domain_kind` are never guessed,
  * because neither the console nor the corpus has an honest value and the plane's
  * own default beats a number invented here.
+ *
+ * The proposal is a starting point and never a floor. This is called on every render
+ * of the params step with whatever has been typed so far, so the request the form
+ * shows and the request it sends are the same object, computed the same way — a form
+ * that displayed one block and submitted another is the defect this shape prevents.
  *
  * `prefix_cache_enabled` is the one opinion: on. It is free on a repeated prompt and
  * the engines default it on themselves.
@@ -220,16 +276,33 @@ export function derivedServingRequest(
   artifact: Artifact,
   footprint: ServingFootprint,
   proposal: ServingProposal = {},
-  overrides: { engine?: string; engine_version?: string } = {}
+  overrides: ServingOverrides = {}
 ): WorkloadServingRequest {
   const { defaults, upstream } = proposal
+  const proposedServing = proposedBehaviour(upstream, artifact.upstream)
+  const serving: ServingBehaviour = {
+    ...proposedServing,
+    reasoning: {
+      ...proposedServing.reasoning,
+      parser: chosen(
+        overrides.reasoning_parser,
+        proposedServing.reasoning.parser
+      ),
+    },
+    tool_call_parser: chosen(
+      overrides.tool_call_parser,
+      proposedServing.tool_call_parser
+    ),
+  }
   return {
     artifact: artifact.id,
-    engine: overrides.engine || upstream?.engine || DEFAULT_ENGINE,
-    engine_version:
-      overrides.engine_version ||
-      upstream?.engine_version_min ||
-      DEFAULT_ENGINE_VERSION,
+    engine: overrides.engine ?? (upstream?.engine || DEFAULT_ENGINE),
+    // Never `upstream.engine_version_min`: that is vLLM's version and this is a tag
+    // of the Dynamo runtime image. See `DEFAULT_ENGINE_RUNTIME_VERSION`.
+    engine_runtime_version:
+      overrides.engine_runtime_version ?? DEFAULT_ENGINE_RUNTIME_VERSION,
+    engine_runtime_image: chosen(overrides.engine_runtime_image, null),
+    frontend_image: chosen(overrides.frontend_image, null),
     context_length: footprint.context_length,
     shape: {
       device_class: footprint.device_class,
@@ -246,15 +319,18 @@ export function derivedServingRequest(
       expert: 1,
     },
     quantization: footprint.quantization || null,
-    dtype: defaults?.dtype ?? null,
+    dtype: chosen(overrides.dtype, defaults?.dtype ?? null),
     cache: {
-      kv_cache_dtype: upstream?.kv_cache_dtype ?? null,
+      kv_cache_dtype: chosen(
+        overrides.kv_cache_dtype,
+        upstream?.kv_cache_dtype ?? null
+      ),
       kv_cache_fraction: null,
       prefix_cache_enabled: true,
       prefix_cache_config: {},
     },
-    serving: proposedBehaviour(upstream, artifact.upstream),
-    capabilities: proposedCapabilities(upstream, artifact.upstream),
+    serving,
+    capabilities: proposedCapabilities(upstream, artifact.upstream, serving),
   }
 }
 
@@ -264,10 +340,21 @@ export function derivedServingRequest(
  * Attribution is the whole point of seeding: a value nobody can trace is a value
  * nobody will move, and a form full of those is how an operator ends up running a
  * configuration they never chose and cannot defend.
+ *
+ * A field somebody has typed into is attributed to nobody, which is why `overrides`
+ * is read here at all. Leaving "from vLLM" beside a value vLLM did not give is worse
+ * than saying nothing: it is the one label on the form that is a claim about a third
+ * party, and a wrong one survives into whatever argument the configuration is later
+ * defended with.
+ *
+ * `engine_runtime_version` is deliberately absent whatever upstream says. The recipe's
+ * `engine_version_min` is vLLM's number and this field is a Dynamo tag, so attributing
+ * it to the corpus would be citing a source for a value the corpus never gave.
  */
 export function servingProvenance(
   proposal: ServingProposal = {},
-  claims?: ArtifactUpstream | null
+  claims?: ArtifactUpstream | null,
+  overrides: ServingOverrides = {}
 ): Record<string, SeededFrom> {
   const { defaults, upstream } = proposal
   const at: Record<string, SeededFrom> = {
@@ -281,7 +368,6 @@ export function servingProvenance(
   if (defaults?.dtype) at.dtype = "weights"
   if (defaults?.device_memory_mib_min) at.device_memory_mib_min = "weights"
   if (upstream?.engine) at.engine = "upstream"
-  if (upstream?.engine_version_min) at.engine_version = "upstream"
   if (upstream?.kv_cache_dtype) at.kv_cache_dtype = "upstream"
   if (upstream?.reasoning_parser) at.reasoning_parser = "upstream"
   if (upstream?.tool_call_parser) at.tool_call_parser = "upstream"
@@ -302,6 +388,11 @@ export function servingProvenance(
     at.input_modalities = "publisher"
   if (claims?.structured_output_modes?.length)
     at.structured_output_modes = "publisher"
+
+  // A field somebody typed into is theirs, whatever proposed the value it replaced.
+  for (const field of Object.keys(overrides) as (keyof ServingOverrides)[]) {
+    if (overrides[field] !== undefined) delete at[field]
+  }
   return at
 }
 

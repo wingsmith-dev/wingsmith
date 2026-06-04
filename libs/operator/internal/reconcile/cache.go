@@ -279,7 +279,7 @@ func (r *SyncedResourceReconciler) runtimeImage(ctx context.Context, artifactID 
 		if !slices.Contains(dep.ArtifactIDs, artifactID) {
 			continue
 		}
-		if image := dep.Serving.EngineImage; image != nil && *image != "" {
+		if image := dep.Serving.RuntimeImage(); image != nil && *image != "" {
 			return *image, nil
 		}
 	}

@@ -79,10 +79,12 @@ export function WorkloadForm({
   const serving = workload?.serving
   const [artifact, setArtifact] = useState(workload?.serving.artifact_id ?? "")
   const [engine, setEngine] = useState(serving?.engine ?? "vllm")
-  const [engineVersion, setEngineVersion] = useState(
-    serving?.engine_version ?? ""
+  const [engineRuntimeVersion, setEngineRuntimeVersion] = useState(
+    serving?.engine_runtime_version ?? ""
   )
-  const [engineImage, setEngineImage] = useState(serving?.engine_image ?? "")
+  const [engineRuntimeImage, setEngineRuntimeImage] = useState(
+    serving?.engine_runtime_image ?? ""
+  )
   const [frontendImage, setFrontendImage] = useState(
     serving?.frontend_image ?? ""
   )
@@ -188,8 +190,8 @@ export function WorkloadForm({
    */
   const servingBody = {
     engine,
-    engine_version: engineVersion,
-    engine_image: engineImage || null,
+    engine_runtime_version: engineRuntimeVersion,
+    engine_runtime_image: engineRuntimeImage || null,
     frontend_image: frontendImage || null,
     engine_args: (engineArgs as Record<string, unknown>) ?? {},
     quantization: quantization || null,
@@ -297,7 +299,7 @@ export function WorkloadForm({
       disabled={
         !name ||
         !engine ||
-        !engineVersion ||
+        !engineRuntimeVersion ||
         !deviceClass ||
         !contextLength ||
         (!editing && (!artifact || !project)) ||
@@ -427,25 +429,32 @@ export function WorkloadForm({
       />
 
       <FormGrid>
-        <TextField label="Engine" value={engine} onChange={setEngine} />
         <TextField
-          label="Engine version"
-          value={engineVersion}
-          onChange={setEngineVersion}
+          label="Engine"
+          value={engine}
+          onChange={setEngine}
+          hint="Which engine the worker runs. It picks the module and the flag names, and carries no version of its own."
         />
         <TextField
-          label="Engine image"
-          value={engineImage}
-          onChange={setEngineImage}
-          placeholder="Resolved from the engine and version"
-          hint="Leave empty unless you are pinning a specific build. The plane resolves the image from the engine and version above, and the same image fetches the weights — a workload with no image is one whose weights never download."
+          label="Engine runtime version"
+          value={engineRuntimeVersion}
+          onChange={setEngineRuntimeVersion}
+          placeholder="latest"
+          hint="A tag of the Dynamo runtime the engine runs in — 1.4.1 — and never the engine's own version. vLLM's numbers are 0.x and pinning one here resolves to an image nobody publishes."
+        />
+        <TextField
+          label="Engine runtime image"
+          value={engineRuntimeImage}
+          onChange={setEngineRuntimeImage}
+          placeholder="Resolved from the engine and the runtime version"
+          hint="Leave empty unless you are pinning a specific build. The plane resolves the image from the engine and the runtime version above, and the same image fetches the weights — a workload with no image is one whose weights never download."
         />
         <TextField
           label="Frontend image"
           value={frontendImage}
           onChange={setFrontendImage}
           placeholder="Whatever the cluster runs its frontends on"
-          hint="A second image, not a spelling of the one above: the worker loads the weights and the frontend tokenizes the request, and they are separately versioned builds. Empty means this workload has no opinion and the cluster decides — not that it reuses the engine image."
+          hint="A second image, not a spelling of the one above: the worker loads the weights and the frontend tokenizes the request, and they are separately versioned builds. Empty means this workload has no opinion and the cluster decides — not that it reuses the engine runtime image."
         />
         <DeviceClassField value={deviceClass} onChange={setDeviceClass} />
         <NumberField

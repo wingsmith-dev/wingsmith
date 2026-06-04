@@ -95,7 +95,7 @@ async def seed_workload(db, name: str, digest_seed: str) -> uuid.UUID:
             text(
                 "insert into demand_workload"
                 " (uid, name, kind, project_id, priority_class_id, artifact_id, serving_digest,"
-                "  engine, engine_version, context_length, device_class, device_count)"
+                "  engine, engine_runtime_version, context_length, device_class, device_count)"
                 " values (:uid, :name, 'service', :project, :priority, :artifact, :digest,"
                 "  'vllm', '0.9.1', 8192, :cls, 4) returning id"
             ),
@@ -221,7 +221,7 @@ def serving(**overrides) -> WorkloadServingRequest:
     fields = {
         "artifact": "llama-70b",
         "engine": "vllm",
-        "engine_version": "0.9.1",
+        "engine_runtime_version": "0.9.1",
         "context_length": 8192,
         "shape": ShapeSchema(device_class=DEVICE_CLASS, device_count=4),
     }

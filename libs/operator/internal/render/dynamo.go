@@ -55,7 +55,7 @@ type Options struct {
 	MultinodeEnabled bool
 
 	// EnginePullSecrets are Secrets in the workload namespace the kubelet presents when pulling
-	// the serving block's EngineImage. Frontends receive them too because, when neither a
+	// the serving block's EngineRuntimeImage. Frontends receive them too because, when neither a
 	// deployment nor the cluster names a frontend image, they run that same engine image.
 	EnginePullSecrets []string
 
@@ -434,11 +434,11 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	}
 
 	image := ""
-	if in.Deployment.Serving.EngineImage != nil {
-		image = *in.Deployment.Serving.EngineImage
+	if declared := in.Deployment.Serving.RuntimeImage(); declared != nil {
+		image = strings.TrimSpace(*declared)
 	}
 	if image == "" {
-		return nil, fmt.Errorf("deployment %s names no engine image", in.Deployment.DeploymentID)
+		return nil, fmt.Errorf("deployment %s names no engine runtime image", in.Deployment.DeploymentID)
 	}
 
 	args, err := engineArgs(in)
@@ -590,7 +590,7 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	}
 
 	return &corev1.PodSpec{
-		// Engine credentials are included because the frontend falls back to EngineImage when no
+		// Engine credentials are included because the frontend falls back to EngineRuntimeImage when no
 		// frontend-specific image is configured. Duplicates are removed when both settings name
 		// the same fleet-wide credential.
 		ImagePullSecrets: imagePullSecrets(opts.FrontendPullSecrets, opts.EnginePullSecrets),
@@ -652,13 +652,13 @@ func frontendImage(in Inputs, opts Options) (string, error) {
 	if image := strings.TrimSpace(opts.FrontendImage); image != "" {
 		return image, nil
 	}
-	if serving.EngineImage != nil {
-		if image := strings.TrimSpace(*serving.EngineImage); image != "" {
+	if declared := serving.RuntimeImage(); declared != nil {
+		if image := strings.TrimSpace(*declared); image != "" {
 			return image, nil
 		}
 	}
 	return "", fmt.Errorf(
-		"deployment %s names no frontend image and no engine image to fall back on",
+		"deployment %s names no frontend image and no engine runtime image to fall back on",
 		in.Deployment.DeploymentID)
 }
 

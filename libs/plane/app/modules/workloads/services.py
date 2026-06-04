@@ -442,29 +442,35 @@ def serving_companion_args(engine: str, serving: ServingSchema) -> dict[str, str
     return args
 
 
-def engine_image_repos() -> dict[str, str]:
-    """`ENGINE_IMAGE_REPOS` parsed into `engine -> repository`.
+def engine_runtime_repos() -> dict[str, str]:
+    """`ENGINE_RUNTIME_REPOS` parsed into `engine -> repository`.
 
     Malformed pairs are dropped rather than raised on: this is read on the write
     path of every workload, and one bad character in an environment variable must
     not be the reason a workload cannot be created.
     """
     repos: dict[str, str] = {}
-    for pair in settings.ENGINE_IMAGE_REPOS.split(","):
+    for pair in settings.ENGINE_RUNTIME_REPOS.split(","):
         engine, _, repository = pair.strip().partition("=")
         if engine and repository:
             repos[engine.strip().lower()] = repository.strip()
     return repos
 
 
-def resolve_engine_image(engine: str, engine_version: str, declared: str | None) -> str | None:
-    """The image a workload serves with, resolved from its engine and version.
+def resolve_engine_runtime_image(engine: str, engine_runtime_version: str, declared: str | None) -> str | None:
+    """The image a workload serves with, resolved from its engine and runtime version.
+
+    The engine picks the repository and the runtime version is the tag, because a
+    Dynamo runtime image is exactly those two things: `vllm-runtime` is the build
+    with vLLM and `dynamo.vllm` in it, and `1.4.1` is which Dynamo release. The
+    engine's own version appears nowhere and cannot — which vLLM sits inside
+    `vllm-runtime:1.4.1` is NVIDIA's business and is not on any wire here.
 
     A declared image is returned untouched — pinning an exact image is the whole
     reason the field is writable, and a workload that names one has already said
     what it means. Everything else is the common case: an author picks `vllm` and
-    a version, and the repository those two imply is configuration, not a thing
-    to retype.
+    a runtime version, and the repository those two imply is configuration, not a
+    thing to retype.
 
     Returns `None` for an engine with no configured repository, which leaves the
     workload exactly as it was before this existed. That is deliberate: inventing an
@@ -473,12 +479,12 @@ def resolve_engine_image(engine: str, engine_version: str, declared: str | None)
     """
     if declared:
         return declared
-    repository = engine_image_repos().get((engine or "").strip().lower())
+    repository = engine_runtime_repos().get((engine or "").strip().lower())
     if not repository:
         return None
-    tag = (engine_version or "").strip()
+    tag = (engine_runtime_version or "").strip()
     if not tag or tag == "latest":
-        tag = settings.ENGINE_IMAGE_TAG_DEFAULT
+        tag = settings.ENGINE_RUNTIME_TAG_DEFAULT
     return f"{repository}:{tag}"
 
 
@@ -578,8 +584,10 @@ def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
     return {
         "artifact_id": artifact.id,
         "engine": data.engine,
-        "engine_version": data.engine_version,
-        "engine_image": resolve_engine_image(data.engine, data.engine_version, data.engine_image),
+        "engine_runtime_version": data.engine_runtime_version,
+        "engine_runtime_image": resolve_engine_runtime_image(
+            data.engine, data.engine_runtime_version, data.engine_runtime_image
+        ),
         "frontend_image": data.frontend_image,
         "engine_args": data.engine_args,
         "imported_args": data.imported_args,
@@ -619,8 +627,8 @@ def serving_request(workload: Workload, artifact: Artifact) -> WorkloadServingRe
     return WorkloadServingRequest(
         artifact=artifact.uid,
         engine=workload.engine,
-        engine_version=workload.engine_version,
-        engine_image=workload.engine_image,
+        engine_runtime_version=workload.engine_runtime_version,
+        engine_runtime_image=workload.engine_runtime_image,
         frontend_image=workload.frontend_image,
         engine_args=workload.engine_args,
         imported_args=workload.imported_args,
@@ -667,8 +675,8 @@ def serving_view(workload: Workload, artifact_uid: str) -> WorkloadServingSchema
     return WorkloadServingSchema(
         artifact_id=artifact_uid,
         engine=workload.engine,
-        engine_version=workload.engine_version,
-        engine_image=workload.engine_image,
+        engine_runtime_version=workload.engine_runtime_version,
+        engine_runtime_image=workload.engine_runtime_image,
         frontend_image=workload.frontend_image,
         engine_args=workload.engine_args,
         imported_args=workload.imported_args,
@@ -1324,29 +1332,31 @@ class WorkloadService:
         """Merges a serving patch onto the stored configuration and rewrites the columns.
 
         The whole configuration is validated, not the fields the caller named, so a
-        patch cannot reach a state a create would have refused — an engine version
+        patch cannot reach a state a create would have refused — a runtime version
         bumped past what the shape can hold is caught here rather than by a cluster.
 
-        `engine_image` re-derives when the stored one is the image this plane
+        `engine_runtime_image` re-derives when the stored one is the image this plane
         produced and the caller did not name a new one, so that moving
-        `engine_version` moves the image. Carrying the stored image forward as a
+        `engine_runtime_version` moves the image. Carrying the stored image forward as a
         declared one made every workload pin itself the moment it was created: the
         version bump was accepted, stored, and silently ignored, and the workload
         reported the new version while the cluster went on pulling the old image. An
-        image somebody pinned by hand does not match what the old engine and version
-        resolve to, so it survives a version bump untouched, and naming
-        `engine_image` in the same patch always wins outright.
+        image somebody pinned by hand does not match what the old engine and runtime
+        version resolve to, so it survives a version bump untouched, and naming
+        `engine_runtime_image` in the same patch always wins outright.
         """
         artifact = await self.repo.artifact_of(workload)
         if artifact is None:
             raise NotFound(f"workload {workload.uid} has no artifact")
         declared = {key: value for key, value in patch.to_dict().items() if value is not UNSET}
-        was_derived = workload.engine_image == resolve_engine_image(workload.engine, workload.engine_version, None)
+        was_derived = workload.engine_runtime_image == resolve_engine_runtime_image(
+            workload.engine, workload.engine_runtime_version, None
+        )
         request = serving_request(workload, artifact)
         for key, value in declared.items():
             setattr(request, key, value)
-        if was_derived and "engine_image" not in declared:
-            request.engine_image = None
+        if was_derived and "engine_runtime_image" not in declared:
+            request.engine_runtime_image = None
         check_serving_request(request, artifact)
         apply_serving(workload, request, artifact)
 

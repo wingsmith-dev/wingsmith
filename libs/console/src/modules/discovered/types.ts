@@ -112,8 +112,8 @@ export interface ServingDraft {
   artifact_name: string | null
   name: string
   engine: string | null
-  engine_version: string | null
-  engine_image: string | null
+  engine_runtime_version: string | null
+  engine_runtime_image: string | null
   engine_args: Record<string, string>
   /** The whole argv, including what also populated a field above. Always a superset. */
   imported_args: Record<string, string>

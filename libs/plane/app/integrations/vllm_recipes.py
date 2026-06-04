@@ -56,6 +56,15 @@ DEFAULT_GPUS_PER_NODE: Final = 8
 MAX_NODES: Final = 16
 """The largest cluster the corpus will size a strategy across. Theirs, not ours."""
 
+DEFAULT_BRANCH: Final = "main"
+"""The branch a reader should be sent to, which is the one the corpus develops on.
+
+Not the branch the snapshot was taken from — that is a commit, and `snapshot_uri`
+is where it is written. The distinction is the whole of why there are two
+properties: a permalink says what we stored and a branch link says what upstream
+says now, and a person following a link from a form wants the second one.
+"""
+
 _MIB_PER_GB: Final = 1024
 
 _SINGLE_NODE_TP: Final = "single_node_tp"
@@ -177,7 +186,7 @@ class Recipe:
         AMD-only entry reads as absent rather than as a fallback — a ROCm image on
         an H200 is not a degraded answer, it is a wrong one.
 
-        This is evidence, never a value to copy into `engine_image`. The image it
+        This is evidence, never a value to copy into `engine_runtime_image`. The image it
         names is somebody else's runtime and has no `ai-dynamo` in it, so the
         operator's `python3 -m dynamo.vllm` does not exist there. What it supports
         is the only honest claim: that the image the plane would derive will not
@@ -248,10 +257,24 @@ class RecipeMatch:
 
     @property
     def source_uri(self) -> str:
-        """A permalink to the file this came from, pinned at the captured commit.
+        """The recipe on the corpus's own branch — what upstream says about this model now.
 
-        This is what goes in the `source_uri` of an asserted claim. A link to
-        `main` would name a file that no longer says what we stored.
+        The link a person follows, and therefore the branch rather than the commit.
+        A reader clicking through from a form is asking what vLLM recommends, not
+        what this plane happened to capture, and a 40-character sha lands them on
+        a detached file view of a corpus that has moved on since. The snapshot is
+        still recoverable: `snapshot_uri` names the exact bytes these values were
+        read from, for the case where the two disagree.
+        """
+        return f"{self.source}/blob/{DEFAULT_BRANCH}/{self.recipe.path}"
+
+    @property
+    def snapshot_uri(self) -> str:
+        """The same file at the commit this snapshot was captured from.
+
+        The provenance link, pinned, so a claim can be read back against the bytes
+        that produced it. `source_uri` is the one to follow; this is the one to
+        cite when a value on a form and the file it came from no longer agree.
         """
         return f"{self.source}/blob/{self.ref}/{self.recipe.path}"
 

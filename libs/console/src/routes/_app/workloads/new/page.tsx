@@ -20,6 +20,7 @@ import {
   servingProvenance,
   workloadsMatching,
   type SeededFrom,
+  type ServingOverrides,
   type ServingProposal,
 } from "@/modules/demand/deploy"
 import {
@@ -28,16 +29,20 @@ import {
   useCreateWorkload,
   useWorkloads,
 } from "@/modules/demand/queries"
-import type {
-  Artifact,
-  ArtifactFit,
-  ServingFootprint,
-  UpstreamServing,
-  Workload,
+import {
+  REASONING_PARSERS,
+  TOOL_CALL_PARSERS,
+  type Artifact,
+  type ArtifactFit,
+  type ServingFootprint,
+  type UpstreamServing,
+  type Workload,
+  type WorkloadServingRequest,
 } from "@/modules/demand/types"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
+import { SuggestField } from "@/components/demand/suggest-field"
 import { ArtifactPicker } from "./ArtifactPicker"
 import type { NewWorkloadSearch } from "./route"
 import { Step } from "./Step"
@@ -115,16 +120,17 @@ export function NewWorkloadPage() {
   )
   const [project, setProject] = useState("")
   /**
-   * The two images, which nothing derives and the corpus must not supply.
+   * What has been typed over the proposal, by field. Absent means untouched.
    *
-   * Empty is the ordinary answer: the plane resolves the engine image from the
-   * engine and version, and the cluster decides the frontend. They are here at
-   * all because a handful of models are served by neither -- a recipe that names
-   * a `docker_image` of its own is upstream saying the derived runtime cannot
-   * load these weights, and the operator has to supply one that can.
+   * Held as overrides rather than as a copy of the block, because the proposal
+   * arrives after the artifact is picked and again if it is picked twice: seeding
+   * state from it would either overwrite what somebody had already typed or freeze
+   * the first answer. An override survives both, and a field nobody touched keeps
+   * following whatever the plane and the corpus now say.
    */
-  const [engineImage, setEngineImage] = useState("")
-  const [frontendImage, setFrontendImage] = useState("")
+  const [overrides, setOverrides] = useState<ServingOverrides>({})
+  const override = (patch: ServingOverrides) =>
+    setOverrides((current) => ({ ...current, ...patch }))
   const [replicas, setReplicas] = useState<number | null>(1)
   const [name, setName] = useState("")
   const [touchedName, setTouchedName] = useState(false)
@@ -166,6 +172,19 @@ export function NewWorkloadPage() {
   const footprint = how?.footprint ?? null
   const fit = how?.fit ?? null
   /**
+   * The block that would be written right now: the proposal with whatever has been
+   * typed laid over it.
+   *
+   * Computed once and used for both the fields and the submit, so what the form shows
+   * and what it sends cannot come apart. A form that displays one block and posts
+   * another is the defect this shape exists to prevent, and it is the defect a second
+   * `derivedServingRequest` call at submit time would reintroduce.
+   */
+  const request =
+    artifact && footprint
+      ? derivedServingRequest(artifact, footprint, proposal, overrides)
+      : null
+  /**
    * What the chosen shape says about fabric, before anyone overrides it. The box the
    * Where step starts on is what would actually be written.
    */
@@ -198,6 +217,9 @@ export function NewWorkloadPage() {
   const pickArtifact = (picked: Artifact) => {
     setArtifact(picked)
     setHow(null)
+    // Other weights, other proposal. Keeping what was typed for the last artifact would
+    // carry a parser somebody chose for a different model into this one silently.
+    setOverrides({})
     setWhere(AUTO_WHERE)
     setOpen(2)
   }
@@ -224,23 +246,19 @@ export function NewWorkloadPage() {
    * is the whole of what recipe reuse ever bought.
    */
   const submit = async () => {
-    if (!artifact || !how) return
+    if (!artifact || !how || !request) return
     const cluster = where.mode === "pin" ? where.pinned : null
-
-    const derived = derivedServingRequest(artifact, how.footprint, proposal)
 
     try {
       const workload = await createWorkload.mutateAsync({
         serving: {
-          ...derived,
-          engine_image: engineImage || null,
-          frontend_image: frontendImage || null,
+          ...request,
           shape: {
-            ...derived.shape,
+            ...request.shape,
             // Inside the shape because that is what carries it: the fit derives
             // the answer and the Where step is where somebody disagrees.
             requires_single_topology_domain:
-              where.fabric ?? derived.shape.requires_single_topology_domain,
+              where.fabric ?? request.shape.requires_single_topology_domain,
           },
         },
         name: effectiveName,
@@ -336,7 +354,7 @@ export function NewWorkloadPage() {
         <Step
           index={3}
           title="Params"
-          hint="The engine parameters, pre-populated from the vLLM recipe. Every one of them is editable on the workload afterwards."
+          hint="Filled in from the weights and the vLLM recipe, and every one of them is yours to change. Where a value came from is written under it."
           ready={!!how}
           open={open >= 3}
         >
@@ -345,23 +363,17 @@ export function NewWorkloadPage() {
             proposal={proposal}
             loading={proposed.isLoading}
             identical={identical}
+            overrides={overrides}
           />
-          <FormGrid>
-            <TextField
-              label="Engine image"
-              value={engineImage}
-              onChange={setEngineImage}
-              placeholder="Resolved from the engine and version"
-              hint="Leave empty unless upstream says the derived runtime cannot serve these weights. The same image fetches the weights, so a wrong one is a download that never starts."
+          {request && (
+            <ParamFields
+              request={request}
+              proposal={proposal}
+              artifact={artifact}
+              overrides={overrides}
+              onChange={override}
             />
-            <TextField
-              label="Frontend image"
-              value={frontendImage}
-              onChange={setFrontendImage}
-              placeholder="Whatever the cluster runs its frontends on"
-              hint="A second image and not a spelling of the one above: the worker loads the weights, the frontend tokenizes the request, and they are separately versioned builds. Empty means the cluster decides, not that it reuses the engine image."
-            />
-          </FormGrid>
+          )}
         </Step>
 
         <Step
@@ -467,20 +479,151 @@ const SEEDED_LABEL: Record<SeededFrom, string> = {
   publisher: "from the publisher",
 }
 
+/** Fields that carry their own attribution, so the badge row does not repeat it. */
+const FIELD_ATTRIBUTED = new Set([
+  "engine",
+  "engine_runtime_version",
+  "dtype",
+  "kv_cache_dtype",
+  "reasoning_parser",
+  "tool_call_parser",
+])
+
+/** `dtype · from the weights` — a field's hint, with where its value came from. */
+function sourced(hint: string, from?: SeededFrom): string {
+  return from ? `${hint} · ${SEEDED_LABEL[from]}` : hint
+}
+
+/**
+ * The proposed serving block, as fields somebody can disagree with.
+ *
+ * The flow exists because nobody should have to know the right parameters, and it was
+ * read as nobody being *allowed* to change them: every value was filled in, attributed,
+ * and then rendered as a badge. Attribution without an input is a claim you cannot act
+ * on, so the inputs are here and the attribution moved under them.
+ *
+ * Only what something actually proposes. `max_batch_tokens`, `kv_cache_fraction` and
+ * the resource request are still absent, because nothing here has an honest value for
+ * them and a blank number box invites a guess where the plane's default is better. They
+ * are on the workload the moment it exists.
+ */
+function ParamFields({
+  request,
+  proposal,
+  artifact,
+  overrides,
+  onChange,
+}: {
+  request: WorkloadServingRequest
+  proposal: ServingProposal
+  artifact: Artifact | null
+  overrides: ServingOverrides
+  onChange: (patch: ServingOverrides) => void
+}) {
+  const at = servingProvenance(proposal, artifact?.upstream, overrides)
+  const floor = proposal.upstream?.engine_version_min
+
+  return (
+    <FormGrid>
+      <TextField
+        label="Engine"
+        value={request.engine}
+        onChange={(engine) => onChange({ engine })}
+        hint={sourced(
+          "Which engine the worker runs — it picks the module and the flag names, not a version.",
+          at.engine
+        )}
+      />
+      <TextField
+        label="Engine runtime version"
+        value={request.engine_runtime_version}
+        onChange={(engine_runtime_version) =>
+          onChange({ engine_runtime_version })
+        }
+        placeholder="latest"
+        hint={
+          "A Dynamo runtime tag — 1.4.1 — never the engine's own version. `latest` means whatever the plane ships." +
+          (floor
+            ? ` The recipe needs vLLM ${floor} or newer; nothing records which vLLM a runtime carries, so that is yours to check.`
+            : "")
+        }
+      />
+      <TextField
+        label="Engine runtime image"
+        value={request.engine_runtime_image ?? ""}
+        onChange={(engine_runtime_image) => onChange({ engine_runtime_image })}
+        placeholder="Resolved from the engine and the runtime version"
+        hint="Leave empty unless upstream says the derived runtime cannot serve these weights. The same image fetches the weights, so a wrong one is a download that never starts."
+      />
+      <TextField
+        label="Frontend image"
+        value={request.frontend_image ?? ""}
+        onChange={(frontend_image) => onChange({ frontend_image })}
+        placeholder="Whatever the cluster runs its frontends on"
+        hint="A second image and not a spelling of the one above: the worker loads the weights, the frontend tokenizes the request, and they are separately versioned builds. Empty means the cluster decides, not that it reuses the engine runtime image."
+      />
+      <TextField
+        label="dtype"
+        value={request.dtype ?? ""}
+        onChange={(dtype) => onChange({ dtype })}
+        placeholder="bfloat16"
+        hint={sourced("What the weights load as.", at.dtype)}
+      />
+      <TextField
+        label="KV cache dtype"
+        value={request.cache?.kv_cache_dtype ?? ""}
+        onChange={(kv_cache_dtype) => onChange({ kv_cache_dtype })}
+        placeholder="auto"
+        hint={sourced(
+          "What the cache stores at, which is not always what the weights load as.",
+          at.kv_cache_dtype
+        )}
+      />
+      <SuggestField
+        label="Reasoning parser"
+        value={request.serving?.reasoning.parser ?? null}
+        onChange={(parser) => onChange({ reasoning_parser: parser ?? "" })}
+        options={REASONING_PARSERS}
+        hint={sourced(
+          "What separates thinking from the answer. Setting it claims the capability the plane requires under it.",
+          at.reasoning_parser
+        )}
+      />
+      <SuggestField
+        label="Tool call parser"
+        value={request.serving?.tool_call_parser ?? null}
+        onChange={(parser) => onChange({ tool_call_parser: parser ?? "" })}
+        options={TOOL_CALL_PARSERS}
+        hint={sourced(
+          "In practice this is what makes tool calling work. Setting it claims tool calling too, because the plane refuses one half.",
+          at.tool_call_parser
+        )}
+      />
+    </FormGrid>
+  )
+}
+
 function Proposed({
   artifact,
   proposal,
   loading,
   identical,
+  overrides,
 }: {
   artifact: Artifact | null
   proposal: ServingProposal
   loading: boolean
   identical: Workload[]
+  overrides: ServingOverrides
 }) {
   const upstream = proposal.upstream ?? null
-  const at = servingProvenance(proposal, artifact?.upstream)
-  const seeded = Object.entries(at).filter(([, from]) => from !== "derived")
+  const at = servingProvenance(proposal, artifact?.upstream, overrides)
+  // Only what has no field of its own below. Everything else is attributed under the
+  // input it filled, where the attribution sits beside the value it explains rather
+  // than in a list the reader has to match up by name.
+  const seeded = Object.entries(at).filter(
+    ([field, from]) => from !== "derived" && !FIELD_ATTRIBUTED.has(field)
+  )
 
   return (
     <div className="space-y-2 rounded-lg border bg-muted/20 p-3">
@@ -553,12 +696,12 @@ function Proposed({
  *
  * The one claim in the corpus that is a warning rather than a value. Every other
  * upstream field seeds a form input; this one cannot, because the image it names
- * is a third party's runtime with no `ai-dynamo` in it -- pinning `engine_image`
+ * is a third party's runtime with no `ai-dynamo` in it -- pinning `engine_runtime_image`
  * to it swaps a Transformers "does not recognize this architecture" for a missing
  * `dynamo.vllm` module, which is no closer to serving.
  *
  * What it is worth is the negative: a model whose recipe names its own image is
- * one the plane's `<engine>:<engine_version>` cannot load, and the failure lands
+ * one the plane's `<engine>-runtime:<engine_runtime_version>` cannot load, and the failure lands
  * two minutes into a pod where nobody is looking for it. GLM-5.3-Flash is the
  * case -- `glm5_next` exists only in Z-AI's vLLM, three minor versions ahead of
  * what every released Dynamo runtime carries.
@@ -568,10 +711,11 @@ function OwnBuildWarning({ upstream }: { upstream: UpstreamServing }) {
     <p className="rounded border border-amber-500/40 bg-amber-500/5 p-2 font-mono text-2xs text-amber-700 dark:text-amber-400">
       {upstream.source} serves {upstream.model_id} from{" "}
       <span className="font-semibold">{upstream.docker_image}</span>, a build of
-      its own. The image the plane derives from the engine and version will not
-      load these weights. Set an engine image below that carries both this
-      engine build and the Dynamo runtime — that address is not one, because it
-      has no <span className="font-semibold">ai-dynamo</span> in it.
+      its own. The image the plane derives from the engine and the runtime
+      version will not load these weights. Set an engine runtime image below
+      that carries both this engine build and the Dynamo runtime — that address
+      is not one, because it has no{" "}
+      <span className="font-semibold">ai-dynamo</span> in it.
     </p>
   )
 }
@@ -582,6 +726,16 @@ function OwnBuildWarning({ upstream }: { upstream: UpstreamServing }) {
  * `verified_hardware` is the most useful sentence on the page and also the most
  * easily misread: it says the configuration works on that node shape, and says
  * nothing at all about whether the fleet owns one.
+ *
+ * Two links, because they answer two questions. "Read it" goes to the corpus's own
+ * branch — what upstream recommends now, which is what somebody following a link
+ * from a form is asking. "As captured" is the permalink at the commit these values
+ * were snapshotted from, and is the one to open when a value here and the file it
+ * came from no longer agree.
+ *
+ * The vLLM floor is stated and never checked. It is the engine's version, and no
+ * field anywhere records which engine build a Dynamo runtime image carries, so this
+ * is a thing to weigh rather than a thing the plane can enforce.
  */
 function UpstreamClaim({ upstream }: { upstream: UpstreamServing }) {
   return (
@@ -598,6 +752,21 @@ function UpstreamClaim({ upstream }: { upstream: UpstreamServing }) {
       >
         Read it
       </a>
+      {upstream.snapshot_uri && (
+        <>
+          {" · "}
+          <a
+            href={upstream.snapshot_uri}
+            target="_blank"
+            rel="noreferrer"
+            className="underline hover:text-foreground"
+          >
+            as captured
+          </a>
+        </>
+      )}
+      {upstream.engine_version_min &&
+        ` · needs vLLM ${upstream.engine_version_min} or newer, which is the engine's version and not the runtime tag above`}
       {upstream.nightly_required && " · needs a nightly engine build"}
     </p>
   )

@@ -451,7 +451,7 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
     so a replica re-reported after a reconnect keeps the identity it was first
     given. The devices it holds are not written here — a replica's commitment is
     an `Allocation`, which `allocation.observed` carries — and `engine` is not
-    stored because it is the workload's, not the replica's; `engine_version` is,
+    stored because it is the workload's, not the replica's; `engine_runtime_version` is,
     because that is the one that lags during a rollout.
     """
     values: dict[str, Any] = {
@@ -462,7 +462,7 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
         "name": payload.name,
         "phase": payload.phase,
         "ready": payload.ready,
-        "engine_version": payload.engine_version or None,
+        "engine_runtime_version": payload.runtime_version or None,
         "observed_generation": payload.observed_generation,
         "restart_count": payload.restart_count,
         "started_at": parse_ts(payload.started_at) if payload.started_at else None,

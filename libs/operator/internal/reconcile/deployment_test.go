@@ -89,11 +89,11 @@ func testDeploymentDesired() wire.DeploymentDesired {
 func testServingSpec() wire.ServingSpec {
 	image := testImage
 	return wire.ServingSpec{
-		Engine:        "vllm",
-		EngineImage:   &image,
-		Parallelism:   wire.Parallelism{Tensor: 2, Pipeline: 1, Expert: 1},
-		ContextLength: 262144,
-		Digest:        testDigest,
+		Engine:             "vllm",
+		EngineRuntimeImage: &image,
+		Parallelism:        wire.Parallelism{Tensor: 2, Pipeline: 1, Expert: 1},
+		ContextLength:      262144,
+		Digest:             testDigest,
 	}
 }
 

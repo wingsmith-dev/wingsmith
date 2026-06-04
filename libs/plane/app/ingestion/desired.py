@@ -281,15 +281,20 @@ def _serving(workload: Workload) -> ServingSpec:
     declaration when it has one, otherwise empty. Empty means the cluster
     decides, and it does not mean the engine image — a frontend and a worker are
     separately versioned binaries, which is the entire reason the field exists, so
-    falling back to `engine_image` here would hand every model the one image the Kimi
+    falling back to `engine_runtime_image` here would hand every model the one image the Kimi
     K3 frontend fix exists to avoid. The default belongs to the operator because only
     the operator knows what the cluster it runs in serves through.
     """
     fraction = workload.kv_cache_fraction
     return ServingSpec(
         engine=workload.engine,
-        engine_version=workload.engine_version,
-        engine_image=workload.engine_image,
+        engine_runtime_version=workload.engine_runtime_version,
+        engine_runtime_image=workload.engine_runtime_image,
+        # The same two values under the names an operator older than the rename reads. It
+        # is a silent stall rather than a rejected frame if it finds neither, so both
+        # spellings travel until no such operator is left.
+        engine_version=workload.engine_runtime_version,
+        engine_image=workload.engine_runtime_image,
         frontend_image=workload.frontend_image,
         engine_args=resolved_engine_args(workload.engine, workload.engine_args, serving_block(workload.serving)),
         quantization=workload.quantization,

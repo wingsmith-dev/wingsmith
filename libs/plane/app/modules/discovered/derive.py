@@ -25,7 +25,7 @@ LABEL_COMPONENT = "dynamo-component"
 LABEL_COMPONENT_TYPE = "dynamo-component-type"
 LABEL_NAMESPACE = "dynamo-namespace"
 
-# `nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1` -> engine `vllm`, version `1.3.1`.
+# `nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1` -> engine `vllm`, runtime version `1.3.1`.
 _RUNTIME_IMAGE = re.compile(r"/(?P<engine>[a-z0-9]+)-runtime:(?P<version>[^@\s]+)")
 _ANY_IMAGE = re.compile(r"/(?P<engine>[a-z0-9]+)[^/:]*:(?P<version>[^@\s]+)")
 
@@ -83,8 +83,8 @@ class ServingDraft(Struct):
     artifact_name: str | None
     name: str
     engine: str | None
-    engine_version: str | None
-    engine_image: str | None
+    engine_runtime_version: str | None
+    engine_runtime_image: str | None
     engine_args: dict
     imported_args: dict
     context_length: int | None
@@ -133,8 +133,12 @@ def parse_args(args: list[str]) -> dict[str, str]:
     return out
 
 
-def engine_from_image(image: str | None) -> tuple[str | None, str | None]:
-    """Reads engine and version out of the runtime image tag.
+def engine_runtime_from_image(image: str | None) -> tuple[str | None, str | None]:
+    """Reads the engine and the runtime version out of a runtime image address.
+
+    `vllm-runtime:1.3.1` is two facts in one string: which engine is compiled in,
+    and which Dynamo release compiled it. The tag is the second and never the
+    first — vLLM's own version is not in this address and cannot be read out of it.
 
     NVIDIA names these `<engine>-runtime`, which is a stronger signal than the
     repository path and is tried first. Anything else falls back to the last path
@@ -369,7 +373,7 @@ def derive(
     args = list(spec.get("args") or [])
     values = parse_args(args)
     image = spec.get("image")
-    engine, engine_version = engine_from_image(image)
+    engine, engine_runtime_version = engine_runtime_from_image(image)
 
     if engine is None:
         notes.append("could not tell which engine this runs; every field below is unread")
@@ -412,8 +416,8 @@ def derive(
         artifact_name=model_ref,
         name=values.get("served-model-name") or labels.get(LABEL_GRAPH) or name,
         engine=engine,
-        engine_version=engine_version,
-        engine_image=image,
+        engine_runtime_version=engine_runtime_version,
+        engine_runtime_image=image,
         engine_args=engine_args,
         imported_args=imported_args,
         context_length=context_length,

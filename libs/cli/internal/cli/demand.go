@@ -522,8 +522,11 @@ func writeServing(app *App, w io.Writer, s ui.Style, wl api.Workload) {
 	kv := app.KV()
 	kv.Add("digest", orDash(wl.ServingDigest))
 	kv.Add("footprint", footprintSummary(sv))
-	kv.Add("engine", strings.TrimSpace(sv.Engine+" "+sv.EngineVersion))
-	kv.Add("engine image", orDash(str(sv.EngineImage)))
+	// "vllm on dynamo 1.4.1" rather than "vllm 1.4.1", because the number is the runtime's
+	// and reading it as the engine's is the mistake the field was renamed to stop.
+	kv.Add("engine", strings.TrimSpace(sv.Engine))
+	kv.Add("engine runtime", orDash(strings.TrimSpace(sv.EngineRuntimeVersion)))
+	kv.Add("engine runtime image", orDash(str(sv.EngineRuntimeImage)))
 	kv.Add("frontend image", orDash(str(sv.FrontendImage)))
 	kv.Add("engine args", labelString(sv.EngineArgs))
 	kv.Add("resolved engine args", labelString(sv.ResolvedEngineArgs))
@@ -572,27 +575,27 @@ func newWorkloadCreateCmd(app *App) *cobra.Command {
 		singleFabric  bool
 		fabricKind    string
 
-		engine          string
-		engineVersion   string
-		engineImage     string
-		frontendImage   string
-		engineArgs      []string
-		quantization    string
-		dtype           string
-		tensor          int
-		pipeline        int
-		expert          int
-		contextLength   int
-		maxBatchTokens  int
-		kvCacheDtype    string
-		kvCacheFraction float64
-		prefixCache     bool
-		class           string
-		devices         int
-		deviceMemoryMin int
-		cpuCores        int
-		memoryMiB       int
-		diskGiB         int
+		engine               string
+		engineRuntimeVersion string
+		engineRuntimeImage   string
+		frontendImage        string
+		engineArgs           []string
+		quantization         string
+		dtype                string
+		tensor               int
+		pipeline             int
+		expert               int
+		contextLength        int
+		maxBatchTokens       int
+		kvCacheDtype         string
+		kvCacheFraction      float64
+		prefixCache          bool
+		class                string
+		devices              int
+		deviceMemoryMin      int
+		cpuCores             int
+		memoryMiB            int
+		diskGiB              int
 	)
 	cmd := &cobra.Command{
 		Use:     "create <name>",
@@ -668,14 +671,14 @@ serving_digest, which is the whole of what sharing used to buy.`,
 			}
 
 			serving := api.ServingRequest{
-				Artifact: artifact, Engine: engine, EngineVersion: engineVersion,
+				Artifact: artifact, Engine: engine, EngineRuntimeVersion: engineRuntimeVersion,
 				ContextLength: contextLength,
 				Shape: api.ServingShape{
 					DeviceClass: class, DeviceCount: devices, DeviceMemoryMiBMin: deviceMemoryMin,
 					RequiresSingleTopologyDomain: singleFabric,
 					TopologyDomainKind:           optionalString(fabricKind),
 				},
-				EngineImage: optionalString(engineImage), FrontendImage: optionalString(frontendImage),
+				EngineRuntimeImage: optionalString(engineRuntimeImage), FrontendImage: optionalString(frontendImage),
 				EngineArgs:   engineArgMap,
 				Quantization: optionalString(quantization), Dtype: optionalString(dtype),
 				Parallelism: api.ServingParallelism{Tensor: tensor, Pipeline: pipeline, Expert: expert},
@@ -745,8 +748,10 @@ serving_digest, which is the whole of what sharing used to buy.`,
 	fl.StringVar(&fabricKind, "fabric-kind", "", "which kind of domain --single-fabric means (nvlink, pcie_root, numa)")
 
 	fl.StringVar(&engine, "engine", "vllm", "inference engine")
-	fl.StringVar(&engineVersion, "engine-version", "", "engine version, e.g. 0.6.3")
-	fl.StringVar(&engineImage, "engine-image", "", "override the image the engine runs from")
+	fl.StringVar(&engineRuntimeVersion, "engine-runtime-version", "",
+		"Dynamo runtime tag the engine runs in, e.g. 1.4.1 — not the engine's own version")
+	fl.StringVar(&engineRuntimeImage, "engine-runtime-image", "",
+		"override the whole address instead of deriving it from --engine and --engine-runtime-version")
 	fl.StringVar(&frontendImage, "frontend-image", "", "override the image the frontend runs from")
 	fl.StringArrayVar(&engineArgs, "engine-arg", nil,
 		"engine flag, beating every derived one (KEY=VALUE, repeatable)")

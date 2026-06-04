@@ -654,7 +654,7 @@ func (b *Backend) PromoteWorkload(ctx context.Context, ref string, req api.Promo
 		Shape:      api.ServingShape{DeviceClass: "unknown", DeviceCount: found.DevicesPerReplica},
 	})
 	if len(found.Images) > 0 {
-		serving.EngineImage = &found.Images[0]
+		serving.EngineRuntimeImage = &found.Images[0]
 	}
 	name := req.Name
 	if name == "" {
@@ -1844,8 +1844,8 @@ func normalizeServing(sv api.ServingSpec) api.ServingSpec {
 func servingOf(artifactID string, req api.ServingRequest) api.ServingSpec {
 	return api.ServingSpec{
 		ArtifactID: artifactID,
-		Engine:     req.Engine, EngineVersion: req.EngineVersion,
-		EngineImage: req.EngineImage, FrontendImage: req.FrontendImage,
+		Engine:     req.Engine, EngineRuntimeVersion: req.EngineRuntimeVersion,
+		EngineRuntimeImage: req.EngineRuntimeImage, FrontendImage: req.FrontendImage,
 		EngineArgs: req.EngineArgs, ImportedArgs: req.ImportedArgs,
 		Quantization: req.Quantization, Dtype: req.Dtype,
 		Parallelism:   req.Parallelism,

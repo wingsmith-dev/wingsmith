@@ -396,7 +396,7 @@ async def seed_deployment(sessions, cluster) -> None:
                   ON CONFLICT (uid) DO UPDATE SET name = excluded.name RETURNING id
                 ), w AS (
                   INSERT INTO demand_workload (uid, name, kind, project_id, priority_class_id,
-                                               artifact_id, serving_digest, engine, engine_version,
+                                               artifact_id, serving_digest, engine, engine_runtime_version,
                                                context_length, device_class, engine_args)
                   SELECT :workload, 'llama-70b-prod', 'service', p.id, c.id, a.id,
                          'svg_00000000000000000000000000000000000000000000000000000000000000bc',

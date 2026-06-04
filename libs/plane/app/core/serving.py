@@ -144,33 +144,43 @@ def declared_served_model(workload: Workload, artifact: Artifact) -> str:
 
 DIGEST_PREFIX = "svg_"
 
-DIGEST_FIELDS = (
-    "engine",
-    "engine_version",
-    "engine_image",
-    "frontend_image",
-    "engine_args",
-    "quantization",
-    "dtype",
-    "tensor_parallel",
-    "pipeline_parallel",
-    "expert_parallel",
-    "context_length",
-    "max_batch_tokens",
-    "kv_cache_dtype",
-    "kv_cache_fraction",
-    "prefix_cache_enabled",
-    "prefix_cache_config",
-    "device_class",
-    "device_count",
-    "device_memory_mib_min",
-    "cpu_cores",
-    "memory_mib",
-    "disk_gib",
-    "overlay",
-    "serving",
+DIGEST_FIELDS: tuple[tuple[str, str], ...] = (
+    ("engine", "engine"),
+    ("engine_version", "engine_runtime_version"),
+    ("engine_image", "engine_runtime_image"),
+    ("frontend_image", "frontend_image"),
+    ("engine_args", "engine_args"),
+    ("quantization", "quantization"),
+    ("dtype", "dtype"),
+    ("tensor_parallel", "tensor_parallel"),
+    ("pipeline_parallel", "pipeline_parallel"),
+    ("expert_parallel", "expert_parallel"),
+    ("context_length", "context_length"),
+    ("max_batch_tokens", "max_batch_tokens"),
+    ("kv_cache_dtype", "kv_cache_dtype"),
+    ("kv_cache_fraction", "kv_cache_fraction"),
+    ("prefix_cache_enabled", "prefix_cache_enabled"),
+    ("prefix_cache_config", "prefix_cache_config"),
+    ("device_class", "device_class"),
+    ("device_count", "device_count"),
+    ("device_memory_mib_min", "device_memory_mib_min"),
+    ("cpu_cores", "cpu_cores"),
+    ("memory_mib", "memory_mib"),
+    ("disk_gib", "disk_gib"),
+    ("overlay", "overlay"),
+    ("serving", "serving"),
 )
 """Everything that decides what process runs, and nothing else.
+
+`(hash key, attribute)`, and the two differ where a column has since been renamed.
+The hash key is frozen at whatever it was the day the field entered the digest,
+because the digest is an identity: `ops_benchmark_run.serving_digest` names the
+configuration a measurement was taken against, and a run whose digest no longer
+matches any workload has lost the only link back to what it measured. Renaming a
+column is a statement about how this code reads; it is not a statement that the
+configuration changed, and it must not be recorded as one. So `engine_runtime_version`
+still hashes under `engine_version`, and every digest written before the rename is
+still the digest of the same configuration after it.
 
 Read in this order and hashed with the artifact, which is the one field not named
 here because it is an identity rather than a column value.
@@ -204,8 +214,8 @@ def serving_digest(workload: Workload, artifact: Artifact) -> str:
     else computed is a claim about a configuration rather than a reading of it.
     """
     payload: dict[str, Any] = {"artifact": str(artifact.uid)}
-    for name in DIGEST_FIELDS:
-        payload[name] = _canonical(getattr(workload, name))
+    for key, attribute in DIGEST_FIELDS:
+        payload[key] = _canonical(getattr(workload, attribute))
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return DIGEST_PREFIX + hashlib.sha256(body.encode("utf-8")).hexdigest()
 

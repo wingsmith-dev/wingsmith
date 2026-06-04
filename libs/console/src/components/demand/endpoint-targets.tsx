@@ -21,11 +21,11 @@ const TARGET_ROLES = ["primary", "canary", "fallback"]
 
 type DeploymentChoice = { value: string; label: string }
 
-/** A deployment reads as its own name with the workload behind it, never a bare id. */
+/** A deployment reads as its own name, never a bare id. */
 function deploymentChoices(deployments: Deployment[]): DeploymentChoice[] {
   return deployments.map((d) => ({
     value: d.id,
-    label: d.workload_name ? `${d.name} · ${d.workload_name}` : d.name,
+    label: d.name,
   }))
 }
 
@@ -207,10 +207,7 @@ export function TargetsField({
       )}
 
       <p className="text-2xs text-muted-foreground/70">
-        Deployment, weight, role, and whether the gateway may use it. The served
-        model name is what the engine behind that deployment answers to — set it
-        only to correct a mismatch, which the gateway picks up on its next poll
-        without restarting anything.
+        Weight, role, and whether the gateway may route to the deployment.
       </p>
     </div>
   )

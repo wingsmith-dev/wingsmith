@@ -15,6 +15,8 @@ The workload's own surface — its request shapes, its routes, its repository �
 `test_workloads.py`. This file is the configuration, not the object that holds it.
 """
 
+import json
+import hashlib
 import datetime as dt
 
 from types import SimpleNamespace
@@ -31,6 +33,8 @@ from app.core.vram import extract_shape
 from app.core.vram import shape_metadata
 from app.db.models import Artifact
 from app.db.models import Workload
+from app.core.serving import DIGEST_FIELDS
+from app.core.serving import _canonical
 from app.core.serving import served_model
 from app.core.serving import serving_digest
 from app.hub.messages import ServingSpec
@@ -54,9 +58,9 @@ from app.modules.workloads.services import check_serving
 from app.modules.workloads.services import check_capacity
 from app.modules.workloads.services import check_footprint
 from app.modules.workloads.services import check_quantization
-from app.modules.workloads.services import resolve_engine_image
 from app.modules.workloads.services import resolved_engine_args
 from app.modules.workloads.services import check_serving_request
+from app.modules.workloads.services import resolve_engine_runtime_image
 
 
 EPOCH = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
@@ -99,8 +103,8 @@ def a_workload(**kwargs) -> Workload:
         "uid": new_uid(WORKLOAD),
         "name": "llama-vllm",
         "engine": "vllm",
-        "engine_version": "0.6.0",
-        "engine_image": None,
+        "engine_runtime_version": "0.6.0",
+        "engine_runtime_image": None,
         "frontend_image": None,
         "engine_args": {},
         "imported_args": {},
@@ -139,7 +143,7 @@ def a_request(**kwargs) -> WorkloadServingRequest:
     fields = {
         "artifact": new_uid(ARTIFACT),
         "engine": "vllm",
-        "engine_version": "0.6.0",
+        "engine_runtime_version": "0.6.0",
         "context_length": 8192,
         "shape": ShapeSchema(device_class="h100"),
     }
@@ -561,53 +565,53 @@ def test_a_context_window_that_does_not_fit_is_not_a_refusal():
 # --------------------------------------------------------------------------- images
 
 
-def test_engine_image_is_resolved_from_the_engine_and_version():
+def test_the_runtime_image_is_resolved_from_the_engine_and_the_runtime_version():
     """The common case: an author picks an engine, not a registry address."""
-    assert resolve_engine_image("vllm", "1.4.1", None) == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.1"
+    assert resolve_engine_runtime_image("vllm", "1.4.1", None) == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.1"
 
 
-def test_a_declared_engine_image_always_wins():
+def test_a_declared_runtime_image_always_wins():
     """Pinning an exact image is the reason the field is writable."""
-    assert resolve_engine_image("vllm", "1.4.1", "my.registry/vllm:dev") == "my.registry/vllm:dev"
+    assert resolve_engine_runtime_image("vllm", "1.4.1", "my.registry/vllm:dev") == "my.registry/vllm:dev"
 
 
 def test_latest_resolves_to_a_real_tag():
     """`latest` is not a tag these registries publish; taking it verbatim is a pull failure."""
-    resolved = resolve_engine_image("vllm", "latest", None)
+    resolved = resolve_engine_runtime_image("vllm", "latest", None)
     assert resolved is not None
-    assert resolved.endswith(f":{settings.ENGINE_IMAGE_TAG_DEFAULT}")
+    assert resolved.endswith(f":{settings.ENGINE_RUNTIME_TAG_DEFAULT}")
 
 
 def test_an_empty_version_resolves_to_a_real_tag():
-    resolved = resolve_engine_image("vllm", "", None)
+    resolved = resolve_engine_runtime_image("vllm", "", None)
     assert resolved is not None
-    assert resolved.endswith(f":{settings.ENGINE_IMAGE_TAG_DEFAULT}")
+    assert resolved.endswith(f":{settings.ENGINE_RUNTIME_TAG_DEFAULT}")
 
 
 def test_an_unknown_engine_has_no_default():
     """Inventing an address would trade a visible gap for an ImagePullBackOff."""
-    assert resolve_engine_image("some-engine-nobody-configured", "1.0", None) is None
+    assert resolve_engine_runtime_image("some-engine-nobody-configured", "1.0", None) is None
 
 
 def test_the_engine_name_is_matched_case_insensitively():
-    assert resolve_engine_image("VLLM", "1.4.1", None) is not None
+    assert resolve_engine_runtime_image("VLLM", "1.4.1", None) is not None
 
 
 def test_a_malformed_repo_pair_does_not_break_the_write_path():
     """One bad character in an env var must not be why a workload cannot be created."""
-    original = settings.ENGINE_IMAGE_REPOS
-    settings.ENGINE_IMAGE_REPOS = "garbage,,vllm=repo/vllm"
+    original = settings.ENGINE_RUNTIME_REPOS
+    settings.ENGINE_RUNTIME_REPOS = "garbage,,vllm=repo/vllm"
     try:
-        assert resolve_engine_image("vllm", "1.4.1", None) == "repo/vllm:1.4.1"
+        assert resolve_engine_runtime_image("vllm", "1.4.1", None) == "repo/vllm:1.4.1"
     finally:
-        settings.ENGINE_IMAGE_REPOS = original
+        settings.ENGINE_RUNTIME_REPOS = original
 
 
 def test_a_declared_frontend_image_is_carried_verbatim():
     """There is no `resolve_frontend_image`, and the absence is the design.
 
     The plane knows which repository an engine's workers come from because
-    `ENGINE_IMAGE_REPOS` tells it. Nothing tells it what a cluster serves its
+    `ENGINE_RUNTIME_REPOS` tells it. Nothing tells it what a cluster serves its
     frontends through — that is the operator's fact — so the only frontend image
     this side can state is one a person pinned.
     """
@@ -616,7 +620,7 @@ def test_a_declared_frontend_image_is_carried_verbatim():
 
 
 def test_a_workload_naming_no_frontend_image_does_not_borrow_the_engines():
-    """Empty means the cluster decides, and it must not quietly mean `engine_image`.
+    """Empty means the cluster decides, and it must not quietly mean `engine_runtime_image`.
 
     Kimi K3 is the case the field exists for and it is the case where the two
     differ: the frontend carries the tokenizer fix, the worker stays on the base
@@ -624,8 +628,8 @@ def test_a_workload_naming_no_frontend_image_does_not_borrow_the_engines():
     one answer that is wrong precisely when it matters.
     """
     engine = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
-    block = rendered(a_workload(engine_image=engine))
-    assert block.engine_image == engine
+    block = rendered(a_workload(engine_runtime_image=engine))
+    assert block.engine_runtime_image == engine
     assert block.frontend_image is None
 
 
@@ -662,7 +666,7 @@ def test_the_typed_serving_block_reaches_the_cluster():
     configuration read as configured and whose engine had never heard of the flag.
     """
     workload = a_workload(
-        engine_version="0.10.0",
+        engine_runtime_version="0.10.0",
         engine_args={"--async-scheduling": ""},
         serving={"tool_call_parser": "openai"},
         tensor_parallel=4,
@@ -685,6 +689,37 @@ def test_the_typed_serving_block_reaches_the_cluster():
 # --------------------------------------------------------------------------- the digest
 
 
+def test_renaming_a_column_does_not_move_the_identity_of_a_configuration():
+    """`engine_runtime_version` still hashes under `engine_version`, and must for ever.
+
+    `ops_benchmark_run.serving_digest` names the configuration a measurement was taken
+    against, so a digest that shifted when a column was renamed would leave every stored
+    run pointing at a configuration no workload has — a benchmark attributed to nothing,
+    failing silently. `DIGEST_FIELDS` is `(hash key, attribute)` for exactly this: the
+    attribute half follows the code, the key half never moves.
+
+    The literal below is the digest of the block in `a_workload()` and is checked against
+    the payload assembled the way the pre-rename code assembled it, so this fails if
+    anyone re-points a hash key at its new column name.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    workload = a_workload()
+
+    payload = {"artifact": str(artifact.uid)}
+    for key, attribute in DIGEST_FIELDS:
+        payload[key] = _canonical(getattr(workload, attribute))
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    expected = "svg_" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+    assert serving_digest(workload, artifact) == expected
+    assert [key for key, _ in DIGEST_FIELDS][:3] == ["engine", "engine_version", "engine_image"]
+    assert [attr for _, attr in DIGEST_FIELDS][:3] == [
+        "engine",
+        "engine_runtime_version",
+        "engine_runtime_image",
+    ]
+
+
 def test_two_workloads_asking_for_the_same_thing_carry_one_digest():
     """The identity of a serving configuration is its content, stated literally.
 
@@ -705,8 +740,8 @@ def test_two_workloads_asking_for_the_same_thing_carry_one_digest():
     "field,value",
     [
         ("engine", "sglang"),
-        ("engine_version", "0.7.0"),
-        ("engine_image", "my.registry/vllm:dev"),
+        ("engine_runtime_version", "0.7.0"),
+        ("engine_runtime_image", "my.registry/vllm:dev"),
         ("frontend_image", "my.registry/frontend:dev"),
         ("engine_args", {"--enforce-eager": ""}),
         ("quantization", "fp8"),
@@ -803,9 +838,9 @@ def test_the_digest_is_read_off_the_row_and_never_off_the_request():
     """
     artifact = Artifact(uid=new_uid(ARTIFACT))
     workload = a_workload()
-    apply_serving(workload, a_request(engine_version="0.7.0"), artifact)
+    apply_serving(workload, a_request(engine_runtime_version="0.7.0"), artifact)
 
-    assert workload.engine_version == "0.7.0"
+    assert workload.engine_runtime_version == "0.7.0"
     assert workload.serving_digest == serving_digest(workload, artifact)
 
 

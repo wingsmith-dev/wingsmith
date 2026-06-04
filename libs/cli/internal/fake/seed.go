@@ -316,15 +316,15 @@ func seed() *state {
 	// point at and nothing to share: two workloads configured this way carry
 	// the same serving_digest, and that is all sharing ever meant.
 	serving := normalizeServing(api.ServingSpec{
-		ArtifactID:     artifactID,
-		Engine:         "vllm",
-		EngineVersion:  "0.6.3",
-		EngineArgs:     map[string]any{},
-		ImportedArgs:   map[string]any{"--max-num-seqs": "256"},
-		Dtype:          strptr("bfloat16"),
-		Parallelism:    api.ServingParallelism{Tensor: 8, Pipeline: 1, Expert: 1},
-		ContextLength:  131072,
-		MaxBatchTokens: intptr(65536),
+		ArtifactID:           artifactID,
+		Engine:               "vllm",
+		EngineRuntimeVersion: "0.6.3",
+		EngineArgs:           map[string]any{},
+		ImportedArgs:         map[string]any{"--max-num-seqs": "256"},
+		Dtype:                strptr("bfloat16"),
+		Parallelism:          api.ServingParallelism{Tensor: 8, Pipeline: 1, Expert: 1},
+		ContextLength:        131072,
+		MaxBatchTokens:       intptr(65536),
 		Cache: api.ServingCache{
 			KVCacheDtype:       strptr("fp8"),
 			KVCacheFraction:    floatptr(0.9),

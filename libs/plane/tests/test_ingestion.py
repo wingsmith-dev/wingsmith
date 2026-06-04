@@ -317,12 +317,12 @@ def test_replica_upsert_targets_the_natural_key() -> None:
     assert "ON CONFLICT ON CONSTRAINT uq_demand_replica_cluster_name DO UPDATE" in sql
 
 
-def test_replica_stores_the_engine_version_and_not_the_engine() -> None:
+def test_replica_stores_the_runtime_version_and_not_the_engine() -> None:
     """The engine is the workload's; the version is what lags during a rollout."""
     observed = payload("replica.observed")
     _, params = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, observed))
     values = scalar_params(params)
-    assert observed.engine_version in values
+    assert observed.engine_runtime_version in values
     assert observed.engine not in values
 
 
@@ -1053,8 +1053,8 @@ def _workload(**kwargs):
         "uid": "wkl_01j9x2ffffffffffffffffffff",
         "name": "kimi-k3-mxfp4-tp8-1024k",
         "engine": "vllm",
-        "engine_version": "0.6.0",
-        "engine_image": None,
+        "engine_runtime_version": "0.6.0",
+        "engine_runtime_image": None,
         "frontend_image": None,
         "engine_args": {},
         "quantization": None,
@@ -1135,7 +1135,7 @@ def test_the_wire_carries_the_workloads_own_frontend_image() -> None:
     assert _wire_serving(frontend_image=pinned).frontend_image == pinned
 
 
-def test_a_workload_with_no_frontend_image_sends_nothing_not_the_engine_image() -> None:
+def test_a_workload_with_no_frontend_image_sends_nothing_not_the_runtime_image() -> None:
     """Empty is a real answer and it means the cluster decides.
 
     Kimi K3 is why the field is not one field: the tokenizer fix is compiled into
@@ -1145,8 +1145,8 @@ def test_a_workload_with_no_frontend_image_sends_nothing_not_the_engine_image() 
     not published from the engine's repository it would be an ImagePullBackOff.
     """
     engine = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
-    wire = _wire_serving(engine_image=engine)
-    assert wire.engine_image == engine
+    wire = _wire_serving(engine_runtime_image=engine)
+    assert wire.engine_runtime_image == engine
     assert wire.frontend_image is None
 
 

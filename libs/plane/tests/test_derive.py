@@ -7,7 +7,7 @@ real thing.
 
 from app.modules.discovered.derive import derive
 from app.modules.discovered.derive import parse_args
-from app.modules.discovered.derive import engine_from_image
+from app.modules.discovered.derive import engine_runtime_from_image
 
 
 QWEN = {
@@ -50,7 +50,7 @@ def test_a_dynamo_vllm_worker_reads_as_a_complete_serving_block() -> None:
     assert draft.confident
     assert draft.notes == []
     assert draft.engine == "vllm"
-    assert draft.engine_version == "1.3.1"
+    assert draft.engine_runtime_version == "1.3.1"
     assert draft.artifact_ref == "hf:Qwen/Qwen3.8-27B"
     assert draft.artifact_name == "Qwen/Qwen3.8-27B"
     assert draft.name == "qwen3.8-27b"
@@ -158,9 +158,9 @@ def test_millicore_requests_round_up_to_a_whole_core() -> None:
 
 
 def test_engine_is_read_from_the_runtime_image_convention() -> None:
-    assert engine_from_image("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1") == ("vllm", "1.3.1")
-    assert engine_from_image("nvcr.io/nvidia/ai-dynamo/sglang-runtime:0.4.2") == ("sglang", "0.4.2")
-    assert engine_from_image(None) == (None, None)
+    assert engine_runtime_from_image("nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.3.1") == ("vllm", "1.3.1")
+    assert engine_runtime_from_image("nvcr.io/nvidia/ai-dynamo/sglang-runtime:0.4.2") == ("sglang", "0.4.2")
+    assert engine_runtime_from_image(None) == (None, None)
 
 
 def test_weights_read_as_an_artifact_named_by_reference() -> None:

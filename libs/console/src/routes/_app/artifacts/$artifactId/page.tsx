@@ -339,7 +339,8 @@ function ServedByPanel({
       secondary: true,
       cell: (workload) => (
         <span className="font-mono text-2xs">
-          {workload.serving.engine} {workload.serving.engine_version}
+          {workload.serving.engine} · runtime{" "}
+          {workload.serving.engine_runtime_version}
         </span>
       ),
     },

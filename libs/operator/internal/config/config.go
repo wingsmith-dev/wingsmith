@@ -156,8 +156,13 @@ type Config struct {
 	Multinode bool
 
 	// EnginePullSecrets are Secrets in WorkloadNamespace the kubelet presents when pulling a
-	// deployment's EngineImage. Empty for the anonymous NVIDIA runtime; set on clusters that run
-	// private engine builds such as the GLM 5.3 runtime in GHCR.
+	// deployment's EngineRuntimeImage. Empty for the anonymous NVIDIA runtime; set on clusters
+	// that run private engine builds such as the GLM 5.3 runtime in GHCR.
+	//
+	// Keeps its name and its HANGAR_ENGINE_PULL_SECRETS env var through the rename of
+	// engine_version to engine_runtime_version: no version is involved, `engine` is still a
+	// real concept, and renaming a Helm value would silently drop the credential on any
+	// cluster that had set it -- an ImagePullBackOff bought for nothing.
 	EnginePullSecrets []string
 
 	// FrontendEnabled renders one OpenAI-compatible frontend per model, beside the worker in the

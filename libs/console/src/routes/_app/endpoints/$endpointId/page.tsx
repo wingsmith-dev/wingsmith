@@ -1,5 +1,4 @@
 import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
-import { SurfaceCard } from "@/components/demand/endpoint-surface"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { DeleteDialog } from "@/components/layout/destructive"
 import { CopyableId, Dash, Id, Labels } from "@/components/layout/mono"
@@ -613,111 +612,24 @@ export function EndpointDetailPage() {
                   </CardContent>
                 </Card>
 
-                {/* Routing — real targets, weighted by target.weight. */}
-                <Card>
-                  <CardHeader className="flex-row items-start justify-between gap-2 pb-2">
-                    <div>
-                      <CardTitle className="text-sm">Routing</CardTitle>
-                      <p className="text-2xs text-muted-foreground">
-                        How traffic is split across backing deployments
-                      </p>
-                    </div>
+                {/* Routing — real targets, weighted, with the deployment's
+                    observed state inlined. One card covers what traffic is sent
+                    where and how it is doing. */}
+                <Card className="gap-0 overflow-hidden p-0">
+                  <div className="flex items-center justify-between gap-2 border-b bg-muted/30 px-4 py-3">
+                    <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+                      routing
+                    </span>
                     <Badge variant="outline" className="font-mono text-2xs">
                       {endpoint.routing_strategy}
                     </Badge>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2.5">
-                      {(() => {
-                        const total = endpoint.targets.reduce(
-                          (sum, t) => sum + (t.enabled ? t.weight : 0),
-                          0
-                        )
-                        return endpoint.targets.map((target) => {
-                          const pct =
-                            total > 0 && target.enabled
-                              ? Math.round((target.weight / total) * 100)
-                              : 0
-                          return (
-                            <div
-                              key={target.deployment_id}
-                              className="flex items-center gap-3"
-                            >
-                              <Link
-                                to="/deployments/$deploymentId"
-                                params={{ deploymentId: target.deployment_id }}
-                                className="w-36 shrink-0 truncate font-mono text-2xs hover:underline"
-                              >
-                                {target.deployment_id}
-                              </Link>
-                              <Badge
-                                variant={
-                                  target.role === "primary"
-                                    ? "default"
-                                    : "secondary"
-                                }
-                                className="font-mono text-2xs"
-                              >
-                                {target.role}
-                              </Badge>
-                              <div className="h-2 flex-1 overflow-hidden rounded-full bg-secondary">
-                                <div
-                                  className="h-full rounded-full bg-primary"
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                              <span className="w-11 shrink-0 text-right font-mono text-xs tabular-nums">
-                                {pct}%
-                              </span>
-                            </div>
-                          )
-                        })
-                      })()}
-                      {endpoint.targets.length === 0 && (
-                        <p className="py-6 text-center text-sm text-muted-foreground">
-                          No targets — this endpoint routes nowhere.
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="border-t pt-3">
-                      <FieldGrid>
-                        <Field label="Failover order">
-                          <Dash>
-                            {endpoint.failover_order.length > 0
-                              ? endpoint.failover_order.join(" → ")
-                              : null}
-                          </Dash>
-                        </Field>
-                        <Field label="Region affinity">
-                          <Dash>
-                            {regions.length > 0 ? regions.join(", ") : null}
-                          </Dash>
-                        </Field>
-                      </FieldGrid>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Deployments — one row per target, resolved through the
-                    deployment → workload → artifact graph. Cluster and replicas
-                    are the deployment's observed state; serving and artifact are
-                    its workload's. All lookups are defensive. */}
-                <Card className="gap-0 overflow-hidden p-0">
-                  <div className="border-b bg-muted/30 px-4 py-3">
-                    <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-                      deployments
-                    </span>
-                    <span className="ml-2 font-mono text-2xs text-muted-foreground/40">
-                      cluster and replicas are the deployment's; serving and
-                      artifact its workload's
-                    </span>
                   </div>
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Cluster</TableHead>
                         <TableHead>Role</TableHead>
+                        <TableHead>Weight</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Replicas</TableHead>
                         <TableHead>Serving</TableHead>
@@ -730,6 +642,14 @@ export function EndpointDetailPage() {
                           resolved.get(target.deployment_id) ?? {}
                         const rollup = deployment?.replicas
                         const quant = quantLabel(workload)
+                        const totalWeight = endpoint.targets.reduce(
+                          (s, t) => s + (t.enabled ? t.weight : 0),
+                          0
+                        )
+                        const weightPct =
+                          totalWeight > 0 && target.enabled
+                            ? Math.round((target.weight / totalWeight) * 100)
+                            : 0
                         return (
                           <TableRow key={target.deployment_id}>
                             <TableCell>
@@ -757,6 +677,19 @@ export function EndpointDetailPage() {
                               >
                                 {target.role}
                               </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2">
+                                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
+                                  <div
+                                    className="h-full rounded-full bg-primary"
+                                    style={{ width: `${weightPct}%` }}
+                                  />
+                                </div>
+                                <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+                                  {weightPct}%
+                                </span>
+                              </div>
                             </TableCell>
                             <TableCell>
                               <StatusLabel
@@ -835,7 +768,7 @@ export function EndpointDetailPage() {
                       {endpoint.targets.length === 0 && (
                         <TableRow>
                           <TableCell
-                            colSpan={6}
+                            colSpan={7}
                             className="py-10 text-center text-sm text-muted-foreground"
                           >
                             No targets — this endpoint routes nowhere.
@@ -888,14 +821,23 @@ export function EndpointDetailPage() {
                       <Field label="Routing strategy">
                         {endpoint.routing_strategy}
                       </Field>
-                      <Field label="Auth">
-                        <Dash>{endpoint.surface?.auth_mode}</Dash>
-                      </Field>
                       <Field label="Enabled">
                         {endpoint.enabled ? "yes" : "no"}
                       </Field>
                       <Field label="Created">
                         {new Date(endpoint.created_at).toLocaleDateString()}
+                      </Field>
+                      <Field label="Failover order">
+                        <Dash>
+                          {endpoint.failover_order.length > 0
+                            ? endpoint.failover_order.join(" → ")
+                            : null}
+                        </Dash>
+                      </Field>
+                      <Field label="Region affinity">
+                        <Dash>
+                          {regions.length > 0 ? regions.join(", ") : null}
+                        </Dash>
                       </Field>
                       <Field label="Labels" className="sm:col-span-2">
                         <Labels labels={endpoint.labels} />
@@ -982,8 +924,6 @@ export function EndpointDetailPage() {
                     )}
                   </CardContent>
                 </Card>
-
-                <SurfaceCard surface={endpoint.surface} />
 
                 {/* Activity — the event log, filtered by this endpoint. The
                     rows are its targets' deployments and their replicas: an

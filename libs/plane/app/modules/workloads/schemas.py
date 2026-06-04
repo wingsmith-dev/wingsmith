@@ -157,8 +157,8 @@ class WorkloadServingSchema(Struct):
 
     artifact_id: str
     engine: str
-    engine_version: str
-    engine_image: str | None
+    engine_runtime_version: str
+    engine_runtime_image: str | None
     frontend_image: str | None
     engine_args: dict
     imported_args: dict
@@ -192,10 +192,10 @@ class WorkloadServingRequest(Struct):
 
     artifact: str
     engine: str
-    engine_version: str
+    engine_runtime_version: str
     context_length: int
     shape: ShapeSchema
-    engine_image: str | None = None
+    engine_runtime_image: str | None = None
     frontend_image: str | None = None
     engine_args: dict = {}
     imported_args: dict = {}
@@ -226,8 +226,8 @@ class WorkloadServingUpdate(Struct):
     """
 
     engine: str | UnsetType = UNSET
-    engine_version: str | UnsetType = UNSET
-    engine_image: str | None | UnsetType = UNSET
+    engine_runtime_version: str | UnsetType = UNSET
+    engine_runtime_image: str | None | UnsetType = UNSET
     frontend_image: str | None | UnsetType = UNSET
     engine_args: dict | UnsetType = UNSET
     imported_args: dict | UnsetType = UNSET

@@ -161,10 +161,15 @@ class Settings:
     than a boot failure.
     """
 
-    ENGINE_IMAGE_REPOS: str = "vllm=nvcr.io/nvidia/ai-dynamo/vllm-runtime,sglang=nvcr.io/nvidia/ai-dynamo/sglang-runtime,trtllm=nvcr.io/nvidia/ai-dynamo/tensorrtllm-runtime"
-    """`engine=repository` pairs the plane resolves a workload's image from.
+    ENGINE_RUNTIME_REPOS: str = "vllm=nvcr.io/nvidia/ai-dynamo/vllm-runtime,sglang=nvcr.io/nvidia/ai-dynamo/sglang-runtime,trtllm=nvcr.io/nvidia/ai-dynamo/tensorrtllm-runtime"
+    """`engine=repository` pairs the plane resolves a workload's runtime image from.
 
-    A workload names an engine and a version; the image those two mean is a
+    Keyed by engine because that is what a repository is: `vllm-runtime` is the
+    Dynamo runtime with vLLM compiled into it, and `dynamo.vllm` exists nowhere
+    else. Picking the engine therefore picks the repository, and the tag beside it
+    — `engine_runtime_version` — is a Dynamo release rather than the engine's own number.
+
+    A workload names an engine and a runtime version; the image those two mean is a
     property of the deployment, not of the configuration, and asking every author
     to retype it is how a workload reaches a cluster with no image at all. A workload
     with no image is not rejected by anything downstream — the operator simply
@@ -172,12 +177,12 @@ class Settings:
     download nobody was told to start. Resolving it here removes the field from
     the set of things a user can silently get wrong.
 
-    An explicit `engine_image` on the workload always wins; this is the fallback.
+    An explicit `engine_runtime_image` on the workload always wins; this is the fallback.
     An engine absent from this map has no default and still requires one.
     """
 
-    ENGINE_IMAGE_TAG_DEFAULT: str = "1.4.1"
-    """Tag used when a workload's `engine_version` is empty or `latest`.
+    ENGINE_RUNTIME_TAG_DEFAULT: str = "1.4.1"
+    """Tag used when a workload's `engine_runtime_version` is empty or `latest`.
 
     `latest` is not a tag these registries publish, so accepting it verbatim
     produces an `ImagePullBackOff` rather than a validation error. Keep this in

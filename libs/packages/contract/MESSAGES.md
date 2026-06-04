@@ -223,8 +223,17 @@ a re-fit, and it is now stored rather than guessed.
 flags and an escape hatch that loses to a default is not one. The plane leaves that hatch out of
 what it resolves, so the same value never travels twice.
 
+**A runtime image is not an engine version, and the block names the first.**
+`serving.engine_runtime_version` is a tag of the Dynamo runtime image — `1.4.1` — and `serving.engine` is
+the module inside it the worker launches, `python3 -m dynamo.<engine>`. The engine's own version is
+neither field and is not on this wire at all: which vLLM NVIDIA compiled into `vllm-runtime:1.4.1`
+is a property of that image, unrecorded here and unobserved by the cluster. The two count in
+different sequences — vLLM is on `0.28.0` while the runtime carrying it is on `1.4.1` — so a block
+that spelled the runtime tag `engine_version` invited exactly one mistake, pinning the engine's
+number as the image's, and `vllm-runtime:0.28.0` is an address that has never existed.
+
 **The serving block carries two images, because a frontend and a worker are two binaries.**
-`serving.engine_image` is what loads the weights. `serving.frontend_image` is what
+`serving.engine_runtime_image` is what loads the weights. `serving.frontend_image` is what
 this model's own Dynamo frontend runs, and it is a field of its own rather than a reuse of the
 first because the two are versioned separately and the difference is not theoretical. Kimi K3
 arrived on a worker running the stock `vllm-runtime:1.4.0-patched.1` and served: 191.74 GiB
@@ -237,14 +246,14 @@ in order to reach one of them.
 
 `frontend_image` is empty in the ordinary case, and **empty means the cluster decides**. What a
 cluster runs its frontends on is a local fact: the operator holds it and the plane does not, so
-the plane declares an override or declares nothing. It never substitutes `engine_image` for an
+the plane declares an override or declares nothing. It never substitutes `engine_runtime_image` for an
 absent `frontend_image`, because on a cluster whose frontends are not published from the engine's
 repository that is an `ImagePullBackOff` chosen a continent away, and because a value the plane
 invented is indistinguishable on arrival from one somebody pinned.
 
 The cluster resolves it most specific first: this deployment's `serving.frontend_image`, then
 whatever that cluster is configured to serve its frontends through, then — last, and only when
-neither has been said — the same block's `engine_image`. That last step is not the plane's rule leaking back in. It is
+neither has been said — the same block's `engine_runtime_image`. That last step is not the plane's rule leaking back in. It is
 right often enough to be the honest default, since the Dynamo runtime image carries the frontend
 and the engines together, and it is reached only after the two places that could have said
 something better both declined. An empty string is not an override at any level and is treated as

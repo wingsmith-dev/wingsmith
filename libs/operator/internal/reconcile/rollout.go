@@ -149,7 +149,7 @@ func (r *SyncedResourceReconciler) observeRollout(
 	if err != nil {
 		return rollout{}, fmt.Errorf("list pods for %s: %w", dep.DeploymentID, err)
 	}
-	out := r.rolloutFrom(pods.Items, dep, render.Replicas(dep), dep.Serving.Engine, dep.Serving.EngineVersion)
+	out := r.rolloutFrom(pods.Items, dep, render.Replicas(dep), dep.Serving.Engine, dep.Serving.RuntimeVersion())
 	out.trouble = r.diagnose(ctx, name, pods.Items, out)
 	serving, found := r.frontendState(ctx, name)
 	out.frontendUnready = !serving
@@ -371,7 +371,7 @@ func (r *SyncedResourceReconciler) rolloutFrom(
 	dep wire.DeploymentDesired,
 	desired int,
 	engine string,
-	engineVersion string,
+	runtimeVersion string,
 ) rollout {
 	out := rollout{desired: desired}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -409,16 +409,19 @@ func (r *SyncedResourceReconciler) rolloutFrom(
 			// were plainly serving. Empty is also the truthful value: which devices a replica
 			// holds is an Allocation, reported by the observe loop, and a pod spec carries a
 			// count rather than the ids.
-			DeviceIDs:          []string{},
-			Phase:              replicaPhase(pod, ready),
-			Ready:              ready,
-			Engine:             engine,
-			EngineVersion:      engineVersion,
-			ServingDigest:      dep.Serving.Digest,
-			RestartCount:       restarts(pod),
-			ObservedGeneration: dep.Generation,
-			StartedAt:          startedAt(pod),
-			ObservedAt:         now,
+			DeviceIDs:            []string{},
+			Phase:                replicaPhase(pod, ready),
+			Ready:                ready,
+			Engine:               engine,
+			EngineRuntimeVersion: runtimeVersion,
+			// The same value under the name a plane that predates the rename requires. Sent as
+			// well as, never instead of; drop it once no such plane is running.
+			LegacyEngineVersion: runtimeVersion,
+			ServingDigest:       dep.Serving.Digest,
+			RestartCount:        restarts(pod),
+			ObservedGeneration:  dep.Generation,
+			StartedAt:           startedAt(pod),
+			ObservedAt:          now,
 		})
 	}
 	return out

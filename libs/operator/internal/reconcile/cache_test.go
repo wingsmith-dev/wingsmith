@@ -110,10 +110,10 @@ func TestAnArtifactNoDeploymentServesWaits(t *testing.T) {
 	}
 }
 
-// TestADeploymentWithNoEngineImageIsNotAnImageToBorrow.
-func TestADeploymentWithNoEngineImageIsNotAnImageToBorrow(t *testing.T) {
+// TestADeploymentWithNoEngineRuntimeImageIsNotAnImageToBorrow.
+func TestADeploymentWithNoEngineRuntimeImageIsNotAnImageToBorrow(t *testing.T) {
 	dep := testDeploymentDesired()
-	dep.Serving.EngineImage = nil
+	dep.Serving.EngineRuntimeImage = nil
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, out, _ := runReconcile(t, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
@@ -128,12 +128,12 @@ func TestADeploymentWithNoEngineImageIsNotAnImageToBorrow(t *testing.T) {
 	}
 }
 
-// TestAnEmptyEngineImageIsTreatedAsAbsent — a serving field set to "" is how an omitted value
+// TestAnEmptyEngineRuntimeImageIsTreatedAsAbsent — a serving field set to "" is how an omitted value
 // arrives, and it must not become an image reference of nothing.
-func TestAnEmptyEngineImageIsTreatedAsAbsent(t *testing.T) {
+func TestAnEmptyEngineRuntimeImageIsTreatedAsAbsent(t *testing.T) {
 	blank := ""
 	dep := testDeploymentDesired()
-	dep.Serving.EngineImage = &blank
+	dep.Serving.EngineRuntimeImage = &blank
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	_, out, _ := runReconcile(t, cache,
 		declared(t, "artifact", testArtifactID, testArtifactDesired()),
@@ -242,7 +242,7 @@ func lastCache(t *testing.T, r *recordingReporter, artifactID string) wire.Cache
 // that is indistinguishable from a download about to begin.
 func TestAStalledWarmSetEntrySaysWhyItIsStalled(t *testing.T) {
 	dep := testDeploymentDesired()
-	dep.Serving.EngineImage = nil
+	dep.Serving.EngineRuntimeImage = nil
 	rep := &recordingReporter{}
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	runReconcileWith(t, rep, cache,
@@ -298,7 +298,7 @@ func TestADispatchedPrefetchReportsItIsPending(t *testing.T) {
 func TestResidencyIsReportedOncePerTransition(t *testing.T) {
 	rep := &recordingReporter{}
 	dep := testDeploymentDesired()
-	dep.Serving.EngineImage = nil
+	dep.Serving.EngineRuntimeImage = nil
 	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	objects := []client.Object{
 		cache,

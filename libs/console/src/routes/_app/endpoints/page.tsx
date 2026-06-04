@@ -5,7 +5,6 @@ import { DeleteDialog, RowActions } from "@/components/layout/destructive"
 import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusDot, type StatusTone } from "@/components/layout/status-dot"
-import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
 import { useProjectOptions } from "@/modules/binding/queries"
 import { Button } from "@/components/ui/button"
@@ -61,12 +60,6 @@ function mockTrail(id: string, salt: number): MetricSeriesPoint[] {
     at,
     value: 10 + ((base >> at) % 7) + at * ((base % 3) - 1),
   }))
-}
-
-const AUTH_LABELS: Record<string, string> = {
-  none: "public",
-  api_key: "api key",
-  mtls: "mTLS",
 }
 
 interface Health {
@@ -373,17 +366,6 @@ function columns(
           </span>
         )
       },
-    },
-    {
-      key: "auth",
-      header: "Auth",
-      cell: (endpoint) => (
-        <Badge variant="outline" className="font-mono text-2xs">
-          {AUTH_LABELS[endpoint.surface?.auth_mode ?? ""] ??
-            endpoint.surface?.auth_mode ??
-            "—"}
-        </Badge>
-      ),
     },
     {
       key: "actions",

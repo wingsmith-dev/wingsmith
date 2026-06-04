@@ -205,7 +205,7 @@ def a_serving(artifact_ref: str, **extra) -> WorkloadServingRequest:
     fields = {
         "artifact": artifact_ref,
         "engine": "vllm",
-        "engine_version": "0.6.0",
+        "engine_runtime_version": "0.6.0",
         "context_length": 8192,
         "shape": ShapeSchema(device_class="h100"),
     }
@@ -558,8 +558,8 @@ async def test_the_serving_configuration_is_created_read_and_patched(db: AsyncSe
     assert (await service.get(created.id)).serving.engine == "vllm"
     assert (await service.list()).count == 1
 
-    patched = await service.update(created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="0.7.0")))
-    assert patched.serving.engine_version == "0.7.0"
+    patched = await service.update(created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_version="0.7.0")))
+    assert patched.serving.engine_runtime_version == "0.7.0"
     assert patched.serving_digest != created.serving_digest
     assert_patched(created, patched)
 
@@ -656,7 +656,7 @@ async def test_a_workload_carries_an_overlay_the_plane_never_reads_inside(db: As
     assert (plain.serving.overlay.pod_spec, plain.serving.overlay.dynamo) == ({}, {})
 
 
-async def test_bumping_the_engine_version_moves_the_derived_image(db: AsyncSession) -> None:
+async def test_bumping_the_runtime_version_moves_the_derived_image(db: AsyncSession) -> None:
     """A version bump used to be stored and then silently ignored.
 
     `create` resolves an image and persists it; the update then passed that stored
@@ -664,39 +664,39 @@ async def test_bumping_the_engine_version_moves_the_derived_image(db: AsyncSessi
     new engine version while every cluster went on pulling the old image.
     """
     _, _, _, workload = await a_workload(db)
-    assert workload.serving.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0"
+    assert workload.serving.engine_runtime_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0"
 
     patched = await WorkloadService(db).update(
-        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="1.4.2"))
+        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_version="1.4.2"))
     )
-    assert patched.serving.engine_version == "1.4.2"
-    assert patched.serving.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.2"
+    assert patched.serving.engine_runtime_version == "1.4.2"
+    assert patched.serving.engine_runtime_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.2"
 
 
-async def test_a_hand_pinned_engine_image_survives_a_version_bump(db: AsyncSession) -> None:
+async def test_a_hand_pinned_runtime_image_survives_a_version_bump(db: AsyncSession) -> None:
     """The override is the whole reason the field is writable, so re-deriving must not eat it."""
     _, _, _, workload = await a_workload(db)
     pinned = "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
 
     service = WorkloadService(db)
-    await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_image=pinned)))
+    await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_image=pinned)))
     patched = await service.update(
-        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="1.4.2"))
+        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_version="1.4.2"))
     )
 
-    assert patched.serving.engine_version == "1.4.2"
-    assert patched.serving.engine_image == pinned
+    assert patched.serving.engine_runtime_version == "1.4.2"
+    assert patched.serving.engine_runtime_image == pinned
 
 
-async def test_naming_an_engine_image_in_the_same_patch_wins(db: AsyncSession) -> None:
+async def test_naming_a_runtime_image_in_the_same_patch_wins(db: AsyncSession) -> None:
     _, _, _, workload = await a_workload(db)
     pinned = "my.registry/vllm:dev"
 
     patched = await WorkloadService(db).update(
         workload.id,
-        WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="1.4.2", engine_image=pinned)),
+        WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_version="1.4.2", engine_runtime_image=pinned)),
     )
-    assert patched.serving.engine_image == pinned
+    assert patched.serving.engine_runtime_image == pinned
 
 
 async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) -> None:
@@ -715,14 +715,14 @@ async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) ->
         WorkloadCreateRequest(
             cluster=cluster.id,
             serving=a_serving(
-                artifact.id, engine_version="1.4.0-patched.1", frontend_image=pinned
+                artifact.id, engine_runtime_version="1.4.0-patched.1", frontend_image=pinned
             ),
             name="kimi-k3-mxfp4-tp8-1024k",
             project=project.id,
         )
     )
     assert created.serving.frontend_image == pinned
-    assert created.serving.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
+    assert created.serving.engine_runtime_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1"
     assert (await service.get(created.id)).serving.frontend_image == pinned
 
     later = "ghcr.io/hangar-dev/vllm-runtime:1.4.1-patched.1-hgr3"
@@ -730,20 +730,20 @@ async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) ->
         created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(frontend_image=later))
     )
     assert patched.serving.frontend_image == later
-    assert patched.serving.engine_image == created.serving.engine_image
+    assert patched.serving.engine_runtime_image == created.serving.engine_runtime_image
     assert_patched(created, patched)
 
     cleared = await service.update(
         created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(frontend_image=None))
     )
     assert cleared.serving.frontend_image is None
-    assert cleared.serving.engine_image == created.serving.engine_image
+    assert cleared.serving.engine_runtime_image == created.serving.engine_runtime_image
 
 
-async def test_bumping_the_engine_version_moves_the_worker_and_leaves_the_frontend(db: AsyncSession) -> None:
+async def test_bumping_the_runtime_version_moves_the_worker_and_leaves_the_frontend(db: AsyncSession) -> None:
     """The two images move on different schedules, and the update path must let them.
 
-    `update` re-derives `engine_image` from the new version whenever the stored one is
+    `update` re-derives `engine_runtime_image` from the new version whenever the stored one is
     the plane's own derivation, which is what makes a version bump reach the cluster.
     `frontend_image` has no derivation to re-run and must be left exactly where it is:
     a frontend pinned because it is the only build that tokenizes this model is pinned
@@ -757,11 +757,11 @@ async def test_bumping_the_engine_version_moves_the_worker_and_leaves_the_fronte
     service = WorkloadService(db)
     await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(frontend_image=pinned)))
     patched = await service.update(
-        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="1.4.2"))
+        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_version="1.4.2"))
     )
 
-    assert patched.serving.engine_version == "1.4.2"
-    assert patched.serving.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.2"
+    assert patched.serving.engine_runtime_version == "1.4.2"
+    assert patched.serving.engine_runtime_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.2"
     assert patched.serving.frontend_image == pinned
 
 
@@ -773,7 +773,7 @@ async def test_a_workload_without_a_frontend_image_reads_back_null(db: AsyncSess
     clusters where the two happen to be published together.
     """
     _, _, _, workload = await a_workload(db)
-    assert workload.serving.engine_image is not None
+    assert workload.serving.engine_runtime_image is not None
     assert workload.serving.frontend_image is None
 
 
@@ -798,7 +798,7 @@ async def test_the_frontend_image_reaches_the_cluster_on_the_desired_stream(db: 
     frames = [item async for item in stream_desired(db, cluster.id, "demand")]
     payloads = [payload for kind, payload in frames if kind == "deployment.desired"]
     assert [p.serving.frontend_image for p in payloads] == [pinned]
-    assert payloads[0].serving.engine_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0"
+    assert payloads[0].serving.engine_runtime_image == "nvcr.io/nvidia/ai-dynamo/vllm-runtime:0.6.0"
 
 
 async def test_the_overlay_reaches_the_cluster_on_the_desired_stream(db: AsyncSession) -> None:
@@ -1602,7 +1602,7 @@ async def test_a_serving_change_announces_to_the_cluster_running_it(db: AsyncSes
     cluster, _, _, created = await a_deployment(db)
 
     await WorkloadService(db, notifier=notifier).update(
-        created.workload_id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="0.7.0"))
+        created.workload_id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_version="0.7.0"))
     )
 
     assert [(c.cluster_id, c.kind, c.uid) for c in notifier.changes] == [(cluster.id, "deployment", created.id)]
@@ -1619,7 +1619,7 @@ async def test_a_workload_no_cluster_took_announces_to_nobody(db: AsyncSession) 
     assert created.deployments == []
 
     await WorkloadService(db, notifier=notifier).update(
-        created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_version="0.7.0"))
+        created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_version="0.7.0"))
     )
 
     assert notifier.changes == []
@@ -1738,7 +1738,7 @@ async def test_a_deleted_deployment_keeps_its_timeline(db: AsyncSession) -> None
 async def test_the_serving_block_a_cluster_receives_can_actually_fetch_the_weights(db: AsyncSession) -> None:
     """The frame is well-formed and still useless without this field.
 
-    `engine_image` is what the operator fetches an artifact with, and it was
+    `engine_runtime_image` is what the operator fetches an artifact with, and it was
     optional the whole way down: no default in the plane, no rejection anywhere,
     and an empty box in the console form sending `null`. The cluster then held a
     warm-set entry it had no downloader for, so the prefetch job was never created
@@ -1753,8 +1753,8 @@ async def test_the_serving_block_a_cluster_receives_can_actually_fetch_the_weigh
     deployments = [payload for kind, payload in frames if kind == "deployment.desired"]
 
     assert deployments, "a deployment's serving configuration reaches the cluster"
-    assert deployments[0].serving.engine_image, "the cluster cannot fetch weights without one"
-    assert ":" in deployments[0].serving.engine_image, "an image without a tag is not an address"
+    assert deployments[0].serving.engine_runtime_image, "the cluster cannot fetch weights without one"
+    assert ":" in deployments[0].serving.engine_runtime_image, "an image without a tag is not an address"
 
 
 async def test_a_workload_never_reaches_a_cluster_naming_the_latest_tag(db: AsyncSession) -> None:
@@ -1768,11 +1768,11 @@ async def test_a_workload_never_reaches_a_cluster_naming_the_latest_tag(db: Asyn
     workload = await WorkloadService(db).create(
         WorkloadCreateRequest(
             cluster=cluster.id,
-            serving=a_serving(artifact.id, engine_version="latest"),
+            serving=a_serving(artifact.id, engine_runtime_version="latest"),
             name="latest-vllm",
             project=project.id,
         )
     )
 
-    assert workload.serving.engine_image is not None
-    assert not workload.serving.engine_image.endswith(":latest")
+    assert workload.serving.engine_runtime_image is not None
+    assert not workload.serving.engine_runtime_image.endswith(":latest")

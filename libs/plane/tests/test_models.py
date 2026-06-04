@@ -128,7 +128,7 @@ def test_the_workload_carries_the_serving_configuration_itself() -> None:
     from app.db.models import Workload
 
     columns = set(inspect(Workload).columns.keys())
-    assert {"engine", "engine_version", "engine_args", "context_length", "serving_digest"} <= columns
+    assert {"engine", "engine_runtime_version", "engine_args", "context_length", "serving_digest"} <= columns
     assert {"tensor_parallel", "pipeline_parallel", "expert_parallel"} <= columns
     assert {"artifact_id", "capabilities", "imported_args", "overlay"} <= columns
     assert not columns & {"recipe_id", "recipe_version"}

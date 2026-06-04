@@ -609,25 +609,49 @@ class Workload(BaseMixin):
     `recipe_version` it replaces named a mutable row.
     """
     engine: Mapped[str] = mapped_column(String(64), nullable=False)
-    engine_version: Mapped[str] = mapped_column(String(64), nullable=False)
-    engine_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    """Which engine inside the runtime serves the weights — `vllm`, `sglang`, `trtllm`.
+
+    It names a module and a flag dialect, and nothing else. The operator launches
+    `python3 -m dynamo.<engine>`, and `SERVING_FLAGS` reads it to know that a
+    structured-output backend is `--guided-decoding-backend` on vLLM and
+    `--grammar-backend` on SGLang. It carries no version: the engine's own build is
+    whatever the runtime image was compiled with, which is `engine_runtime_version`'s business.
+    """
+    engine_runtime_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    """A tag of the Dynamo runtime image, and never a version of the engine.
+
+    `1.4.1` is a Dynamo release. The vLLM inside it is on `0.28.0`, and the two count
+    in different sequences, which is the whole reason this field is not called
+    `engine_version` any more: under that name the obvious value to type was the
+    engine's number, and `vllm-runtime:0.28.0` is an address that has never existed.
+    A recipe's `min_vllm_version` is therefore evidence and never a value — it
+    constrains which runtime is new enough, not what goes here.
+
+    `resolve_engine_runtime_image` pastes it onto `ENGINE_RUNTIME_REPOS[engine]`. That is its
+    only use; nothing reads it to decide behaviour.
+    """
+    engine_runtime_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    """The whole address, when this workload pins one instead of having it derived.
+
+    Null is the ordinary case and means `engine` plus `engine_runtime_version` resolve it.
+    """
     frontend_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
     """The image this model's own Dynamo frontend runs. Null means the cluster decides.
 
-    Separate from `engine_image` because a frontend and a worker are separately versioned
+    Separate from `engine_runtime_image` because a frontend and a worker are separately versioned
     binaries that only happen to be published from one repository. The worker loads the weights;
     the frontend tokenizes the request and registers the model, and the tables it needs to do that
     are compiled into it. Kimi K3 is the case: a worker on the stock
     `nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.4.0-patched.1` served it, while every released
     frontend refused the `kimi_k3` tiktoken type and answered `/v1/models` with an empty list. The
-    fix was a frontend build and nothing else. Folded into `engine_image`, that one model would
+    fix was a frontend build and nothing else. Folded into `engine_runtime_image`, that one model would
     have moved the image every model on the cluster is served through.
 
     Null is this workload declining to have an opinion, not an instruction to reuse
-    `engine_image`. The operator resolves it against what that cluster runs its frontends on — a
-    local fact the plane does not hold and must not guess at — and only falls back to the engine
+    `engine_runtime_image`. The operator resolves it against what that cluster runs its frontends on — a
+    local fact the plane does not hold and must not guess at — and only falls back to the runtime
     image once that has declined too. So there is no `resolve_` for this field the way there is
-    for `engine_image`: the plane can derive an engine image because `ENGINE_IMAGE_REPOS` tells it
+    for `engine_runtime_image`: the plane can derive a runtime image because `ENGINE_RUNTIME_REPOS` tells it
     where workers come from, and nothing tells it the same about frontends, so an address invented
     here is an `ImagePullBackOff` chosen by the wrong side of the wire.
     """
@@ -848,7 +872,14 @@ class Replica(BaseMixin):
     phase: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending", index=True)
     ready: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     ready_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    engine_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    engine_runtime_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    """The runtime tag this replica reports, which is the declared one echoed back.
+
+    The operator copies it off the deployment rather than reading it out of the
+    running process, so it corroborates nothing on its own. It is here because a
+    replica that outlives an edit to its workload still says which runtime it started
+    under, and that is the one question the workload's own column cannot answer.
+    """
     observed_generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
     restart_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -369,25 +369,37 @@ export interface UpstreamDeployment {
  * served it". Merging them would produce a form where no field can say where its
  * number came from, and the numbers do not always agree.
  *
- * Every field is a claim and `source_uri` is a permalink at a pinned commit, which
- * is why the console shows the attribution beside any value it seeds from here.
+ * Every field is a claim, and the two URIs are how it is read back, which is why
+ * the console shows the attribution beside any value it seeds from here.
  * `verified_hardware` names the node shapes the publisher ran on — evidence the
  * configuration works, and no evidence at all that we own such a node.
  */
 export interface UpstreamServing {
   source: string
+  /** The recipe on the corpus's own branch — what upstream says about this now. */
   source_uri: string
+  /** The same file at the commit these values were captured from. */
+  snapshot_uri: string
   model_id: string
   variant: string
   precision: string | null
   engine: string
+  /**
+   * The lowest vLLM release that serves these weights, as the recipe declares it.
+   *
+   * vLLM's own version (`0.28.0`), and not a workload's `engine_runtime_version`, which
+   * names a tag of the Dynamo runtime image (`vllm-runtime:1.4.1`). The two count
+   * in different sequences and one is not the other spelled differently, so this
+   * is shown and never seeded into the form: `vllm-runtime:0.28.0` is an address
+   * that has never existed.
+   */
   engine_version_min: string | null
   nightly_required: boolean
   /**
    * The image the publisher serves this model from, when it names one of its own.
    *
    * Reported, never seeded. It is a third party's runtime with no `ai-dynamo` in
-   * it, so pinning `engine_image` to this trades one startup failure for another.
+   * it, so pinning `engine_runtime_image` to this trades one startup failure for another.
    * What it supports is the negative claim — that the image the plane derives from
    * the engine and version cannot load these weights, and somebody has to supply
    * one that can.
@@ -654,10 +666,10 @@ export interface ServingOverlay {
 export interface WorkloadServing {
   artifact_id: string
   engine: string
-  engine_version: string
-  engine_image: string | null
+  engine_runtime_version: string
+  engine_runtime_image: string | null
   /**
-   * A second image, not a spelling of `engine_image`: a frontend and a worker are
+   * A second image, not a spelling of `engine_runtime_image`: a frontend and a worker are
    * separately versioned binaries. Null means the cluster decides.
    */
   frontend_image: string | null
@@ -699,10 +711,10 @@ export interface WorkloadServing {
 export interface WorkloadServingRequest {
   artifact: string
   engine: string
-  engine_version: string
+  engine_runtime_version: string
   context_length: number
   shape: ServingShape
-  engine_image?: string | null
+  engine_runtime_image?: string | null
   frontend_image?: string | null
   engine_args?: Record<string, unknown>
   imported_args?: Record<string, unknown>

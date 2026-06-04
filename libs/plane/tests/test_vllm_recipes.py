@@ -95,9 +95,19 @@ def test_a_lookup_is_case_insensitive_and_a_miss_is_none(corpus):
     assert corpus.lookup("") is None
 
 
-def test_the_source_uri_is_a_permalink_at_the_captured_commit(corpus):
+def test_the_link_to_follow_is_the_branch_and_the_permalink_is_kept_beside_it(corpus):
+    """Two URIs answering two questions: what upstream says now, and what we read.
+
+    A person clicking through from the deploy form is asking what vLLM recommends
+    for these weights, and a 40-character sha answers a different question — it
+    lands them on a detached view of a corpus that has moved since. The permalink
+    stays, because a claim nobody can read back against its own bytes is not one.
+    """
     match = corpus.lookup("openai/gpt-oss-20b")
     assert match.source_uri == (
+        "https://github.com/vllm-project/recipes/blob/main/models/openai/gpt-oss-20b.yaml"
+    )
+    assert match.snapshot_uri == (
         f"https://github.com/vllm-project/recipes/blob/{corpus.ref}/models/openai/gpt-oss-20b.yaml"
     )
 
@@ -194,7 +204,8 @@ async def test_the_draft_carries_the_upstream_recipe_attributed_to_its_source():
 
     assert draft.upstream is not None
     assert draft.upstream.source == "vllm-recipes"
-    assert draft.upstream.source_uri.startswith("https://github.com/vllm-project/recipes/blob/")
+    assert draft.upstream.source_uri.startswith("https://github.com/vllm-project/recipes/blob/main/")
+    assert draft.upstream.snapshot_uri.startswith("https://github.com/vllm-project/recipes/blob/")
     assert draft.upstream.engine == "vllm"
     assert draft.upstream.engine_version_min
     assert draft.upstream.tool_call_parser == "openai"
@@ -411,7 +422,7 @@ def test_a_draft_carries_the_image_the_corpus_names_without_proposing_it(corpus)
     """Evidence that the derived image will not serve, not a value to copy.
 
     The image named here has no `ai-dynamo` in it, so a draft that seeded
-    `engine_image` from it would trade a Transformers error for a missing module
+    `engine_runtime_image` from it would trade a Transformers error for a missing module
     and be no closer to serving.
     """
     draft = resolved(hf_model(slug="zai-org/GLM-5.3-Flash", parameter_count=321_000_000_000))

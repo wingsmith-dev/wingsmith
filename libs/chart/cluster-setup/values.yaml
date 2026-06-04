@@ -110,7 +110,7 @@ operator:
     pullPolicy: Always
   leaderElection: true
   engine:
-    # Secrets in `dynamo` presented when pulling a workload's `engine_image`.
+    # Secrets in `dynamo` presented when pulling a workload's `engine_runtime_image`.
     # Empty for the NVIDIA runtime images, which are anonymous; set this when a
     # model needs a private build such as the GLM 5.3 runtime in GHCR.
     imagePullSecrets: []

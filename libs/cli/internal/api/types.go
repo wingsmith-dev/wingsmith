@@ -457,12 +457,12 @@ type ServingOverlay struct {
 // workloads configured the same way digest the same and nothing has to be
 // matched by hand.
 type ServingSpec struct {
-	ArtifactID    string         `json:"artifact_id"`
-	Engine        string         `json:"engine"`
-	EngineVersion string         `json:"engine_version"`
-	EngineImage   *string        `json:"engine_image"`
-	FrontendImage *string        `json:"frontend_image"`
-	EngineArgs    map[string]any `json:"engine_args"`
+	ArtifactID           string         `json:"artifact_id"`
+	Engine               string         `json:"engine"`
+	EngineRuntimeVersion string         `json:"engine_runtime_version"`
+	EngineRuntimeImage   *string        `json:"engine_runtime_image"`
+	FrontendImage        *string        `json:"frontend_image"`
+	EngineArgs           map[string]any `json:"engine_args"`
 	// ImportedArgs is the argv a sighting was observed running with. Recorded in
 	// full, never rendered: declaring a flag is EngineArgs and reading one is
 	// this.
@@ -495,24 +495,24 @@ type ServingSpec struct {
 // there is no digest here and no resolved args, because neither is ever accepted
 // from a client.
 type ServingRequest struct {
-	Artifact       string              `json:"artifact"`
-	Engine         string              `json:"engine"`
-	EngineVersion  string              `json:"engine_version"`
-	ContextLength  int                 `json:"context_length"`
-	Shape          ServingShape        `json:"shape"`
-	EngineImage    *string             `json:"engine_image,omitempty"`
-	FrontendImage  *string             `json:"frontend_image,omitempty"`
-	EngineArgs     map[string]any      `json:"engine_args,omitempty"`
-	ImportedArgs   map[string]any      `json:"imported_args,omitempty"`
-	Quantization   *string             `json:"quantization,omitempty"`
-	Dtype          *string             `json:"dtype,omitempty"`
-	Parallelism    ServingParallelism  `json:"parallelism"`
-	MaxBatchTokens *int                `json:"max_batch_tokens,omitempty"`
-	Cache          ServingCache        `json:"cache"`
-	Resources      ServingResources    `json:"resources"`
-	Overlay        ServingOverlay      `json:"overlay"`
-	Behaviour      ServingBehaviour    `json:"serving"`
-	Capabilities   ServingCapabilities `json:"capabilities"`
+	Artifact             string              `json:"artifact"`
+	Engine               string              `json:"engine"`
+	EngineRuntimeVersion string              `json:"engine_runtime_version"`
+	ContextLength        int                 `json:"context_length"`
+	Shape                ServingShape        `json:"shape"`
+	EngineRuntimeImage   *string             `json:"engine_runtime_image,omitempty"`
+	FrontendImage        *string             `json:"frontend_image,omitempty"`
+	EngineArgs           map[string]any      `json:"engine_args,omitempty"`
+	ImportedArgs         map[string]any      `json:"imported_args,omitempty"`
+	Quantization         *string             `json:"quantization,omitempty"`
+	Dtype                *string             `json:"dtype,omitempty"`
+	Parallelism          ServingParallelism  `json:"parallelism"`
+	MaxBatchTokens       *int                `json:"max_batch_tokens,omitempty"`
+	Cache                ServingCache        `json:"cache"`
+	Resources            ServingResources    `json:"resources"`
+	Overlay              ServingOverlay      `json:"overlay"`
+	Behaviour            ServingBehaviour    `json:"serving"`
+	Capabilities         ServingCapabilities `json:"capabilities"`
 }
 
 // WorkloadScale is the declared total and what the shares actually add up to.

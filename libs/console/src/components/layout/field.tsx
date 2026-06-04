@@ -15,6 +15,11 @@ export function Field({
   )
 }
 
-export function FieldGrid({ children }: React.PropsWithChildren) {
-  return <div className="grid gap-3 sm:grid-cols-2">{children}</div>
+export function FieldGrid({
+  children,
+  className,
+}: React.PropsWithChildren<{ className?: string }>) {
+  return (
+    <div className={cn("grid gap-3 sm:grid-cols-2", className)}>{children}</div>
+  )
 }
