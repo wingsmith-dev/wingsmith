@@ -9,7 +9,13 @@ import { Sparkline } from "@/components/metrics/sparkline"
 import { WindowToggle } from "@/components/metrics/window-toggle"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -36,7 +42,6 @@ import {
 } from "@/modules/metrics/windows"
 import { useEndpointEvents } from "@/modules/machinery/queries"
 import type { Artifact, Deployment, Workload } from "@/modules/demand/types"
-import { footprintOfServing, footprintSummary } from "@/modules/demand/deploy"
 import {
   useArtifactOptions,
   useDeleteEndpoint,
@@ -47,7 +52,11 @@ import {
 import { EndpointForm } from "../EndpointForm"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { IconArrowLeft, IconArrowUpRight } from "@tabler/icons-react"
+import {
+  IconArrowLeft,
+  IconArrowUpRight,
+  IconPencil,
+} from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
 
 /** The strip's width, in days. */
@@ -351,14 +360,9 @@ export function EndpointDetailPage() {
         actions={
           <div className="flex gap-2">
             {endpoint && (
-              <>
-                <Button variant="outline" onClick={() => setEditing(true)}>
-                  Edit
-                </Button>
-                <Button variant="outline" onClick={() => setDoomed(true)}>
-                  Delete
-                </Button>
-              </>
+              <Button variant="outline" onClick={() => setDoomed(true)}>
+                Delete
+              </Button>
             )}
             <Button asChild variant="outline">
               <Link to="/endpoints">
@@ -616,32 +620,42 @@ export function EndpointDetailPage() {
                     observed state inlined. One card covers what traffic is sent
                     where and how it is doing. */}
                 <Card className="gap-0 overflow-hidden p-0">
-                  <div className="flex items-center justify-between gap-2 border-b bg-muted/30 px-4 py-3">
-                    <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-                      routing
-                    </span>
-                    <Badge variant="outline" className="font-mono text-2xs">
-                      {endpoint.routing_strategy}
-                    </Badge>
+                  <div className="border-b bg-muted/30 px-4 py-3">
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-sm">Routing</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="font-mono text-2xs">
+                          {endpoint.routing_strategy}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Edit routing"
+                          onClick={() => setEditing(true)}
+                        >
+                          <IconPencil />
+                        </Button>
+                      </div>
+                    </div>
+                    <p className="mt-1 text-2xs text-muted-foreground">
+                      How traffic is split across backing deployments
+                    </p>
                   </div>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Cluster</TableHead>
+                        <TableHead>Deployment</TableHead>
                         <TableHead>Role</TableHead>
                         <TableHead>Weight</TableHead>
                         <TableHead>Status</TableHead>
                         <TableHead>Replicas</TableHead>
-                        <TableHead>Serving</TableHead>
-                        <TableHead>Artifact</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {endpoint.targets.map((target) => {
-                        const { deployment, workload, artifact } =
+                        const { deployment, region } =
                           resolved.get(target.deployment_id) ?? {}
                         const rollup = deployment?.replicas
-                        const quant = quantLabel(workload)
                         const totalWeight = endpoint.targets.reduce(
                           (s, t) => s + (t.enabled ? t.weight : 0),
                           0
@@ -652,21 +666,27 @@ export function EndpointDetailPage() {
                             : 0
                         return (
                           <TableRow key={target.deployment_id}>
-                            <TableCell>
+                            <TableCell className="py-3.5">
                               <Link
                                 to="/deployments/$deploymentId"
                                 params={{
                                   deploymentId: target.deployment_id,
                                 }}
-                                className="inline-flex items-center gap-1 font-mono text-xs hover:underline"
+                                className="group inline-flex flex-col gap-0.5"
                               >
-                                {deployment?.cluster_id
-                                  ? shortenId(deployment.cluster_id)
-                                  : shortenId(target.deployment_id)}
-                                <IconArrowUpRight className="size-3 text-muted-foreground" />
+                                <span className="inline-flex items-center gap-1 font-mono text-xs group-hover:underline">
+                                  {deployment?.name ??
+                                    shortenId(target.deployment_id)}
+                                  <IconArrowUpRight className="size-3 text-muted-foreground" />
+                                </span>
+                                {region && (
+                                  <span className="font-mono text-2xs text-muted-foreground">
+                                    {region}
+                                  </span>
+                                )}
                               </Link>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="py-3.5">
                               <Badge
                                 variant={
                                   target.role === "primary"
@@ -678,7 +698,7 @@ export function EndpointDetailPage() {
                                 {target.role}
                               </Badge>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="py-3.5">
                               <div className="flex items-center gap-2">
                                 <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
                                   <div
@@ -691,7 +711,7 @@ export function EndpointDetailPage() {
                                 </span>
                               </div>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="py-3.5">
                               <StatusLabel
                                 tone={
                                   !target.enabled
@@ -710,52 +730,12 @@ export function EndpointDetailPage() {
                                     "Pending")}
                               </StatusLabel>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="py-3.5">
                               {rollup != null ? (
                                 <ReplicaBar
                                   ready={rollup.ready}
                                   total={rollup.total}
                                 />
-                              ) : (
-                                <span className="text-muted-foreground/40">
-                                  —
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {workload ? (
-                                <Link
-                                  to="/workloads/$workloadId"
-                                  params={{ workloadId: workload.id }}
-                                  className="inline-flex items-center gap-1 font-mono text-2xs hover:underline"
-                                >
-                                  {footprintSummary(
-                                    footprintOfServing(workload.serving)
-                                  )}
-                                  <IconArrowUpRight className="size-3 text-muted-foreground" />
-                                </Link>
-                              ) : (
-                                <span className="text-muted-foreground/40">
-                                  —
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              {artifact ? (
-                                <div className="flex flex-col gap-0.5">
-                                  <Link
-                                    to="/artifacts/$artifactId"
-                                    params={{ artifactId: artifact.id }}
-                                    className="font-mono text-2xs hover:underline"
-                                  >
-                                    {artifact.name}
-                                  </Link>
-                                  {quant && (
-                                    <span className="font-mono text-2xs text-muted-foreground">
-                                      {quant}
-                                    </span>
-                                  )}
-                                </div>
                               ) : (
                                 <span className="text-muted-foreground/40">
                                   —
@@ -768,7 +748,7 @@ export function EndpointDetailPage() {
                       {endpoint.targets.length === 0 && (
                         <TableRow>
                           <TableCell
-                            colSpan={7}
+                            colSpan={5}
                             className="py-10 text-center text-sm text-muted-foreground"
                           >
                             No targets — this endpoint routes nowhere.
@@ -784,30 +764,26 @@ export function EndpointDetailPage() {
                 <Card>
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm">Details</CardTitle>
+                    <CardAction>
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Edit endpoint"
+                        onClick={() => setEditing(true)}
+                      >
+                        <IconPencil />
+                      </Button>
+                    </CardAction>
                   </CardHeader>
                   <CardContent>
-                    <FieldGrid>
-                      {/* The slug and not the name, which is what this panel
-                          showed before and what made the object hard to read:
-                          the gateway builds its route map on the slug, so a
-                          page documenting the name was documenting a model id
-                          that need not route. The gateway reads the `model` in
-                          the request body and never branches on the path, so
-                          this is the whole of the addressing, and the URL is
-                          not ours — the gateway has no Ingress of its own and
-                          is called by whatever sits in front of it. */}
-                      <Field label="Slug" className="sm:col-span-2">
+                    <FieldGrid className="sm:grid-cols-1">
+                      <Field label="Slug">
                         <CopyableId value={endpoint.slug} className="text-2xs">
                           {endpoint.slug}
                         </CopyableId>
                         <p className="mt-1 font-mono text-2xs text-muted-foreground/50">
-                          Send this as <code>model</code> on the standard
-                          OpenAI-compatible routes. It is the gateway's routing
-                          key, so correcting it takes effect on the next poll
-                          and restarts nothing. The engine behind it answers to
-                          its artifact&rsquo;s slug, which is a different string
-                          whenever this one is an alias; the gateway rewrites
-                          between the two.
+                          Sent as <code>model</code> on the OpenAI-compatible
+                          routes.
                         </p>
                       </Field>
                       <Field label="Name">
@@ -839,7 +815,7 @@ export function EndpointDetailPage() {
                           {regions.length > 0 ? regions.join(", ") : null}
                         </Dash>
                       </Field>
-                      <Field label="Labels" className="sm:col-span-2">
+                      <Field label="Labels">
                         <Labels labels={endpoint.labels} />
                       </Field>
                     </FieldGrid>
@@ -857,7 +833,7 @@ export function EndpointDetailPage() {
                   </CardHeader>
                   <CardContent>
                     {backing?.workload || backing?.artifact ? (
-                      <FieldGrid>
+                      <FieldGrid className="sm:grid-cols-1">
                         <Field label="Workload">
                           {backing.workload ? (
                             <Link
@@ -877,7 +853,8 @@ export function EndpointDetailPage() {
                             {backing.workload
                               ? [
                                   backing.workload.serving.engine,
-                                  backing.workload.serving.engine_version,
+                                  backing.workload.serving
+                                    .engine_runtime_version,
                                 ]
                                   .filter(Boolean)
                                   .join(" ")
