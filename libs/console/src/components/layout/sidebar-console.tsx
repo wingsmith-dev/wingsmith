@@ -15,12 +15,19 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
+  useSidebar,
 } from "@/components/ui/sidebar"
 import { transport } from "@/lib/api"
 import { useSignOut } from "@/modules/auth/session"
 import { useAuthStore } from "@/modules/auth/store"
 import { useReadOnly } from "@/modules/settings/store"
-import { IconEye, IconLogout, IconSettings } from "@tabler/icons-react"
+import {
+  IconEye,
+  IconLayoutSidebarLeftCollapse,
+  IconLayoutSidebarLeftExpand,
+  IconLogout,
+  IconSettings,
+} from "@tabler/icons-react"
 import { Link, useRouterState } from "@tanstack/react-router"
 
 type NavItem = {
@@ -154,6 +161,7 @@ export function ConsoleSidebar({
       <SidebarFooter className="p-2">
         {readOnly && <ReadOnlyNotice />}
         <SidebarMenu>
+          <CollapseItem />
           <SidebarMenuItem>
             <SidebarMenuButton
               asChild
@@ -202,5 +210,38 @@ function ReadOnlyNotice() {
         read-only
       </span>
     </Link>
+  )
+}
+
+/**
+ * The width control, in the thing whose width it controls.
+ *
+ * It used to sit in every page's header, which put a chrome control in front of
+ * the page's own name on every route. Here it collapses to an icon with the two
+ * items under it and stays reachable at that width.
+ *
+ * Not rendered on mobile: there the sidebar is a sheet that is either open or
+ * shut, `state` means nothing, and the way out is tapping away from it. The
+ * page header keeps a trigger for that case, because a control for opening the
+ * sheet cannot live inside the sheet.
+ */
+function CollapseItem() {
+  const { state, isMobile, toggleSidebar } = useSidebar()
+  if (isMobile) return null
+  const collapsed = state === "collapsed"
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        tooltip={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        onClick={toggleSidebar}
+      >
+        {collapsed ? (
+          <IconLayoutSidebarLeftExpand />
+        ) : (
+          <IconLayoutSidebarLeftCollapse />
+        )}
+        <span>Collapse</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   )
 }
