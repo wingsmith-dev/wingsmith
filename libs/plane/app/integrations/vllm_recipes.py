@@ -164,6 +164,33 @@ class Recipe:
         return bool(self.model.get("nightly_required"))
 
     @property
+    def docker_image(self) -> str:
+        """The image the corpus serves this model from, on NVIDIA hardware.
+
+        Empty on most recipes, which is the corpus saying the ordinary engine build
+        serves them. Set on the few that need a build of their own — GLM-5.3-Flash
+        is `vllm/vllm-openai:glm53-flash`, a vLLM with the GLA/KDA kernels and the
+        `glm5_next` architecture that no released runtime has.
+
+        Two shapes, because the corpus writes both: a string is one image for every
+        accelerator, a mapping is keyed by vendor. Only `nvidia` is ours, and an
+        AMD-only entry reads as absent rather than as a fallback — a ROCm image on
+        an H200 is not a degraded answer, it is a wrong one.
+
+        This is evidence, never a value to copy into `engine_image`. The image it
+        names is somebody else's runtime and has no `ai-dynamo` in it, so the
+        operator's `python3 -m dynamo.vllm` does not exist there. What it supports
+        is the only honest claim: that the image the plane would derive will not
+        load these weights.
+        """
+        value = self.model.get("docker_image")
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, dict):
+            return str(value.get("nvidia") or "").strip()
+        return ""
+
+    @property
     def architecture(self) -> str:
         return str(self.model.get("architecture") or "")
 

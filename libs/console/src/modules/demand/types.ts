@@ -383,6 +383,16 @@ export interface UpstreamServing {
   engine: string
   engine_version_min: string | null
   nightly_required: boolean
+  /**
+   * The image the publisher serves this model from, when it names one of its own.
+   *
+   * Reported, never seeded. It is a third party's runtime with no `ai-dynamo` in
+   * it, so pinning `engine_image` to this trades one startup failure for another.
+   * What it supports is the negative claim — that the image the plane derives from
+   * the engine and version cannot load these weights, and somebody has to supply
+   * one that can.
+   */
+  docker_image: string | null
   tensor_parallel: number | null
   default_strategy: string | null
   deployments: UpstreamDeployment[]

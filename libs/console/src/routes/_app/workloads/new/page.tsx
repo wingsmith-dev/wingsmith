@@ -114,6 +114,17 @@ export function NewWorkloadPage() {
     linkedFootprint ? { footprint: linkedFootprint, fit: null } : null
   )
   const [project, setProject] = useState("")
+  /**
+   * The two images, which nothing derives and the corpus must not supply.
+   *
+   * Empty is the ordinary answer: the plane resolves the engine image from the
+   * engine and version, and the cluster decides the frontend. They are here at
+   * all because a handful of models are served by neither -- a recipe that names
+   * a `docker_image` of its own is upstream saying the derived runtime cannot
+   * load these weights, and the operator has to supply one that can.
+   */
+  const [engineImage, setEngineImage] = useState("")
+  const [frontendImage, setFrontendImage] = useState("")
   const [replicas, setReplicas] = useState<number | null>(1)
   const [name, setName] = useState("")
   const [touchedName, setTouchedName] = useState(false)
@@ -222,6 +233,8 @@ export function NewWorkloadPage() {
       const workload = await createWorkload.mutateAsync({
         serving: {
           ...derived,
+          engine_image: engineImage || null,
+          frontend_image: frontendImage || null,
           shape: {
             ...derived.shape,
             // Inside the shape because that is what carries it: the fit derives
@@ -333,6 +346,22 @@ export function NewWorkloadPage() {
             loading={proposed.isLoading}
             identical={identical}
           />
+          <FormGrid>
+            <TextField
+              label="Engine image"
+              value={engineImage}
+              onChange={setEngineImage}
+              placeholder="Resolved from the engine and version"
+              hint="Leave empty unless upstream says the derived runtime cannot serve these weights. The same image fetches the weights, so a wrong one is a download that never starts."
+            />
+            <TextField
+              label="Frontend image"
+              value={frontendImage}
+              onChange={setFrontendImage}
+              placeholder="Whatever the cluster runs its frontends on"
+              hint="A second image and not a spelling of the one above: the worker loads the weights, the frontend tokenizes the request, and they are separately versioned builds. Empty means the cluster decides, not that it reuses the engine image."
+            />
+          </FormGrid>
         </Step>
 
         <Step
@@ -491,6 +520,8 @@ function Proposed({
         </div>
       )}
 
+      {upstream?.docker_image && <OwnBuildWarning upstream={upstream} />}
+
       {upstream && <UpstreamClaim upstream={upstream} />}
 
       {identical.length > 0 && (
@@ -514,6 +545,34 @@ function Proposed({
         </p>
       )}
     </div>
+  )
+}
+
+/**
+ * Upstream serves this model from a build of its own, so the derived one will not.
+ *
+ * The one claim in the corpus that is a warning rather than a value. Every other
+ * upstream field seeds a form input; this one cannot, because the image it names
+ * is a third party's runtime with no `ai-dynamo` in it -- pinning `engine_image`
+ * to it swaps a Transformers "does not recognize this architecture" for a missing
+ * `dynamo.vllm` module, which is no closer to serving.
+ *
+ * What it is worth is the negative: a model whose recipe names its own image is
+ * one the plane's `<engine>:<engine_version>` cannot load, and the failure lands
+ * two minutes into a pod where nobody is looking for it. GLM-5.3-Flash is the
+ * case -- `glm5_next` exists only in Z-AI's vLLM, three minor versions ahead of
+ * what every released Dynamo runtime carries.
+ */
+function OwnBuildWarning({ upstream }: { upstream: UpstreamServing }) {
+  return (
+    <p className="rounded border border-amber-500/40 bg-amber-500/5 p-2 font-mono text-2xs text-amber-700 dark:text-amber-400">
+      {upstream.source} serves {upstream.model_id} from{" "}
+      <span className="font-semibold">{upstream.docker_image}</span>, a build of
+      its own. The image the plane derives from the engine and version will not
+      load these weights. Set an engine image below that carries both this
+      engine build and the Dynamo runtime — that address is not one, because it
+      has no <span className="font-semibold">ai-dynamo</span> in it.
+    </p>
   )
 }
 

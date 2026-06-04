@@ -170,6 +170,24 @@ describe("derivedServingRequest", () => {
       expect(request[flat]).toBeUndefined()
   })
 
+  it("never proposes an image, not even when the corpus names one", () => {
+    /**
+     * The one upstream field that must not be seeded. The image a recipe names is
+     * a third party's runtime with no ai-dynamo in it, so copying it into
+     * engine_image swaps a Transformers architecture error for a missing
+     * dynamo.vllm module -- a different failure at the same distance from
+     * serving. It reaches the form as a warning instead.
+     */
+    const request = derivedServingRequest(artifact, footprint, {
+      defaults,
+      upstream: upstream({ docker_image: "vllm/vllm-openai:glm53-flash" }),
+    }) as unknown as Record<string, unknown>
+
+    expect(request.engine_image).toBeUndefined()
+    expect(request.frontend_image).toBeUndefined()
+    expect(request.docker_image).toBeUndefined()
+  })
+
   it("leaves out what nothing can derive, so the plane defaults it", () => {
     const request = derivedServingRequest(artifact, footprint)
     expect(request.max_batch_tokens).toBeUndefined()

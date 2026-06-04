@@ -268,6 +268,9 @@ const HF_FIXTURES: Record<
       tensor_parallel: number
       tool_call_parser: string | null
       verified_hardware: string[]
+      /** Set only on a model upstream serves from a build of its own. */
+      docker_image?: string
+      nightly_required?: boolean
     }
   }
 > = {
@@ -287,6 +290,24 @@ const HF_FIXTURES: Record<
     size: 65_527_486_976,
     parameters: 32_800_000_000,
     licence: "apache-2.0",
+  },
+  /**
+   * The awkward case, kept here because it is the one the flow gets wrong quietly.
+   * Upstream serves it from its own vLLM build, so the image the plane derives
+   * loads nothing, and every other field on the page still looks answered.
+   */
+  "zai-org/GLM-5.3-Flash": {
+    format: "safetensors",
+    size: 321_000_000_000,
+    parameters: 321_000_000_000,
+    licence: "mit",
+    upstream: {
+      tensor_parallel: 8,
+      tool_call_parser: "glm47",
+      verified_hardware: ["H100", "B200", "GB200"],
+      docker_image: "vllm/vllm-openai:glm53-flash",
+      nightly_required: true,
+    },
   },
 }
 
@@ -501,7 +522,8 @@ registerFixtures([
               precision: null,
               engine: "vllm",
               engine_version_min: "0.9.1",
-              nightly_required: false,
+              nightly_required: found.upstream.nightly_required ?? false,
+              docker_image: found.upstream.docker_image ?? null,
               tensor_parallel: found.upstream.tensor_parallel,
               default_strategy: null,
               deployments: [],

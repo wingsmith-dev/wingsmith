@@ -58,6 +58,8 @@ def test_every_indexed_slug_resolves_and_every_accessor_answers(corpus):
                 assert match.nodes_for(name, profile) >= 1, f"{slug}/{name} on {profile.name}"
                 match.supports(name, profile)
 
+        assert isinstance(match.recipe.docker_image, str), slug
+
         floor = match.replica_memory_mib_min()
         assert floor is None or floor > 0, slug
         assert all(isinstance(arg, str) for arg in match.args()), slug
@@ -370,3 +372,57 @@ def test_a_variant_that_caps_the_context_below_what_the_model_declares_says_so(c
     assert match.recipe.context_length == 1_048_576
     assert match.flag("--max-model-len") == "131072"
     assert match.flag("--gpu-memory-utilization") == "0.9"
+
+
+def test_a_recipe_naming_its_own_image_reports_it_and_the_rest_report_nothing(corpus):
+    """Three shapes in the corpus and only one of them is a plain string.
+
+    `docker_image` is a string on some recipes and a vendor-keyed map on others,
+    and reading either one as the other is how a model that needs its own build
+    looks like a model that does not.
+    """
+    assert corpus.lookup("zai-org/GLM-5.3-Flash").recipe.docker_image == "vllm/vllm-openai:glm53-flash"
+    assert corpus.lookup("MiniMaxAI/MiniMax-H3").recipe.docker_image == "vllm/vllm-omni:minimax-h3"
+    assert corpus.lookup("Google/diffusiongemma-26B-A4B-it").recipe.docker_image == "vllm/vllm-openai:gemma"
+    assert corpus.lookup("Qwen/Qwen3-32B").recipe.docker_image == ""
+
+
+def test_an_image_published_only_for_amd_is_not_offered_as_ours(corpus):
+    """A ROCm build on an H200 is a wrong answer, not a degraded one.
+
+    Reading the map with a fallback would hand a CUDA cluster an image that cannot
+    start, and it would do it for the recipes that say most clearly they need a
+    build of their own.
+    """
+    amd_only = [
+        recipe
+        for recipe in corpus.recipes()
+        if isinstance(recipe.model.get("docker_image"), dict)
+        and not recipe.model["docker_image"].get("nvidia")
+    ]
+
+    assert amd_only, "the corpus no longer has an AMD-only image to check"
+    for recipe in amd_only:
+        assert recipe.model["docker_image"].get("amd"), recipe.slug
+        assert recipe.docker_image == "", recipe.slug
+
+
+def test_a_draft_carries_the_image_the_corpus_names_without_proposing_it(corpus):
+    """Evidence that the derived image will not serve, not a value to copy.
+
+    The image named here has no `ai-dynamo` in it, so a draft that seeded
+    `engine_image` from it would trade a Transformers error for a missing module
+    and be no closer to serving.
+    """
+    draft = resolved(hf_model(slug="zai-org/GLM-5.3-Flash", parameter_count=321_000_000_000))
+
+    assert draft.upstream.docker_image == "vllm/vllm-openai:glm53-flash"
+    assert draft.upstream.nightly_required
+    assert draft.upstream.engine_version_min == "0.29.0"
+
+
+def test_a_model_the_ordinary_build_serves_names_no_image(corpus):
+    """Absent is the common case and must not read as an empty string on the wire."""
+    draft = resolved(hf_model(slug="Qwen/Qwen3-32B", parameter_count=32_000_000_000))
+
+    assert draft.upstream.docker_image is None

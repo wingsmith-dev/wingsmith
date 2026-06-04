@@ -83,6 +83,9 @@ export function WorkloadForm({
     serving?.engine_version ?? ""
   )
   const [engineImage, setEngineImage] = useState(serving?.engine_image ?? "")
+  const [frontendImage, setFrontendImage] = useState(
+    serving?.frontend_image ?? ""
+  )
   const [deviceClass, setDeviceClass] = useState(
     serving?.shape.device_class ?? ""
   )
@@ -187,6 +190,7 @@ export function WorkloadForm({
     engine,
     engine_version: engineVersion,
     engine_image: engineImage || null,
+    frontend_image: frontendImage || null,
     engine_args: (engineArgs as Record<string, unknown>) ?? {},
     quantization: quantization || null,
     dtype: dtype || null,
@@ -435,6 +439,13 @@ export function WorkloadForm({
           onChange={setEngineImage}
           placeholder="Resolved from the engine and version"
           hint="Leave empty unless you are pinning a specific build. The plane resolves the image from the engine and version above, and the same image fetches the weights — a workload with no image is one whose weights never download."
+        />
+        <TextField
+          label="Frontend image"
+          value={frontendImage}
+          onChange={setFrontendImage}
+          placeholder="Whatever the cluster runs its frontends on"
+          hint="A second image, not a spelling of the one above: the worker loads the weights and the frontend tokenizes the request, and they are separately versioned builds. Empty means this workload has no opinion and the cluster decides — not that it reuses the engine image."
         />
         <DeviceClassField value={deviceClass} onChange={setDeviceClass} />
         <NumberField

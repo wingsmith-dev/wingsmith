@@ -119,6 +119,17 @@ class UpstreamRecipe(Struct):
     engine: str
     engine_version_min: str | None
     nightly_required: bool
+    docker_image: str | None
+    """The image the corpus serves this model from, when it names one of its own.
+
+    Reported and never proposed. It is a third party's runtime with no `ai-dynamo`
+    in it, so a workload that set `engine_image` to this would fail on the
+    operator's `python3 -m dynamo.vllm` instead of on the weights — a different
+    error, no closer to serving. What it is good for is the negative claim: a
+    recipe that names an image is one the plane's derived
+    `<engine>:<engine_version>` cannot load, and that is worth saying before a
+    workload is created rather than two minutes into a pod.
+    """
     tensor_parallel: int | None
     default_strategy: str | None
     deployments: list[UpstreamDeployment]
@@ -424,6 +435,7 @@ def upstream_recipe(
         engine=_UPSTREAM_ENGINE,
         engine_version_min=(match.variant.min_vllm_version or match.recipe.min_vllm_version) or None,
         nightly_required=match.recipe.nightly_required,
+        docker_image=match.recipe.docker_image or None,
         tensor_parallel=match.declared_tensor_parallel(),
         default_strategy=match.recipe.default_strategy or None,
         deployments=_deployments(match, replica_memory_mib_min),
