@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/table"
 import { TableLoading, TableMessage } from "./table-states"
 import { formatError } from "@/lib/format"
+import { cn } from "@/lib/utils"
 
 export interface Column<T> {
   key: string
@@ -35,6 +36,11 @@ interface DataTableProps<T> {
   rowKey: (row: T) => string
   empty: string
   onRowClick?: (row: T) => void
+  /**
+   * Drop the frame. A table already inside a card is a box drawn in a box, and
+   * the card's own edge is the only one the eye needs.
+   */
+  bare?: boolean
 }
 
 /**
@@ -48,12 +54,15 @@ export function DataTable<T>({
   rowKey,
   empty,
   onRowClick,
+  bare,
 }: DataTableProps<T>) {
   const { items, isLoading, error, hasNextPage, isFetchingNextPage } = list
 
   return (
     <div className="space-y-2">
-      <div className="overflow-x-auto rounded-lg border bg-card">
+      <div
+        className={cn("overflow-x-auto", !bare && "rounded-lg border bg-card")}
+      >
         <Table>
           <TableHeader>
             <TableRow>

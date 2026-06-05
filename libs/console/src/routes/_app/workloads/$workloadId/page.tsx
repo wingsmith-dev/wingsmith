@@ -2,7 +2,10 @@ import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
 import { NewBenchmarkRequestDialog } from "@/components/benchmarks/new-request"
 import { ActivityStream } from "@/components/demand/activity-stream"
 import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
-import { ServingCards } from "@/components/demand/serving-config"
+import {
+  CapabilitiesCard,
+  ServingBehaviourCard,
+} from "@/components/demand/serving-config"
 import {
   DrainWorkloadDialog,
   PauseWorkloadDialog,
@@ -333,16 +336,13 @@ export function WorkloadDetailPage() {
                     }
                   >
                     <WorkloadDeploymentsTable
+                      bare
                       deployments={workload.deployments}
                       unit={scale.unit}
                       // TODO-API per-cluster requests/sec is data-plane, seeded here
                       serving={(d) =>
                         (d.desired_replicas * 215).toLocaleString()
                       }
-                      onDrain={(deployment) => {
-                        setDraining(deployment)
-                        setDrainOpen(true)
-                      }}
                     />
                   </Panel>
 
@@ -351,6 +351,7 @@ export function WorkloadDetailPage() {
                     subtitle="Entrypoints routing traffic to this workload"
                   >
                     <DataTable
+                      bare
                       columns={workloadEndpointColumns}
                       list={endpoints}
                       rowKey={(e) => e.id}
@@ -466,7 +467,7 @@ export function WorkloadDetailPage() {
 
             {/* ---- Configuration ------------------------------------- */}
             <TabsContent value="configuration">
-              <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
+              <div className="grid items-start gap-4 md:grid-cols-[2fr_1fr]">
                 <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Serving & artifact"
@@ -547,12 +548,14 @@ export function WorkloadDetailPage() {
                     </FieldGrid>
                   </Panel>
 
-                  <ServingCards
-                    stacked
+                  <ServingBehaviourCard
                     serving={workload.serving.serving}
+                    onEdit={() => setEditing("serving")}
+                  />
+
+                  <CapabilitiesCard
                     capabilities={workload.serving.capabilities}
-                    onEditServing={() => setEditing("serving")}
-                    onEditCapabilities={() => setEditing("capabilities")}
+                    onEdit={() => setEditing("capabilities")}
                   />
                 </div>
 

@@ -52,18 +52,19 @@ function ReplicaBar({ ready, total }: { ready: number; total: number }) {
 export function WorkloadDeploymentsTable({
   deployments,
   unit,
-  onDrain,
   serving,
+  bare,
 }: {
   deployments: WorkloadDeployment[]
   unit: string
-  onDrain?: (deployment: WorkloadDeployment) => void
   /**
    * When given, adds a per-cluster requests/sec column. Serving rate is
    * data-plane and not on the deployment object, so the caller supplies it —
    * today from a seeded mock, marked `TODO-API` at the call site.
    */
   serving?: (deployment: WorkloadDeployment) => string
+  /** Inside a card, where the card's edge is the frame. */
+  bare?: boolean
 }) {
   const list: ListState<WorkloadDeployment> = {
     items: deployments,
@@ -77,17 +78,17 @@ export function WorkloadDeploymentsTable({
 
   return (
     <DataTable
-      columns={columns(unit, onDrain, serving)}
+      columns={columns(unit, serving)}
       list={list}
       rowKey={(deployment) => deployment.id}
       empty="Placement has not put this anywhere yet."
+      bare={bare}
     />
   )
 }
 
 function columns(
   unit: string,
-  onDrain?: (deployment: WorkloadDeployment) => void,
   serving?: (deployment: WorkloadDeployment) => string
 ): Column<WorkloadDeployment>[] {
   const rows: Column<WorkloadDeployment>[] = [
@@ -195,23 +196,6 @@ function columns(
       ),
     },
   ]
-
-  if (onDrain) {
-    rows.push({
-      key: "actions",
-      header: "",
-      align: "right",
-      cell: (deployment) => (
-        <button
-          type="button"
-          className="font-mono text-2xs text-muted-foreground hover:text-destructive hover:underline"
-          onClick={() => onDrain(deployment)}
-        >
-          Drain
-        </button>
-      ),
-    })
-  }
 
   return rows
 }

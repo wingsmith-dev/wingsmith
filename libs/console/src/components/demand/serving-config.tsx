@@ -19,7 +19,6 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import { WriteAction } from "@/components/layout/write-action"
 import { IconPencil } from "@tabler/icons-react"
 import { EnforcementBadge } from "@/components/demand/enforcement"
@@ -332,130 +331,128 @@ function EditIcon({ label, onClick }: { label: string; onClick: () => void }) {
 }
 
 /**
- * The two declared blocks, never merged into one card.
+ * The declared serving block: what the engine is told to do with a request.
  *
- * The resolved command line used to be a third card here, spanning both
- * columns. It is the same list the Engine arguments panel shows, so it was the
- * page saying one thing twice — the resolved args live with the declared ones
- * now, under the toggle that tells them apart.
+ * One card, not half of a pair. It used to be rendered beside Capabilities by a
+ * component that also drew the resolved command line, which made the layout of
+ * three unrelated things one component's business instead of the page's.
  */
-export function ServingCards({
+export function ServingBehaviourCard({
   serving,
-  capabilities,
-  onEditServing,
-  onEditCapabilities,
-  stacked,
+  onEdit,
 }: {
   serving: ServingBehaviour
-  capabilities: ServingCapabilities
-  onEditServing?: () => void
-  onEditCapabilities?: () => void
-  /** One under the other, for a column that is already narrower than the page. */
-  stacked?: boolean
+  onEdit?: () => void
 }) {
   return (
-    <div className={cn("grid gap-4", !stacked && "lg:grid-cols-2")}>
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            Serving
-            <EnforcementBadge kind="obeyed" />
-          </CardTitle>
-          {onEditServing && (
-            <CardAction>
-              <EditIcon label="Edit serving" onClick={onEditServing} />
-            </CardAction>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <FieldGrid>
-            <Field label="Thinking default">
-              {serving.reasoning.default_on ? "on" : "off"}
-            </Field>
-            <Field label="Reasoning parser">
-              <Dash>{serving.reasoning.parser}</Dash>
-            </Field>
-            <Field label="Reasoning transport">
-              {serving.reasoning.transport}
-            </Field>
-            <Field label="Suppress EOS">
-              {serving.reasoning.suppress_eos_until_think_end ? "yes" : "no"}
-            </Field>
-            <Field label="Think begin token">
-              <Dash>{serving.reasoning.think_begin_token}</Dash>
-            </Field>
-            <Field label="Think end token">
-              <Dash>{serving.reasoning.think_end_token}</Dash>
-            </Field>
-            <Field label="Stream usage">{serving.stream_usage}</Field>
-            <Field label="Context overflow">{serving.context_overflow}</Field>
-            <Field label="Tool call parser">
-              <Dash>{serving.tool_call_parser}</Dash>
-            </Field>
-            <Field label="Structured output backend">
-              <Dash>{serving.structured_output_backend}</Dash>
-            </Field>
-            <Field label="Max images per request" className="sm:col-span-2">
-              <Dash>{serving.max_images_per_request}</Dash>
-            </Field>
-          </FieldGrid>
-        </CardContent>
-      </Card>
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          Serving
+          <EnforcementBadge kind="obeyed" />
+        </CardTitle>
+        {onEdit && (
+          <CardAction>
+            <EditIcon label="Edit serving" onClick={onEdit} />
+          </CardAction>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <FieldGrid>
+          <Field label="Thinking default">
+            {serving.reasoning.default_on ? "on" : "off"}
+          </Field>
+          <Field label="Reasoning parser">
+            <Dash>{serving.reasoning.parser}</Dash>
+          </Field>
+          <Field label="Reasoning transport">
+            {serving.reasoning.transport}
+          </Field>
+          <Field label="Suppress EOS">
+            {serving.reasoning.suppress_eos_until_think_end ? "yes" : "no"}
+          </Field>
+          <Field label="Think begin token">
+            <Dash>{serving.reasoning.think_begin_token}</Dash>
+          </Field>
+          <Field label="Think end token">
+            <Dash>{serving.reasoning.think_end_token}</Dash>
+          </Field>
+          <Field label="Stream usage">{serving.stream_usage}</Field>
+          <Field label="Context overflow">{serving.context_overflow}</Field>
+          <Field label="Tool call parser">
+            <Dash>{serving.tool_call_parser}</Dash>
+          </Field>
+          <Field label="Structured output backend">
+            <Dash>{serving.structured_output_backend}</Dash>
+          </Field>
+          <Field label="Max images per request" className="sm:col-span-2">
+            <Dash>{serving.max_images_per_request}</Dash>
+          </Field>
+        </FieldGrid>
+      </CardContent>
+    </Card>
+  )
+}
 
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            Capabilities
-            <EnforcementBadge kind="asserted" />
-          </CardTitle>
-          {onEditCapabilities && (
-            <CardAction>
-              <EditIcon
-                label="Edit capabilities"
-                onClick={onEditCapabilities}
-              />
-            </CardAction>
-          )}
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <FieldGrid>
-            <Field label="Reasoning">
-              {capabilities.reasoning_supported ? "claimed" : "not claimed"}
-            </Field>
-            <Field label="Streaming">
-              {capabilities.streaming_supported ? "claimed" : "not claimed"}
-            </Field>
-            <Field label="Tool calling">
-              {capabilities.tool_calling_supported ? "claimed" : "not claimed"}
-            </Field>
-            <Field label="Parallel tool calls">
-              {capabilities.parallel_tool_calls ? "claimed" : "not claimed"}
-            </Field>
-            <Field label="Structured output modes" className="sm:col-span-2">
-              <ChoiceSet value={capabilities.structured_output_modes} />
-            </Field>
-            <Field label="Tool choice modes" className="sm:col-span-2">
-              <ChoiceSet value={capabilities.tool_choice_modes} />
-            </Field>
-            <Field label="Input modalities" className="sm:col-span-2">
-              <ChoiceSet value={capabilities.input_modalities} />
-            </Field>
-            <Field label="Prompt cache">{capabilities.prompt_cache_mode}</Field>
-            <Field label="Prompt cache TTL">
-              <Dash>{capabilities.prompt_cache_ttl_seconds}</Dash>
-            </Field>
-          </FieldGrid>
-          <Provenance
-            byLabel="Asserted by"
-            claimed
-            value={{
-              by: capabilities.asserted_by,
-              at: capabilities.asserted_at,
-              uri: capabilities.source_uri,
-            }}
-          />
-        </CardContent>
-      </Card>
-    </div>
+/** What the configuration claims it can do. Asserted by somebody, checked by nothing. */
+export function CapabilitiesCard({
+  capabilities,
+  onEdit,
+}: {
+  capabilities: ServingCapabilities
+  onEdit?: () => void
+}) {
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm">
+          Capabilities
+          <EnforcementBadge kind="asserted" />
+        </CardTitle>
+        {onEdit && (
+          <CardAction>
+            <EditIcon label="Edit capabilities" onClick={onEdit} />
+          </CardAction>
+        )}
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <FieldGrid>
+          <Field label="Reasoning">
+            {capabilities.reasoning_supported ? "claimed" : "not claimed"}
+          </Field>
+          <Field label="Streaming">
+            {capabilities.streaming_supported ? "claimed" : "not claimed"}
+          </Field>
+          <Field label="Tool calling">
+            {capabilities.tool_calling_supported ? "claimed" : "not claimed"}
+          </Field>
+          <Field label="Parallel tool calls">
+            {capabilities.parallel_tool_calls ? "claimed" : "not claimed"}
+          </Field>
+          <Field label="Structured output modes" className="sm:col-span-2">
+            <ChoiceSet value={capabilities.structured_output_modes} />
+          </Field>
+          <Field label="Tool choice modes" className="sm:col-span-2">
+            <ChoiceSet value={capabilities.tool_choice_modes} />
+          </Field>
+          <Field label="Input modalities" className="sm:col-span-2">
+            <ChoiceSet value={capabilities.input_modalities} />
+          </Field>
+          <Field label="Prompt cache">{capabilities.prompt_cache_mode}</Field>
+          <Field label="Prompt cache TTL">
+            <Dash>{capabilities.prompt_cache_ttl_seconds}</Dash>
+          </Field>
+        </FieldGrid>
+        <Provenance
+          byLabel="Asserted by"
+          claimed
+          value={{
+            by: capabilities.asserted_by,
+            at: capabilities.asserted_at,
+            uri: capabilities.source_uri,
+          }}
+        />
+      </CardContent>
+    </Card>
   )
 }

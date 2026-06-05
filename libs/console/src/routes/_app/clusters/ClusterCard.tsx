@@ -10,6 +10,7 @@ import { Link } from "@tanstack/react-router"
 import {
   IconActivity,
   IconAlertTriangle,
+  IconInfoCircle,
   IconPlugConnected,
 } from "@tabler/icons-react"
 
@@ -157,34 +158,42 @@ export function ClusterCard({
           </div>
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-baseline justify-between">
+        {/* A bar over a denominator of zero is a full-width claim about nothing:
+            it reads as a cluster with no capacity left, when the truth is that
+            there is no capacity to divide. Say which of the two it is instead. */}
+        {gpuTotal > 0 ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between">
+              <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+                GPUs allocated
+              </span>
+              <span className="font-mono text-xs tabular-nums">
+                {gpuAllocated ?? "?"}
+                <span className="text-muted-foreground/60">/{gpuTotal}</span>
+              </span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-secondary">
+              <div
+                className={cn("h-full rounded-full", fillTone)}
+                style={{ width: `${gpuPct}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
             <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
-              GPUs allocated
+              GPUs
             </span>
-            <span
-              className={cn(
-                "font-mono text-xs tabular-nums",
-                onboarding && "text-muted-foreground/50"
-              )}
-            >
-              {onboarding ? (
-                "—"
-              ) : (
-                <>
-                  {gpuAllocated ?? "?"}
-                  <span className="text-muted-foreground/60">/{gpuTotal}</span>
-                </>
-              )}
-            </span>
+            <div className="flex items-center gap-2 rounded-md border bg-muted px-2.5 py-2 text-2xs leading-snug text-foreground/80">
+              <IconInfoCircle className="size-4 shrink-0 text-muted-foreground" />
+              <span>
+                {onboarding
+                  ? "No devices reported yet — nothing has synced from this cluster."
+                  : "No GPUs here. The cluster runs, and no GPU node has joined it."}
+              </span>
+            </div>
           </div>
-          <div className="h-2 overflow-hidden rounded-full bg-secondary">
-            <div
-              className={cn("h-full rounded-full", fillTone)}
-              style={{ width: `${gpuPct}%` }}
-            />
-          </div>
-        </div>
+        )}
 
         {showNote && note && (
           <div
