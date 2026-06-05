@@ -39,6 +39,7 @@ from app.core.exceptions import Invalid
 
 SUBJECT_TABLES = {
     CLUSTER: Cluster,
+    WORKLOAD: Workload,
     NODE: Node,
     DEVICE: Device,
     TOPOLOGY_DOMAIN: TopologyDomain,
@@ -54,6 +55,7 @@ SUBJECT_TABLES = {
 
 SUBJECT_DETAIL_KEYS = {
     DEPLOYMENT: "deployment_id",
+    WORKLOAD: "workload_id",
 }
 """Where an event records its subject's public id as well as its row id.
 
@@ -86,13 +88,15 @@ def subject_subquery(ref: str):
 def workload_clause(ref: str):
     """Every event in one workload's story, including its children's.
 
-    Nothing writes an event whose subject is a workload: a workload is a
-    statement of intent, and everything that happens to it happens to a
-    deployment, a replica, or the weights those replicas load. Filtering on the
-    workload alone therefore returned an empty timeline for a workload that was
-    visibly stuck, which is the opposite of what the page is for.
+    The workload's own events come first in the clause and first in life: they are
+    what the plane did before any cluster had been chosen — the request landing,
+    placement running, and where it landed or why it landed nowhere. Everything
+    after that happens to a deployment, a replica, or the weights those replicas
+    load, and a workload that never got as far as a deployment has only the first
+    kind. Filtering on the children alone returned an empty timeline for exactly
+    the workload that most needed one.
 
-    Three generations, in the order a reader meets them. The deployments are the
+    Four generations, in the order a reader meets them. The deployments are the
     workload's share of each cluster; the replicas are what those deployments
     run; and the artifact is the one thing outside the workload's own tree that
     can hold all of it — a deployment waiting on weights that are not resident is
@@ -109,6 +113,7 @@ def workload_clause(ref: str):
         select(Deployment.cluster_id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
     )
     return or_(
+        Event.subject_id.in_(subject_subquery(ref)),
         Event.subject_id.in_(deployments),
         Event.subject_id.in_(replicas),
         Event.details["workload_id"].astext == ref,

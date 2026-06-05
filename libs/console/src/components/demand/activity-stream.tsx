@@ -22,6 +22,12 @@ import type { PlaneEvent } from "@/modules/machinery/types"
  * interleaved stream. `cache.*` lines are about the weights, which are shared by
  * every deployment on a cluster and so belong to no single one — they are their
  * own bucket rather than being duplicated into each.
+ *
+ * `workload.*` lines are the other bucket that belongs to no deployment, and for
+ * the opposite reason: they are what the plane did before it had chosen a
+ * cluster — the request landing, placement running, and where it went or why it
+ * went nowhere. A workload that placed nowhere has only these, so they must be
+ * reachable from a filter the deployment list cannot offer.
  */
 export function ActivityStream({
   events,
@@ -42,10 +48,12 @@ export function ActivityStream({
     const needle = term.trim().toLowerCase()
     return (events ?? []).filter((event) => {
       const isCache = event.kind.startsWith("cache.")
+      const isPlane = event.subject.type === "workload"
       const matchesSubject =
         subject === "all" ||
         (subject === "weights" && isCache) ||
-        (!isCache && event.subject.id === subject) ||
+        (subject === "plane" && isPlane) ||
+        (!isCache && !isPlane && event.subject.id === subject) ||
         event.details?.deployment_id === subject
       const matchesSeverity = severity === "all" || event.severity === severity
       const matchesSearch =
@@ -65,6 +73,7 @@ export function ActivityStream({
           className="h-8 rounded-md border border-input bg-card px-2 font-mono text-2xs"
         >
           <option value="all">Everything</option>
+          <option value="plane">Placement</option>
           {deployments.map((d) => (
             <option key={d.id} value={d.id}>
               {d.cluster_name}

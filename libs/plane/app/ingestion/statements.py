@@ -1051,6 +1051,42 @@ def deployment_lifecycle(
     )
 
 
+def workload_lifecycle(
+    workload_id: UUID,
+    workload_uid: str,
+    event: str,
+    message: str,
+    details: dict[str, str],
+    occurred_at: Any,
+    severity: str = "info",
+    cluster_id: UUID | None = None,
+) -> Insert:
+    """Records something the plane itself did to a workload, before any cluster is involved.
+
+    The deployment timeline starts at the moment placement has already succeeded,
+    so a workload that expands to nothing has no timeline at all — it is created,
+    it is placed nowhere, and the only page that could say so has nothing to draw.
+    That is the one state where an operator most needs the story, and it was the
+    one state with no writer.
+
+    `cluster_id` is null for the events that are about the workload as a whole and
+    set for the ones that are about one cluster's answer, which is what puts a
+    rejection on that cluster's timeline as well as the workload's. The public id
+    goes into `details` under `workload_id` because that is the key the event
+    filter falls back to once a row is deleted.
+    """
+    return _insert_event(
+        cluster_id,
+        f"workload.{event}",
+        severity,
+        "workload",
+        workload_id,
+        message,
+        {"workload_id": workload_uid, **details},
+        occurred_at,
+    )
+
+
 def doomed_nodes(cluster_id: UUID, keep: set[str]) -> Select:
     """The nodes a prune is about to delete, read before they are gone.
 

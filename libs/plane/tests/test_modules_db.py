@@ -331,7 +331,9 @@ async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSe
     rotated = await service.issue_enrolment_token(created.id, host="hangar.example")
     assert rotated.enrolment_token != issued.enrolment_token
     assert await service.repo.by_token_hash(AuthManager.hash_enrolment_token(issued.enrolment_token)) is None
-    assert (await service.repo.by_token_hash(AuthManager.hash_enrolment_token(rotated.enrolment_token))).uid == created.id
+    assert (
+        await service.repo.by_token_hash(AuthManager.hash_enrolment_token(rotated.enrolment_token))
+    ).uid == created.id
 
     later = await service.setup_instructions(created.id, host="hangar.example")
     assert later.enrolment_token is None
@@ -558,7 +560,9 @@ async def test_the_serving_configuration_is_created_read_and_patched(db: AsyncSe
     assert (await service.get(created.id)).serving.engine == "vllm"
     assert (await service.list()).count == 1
 
-    patched = await service.update(created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_version="0.7.0")))
+    patched = await service.update(
+        created.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_version="0.7.0"))
+    )
     assert patched.serving.engine_runtime_version == "0.7.0"
     assert patched.serving_digest != created.serving_digest
     assert_patched(created, patched)
@@ -694,7 +698,9 @@ async def test_naming_a_runtime_image_in_the_same_patch_wins(db: AsyncSession) -
 
     patched = await WorkloadService(db).update(
         workload.id,
-        WorkloadUpdateRequest(serving=WorkloadServingUpdate(engine_runtime_version="1.4.2", engine_runtime_image=pinned)),
+        WorkloadUpdateRequest(
+            serving=WorkloadServingUpdate(engine_runtime_version="1.4.2", engine_runtime_image=pinned)
+        ),
     )
     assert patched.serving.engine_runtime_image == pinned
 
@@ -714,9 +720,7 @@ async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) ->
     created = await service.create(
         WorkloadCreateRequest(
             cluster=cluster.id,
-            serving=a_serving(
-                artifact.id, engine_runtime_version="1.4.0-patched.1", frontend_image=pinned
-            ),
+            serving=a_serving(artifact.id, engine_runtime_version="1.4.0-patched.1", frontend_image=pinned),
             name="kimi-k3-mxfp4-tp8-1024k",
             project=project.id,
         )
@@ -930,9 +934,7 @@ async def test_resuming_a_workload_announces_the_clusters_it_was_parked_on(db: A
     notifier.changes.clear()
     await service.set_paused(created.workload_id, False)
 
-    assert [(c.cluster_id, c.kind, c.uid) for c in notifier.changes] == [
-        (cluster.id, "deployment", created.id)
-    ]
+    assert [(c.cluster_id, c.kind, c.uid) for c in notifier.changes] == [(cluster.id, "deployment", created.id)]
     assert (await DeploymentService(db).get(created.id)).enabled is True
 
 
@@ -1776,3 +1778,76 @@ async def test_a_workload_never_reaches_a_cluster_naming_the_latest_tag(db: Asyn
 
     assert workload.serving.engine_runtime_image is not None
     assert not workload.serving.engine_runtime_image.endswith(":latest")
+
+
+# ------------------------------------------------------- the workload's own timeline
+
+
+async def _story(db: AsyncSession, workload_uid: str) -> list[tuple[str, str]]:
+    """Every event in one workload's story, oldest first, as `(type, message)`."""
+    listed = await EventService(db).list(subject=workload_uid, limit=100)
+    return [(e.kind, e.message) for e in reversed(listed.items)]
+
+
+async def test_a_workload_that_fits_nowhere_says_so_instead_of_saying_nothing(db: AsyncSession) -> None:
+    """The state that had no writer at all.
+
+    An unpinned workload with no supply behind it expands to no shares, so no
+    deployment is created — and the deployment timeline was the only timeline
+    there was. The workload existed, the console drew "nothing has been recorded
+    against this workload yet", and the reasoning placement had already computed
+    was discarded on the way out of the service.
+    """
+    _, project, artifact = await an_environment(db)
+    created = await WorkloadService(db).create(
+        WorkloadCreateRequest(
+            serving=a_serving(artifact.id),
+            name="fits-nowhere",
+            project=project.id,
+        )
+    )
+
+    assert created.deployments == []
+    kinds = [kind for kind, _ in await _story(db, created.id)]
+    assert kinds[:3] == ["workload.requested", "workload.placing", "workload.unplaced"]
+
+
+async def test_a_rejection_names_the_cluster_and_the_reason_it_lost(db: AsyncSession) -> None:
+    """ "Why not this cluster" is answerable from the log, not only from a live preview."""
+    cluster, project, artifact = await an_environment(db)
+    created = await WorkloadService(db).create(
+        WorkloadCreateRequest(
+            serving=a_serving(artifact.id),
+            name="no-devices-anywhere",
+            project=project.id,
+        )
+    )
+
+    rejections = [
+        event
+        for event in (await EventService(db).list(subject=created.id, limit=100)).items
+        if event.kind == "workload.rejected"
+    ]
+    assert rejections, "every cluster that was considered and lost is on the record"
+    assert cluster.name in rejections[0].message
+    assert rejections[0].details["codes"]
+
+
+async def test_a_workload_that_places_records_the_request_and_the_answer(db: AsyncSession) -> None:
+    """The successful path is the same story, and stops before the per-cluster noise."""
+    _, _, _, created = await a_workload(db, name="places-fine")
+
+    kinds = [kind for kind, _ in await _story(db, created.id)]
+    assert kinds[:3] == ["workload.requested", "workload.placing", "workload.placed"]
+    assert "workload.rejected" not in kinds, "a clean placement does not list the clusters that lost"
+    assert "deployment.created" in kinds, "the workload's story includes its deployments'"
+
+
+async def test_the_story_survives_the_workload_it_is_about(db: AsyncSession) -> None:
+    """`details.workload_id` is what keeps a deleted workload's story readable."""
+    _, _, _, created = await a_workload(db, name="short-lived")
+    await WorkloadService(db, notifier=MemoryNotifier()).delete(created.id)
+
+    kinds = [kind for kind, _ in await _story(db, created.id)]
+    assert "workload.requested" in kinds
+    assert "workload.deleted" in kinds

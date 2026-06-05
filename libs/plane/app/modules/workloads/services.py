@@ -882,6 +882,156 @@ class WorkloadService:
             )
         )
 
+    async def _trace(
+        self,
+        workload: Workload,
+        event: str,
+        message: str,
+        details: dict[str, str] | None = None,
+        severity: str = "info",
+        cluster_id: UUID | None = None,
+        moment: dt.datetime | None = None,
+    ) -> None:
+        """Files what the plane did to the workload itself, in the caller's transaction.
+
+        The deployment timeline can only begin once there is a deployment, which is
+        after placement has already answered. Everything before that — the request
+        arriving, the clusters that were considered, the reason each one was ruled
+        out — happens to the workload and has nowhere else to be filed.
+
+        `moment` is passed by a caller that is filing several events for one call, so
+        that the story reads in the order it happened rather than in the order the
+        writes were issued.
+        """
+        await self.db.execute(
+            statements.workload_lifecycle(
+                workload.id,
+                workload.uid,
+                event,
+                message,
+                {"name": workload.name, **(details or {})},
+                moment or dt.datetime.now(dt.UTC),
+                severity,
+                cluster_id,
+            )
+        )
+
+    async def _trace_expansion(
+        self,
+        workload: Workload,
+        decision,
+        started: dt.datetime,
+        decided: dt.datetime,
+    ) -> None:
+        """Files placement's whole answer against the workload: what it asked, and what it got.
+
+        Placement already reasons per cluster and returns every verdict — the counts
+        it decided on and the coded reasons a cluster lost. All of that was computed
+        on every expansion and then dropped on the floor, except for one summary
+        string copied onto the deployments that were created. A workload that fit
+        nowhere therefore created no deployment, so the one case where the reasoning
+        is the entire answer is the case that discarded all of it.
+
+        The per-cluster rejections are filed only when the expansion did not fully
+        land. A workload that placed cleanly does not need seven rows saying which
+        clusters did not win; one that is short does, because those rows are the next
+        action.
+
+        Each rejection also carries `cluster_id`, so it appears on that cluster's own
+        timeline. "Nothing will schedule here" is a fact about the cluster, and a
+        reader looking at the cluster should not have to guess which workload to open
+        to find it.
+        """
+        placed = sum(s.replicas for s in decision.shares)
+        feasible = sum(1 for v in decision.verdicts if v.feasible)
+        await self._trace(
+            workload,
+            "placing",
+            (
+                f"placement considered {len(decision.verdicts)} cluster(s) for {workload.device_count} × "
+                f"{workload.device_class}; {feasible} could take it"
+            ),
+            {
+                "candidates": str(len(decision.verdicts)),
+                "feasible": str(feasible),
+                "device_class": workload.device_class,
+                "device_count": str(workload.device_count),
+                "device_memory_mib_min": str(workload.device_memory_mib_min),
+                "desired_scale": str(decision.desired),
+                "took_ms": str(round((decided - started).total_seconds() * 1000)),
+            },
+            moment=started,
+        )
+
+        landed = decided
+        spread = ", ".join(f"{s.cluster_name}×{s.replicas}" for s in decision.shares if s.replicas > 0)
+        outcome = {
+            "placed": str(placed),
+            "desired": str(decision.desired),
+            "shortfall": str(decision.shortfall),
+            "clusters": spread,
+            "summary": decision.summary or "",
+        }
+        if decision.desired == 0:
+            await self._trace(
+                workload,
+                "held",
+                decision.summary or f"{workload.name} asks for nothing; every share is 0",
+                outcome,
+                moment=landed,
+            )
+            return
+        if placed == 0:
+            await self._trace(
+                workload,
+                "unplaced",
+                decision.summary or f"no cluster can take {workload.name}; nothing was deployed",
+                outcome,
+                severity="warning",
+                moment=landed,
+            )
+        elif decision.shortfall > 0:
+            await self._trace(
+                workload,
+                "shortfall",
+                decision.summary or f"{placed} of {decision.desired} placed; {decision.shortfall} unplaced",
+                outcome,
+                severity="warning",
+                moment=landed,
+            )
+        else:
+            await self._trace(
+                workload,
+                "placed",
+                decision.summary or f"{workload.name} was placed on {spread}",
+                outcome,
+                moment=landed,
+            )
+            return
+
+        rejected = landed + dt.timedelta(microseconds=1)
+        clusters = await self.repo.clusters_by_uid([v.cluster for v in decision.verdicts if not v.feasible])
+        for verdict in decision.verdicts:
+            if verdict.feasible:
+                continue
+            cluster = clusters.get(verdict.cluster)
+            await self._trace(
+                workload,
+                "rejected",
+                f"{verdict.cluster_name}: " + "; ".join(r.message for r in verdict.reasons),
+                {
+                    "cluster": verdict.cluster_name,
+                    "codes": ",".join(r.code for r in verdict.reasons),
+                    "free_devices": str(verdict.free_devices),
+                    "reserved_devices": str(verdict.reserved_devices),
+                    "available_devices": str(verdict.available_devices),
+                    "largest_domain_free_devices": str(verdict.largest_domain_free_devices),
+                    "quota_headroom": "" if verdict.quota_headroom is None else str(verdict.quota_headroom),
+                },
+                cluster_id=None if cluster is None else cluster.id,
+                moment=rejected,
+            )
+
     async def _announce(self, cluster_uid: str, uid: str, generation: int) -> None:
         """Wakes whichever hub holds this cluster's stream, after the write is committed.
 
@@ -1194,6 +1344,7 @@ class WorkloadService:
         derived from the row rather than taken from the caller. A digest somebody else
         computed is a claim about a configuration rather than a reading of one.
         """
+        requested_at = dt.datetime.now(dt.UTC)
         if data.kind not in KINDS:
             raise Invalid(f"unknown kind {data.kind!r}", {"allowed": sorted(KINDS)})
         if data.strategy not in STRATEGIES:
@@ -1267,10 +1418,12 @@ class WorkloadService:
         )
         apply_serving(workload, data.serving, artifact)
 
+        started = dt.datetime.now(dt.UTC)
         decision = await self._expand(workload, extra_policies=() if constraint is None else (constraint,))
+        decided = dt.datetime.now(dt.UTC)
         shares = [s for s in decision.shares if s.replicas > 0]
         clusters = await self.repo.clusters_by_uid([s.cluster for s in shares])
-        now = dt.datetime.now(dt.UTC)
+        now = decided
         deployments = [
             Deployment(
                 uid=new_uid(DEPLOYMENT),
@@ -1305,6 +1458,32 @@ class WorkloadService:
                         attachments=[PolicyAttachment(subject_type=SUBJECT_WORKLOAD, subject_id=workload.id)],
                     )
                 )
+            await self._trace(
+                workload,
+                "requested",
+                (
+                    f"{data.name} was requested: {data.desired_scale} {UNITS[data.kind]} of "
+                    f"{artifact.name} on {workload.device_count} × {workload.device_class}"
+                ),
+                {
+                    "kind": data.kind,
+                    "strategy": data.strategy,
+                    "project": project.slug,
+                    "artifact": artifact.uid,
+                    "engine": workload.engine,
+                    "engine_runtime_version": workload.engine_runtime_version,
+                    "device_class": workload.device_class,
+                    "device_count": str(workload.device_count),
+                    "device_memory_mib_min": str(workload.device_memory_mib_min),
+                    "tensor_parallel": str(workload.tensor_parallel),
+                    "context_length": str(workload.context_length),
+                    "desired_scale": str(data.desired_scale),
+                    "cluster": data.cluster or "",
+                    "serving_digest": workload.serving_digest,
+                },
+                moment=requested_at,
+            )
+            await self._trace_expansion(workload, decision, started, decided)
             for deployment, share in zip(deployments, shares, strict=True):
                 await self._record(
                     deployment,
@@ -1439,10 +1618,12 @@ class WorkloadService:
         workload re-derives it — and making every one of those a new generation would
         have clusters restarting replicas to arrive where they already are.
         """
+        started = dt.datetime.now(dt.UTC)
         decision = await self._expand(workload, exclude)
+        now = dt.datetime.now(dt.UTC)
+        await self._trace_expansion(workload, decision, started, now)
         shares = {s.cluster: s for s in decision.shares if s.replicas > 0}
         existing = {r.cluster_uid: r for r in deployment_rows}
-        now = dt.datetime.now(dt.UTC)
         touched: list[tuple[str, str, int]] = []
 
         for cluster_uid, row in existing.items():
@@ -1662,6 +1843,12 @@ class WorkloadService:
                 f"{workload.name} was deleted",
                 {"workload_id": workload.uid},
             )
+        await self._trace(
+            workload,
+            "deleted",
+            f"{workload.name} was deleted from {len(deployments)} cluster(s)",
+            {"deployments": str(len(deployments))},
+        )
         await self.repo.delete(workload, deployments)
         await self.db.commit()
         for cluster_uid, uid, generation in announcements:

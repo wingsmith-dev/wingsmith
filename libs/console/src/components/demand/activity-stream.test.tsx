@@ -130,6 +130,31 @@ describe("ActivityStream", () => {
     expect(screen.getByText(/the download is running/)).toBeInTheDocument()
   })
 
+  it("keeps the plane's own reasoning reachable when there is no deployment", async () => {
+    render(
+      <ActivityStream
+        loading={false}
+        deployments={DEPLOYMENTS}
+        events={[
+          event({
+            id: "p",
+            kind: "workload.unplaced",
+            severity: "warning",
+            cluster_id: null,
+            subject: { type: "workload", id: "row-wkl-1" },
+            message: "no cluster can take glm-5-3-flash",
+          }),
+        ]}
+      />
+    )
+
+    await userEvent.selectOptions(screen.getByRole("combobox"), "row-dep-1")
+    expect(screen.queryByText(/no cluster can take/)).not.toBeInTheDocument()
+
+    await userEvent.selectOptions(screen.getByRole("combobox"), "plane")
+    expect(screen.getByText(/no cluster can take/)).toBeInTheDocument()
+  })
+
   it("filters by severity so a failure is one click away", async () => {
     render(
       <ActivityStream
