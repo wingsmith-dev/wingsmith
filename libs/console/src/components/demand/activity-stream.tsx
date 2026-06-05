@@ -1,10 +1,10 @@
-import { useMemo, useState } from "react"
 import { IconSearch } from "@tabler/icons-react"
+import { useMemo, useState } from "react"
 
-import { cn } from "@/lib/utils"
 import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
-import type { PlaneEvent } from "@/modules/machinery/types"
+import { cn } from "@/lib/utils"
 import type { WorkloadDeployment } from "@/modules/demand/types"
+import type { PlaneEvent } from "@/modules/machinery/types"
 
 /**
  * The workload's event log, filterable by the object each line is about.
@@ -107,7 +107,7 @@ export function ActivityStream({
         </span>
       </div>
 
-      <div className="max-h-[420px] overflow-y-auto rounded-lg border bg-background/60 p-3">
+      <div className="overflow-y-auto rounded-lg p-3">
         {rows.length === 0 && !loading ? (
           <div className="text-xs text-muted-foreground/60">
             {events?.length

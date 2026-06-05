@@ -19,6 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { WriteAction } from "@/components/layout/write-action"
 import { IconPencil } from "@tabler/icons-react"
 import { EnforcementBadge } from "@/components/demand/enforcement"
@@ -330,31 +331,30 @@ function EditIcon({ label, onClick }: { label: string; onClick: () => void }) {
   )
 }
 
-/** The two blocks side by side on a workload, never merged into one card. */
+/**
+ * The two declared blocks, never merged into one card.
+ *
+ * The resolved command line used to be a third card here, spanning both
+ * columns. It is the same list the Engine arguments panel shows, so it was the
+ * page saying one thing twice — the resolved args live with the declared ones
+ * now, under the toggle that tells them apart.
+ */
 export function ServingCards({
   serving,
   capabilities,
-  resolvedArgs,
-  engineArgs,
   onEditServing,
   onEditCapabilities,
+  stacked,
 }: {
   serving: ServingBehaviour
   capabilities: ServingCapabilities
-  resolvedArgs: Record<string, string>
-  engineArgs: Record<string, unknown>
   onEditServing?: () => void
   onEditCapabilities?: () => void
+  /** One under the other, for a column that is already narrower than the page. */
+  stacked?: boolean
 }) {
-  const overrides = Object.keys(engineArgs).length
-    ? Object.entries(resolvedArgs).filter(([key, effective]) => {
-        const declared = engineArgs[key] ?? engineArgs[`--${key}`]
-        return declared !== undefined && String(declared) !== effective
-      })
-    : []
-
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className={cn("grid gap-4", !stacked && "lg:grid-cols-2")}>
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-sm">
@@ -454,41 +454,6 @@ export function ServingCards({
               uri: capabilities.source_uri,
             }}
           />
-        </CardContent>
-      </Card>
-
-      <Card className="lg:col-span-2">
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            Resolved engine args
-            <EnforcementBadge kind="obeyed" />
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="text-2xs text-muted-foreground/70">
-            The declared engine args with the flags the typed serving block
-            dictates laid over the top. Derived on every read and stored
-            nowhere.
-          </p>
-          {Object.keys(resolvedArgs).length === 0 ? (
-            <p className="font-mono text-2xs text-muted-foreground/50">
-              None — the engine runs on its own defaults.
-            </p>
-          ) : (
-            <ul className="space-y-0.5">
-              {Object.entries(resolvedArgs).map(([key, value]) => (
-                <li key={key} className="font-mono text-2xs">
-                  --{key} {value}
-                </li>
-              ))}
-            </ul>
-          )}
-          {overrides.length > 0 && (
-            <p className="text-2xs text-amber-700 dark:text-amber-400">
-              {overrides.map(([key]) => `--${key}`).join(", ")} came from the
-              typed serving block; the engine args spelling of each is ignored.
-            </p>
-          )}
         </CardContent>
       </Card>
     </div>

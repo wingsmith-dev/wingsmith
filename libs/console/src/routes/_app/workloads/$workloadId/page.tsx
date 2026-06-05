@@ -1,47 +1,41 @@
-import { DataTable } from "@/components/layout/data-table"
-import { DeleteDialog } from "@/components/layout/destructive"
-import { Field, FieldGrid } from "@/components/layout/field"
-import { CopyableId, Dash, Labels } from "@/components/layout/mono"
-import { PageHeader } from "@/components/layout/page-header"
-import { RefreshButton } from "@/components/layout/refresh-button"
-import { StatusDot, type StatusTone } from "@/components/layout/status-dot"
-import { WriteAction } from "@/components/layout/write-action"
+import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
+import { NewBenchmarkRequestDialog } from "@/components/benchmarks/new-request"
+import { ActivityStream } from "@/components/demand/activity-stream"
+import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
+import { ServingCards } from "@/components/demand/serving-config"
 import {
   DrainWorkloadDialog,
   PauseWorkloadDialog,
   ScaleWorkloadDialog,
 } from "@/components/demand/workload-actions"
-import { ActivityStream } from "@/components/demand/activity-stream"
-import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
 import { WorkloadDeploymentsTable } from "@/components/demand/workload-deployments-table"
-import { Sparkline } from "@/components/metrics/sparkline"
-import { formatMetric, sampleOf, valueOf } from "@/modules/metrics/format"
-import { useMetrics } from "@/modules/metrics/queries"
-import {
-  idleGpuHours,
-  latencyStages,
-  meanUtilization,
-  sumCurvePoints,
-  sumCurves,
-  utilizationWeek,
-  type LatencyStage,
-  type UtilizationWeek,
-} from "@/modules/metrics/rollup"
-import type { Metrics } from "@/modules/metrics/types"
+import { DataTable } from "@/components/layout/data-table"
+import { DeleteDialog } from "@/components/layout/destructive"
+import { Field, FieldGrid } from "@/components/layout/field"
+import { CopyableId, Dash, Labels } from "@/components/layout/mono"
+import { EnforcementBadge } from "@/components/demand/enforcement"
+import { PageHeader } from "@/components/layout/page-header"
+import { RefreshButton } from "@/components/layout/refresh-button"
+import { StatusDot, type StatusTone } from "@/components/layout/status-dot"
+import { WriteAction } from "@/components/layout/write-action"
 import { operationColumns } from "@/components/machinery/operation-columns"
+import { Sparkline } from "@/components/metrics/sparkline"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { cn } from "@/lib/utils"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
+import { cn } from "@/lib/utils"
 import {
-  type OperationalStatus,
+  useServingBenchmarkSummary,
+  useWorkloadBenchmarks,
+} from "@/modules/benchmarks/queries"
+import {
   parallelismLabel,
   servingOverrides,
   workloadOperationalStatus,
+  type OperationalStatus,
 } from "@/modules/demand/display"
-import { ServingCards } from "@/components/demand/serving-config"
 import {
   useArtifact,
   useDeleteWorkload,
@@ -56,13 +50,37 @@ import type {
   WorkloadPlacementNode,
   WorkloadReplicaPlacement,
 } from "@/modules/demand/types"
-import {
-  useServingBenchmarkSummary,
-  useWorkloadBenchmarks,
-} from "@/modules/benchmarks/queries"
-import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
-import { NewBenchmarkRequestDialog } from "@/components/benchmarks/new-request"
 import { useOperations, useWorkloadEvents } from "@/modules/machinery/queries"
+import { formatMetric, sampleOf, valueOf } from "@/modules/metrics/format"
+import { useMetrics } from "@/modules/metrics/queries"
+import {
+  idleGpuHours,
+  latencyStages,
+  meanUtilization,
+  sumCurvePoints,
+  sumCurves,
+  utilizationWeek,
+  type LatencyStage,
+  type UtilizationWeek,
+} from "@/modules/metrics/rollup"
+import type { Metrics } from "@/modules/metrics/types"
+import {
+  IconAdjustments,
+  IconArrowLeft,
+  IconChartHistogram,
+  IconChartLine,
+  IconCpu,
+  IconExternalLink,
+  IconFlask,
+  IconLayoutDashboard,
+  IconPencil,
+  IconTerminal2,
+  IconTimeline,
+  IconTrash,
+} from "@tabler/icons-react"
+import { Link, useNavigate, useParams } from "@tanstack/react-router"
+import { useMemo, useState } from "react"
+import { toast } from "sonner"
 import {
   EditCapabilitiesDialog,
   EditDetailsDialog,
@@ -71,23 +89,6 @@ import {
   EditPlacementDialog,
   EditServingDialog,
 } from "./EditWorkload"
-import {
-  IconAdjustments,
-  IconArrowLeft,
-  IconPencil,
-  IconChartHistogram,
-  IconChartLine,
-  IconCpu,
-  IconExternalLink,
-  IconFlask,
-  IconLayoutDashboard,
-  IconTerminal2,
-  IconTimeline,
-  IconTrash,
-} from "@tabler/icons-react"
-import { Link, useNavigate, useParams } from "@tanstack/react-router"
-import { useMemo, useState } from "react"
-import { toast } from "sonner"
 
 /**
  * One workload: what was asked for, and every cluster it landed on.
@@ -311,7 +312,7 @@ export function WorkloadDetailPage() {
             <TabsContent value="overview" className="space-y-4">
               <Vitals workload={workload} operational={operational} />
 
-              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+              <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
                 <div className="flex min-w-0 flex-col gap-4">
                   <TrafficPanel
                     workloadId={workload.id}
@@ -465,7 +466,7 @@ export function WorkloadDetailPage() {
 
             {/* ---- Configuration ------------------------------------- */}
             <TabsContent value="configuration">
-              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+              <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
                 <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Serving & artifact"
@@ -547,21 +548,18 @@ export function WorkloadDetailPage() {
                   </Panel>
 
                   <ServingCards
+                    stacked
                     serving={workload.serving.serving}
                     capabilities={workload.serving.capabilities}
-                    resolvedArgs={workload.serving.resolved_engine_args}
-                    engineArgs={workload.serving.engine_args}
                     onEditServing={() => setEditing("serving")}
                     onEditCapabilities={() => setEditing("capabilities")}
                   />
                 </div>
 
-                <div className="flex min-w-0 flex-col gap-4">
-                  <EngineArgsPanel
-                    workload={workload}
-                    onEdit={() => setEditing("args")}
-                  />
-                </div>
+                <EngineArgsPanel
+                  workload={workload}
+                  onEdit={() => setEditing("args")}
+                />
               </div>
             </TabsContent>
 
@@ -614,15 +612,9 @@ export function WorkloadDetailPage() {
                   label="Graded runs, this config"
                   value={String(measured.data?.graded_run_count ?? 0)}
                 />
-                {/* TODO-API tuning recommendation is not computed by the plane */}
-                <StatTile
-                  label="Recommendation"
-                  value="Current config is optimal"
-                  small
-                />
               </StatRow>
 
-              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+              <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
                 <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Finding the inflection point"
@@ -754,7 +746,7 @@ export function WorkloadDetailPage() {
                 <StatTile label="Rescheduled (7d)" value="1" />
               </StatRow>
 
-              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+              <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
                 <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Topology"
@@ -875,7 +867,7 @@ export function WorkloadDetailPage() {
                 <StatTile label="Time to healthy" value="3m 42s" />
               </StatRow>
 
-              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+              <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
                 <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Operations"
@@ -976,18 +968,6 @@ export function WorkloadDetailPage() {
                   loading={events.isLoading}
                   deployments={workload.deployments}
                 />
-              </Panel>
-
-              <Panel title="Replica logs" subtitle="Not served from here">
-                <p className="text-xs text-muted-foreground">
-                  A replica's stdout goes from the cluster to the observability
-                  stack directly and never crosses the control plane, so there
-                  is nothing here to show and nothing that could be shown
-                  without making this service the inference SLA. Read them
-                  against the cluster, or in the observability stack. What the
-                  plane can answer — why a replica has not started, what it is
-                  waiting on, what changed and when — is the stream above.
-                </p>
               </Panel>
             </TabsContent>
           </div>
@@ -1277,7 +1257,8 @@ function EngineArgsPanel({
   return (
     <Panel
       title="Engine arguments"
-      subtitle="The declared engine args with the typed serving block laid over the top, keyed the way the operator keys them."
+      badge={<EnforcementBadge kind="obeyed" />}
+      subtitle="What the engine is started with: the declared args, with the flags the typed serving block dictates laid over the top. Derived on every read and stored nowhere."
       action={
         <div className="flex items-center gap-2">
           <Segmented
@@ -1302,10 +1283,10 @@ function EngineArgsPanel({
               : "Nothing declared — every argument below was resolved."}
           </p>
         ) : (
-          <pre className="overflow-x-auto rounded-lg border bg-background/60 p-4 font-mono text-2xs leading-relaxed">
+          <pre className="rounded-lg border bg-background/60 p-4 font-mono text-2xs leading-relaxed break-all whitespace-pre-wrap">
             {shown === "resolved"
               ? Object.entries(resolved)
-                  .map(([key, value]) => `${key}: ${value}`)
+                  .map(([key, value]) => `--${key} ${value}`)
                   .join("\n")
               : JSON.stringify(declared, null, 2)}
           </pre>
@@ -1354,11 +1335,13 @@ function Segmented<T extends string>({
 
 function Panel({
   title,
+  badge,
   subtitle,
   action,
   children,
 }: React.PropsWithChildren<{
   title: string
+  badge?: React.ReactNode
   subtitle?: string
   action?: React.ReactNode
 }>) {
@@ -1367,7 +1350,10 @@ function Panel({
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <CardTitle className="text-sm">{title}</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-sm">
+              {title}
+              {badge}
+            </CardTitle>
             {subtitle && (
               <p className="mt-1 text-2xs text-muted-foreground/60">
                 {subtitle}
@@ -1711,7 +1697,7 @@ function PerformanceView({
         />
       </StatRow>
 
-      <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+      <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
         <div className="flex min-w-0 flex-col gap-4">
           <Panel
             title="Throughput"
