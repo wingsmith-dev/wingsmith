@@ -36,6 +36,30 @@ export function NodeConditionLabel({
 }
 
 /**
+ * GPU node or plain compute, told apart by the only thing that separates them.
+ *
+ * The plane records no role for a node: a compute node is a node with no
+ * devices, and the table said so with a `0/0` and a dash, which reads as a GPU
+ * node whose devices have gone missing. The badge states which of the two a row
+ * is before the numbers are read at all.
+ */
+export function NodeKindBadge({ devices }: { devices: number }) {
+  const gpu = devices > 0
+  return (
+    <Badge
+      variant="outline"
+      className={
+        gpu
+          ? "border-primary/40 bg-primary/10 font-mono text-2xs tracking-wider text-primary uppercase"
+          : "font-mono text-2xs tracking-wider text-muted-foreground uppercase"
+      }
+    >
+      {gpu ? "gpu" : "cpu"}
+    </Badge>
+  )
+}
+
+/**
  * Cordon is observed schedulability, not health, and gets its own axis: a
  * ready-but-cordoned node must never read as a healthy, usable node.
  */

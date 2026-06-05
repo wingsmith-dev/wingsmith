@@ -2,7 +2,10 @@ import type { Column } from "@/components/layout/data-table"
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { PageHeader } from "@/components/layout/page-header"
 import { ResourceCell } from "@/components/layout/resource-cell"
-import { NodeConditionLabel } from "@/components/supply/indicators"
+import {
+  NodeConditionLabel,
+  NodeKindBadge,
+} from "@/components/supply/indicators"
 import { Card } from "@/components/ui/card"
 import { formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -117,13 +120,16 @@ function nodeListColumns(
       header: "Node",
       cell: (node) => (
         <ResourceCell kind="node">
-          <Link
-            to="/nodes/$nodeId"
-            params={{ nodeId: node.id }}
-            className="block truncate font-mono text-xs hover:underline"
-          >
-            {node.name}
-          </Link>
+          <div className="flex min-w-0 items-center gap-2">
+            <Link
+              to="/nodes/$nodeId"
+              params={{ nodeId: node.id }}
+              className="truncate font-mono text-xs hover:underline"
+            >
+              {node.name}
+            </Link>
+            <NodeKindBadge devices={node.devices.total} />
+          </div>
         </ResourceCell>
       ),
     },
@@ -176,11 +182,14 @@ function nodeListColumns(
       key: "allocated",
       header: "Allocated",
       align: "right",
-      cell: (node) => (
-        <span className="font-mono text-xs">
-          {node.devices.allocated}/{node.devices.total}
-        </span>
-      ),
+      cell: (node) =>
+        node.devices.total > 0 ? (
+          <span className="font-mono text-xs">
+            {node.devices.allocated}/{node.devices.total}
+          </span>
+        ) : (
+          <span className="font-mono text-xs text-muted-foreground/40">—</span>
+        ),
     },
     {
       key: "driver",
