@@ -1,10 +1,10 @@
 import { DataTable } from "@/components/layout/data-table"
 import { DeleteDialog } from "@/components/layout/destructive"
 import { Field, FieldGrid } from "@/components/layout/field"
-import { Dash, Labels } from "@/components/layout/mono"
+import { CopyableId, Dash, Labels } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { RefreshButton } from "@/components/layout/refresh-button"
-import { StatusDot, StatusLabel } from "@/components/layout/status-dot"
+import { StatusDot, type StatusTone } from "@/components/layout/status-dot"
 import { WriteAction } from "@/components/layout/write-action"
 import {
   DrainWorkloadDialog,
@@ -36,6 +36,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import {
+  type OperationalStatus,
   parallelismLabel,
   servingOverrides,
   workloadOperationalStatus,
@@ -62,9 +63,18 @@ import {
 import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
 import { NewBenchmarkRequestDialog } from "@/components/benchmarks/new-request"
 import { useOperations, useWorkloadEvents } from "@/modules/machinery/queries"
-import { WorkloadForm } from "../WorkloadForm"
 import {
+  EditCapabilitiesDialog,
+  EditDetailsDialog,
+  EditEngineArgsDialog,
+  EditEngineDialog,
+  EditPlacementDialog,
+  EditServingDialog,
+} from "./EditWorkload"
+import {
+  IconAdjustments,
   IconArrowLeft,
+  IconPencil,
   IconChartHistogram,
   IconChartLine,
   IconCpu,
@@ -126,7 +136,7 @@ export function WorkloadDetailPage() {
   const recentEvents = events.items?.slice(0, RECENT_EVENTS)
   const remove = useDeleteWorkload()
   const navigate = useNavigate()
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState<EditSection>(null)
   const [doomed, setDoomed] = useState(false)
   const [scaling, setScaling] = useState(false)
   const [pausing, setPausing] = useState(false)
@@ -189,9 +199,6 @@ export function WorkloadDetailPage() {
               >
                 Drain
               </Button>
-              <Button variant="outline" onClick={() => setEditing(true)}>
-                Edit
-              </Button>
               <Button variant="destructive" onClick={() => setDoomed(true)}>
                 <IconTrash className="size-4" />
                 Delete
@@ -202,11 +209,11 @@ export function WorkloadDetailPage() {
       />
 
       {workload && editing && (
-        <WorkloadForm
-          key={workload.revision}
-          open
+        <EditDialog
+          key={`${editing}-${workload.revision}`}
+          section={editing}
           workload={workload}
-          onOpenChange={(open) => !open && setEditing(false)}
+          onClose={() => setEditing(null)}
         />
       )}
       {workload && scaling && (
@@ -288,6 +295,9 @@ export function WorkloadDetailPage() {
             <ViewTab value="placement" icon={IconCpu}>
               Placement
             </ViewTab>
+            <ViewTab value="configuration" icon={IconAdjustments}>
+              Configuration
+            </ViewTab>
             <ViewTab value="lifecycle" icon={IconTimeline}>
               Lifecycle
             </ViewTab>
@@ -297,23 +307,10 @@ export function WorkloadDetailPage() {
           </TabsList>
 
           <div className="space-y-4 p-4">
-            {operational.needsAttention && (
-              <span
-                className={cn(
-                  "block font-mono text-2xs",
-                  operational.tone === "danger"
-                    ? "text-destructive"
-                    : "text-amber-600 dark:text-amber-400"
-                )}
-              >
-                {[operational.reason, operational.placement]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </span>
-            )}
-
             {/* ---- Overview ------------------------------------------ */}
             <TabsContent value="overview" className="space-y-4">
+              <Vitals workload={workload} operational={operational} />
+
               <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
                 <div className="flex min-w-0 flex-col gap-4">
                   <TrafficPanel
@@ -362,25 +359,74 @@ export function WorkloadDetailPage() {
                 </div>
 
                 <div className="flex min-w-0 flex-col gap-4">
-                  <Panel title="Details">
+                  {/* What is being served, in the six fields somebody asks for
+                      without leaving the page. The whole serving block, the
+                      engine's arguments and what the engine claims to support
+                      are configuration, and configuration has its own view. */}
+                  <Panel
+                    title="Model"
+                    action={
+                      <div className="flex items-center gap-2">
+                        <PanelLink onClick={() => setView("configuration")}>
+                          Configuration
+                        </PanelLink>
+                        <EditButton
+                          label="Edit engine and hardware"
+                          onClick={() => setEditing("engine")}
+                        />
+                      </div>
+                    }
+                  >
                     <FieldGrid>
-                      <Field label="Status">
-                        <StatusLabel tone={operational.tone}>
-                          {operational.phase}
-                        </StatusLabel>
+                      <Field label="Artifact">
+                        <Link
+                          to="/artifacts/$artifactId"
+                          params={{ artifactId: workload.serving.artifact_id }}
+                          className="hover:underline"
+                        >
+                          {artifact?.name ??
+                            workload.artifact_tag ??
+                            workload.serving.artifact_id}
+                        </Link>
                       </Field>
-                      <Field label="Autoscaling">
-                        min {scale.min} · max {scale.max}
+                      <Field label="Engine">
+                        {workload.serving.engine}{" "}
+                        <span className="text-muted-foreground/60">
+                          {workload.serving.engine_runtime_version}
+                        </span>
                       </Field>
-                      <Field label="Clusters">
-                        {workload.deployments.length === 0 ? (
-                          <Dash>{null}</Dash>
-                        ) : (
-                          workload.deployments
-                            .map((d) => d.cluster_name)
-                            .join(", ")
-                        )}
+                      <Field label="Context length">
+                        {workload.serving.context_length.toLocaleString()}
                       </Field>
+                      <Field label="Quantization">
+                        <Dash>
+                          {[
+                            workload.serving.quantization,
+                            workload.serving.dtype,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || null}
+                        </Dash>
+                      </Field>
+                      <Field label="Engine serves as" className="sm:col-span-2">
+                        <span className="font-mono">
+                          {workload.served_model_name || "—"}
+                        </span>
+                      </Field>
+                    </FieldGrid>
+                  </Panel>
+
+                  <Panel
+                    title="Details"
+                    action={
+                      <EditButton
+                        label="Edit details"
+                        onClick={() => setEditing("details")}
+                      />
+                    }
+                  >
+                    <FieldGrid>
+                      <Field label="Kind">{workload.kind}</Field>
                       <Field label="Region">
                         <Dash>
                           {Array.from(
@@ -392,8 +438,10 @@ export function WorkloadDetailPage() {
                           ).join(", ") || null}
                         </Dash>
                       </Field>
-                      <Field label="Project">{workload.project_id}</Field>
-                      <Field label="Created">
+                      <Field label="Project" className="sm:col-span-2">
+                        <CopyableId value={workload.project_id} />
+                      </Field>
+                      <Field label="Created" className="sm:col-span-2">
                         {formatAbsolute(workload.created_at)}
                       </Field>
                       <Field label="Labels" className="sm:col-span-2">
@@ -403,8 +451,31 @@ export function WorkloadDetailPage() {
                   </Panel>
 
                   <Panel
+                    title="Activity"
+                    action={<SeeAllEvents onClick={() => setView("logs")} />}
+                  >
+                    <DeploymentTimeline
+                      events={recentEvents}
+                      loading={events.isLoading}
+                    />
+                  </Panel>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ---- Configuration ------------------------------------- */}
+            <TabsContent value="configuration">
+              <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+                <div className="flex min-w-0 flex-col gap-4">
+                  <Panel
                     title="Serving & artifact"
                     subtitle="How these weights are served. There is no object behind it — two workloads configured the same way carry the same digest."
+                    action={
+                      <EditButton
+                        label="Edit engine and hardware"
+                        onClick={() => setEditing("engine")}
+                      />
+                    }
                   >
                     <FieldGrid>
                       <Field label="Artifact">
@@ -475,24 +546,21 @@ export function WorkloadDetailPage() {
                     </FieldGrid>
                   </Panel>
 
-                  <EngineArgsPanel workload={workload} />
-
                   <ServingCards
                     serving={workload.serving.serving}
                     capabilities={workload.serving.capabilities}
                     resolvedArgs={workload.serving.resolved_engine_args}
                     engineArgs={workload.serving.engine_args}
+                    onEditServing={() => setEditing("serving")}
+                    onEditCapabilities={() => setEditing("capabilities")}
                   />
+                </div>
 
-                  <Panel
-                    title="Activity"
-                    action={<SeeAllEvents onClick={() => setView("logs")} />}
-                  >
-                    <DeploymentTimeline
-                      events={recentEvents}
-                      loading={events.isLoading}
-                    />
-                  </Panel>
+                <div className="flex min-w-0 flex-col gap-4">
+                  <EngineArgsPanel
+                    workload={workload}
+                    onEdit={() => setEditing("args")}
+                  />
                 </div>
               </div>
             </TabsContent>
@@ -723,7 +791,15 @@ export function WorkloadDetailPage() {
                 </div>
 
                 <div className="flex min-w-0 flex-col gap-4">
-                  <Panel title="Scheduling constraints">
+                  <Panel
+                    title="Scheduling constraints"
+                    action={
+                      <EditButton
+                        label="Edit placement policy"
+                        onClick={() => setEditing("placement")}
+                      />
+                    }
+                  >
                     <FieldGrid>
                       <Field label="Priority class">
                         {workload.priority_class}
@@ -939,6 +1015,179 @@ function ViewTab({
   )
 }
 
+/**
+ * Which part of the workload is open for editing.
+ *
+ * The whole declared object used to be one dialog off the header. It is six
+ * questions, each answered by the panel that displays it, and only four of them
+ * roll the replicas — which is a distinction a single form cannot make.
+ */
+type EditSection =
+  | null
+  | "details"
+  | "placement"
+  | "engine"
+  | "args"
+  | "serving"
+  | "capabilities"
+
+function EditDialog({
+  section,
+  workload,
+  onClose,
+}: {
+  section: Exclude<EditSection, null>
+  workload: Workload
+  onClose: () => void
+}) {
+  const props = {
+    workload,
+    open: true,
+    onOpenChange: (open: boolean) => !open && onClose(),
+  }
+  switch (section) {
+    case "details":
+      return <EditDetailsDialog {...props} />
+    case "placement":
+      return <EditPlacementDialog {...props} />
+    case "engine":
+      return <EditEngineDialog {...props} />
+    case "args":
+      return <EditEngineArgsDialog {...props} />
+    case "serving":
+      return <EditServingDialog {...props} />
+    case "capabilities":
+      return <EditCapabilitiesDialog {...props} />
+  }
+}
+
+/** A panel's own way into the dialog that edits what it shows. */
+function EditButton({
+  label,
+  onClick,
+}: {
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <WriteAction>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={label}
+        title={label}
+        onClick={onClick}
+      >
+        <IconPencil />
+      </Button>
+    </WriteAction>
+  )
+}
+
+/**
+ * The four facts the page is opened for, on one line above everything else.
+ *
+ * They used to be spread over a floating status row and the first two cards of
+ * a seven-card column, which meant the answer to "is this healthy, and how big
+ * is it" was assembled by reading. One strip, one row, no cards inside a card.
+ */
+function Vitals({
+  workload,
+  operational,
+}: {
+  workload: Workload
+  operational: OperationalStatus
+}) {
+  const clusters = workload.deployments.map((d) => d.cluster_name)
+  const attention = [operational.reason, operational.placement]
+    .filter(Boolean)
+    .join(" · ")
+  return (
+    <Card className="grid grid-cols-2 divide-y py-0 sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+      <Vital
+        label="Status"
+        value={
+          <span className="inline-flex items-center gap-2">
+            <StatusDot
+              tone={operational.tone}
+              pulse={operational.tone === "danger"}
+            />
+            {operational.phase}
+          </span>
+        }
+        detail={operational.needsAttention ? attention : operational.placement}
+        tone={operational.needsAttention ? operational.tone : undefined}
+      />
+      <Vital
+        label={workload.scale.unit}
+        value={`${workload.scale.ready}/${workload.scale.desired}`}
+        detail={`min ${workload.scale.min} · max ${workload.scale.max}`}
+      />
+      <Vital
+        label="Clusters"
+        value={String(workload.deployments.length)}
+        detail={clusters.join(", ") || "none placed"}
+      />
+      <Vital
+        label="Hardware"
+        value={`${workload.serving.shape.device_count}× ${workload.serving.shape.device_class}`}
+        detail={parallelismLabel(workload.serving.parallelism)}
+      />
+    </Card>
+  )
+}
+
+function Vital({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string
+  value: React.ReactNode
+  detail?: string
+  tone?: StatusTone
+}) {
+  return (
+    <div className="min-w-0 px-4 py-3">
+      <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+        {label}
+      </div>
+      <div className="mt-2 truncate font-mono text-base leading-none">
+        {value}
+      </div>
+      <div
+        className={cn(
+          "mt-2 truncate font-mono text-2xs",
+          tone === "danger"
+            ? "text-destructive"
+            : tone === "warn"
+              ? "text-amber-600 dark:text-amber-400"
+              : "text-muted-foreground/60"
+        )}
+      >
+        {detail}
+      </div>
+    </div>
+  )
+}
+
+/** A panel header's way out to the view that carries the rest of the answer. */
+function PanelLink({
+  onClick,
+  children,
+}: React.PropsWithChildren<{ onClick: () => void }>) {
+  return (
+    <button
+      type="button"
+      className="font-mono text-2xs text-muted-foreground hover:text-foreground hover:underline"
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  )
+}
+
 function StatRow({ children }: React.PropsWithChildren) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
@@ -1001,9 +1250,18 @@ function SeeAllEvents({ onClick }: { onClick: () => void }) {
  * Carried over from the recipe page, because the question it answers did not go
  * away with the object: `engine_args` is what somebody declared and
  * `resolved_engine_args` is what the typed behaviour block made of it, and the
- * only way to tell which value took effect is to see both.
+ * only way to tell which value took effect is to see both. One block and a
+ * toggle rather than two stacked blocks — they are the same argument list read
+ * at two points, so they belong in the same place on the page, and the toggle
+ * is what makes the difference between them legible.
  */
-function EngineArgsPanel({ workload }: { workload: Workload }) {
+function EngineArgsPanel({
+  workload,
+  onEdit,
+}: {
+  workload: Workload
+  onEdit?: () => void
+}) {
   const resolved = workload.serving.resolved_engine_args ?? {}
   const declared = workload.serving.engine_args ?? {}
   const overrides = servingOverrides(
@@ -1011,21 +1269,45 @@ function EngineArgsPanel({ workload }: { workload: Workload }) {
     declared,
     workload.serving.serving
   )
+  const [shown, setShown] = useState<"resolved" | "declared">("resolved")
+  const empty =
+    shown === "resolved"
+      ? Object.keys(resolved).length === 0
+      : Object.keys(declared).length === 0
   return (
     <Panel
       title="Engine arguments"
       subtitle="The declared engine args with the typed serving block laid over the top, keyed the way the operator keys them."
+      action={
+        <div className="flex items-center gap-2">
+          <Segmented
+            value={shown}
+            onChange={setShown}
+            options={[
+              { value: "resolved", label: "resolved" },
+              { value: "declared", label: "declared" },
+            ]}
+          />
+          {onEdit && (
+            <EditButton label="Edit engine arguments" onClick={onEdit} />
+          )}
+        </div>
+      }
     >
       <div className="space-y-3">
-        {Object.keys(resolved).length === 0 ? (
+        {empty ? (
           <p className="font-mono text-2xs text-muted-foreground/50">
-            None — the engine runs on its own defaults.
+            {shown === "resolved"
+              ? "None — the engine runs on its own defaults."
+              : "Nothing declared — every argument below was resolved."}
           </p>
         ) : (
           <pre className="overflow-x-auto rounded-lg border bg-background/60 p-4 font-mono text-2xs leading-relaxed">
-            {Object.entries(resolved)
-              .map(([key, value]) => `${key}: ${value}`)
-              .join("\n")}
+            {shown === "resolved"
+              ? Object.entries(resolved)
+                  .map(([key, value]) => `${key}: ${value}`)
+                  .join("\n")
+              : JSON.stringify(declared, null, 2)}
           </pre>
         )}
         {overrides.length > 0 && (
@@ -1034,18 +1316,39 @@ function EngineArgsPanel({ workload }: { workload: Workload }) {
             serving block; the engine args spelling of each is ignored.
           </p>
         )}
-        {Object.keys(declared).length > 0 && (
-          <div className="space-y-1.5">
-            <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
-              As declared
-            </div>
-            <pre className="overflow-x-auto rounded-lg border bg-background/60 p-3 font-mono text-2xs">
-              {JSON.stringify(declared, null, 2)}
-            </pre>
-          </div>
-        )}
       </div>
     </Panel>
+  )
+}
+
+/** The small two-state switch a panel header carries above one block. */
+function Segmented<T extends string>({
+  value,
+  onChange,
+  options,
+}: {
+  value: T
+  onChange: (value: T) => void
+  options: readonly { value: T; label: string }[]
+}) {
+  return (
+    <div className="flex gap-0.5 rounded-md bg-muted p-0.5">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "rounded px-2 py-0.5 font-mono text-2xs",
+            value === option.value
+              ? "bg-card text-foreground"
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   )
 }
 

@@ -11,7 +11,16 @@ import {
   TextField,
 } from "@/components/layout/form"
 import { Dash } from "@/components/layout/mono"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { WriteAction } from "@/components/layout/write-action"
+import { IconPencil } from "@tabler/icons-react"
 import { EnforcementBadge } from "@/components/demand/enforcement"
 import {
   servingOverrides,
@@ -44,11 +53,14 @@ export function ServingFields({
   value,
   onChange,
   engineArgs,
+  plain,
 }: {
   engine: string
   value: ServingBehaviour
   onChange: (value: ServingBehaviour) => void
   engineArgs: Record<string, unknown>
+  /** True in the dialog that edits nothing else — see `DeclaredSection`. */
+  plain?: boolean
 }) {
   const set = (patch: Partial<ServingBehaviour>) =>
     onChange({ ...value, ...patch })
@@ -60,6 +72,7 @@ export function ServingFields({
 
   return (
     <DeclaredSection
+      plain={plain}
       title="Serving"
       kind="obeyed"
       hint="What the served API does, as the engine will be told to behave. Every field here becomes a flag, so a change means a replica restart."
@@ -196,15 +209,19 @@ export function ServingPrecedence({
 export function CapabilityFields({
   value,
   onChange,
+  plain,
 }: {
   value: ServingCapabilities
   onChange: (value: ServingCapabilities) => void
+  /** True in the dialog that edits nothing else — see `DeclaredSection`. */
+  plain?: boolean
 }) {
   const set = (patch: Partial<ServingCapabilities>) =>
     onChange({ ...value, ...patch })
 
   return (
     <DeclaredSection
+      plain={plain}
       title="Capabilities"
       kind="asserted"
       hint="What this workload claims it can do. Nothing here renders and nothing here is checked — a conformance run is what proves it wrong."
@@ -296,17 +313,38 @@ export function CapabilityFields({
   )
 }
 
+/** The pencil on a card that has a dialog behind it. */
+function EditIcon({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <WriteAction>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={label}
+        title={label}
+        onClick={onClick}
+      >
+        <IconPencil />
+      </Button>
+    </WriteAction>
+  )
+}
+
 /** The two blocks side by side on a workload, never merged into one card. */
 export function ServingCards({
   serving,
   capabilities,
   resolvedArgs,
   engineArgs,
+  onEditServing,
+  onEditCapabilities,
 }: {
   serving: ServingBehaviour
   capabilities: ServingCapabilities
   resolvedArgs: Record<string, string>
   engineArgs: Record<string, unknown>
+  onEditServing?: () => void
+  onEditCapabilities?: () => void
 }) {
   const overrides = Object.keys(engineArgs).length
     ? Object.entries(resolvedArgs).filter(([key, effective]) => {
@@ -323,6 +361,11 @@ export function ServingCards({
             Serving
             <EnforcementBadge kind="obeyed" />
           </CardTitle>
+          {onEditServing && (
+            <CardAction>
+              <EditIcon label="Edit serving" onClick={onEditServing} />
+            </CardAction>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           <FieldGrid>
@@ -365,6 +408,14 @@ export function ServingCards({
             Capabilities
             <EnforcementBadge kind="asserted" />
           </CardTitle>
+          {onEditCapabilities && (
+            <CardAction>
+              <EditIcon
+                label="Edit capabilities"
+                onClick={onEditCapabilities}
+              />
+            </CardAction>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           <FieldGrid>

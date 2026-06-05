@@ -72,22 +72,29 @@ export function EnforcementBadge({
 /**
  * A titled group inside a form dialog, carrying the one badge that says what
  * happens to everything in it.
+ *
+ * `plain` is for the dialog that IS this one section: the frame and the heading
+ * would repeat the dialog's own, and a box drawn inside a box says nothing
+ * except that two components were composed. The badge stays either way — it is
+ * the part that carries meaning.
  */
 export function DeclaredSection({
   title,
   kind,
   hint,
+  plain,
   children,
 }: React.PropsWithChildren<{
   title: string
   kind: Enforcement
   hint: string
+  plain?: boolean
 }>) {
   return (
-    <section className="space-y-3 rounded-md border p-3">
+    <section className={cn("space-y-3", !plain && "rounded-md border p-3")}>
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <h3 className="text-xs font-medium">{title}</h3>
+          {!plain && <h3 className="text-xs font-medium">{title}</h3>}
           <EnforcementBadge kind={kind} />
         </div>
         <p className="text-2xs text-muted-foreground/70">{hint}</p>
