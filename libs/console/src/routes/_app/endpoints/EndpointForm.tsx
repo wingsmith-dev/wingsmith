@@ -123,9 +123,25 @@ export function EndpointForm({
       disabled={(!editing && (!name || !project)) || !complete}
       onSubmit={submit}
     >
-      {!editing && (
-        <FormGrid>
-          <TextField label="Name" value={name} onChange={setName} />
+      {/* The name is shown when editing and cannot be changed there. The plane
+          refuses it — the name is the handle in URLs, in metrics labels and in
+          every link the console holds, and an endpoint exists so that what is
+          behind it can be replaced without anybody noticing. `slug` is the
+          public model id and is patchable, which is the point of the split.
+          Hiding the field entirely made that read as an omission. */}
+      <FormGrid>
+        <TextField
+          label="Name"
+          value={name}
+          onChange={setName}
+          disabled={editing}
+          hint={
+            editing
+              ? "Fixed after creation. Change `slug` to move the public model id."
+              : undefined
+          }
+        />
+        {!editing && (
           <SelectField
             label="Project"
             value={project}
@@ -135,8 +151,8 @@ export function EndpointForm({
               label: p.slug,
             }))}
           />
-        </FormGrid>
-      )}
+        )}
+      </FormGrid>
 
       <FormGrid>
         <TextField
