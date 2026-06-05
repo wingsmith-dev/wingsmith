@@ -83,6 +83,89 @@ describe("liveAssignments", () => {
 })
 
 describe("buildBoard", () => {
+  it("draws an allocation as one run even when its cards are not adjacent", () => {
+    const cluster = make.cluster("iad-1", "us-east-1")
+    const node = make.node("iad-1-n01", cluster.id)
+    const fabric = make.domain("tpd_a", cluster.id, node.id)
+    const devices = [0, 1, 2, 3, 4, 5, 6, 7].map((index) =>
+      make.device(`g${index}`, {
+        cluster: cluster.id,
+        node: node.id,
+        index,
+        domain: fabric,
+      })
+    )
+    const held = [devices[0], devices[1], devices[6], devices[7]]
+    const board = buildBoard({
+      clusters: [cluster],
+      nodes: [node],
+      domains: [fabric],
+      devices,
+      assignments: liveAssignments([
+        make.allocation("alc_1", {
+          cluster: cluster.id,
+          workload: "wkl_1",
+          devices: held,
+        }),
+      ]),
+    })
+
+    const row = board.regions[0].clusters[0].fabrics[0]
+    expect(row.devices.map((cell) => !!cell.holder)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+    ])
+    expect(row.devices.map((cell) => cell.device.id)).toEqual([
+      "g0",
+      "g1",
+      "g6",
+      "g7",
+      "g2",
+      "g3",
+      "g4",
+      "g5",
+    ])
+    expect(row.free).toEqual(["g2", "g3", "g4", "g5"])
+  })
+
+  it("keeps a fabric over two nodes node by node rather than interleaved", () => {
+    const cluster = make.cluster("iad-1", "us-east-1")
+    const nodeA = make.node("iad-1-n01", cluster.id)
+    const nodeB = make.node("iad-1-n02", cluster.id)
+    const fabric = make.domain("tpd_a", cluster.id, nodeA.id)
+    const devices = [nodeA, nodeB].flatMap((node) =>
+      [0, 1].map((index) =>
+        make.device(`${node.name}-g${index}`, {
+          cluster: cluster.id,
+          node: node.id,
+          index,
+          domain: fabric,
+        })
+      )
+    )
+    const board = buildBoard({
+      clusters: [cluster],
+      nodes: [nodeA, nodeB],
+      domains: [fabric],
+      devices: [devices[2], devices[0], devices[3], devices[1]],
+      assignments: new Map(),
+    })
+
+    const row = board.regions[0].clusters[0].fabrics[0]
+    expect(row.devices.map((cell) => cell.device.id)).toEqual([
+      "iad-1-n01-g0",
+      "iad-1-n01-g1",
+      "iad-1-n02-g0",
+      "iad-1-n02-g1",
+    ])
+  })
+
   it("nests region, cluster and fabric and sorts them", () => {
     const parts = fleet()
     const board = buildBoard({ ...parts, assignments: new Map() })

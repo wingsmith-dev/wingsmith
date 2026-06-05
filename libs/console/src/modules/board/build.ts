@@ -245,7 +245,12 @@ function fabric(
   domains: Map<string, TopologyDomain>,
   nodeName: Map<string, string>
 ): BoardFabric {
-  group.sort((a, b) => a.device.device_index - b.device.device_index)
+  group.sort(
+    (a, b) =>
+      a.device.node_name.localeCompare(b.device.node_name) ||
+      a.device.device_index - b.device.device_index
+  )
+  const laid = blocks(group)
   const first = group[0].device
   const domain = domains.get(first.topology?.id ?? "") ?? null
   const nodes = [...new Set(group.map((cell) => cell.device.node))]
@@ -269,10 +274,44 @@ function fabric(
     nodes,
     node_names: names,
     device_class: classes.size === 1 ? first.device_class : null,
-    devices: group,
-    counts: count(group),
-    free: group.filter(isFree).map((cell) => cell.device.id),
+    devices: laid,
+    counts: count(laid),
+    free: laid.filter(isFree).map((cell) => cell.device.id),
   }
+}
+
+/**
+ * A fabric's cells laid out so that what holds several of them reads as one run.
+ *
+ * The row is sorted by node and device index first, and this only closes the
+ * gaps: cells are emitted in blocks of one holder at a time, each block placed
+ * where its lowest-numbered card sits, with the unheld cells of that node
+ * collected into a block of their own. Nothing is invented and nothing moves
+ * between nodes — a card keeps its node, its index, and the tooltip that names
+ * both.
+ *
+ * It is a deliberate departure from drawing the row as the chassis is numbered,
+ * and the reason is what the board is for. A cluster's device plugin is free to
+ * hand a four-card gang gpu0, gpu1, gpu6 and gpu7, and drawn literally that is
+ * two pairs with a hole between them — a picture that says "no room for four
+ * here" about a fabric with room for four. The question this board answers is
+ * how much contiguous capacity a fabric has, so its cells are grouped by what
+ * holds them. `Inspector` and the tooltip remain the place the physical index is
+ * read off.
+ */
+function blocks(cells: BoardDevice[]): BoardDevice[] {
+  const order: string[] = []
+  const groups = new Map<string, BoardDevice[]>()
+  for (const cell of cells) {
+    const key = `${cell.device.node}\u0000${cell.holder?.allocation ?? ""}`
+    const bucket = groups.get(key)
+    if (bucket) bucket.push(cell)
+    else {
+      groups.set(key, [cell])
+      order.push(key)
+    }
+  }
+  return order.flatMap((key) => groups.get(key) ?? [])
 }
 
 /**

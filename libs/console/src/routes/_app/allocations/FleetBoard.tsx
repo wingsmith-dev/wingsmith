@@ -191,7 +191,7 @@ export function FleetBoard({
             selected={fabricSelected}
             onActivate={() => onFabric(cluster, fabric)}
           >
-            {chunk(fabric.devices, GROUP).map((group) => (
+            {runs(fabric.devices).map((group) => (
               <span
                 key={group[0].device.id}
                 className="flex items-center gap-1"
@@ -269,10 +269,20 @@ export function FleetBoard({
   )
 }
 
-function chunk(cells: BoardDevice[], size: number): BoardDevice[][] {
+/**
+ * The row broken into the spans that get drawn together: groups of four, and
+ * never one that spans two nodes. A fabric over several machines is one fabric
+ * and several chassis, and a four-square group straddling that seam reads as a
+ * card group that does not exist.
+ */
+function runs(cells: BoardDevice[]): BoardDevice[][] {
   const out: BoardDevice[][] = []
-  for (let i = 0; i < cells.length; i += size)
-    out.push(cells.slice(i, i + size))
+  for (const cell of cells) {
+    const last = out[out.length - 1]
+    const same = last && last[0].device.node === cell.device.node
+    if (same && last.length < GROUP) last.push(cell)
+    else out.push([cell])
+  }
   return out
 }
 
