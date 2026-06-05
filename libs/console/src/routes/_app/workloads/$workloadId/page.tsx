@@ -73,6 +73,7 @@ import {
   IconLayoutDashboard,
   IconTerminal2,
   IconTimeline,
+  IconTrash,
 } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
@@ -151,6 +152,19 @@ export function WorkloadDetailPage() {
   return (
     <div className="flex flex-col">
       <PageHeader
+        back={
+          <>
+            <Link
+              to="/workloads"
+              aria-label="All workloads"
+              title="All workloads"
+              className="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <IconArrowLeft className="size-4" />
+            </Link>
+            <span className="h-8 w-px bg-border" />
+          </>
+        }
         title={workload?.name ?? "Workload"}
         description={workload?.id}
         readActions={
@@ -159,40 +173,31 @@ export function WorkloadDetailPage() {
           />
         }
         actions={
-          <div className="flex gap-2">
-            {workload && (
-              <WriteAction>
-                <div className="flex gap-2">
-                  <Button onClick={() => setScaling(true)}>Scale</Button>
-                  <Button variant="outline" onClick={() => setPausing(true)}>
-                    {workload.paused ? "Resume" : "Pause"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={workload.deployments.length === 0}
-                    onClick={() => {
-                      setDraining(undefined)
-                      setDrainOpen(true)
-                    }}
-                  >
-                    Drain
-                  </Button>
-                  <Button variant="outline" onClick={() => setEditing(true)}>
-                    Edit
-                  </Button>
-                  <Button variant="outline" onClick={() => setDoomed(true)}>
-                    Delete
-                  </Button>
-                </div>
-              </WriteAction>
-            )}
-            <Button asChild variant="outline">
-              <Link to="/workloads">
-                <IconArrowLeft className="size-4" />
-                All workloads
-              </Link>
-            </Button>
-          </div>
+          workload && (
+            <div className="flex gap-2">
+              <Button onClick={() => setScaling(true)}>Scale</Button>
+              <Button variant="outline" onClick={() => setPausing(true)}>
+                {workload.paused ? "Resume" : "Pause"}
+              </Button>
+              <Button
+                variant="outline"
+                disabled={workload.deployments.length === 0}
+                onClick={() => {
+                  setDraining(undefined)
+                  setDrainOpen(true)
+                }}
+              >
+                Drain
+              </Button>
+              <Button variant="outline" onClick={() => setEditing(true)}>
+                Edit
+              </Button>
+              <Button variant="destructive" onClick={() => setDoomed(true)}>
+                <IconTrash className="size-4" />
+                Delete
+              </Button>
+            </div>
+          )
         }
       />
 
@@ -270,7 +275,7 @@ export function WorkloadDetailPage() {
 
       {workload && scale && operational && (
         <Tabs value={view} onValueChange={setView} className="flex-col gap-0">
-          <TabsList variant="underline" className="px-4">
+          <TabsList variant="underline" className="bg-card px-4">
             <ViewTab value="overview" icon={IconLayoutDashboard}>
               Overview
             </ViewTab>
@@ -292,29 +297,20 @@ export function WorkloadDetailPage() {
           </TabsList>
 
           <div className="space-y-4 p-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <StatusLabel tone={operational.tone}>
-                {operational.phase}
-              </StatusLabel>
-              {operational.needsAttention && (
-                <span
-                  className={cn(
-                    "font-mono text-2xs",
-                    operational.tone === "danger"
-                      ? "text-destructive"
-                      : "text-amber-600 dark:text-amber-400"
-                  )}
-                >
-                  {[operational.reason, operational.placement]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-              )}
-              <span className="font-mono text-2xs text-muted-foreground/60">
-                {workload.kind} · {workload.deployments.length} cluster
-                {workload.deployments.length === 1 ? "" : "s"}
+            {operational.needsAttention && (
+              <span
+                className={cn(
+                  "block font-mono text-2xs",
+                  operational.tone === "danger"
+                    ? "text-destructive"
+                    : "text-amber-600 dark:text-amber-400"
+                )}
+              >
+                {[operational.reason, operational.placement]
+                  .filter(Boolean)
+                  .join(" · ")}
               </span>
-            </div>
+            )}
 
             {/* ---- Overview ------------------------------------------ */}
             <TabsContent value="overview" className="space-y-4">

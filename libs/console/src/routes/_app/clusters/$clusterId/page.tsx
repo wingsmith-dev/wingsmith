@@ -119,7 +119,7 @@ function ClusterDashboard({
 }) {
   return (
     <Tabs value={tab} onValueChange={setTab} className="flex-col gap-0">
-      <TabsList variant="underline" className="px-4">
+      <TabsList variant="underline" className="bg-card px-4">
         <ViewTab value="overview" icon={IconLayoutDashboard}>
           Overview
         </ViewTab>
