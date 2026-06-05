@@ -1,6 +1,6 @@
-import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { DataTable, type Column } from "@/components/layout/data-table"
 import { DeleteDialog, RowActions } from "@/components/layout/destructive"
+import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { ResourceCell } from "@/components/layout/resource-cell"
@@ -10,18 +10,18 @@ import { Card } from "@/components/ui/card"
 import { formatError, formatRelative, shortenId } from "@/lib/format"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
+import { footprintOfServing, footprintSummary } from "@/modules/demand/deploy"
 import {
   WORKLOAD_KINDS,
   WORKLOAD_PHASES,
   workloadOperationalStatus,
 } from "@/modules/demand/display"
 import { useDeleteWorkload, useWorkloads } from "@/modules/demand/queries"
-import { footprintOfServing, footprintSummary } from "@/modules/demand/deploy"
 import type { Workload } from "@/modules/demand/types"
-import { WorkloadForm } from "./WorkloadForm"
+import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { useState } from "react"
 import { toast } from "sonner"
-import { Link, useNavigate, useSearch } from "@tanstack/react-router"
+import { WorkloadForm } from "./WorkloadForm"
 
 function columns(
   onEdit: (workload: Workload) => void,
@@ -190,7 +190,7 @@ export function WorkloadsPage() {
         title="Workloads"
         description="declared · what you asked to run, and every cluster it landed on"
         actions={
-          <Button asChild>
+          <Button size="lg" asChild>
             <Link to="/workloads/new">New workload</Link>
           </Button>
         }

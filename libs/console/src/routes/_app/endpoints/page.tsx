@@ -1,15 +1,16 @@
-import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { DataTable, type Column } from "@/components/layout/data-table"
-import { ResourceCell } from "@/components/layout/resource-cell"
 import { DeleteDialog, RowActions } from "@/components/layout/destructive"
+import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
+import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusDot, type StatusTone } from "@/components/layout/status-dot"
-import { Card } from "@/components/ui/card"
-import { useProjectOptions } from "@/modules/binding/queries"
+import { Sparkline } from "@/components/metrics/sparkline"
 import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
+import { Card } from "@/components/ui/card"
 import { formatError, shortenId } from "@/lib/format"
+import { cn } from "@/lib/utils"
+import { useProjectOptions } from "@/modules/binding/queries"
 import {
   useArtifactOptions,
   useDeleteEndpoint,
@@ -23,15 +24,14 @@ import type {
   Endpoint,
   Workload,
 } from "@/modules/demand/types"
-import { Sparkline } from "@/components/metrics/sparkline"
 import { formatMetric, valueOf } from "@/modules/metrics/format"
 import { useServingMetrics } from "@/modules/metrics/queries"
 import type { MetricSample, MetricSeriesPoint } from "@/modules/metrics/types"
-import { EndpointForm } from "./EndpointForm"
-import { useMemo, useState } from "react"
-import { toast } from "sonner"
 import { IconArrowUpRight } from "@tabler/icons-react"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
+import { useMemo, useState } from "react"
+import { toast } from "sonner"
+import { EndpointForm } from "./EndpointForm"
 
 /**
  * A stable pseudo-random seed from an id, so a row's sparkline stays put across
@@ -473,7 +473,7 @@ export function EndpointsPage() {
         title="Endpoints"
         description="declared · the stable public name clients call"
         actions={
-          <Button onClick={() => setCreating(true)}>New endpoint</Button>
+          <Button size="lg" onClick={() => setCreating(true)}>New endpoint</Button>
         }
       />
 
