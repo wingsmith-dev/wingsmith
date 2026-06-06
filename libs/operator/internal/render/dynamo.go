@@ -480,6 +480,21 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 			WorkingDir: "/workspace/examples/backends/vllm",
 			Command:    []string{"python3", "-m", "dynamo." + engineModule(in.Deployment.Serving.Engine)},
 			Args:       args,
+			// What an engine says on its way out, kept where the plane can read it.
+			//
+			// The default policy reads /dev/termination-log, which nothing here writes, so a
+			// container that died of `unrecognized arguments: --tool-call-parser glm47` left
+			// Kubernetes holding `exitCode: 2` and nothing else. `containerTrouble` reported
+			// `CrashLooping` with the words "back-off restarting failed container", and the
+			// sentence that named the flag existed only in `kubectl logs --previous` on a
+			// cluster nobody outside it can reach.
+			//
+			// FallbackToLogsOnError has the kubelet copy the tail of the container's own
+			// output into `lastState.terminated.message` whenever it exits non-zero, which is
+			// the field the diagnosis already reads. It costs nothing on a container that
+			// exits cleanly and is the difference between "a replica is repeatedly crashing"
+			// and knowing which argument to remove.
+			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 			Env: []corev1.EnvVar{
 				{Name: "HF_HOME", Value: "/models/hf"},
 				// KV-aware routing decides which worker already holds a prefix by hashing
@@ -597,6 +612,9 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 		Containers: []corev1.Container{{
 			Name:  "main",
 			Image: image,
+			// The same reason as the worker's: a frontend that exits on a bad flag or a
+			// missing credential should say so where the plane can read it.
+			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 			Env: []corev1.EnvVar{
 				{Name: "DYN_ENABLE_ANTHROPIC_API", Value: strconv.FormatBool(opts.AnthropicAPIEnabled)},
 				{Name: "DYN_STRIP_ANTHROPIC_PREAMBLE", Value: strconv.FormatBool(opts.AnthropicStripPreamble)},

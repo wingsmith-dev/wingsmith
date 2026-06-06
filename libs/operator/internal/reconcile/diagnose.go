@@ -64,9 +64,15 @@ func (t *trouble) lastError(at string) *wire.LastError {
 // diagnose reads why a deployment has fewer ready replicas than it asked for.
 //
 // Called only on the shortfall, which is also the only time anybody wants the answer. The order is
-// the order of certainty. A rejection by the cluster's own controllers comes first because nothing
+// the order of certainty. A *refusal* by the cluster's own controllers comes first because nothing
 // downstream of it will ever change — no pod is coming, so pod evidence is stale or absent. Pod
 // evidence comes next. The stall is last, because it is the diagnosis for having found nothing.
+//
+// A component that is merely not ready is read after the pods and not before them, which is the
+// opposite of a refusal and for the same reason: it is a summary of the pods rather than a fact
+// about them, so the pod that is pulling an image, unschedulable, or crash-looping is the better
+// answer whenever there is one. Taken first, "Deployment is not ready" hid "pulling image" for the
+// whole of a nine-minute image pull.
 func (r *SyncedResourceReconciler) diagnose(
 	ctx context.Context,
 	name string,
@@ -76,11 +82,15 @@ func (r *SyncedResourceReconciler) diagnose(
 	if out.desired == 0 || out.ready >= out.desired {
 		return nil
 	}
-	if found := r.rejectedBy(ctx, name); found != nil {
-		return found
+	summary := r.rejectedBy(ctx, name)
+	if summary != nil && summary.fatal {
+		return summary
 	}
 	if found := troubleFromPods(pods); found != nil {
 		return found
+	}
+	if summary != nil {
+		return summary
 	}
 	return r.stalled(ctx, name, out)
 }
@@ -162,11 +172,25 @@ func troubleFromConditions(obj *unstructured.Unstructured) *trouble {
 		if progressReasons[reason] && !refusal(message) {
 			continue
 		}
+		if refusal(message) {
+			return &trouble{
+				reason:  "ClusterRejected",
+				code:    "ClusterRejected",
+				message: fmt.Sprintf("the cluster refused %s: %s", obj.GetName(), message),
+				fatal:   true,
+			}
+		}
+		// Reported, because an unrecognised failure must not be silent — but not as a
+		// refusal, because it is not one and saying so is worse than saying nothing. A
+		// component that is false with `Deployment is not ready` is what every rollout looks
+		// like while its pods pull an image, and calling that "the cluster refused" put a red
+		// line on the console reading `deployment.placed · the cluster refused ... is not
+		// ready`: a phase that means it worked, a colour that means it broke, and a sentence
+		// that means neither. Nothing here says whether to wait or to act.
 		return &trouble{
-			reason:  "ClusterRejected",
-			code:    "ClusterRejected",
-			message: fmt.Sprintf("%s refused %s: %s", "the cluster", obj.GetName(), message),
-			fatal:   refusal(message),
+			reason:  "ComponentNotReady",
+			code:    "ComponentNotReady",
+			message: fmt.Sprintf("%s is not ready yet and reports: %s", obj.GetName(), message),
 		}
 	}
 	return nil
@@ -240,6 +264,34 @@ var waitingReasons = map[string]string{
 	"CreateContainerError":       "ContainerConfigInvalid",
 }
 
+// maxLastWords bounds how much of a dead container's output travels.
+//
+// The message reaches an event row and a status field, and a Python traceback is longer than
+// either wants. The tail is the part that matters — argparse writes its usage first and its
+// complaint last — so this trims the front and keeps the end.
+const maxLastWords = 800
+
+// lastWords is what the container printed before it exited, trimmed to something a timeline can
+// hold. Empty when Kubernetes kept none, which is every pod rendered before the termination
+// message policy was set, and every container that was killed rather than exiting on its own.
+func lastWords(status corev1.ContainerStatus) string {
+	terminated := status.LastTerminationState.Terminated
+	if terminated == nil {
+		terminated = status.State.Terminated
+	}
+	if terminated == nil {
+		return ""
+	}
+	text := strings.TrimSpace(terminated.Message)
+	if text == "" {
+		return ""
+	}
+	if len(text) > maxLastWords {
+		text = "…" + text[len(text)-maxLastWords:]
+	}
+	return text
+}
+
 func containerTrouble(pod *corev1.Pod) *trouble {
 	statuses := append(append([]corev1.ContainerStatus{}, pod.Status.InitContainerStatuses...),
 		pod.Status.ContainerStatuses...)
@@ -255,6 +307,20 @@ func containerTrouble(pod *corev1.Pod) *trouble {
 		message := waiting.Message
 		if message == "" {
 			message = waiting.Reason
+		}
+		// What the container itself said beats the kubelet's account of it. `CrashLoopBackOff`
+		// carries "back-off 40s restarting failed container", which describes the loop and not
+		// the fault: every crash-looping container in the world reports the same sentence. The
+		// last termination carries the process's own dying output, which for the workload this
+		// was written for was `unrecognized arguments: --tool-call-parser glm47` — the whole
+		// answer, in one line, on a console instead of in `kubectl logs --previous`.
+		//
+		// Present only because the renderer sets `terminationMessagePolicy:
+		// FallbackToLogsOnError`; a pod from an older render, or one whose container was
+		// killed rather than exiting, still has none, and then the kubelet's account is what
+		// there is.
+		if last := lastWords(status); last != "" {
+			message = fmt.Sprintf("%s (%s)", last, message)
 		}
 		return &trouble{
 			reason:  reason,

@@ -54,3 +54,45 @@ export function shortenId(value: string, chars = 6): string {
 
   return value.length > chars + 4 ? value.slice(0, chars + 4) : value
 }
+
+const CURRENCY = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+})
+
+const CURRENCY_PRECISE = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+})
+
+/**
+ * Money, in the one currency this console knows about.
+ *
+ * `precise` keeps four decimals, for the figures that live below a cent — a
+ * per-million-token rate is quoted at $0.0125 and rounding it to $0.01 loses
+ * a fifth of the number.
+ */
+export function formatCurrency(
+  value: number | null | undefined,
+  precise = false
+): string {
+  if (value === null || value === undefined || !Number.isFinite(value))
+    return "—"
+  return (precise ? CURRENCY_PRECISE : CURRENCY).format(value)
+}
+
+/** The same, shortened, for a figure whose magnitude is the point. */
+export function formatCurrencyCompact(
+  value: number | null | undefined
+): string {
+  if (value === null || value === undefined || !Number.isFinite(value))
+    return "—"
+  const sign = value < 0 ? "-" : ""
+  const magnitude = Math.abs(value)
+  if (magnitude >= 1e6) return `${sign}$${(magnitude / 1e6).toFixed(1)}M`
+  if (magnitude >= 1e3) return `${sign}$${(magnitude / 1e3).toFixed(1)}k`
+  return formatCurrency(value)
+}

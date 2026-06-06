@@ -17,6 +17,9 @@ interface SettingsState {
   setReadOnly: (readOnly: boolean) => void
   accent: Accent
   setAccent: (accent: Accent) => void
+  /** Shows the unit-economics view. Off by default; see `useEconomics`. */
+  economics: boolean
+  setEconomics: (economics: boolean) => void
 }
 
 /**
@@ -30,6 +33,8 @@ export const useSettingsStore = create<SettingsState>()(
     (set) => ({
       readOnly: import.meta.env.VITE_READ_ONLY === "true",
       setReadOnly: (readOnly) => set({ readOnly }),
+      economics: import.meta.env.VITE_ECONOMICS === "true",
+      setEconomics: (economics) => set({ economics }),
       accent: "cyan",
       setAccent: (accent) => {
         applyAccent(accent)
@@ -66,4 +71,18 @@ export function useReadOnly(): boolean {
 
 export function isReadOnly(): boolean {
   return useSettingsStore.getState().readOnly
+}
+
+/**
+ * Whether this browser may see what the fleet costs and earns.
+ *
+ * Off unless `VITE_ECONOMICS` says otherwise, so a build with nothing set is
+ * safe to put in front of a customer: the tab is not rendered, not disabled.
+ * This hides a view; it is not a permission, and it protects nobody from a
+ * console they can rebuild. The numbers it shows are the operator's own model
+ * and never came from the plane, which is why hiding them is a display
+ * decision and can live in this browser.
+ */
+export function useEconomics(): boolean {
+  return useSettingsStore((s) => s.economics)
 }

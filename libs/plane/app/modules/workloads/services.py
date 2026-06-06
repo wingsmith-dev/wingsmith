@@ -281,8 +281,6 @@ PROMPT_CACHE_MODES = frozenset({"off", "automatic", "explicit"})
 SERVING_FLAGS: dict[str, dict[str, str]] = {
     "vllm": {
         "parser": "reasoning-parser",
-        "tool_call_parser": "tool-call-parser",
-        "structured_output_backend": "guided-decoding-backend",
         "max_images_per_request": "limit-mm-per-prompt",
     },
     "sglang": {
@@ -297,25 +295,45 @@ Keyed without the leading dashes, the way the operator keys them once it has
 trimmed them. Only the fields that genuinely map to one flag are here: an engine
 this plane has never heard of maps nothing, and neither `context_overflow` nor
 EOS suppression is a single flag on every engine — those are the operator's to
-render, and it is entitled to fail a reconcile rather than drop one silently."""
+render, and it is entitled to fail a reconcile rather than drop one silently.
+
+**These are the flags of the program the cluster actually runs, which for vLLM is
+not `vllm serve`.** Dynamo runs `python3 -m dynamo.vllm`, the engine, and
+`python3 -m dynamo.frontend`, the OpenAI surface — two programs with two CLIs, and
+neither of them is vLLM's standalone server. `--tool-call-parser` and
+`--enable-auto-tool-choice` are that server's flags and exist on neither, so
+emitting them did not misconfigure tool calling: the worker exited on
+`unrecognized arguments` before it loaded a weight, every restart, for every
+workload that named a parser. `--guided-decoding-backend` is the same flag from
+the same program, and this vLLM has renamed its equivalent to
+`--structured-outputs-config`, which takes a config object rather than a backend
+name — a different field, not a renamed one.
+
+What is left is what was checked against the running containers' own `--help`:
+`--reasoning-parser` and `--limit-mm-per-prompt` are engine arguments and the
+worker takes both. sglang keeps its entries because sglang's server is the program
+its operator runs.
+
+Tool-call parsing under Dynamo is the chat processor's job — `--dyn-chat-processor`
+on the frontend, whose Rust preprocessor derives the parser from the model — and
+wiring it is a separate change against Dynamo's own configuration rather than one
+more row here. The field stays on the workload and records the intent; nothing
+renders it today, which is the honest state and is visible rather than fatal."""
 
 
-SERVING_IMPLIED_FLAGS: dict[str, dict[str, tuple[str, ...]]] = {
-    "vllm": {
-        "tool_call_parser": ("enable-auto-tool-choice",),
-    },
-}
+SERVING_IMPLIED_FLAGS: dict[str, dict[str, tuple[str, ...]]] = {}
 """Valueless flags a typed field cannot live without, per engine.
 
-vLLM parses tool calls with `--tool-call-parser` and *dispatches* them only with
-`--enable-auto-tool-choice`; set the first alone and the engine loads a parser it
-never runs, so the workload reads as configured and the endpoint returns the call as
-prose in `content`. Every one of the fifteen models in the vLLM recipe corpus that
-declares tool calling ships the two flags together, and none ships either alone.
+Empty, and kept rather than deleted because the mechanism is right and only its one
+entry was wrong. `vllm serve` parses tool calls with `--tool-call-parser` and
+dispatches them only with `--enable-auto-tool-choice`, so the pair genuinely travels
+together — but Dynamo does not run `vllm serve` and takes neither, which made this
+table's only row a guaranteed crash rather than a completed configuration. See
+`SERVING_FLAGS`.
 
-They are here rather than as a second typed field because they are not a second
-decision. A serving block able to express one without the other can only express a
-broken state, and the field that renders them already carries the intent."""
+The rule for adding a row: the flag has to appear in the `--help` of the program the
+cluster actually starts. A flag the engine's upstream documents is not the same
+claim."""
 
 
 def _members(name: str, values: list[str], allowed: frozenset[str]) -> None:

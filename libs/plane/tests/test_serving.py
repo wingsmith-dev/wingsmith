@@ -447,15 +447,11 @@ def test_an_unknown_member_of_a_rendered_enum_is_refused(block):
 def test_a_typed_serving_field_beats_the_same_flag_in_engine_args():
     """The escape hatch keeps the flags nothing models, and loses the ones it does."""
     workload = a_workload(
-        engine_args={"--reasoning-parser": "deepseek_r1", "--tool-call-parser": "llama3_json", "max-num-seqs": "64"},
-        serving=msgspec.to_builtins(
-            serving(reasoning={"parser": "qwen3"}, tool_call_parser="hermes", structured_output_backend="xgrammar")
-        ),
+        engine_args={"--reasoning-parser": "deepseek_r1", "max-num-seqs": "64"},
+        serving=msgspec.to_builtins(serving(reasoning={"parser": "qwen3"})),
     )
     block = rendered(workload)
     assert block.resolved_engine_args["reasoning-parser"] == "qwen3"
-    assert block.resolved_engine_args["tool-call-parser"] == "hermes"
-    assert block.resolved_engine_args["guided-decoding-backend"] == "xgrammar"
     assert block.resolved_engine_args["max-num-seqs"] == "64"
     assert block.engine_args == workload.engine_args
 
@@ -468,35 +464,44 @@ def test_engine_args_keeps_every_flag_the_serving_block_does_not_model():
 
 def test_the_flag_a_typed_field_speaks_for_is_the_engines_own_spelling():
     block = serving(structured_output_backend="xgrammar")
-    assert serving_args("vllm", block) == {"guided-decoding-backend": "xgrammar"}
     assert serving_args("sglang", block) == {"grammar-backend": "xgrammar"}
     assert serving_args("trtllm", block) == {}
     assert serving_args("vllm", serving(max_images_per_request=4)) == {"limit-mm-per-prompt": "image=4"}
 
 
-def test_a_vllm_tool_parser_brings_the_flag_that_makes_it_run():
-    """vLLM parses tool calls with one flag and dispatches them with another.
+def test_a_vllm_tool_parser_renders_no_flag_because_dynamo_takes_none():
+    """The flags belong to `vllm serve`, and Dynamo does not run `vllm serve`.
 
-    Set only the parser and the engine loads something it never runs: the model
-    emits a tool call, nothing turns it into `tool_calls`, and it reaches the caller
-    as prose in `content` behind a workload that reads as configured. This was found
-    that way round, on a live endpoint, by `libs/conformance`.
+    It runs `dynamo.vllm` for the engine and `dynamo.frontend` for the OpenAI
+    surface, and `--tool-call-parser` and `--enable-auto-tool-choice` are in the
+    `--help` of neither. Rendered onto the worker they were not a misconfiguration
+    that degraded tool calling: the process exited on `unrecognized arguments`
+    before it loaded a weight, on every restart, for every workload naming a parser.
+
+    The field is still stored and still read back. What it no longer does is put a
+    flag on a command line that has never had one.
     """
-    resolved = resolved_engine_args("vllm", {}, serving(tool_call_parser="openai"))
-    assert resolved == {"tool-call-parser": "openai", "enable-auto-tool-choice": ""}
+    assert resolved_engine_args("vllm", {}, serving(tool_call_parser="openai")) == {}
+    assert serving_args("vllm", serving(structured_output_backend="xgrammar")) == {}
 
 
 def test_only_the_engines_that_need_the_companion_flag_get_it():
-    """SGLang dispatches on the parser alone, so adding vLLM's flag would be a lie."""
+    """SGLang runs its own server, whose CLI does carry the flag this one names."""
     assert resolved_engine_args("sglang", {}, serving(tool_call_parser="qwen25")) == {"tool-call-parser": "qwen25"}
     assert serving_args("vllm", serving(reasoning={"parser": "qwen3"})) == {"reasoning-parser": "qwen3"}
 
 
-def test_an_explicit_auto_tool_choice_is_not_overwritten_by_the_implied_one():
-    """`engine_args` stays the escape hatch, including for a value we would render empty."""
+def test_engine_args_still_carries_a_flag_this_table_no_longer_renders():
+    """`engine_args` stays the escape hatch, and is the only route these flags now have.
+
+    Somebody serving a build that really does take them can still say so by hand, and
+    that is the correct place for it: a flag typed into `engine_args` is a claim about
+    one workload's image, where a row in `SERVING_FLAGS` is a claim about every image
+    the engine name covers.
+    """
     resolved = resolved_engine_args(
         "vllm",
-        {"--enable-auto-tool-choice": "true"},
+        {"--enable-auto-tool-choice": "true", "--tool-call-parser": "openai"},
         serving(tool_call_parser="openai"),
     )
     assert resolved["tool-call-parser"] == "openai"
@@ -684,14 +689,14 @@ def test_the_typed_serving_block_reaches_the_cluster():
     `ServingSpec` carries no typed block — the operator renders a command line and
     has no use for a typed one — so the resolved arguments are what goes on the
     wire. Sending `engine_args` raw instead made the whole serving block a view: the
-    console rendered `--tool-call-parser` and no cluster was ever told.
+    console rendered `--reasoning-parser` and no cluster was ever told.
     `libs/conformance` found it that way round, against a live endpoint whose
     configuration read as configured and whose engine had never heard of the flag.
     """
     workload = a_workload(
         engine_runtime_version="0.10.0",
         engine_args={"--async-scheduling": ""},
-        serving={"tool_call_parser": "openai"},
+        serving={"reasoning": {"parser": "qwen3"}},
         tensor_parallel=4,
         device_count=4,
         context_length=131072,
@@ -703,8 +708,7 @@ def test_the_typed_serving_block_reaches_the_cluster():
 
     assert spec.engine_args == {
         "async-scheduling": "",
-        "tool-call-parser": "openai",
-        "enable-auto-tool-choice": "",
+        "reasoning-parser": "qwen3",
     }
     assert spec.digest == workload.serving_digest
 

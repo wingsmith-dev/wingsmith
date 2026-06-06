@@ -358,6 +358,7 @@ who takes them in this order is reading the deployment coming up.
 | `CrashLooping` | `failed` | A replica's container starts and exits repeatedly |
 | `ContainerConfigInvalid` | `failed` | A replica's container cannot be created from its config |
 | `ImagePullFailed` | `failed` | A replica's image cannot be pulled |
+| `ComponentNotReady` | `placed` | A controller the cluster derived from ours reports not ready, and did not say it was refused |
 | `ClusterRejected` | `failed` | A controller in the cluster refused the objects that were applied |
 | `NoReplicasStarted` | `failed` | Applied, no replica ready past the grace window, and nothing said why |
 | `PayloadUndecodable` | `failed` | The desired frame did not decode |
@@ -385,6 +386,15 @@ the same spec is refused identically for ever.
 waiting reasons above it are not failures and stay out of it, which is the rule that keeps
 `last_error` meaning something. `message` keeps the replica counts and appends the diagnosis, so a
 reader gets the number they looked for and the sentence they came for in one line.
+
+**`ComponentNotReady` is not a failure and must not be sent as one.** A controller the cluster
+derived from our objects reports `False` with `Deployment is not ready` for the whole of a normal
+rollout — an image pulling, a model loading, a pod starting. Reported as `ClusterRejected` it made
+the console draw `deployment.placed` in red beside the words "the cluster refused", which is a
+phase that means it worked, a colour that means it broke, and a sentence that means neither; a
+reader could not tell whether to wait or to act. It is `placed` because the deployment is applied
+and a replica is still coming, and it is read *after* the pods, because a pod that is pulling or
+unschedulable is the reason this summary exists.
 
 **`NoReplicasStarted` is the reason for having no reason.** A deployment can be applied, produce no
 pod, and draw no complaint from any controller — nothing is wrong anywhere, and nothing is running.

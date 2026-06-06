@@ -130,6 +130,61 @@ func TestPodTroubleIsReadFromTheWaitingReasonNotThePhase(t *testing.T) {
 	}
 }
 
+// The crash the whole evening turned on, and the one line that would have ended it in seconds.
+//
+// `CrashLoopBackOff` carries the kubelet's account of the loop — "back-off restarting failed
+// container" — which is identical for every crash-looping container ever and says nothing about
+// the fault. The process's own last words named the argument. They reach `lastState` only because
+// the renderer asks for `FallbackToLogsOnError`, and they reach the plane only because this reads
+// them.
+func TestACrashLoopReportsWhatTheContainerSaidAndNotJustThatItLooped(t *testing.T) {
+	pod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "glm-5-3-flash-vllmdecodeworker-abc", Namespace: testRender.Namespace},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "main",
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+					Reason:  "CrashLoopBackOff",
+					Message: "back-off 40s restarting failed container=main",
+				}},
+				LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+					ExitCode: 2,
+					Message:  "__main__.py: error: unrecognized arguments: --tool-call-parser glm47",
+				}},
+			}},
+		},
+	}
+	found := troubleFromPods([]corev1.Pod{pod})
+	if found == nil || found.reason != "CrashLooping" {
+		t.Fatalf("trouble = %+v, want CrashLooping", found)
+	}
+	if !strings.Contains(found.message, "--tool-call-parser glm47") {
+		t.Errorf("message = %q, want the argument the engine refused", found.message)
+	}
+}
+
+// A pod from a render that predates the policy, or a container the kubelet killed, has no last
+// words — and must still be reported rather than dropped for lacking them.
+func TestACrashLoopWithNoCapturedOutputStillReports(t *testing.T) {
+	pod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "chat-iad-abc", Namespace: testRender.Namespace},
+		Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "main",
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+					Reason:  "CrashLoopBackOff",
+					Message: "back-off 40s restarting failed container=main",
+				}},
+			}},
+		},
+	}
+	found := troubleFromPods([]corev1.Pod{pod})
+	if found == nil || found.reason != "CrashLooping" {
+		t.Fatalf("trouble = %+v, want CrashLooping", found)
+	}
+}
+
 func TestAnUnschedulablePodIsReportedAndIsNotFatal(t *testing.T) {
 	pod := corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{Name: "chat-iad-abc", Namespace: testRender.Namespace},

@@ -145,6 +145,7 @@ const REASON_STEPS: Record<string, LifecycleStep> = {
   NoSchedulableCapacity: "capacity",
   Rendering: "rendering",
   Applied: "applied",
+  ComponentNotReady: "applied",
   Progressing: "serving",
   Serving: "serving",
   PayloadUndecodable: "declared",
@@ -200,6 +201,7 @@ const REASON_TEXT: Record<string, string> = {
   NoSchedulableCapacity: "No node has enough accelerators free",
   Rendering: "Building the objects that will run this",
   Applied: "Applied to the cluster; waiting for the first replica",
+  ComponentNotReady: "Applied; the cluster is still bringing the replicas up",
   Progressing: "Replicas are still coming up",
   Serving: "Every replica is ready",
   PayloadUndecodable: "The cluster could not read this deployment",
@@ -209,8 +211,9 @@ const REASON_TEXT: Record<string, string> = {
   CrashLooping: "A replica is repeatedly crashing",
   ContainerConfigInvalid: "A replica has invalid container configuration",
   ImagePullFailed: "The cluster could not pull an image",
-  ClusterRejected: "The cluster rejected the rendered workload",
-  NoReplicasStarted: "No replica started",
+  ClusterRejected:
+    "The cluster refused these objects, and will refuse them again until the workload changes",
+  NoReplicasStarted: "No replica started, and nothing said why",
   FingerprintMismatch: "The running workload no longer matches its declaration",
   LiveObjectUnreadable: "The cluster could not inspect the running workload",
 }

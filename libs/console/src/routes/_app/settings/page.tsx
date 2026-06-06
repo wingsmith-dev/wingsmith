@@ -945,19 +945,59 @@ function ClusterSetupPanel({ config }: { config: PlaneConfig }) {
   )
 }
 
-/** This browser's own settings — safety, where it points, and appearance. */
+/** This browser's own settings — safety, what it shows, and appearance. */
 /**
- * Three panels rather than one: read-only is a safety switch, appearance is
- * taste, and the plane endpoint is a build-time fact nobody can change from
- * here. Reading them as one list invites the last to be mistaken for a setting.
+ * Four panels rather than one: read-only is a safety switch, economics is who
+ * is allowed to see the money, appearance is taste, and the plane endpoint is a
+ * build-time fact nobody can change from here. Reading them as one list invites
+ * the last to be mistaken for a setting.
  */
 function PreferencesSection() {
   return (
     <>
       <ReadOnlyPanel />
+      <EconomicsPanel />
       <AppearancePanel />
       <PlanePanel />
     </>
+  )
+}
+
+function EconomicsPanel() {
+  const economics = useSettingsStore((s) => s.economics)
+  const setEconomics = useSettingsStore((s) => s.setEconomics)
+
+  return (
+    <Panel
+      id="economics"
+      title="Unit economics"
+      description="what a workload costs and what it earns"
+    >
+      <div className="space-y-4">
+        <div className="flex items-start justify-between gap-4 rounded-md border px-3 py-2.5">
+          <div className="space-y-0.5">
+            <Label htmlFor="economics">Show unit economics</Label>
+            <p className="text-2xs text-muted-foreground/70">
+              Adds an Economics view to every workload — prices, cost per hour,
+              margin over the day's demand curve, and break-even.
+            </p>
+          </div>
+          <Switch
+            id="economics"
+            checked={economics}
+            onCheckedChange={setEconomics}
+          />
+        </div>
+
+        <p className="rounded-md border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          Off unless <code className="font-mono">VITE_ECONOMICS</code> is set,
+          so a console handed to a customer shows no tab at all. Every figure in
+          that view is a model built in this browser from what you type; the
+          plane holds no price and no cost, and nothing there is ever written
+          back to it.
+        </p>
+      </div>
+    </Panel>
   )
 }
 
