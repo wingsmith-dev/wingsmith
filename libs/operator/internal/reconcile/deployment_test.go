@@ -1083,6 +1083,67 @@ func TestAnImmutableComponentSetIsReportedAndNotRetriedForever(t *testing.T) {
 	}
 }
 
+// A webhook denial is the one refusal with no live object to diagnose, and it used to be silent.
+//
+// GLM-5.3-Flash was dispatched to a cluster whose Dynamo webhook required `runtimeVersionOverride`
+// for an image tag it could not read a semver out of. The apply was denied, the reconcile returned
+// a controller-runtime error, and the loop retried it every few seconds for as long as anybody
+// left it running. The plane's last word on the deployment was `Rendering`; the reason existed
+// only as a log line inside that cluster. `diagnose` could not have found it either — it reads
+// conditions off objects Dynamo derived from ours, and nothing was created.
+func TestAWebhookDenialIsReportedRatherThanRetriedInSilence(t *testing.T) {
+	scheme := clientgoscheme.Scheme
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("scheme: %v", err)
+	}
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+
+	denial := apierrors.NewInvalid(
+		schema.GroupKind{Group: "nvidia.com", Kind: "DynamoGraphDeployment"},
+		render.WorkloadName(testDeploymentDesired()),
+		field.ErrorList{field.Required(field.NewPath("spec", "components").Index(0).Child("runtimeVersionOverride"),
+			"is required when the specified main container image has no parseable semantic-version tag")},
+	)
+	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)).
+		WithStatusSubresource(dep).
+		WithInterceptorFuncs(interceptor.Funcs{
+			Patch: func(ctx context.Context, cl client.WithWatch, obj client.Object, patch client.Patch, opts ...client.PatchOption) error {
+				if obj.GetObjectKind().GroupVersionKind().Kind == render.GVK.Kind {
+					return denial
+				}
+				return cl.Patch(ctx, obj, patch, opts...)
+			},
+		}).Build()
+
+	r := &SyncedResourceReconciler{
+		Client: c, Scheme: scheme, Log: slog.Default(),
+		Namespace: "hangar-system", Render: frontendRender(),
+		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.GetNamespace(), Name: dep.GetName()}}
+	result, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("reconcile returned an error, so this would retry in silence for ever: %v", err)
+	}
+	if result.RequeueAfter != 0 {
+		t.Errorf("RequeueAfter = %s, want no retry of an object the cluster will refuse again", result.RequeueAfter)
+	}
+
+	var out v1alpha1.SyncedResource
+	if err := c.Get(context.Background(), req.NamespacedName, &out); err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	condition := readyCondition(t, &out)
+	if condition.Reason != "ClusterRejected" {
+		t.Errorf("reason = %q, want ClusterRejected", condition.Reason)
+	}
+	if !strings.Contains(condition.Message, "runtimeVersionOverride") {
+		t.Errorf("message = %q, want the field the cluster named", condition.Message)
+	}
+}
+
 // graphOf reads back the graph deployment a reconcile rendered.
 func graphOf(t *testing.T, r *SyncedResourceReconciler) *unstructured.Unstructured {
 	t.Helper()

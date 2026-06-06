@@ -187,6 +187,11 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 					"weights, so this is a deliberate redeploy and not something to do while it "+
 					"is serving.", obj.GetName(), obj.GetNamespace(), obj.GetName()))
 		}
+		if clusterRejected(err) {
+			return r.fail(ctx, res, "ClusterRejected", fmt.Sprintf(
+				"the cluster refused %s and will refuse it again unchanged: %s",
+				obj.GetName(), err.Error()))
+		}
 		return ctrl.Result{}, fmt.Errorf("apply %s: %w", obj.GetName(), err)
 	}
 	r.Log.Info("applied", "deployment", dep.DeploymentID, "generation", dep.Generation,
@@ -566,6 +571,27 @@ func immutableTopology(err error) bool {
 		return false
 	}
 	return strings.Contains(err.Error(), "component topology is immutable")
+}
+
+// clusterRejected reports whether the cluster refused this object in a way a retry cannot fix.
+//
+// `Invalid`, `Forbidden` and `BadRequest` are the API server — or an admission webhook in front of
+// it — saying the object is wrong, which it will still be on the next pass. Returning those as a
+// controller-runtime error requeues them with backoff for ever and tells the plane nothing: the
+// deployment sits at `Rendering`, the reason is a log line in a cluster somebody would have to go
+// and read, and the console shows a workload that was dispatched and then stopped having a story.
+// `ClusterRejected` is the reason MESSAGES.md already reserves for exactly this, and the API
+// server's own sentence is the most useful message there is — it names the field.
+//
+// `diagnose` cannot cover it. That reads conditions off the objects Dynamo derived from ours, and
+// a webhook denial means nothing was created to derive anything from, so the one rejection with no
+// live object to inspect was the one with no reporter.
+//
+// Everything else — a conflict, a timeout, a 500 — stays a requeue. Those are the errors where
+// trying again is the correct answer, and reporting a deployment as failed because the API server
+// was briefly busy would be worse than saying nothing.
+func clusterRejected(err error) bool {
+	return apierrors.IsInvalid(err) || apierrors.IsForbidden(err) || apierrors.IsBadRequest(err)
 }
 
 func (r *SyncedResourceReconciler) fail(ctx context.Context, res *v1alpha1.SyncedResource, reason, message string) (ctrl.Result, error) {
