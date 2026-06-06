@@ -245,6 +245,38 @@ describe("derivedServingRequest", () => {
     expect(typed.shape.device_memory_mib_min).toBe(81_920)
   })
 
+  it("re-divides the memory floor when the fit uses a different device count", () => {
+    /**
+     * The failure this exists for. The plane suggested GLM-5.3-Flash as 2 devices at
+     * 192 GiB; the recipe's parallelism put 4 on the request; the floor was carried
+     * across untouched, so the workload asked for 4 × 192 GiB to serve a model needing
+     * 383 GiB. No H200 has 192 GiB, so placement reported every cluster as owning no
+     * such device and the workload expanded to no deployment at all.
+     *
+     * The replica total is what survives a change of count, so that is what is divided.
+     */
+    const request = derivedServingRequest(
+      artifact,
+      { ...footprint, device_count: 4, tensor_parallel: 4 },
+      { defaults, upstream: upstream() }
+    )
+
+    expect(request.shape.device_count).toBe(4)
+    // 2 × 81_920 across 4 devices, not 81_920 repeated four times.
+    expect(request.shape.device_memory_mib_min).toBe(40_960)
+    expect(
+      request.shape.device_memory_mib_min * request.shape.device_count
+    ).toBe(defaults.device_memory_mib_min * defaults.device_count)
+  })
+
+  it("asks for no floor at all when the weights imply none", () => {
+    const request = derivedServingRequest(artifact, footprint, {
+      defaults: { ...defaults, device_memory_mib_min: 0 },
+      upstream: upstream(),
+    })
+    expect(request.shape.device_memory_mib_min).toBe(0)
+  })
+
   it("sends the capability under a parser somebody typed, not only one vLLM named", () => {
     /**
      * The plane refuses a tool call parser without the claim beneath it, so an override

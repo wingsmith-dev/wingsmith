@@ -203,6 +203,24 @@ class ArtifactRepository:
         result = await self.db.execute(self.fleet_classes_query())
         return list(result.all())
 
+    async def largest_device_memory_mib(self) -> int | None:
+        """The biggest accelerator the fleet has actually reported, or `None` when it has none.
+
+        A first serving suggestion has to spread a model across some number of
+        devices, and that number is only meaningful against a card somebody can be
+        given. Sized against the largest card the *catalogue* names, the suggestion
+        divides by hardware that may exist nowhere in the fleet and produces a shape
+        no cluster can satisfy — a per-device floor above every card we own, which
+        placement reads as "this cluster has no such device".
+
+        Observed rather than from the contract table, for the same reason
+        `fleet_classes` reports observed memory: what a cluster said it has is the
+        only figure a placement will later be decided on.
+        """
+        result = await self.db.execute(select(func.max(Device.memory_mib)))
+        largest = result.scalar_one_or_none()
+        return largest if largest and largest > 0 else None
+
     def devices_per_node_query(self) -> Select:
         """The largest node each device class has been observed in, in devices.
 

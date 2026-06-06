@@ -408,7 +408,11 @@ class ArtifactService:
             raise PlaneError(f"huggingface refused the request for {slug!r}") from exc
 
         existing = await self.repo.artifact_by_digest(model.digest)
-        return resolved(model, existing_id=existing.uid if existing is not None else None)
+        return resolved(
+            model,
+            existing_id=existing.uid if existing is not None else None,
+            ceiling_mib=await self.repo.largest_device_memory_mib(),
+        )
 
     async def refresh(self, ref: str) -> ArtifactRefreshSchema:
         """Re-reads a registered artifact's own source and updates what is derived from it.

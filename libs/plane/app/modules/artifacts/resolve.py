@@ -327,8 +327,21 @@ def _shardable(count: int) -> int:
     return shards
 
 
-def suggest_serving(model: HuggingFaceModel, notes: list[ResolveNote]) -> ServingDefaults:
+def suggest_serving(
+    model: HuggingFaceModel,
+    notes: list[ResolveNote],
+    ceiling_mib: int | None = None,
+) -> ServingDefaults:
     """Sizes a first serving block from the weights, then says what hardware that needs.
+
+    `ceiling_mib` is the largest accelerator the fleet actually holds, and it is
+    what the model is spread across. Sized against the largest card the contract
+    table names instead, the suggestion divides a model by hardware nobody here
+    owns: GLM-5.3-Flash needed 383 GB, was divided by a 288 GB B300, and came back
+    as two devices at a 192 GiB floor — a floor no H200 in the fleet can meet, so
+    every cluster reported having no such device and the workload was placed
+    nowhere. `None` falls back to the table, which is right for a plane that has
+    not enrolled a cluster yet and has nothing better to divide by.
 
     The direction matters. The serving parameters are the repo's own: its native
     quantization, its dtype, and the full context window it declares. Those are
@@ -378,7 +391,8 @@ def suggest_serving(model: HuggingFaceModel, notes: list[ResolveNote]) -> Servin
     ).required_gb
 
     largest = devices.table().largest()
-    ceiling_gb = largest.memory_mib / _MIB_PER_GB if largest else _FALLBACK_DEVICE_MEMORY_GB
+    owned_or_known = ceiling_mib or (largest.memory_mib if largest else None)
+    ceiling_gb = owned_or_known / _MIB_PER_GB if owned_or_known else _FALLBACK_DEVICE_MEMORY_GB
     device_count = _shardable(math.ceil(required_gb / ceiling_gb))
     per_device_gb = math.ceil(required_gb / device_count)
     if device_count > 1:
@@ -545,7 +559,11 @@ def _note_disagreement(
     )
 
 
-def resolved(model: HuggingFaceModel, existing_id: str | None = None) -> ResolvedArtifact:
+def resolved(
+    model: HuggingFaceModel,
+    existing_id: str | None = None,
+    ceiling_mib: int | None = None,
+) -> ResolvedArtifact:
     """Turns an inspected Hub model into the draft the API returns.
 
     Pure: everything that needed the network happened in the client, and
@@ -607,7 +625,7 @@ def resolved(model: HuggingFaceModel, existing_id: str | None = None) -> Resolve
         "shape": shape_metadata(shape) if shape else None,
     }
 
-    serving = suggest_serving(model, notes)
+    serving = suggest_serving(model, notes, ceiling_mib)
     uri = f"hf://{model.slug}@{model.revision}"
     return ResolvedArtifact(
         reference=f"hf:{model.slug}@{model.revision}",

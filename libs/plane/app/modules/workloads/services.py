@@ -142,6 +142,41 @@ def check_footprint(**fields: int | None) -> None:
             raise Invalid(f"{name} cannot be negative", {name: value})
 
 
+def check_floor(device_class: str, device_memory_mib_min: int) -> None:
+    """Rejects a per-device memory floor the declared device class cannot meet.
+
+    A device class *is* a memory figure — `h100-80gb-sxm` and `h100-80gb-pcie` are
+    separate entries of the table for exactly this reason — so a class and a floor
+    are two statements about the same quantity and they can contradict each other.
+    When they do, placement filters every device of that class out before it looks
+    at whether any are free, reports `no_such_device_class`, and the workload
+    expands to nothing: a cluster with eight idle accelerators of precisely the
+    right kind reads as a cluster that owns none.
+
+    That is not a capacity question and it must not be discovered by asking a
+    scheduler. Both numbers are on the request and the table settles it, so the
+    contradiction is refused where it is written.
+
+    Silent about a class the catalogue does not name, like every other check here:
+    an unmeasured card is not contradicted by arithmetic nobody can do.
+    """
+    if device_memory_mib_min <= 0:
+        return
+    device = devices.table().get(device_class)
+    if device is None or device.memory_mib <= 0:
+        return
+    if device_memory_mib_min > device.memory_mib:
+        raise Invalid(
+            f"a floor of {device_memory_mib_min} MiB per device excludes every {device_class}, "
+            f"which has {device.memory_mib} MiB",
+            {
+                "device_class": device_class,
+                "device_memory_mib_min": device_memory_mib_min,
+                "device_memory_mib": device.memory_mib,
+            },
+        )
+
+
 def check_shape(
     device_class: str,
     device_count: int,
@@ -564,6 +599,7 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
     )
     check_serving(data.serving, data.capabilities, data.cache.prefix_cache_enabled)
     check_quantization(data.quantization)
+    check_floor(data.shape.device_class, data.shape.device_memory_mib_min)
     check_capacity(
         sizing_for(artifact, data.quantization),
         data.shape.device_class,

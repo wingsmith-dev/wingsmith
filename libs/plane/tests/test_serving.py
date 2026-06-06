@@ -50,6 +50,7 @@ from app.modules.workloads.schemas import CapabilitiesSchema
 from app.modules.workloads.schemas import WorkloadServingSchema
 from app.modules.workloads.schemas import WorkloadServingRequest
 from app.modules.workloads.services import sizing_for
+from app.modules.workloads.services import check_floor
 from app.modules.workloads.services import check_shape
 from app.modules.workloads.services import serving_args
 from app.modules.workloads.services import serving_view
@@ -554,6 +555,28 @@ def test_a_capacity_check_is_silent_about_what_it_cannot_measure():
     )
     sizing = sizing_for(artifact_row(parameter_count=405_000_000_000), "fp16")
     assert check_capacity(sizing, "some-card-the-table-has-never-heard-of", 1, 1) is None
+
+
+def test_a_floor_no_card_of_the_declared_class_can_meet_is_refused():
+    """The failure this check exists for.
+
+    A workload asked for `h200-141gb-sxm` with a floor of 192 GiB per device. Every
+    H200 in the fleet has 141, so placement filtered all eight out before it looked at
+    which were free, reported `no_such_device_class`, and the workload expanded to no
+    deployment at all — while the plane's own capacity check had already agreed that
+    four of those cards can serve the model.
+    """
+    with pytest.raises(Invalid) as raised:
+        check_floor("h200-141gb-sxm", 196_608)
+    assert "196608" in str(raised.value)
+    assert check_floor("h200-141gb-sxm", 143_771) is None
+    assert check_floor("h200-141gb-sxm", 98_304) is None
+
+
+def test_a_floor_check_is_silent_about_what_it_cannot_measure():
+    """No floor, and a class the catalogue does not name, are both left alone."""
+    assert check_floor("h200-141gb-sxm", 0) is None
+    assert check_floor("some-card-the-table-has-never-heard-of", 1_000_000) is None
 
 
 def test_a_context_window_that_does_not_fit_is_not_a_refusal():

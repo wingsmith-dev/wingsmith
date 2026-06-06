@@ -255,6 +255,31 @@ function chosen(
 }
 
 /**
+ * The suggestion's per-device memory floor, re-divided by the devices actually used.
+ *
+ * The plane derives its floor as `required / device_count` at the count *it*
+ * suggested, and the count on this request comes from the fit, which is a different
+ * number whenever a recipe's parallelism differs from the suggestion's arithmetic.
+ * Carried across verbatim the floor stops describing anything: GLM-5.3-Flash was
+ * suggested as 2 devices at 192 GiB, sent as 4 devices at 192 GiB, and so asked for
+ * 768 GiB to serve a 383 GiB model — a floor no card in the fleet could meet, which
+ * placement reports as the cluster owning no such device.
+ *
+ * What survives a change of count is the replica total, so that is what is divided.
+ * Rounded up, because a floor that rounds down is a floor that does not hold the
+ * model.
+ */
+function perDeviceFloor(
+  defaults: ServingDefaults | null | undefined,
+  deviceCount: number
+): number {
+  if (!defaults?.device_memory_mib_min || !defaults.device_count) return 0
+  if (deviceCount < 1) return 0
+  const replicaTotal = defaults.device_memory_mib_min * defaults.device_count
+  return Math.ceil(replicaTotal / deviceCount)
+}
+
+/**
  * The serving block that a fitment row plus an artifact imply, and what was overridden.
  *
  * The fit answers the six things it is — which card, how many, how they are split,
@@ -307,7 +332,7 @@ export function derivedServingRequest(
     shape: {
       device_class: footprint.device_class,
       device_count: footprint.device_count,
-      device_memory_mib_min: defaults?.device_memory_mib_min ?? 0,
+      device_memory_mib_min: perDeviceFloor(defaults, footprint.device_count),
       requires_single_topology_domain:
         upstream?.requires_single_topology_domain ||
         requiresSingleDomain(footprint),

@@ -307,9 +307,14 @@ class FakeRow:
 
 
 class FakeRepo:
-    def __init__(self, existing_digest: str | None = None):
+    def __init__(self, existing_digest: str | None = None, largest_device_mib: int | None = None):
         self.existing_digest = existing_digest
         self.added = None
+        self.largest_device_mib = largest_device_mib
+
+    async def largest_device_memory_mib(self):
+        """What the fleet actually holds. `None` is a plane with no cluster enrolled yet."""
+        return self.largest_device_mib
 
     async def artifact_by_digest(self, digest: str):
         if digest == self.existing_digest:
@@ -416,6 +421,43 @@ async def test_weights_too_large_for_one_device_shard_across_a_power_of_two():
     assert any("spreads it across 4 devices" in note.message for note in draft.notes)
 
 
+async def test_the_suggestion_is_sized_against_the_cards_the_fleet_owns():
+    """The failure this exists for, in the shape it actually happened.
+
+    GLM-5.3-Flash needed about 383 GB. Divided by the biggest card the contract table
+    names — a 288 GB B300 — that is two devices at a 192 GiB floor. The fleet holds
+    H200s at 141 GB, so every one of them failed the floor, placement reported each
+    cluster as owning no such device, and the workload was placed nowhere. Divided by
+    a card we actually have, the same model spreads over four and asks for a floor
+    those cards clear.
+    """
+    largest = devices.table().largest()
+    assert largest is not None
+    h200_mib = 143_771
+    assert largest.memory_mib > h200_mib, "the table still names a card bigger than an H200"
+
+    weights_gb = h200_mib / 1024 * 2.35
+    model = hf_model(parameter_count=int(weights_gb * 1024**3 / 0.5))
+
+    against_the_table = await service(hub=FakeHub(model)).resolve("openai/gpt-oss-20b")
+    against_the_fleet = await service(hub=FakeHub(model), repo=FakeRepo(largest_device_mib=h200_mib)).resolve(
+        "openai/gpt-oss-20b"
+    )
+
+    assert against_the_fleet.serving.device_count == 4
+    assert against_the_fleet.serving.device_memory_mib_min <= h200_mib, (
+        "a suggestion no card in the fleet can meet is a workload that places nowhere"
+    )
+    assert against_the_table.serving.device_memory_mib_min > against_the_fleet.serving.device_memory_mib_min
+
+
+async def test_a_suggestion_falls_back_to_the_table_when_no_cluster_is_enrolled():
+    """A plane with no supply yet still suggests something, from the catalogue."""
+    model = hf_model(parameter_count=7_000_000_000)
+    draft = await service(hub=FakeHub(model), repo=FakeRepo(largest_device_mib=None)).resolve("openai/gpt-oss-20b")
+    assert draft.serving.device_count >= 1
+
+
 async def test_a_serving_suggestion_is_offered_and_never_applied():
     """The draft seeds a workload form. Registering weights declares no way to serve them."""
     draft = await service().resolve("openai/gpt-oss-20b")
@@ -517,9 +559,14 @@ async def test_the_hub_being_down_is_not_the_callers_fault():
 class RefreshRepo:
     """One already-registered artifact, read back however it is asked for."""
 
-    def __init__(self, artifact: Artifact, existing_digest: str | None = None):
+    def __init__(self, artifact: Artifact, existing_digest: str | None = None, largest_device_mib: int | None = None):
         self.artifact = artifact
         self.existing_digest = existing_digest
+        self.largest_device_mib = largest_device_mib
+
+    async def largest_device_memory_mib(self):
+        """What the fleet actually holds. `None` is a plane with no cluster enrolled yet."""
+        return self.largest_device_mib
 
     async def get(self, ref: str):
         return FakeRow(self.artifact)
