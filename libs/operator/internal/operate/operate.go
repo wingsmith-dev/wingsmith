@@ -38,6 +38,22 @@ const (
 	TypeOperationObserved = "operation.observed"
 )
 
+// The operation kinds this executor performs. The plane spells a benchmark `deployment.benchmark`
+// in its own vocabulary and puts `benchmark` on the wire; this is that wire kind.
+const (
+	KindCordon    = "cordon"
+	KindDrain     = "drain"
+	KindBenchmark = "benchmark"
+)
+
+// defaultBenchmarkQueue is how many benchmark steps may wait for the lane.
+//
+// A ramp is the case this depth is for: one request becomes a step per concurrency level, all of
+// them arriving within a second of each other, and every one of them has to be kept. Deep enough
+// for a ramp far longer than any we run, and still bounded — an unbounded queue would turn a plane
+// that keeps asking into a cluster that keeps agreeing and never measures anything.
+const defaultBenchmarkQueue = 64
+
 // Reporter is the half of the sync client this package needs.
 type Reporter interface {
 	Send(t syncpkg.MessageType, subject string, payload any) error
@@ -75,19 +91,145 @@ type Executor struct {
 	// BenchmarkTimeout bounds a run whose operation carried no deadline of its own.
 	BenchmarkTimeout time.Duration
 
+	// BenchmarkQueue is how many benchmark steps may wait for the lane. Zero takes
+	// defaultBenchmarkQueue.
+	BenchmarkQueue int
+
 	mu       stdsync.Mutex
 	reporter Reporter
 	running  map[string]struct{}
+	cancels  map[string]context.CancelFunc
+
+	lane      chan queued
+	laneCtx   context.Context
+	laneStop  context.CancelFunc
+	laneDone  chan struct{}
+	closeOnce stdsync.Once
 }
 
-// New fills in an Executor's defaults.
+// queued is a benchmark waiting for the lane, with the context that cancels it.
+type queued struct {
+	ctx context.Context
+	op  wire.OperationDesired
+}
+
+// New fills in an Executor's defaults and starts the benchmark lane.
+//
+// The lane's worker is started here rather than by a caller, because an executor that accepted a
+// benchmark with nothing draining the lane would hold the step for ever and report nothing. It
+// stops on Close, or when the context handed to Start is cancelled.
 func New(e *Executor) *Executor {
 	if e.Log == nil {
 		e.Log = slog.Default()
 	}
 	e.Log = e.Log.With("component", "operate")
 	e.running = map[string]struct{}{}
+	e.cancels = map[string]context.CancelFunc{}
+	depth := e.BenchmarkQueue
+	if depth <= 0 {
+		depth = defaultBenchmarkQueue
+	}
+	e.lane = make(chan queued, depth)
+	e.laneCtx, e.laneStop = context.WithCancel(context.Background())
+	e.laneDone = make(chan struct{})
+	go e.serve()
 	return e
+}
+
+// Start ties the benchmark lane's lifetime to ctx.
+//
+// Optional: an executor whose owner never calls it runs until Close. It exists so that a process
+// shutting down through its root context takes the lane with it rather than leaving the worker
+// behind.
+func (e *Executor) Start(ctx context.Context) {
+	go func() {
+		select {
+		case <-ctx.Done():
+			e.Close()
+		case <-e.laneDone:
+		}
+	}()
+}
+
+// Close stops the benchmark lane and waits for the step in flight.
+//
+// Waiting rather than returning at once, because the step is a job in the cluster and the frames
+// that say how it ended are written by the goroutine being stopped. It is safe to call twice, and
+// on an executor that never went through New there is no lane to stop.
+func (e *Executor) Close() {
+	if e.laneDone == nil {
+		return
+	}
+	e.closeOnce.Do(e.laneStop)
+	<-e.laneDone
+}
+
+// laneClosing reports whether the lane is on its way out, which is how a run that was cut short
+// tells being stopped from being cancelled.
+func (e *Executor) laneClosing() bool {
+	return e.laneCtx != nil && e.laneCtx.Err() != nil
+}
+
+// serve runs queued benchmarks one at a time, in the order they arrived.
+//
+// One worker and no more is the whole point. A ramp is a sequence of steps at rising concurrency,
+// and steps that overlap measure each other: every point on the curve carries the load of every
+// other point, so the knee the ramp exists to find is not in the numbers at all. Every other kind
+// keeps its goroutine per operation — a drain waiting behind a twenty-minute benchmark would be a
+// maintenance window missed for a measurement.
+func (e *Executor) serve() {
+	defer close(e.laneDone)
+	for {
+		if e.laneCtx.Err() != nil {
+			e.abandon()
+			return
+		}
+		select {
+		case <-e.laneCtx.Done():
+			e.abandon()
+			return
+		case work := <-e.lane:
+			e.serveOne(work)
+		}
+	}
+}
+
+// abandon refuses every step still waiting when the lane stops.
+//
+// Silence here would leave the plane holding a ramp whose last four steps never happened and never
+// said so. A refusal that is retryable is the truth: this operator is going away, and the steps can
+// be asked for again of whoever comes back.
+func (e *Executor) abandon() {
+	for {
+		select {
+		case work := <-e.lane:
+			e.serveOne(work)
+		default:
+			return
+		}
+	}
+}
+
+// serveOne runs one queued benchmark, unless it was cancelled while it waited.
+//
+// A step whose context went with the lane's was not cancelled by anybody — the operator is
+// stopping — and saying so is the difference between a step that can be asked for again and one
+// somebody has to work out was never really refused.
+func (e *Executor) serveOne(work queued) {
+	if work.ctx.Err() == nil {
+		e.run(work.ctx, work.op)
+		return
+	}
+	if e.laneCtx.Err() != nil {
+		e.Log.Warn("the benchmark lane stopped with a step still waiting",
+			"operation", work.op.OperationID)
+		e.refuse(work.op, "shutting_down", true,
+			fmt.Errorf("this operator stopped before the benchmark could start"))
+		return
+	}
+	e.Log.Info("benchmark cancelled before it started", "operation", work.op.OperationID)
+	e.refuse(work.op, "cancelled", false,
+		fmt.Errorf("the benchmark was cancelled while it waited for the lane"))
 }
 
 // Bind supplies the Reporter after construction, for the same reason the observer needs it: the
@@ -100,11 +242,15 @@ func (e *Executor) Bind(r Reporter) {
 
 // Handle accepts an operation and returns immediately.
 //
-// The work runs on its own goroutine and the frame is acknowledged now. Holding the
-// acknowledgement for the length of a drain would stall every other frame behind it on a stream
-// that is strictly ordered — desired state for the whole cluster would queue behind one node's
-// maintenance window. Progress is reported as it happens instead, which is what
-// `operation.observed` is for.
+// The work runs elsewhere and the frame is acknowledged now. Holding the acknowledgement for the
+// length of a drain would stall every other frame behind it on a stream that is strictly ordered —
+// desired state for the whole cluster would queue behind one node's maintenance window. Progress
+// is reported as it happens instead, which is what `operation.observed` is for.
+//
+// Elsewhere is a goroutine of its own for every kind but one. A benchmark goes on a lane that runs
+// its steps in turn, because concurrent benchmarks against the same deployment measure each other.
+// Enqueuing never blocks the reader: a lane with no room refuses the step out loud rather than
+// making the stream wait for a measurement to finish.
 func (e *Executor) Handle(ctx context.Context, env *syncpkg.Envelope) error {
 	if env.Type != TypeOperationDesired {
 		return nil
@@ -117,8 +263,78 @@ func (e *Executor) Handle(ctx context.Context, env *syncpkg.Envelope) error {
 		e.Log.Info("operation already running; ignoring the replay", "operation", op.OperationID)
 		return nil
 	}
-	go e.run(context.WithoutCancel(ctx), op)
+	if op.Kind == KindBenchmark {
+		e.enqueue(op)
+		return nil
+	}
+	go e.run(e.track(op.OperationID, context.WithoutCancel(ctx)), op)
 	return nil
+}
+
+// enqueue puts a benchmark on the lane, or refuses it where it can be seen.
+//
+// A step that vanished would be worse than one that failed. The plane would go on waiting for a
+// point on a curve that nobody is measuring, and the ramp would end short with no reason recorded
+// anywhere — so a full lane is a loud log and a failed operation, which is a conclusion the plane
+// already knows how to read.
+func (e *Executor) enqueue(op wire.OperationDesired) {
+	ctx := e.track(op.OperationID, e.laneCtx)
+	if err := e.laneCtx.Err(); err == nil {
+		select {
+		case e.lane <- queued{ctx: ctx, op: op}:
+			e.Log.Info("benchmark queued", "operation", op.OperationID, "waiting", len(e.lane))
+			// The lane can stop between the check above and this send, which would leave
+			// the step in a queue nobody drains again. Sweeping here rather than locking
+			// the two together: refusing a step twice is impossible, and the sweep is a
+			// no-op in every case but that one.
+			if e.laneCtx.Err() != nil {
+				e.abandon()
+			}
+			return
+		default:
+		}
+		e.Log.Error("the benchmark lane is full; refusing this step",
+			"operation", op.OperationID, "depth", cap(e.lane))
+		e.refuse(op, "queue_full", true, fmt.Errorf(
+			"this operator already holds %d benchmarks waiting to run", cap(e.lane)))
+		return
+	}
+	e.Log.Warn("the benchmark lane is closed; refusing this step", "operation", op.OperationID)
+	e.refuse(op, "shutting_down", true,
+		fmt.Errorf("this operator is shutting down and will not start another benchmark"))
+}
+
+func (e *Executor) refuse(op wire.OperationDesired, code string, retryable bool, err error) {
+	e.report(op, refused(op, time.Now().UTC(), code, retryable, err))
+	e.release(op.OperationID)
+}
+
+// Cancel stops an operation this executor accepted, whether it is running or still queued.
+//
+// Both, and not only the running one, because a ramp puts most of its steps in a queue: a
+// cancellation that reached only the step in flight would let the five behind it run anyway,
+// against a deployment somebody has already decided to stop measuring.
+//
+// It reports whether the operation was here to cancel. Nothing on the wire carries a cancellation
+// to a cluster yet — the plane records the request and waits for the terminal phase — so this is
+// the operator's half of that, waiting for the frame that will call it.
+func (e *Executor) Cancel(id string) bool {
+	e.mu.Lock()
+	cancel, ok := e.cancels[id]
+	e.mu.Unlock()
+	if ok {
+		cancel()
+	}
+	return ok
+}
+
+// track derives the context an operation runs under and keeps its cancel where Cancel can find it.
+func (e *Executor) track(id string, parent context.Context) context.Context {
+	ctx, cancel := context.WithCancel(parent)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.cancels[id] = cancel
+	return ctx
 }
 
 // claim reports whether this operation is ours to start.
@@ -139,8 +355,13 @@ func (e *Executor) claim(id string) bool {
 
 func (e *Executor) release(id string) {
 	e.mu.Lock()
-	defer e.mu.Unlock()
+	cancel := e.cancels[id]
+	delete(e.cancels, id)
 	delete(e.running, id)
+	e.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 func (e *Executor) run(ctx context.Context, op wire.OperationDesired) {
@@ -157,6 +378,20 @@ func (e *Executor) run(ctx context.Context, op wire.OperationDesired) {
 	result, err := e.dispatch(ctx, op)
 	completed := time.Now().UTC()
 	switch {
+	case err != nil && ctx.Err() == context.Canceled:
+		// The work did not fail; it was stopped. Reported as an ordinary execution failure it
+		// would read as a measurement this cluster cannot make, and a ramp step nobody asks
+		// for again — so it carries the reason it was stopped for, and whether asking again
+		// is worth anything.
+		code, retryable := "cancelled", false
+		reason := fmt.Errorf("the operation was cancelled while it ran")
+		if e.laneClosing() {
+			code, retryable = "shutting_down", true
+			reason = fmt.Errorf("this operator stopped while the operation was running")
+		}
+		e.Log.Warn("operation stopped before it concluded",
+			"operation", op.OperationID, "kind", op.Kind, "code", code, "error", err)
+		e.report(op, stopped(op, started, completed, result, code, retryable, reason))
 	case err != nil:
 		e.Log.Error("operation failed", "operation", op.OperationID, "kind", op.Kind, "error", err)
 		e.report(op, failed(op, started, completed, result, err))
@@ -187,11 +422,11 @@ func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[
 		)
 	}
 	switch op.Kind {
-	case "cordon":
+	case KindCordon:
 		return e.cordon(ctx, op)
-	case "drain":
+	case KindDrain:
 		return e.drain(ctx, op)
-	case "benchmark":
+	case KindBenchmark:
 		return e.benchmark(ctx, op)
 	default:
 		return nil, fmt.Errorf("this operator cannot perform %q", op.Kind)
@@ -398,6 +633,39 @@ func failed(op wire.OperationDesired, started, completed time.Time, result map[s
 		Phase:       "failed",
 		Result:      result,
 		Failure:     &wire.OperationFailure{Code: "execution", Message: err.Error(), Retryable: false},
+		StartedAt:   stamp(started),
+		CompletedAt: stamp(completed),
+		ObservedAt:  at(completed),
+	}
+}
+
+// refused is a conclusion the executor reached without performing the operation at all.
+//
+// Retryable is true where `failed` has it false, and the difference is honest rather than
+// convenient: a lane that is full or closing says nothing about whether the benchmark can be run,
+// only that this operator cannot take it now. A cancellation is the other case here and is not
+// retryable, because somebody asked for it to stop.
+func refused(op wire.OperationDesired, when time.Time, code string, retryable bool, err error) wire.OperationObserved {
+	return wire.OperationObserved{
+		OperationID: op.OperationID,
+		ClusterID:   op.ClusterID,
+		Phase:       "failed",
+		Failure:     &wire.OperationFailure{Code: code, Message: err.Error(), Retryable: retryable},
+		CompletedAt: stamp(when),
+		ObservedAt:  at(when),
+	}
+}
+
+// stopped is a conclusion reached because this operator ended the work, not because the work
+// ended. It keeps StartedAt and whatever the operation had measured so far, because the run did
+// begin — the difference from `refused`, which reports something that never started at all.
+func stopped(op wire.OperationDesired, started, completed time.Time, result map[string]string, code string, retryable bool, err error) wire.OperationObserved {
+	return wire.OperationObserved{
+		OperationID: op.OperationID,
+		ClusterID:   op.ClusterID,
+		Phase:       "failed",
+		Result:      result,
+		Failure:     &wire.OperationFailure{Code: code, Message: err.Error(), Retryable: retryable},
 		StartedAt:   stamp(started),
 		CompletedAt: stamp(completed),
 		ObservedAt:  at(completed),
