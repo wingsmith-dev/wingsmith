@@ -290,3 +290,180 @@ export function counted(runs: BenchmarkRun[]): BenchmarkRun[] {
 export function runTarget(run: BenchmarkRun): string | null {
   return run.endpoint_id ?? run.deployment_id ?? null
 }
+
+/**
+ * One number a curve read resolved, or a named absence where it could not.
+ *
+ * `value` is null and `path` still says where the plane looked, which is the
+ * whole discipline: a reading that could not be resolved is a miss with a name,
+ * never a zero. A chart draws it as a gap, because a zero plotted where nothing
+ * was measured is a lie about the hardware.
+ */
+export interface BenchmarkReading {
+  value: number | null
+  unit: string
+  /** The dotted path into the harness export the plane read, resolved or not. */
+  path: string
+}
+
+/**
+ * The readings of one curve point, keyed by the plane's reading id.
+ *
+ * Open to ids this console does not know: the map is served, and a version of
+ * the plane that resolves one more number should not have to wait for a console
+ * release. An id absent from the map is the same fact as one whose value is
+ * null — nothing was read — and `reading()` is how both are asked.
+ */
+export interface BenchmarkCurveReadings {
+  [id: string]: BenchmarkReading | undefined
+}
+
+/**
+ * One step of a stepped request, as the load curve needs it.
+ *
+ * `step_value` is the load that was applied and not the order it was applied
+ * in — a request asking for `[16, 4, 64]` keeps that order, so `step_index` is
+ * position and `step_value` is the x axis.
+ *
+ * A step whose run is still open carries its phase and all-null readings, which
+ * is what lets a running ramp draw itself in progressively rather than appear
+ * whole at the end.
+ */
+export interface BenchmarkCurvePoint {
+  step_index: number
+  /** Null when the run carried no resolved value for the field its request walked. */
+  step_value: number | null
+  run: string
+  phase: string
+  /** A warm-up: drawn so it can be seen, joined to no line and counted by nothing. */
+  discard: boolean
+  readings: BenchmarkCurveReadings
+}
+
+/**
+ * Where the curve turned, derived at read against the pinned criteria version
+ * and stored nowhere.
+ *
+ * Always an object, never null. `found` is false for two different reasons —
+ * every step stayed under the threshold, or too few steps succeeded to say —
+ * and `reason` is the only thing that tells them apart, so nothing in this
+ * console renders the absence of a knee without it.
+ */
+export interface BenchmarkKnee {
+  found: boolean
+  step_index: number | null
+  step_value: number | null
+  method: string
+  metric: string
+  threshold: number | null
+  reason: string
+}
+
+/**
+ * A stepped request read as one curve, derived now.
+ *
+ * `step_field` names the parameter the request walked, so the x axis is
+ * labelled by the plane rather than hardcoded here: the same read serves a
+ * concurrency ramp and an input-length sweep, and a console that assumed
+ * concurrency would mislabel half of them.
+ */
+export interface BenchmarkCurve {
+  request: string
+  serving_digest: string | null
+  step_field: string
+  criteria_version: string
+  points: BenchmarkCurvePoint[]
+  knee: BenchmarkKnee
+}
+
+/** One reading of one point, with an absent id and a null value the same answer. */
+export function reading(point: BenchmarkCurvePoint, id: string): number | null {
+  return point.readings[id]?.value ?? null
+}
+
+/** The unit the plane quoted a reading in, or nothing if it never resolved one. */
+export function readingUnit(
+  point: BenchmarkCurvePoint,
+  id: string
+): string | null {
+  return point.readings[id]?.unit || null
+}
+
+/**
+ * How much of a ramp has landed: the counted steps that reached a terminal
+ * phase, out of the counted steps there are.
+ *
+ * Derived from the points because the points already say it. Warm-ups are
+ * excluded from both halves, for the same reason no aggregate counts them: a
+ * ramp of eight steps behind one warm-up is eight steps of progress, not nine.
+ */
+export function curveProgress(curve: BenchmarkCurve | undefined): {
+  done: number
+  total: number
+  open: number
+  failed: number
+  discarded: number
+} {
+  const points = curve?.points ?? []
+  const counted = points.filter((point) => !point.discard)
+  return {
+    done: counted.filter((point) => !isOpen(point.phase)).length,
+    total: counted.length,
+    open: counted.filter((point) => isOpen(point.phase)).length,
+    failed: counted.filter(
+      (point) => !isOpen(point.phase) && point.phase !== "succeeded"
+    ).length,
+    discarded: points.length - counted.length,
+  }
+}
+
+/**
+ * Whether the curve is still moving, and so still worth re-reading.
+ *
+ * A curve with no steps at all counts as moving. The plane expands a request
+ * into its runs after accepting it, so a ramp read in the moment between the
+ * two comes back empty — and a reader that stopped there would leave the panel
+ * saying "not expanded yet" until somebody reloaded the page. Emptiness is the
+ * one state that cannot say it is finished.
+ */
+export function curveOpen(curve: BenchmarkCurve | undefined): boolean {
+  if (!curve) return false
+  if (curve.points.length === 0) return true
+  return curve.points.some((point) => isOpen(point.phase))
+}
+
+/**
+ * The most recent stepped request among a workload's runs, or nothing.
+ *
+ * The plane has no way to list requests, so the ask is recovered from the runs
+ * it expanded into: a request is stepped when its runs cover more than one
+ * step, which is a fact the runs carry and needs no new endpoint. Recency is
+ * the newest run in the group, because a workload ramp fans out and its runs do
+ * not all start at once.
+ */
+export function latestSteppedRequest(
+  runs: BenchmarkRun[] | undefined
+): string | null {
+  const groups = new Map<string, { steps: Set<number>; at: string }>()
+  for (const run of runs ?? []) {
+    if (!run.request_id) continue
+    const group = groups.get(run.request_id) ?? {
+      steps: new Set<number>(),
+      at: "",
+    }
+    group.steps.add(run.step_index)
+    const at = run.started_at ?? run.created_at
+    if (at > group.at) group.at = at
+    groups.set(run.request_id, group)
+  }
+  let best: string | null = null
+  let bestAt = ""
+  for (const [request, group] of groups) {
+    if (group.steps.size < 2) continue
+    if (group.at > bestAt) {
+      best = request
+      bestAt = group.at
+    }
+  }
+  return best
+}

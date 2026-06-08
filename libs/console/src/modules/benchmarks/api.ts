@@ -2,6 +2,7 @@ import { api, type ListResponse } from "@/lib/api"
 import type {
   BenchmarkBand,
   BenchmarkCreateRequest,
+  BenchmarkCurve,
   BenchmarkHarness,
   BenchmarkRequest,
   BenchmarkRequestCreateRequest,
@@ -98,6 +99,29 @@ export function fetchBenchmarkRequestBands(
   return api.list<BenchmarkBand>(
     `/benchmarks/requests/${encodeURIComponent(ref)}/bands`,
     {}
+  )
+}
+
+/**
+ * One stepped request read as a load curve, with the knee of it.
+ *
+ * The plane's read and not this console's arithmetic: a console that walked the
+ * runs and found its own inflection would be a second, quieter answer to where
+ * a configuration stops paying for latency. Nothing here is stored — the curve
+ * and the knee are both derived at read against the pinned criteria version, so
+ * `criteria` re-derives an old ramp under a newer standard.
+ *
+ * Every reading is `{value, unit, path}` and a value of null is a named miss,
+ * never a zero. Steps whose runs are still open come back with their phase and
+ * nothing measured, which is what makes a running ramp draw itself in.
+ */
+export function fetchBenchmarkCurve(
+  ref: string,
+  criteria?: string
+): Promise<BenchmarkCurve> {
+  return api.get<BenchmarkCurve>(
+    `/benchmarks/requests/${encodeURIComponent(ref)}/curve`,
+    criteria ? { criteria } : undefined
   )
 }
 

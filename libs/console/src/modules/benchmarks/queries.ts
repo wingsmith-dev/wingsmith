@@ -5,6 +5,7 @@ import {
   createBenchmarkRequest,
   fetchBenchmark,
   fetchBenchmarkRequest,
+  fetchBenchmarkCurve,
   fetchBenchmarkRequestBands,
   fetchBenchmarkRequestVerdict,
   fetchBenchmarkVerdict,
@@ -14,8 +15,10 @@ import {
   type BenchmarkFilters,
 } from "./api"
 import {
+  curveOpen,
   isOpen,
   type BenchmarkCreateRequest,
+  type BenchmarkCurve,
   type BenchmarkRequest,
   type BenchmarkRequestCreateRequest,
   type BenchmarkRun,
@@ -162,6 +165,30 @@ export function useRequestBands(request: string | undefined, open?: boolean) {
     queryFn: () => fetchBenchmarkRequestBands(request!),
     enabled: !!request,
     refetchInterval: open ? POLL_MS : false,
+  })
+}
+
+/**
+ * One request read as a load curve, polled while any of its steps is open.
+ *
+ * The same discipline as every other unfinished read here, keyed off the curve
+ * itself rather than off a flag the caller has to keep true: a point carries
+ * its own phase, so the curve says when it has stopped moving and the polling
+ * ends on the read that finished it. The version is part of the key for the
+ * verdict's reason — the same ramp under two standards is two answers.
+ */
+export function useBenchmarkCurve(
+  request: string | undefined | null,
+  criteria?: string
+) {
+  return useQuery({
+    queryKey: ["benchmarks", "requests", "curve", request, criteria],
+    queryFn: () => fetchBenchmarkCurve(request!, criteria),
+    enabled: !!request,
+    refetchInterval: (query) =>
+      curveOpen(query.state.data as BenchmarkCurve | undefined)
+        ? POLL_MS
+        : false,
   })
 }
 

@@ -29,6 +29,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { kneeTile } from "@/modules/benchmarks/display"
 import {
   useServingBenchmarkSummary,
   useWorkloadBenchmarks,
@@ -84,6 +85,7 @@ import {
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
+import { LoadCurvePanel, useWorkbenchCurve } from "./Curve"
 import { EconomicsTab, EconomicsTabContent } from "./Economics"
 import {
   EditCapabilitiesDialog,
@@ -127,6 +129,12 @@ export function WorkloadDetailPage() {
     [workload]
   )
   const { data: benchmarks } = useWorkloadBenchmarks(deploymentIds)
+  /**
+   * The most recent ramp read as a curve. Recovered from the runs rather than
+   * listed — the plane has no request collection — and read once here so the
+   * Workbench tiles and the curve panel share one query.
+   */
+  const curve = useWorkbenchCurve(benchmarks)
   /**
    * What this configuration has been measured at, asked by digest rather than by
    * workload. Safe to ask unconditionally — an unmeasured digest is a zero count,
@@ -598,8 +606,21 @@ export function WorkloadDetailPage() {
                   label="Runs recorded"
                   value={String(benchmarks?.length ?? 0)}
                 />
-                {/* TODO-API sustainable concurrency is a data-plane analytic, not a benchmark field */}
-                <StatTile label="Sustainable concurrency" value="72" />
+                {/*
+                  The knee of the most recent ramp, derived by the plane at read
+                  against the pinned criteria version. "not found" and "still
+                  ramping" are different facts and the tile says which, because a
+                  knee nobody found is not a knee at zero.
+                */}
+                <StatTile
+                  label={
+                    curve.data
+                      ? `Knee · ${curve.data.step_field}`
+                      : "Knee concurrency"
+                  }
+                  value={kneeTile(curve.data).value}
+                  small={kneeTile(curve.data).small}
+                />
                 {/*
                   Rolled up by the plane per `serving_digest`, so it counts every
                   graded run of this configuration — including runs taken against a
@@ -623,62 +644,11 @@ export function WorkloadDetailPage() {
 
               <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
                 <div className="flex min-w-0 flex-col gap-4">
-                  <Panel
-                    title="Finding the inflection point"
-                    subtitle="Throughput and p99 latency across a concurrency sweep, fp8 · awq · 8x H100"
-                  >
-                    {/* TODO-API concurrency-sweep results not exposed by the plane */}
-                    <ChartLegend
-                      items={[
-                        {
-                          tone: "primary",
-                          label: "Throughput",
-                          value: "3.2k → 19.3k tok/s",
-                        },
-                        {
-                          tone: "danger",
-                          label: "p99 latency",
-                          value: "220ms → 4.8s",
-                        },
-                      ]}
-                    />
-                    <MiniChart
-                      lines={[
-                        { points: SWEEP_THROUGHPUT, tone: "primary" },
-                        { points: SWEEP_LATENCY, tone: "danger" },
-                      ]}
-                    />
-                    <ChartAxis labels={SWEEP_AXIS} />
-                    <FieldGrid>
-                      <Field label="Inflection point">
-                        72 concurrent requests
-                      </Field>
-                      <Field label="Beyond 72">
-                        Throughput gains flatten (+4%) while p99 latency grows
-                        5x
-                      </Field>
-                    </FieldGrid>
-                  </Panel>
-
-                  <Panel
-                    title="Parameter sweep"
-                    subtitle="Serving-engine tuning, fixed at 64 concurrent requests"
-                    action={
-                      <WriteAction>
-                        <Button size="sm" onClick={() => setBenchOpen(true)}>
-                          Run benchmark
-                        </Button>
-                      </WriteAction>
-                    }
-                  >
-                    {/* TODO-API parameter-sweep tuning is not aggregated by the plane */}
-                    <DataTable
-                      columns={sweepColumns}
-                      list={staticList(MOCK_SWEEP)}
-                      rowKey={(r) => r.run}
-                      empty=""
-                    />
-                  </Panel>
+                  <LoadCurvePanel
+                    curve={curve}
+                    placed={workload.deployments.length > 0}
+                    onStartRamp={() => setBenchOpen(true)}
+                  />
 
                   <Panel
                     title="Run history"
@@ -717,21 +687,15 @@ export function WorkloadDetailPage() {
                     </WriteAction>
                   </Panel>
 
-                  <Panel title="Recommendation">
-                    {/* TODO-API tuning recommendations not computed by the plane */}
-                    <FieldGrid>
-                      <Field label="Recommended config">
-                        fp8 · awq · 8x H100 (current)
-                      </Field>
-                      <Field label="Headroom before re-tuning">
-                        ~30% traffic growth
-                      </Field>
-                      <Field label="Next suggested test">
-                        Speculative decoding soak test (run 4)
-                      </Field>
-                      <Field label="Last run by">perf-eng · Aug 14</Field>
-                    </FieldGrid>
-                  </Panel>
+                  <Unbacked
+                    title="Engine-argument sweep"
+                    note="Walking the serving engine's own flags is a different request object to a ramp: a ramp walks one harness parameter, and max_num_seqs, the KV block size and speculative decoding live on the workload's engine args. Nothing on the plane expands that yet, so no numbers are shown rather than invented ones."
+                  />
+
+                  <Unbacked
+                    title="Headroom before re-tuning"
+                    note="Would need the live arrival rate at the gateway crossed with the offline knee. The plane computes neither together, and a console that multiplied them would be inventing the answer."
+                  />
                 </div>
               </div>
             </TabsContent>
@@ -2084,6 +2048,34 @@ function CanaryCard({
 }
 
 /**
+ * A panel for an answer the plane cannot give yet.
+ *
+ * Kept rather than deleted, because the question is real and the shape of the
+ * page is the argument for building it — and drawn as an empty frame with the
+ * reason in it rather than as a number, because a designed figure sitting where
+ * a measured one goes is indistinguishable from a measurement once somebody
+ * screenshots it.
+ */
+function Unbacked({ title, note }: { title: string; note: string }) {
+  return (
+    <Card className="border-dashed">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-sm text-muted-foreground">
+          {title}
+          <span className="rounded-full border border-dashed px-1.5 py-0.5 font-mono text-2xs text-muted-foreground/60">
+            not measured yet
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {/* TODO-API nothing on the plane answers this; see the note. */}
+        <p className="text-2xs text-muted-foreground/60">{note}</p>
+      </CardContent>
+    </Card>
+  )
+}
+
+/**
  * A `ListState` wrapper for rows already in hand — a derived table, or one of
  * the designed-but-unbacked ones — so they render through the same `DataTable`
  * as the paged, live queries.
@@ -2099,12 +2091,6 @@ function staticList<T>(items: T[]) {
     fetchNextPage: () => {},
   }
 }
-
-/* ---- mocked series (all TODO-API, see call sites) ------------------- */
-
-const SWEEP_THROUGHPUT = [3200, 6800, 10400, 13600, 16200, 18420, 19000, 19300]
-const SWEEP_LATENCY = [220, 240, 280, 340, 420, 890, 2600, 4800]
-const SWEEP_AXIS = ["8", "16", "32", "48", "64", "72", "96", "128"]
 
 /* ---- mocked columns and rows (all TODO-API, see call sites) ---------- */
 
@@ -2151,102 +2137,6 @@ const workloadEndpointColumns = [
     header: "Updated",
     align: "right" as const,
     cell: (e: Endpoint) => mono(formatRelative(e.updated_at ?? e.created_at)),
-  },
-]
-
-interface SweepRow {
-  run: string
-  seqs: string
-  batch: string
-  kv: string
-  spec: string
-  throughput: string
-  p99: string
-  verdict: string
-}
-const MOCK_SWEEP: SweepRow[] = [
-  {
-    run: "1",
-    seqs: "32",
-    batch: "4096",
-    kv: "16",
-    spec: "Off",
-    throughput: "12,100 tok/s",
-    p99: "340ms",
-    verdict: "Baseline",
-  },
-  {
-    run: "2",
-    seqs: "64",
-    batch: "8192",
-    kv: "16",
-    spec: "Off",
-    throughput: "16,900 tok/s",
-    p99: "420ms",
-    verdict: "Better",
-  },
-  {
-    run: "3",
-    seqs: "64",
-    batch: "8192",
-    kv: "32",
-    spec: "Off",
-    throughput: "18,420 tok/s",
-    p99: "890ms",
-    verdict: "Current",
-  },
-  {
-    run: "4",
-    seqs: "64",
-    batch: "8192",
-    kv: "32",
-    spec: "On · draft 8b",
-    throughput: "21,600 tok/s",
-    p99: "610ms",
-    verdict: "Needs soak",
-  },
-]
-const sweepColumns = [
-  { key: "run", header: "Run", cell: (r: SweepRow) => mono(r.run) },
-  {
-    key: "seqs",
-    header: "max_num_seqs",
-    align: "right" as const,
-    cell: (r: SweepRow) => mono(r.seqs),
-  },
-  {
-    key: "batch",
-    header: "max_batch_tokens",
-    align: "right" as const,
-    cell: (r: SweepRow) => mono(r.batch),
-  },
-  {
-    key: "kv",
-    header: "KV block",
-    align: "right" as const,
-    cell: (r: SweepRow) => mono(r.kv),
-  },
-  {
-    key: "spec",
-    header: "Spec. decoding",
-    cell: (r: SweepRow) => <span className="text-xs">{r.spec}</span>,
-  },
-  {
-    key: "throughput",
-    header: "Throughput",
-    align: "right" as const,
-    cell: (r: SweepRow) => mono(r.throughput),
-  },
-  {
-    key: "p99",
-    header: "p99 latency",
-    align: "right" as const,
-    cell: (r: SweepRow) => mono(r.p99),
-  },
-  {
-    key: "verdict",
-    header: "Verdict",
-    cell: (r: SweepRow) => <span className="text-xs">{r.verdict}</span>,
   },
 ]
 
