@@ -276,12 +276,10 @@ export function summariseDay(inputs: EconomicsInputs): DayEconomics {
   const marginPerDay = revenuePerDay - costPerDay
 
   const outputTokensPerDay =
-    unit.ote > 0
-      ? (capacity.otePerSecond / unit.ote) * meanServed * 86400
-      : 0
-  const billed =
-    outputTokensPerDay * (1 + unit.freshInput + unit.cachedInput)
-  const idleGpuHoursPerDay = Math.max(inputs.gpuCount, 0) * 24 * (1 - meanServed)
+    unit.ote > 0 ? (capacity.otePerSecond / unit.ote) * meanServed * 86400 : 0
+  const billed = outputTokensPerDay * (1 + unit.freshInput + unit.cachedInput)
+  const idleGpuHoursPerDay =
+    Math.max(inputs.gpuCount, 0) * 24 * (1 - meanServed)
 
   return {
     points,
@@ -360,8 +358,7 @@ export function breakEven(inputs: EconomicsInputs): BreakEven {
     0,
     MAX_CURVE_SCALE
   )
-  const curveMeanOffered =
-    curveScale === null ? null : mean(curve) * curveScale
+  const curveMeanOffered = curveScale === null ? null : mean(curve) * curveScale
 
   const servedUnitsPerDay =
     unit.ote > 0
@@ -372,8 +369,7 @@ export function breakEven(inputs: EconomicsInputs): BreakEven {
     flatUtilization: flat,
     curveScale,
     curveMeanOffered,
-    outputTokensPerDay:
-      unit.revenue > 0 ? day.costPerDay / unit.revenue : null,
+    outputTokensPerDay: unit.revenue > 0 ? day.costPerDay / unit.revenue : null,
     outputPricePerMTok:
       servedUnitsPerDay > 0
         ? (day.costPerDay / servedUnitsPerDay) * 1e6 -
@@ -417,7 +413,10 @@ export interface Reference {
  */
 export function reference(inputs: EconomicsInputs): Reference | null {
   const { referenceInputPricePerMTok, referenceOutputPricePerMTok } = inputs
-  if (referenceInputPricePerMTok === null || referenceOutputPricePerMTok === null)
+  if (
+    referenceInputPricePerMTok === null ||
+    referenceOutputPricePerMTok === null
+  )
     return null
   const ratio = Math.max(inputs.inputPerOutputToken, 0)
   const unit = demandUnit(inputs)
@@ -519,7 +518,10 @@ export const LEVERS: readonly Lever[] = [
     write: (i, v) => {
       const current = mean(normaliseCurve(i.utilization))
       const factor = current > 0 ? v / current : 0
-      return { ...i, utilization: normaliseCurve(i.utilization).map((u) => u * factor) }
+      return {
+        ...i,
+        utilization: normaliseCurve(i.utilization).map((u) => u * factor),
+      }
     },
     range: [0, 4],
   },
@@ -562,10 +564,12 @@ const NUDGE = 0.1
 export function sensitivity(inputs: EconomicsInputs): Sensitivity[] {
   return LEVERS.map((lever) => {
     const current = lever.read(inputs)
-    const up = summariseDay(lever.write(inputs, current * (1 + NUDGE)))
-      .marginPerDay
-    const down = summariseDay(lever.write(inputs, current * (1 - NUDGE)))
-      .marginPerDay
+    const up = summariseDay(
+      lever.write(inputs, current * (1 + NUDGE))
+    ).marginPerDay
+    const down = summariseDay(
+      lever.write(inputs, current * (1 - NUDGE))
+    ).marginPerDay
     const zero = findSignChange(
       (value) => summariseDay(lever.write(inputs, value)).marginPerDay,
       lever.range

@@ -84,6 +84,7 @@ import {
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
+import { EconomicsTab, EconomicsTabContent } from "./Economics"
 import {
   EditCapabilitiesDialog,
   EditDetailsDialog,
@@ -296,6 +297,7 @@ export function WorkloadDetailPage() {
             <ViewTab value="workbench" icon={IconFlask}>
               Workbench
             </ViewTab>
+            <EconomicsTab />
             <ViewTab value="placement" icon={IconCpu}>
               Placement
             </ViewTab>
@@ -576,6 +578,8 @@ export function WorkloadDetailPage() {
                 />
               )}
             </TabsContent>
+
+            <EconomicsTabContent workload={workload} />
 
             {/* ---- Workbench ---------------------------------------- */}
             <TabsContent value="workbench" className="space-y-4">

@@ -106,11 +106,13 @@ describe("summariseDay", () => {
 
   it("is the whole point: two days with the same mean earn different money", () => {
     const even = summariseDay(inputs({ utilization: flat(1) }))
-    const spiky = summariseDay(inputs({
-      utilization: Array.from({ length: DAY_POINTS }, (_, i) =>
-        i % 2 === 0 ? 2 : 0
-      ),
-    }))
+    const spiky = summariseDay(
+      inputs({
+        utilization: Array.from({ length: DAY_POINTS }, (_, i) =>
+          i % 2 === 0 ? 2 : 0
+        ),
+      })
+    )
     expect(spiky.meanOffered).toBe(even.meanOffered)
     expect(spiky.revenuePerDay).toBeCloseTo(even.revenuePerDay / 2, 6)
     expect(spiky.clippedRevenuePerDay).toBeCloseTo(even.revenuePerDay / 2, 6)
@@ -118,8 +120,9 @@ describe("summariseDay", () => {
   })
 
   it("has nothing to clip below capacity", () => {
-    expect(summariseDay(inputs({ utilization: flat(0.5) })).clippedRevenuePerDay)
-      .toBe(0)
+    expect(
+      summariseDay(inputs({ utilization: flat(0.5) })).clippedRevenuePerDay
+    ).toBe(0)
   })
 
   it("costs out the cards it held and did not use", () => {
@@ -144,11 +147,13 @@ describe("breakEven", () => {
 
   it("needs far more demand out of a peaky day, because the peak is thrown away", () => {
     // One two-hour spike at ten times capacity, a flat 20% the rest of the day.
-    const spiky = breakEven(inputs({
-      utilization: Array.from({ length: DAY_POINTS }, (_, i) =>
-        i === 0 ? 10 : 0.2
-      ),
-    }))
+    const spiky = breakEven(
+      inputs({
+        utilization: Array.from({ length: DAY_POINTS }, (_, i) =>
+          i === 0 ? 10 : 0.2
+        ),
+      })
+    )
     // 4.32 x (1 + 11 x 0.2s) = 24 solves at s = 2.07, and the spike is clipped
     // throughout — so the day must offer twice its own capacity on average.
     expect(spiky.curveScale!).toBeCloseTo(2.066, 2)
@@ -176,7 +181,9 @@ describe("breakEven", () => {
   })
 
   it("asks a real price of a day that does not cover itself", () => {
-    const answer = breakEven(inputs({ inputPricePerMTok: 0, utilization: flat(0.2) }))
+    const answer = breakEven(
+      inputs({ inputPricePerMTok: 0, utilization: flat(0.2) })
+    )
     // 100/2 x 0.2 x 86400 = 864k output tokens for $24.
     expect(answer.outputPricePerMTok).toBeCloseTo((24 / 864_000) * 1e6, 6)
   })
@@ -196,11 +203,13 @@ describe("degenerate models", () => {
   })
 
   it("with no price, earns nothing at any volume", () => {
-    const model = economics(inputs({
-      inputPricePerMTok: 0,
-      outputPricePerMTok: 0,
-      cachedInputPricePerMTok: 0,
-    }))
+    const model = economics(
+      inputs({
+        inputPricePerMTok: 0,
+        outputPricePerMTok: 0,
+        cachedInputPricePerMTok: 0,
+      })
+    )
     expect(model.day.revenuePerDay).toBe(0)
     expect(model.revenuePerHourAtCapacity).toBe(0)
     expect(model.breakEven.outputTokensPerDay).toBeNull()
@@ -286,10 +295,12 @@ describe("reference", () => {
   })
 
   it("blends both rates over the mix actually served", () => {
-    const answer = reference(inputs({
-      referenceInputPricePerMTok: 2,
-      referenceOutputPricePerMTok: 6,
-    }))!
+    const answer = reference(
+      inputs({
+        referenceInputPricePerMTok: 2,
+        referenceOutputPricePerMTok: 6,
+      })
+    )!
     expect(answer.ours).toBeCloseTo(12, 9)
     expect(answer.theirs).toBeCloseTo(26, 9)
     expect(answer.delta).toBeCloseTo(-14 / 26, 9)

@@ -2,7 +2,6 @@ import { useCallback, useMemo, useState } from "react"
 import {
   DEFAULT_PREFILL_MULTIPLE,
   DEFAULT_UTILIZATION_CURVE,
-  type CapacitySource,
   type EconomicsInputs,
 } from "./model"
 
@@ -16,8 +15,7 @@ import {
  * changing `replicas` move capacity and cost together, which is the whole point
  * of being able to change it.
  */
-export interface EconomicsForm
-  extends Omit<EconomicsInputs, "gpuCount"> {
+export interface EconomicsForm extends Omit<EconomicsInputs, "gpuCount"> {
   gpusPerReplica: number
 }
 
@@ -86,6 +84,8 @@ export interface EconomicsFormState {
   /** Whether anything has been saved for this workload, or it is still the seed. */
   saved: boolean
   set: <K extends keyof EconomicsForm>(key: K, value: EconomicsForm[K]) => void
+  /** Two fields at once. Two `set` calls in one handler would race on the same form. */
+  merge: (patch: Partial<EconomicsForm>) => void
   setUtilizationPoint: (index: number, value: number) => void
   reset: () => void
 }
@@ -108,16 +108,16 @@ export function useEconomicsForm(
     read(workloadId)
   )
 
-  const form = useMemo(
-    () => stored ?? defaultForm(seed),
-    [stored, seed]
-  )
+  const form = useMemo(() => stored ?? defaultForm(seed), [stored, seed])
 
   const write = useCallback(
     (next: EconomicsForm) => {
       setStored(next)
       try {
-        window.localStorage.setItem(storageKey(workloadId), JSON.stringify(next))
+        window.localStorage.setItem(
+          storageKey(workloadId),
+          JSON.stringify(next)
+        )
       } catch {
         /* A browser refusing storage still gets a working model, just not a durable one. */
       }
@@ -128,6 +128,13 @@ export function useEconomicsForm(
   const set = useCallback(
     <K extends keyof EconomicsForm>(key: K, value: EconomicsForm[K]) => {
       write({ ...form, [key]: value })
+    },
+    [form, write]
+  )
+
+  const merge = useCallback(
+    (patch: Partial<EconomicsForm>) => {
+      write({ ...form, ...patch })
     },
     [form, write]
   )
@@ -151,5 +158,12 @@ export function useEconomicsForm(
     }
   }, [workloadId])
 
-  return { form, saved: stored !== null, set, setUtilizationPoint, reset }
+  return {
+    form,
+    saved: stored !== null,
+    set,
+    merge,
+    setUtilizationPoint,
+    reset,
+  }
 }
