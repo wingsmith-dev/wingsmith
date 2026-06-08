@@ -763,6 +763,28 @@ class OperationDesired(Struct):
     created_at: str
 
 
+class OperationCancel(Struct):
+    """Withdraws an operation the plane has already sent.
+
+    A message of its own rather than a field on `OperationDesired`. The operation
+    is already accepted and probably already running, so what travels here is a
+    second imperative about the first, not a restatement of it — and re-sending
+    the desired frame with a flag on it would make the withdrawal prunable by a
+    resync, which is the property operations are kept outside the snapshot to
+    avoid.
+
+    There is no reply of its own. The operator answers on `operation.observed`
+    with a terminal phase, the same as it would for an operation that ended by
+    itself, and ingestion closes the row from there.
+    """
+
+    operation_id: str
+    cluster_id: str
+    reason: str
+    requested_by: str
+    requested_at: str
+
+
 class OperationFailure(Struct):
     code: str
     message: str
@@ -848,6 +870,7 @@ MESSAGE_TYPES: dict[str, type[Struct]] = {
     "component.observed": ComponentObserved,
     "operation.desired": OperationDesired,
     "operation.observed": OperationObserved,
+    "operation.cancel": OperationCancel,
     "benchmark.observed": BenchmarkObserved,
 }
 

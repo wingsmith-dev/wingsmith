@@ -1,4 +1,5 @@
 import inspect
+import datetime as dt
 
 import pytest
 
@@ -25,6 +26,10 @@ from app.modules.operations.repository import OperationRepository
 from app.modules.operations.repository import target_kind
 from app.modules.operations.repository import parse_target
 from app.modules.operations.repository import target_model
+
+
+NODE_UID = new_uid(NODE)
+CLUSTER_UID = new_uid(CLUSTER)
 
 
 @pytest.fixture
@@ -356,3 +361,96 @@ def test_summary_schema_covers_phase_mix_and_both_24h_terminals():
 
     fields = set(OperationSummarySchema.__struct_fields__)
     assert fields == {"total", "by_phase", "failed_24h", "succeeded_24h"}
+
+
+class _StubSession:
+    """Answers `_target_uid`'s single scalar and nothing else."""
+
+    def __init__(self, target_uid: str) -> None:
+        self._target_uid = target_uid
+
+    async def scalar(self, _query):
+        return self._target_uid
+
+
+def _operation(**overrides):
+    from app.db.models import Operation
+
+    operation = Operation(
+        uid=new_uid(OPERATION),
+        type="node.drain",
+        target_type="node",
+        target_id=1,
+        reason="driver upgrade",
+        requested_by="operator@example.com",
+        phase="running",
+        payload={"parameters": {"grace_period_seconds": "1800"}},
+    )
+    operation.created_at = dt.datetime(2026, 8, 19, 14, 2, tzinfo=dt.UTC)
+    operation.deadline_at = None
+    operation.cancel_requested_at = None
+    for key, value in overrides.items():
+        setattr(operation, key, value)
+    return operation
+
+
+async def test_an_operation_nobody_withdrew_renders_as_the_instruction() -> None:
+    from app.ingestion.operations import DESIRED
+    from app.ingestion.operations import _render
+
+    rendered = await _render(_StubSession(NODE_UID), _operation(), CLUSTER_UID)
+
+    assert rendered is not None
+    type_name, payload = rendered
+    assert type_name == DESIRED
+    assert payload.operation_id
+    assert payload.kind == wire_kind("node.drain")
+
+
+async def test_a_withdrawn_operation_renders_as_a_cancellation_and_never_again_as_the_instruction() -> None:
+    """The property that keeps a reconnect from re-sending a drain the caller stopped.
+
+    `open_operations` replays every operation that has not reached a terminal
+    phase, and a cancelled-but-still-running one is in that set by definition —
+    the cluster has not answered yet. Rendering the instruction there would ask
+    for the work again on exactly the path that exists to recover it.
+    """
+    from app.ingestion.operations import CANCEL
+    from app.ingestion.operations import _render
+
+    requested = dt.datetime(2026, 8, 19, 14, 31, 44, tzinfo=dt.UTC)
+    rendered = await _render(
+        _StubSession(NODE_UID), _operation(cancel_requested_at=requested), CLUSTER_UID
+    )
+
+    assert rendered is not None
+    type_name, payload = rendered
+    assert type_name == CANCEL
+    assert payload.cluster_id == CLUSTER_UID
+    assert payload.requested_at.startswith("2026-08-19T14:31:44")
+    assert not hasattr(payload, "kind")
+
+
+async def test_a_cancellation_carries_who_asked_and_why() -> None:
+    """Asserted on the cancellation type itself, not on the fields alone.
+
+    `OperationDesired` carries a `requested_by` and a `reason` too, so a test
+    that checked only those two would pass just as well against the frame this
+    one exists to prove is no longer sent.
+    """
+    from app.hub.messages import OperationCancel
+    from app.ingestion.operations import CANCEL
+    from app.ingestion.operations import _render
+
+    rendered = await _render(
+        _StubSession(NODE_UID),
+        _operation(cancel_requested_at=dt.datetime(2026, 8, 19, 14, 31, tzinfo=dt.UTC)),
+        CLUSTER_UID,
+    )
+
+    assert rendered is not None
+    type_name, payload = rendered
+    assert type_name == CANCEL
+    assert isinstance(payload, OperationCancel)
+    assert payload.requested_by == "operator@example.com"
+    assert payload.reason == "driver upgrade"

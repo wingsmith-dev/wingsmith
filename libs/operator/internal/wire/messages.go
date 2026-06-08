@@ -692,6 +692,26 @@ type OperationObserved struct {
 	ObservedAt  string            `json:"observed_at"`
 }
 
+// OperationCancel withdraws an operation the plane has already sent.
+//
+// A frame of its own rather than a field on OperationDesired, because a cancellation is not a
+// restatement of the instruction: the operation is already accepted, probably already running, and
+// what is being sent is a second imperative about the first. Re-sending the desired frame with a
+// flag on it would also make cancellation prunable by a resync, which is exactly the property
+// operations are kept out of the snapshot to avoid.
+//
+// The receiver answers by reporting a terminal phase for OperationID, the same as it would for an
+// operation that finished on its own. An id this operator does not hold is not an error — the
+// operation may have finished a moment before the frame arrived, or been refused, or belonged to a
+// process that has since restarted — so a cancellation is at-least-once and idempotent.
+type OperationCancel struct {
+	OperationID string `json:"operation_id"`
+	ClusterID   string `json:"cluster_id"`
+	Reason      string `json:"reason"`
+	RequestedBy string `json:"requested_by"`
+	RequestedAt string `json:"requested_at"`
+}
+
 // BenchmarkObserved is the outcome of a benchmark run.
 //
 // Beside OperationObserved rather than inside it: that message's Result is a map[string]string and
@@ -749,5 +769,6 @@ var MessageTypes = map[string]func() any{
 	"component.observed":  func() any { return &ComponentObserved{} },
 	"operation.desired":   func() any { return &OperationDesired{} },
 	"operation.observed":  func() any { return &OperationObserved{} },
+	"operation.cancel":    func() any { return &OperationCancel{} },
 	"benchmark.observed":  func() any { return &BenchmarkObserved{} },
 }

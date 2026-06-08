@@ -1,0 +1,15 @@
+{
+  "v": 1,
+  "type": "operation.cancel",
+  "id": "01j9x2e5g7qk8v3b0yhn4tzc8e",
+  "ts": "2026-08-19T14:31:44.907Z",
+  "seq": 4498,
+  "ack": 8871,
+  "payload": {
+    "operation_id": "opr_01j9x2kkkkkkkkkkkkkkkkkkkk",
+    "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+    "reason": "the ramp was superseded by a longer one",
+    "requested_by": "operator@example.com",
+    "requested_at": "2026-08-19T14:31:44.612Z"
+  }
+}

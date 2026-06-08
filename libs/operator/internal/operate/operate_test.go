@@ -735,3 +735,97 @@ func TestCloseIsSafeOnAnExecutorThatNeverStartedALane(t *testing.T) {
 		t.Fatal("Close blocked on a lane that was never started")
 	}
 }
+
+// withdraw sends an operation.cancel the way the hub does, through the tee's dispatch.
+func withdraw(t *testing.T, e *Executor, id string) {
+	t.Helper()
+	payload, err := json.Marshal(wire.OperationCancel{
+		OperationID: id,
+		ClusterID:   testCluster,
+		Reason:      "superseded by a longer ramp",
+		RequestedBy: "operator@example.com",
+		RequestedAt: time.Now().UTC().Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	handler := WithExecutor(refusingHandler{t: t}, e)
+	if err := handler.Handle(context.Background(), &syncpkg.Envelope{
+		Type: TypeOperationCancel, Payload: payload,
+	}); err != nil {
+		t.Fatalf("handle cancel: %v", err)
+	}
+}
+
+// refusingHandler fails the test if a frame reaches the inner handler.
+type refusingHandler struct{ t *testing.T }
+
+func (h refusingHandler) Handle(_ context.Context, e *syncpkg.Envelope) error {
+	h.t.Errorf("a %s frame was passed on to the desired-state handler", e.Type)
+	return nil
+}
+
+func (h refusingHandler) Resync(context.Context) error { return nil }
+
+func TestACancellationFromTheHubStopsAQueuedStep(t *testing.T) {
+	hold := make(chan struct{})
+	probe := &laneProbe{hold: hold}
+	objects := append(stepObjects(0), stepObjects(1)...)
+	e, rec := laneExecutor(t, probe, 0, objects...)
+
+	submit(t, e, stepOperation(0))
+	waitFor(t, "the first step to reach the harness", func() bool {
+		_, _, active := probe.seen()
+		return active == 1
+	})
+	queuedStep := stepOperation(1)
+	submit(t, e, queuedStep)
+
+	withdraw(t, e, queuedStep.OperationID)
+	close(hold)
+
+	waitFor(t, "the withdrawn step to conclude", func() bool {
+		_, ok := concluded(rec, queuedStep.OperationID)
+		return ok
+	})
+	frame, _ := concluded(rec, queuedStep.OperationID)
+	if frame.Phase != "failed" || frame.Failure == nil || frame.Failure.Code != "cancelled" {
+		t.Fatalf("frame = %+v, want a failure that says it was cancelled", frame)
+	}
+	if benchmarked(rec, stepBenchmarkID(1)) {
+		t.Error("a step the hub withdrew still ran the harness")
+	}
+}
+
+// TestACancellationForSomethingAlreadyOverIsNotAnError covers the ordinary race.
+//
+// The operation finishes a moment before the withdrawal lands, which is the common case rather
+// than an edge one: a cancellation is a round trip and the work does not pause for it. Reporting a
+// phase here would overwrite the conclusion that actually happened with a guess about it.
+func TestACancellationForSomethingAlreadyOverIsNotAnError(t *testing.T) {
+	probe := &laneProbe{}
+	e, rec := laneExecutor(t, probe, 0, stepObjects(0)...)
+
+	step := stepOperation(0)
+	submit(t, e, step)
+	waitFor(t, "the step to conclude", func() bool {
+		_, ok := concluded(rec, step.OperationID)
+		return ok
+	})
+	before, _ := concluded(rec, step.OperationID)
+
+	withdraw(t, e, step.OperationID)
+
+	after, ok := concluded(rec, step.OperationID)
+	if !ok || after.Phase != before.Phase {
+		t.Fatalf("phase = %q, want the conclusion it already had (%q)", after.Phase, before.Phase)
+	}
+}
+
+func TestACancellationIsNeverPassedToTheDesiredStateHandler(t *testing.T) {
+	probe := &laneProbe{}
+	e, _ := laneExecutor(t, probe, 0)
+
+	// refusingHandler fails the test if the frame reaches it.
+	withdraw(t, e, "opr_nothing_here_holds_this")
+}

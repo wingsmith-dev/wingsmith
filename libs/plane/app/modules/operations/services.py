@@ -360,7 +360,11 @@ class OperationService:
         `cancel_requested_at` is the plane's column and `phase` is ingestion's,
         which is what lets a `running` operation be cancelled at all: the request
         is a fact the cluster observes and answers with a terminal phase, not a
-        phase the plane asserts on the cluster's behalf. While the operation is
+        phase the plane asserts on the cluster's behalf. The cluster is then told:
+        an operation past `pending` has reached one, and the hint makes the hub
+        re-read a row that now renders as `operation.cancel` rather than as the
+        instruction it was. Announcing only in that branch is deliberate — the
+        pending case was never sent, so there is nothing out there to withdraw. While the operation is
         still `pending` nothing has reported on it and no writer can be raced, so
         the phase moves to `cancelled` here as well and the request is recorded
         alongside it — one code path, and the pending case does not wait on a
@@ -386,4 +390,8 @@ class OperationService:
             # open, and it is left open for ever unless the cancellation is carried across here.
             await self.db.execute(follows_operation(operation.uid, "cancelled"))
         await self.db.commit()
+        if operation.phase != "cancelled":
+            cluster_uid = await self.repo.cluster_uid(operation.cluster_id)
+            if cluster_uid is not None:
+                await self._announce(cluster_uid, operation.uid)
         return await self.get(operation.uid)

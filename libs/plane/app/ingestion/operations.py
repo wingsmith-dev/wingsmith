@@ -1,4 +1,4 @@
-"""Operations, read out of Postgres and shaped into `operation.desired`.
+"""Operations, read out of Postgres and shaped into the frame each is owed.
 
 Beside `desired.py` rather than inside it, and the distance is the point. That
 module renders the resync snapshot, and everything a snapshot carries is
@@ -14,6 +14,10 @@ Read-only, like its neighbour: nothing here opens a transaction or writes a row.
 The wire kind and the open phases come from `app.modules.operations` rather than
 being restated here, because a second copy of that table is a second answer to
 what `node.uncordon` puts on the wire.
+
+Two frames, not one. An operation the plane has asked to stop renders as
+`operation.cancel` and never again as the instruction, which is what stops a
+reconnect from re-sending a drain the caller already withdrew.
 """
 
 from collections.abc import AsyncIterator
@@ -23,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Cluster
 from app.db.models import Operation
+from app.hub.messages import OperationCancel
 from app.hub.messages import OperationTarget
 from app.hub.messages import OperationDesired
 from app.ingestion.desired import format_ts
@@ -35,6 +40,7 @@ from app.modules.operations.repository import TARGET_TABLES
 
 
 DESIRED = "operation.desired"
+CANCEL = "operation.cancel"
 
 CORDON_DIRECTION = {"node.cordon": "true", "node.uncordon": "false"}
 """Which way the shared `cordon` kind is being asked to go.
@@ -45,7 +51,7 @@ tell the two apart.
 """
 
 
-async def operation_desired(db: AsyncSession, uid: str) -> tuple[str, OperationDesired] | None:
+async def operation_desired(db: AsyncSession, uid: str) -> tuple[str, OperationDesired | OperationCancel] | None:
     """One operation, rendered for the cluster it was created against.
 
     `None` when there is no such operation, when it belongs to no cluster, or
@@ -62,7 +68,9 @@ async def operation_desired(db: AsyncSession, uid: str) -> tuple[str, OperationD
     return await _render(db, row[0], row[1])
 
 
-async def open_operations(db: AsyncSession, cluster_uid: str) -> AsyncIterator[tuple[str, OperationDesired]]:
+async def open_operations(
+    db: AsyncSession, cluster_uid: str
+) -> AsyncIterator[tuple[str, OperationDesired | OperationCancel]]:
     """Every operation for one cluster that has not reached a terminal phase.
 
     Oldest first, because an operator that was offline through several of them
@@ -82,12 +90,32 @@ async def open_operations(db: AsyncSession, cluster_uid: str) -> AsyncIterator[t
             yield rendered
 
 
-async def _render(db: AsyncSession, operation: Operation, cluster_uid: str) -> tuple[str, OperationDesired] | None:
+async def _render(
+    db: AsyncSession, operation: Operation, cluster_uid: str
+) -> tuple[str, OperationDesired | OperationCancel] | None:
+    """The frame this operation is currently owed, which is not always the instruction.
+
+    An operation the plane has asked to stop renders as `operation.cancel` and
+    never again as `operation.desired`. One row therefore has two renderings and
+    this is where they part, which keeps every caller — the live hint, the replay
+    of open operations on reconnect — sending the right one without knowing there
+    are two. Re-sending the instruction to a cluster that was told to abandon it
+    is the failure this ordering exists to prevent, and a reconnect is exactly
+    when it would happen.
+    """
     if operation.type not in TYPES:
         return None
     target_uid = await _target_uid(db, operation)
     if target_uid is None:
         return None
+    if operation.cancel_requested_at is not None:
+        return CANCEL, OperationCancel(
+            operation_id=operation.uid,
+            cluster_id=cluster_uid,
+            reason=operation.reason or "",
+            requested_by=operation.requested_by,
+            requested_at=format_ts(operation.cancel_requested_at),
+        )
     return DESIRED, OperationDesired(
         operation_id=operation.uid,
         cluster_id=cluster_uid,

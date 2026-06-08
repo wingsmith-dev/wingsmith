@@ -468,6 +468,7 @@ artifact, which is what puts the download on the timeline of every workload wait
 |---|---|---|
 | `operation.desired` | hub → op | typed: drain, cordon, reboot, device reset, cache warm, roll, upgrade, benchmark. Carries target, reason, requested_by, deadline |
 | `operation.observed` | op → hub | phase, progress, result, failure |
+| `operation.cancel` | hub → op | withdraws an operation already sent. Carries the operation id, reason, requested_by, requested_at |
 
 Operations are the third kind of thing — imperative, long-running, able to fail. They are not
 status fields on the objects they act upon, and modelling them as such is the mistake this
@@ -479,6 +480,21 @@ thing a snapshot describes. Pruning against one would cancel work already half-d
 operation is accepted once, run to a conclusion, and reported. The consequence is that delivery is
 at-least-once with no replay window: a receiver drops a redelivery of an operation it is already
 running rather than starting a second pass over the same node.
+
+**Cancellation is a second imperative, not a restatement of the first.** `operation.cancel` names an
+operation the hub has already sent and asks for it to stop. It is a frame of its own rather than a
+flag on `operation.desired`, for the reason above: re-sending the instruction would make the
+withdrawal prunable by a resync, which is the property operations are kept outside the snapshot to
+avoid. The operator answers on `operation.observed` with a terminal phase, exactly as it would for
+an operation that ended by itself — the cancellation carries no reply of its own.
+
+**A cancellation for an id the operator does not hold is not an error.** The operation may have
+finished a moment before the frame arrived, been refused, or belonged to an operator process that
+has since restarted. Cancellation is therefore at-least-once and idempotent, and a receiver that
+has nothing to stop logs it and drops it rather than reporting a phase for work it never had. A
+queued operation is cancellable as well as a running one: a ramp holds most of its steps in a
+queue, and a withdrawal that reached only the step in flight would let the rest run against a
+deployment somebody has already stopped measuring.
 
 **`cordon` covers both directions.** The parameter `cordon` is `"true"` or `"false"` and defaults
 to `"true"`; there is no separate `uncordon` kind, because one wire kind and a boolean say the same

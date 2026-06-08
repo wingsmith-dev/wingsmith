@@ -25,11 +25,14 @@ func WithExecutor(inner syncpkg.Handler, e *Executor) syncpkg.Handler {
 
 // Handle implements sync.Handler.
 //
-// An operation is not passed on to the inner handler. Nothing downstream has anything to do with
-// it, and the store would log it as an unrecognised type on every arrival.
+// Neither an operation nor a cancellation is passed on to the inner handler. Nothing downstream has
+// anything to do with either, and the store would log them as unrecognised types on every arrival.
 func (t *tee) Handle(ctx context.Context, e *syncpkg.Envelope) error {
-	if e.Type == TypeOperationDesired {
+	switch e.Type {
+	case TypeOperationDesired:
 		return t.executor.Handle(ctx, e)
+	case TypeOperationCancel:
+		return t.executor.HandleCancel(ctx, e)
 	}
 	return t.inner.Handle(ctx, e)
 }

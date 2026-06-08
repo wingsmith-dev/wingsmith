@@ -36,6 +36,7 @@ import (
 const (
 	TypeOperationDesired  = "operation.desired"
 	TypeOperationObserved = "operation.observed"
+	TypeOperationCancel   = "operation.cancel"
 )
 
 // The operation kinds this executor performs. The plane spells a benchmark `deployment.benchmark`
@@ -271,6 +272,32 @@ func (e *Executor) Handle(ctx context.Context, env *syncpkg.Envelope) error {
 	return nil
 }
 
+// HandleCancel stops an operation this operator was already told to perform.
+//
+// It answers nothing on the wire itself. The cancelled operation reports its own terminal phase
+// through the path every other conclusion takes, so a cancellation that arrives for an id this
+// process does not hold is a log line and not a failure: the operation may have finished a moment
+// earlier, or been refused for a full lane, or belonged to an operator that has since restarted.
+// Reporting a phase for work this process never had would overwrite whatever actually happened
+// with a guess.
+func (e *Executor) HandleCancel(ctx context.Context, env *syncpkg.Envelope) error {
+	if env.Type != TypeOperationCancel {
+		return nil
+	}
+	var msg wire.OperationCancel
+	if err := json.Unmarshal(env.Payload, &msg); err != nil {
+		return fmt.Errorf("decode %s: %w", env.Type, err)
+	}
+	if e.Cancel(msg.OperationID) {
+		e.Log.Info("cancelling an operation the plane withdrew",
+			"operation", msg.OperationID, "reason", msg.Reason)
+		return nil
+	}
+	e.Log.Info("nothing here to cancel; the operation is already over or was never accepted",
+		"operation", msg.OperationID)
+	return nil
+}
+
 // enqueue puts a benchmark on the lane, or refuses it where it can be seen.
 //
 // A step that vanished would be worse than one that failed. The plane would go on waiting for a
@@ -315,9 +342,8 @@ func (e *Executor) refuse(op wire.OperationDesired, code string, retryable bool,
 // cancellation that reached only the step in flight would let the five behind it run anyway,
 // against a deployment somebody has already decided to stop measuring.
 //
-// It reports whether the operation was here to cancel. Nothing on the wire carries a cancellation
-// to a cluster yet — the plane records the request and waits for the terminal phase — so this is
-// the operator's half of that, waiting for the frame that will call it.
+// It reports whether the operation was here to cancel, which is what lets HandleCancel tell a
+// cancellation that landed from one that arrived after the work was already over.
 func (e *Executor) Cancel(id string) bool {
 	e.mu.Lock()
 	cancel, ok := e.cancels[id]
