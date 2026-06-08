@@ -517,6 +517,31 @@ agree; that is the whole guarantee, and it is deliberately not more.
 latency distributions — is telemetry: high volume, append-only, never joined. It goes from the
 cluster to object storage directly and `artifacts_uri` is the only part of it that comes here.
 
+**What the fixture holds is AIPerf's shape, described and not asserted.** The corpus needs one
+concrete `summary` to round-trip, so `benchmark.observed.json` carries the export AIPerf 0.4 writes
+to `profile_export_aiperf.json` — verbatim, the file the operator lifts out of the job's log between
+its own sentinels. AIPerf reports each distributional metric as an object of its own, keyed
+`time_to_first_token`, `time_to_second_token`, `inter_token_latency`, `request_latency`,
+`input_sequence_length` and `output_sequence_length`, each carrying a `unit` and `avg`, `min`,
+`max`, `p50`, `p90`, `p95`, `p99` and `std`. The rates — `output_token_throughput`,
+`output_token_throughput_per_user`, `request_throughput` — carry a `unit` and at least an `avg`,
+and the counters `request_count` and `error_count` are bare numbers. None of that is a schema this
+protocol imposes: a receiver validating a `summary` against it would be asserting the union the
+paragraph above refuses. It is one producer's format, written down so a reader can be built against
+something real rather than against an invention.
+
+A `summary` is a whole export, and a metric it could not compute is `null` or absent rather than
+zero. A reader that cannot resolve a path names the miss; it never reads an absence as a number.
+
+**One run is one load point.** A `ramp` or a `sweep` is N runs of the same harness against the same
+target, each its own `benchmark_id` and its own frame, and the ordering is the plane's — the frames
+carry no step index because the run rows already hold one.
+[`fixtures/samples/benchmark.ramp.json`](fixtures/samples/benchmark.ramp.json) is one such
+expansion end to end: seven frames over concurrency 1 to 64, with the step at 32 missing two
+metrics so a reader is exercised against a real absence. It sits under `samples/` rather than
+beside the corpus because the corpus is one frame per registered type and this is a sequence of
+frames of a type that already has its fixture.
+
 ## Resync
 
 | Type | Direction | Payload |

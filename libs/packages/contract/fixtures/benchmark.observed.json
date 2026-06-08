@@ -16,53 +16,87 @@
       "time_to_first_token": {
         "unit": "ms",
         "avg": 182.4,
-        "min": 96.2,
-        "max": 741.8,
-        "p50": 171.3,
-        "p90": 268.9,
-        "p95": 331.6,
-        "p99": 512.4,
-        "std": 64.1
+        "min": 114.82,
+        "max": 455.95,
+        "p50": 172.75,
+        "p90": 237.11,
+        "p95": 266.07,
+        "p99": 340.09,
+        "std": 45.06
+      },
+      "time_to_second_token": {
+        "unit": "ms",
+        "avg": 13.45,
+        "min": 10.35,
+        "max": 26.02,
+        "p50": 13.01,
+        "p90": 15.97,
+        "p95": 17.3,
+        "p99": 20.7,
+        "std": 2.07
       },
       "inter_token_latency": {
         "unit": "ms",
         "avg": 11.7,
-        "min": 8.9,
-        "max": 44.2,
-        "p50": 11.2,
-        "p90": 14.8,
-        "p95": 16.9,
-        "p99": 23.4,
-        "std": 3.2
+        "min": 9.0,
+        "max": 22.63,
+        "p50": 11.31,
+        "p90": 13.89,
+        "p95": 15.04,
+        "p99": 18.0,
+        "std": 1.8
       },
       "request_latency": {
         "unit": "ms",
-        "avg": 3178.6,
-        "min": 2410.7,
-        "max": 6902.1,
-        "p50": 3094.2,
-        "p90": 3811.5,
-        "p95": 4180.3,
-        "p99": 5522.8,
-        "std": 512.7
-      },
-      "output_token_throughput": {
-        "unit": "tokens/sec",
-        "avg": 812.4
-      },
-      "request_throughput": {
-        "unit": "requests/sec",
-        "avg": 3.14
-      },
-      "input_sequence_length": {
-        "unit": "tokens",
-        "avg": 2001.3,
-        "p50": 2000.0
+        "avg": 3164.73,
+        "min": 2704.7,
+        "max": 5026.74,
+        "p50": 3099.01,
+        "p90": 3537.13,
+        "p95": 3734.29,
+        "p99": 4238.13,
+        "std": 306.68
       },
       "output_sequence_length": {
         "unit": "tokens",
-        "avg": 255.7,
-        "p50": 256.0
+        "avg": 255.9,
+        "min": 178.0,
+        "max": 256.0,
+        "p50": 256.0,
+        "p90": 256.0,
+        "p95": 256.0,
+        "p99": 256.0,
+        "std": 4.42
+      },
+      "input_sequence_length": {
+        "unit": "tokens",
+        "avg": 2000.0,
+        "min": 2000.0,
+        "max": 2000.0,
+        "p50": 2000.0,
+        "p90": 2000.0,
+        "p95": 2000.0,
+        "p99": 2000.0,
+        "std": 0.0
+      },
+      "output_token_throughput": {
+        "unit": "tokens/sec",
+        "avg": 808.6
+      },
+      "output_token_throughput_per_user": {
+        "unit": "tokens/sec",
+        "avg": 85.47,
+        "min": 44.2,
+        "max": 111.1,
+        "p50": 88.42,
+        "p90": 92.31,
+        "p95": 94.87,
+        "p99": 97.44,
+        "std": 11.97
+      },
+      "request_throughput": {
+        "unit": "requests/sec",
+        "avg": 3.16
       },
       "request_count": 62,
       "error_count": 0

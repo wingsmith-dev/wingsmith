@@ -1,0 +1,813 @@
+{
+  "description": "One ramp request expanded into seven runs over rising concurrency, in order, as the operator reported them. The step at concurrency 32 carries a null time_to_first_token.p90 and no output_token_throughput_per_user at all, so a reader of these frames has to name both misses rather than read a zero.",
+  "request_id": "bmr_01j9y4rrrrrrrrrrrrrrrrrrrr",
+  "mode": "ramp",
+  "harness": "aiperf",
+  "harness_version": "0.4.1",
+  "image": "ghcr.io/hangar-dev/aiperf:0.4.1",
+  "parameters": {
+    "endpoint_type": "chat",
+    "input_tokens_mean": 2000,
+    "input_tokens_stddev": 0,
+    "output_tokens_mean": 256,
+    "output_tokens_stddev": 0,
+    "streaming": true,
+    "tokenizer": "Qwen/Qwen3-32B"
+  },
+  "steps": [
+    {
+      "step_index": 0,
+      "concurrency": 1,
+      "request_count": 100,
+      "frame": {
+        "v": 1,
+        "type": "benchmark.observed",
+        "id": "01j9y4e5g7qk8v3b0yhn4tz001",
+        "ts": "2026-08-21T14:06:35.401Z",
+        "seq": 21441,
+        "ack": 8812,
+        "payload": {
+          "benchmark_id": "bmk_01j9y400000000000000000001",
+          "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+          "deployment_id": "dep_01j9x2ccccccccccccccccccc1",
+          "harness": "aiperf",
+          "harness_version": "0.4.1",
+          "phase": "succeeded",
+          "summary": {
+            "time_to_first_token": {
+              "unit": "ms",
+              "avg": 61.4,
+              "min": 47.22,
+              "max": 118.81,
+              "p50": 59.37,
+              "p90": 72.88,
+              "p95": 78.96,
+              "p99": 94.49,
+              "std": 9.46
+            },
+            "time_to_second_token": {
+              "unit": "ms",
+              "avg": 10.23,
+              "min": 8.73,
+              "max": 16.32,
+              "p50": 10.02,
+              "p90": 11.45,
+              "p95": 12.1,
+              "p99": 13.75,
+              "std": 1.0
+            },
+            "inter_token_latency": {
+              "unit": "ms",
+              "avg": 8.9,
+              "min": 7.59,
+              "max": 14.2,
+              "p50": 8.71,
+              "p90": 9.96,
+              "p95": 10.52,
+              "p99": 11.95,
+              "std": 0.87
+            },
+            "request_latency": {
+              "unit": "ms",
+              "avg": 2330.01,
+              "min": 2153.86,
+              "max": 3042.99,
+              "p50": 2304.85,
+              "p90": 2472.61,
+              "p95": 2548.1,
+              "p99": 2741.02,
+              "std": 117.43
+            },
+            "output_sequence_length": {
+              "unit": "tokens",
+              "avg": 255.9,
+              "min": 178.0,
+              "max": 256.0,
+              "p50": 256.0,
+              "p90": 256.0,
+              "p95": 256.0,
+              "p99": 256.0,
+              "std": 4.42
+            },
+            "input_sequence_length": {
+              "unit": "tokens",
+              "avg": 2000.0,
+              "min": 2000.0,
+              "max": 2000.0,
+              "p50": 2000.0,
+              "p90": 2000.0,
+              "p95": 2000.0,
+              "p99": 2000.0,
+              "std": 0.0
+            },
+            "output_token_throughput": {
+              "unit": "tokens/sec",
+              "avg": 109.83
+            },
+            "output_token_throughput_per_user": {
+              "unit": "tokens/sec",
+              "avg": 112.36,
+              "min": 70.44,
+              "max": 131.72,
+              "p50": 114.81,
+              "p90": 121.35,
+              "p95": 124.72,
+              "p99": 128.09,
+              "std": 15.73
+            },
+            "request_throughput": {
+              "unit": "requests/sec",
+              "avg": 0.43
+            },
+            "request_count": 100,
+            "error_count": 0
+          },
+          "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000001/",
+          "error": null,
+          "started_at": "2026-08-21T14:02:41.000Z",
+          "completed_at": "2026-08-21T14:06:34.001Z",
+          "observed_at": "2026-08-21T14:06:35.401Z"
+        }
+      }
+    },
+    {
+      "step_index": 1,
+      "concurrency": 2,
+      "request_count": 200,
+      "frame": {
+        "v": 1,
+        "type": "benchmark.observed",
+        "id": "01j9y4e5g7qk8v3b0yhn4tz002",
+        "ts": "2026-08-21T14:11:26.840Z",
+        "seq": 21442,
+        "ack": 8813,
+        "payload": {
+          "benchmark_id": "bmk_01j9y400000000000000000002",
+          "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+          "deployment_id": "dep_01j9x2ccccccccccccccccccc1",
+          "harness": "aiperf",
+          "harness_version": "0.4.1",
+          "phase": "succeeded",
+          "summary": {
+            "time_to_first_token": {
+              "unit": "ms",
+              "avg": 64.8,
+              "min": 47.11,
+              "max": 136.4,
+              "p50": 62.27,
+              "p90": 79.12,
+              "p95": 86.7,
+              "p99": 106.08,
+              "std": 11.79
+            },
+            "time_to_second_token": {
+              "unit": "ms",
+              "avg": 10.46,
+              "min": 8.66,
+              "max": 17.76,
+              "p50": 10.21,
+              "p90": 11.92,
+              "p95": 12.7,
+              "p99": 14.67,
+              "std": 1.2
+            },
+            "inter_token_latency": {
+              "unit": "ms",
+              "avg": 9.1,
+              "min": 7.53,
+              "max": 15.44,
+              "p50": 8.88,
+              "p90": 10.37,
+              "p95": 11.04,
+              "p99": 12.76,
+              "std": 1.04
+            },
+            "request_latency": {
+              "unit": "ms",
+              "avg": 2384.39,
+              "min": 2154.06,
+              "max": 3316.69,
+              "p50": 2351.49,
+              "p90": 2570.85,
+              "p95": 2669.56,
+              "p99": 2921.83,
+              "std": 153.55
+            },
+            "output_sequence_length": {
+              "unit": "tokens",
+              "avg": 255.9,
+              "min": 178.0,
+              "max": 256.0,
+              "p50": 256.0,
+              "p90": 256.0,
+              "p95": 256.0,
+              "p99": 256.0,
+              "std": 4.42
+            },
+            "input_sequence_length": {
+              "unit": "tokens",
+              "avg": 2000.0,
+              "min": 2000.0,
+              "max": 2000.0,
+              "p50": 2000.0,
+              "p90": 2000.0,
+              "p95": 2000.0,
+              "p99": 2000.0,
+              "std": 0.0
+            },
+            "output_token_throughput": {
+              "unit": "tokens/sec",
+              "avg": 214.65
+            },
+            "output_token_throughput_per_user": {
+              "unit": "tokens/sec",
+              "avg": 109.89,
+              "min": 64.76,
+              "max": 132.75,
+              "p50": 112.61,
+              "p90": 118.68,
+              "p95": 121.98,
+              "p99": 125.27,
+              "std": 15.38
+            },
+            "request_throughput": {
+              "unit": "requests/sec",
+              "avg": 0.84
+            },
+            "request_count": 200,
+            "error_count": 0
+          },
+          "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000002/",
+          "error": null,
+          "started_at": "2026-08-21T14:07:27.001Z",
+          "completed_at": "2026-08-21T14:11:25.440Z",
+          "observed_at": "2026-08-21T14:11:26.840Z"
+        }
+      }
+    },
+    {
+      "step_index": 2,
+      "concurrency": 4,
+      "request_count": 400,
+      "frame": {
+        "v": 1,
+        "type": "benchmark.observed",
+        "id": "01j9y4e5g7qk8v3b0yhn4tz003",
+        "ts": "2026-08-21T14:16:31.664Z",
+        "seq": 21443,
+        "ack": 8814,
+        "payload": {
+          "benchmark_id": "bmk_01j9y400000000000000000003",
+          "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+          "deployment_id": "dep_01j9x2ccccccccccccccccccc1",
+          "harness": "aiperf",
+          "harness_version": "0.4.1",
+          "phase": "succeeded",
+          "summary": {
+            "time_to_first_token": {
+              "unit": "ms",
+              "avg": 71.2,
+              "min": 48.77,
+              "max": 161.98,
+              "p50": 68.0,
+              "p90": 89.36,
+              "p95": 98.97,
+              "p99": 123.53,
+              "std": 14.95
+            },
+            "time_to_second_token": {
+              "unit": "ms",
+              "avg": 11.04,
+              "min": 8.86,
+              "max": 19.86,
+              "p50": 10.73,
+              "p90": 12.8,
+              "p95": 13.74,
+              "p99": 16.13,
+              "std": 1.45
+            },
+            "inter_token_latency": {
+              "unit": "ms",
+              "avg": 9.6,
+              "min": 7.7,
+              "max": 17.27,
+              "p50": 9.33,
+              "p90": 11.13,
+              "p95": 11.95,
+              "p99": 14.02,
+              "std": 1.26
+            },
+            "request_latency": {
+              "unit": "ms",
+              "avg": 2518.24,
+              "min": 2222.09,
+              "max": 3716.92,
+              "p50": 2475.93,
+              "p90": 2757.98,
+              "p95": 2884.9,
+              "p99": 3209.25,
+              "std": 197.43
+            },
+            "output_sequence_length": {
+              "unit": "tokens",
+              "avg": 255.9,
+              "min": 178.0,
+              "max": 256.0,
+              "p50": 256.0,
+              "p90": 256.0,
+              "p95": 256.0,
+              "p99": 256.0,
+              "std": 4.42
+            },
+            "input_sequence_length": {
+              "unit": "tokens",
+              "avg": 2000.0,
+              "min": 2000.0,
+              "max": 2000.0,
+              "p50": 2000.0,
+              "p90": 2000.0,
+              "p95": 2000.0,
+              "p99": 2000.0,
+              "std": 0.0
+            },
+            "output_token_throughput": {
+              "unit": "tokens/sec",
+              "avg": 406.47
+            },
+            "output_token_throughput_per_user": {
+              "unit": "tokens/sec",
+              "avg": 104.17,
+              "min": 57.9,
+              "max": 129.79,
+              "p50": 107.18,
+              "p90": 112.5,
+              "p95": 115.63,
+              "p99": 118.75,
+              "std": 14.58
+            },
+            "request_throughput": {
+              "unit": "requests/sec",
+              "avg": 1.59
+            },
+            "request_count": 400,
+            "error_count": 0
+          },
+          "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000003/",
+          "error": null,
+          "started_at": "2026-08-21T14:12:18.440Z",
+          "completed_at": "2026-08-21T14:16:30.264Z",
+          "observed_at": "2026-08-21T14:16:31.664Z"
+        }
+      }
+    },
+    {
+      "step_index": 3,
+      "concurrency": 8,
+      "request_count": 800,
+      "frame": {
+        "v": 1,
+        "type": "benchmark.observed",
+        "id": "01j9y4e5g7qk8v3b0yhn4tz004",
+        "ts": "2026-08-21T14:22:11.355Z",
+        "seq": 21444,
+        "ack": 8815,
+        "payload": {
+          "benchmark_id": "bmk_01j9y400000000000000000004",
+          "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+          "deployment_id": "dep_01j9x2ccccccccccccccccccc1",
+          "harness": "aiperf",
+          "harness_version": "0.4.1",
+          "phase": "succeeded",
+          "summary": {
+            "time_to_first_token": {
+              "unit": "ms",
+              "avg": 88.5,
+              "min": 56.91,
+              "max": 216.38,
+              "p50": 83.99,
+              "p90": 114.08,
+              "p95": 127.62,
+              "p99": 162.22,
+              "std": 21.06
+            },
+            "time_to_second_token": {
+              "unit": "ms",
+              "avg": 12.54,
+              "min": 9.74,
+              "max": 23.83,
+              "p50": 12.14,
+              "p90": 14.79,
+              "p95": 15.99,
+              "p99": 19.05,
+              "std": 1.86
+            },
+            "inter_token_latency": {
+              "unit": "ms",
+              "avg": 10.9,
+              "min": 8.47,
+              "max": 20.72,
+              "p50": 10.55,
+              "p90": 12.86,
+              "p95": 13.9,
+              "p99": 16.56,
+              "std": 1.62
+            },
+            "request_latency": {
+              "unit": "ms",
+              "avg": 2866.91,
+              "min": 2469.56,
+              "max": 4475.25,
+              "p50": 2810.15,
+              "p90": 3188.58,
+              "p95": 3358.87,
+              "p99": 3794.07,
+              "std": 264.9
+            },
+            "output_sequence_length": {
+              "unit": "tokens",
+              "avg": 255.9,
+              "min": 178.0,
+              "max": 256.0,
+              "p50": 256.0,
+              "p90": 256.0,
+              "p95": 256.0,
+              "p99": 256.0,
+              "std": 4.42
+            },
+            "input_sequence_length": {
+              "unit": "tokens",
+              "avg": 2000.0,
+              "min": 2000.0,
+              "max": 2000.0,
+              "p50": 2000.0,
+              "p90": 2000.0,
+              "p95": 2000.0,
+              "p99": 2000.0,
+              "std": 0.0
+            },
+            "output_token_throughput": {
+              "unit": "tokens/sec",
+              "avg": 714.08
+            },
+            "output_token_throughput_per_user": {
+              "unit": "tokens/sec",
+              "avg": 91.74,
+              "min": 48.26,
+              "max": 118.01,
+              "p50": 94.79,
+              "p90": 99.08,
+              "p95": 101.83,
+              "p99": 104.59,
+              "std": 12.84
+            },
+            "request_throughput": {
+              "unit": "requests/sec",
+              "avg": 2.79
+            },
+            "request_count": 800,
+            "error_count": 0
+          },
+          "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000004/",
+          "error": null,
+          "started_at": "2026-08-21T14:17:23.264Z",
+          "completed_at": "2026-08-21T14:22:09.955Z",
+          "observed_at": "2026-08-21T14:22:11.355Z"
+        }
+      }
+    },
+    {
+      "step_index": 4,
+      "concurrency": 16,
+      "request_count": 1600,
+      "frame": {
+        "v": 1,
+        "type": "benchmark.observed",
+        "id": "01j9y4e5g7qk8v3b0yhn4tz005",
+        "ts": "2026-08-21T14:29:20.683Z",
+        "seq": 21445,
+        "ack": 8816,
+        "payload": {
+          "benchmark_id": "bmk_01j9y400000000000000000005",
+          "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+          "deployment_id": "dep_01j9x2ccccccccccccccccccc1",
+          "harness": "aiperf",
+          "harness_version": "0.4.1",
+          "phase": "succeeded",
+          "summary": {
+            "time_to_first_token": {
+              "unit": "ms",
+              "avg": 143.7,
+              "min": 86.36,
+              "max": 375.78,
+              "p50": 135.51,
+              "p90": 190.12,
+              "p95": 214.69,
+              "p99": 277.48,
+              "std": 38.22
+            },
+            "time_to_second_token": {
+              "unit": "ms",
+              "avg": 16.33,
+              "min": 12.28,
+              "max": 32.71,
+              "p50": 15.75,
+              "p90": 19.61,
+              "p95": 21.34,
+              "p99": 25.77,
+              "std": 2.7
+            },
+            "inter_token_latency": {
+              "unit": "ms",
+              "avg": 14.2,
+              "min": 10.68,
+              "max": 28.44,
+              "p50": 13.7,
+              "p90": 17.05,
+              "p95": 18.56,
+              "p99": 22.41,
+              "std": 2.35
+            },
+            "request_latency": {
+              "unit": "ms",
+              "avg": 3763.28,
+              "min": 3162.66,
+              "max": 6194.36,
+              "p50": 3677.48,
+              "p90": 4249.5,
+              "p95": 4506.9,
+              "p99": 5164.73,
+              "std": 400.41
+            },
+            "output_sequence_length": {
+              "unit": "tokens",
+              "avg": 255.9,
+              "min": 178.0,
+              "max": 256.0,
+              "p50": 256.0,
+              "p90": 256.0,
+              "p95": 256.0,
+              "p99": 256.0,
+              "std": 4.42
+            },
+            "input_sequence_length": {
+              "unit": "tokens",
+              "avg": 2000.0,
+              "min": 2000.0,
+              "max": 2000.0,
+              "p50": 2000.0,
+              "p90": 2000.0,
+              "p95": 2000.0,
+              "p99": 2000.0,
+              "std": 0.0
+            },
+            "output_token_throughput": {
+              "unit": "tokens/sec",
+              "avg": 1087.99
+            },
+            "output_token_throughput_per_user": {
+              "unit": "tokens/sec",
+              "avg": 70.42,
+              "min": 35.16,
+              "max": 93.62,
+              "p50": 72.99,
+              "p90": 76.06,
+              "p95": 78.17,
+              "p99": 80.28,
+              "std": 9.86
+            },
+            "request_throughput": {
+              "unit": "requests/sec",
+              "avg": 4.25
+            },
+            "request_count": 1600,
+            "error_count": 0
+          },
+          "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000005/",
+          "error": null,
+          "started_at": "2026-08-21T14:23:02.955Z",
+          "completed_at": "2026-08-21T14:29:19.283Z",
+          "observed_at": "2026-08-21T14:29:20.683Z"
+        }
+      }
+    },
+    {
+      "step_index": 5,
+      "concurrency": 32,
+      "request_count": 3200,
+      "frame": {
+        "v": 1,
+        "type": "benchmark.observed",
+        "id": "01j9y4e5g7qk8v3b0yhn4tz006",
+        "ts": "2026-08-21T14:40:35.115Z",
+        "seq": 21446,
+        "ack": 8817,
+        "payload": {
+          "benchmark_id": "bmk_01j9y400000000000000000006",
+          "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+          "deployment_id": "dep_01j9x2ccccccccccccccccccc1",
+          "harness": "aiperf",
+          "harness_version": "0.4.1",
+          "phase": "succeeded",
+          "summary": {
+            "time_to_first_token": {
+              "unit": "ms",
+              "avg": 402.6,
+              "min": 225.05,
+              "max": 1121.24,
+              "p50": 377.24,
+              "p90": null,
+              "p95": 622.42,
+              "p99": 816.88,
+              "std": 118.36
+            },
+            "time_to_second_token": {
+              "unit": "ms",
+              "avg": 26.22,
+              "min": 19.06,
+              "max": 55.19,
+              "p50": 25.2,
+              "p90": 32.01,
+              "p95": 35.08,
+              "p99": 42.92,
+              "std": 4.77
+            },
+            "inter_token_latency": {
+              "unit": "ms",
+              "avg": 22.8,
+              "min": 16.58,
+              "max": 47.99,
+              "p50": 21.91,
+              "p90": 27.84,
+              "p95": 30.51,
+              "p99": 37.32,
+              "std": 4.15
+            },
+            "request_latency": {
+              "unit": "ms",
+              "avg": 6214.32,
+              "min": 5092.01,
+              "max": 10756.99,
+              "p50": 6053.99,
+              "p90": 7122.85,
+              "p95": 7603.84,
+              "p99": 8833.03,
+              "std": 748.2
+            },
+            "output_sequence_length": {
+              "unit": "tokens",
+              "avg": 255.9,
+              "min": 178.0,
+              "max": 256.0,
+              "p50": 256.0,
+              "p90": 256.0,
+              "p95": 256.0,
+              "p99": 256.0,
+              "std": 4.42
+            },
+            "input_sequence_length": {
+              "unit": "tokens",
+              "avg": 2000.0,
+              "min": 2000.0,
+              "max": 2000.0,
+              "p50": 2000.0,
+              "p90": 2000.0,
+              "p95": 2000.0,
+              "p99": 2000.0,
+              "std": 0.0
+            },
+            "output_token_throughput": {
+              "unit": "tokens/sec",
+              "avg": 1317.73
+            },
+            "request_throughput": {
+              "unit": "requests/sec",
+              "avg": 5.15
+            },
+            "request_count": 3200,
+            "error_count": 0
+          },
+          "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000006/",
+          "error": null,
+          "started_at": "2026-08-21T14:30:12.283Z",
+          "completed_at": "2026-08-21T14:40:33.715Z",
+          "observed_at": "2026-08-21T14:40:35.115Z"
+        }
+      }
+    },
+    {
+      "step_index": 6,
+      "concurrency": 64,
+      "request_count": 3200,
+      "frame": {
+        "v": 1,
+        "type": "benchmark.observed",
+        "id": "01j9y4e5g7qk8v3b0yhn4tz007",
+        "ts": "2026-08-21T14:51:23.826Z",
+        "seq": 21447,
+        "ack": 8818,
+        "payload": {
+          "benchmark_id": "bmk_01j9y400000000000000000007",
+          "cluster_id": "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+          "deployment_id": "dep_01j9x2ccccccccccccccccccc1",
+          "harness": "aiperf",
+          "harness_version": "0.4.1",
+          "phase": "succeeded",
+          "summary": {
+            "time_to_first_token": {
+              "unit": "ms",
+              "avg": 1284.9,
+              "min": 664.29,
+              "max": 3796.88,
+              "p50": 1196.24,
+              "p90": 1787.3,
+              "p95": 2053.27,
+              "p99": 2732.98,
+              "std": 413.74
+            },
+            "time_to_second_token": {
+              "unit": "ms",
+              "avg": 47.95,
+              "min": 33.65,
+              "max": 105.84,
+              "p50": 45.91,
+              "p90": 59.53,
+              "p95": 65.66,
+              "p99": 81.32,
+              "std": 9.53
+            },
+            "inter_token_latency": {
+              "unit": "ms",
+              "avg": 41.7,
+              "min": 29.27,
+              "max": 92.03,
+              "p50": 39.92,
+              "p90": 51.77,
+              "p95": 57.1,
+              "p99": 70.71,
+              "std": 8.29
+            },
+            "request_latency": {
+              "unit": "ms",
+              "avg": 11914.23,
+              "min": 9512.32,
+              "max": 21636.24,
+              "p50": 11571.1,
+              "p90": 13858.63,
+              "p95": 14888.02,
+              "p99": 17518.68,
+              "std": 1601.27
+            },
+            "output_sequence_length": {
+              "unit": "tokens",
+              "avg": 255.9,
+              "min": 178.0,
+              "max": 256.0,
+              "p50": 256.0,
+              "p90": 256.0,
+              "p95": 256.0,
+              "p99": 256.0,
+              "std": 4.42
+            },
+            "input_sequence_length": {
+              "unit": "tokens",
+              "avg": 2000.0,
+              "min": 2000.0,
+              "max": 2000.0,
+              "p50": 2000.0,
+              "p90": 2000.0,
+              "p95": 2000.0,
+              "p99": 2000.0,
+              "std": 0.0
+            },
+            "output_token_throughput": {
+              "unit": "tokens/sec",
+              "avg": 1374.63
+            },
+            "output_token_throughput_per_user": {
+              "unit": "tokens/sec",
+              "avg": 23.98,
+              "min": 10.87,
+              "max": 34.17,
+              "p50": 25.05,
+              "p90": 25.9,
+              "p95": 26.62,
+              "p99": 27.34,
+              "std": 3.36
+            },
+            "request_throughput": {
+              "unit": "requests/sec",
+              "avg": 5.37
+            },
+            "request_count": 3200,
+            "error_count": 0
+          },
+          "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9y400000000000000000007/",
+          "error": null,
+          "started_at": "2026-08-21T14:41:26.715Z",
+          "completed_at": "2026-08-21T14:51:22.426Z",
+          "observed_at": "2026-08-21T14:51:23.826Z"
+        }
+      }
+    }
+  ]
+}
