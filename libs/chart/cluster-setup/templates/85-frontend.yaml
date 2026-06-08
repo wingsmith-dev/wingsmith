@@ -1,4 +1,4 @@
-{{- if .Values.frontend.enabled }}
+{{- if eq .Values.frontend.mode "shared" }}
 # The one OpenAI-compatible frontend this cluster serves every model through.
 #
 # It belongs to the cluster and not to a deployment, and that is the whole reason
@@ -34,15 +34,18 @@
 # operator applies from its own image at runtime, not one this chart vendors into
 # `crds/`. On a cluster that does not have it yet, this object cannot apply and
 # Helm fails the release with "no matches for kind DynamoGraphDeployment". A first
-# install therefore has to pass `--set frontend.enabled=false`, and a second
-# `helm upgrade` takes the default, once the Dynamo operator has registered its
-# own types. That is stated in values.yaml and in NOTES.txt, because the failure is
-# otherwise read as a broken chart rather than as a step in the wrong order.
+# install therefore has to pass `--set frontend.mode=none`, and a second
+# `helm upgrade` names the topology it wants, once the Dynamo operator has
+# registered its own types. That is stated in values.yaml and in NOTES.txt,
+# because the failure is otherwise read as a broken chart rather than as a step in
+# the wrong order. It binds this file and the operator's per-model frontends
+# equally: both are DynamoGraphDeployments and neither can be the first thing a
+# cluster applies.
 #
-# The default itself is `true`, and that is deliberate: the constraint binds one
-# install of one new cluster, and defaulting to false to accommodate it left every
-# cluster after that install without a frontend by omission. A cluster with
-# workloads and nothing serving them is the worse failure, because it is silent.
+# This file renders only under `frontend.mode: shared`. The default is
+# `per-model` (ADR 0013), which renders nothing here — a model's frontend is a
+# component the operator puts in that model's own graph, on that model's own
+# image, so it is not the chart's to install.
 apiVersion: nvidia.com/v1beta1
 kind: DynamoGraphDeployment
 metadata:
@@ -80,8 +83,8 @@ spec:
           {{- end }}
           containers:
             - name: main
-              image: {{ printf "%s:%s" .Values.frontend.image.repository .Values.frontend.image.tag | quote }}
-              imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
+              image: {{ printf "%s:%s" .Values.frontend.shared.image.repository .Values.frontend.shared.image.tag | quote }}
+              imagePullPolicy: {{ .Values.frontend.shared.image.pullPolicy }}
               env:
                 # The Anthropic Messages API is a second protocol on the same
                 # frontend, so it needs no second deployment and no proxy. Set as
@@ -103,10 +106,10 @@ spec:
                 # cluster is not a per-cluster value.
                 - name: PYTHONHASHSEED
                   value: "0"
-                {{- range $name, $value := .Values.frontend.env }}
+                {{- range $name, $value := .Values.frontend.shared.env }}
                 - name: {{ $name }}
                   value: {{ $value | quote }}
                 {{- end }}
               resources:
-                {{- toYaml .Values.frontend.resources | nindent 16 }}
+                {{- toYaml .Values.frontend.shared.resources | nindent 16 }}
 {{- end }}

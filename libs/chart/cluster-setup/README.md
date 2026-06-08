@@ -34,6 +34,38 @@ host. Generate the token, download the values, edit the blanks, install. Only
 when driving the chart by hand (no plane) do you set
 `enrolmentToken.existingSecret` and create that secret yourself.
 
+## Frontend topology
+
+`frontend.mode` is the one switch, and it takes three values:
+
+| mode | what a request lands on |
+|---|---|
+| `per-model` (default) | the operator renders a Frontend into each model's own graph, on that model's own image — ADR 0013 |
+| `shared` | the one cluster-wide frontend this chart installs; every model must be servable by its single image |
+| `none` | neither; for a first install, or beside `agent.frontendEndpoint` for a frontend installed elsewhere |
+
+Mode-specific knobs live under the mode: `frontend.perModel.*` (read by the
+operator) and `frontend.shared.*` (rendered by this chart). `replicas`,
+`imagePullSecrets` and `anthropicApi` are common to both and stay at
+`frontend.*`.
+
+**The first install of a new cluster must use `frontend.mode=none`.** A frontend
+is a `DynamoGraphDeployment` in either topology, and that CRD is applied by the
+Dynamo operator at runtime rather than shipped in this chart's `crds/`, so a
+fresh install that renders one fails with `no matches for kind
+DynamoGraphDeployment`. Install once with `--set frontend.mode=none --set
+agent.enabled=false`, then upgrade naming the topology and turning the agent on.
+
+**Changing the mode later is not a configuration change.** Dynamo holds a graph's
+component set immutable after creation, so every existing graph must be deleted
+and re-rendered, and every model reloads its weights. Pick before the first model
+lands.
+
+Replaced in 0.2.0: `frontend.enabled` and `operator.frontend.enabled` were two
+booleans, in two blocks, for one choice — they could be set to contradict each
+other, and they defaulted to the topology ADR 0013 replaced. The chart now fails
+with migration instructions if either is set.
+
 To pin the platform singletons off the GPU pool, the 1.4.x subcharts take:
 
 ```yaml

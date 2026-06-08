@@ -5,7 +5,7 @@ Hub        : {{ .Values.cluster.hubUrl }}
 Operator   : {{ include "cluster-setup.operatorImage" . }}
 Read-only  : {{ .Values.cluster.readOnly }}  (allowed operations: {{ .Values.cluster.allowedOperations | default "none" }})
 Inference  : {{ if .Values.agent.enabled }}tunnelled — {{ .Values.agent.replicas }} × agent -> {{ include "cluster-setup.gatewayAddress" . }}
-             frontend   : {{ if .Values.agent.frontendEndpoint }}{{ .Values.agent.frontendEndpoint }} (override){{ else if .Values.frontend.enabled }}{{ .Values.frontend.replicas }} × {{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag }}, discovered by label in the `dynamo` namespace{{ else }}discovered by label in the `dynamo` namespace{{ end }}{{ else }}no path in (agent.enabled=false){{ end }}
+             frontend   : {{ if .Values.agent.frontendEndpoint }}{{ .Values.agent.frontendEndpoint }} (override){{ else if eq .Values.frontend.mode "per-model" }}one per model, {{ .Values.frontend.replicas }} × {{ .Values.frontend.perModel.image | default "the model's own engine image" }}, rendered by the operator and found by label{{ else if eq .Values.frontend.mode "shared" }}one shared, {{ .Values.frontend.replicas }} × {{ .Values.frontend.shared.image.repository }}:{{ .Values.frontend.shared.image.tag }}, found by label in the `dynamo` namespace{{ else }}discovered by label in the `dynamo` namespace{{ end }}{{ else }}no path in (agent.enabled=false){{ end }}
 Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Values.monitoring.remoteWrite.url }} as cluster={{ .Values.cluster.id }} region={{ .Values.cluster.region }}
              credential : {{ if .Values.monitoring.remoteWrite.basicAuth.useEnrolmentToken }}this cluster's enrolment token, read from {{ .Values.enrolmentToken.existingSecret }}/{{ .Values.enrolmentToken.secretKey }} — nothing per-cluster to configure{{ else }}basicAuth from the Secret {{ .Values.monitoring.remoteWrite.basicAuth.existingSecret }} (useEnrolmentToken=false){{ end }}{{ else }}not configured — nothing leaves this cluster (monitoring.enabled=false){{ end }}
 
@@ -70,21 +70,27 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Valu
    dialled out. Set agent.enabled=true with agent.gateway.address once this
    cluster is out of read-only.
 {{- end }}
-{{- if and (not .Values.frontend.enabled) (not .Values.agent.frontendEndpoint) }}
+{{- if and (eq .Values.frontend.mode "none") (not .Values.agent.frontendEndpoint) }}
 
-ℹ  No inference frontend was installed — frontend.enabled was turned off, and it
-   defaults to on. Every model on a cluster is served through one shared frontend,
-   and both the agent and the benchmark executor find it by Dynamo's labels — so
-   until one exists this cluster can hold deployments and answer no requests.
+ℹ  No inference frontend was installed — frontend.mode is none, and it defaults to
+   per-model. Both the agent and the benchmark executor find a frontend by Dynamo's
+   labels, so until one exists this cluster can hold deployments and answer no
+   requests.
 
-   That is the expected state for exactly one install: it renders a
-   DynamoGraphDeployment, and that CRD is applied by the Dynamo operator at
-   runtime rather than shipped in this chart, so the very first install of a new
-   cluster has to leave it off. Turn it on in a second pass, once the operator
-   above is running — together with the agent, which is refused without it:
+   That is the expected state for exactly one install. A frontend is a
+   DynamoGraphDeployment in either topology, and that CRD is applied by the Dynamo
+   operator at runtime rather than shipped in this chart, so the very first install
+   of a new cluster has to render none. Name the topology in a second pass, once
+   the operator above is running — together with the agent, which is refused
+   without a frontend:
 
      helm upgrade {{ .Release.Name }} <chart> -n {{ .Release.Namespace }} --reuse-values \
-       --set frontend.enabled=true --set agent.enabled=true
+       --set frontend.mode=per-model --set agent.enabled=true
+
+   per-model gives each model its own frontend on its own image (ADR 0013); shared
+   gives the cluster one that every model must be servable by. Pick before the
+   first model lands: changing it later means deleting and re-rendering every
+   graph, and every model reloads its weights.
 {{- end }}
 {{- if not .Values.serving.enabled }}
 

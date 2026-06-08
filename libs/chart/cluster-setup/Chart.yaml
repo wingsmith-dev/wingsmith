@@ -8,7 +8,7 @@ type: application
 
 # appVersion is the operator image tag; a helm upgrade moves it and the pinned
 # Dynamo CRD together so the operator and the CRD it renders into cannot skew.
-version: 0.1.0
+version: 0.2.0
 appVersion: "latest"
 
 kubeVersion: ">=1.29.0-0"

@@ -32,27 +32,31 @@ data:
   HANGAR_ENGINE_PULL_SECRETS: {{ join "," . | quote }}
   {{- end }}
 
-  # One frontend per model, rendered by the operator. See operator.frontend in
-  # values.yaml for what turning this on changes cluster-wide, and why it is not
-  # safe yet on a cluster serving more than one model.
-  HANGAR_FRONTEND_ENABLED: {{ .Values.operator.frontend.enabled | quote }}
-  HANGAR_FRONTEND_REPLICAS: {{ .Values.operator.frontend.replicas | quote }}
-  HANGAR_FRONTEND_ANTHROPIC_API: {{ .Values.operator.frontend.anthropicApi.enabled | quote }}
-  HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE: {{ .Values.operator.frontend.anthropicApi.stripClaudeCodePreamble | quote }}
-  HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE: {{ .Values.operator.frontend.globalDynamoNamespace | quote }}
-  {{- with .Values.operator.frontend.image }}
+  # One frontend per model, rendered by the operator into each model's own graph.
+  # True only under `frontend.mode: per-model`, which is the default; `shared`
+  # hands the job to 85-frontend.yaml and `none` to nobody. See frontend.perModel
+  # in values.yaml for what this changes cluster-wide.
+  #
+  # The keys below are read whatever the mode says, and cost nothing when the
+  # operator is not rendering frontends — it is the flag above that decides.
+  HANGAR_FRONTEND_ENABLED: {{ eq .Values.frontend.mode "per-model" | quote }}
+  HANGAR_FRONTEND_REPLICAS: {{ .Values.frontend.replicas | quote }}
+  HANGAR_FRONTEND_ANTHROPIC_API: {{ .Values.frontend.anthropicApi.enabled | quote }}
+  HANGAR_FRONTEND_ANTHROPIC_STRIP_PREAMBLE: {{ .Values.frontend.anthropicApi.stripClaudeCodePreamble | quote }}
+  HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE: {{ .Values.frontend.perModel.globalDynamoNamespace | quote }}
+  {{- with .Values.frontend.perModel.image }}
   HANGAR_FRONTEND_IMAGE: {{ . | quote }}
   {{- end }}
-  {{- with .Values.operator.frontend.imagePullSecrets }}
+  {{- with .Values.frontend.imagePullSecrets }}
   HANGAR_FRONTEND_PULL_SECRETS: {{ join "," . | quote }}
   {{- end }}
-  {{- with .Values.operator.frontend.resources.requests.cpu }}
+  {{- with .Values.frontend.perModel.resources.requests.cpu }}
   HANGAR_FRONTEND_CPU: {{ . | quote }}
   {{- end }}
-  {{- with .Values.operator.frontend.resources.requests.memory }}
+  {{- with .Values.frontend.perModel.resources.requests.memory }}
   HANGAR_FRONTEND_MEMORY: {{ . | quote }}
   {{- end }}
-  {{- with .Values.operator.frontend.resources.limits.memory }}
+  {{- with .Values.frontend.perModel.resources.limits.memory }}
   HANGAR_FRONTEND_MEMORY_LIMIT: {{ . | quote }}
   {{- end }}
 

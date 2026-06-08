@@ -114,55 +114,6 @@ operator:
     # Empty for the NVIDIA runtime images, which are anonymous; set this when a
     # model needs a private build such as the GLM 5.3 runtime in GHCR.
     imagePullSecrets: []
-  # One OpenAI-compatible frontend per model, rendered by the operator into the
-  # same graph as the model's worker, instead of the one cluster-wide frontend
-  # `frontend.enabled` above installs.
-  #
-  # Off, and it has to be opted into per cluster. The frontend binary must be able
-  # to tokenize and register every model it discovers, so one frontend per cluster
-  # makes a frontier model's runtime a fleet-wide lowest common denominator — the
-  # thing this exists to remove. What it does NOT yet remove is the blast radius:
-  # `globalDynamoNamespace` below is still true on both the workers and every
-  # frontend, so each frontend still discovers every worker on the cluster and a
-  # model one of them cannot tokenize still empties that frontend's model list.
-  # Until that is settled (docs/plans/06-frontend-topology.md §9) this is safe on a
-  # cluster serving ONE model and is not safe on a cluster serving several.
-  #
-  # Two more things change the day this goes true, both cluster-wide and at once:
-  # a recipe whose `overlay.dynamo` rewrites `spec.components` is refused rather
-  # than silently rendered with no frontend, and a frontend that cannot start
-  # leaves its deployment `degraded` rather than `running`.
-  frontend:
-    enabled: false
-    # The image a model's frontend runs when its recipe declares no
-    # `frontend_image`. Empty falls back to the recipe's engine image, which is
-    # right for the ordinary case: the Dynamo runtime image carries the frontend
-    # and the engine together.
-    image: ""
-    # Two, so a rollout does not take a model's only way in with it.
-    replicas: 2
-    # Secrets in the `dynamo` namespace the kubelet presents when pulling the
-    # image above. The same list `frontend.imagePullSecrets` needs and for the
-    # same reason — a patched frontend build lives in a private registry — and
-    # naming one there is still what renders it into `dynamo` at all.
-    imagePullSecrets: []
-    # Left empty to take the operator's own defaults.
-    resources:
-      requests:
-        cpu: ""
-        memory: ""
-      limits:
-        memory: ""
-    anthropicApi:
-      enabled: true
-      stripClaudeCodePreamble: true
-    # Whether each rendered frontend watches every Dynamo namespace on the cluster
-    # or only its own graph's. True is today's behaviour and the only one that
-    # currently works: the workers are pinned to the global namespace, so a
-    # frontend narrowed to its own graph discovers nothing at all. Narrowing both
-    # halves is what would contain the blast radius, and it costs a restart of
-    # every worker — see the plan above before changing this.
-    globalDynamoNamespace: true
   resources:
     requests:
       cpu: 50m
@@ -201,67 +152,83 @@ agent:
     limits:
       memory: 512Mi
 
-# The one OpenAI-compatible frontend every model on this cluster is served
-# through. The agent forwards to it, so serving needs it.
+# The OpenAI-compatible frontend a request actually lands on, and how many of
+# them a cluster runs.
 #
-# On by default, because off is not a state a managed cluster should ever rest
-# in: a cluster with workloads and no frontend has nothing serving them, and the
-# default was the reason two clusters sat that way. A cluster is a serving
-# cluster; the frontend is what makes it one.
+# `mode` is the one switch, because the two topologies are alternatives and not
+# options that compose: a cluster that renders a frontend per model has no use
+# for a shared one, and running both leaves a second way in that nothing routes
+# to. Earlier versions of this chart spelled the choice as two booleans in two
+# blocks — `frontend.enabled` here and `operator.frontend.enabled` under the
+# operator — which could be set to contradict each other, and defaulted to the
+# topology ADR 0013 replaced.
 #
-# There is still an ordering constraint on the FIRST install of a brand-new
-# cluster, and it is real: this renders a DynamoGraphDeployment, and that CRD is
-# applied by the Dynamo operator at runtime rather than shipped in this chart's
-# `crds/`, so a fresh install with it on fails the release with "no matches for
-# kind DynamoGraphDeployment". That is why the default is a default and not a
-# constant. The sequence for a cluster that does not exist yet:
+#   per-model  the operator renders a Frontend into each model's own graph, on
+#              that model's own image. A frontier model's runtime stops being a
+#              fleet-wide lowest common denominator, which is the whole point:
+#              on 2026-09-01 one cluster frontend failed registration on Kimi
+#              K3's tokenizer and `GET /v1/models` returned an empty list — not
+#              K3's entry, the list. See docs/decisions/0013-*.md.
 #
-#   1. install with `--set frontend.enabled=false --set agent.enabled=false` —
-#      the control path only. The operator enrols and the cluster goes `active`.
-#   2. upgrade, taking these defaults — the data path, once the Dynamo operator
-#      from step 1 has registered its own types.
+#   shared     one frontend for the cluster, every model served through it and
+#              discovered over `globalDynamoNamespace`. What this chart did
+#              before ADR 0013 and what a cluster still falls back to.
 #
-# `_helpers.tpl` refuses an agent with no frontend and says so at length, which
-# is what makes step 1 a message rather than a mystery. Every upgrade after it
-# gets a frontend without anyone having to remember this switch.
-# Why it belongs to the cluster and not to a deployment: templates/85-frontend.yaml.
+#   none       no frontend from this chart. For the first install of a brand-new
+#              cluster, and for a frontend somebody else installed — pair it with
+#              `agent.frontendEndpoint`.
+#
+# The first install of a NEW cluster must use `none`, in either topology. A
+# frontend is a DynamoGraphDeployment, and that CRD is applied by the Dynamo
+# operator at runtime rather than shipped in this chart's `crds/`, so a fresh
+# install that renders one fails the release with "no matches for kind
+# DynamoGraphDeployment". The sequence:
+#
+#   1. install with `--set frontend.mode=none --set agent.enabled=false` — the
+#      control path only. The operator enrols and the cluster goes `active`.
+#   2. upgrade, taking the default below — the data path, once the Dynamo
+#      operator from step 1 has registered its own types.
+#
+# Changing `mode` on a cluster that is already running models is NOT a
+# configuration change. Dynamo holds a graph's component set immutable after
+# creation, so every existing graph has to be deleted and rendered again, and
+# every model reloads its weights when it is.
 frontend:
-  enabled: true
-  # Two, so a `helm upgrade` does not take this cluster's inference with it. It
+  # per-model | shared | none
+  mode: per-model
+
+  # ── both modes ──────────────────────────────────────────────────────────
+
+  # Two, so a rollout does not take a model's only way in with it. A frontend
   # holds no model state — the workers do — so a replica is cheap and stateless.
   replicas: 2
-  image:
-    # The Dynamo runtime, which carries the frontend as well as the engines.
-    # Keep the tag in step with the `dynamo-platform` dependency in Chart.yaml:
-    # this pod speaks to that operator's NATS and registers in its namespace, and
-    # Helm does not expose a dependency's version to a template, so the two
-    # versions cannot be derived from one another here.
-    repository: nvcr.io/nvidia/ai-dynamo/vllm-runtime
-    tag: "1.4.1"
-    pullPolicy: IfNotPresent
-  # Secrets in the `dynamo` namespace the kubelet presents when pulling the image
-  # above. Empty for the default, which nvcr.io serves anonymously.
+
+  # Secrets in the `dynamo` namespace the kubelet presents when pulling a
+  # frontend image. Empty for the NVIDIA runtime, which nvcr.io serves
+  # anonymously.
   #
-  # It exists because a frontend image is not always NVIDIA's. Both bugs that made
-  # Kimi K3 unusable -- tool-call ids reused across turns, and extended thinking
-  # forced on through `/v1/messages` -- are in the frontend binary, so the fix is a
-  # patched runtime and the fix ships as an image. `hangar-runtime/kimi-k3/` builds
-  # it and it lands in a private GHCR repository, which needs a credential where
-  # nvcr.io needs none.
+  # It exists because a frontend image is not always NVIDIA's. Both bugs that
+  # made Kimi K3 unusable -- tool-call ids reused across turns, and extended
+  # thinking forced on through `/v1/messages` -- are in the frontend binary, so
+  # the fix is a patched runtime and the fix ships as an image.
+  # `hangar-runtime/kimi-k3/` builds it and it lands in a private GHCR repository,
+  # which needs a credential where nvcr.io needs none.
   #
   # Naming one here is also what renders the credential into `dynamo` at all: a
   # pull Secret is namespaced, and the copy the operator and agent use is in the
   # release namespace, where no frontend pod can read it.
   imagePullSecrets: []
-  # The Anthropic Messages API (`/v1/messages`), which the frontend serves natively
-  # and leaves off by default. On, because a cluster that serves an OpenAI surface
-  # and not this one cannot be used by Anthropic-protocol clients at all — Claude
-  # Code among them — and the alternative is a translating proxy per client, which
-  # puts a second implementation of the wire on somebody's laptop.
+
+  # The Anthropic Messages API (`/v1/messages`), which the frontend serves
+  # natively and leaves off by default. On, because a cluster that serves an
+  # OpenAI surface and not this one cannot be used by Anthropic-protocol clients
+  # at all — Claude Code among them — and the alternative is a translating proxy
+  # per client, which puts a second implementation of the wire on somebody's
+  # laptop.
   #
-  # NVIDIA marks it experimental. It is additive: a route that did not exist before,
-  # reached only by callers that ask for it, so turning it on cannot change what an
-  # OpenAI-compatible caller already gets.
+  # NVIDIA marks it experimental. It is additive: a route that did not exist
+  # before, reached only by callers that ask for it, so turning it on cannot
+  # change what an OpenAI-compatible caller already gets.
   anthropicApi:
     enabled: true
     # Drops the Claude Code billing preamble from the system prompt. Dynamo's own
@@ -269,20 +236,64 @@ frontend:
     # way every time is a prompt the prefix cache can actually hit.
     stripClaudeCodePreamble: true
 
-  # Anything else to put on the frontend container, for a flag this chart has not
-  # grown a field for. `DYN_*` names are what the frontend reads; `--help` on
-  # `python3 -m dynamo.frontend` lists them beside their flags.
-  env: {}
+  # ── mode: per-model ─────────────────────────────────────────────────────
+  #
+  # Read by the operator, through 40-operator-config.yaml. Ignored in the other
+  # two modes.
+  perModel:
+    # The image a model's frontend runs when its deployment declares no
+    # `frontend_image`. Empty falls back to the deployment's engine runtime
+    # image, which is right for the ordinary case: the Dynamo runtime image
+    # carries the frontend and the engine together.
+    image: ""
+    # Whether each rendered frontend watches every Dynamo namespace on the
+    # cluster or only its own graph's. True is today's behaviour and the only one
+    # that currently works: the workers are pinned to the global namespace, so a
+    # frontend narrowed to its own graph discovers nothing at all.
+    #
+    # This is also the open edge of ADR 0013. While it is true, every frontend
+    # still discovers every worker, so a model one of them cannot tokenize still
+    # empties that frontend's model list — the blast radius is not yet contained.
+    # Narrowing both halves costs a restart of every worker on the cluster; see
+    # docs/plans/06-frontend-topology.md §9 before changing it.
+    globalDynamoNamespace: true
+    # Left empty to take the operator's own defaults.
+    resources:
+      requests:
+        cpu: ""
+        memory: ""
+      limits:
+        memory: ""
 
-  # A router, not a runtime: it holds streams open and copies bytes, and every
-  # token of every response passes through it. No CPU limit, for the same reason
-  # the agent has none — throttling the data path is latency on every token.
-  resources:
-    requests:
-      cpu: 200m
-      memory: 512Mi
-    limits:
-      memory: 2Gi
+  # ── mode: shared ────────────────────────────────────────────────────────
+  #
+  # Rendered by this chart, in 85-frontend.yaml. Ignored in the other two modes.
+  shared:
+    image:
+      # The Dynamo runtime, which carries the frontend as well as the engines.
+      # Keep the tag in step with the `dynamo-platform` dependency in Chart.yaml:
+      # this pod speaks to that operator's NATS and registers in its namespace,
+      # and Helm does not expose a dependency's version to a template, so the two
+      # versions cannot be derived from one another here.
+      repository: nvcr.io/nvidia/ai-dynamo/vllm-runtime
+      tag: "1.4.1"
+      pullPolicy: IfNotPresent
+
+    # Anything else to put on the frontend container, for a flag this chart has
+    # not grown a field for. `DYN_*` names are what the frontend reads; `--help`
+    # on `python3 -m dynamo.frontend` lists them beside their flags.
+    env: {}
+
+    # A router, not a runtime: it holds streams open and copies bytes, and every
+    # token of every response passes through it. No CPU limit, for the same
+    # reason the agent has none — throttling the data path is latency on every
+    # token.
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
 
 # The pre-tunnel way in, off on every cluster we run. `backend.service` is the
 # Dynamo frontend Service, whose name is not knowable until a deployment exists —
