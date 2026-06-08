@@ -13,6 +13,7 @@ from app.core.schemas import ListResponse
 from .depends import benchmark_svc_generator
 from .schemas import BenchmarkRunSchema
 from .schemas import BenchmarkBandSchema
+from .schemas import BenchmarkCurveSchema
 from .schemas import BenchmarkHarnessSchema
 from .schemas import BenchmarkRequestSchema
 from .schemas import BenchmarkVerdictSchema
@@ -128,6 +129,24 @@ class BenchmarkRoutes(Controller):
         aggregate number over a whole sweep evidences none of them.
         """
         return Response(await svc.bands(ref))
+
+    @get("/requests/{ref:str}/curve")
+    async def get_request_curve(
+        self, context: RequestContext, svc: BenchmarkService, ref: str, criteria: str | None = None
+    ) -> Response[BenchmarkCurveSchema]:
+        """One request's runs read as a load curve, with the knee derived now.
+
+        Ahead of `/{ref}` in declaration order for `harnesses`' reason: a
+        segment that is not an id must be matched before the route that would
+        resolve it as one.
+
+        `?criteria=` reads the curve against a version other than the one the
+        request recorded, which moves the ceiling the knee is measured against —
+        the question a stored knee could not answer at all. Nothing here is
+        stored: the points and the knee are derived at read, exactly as the
+        verdict is.
+        """
+        return Response(await svc.curve(ref, criteria))
 
     @get("/serving/{digest:str}")
     async def get_serving_summary(

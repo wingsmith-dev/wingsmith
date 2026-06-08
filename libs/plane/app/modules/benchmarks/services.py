@@ -33,18 +33,23 @@ from app.core.pagination import decode_cursor
 from app.modules.operations.services import PHASES
 from app.modules.operations.services import PENDING
 
+from . import curves
 from . import buckets
 from . import verdicts
 from . import harnesses
 from . import summaries
 from .schemas import BenchmarkRunSchema
 from .schemas import BenchmarkBandSchema
+from .schemas import BenchmarkKneeSchema
 from .schemas import BenchmarkCheckSchema
+from .schemas import BenchmarkCurveSchema
 from .schemas import BenchmarkHarnessSchema
+from .schemas import BenchmarkReadingSchema
 from .schemas import BenchmarkRequestSchema
 from .schemas import BenchmarkVerdictSchema
 from .schemas import BenchmarkCoverageSchema
 from .schemas import BenchmarkParameterSchema
+from .schemas import BenchmarkCurvePointSchema
 from .schemas import BenchmarkProvenanceSchema
 from .schemas import BenchmarkRunCreateRequest
 from .schemas import BenchmarkRequestCreateRequest
@@ -362,6 +367,36 @@ class BenchmarkService:
             for report in reports
         ]
         return ListResponse(items=items, count=len(items), next_cursor=None)
+
+    async def curve(self, ref: str, criteria: str | None = None) -> BenchmarkCurveSchema:
+        """One request's runs read as a load curve, with the knee derived now.
+
+        A single object rather than a `ListResponse` of points, because the
+        criteria version the knee was derived under belongs to the answer and a
+        list envelope has nowhere to carry it — the same reason `/verdict` is
+        shaped this way.
+
+        The step field comes from the mode the request was created under and
+        never from what the runs happen to carry: a ramp whose steps all
+        resolved to the same concurrency is still a ramp, and reading the axis
+        off the data would make it a sweep.
+        """
+        row = await self.repo.request(ref)
+        if row is None:
+            raise NotFound(f"no benchmark request {ref!r}")
+        request = row[0]
+        standard = verdicts.resolve_criteria(criteria or request.criteria_version)
+        step_field = curves.STEP_FIELDS.get(request.mode, curves.CONCURRENCY)
+        runs = await self.repo.request_runs(ref)
+        points = curves.points(runs, step_field)
+        return BenchmarkCurveSchema(
+            request=request.uid,
+            serving_digest=_one_digest(runs),
+            step_field=step_field,
+            criteria_version=standard.version,
+            points=[_curve_point_schema(point) for point in points],
+            knee=_knee_schema(curves.knee(points, standard, step_field)),
+        )
 
     async def get_request(self, ref: str) -> BenchmarkRequestSchema:
         row = await self.repo.request(ref)
@@ -749,6 +784,43 @@ def _verdict_schema(entry: verdicts.Verdict) -> BenchmarkVerdictSchema:
         reason=entry.reason,
         checks=_check_schemas(entry),
     )
+
+
+def _curve_point_schema(point: curves.Point) -> BenchmarkCurvePointSchema:
+    return BenchmarkCurvePointSchema(
+        step_index=point.step_index,
+        step_value=point.step_value,
+        run=point.run_id,
+        phase=point.phase,
+        discard=point.discard,
+        readings={
+            key: BenchmarkReadingSchema(value=value.value, unit=value.unit, path=value.path)
+            for key, value in point.readings.items()
+        },
+    )
+
+
+def _knee_schema(knee: curves.Knee) -> BenchmarkKneeSchema:
+    return BenchmarkKneeSchema(
+        found=knee.found,
+        step_index=knee.step_index,
+        step_value=knee.step_value,
+        method=knee.method,
+        metric=knee.metric,
+        threshold=knee.threshold,
+        reason=knee.reason,
+    )
+
+
+def _one_digest(runs: list[BenchmarkRun]) -> str | None:
+    """The serving configuration a request's runs all measured, or nothing.
+
+    Nothing rather than the first of several: a curve drawn through two
+    configurations describes a machine that does not exist, and naming one of
+    them would attribute half the points to the wrong thing.
+    """
+    digests = {run.serving_digest for run in runs if run.serving_digest}
+    return digests.pop() if len(digests) == 1 else None
 
 
 def _request_schema(row: Row, runs: list[BenchmarkRun]) -> BenchmarkRequestSchema:

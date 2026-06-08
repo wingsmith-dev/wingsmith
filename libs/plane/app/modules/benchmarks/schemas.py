@@ -113,6 +113,88 @@ class BenchmarkBandSchema(Struct):
     incomplete: list[str]
 
 
+class BenchmarkReadingSchema(Struct):
+    """One number of one run, with the path it was read from and the unit it is in.
+
+    A reading that did not resolve is a null value beside the path that was
+    looked for — a named miss, never a silent zero. A curve with a zero at one
+    step draws a cliff the machine did not have, and a client cannot tell that
+    zero from a measured one.
+    """
+
+    value: float | None
+    unit: str
+    path: str
+
+
+class BenchmarkCurvePointSchema(Struct):
+    """One step of a request, with every reading a chart draws.
+
+    `readings` carries graded and display-only numbers side by side.
+    `output_tps_total` and `request_throughput` are display-only: they are
+    reached through the half of the field map no verdict can see, because an
+    aggregate rate clears a per-stream floor under every possible condition and
+    a check that could reach it would be a check that can never fail.
+
+    A discarded run is still a point, flagged rather than dropped — a warm-up is
+    part of what was run — and it is excluded from the knee. A run still open is
+    a point too, with null readings, so the console can draw a partial curve
+    while the ramp is still climbing.
+    """
+
+    step_index: int
+    step_value: int | None
+    run: str
+    phase: str
+    discard: bool
+    readings: dict[str, BenchmarkReadingSchema]
+
+
+class BenchmarkKneeSchema(Struct):
+    """Where the anchored metric first crossed its ceiling, derived at read and stored nowhere.
+
+    Always an object and never absent: `found` is false far more often than it
+    is true, and `reason` says which false it is. A ramp that never crossed, a
+    ramp that started above the ceiling and a ramp too short to have a crossing
+    are three different answers, and an operator who cannot tell them apart
+    cannot tell whether to ramp further.
+
+    `threshold` comes from the pinned criteria version, through the band the
+    steps landed in. It is not a verdict and rolls up into none: a knee is a
+    property of the machine, and whether the machine met the standard is
+    `/verdict`.
+    """
+
+    found: bool
+    step_index: int | None
+    step_value: int | None
+    method: str
+    metric: str
+    threshold: float | None
+    reason: str
+
+
+class BenchmarkCurveSchema(Struct):
+    """A stepped request's runs ordered by step, with the knee derived now.
+
+    Nothing here is stored. The curve and the knee are derived at read against
+    the criteria version the request was created under, exactly as the verdict
+    is, because a stored knee cannot answer the question a criteria revision
+    immediately raises — where would the elbow have been under the new rules.
+
+    `serving_digest` is the configuration the curve is about, and it is null
+    when the request's runs did not all measure the same one: a curve drawn
+    through two configurations describes a machine that does not exist.
+    """
+
+    request: str
+    serving_digest: str | None
+    step_field: str
+    criteria_version: str
+    points: list[BenchmarkCurvePointSchema]
+    knee: BenchmarkKneeSchema
+
+
 class BenchmarkCoverageSchema(Struct):
     """One thing that was behind the target when a request expanded.
 

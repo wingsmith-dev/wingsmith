@@ -19,6 +19,7 @@ from typing import NamedTuple
 
 MILLISECONDS = "ms"
 TOKENS_PER_SECOND = "tokens/sec"
+REQUESTS_PER_SECOND = "requests/sec"
 COUNT = "count"
 RATIO = "ratio"
 
@@ -38,12 +39,20 @@ class Adapter(NamedTuple):
     falls outside every range for its harness is not graded against a map
     written for a different one — it is `inconclusive`, which is the whole
     reason the range is recorded.
+
+    `display` is the half of the map a verdict cannot see. `read` searches
+    `fields` and nothing else, so a number named here is readable for a chart and
+    is a named miss to a check — which is the point. The aggregate output rate is
+    the reason the split exists: it is the y-axis of every load curve, and it
+    clears a per-stream floor under every possible condition, so a check that
+    could reach it would be a check that can never fail.
     """
 
     harness: str
     min_version: str
     max_version: str | None
     fields: tuple[Field, ...]
+    display: tuple[Field, ...] = ()
 
 
 class Reading(NamedTuple):
@@ -61,6 +70,20 @@ OUTPUT_SPEED_PER_STREAM = "output_speed.per_stream"
 REQUEST_COUNT = "request.count"
 ERROR_COUNT = "request.errors"
 
+TTFT_P95 = "ttft.p95"
+TTFT_P99 = "ttft.p99"
+ITL_P50 = "itl.p50"
+E2E_P95 = "e2e.p95"
+OUTPUT_SPEED_TOTAL = "output_speed.total"
+REQUEST_THROUGHPUT = "request.throughput"
+
+DISPLAY_ONLY: frozenset[str] = frozenset({TTFT_P95, TTFT_P99, ITL_P50, E2E_P95, OUTPUT_SPEED_TOTAL, REQUEST_THROUGHPUT})
+"""Every id a chart may read and no verdict may.
+
+Not the mechanism — `read` searching only `fields` is the mechanism — but the
+assertion a test holds that mechanism to.
+"""
+
 PROBE_TOTAL = "probe.total"
 PROBE_PASSED = "probe.passed"
 PROBE_FAILED = "probe.failed"
@@ -77,12 +100,22 @@ AIPERF_0_4 = Adapter(
         Field(TTFT_P50, ("time_to_first_token", "p50"), MILLISECONDS),
         Field(TTFT_AVG, ("time_to_first_token", "avg"), MILLISECONDS),
         # TODO: confirm this key against a real export of the pinned image. The aggregate
-        # `output_token_throughput` is deliberately not a fallback — a serving GPU's aggregate
-        # rate clears a per-stream floor under every possible condition, so reading it would
-        # produce a check that can never fail, which is worse than no check at all.
+        # `output_token_throughput` is not a fallback here and never becomes one: a serving
+        # GPU's aggregate rate clears a per-stream floor under every possible condition, so a
+        # check that could reach it would be a check that can never fail. It is a number worth
+        # drawing all the same — flattening aggregate throughput is what a knee looks like —
+        # so it sits in `display` below, which `read` cannot see.
         Field(OUTPUT_SPEED_PER_STREAM, ("output_token_throughput_per_user", "avg"), TOKENS_PER_SECOND),
         Field(REQUEST_COUNT, ("request_count",), COUNT),
         Field(ERROR_COUNT, ("error_count",), COUNT),
+    ),
+    display=(
+        Field(TTFT_P95, ("time_to_first_token", "p95"), MILLISECONDS),
+        Field(TTFT_P99, ("time_to_first_token", "p99"), MILLISECONDS),
+        Field(ITL_P50, ("inter_token_latency", "p50"), MILLISECONDS),
+        Field(E2E_P95, ("request_latency", "p95"), MILLISECONDS),
+        Field(OUTPUT_SPEED_TOTAL, ("output_token_throughput", "avg"), TOKENS_PER_SECOND),
+        Field(REQUEST_THROUGHPUT, ("request_throughput", "avg"), REQUESTS_PER_SECOND),
     ),
 )
 
@@ -144,10 +177,35 @@ def adapter_for(harness: str, harness_version: str | None) -> Adapter | None:
 
 
 def read(adapter: Adapter, summary: dict | None, field_id: str) -> Reading:
-    """One field of one summary, or the dotted path that was not in it."""
+    """One gradeable field of one summary, or the dotted path that was not in it.
+
+    Searches `adapter.fields` and nothing else. A display id asked for here is
+    the same named miss an unknown id is, which is what keeps a display-only
+    number structurally out of every verdict rather than out of it by memory.
+    """
     field = next((candidate for candidate in adapter.fields if candidate.id == field_id), None)
     if field is None:
         return Reading(None, "", field_id)
+    return _resolve(field, summary)
+
+
+def show(adapter: Adapter, summary: dict | None, field_id: str) -> Reading:
+    """One field a chart may read, from either half of the map.
+
+    The inverse of `read` and deliberately not its replacement: a curve plots a
+    graded percentile and an ungraded aggregate side by side through one call,
+    while grading stays one-way.
+    """
+    field = next(
+        (candidate for candidate in adapter.display + adapter.fields if candidate.id == field_id),
+        None,
+    )
+    if field is None:
+        return Reading(None, "", field_id)
+    return _resolve(field, summary)
+
+
+def _resolve(field: Field, summary: dict | None) -> Reading:
     cursor: Any = summary or {}
     for step in field.path:
         if not isinstance(cursor, dict) or step not in cursor:

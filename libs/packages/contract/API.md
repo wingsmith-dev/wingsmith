@@ -995,6 +995,28 @@ one of them is interesting.
 find. It is a named absence and never a zero: a configuration that was measured and whose throughput
 could not be read is not a configuration that achieved nothing.
 
+**`GET /v1/benchmarks/requests/{ref}/curve` reads a stepped request back as a load curve.** It
+answers `request`, `serving_digest`, `step_field`, `criteria_version`, an array of `points` ordered
+by `step_index`, and a `knee`. Each point carries the step it was, the run that measured it, its
+phase, whether it was discarded, and a `readings` map of `{ "value", "unit", "path" }` — a reading
+that did not resolve is a null value beside the path that was looked for, never a zero, because a
+zero plotted where nothing was measured is a lie about the hardware. A discarded warm-up stays on
+the curve flagged rather than dropped, and a run still open appears with its phase and null
+readings, so a ramp can be drawn while it is still climbing.
+
+`output_tps_total` and `request_throughput` are display-only. They are read through the half of the
+plane's field map no verdict can see: an aggregate rate clears a per-stream floor under every
+possible condition, so a check that could reach one would be a check that can never fail.
+
+**`knee` is always an object and `found` is false more often than it is true.** It names the
+`method` (`first-crossing`), the `metric`, and the `threshold` it was measured against, which comes
+from the pinned criteria version through the input-length band the steps landed in — never from a
+constant in this API. Every false carries its own `reason`: a ramp that never crossed, a ramp that
+started above the ceiling, a ramp too short to have a crossing, and a curve that crossed back under
+are four different answers. `?criteria=` re-reads the curve against another pinned standard, which
+moves the ceiling — the question a stored knee could not answer at all. Nothing here is stored: the
+points and the knee are derived at read, exactly as the verdict is.
+
 **`GET /v1/benchmarks/harnesses`** returns each harness with the parameters it accepts, their
 types and their defaults. Clients render their form from it rather than carrying a second copy of
 what AIPerf takes; a parameter the named harness does not accept is `400 invalid` at creation and
