@@ -180,6 +180,43 @@ func TestAnEmptyWarmSetIsReady(t *testing.T) {
 	}
 }
 
+// TestAWithdrawnArtifactLosesItsDownload is what deleting a workload was missing. The prefetch Job
+// is created in the workload namespace and the warm set that asked for it is not, so it carries a
+// label home rather than an owner reference — and Kubernetes garbage-collects on owner references
+// alone. Nothing removed it: the workload was deleted, the deployment went with it, and the pod
+// went on pulling weights under the name of a model nobody had asked for since.
+func TestAWithdrawnArtifactLosesItsDownload(t *testing.T) {
+	running := completedPrefetch()
+	running.Status = batchv1.JobStatus{Active: 1}
+	cache := declared(t, "cache", testCacheID, warmSet())
+
+	r, out, _ := runReconcile(t, cache, running)
+
+	if readyCondition(t, out).Status != metav1.ConditionTrue {
+		t.Fatal("a cluster told to hold nothing did not report ready")
+	}
+	if _, ok := prefetchJob(t, r.Client, testArtifactID); ok {
+		t.Error("the download of an artifact nothing asks for is still running")
+	}
+}
+
+// TestAWarmSetKeepsTheDownloadsItStillNames guards the prune against the obvious over-reach: one
+// artifact leaving must not take the rest of the warm set's jobs with it.
+func TestAWarmSetKeepsTheDownloadsItStillNames(t *testing.T) {
+	kept := completedPrefetch()
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+
+	r, _, _ := runReconcile(t, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
+		kept,
+	)
+
+	if _, ok := prefetchJob(t, r.Client, testArtifactID); !ok {
+		t.Error("an artifact the warm set still names lost its download")
+	}
+}
+
 // TestAWarmSetIsPartiallyDispatched: one fetchable entry gets its job even while another waits,
 // rather than the whole set stalling on its slowest member.
 func TestAWarmSetIsPartiallyDispatched(t *testing.T) {
@@ -369,7 +406,7 @@ func TestAPrefetchUnderTheOldNameIsStillFound(t *testing.T) {
 // TestWeightsUnderTheOldNameAreResident — the same migration read from the deployment side, where
 // missing the job holds every deployment of those weights behind a fetch that already finished.
 func TestWeightsUnderTheOldNameAreResident(t *testing.T) {
-	cache := declared(t, "cache", testCacheID, warmSet())
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, _, _ := runReconcile(t, cache, legacyPrefetch(batchv1.JobStatus{Succeeded: 1}))
 
 	resident, err := r.weightsResident(context.Background(), testArtifactID)
@@ -389,7 +426,7 @@ func TestOneArtifactResolvesToOneJob(t *testing.T) {
 	running := completedPrefetch()
 	running.Status = batchv1.JobStatus{Active: 1}
 	running.CreationTimestamp = metav1.NewTime(done.CreationTimestamp.Add(-time.Hour))
-	cache := declared(t, "cache", testCacheID, warmSet())
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
 	r, _, _ := runReconcile(t, cache, done, running)
 
 	job, err := r.prefetchJobFor(context.Background(), testArtifactID)

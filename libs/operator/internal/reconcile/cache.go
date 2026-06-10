@@ -72,12 +72,68 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 		r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes, "", "")
 	}
 
+	if err := r.prunePrefetch(ctx, warm); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	if pending > 0 {
 		return r.wait(ctx, res, "WarmSetIncomplete",
 			fmt.Sprintf("%d of %d warm-set entries are not yet fetchable", pending, len(warm.Entries)))
 	}
 	return r.ready(ctx, res, "WarmSetDispatched",
 		fmt.Sprintf("%d artifacts have a prefetch job", len(warm.Entries)))
+}
+
+// prunePrefetch removes the download jobs of artifacts the warm set no longer names.
+//
+// The warm set is a full-object frame and the whole of what this cluster must hold, so an artifact
+// absent from it is one the plane has stopped asking for — a workload deleted, a deployment drained
+// to another cluster, a pin withdrawn. Nothing else removes these: a prefetch Job is created in the
+// workload namespace and the SyncedResource that asked for it lives in another, so it carries a
+// label back to its origin and not an owner reference, and Kubernetes garbage-collects on owner
+// references alone. Deleting the workload therefore left the download running — or its completed
+// pod sitting in `kubectl get pods` under the name of a model nobody had asked for since,
+// indistinguishable from something still being served.
+//
+// Only the Job goes. The weights it wrote stay on the shared cache, which is the point of a cache:
+// deploying the same model again should find them there. What is removed is the claim that this
+// cluster is *asked* to hold them, and reclaiming the disk is eviction's business, not this one's.
+//
+// Foreground propagation for a job that is still running, because the pod under it is holding a
+// write into the shared filesystem open and letting the delete return before it stops leaves the
+// download racing whatever comes next.
+func (r *SyncedResourceReconciler) prunePrefetch(ctx context.Context, warm wire.CacheDesired) error {
+	declared := make(map[string]struct{}, len(warm.Entries))
+	for _, entry := range warm.Entries {
+		declared[entry.ArtifactID] = struct{}{}
+	}
+
+	var jobs batchv1.JobList
+	if err := r.Client.List(ctx, &jobs,
+		client.InNamespace(r.Render.Namespace),
+		client.HasLabels{render.ArtifactLabel},
+	); err != nil {
+		return fmt.Errorf("read prefetch jobs: %w", err)
+	}
+
+	policy := metav1.DeletePropagationForeground
+	for i := range jobs.Items {
+		job := &jobs.Items[i]
+		artifactID := job.Labels[render.ArtifactLabel]
+		if _, ok := declared[artifactID]; ok {
+			continue
+		}
+		if !job.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if err := r.Client.Delete(ctx, job, &client.DeleteOptions{PropagationPolicy: &policy}); err != nil &&
+			!apierrors.IsNotFound(err) {
+			return fmt.Errorf("prune prefetch job %s: %w", job.Name, err)
+		}
+		r.Log.Info("dropping a download nothing asks for", "artifact", artifactID, "job", job.Name)
+		r.forgetReported(artifactID)
+	}
+	return nil
 }
 
 // maxPrefetchAttempts bounds how many times a download is started again after failing outright.
