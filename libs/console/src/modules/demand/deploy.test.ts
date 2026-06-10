@@ -227,7 +227,6 @@ describe("derivedServingRequest", () => {
     expect(request.engine_runtime_version).not.toBe("0.9.1")
     expect(request.cache?.kv_cache_dtype).toBe("fp8")
     expect(request.dtype).toBe("bfloat16")
-    expect(request.shape.device_memory_mib_min).toBe(81_920)
   })
 
   it("takes what was typed over what was proposed, and empty means say nothing", () => {
@@ -241,39 +240,47 @@ describe("derivedServingRequest", () => {
     expect(typed.dtype).toBe("float16")
     // Cleared, not reverted to the corpus's fp8: an empty field is a decision.
     expect(typed.cache?.kv_cache_dtype).toBeNull()
-    // And a field nobody touched still follows the proposal.
-    expect(typed.shape.device_memory_mib_min).toBe(81_920)
   })
 
-  it("re-divides the memory floor when the fit uses a different device count", () => {
+  it("proposes no memory floor, whatever the suggestion sized", () => {
     /**
-     * The failure this exists for. The plane suggested GLM-5.3-Flash as 2 devices at
-     * 192 GiB; the recipe's parallelism put 4 on the request; the floor was carried
-     * across untouched, so the workload asked for 4 × 192 GiB to serve a model needing
-     * 383 GiB. No H200 has 192 GiB, so placement reported every cluster as owning no
-     * such device and the workload expanded to no deployment at all.
+     * The failure this exists for, twice over. The plane suggested GLM-5.3-Flash as 2
+     * devices at 192 GiB and the recipe's parallelism put 4 on the request, so a floor
+     * carried across asked for 4 × 192 GiB to serve a 383 GiB model; re-dividing the
+     * replica total fixed that one and broke the next, because gemma-4-26b was suggested
+     * across 2 devices at the declared 131k window and sent to the 1 device the fit
+     * chose — 122 GiB per card, from a card that has 96, refused outright.
      *
-     * The replica total is what survives a change of count, so that is what is divided.
+     * Both are the same mistake: the suggestion prices a configuration nobody submitted.
+     * A floor is a statement about hardware, so nobody but the operator makes it.
      */
     const request = derivedServingRequest(
       artifact,
-      { ...footprint, device_count: 4, tensor_parallel: 4 },
+      { ...footprint, device_count: 1, tensor_parallel: 1 },
       { defaults, upstream: upstream() }
     )
 
-    expect(request.shape.device_count).toBe(4)
-    // 2 × 81_920 across 4 devices, not 81_920 repeated four times.
-    expect(request.shape.device_memory_mib_min).toBe(40_960)
-    expect(
-      request.shape.device_memory_mib_min * request.shape.device_count
-    ).toBe(defaults.device_memory_mib_min * defaults.device_count)
+    expect(request.shape.device_count).toBe(1)
+    expect(request.shape.device_memory_mib_min).toBe(0)
   })
 
-  it("asks for no floor at all when the weights imply none", () => {
-    const request = derivedServingRequest(artifact, footprint, {
-      defaults: { ...defaults, device_memory_mib_min: 0 },
-      upstream: upstream(),
-    })
+  it("carries a floor somebody states, and only that", () => {
+    const request = derivedServingRequest(
+      artifact,
+      footprint,
+      { defaults, upstream: upstream() },
+      { device_memory_mib_min: 81_920 }
+    )
+    expect(request.shape.device_memory_mib_min).toBe(81_920)
+  })
+
+  it("treats a cleared floor as no floor rather than as a zero somebody meant", () => {
+    const request = derivedServingRequest(
+      artifact,
+      footprint,
+      { defaults, upstream: upstream() },
+      { device_memory_mib_min: 0 }
+    )
     expect(request.shape.device_memory_mib_min).toBe(0)
   })
 

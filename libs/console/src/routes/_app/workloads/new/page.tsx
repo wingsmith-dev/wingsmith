@@ -365,6 +365,7 @@ export function NewWorkloadPage() {
             identical={identical}
             overrides={overrides}
           />
+          {fit && !fit.fits && <SizingDoubt fit={fit} />}
           {request && (
             <ParamFields
               request={request}
@@ -562,6 +563,27 @@ function ParamFields({
         placeholder="Whatever the cluster runs its frontends on"
         hint="A second image and not a spelling of the one above: the worker loads the weights, the frontend tokenizes the request, and they are separately versioned builds. Empty means the cluster decides, not that it reuses the engine runtime image."
       />
+      <NumberField
+        label="Context length"
+        value={request.context_length || null}
+        onChange={(context_length) =>
+          onChange({ context_length: context_length ?? 0 })
+        }
+        min={0}
+        placeholder="What the fit costed"
+        hint={sourced(
+          "Tokens one sequence may reach. The fit halves this down until its sizing is happy, so a window shorter than the model declares is an estimate's opinion and not the model's — raise it back if you disagree.",
+          at.context_length
+        )}
+      />
+      <NumberField
+        label="Per-device memory floor (MiB)"
+        value={request.shape.device_memory_mib_min || null}
+        onChange={(mib) => onChange({ device_memory_mib_min: mib ?? 0 })}
+        min={0}
+        placeholder="No floor — the device class already names the memory"
+        hint="Filters devices within the class the fit chose, so it is empty by default: a class is itself a memory figure, and a number derived from one here is a floor that describes a shape nobody asked for. State one only to exclude a card of this class that a cluster reports as smaller than the catalogue says."
+      />
       <TextField
         label="dtype"
         value={request.dtype ?? ""}
@@ -600,6 +622,40 @@ function ParamFields({
         )}
       />
     </FormGrid>
+  )
+}
+
+/**
+ * The sizing's objection to the shape somebody picked, said once and not enforced.
+ *
+ * Every fitment row is selectable now, including the ones the estimate dislikes, because
+ * an estimate that refuses is worse than an estimate that warns: the cost of being wrong
+ * in one direction is a worker that OOMs and reports it, and in the other it is a model
+ * that cannot be deployed at all with nothing to argue against. This is where the
+ * argument goes, so choosing such a row is a decision somebody made rather than one they
+ * did not notice.
+ *
+ * What the plane still refuses on its own is the certain half — weights that cannot sit
+ * on the cards, heads that do not divide across the tensor group — and those come back
+ * as a submit error, which is the right place for a refusal nothing here can talk out of.
+ */
+function SizingDoubt({ fit }: { fit: ArtifactFit }) {
+  return (
+    <div className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+      <p className="font-mono text-2xs tracking-wider text-amber-600 uppercase dark:text-amber-500">
+        The sizing does not think this fits
+      </p>
+      <p className="mt-1 font-mono text-2xs text-muted-foreground">
+        {fit.reason}
+      </p>
+      <p className="mt-1.5 font-mono text-2xs text-muted-foreground/70">
+        It is an estimate and you can overrule it — engines pack a cache better
+        than arithmetic predicts, and interleaved attention makes the KV figure
+        a ceiling rather than a cost. If it turns out to be right the worker
+        fails to start and says so, which is recoverable in a way an
+        undeployable model is not.
+      </p>
+    </div>
   )
 }
 

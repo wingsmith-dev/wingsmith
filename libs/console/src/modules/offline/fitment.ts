@@ -58,6 +58,9 @@ interface ModelShape {
   context_length: number | null
   num_attention_heads: number | null
   hidden_size: number | null
+  /** Interleaved attention: the window a local layer holds, and how many layers are local. */
+  sliding_window?: number | null
+  sliding_layers?: number | null
 }
 
 interface Sizing {
@@ -165,6 +168,28 @@ function activationBytes(shape: ModelShape, batchTokens: number): number {
  * What the model holds: weights, KV cache, activation peak. Not grossed up — the
  * utilization envelope is applied once, on the capacity side.
  */
+/**
+ * Bytes one sequence of `contextLength` tokens holds, which is not the per-token rate
+ * times the length once any layer has a sliding window.
+ *
+ * Mirrors `app.core.vram.kv_cache_bytes`. A local layer holds its window and stops
+ * growing there, so a model running five local layers to every global one costs a
+ * fraction of what its layer count implies — the difference between sizing gemma-4-26b
+ * at 122 GiB and at 67, which is the difference between two cards and one.
+ */
+function kvCacheBytes(shape: ModelShape, contextLength: number): number {
+  const perLayer = kvBytesPerToken(shape) / Math.max(1, shape.num_hidden_layers)
+  const window = shape.sliding_window ?? 0
+  const local = window
+    ? Math.min(shape.sliding_layers ?? 0, shape.num_hidden_layers)
+    : 0
+  const resident = window ? Math.min(contextLength, window) : contextLength
+  return (
+    perLayer *
+    ((shape.num_hidden_layers - local) * contextLength + local * resident)
+  )
+}
+
 function neededGb(
   sizing: Sizing,
   contextLength: number,
@@ -173,7 +198,7 @@ function neededGb(
 ): number {
   const weights = sizing.total_params * bytesPerParam(sizing.quantization)
   const kv = sizing.shape
-    ? kvBytesPerToken(sizing.shape) * contextLength * concurrency
+    ? kvCacheBytes(sizing.shape, contextLength) * concurrency
     : 0
   const activations = sizing.shape
     ? activationBytes(sizing.shape, batchTokens)
@@ -222,6 +247,8 @@ function sizingOf(artifact: Artifact, quantization?: string): Sizing | null {
       context_length: stored.context_length ?? null,
       num_attention_heads: stored.num_attention_heads ?? null,
       hidden_size: stored.hidden_size ?? null,
+      sliding_window: stored.sliding_window ?? null,
+      sliding_layers: stored.sliding_layers ?? 0,
     },
     quantization: quant,
   }
@@ -275,6 +302,7 @@ function fitAt(
     return {
       ...base,
       fits: false,
+      possible: false,
       reduced: false,
       required_gb: 0,
       context_length: contextLength,
@@ -285,6 +313,7 @@ function fitAt(
     return {
       ...base,
       fits: false,
+      possible: false,
       reduced: false,
       required_gb: weights,
       context_length: contextLength,
@@ -295,6 +324,7 @@ function fitAt(
     return {
       ...base,
       fits: false,
+      possible: false,
       reduced: false,
       required_gb: weights,
       context_length: contextLength,
@@ -308,6 +338,7 @@ function fitAt(
     return {
       ...base,
       fits: true,
+      possible: true,
       reduced: false,
       required_gb: weights,
       context_length: 0,
@@ -330,6 +361,7 @@ function fitAt(
     return {
       ...base,
       fits: false,
+      possible: true,
       reduced,
       required_gb: need,
       context_length: window,
@@ -341,6 +373,7 @@ function fitAt(
   return {
     ...base,
     fits: true,
+    possible: true,
     reduced,
     required_gb: need,
     context_length: window,

@@ -241,6 +241,10 @@ export interface ServingOverrides {
   frontend_image?: string
   dtype?: string
   kv_cache_dtype?: string
+  /** MiB. A floor nobody states is no floor — see `perDeviceFloor`. */
+  device_memory_mib_min?: number
+  /** Tokens. The fit's window is a starting point, not a ceiling somebody has to accept. */
+  context_length?: number
   reasoning_parser?: string
   tool_call_parser?: string
 }
@@ -255,28 +259,32 @@ function chosen(
 }
 
 /**
- * The suggestion's per-device memory floor, re-divided by the devices actually used.
+ * The per-device memory floor, which is a constraint somebody states and never one derived.
  *
- * The plane derives its floor as `required / device_count` at the count *it*
- * suggested, and the count on this request comes from the fit, which is a different
- * number whenever a recipe's parallelism differs from the suggestion's arithmetic.
- * Carried across verbatim the floor stops describing anything: GLM-5.3-Flash was
- * suggested as 2 devices at 192 GiB, sent as 4 devices at 192 GiB, and so asked for
- * 768 GiB to serve a 383 GiB model — a floor no card in the fleet could meet, which
- * placement reports as the cluster owning no such device.
+ * It was derived twice and it was wrong both times, in the same way. The plane's suggestion
+ * sizes the declared window across the count *it* proposed; the request carries the count and
+ * the window the *fit* chose. Those are different numbers about different configurations, and
+ * carrying one into the other produces a floor that describes nothing — GLM-5.3-Flash asked
+ * for 768 GiB to serve 383 GiB of weights, and gemma-4-26b sent to a single RTX PRO 6000 asked
+ * for 122 GiB per card from a card that has 96, which the plane refuses outright with "a floor
+ * of 124928 MiB excludes every rtx-pro-6000-96gb-server-edition".
  *
- * What survives a change of count is the replica total, so that is what is divided.
- * Rounded up, because a floor that rounds down is a floor that does not hold the
- * model.
+ * Re-dividing the replica total was the first repair and it only moved the arithmetic. The
+ * real defect is that a floor is not arithmetic at all: `device_memory_mib_min` filters devices
+ * *within* a class the request has already named, and a class is itself a memory figure, so
+ * for everything the fit picks the floor is redundant by construction. What it is genuinely
+ * for is the case the console cannot see — a cluster reporting a card of that class with less
+ * memory than the catalogue says, a partition, a card that came up degraded — and that is a
+ * thing an operator knows and states, not a thing a form can infer.
+ *
+ * So nothing is proposed, and the field is editable. Whether the weights fit at all is still
+ * checked, twice, by the two things that can honestly answer it: the fitment offers no row
+ * that does not fit, and the plane's own `check_capacity` refuses a shape whose cards cannot
+ * hold the weights.
  */
-function perDeviceFloor(
-  defaults: ServingDefaults | null | undefined,
-  deviceCount: number
-): number {
-  if (!defaults?.device_memory_mib_min || !defaults.device_count) return 0
-  if (deviceCount < 1) return 0
-  const replicaTotal = defaults.device_memory_mib_min * defaults.device_count
-  return Math.ceil(replicaTotal / deviceCount)
+function perDeviceFloor(override: number | undefined): number {
+  if (override === undefined || override === null) return 0
+  return override > 0 ? Math.ceil(override) : 0
 }
 
 /**
@@ -328,11 +336,11 @@ export function derivedServingRequest(
       overrides.engine_runtime_version ?? DEFAULT_ENGINE_RUNTIME_VERSION,
     engine_runtime_image: chosen(overrides.engine_runtime_image, null),
     frontend_image: chosen(overrides.frontend_image, null),
-    context_length: footprint.context_length,
+    context_length: overrides.context_length ?? footprint.context_length,
     shape: {
       device_class: footprint.device_class,
       device_count: footprint.device_count,
-      device_memory_mib_min: perDeviceFloor(defaults, footprint.device_count),
+      device_memory_mib_min: perDeviceFloor(overrides.device_memory_mib_min),
       requires_single_topology_domain:
         upstream?.requires_single_topology_domain ||
         requiresSingleDomain(footprint),
@@ -391,7 +399,6 @@ export function servingProvenance(
     quantization: "derived",
   }
   if (defaults?.dtype) at.dtype = "weights"
-  if (defaults?.device_memory_mib_min) at.device_memory_mib_min = "weights"
   if (upstream?.engine) at.engine = "upstream"
   if (upstream?.kv_cache_dtype) at.kv_cache_dtype = "upstream"
   if (upstream?.reasoning_parser) at.reasoning_parser = "upstream"
