@@ -99,14 +99,14 @@ AIPERF_0_4 = Adapter(
         Field(TTFT_P90, ("time_to_first_token", "p90"), MILLISECONDS),
         Field(TTFT_P50, ("time_to_first_token", "p50"), MILLISECONDS),
         Field(TTFT_AVG, ("time_to_first_token", "avg"), MILLISECONDS),
-        # TODO: confirm this key against a real export of the pinned image. The aggregate
+        # Confirmed against a real export of aiperf 0.12.0. The aggregate
         # `output_token_throughput` is not a fallback here and never becomes one: a serving
         # GPU's aggregate rate clears a per-stream floor under every possible condition, so a
         # check that could reach it would be a check that can never fail. It is a number worth
         # drawing all the same — flattening aggregate throughput is what a knee looks like —
         # so it sits in `display` below, which `read` cannot see.
         Field(OUTPUT_SPEED_PER_STREAM, ("output_token_throughput_per_user", "avg"), TOKENS_PER_SECOND),
-        Field(REQUEST_COUNT, ("request_count",), COUNT),
+        Field(REQUEST_COUNT, ("request_count", "avg"), COUNT),
         Field(ERROR_COUNT, ("error_count",), COUNT),
     ),
     display=(
