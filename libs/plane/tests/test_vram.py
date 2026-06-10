@@ -25,6 +25,7 @@ from app.core.vram import device_counts
 from app.core.vram import estimate_vram
 from app.core.vram import extract_shape
 from app.core.vram import hidden_size_of
+from app.core.vram import kv_cache_bytes
 from app.core.vram import shape_metadata
 from app.core.vram import bytes_per_param
 from app.core.vram import quant_from_name
@@ -63,6 +64,21 @@ def gpt_oss_config(**kwargs) -> dict:
         "num_experts_per_tok": 4,
         "max_position_embeddings": 131072,
         "quantization_config": {"quant_method": "mxfp4"},
+    }
+    return base | kwargs
+
+
+def gemma_config(**kwargs) -> dict:
+    """Interleaved attention the older way: five local layers to every global one."""
+    base = {
+        "num_hidden_layers": 62,
+        "num_attention_heads": 32,
+        "num_key_value_heads": 16,
+        "head_dim": 128,
+        "hidden_size": 5376,
+        "max_position_embeddings": 131072,
+        "sliding_window": 1024,
+        "sliding_window_pattern": 6,
     }
     return base | kwargs
 
@@ -128,6 +144,57 @@ def test_an_mla_config_sizes_kv_from_the_compressed_latent():
 
     naive = 2 * 61 * 128 * (7168 // 128) * 2
     assert kv_bytes_per_token(shape) < naive
+
+
+def test_a_sliding_layer_holds_its_window_and_not_the_sequence():
+    """The sizing that refused a workload which would have run.
+
+    gemma-4-26b declares 131k and runs 51 of its 62 layers on a 1024-token window. Sized
+    as if all 62 were global it needs 122 GiB, which is two RTX PRO 6000s and then a
+    per-device floor of 122 GiB on a card that has 96 — so the plane refused the single
+    card the model actually serves on. The local layers are two orders of magnitude
+    cheaper than the arithmetic charged them.
+    """
+    shape = extract_shape(gemma_config())
+    assert (shape.sliding_window, shape.sliding_layers) == (1024, 51)
+
+    naive = kv_bytes_per_token(shape) * 131_072
+    assert kv_cache_bytes(shape, 131_072) < naive / 5
+
+    estimate = estimate_vram(total_params=26_000_000_000, shape=shape, context_length=131_072)
+    assert estimate.kv_cache_gb < 15
+    assert estimate.required_gb < 96
+
+
+def test_layer_types_names_every_layer_and_outranks_the_pattern():
+    """What current Transformers writes, and it is the explicit answer where both appear."""
+    types = ["sliding_attention"] * 20 + ["full_attention"] * 4
+    shape = extract_shape(gpt_oss_config(sliding_window=128, layer_types=types))
+
+    assert (shape.sliding_window, shape.sliding_layers) == (128, 20)
+
+
+def test_a_window_with_no_pattern_is_a_model_where_every_layer_is_local():
+    """Mistral's original sliding window: no interleaving, the whole stack is local."""
+    shape = extract_shape(llama_config(sliding_window=4096, max_position_embeddings=32_768))
+
+    assert shape.sliding_layers == shape.num_hidden_layers
+    assert kv_cache_bytes(shape, 32_768) == pytest.approx(kv_cache_bytes(shape, 4096))
+
+
+def test_sliding_window_parameters_a_repo_has_turned_off_are_not_read():
+    """Qwen3 ships the fields and does not use them, and reading them anyway halves a real cost."""
+    shape = extract_shape(llama_config(sliding_window=4096, use_sliding_window=False))
+
+    assert (shape.sliding_window, shape.sliding_layers) == (None, 0)
+    assert kv_cache_bytes(shape, 8192) == pytest.approx(kv_bytes_per_token(shape) * 8192)
+
+
+def test_full_attention_still_costs_the_whole_sequence_on_every_layer():
+    """The ordinary case, unchanged: no window declared means nothing is discounted."""
+    shape = extract_shape(llama_config())
+
+    assert kv_cache_bytes(shape, 8192) == pytest.approx(kv_bytes_per_token(shape) * 8192)
 
 
 def test_text_config_nesting_is_flattened():

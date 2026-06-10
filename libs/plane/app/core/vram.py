@@ -128,8 +128,14 @@ class ModelShape:
     heads times head dimension because that identity does not hold for MLA models, where
     ``head_dim`` is absent entirely.
 
-    Both trail the sizing fields with defaults because they were added after them and
-    callers construct this positionally.
+    ``sliding_window`` and ``sliding_layers`` are the interleaved-attention half. A layer
+    with a sliding window holds that window and not the sequence, so its share of the
+    cache stops growing once the context passes it, and a model where most layers are
+    local costs a fraction of what its layer count suggests. A zero ``sliding_layers``
+    means every layer is global, which is the ordinary case.
+
+    All of these trail the sizing fields with defaults because they were added after them
+    and callers construct this positionally.
     """
 
     num_hidden_layers: int
@@ -140,6 +146,8 @@ class ModelShape:
     context_length: int | None
     num_attention_heads: int | None = None
     hidden_size: int | None = None
+    sliding_window: int | None = None
+    sliding_layers: int = 0
 
 
 def effective_config(config: dict | None) -> dict:
@@ -281,6 +289,46 @@ def bytes_per_param(quantization: str) -> float:
     return BYTES_PER_PARAM.get(quantization.lower(), BYTES_PER_PARAM[DEFAULT_QUANTIZATION])
 
 
+_SLIDING_LAYER = "sliding_attention"
+"""How `layer_types` names a local layer. Anything else in that list is global."""
+
+
+def _sliding(eff: dict, num_hidden_layers: int) -> tuple[int | None, int]:
+    """The window a config declares, and how many of its layers actually use one.
+
+    Interleaved attention is not a detail. Gemma alternates five local layers to one
+    global and Gemma 3's window is 1024 tokens, so at a declared 131k window the local
+    layers hold about a hundredth of what a full-attention sizing charges them — and
+    charging them anyway is what put gemma-4-26b at 122 GiB, spread it over two cards
+    it does not need, and then refused the one card it does. gpt-oss, Ministral and
+    Qwen's hybrids are all the same shape of wrong.
+
+    Two ways a repo says it, and the explicit one wins. `layer_types` lists every layer
+    by name and is what current Transformers writes; `sliding_window_pattern` is the
+    older form, an integer N meaning one global layer in every N. A window with neither
+    is a model where *every* layer is local, which is what Mistral's original sliding
+    window was.
+
+    `use_sliding_window: false` is a repo that ships the parameters and has turned the
+    behaviour off, and it is read as off. Reading the window regardless would size a
+    Qwen3 as a hybrid on the strength of a field it does not use.
+    """
+    window = eff.get("sliding_window")
+    if not window or eff.get("use_sliding_window") is False:
+        return None, 0
+
+    types = eff.get("layer_types")
+    if isinstance(types, list) and types:
+        return int(window), sum(1 for kind in types if kind == _SLIDING_LAYER)
+
+    pattern = eff.get("sliding_window_pattern")
+    if isinstance(pattern, int) and pattern > 1:
+        globals_ = math.ceil(num_hidden_layers / pattern)
+        return int(window), max(0, num_hidden_layers - globals_)
+
+    return int(window), num_hidden_layers
+
+
 def extract_shape(config: dict | None) -> ModelShape | None:
     """Pull the KV-cache shape from a HuggingFace ``config.json``.
 
@@ -295,6 +343,8 @@ def extract_shape(config: dict | None) -> ModelShape | None:
     num_hidden_layers = eff.get("num_hidden_layers")
     if not num_hidden_layers:
         return None
+
+    sliding_window, sliding_layers = _sliding(eff, num_hidden_layers)
 
     kv_lora_rank = eff.get("kv_lora_rank")
     qk_rope_head_dim = eff.get("qk_rope_head_dim")
@@ -331,19 +381,49 @@ def extract_shape(config: dict | None) -> ModelShape | None:
         context_length=context_length,
         num_attention_heads=num_attention_heads,
         hidden_size=declared_hidden,
+        sliding_window=sliding_window,
+        sliding_layers=sliding_layers,
     )
 
 
 def kv_bytes_per_token(shape: ModelShape) -> float:
-    """Bytes of KV cache held per token across all layers.
+    """Bytes of KV cache held per token across all layers, at full attention.
 
     MLA stores a single compressed latent per layer (shared across heads);
     standard attention stores key+value for every KV head.
+
+    Full attention, which is what every layer of most models does. A model with
+    interleaved local layers holds less than this and :func:`kv_cache_bytes` is what
+    knows so — this is the per-layer rate that one multiplies, kept as its own function
+    because it is the figure that does not depend on how long the sequence is.
     """
     if shape.kv_lora_rank:
         latent = shape.kv_lora_rank + (shape.qk_rope_head_dim or 0)
         return shape.num_hidden_layers * latent * _KV_BYTES
     return 2 * shape.num_hidden_layers * (shape.num_key_value_heads or 0) * (shape.head_dim or 0) * _KV_BYTES
+
+
+def kv_cache_bytes(shape: ModelShape, context_length: int) -> float:
+    """Bytes of KV cache one sequence of ``context_length`` tokens holds.
+
+    Not ``kv_bytes_per_token × context_length``, because that identity only holds when
+    every layer attends to the whole sequence. A layer with a sliding window holds the
+    window, so its cost stops growing at the window and the model's total is two terms
+    rather than one product.
+
+    The difference is not a refinement. Gemma runs five local layers of 1024 tokens to
+    every global one; sized as if all sixty-two were global, gemma-4-26b came out at
+    122 GiB for a declared 131k window — which spread it across two cards, then produced
+    a per-device floor larger than the single 96 GiB card it actually serves on, and the
+    plane refused to place a workload that would have run.
+
+    Per sequence and per whole model, ahead of any tensor split: what a device holds is
+    this divided by the parallel degree, and the callers that care do that division.
+    """
+    per_layer = kv_bytes_per_token(shape) / max(1, shape.num_hidden_layers)
+    local = min(shape.sliding_layers, shape.num_hidden_layers) if shape.sliding_window else 0
+    resident = min(context_length, shape.sliding_window) if shape.sliding_window else context_length
+    return per_layer * ((shape.num_hidden_layers - local) * context_length + local * resident)
 
 
 def derive_active_params(config: dict | None, total_params: int | None) -> int | None:
@@ -448,7 +528,7 @@ def estimate_vram(
         capacity needed before the per-device reserve in :func:`usable_gb`.
     """
     weights = total_params * bytes_per_param(quantization)
-    kv_cache = kv_bytes_per_token(shape) * context_length * concurrency
+    kv_cache = kv_cache_bytes(shape, context_length) * concurrency
     activations = activation_bytes(shape, batch_tokens)
     total = weights + kv_cache + activations
 
@@ -1054,6 +1134,8 @@ SHAPE_FIELDS = (
     "context_length",
     "num_attention_heads",
     "hidden_size",
+    "sliding_window",
+    "sliding_layers",
 )
 
 
@@ -1079,6 +1161,11 @@ def sizing_of(metadata: dict, parameter_count: int | None) -> Sizing | None:
     That distinction matters because the missing-shape case is not rare. Every
     artifact registered before the shape was persisted has one, as does every
     artifact adopted by watching a cluster serve weights nobody resolved.
+
+    A stored shape from before the sliding-window fields existed reads back as full
+    attention, which is the safe direction — it over-states the cache rather than
+    under-stating it — but for an interleaved model it over-states it by a lot, and
+    re-reading the source is what corrects the record.
     """
     if not parameter_count:
         return None
@@ -1095,5 +1182,7 @@ def sizing_of(metadata: dict, parameter_count: int | None) -> Sizing | None:
         context_length=stored.get("context_length"),
         num_attention_heads=stored.get("num_attention_heads"),
         hidden_size=stored.get("hidden_size"),
+        sliding_window=stored.get("sliding_window"),
+        sliding_layers=stored.get("sliding_layers") or 0,
     )
     return Sizing(total_params=parameter_count, shape=shape, quantization=quantization)
