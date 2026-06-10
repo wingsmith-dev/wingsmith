@@ -183,6 +183,11 @@ func run() error {
 
 	observer.Bind(client)
 	executor.Bind(client)
+	// Ties the benchmark lane to the process's own lifetime. Without it the lane still drains —
+	// New starts it — but a SIGTERM would stop the process with steps still queued and nothing
+	// said about them, leaving the plane waiting for points on a curve this operator will never
+	// measure. Start makes the shutdown report them refused and retryable instead.
+	executor.Start(ctx)
 	if reconciler != nil {
 		reconciler.Bind(client)
 	}
