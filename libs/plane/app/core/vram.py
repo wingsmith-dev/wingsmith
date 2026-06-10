@@ -812,6 +812,14 @@ class Fit:
     presented it as a full sizing would be promising a window nobody costed.
     ``context_length`` is zero on those, because no window was priced.
 
+    ``possible`` is the certain half of ``fits``, and the two are different questions
+    with different consequences. ``possible`` is arithmetic — the weights sit on the
+    cards, the heads divide across the tensor group — and a caller may refuse over it.
+    ``fits`` adds the estimated half, the window and the batch, and a caller that
+    refuses over *that* eventually refuses a configuration that serves: a row can be
+    ``possible`` and not ``fits``, and it is the one somebody with an argument should
+    still be able to choose.
+
     ``node_count`` is the answer people actually act on — "four nodes of B300" is an
     order, "thirty-two devices" is a number to divide. Reporting only the total made
     every reader do that division, and getting it wrong is how somebody buys one chassis
@@ -820,6 +828,7 @@ class Fit:
 
     device_class: str
     fits: bool
+    possible: bool
     device_count: int
     node_count: int
     tensor_parallel: int
@@ -963,10 +972,12 @@ def fit_at(sizing: Sizing, device: DeviceClass, intent: Intent, device_count: in
         required_gb: float,
         reason: str,
         kv_counted: bool | None = None,
+        possible: bool | None = None,
     ) -> Fit:
         return Fit(
             device_class=device.name,
             fits=fits,
+            possible=fits if possible is None else possible,
             device_count=device_count,
             node_count=layout.node_count,
             tensor_parallel=layout.tensor_parallel,
@@ -984,6 +995,7 @@ def fit_at(sizing: Sizing, device: DeviceClass, intent: Intent, device_count: in
     if device.memory_mib <= 0:
         return verdict(
             fits=False,
+            possible=False,
             context_length=intent.context_length,
             reduced=False,
             required_gb=0.0,
@@ -1000,6 +1012,7 @@ def fit_at(sizing: Sizing, device: DeviceClass, intent: Intent, device_count: in
     if blocked is not None:
         return verdict(
             fits=False,
+            possible=False,
             context_length=intent.context_length,
             reduced=False,
             required_gb=weights,
@@ -1033,6 +1046,7 @@ def fit_at(sizing: Sizing, device: DeviceClass, intent: Intent, device_count: in
     if not fitted.fits:
         return verdict(
             fits=False,
+            possible=True,
             context_length=fitted.context_length,
             reduced=fitted.reduced,
             required_gb=fitted.required_gb,

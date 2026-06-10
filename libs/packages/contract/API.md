@@ -762,6 +762,15 @@ here can price. A class that fits nowhere carries no layouts, and a layout the f
 cards for is listed with `supply_short` rather than hidden. `weights_gb` and `kv_counted` are not
 repeated per layout: they belong to the artifact and are the same for every entry.
 
+`fits` and `possible` are two verdicts and not one. `possible` is the arithmetic half — the
+weights sit on the cards, the attention heads divide across the tensor group — and it is the half a
+caller may refuse over, because it is what the plane itself refuses over when the workload is
+submitted. `fits` adds the estimated half: the window, the batch and the KV cache, sized against a
+flat envelope. A row that is `possible` and not `fits` is the sizing's opinion, and a caller that
+turns it into a refusal will eventually refuse a configuration that serves — being wrong that way
+is a model nobody can deploy, where being wrong the other way is a worker that fails to start and
+reports why. Show such a row with its `reason`; do not disable it.
+
 `sizable` is false only when the artifact carries no parameter count at all; `items` is then empty
 and `note` says why. A missing attention shape is not that case — the weights alone still bound
 which cards are too small, so the matrix is returned with every row's `kv_counted` false,

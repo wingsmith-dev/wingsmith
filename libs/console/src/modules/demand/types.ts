@@ -179,6 +179,13 @@ export interface ArtifactFit {
   device_class: string
   label: string
   fits: boolean
+  /**
+   * The half of `fits` that is arithmetic rather than estimate: the weights sit on the
+   * cards, and the attention heads divide across the tensor group. False is a refusal
+   * the plane will make too. `fits` false with `possible` true is the sizing's opinion
+   * about the window, which is advice and is overrulable.
+   */
+  possible: boolean
   /** The window had to be cut below the one asked for. Deliberately not a failure. */
   reduced: boolean
   device_count: number

@@ -260,6 +260,7 @@ def _fit_schema(
         device_class=result.device_class,
         label=catalog.label_for(result.device_class),
         fits=result.fits,
+        possible=result.possible,
         reduced=result.reduced,
         device_count=result.device_count,
         node_count=result.node_count,

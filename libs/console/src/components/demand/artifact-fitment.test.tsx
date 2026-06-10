@@ -62,6 +62,7 @@ const FIT: ArtifactFit = {
   device_class: "h200-141gb-sxm",
   label: "NVIDIA H200 141GB SXM",
   fits: true,
+  possible: true,
   reduced: false,
   device_count: 8,
   node_count: 1,
@@ -151,6 +152,69 @@ describe("ArtifactFitmentPanel, choosing how many cards", () => {
     expect(footprint.device_count).toBe(4)
     expect(footprint.tensor_parallel).toBe(4)
     expect(footprint.context_length).toBe(65536)
+  })
+
+  it("offers a row the sizing does not like, because that is an estimate", () => {
+    /**
+     * The complaint this answers. gemma-4-26b was sized as if all sixty-two of its
+     * layers held the full 131k window when fifty-one of them hold a thousand tokens,
+     * so every row that would have served it came back as a no-fit and every one of
+     * them was unclickable. An estimate that refuses is worse than one that warns: a
+     * shape it wrongly allows fails to start and says why, and a shape it wrongly
+     * refuses is a model nobody can deploy.
+     */
+    fitment.mockReturnValue({
+      data: response({
+        ...FIT,
+        fits: false,
+        possible: true,
+        reason: "8x H200 holds the weights but not a usable context",
+      }),
+      isLoading: false,
+      error: null,
+    })
+    const onPick = vi.fn()
+    render(
+      <ArtifactFitmentPanel
+        artifact={ARTIFACT}
+        mode="select"
+        selected={null}
+        onPick={onPick}
+      />
+    )
+
+    fireEvent.click(screen.getByText("NVIDIA H200 141GB SXM"))
+    expect(onPick).toHaveBeenCalledTimes(1)
+  })
+
+  it("still refuses a row the arithmetic rules out, which the plane refuses too", () => {
+    /**
+     * `possible` is where the line is: weights that do not sit on the cards, heads that
+     * do not divide across the tensor group. The plane's `check_capacity` rejects those
+     * on submit, so offering one here is a dead end rather than a choice.
+     */
+    fitment.mockReturnValue({
+      data: response({
+        ...FIT,
+        fits: false,
+        possible: false,
+        reason: "the weights need 140 GB and 1x H200 offers 125 GB usable",
+      }),
+      isLoading: false,
+      error: null,
+    })
+    const onPick = vi.fn()
+    render(
+      <ArtifactFitmentPanel
+        artifact={ARTIFACT}
+        mode="select"
+        selected={null}
+        onPick={onPick}
+      />
+    )
+
+    fireEvent.click(screen.getByText("NVIDIA H200 141GB SXM"))
+    expect(onPick).not.toHaveBeenCalled()
   })
 
   it("shows a layout the fleet is too small for and refuses to offer it", () => {

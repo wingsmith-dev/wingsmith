@@ -640,7 +640,26 @@ function FitRow({
    * an action — it is a thing you do — but wrong for a choice among five, where the
    * clickable area should be the thing you are comparing.
    */
-  const choosable = selecting && fit.fits && !fit.supply_short && !!onPick
+  /**
+   * Every row is choosable, including the ones the sizing does not like.
+   *
+   * It used to gate on `fits`, which made an estimate the final word on what an
+   * operator is allowed to run. It is not the final word and it is not always right —
+   * it read gemma-4-26b at 122 GiB by charging a full 131k window to fifty-one layers
+   * that hold a thousand tokens, and every row that would have served it was greyed
+   * out and unclickable. The failure modes are not symmetric: a shape the estimate
+   * was wrong to allow is a worker that OOMs and says so, and a shape it was wrong to
+   * refuse is a model nobody can deploy and no way to find out why.
+   *
+   * `possible` is where the line actually is, and the plane draws it in the same place:
+   * the weights sitting on the cards and the heads dividing across the tensor group are
+   * arithmetic, the plane's `check_capacity` refuses over exactly those, and offering a
+   * row it will refuse is a dead end rather than a choice. Everything past that line —
+   * the window, the batch, the KV figure — is an estimate against a flat envelope, and
+   * the row says so instead of disabling itself: dimmed, with its reason under it, and
+   * a warning carried onto the params step.
+   */
+  const choosable = selecting && fit.possible && !!onPick
   /** A strip of one is not a choice, and a class nobody picked is not asking a question. */
   const choices = selecting && !!selected && fit.layouts.length > 1
   return (
@@ -757,8 +776,9 @@ function FitRow({
         <td className="p-2 text-right">
           {/* A row the fleet cannot supply is not offered. Placement would refuse it,
             and the count is a hard bound rather than a busy one — waiting does not
-            turn five cards into sixty-four. */}
-          {fit.fits && !fit.supply_short && onPick && !selecting && (
+            turn five cards into sixty-four. A row the *sizing* dislikes is offered:
+            that is an estimate, and `possible` is the half worth refusing over. */}
+          {fit.possible && !fit.supply_short && onPick && !selecting && (
             <Button size="sm" variant="outline" onClick={() => pick()}>
               {actionLabel}
             </Button>
