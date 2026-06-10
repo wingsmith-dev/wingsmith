@@ -1036,6 +1036,26 @@ async def test_a_deployment_that_is_gone_dispatches_as_a_deletion(db: AsyncSessi
     assert (payload.deployment_id, payload.cluster_id, payload.generation) == (created.id, cluster.id, 7)
 
 
+async def test_a_deletion_withdraws_the_warm_set_with_it(db: AsyncSession) -> None:
+    """Stop running this, and stop holding the weights it was the only reason to hold.
+
+    The deletion used to travel alone. The operator turns a warm-set entry into a
+    prefetch Job, so a cluster that was never told the entry had gone went on
+    downloading weights for a workload that no longer existed — and for the last
+    workload on a cluster the warm set emptied, which the plane rendered as no
+    frame at all. An empty warm set is "hold nothing", not silence.
+    """
+    cluster, _, artifact, created = await a_deployment(db)
+    await WorkloadService(db, notifier=MemoryNotifier()).delete(created.workload_id)
+
+    frames = await desired_frames(db, cluster.id, "deployment", created.id, generation=7)
+    kinds = [kind for kind, _ in frames]
+
+    assert kinds == ["deployment.deleted", "cache.desired"]
+    warm = frames[1][1]
+    assert artifact.id not in {entry.artifact_id for entry in warm.entries}
+
+
 async def test_deployments_lifecycle(db: AsyncSession) -> None:
     """Read, flip, and disappear with the workload — a deployment has no life of its own."""
     cluster, _, _, created = await a_deployment(db)

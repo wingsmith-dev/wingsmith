@@ -86,9 +86,7 @@ async def stream_desired(db: AsyncSession, cluster_uid: str, scope: str) -> Asyn
             yield "artifact.desired", payload
         for payload in await _deployments(db, cluster_uid, cluster_id):
             yield "deployment.desired", payload
-        cache = await _cache(db, cluster_uid, cluster_id)
-        if cache is not None:
-            yield "cache.desired", cache
+        yield "cache.desired", await _cache(db, cluster_uid, cluster_id)
 
 
 async def desired_object(
@@ -157,8 +155,20 @@ async def desired_frames(
     was never sent. The serving configuration is inlined on the deployment now, so
     there is nothing left to arrive out of order.
 
-    A `deployment.deleted` travels alone. Its dependencies are exactly what the
-    cluster is being told to stop needing.
+    A `deployment.deleted` carries the warm set after it, and only the warm set.
+    The artifact frame is deliberately not withdrawn — an artifact is a
+    description of some weights and describing them costs a cluster nothing, so
+    there is no frame that unsays one and no reason to want one. The warm set is
+    different: it is the statement that this cluster *must hold* those weights,
+    the operator turns it into a running download, and the download is the thing
+    that outlives the workload if nobody says otherwise.
+
+    It used to travel alone, on the reading that the deletion was the whole of
+    what the cluster needed to hear. It was not. Deleting a workload removed the
+    deployment and left the prefetch job pulling weights for it, visible in
+    `kubectl get pods` under the name of a model nothing had asked for since,
+    until the next reconnect happened to resend a warm set — which for the last
+    workload on a cluster resent nothing at all.
     """
     cluster_id = await db.scalar(select(Cluster.id).where(cluster_ref_clause(cluster_uid)))
     if cluster_id is None:
@@ -170,7 +180,7 @@ async def desired_frames(
 
     found = await _deployments(db, cluster_uid, cluster_id, only=uid)
     if not found:
-        return [
+        gone: list[tuple[str, Struct]] = [
             (
                 "deployment.deleted",
                 DeploymentDeleted(
@@ -181,6 +191,8 @@ async def desired_frames(
                 ),
             )
         ]
+        gone.append(("cache.desired", await _cache(db, cluster_uid, cluster_id)))
+        return gone
 
     deployment = found[0]
     frames: list[tuple[str, Struct]] = []
@@ -192,9 +204,7 @@ async def desired_frames(
                 frames.append(("artifact.desired", artifact))
                 break
 
-    cache = await _cache(db, cluster_uid, cluster_id)
-    if cache is not None:
-        frames.append(("cache.desired", cache))
+    frames.append(("cache.desired", await _cache(db, cluster_uid, cluster_id)))
 
     frames.append(("deployment.desired", deployment))
     return frames
@@ -454,7 +464,7 @@ def _adopt(deployment: Deployment) -> Adopt | None:
     )
 
 
-async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheDesired | None:
+async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheDesired:
     """What this cluster must have on disk: its warm set, plus what its deployments serve.
 
     The union is the same one `_artifact_ids_query` applies, and for the same
@@ -510,8 +520,11 @@ async def _cache(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> CacheD
     ).all()
     entries.extend(CacheWarmEntry(artifact_id=uid, priority=0, pin=False) for _, uid in served if uid not in declared)
 
-    if not entries:
-        return None
+    # An empty warm set is a statement and not a silence. Returning nothing here read
+    # as "no opinion", so the last workload on a cluster was deleted, the derived entry
+    # disappeared, and no frame went out to say so — leaving the operator converging on
+    # the warm set it was last told about, for ever. "Hold nothing" is the answer, and
+    # it has to be said out loud for anything to act on it.
     policy: Any = rows[0][0].eviction_policy if rows else "lru"
     return CacheDesired(
         cluster_id=cluster_uid,
