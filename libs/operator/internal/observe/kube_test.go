@@ -1,6 +1,9 @@
 package observe
 
 import (
+	"context"
+	"fmt"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -253,5 +256,84 @@ func TestKubePoolLabelKeyIsConfigurable(t *testing.T) {
 	plain := newKubeDiscoverer(t, node)
 	if got := plain.poolKey(); got != labelPool {
 		t.Fatalf("default pool key is %q, want %q", got, labelPool)
+	}
+}
+
+// levelRecorder records the levels a logger was asked to emit at.
+type levelRecorder struct {
+	levels []slog.Level
+	msgs   []string
+}
+
+func (h *levelRecorder) Enabled(context.Context, slog.Level) bool { return true }
+
+func (h *levelRecorder) Handle(_ context.Context, r slog.Record) error {
+	h.levels = append(h.levels, r.Level)
+	h.msgs = append(h.msgs, r.Message)
+	return nil
+}
+
+func (h *levelRecorder) WithAttrs([]slog.Attr) slog.Handler { return h }
+
+func (h *levelRecorder) WithGroup(string) slog.Handler { return h }
+
+func (h *levelRecorder) warnings() []string {
+	var out []string
+	for i, l := range h.levels {
+		if l >= slog.LevelWarn {
+			out = append(out, h.msgs[i])
+		}
+	}
+	return out
+}
+
+func dcgmInventoryFor(host string, n int) *DCGMInventory {
+	devices := make([]DCGMDevice, 0, n)
+	for i := 0; i < n; i++ {
+		devices = append(devices, DCGMDevice{
+			UUID:  fmt.Sprintf("GPU-%s-%d", host, i),
+			Index: i,
+			Model: "NVIDIA H100 80GB HBM3",
+			Host:  host,
+		})
+	}
+	return &DCGMInventory{byHost: map[string][]DCGMDevice{host: devices}, Devices: n, Hosts: 1}
+}
+
+// TestMissingGPUCountLabelIsNotAWarning: a node group installed without GFD's labels takes its
+// device count from DCGM on every pass for as long as it exists. That is the supported path, so it
+// must not shout — the site-b operator emitted this WARN twice every thirty seconds and buried the
+// reconcile lines. The count itself must still be right.
+func TestMissingGPUCountLabelIsNotAWarning(t *testing.T) {
+	const name = "ip-10-5-103-180.eu-north-1.compute.internal"
+	node := gpuNode(name, map[string]string{}, nil, true, false)
+	h := &levelRecorder{}
+
+	got := devicesFor(node, true, dcgmInventoryFor(name, 8), slog.New(h))
+
+	if len(got) != 8 {
+		t.Fatalf("observed %d devices, want 8 from the dcgm fallback", len(got))
+	}
+	if w := h.warnings(); len(w) != 0 {
+		t.Fatalf("the dcgm count fallback logged at warn or above: %v", w)
+	}
+	if len(h.levels) == 0 || h.levels[0] != slog.LevelDebug {
+		t.Fatalf("the fallback logged at %v, want it kept at debug for whoever is debugging", h.levels)
+	}
+}
+
+// TestCountDisagreementStaysAWarning: the fallback going quiet must not take the real signal with
+// it. Two sources that both saw the node and returned different numbers is a surprise somebody has
+// to resolve, and it keeps its WARN.
+func TestCountDisagreementStaysAWarning(t *testing.T) {
+	const name = "gpu-h100-a-07"
+	node := gpuNode(name, map[string]string{labelGPUCount: "8"}, nil, true, false)
+	h := &levelRecorder{}
+
+	if got := devicesFor(node, true, dcgmInventoryFor(name, 6), slog.New(h)); len(got) != 8 {
+		t.Fatalf("observed %d devices, want gfd's 8", len(got))
+	}
+	if w := h.warnings(); len(w) != 1 {
+		t.Fatalf("gfd/dcgm disagreement produced warnings %v, want exactly one", w)
 	}
 }

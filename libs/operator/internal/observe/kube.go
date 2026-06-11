@@ -216,6 +216,22 @@ func projectKubeNode(n *corev1.Node, inventory *DCGMInventory, poolKey string, l
 // the annotation and then to a synthetic id. Neither view is discarded silently. If GFD says
 // nothing at all — no gpu.count label — DCGM's count is used, so a cluster without GFD still
 // yields inventory.
+//
+// The two fallbacks log at different levels because they answer different questions. A
+// disagreement is a surprise: two sources that both saw the node returned different numbers, and
+// somebody has to decide which is lying, so it stays a WARN. Falling back for a missing label is
+// not a surprise at all — it is the supported path this function is written to take, and whether
+// a node group carries GFD's labels is a permanent property of how it was installed, not an event.
+// On site-b the WARN fired for both GPU nodes on every observation pass, once per thirty seconds
+// forever, and buried the reconcile lines under a fact that was true, unchanging, and unactionable;
+// a warning that fires in a cluster's steady state is weather, not signal. It is Debug now, beside
+// the scrape line in Discover that already reports device provenance at that level.
+//
+// Debug rather than once-per-node-when-it-changes: the change worth catching is a node's device
+// count moving, and that is visible in the snapshot itself, which the plane diffs. Remembering the
+// last count per node would put cross-pass mutable state into a projection that is otherwise a pure
+// function of one node object, and would have to be pruned as the node set churns — a cache with a
+// lifetime problem, bought for a log line whose reader is already running at Debug.
 func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.Logger) []Device {
 	labels, annotations := n.Labels, n.Annotations
 	scraped := inventory.forNode(n.Name, labels)
@@ -229,7 +245,7 @@ func devicesFor(n *corev1.Node, ready bool, inventory *DCGMInventory, log *slog.
 	count := atoi(labels[labelGPUCount])
 	switch {
 	case count <= 0 && len(scraped) > 0:
-		log.Warn("node advertises no gpu.count label; taking the device count from dcgm",
+		log.Debug("node advertises no gpu.count label; taking the device count from dcgm",
 			"node", n.Name, "dcgm", len(scraped))
 		count = len(scraped)
 	case count <= 0:
