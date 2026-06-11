@@ -496,3 +496,29 @@ func TestACeilingBelowTheRequestIsRefused(t *testing.T) {
 		t.Error("a ceiling under the request is unschedulable and must fail the render")
 	}
 }
+
+// The download runs the engine image, so a private engine registry has to be reachable from the
+// prefetch job too — without this the pull fails while the credential sits unused in the same
+// namespace, and nothing in the event says which of the two is missing.
+func TestThePrefetchJobTakesTheEnginePullSecrets(t *testing.T) {
+	opts := testOptions()
+	opts.EnginePullSecrets = []string{"ghcr-pull", "ghcr-pull"}
+
+	job, err := PrefetchJob(hfArtifact(), prefetchImage, opts)
+	if err != nil {
+		t.Fatalf("PrefetchJob: %v", err)
+	}
+
+	secrets := job.Spec.Template.Spec.ImagePullSecrets
+	if len(secrets) != 1 || secrets[0].Name != "ghcr-pull" {
+		t.Fatalf("imagePullSecrets = %v", secrets)
+	}
+
+	bare, err := PrefetchJob(hfArtifact(), prefetchImage, testOptions())
+	if err != nil {
+		t.Fatalf("PrefetchJob: %v", err)
+	}
+	if len(bare.Spec.Template.Spec.ImagePullSecrets) != 0 {
+		t.Fatalf("imagePullSecrets = %v with none configured", bare.Spec.Template.Spec.ImagePullSecrets)
+	}
+}

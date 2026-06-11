@@ -208,7 +208,13 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 				},
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyOnFailure,
-					NodeSelector:  map[string]string{opts.PoolLabelKey: opts.CachePoolValue},
+					// The same credential the workers pull with. This job runs the
+					// engine image by design — it must lay the cache out the way the
+					// workers read it — so a private engine image is private here too,
+					// and without this the download fails on the pull with no clue
+					// that the credential exists one namespace over.
+					ImagePullSecrets: imagePullSecrets(opts.EnginePullSecrets),
+					NodeSelector:     map[string]string{opts.PoolLabelKey: opts.CachePoolValue},
 					Tolerations: []corev1.Toleration{{
 						Key:      opts.CacheTaintKey,
 						Operator: corev1.TolerationOpEqual,

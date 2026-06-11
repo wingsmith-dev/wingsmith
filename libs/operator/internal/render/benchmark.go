@@ -207,6 +207,9 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					RestartPolicy: corev1.RestartPolicyNever,
+					// Runs the engine image, so it needs whatever credential the
+					// engine needs.
+					ImagePullSecrets: imagePullSecrets(opts.EnginePullSecrets),
 					Volumes: []corev1.Volume{
 						{
 							Name: "model-cache",
