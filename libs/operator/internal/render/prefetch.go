@@ -233,7 +233,7 @@ func PrefetchJob(art wire.ArtifactDesired, image string, opts Options) (*batchv1
 						Command: []string{"python3", "-c"},
 						Args:    []string{command},
 						Env: []corev1.EnvVar{
-							{Name: "HF_HOME", Value: "/models/hf"},
+							{Name: "HF_HOME", Value: HFHome},
 							// Progress bars in a job log are noise that hides the
 							// lines worth reading. progressScript is what says how
 							// far the download has got instead.

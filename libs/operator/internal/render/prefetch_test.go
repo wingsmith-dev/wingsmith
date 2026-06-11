@@ -134,7 +134,7 @@ func TestPrefetchJobCustomWeights(t *testing.T) {
 		t.Fatalf("weights do not land where modelRef looks: %s", args)
 	}
 
-	ref, err := modelRef(art)
+	ref, _, err := modelRef(art)
 	if err != nil {
 		t.Fatalf("modelRef: %v", err)
 	}

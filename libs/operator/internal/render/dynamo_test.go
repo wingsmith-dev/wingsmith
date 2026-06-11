@@ -279,7 +279,8 @@ func TestAPlaneThatPredatesTheRenameStillNamesAnImage(t *testing.T) {
 }
 
 // The engine must resolve the same commit the prefetch downloaded, or it re-resolves the branch
-// head against the shared cache and pulls a second copy of the weights.
+// head against the shared cache and pulls a second copy of the weights. A pinned source says so by
+// naming the snapshot directory itself, which is the one form every engine reads the same way.
 func TestTheEngineIsPointedAtThePinnedRevision(t *testing.T) {
 	in := testInputs()
 	in.Artifact.Sources = []wire.ArtifactSource{
@@ -291,14 +292,66 @@ func TestTheEngineIsPointedAtThePinnedRevision(t *testing.T) {
 		t.Fatalf("args: %v", err)
 	}
 	joined := strings.Join(args, " ")
-	if !strings.Contains(joined, "--model openai/gpt-oss-20b ") && !strings.Contains(joined, "--model openai/gpt-oss-20b") {
-		t.Errorf("--model still carries the pin: %s", joined)
+	want := "--model /models/hf/hub/models--openai--gpt-oss-20b/snapshots/6cee5e81ee83917806bbde320786a8fb61efebee"
+	if !strings.Contains(joined, want) {
+		t.Errorf("--model is not the snapshot the prefetch wrote: %s", joined)
 	}
-	if strings.Contains(joined, "@6cee5e") && !strings.Contains(joined, "--revision") {
+	if strings.Contains(joined, "@6cee5e") {
 		t.Errorf("the pin leaked into the model id: %s", joined)
 	}
-	if !strings.Contains(joined, "--revision 6cee5e81ee83917806bbde320786a8fb61efebee") {
-		t.Errorf("no --revision: %s", joined)
+	// The path has already resolved the revision — its last segment is the commit — so sending
+	// --revision as well says the same thing twice and lets an engine disagree with itself.
+	if strings.Contains(joined, "--revision") {
+		t.Errorf("--revision alongside a resolved path: %s", joined)
+	}
+}
+
+// An unpinned source has no snapshot directory to name: huggingface_hub resolves the branch head to
+// a commit at download time and this renderer cannot know which. It keeps the repo id.
+func TestAnUnpinnedSourceKeepsTheRepoID(t *testing.T) {
+	in := testInputs()
+	in.Artifact.Sources = []wire.ArtifactSource{{Kind: "hf", URI: "hf://openai/gpt-oss-20b"}}
+
+	args, err := engineArgs(in)
+	if err != nil {
+		t.Fatalf("args: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--model openai/gpt-oss-20b") {
+		t.Errorf("--model is not the repo id: %s", joined)
+	}
+	if strings.Contains(joined, "/snapshots/") {
+		t.Errorf("a snapshot path was invented for an unpinned source: %s", joined)
+	}
+}
+
+// The regression this shape exists for. Z-AI's GLM-5.3-Flash processor opens
+// `<--model>/processor_config.json` itself rather than resolving the repo id through
+// huggingface_hub, so a repo id reaches it as a relative path and the worker dies on
+// `FileNotFoundError: 'zai-org/GLM-5.3-Flash/processor_config.json'`.
+func TestAPinnedModelIsServedFromADirectory(t *testing.T) {
+	in := testInputs()
+	in.Artifact.Sources = []wire.ArtifactSource{
+		{Kind: "hf", URI: "hf://zai-org/GLM-5.3-Flash@03eb5366286afd40d2221b1d9c63a6dd1ba4832e"},
+	}
+
+	ref, isPath, err := modelRef(in.Artifact)
+	if err != nil {
+		t.Fatalf("modelRef: %v", err)
+	}
+	if !isPath {
+		t.Fatalf("a pinned source did not resolve to a path: %q", ref)
+	}
+	if !strings.HasPrefix(ref, "/") {
+		t.Fatalf("model ref is not absolute: %q", ref)
+	}
+	// The same directory hfScript reconstructs to watch its own download. These two are the
+	// writer and the reader of one path, and they must derive it identically.
+	if want := HFSnapshotDir("zai-org/GLM-5.3-Flash", "03eb5366286afd40d2221b1d9c63a6dd1ba4832e"); ref != want {
+		t.Fatalf("model ref = %q, want %q", ref, want)
+	}
+	if !strings.HasPrefix(ref, HFHome+"/hub/") {
+		t.Fatalf("model ref is outside the shared cache: %q", ref)
 	}
 }
 

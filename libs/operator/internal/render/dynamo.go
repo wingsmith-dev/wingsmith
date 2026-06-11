@@ -29,6 +29,15 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
+// HFHome is where the shared model cache is mounted, and therefore what HF_HOME is set to in every
+// pod that reads or writes it.
+//
+// One constant because the download and the worker have to agree on it exactly: the prefetch job
+// writes the weights under this root and the worker is pointed at a directory beneath it, so two
+// literals that drifted apart would leave a job filling one path and a worker waiting on another,
+// with nothing in either pod's log to say the two were different.
+const HFHome = "/models/hf"
+
 // GVK is the Dynamo graph deployment this operator renders into.
 var GVK = schema.GroupVersionKind{Group: "nvidia.com", Version: "v1beta1", Kind: "DynamoGraphDeployment"}
 
@@ -496,7 +505,7 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 			// and knowing which argument to remove.
 			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 			Env: []corev1.EnvVar{
-				{Name: "HF_HOME", Value: "/models/hf"},
+				{Name: "HF_HOME", Value: HFHome},
 				// KV-aware routing decides which worker already holds a prefix by hashing
 				// block contents. Python salts hashes per process by default, so without a
 				// fixed seed the frontend and the workers hash identical blocks differently
@@ -833,7 +842,7 @@ func engineModule(engine string) string {
 // the derived one. That direction is deliberate: engine_args is the escape hatch for a flag this
 // operator has never heard of, and an escape hatch that loses to a default is not one.
 func engineArgs(in Inputs) ([]string, error) {
-	model, err := modelRef(in.Artifact)
+	model, isPath, err := modelRef(in.Artifact)
 	if err != nil {
 		return nil, err
 	}
@@ -843,7 +852,10 @@ func engineArgs(in Inputs) ([]string, error) {
 		"served-model-name": servedModelName(in),
 		"max-model-len":     strconv.Itoa(in.Deployment.Serving.ContextLength),
 	}
-	if rev := hfRevision(in.Artifact); rev != "" {
+	// Only against a repo id. --revision is what huggingface_hub resolves the repo at, and the
+	// path form has already resolved it — the revision is the last segment of the directory.
+	// Sending both says the same thing twice and invites an engine to disagree with itself.
+	if rev := hfRevision(in.Artifact); rev != "" && !isPath {
 		derived["revision"] = rev
 	}
 	if tp := in.Deployment.Serving.Parallelism.Tensor; tp > 1 {
@@ -901,28 +913,57 @@ func servedModelName(in Inputs) string {
 	return strings.TrimSpace(in.Deployment.ServedModelName)
 }
 
-// modelRef is what --model is pointed at.
+// modelRef is what --model is pointed at, and whether that is a path rather than a repo id.
 //
-// A Hugging Face source is preferred over the object-store one because the engine resolves a repo
-// id against HF_HOME, which is the shared cache volume: the weights are pulled once per cluster
-// rather than once per replica. An artifact with no HF source falls back to the digest path the
-// cache writes to.
-func modelRef(art wire.ArtifactDesired) (string, error) {
-	best := ""
+// A pinned Hugging Face source is served from the directory the prefetch job already wrote it to,
+// and not by repo id. Both forms resolve to the same bytes in the shared cache — HF_HOME is the
+// cache volume, so a repo id costs no second copy — but only one of them works everywhere. A repo
+// id is resolved by huggingface_hub, and an engine is free to reach the weights without it:
+// GLM-5.3-Flash's own processor in Z-AI's vLLM build opens `<--model>/processor_config.json`
+// directly, so a repo id arrives at the kernel as a relative path and the worker dies on
+//
+//	FileNotFoundError: 'zai-org/GLM-5.3-Flash/processor_config.json'
+//
+// A directory is what every engine agrees on, and it costs nothing to give: the path is derived
+// from the same repo and revision the prefetch job derived it from, so the two cannot disagree
+// about where the weights are without disagreeing about which weights they are.
+//
+// A source with no pinned revision keeps the repo id, because there is no snapshot directory to
+// name — huggingface_hub resolves the branch head to a commit at download time and this renderer
+// cannot know which. An artifact with no HF source at all falls back to the digest path the cache
+// writes to, which was already a path and is why the path shape needs no engine support that the
+// object-store case did not already need.
+func modelRef(art wire.ArtifactDesired) (ref string, isPath bool, err error) {
+	repo := ""
+	revision := ""
 	for _, source := range art.Sources {
 		if strings.HasPrefix(source.URI, "hf://") {
-			if best == "" {
-				best, _ = SplitHFRef(source.URI)
+			if repo == "" {
+				repo, revision = SplitHFRef(source.URI)
 			}
 		}
 	}
-	if best != "" {
-		return best, nil
+	if repo != "" {
+		if revision == "" {
+			return repo, false, nil
+		}
+		return HFSnapshotDir(repo, revision), true, nil
 	}
 	if art.ArtifactID == "" {
-		return "", fmt.Errorf("no artifact to serve")
+		return "", false, fmt.Errorf("no artifact to serve")
 	}
-	return "/models/" + art.ArtifactID, nil
+	return "/models/" + art.ArtifactID, true, nil
+}
+
+// HFSnapshotDir is where huggingface_hub lays one revision of one repo down under the shared cache.
+//
+// The layout is reconstructed rather than asked for, because the only thing that could answer is a
+// download that has already finished, and this renders the pod that waits on it. It is the same
+// reconstruction hfScript makes to watch its own progress, and it has to stay the same one: these
+// two are the writer and the reader of a single directory, and a layout change upstream must break
+// them together rather than leave a worker reading an empty path a job filled in elsewhere.
+func HFSnapshotDir(repo, revision string) string {
+	return HFHome + "/hub/models--" + strings.ReplaceAll(repo, "/", "--") + "/snapshots/" + revision
 }
 
 // applyPodOverlay merges the serving block's pod configuration over the rendered spec.
