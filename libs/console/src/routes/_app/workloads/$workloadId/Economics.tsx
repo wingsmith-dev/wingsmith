@@ -11,7 +11,12 @@ import { Input } from "@/components/ui/input"
 import { TabsContent, TabsTrigger } from "@/components/ui/tabs"
 import { formatCurrency, formatCurrencyCompact } from "@/lib/format"
 import { cn } from "@/lib/utils"
-import { useServingBenchmarkSummary } from "@/modules/benchmarks/queries"
+import {
+  useServingBenchmarkSummary,
+  useWorkloadBenchmarks,
+} from "@/modules/benchmarks/queries"
+import { reading, type BenchmarkCurve } from "@/modules/benchmarks/types"
+import { useWorkbenchCurve } from "./Curve"
 import {
   DAY_POINTS,
   DEFAULT_PREFILL_MULTIPLE,
@@ -28,7 +33,7 @@ import { useWorkloadPlacement } from "@/modules/demand/queries"
 import { useEconomics } from "@/modules/settings/store"
 import type { Workload } from "@/modules/demand/types"
 import { IconCoin } from "@tabler/icons-react"
-import { useMemo, useRef } from "react"
+import { useMemo, useRef, useState } from "react"
 
 /**
  * The tab itself, and the view behind it, each drawing nothing while the flag is
@@ -81,6 +86,17 @@ export function EconomicsTabContent({ workload }: { workload: Workload }) {
 function EconomicsView({ workload }: { workload: Workload }) {
   const placement = useWorkloadPlacement(workload.id)
   const measured = useServingBenchmarkSummary(workload.serving_digest)
+  /*
+    The same two queries the Workbench runs, answered from the cache rather than
+    the network. The ramp is what turns capacity from a number somebody typed
+    into a point somebody chose.
+  */
+  const deploymentIds = useMemo(
+    () => workload.deployments.map((d) => d.id),
+    [workload.deployments]
+  )
+  const { data: benchmarks } = useWorkloadBenchmarks(deploymentIds)
+  const curve = useWorkbenchCurve(benchmarks)
 
   const replicas = workload.scale.desired || workload.scale.placed || 1
   const placed = workload.scale.placed || replicas
@@ -443,17 +459,32 @@ function EconomicsView({ workload }: { workload: Workload }) {
             badge={
               <Badge
                 variant={
-                  form.capacitySource === "measured" ? "default" : "secondary"
+                  form.capacitySource === "assumed" ? "secondary" : "default"
                 }
               >
-                {form.capacitySource === "measured" ? "measured" : "assumed"}
+                {form.capacitySource === "operating-point"
+                  ? "from the ramp"
+                  : form.capacitySource === "measured"
+                    ? "measured peak"
+                    : "assumed"}
               </Badge>
             }
           >
             <div className="space-y-3">
+              <OperatingPoint
+                curve={curve.data}
+                selected={form.outputTokensPerSecond}
+                onPick={(decode) =>
+                  merge({
+                    outputTokensPerSecond: decode,
+                    prefillTokensPerSecond: decode * DEFAULT_PREFILL_MULTIPLE,
+                    capacitySource: "operating-point",
+                  })
+                }
+              />
               <Quantity
-                label="Decode throughput, one replica"
-                suffix="output tok/s"
+                label="Decode throughput, all streams"
+                suffix="output tok/s across one replica"
                 value={form.outputTokensPerSecond}
                 step={100}
                 onChange={(v) =>
@@ -464,8 +495,8 @@ function EconomicsView({ workload }: { workload: Workload }) {
                 }
               />
               <Quantity
-                label="Prefill throughput, one replica"
-                suffix="input tok/s"
+                label="Prefill throughput, all streams"
+                suffix="input tok/s across one replica"
                 value={form.prefillTokensPerSecond}
                 step={1000}
                 onChange={(v) => set("prefillTokensPerSecond", v)}
@@ -510,13 +541,14 @@ function EconomicsView({ workload }: { workload: Workload }) {
                 nothing.
               </p>
               <p className="text-2xs text-muted-foreground/70">
-                A measured figure is{" "}
+                A seeded figure is{" "}
                 <span className="text-foreground">peak</span> throughput — the
                 best a sweep ever saw, usually past the latency band you would
-                sell. The sustainable number is the knee of the load curve,
-                which the Workbench will expose later. Sizing revenue on peak
-                overstates it. Prefill defaults to {DEFAULT_PREFILL_MULTIPLE}x
-                decode and is assumed until measured.
+                sell — so size revenue on a step of the ramp above rather than
+                on it. Prefill defaults to {DEFAULT_PREFILL_MULTIPLE}x decode
+                and is assumed until measured; it is the one number here no
+                benchmark has yet reported, and it moves the answer more than it
+                looks.
               </p>
             </div>
           </Panel>
@@ -579,7 +611,162 @@ function EconomicsView({ workload }: { workload: Workload }) {
   )
 }
 
+/* ---- the operating point --------------------------------------------- */
+
+/**
+ * Capacity chosen off the ramp, rather than typed from memory.
+ *
+ * Every throughput on this page is per replica across every concurrent stream,
+ * and the number an operator can recall is almost always the other one — what a
+ * single caller sees, which on a saturated replica is smaller by the number of
+ * streams. Typing that into a field asking for the aggregate understates
+ * capacity by roughly the concurrency and turns a profitable workload into a
+ * loss, without anything on the page looking wrong.
+ *
+ * So the aggregate is not typed at all where a ramp exists. A step is picked
+ * and `output_tps_total` is read from it, with the per-stream rate and the
+ * time-to-first-token shown beside it — the same measurement in the units that
+ * invite the mistake, so the difference between them is visible at the moment
+ * of choosing rather than discovered in the margin.
+ *
+ * Concurrency is a selector here and never a multiplier. Per-stream throughput
+ * times concurrency overstates the aggregate by up to 45% at the loads worth
+ * running, because a request in the queue or in prefill is not decoding and the
+ * per-stream figure carries its prefill wait inside it. The ramp measured the
+ * aggregate directly; multiplying would be inventing it.
+ */
+function OperatingPoint({
+  curve,
+  selected,
+  onPick,
+}: {
+  curve: BenchmarkCurve | undefined
+  selected: number
+  onPick: (decode: number) => void
+}) {
+  const points = useMemo(
+    () =>
+      [...(curve?.points ?? [])]
+        .filter((point) => !point.discard)
+        .sort((a, b) => a.step_index - b.step_index)
+        .map((point) => ({
+          step: point.step_value,
+          decode: reading(point, "output_tps_total"),
+          perStream: reading(point, "output_tps_per_stream"),
+          ttft: reading(point, "ttft_p90_ms"),
+        }))
+        .filter((point) => point.decode !== null && point.step !== null),
+    [curve]
+  )
+
+  if (!curve || points.length === 0) return null
+
+  const active = points.find(
+    (point) => Math.round(point.decode as number) === Math.round(selected)
+  )
+
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/30 px-3 py-2.5">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+          Operating point · {curve.step_field}
+        </span>
+        <span className="text-2xs text-muted-foreground/60">
+          from the last ramp
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {points.map((point) => {
+          const on = point === active
+          return (
+            <Button
+              key={point.step}
+              size="sm"
+              variant={on ? "default" : "outline"}
+              className="h-7 min-w-11 font-mono text-2xs"
+              onClick={() => onPick(point.decode as number)}
+            >
+              {point.step}
+            </Button>
+          )
+        })}
+      </div>
+
+      {active ? (
+        <p className="text-2xs text-muted-foreground/70">
+          <span className="font-mono text-foreground">
+            {Math.round(active.decode as number).toLocaleString()} tok/s
+          </span>{" "}
+          across every stream, which is{" "}
+          <span className="font-mono text-foreground">
+            {active.perStream === null
+              ? "—"
+              : Math.round(active.perStream).toLocaleString()}{" "}
+            tok/s
+          </span>{" "}
+          to one caller
+          {active.ttft !== null && (
+            <>
+              , at{" "}
+              <span className="font-mono text-foreground">
+                {Math.round(active.ttft).toLocaleString()} ms
+              </span>{" "}
+              to first token
+            </>
+          )}
+          . The field below wants the first of those.
+        </p>
+      ) : (
+        <p className="text-2xs text-muted-foreground/70">
+          Capacity below was entered by hand and matches no step of this ramp.
+          Pick one to read it from the measurement instead.
+        </p>
+      )}
+    </div>
+  )
+}
+
 /* ---- inputs ---------------------------------------------------------- */
+
+/**
+ * Raw keystrokes for a numeric input, so a half-typed number survives the round
+ * trip through state.
+ *
+ * A controlled `type="number"` cannot be typed into. Entering `0.05` passes
+ * through `0.` and `0.0`, and the browser reports both as `""` because neither
+ * is a valid floating-point number. Parsing that to a number and rendering it
+ * back writes `0` over what is still being typed, so the decimal point never
+ * survives long enough for the digits after it to be entered. Every price on
+ * this page is under a dollar, which is to say every price on this page was
+ * unreachable.
+ *
+ * The draft is what the field shows while it has focus. Rendering the raw
+ * string back keeps React's value equal to what the DOM already reports, so it
+ * never writes to the element mid-edit and the browser keeps the partial text.
+ * An empty field commits on blur rather than on each keystroke, which is what
+ * stops a cleared field from reading as a deliberate zero one keystroke later.
+ */
+function useNumericDraft(
+  value: number | null,
+  commit: (value: number | null) => void,
+  empty: number | null,
+) {
+  const [draft, setDraft] = useState<string | null>(null)
+  return {
+    value: draft ?? (value === null ? "" : String(value)),
+    onChange: (raw: string) => {
+      setDraft(raw)
+      if (raw === "") return
+      const next = Number(raw)
+      if (Number.isFinite(next)) commit(next)
+    },
+    onBlur: () => {
+      if (draft === "") commit(empty)
+      setDraft(null)
+    },
+  }
+}
 
 function Quantity({
   label,
@@ -594,6 +781,7 @@ function Quantity({
   step?: number
   onChange: (value: number) => void
 }) {
+  const draft = useNumericDraft(value, (v) => onChange(v ?? 0), 0)
   return (
     <label className="flex items-center justify-between gap-3">
       <span className="min-w-0 flex-1">
@@ -610,11 +798,9 @@ function Quantity({
         className="w-28 shrink-0 text-right font-mono tabular-nums"
         type="number"
         step={step}
-        value={String(value)}
-        onChange={(event) => {
-          const next = Number(event.target.value)
-          onChange(Number.isFinite(next) ? next : 0)
-        }}
+        value={draft.value}
+        onChange={(event) => draft.onChange(event.target.value)}
+        onBlur={draft.onBlur}
       />
     </label>
   )
@@ -636,6 +822,7 @@ function Money({
   onChange: (value: number | null) => void
   optional?: boolean
 }) {
+  const draft = useNumericDraft(value, onChange, optional ? null : 0)
   return (
     <label className="flex items-center justify-between gap-3">
       <span className="min-w-0 flex-1 font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
@@ -646,15 +833,11 @@ function Money({
         <Input
           className="w-24 text-right font-mono tabular-nums"
           type="number"
-          step={0.05}
+          step={0.01}
           placeholder={optional ? "unset" : undefined}
-          value={value === null ? "" : String(value)}
-          onChange={(event) => {
-            const raw = event.target.value
-            if (raw === "") return onChange(optional ? null : 0)
-            const next = Number(raw)
-            onChange(Number.isFinite(next) ? next : 0)
-          }}
+          value={draft.value}
+          onChange={(event) => draft.onChange(event.target.value)}
+          onBlur={draft.onBlur}
         />
       </span>
     </label>
