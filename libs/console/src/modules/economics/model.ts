@@ -32,8 +32,25 @@ export const HOURS_PER_MONTH = 730
  */
 const CACHED_PREFILL_SHARE = 0
 
-/** Prefill runs this many tokens/sec for every output token/sec, unmeasured. */
-export const DEFAULT_PREFILL_MULTIPLE = 10
+/**
+ * Prefill runs this many tokens/sec for every output token/sec, still assumed.
+ *
+ * Not arbitrary any more, and not measured either. vLLM reports prefill and
+ * decode separately per request — `request_prefill_time_seconds` against
+ * `request_prefill_kv_computed_tokens`, which excludes prompt-cache hits — and
+ * on a `gpt-oss-20b` replica those come out around 61 to 1. That figure is an
+ * upper bound: both halves are sums of per-request wall time under concurrent
+ * load, so neither is a clean per-replica rate, and a FLOP budget for the card
+ * will not support 61x once it is expressed as an aggregate.
+ *
+ * 15 is deliberately nearer the pessimistic end of the range the evidence
+ * allows. It is chosen to be wrong in the direction that understates capacity,
+ * because the number it replaced was wrong by six-fold in that same direction
+ * and made a profitable workload read as a loss. It stops being a guess when a
+ * run captures those two counters against wall-clock and `summaries.py` reads a
+ * prefill rate like any other field.
+ */
+export const DEFAULT_PREFILL_MULTIPLE = 15
 
 /**
  * A day of offered load, one point every two hours, as a fraction of capacity.
@@ -47,7 +64,7 @@ export const DEFAULT_UTILIZATION_CURVE = [
 ]
 
 /** Where the capacity figure came from. Measured and assumed are not the same claim. */
-export type CapacitySource = "measured" | "assumed"
+export type CapacitySource = "measured" | "assumed" | "operating-point"
 
 export interface EconomicsInputs {
   /** $ per million fresh (uncached) input tokens. */
