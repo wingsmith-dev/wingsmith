@@ -487,10 +487,11 @@ def upsert_allocation(
     recorded beside `workload_id` because devices are held per-cluster: a workload
     fanned out across regions holds accelerators in each of them, and preemption
     has to be able to name which cluster's copy it is taking devices from.
-    `phase` is `held`:
-    an allocation the cluster is still reporting is one it is still holding, and
-    release is expressed by the allocation ceasing to be reported rather than by
-    a phase the plane could assert on its own.
+    `phase` is `held` and `released_at` is null, both unconditionally. A frame
+    that names accelerators is the cluster saying this allocation holds them, so
+    it reopens one an earlier release closed — the alternative is a pod that is
+    demonstrably running being recorded as finished for as long as it lives,
+    because nothing else would ever clear the timestamp.
     """
     values: dict[str, Any] = {
         "uid": observed_uid(payload.allocation_id, ALLOCATION),
@@ -503,6 +504,7 @@ def upsert_allocation(
         "device_count": len(payload.device_ids),
         "phase": "held",
         "acquired_at": parse_ts(payload.granted_at),
+        "released_at": None,
         "observed_at": parse_ts(payload.observed_at),
     }
     statement = pg_insert(Allocation).values(**values)
@@ -513,11 +515,18 @@ def upsert_allocation(
 
 
 def attach_allocation_devices(allocation_id: UUID, cluster_id: UUID, payload: AllocationObserved) -> Insert:
-    """Adds the devices an allocation names, leaving ones already recorded alone.
+    """Records the devices an allocation names as the ones it currently holds.
 
-    `ON CONFLICT DO NOTHING` rather than an upsert: membership of an allocation is
-    fixed at the moment it is granted, so a device already in it is not news, and
-    re-inserting would move `released_at` on a row the release path owns.
+    The conflict clears `released_at` rather than doing nothing, because a device
+    named by a live allocation is held by it — whatever an earlier frame said.
+    Membership is not fixed at the moment a gang is granted: the same allocation
+    is restated on every reconcile, and one pass that could not see all of its
+    cards releases the ones it missed. `DO NOTHING` left those rows released for
+    ever, since the next frame naming them again collided and changed nothing, so
+    an accelerator that was momentarily unreadable read as free while a worker was
+    running on it. This statement and `release_allocation_devices` are one
+    reconciliation of the set the frame names, and they have to be able to move a
+    row in both directions.
     """
     rows = [
         {
@@ -527,7 +536,11 @@ def attach_allocation_devices(allocation_id: UUID, cluster_id: UUID, payload: Al
         for device_uid in payload.device_ids
     ]
     statement = pg_insert(AllocationDevice).values(rows)
-    return statement.on_conflict_do_nothing(constraint="uq_bind_allocation_device")
+    return statement.on_conflict_do_update(
+        constraint="uq_bind_allocation_device",
+        set_={"released_at": None},
+        where=AllocationDevice.released_at.is_not(None),
+    )
 
 
 def release_allocation_devices(allocation_id: UUID, cluster_id: UUID, payload: AllocationObserved) -> Update:
@@ -547,6 +560,27 @@ def release_allocation_devices(allocation_id: UUID, cluster_id: UUID, payload: A
             ),
         )
         .values(released_at=parse_ts(payload.observed_at))
+    )
+
+
+def release_allocation(allocation_id: UUID, payload: AllocationObserved) -> Update:
+    """Closes an allocation the cluster reports holding nothing.
+
+    An allocation that holds no accelerators is a finished one — that is how the
+    cluster says a replica has handed its cards back, and the frame carries no
+    device to read a class from, so there is nothing left to upsert. The row is
+    stamped rather than deleted for the same reason a released member is: the
+    commitment stays auditable, and `released_at` is what takes it out of every
+    answer to "what is held right now".
+
+    `device_count` is left as it was granted. It says how large the gang was, not
+    how much of it survives, and rewriting it to zero would destroy the only
+    record of what the workload actually took.
+    """
+    return (
+        update(Allocation)
+        .where(Allocation.id == allocation_id, Allocation.released_at.is_(None))
+        .values(phase="released", released_at=parse_ts(payload.observed_at))
     )
 
 

@@ -214,6 +214,11 @@ class DatabaseSink:
         and dropped, not replayed. Ingestion may not create either one — both are
         declared — and withholding the ack would wedge the stream behind a frame
         that can never be applied.
+
+        A frame naming no accelerators is a release and takes the other path
+        entirely: there is no device to read a class off, so the upsert would
+        write a null into a column that refuses one and take the whole
+        transaction down — including the release it was sent to perform.
         """
         deployment = await self._deployment(db, cluster_id, payload.deployment_id)
         project_id = await self._uid_ref(db, Project, payload.project_id)
@@ -227,14 +232,45 @@ class DatabaseSink:
             )
             return False
 
+        if not payload.device_ids:
+            return await self._release(db, cluster_id, cluster_uid, payload)
+
         replica_id = await self._uid_ref(db, Replica, payload.replica_id)
         statement = statements.upsert_allocation(
             cluster_id, deployment[1], deployment[0], project_id, replica_id, payload
         ).returning(Allocation.id)
         allocation_id = (await db.execute(statement)).scalar_one()
         await db.execute(statements.release_allocation_devices(allocation_id, cluster_id, payload))
-        if payload.device_ids:
-            await db.execute(statements.attach_allocation_devices(allocation_id, cluster_id, payload))
+        await db.execute(statements.attach_allocation_devices(allocation_id, cluster_id, payload))
+        return True
+
+    async def _release(
+        self, db: AsyncSession, cluster_id: UUID, cluster_uid: str, payload: AllocationObserved
+    ) -> bool:
+        """Hands back everything one allocation was holding.
+
+        The cluster states a departure by restating the allocation with no
+        devices, which is the only signal the plane gets that a replica is gone —
+        demand state is not reaped by the supply resync, so an allocation nobody
+        released stays held and its accelerators stay spoken for.
+
+        An allocation the plane has never seen is accepted and dropped. There is
+        nothing to release, and inserting a row to mark it finished would invent
+        a commitment that never existed here.
+        """
+        result = await db.execute(
+            select(Allocation.id).where(Allocation.cluster_id == cluster_id, Allocation.uid == payload.allocation_id)
+        )
+        allocation_id = result.scalar_one_or_none()
+        if allocation_id is None:
+            logger.info(
+                "ingestion.allocation.release_unknown allocation=%s cluster=%s",
+                payload.allocation_id,
+                cluster_uid,
+            )
+            return True
+        await db.execute(statements.release_allocation_devices(allocation_id, cluster_id, payload))
+        await db.execute(statements.release_allocation(allocation_id, payload))
         return True
 
     # ----------------------------------------------------------------- observed

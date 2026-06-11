@@ -396,12 +396,23 @@ def test_dropping_a_device_releases_it_rather_than_deleting_the_row() -> None:
     assert "bind_allocation_device.device_id NOT IN" in sql
 
 
-def test_attaching_devices_leaves_an_existing_membership_alone() -> None:
-    """Membership is fixed when the allocation is granted; re-inserting would move released_at."""
+def test_attaching_a_device_takes_back_one_an_earlier_pass_released() -> None:
+    """A device named by a live allocation is held by it, whatever an earlier frame said."""
     sql, _ = compile_sql(
         statements.attach_allocation_devices(ALLOCATION_ID, CLUSTER_ID, payload("allocation.observed"))
     )
-    assert "ON CONFLICT ON CONSTRAINT uq_bind_allocation_device DO NOTHING" in sql
+    assert "ON CONFLICT ON CONSTRAINT uq_bind_allocation_device DO UPDATE" in sql
+    assert "SET released_at" in sql
+    assert "DO NOTHING" not in sql
+
+
+def test_an_allocation_holding_nothing_is_stamped_released_not_deleted() -> None:
+    """The commitment stays auditable and stops answering "what is held right now"."""
+    sql, _ = compile_sql(statements.release_allocation(ALLOCATION_ID, payload("allocation.observed")))
+    assert "UPDATE bind_allocation SET" in sql
+    assert "released_at=" in sql
+    assert "DELETE" not in sql
+    assert "device_count" not in sql
 
 
 def test_cache_residency_is_written_per_node_and_for_the_cluster() -> None:

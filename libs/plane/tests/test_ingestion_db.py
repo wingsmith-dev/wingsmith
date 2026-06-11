@@ -31,6 +31,7 @@ from app.ingestion.sink import DatabaseSink
 from app.ingestion.sink import UnknownCluster
 from app.ingestion.desired import stream_desired
 from app.modules.events.repository import EventRepository
+from app.modules.allocations.services import AllocationService
 
 from tests.conftest import ROOT
 from tests.conftest import CLUSTER
@@ -59,6 +60,7 @@ OPERATION = "opr_01j9x2kkkkkkkkkkkkkkkkkkkk"
 BENCHMARK = "bmk_01j9x2mmmmmmmmmmmmmmmmmmmm"
 DEPLOYMENT = "dep_01j9x2ccccccccccccccccccc1"
 COMPONENT = "cmp_01j9x2mmmmmmmmmmmmmmmmmmmm"
+ALLOCATION = "alc_01j9x2kkkkkkkkkkkkkkkkkkkk"
 SEEDED_WORKLOAD = "wkl_01j9x2wwwwwwwwwwwwwwwwwwww"
 
 
@@ -577,6 +579,117 @@ async def test_an_operation_carrying_no_run_closes_nothing(sessions, cluster) ->
     )
 
     assert await fetch(sessions, "SELECT phase FROM ops_benchmark_run") == [("pending",)]
+
+
+# --------------------------------------------------------------------------- allocations
+
+
+async def report_allocation(sink: DatabaseSink, devices: list[str]) -> None:
+    """One `allocation.observed`, as the cluster restates it on every reconcile."""
+    await sink.apply_observed(
+        observed(
+            "allocation.observed",
+            allocation_id=ALLOCATION,
+            deployment_id=DEPLOYMENT,
+            project_id="prj_bench",
+            replica_id=None,
+            device_ids=devices,
+        )
+    )
+
+
+async def held_devices(sessions) -> list[tuple[str, bool]]:
+    """Every member of the allocation and whether it is still held, as the API answers it."""
+    async with sessions() as db:
+        result = await AllocationService(db).get(ALLOCATION)
+    return [(member.device, member.live) for member in result.devices]
+
+
+async def allocation_is_live(sessions) -> bool:
+    async with sessions() as db:
+        return (await AllocationService(db).get(ALLOCATION)).live
+
+
+async def test_an_allocation_holds_the_devices_the_cluster_names(sessions, cluster) -> None:
+    await seed_deployment(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+
+    await report_allocation(sink, [DEVICE, DEVICE_B])
+
+    assert await held_devices(sessions) == [(DEVICE, True), (DEVICE_B, True)]
+    assert await allocation_is_live(sessions)
+
+
+async def test_a_device_a_pass_could_not_see_is_held_again_when_it_is_named_again(sessions, cluster) -> None:
+    """The bug the allocations board showed: cards in use, drawn free, and never redrawn.
+
+    A reconcile that cannot read every card a pod holds names fewer of them, and
+    the ones it missed are released — correctly, because that is the same
+    statement a shrinking gang makes. What was missing is the way back: the next
+    frame names all four again, and while attaching did nothing on conflict the
+    released rows stayed released for ever. The allocation went on existing, live
+    and reporting no devices, so the console painted eight busy accelerators as
+    spare and nothing the cluster said afterwards could correct it.
+    """
+    await seed_deployment(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+
+    await report_allocation(sink, [DEVICE, DEVICE_B])
+    await report_allocation(sink, [DEVICE])
+    assert await held_devices(sessions) == [(DEVICE, True), (DEVICE_B, False)]
+
+    await report_allocation(sink, [DEVICE, DEVICE_B])
+
+    assert await held_devices(sessions) == [(DEVICE, True), (DEVICE_B, True)]
+
+
+async def test_an_allocation_holding_nothing_hands_its_devices_back(sessions, cluster) -> None:
+    """A departure is stated by restating the allocation with no devices.
+
+    It used to take the whole transaction down instead: with no device to read a
+    class off, the upsert wrote a null into a column that refuses one, the sink
+    re-raised, and the frame went unacknowledged — so the release it carried
+    never happened and the accelerators stayed committed to a replica that was
+    gone.
+    """
+    await seed_deployment(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+    await report_allocation(sink, [DEVICE, DEVICE_B])
+
+    await report_allocation(sink, [])
+
+    assert await held_devices(sessions) == [(DEVICE, False), (DEVICE_B, False)]
+    assert not await allocation_is_live(sessions)
+    assert await fetch(sessions, "SELECT phase, device_count FROM bind_allocation") == [("released", 2)]
+
+
+async def test_a_release_for_an_allocation_the_plane_never_saw_writes_nothing(sessions, cluster) -> None:
+    """Nothing to hand back, and inventing a finished commitment would be worse."""
+    await seed_deployment(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+
+    await report_allocation(sink, [])
+
+    assert await fetch(sessions, "SELECT count(*) FROM bind_allocation") == [(0,)]
+
+
+async def test_an_allocation_reopens_when_its_devices_are_named_again(sessions, cluster) -> None:
+    """A pod that is demonstrably running must not stay recorded as finished."""
+    await seed_deployment(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+    await report_allocation(sink, [DEVICE, DEVICE_B])
+    await report_allocation(sink, [])
+
+    await report_allocation(sink, [DEVICE, DEVICE_B])
+
+    assert await allocation_is_live(sessions)
+    assert await held_devices(sessions) == [(DEVICE, True), (DEVICE_B, True)]
+    assert await fetch(sessions, "SELECT phase FROM bind_allocation") == [("held",)]
 
 
 # --------------------------------------------------------------------------- operations and components
