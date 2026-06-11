@@ -11,6 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -88,7 +89,7 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 		r.reportResidency(ctx, entry.ArtifactID, artifact.SizeBytes, "", "")
 	}
 
-	if err := r.prunePrefetch(ctx, warm); err != nil {
+	if err := r.prunePrefetch(ctx, res, warm); err != nil {
 		return ctrl.Result{}, err
 	}
 
@@ -126,7 +127,7 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 // Foreground propagation for a job that is still running, because the pod under it is holding a
 // write into the shared filesystem open and letting the delete return before it stops leaves the
 // download racing whatever comes next.
-func (r *SyncedResourceReconciler) prunePrefetch(ctx context.Context, warm wire.CacheDesired) error {
+func (r *SyncedResourceReconciler) prunePrefetch(ctx context.Context, owner *v1alpha1.SyncedResource, warm wire.CacheDesired) error {
 	declared := make(map[string]struct{}, len(warm.Entries))
 	for _, entry := range warm.Entries {
 		declared[entry.ArtifactID] = struct{}{}
@@ -150,6 +151,13 @@ func (r *SyncedResourceReconciler) prunePrefetch(ctx context.Context, warm wire.
 		if !job.DeletionTimestamp.IsZero() {
 			continue
 		}
+		mine, err := r.prefetchIsPrunable(ctx, owner, job)
+		if err != nil {
+			return err
+		}
+		if !mine {
+			continue
+		}
 		if err := r.Client.Delete(ctx, job, &client.DeleteOptions{PropagationPolicy: &policy}); err != nil &&
 			!apierrors.IsNotFound(err) {
 			return fmt.Errorf("prune prefetch job %s: %w", job.Name, err)
@@ -158,6 +166,47 @@ func (r *SyncedResourceReconciler) prunePrefetch(ctx context.Context, warm wire.
 		r.forgetReported(artifactID)
 	}
 	return nil
+}
+
+// prefetchIsPrunable reports whether this warm set is entitled to delete a download it does not
+// declare.
+//
+// "Not in my warm set" is not the same as "nothing asks for it", and treating the two as one was a
+// cluster tearing up its own work. On site-b a warm set was renamed — the plane moved from
+// `cache-clu-<cluster id>` to the cluster's name and back — which left two SyncedResources of kind
+// cache, each holding a different set. The prune here listed every Job in the workload namespace
+// and deleted the ones its own set did not name, so the stale object deleted the live object's
+// downloads and the live object recreated them, once every reconcile. A model in the middle of a
+// multi-hundred-gigabyte pull never finished one: its Job was replaced every few minutes and the
+// deployment gated on it waited on a download that kept starting over.
+//
+// So a job with an owner that still exists and is not this one is left alone. The owner is read
+// back rather than trusted from the label, because the case that has to keep working is exactly the
+// rename: once the stale object is gone, its jobs are prunable again and the leak closes itself. A
+// job carrying no owner label at all predates the labels and is pruned as before — it belongs to no
+// live claim, and refusing to touch it would strand it for ever.
+func (r *SyncedResourceReconciler) prefetchIsPrunable(ctx context.Context, owner *v1alpha1.SyncedResource, job *batchv1.Job) (bool, error) {
+	name := job.Labels[render.OwnerNameLabel]
+	if name == "" || name == owner.GetName() {
+		return true, nil
+	}
+
+	namespace := job.Labels[render.OwnerNamespaceLabel]
+	if namespace == "" {
+		namespace = owner.GetNamespace()
+	}
+
+	var claimant v1alpha1.SyncedResource
+	err := r.Client.Get(ctx, types.NamespacedName{Namespace: namespace, Name: name}, &claimant)
+	if apierrors.IsNotFound(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("read the owner of prefetch job %s: %w", job.Name, err)
+	}
+	r.Log.Info("leaving a download another warm set owns", "artifact", job.Labels[render.ArtifactLabel],
+		"job", job.Name, "owner", name)
+	return false, nil
 }
 
 // maxPrefetchAttempts bounds how many times a download is started again after failing outright.

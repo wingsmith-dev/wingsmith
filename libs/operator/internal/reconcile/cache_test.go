@@ -644,3 +644,51 @@ func TestAPrefetchDeletedOutFromUnderTheWarmSetComesBack(t *testing.T) {
 		t.Errorf("requeue = %v, want %v", result.RequeueAfter, cacheResync)
 	}
 }
+
+// The site-b outage of 2026-09-03, as a test.
+//
+// Two SyncedResources of kind cache existed at once — a rename left the old name behind holding a
+// stale set — and the prune deleted every download its own set did not name. The stale one tore up
+// the live one's jobs on every pass, the live one made them again, and a model in the middle of a
+// multi-hundred-gigabyte pull never reached the end of one.
+func TestAWarmSetDoesNotPruneWhatAnotherWarmSetOwns(t *testing.T) {
+	const otherArtifactID = "art_01j9x2ffffffffffffffffffff"
+
+	live := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	r, _, _ := runReconcileWith(t, &recordingReporter{}, live,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
+	)
+
+	job, ok := prefetchJob(t, r.Client, testArtifactID)
+	if !ok {
+		t.Fatal("no prefetch job was created for the warm-set entry")
+	}
+
+	// A second warm set, naming a different artifact, reconciles over the same namespace.
+	stale := declared(t, "cache", otherArtifactID, warmSet(wire.CacheWarmEntry{ArtifactID: otherArtifactID}))
+	stale.Name = "cache-clu-stale"
+	if err := r.Client.Create(context.Background(), stale); err != nil {
+		t.Fatalf("create the second warm set: %v", err)
+	}
+	req := types.NamespacedName{Namespace: stale.GetNamespace(), Name: stale.GetName()}
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: req}); err != nil {
+		t.Fatalf("reconcile the second warm set: %v", err)
+	}
+
+	if jobs := prefetchJobs(t, r.Client, testArtifactID); len(jobs) != 1 {
+		t.Fatalf("jobs = %d, want 1: a warm set deleted a download another one owns", len(jobs))
+	}
+
+	// And once the owner is gone the job is prunable again, so a rename does not strand it.
+	if err := r.Client.Delete(context.Background(), live); err != nil {
+		t.Fatalf("delete the first warm set: %v", err)
+	}
+	if _, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: req}); err != nil {
+		t.Fatalf("reconcile after the owner left: %v", err)
+	}
+	if jobs := prefetchJobs(t, r.Client, testArtifactID); len(jobs) != 0 {
+		t.Fatalf("jobs = %d, want 0: a download whose owner is gone was not pruned", len(jobs))
+	}
+	_ = job
+}
