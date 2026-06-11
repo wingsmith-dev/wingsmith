@@ -231,3 +231,45 @@ describe("ArtifactFitmentPanel, choosing how many cards", () => {
     expect(onPick).not.toHaveBeenCalled()
   })
 })
+
+describe("ArtifactFitmentPanel, the window it sizes against", () => {
+  it("shows the caller's window when the caller owns it", () => {
+    fitment.mockReturnValue({ data: response(), isLoading: false, error: null })
+    render(
+      <ArtifactFitmentPanel
+        artifact={ARTIFACT}
+        mode="select"
+        selected={null}
+        contextLength={800_000}
+        onContextLengthChange={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText("800,000")).toBeInTheDocument()
+  })
+
+  it("keeps a window that is not a halving of the declared maximum", () => {
+    fitment.mockReturnValue({ data: response(), isLoading: false, error: null })
+    render(
+      <ArtifactFitmentPanel
+        artifact={ARTIFACT}
+        mode="select"
+        selected={null}
+        contextLength={100_000}
+        onContextLengthChange={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText("100,000")).toBeInTheDocument()
+    expect(screen.queryByText("131,072")).not.toBeInTheDocument()
+  })
+
+  it("falls back to the plane's answer when nobody owns the window", () => {
+    fitment.mockReturnValue({ data: response(), isLoading: false, error: null })
+    render(
+      <ArtifactFitmentPanel artifact={ARTIFACT} mode="select" selected={null} />
+    )
+
+    expect(screen.getByText("131,072")).toBeInTheDocument()
+  })
+})

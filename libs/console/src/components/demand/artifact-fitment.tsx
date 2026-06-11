@@ -70,13 +70,23 @@ const CONCURRENCIES = [1, 8, 32, 128, 256]
  */
 const QUANTIZATIONS = ["", "fp8", "int8", "int4", "mxfp4", "awq"]
 
-/** Halvings down from the artifact's declared window, which is the plane's default. */
-function contextChoices(declared: number | null): number[] {
-  if (!declared || declared < 4096) return [8192, 32768, 131072]
-  const choices: number[] = []
-  for (let value = declared; value >= 4096; value = Math.floor(value / 2))
-    choices.push(value)
-  return choices
+/**
+ * Halvings down from the artifact's declared window, which is the plane's default.
+ *
+ * `current` is folded in because this list is no longer the only way the window gets
+ * set. The Params step edits the same value, and a window typed there — or one the
+ * plane reduced a fit to — is rarely a halving of the declared maximum. A Select whose
+ * value is absent from its own options renders empty, which reads as "no window
+ * chosen" on a form that has one.
+ */
+function contextChoices(declared: number | null, current?: number | null): number[] {
+  const halvings: number[] = []
+  if (!declared || declared < 4096) halvings.push(131072, 32768, 8192)
+  else
+    for (let value = declared; value >= 4096; value = Math.floor(value / 2))
+      halvings.push(value)
+  if (current && !halvings.includes(current)) halvings.push(current)
+  return [...new Set(halvings)].sort((a, b) => b - a)
 }
 
 function formatTokens(value: number): string {
@@ -248,6 +258,8 @@ export function ArtifactFitmentPanel({
   mode = "explore",
   selected = null,
   actionLabel = "Deploy",
+  contextLength: contextLengthProp = null,
+  onContextLengthChange,
 }: {
   artifact: Artifact
   /**
@@ -271,12 +283,32 @@ export function ArtifactFitmentPanel({
   selected?: ServingFootprint | null
   /** The per-row button's words, in `explore` mode. */
   actionLabel?: string
+  /**
+   * The window to size against, when the caller owns it.
+   *
+   * Passing both of these makes the Context select a view of the caller's state rather
+   * than a question of its own, and that is the whole of the fix: the deploy flow asks
+   * for a window in two places — here and in the Params step — and they were two
+   * `useState`s that met nowhere. One of them could be changed while the other went on
+   * describing a different model, and neither said which was going to be submitted.
+   *
+   * Omitting them leaves the panel uncontrolled, which is right for the artifact page:
+   * there is no form under it and nothing else to agree with.
+   */
+  contextLength?: number | null
+  onContextLengthChange?: (contextLength: number) => void
 }) {
   const declared = (artifact.metadata?.context_length ?? null) as number | null
-  const choices = contextChoices(declared)
   const selecting = mode === "select"
   const [scope, setScope] = useState<FitmentScope>("fleet")
-  const [contextLength, setContextLength] = useState<number | undefined>()
+  const [ownContextLength, setOwnContextLength] = useState<number | undefined>()
+  const controlledContext = onContextLengthChange !== undefined
+  const contextLength =
+    (controlledContext ? contextLengthProp || undefined : ownContextLength) ??
+    undefined
+  const setContextLength = (value: number) =>
+    controlledContext ? onContextLengthChange(value) : setOwnContextLength(value)
+  const choices = contextChoices(declared, contextLength)
   const [concurrency, setConcurrency] = useState(1)
   const [quantization, setQuantization] = useState("")
   const [everything, setEverything] = useState(false)

@@ -131,6 +131,20 @@ export function NewWorkloadPage() {
   const [overrides, setOverrides] = useState<ServingOverrides>({})
   const override = (patch: ServingOverrides) =>
     setOverrides((current) => ({ ...current, ...patch }))
+  /**
+   * `context_length` is the one override the topology step also writes, and that is
+   * deliberate rather than a leak.
+   *
+   * The window is asked about twice — the fitment table sizes against it, the Params
+   * step declares it — and it was two pieces of state that met nowhere: picking 800k
+   * in the table left Params describing whatever the last clicked row happened to
+   * say, and `derivedServingRequest` then submitted the stale one. It is one value,
+   * so it is one field, and `overrides` is where a stated window already lived.
+   *
+   * Picking a row writes it too, because a fit the plane reduced is the plane's answer
+   * to the question and accepting the row is accepting that answer. Raising it again
+   * afterwards re-sizes the table, which is the escape hatch working as it reads.
+   */
   const [replicas, setReplicas] = useState<number | null>(1)
   const [name, setName] = useState("")
   const [touchedName, setTouchedName] = useState(false)
@@ -235,6 +249,8 @@ export function NewWorkloadPage() {
       how?.footprint.device_class === choice.footprint.device_class
     const counts = choice.fit?.layouts.length ?? 1
     setHow(choice)
+    if (choice.footprint.context_length > 0)
+      override({ context_length: choice.footprint.context_length })
     setOpen(refining || counts <= 1 ? 3 : 2)
   }
 
@@ -346,6 +362,10 @@ export function NewWorkloadPage() {
               mode="select"
               artifact={artifact}
               selected={how?.footprint ?? null}
+              contextLength={overrides.context_length ?? null}
+              onContextLengthChange={(context_length) =>
+                override({ context_length })
+              }
               onPick={(picked, row) => pickHow({ footprint: picked, fit: row })}
             />
           )}
