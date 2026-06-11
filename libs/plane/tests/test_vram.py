@@ -21,8 +21,10 @@ from app.core.vram import usable_gb
 from app.core.vram import impossible
 from app.core.vram import layout_for
 from app.core.vram import weights_gb
+from app.core.vram import weight_terms
 from app.core.vram import device_counts
 from app.core.vram import estimate_vram
+from app.core.vram import expert_params
 from app.core.vram import extract_shape
 from app.core.vram import hidden_size_of
 from app.core.vram import kv_cache_bytes
@@ -32,6 +34,7 @@ from app.core.vram import quant_from_name
 from app.core.vram import effective_config
 from app.core.vram import fit_context_length
 from app.core.vram import kv_bytes_per_token
+from app.core.vram import expert_quant_method
 from app.core.vram import native_quant_method
 from app.core.vram import derive_active_params
 from app.core.vram import baseline_min_gpu_memory_gb
@@ -778,3 +781,177 @@ def test_a_twenty_seven_billion_model_at_131k_fits_on_two_rtx_6000():
     at_256k = fit(sizing, device, Intent(context_length=262_144))
     assert at_256k.fits and not at_256k.reduced
     assert at_256k.device_count == 4, "256k genuinely does not fit: weights plus cache exceed the cards"
+
+
+def deepseek_v4_pro_config(**kwargs) -> dict:
+    """`deepseek-ai/DeepSeek-V4-Pro-0813` as the Hub publishes it, trimmed to the sizing fields.
+
+    Three things in one config that each broke a different term, which is why it is
+    here whole rather than as three synthetic shapes. It writes its MLA latent as
+    `head_dim` with a single KV head and no `kv_lora_rank`; it declares a
+    `sliding_window` beside an `index_topk` that is sparse selection and not a
+    smaller cache; and it is quantized twice, fp8 in the header and fp4 for the
+    experts that are 94% of it.
+    """
+    base = {
+        "architectures": ["DeepseekV4ForCausalLM"],
+        "expert_dtype": "fp4",
+        "head_dim": 512,
+        "hidden_size": 7168,
+        "index_head_dim": 128,
+        "index_n_heads": 64,
+        "index_topk": 1024,
+        "max_position_embeddings": 1048576,
+        "model_type": "deepseek_v4",
+        "moe_intermediate_size": 3072,
+        "n_routed_experts": 384,
+        "n_shared_experts": 1,
+        "num_attention_heads": 128,
+        "num_experts_per_tok": 6,
+        "num_hidden_layers": 61,
+        "num_key_value_heads": 1,
+        "q_lora_rank": 1536,
+        "qk_rope_head_dim": 64,
+        "quantization_config": {"quant_method": "fp8", "fmt": "e4m3", "activation_scheme": "dynamic"},
+        "sliding_window": 128,
+        "torch_dtype": "bfloat16",
+        "vocab_size": 129280,
+    }
+    return base | kwargs
+
+
+DEEPSEEK_V4_PRO_PARAMS = 1_650_497_936_906
+"""`safetensors.total` for the 0813 checkpoint, which is what the plane stores."""
+
+
+def deepseek_v4_pro_sizing() -> Sizing:
+    config = deepseek_v4_pro_config()
+    return Sizing(
+        total_params=DEEPSEEK_V4_PRO_PARAMS,
+        shape=extract_shape(config),
+        quantization=native_quant_method(config, "deepseek-ai/DeepSeek-V4-Pro-0813"),
+        expert_params=expert_params(config),
+        expert_quantization=expert_quant_method(config),
+    )
+
+
+def test_deepseek_v4_pro_at_800k_fits_one_node_of_h200():
+    """vLLM publishes a one-node H200 recipe at 800k; the plane offered two nodes and no way to argue.
+
+    The pin is the node count and the ladder together. A fit that is right while the
+    ladder still hides the eight-device option leaves the console offering only the
+    sixteen, which is the shape the operator actually hit.
+    """
+    sizing = deepseek_v4_pro_sizing()
+    device = klass("h200-141gb-sxm")
+    intent = Intent(context_length=800_000, devices_per_node=8)
+
+    fitted = fit(sizing, device, intent)
+    assert fitted.fits and not fitted.reduced
+    assert fitted.device_count == 8
+    assert fitted.node_count == 1
+    assert fitted.context_length == 800_000
+    assert fitted.required_gb < usable_gb(device.memory_mib, 8)
+
+    assert [option.device_count for option in ladder(sizing, device, intent)] == [8]
+
+
+def test_a_latent_kv_cache_is_found_under_head_dim_when_kv_lora_rank_is_absent():
+    """Transformers 4.57 writes MLA as one KV head holding the whole latent.
+
+    Read as ordinary attention it charges key and value separately across a 512-wide
+    head — 1.78x the 61 x (512 + 64) x 2 bytes a token actually costs.
+    """
+    shape = extract_shape(deepseek_v4_pro_config())
+
+    assert shape.kv_lora_rank == 512
+    assert shape.qk_rope_head_dim == 64
+    assert shape.num_key_value_heads is None
+    assert kv_bytes_per_token(shape) == 61 * (512 + 64) * 2
+
+    standard = 2 * 61 * 1 * 512 * 2
+    assert kv_bytes_per_token(shape) < standard
+
+
+def test_a_sliding_window_beside_a_sparse_index_is_not_a_smaller_cache():
+    """`sliding_window: 128` with no `layer_types` used to charge all 61 layers 128 tokens.
+
+    0.015 GiB for an 800k window, three orders of magnitude under. Detecting the
+    latent first is what stops the standard branch ever seeing the field.
+    """
+    shape = extract_shape(deepseek_v4_pro_config())
+
+    assert shape.sliding_window is None
+    assert shape.sliding_layers == 0
+    assert kv_cache_bytes(shape, 800_000) == kv_bytes_per_token(shape) * 800_000
+
+
+def test_a_mixed_precision_checkpoint_is_charged_at_both_of_its_precisions():
+    """`expert_dtype` against `quantization_config`, and the experts are the checkpoint.
+
+    Charging all 1.65 T at the headline fp8 is 1,537 GiB for weights that are about
+    960 GB on disk. That 1.6x is exactly one extra H200 node.
+    """
+    sizing = deepseek_v4_pro_sizing()
+    terms = weight_terms(sizing)
+
+    assert [term.quantization for term in terms] == ["fp8", "fp4"]
+    assert sum(term.params for term in terms) == DEEPSEEK_V4_PRO_PARAMS
+    assert terms[1].params / DEEPSEEK_V4_PRO_PARAMS > 0.9
+
+    uniform = Sizing(total_params=DEEPSEEK_V4_PRO_PARAMS, shape=sizing.shape, quantization="fp8")
+    assert weights_gb(sizing) < weights_gb(uniform) * 0.6
+
+
+def test_a_refusal_names_every_precision_it_charged():
+    """The operator's real complaint: a wrong number nobody could argue with.
+
+    "the weights need 817 GB" is unarguable. Naming the terms lets somebody who
+    knows the checkpoint see which one is wrong.
+    """
+    reason = impossible(deepseek_v4_pro_sizing(), klass("h200-141gb-sxm"), 4)
+
+    assert reason is not None
+    assert "dense weights at fp8" in reason
+    assert "routed experts at fp4" in reason
+
+
+def test_an_artifact_with_no_expert_precision_sizes_exactly_as_it_always_did():
+    """The pair is additive. Every single-precision checkpoint is untouched by it."""
+    shape = extract_shape(llama_config())
+    plain = Sizing(total_params=70_000_000_000, shape=shape, quantization="fp8")
+
+    assert weights_gb(plain) == 70_000_000_000 * BYTES_PER_PARAM["fp8"] / GIB
+    assert len(weight_terms(plain)) == 1
+    assert weight_terms(plain)[0].label == "weights"
+
+
+def test_the_expert_precision_survives_being_written_down_and_read_back():
+    """A fit is computed from the stored artifact, never from `config.json` again.
+
+    So the second precision has to be persisted beside the shape. Losing it on the way
+    to the database would put DeepSeek-V4-Pro back on two nodes the moment anybody
+    fitted it from the catalogue rather than from a resolve.
+    """
+    config = deepseek_v4_pro_config()
+    metadata = {
+        "quantization": native_quant_method(config, "deepseek-ai/DeepSeek-V4-Pro-0813"),
+        "expert_parameter_count": expert_params(config),
+        "expert_quantization": expert_quant_method(config),
+        "shape": shape_metadata(extract_shape(config)),
+    }
+    stored = sizing_of(metadata, DEEPSEEK_V4_PRO_PARAMS)
+
+    assert stored == deepseek_v4_pro_sizing()
+
+    fitted = fit(stored, klass("h200-141gb-sxm"), Intent(context_length=800_000, devices_per_node=8))
+    assert fitted.device_count == 8 and fitted.node_count == 1
+
+
+def test_an_artifact_stored_before_the_expert_fields_existed_still_reads_back():
+    """Every artifact already in the catalogue has neither key, and must size as before."""
+    stored = sizing_of({"quantization": "fp8", "shape": shape_metadata(extract_shape(llama_config()))}, 70_000_000_000)
+
+    assert stored.expert_params is None
+    assert stored.expert_quantization is None
+    assert weights_gb(stored) == 70_000_000_000 * BYTES_PER_PARAM["fp8"] / GIB

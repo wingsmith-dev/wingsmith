@@ -16,10 +16,13 @@ because a fit is meaningless without knowing how big the card is.
 This module is also the single source of truth for interpreting a HuggingFace
 ``config.json``, which varies sharply across model families: multimodal models
 nest the language config under ``text_config``; DeepSeek/GLM/Kimi use MLA
-(latent attention) where the KV cache is a compressed ``kv_lora_rank`` vector
-rather than ``num_key_value_heads x head_dim``; and many modern repos ship
-natively quantized (``quantization_config``), so fp16 weight sizing overcounts
-by up to 4x.
+(latent attention) where the KV cache is a compressed latent vector rather than
+``num_key_value_heads x head_dim``, and write that latent under two different
+names; many modern repos ship natively quantized (``quantization_config``), so
+fp16 weight sizing overcounts by up to 4x; and the largest of them are no longer
+quantized uniformly at all — an ``expert_dtype`` holds the routed experts at a
+narrower precision than the headline one, and on a large MoE the experts are the
+checkpoint.
 """
 
 from __future__ import annotations
@@ -289,6 +292,54 @@ def bytes_per_param(quantization: str) -> float:
     return BYTES_PER_PARAM.get(quantization.lower(), BYTES_PER_PARAM[DEFAULT_QUANTIZATION])
 
 
+def expert_params(config: dict | None) -> int | None:
+    """Parameters held by the routed experts, or ``None`` when the MoE shape is absent.
+
+    Every routed expert of every layer, which is the opposite selection to
+    :func:`derive_active_params` — that one asks what a *token* touches, this one asks
+    what has to be *resident*. On a large MoE they are almost the whole checkpoint:
+    DeepSeek-V4-Pro's 384 experts across 61 layers are 1.55 T of its 1.65 T parameters,
+    so anything true only of the experts is true of the model.
+
+    Counted from the shape rather than read from a field because no repo publishes it.
+    Three matrices per expert (gate, up, down) at ``hidden_size × moe_intermediate_size``,
+    which is the same identity :func:`derive_active_params` already uses.
+    """
+    eff = effective_config(config)
+    num_experts = _num_experts(eff)
+    hidden_size = eff.get("hidden_size")
+    ffn = eff.get("moe_intermediate_size")
+    layers = eff.get("num_hidden_layers")
+    if not (num_experts and num_experts > 1 and hidden_size and ffn and layers):
+        return None
+    return num_experts * 3 * hidden_size * ffn * layers
+
+
+def expert_quant_method(config: dict | None) -> str | None:
+    """The precision the routed experts are stored at, when the repo declares one.
+
+    A checkpoint is not obliged to hold every tensor at one precision, and the large
+    ones no longer do. DeepSeek-V4-Pro declares ``quantization_config.quant_method:
+    fp8`` and ``expert_dtype: fp4``: the dense trunk is 8-bit, the experts are 4-bit,
+    and the experts are 94% of the parameters. Sizing all 1.65 T at the headline fp8
+    charged 1,537 GiB for a checkpoint that is about 960 GB on disk — over by 1.6x,
+    which put the model on two H200 nodes and refused the one node vLLM publishes a
+    recipe for.
+
+    Returns ``None`` when nothing is declared, which means "the same as everything
+    else" and leaves the single-precision sizing exactly as it was. A declared dtype
+    that is *wider* than the headline (bf16 experts under an fp8 trunk) is read the
+    same way and makes the estimate larger, because the field says what is stored and
+    not which direction it is convenient to round.
+    """
+    declared = str(effective_config(config).get("expert_dtype") or "").strip().lower()
+    if not declared:
+        return None
+    if declared in BYTES_PER_PARAM:
+        return declared
+    return _normalize_quant(declared)
+
+
 _SLIDING_LAYER = "sliding_attention"
 """How `layer_types` names a local layer. Anything else in that list is global."""
 
@@ -329,12 +380,49 @@ def _sliding(eff: dict, num_hidden_layers: int) -> tuple[int | None, int]:
     return int(window), num_hidden_layers
 
 
+def _latent_rank(eff: dict) -> int | None:
+    """The compressed KV latent width, under either spelling a repo uses for it.
+
+    ``kv_lora_rank`` is DeepSeek's own name and is what V3, R1 and GLM publish.
+    Transformers 4.57 writes the same tensor as ordinary attention fields instead —
+    a single KV head whose ``head_dim`` *is* the whole latent — and emits no
+    ``kv_lora_rank`` at all. DeepSeek-V4-Pro is written that second way.
+
+    Reading only the first name dropped V4-Pro into the standard branch and sized its
+    cache as separate key and value tensors across a 512-wide head: 2 × 61 × 512 × 2
+    bytes per token, against the 61 × (512 + 64) × 2 that latent attention actually
+    holds. A 1.78x overcount on the term that decides how much context a node buys,
+    and it also lost ``qk_rope_head_dim`` entirely.
+
+    ``qk_rope_head_dim`` is the discriminator, because it exists only on latent
+    attention. A config carrying it alongside exactly one KV head is compressed
+    attention however it spelled the rank; a config without it is ordinary GQA and
+    keeps the key-plus-value sizing it deserves.
+    """
+    declared = eff.get("kv_lora_rank")
+    if declared:
+        return int(declared)
+    if not eff.get("qk_rope_head_dim") or eff.get("num_key_value_heads") != 1:
+        return None
+    head_dim = eff.get("head_dim")
+    return int(head_dim) if head_dim else None
+
+
 def extract_shape(config: dict | None) -> ModelShape | None:
     """Pull the KV-cache shape from a HuggingFace ``config.json``.
 
     Handles nested ``text_config`` and MLA latent attention. Returns ``None`` if
     the config lacks the fields needed to size the KV cache, so callers can fall
     back to a static floor.
+
+    A latent-attention model is sized at full attention and never reads
+    ``sliding_window``, which is deliberate rather than an omission. DeepSeek-V4-Pro
+    declares ``sliding_window: 128`` next to an ``index_topk`` — that pair is sparse
+    *selection*, not a smaller cache: the whole latent stays resident and the indexer
+    picks which of it to attend to. Read as an interleaved window with no
+    ``layer_types`` to contradict it, the standard branch charged all 61 layers 128
+    tokens each and produced a KV cache of 0.015 GiB for an 800k window, understating
+    it by three orders of magnitude. Detecting the latent first is what stops that.
     """
     eff = effective_config(config)
     if not eff:
@@ -346,7 +434,7 @@ def extract_shape(config: dict | None) -> ModelShape | None:
 
     sliding_window, sliding_layers = _sliding(eff, num_hidden_layers)
 
-    kv_lora_rank = eff.get("kv_lora_rank")
+    kv_lora_rank = _latent_rank(eff)
     qk_rope_head_dim = eff.get("qk_rope_head_dim")
     context_length = eff.get("max_position_embeddings")
     num_attention_heads = eff.get("num_attention_heads")
@@ -504,6 +592,8 @@ def estimate_vram(
     concurrency: int = 1,
     batch_tokens: int = DEFAULT_BATCH_TOKENS,
     gpu_memory_utilization: float = _DEFAULT_GPU_MEMORY_UTILIZATION,
+    expert_params: int | None = None,
+    expert_quantization: str | None = None,
 ) -> VramEstimate:
     """Estimate VRAM for one model under a given serving configuration.
 
@@ -521,13 +611,15 @@ def estimate_vram(
         concurrency: Number of concurrent full-context sequences to hold.
         batch_tokens: Tokens computed in one step, which sizes the activation peak.
         gpu_memory_utilization: Fraction of a card the framework can use.
+        expert_params: Parameters held at a second precision; see :class:`Sizing`.
+        expert_quantization: The precision those are held at.
 
     Returns:
         A :class:`VramEstimate` with each bucket and the total in GiB, plus
         ``required_gb`` — the total grossed up by the envelope, which is the raw card
         capacity needed before the per-device reserve in :func:`usable_gb`.
     """
-    weights = total_params * bytes_per_param(quantization)
+    weights = _weight_bytes(total_params, quantization, expert_params, expert_quantization)
     kv_cache = kv_cache_bytes(shape, context_length) * concurrency
     activations = activation_bytes(shape, batch_tokens)
     total = weights + kv_cache + activations
@@ -600,6 +692,8 @@ def fit_context_length(
     concurrency: int,
     available_gb: float,
     batch_tokens: int = DEFAULT_BATCH_TOKENS,
+    expert_params: int | None = None,
+    expert_quantization: str | None = None,
 ) -> ContextFit:
     """Pick the largest context window that fits, halving down from the declared max.
 
@@ -621,6 +715,8 @@ def fit_context_length(
             of the utilization envelope and the per-device reserve, so nothing here
             discounts it again.
         batch_tokens: Tokens computed in one step, which sizes the activation peak.
+        expert_params: Parameters held at a second precision; see :class:`Sizing`.
+        expert_quantization: The precision those are held at.
 
     Returns:
         The chosen window and how it relates to the hardware.
@@ -636,6 +732,8 @@ def fit_context_length(
             context_length=context_length,
             concurrency=concurrency,
             batch_tokens=batch_tokens,
+            expert_params=expert_params,
+            expert_quantization=expert_quantization,
         )
         if estimate.total_gb <= available_gb:
             return ContextFit(
@@ -654,6 +752,8 @@ def fit_context_length(
         context_length=MIN_CONTEXT_LENGTH,
         concurrency=concurrency,
         batch_tokens=batch_tokens,
+        expert_params=expert_params,
+        expert_quantization=expert_quantization,
     )
     return ContextFit(
         context_length=MIN_CONTEXT_LENGTH,
@@ -773,6 +873,16 @@ class Sizing:
     total_params: int
     shape: ModelShape | None
     quantization: str = DEFAULT_QUANTIZATION
+    expert_params: int | None = None
+    expert_quantization: str | None = None
+    """How much of the checkpoint is held at a second precision, and which.
+
+    Both unset is the ordinary case and sizes exactly as one precision always did.
+    Both set says the routed experts are stored differently from the rest — see
+    :func:`expert_quant_method` for why a repo does that and what it cost to ignore.
+    They trail the other fields with defaults because callers construct this
+    positionally.
+    """
 
 
 @dataclass(frozen=True)
@@ -843,15 +953,89 @@ class Fit:
     reason: str
 
 
+@dataclass(frozen=True)
+class WeightTerm:
+    """One precision's share of the checkpoint, named so a refusal can be argued with.
+
+    A refusal that says "the weights need 1,537 GB at fp8" is unarguable when the
+    real answer is that 94% of those parameters are 4-bit. Splitting the term is what
+    lets the sentence carry its own working.
+    """
+
+    label: str
+    params: int
+    quantization: str
+    gb: float
+
+
+def weight_terms(sizing: Sizing) -> tuple[WeightTerm, ...]:
+    """The weights split by the precision each part is actually stored at.
+
+    One term for a checkpoint held at one precision, which is nearly all of them.
+    Two when :class:`Sizing` carries an expert precision: the routed experts at
+    theirs, everything else at the headline one. The expert count is clamped to the
+    total, because it is derived from the MoE shape and a shape that disagrees with
+    the published parameter count must not produce negative weights.
+    """
+    total = max(0, sizing.total_params)
+    experts = min(max(0, sizing.expert_params or 0), total)
+    if not experts or not sizing.expert_quantization:
+        return (
+            WeightTerm(
+                label="weights",
+                params=total,
+                quantization=sizing.quantization,
+                gb=total * bytes_per_param(sizing.quantization) / _GIB,
+            ),
+        )
+    return (
+        WeightTerm(
+            label="dense weights",
+            params=total - experts,
+            quantization=sizing.quantization,
+            gb=(total - experts) * bytes_per_param(sizing.quantization) / _GIB,
+        ),
+        WeightTerm(
+            label="routed experts",
+            params=experts,
+            quantization=sizing.expert_quantization,
+            gb=experts * bytes_per_param(sizing.expert_quantization) / _GIB,
+        ),
+    )
+
+
 def weights_gb(sizing: Sizing) -> float:
     """Resident weight bytes in GiB. Arithmetic, not an estimate.
 
     Every other number this module produces has a fudge factor in it. This one
     does not: the weights are on the cards before a single token is served, so a
     shape that cannot hold them is impossible rather than optimistic. That makes
-    it the only VRAM fact worth refusing somebody's configuration over.
+    it the only VRAM fact worth refusing somebody's configuration over — and the
+    reason a mixed-precision checkpoint has to be summed per precision rather than
+    charged at whichever one the repo put in its headline.
     """
-    return sizing.total_params * bytes_per_param(sizing.quantization) / _GIB
+    return sum(term.gb for term in weight_terms(sizing))
+
+
+def _weight_bytes(
+    total_params: int,
+    quantization: str,
+    expert_params: int | None,
+    expert_quantization: str | None,
+) -> float:
+    """:func:`weights_gb` in bytes, for the callers that hold the parts and not a ``Sizing``."""
+    return (
+        weights_gb(
+            Sizing(
+                total_params=total_params,
+                shape=None,
+                quantization=quantization,
+                expert_params=expert_params,
+                expert_quantization=expert_quantization,
+            )
+        )
+        * _GIB
+    )
 
 
 def _shardable_heads(shape: ModelShape | None, device_count: int) -> bool:
@@ -909,10 +1093,21 @@ def impossible(
     offered = usable_gb(device.memory_mib, device_count, gpu_memory_utilization)
     if weights > offered:
         return (
-            f"the weights need {weights:,.0f} GB at {sizing.quantization} and {device_count}× "
+            f"the weights need {weights:,.0f} GB ({_weights_words(sizing)}) and {device_count}× "
             f"{device.label} offers {offered:,.0f} GB usable"
         )
     return None
+
+
+def _weights_words(sizing: Sizing) -> str:
+    """The weight terms as a person can check them: how many parameters, at what precision.
+
+    The whole of why :func:`weight_terms` exists. A refusal that names only a total and
+    a headline precision cannot be argued with by somebody who knows the checkpoint is
+    mixed; one that says "1.5 T routed experts at fp4, 103 B dense at fp8" can be
+    checked against the repo in a minute.
+    """
+    return ", ".join(f"{term.params / 1e9:,.0f}B {term.label} at {term.quantization}" for term in weight_terms(sizing))
 
 
 def _devices_words(layout: Layout, device: DeviceClass, devices_per_node: int) -> str:
@@ -1042,6 +1237,8 @@ def fit_at(sizing: Sizing, device: DeviceClass, intent: Intent, device_count: in
         concurrency=intent.concurrency,
         available_gb=aggregate_gb,
         batch_tokens=intent.batch_tokens,
+        expert_params=sizing.expert_params,
+        expert_quantization=sizing.expert_quantization,
     )
     if not fitted.fits:
         return verdict(
@@ -1184,9 +1381,17 @@ def sizing_of(metadata: dict, parameter_count: int | None) -> Sizing | None:
     if not parameter_count:
         return None
     quantization = metadata.get("quantization") or DEFAULT_QUANTIZATION
+    expert_params = metadata.get("expert_parameter_count")
+    expert_quantization = metadata.get("expert_quantization")
     stored = metadata.get("shape")
     if not isinstance(stored, dict) or not stored.get("num_hidden_layers"):
-        return Sizing(total_params=parameter_count, shape=None, quantization=quantization)
+        return Sizing(
+            total_params=parameter_count,
+            shape=None,
+            quantization=quantization,
+            expert_params=expert_params,
+            expert_quantization=expert_quantization,
+        )
     shape = ModelShape(
         num_hidden_layers=int(stored["num_hidden_layers"]),
         num_key_value_heads=stored.get("num_key_value_heads"),
@@ -1199,4 +1404,10 @@ def sizing_of(metadata: dict, parameter_count: int | None) -> Sizing | None:
         sliding_window=stored.get("sliding_window"),
         sliding_layers=stored.get("sliding_layers") or 0,
     )
-    return Sizing(total_params=parameter_count, shape=shape, quantization=quantization)
+    return Sizing(
+        total_params=parameter_count,
+        shape=shape,
+        quantization=quantization,
+        expert_params=expert_params,
+        expert_quantization=expert_quantization,
+    )

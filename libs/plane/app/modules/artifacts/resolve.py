@@ -16,9 +16,11 @@ from app.core import devices
 from app.core.vram import DEFAULT_QUANTIZATION
 from app.core.vram import is_moe
 from app.core.vram import estimate_vram
+from app.core.vram import expert_params
 from app.core.vram import extract_shape
 from app.core.vram import shape_metadata
 from app.core.vram import effective_config
+from app.core.vram import expert_quant_method
 from app.core.vram import native_quant_method
 from app.core.vram import derive_active_params
 from app.core.schemas import Struct
@@ -327,6 +329,24 @@ def _shardable(count: int) -> int:
     return shards
 
 
+def _expert_precision(model: HuggingFaceModel) -> tuple[int | None, str | None]:
+    """How much of this checkpoint is held at a second precision, and which one.
+
+    Both `None` unless the repo declares an `expert_dtype`, which is a repo saying its
+    routed experts are not stored at the precision its `quantization_config` names.
+    Answering the pair together is deliberate: a count with no precision cannot be
+    charged and a precision with no count cannot be applied, so a half-answer is the
+    same as no answer and is written down as one.
+    """
+    quantization = expert_quant_method(model.config)
+    if not quantization:
+        return None, None
+    count = expert_params(model.config)
+    if not count:
+        return None, None
+    return count, quantization
+
+
 def suggest_serving(
     model: HuggingFaceModel,
     notes: list[ResolveNote],
@@ -381,6 +401,7 @@ def suggest_serving(
             dtype=dtype,
         )
 
+    experts, expert_quantization = _expert_precision(model)
     context_length = shape.context_length or FALLBACK_CONTEXT_LENGTH
     required_gb = estimate_vram(
         total_params=model.parameter_count,
@@ -388,6 +409,8 @@ def suggest_serving(
         quantization=sizing_quantization,
         context_length=context_length,
         concurrency=1,
+        expert_params=experts,
+        expert_quantization=expert_quantization,
     ).required_gb
 
     largest = devices.table().largest()
@@ -421,13 +444,23 @@ _UPSTREAM_ENGINE = "vllm"
 
 _SINGLE_NODE_TP = "single_node_tp"
 
-_DISAGREEMENT_RATIO = 2.0
+_DISAGREEMENT_RATIO = 1.25
 """How far the two sizings may drift before the difference is worth a warning.
 
 Below this they are two honest answers to slightly different questions — ours
 sizes the declared context at concurrency one, theirs is a floor measured under
 whatever load they ran. Above it one of them is wrong about the weights, and
 that is a thing to look at before the workload is submitted.
+
+It was 2.0, and 2.0 is wide enough to hide the error it exists to catch.
+DeepSeek-V4-Pro sized every one of its 1.65 T parameters at the fp8 its
+`quantization_config` names, ignoring the `expert_dtype: fp4` that holds 94% of
+them, and came out at 1,537 GB against a published 960 GB. A ratio of 1.6 — a
+whole extra H200 node — and the guard rail let it through without a word.
+
+The honest gap between the two questions is the KV cache and the activation peak,
+which on a model this size are under a tenth of the total. A quarter is loose
+enough for that and tight enough that a misread precision cannot sit inside it.
 """
 
 
@@ -612,6 +645,7 @@ def resolved(
 
     shape = extract_shape(model.config)
     active = derive_active_params(model.config, model.parameter_count)
+    experts, expert_quantization = _expert_precision(model)
     metadata = {
         "source": "huggingface",
         "huggingface_id": model.slug,
@@ -621,6 +655,8 @@ def resolved(
         "architecture": _architecture_of(model.config),
         "is_moe": is_moe(model.config),
         "active_parameter_count": active,
+        "expert_parameter_count": experts,
+        "expert_quantization": expert_quantization,
         "context_length": shape.context_length if shape else None,
         "shape": shape_metadata(shape) if shape else None,
     }
