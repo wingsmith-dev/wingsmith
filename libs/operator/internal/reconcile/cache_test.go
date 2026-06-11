@@ -591,3 +591,56 @@ func conditionReason(res *v1alpha1.SyncedResource) string {
 	}
 	return ""
 }
+
+// TestADispatchedWarmSetAsksToBeCalledAgain is the deadlock the resync closes. The controller is
+// otherwise driven purely by watches, so a warm set that had dispatched every download returned no
+// requeue and nothing woke it again — and a Job removed outside of a warm-set change took its own
+// wake-up with it.
+func TestADispatchedWarmSetAsksToBeCalledAgain(t *testing.T) {
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	_, out, result := runReconcile(t, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
+	)
+
+	if readyCondition(t, out).Reason != "WarmSetDispatched" {
+		t.Fatalf("reason = %q, want WarmSetDispatched", readyCondition(t, out).Reason)
+	}
+	if result.RequeueAfter != cacheResync {
+		t.Errorf("requeue = %v, want %v: a dispatched warm set that asks for nothing is never looked at again",
+			result.RequeueAfter, cacheResync)
+	}
+}
+
+// TestAPrefetchDeletedOutFromUnderTheWarmSetComesBack is what site-b hit: a prefetch Job deleted by
+// hand, nothing recreated it, and the warm set went on reporting itself dispatched over an artifact
+// with no download while the deployment gated on those weights sat in WeightsNotResident. The
+// recreate was never the missing part — ensurePrefetch already does it — the reconcile running
+// again was.
+func TestAPrefetchDeletedOutFromUnderTheWarmSetComesBack(t *testing.T) {
+	cache := declared(t, "cache", testCacheID, warmSet(wire.CacheWarmEntry{ArtifactID: testArtifactID}))
+	r, _, _ := runReconcileWith(t, &recordingReporter{}, cache,
+		declared(t, "artifact", testArtifactID, testArtifactDesired()),
+		declared(t, "deployment", testDeploymentID, testDeploymentDesired()),
+	)
+
+	job, ok := prefetchJob(t, r.Client, testArtifactID)
+	if !ok {
+		t.Fatal("no prefetch job was created for the warm-set entry")
+	}
+	if err := r.Client.Delete(context.Background(), job); err != nil {
+		t.Fatalf("delete prefetch job: %v", err)
+	}
+
+	req := types.NamespacedName{Namespace: cache.GetNamespace(), Name: cache.GetName()}
+	result, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: req})
+	if err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+	if jobs := prefetchJobs(t, r.Client, testArtifactID); len(jobs) != 1 {
+		t.Fatalf("jobs = %d, want 1: the download deleted out from under the warm set was not started again", len(jobs))
+	}
+	if result.RequeueAfter != cacheResync {
+		t.Errorf("requeue = %v, want %v", result.RequeueAfter, cacheResync)
+	}
+}

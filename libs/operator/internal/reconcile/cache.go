@@ -19,6 +19,22 @@ import (
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
 )
 
+// cacheResync is how long a dispatched warm set waits before it is checked again.
+//
+// Every other path here wakes on an event: a warm-set frame arrives, a prefetch Job changes, a pod
+// moves. A warm set that has dispatched every download waits on nothing and therefore returns no
+// requeue at all, and that is the state the cluster can get stuck in — a Job that leaves outside
+// of a warm-set change takes its own wake-up with it, so nothing looks again and the warm set goes
+// on reporting itself dispatched over an artifact with no download running. A deployment gated on
+// those weights then waits forever on a completion that can no longer come. It is the same
+// deadlock the attempt counter closed for a *failed* download, reached by a job that is not failed
+// but absent — deleted by hand, cleaned out with a namespace, or collected by a TTL.
+//
+// Five minutes, because this is a backstop and not the mechanism: the watches are still what makes
+// the loop responsive, and this only has to be shorter than a person's patience. A cluster holding
+// a handful of artifacts pays one list of Jobs per interval for it.
+const cacheResync = 5 * time.Minute
+
 // reconcileCache makes the cluster's declared warm-set resident.
 //
 // Fetching is driven by the warm-set rather than by any deployment, and that inversion is the
@@ -80,8 +96,16 @@ func (r *SyncedResourceReconciler) reconcileCache(ctx context.Context, res *v1al
 		return r.wait(ctx, res, "WarmSetIncomplete",
 			fmt.Sprintf("%d of %d warm-set entries are not yet fetchable", pending, len(warm.Entries)))
 	}
-	return r.ready(ctx, res, "WarmSetDispatched",
+	// Ready, and still asking to be called again — see cacheResync. r.ready reports no requeue
+	// because for a deployment there is nothing left to check; a warm set is never finished
+	// with, because what it dispatched can go away underneath it.
+	result, err := r.ready(ctx, res, "WarmSetDispatched",
 		fmt.Sprintf("%d artifacts have a prefetch job", len(warm.Entries)))
+	if err != nil {
+		return result, err
+	}
+	result.RequeueAfter = cacheResync
+	return result, nil
 }
 
 // prunePrefetch removes the download jobs of artifacts the warm set no longer names.
