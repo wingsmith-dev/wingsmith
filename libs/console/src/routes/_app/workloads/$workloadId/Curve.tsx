@@ -45,10 +45,12 @@ import { useMemo, useState } from "react"
 /**
  * The Workbench's load curve: what a ramp actually measured, and where it bent.
  *
- * The panel exists because throughput and latency are one trade and reading
- * them apart is how a configuration gets tuned against the wrong number. Both
- * axes are drawn against one set of steps, so the price of the next unit of
- * load is visible rather than inferred.
+ * Throughput and latency are one trade, so both are drawn against the same
+ * steps and share a hover: moving over either chart moves the readout on both,
+ * which is what keeps the price of the next unit of load visible rather than
+ * inferred. They are separate cards because stacking two axes inside one frame
+ * made each of them small and neither of them legible, and the trade is read
+ * between the cards rather than inside a single crowded one.
  *
  * Nothing here is computed from the runs. The curve and the knee are the
  * plane's read, derived against the pinned criteria version and stored nowhere;
@@ -95,49 +97,79 @@ export function LoadCurvePanel({
   const data = curve.data
   const progress = curveProgress(data)
   const state = curveState(data)
-  const axis = data ? stepFieldLabel(data.step_field).toLowerCase() : "load"
 
-  return (
-    <Panel
-      title="Finding the inflection point"
-      subtitle={
-        data
-          ? `Latency against throughput across a ${axis} ramp, derived under ${data.criteria_version}`
-          : "Latency against throughput across a ramp"
-      }
-      badge={
-        data ? (
-          <Badge variant={progress.open > 0 ? "default" : "outline"}>
-            {progress.open > 0
-              ? `${progress.done} / ${progress.total} steps`
-              : `${progress.total} steps`}
-          </Badge>
-        ) : undefined
-      }
-      action={
-        <WriteAction>
-          <Button size="sm" disabled={!placed} onClick={onStartRamp}>
-            Run a ramp
-          </Button>
-        </WriteAction>
-      }
-    >
-      {curve.isLoading && curve.request ? (
+  const action = (
+    <WriteAction>
+      <Button size="sm" disabled={!placed} onClick={onStartRamp}>
+        Run a ramp
+      </Button>
+    </WriteAction>
+  )
+  const badge = data ? (
+    <Badge variant={progress.open > 0 ? "default" : "outline"}>
+      {progress.open > 0
+        ? `${progress.done} / ${progress.total} steps`
+        : `${progress.total} steps`}
+    </Badge>
+  ) : undefined
+
+  /*
+    Every state that is not a drawn curve is one card, not three. Three empty
+    frames describing the same absence is three times the furniture for none of
+    the information.
+  */
+  if (curve.isLoading && curve.request)
+    return (
+      <Panel title="Latency under load" action={action}>
         <Skeleton className="h-56 w-full" />
-      ) : curve.error ? (
+      </Panel>
+    )
+  if (curve.error)
+    return (
+      <Panel title="Latency under load" action={action}>
         <Note>{formatError(curve.error, "the curve could not be read")}</Note>
-      ) : !curve.request ? (
+      </Panel>
+    )
+  if (!curve.request)
+    return (
+      <Panel
+        title="Finding the inflection point"
+        subtitle="Latency and throughput across a ramp"
+        action={action}
+      >
         <NeverRamped placed={placed} onStartRamp={onStartRamp} />
-      ) : !data || state === "empty" ? (
+      </Panel>
+    )
+  if (!data || state === "empty")
+    return (
+      <Panel
+        title="Finding the inflection point"
+        badge={badge}
+        action={action}
+      >
         <Note>
           The ramp has been accepted and has not expanded into any step yet.
         </Note>
-      ) : state === "all-failed" ? (
+      </Panel>
+    )
+  if (state === "all-failed")
+    return (
+      <Panel
+        title="Finding the inflection point"
+        badge={badge}
+        action={action}
+      >
         <FailedRamp curve={data} />
-      ) : (
-        <Drawn curve={data} single={state === "single"} />
-      )}
-    </Panel>
+      </Panel>
+    )
+
+  return (
+    <Drawn
+      curve={data}
+      single={state === "single"}
+      action={action}
+      badge={badge}
+    />
   )
 }
 
@@ -190,9 +222,8 @@ const PAD_L = 46
 const PAD_R = 10
 const PLOT_W = W - PAD_L - PAD_R
 const PANEL_H = 108
-const LATENCY_TOP = 10
-const THROUGHPUT_TOP = LATENCY_TOP + PANEL_H + 42
-const AXIS_Y = THROUGHPUT_TOP + PANEL_H + 16
+const PLOT_TOP = 16
+const AXIS_Y = PLOT_TOP + PANEL_H + 16
 const H = AXIS_Y + 6
 
 const STROKE: Record<CurveTone, string> = {
@@ -216,7 +247,25 @@ const DOT: Record<CurveTone, string> = {
   muted: "bg-muted-foreground/50",
 }
 
-function Drawn({ curve, single }: { curve: BenchmarkCurve; single: boolean }) {
+/**
+ * A measured ramp, as three cards: one chart each, then the evidence.
+ *
+ * The hover index lives here rather than in either chart, so pointing at a step
+ * on one moves the readout on the other. Two charts that each tracked their own
+ * pointer would let a reader compare latency at one load against throughput at
+ * a different one without noticing.
+ */
+function Drawn({
+  curve,
+  single,
+  action,
+  badge,
+}: {
+  curve: BenchmarkCurve
+  single: boolean
+  action: React.ReactNode
+  badge: React.ReactNode
+}) {
   const points = useMemo(
     () => [...curve.points].sort((a, b) => a.step_index - b.step_index),
     [curve.points]
@@ -231,31 +280,119 @@ function Drawn({ curve, single }: { curve: BenchmarkCurve; single: boolean }) {
       })),
     [points]
   )
-  const ceilings: Record<CurveAxis, number | null> = {
-    latency: curveCeiling(
-      series.filter((s) => s.metric.axis === "latency").map((s) => s.samples)
-    ),
-    throughput: curveCeiling(
-      series.filter((s) => s.metric.axis === "throughput").map((s) => s.samples)
-    ),
-  }
 
   const knee = kneeIndex(curve)
   const focus = hover ?? (knee >= 0 ? knee : null)
-  const focused = focus !== null ? points[focus] : undefined
+  const axis = stepFieldLabel(curve.step_field).toLowerCase()
 
-  const count = points.length
-  const missing = series.flatMap(({ metric, samples }) =>
-    samples.filter((s) => !s.discard && s.value === null && !isOpen(s.phase))
-      .length > 0
-      ? [metric.label]
-      : []
+  const of = (which: CurveAxis) =>
+    series.filter((entry) => entry.metric.axis === which)
+  const missing = (which: CurveAxis) =>
+    of(which).flatMap(({ metric, samples }) =>
+      samples.filter((s) => !s.discard && s.value === null && !isOpen(s.phase))
+        .length > 0
+        ? [metric.label]
+        : []
+    )
+
+  return (
+    <>
+      <Panel
+        title="Latency under load"
+        badge={badge}
+        subtitle={`Time to first token, inter-token and end-to-end across a ${axis} ramp, derived under ${curve.criteria_version}`}
+        action={action}
+      >
+        <AxisChart
+          curve={curve}
+          points={points}
+          series={of("latency")}
+          label="latency"
+          unit="ms"
+          focus={focus}
+          knee={knee}
+          onHover={setHover}
+        />
+        {single && (
+          <Note>
+            One step is a point, not a curve. A knee needs a ramp with at least
+            two loads either side of it.
+          </Note>
+        )}
+        {missing("latency").length > 0 && (
+          <Note>
+            A gap in the line is a reading the plane could not resolve, never a
+            zero: {missing("latency").join(", ")}.
+          </Note>
+        )}
+        <FieldGrid>
+          <Field label="Knee">{kneeLabel(curve)}</Field>
+          <Field label={`Method · ${curve.knee.method}`}>
+            {curve.knee.reason}
+          </Field>
+        </FieldGrid>
+      </Panel>
+
+      <Panel
+        title="Throughput under load"
+        subtitle={`Tokens and requests per second across the same ${axis} steps`}
+      >
+        <AxisChart
+          curve={curve}
+          points={points}
+          series={of("throughput")}
+          label="throughput"
+          unit="tok/s"
+          focus={focus}
+          knee={knee}
+          onHover={setHover}
+        />
+        {missing("throughput").length > 0 && (
+          <Note>
+            A gap in the line is a reading the plane could not resolve, never a
+            zero: {missing("throughput").join(", ")}.
+          </Note>
+        )}
+      </Panel>
+
+      <Panel
+        title="Steps"
+        subtitle="Every step of the ramp, warm-ups included"
+      >
+        <StepTable curve={curve} />
+      </Panel>
+    </>
   )
+}
+
+/** One axis, drawn on its own steps, reporting its hover to whoever owns it. */
+function AxisChart({
+  curve,
+  points,
+  series,
+  label,
+  unit,
+  focus,
+  knee,
+  onHover,
+}: {
+  curve: BenchmarkCurve
+  points: BenchmarkCurvePoint[]
+  series: { metric: CurveMetric; samples: CurveSample[] }[]
+  label: string
+  unit: string
+  focus: number | null
+  knee: number
+  onHover: (index: number | null) => void
+}) {
+  const count = points.length
+  const ceiling = curveCeiling(series.map((entry) => entry.samples))
+  const focused = focus !== null ? points[focus] : undefined
 
   return (
     <div className="space-y-3">
       <ul className="flex flex-wrap items-center gap-3.5">
-        {CURVE_LINES.map((metric) => (
+        {series.map(({ metric }) => (
           <li
             key={metric.id}
             className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground"
@@ -273,30 +410,22 @@ function Drawn({ curve, single }: { curve: BenchmarkCurve; single: boolean }) {
         viewBox={`0 0 ${W} ${H}`}
         className="w-full"
         role="img"
-        aria-label={`${stepFieldLabel(curve.step_field)} against latency and throughput`}
-        onPointerLeave={() => setHover(null)}
+        aria-label={`${stepFieldLabel(curve.step_field)} against ${label}`}
+        onPointerLeave={() => onHover(null)}
         onPointerMove={(event) => {
           const box = event.currentTarget.getBoundingClientRect()
           const x = ((event.clientX - box.left) / box.width) * W - PAD_L
           const step = count > 1 ? PLOT_W / (count - 1) : PLOT_W
           const index = Math.round(x / (step || 1))
-          setHover(Math.min(count - 1, Math.max(0, index)))
+          onHover(Math.min(count - 1, Math.max(0, index)))
         }}
       >
         <Plot
-          top={LATENCY_TOP}
-          label="latency"
-          unit="ms"
-          ceiling={ceilings.latency}
-          series={series.filter((s) => s.metric.axis === "latency")}
-          count={count}
-        />
-        <Plot
-          top={THROUGHPUT_TOP}
-          label="throughput"
-          unit="tok/s"
-          ceiling={ceilings.throughput}
-          series={series.filter((s) => s.metric.axis === "throughput")}
+          top={PLOT_TOP}
+          label={label}
+          unit={unit}
+          ceiling={ceiling}
+          series={series}
           count={count}
         />
 
@@ -308,9 +437,9 @@ function Drawn({ curve, single }: { curve: BenchmarkCurve; single: boolean }) {
             <line
               key={point.run}
               x1={x}
-              y1={LATENCY_TOP}
+              y1={PLOT_TOP}
               x2={x}
-              y2={THROUGHPUT_TOP + PANEL_H}
+              y2={PLOT_TOP + PANEL_H}
               strokeWidth={1}
               vectorEffect="non-scaling-stroke"
               strokeDasharray={pending || point.discard ? "3 3" : undefined}
@@ -327,9 +456,9 @@ function Drawn({ curve, single }: { curve: BenchmarkCurve; single: boolean }) {
           <g>
             <line
               x1={PAD_L + curveX(knee, count, PLOT_W)}
-              y1={LATENCY_TOP - 6}
+              y1={PLOT_TOP - 6}
               x2={PAD_L + curveX(knee, count, PLOT_W)}
-              y2={THROUGHPUT_TOP + PANEL_H}
+              y2={PLOT_TOP + PANEL_H}
               strokeWidth={1.5}
               strokeDasharray="4 3"
               vectorEffect="non-scaling-stroke"
@@ -337,7 +466,7 @@ function Drawn({ curve, single }: { curve: BenchmarkCurve; single: boolean }) {
             />
             <text
               x={PAD_L + curveX(knee, count, PLOT_W)}
-              y={LATENCY_TOP - 10}
+              y={PLOT_TOP - 10}
               textAnchor="middle"
               className="fill-amber-500 font-mono text-[9px]"
             >
@@ -373,39 +502,18 @@ function Drawn({ curve, single }: { curve: BenchmarkCurve; single: boolean }) {
             <span className="font-mono text-foreground">
               {curve.step_field} {focused.step_value ?? "—"}
             </span>
-            {CURVE_LINES.map((metric) => (
+            {series.map(({ metric }) => (
               <Readout key={metric.id} point={focused} metric={metric} />
             ))}
           </span>
         )}
       </div>
-
-      {single && (
-        <Note>
-          One step is a point, not a curve. A knee needs a ramp with at least
-          two loads either side of it.
-        </Note>
-      )}
-      {missing.length > 0 && (
-        <Note>
-          A gap in the line is a reading the plane could not resolve, never a
-          zero: {missing.join(", ")}.
-        </Note>
-      )}
-
-      <FieldGrid>
-        <Field label="Knee">{kneeLabel(curve)}</Field>
-        <Field label={`Method · ${curve.knee.method}`}>
-          {curve.knee.reason}
-        </Field>
-      </FieldGrid>
-
-      <StepTable curve={curve} />
     </div>
   )
 }
 
-/** One of the two stacked plots, drawn against its own axis and nobody else's. */
+/** One plot, drawn against its own axis and nobody else's. */
+
 function Plot({
   top,
   label,
