@@ -9,6 +9,7 @@ from decimal import Decimal
 
 from app.db.models import Artifact
 from app.db.models import Workload
+from app.integrations import dynamo_recipes
 
 
 SERVED_MODEL_ARGS = ("served-model-name", "served_model_name")
@@ -177,6 +178,34 @@ def declared_served_model(workload: Workload, artifact: Artifact) -> str:
     return (artifact.slug or "").strip() or str(workload.name)
 
 
+def recipe_engine_args(workload: Workload, artifact: Artifact) -> dict[str, str]:
+    """The Dynamo recipe's defaults for these weights on this card, keyed without dashes.
+
+    The bottom of the precedence chain and the only rung nobody declared. It exists
+    because the vendor who publishes our runtime also publishes the argument list
+    they run it with, per model and per node shape, and ignoring that is how a
+    model that fits crash-loops anyway: `zai-org/GLM-5.3-Flash` at 1,048,576 context
+    needs one Mamba state block per decode sequence, 512 of them fit, and vLLM's
+    default `max_num_seqs` is 1024, so the engine refuses at CUDA graph capture
+    before it serves a token.
+
+    Read from `app.integrations.dynamo_recipes` rather than from the vLLM corpus
+    because the cluster runs `python3 -m dynamo.vllm` and not `vllm serve`. The
+    allow-list of what may be carried across lives there, next to the reasons for
+    everything left out of it.
+
+    `DERIVED_FLAGS` is subtracted here as well as being kept out of the allow-list,
+    because this is the seam where a recipe value would actually reach a command
+    line. The two guards say the same thing in the two places it has to be true:
+    one is a rule about what may be adopted, and this is the last chance to stop a
+    suggestion from overruling a shape the workload was placed at.
+
+    Empty for every model the corpus does not cover, which is nearly all of them.
+    """
+    defaults = dynamo_recipes.engine_defaults(artifact.slug or "", workload.engine, workload.device_class)
+    return {flag: value for flag, value in defaults.items() if flag not in DERIVED_FLAGS}
+
+
 DIGEST_PREFIX = "svg_"
 
 DIGEST_FIELDS: tuple[tuple[str, str], ...] = (
@@ -251,6 +280,13 @@ def serving_digest(workload: Workload, artifact: Artifact) -> str:
     payload: dict[str, Any] = {"artifact": str(artifact.uid)}
     for key, attribute in DIGEST_FIELDS:
         payload[key] = _canonical(getattr(workload, attribute))
+    # Only when the recipe actually supplies something, so that the digest of a model the
+    # corpus does not cover is byte-identical to the one this function returned before
+    # recipe defaults existed. An absent key and an empty map are different hashes, and
+    # every workload in the fleet re-rendering once is the cost of confusing them.
+    defaults = recipe_engine_args(workload, artifact)
+    if defaults:
+        payload["engine_defaults"] = _canonical(defaults)
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return DIGEST_PREFIX + hashlib.sha256(body.encode("utf-8")).hexdigest()
 

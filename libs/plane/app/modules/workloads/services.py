@@ -33,10 +33,9 @@ from app.db.notify import DeclaredChange
 from app.db.notify import DatabaseNotifier
 from app.ingestion import statements
 from app.core.schemas import ListResponse
-from app.core.serving import DERIVED_FLAGS
 from app.core.serving import served_model
 from app.core.serving import serving_digest
-from app.integrations import dynamo_recipes
+from app.core.serving import recipe_engine_args
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -541,34 +540,6 @@ def resolve_engine_runtime_image(engine: str, engine_runtime_version: str, decla
     if not tag or tag == "latest":
         tag = settings.ENGINE_RUNTIME_TAG_DEFAULT
     return f"{repository}:{tag}"
-
-
-def recipe_engine_args(workload: Workload, artifact: Artifact) -> dict[str, str]:
-    """The Dynamo recipe's defaults for these weights on this card, keyed without dashes.
-
-    The bottom of the precedence chain and the only rung nobody declared. It exists
-    because the vendor who publishes our runtime also publishes the argument list
-    they run it with, per model and per node shape, and ignoring that is how a
-    model that fits crash-loops anyway: `zai-org/GLM-5.3-Flash` at 1,048,576 context
-    needs one Mamba state block per decode sequence, 512 of them fit, and vLLM's
-    default `max_num_seqs` is 1024, so the engine refuses at CUDA graph capture
-    before it serves a token.
-
-    Read from `app.integrations.dynamo_recipes` rather than from the vLLM corpus
-    because the cluster runs `python3 -m dynamo.vllm` and not `vllm serve`. The
-    allow-list of what may be carried across lives there, next to the reasons for
-    everything left out of it.
-
-    `DERIVED_FLAGS` is subtracted here as well as being kept out of the allow-list,
-    because this is the seam where a recipe value would actually reach a command
-    line. The two guards say the same thing in the two places it has to be true:
-    one is a rule about what may be adopted, and this is the last chance to stop a
-    suggestion from overruling a shape the workload was placed at.
-
-    Empty for every model the corpus does not cover, which is nearly all of them.
-    """
-    defaults = dynamo_recipes.engine_defaults(artifact.slug or "", workload.engine, workload.device_class)
-    return {flag: value for flag, value in defaults.items() if flag not in DERIVED_FLAGS}
 
 
 def resolved_engine_args(workload: Workload, artifact: Artifact) -> dict[str, str]:

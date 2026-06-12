@@ -37,6 +37,7 @@ from app.core.serving import DIGEST_FIELDS
 from app.core.serving import _canonical
 from app.core.serving import served_model
 from app.core.serving import serving_digest
+from app.core.serving import recipe_engine_args
 from app.hub.messages import ServingSpec
 from app.core.exceptions import Invalid
 from app.ingestion.desired import _serving
@@ -900,3 +901,41 @@ def test_the_engine_args_hatch_still_beats_what_the_plane_would_say():
     artifact = Artifact(uid=new_uid(ARTIFACT), name="Kimi-K3", slug="moonshotai/kimi-k3")
     workload = a_workload(engine_args={"--served-model-name": "acme/kimi-canary"})
     assert served_model(workload, artifact) == "acme/kimi-canary"
+
+
+def test_a_recipe_default_moves_the_digest():
+    """A default that changes the command line has to change the identity of the configuration.
+
+    The digest is what the operator compares to decide whether the graph it is
+    already running was built from these inputs, and it skips the apply when the
+    answer is yes. So a recipe default that reaches the wire without reaching the
+    digest is a change the cluster is told about and can never act on: on site-b the
+    desired state carried `max-num-seqs 32` for GLM-5.3-Flash while the worker went
+    on crash-looping under the old command line, and the operator logged `already
+    built from these inputs; not applying` every fifteen seconds over the top of it.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT), slug="zai-org/GLM-5.3-Flash")
+    workload = a_workload(device_class="h200-141gb-sxm")
+
+    assert recipe_engine_args(workload, artifact).get("max-num-seqs") == "32"
+    assert serving_digest(workload, artifact) != serving_digest(workload, Artifact(uid=artifact.uid))
+
+
+def test_a_model_with_no_recipe_hashes_exactly_as_it_did():
+    """And the other half: nothing else in the fleet may move.
+
+    An absent key and an empty map are different hashes. If this function wrote
+    `engine_defaults: {}` for every model the corpus does not cover, every workload
+    in the fleet would take a new digest at once and every deployment would
+    re-render — which is the fleet-wide reload the digest exists to prevent.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT), slug="nobody/not-in-the-corpus")
+    workload = a_workload(device_class="h200-141gb-sxm")
+
+    assert recipe_engine_args(workload, artifact) == {}
+
+    payload = {"artifact": str(artifact.uid)}
+    for key, attribute in DIGEST_FIELDS:
+        payload[key] = _canonical(getattr(workload, attribute))
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    assert serving_digest(workload, artifact) == "svg_" + hashlib.sha256(body.encode("utf-8")).hexdigest()
