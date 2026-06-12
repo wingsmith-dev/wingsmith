@@ -47,7 +47,6 @@ from app.hub.messages import DeploymentDesired
 from app.hub.messages import PlacementConstraints
 from app.ingestion.time import now
 from app.ingestion.statements import cluster_ref_clause
-from app.modules.workloads.services import serving_block
 from app.modules.workloads.services import resolved_engine_args
 
 
@@ -277,7 +276,7 @@ async def _artifacts(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> li
     ]
 
 
-def _serving(workload: Workload) -> ServingSpec:
+def _serving(workload: Workload, artifact: Artifact) -> ServingSpec:
     """The engine configuration as the cluster is told it, read off the workload.
 
     Inlined on the deployment rather than sent as an object of its own; the
@@ -306,7 +305,7 @@ def _serving(workload: Workload) -> ServingSpec:
         engine_version=workload.engine_runtime_version,
         engine_image=workload.engine_runtime_image,
         frontend_image=workload.frontend_image,
-        engine_args=resolved_engine_args(workload.engine, workload.engine_args, serving_block(workload.serving)),
+        engine_args=resolved_engine_args(workload, artifact),
         quantization=workload.quantization,
         dtype=workload.dtype,
         parallelism=Parallelism(
@@ -416,7 +415,7 @@ async def _deployments(
                 min_replicas=deployment.min_replicas,
                 max_replicas=deployment.max_replicas,
                 placement=_placement(workload, allowed),
-                serving=_serving(workload),
+                serving=_serving(workload, artifact),
                 artifact_ids=artifact_ids,
                 served_model_name=declared_served_model(workload, artifact),
                 generation=deployment.generation,

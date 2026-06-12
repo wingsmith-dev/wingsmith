@@ -33,8 +33,10 @@ from app.db.notify import DeclaredChange
 from app.db.notify import DatabaseNotifier
 from app.ingestion import statements
 from app.core.schemas import ListResponse
+from app.core.serving import DERIVED_FLAGS
 from app.core.serving import served_model
 from app.core.serving import serving_digest
+from app.integrations import dynamo_recipes
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -541,29 +543,74 @@ def resolve_engine_runtime_image(engine: str, engine_runtime_version: str, decla
     return f"{repository}:{tag}"
 
 
-def resolved_engine_args(engine: str, engine_args: dict | None, serving: ServingSchema) -> dict[str, str]:
-    """`engine_args` with the typed serving flags laid over the top.
+def recipe_engine_args(workload: Workload, artifact: Artifact) -> dict[str, str]:
+    """The Dynamo recipe's defaults for these weights on this card, keyed without dashes.
 
-    The typed field wins the collision. `engine_args` stays the escape hatch for a
-    flag nothing here models, but a flag that *is* modelled has one declared home,
-    and a workload that pins `--reasoning-parser` by hand while also naming
-    `serving.reasoning.parser` is stating the same thing twice — the typed value is
-    the one the plane can validate, display and verify, so it is the one that
-    stands.
+    The bottom of the precedence chain and the only rung nobody declared. It exists
+    because the vendor who publishes our runtime also publishes the argument list
+    they run it with, per model and per node shape, and ignoring that is how a
+    model that fits crash-loops anyway: `zai-org/GLM-5.3-Flash` at 1,048,576 context
+    needs one Mamba state block per decode sequence, 512 of them fit, and vLLM's
+    default `max_num_seqs` is 1024, so the engine refuses at CUDA graph capture
+    before it serves a token.
+
+    Read from `app.integrations.dynamo_recipes` rather than from the vLLM corpus
+    because the cluster runs `python3 -m dynamo.vllm` and not `vllm serve`. The
+    allow-list of what may be carried across lives there, next to the reasons for
+    everything left out of it.
+
+    `DERIVED_FLAGS` is subtracted here as well as being kept out of the allow-list,
+    because this is the seam where a recipe value would actually reach a command
+    line. The two guards say the same thing in the two places it has to be true:
+    one is a rule about what may be adopted, and this is the last chance to stop a
+    suggestion from overruling a shape the workload was placed at.
+
+    Empty for every model the corpus does not cover, which is nearly all of them.
+    """
+    defaults = dynamo_recipes.engine_defaults(artifact.slug or "", workload.engine, workload.device_class)
+    return {flag: value for flag, value in defaults.items() if flag not in DERIVED_FLAGS}
+
+
+def resolved_engine_args(workload: Workload, artifact: Artifact) -> dict[str, str]:
+    """The engine arguments this workload asks for, most authoritative last.
+
+    Four rungs, and the order is the whole of the function:
+
+    1. **The recipe's defaults**, for a flag NVIDIA publishes for these weights and
+       this plane has no column for. Nobody declared them, so they lose to everything.
+    2. **Companion flags** a typed field cannot work without — inferred, so they
+       lose to anything written by hand.
+    3. **`engine_args`**, the workload's own escape hatch. It beats both of the
+       above because a person typed it, and an escape hatch that loses to a default
+       is not one.
+    4. **The typed serving flags.** A flag that *is* modelled has one declared home,
+       and a workload that pins `--reasoning-parser` by hand while also naming
+       `serving.reasoning.parser` is stating the same thing twice — the typed value
+       is the one the plane can validate, display and verify.
+
+    What is *not* a rung is the plane's own derived fields — context length, tensor
+    parallelism, the memory fraction. They reach the cluster from typed columns that
+    were validated and placed against, and the operator lays this map over them
+    last, so anything here beats them on the command line. A recipe is therefore
+    never allowed to name one: `dynamo_recipes.ADOPTED_FLAGS` is filtered against
+    `app.core.serving.DERIVED_FLAGS`, and a recipe stating a context length or a
+    parallel size is read as evidence and applied to nothing.
 
     Derived on every read and stored nowhere: `engine_args` is left exactly as it
     was written.
 
-    TODO: the operator renders the other way round today — `engineArgs`
-    (`libs/operator/internal/render/dynamo.go:319`) lays `engine_args` over its
+    TODO: the operator renders rung 4 the other way round today — `engineArgs`
+    (`libs/operator/internal/render/dynamo.go`) lays `engine_args` over its own
     derived flags last, so whichever way the serving block eventually reaches the
     wire, the two have to be made to agree or this becomes a resolved view of
     something the cluster does not do.
     """
-    resolved = {str(key).removeprefix("--"): str(value) for key, value in (engine_args or {}).items()}
-    for flag, value in serving_companion_args(engine, serving).items():
+    serving = serving_block(workload.serving)
+    resolved = dict(recipe_engine_args(workload, artifact))
+    for flag, value in serving_companion_args(workload.engine, serving).items():
         resolved.setdefault(flag, value)
-    resolved.update(serving_args(engine, serving))
+    resolved.update({str(key).removeprefix("--"): str(value) for key, value in (workload.engine_args or {}).items()})
+    resolved.update(serving_args(workload.engine, serving))
     return resolved
 
 
@@ -722,12 +769,17 @@ def serving_request(workload: Workload, artifact: Artifact) -> WorkloadServingRe
     )
 
 
-def serving_view(workload: Workload, artifact_uid: str) -> WorkloadServingSchema:
-    """The serving block as a read returns it, with the resolved arguments beside it."""
+def serving_view(workload: Workload, artifact: Artifact) -> WorkloadServingSchema:
+    """The serving block as a read returns it, with the resolved arguments beside it.
+
+    Takes the artifact and not its id, because `resolved_engine_args` reads the
+    slug off it to find the model's recipe. A read that showed different resolved
+    arguments from the ones the wire carries would be worse than showing none.
+    """
     fraction = workload.kv_cache_fraction
     serving = serving_block(workload.serving)
     return WorkloadServingSchema(
-        artifact_id=artifact_uid,
+        artifact_id=artifact.uid,
         engine=workload.engine,
         engine_runtime_version=workload.engine_runtime_version,
         engine_runtime_image=workload.engine_runtime_image,
@@ -751,7 +803,7 @@ def serving_view(workload: Workload, artifact_uid: str) -> WorkloadServingSchema
         ),
         serving=serving,
         capabilities=capabilities_block(workload.capabilities),
-        resolved_engine_args=resolved_engine_args(workload.engine, workload.engine_args, serving),
+        resolved_engine_args=resolved_engine_args(workload, artifact),
         shape=ShapeSchema(
             device_class=workload.device_class,
             device_count=workload.device_count,
@@ -1192,7 +1244,7 @@ class WorkloadService:
             items.append(
                 self.schema(
                     workload=workload,
-                    serving=serving_view(workload, artifact.uid),
+                    serving=serving_view(workload, artifact),
                     project_uid=row.project_uid,
                     priority_class=row.priority_class,
                     pinned_cluster_uid=row.pinned_cluster_uid,

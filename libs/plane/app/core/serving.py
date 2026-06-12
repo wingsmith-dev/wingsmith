@@ -46,6 +46,41 @@ def flag_name(key: str) -> str:
     return key.lstrip("-")
 
 
+DERIVED_FLAGS = frozenset(
+    {
+        "model",
+        "served-model-name",
+        "revision",
+        "max-model-len",
+        "tensor-parallel-size",
+        "pipeline-parallel-size",
+        "gpu-memory-utilization",
+        "quantization",
+        "dtype",
+        "kv-cache-dtype",
+        "max-num-batched-tokens",
+        "no-enable-prefix-caching",
+    }
+)
+"""The flags the operator renders from typed columns, keyed as it keys them.
+
+The mirror of `derived` in `engineArgs` (`libs/operator/internal/render/dynamo.go`),
+written here because the plane has to know which flags it has already spoken for.
+Every one of these comes from a column a person filled in, that `check_shape` and
+`check_capacity` validated, and that placement chose devices against — so a value
+for one of them arriving from anywhere else is not a default, it is a
+contradiction of a decision already acted on. The operator lays `engine_args` over
+its derived flags last, which means anything the plane puts in `engine_args` wins
+on the command line; a suggested value for one of these would therefore silently
+beat the shape the workload was placed at.
+
+A person may still contradict any of them by hand. `engine_args` is the escape
+hatch and it stays one. What this set forbids is the plane doing it on somebody's
+behalf, which is why it is read by `app.integrations.dynamo_recipes` and by
+nothing that handles a user's own input.
+"""
+
+
 def model_slug(uri: str) -> str:
     """The lowercase repository slug a location URI names. `hf://moonshotai/Kimi-K3` -> `moonshotai/kimi-k3`.
 

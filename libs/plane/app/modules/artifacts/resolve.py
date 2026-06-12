@@ -25,6 +25,7 @@ from app.core.vram import native_quant_method
 from app.core.vram import derive_active_params
 from app.core.schemas import Struct
 from app.integrations import vllm_recipes
+from app.integrations import dynamo_recipes
 from app.integrations.huggingface import HuggingFaceModel
 
 from .schemas import INFO
@@ -592,6 +593,61 @@ def _note_disagreement(
     )
 
 
+def _note_engine_defaults(model: HuggingFaceModel, notes: list[ResolveNote]) -> None:
+    """Says which engine arguments a Dynamo recipe will default, and where the two corpora differ.
+
+    The plane adopts a very short list of arguments from
+    `app.integrations.dynamo_recipes` when it builds a serving block, and an
+    argument applied without being shown is the same class of surprise as one
+    ignored. So the values are named here, per card, on the draft a person reads
+    before they submit anything.
+
+    The second note is the disagreement. `vllm-project/recipes` and
+    `ai-dynamo/dynamo` describe two different programs and do not always agree
+    about the same flag; where both publish one, the Dynamo value is the one that
+    reaches a command line, because it is the one measured against
+    `python3 -m dynamo.vllm`. Saying so is cheaper than letting somebody find it by
+    reading the rendered arguments.
+    """
+    match = dynamo_recipes.lookup(model.slug)
+    if match is None:
+        return
+    aggregated = match.aggregated(_UPSTREAM_ENGINE)
+    if not aggregated:
+        return
+    upstream = vllm_recipes.lookup(model.slug)
+    for name in dynamo_recipes.ADOPTED_FLAGS:
+        published = {
+            deployment.hardware or "unstated": deployment.args[name]
+            for deployment in aggregated
+            if deployment.args.get(name)
+        }
+        if not published:
+            continue
+        rendered = ", ".join(f"{card} {value}" for card, value in sorted(published.items()))
+        notes.append(
+            ResolveNote(
+                level=INFO,
+                message=(
+                    f"NVIDIA's Dynamo recipes run this model with --{name} at {rendered}; "
+                    "the plane will default it to the value published for the card a workload is placed on"
+                ),
+            )
+        )
+        theirs = upstream.flag(f"--{name}") if upstream is not None else None
+        if theirs is not None and theirs not in published.values():
+            notes.append(
+                ResolveNote(
+                    level=WARN,
+                    message=(
+                        f"the vLLM recipe sets --{name} to {theirs} where the Dynamo recipes set {rendered}; "
+                        "the Dynamo value is the one applied, because it was measured against "
+                        "python3 -m dynamo.vllm and the vLLM one against vllm serve"
+                    ),
+                )
+            )
+
+
 def resolved(
     model: HuggingFaceModel,
     existing_id: str | None = None,
@@ -662,6 +718,7 @@ def resolved(
     }
 
     serving = suggest_serving(model, notes, ceiling_mib)
+    _note_engine_defaults(model, notes)
     uri = f"hf://{model.slug}@{model.revision}"
     return ResolvedArtifact(
         reference=f"hf:{model.slug}@{model.revision}",

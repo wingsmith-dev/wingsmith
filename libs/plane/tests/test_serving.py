@@ -88,6 +88,11 @@ def serving(**kwargs) -> ServingSchema:
     return block
 
 
+def block(**kwargs) -> dict:
+    """A serving block in the shape the column stores it."""
+    return msgspec.to_builtins(serving(**kwargs))
+
+
 def capabilities(**kwargs) -> CapabilitiesSchema:
     return CapabilitiesSchema(**kwargs)
 
@@ -151,9 +156,14 @@ def a_request(**kwargs) -> WorkloadServingRequest:
     return WorkloadServingRequest(**(fields | kwargs))
 
 
-def rendered(workload: Workload):
+def an_artifact(**kwargs) -> Artifact:
+    """An Artifact row with a slug no recipe corpus covers, unless a test asks for one."""
+    return Artifact(**({"uid": new_uid(ARTIFACT), "slug": "meta-llama/llama-3.1-8b-instruct"} | kwargs))
+
+
+def rendered(workload: Workload, artifact: Artifact | None = None):
     """The serving block as a read returns it."""
-    return serving_view(workload, new_uid(ARTIFACT))
+    return serving_view(workload, artifact or an_artifact())
 
 
 # --------------------------------------------------------------------------- quantization
@@ -481,13 +491,14 @@ def test_a_vllm_tool_parser_renders_no_flag_because_dynamo_takes_none():
     The field is still stored and still read back. What it no longer does is put a
     flag on a command line that has never had one.
     """
-    assert resolved_engine_args("vllm", {}, serving(tool_call_parser="openai")) == {}
+    assert resolved_engine_args(a_workload(serving=block(tool_call_parser="openai")), an_artifact()) == {}
     assert serving_args("vllm", serving(structured_output_backend="xgrammar")) == {}
 
 
 def test_only_the_engines_that_need_the_companion_flag_get_it():
     """SGLang runs its own server, whose CLI does carry the flag this one names."""
-    assert resolved_engine_args("sglang", {}, serving(tool_call_parser="qwen25")) == {"tool-call-parser": "qwen25"}
+    workload = a_workload(engine="sglang", serving=block(tool_call_parser="qwen25"))
+    assert resolved_engine_args(workload, an_artifact()) == {"tool-call-parser": "qwen25"}
     assert serving_args("vllm", serving(reasoning={"parser": "qwen3"})) == {"reasoning-parser": "qwen3"}
 
 
@@ -500,9 +511,11 @@ def test_engine_args_still_carries_a_flag_this_table_no_longer_renders():
     the engine name covers.
     """
     resolved = resolved_engine_args(
-        "vllm",
-        {"--enable-auto-tool-choice": "true", "--tool-call-parser": "openai"},
-        serving(tool_call_parser="openai"),
+        a_workload(
+            engine_args={"--enable-auto-tool-choice": "true", "--tool-call-parser": "openai"},
+            serving=block(tool_call_parser="openai"),
+        ),
+        an_artifact(),
     )
     assert resolved["tool-call-parser"] == "openai"
     assert resolved["enable-auto-tool-choice"] == "true"
@@ -511,7 +524,8 @@ def test_engine_args_still_carries_a_flag_this_table_no_longer_renders():
 def test_a_default_serving_block_speaks_for_no_flag_at_all():
     """Which is what keeps this additive on every workload that already exists."""
     assert serving_args("vllm", ServingSchema()) == {}
-    assert resolved_engine_args("vllm", {"--dtype": "bfloat16"}, ServingSchema()) == {"dtype": "bfloat16"}
+    workload = a_workload(engine_args={"--dtype": "bfloat16"})
+    assert resolved_engine_args(workload, an_artifact()) == {"dtype": "bfloat16"}
 
 
 # --------------------------------------------------------------------------- capacity
@@ -704,7 +718,7 @@ def test_the_typed_serving_block_reaches_the_cluster():
         serving_digest="svg_" + "a" * 64,
     )
 
-    spec = _serving(workload)
+    spec = _serving(workload, an_artifact())
 
     assert spec.engine_args == {
         "async-scheduling": "",

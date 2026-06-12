@@ -1105,7 +1105,7 @@ def _wire_serving(**kwargs):
     """The `ServingSpec` inlined on `deployment.desired`, built the way the sender builds it."""
     from app.ingestion.desired import _serving
 
-    return _serving(_workload(**kwargs))
+    return _serving(_workload(**kwargs), _kimi_artifact())
 
 
 def _wire_served_model(**kwargs):
