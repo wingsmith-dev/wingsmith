@@ -61,6 +61,7 @@ const fleetItems: NavItem[] = [
   { label: "Clusters", to: "/clusters", kind: "cluster" },
   { label: "Nodes", to: "/nodes", kind: "node" },
   { label: "Devices", to: "/devices", kind: "device" },
+  { label: "Allocations", to: "/allocations", kind: "allocation" },
 ]
 
 const accessItems: NavItem[] = [
@@ -78,7 +79,6 @@ const accessItems: NavItem[] = [
 const activityItems: NavItem[] = [
   { label: "Operations", to: "/operations", kind: "operation" },
   { label: "Events", to: "/events", kind: "event" },
-  { label: "Allocations", to: "/allocations", kind: "allocation" },
 ]
 
 const activeClass =
