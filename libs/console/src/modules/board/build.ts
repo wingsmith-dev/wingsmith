@@ -274,10 +274,32 @@ function fabric(
     nodes,
     node_names: names,
     device_class: classes.size === 1 ? first.device_class : null,
+    device_classes: [...classes].sort(),
     devices: laid,
     counts: count(laid),
     free: laid.filter(isFree).map((cell) => cell.device.id),
   }
+}
+
+/**
+ * The hardware a fabric is, in the few characters a person scans a board for.
+ *
+ * The plane names a class with a slug — `h200-141gb-sxm` — and the memory and
+ * the form factor of it are already spoken for elsewhere on the row. What is
+ * left is the model, so the first segment is taken and shouted.
+ *
+ * A fabric of several classes names all of them rather than picking a winner,
+ * and past three it stops trying: this label is a glance, not an inventory.
+ */
+export function fabricHardware(classes: string[]): string {
+  if (classes.length === 0) return "No devices"
+  if (classes.length > 3) return `Mixed · ${classes.length} classes`
+  return classes.map(model).join(" + ")
+}
+
+function model(deviceClass: string): string {
+  const head = deviceClass.split("-")[0]
+  return head ? head.toUpperCase() : deviceClass
 }
 
 /**

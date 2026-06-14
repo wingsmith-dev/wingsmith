@@ -109,6 +109,8 @@ export interface BoardFabric {
   nodes: string[]
   node_names: string[]
   device_class: string | null
+  /** Every class present, sorted. One entry is the ordinary, homogeneous case. */
+  device_classes: string[]
   devices: BoardDevice[]
   counts: BoardCounts
   /** Ids of devices nothing holds, allocatable, in device-index order. */

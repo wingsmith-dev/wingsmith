@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { assignmentsOf, buildBoard, liveAssignments } from "./build"
+import {
+  assignmentsOf,
+  buildBoard,
+  fabricHardware,
+  liveAssignments,
+} from "./build"
 import * as make from "./fixture"
 
 function fleet() {
@@ -435,5 +440,25 @@ describe("buildBoard", () => {
     })
 
     expect(board.regions.map((region) => region.region)).toEqual(["us-east-1"])
+  })
+})
+
+describe("fabricHardware", () => {
+  it("shouts the model out of the class slug", () => {
+    expect(fabricHardware(["h200-141gb-sxm"])).toBe("H200")
+  })
+
+  it("names every class of a mixed fabric", () => {
+    expect(fabricHardware(["b300-288gb-sxm", "h200-141gb-sxm"])).toBe(
+      "B300 + H200"
+    )
+  })
+
+  it("counts them instead once there are too many to read", () => {
+    expect(fabricHardware(["a", "b", "c", "d"])).toBe("Mixed · 4 classes")
+  })
+
+  it("says so when there is nothing to name", () => {
+    expect(fabricHardware([])).toBe("No devices")
   })
 })
