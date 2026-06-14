@@ -27,6 +27,7 @@ interface BoardState {
   highlightWorkload: (workload: string | null) => void
   drag: (dragging: Drag | null) => void
   toggle: (key: string) => void
+  setCollapsed: (key: string, collapsed: boolean) => void
   collapseAll: (keys: string[], collapsed: boolean) => void
 
   place: (brick: Brick, devices: string[]) => void
@@ -70,6 +71,8 @@ export const useBoardStore = create<BoardState>()((set) => ({
     set((state) => ({
       collapsed: { ...state.collapsed, [key]: !state.collapsed[key] },
     })),
+  setCollapsed: (key, collapsed) =>
+    set((state) => ({ collapsed: { ...state.collapsed, [key]: collapsed } })),
   collapseAll: (keys, collapsed) =>
     set((state) => ({
       collapsed: {

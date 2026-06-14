@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { StatusDot } from "@/components/layout/status-dot"
 import { cn } from "@/lib/utils"
-import { assignmentsOf } from "@/modules/board/build"
+import { assignmentsOf, fabricHardware } from "@/modules/board/build"
 import {
   brickOfHolder,
   fitFromDevice,
@@ -52,6 +52,7 @@ export function FleetBoard({
 }) {
   const collapsed = useBoardStore((s) => s.collapsed)
   const toggle = useBoardStore((s) => s.toggle)
+  const setCollapsed = useBoardStore((s) => s.setCollapsed)
   const collapseAll = useBoardStore((s) => s.collapseAll)
   const select = useBoardStore((s) => s.select)
   const selection = useBoardStore((s) => s.selection)
@@ -172,61 +173,79 @@ export function FleetBoard({
     region.clusters.map((cluster) => `cluster:${cluster.cluster.id}`)
   )
 
-  const renderCluster = (cluster: BoardCluster) => (
-    <ClusterCard
-      key={cluster.cluster.id}
-      cluster={cluster}
-      collapsed={!!collapsed[`cluster:${cluster.cluster.id}`]}
-      onToggle={() => toggle(`cluster:${cluster.cluster.id}`)}
-      onSelect={() => select({ kind: "cluster", id: cluster.cluster.id })}
-    >
-      {cluster.fabrics.map((fabric) => {
-        const fabricSelected =
-          selection?.kind === "fabric" && selection.key === fabric.key
-        return (
-          <FabricRow
-            key={fabric.key}
-            fabric={fabric}
-            fit={inHand ? fits.get(fabric.key) : undefined}
-            selected={fabricSelected}
-            onActivate={() => onFabric(cluster, fabric)}
-          >
-            {runs(fabric.devices).map((group) => (
-              <span
-                key={group[0].device.id}
-                className="flex items-center gap-1"
-              >
-                {group.map((cell) => (
-                  <DeviceCell
-                    key={cell.device.id}
-                    cell={cell}
-                    selected={
-                      selection?.kind === "device" &&
-                      selection.id === cell.device.id
-                    }
-                    withinSelection={fabricSelected}
-                    dimmed={!!highlight && cell.holder?.workload !== highlight}
-                    candidate={
-                      !!inHand &&
-                      (fits.get(fabric.key)?.devices.includes(cell.device.id) ??
-                        false)
-                    }
-                    onSelect={() => onDevice(fabric, cell)}
-                    onPickUp={mode === "sandbox" ? pickUp : undefined}
-                    onDropOn={
-                      mode === "sandbox"
-                        ? () => onDevice(fabric, cell)
-                        : undefined
-                    }
-                  />
-                ))}
-              </span>
-            ))}
-          </FabricRow>
-        )
-      })}
-    </ClusterCard>
-  )
+  /**
+   * A cluster reporting no devices starts closed and wears no phase.
+   *
+   * It is still on the board — it is a place capacity could arrive — but there
+   * is nothing inside it to read, and an open card with a healthy dot on it says
+   * the opposite of what is true. The default only holds until somebody opens
+   * it: the toggle writes the key like any other, so an explicit choice wins.
+   */
+  const renderCluster = (cluster: BoardCluster) => {
+    const key = `cluster:${cluster.cluster.id}`
+    const empty = cluster.counts.total === 0
+    const isCollapsed = collapsed[key] ?? empty
+    return (
+      <ClusterCard
+        key={cluster.cluster.id}
+        cluster={cluster}
+        empty={empty}
+        collapsed={isCollapsed}
+        onToggle={() => setCollapsed(key, !isCollapsed)}
+        onSelect={() => select({ kind: "cluster", id: cluster.cluster.id })}
+      >
+        {cluster.fabrics.map((fabric) => {
+          const fabricSelected =
+            selection?.kind === "fabric" && selection.key === fabric.key
+          return (
+            <FabricRow
+              key={fabric.key}
+              fabric={fabric}
+              fit={inHand ? fits.get(fabric.key) : undefined}
+              selected={fabricSelected}
+              onActivate={() => onFabric(cluster, fabric)}
+            >
+              {runs(fabric.devices).map((group) => (
+                <span
+                  key={group[0].device.id}
+                  className="flex items-center gap-1"
+                >
+                  {group.map((cell) => (
+                    <DeviceCell
+                      key={cell.device.id}
+                      cell={cell}
+                      selected={
+                        selection?.kind === "device" &&
+                        selection.id === cell.device.id
+                      }
+                      withinSelection={fabricSelected}
+                      dimmed={
+                        !!highlight && cell.holder?.workload !== highlight
+                      }
+                      candidate={
+                        !!inHand &&
+                        (fits
+                          .get(fabric.key)
+                          ?.devices.includes(cell.device.id) ??
+                          false)
+                      }
+                      onSelect={() => onDevice(fabric, cell)}
+                      onPickUp={mode === "sandbox" ? pickUp : undefined}
+                      onDropOn={
+                        mode === "sandbox"
+                          ? () => onDevice(fabric, cell)
+                          : undefined
+                      }
+                    />
+                  ))}
+                </span>
+              ))}
+            </FabricRow>
+          )
+        })}
+      </ClusterCard>
+    )
+  }
 
   return (
     <div className="min-w-0 space-y-4" onDragEnd={() => drag(null)}>
@@ -339,12 +358,14 @@ function RegionSection({
 
 function ClusterCard({
   cluster,
+  empty,
   collapsed,
   onToggle,
   onSelect,
   children,
 }: React.PropsWithChildren<{
   cluster: BoardCluster
+  empty: boolean
   collapsed: boolean
   onToggle: () => void
   onSelect: () => void
@@ -352,7 +373,12 @@ function ClusterCard({
   const { cluster: meta, counts } = cluster
   return (
     <div className="overflow-hidden rounded-lg border bg-card">
-      <div className="flex items-center gap-3 px-3 py-2.5">
+      <div
+        className={cn(
+          "flex items-center gap-3 px-3 py-2.5",
+          empty && "opacity-60"
+        )}
+      >
         <button
           type="button"
           data-keeps-selection
@@ -367,7 +393,11 @@ function ClusterCard({
             )}
           />
         </button>
-        <StatusDot tone={CLUSTER_PHASE_TONE[meta.phase] ?? "neutral"} />
+        <StatusDot
+          tone={
+            empty ? "neutral" : (CLUSTER_PHASE_TONE[meta.phase] ?? "neutral")
+          }
+        />
         <button
           type="button"
           data-keeps-selection
@@ -438,8 +468,8 @@ function FabricRow({
   onActivate: () => void
 }>) {
   const spec = [
+    fabric.label,
     topologyKindLabel(fabric.kind),
-    fabric.device_class,
     fabric.domain?.link_bandwidth_gbps
       ? `${fabric.domain.link_bandwidth_gbps} GB/s`
       : null,
@@ -468,7 +498,9 @@ function FabricRow({
       )}
     >
       <div className="min-w-0 basis-72 pr-4">
-        <div className="truncate font-mono text-2xs">{fabric.label}</div>
+        <div className="truncate font-mono text-2xs">
+          {fabricHardware(fabric.device_classes)}
+        </div>
         <div className="truncate font-mono text-2xs text-muted-foreground/50">
           {spec}
         </div>
