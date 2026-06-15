@@ -52,9 +52,13 @@ func checkPolicy(policy *plane.ParameterPolicy, body []byte) (code string, messa
 
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
-		// Not this check's business. The caller has already parsed the body for
-		// its `model` and reported a malformed one; a body that fails here has
-		// failed there first.
+		// Not this check's business. A JSON body that fails here has already
+		// failed where the caller read its `model`, and been reported there.
+		//
+		// A multipart body reaches this line intact and passes unchecked. Its
+		// parameters are form fields, not JSON values, and a policy is written
+		// against the JSON wire. Selling a consistency term on a multipart
+		// endpoint needs this to learn parts first.
 		return "", "", true
 	}
 

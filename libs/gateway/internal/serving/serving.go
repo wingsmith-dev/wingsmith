@@ -36,6 +36,11 @@ import (
 // maxRequestBodyBytes caps how much of a body is buffered to read its `model`.
 // Routing has to see the body, so this is the one place the gateway is not a
 // pure stream. A long-context prompt is legitimately large, not unbounded.
+//
+// It also caps an upload, which is a harder limit than it looks: an hour of
+// audio is around 50 MiB and does not fit. That is deliberate for now — the
+// answer to a long upload is a presigned upload and a job, not a larger buffer
+// on a synchronous hop, and callers see the duration they may send as a size.
 const maxRequestBodyBytes = 32 << 20
 
 // Resolver is the routing lookup this handler needs.
@@ -109,6 +114,10 @@ func New(cfg Config) http.Handler {
 }
 
 // modelEnvelope picks the routing key out of an otherwise untouched body.
+//
+// `Stop` is JSON-only and stays empty for a multipart request, which costs
+// nothing: the check it feeds is gated on the completion paths, and none of
+// them are multipart.
 type modelEnvelope struct {
 	Model string          `json:"model"`
 	Stop  json.RawMessage `json:"stop"`
@@ -136,8 +145,24 @@ func withRouting(resolver Resolver) http.Handler {
 			return
 		}
 
+		// How the routing key is carried, decided once and used twice: here to
+		// read it, and after Pick to write the served name back. A multipart
+		// body is not a lesser case of a JSON one — there is no object to
+		// unmarshal — so the form travels with the request rather than being
+		// re-derived.
+		boundary, isMultipart := multipartContentType(r.Header.Get("Content-Type"))
+
 		var envelope modelEnvelope
-		if err := json.Unmarshal(body, &envelope); err != nil {
+		if isMultipart {
+			model, err := modelFromMultipart(body, boundary)
+			if err != nil {
+				MarkOutcome(r, metrics.OutcomeClientError)
+				writeError(w, http.StatusBadRequest, "invalid_multipart",
+					"Request body is not a readable multipart form.")
+				return
+			}
+			envelope.Model = model
+		} else if err := json.Unmarshal(body, &envelope); err != nil {
 			MarkOutcome(r, metrics.OutcomeClientError)
 			writeError(w, http.StatusBadRequest, "invalid_json", "Request body is not valid JSON.")
 			return
@@ -193,7 +218,17 @@ func withRouting(resolver Resolver) http.Handler {
 		// and not to the endpoint — one endpoint can front two clusters running
 		// different serving configurations, and each wants its own name.
 		if served := upstream.ServedModelName; served != "" && served != envelope.Model {
-			rewritten, err := withModel(body, served)
+			var rewritten []byte
+			var err error
+			if isMultipart {
+				var contentType string
+				rewritten, contentType, err = withModelMultipart(body, boundary, served)
+				if err == nil {
+					r.Header.Set("Content-Type", contentType)
+				}
+			} else {
+				rewritten, err = withModel(body, served)
+			}
 			if err != nil {
 				MarkOutcome(r, metrics.OutcomeInternalError)
 				slog.Error("gateway: could not rewrite the model name",
