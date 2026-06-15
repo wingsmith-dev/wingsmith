@@ -25,6 +25,8 @@ export interface CellProps {
    */
   withinSelection: boolean
   onSelect: (cell: BoardDevice) => void
+  /** Double click, on a cell something holds: open the whole story of it. */
+  onInspect?: (cell: BoardDevice) => void
   onPickUp?: (cell: BoardDevice) => void
   onDropOn?: (cell: BoardDevice) => void
 }
@@ -46,6 +48,7 @@ export function DeviceCell(props: CellProps) {
     candidate,
     withinSelection,
     onSelect,
+    onInspect,
     onPickUp,
     onDropOn,
   } = props
@@ -63,7 +66,11 @@ export function DeviceCell(props: CellProps) {
     <button
       type="button"
       data-keeps-selection
-      title={describe(cell)}
+      title={
+        held
+          ? `${describe(cell)}\ndouble click for what is running here`
+          : describe(cell)
+      }
       aria-label={describe(cell)}
       draggable={!!movable && !!onPickUp}
       onDragStart={(event) => {
@@ -84,6 +91,11 @@ export function DeviceCell(props: CellProps) {
       onClick={(event) => {
         event.stopPropagation()
         onSelect(cell)
+      }}
+      onDoubleClick={(event) => {
+        if (!onInspect) return
+        event.stopPropagation()
+        onInspect(cell)
       }}
       className={cn(
         "group/cell relative size-6 shrink-0 overflow-hidden rounded-[3px] transition-all",

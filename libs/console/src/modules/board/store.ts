@@ -7,21 +7,43 @@ export type Drag =
   | { kind: "brick"; brick: Brick }
   | { kind: "allocation"; allocation: string; holder: Holder; from: string[] }
 
+/**
+ * Where the brick in hand came off the board, when it came off the board.
+ *
+ * A tray brick and a picked-up allocation are the same shape to every fit check,
+ * and this is the one thing that separates them: dropping a tray brick adds a
+ * workload, dropping this one moves the workload that is already there. Without
+ * it a click-to-move leaves the devices behind still held and the plan gains a
+ * second copy of something the fleet has one of.
+ */
+export interface Hand {
+  allocation: string
+  holder: Holder
+  from: string[]
+}
+
 interface BoardState {
   /** The plan, in the order it was built. Replayed on every repaint. */
   moves: Move[]
-  /** The tray brick armed for a click-to-place. */
+  /** The brick armed for a click-to-place — off the tray, or off the board. */
   armed: Brick | null
+  /** Set when `armed` was picked off the board. Null when it came from the tray. */
+  holding: Hand | null
   /** The shape somebody typed, offered in the tray beside the real workloads. */
   custom: Brick | null
   selection: Selection
   dragging: Drag | null
   /** A workload to pick out of the board, by uid. Hover on the legend sets it. */
   highlight: string | null
+  /** The allocation the detail dialog is open on, if any. */
+  inspecting: string | null
   /** Collapsed regions, clusters and fabrics, by their board key. */
   collapsed: Record<string, boolean>
 
   arm: (brick: Brick | null) => void
+  /** Take a live allocation into the hand, so the next drop is a move. */
+  pickUp: (brick: Brick, hand: Hand) => void
+  inspect: (allocation: string | null) => void
   setCustom: (brick: Brick | null) => void
   select: (selection: Selection) => void
   highlightWorkload: (workload: string | null) => void
@@ -56,13 +78,17 @@ interface BoardState {
 export const useBoardStore = create<BoardState>()((set) => ({
   moves: [],
   armed: null,
+  holding: null,
   custom: null,
   selection: null,
   dragging: null,
   highlight: null,
+  inspecting: null,
   collapsed: {},
 
-  arm: (armed) => set({ armed }),
+  arm: (armed) => set({ armed, holding: null }),
+  pickUp: (armed, holding) => set({ armed, holding }),
+  inspect: (inspecting) => set({ inspecting }),
   setCustom: (custom) => set({ custom }),
   select: (selection) => set({ selection }),
   highlightWorkload: (highlight) => set({ highlight }),
@@ -88,6 +114,7 @@ export const useBoardStore = create<BoardState>()((set) => ({
         { id: moveId("plan"), kind: "place", brick, devices },
       ],
       armed: null,
+      holding: null,
     })),
 
   /**
@@ -111,6 +138,7 @@ export const useBoardStore = create<BoardState>()((set) => ({
           })),
         ],
         armed: null,
+        holding: null,
       }
     }),
 
@@ -125,6 +153,8 @@ export const useBoardStore = create<BoardState>()((set) => ({
         ...state.moves.filter((move) => idOf(move) !== allocation),
         { id: moveId("plan"), kind: "move", allocation, holder, from, devices },
       ],
+      armed: null,
+      holding: null,
     })),
 
   release: (allocation, holder, from) =>
@@ -146,7 +176,7 @@ export const useBoardStore = create<BoardState>()((set) => ({
         ),
       }
     }),
-  clear: () => set({ moves: [], armed: null, dragging: null }),
+  clear: () => set({ moves: [], armed: null, holding: null, dragging: null }),
 }))
 
 function idOf(move: Move): string {

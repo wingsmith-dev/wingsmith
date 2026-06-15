@@ -18,6 +18,7 @@ import { FleetBoard } from "./FleetBoard"
 import { Inspector } from "./Inspector"
 import { Legend } from "./Legend"
 import { PlanPanel } from "./PlanPanel"
+import { Running } from "./Running"
 import { Tray } from "./Tray"
 import type { BoardMode } from "./route"
 
@@ -210,6 +211,8 @@ export function AllocationsPage() {
           <Inspector board={planned} mode={mode} />
         </aside>
       </div>
+
+      <Running board={planned} />
     </div>
   )
 }

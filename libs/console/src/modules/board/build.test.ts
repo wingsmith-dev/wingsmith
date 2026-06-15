@@ -186,6 +186,26 @@ describe("buildBoard", () => {
     )
   })
 
+  it("sinks a cluster reporting nothing to the bottom of its region", () => {
+    const parts = fleet()
+    /**
+     * Named so it sorts first alphabetically, which is the whole point: a
+     * cluster with no hardware in it must not sit above one that has some.
+     */
+    const idle = make.cluster("aaa-1", "us-east-1")
+    const board = buildBoard({
+      ...parts,
+      clusters: [...parts.clusters, idle],
+      assignments: new Map(),
+    })
+    const east = board.regions.find((region) => region.region === "us-east-1")!
+
+    expect(east.clusters.map((entry) => entry.cluster.name)).toEqual([
+      "iad-1",
+      "aaa-1",
+    ])
+  })
+
   it("counts a cordoned node's devices as cordoned, not free", () => {
     const parts = fleet()
     const board = buildBoard({ ...parts, assignments: new Map() })

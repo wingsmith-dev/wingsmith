@@ -192,12 +192,18 @@ function assemble(input: BoardInput): Board {
   const regions: BoardRegion[] = [...byRegion.entries()]
     .map(([region, group]) => ({
       region,
-      clusters: group.sort((a, b) =>
-        a.cluster.name.localeCompare(b.cluster.name)
+      clusters: group.sort(
+        (a, b) =>
+          empty(a.counts.total) - empty(b.counts.total) ||
+          a.cluster.name.localeCompare(b.cluster.name)
       ),
       counts: sum(group.map((entry) => entry.counts)),
     }))
-    .sort((a, b) => a.region.localeCompare(b.region))
+    .sort(
+      (a, b) =>
+        empty(a.counts.total) - empty(b.counts.total) ||
+        a.region.localeCompare(b.region)
+    )
 
   return {
     regions,
@@ -213,6 +219,18 @@ function assemble(input: BoardInput): Board {
  * rather than off a map threaded alongside the board, so what they answer about
  * is always the board on screen — live or planned — and never a stale copy.
  */
+/**
+ * Sinks a cluster reporting nothing to the bottom of whatever it is sorted in.
+ *
+ * A cluster with no devices is a place capacity could arrive and is worth
+ * keeping on the board, but it is never the thing somebody came to read. Left in
+ * alphabetical order it pushes the fleet down the page — three empty clusters
+ * between two full ones is three rows of nothing where the eye expects hardware.
+ */
+function empty(total: number): number {
+  return total === 0 ? 1 : 0
+}
+
 export function assignmentsOf(board: Board): Assignments {
   const assignments: Assignments = new Map()
   for (const [id, cell] of board.devices) {

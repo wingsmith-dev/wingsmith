@@ -5,8 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 import { brickColor } from "@/modules/board/palette"
 import { brickOfHolder, heldBy } from "@/modules/board/sandbox"
-import { useBoardStore } from "@/modules/board/store"
-import type { Board, BoardDevice, Holder } from "@/modules/board/types"
+import { useBoardStore, type Hand } from "@/modules/board/store"
+import type { Board, BoardDevice, Brick, Holder } from "@/modules/board/types"
 import type { Reservation } from "@/modules/placement/types"
 import {
   deviceHealthTone,
@@ -54,6 +54,16 @@ export function Inspector({
   }
 
   const body = () => {
+    if (selection.kind === "allocation") {
+      const cells = [...(board?.devices.values() ?? [])].filter(
+        (cell) => cell.holder?.allocation === selection.allocation
+      )
+      return cells.length > 0 && board ? (
+        <AllocationDetail board={board} cells={cells} mode={mode} />
+      ) : (
+        <Missing what="allocation" />
+      )
+    }
     if (selection.kind === "device") {
       const cell = board?.devices.get(selection.id)
       return cell ? (
@@ -266,8 +276,9 @@ function DeviceDetail({
   mode: BoardMode
 }) {
   const device = cell.device
-  const arm = useBoardStore((s) => s.arm)
+  const pickUp = useBoardStore((s) => s.pickUp)
   const release = useBoardStore((s) => s.release)
+  const inspect = useBoardStore((s) => s.inspect)
 
   return (
     <div className="space-y-3">
@@ -353,9 +364,10 @@ function DeviceDetail({
       {cell.holder && cell.holder.origin !== "reserved" && (
         <HolderBlock
           holder={cell.holder}
+          onInspect={() => inspect(cell.holder!.allocation)}
           onPickUp={
             mode === "sandbox" && board
-              ? () => arm(brickOfHolder(board, cell.holder!))
+              ? () => take(board, cell.holder!, pickUp)
               : undefined
           }
           onRelease={
@@ -391,6 +403,134 @@ function DeviceDetail({
       </div>
     </div>
   )
+}
+
+/**
+ * Everything committed together, as one thing.
+ *
+ * This is the panel behind the ordinary click, and it is a different question
+ * from the device panel beside it: not "what is this accelerator" but "what is
+ * running in here, and how much of the fleet does it have". So it counts the
+ * devices, names the nodes and fabrics they are spread over, and leaves the
+ * uuid and the health reason to the device panel a second click away.
+ */
+function AllocationDetail({
+  board,
+  cells,
+  mode,
+}: {
+  board: Board
+  cells: BoardDevice[]
+  mode: BoardMode
+}) {
+  const pickUp = useBoardStore((s) => s.pickUp)
+  const release = useBoardStore((s) => s.release)
+  const inspect = useBoardStore((s) => s.inspect)
+  const select = useBoardStore((s) => s.select)
+  const holder = cells[0].holder!
+
+  const nodes = [...new Set(cells.map((cell) => cell.device.node_name))]
+  const fabrics = [
+    ...new Set(
+      cells
+        .map((cell) => board.fabric_of.get(cell.device.id))
+        .filter((key): key is string => !!key)
+    ),
+  ]
+
+  return (
+    <div className="space-y-3">
+      <FieldGrid>
+        <Field label="Cluster">{cells[0].device.cluster_name}</Field>
+        <Field label="Devices">
+          {cells.length}× {holder.device_class}
+        </Field>
+        <Field label="Nodes">{nodes.join(", ")}</Field>
+        <Field label="Fabrics">
+          {fabrics
+            .map((key) => board.fabrics.get(key)?.label ?? key)
+            .join(", ")}
+        </Field>
+      </FieldGrid>
+
+      {fabrics.length > 1 && (
+        <p className="font-mono text-2xs text-amber-600 dark:text-amber-400">
+          This gang is split over {fabrics.length} fabrics.
+        </p>
+      )}
+
+      {holder.origin === "reserved" ? (
+        <ReservedBlock holder={holder} />
+      ) : (
+        <HolderBlock
+          holder={holder}
+          onInspect={() => inspect(holder.allocation)}
+          onPickUp={
+            mode === "sandbox" ? () => take(board, holder, pickUp) : undefined
+          }
+          onRelease={
+            mode === "sandbox"
+              ? () =>
+                  release(
+                    holder.allocation,
+                    holder,
+                    heldBy(board, holder.allocation)
+                  )
+              : undefined
+          }
+        />
+      )}
+
+      <div className="space-y-1">
+        <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+          Held devices
+        </div>
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+          {cells.map((cell) => (
+            <button
+              key={cell.device.id}
+              type="button"
+              onClick={() => select({ kind: "device", id: cell.device.id })}
+              className="font-mono text-2xs text-muted-foreground/70 hover:text-primary hover:underline"
+            >
+              {cell.device.node_name}/gpu{cell.device.device_index}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {holder.workload.startsWith("wkl_") && (
+        <Link
+          to="/workloads/$workloadId"
+          params={{ workloadId: holder.workload }}
+          className="inline-flex items-center gap-1 font-mono text-2xs text-primary hover:underline"
+        >
+          open workload
+          <IconExternalLink className="size-3" />
+        </Link>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Take a live allocation into the hand.
+ *
+ * It goes in as a brick *and* as where it came from, which is the whole
+ * difference between moving something and cloning it: the fit checks only ever
+ * see the brick, and the drop only knows to free the old devices because the
+ * hand remembers them.
+ */
+function take(
+  board: Board,
+  holder: Holder,
+  pickUp: (brick: Brick, hand: Hand) => void
+) {
+  pickUp(brickOfHolder(board, holder), {
+    allocation: holder.allocation,
+    holder,
+    from: heldBy(board, holder.allocation),
+  })
 }
 
 /**
@@ -433,10 +573,12 @@ function ReservedBlock({ holder }: { holder: Holder }) {
 
 function HolderBlock({
   holder,
+  onInspect,
   onPickUp,
   onRelease,
 }: {
   holder: Holder
+  onInspect?: () => void
   onPickUp?: () => void
   onRelease?: () => void
 }) {
@@ -458,6 +600,16 @@ function HolderBlock({
         {holder.project_slug} · {holder.device_count}× {holder.device_class} ·{" "}
         {holder.gang_complete ? "gang complete" : "gang partial"}
       </div>
+      {onInspect && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={onInspect}
+          className="h-6 w-full font-mono text-2xs"
+        >
+          what&rsquo;s running
+        </Button>
+      )}
       {(onPickUp || onRelease) && (
         <div className="flex gap-1">
           {onPickUp && (

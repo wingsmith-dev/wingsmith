@@ -299,8 +299,17 @@ export interface BoardMetrics {
   fabrics_split: number
 }
 
-/** What the inspector is pointed at. */
+/**
+ * What the inspector is pointed at.
+ *
+ * `allocation` is the layer between a device and a fabric, and it is the one a
+ * person clicking a coloured cell almost always means: the question is "what is
+ * running here", and the answer is a set of devices committed together, not the
+ * one square under the pointer. A device is still reachable — a second click on
+ * the same cell narrows to it — but it is the deliberate step, not the default.
+ */
 export type Selection =
+  | { kind: "allocation"; allocation: string }
   | { kind: "device"; id: string }
   | { kind: "fabric"; key: string }
   | { kind: "cluster"; id: string }

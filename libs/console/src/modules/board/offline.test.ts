@@ -35,15 +35,16 @@ const owed = () =>
   fixtureTransport.request<Reservation[]>("GET", "/placement/reservations")
 
 describe("the offline board", () => {
-  it("spans every region the fleet reports", () => {
+  it("spans every region the fleet reports, the empty ones last", () => {
     const map = board()
     expect(map.regions.map((region) => region.region)).toEqual([
-      "eu-central-1",
       "eu-west-1",
       "us-east-1",
       "us-west-2",
+      "eu-central-1",
     ])
     expect(map.regions.every((region) => region.clusters.length > 0)).toBe(true)
+    expect(map.regions[3].counts.total).toBe(0)
   })
 
   it("never counts a held device as free", () => {

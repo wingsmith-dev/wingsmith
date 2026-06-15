@@ -68,6 +68,7 @@ import { Verdicts } from "./Verdicts"
 export function Tray({ board }: { board: Board | undefined }) {
   const { bricks, isLoading } = useBricks()
   const armed = useBoardStore((s) => s.armed)
+  const holding = useBoardStore((s) => s.holding)
   const arm = useBoardStore((s) => s.arm)
   const custom = useBoardStore((s) => s.custom)
 
@@ -107,9 +108,11 @@ export function Tray({ board }: { board: Board | undefined }) {
           )}
         </CardTitle>
         <p className="font-mono text-2xs text-muted-foreground/60">
-          {armed
-            ? `${armed.label} in hand · click a device or fabric to place one replica`
-            : "click or drag to place one replica · the bolt plans the rest"}
+          {armed && holding
+            ? `${armed.label} in hand · click where it should go, or click it again to put it back`
+            : armed
+              ? `${armed.label} in hand · click a device or fabric to place one replica`
+              : "click or drag to place one replica · the bolt plans the rest"}
         </p>
       </CardHeader>
 

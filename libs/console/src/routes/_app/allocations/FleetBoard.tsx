@@ -58,8 +58,12 @@ export function FleetBoard({
   const selection = useBoardStore((s) => s.selection)
   const highlight = useBoardStore((s) => s.highlight)
   const armed = useBoardStore((s) => s.armed)
+  const holding = useBoardStore((s) => s.holding)
   const dragging = useBoardStore((s) => s.dragging)
   const drag = useBoardStore((s) => s.drag)
+  const arm = useBoardStore((s) => s.arm)
+  const pickUp = useBoardStore((s) => s.pickUp)
+  const inspect = useBoardStore((s) => s.inspect)
   const place = useBoardStore((s) => s.place)
   const relocate = useBoardStore((s) => s.relocate)
 
@@ -121,8 +125,20 @@ export function FleetBoard({
       })
       return
     }
-    if (dragging?.kind === "allocation") {
-      relocate(dragging.allocation, dragging.holder, dragging.from, fit.devices)
+    /**
+     * Where the brick came from decides what dropping it means, and the hand is
+     * the only thing that knows. A brick picked off the board — dragged, or
+     * clicked up — moves; one taken off the tray is a new placement. Reading
+     * this off the drag alone is what made click-to-move leave a copy behind.
+     */
+    const from =
+      dragging?.kind === "allocation"
+        ? dragging
+        : holding
+          ? { ...holding }
+          : null
+    if (from) {
+      relocate(from.allocation, from.holder, from.from, fit.devices)
       toast.success(`${inHand.label} moved`, {
         description: `${fit.devices.length} devices · ${fallbackFabric}`,
       })
@@ -146,18 +162,62 @@ export function FleetBoard({
     )
   }
 
+  /**
+   * One click on a cell, and what it does depends on what is already in hand.
+   *
+   * With nothing held, a coloured cell answers the question people actually
+   * arrive with: not "what is this square" but "what is running in here". So the
+   * first click takes the whole allocation — every device committed with it
+   * lights up, wherever it sits — and only a second click on the same cell
+   * narrows to the one device. A free cell has no allocation to mean, so it is
+   * the device immediately.
+   *
+   * In the sandbox that first click also picks the allocation up, which is what
+   * makes moving something a click and a click rather than a drag. Clicking back
+   * inside what you are holding is therefore not a drop onto itself — it is the
+   * change of mind — so it puts the brick down and narrows, exactly as the
+   * second click does on the live board.
+   */
   const onDevice = (fabric: BoardFabric, cell: BoardDevice) => {
-    if (!inHand) {
-      select({ kind: "device", id: cell.device.id })
+    const holder = cell.holder
+    const device = { kind: "device" as const, id: cell.device.id }
+
+    if (inHand) {
+      const own =
+        holding?.allocation ??
+        (dragging?.kind === "allocation" ? dragging.allocation : null)
+      if (own && holder?.allocation === own) {
+        arm(null)
+        select(device)
+        return
+      }
+      commit(
+        fitFromDevice(board, cell.device.id, inHand, assignments),
+        fabric.label
+      )
       return
     }
-    commit(
-      fitFromDevice(board, cell.device.id, inHand, assignments),
-      fabric.label
-    )
+
+    const already =
+      selection?.kind === "allocation" &&
+      selection.allocation === holder?.allocation
+    if (!holder || already) {
+      select(device)
+      return
+    }
+
+    select({ kind: "allocation", allocation: holder.allocation })
+    if (mode === "sandbox" && holder.origin !== "reserved") {
+      pickUp(brickOfHolder(board, holder), {
+        allocation: holder.allocation,
+        holder,
+        from: heldBy(board, holder.allocation),
+      })
+    }
   }
 
-  const pickUp = (cell: BoardDevice) => {
+  /** The drag half of picking something up. The click half is in `onDevice`. */
+  const startDrag = (cell: BoardDevice) => {
     const holder = cell.holder
     if (!holder || mode !== "sandbox") return
     if (holder.origin === "reserved") return
@@ -181,6 +241,16 @@ export function FleetBoard({
    * the opposite of what is true. The default only holds until somebody opens
    * it: the toggle writes the key like any other, so an explicit choice wins.
    */
+  /**
+   * The allocation the board is pointed at, so every device committed with the
+   * one under the pointer can be lit at once. Suspended while a brick is in
+   * hand: the board is then answering "where could this go", and dimming the
+   * free cells it is offering would put out the answer.
+   */
+  const focused =
+    selection?.kind === "allocation" && !inHand ? selection.allocation : null
+  const ringed = selection?.kind === "allocation" ? selection.allocation : null
+
   const renderCluster = (cluster: BoardCluster) => {
     const key = `cluster:${cluster.cluster.id}`
     const empty = cluster.counts.total === 0
@@ -218,9 +288,13 @@ export function FleetBoard({
                         selection?.kind === "device" &&
                         selection.id === cell.device.id
                       }
-                      withinSelection={fabricSelected}
+                      withinSelection={
+                        fabricSelected ||
+                        (!!ringed && cell.holder?.allocation === ringed)
+                      }
                       dimmed={
-                        !!highlight && cell.holder?.workload !== highlight
+                        (!!highlight && cell.holder?.workload !== highlight) ||
+                        (!!focused && cell.holder?.allocation !== focused)
                       }
                       candidate={
                         !!inHand &&
@@ -230,7 +304,12 @@ export function FleetBoard({
                           false)
                       }
                       onSelect={() => onDevice(fabric, cell)}
-                      onPickUp={mode === "sandbox" ? pickUp : undefined}
+                      onInspect={
+                        cell.holder
+                          ? () => inspect(cell.holder!.allocation)
+                          : undefined
+                      }
+                      onPickUp={mode === "sandbox" ? startDrag : undefined}
                       onDropOn={
                         mode === "sandbox"
                           ? () => onDevice(fabric, cell)
@@ -283,8 +362,24 @@ export function FleetBoard({
               {region.clusters.map(renderCluster)}
             </RegionSection>
           ))
-        : board.regions.flatMap((region) => region.clusters).map(renderCluster)}
+        : emptyLast(board.regions.flatMap((region) => region.clusters)).map(
+            renderCluster
+          )}
     </div>
+  )
+}
+
+/**
+ * Clusters holding no devices, moved to the very bottom.
+ *
+ * `assemble` already sinks them inside their own region, but with regions
+ * flattened away an empty cluster is back in the middle of the board, between
+ * two regions that both have hardware. The sort is on emptiness alone and sorts
+ * are stable, so everything else keeps the order the board was built in.
+ */
+function emptyLast(clusters: BoardCluster[]): BoardCluster[] {
+  return [...clusters].sort(
+    (a, b) => Number(a.counts.total === 0) - Number(b.counts.total === 0)
   )
 }
 
