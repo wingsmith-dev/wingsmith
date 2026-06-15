@@ -314,13 +314,18 @@ export function workloadOperationalStatus(
  * Only the fields that genuinely map to one flag are here. An engine this
  * console has never heard of maps nothing, and neither `context_overflow` nor
  * EOS suppression is a single flag on every engine.
+ *
+ * The vLLM rows are the flags of the program the cluster actually runs, which is
+ * `python3 -m dynamo.vllm` and not `vllm serve`. `--tool-call-parser` and
+ * `--guided-decoding-backend` are the standalone server's and exist on neither
+ * Dynamo entrypoint, so previewing them here promised a configuration the plane
+ * will not render and the worker would not start under.
  */
 export const SERVING_FLAGS: Record<string, Record<string, string>> = {
   vllm: {
     parser: "reasoning-parser",
-    tool_call_parser: "tool-call-parser",
-    structured_output_backend: "guided-decoding-backend",
     max_images_per_request: "limit-mm-per-prompt",
+    max_videos_per_request: "limit-mm-per-prompt",
   },
   sglang: {
     parser: "reasoning-parser",
@@ -333,10 +338,9 @@ export const SERVING_FLAGS: Record<string, Record<string, string>> = {
  * Valueless flags a typed field cannot work without, per engine — the same table
  * the plane renders from.
  *
- * vLLM parses tool calls with `--tool-call-parser` and dispatches them only with
- * `--enable-auto-tool-choice`. Set the first alone and the engine loads a parser
- * it never runs, so the workload reads as configured while the endpoint returns the
- * call as prose in `content`.
+ * `--enable-multimodal` is what turns the multimodal components on at all, so a
+ * per-modality cap without it caps a path that is switched off. It is one switch
+ * for every modality, which is why both caps name it.
  *
  * These fill a gap rather than win one, which is the opposite of how a typed field
  * behaves: they are inferred and not declared, so an `engine_args` that spells one
@@ -347,7 +351,8 @@ export const SERVING_COMPANION_FLAGS: Record<
   Record<string, string[]>
 > = {
   vllm: {
-    tool_call_parser: ["enable-auto-tool-choice"],
+    max_images_per_request: ["enable-multimodal"],
+    max_videos_per_request: ["enable-multimodal"],
   },
 }
 
@@ -357,6 +362,19 @@ const SERVING_FIELD_LABELS: Record<string, string> = {
   tool_call_parser: "serving.tool_call_parser",
   structured_output_backend: "serving.structured_output_backend",
   max_images_per_request: "serving.max_images_per_request",
+  max_videos_per_request: "serving.max_videos_per_request",
+}
+
+/**
+ * The per-modality caps, and the key each one holds inside `--limit-mm-per-prompt`
+ * — the same table the plane renders from.
+ *
+ * Two typed fields and one flag: the engine takes the whole map at once, so a
+ * workload that caps both renders `{"image": 4, "video": 1}` and never two flags.
+ */
+export const MODALITY_LIMITS: Record<string, string> = {
+  max_images_per_request: "image",
+  max_videos_per_request: "video",
 }
 
 export interface ServingOverride {
@@ -385,9 +403,24 @@ export function servingArgs(
   for (const [field, value] of typed) {
     if (value && flags[field]) args[flags[field]] = value
   }
-  if (serving.max_images_per_request !== null && flags.max_images_per_request) {
-    args[flags.max_images_per_request] =
-      `image=${serving.max_images_per_request}`
+  const limits = new Map<string, Record<string, number>>()
+  for (const [field, modality] of Object.entries(MODALITY_LIMITS)) {
+    const limit = serving[field as keyof ServingBehaviour] as number | null
+    if (limit === null || limit === undefined || !flags[field]) continue
+    const map = limits.get(flags[field]) ?? {}
+    map[modality] = limit
+    limits.set(flags[field], map)
+  }
+  for (const [flag, map] of limits) {
+    // Spelled out rather than `JSON.stringify`d, because this has to be the same
+    // bytes the plane renders: Python's `json.dumps` puts a space after the colon
+    // and after the comma, and a preview that differs from what will be sent reads
+    // as a pending change.
+    const body = Object.entries(map)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([modality, limit]) => `"${modality}": ${limit}`)
+      .join(", ")
+    args[flag] = `{${body}}`
   }
   return args
 }
@@ -413,11 +446,16 @@ export function servingOverrides(
     declared.set(String(key).replace(/^--/, ""), String(value))
   }
   const out: ServingOverride[] = []
+  const reported = new Set<string>()
   for (const [field, flag] of Object.entries(flags)) {
     const ignored = declared.get(flag)
     const effective = derived[flag]
     if (ignored === undefined || effective === undefined) continue
     if (ignored === effective) continue
+    // Two caps name one flag, and the collision is with the flag rather than
+    // with either field. Reporting it twice would read as two conflicts.
+    if (reported.has(flag)) continue
+    reported.add(flag)
     out.push({
       flag,
       field: SERVING_FIELD_LABELS[field] ?? field,
@@ -435,8 +473,10 @@ export function servingCompanionArgs(
 ): Record<string, string> {
   const implied = SERVING_COMPANION_FLAGS[engine.trim().toLowerCase()] ?? {}
   const args: Record<string, string> = {}
-  if (serving.tool_call_parser) {
-    for (const flag of implied.tool_call_parser ?? []) args[flag] = ""
+  for (const field of Object.keys(MODALITY_LIMITS)) {
+    const limit = serving[field as keyof ServingBehaviour] as number | null
+    if (limit === null || limit === undefined) continue
+    for (const flag of implied[field] ?? []) args[flag] = ""
   }
   return args
 }
@@ -574,6 +614,7 @@ export function emptyServing(): ServingBehaviour {
     structured_output_backend: null,
     tool_call_parser: null,
     max_images_per_request: null,
+    max_videos_per_request: null,
   }
 }
 

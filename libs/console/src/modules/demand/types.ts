@@ -563,6 +563,7 @@ export interface ServingBehaviour {
   structured_output_backend: string | null
   tool_call_parser: string | null
   max_images_per_request: number | null
+  max_videos_per_request: number | null
 }
 
 /**

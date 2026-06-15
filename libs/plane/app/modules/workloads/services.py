@@ -284,6 +284,7 @@ SERVING_FLAGS: dict[str, dict[str, str]] = {
     "vllm": {
         "parser": "reasoning-parser",
         "max_images_per_request": "limit-mm-per-prompt",
+        "max_videos_per_request": "limit-mm-per-prompt",
     },
     "sglang": {
         "parser": "reasoning-parser",
@@ -323,8 +324,35 @@ more row here. The field stays on the workload and records the intent; nothing
 renders it today, which is the honest state and is visible rather than fatal."""
 
 
+MODALITY_LIMITS: dict[str, str] = {
+    "max_images_per_request": "image",
+    "max_videos_per_request": "video",
+}
+"""The per-modality caps, and the key each one holds inside `--limit-mm-per-prompt`.
+
+Two typed fields and one flag. vLLM takes the whole map at once, so a workload that caps
+both renders `{"image": 4, "video": 1}` and never two flags — which is why the caps are
+merged here rather than assigned one at a time in `serving_args`.
+
+Named per modality rather than as one generic `max_attachments` because the limits do not
+generalise: an audio limit is seconds, not a count, and a generic field would need a unit
+it cannot have.
+
+Video arrives with nothing else attached. A video is a `video_url` content part on the
+ordinary chat body — an https URL or a `data:video/mp4;base64,...` one — so the gateway
+routes it today on the JSON path, and the cap is the whole of what the plane has to
+declare. What that costs is `maxRequestBodyBytes`
+(`libs/gateway/internal/serving/serving.go`): 32 MiB of buffered body, and base64 is a
+third larger than the bytes it carries, so an inline video has about 24 MiB to fit in.
+An https URL has no such ceiling and is the shape to prefer above a few seconds.
+"""
+
+
 SERVING_IMPLIED_FLAGS: dict[str, dict[str, tuple[str, ...]]] = {
-    "vllm": {"max_images_per_request": ("enable-multimodal",)},
+    "vllm": {
+        "max_images_per_request": ("enable-multimodal",),
+        "max_videos_per_request": ("enable-multimodal",),
+    },
 }
 """Valueless flags a typed field cannot live without, per engine.
 
@@ -343,12 +371,12 @@ can be used"*. So `--limit-mm-per-prompt` alone is a cap on a path that is switc
 which is what shipped: a workload declaring `image` in `capabilities.input_modalities`
 recorded the claim, rendered the cap, and served a text-only worker.
 
-It hangs off `max_images_per_request` and not off the capability block on purpose.
+It hangs off the typed caps in `MODALITY_LIMITS` and not off the capability block on purpose.
 `capabilities` is asserted, reaches no cluster and is deliberately absent from
 `serving_digest` (`app.core.serving.SERVING_DIGEST_FIELDS`) — deriving a flag from it
 would make two workloads with one digest run two different processes. The typed field is
-the one that is hashed, and `check_serving` already refuses it unless `image` is among
-the declared modalities, so setting it is the same declaration made where it counts."""
+the one that is hashed, and `check_serving` already refuses a cap unless its own modality is
+among the declared ones, so setting it is the same declaration made where it counts."""
 
 
 def _members(name: str, values: list[str], allowed: frozenset[str]) -> None:
@@ -446,19 +474,22 @@ def check_serving(
             {"tool_call_parser": serving.tool_call_parser},
         )
 
-    if "text" not in capabilities.input_modalities:
-        raise Invalid("text is always an input modality", {"input_modalities": capabilities.input_modalities})
-    if serving.max_images_per_request is not None:
-        if "image" not in capabilities.input_modalities:
+    if not capabilities.input_modalities:
+        raise Invalid(
+            "a workload takes at least one input modality",
+            {"input_modalities": capabilities.input_modalities},
+        )
+    for field_name, modality in MODALITY_LIMITS.items():
+        limit = getattr(serving, field_name)
+        if limit is None:
+            continue
+        if modality not in capabilities.input_modalities:
             raise Invalid(
-                "an image limit is meaningless without image among the input modalities",
-                {"input_modalities": capabilities.input_modalities},
+                f"a {modality} limit is meaningless without {modality} among the input modalities",
+                {field_name: limit, "input_modalities": capabilities.input_modalities},
             )
-        if serving.max_images_per_request < 1:
-            raise Invalid(
-                "max_images_per_request must be at least 1",
-                {"max_images_per_request": serving.max_images_per_request},
-            )
+        if limit < 1:
+            raise Invalid(f"{field_name} must be at least 1", {field_name: limit})
 
     if capabilities.prompt_cache_mode not in PROMPT_CACHE_MODES:
         raise Invalid(
@@ -488,8 +519,14 @@ def serving_args(engine: str, serving: ServingSchema) -> dict[str, str]:
     ):
         if value and field_name in flags:
             args[flags[field_name]] = value
-    if serving.max_images_per_request is not None and "max_images_per_request" in flags:
-        args[flags["max_images_per_request"]] = json.dumps({"image": serving.max_images_per_request})
+    limits: dict[str, dict[str, int]] = {}
+    for field_name, modality in MODALITY_LIMITS.items():
+        limit = getattr(serving, field_name)
+        if limit is None or field_name not in flags:
+            continue
+        limits.setdefault(flags[field_name], {})[modality] = limit
+    for flag, per_modality in limits.items():
+        args[flag] = json.dumps(dict(sorted(per_modality.items())))
     return args
 
 
@@ -507,8 +544,10 @@ def serving_companion_args(engine: str, serving: ServingSchema) -> dict[str, str
     if serving.tool_call_parser:
         for flag in implied.get("tool_call_parser", ()):
             args[flag] = ""
-    if serving.max_images_per_request is not None:
-        for flag in implied.get("max_images_per_request", ()):
+    for field_name in MODALITY_LIMITS:
+        if getattr(serving, field_name) is None:
+            continue
+        for flag in implied.get(field_name, ()):
             args[flag] = ""
     return args
 

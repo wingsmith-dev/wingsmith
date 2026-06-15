@@ -302,6 +302,7 @@ def test_a_serving_block_round_trips():
         structured_output_backend="xgrammar",
         tool_call_parser="hermes",
         max_images_per_request=4,
+        max_videos_per_request=1,
     )
     claimed = capabilities(
         reasoning_supported=True,
@@ -309,7 +310,7 @@ def test_a_serving_block_round_trips():
         tool_calling_supported=True,
         tool_choice_modes=["auto", "required"],
         parallel_tool_calls=True,
-        input_modalities=["text", "image"],
+        input_modalities=["text", "image", "video"],
         prompt_cache_mode="automatic",
         prompt_cache_ttl_seconds=300,
         asserted_by="operator",
@@ -414,8 +415,8 @@ def test_a_structured_output_backend_without_json_schema_among_the_modes_is_refu
         {"structured_output_modes": ["text", "yaml"]},
         {"structured_output_modes": ["text", "text"]},
         {"tool_calling_supported": True, "tool_choice_modes": ["auto", "sometimes"]},
-        {"input_modalities": ["image"]},
         {"input_modalities": ["text", "smell"]},
+        {"input_modalities": []},
         {"prompt_cache_mode": "sometimes"},
         {"prompt_cache_ttl_seconds": -1},
     ],
@@ -425,12 +426,45 @@ def test_an_unknown_or_repeated_member_of_a_claimed_set_is_refused(block):
         check_serving(serving(), capabilities(**block), prefix_cache_enabled=True)
 
 
-def test_an_image_limit_needs_image_among_the_modalities():
+def test_a_modality_set_without_text_is_accepted():
+    """A transcription model takes audio, and text is at most an optional prompt.
+
+    The rule here used to be that text is always an input modality. It refused
+    `openai/whisper-large-v3` outright, which is a claim about what engines exist
+    dressed up as a validation, and this block is the one the plane holds no table
+    for. What is left is the only thing that is always true: something goes in.
+    """
+    check_serving(serving(), capabilities(input_modalities=["audio"]), prefix_cache_enabled=False)
+    check_serving(serving(), capabilities(input_modalities=["text", "audio"]), prefix_cache_enabled=False)
+
+
+@pytest.mark.parametrize(
+    "field_name,modality", [("max_images_per_request", "image"), ("max_videos_per_request", "video")]
+)
+def test_a_modality_limit_needs_its_own_modality_among_the_declared_ones(field_name, modality):
     with pytest.raises(Invalid):
-        check_serving(serving(max_images_per_request=4), capabilities(), prefix_cache_enabled=False)
+        check_serving(serving(**{field_name: 4}), capabilities(), prefix_cache_enabled=False)
     with pytest.raises(Invalid):
         check_serving(
-            serving(max_images_per_request=0),
+            serving(**{field_name: 0}),
+            capabilities(input_modalities=["text", modality]),
+            prefix_cache_enabled=False,
+        )
+    assert (
+        check_serving(
+            serving(**{field_name: 4}),
+            capabilities(input_modalities=["text", modality]),
+            prefix_cache_enabled=False,
+        )
+        is None
+    )
+
+
+def test_an_image_cap_does_not_stand_in_for_a_video_one():
+    """The caps are separate declarations, and one modality never licenses the other."""
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(max_videos_per_request=1),
             capabilities(input_modalities=["text", "image"]),
             prefix_cache_enabled=False,
         )
@@ -478,6 +512,17 @@ def test_the_flag_a_typed_field_speaks_for_is_the_engines_own_spelling():
     assert serving_args("sglang", block) == {"grammar-backend": "xgrammar"}
     assert serving_args("trtllm", block) == {}
     assert serving_args("vllm", serving(max_images_per_request=4)) == {"limit-mm-per-prompt": '{"image": 4}'}
+    assert serving_args("vllm", serving(max_videos_per_request=1)) == {"limit-mm-per-prompt": '{"video": 1}'}
+
+
+def test_two_modality_caps_render_as_one_map_and_not_as_two_flags():
+    """`--limit-mm-per-prompt` is one argument holding every modality it limits.
+
+    Assigning it per field would leave whichever cap rendered second, and a workload that
+    declared both would silently serve one of them uncapped.
+    """
+    both = serving(max_images_per_request=4, max_videos_per_request=1)
+    assert serving_args("vllm", both) == {"limit-mm-per-prompt": '{"image": 4, "video": 1}'}
 
 
 def test_an_image_cap_is_json_and_arrives_with_the_switch_that_turns_images_on():
@@ -496,6 +541,14 @@ def test_an_image_cap_is_json_and_arrives_with_the_switch_that_turns_images_on()
     assert resolved["enable-multimodal"] == ""
 
 
+def test_a_video_cap_turns_the_same_switch_on():
+    """`--enable-multimodal` is per worker, not per modality: video needs it exactly as image does."""
+    workload = a_workload(serving=block(max_videos_per_request=1))
+    resolved = resolved_engine_args(workload, an_artifact())
+    assert resolved["limit-mm-per-prompt"] == '{"video": 1}'
+    assert resolved["enable-multimodal"] == ""
+
+
 def test_the_switch_is_inferred_so_a_workload_that_states_it_by_hand_wins():
     """A companion flag loses to `engine_args`, which is what makes it safe to infer.
 
@@ -509,7 +562,7 @@ def test_the_switch_is_inferred_so_a_workload_that_states_it_by_hand_wins():
     assert resolved_engine_args(workload, an_artifact())["enable-multimodal"] == "true"
 
 
-def test_a_workload_that_asks_for_no_images_gets_neither_flag():
+def test_a_workload_that_asks_for_no_attachments_gets_neither_flag():
     """The pair is additive: every workload already running is untouched by both."""
     resolved = resolved_engine_args(a_workload(), an_artifact())
     assert "enable-multimodal" not in resolved

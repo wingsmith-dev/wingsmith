@@ -116,7 +116,10 @@ DECLINED_FLAGS: Final[dict[str, str]] = {
         "opposite of ceiling-shaped"
     ),
     "hf-overrides": "patches the repository's own config; a JSON blob with no bound on what it changes",
-    "limit-mm-per-prompt": "already declared by the typed `serving.max_images_per_request` field",
+    "limit-mm-per-prompt": (
+        "already declared by the typed `serving.max_images_per_request` and "
+        "`serving.max_videos_per_request` fields, which render as one map"
+    ),
     "tool-call-parser": "not an argument of `dynamo.vllm`; see SERVING_FLAGS in the workloads service",
     "reasoning-parser": "declared by the typed `serving.reasoning.parser` field",
     "dyn-tool-call-parser": "a frontend concern under Dynamo, and not a flag this plane renders today",
@@ -125,8 +128,7 @@ DECLINED_FLAGS: Final[dict[str, str]] = {
     "disaggregation-mode": "as kv-transfer-config",
     "async-scheduling": "a throughput knob measured per node, and not ceiling-shaped",
     "enable-multimodal": (
-        "implied by the typed `serving.max_images_per_request` field; see SERVING_IMPLIED_FLAGS "
-        "in the workloads service"
+        "implied by either typed per-modality cap; see SERVING_IMPLIED_FLAGS in the workloads service"
     ),
     "enable-prefix-caching": (
         "already the engine's default and already declared: the workload's `prefix_cache_enabled` "

@@ -145,6 +145,13 @@ export function ServingFields({
           min={1}
           hint="Only meaningful when image is a claimed modality."
         />
+        <NumberField
+          label="Max videos per request"
+          value={value.max_videos_per_request}
+          onChange={(max_videos_per_request) => set({ max_videos_per_request })}
+          min={1}
+          hint="Only meaningful when video is a claimed modality."
+        />
       </FormGrid>
 
       <SwitchField
@@ -385,8 +392,11 @@ export function ServingBehaviourCard({
           <Field label="Structured output backend">
             <Dash>{serving.structured_output_backend}</Dash>
           </Field>
-          <Field label="Max images per request" className="sm:col-span-2">
+          <Field label="Max images per request">
             <Dash>{serving.max_images_per_request}</Dash>
+          </Field>
+          <Field label="Max videos per request">
+            <Dash>{serving.max_videos_per_request}</Dash>
           </Field>
         </FieldGrid>
       </CardContent>

@@ -85,6 +85,7 @@ class ServingSchema(Struct):
     structured_output_backend: str | None = None
     tool_call_parser: str | None = None
     max_images_per_request: int | None = None
+    max_videos_per_request: int | None = None
 
 
 class CapabilitiesSchema(Struct):

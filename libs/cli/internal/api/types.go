@@ -422,6 +422,7 @@ type ServingBehaviour struct {
 	StructuredOutputBackend *string          `json:"structured_output_backend"`
 	ToolCallParser          *string          `json:"tool_call_parser"`
 	MaxImagesPerRequest     *int             `json:"max_images_per_request"`
+	MaxVideosPerRequest     *int             `json:"max_videos_per_request"`
 }
 
 // ServingCapabilities is what this engine × artifact is claimed to be able to
