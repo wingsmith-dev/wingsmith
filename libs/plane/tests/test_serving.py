@@ -477,7 +477,43 @@ def test_the_flag_a_typed_field_speaks_for_is_the_engines_own_spelling():
     block = serving(structured_output_backend="xgrammar")
     assert serving_args("sglang", block) == {"grammar-backend": "xgrammar"}
     assert serving_args("trtllm", block) == {}
-    assert serving_args("vllm", serving(max_images_per_request=4)) == {"limit-mm-per-prompt": "image=4"}
+    assert serving_args("vllm", serving(max_images_per_request=4)) == {"limit-mm-per-prompt": '{"image": 4}'}
+
+
+def test_an_image_cap_is_json_and_arrives_with_the_switch_that_turns_images_on():
+    """Both halves were wrong, and each one alone is a worker that does not serve images.
+
+    `--limit-mm-per-prompt` on this engine takes JSON. Rendered as `image=4` the worker
+    exits on `Value image=4 cannot be converted to <function loads>` before it loads a
+    weight — a crashloop for every workload that declared a cap. And a cap on its own
+    caps a path that is off: `--enable-multimodal` is what turns the multimodal
+    components on at all, so without it the flag that survived would have limited
+    nothing.
+    """
+    workload = a_workload(serving=block(max_images_per_request=4))
+    resolved = resolved_engine_args(workload, an_artifact())
+    assert resolved["limit-mm-per-prompt"] == '{"image": 4}'
+    assert resolved["enable-multimodal"] == ""
+
+
+def test_the_switch_is_inferred_so_a_workload_that_states_it_by_hand_wins():
+    """A companion flag loses to `engine_args`, which is what makes it safe to infer.
+
+    An engine build wanting a value there, or this table getting the spelling wrong, is
+    a thing one workload can hold against the plane without an edit here.
+    """
+    workload = a_workload(
+        engine_args={"--enable-multimodal": "true"},
+        serving=block(max_images_per_request=4),
+    )
+    assert resolved_engine_args(workload, an_artifact())["enable-multimodal"] == "true"
+
+
+def test_a_workload_that_asks_for_no_images_gets_neither_flag():
+    """The pair is additive: every workload already running is untouched by both."""
+    resolved = resolved_engine_args(a_workload(), an_artifact())
+    assert "enable-multimodal" not in resolved
+    assert "limit-mm-per-prompt" not in resolved
 
 
 def test_a_vllm_tool_parser_renders_no_flag_because_dynamo_takes_none():

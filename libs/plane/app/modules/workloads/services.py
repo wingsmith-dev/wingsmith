@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import datetime as dt
 
 from uuid import UUID
@@ -322,19 +323,32 @@ more row here. The field stays on the workload and records the intent; nothing
 renders it today, which is the honest state and is visible rather than fatal."""
 
 
-SERVING_IMPLIED_FLAGS: dict[str, dict[str, tuple[str, ...]]] = {}
+SERVING_IMPLIED_FLAGS: dict[str, dict[str, tuple[str, ...]]] = {
+    "vllm": {"max_images_per_request": ("enable-multimodal",)},
+}
 """Valueless flags a typed field cannot live without, per engine.
 
-Empty, and kept rather than deleted because the mechanism is right and only its one
-entry was wrong. `vllm serve` parses tool calls with `--tool-call-parser` and
-dispatches them only with `--enable-auto-tool-choice`, so the pair genuinely travels
-together — but Dynamo does not run `vllm serve` and takes neither, which made this
-table's only row a guaranteed crash rather than a completed configuration. See
-`SERVING_FLAGS`.
-
 The rule for adding a row: the flag has to appear in the `--help` of the program the
-cluster actually starts. A flag the engine's upstream documents is not the same
-claim."""
+cluster actually starts. A flag the engine's upstream documents is not the same claim.
+This table was empty for a while because its only entry broke that rule — `vllm serve`
+parses tool calls with `--tool-call-parser` and dispatches them only with
+`--enable-auto-tool-choice`, so the pair genuinely travels together, but Dynamo runs
+`python3 -m dynamo.vllm` and takes neither, which made the row a guaranteed crash
+rather than a completed configuration. See `SERVING_FLAGS`.
+
+`--enable-multimodal` meets the rule: it is declared in
+`dynamo.vllm.backend_args.DynamoVllmArgGroup` as `DYN_VLLM_ENABLE_MULTIMODAL`, and its
+own help says what happens without it — *"if not set, none of the multimodal components
+can be used"*. So `--limit-mm-per-prompt` alone is a cap on a path that is switched off,
+which is what shipped: a workload declaring `image` in `capabilities.input_modalities`
+recorded the claim, rendered the cap, and served a text-only worker.
+
+It hangs off `max_images_per_request` and not off the capability block on purpose.
+`capabilities` is asserted, reaches no cluster and is deliberately absent from
+`serving_digest` (`app.core.serving.SERVING_DIGEST_FIELDS`) — deriving a flag from it
+would make two workloads with one digest run two different processes. The typed field is
+the one that is hashed, and `check_serving` already refuses it unless `image` is among
+the declared modalities, so setting it is the same declaration made where it counts."""
 
 
 def _members(name: str, values: list[str], allowed: frozenset[str]) -> None:
@@ -475,7 +489,7 @@ def serving_args(engine: str, serving: ServingSchema) -> dict[str, str]:
         if value and field_name in flags:
             args[flags[field_name]] = value
     if serving.max_images_per_request is not None and "max_images_per_request" in flags:
-        args[flags["max_images_per_request"]] = f"image={serving.max_images_per_request}"
+        args[flags["max_images_per_request"]] = json.dumps({"image": serving.max_images_per_request})
     return args
 
 
@@ -492,6 +506,9 @@ def serving_companion_args(engine: str, serving: ServingSchema) -> dict[str, str
     args: dict[str, str] = {}
     if serving.tool_call_parser:
         for flag in implied.get("tool_call_parser", ()):
+            args[flag] = ""
+    if serving.max_images_per_request is not None:
+        for flag in implied.get("max_images_per_request", ()):
             args[flag] = ""
     return args
 

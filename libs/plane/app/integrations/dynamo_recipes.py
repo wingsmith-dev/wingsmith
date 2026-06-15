@@ -124,7 +124,10 @@ DECLINED_FLAGS: Final[dict[str, str]] = {
     "kv-transfer-config": "a disaggregation mechanism; the operator renders one worker and no transfer",
     "disaggregation-mode": "as kv-transfer-config",
     "async-scheduling": "a throughput knob measured per node, and not ceiling-shaped",
-    "enable-multimodal": "a capability claim, which the workload declares in its own `capabilities` block",
+    "enable-multimodal": (
+        "implied by the typed `serving.max_images_per_request` field; see SERVING_IMPLIED_FLAGS "
+        "in the workloads service"
+    ),
     "enable-prefix-caching": (
         "already the engine's default and already declared: the workload's `prefix_cache_enabled` "
         "column renders the negative case and nothing else needs saying"
