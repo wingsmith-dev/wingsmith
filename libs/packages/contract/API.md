@@ -54,11 +54,20 @@ Two principal kinds share the header:
   compared to the configured value in constant time. Never rotated per-request, never derived from
   anything sent over this API.
 - **admin** — humans, via `admin` and `hgr`. `POST /v1/auth/login` takes `{"password": "..."}` and
-  returns `{"token": "...", "expires_in": <seconds>}`; that token, not the password, is the bearer
-  credential on every request after. It is short-lived and signed, and expires without a rotation
-  call — log in again. Sending the password itself as a per-request credential is deliberately not
-  supported: it would end up in proxy logs and could not be rotated independently of the person who
-  knows it.
+  returns `{"access_token": "...", "refresh_token": "...", "expires_in": <seconds>}`. The access
+  token, not the password, is the bearer credential on every request after; it is short-lived and
+  signed, and it is prefixed `hgrs1` where a refresh token is prefixed `hgrr1`, so the two cannot be
+  confused. `POST /v1/auth/refresh` takes `{"refresh_token": "..."}` and answers with the same three
+  fields, **rotating the refresh token as it does so**: the one it was given stops working, so a
+  stolen refresh token and the real one cannot both stay valid. `POST /v1/auth/logout` takes the
+  same body, revokes it, and answers `204`. Sending the password itself as a per-request credential
+  is deliberately not supported: it would end up in proxy logs and could not be rotated
+  independently of the person who knows it.
+
+  **Login is budgeted.** Ten failed logins in a rolling minute, per process, and the route answers
+  `429 too_many_requests` without verifying a password — the check runs before bcrypt, because the
+  thing being bounded is the CPU an anonymous caller can buy and not only the guesses. A correct
+  password is refused for the rest of that window too, which is the accepted cost.
 
 A request with no token, an unrecognized token, or an expired or tampered session token gets
 `401 not_authorized` in the standard error envelope. `/health` is exempt so probes do not need
