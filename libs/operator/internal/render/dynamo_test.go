@@ -952,3 +952,81 @@ func TestThePodTemplateLabelSetIsExactlyThese(t *testing.T) {
 		}
 	}
 }
+
+// The regression that took Kimi K3 off the fleet, pinned at the layer that caused it.
+//
+// `modelRef` points --model at the snapshot directory, which is the only form every engine reads
+// the same way. That string is also the identity of the model card the worker publishes, and the
+// frontend resolves the card to build its tokenizer and prompt formatter — so a frontend with no
+// access to that path resolves nothing, registers nothing, and answers 404 for the model while
+// every count in the cluster reads healthy.
+func TestTheFrontendCanReadTheSnapshotTheWorkerIsPointedAt(t *testing.T) {
+	opts := frontendOptions()
+	opts.ModelCachePVC = "model-cache"
+
+	obj, err := DynamoGraphDeployment(testInputs(), opts)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	front := componentNamed(t, obj, FrontendComponent)
+	spec := componentPod(t, front)
+
+	var mount *corev1.VolumeMount
+	for i := range spec.Containers[0].VolumeMounts {
+		if spec.Containers[0].VolumeMounts[i].MountPath == "/models" {
+			mount = &spec.Containers[0].VolumeMounts[i]
+		}
+	}
+	if mount == nil {
+		t.Fatalf("the frontend cannot reach the path --model names: %+v", spec.Containers[0].VolumeMounts)
+	}
+	// Read-only, because the volume belongs to the prefetch job and a frontend comes for 30 MB
+	// of metadata it will only ever read.
+	if !mount.ReadOnly {
+		t.Error("the frontend mounts the cache writable")
+	}
+	if len(spec.Volumes) == 0 || spec.Volumes[0].PersistentVolumeClaim == nil ||
+		spec.Volumes[0].PersistentVolumeClaim.ClaimName != "model-cache" {
+		t.Errorf("the frontend volume is not the cluster's cache claim: %+v", spec.Volumes)
+	}
+}
+
+// A cluster with no cache claim configured gets a frontend without the volume, rather than one
+// naming an empty claim — which the API server rejects, taking the whole graph with it.
+func TestAFrontendWithNoCacheClaimRendersNoVolume(t *testing.T) {
+	opts := frontendOptions()
+	opts.ModelCachePVC = ""
+
+	obj, err := DynamoGraphDeployment(testInputs(), opts)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	spec := componentPod(t, componentNamed(t, obj, FrontendComponent))
+	if len(spec.Volumes) != 0 || len(spec.Containers[0].VolumeMounts) != 0 {
+		t.Errorf("a volume was invented with no claim to name: %+v", spec.Volumes)
+	}
+}
+
+// The frontend still takes none of the engine's other machinery. The mount is the one thing the
+// two share, and the reason the overlay is refused has not changed: an overlay written about the
+// engine must not reach a process that holds no weights and no cards.
+func TestTheFrontendTakesTheCacheAndNothingElseFromTheEngine(t *testing.T) {
+	opts := frontendOptions()
+
+	obj, err := DynamoGraphDeployment(testInputs(), opts)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	spec := componentPod(t, componentNamed(t, obj, FrontendComponent))
+	if len(spec.Containers[0].VolumeMounts) != 1 {
+		t.Errorf("the frontend took more than the cache: %+v", spec.Containers[0].VolumeMounts)
+	}
+	if spec.Containers[0].Resources.Limits != nil {
+		if _, ok := spec.Containers[0].Resources.Limits["nvidia.com/gpu"]; ok {
+			t.Error("the frontend asks for an accelerator")
+		}
+	}
+	if len(spec.Tolerations) != 0 || spec.NodeSelector != nil {
+		t.Error("the frontend is being steered onto the accelerator pool")
+	}
+}

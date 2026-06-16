@@ -603,6 +603,25 @@ func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
 // containers are called `main`, so laying it over this one would put the engine's volumes, its
 // Hugging Face cache mount and its device requests onto a process that wants none of them — an
 // overlay written about the engine, silently applied to something else.
+//
+// The model cache is the one thing it does share with the engine, read-only, and it is not an
+// optimisation. `modelRef` points --model at the snapshot directory rather than the repo id,
+// because a directory is the only form every engine reads the same way — GLM-5.3-Flash's processor
+// opens `<--model>/processor_config.json` itself and dies on a repo id. That string is also the
+// identity of the model card the worker publishes, and the frontend resolves the card to build its
+// tokenizer and prompt formatter. So the reference the worker needs is a path, and a frontend with
+// no filesystem cannot follow it: it falls through to huggingface.co, asks for a repo whose name is
+// an absolute path, and is answered 404. It then serves nothing, while listening, passing its
+// readiness probe and reporting every count complete.
+//
+// A frontend on 1.4.1 never notices, because that worker serves its own card files over HTTP from
+// `:9090/v1/metadata` — but that route is a property of one runtime version, not of the wire, and
+// every runtime we patch ourselves is a coin flip on carrying it. Mounting the cache makes the path
+// form true for any runtime instead of hoping for the route.
+//
+// Read-only because a frontend has no business writing to the volume the prefetch job owns, and 30
+// MB of metadata per model is what it comes for — `tokenizer.json` alone is 28 MB on gpt-oss-120b,
+// against 240 GB of weights it will never open.
 func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	image, err := frontendImage(in, opts)
 	if err != nil {
@@ -613,7 +632,7 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 		return nil, err
 	}
 
-	return &corev1.PodSpec{
+	spec := &corev1.PodSpec{
 		// Engine credentials are included because the frontend falls back to EngineRuntimeImage when no
 		// frontend-specific image is configured. Duplicates are removed when both settings name
 		// the same fleet-wide credential.
@@ -637,7 +656,27 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 			},
 			Resources: resources,
 		}},
-	}, nil
+	}
+
+	// Named by configuration and therefore able to be empty. A volume claiming nothing is
+	// rejected by the API server, so a cluster with no cache volume gets a frontend without
+	// one rather than a deployment that will not apply.
+	if claim := strings.TrimSpace(opts.ModelCachePVC); claim != "" {
+		spec.Volumes = []corev1.Volume{{
+			Name: "model-cache",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: claim,
+					ReadOnly:  true,
+				},
+			},
+		}}
+		spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
+			{Name: "model-cache", MountPath: "/models", ReadOnly: true},
+		}
+	}
+
+	return spec, nil
 }
 
 // imagePullSecrets converts configured names into the pod form, preserving their order while
