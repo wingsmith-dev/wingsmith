@@ -92,6 +92,9 @@ func SetupWithManager(mgr ctrl.Manager, cfg *config.Config, logger *slog.Logger)
 		Namespace: cfg.Namespace,
 		Render:    RenderOptions(cfg),
 		ClusterID: cfg.ClusterID,
+		// Wired here and nowhere else, so that every test builds a reconciler that asks no
+		// frontend anything and the one binary that runs against a real cluster asks.
+		Frontend: NewHTTPFrontendModels(),
 	}
 	if err := r.SetupWithManager(mgr); err != nil {
 		return nil, err

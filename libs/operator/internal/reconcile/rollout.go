@@ -151,7 +151,7 @@ func (r *SyncedResourceReconciler) observeRollout(
 	}
 	out := r.rolloutFrom(pods.Items, dep, render.Replicas(dep), dep.Serving.Engine, dep.Serving.RuntimeVersion())
 	out.trouble = r.diagnose(ctx, name, pods.Items, out)
-	serving, found := r.frontendState(ctx, name)
+	serving, found := r.frontendState(ctx, name, dep)
 	out.frontendUnready = !serving
 	if out.trouble == nil {
 		out.trouble = found
@@ -180,7 +180,11 @@ func (r *SyncedResourceReconciler) observeRollout(
 // reported is a pod the cluster has already given up on, through the same reading of waiting
 // reasons and scheduling conditions the worker path uses, so the vocabulary stays the closed set
 // in MESSAGES.md and no new reason has to reach the plane for this to be legible.
-func (r *SyncedResourceReconciler) frontendState(ctx context.Context, name string) (bool, *trouble) {
+func (r *SyncedResourceReconciler) frontendState(
+	ctx context.Context,
+	name string,
+	dep wire.DeploymentDesired,
+) (bool, *trouble) {
 	if !r.Render.FrontendEnabled {
 		return true, nil
 	}
@@ -202,9 +206,32 @@ func (r *SyncedResourceReconciler) frontendState(ctx context.Context, name strin
 		return true, nil
 	}
 
+	anyReady := false
 	for i := range pods.Items {
-		if podReady(&pods.Items[i]) {
+		pod := &pods.Items[i]
+		if !podReady(pod) {
+			continue
+		}
+		anyReady = true
+		serves, known := r.frontendServes(ctx, pod, strings.TrimSpace(dep.ServedModelName))
+		// An unanswerable question is not a negative answer. A frontend this loop cannot
+		// reach is judged on its pod alone, exactly as it was before anything asked.
+		if !known || serves {
 			return true, nil
+		}
+	}
+
+	// A ready frontend that does not list this model is the failure this check exists for, and
+	// it is the one shape nothing else in the cluster reports. Every count is complete, the pod
+	// passes its probe -- the probe answers for an HTTP server that is listening, not for a
+	// model that registered -- and the deployment reads `running` while the frontend answers
+	// 404 to every request for it. It happens whenever the model card cannot be resolved by the
+	// frontend that reads it: a chat template the tokenizer config never carried, or a card
+	// naming a path on a runtime that does not serve its own metadata over HTTP.
+	if anyReady {
+		return false, &trouble{
+			reason:  reasonModelNotRegistered,
+			message: "the frontend is ready but does not serve " + strings.TrimSpace(dep.ServedModelName),
 		}
 	}
 

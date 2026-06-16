@@ -65,6 +65,11 @@ type SyncedResourceReconciler struct {
 	// gates fall back to the configured flags alone, which is what the tests want.
 	Capabilities Capabilities
 
+	// Frontend asks a frontend pod which models it is actually serving. Optional: left nil, no
+	// frontend is asked and a ready pod is taken at its word, which is what this loop did
+	// before the question was worth putting.
+	Frontend FrontendModels
+
 	reportMu sync.Mutex
 	reported map[string]reportKey
 	staged   map[string]stageState

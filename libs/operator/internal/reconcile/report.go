@@ -52,6 +52,15 @@ const (
 	phaseTerminating = "terminating"
 )
 
+// reasonModelNotRegistered is a frontend that is up and does not serve the model the deployment
+// exists for.
+//
+// Its own reason rather than `Progressing`, because it is the one shortfall that never resolves
+// on its own and reads exactly like a healthy rollout while it does not: every replica ready,
+// every pod probing green, and nothing serving. Free text on the wire (MESSAGES.md), so a plane
+// that predates it files it as any other reason and shows the message.
+const reasonModelNotRegistered = "ModelNotRegistered"
+
 // stageRank orders the steps a reconcile passes through on its way to applying, as opposed to the
 // ones it comes to rest in.
 //

@@ -353,6 +353,7 @@ who takes them in this order is reading the deployment coming up.
 | `Rendering` | `pending` | Every ordering is satisfied; building the objects that will run it |
 | `Applied` | `placed` | Rendered and applied; no replica has reported ready yet |
 | `Progressing` | `degraded` | Some replicas are ready and some are not — filling in, or rolling |
+| `ModelNotRegistered` | `degraded` | Every replica is ready and the frontend does not serve this deployment's model |
 | `Serving` | `running` | Every desired replica is ready |
 | `PodUnschedulable` | `placed` | A replica's pod exists and the scheduler cannot place it |
 | `CrashLooping` | `failed` | A replica's container starts and exits repeatedly |
@@ -363,6 +364,25 @@ who takes them in this order is reading the deployment coming up.
 | `NoReplicasStarted` | `failed` | Applied, no replica ready past the grace window, and nothing said why |
 | `PayloadUndecodable` | `failed` | The desired frame did not decode |
 | `RenderFailed` | `failed` | The frame decoded and describes nothing renderable |
+
+**`ModelNotRegistered` is the one shortfall every other signal calls healthy.** A frontend
+registers a model by resolving the card its worker published, and a card it cannot resolve leaves
+the frontend listening, passing its readiness probe and serving nothing. Every count is complete,
+the graph reports `successful`, the agent forwards to it and the gateway prefers it — and the
+frontend answers 404 to every request for the model. Nothing that counts pods can see this, which
+is why the operator asks the frontend directly (`GET /v1/models`) rather than inferring it.
+
+The question is put only to a frontend pod that is already ready, and only where one frontend is
+rendered per model. An unanswerable question is not a negative answer: a frontend that cannot be
+reached keeps the verdict its own readiness gives, because the plane withdraws a deployment it is
+told is not running and a check that cannot reach the data path would take a serving fleet out of
+the routing table. Only a frontend that answered, and did not name this deployment's model, is
+reported.
+
+The causes are not one bug. A tokenizer config that carries no chat template registers nothing; so
+does a model card naming a filesystem path, on a runtime whose worker does not serve its own
+metadata over HTTP and whose frontend has no access to that path. Both read identically from
+here, and both are what this reason is for.
 
 **`Accepted` and `Rendering` are sent once per revision, not once per pass.** Both are true for the
 few milliseconds between one check and the next, while a reconcile re-runs every fifteen seconds
