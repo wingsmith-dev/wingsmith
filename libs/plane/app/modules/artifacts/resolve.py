@@ -648,6 +648,77 @@ def _note_engine_defaults(model: HuggingFaceModel, notes: list[ResolveNote]) -> 
             )
 
 
+# The files a frontend assembles a chat model from, and what it does without each.
+#
+# `tokenizer_config.json` is the prompt formatter; a chat template is what turns messages into
+# tokens; and a tokenizer is what turns those into ids. A repo missing any of them registers
+# happily, downloads for hours, schedules onto an accelerator, and then fails to register at the
+# frontend -- where it reads as a healthy deployment serving nothing.
+_TOKENIZER_FILES = (
+    "tokenizer.json",
+    "tokenizer.model",
+    "tiktoken.model",
+    "vocab.json",
+    "spiece.model",
+)
+
+
+def _note_serving_metadata(model: HuggingFaceModel, notes: list[ResolveNote]) -> None:
+    """Says whether a frontend could build a chat surface from this repo.
+
+    Registration-time and not deploy-time, on the same argument as
+    `contract/devices.json`: the answer is a property of the artifact, it costs
+    one Hub read we are already making, and the alternative is discovering it on
+    a cluster at the end of an hours-long download.
+
+    Notes, never a refusal. A repo with no chat template is not an invalid
+    artifact -- an embedding or transcription model has no use for one, and the
+    plane does not know which surface an artifact will be asked for until a
+    deployment names it. What it must not do is stay silent.
+    """
+    if not model.files:
+        return
+
+    root = {name for name in model.files if "/" not in name}
+
+    if "tokenizer_config.json" not in root:
+        notes.append(
+            ResolveNote(
+                level=WARN,
+                message=(
+                    "the repo carries no tokenizer_config.json, so a frontend cannot build a "
+                    "prompt formatter for it and will serve no chat surface"
+                ),
+            )
+        )
+        return
+
+    # Either file is enough: recent repos publish the template beside the config, older ones
+    # carry it as a key inside it, and the frontend reads both.
+    has_template = "chat_template.jinja" in root or bool(model.tokenizer_config.get("chat_template"))
+    if not has_template:
+        notes.append(
+            ResolveNote(
+                level=WARN,
+                message=(
+                    "the repo publishes no chat template, in tokenizer_config.json or beside it, "
+                    "so a frontend will refuse to register it as a chat model"
+                ),
+            )
+        )
+
+    if not any(name in root for name in _TOKENIZER_FILES):
+        notes.append(
+            ResolveNote(
+                level=WARN,
+                message=(
+                    "the repo publishes no tokenizer file a frontend reads directly; serving it "
+                    "needs a runtime that carries the tokenizer itself"
+                ),
+            )
+        )
+
+
 def resolved(
     model: HuggingFaceModel,
     existing_id: str | None = None,
@@ -719,6 +790,7 @@ def resolved(
 
     serving = suggest_serving(model, notes, ceiling_mib)
     _note_engine_defaults(model, notes)
+    _note_serving_metadata(model, notes)
     uri = f"hf://{model.slug}@{model.revision}"
     return ResolvedArtifact(
         reference=f"hf:{model.slug}@{model.revision}",

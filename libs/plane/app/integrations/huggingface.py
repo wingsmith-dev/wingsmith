@@ -4,6 +4,7 @@ import hashlib
 
 from typing import Any
 from logging import getLogger
+from dataclasses import field
 from dataclasses import dataclass
 
 import httpx
@@ -96,6 +97,15 @@ class HuggingFaceModel:
     weight_files: tuple[HuggingFaceWeightFile, ...] = ()
     unaddressable_files: tuple[str, ...] = ()
     sidecar_files: tuple[str, ...] = ()
+    tokenizer_config: dict[str, Any] = field(default_factory=dict)
+    files: tuple[str, ...] = ()
+    """Every file at the repo root, and `tokenizer_config.json` decoded.
+
+    Both are here for the same reason `config.json` is: a frontend cannot serve a
+    model whose tokenizer and chat template it cannot assemble, and the only
+    moment that can be established without a cluster is registration. Read once,
+    stored, and never fetched again -- the same rule the recipe corpora follow.
+    """
 
 
 class HuggingFaceClient:
@@ -142,8 +152,9 @@ class HuggingFaceClient:
             sha = info.get("sha") or "main"
             entries = await self._tree(client, slug, sha)
             config = await self._config(client, slug, sha)
+            tokenizer_config = await self._json_file(client, slug, sha, "tokenizer_config.json")
 
-        return self._build(slug, sha, info, config, entries)
+        return self._build(slug, sha, info, config, entries, tokenizer_config)
 
     async def resolve_revision(self, slug: str) -> str:
         """The commit sha `main` currently points at. Exposed for callers pinning by hand."""
@@ -174,8 +185,20 @@ class HuggingFaceClient:
 
     async def _config(self, client: httpx.AsyncClient, slug: str, sha: str) -> dict[str, Any]:
         """A missing `config.json` is not a failure: GGUF repos carry no such file."""
+        return await self._json_file(client, slug, sha, "config.json")
+
+    async def _json_file(
+        self, client: httpx.AsyncClient, slug: str, sha: str, path: str
+    ) -> dict[str, Any]:
+        """One small JSON file from the repo, or `{}` when the repo does not carry it.
+
+        Absence is an answer here and not an error. A repo with no
+        `tokenizer_config.json` is a repo no frontend can build a prompt
+        formatter from, which is a note on the draft rather than a failure to
+        register -- the artifact may never be served as a chat model at all.
+        """
         try:
-            response = await self._get(client, f"{self._base_url}/{slug}/resolve/{sha}/config.json", slug)
+            response = await self._get(client, f"{self._base_url}/{slug}/resolve/{sha}/{path}", slug)
         except HuggingFaceNotFound:
             return {}
         try:
@@ -219,7 +242,13 @@ class HuggingFaceClient:
         info: dict[str, Any],
         config: dict[str, Any],
         entries: list[dict[str, Any]],
+        tokenizer_config: dict[str, Any] | None = None,
     ) -> HuggingFaceModel:
+        names = tuple(
+            entry["path"]
+            for entry in entries
+            if isinstance(entry.get("path"), str) and entry.get("type") != "directory"
+        )
         weights: list[HuggingFaceWeightFile] = []
         for entry in entries:
             path = entry.get("path")
@@ -261,6 +290,8 @@ class HuggingFaceClient:
             weight_files=tuple(weights),
             unaddressable_files=unaddressable,
             sidecar_files=sidecars,
+            tokenizer_config=dict(tokenizer_config or {}),
+            files=names,
         )
 
 

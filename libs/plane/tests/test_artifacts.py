@@ -29,6 +29,7 @@ from app.integrations.huggingface import content_digest
 from app.modules.artifacts.routes import ArtifactRoutes
 from app.modules.artifacts.resolve import ServingDefaults
 from app.modules.artifacts.resolve import slug_of
+from app.modules.artifacts.resolve import resolved
 from app.modules.artifacts.resolve import normalise_source
 from app.modules.artifacts.schemas import ArtifactSchema
 from app.modules.artifacts.schemas import ArtifactUsageSchema
@@ -1382,3 +1383,81 @@ async def test_the_head_is_the_best_rows_and_not_the_first_ones_looked_at():
 async def test_asking_for_everything_is_how_the_rest_is_reached():
     result = await fitment_service().fitment("llama-70b", ArtifactFitmentRequest(scope="catalog", limit=0))
     assert len(result.items) == result.considered > DEFAULT_FITMENT_LIMIT
+
+
+# --------------------------------------------------------- what a frontend needs to serve it
+
+SERVEABLE_FILES = (
+    "config.json",
+    "tokenizer_config.json",
+    "tokenizer.json",
+    "chat_template.jinja",
+    "model-00001-of-00002.safetensors",
+)
+
+
+def _messages(model) -> str:
+    return " | ".join(note.message for note in resolved(model).notes)
+
+
+def test_a_repo_a_frontend_can_serve_says_nothing():
+    """The ordinary case must stay quiet, or the notes stop being read."""
+    messages = _messages(hf_model(files=SERVEABLE_FILES))
+
+    assert "chat template" not in messages
+    assert "tokenizer_config.json" not in messages
+
+
+def test_a_repo_with_no_chat_template_is_flagged_at_registration():
+    """The `openai/whisper-large-v3` failure, caught before anybody deploys it.
+
+    Its frontend registration fails on `chat_template field is required in the
+    tokenizer_config.json file` -- after the weights download and the pod is
+    scheduled, on a deployment every count in the cluster calls healthy.
+    """
+    files = tuple(name for name in SERVEABLE_FILES if name != "chat_template.jinja")
+    messages = _messages(hf_model(files=files, tokenizer_config={"model_max_length": 448}))
+
+    assert "no chat template" in messages
+
+
+def test_a_chat_template_inside_the_tokenizer_config_counts():
+    """Older repos carry the template as a key rather than a file, and the frontend reads both."""
+    files = tuple(name for name in SERVEABLE_FILES if name != "chat_template.jinja")
+    messages = _messages(
+        hf_model(files=files, tokenizer_config={"chat_template": "{% for m in messages %}"})
+    )
+
+    assert "no chat template" not in messages
+
+
+def test_a_repo_with_no_tokenizer_config_says_so_and_stops():
+    """Nothing downstream is worth saying when the prompt formatter cannot exist at all."""
+    files = ("config.json", "model-00001-of-00002.safetensors")
+    messages = _messages(hf_model(files=files))
+
+    assert "no tokenizer_config.json" in messages
+    assert "no chat template" not in messages
+
+
+def test_a_tokenizer_a_frontend_cannot_read_is_flagged():
+    """Kimi K3 ships `tiktoken.model` and custom code rather than `tokenizer.json`.
+
+    That is legal and it serves, but only on a runtime carrying the tokenizer
+    itself -- which is a fact worth having before the deployment, not after.
+    """
+    files = ("config.json", "tokenizer_config.json", "chat_template.jinja")
+    messages = _messages(hf_model(files=files, tokenizer_config={"chat_template": "x"}))
+
+    assert "no tokenizer file" in messages
+
+    served = _messages(hf_model(files=files + ("tiktoken.model",), tokenizer_config={"chat_template": "x"}))
+    assert "no tokenizer file" not in served
+
+
+def test_a_repo_whose_files_were_never_read_is_not_guessed_about():
+    """An artifact registered before the listing existed must not grow three warnings."""
+    messages = _messages(hf_model())
+
+    assert "tokenizer" not in messages
+    assert "chat template" not in messages
