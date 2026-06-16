@@ -245,6 +245,53 @@ func TestBenchmarkFramesItsExport(t *testing.T) {
 	}
 }
 
+// A non-aiperf harness runs the command the plane sent, verbatim, framed by the same sentinels.
+// The operator has no opinion about the flags — that is the whole point of the generic case.
+func TestBenchmarkGenericHarnessRunsTheSuppliedCommand(t *testing.T) {
+	params := benchParams(map[string]string{
+		"harness":         "evalscope",
+		"image":           "hangar-evalscope:0.19.0",
+		"command":         "evalscope eval --model 'qwen' --api-url 'http://x' --datasets mmlu_pro",
+		"version_command": "evalscope --version",
+	})
+	body := script(t, params)
+	if !strings.Contains(body, "evalscope eval --model 'qwen' --api-url 'http://x' --datasets mmlu_pro") {
+		t.Errorf("the supplied command did not reach the script:\n%s", body)
+	}
+	if !strings.Contains(body, "evalscope --version") {
+		t.Errorf("the supplied version command did not reach the script:\n%s", body)
+	}
+	for _, marker := range []string{SummaryBegin, SummaryEnd, VersionLine} {
+		if !strings.Contains(body, marker) {
+			t.Errorf("the generic script does not emit %q", marker)
+		}
+	}
+}
+
+// Without a command there is nothing to run and no way to say so from inside the pod — the refusal
+// belongs here, at render, where it becomes a `failed` phase on the run instead of a missing
+// container image error an hour later.
+func TestBenchmarkGenericHarnessRefusesWithoutACommand(t *testing.T) {
+	opts, bench := benchOpts()
+	params := benchParams(map[string]string{"harness": "evalscope"})
+	if _, err := BenchmarkJob(params["benchmark_id"], params, opts, bench); err == nil {
+		t.Error("a harness with no command must be refused, not rendered as an empty script")
+	}
+}
+
+// The version line records "unknown" rather than failing the pod when no version command was sent;
+// `extractVersion` on the other side already reads that string as the empty answer.
+func TestBenchmarkGenericHarnessDefaultsTheVersionCommand(t *testing.T) {
+	params := benchParams(map[string]string{
+		"harness": "evalscope",
+		"command": "evalscope eval --model 'qwen'",
+	})
+	body := script(t, params)
+	if !strings.Contains(body, "echo unknown") {
+		t.Errorf("the version fallback did not reach the script:\n%s", body)
+	}
+}
+
 func TestBenchmarkShellIsResolvedFromTheImagePath(t *testing.T) {
 	// AIPerf is distroless: `/bin` exists and is empty, and the shell lives at `/busybox/sh`.
 	// An absolute `/bin/sh` fails the pod in runc before the harness is ever started.

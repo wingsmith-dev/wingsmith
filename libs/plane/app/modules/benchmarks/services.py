@@ -603,10 +603,9 @@ class BenchmarkService:
             reason=data.reason,
             payload={
                 "parameters": {
-                    **harnesses.wire_parameters(plan.harness, resolved, plan.image),
+                    **harnesses.wire_parameters(plan.harness, resolved, plan.image, model),
                     "benchmark_id": run_uid,
                     "deployment_id": target.deployment.uid,
-                    "model": model,
                 }
             },
             deadline_at=data.deadline,

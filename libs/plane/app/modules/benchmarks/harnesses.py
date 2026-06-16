@@ -402,15 +402,79 @@ def resolve_image(harness: Harness, supplied: str | None) -> str:
     return image
 
 
-def wire_parameters(harness: Harness, parameters: dict, image: str | None = None) -> dict[str, str]:
+def wire_parameters(harness: Harness, parameters: dict, image: str | None = None, model: str | None = None) -> dict[str, str]:
     """The run, flattened to the string map `operation.desired` carries.
 
     Every value goes as a string because that is what the parameters map is; the
     operator parses them back against the same names. Booleans go as `true` and
     `false` rather than Python's capitalised repr, which `strconv.ParseBool` on
     the other side would not read.
+
+    `model` is the served model name the run asks for, resolved from the deployment's
+    workload and artifact. It is not a harness parameter — the harness has no default
+    for it because there is no default model — but the operator keys everything it
+    renders off it (`parameters["model"]` at the top of `BenchmarkJob`), so it travels
+    inside the same map rather than beside it.
     """
     flattened = {"harness": harness.name, "image": image or harness.image}
+    if model:
+        flattened["model"] = model
     for key, value in parameters.items():
         flattened[key] = "true" if value is True else "false" if value is False else str(value)
+    if harness.name == EVALSCOPE.name:
+        flattened["command"] = _evalscope_command(parameters, model or "")
+        flattened["version_command"] = "evalscope --version"
     return flattened
+
+
+def _evalscope_command(parameters: dict, model: str) -> str:
+    """The shell line the operator's generic case runs for an evalscope run.
+
+    Lives here rather than in the operator because evalscope's CLI is a property of the harness
+    the plane pinned, not of the thing that schedules it. A new evalscope release changes this
+    function and nothing in `render/benchmark.go`. The operator renders the line verbatim — no
+    re-quoting, no flag assembly — which is what keeps the generic case generic.
+
+    Every value is shell-quoted on the way in, because every one is attacker-adjacent by the
+    time it reaches a pod: a dataset id, a base URL and a model name all originate as strings
+    somebody typed. `--limit 0` and `repeats 1` are still emitted rather than omitted, because
+    they are the harness's own defaults and naming them makes the command line the record of
+    what was asked for.
+    """
+    args: list[str] = ["evalscope", "eval"]
+    args += ["--model", _shell(model)]
+    # The endpoint under test is a cluster-local fact the plane does not hold: the operator's
+    # renderer exports it as $HANGAR_BENCHMARK_ENDPOINT before it runs this line, exactly the way
+    # aiperfArgs receives it as an argument. The judge's base URL is different — it is harness
+    # configuration, and it travels in the parameters like everything else.
+    args += ["--api-url", '"$HANGAR_BENCHMARK_ENDPOINT"']
+    base_url = str(parameters.get("judge_base_url") or "").strip()
+    datasets = str(parameters.get("datasets") or "").strip()
+    if datasets:
+        args += ["--datasets", _shell(datasets)]
+    args += ["--limit", str(int(parameters.get("limit") or 0))]
+    args += ["--few-shot", str(int(parameters.get("few_shot") or 0))]
+    args += ["--temperature", str(float(parameters.get("temperature") or 0.0))]
+    args += ["--top-p", str(float(parameters.get("top_p") or 1.0))]
+    args += ["--max-tokens", str(int(parameters.get("max_output_tokens") or 32768))]
+    args += ["--seed", str(int(parameters.get("seed") or 0))]
+    args += ["--repeats", str(int(parameters.get("repeats") or 1))]
+    args += ["--concurrency", str(int(parameters.get("concurrency") or 8))]
+    revision = str(parameters.get("dataset_revision") or "").strip()
+    if revision:
+        args += ["--dataset-revision", _shell(revision)]
+    judge_model = str(parameters.get("judge_model") or "").strip()
+    if base_url and judge_model:
+        args += ["--judge-base-url", _shell(base_url)]
+        args += ["--judge-model", _shell(judge_model)]
+        args += ["--judge-temperature", str(float(parameters.get("judge_temperature") or 0.0))]
+        args += ["--judge-max-tokens", str(int(parameters.get("judge_max_output_tokens") or 4096))]
+    extra = str(parameters.get("extra") or "").strip()
+    if extra:
+        args.append(extra)
+    return " ".join(args)
+
+
+def _shell(value: str) -> str:
+    """Single-quote a value for the shell the operator will run it under."""
+    return "'" + value.replace("'", "'\\''") + "'"

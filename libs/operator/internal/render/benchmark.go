@@ -90,6 +90,36 @@ const benchmarkShell = "sh"
 // artifactDir is where the harness is told to write, inside the pod.
 const artifactDir = "/benchmark-artifacts"
 
+// genericScript runs a harness the operator has no arg-builder for and hands its output back
+// through the log, framed the same way aiperf's is.
+//
+// The command line is the plane's, shipped verbatim in `parameters["command"]`. The operator has
+// no opinion about its flags — it is not in a position to have one, because the harness behind it
+// is a pinned image whose CLI is the plane's problem to track. What the operator does own is the
+// readback: the harness's stdout is teed to a file, then the last JSON-shaped block in that file
+// is framed between the sentinels so `parseBenchmarkLog` finds it the same way it finds aiperf's
+// export. "JSON-shaped" is deliberately weak — the first `{` at the start of a line through the
+// last `}` at the start of a line. It is not a parser and does not pretend to be; if the harness
+// printed no such block, the frame carries the literal `null`, which `extractSummary` already
+// treats as no result rather than a truncated one.
+//
+// `version_command` is the harness's own `--version` equivalent, supplied the same way; when it
+// is empty the version line records "unknown", which `extractVersion` already handles.
+const genericScript = `set -e
+%s
+export HANGAR_BENCHMARK_ENDPOINT=%s
+stdout_log=%s/stdout.log
+%s 2>&1 | tee "$stdout_log" || rc=$?
+echo "%s"
+%s
+echo "%s"
+summary=$(awk '/^\{/{inblock=1; buf=""} inblock{buf=buf $0 "\n"} /^\}/{if(inblock){last=buf; inblock=0}} END{printf "%%s", last}' "$stdout_log")
+if [ -n "$summary" ]; then printf "%%s\n" "$summary"; else echo 'null'; fi
+echo ""
+echo "%s"
+exit ${rc:-0}
+`
+
 // runCacheDir is a writable Hugging Face cache private to one run, used only when the shared one
 // cannot answer. It is an emptyDir, so it dies with the pod and nothing accumulates.
 const runCacheDir = "/benchmark-cache"
@@ -166,16 +196,35 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 	}
 
 	harness := parameters["harness"]
-	if harness != "aiperf" {
-		return nil, fmt.Errorf("this operator cannot render the %q harness", harness)
-	}
 
-	script := fmt.Sprintf(
-		aiperfScript,
-		hfCachePreamble(strings.TrimSpace(parameters["tokenizer"])),
-		strings.Join(aiperfArgs(model, bench.Endpoint, parameters), " "),
-		VersionLine, artifactDir, SummaryBegin, SummaryEnd,
-	)
+	var script string
+	switch harness {
+	case "aiperf":
+		script = fmt.Sprintf(
+			aiperfScript,
+			hfCachePreamble(strings.TrimSpace(parameters["tokenizer"])),
+			strings.Join(aiperfArgs(model, bench.Endpoint, parameters), " "),
+			VersionLine, artifactDir, SummaryBegin, SummaryEnd,
+		)
+	default:
+		command := strings.TrimSpace(parameters["command"])
+		if command == "" {
+			return nil, fmt.Errorf("this operator cannot render the %q harness without a command", harness)
+		}
+		version := strings.TrimSpace(parameters["version_command"])
+		if version == "" {
+			version = "echo unknown"
+		}
+		script = fmt.Sprintf(
+			genericScript,
+			hfCachePreamble(strings.TrimSpace(parameters["tokenizer"])),
+			shellQuote(bench.Endpoint),
+			artifactDir,
+			command,
+			VersionLine, version,
+			SummaryBegin, SummaryEnd,
+		)
+	}
 
 	resources, err := benchmarkResources(bench)
 	if err != nil {

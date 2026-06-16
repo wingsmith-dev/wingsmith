@@ -118,6 +118,55 @@ def test_the_overridden_image_is_what_reaches_the_wire():
     assert flattened["image"] == override
 
 
+def test_evalscope_reaches_the_wire_as_a_command_the_operator_runs_verbatim():
+    """The operator's generic case is generic because the command line is composed here."""
+    resolved = harnesses.normalise(
+        harnesses.EVALSCOPE,
+        {"datasets": "mmlu_pro,gpqa_diamond", "limit": 500, "temperature": 0.0},
+        harnesses.DEPLOYMENT,
+    )
+    flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "Qwen/Qwen3-32B")
+    command = flattened["command"]
+    assert command.startswith("evalscope eval")
+    assert "--model 'Qwen/Qwen3-32B'" in command
+    assert "--datasets 'mmlu_pro,gpqa_diamond'" in command
+    assert "--limit 500" in command
+    assert "--temperature 0.0" in command
+    # The endpoint is a cluster-local fact and the operator's renderer fills it in.
+    assert '"$HANGAR_BENCHMARK_ENDPOINT"' in command
+    assert flattened["version_command"] == "evalscope --version"
+
+
+def test_evalscope_omits_the_judge_flags_when_no_judge_is_set():
+    flattened = harnesses.wire_parameters(
+        harnesses.EVALSCOPE, harnesses.normalise(harnesses.EVALSCOPE, {}, harnesses.DEPLOYMENT), None, "m"
+    )
+    assert "--judge-base-url" not in flattened["command"]
+    assert "--judge-model" not in flattened["command"]
+
+
+def test_evalscope_includes_the_judge_flags_when_a_judge_is_set():
+    resolved = harnesses.normalise(
+        harnesses.EVALSCOPE,
+        {"judge_base_url": "http://judge:8000/v1", "judge_model": "grader"},
+        harnesses.DEPLOYMENT,
+    )
+    flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "m")
+    command = flattened["command"]
+    assert "--judge-base-url 'http://judge:8000/v1'" in command
+    assert "--judge-model 'grader'" in command
+
+
+def test_evalscope_endpoints_go_through_shell_quoting():
+    """A parameter is attacker-adjacent by the time it reaches a shell; quoting is not optional."""
+    resolved = harnesses.normalise(
+        harnesses.EVALSCOPE, {"datasets": "mmlu_pro"}, harnesses.DEPLOYMENT
+    )
+    flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "a'; rm -rf /; echo '")
+    assert "rm -rf /" in flattened["command"]
+    assert "'\\''" in flattened["command"]
+
+
 # ---------------------------------------------------------------- the operation behind a run
 
 
