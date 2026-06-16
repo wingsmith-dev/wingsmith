@@ -129,23 +129,37 @@ def test_evalscope_reaches_the_wire_as_a_command_the_operator_runs_verbatim():
     command = flattened["command"]
     assert command.startswith("evalscope eval")
     assert "--model 'Qwen/Qwen3-32B'" in command
-    assert "--datasets 'mmlu_pro,gpqa_diamond'" in command
+    # EvalScope's --datasets is a space-separated list at 1.11.1, not a comma-joined string.
+    assert "--datasets 'mmlu_pro' 'gpqa_diamond'" in command
     assert "--limit 500" in command
-    assert "--temperature 0.0" in command
+    assert "--eval-type openai_api" in command
     # The endpoint is a cluster-local fact and the operator's renderer fills it in.
     assert '"$HANGAR_BENCHMARK_ENDPOINT"' in command
     assert flattened["version_command"] == "evalscope --version"
+
+
+def test_evalscope_packaging_decoding_into_generation_config_json():
+    resolved = harnesses.normalise(
+        harnesses.EVALSCOPE,
+        {"temperature": 0.7, "top_p": 0.95, "max_output_tokens": 8192},
+        harnesses.DEPLOYMENT,
+    )
+    flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "m")
+    command = flattened["command"]
+    assert "--generation-config" in command
+    assert '"temperature":0.7' in command
+    assert '"top_p":0.95' in command
+    assert '"max_tokens":8192' in command
 
 
 def test_evalscope_omits_the_judge_flags_when_no_judge_is_set():
     flattened = harnesses.wire_parameters(
         harnesses.EVALSCOPE, harnesses.normalise(harnesses.EVALSCOPE, {}, harnesses.DEPLOYMENT), None, "m"
     )
-    assert "--judge-base-url" not in flattened["command"]
-    assert "--judge-model" not in flattened["command"]
+    assert "--judge" not in flattened["command"]
 
 
-def test_evalscope_includes_the_judge_flags_when_a_judge_is_set():
+def test_evalscope_includes_the_judge_as_one_json_object():
     resolved = harnesses.normalise(
         harnesses.EVALSCOPE,
         {"judge_base_url": "http://judge:8000/v1", "judge_model": "grader"},
@@ -153,8 +167,9 @@ def test_evalscope_includes_the_judge_flags_when_a_judge_is_set():
     )
     flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "m")
     command = flattened["command"]
-    assert "--judge-base-url 'http://judge:8000/v1'" in command
-    assert "--judge-model 'grader'" in command
+    assert "--judge" in command
+    assert '"base_url":"http://judge:8000/v1"' in command
+    assert '"model":"grader"' in command
 
 
 def test_evalscope_endpoints_go_through_shell_quoting():

@@ -20,6 +20,7 @@ property of the harness and asking for one it does not declare is refused here,
 the same way an unknown knob is.
 """
 
+import json
 import math
 
 from typing import Any
@@ -173,7 +174,7 @@ telemetry and goes to object storage behind `artifacts_uri`, never onto the summ
 EVALSCOPE = Harness(
     name="evalscope",
     wire="evalscope",
-    image="ghcr.io/hangar-dev/evalscope:0.19.0",
+    image="ghcr.io/hangar-dev/evalscope:1.11.1",
     levels=(WORKLOAD, DEPLOYMENT, ENDPOINT),
     description="Accuracy and reasoning evaluation over an OpenAI-compatible surface.",
     parameters=(
@@ -448,27 +449,65 @@ def _evalscope_command(parameters: dict, model: str) -> str:
     # aiperfArgs receives it as an argument. The judge's base URL is different — it is harness
     # configuration, and it travels in the parameters like everything else.
     args += ["--api-url", '"$HANGAR_BENCHMARK_ENDPOINT"']
-    base_url = str(parameters.get("judge_base_url") or "").strip()
+    # EvalScope against a remote OpenAI-compatible surface is `openai_api`; setting this
+    # explicitly keeps the auto-inference from having a say on a URL shape it was not built
+    # around.
+    args += ["--eval-type", "openai_api"]
+    # No timestamp dir: the operator's wrapper finds the run's output by name, and a
+    # timestamped subdir makes the newest the only one that matters.
+    args += ["--no-timestamp"]
+    args += ["--work-dir", "/benchmark-artifacts"]
+
     datasets = str(parameters.get("datasets") or "").strip()
     if datasets:
-        args += ["--datasets", _shell(datasets)]
-    args += ["--limit", str(int(parameters.get("limit") or 0))]
-    args += ["--few-shot", str(int(parameters.get("few_shot") or 0))]
-    args += ["--temperature", str(float(parameters.get("temperature") or 0.0))]
-    args += ["--top-p", str(float(parameters.get("top_p") or 1.0))]
-    args += ["--max-tokens", str(int(parameters.get("max_output_tokens") or 32768))]
+        # EvalScope's `--datasets` is a space-separated list, not a comma-joined string.
+        args += ["--datasets"] + [_shell(name) for name in datasets.split(",") if name.strip()]
+    limit = int(parameters.get("limit") or 0)
+    if limit > 0:
+        args += ["--limit", str(limit)]
     args += ["--seed", str(int(parameters.get("seed") or 0))]
-    args += ["--repeats", str(int(parameters.get("repeats") or 1))]
-    args += ["--concurrency", str(int(parameters.get("concurrency") or 8))]
+    repeats = int(parameters.get("repeats") or 1)
+    if repeats != 1:
+        args += ["--repeats", str(repeats)]
+
+    # Decoding and shots are harness-side names for what EvalScope keeps inside two JSON
+    # bags: `--generation-config` for sampling and `--dataset-args` for per-dataset knobs
+    # like `few_shot`. Concurrency and dataset revision are not CLI flags at 1.11.1;
+    # concurrency lives at the batch level and revision is a dataset-args property.
+    generation_config = {
+        "temperature": float(parameters.get("temperature") or 0.0),
+        "top_p": float(parameters.get("top_p") or 1.0),
+        "max_tokens": int(parameters.get("max_output_tokens") or 32768),
+    }
+    args += ["--generation-config", _shell(json.dumps(generation_config, separators=(",", ":")))]
+    dataset_args: dict[str, dict] = {}
+    few_shot = int(parameters.get("few_shot") or 0)
     revision = str(parameters.get("dataset_revision") or "").strip()
-    if revision:
-        args += ["--dataset-revision", _shell(revision)]
+    if few_shot or revision:
+        for name in (d for d in datasets.split(",") if d.strip()):
+            entry: dict = {}
+            if few_shot:
+                entry["few_shot_num"] = few_shot
+            if revision:
+                entry["revision"] = revision
+            dataset_args[name] = entry
+        args += ["--dataset-args", _shell(json.dumps(dataset_args, separators=(",", ":")))]
+
+    # The judge is one typed JSON object at 1.11.1, not a spread of flags. `judge_credential_id`
+    # is redeemed at dispatch time by the endpoint-level executor; at deployment and workload
+    # levels the field never arrives here (`check_judge` refuses it), and a judge the cluster
+    # reaches authenticates by being cluster-local.
+    base_url = str(parameters.get("judge_base_url") or "").strip()
     judge_model = str(parameters.get("judge_model") or "").strip()
     if base_url and judge_model:
-        args += ["--judge-base-url", _shell(base_url)]
-        args += ["--judge-model", _shell(judge_model)]
-        args += ["--judge-temperature", str(float(parameters.get("judge_temperature") or 0.0))]
-        args += ["--judge-max-tokens", str(int(parameters.get("judge_max_output_tokens") or 4096))]
+        judge = {
+            "base_url": base_url,
+            "model": judge_model,
+            "temperature": float(parameters.get("judge_temperature") or 0.0),
+            "max_tokens": int(parameters.get("judge_max_output_tokens") or 4096),
+        }
+        args += ["--judge", _shell(json.dumps(judge, separators=(",", ":")))]
+
     extra = str(parameters.get("extra") or "").strip()
     if extra:
         args.append(extra)

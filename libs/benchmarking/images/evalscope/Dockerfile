@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 RUN pip install --no-cache-dir \
-      "evalscope==0.19.0" \
+      "evalscope==1.11.1" \
       # The operator's generic wrapper reads the harness's stdout with awk, and evalscope's
       # report dumper uses numpy's toJSON; both are present transitively, but pinning them
       # here is cheaper than discovering the next base-image prune.

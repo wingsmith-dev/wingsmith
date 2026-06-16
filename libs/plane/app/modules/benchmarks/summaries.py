@@ -132,9 +132,9 @@ CONFORMANCE_0_1 = Adapter(
     ),
 )
 
-EVALSCOPE_0_19 = Adapter(
+EVALSCOPE_1_11 = Adapter(
     harness="evalscope",
-    min_version="0.19.0",
+    min_version="1.11.0",
     max_version=None,
     fields=(),
 )
@@ -147,7 +147,7 @@ what says whether this reader understands the export at all.
 ADAPTERS: dict[str, tuple[Adapter, ...]] = {
     AIPERF_0_4.harness: (AIPERF_0_4,),
     CONFORMANCE_0_1.harness: (CONFORMANCE_0_1,),
-    EVALSCOPE_0_19.harness: (EVALSCOPE_0_19,),
+    EVALSCOPE_1_11.harness: (EVALSCOPE_1_11,),
 }
 
 
