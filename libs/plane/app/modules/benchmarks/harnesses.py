@@ -403,7 +403,13 @@ def resolve_image(harness: Harness, supplied: str | None) -> str:
     return image
 
 
-def wire_parameters(harness: Harness, parameters: dict, image: str | None = None, model: str | None = None) -> dict[str, str]:
+def wire_parameters(
+    harness: Harness,
+    parameters: dict,
+    image: str | None = None,
+    model: str | None = None,
+    endpoint_model: str | None = None,
+) -> dict[str, str]:
     """The run, flattened to the string map `operation.desired` carries.
 
     Every value goes as a string because that is what the parameters map is; the
@@ -416,6 +422,13 @@ def wire_parameters(harness: Harness, parameters: dict, image: str | None = None
     for it because there is no default model — but the operator keys everything it
     renders off it (`parameters["model"]` at the top of `BenchmarkJob`), so it travels
     inside the same map rather than beside it.
+
+    `endpoint_model` is what the harness should put in the request body's `model`
+    field when it dials the endpoint. That is almost always the same string as
+    `model`, but not always: a deployment named `gpt-oss-20b` may be served by a
+    frontend that only answers under the artifact's HF repo id `openai/gpt-oss-20b`.
+    EvalScope is the harness that cares, because its OpenAI client is strict about
+    the field; AIPerf builds its own requests and tolerates the served name.
     """
     flattened = {"harness": harness.name, "image": image or harness.image}
     if model:
@@ -423,7 +436,7 @@ def wire_parameters(harness: Harness, parameters: dict, image: str | None = None
     for key, value in parameters.items():
         flattened[key] = "true" if value is True else "false" if value is False else str(value)
     if harness.name == EVALSCOPE.name:
-        flattened["command"] = _evalscope_command(parameters, model or "")
+        flattened["command"] = _evalscope_command(parameters, endpoint_model or model or "")
         flattened["version_command"] = "evalscope --version"
     return flattened
 

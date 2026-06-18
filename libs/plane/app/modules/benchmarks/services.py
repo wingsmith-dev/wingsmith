@@ -568,6 +568,15 @@ class BenchmarkService:
         if known and "tokenizer" in resolved and not resolved.get("tokenizer"):
             resolved["tokenizer"] = tokenizer_for(workload, artifact)
 
+        # EvalScope's OpenAI client sends a strict `model` field. What the frontend answers to is
+        # the artifact's HF repo id — not the workload's served name, which is what `model` carries.
+        # `tokenizer_for` already knows how to resolve that id from the artifact's location, so the
+        # harness gets it under a separate knob and the label the operator renders stays the served
+        # name.
+        endpoint_model = model
+        if known and plan.harness.name == harnesses.EVALSCOPE.name:
+            endpoint_model = tokenizer_for(workload, artifact) or model
+
         run_uid = new_uid(BENCHMARK_RUN)
         run = BenchmarkRun(
             uid=run_uid,
@@ -603,7 +612,7 @@ class BenchmarkService:
             reason=data.reason,
             payload={
                 "parameters": {
-                    **harnesses.wire_parameters(plan.harness, resolved, plan.image, model),
+                    **harnesses.wire_parameters(plan.harness, resolved, plan.image, model, endpoint_model),
                     "benchmark_id": run_uid,
                     "deployment_id": target.deployment.uid,
                 }
