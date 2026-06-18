@@ -238,7 +238,7 @@ def test_every_band_the_standard_names_has_a_target():
 def accuracy_facts(score, baseline=0.7412, **overrides):
     return facts(
         harness="evalscope",
-        harness_version="0.19.0",
+        harness_version="1.11.1",
         level="workload",
         summary={"results": {"mmlu_pro": {"metric": "accuracy", "score": score, "n": 12032}}},
         datasets=("mmlu_pro",),

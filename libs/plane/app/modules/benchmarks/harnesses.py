@@ -438,6 +438,11 @@ def wire_parameters(
     if harness.name == EVALSCOPE.name:
         flattened["command"] = _evalscope_command(parameters, endpoint_model or model or "")
         flattened["version_command"] = "evalscope --version"
+        # EvalScope 1.11 prints a human table on stdout and a per-dataset JSON file at
+        # `<work-dir>/reports/<model>/<dataset>.json`. The operator's generic wrapper reads
+        # them back off disk via this glob, merges them, and frames the merged report between
+        # the sentinels. The wrapper's stdout fallback stays for harnesses that print natively.
+        flattened["report_glob"] = "/benchmark-artifacts/reports/*/*.json"
     return flattened
 
 
@@ -459,9 +464,11 @@ def _evalscope_command(parameters: dict, model: str) -> str:
     args += ["--model", _shell(model)]
     # The endpoint under test is a cluster-local fact the plane does not hold: the operator's
     # renderer exports it as $HANGAR_BENCHMARK_ENDPOINT before it runs this line, exactly the way
-    # aiperfArgs receives it as an argument. The judge's base URL is different — it is harness
-    # configuration, and it travels in the parameters like everything else.
-    args += ["--api-url", '"$HANGAR_BENCHMARK_ENDPOINT"']
+    # aiperfArgs receives it as an argument. EvalScope's openai_api eval-type builds its client
+    # with this as `base_url`, which the OpenAI SDK expects to include `/v1` — a bare host is a
+    # 404 on a path the SDK doesn't know to prefix. The judge's base URL is different — it is
+    # harness configuration, and it travels in the parameters like everything else.
+    args += ["--api-url", '"$HANGAR_BENCHMARK_ENDPOINT/v1"']
     # EvalScope against a remote OpenAI-compatible surface is `openai_api`; setting this
     # explicitly keeps the auto-inference from having a say on a URL shape it was not built
     # around.

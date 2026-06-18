@@ -236,20 +236,49 @@ def dataset_scores(summary: dict | None) -> dict[str, tuple[str, float]]:
     Entries that do not carry a numeric score are dropped rather than defaulted,
     which leaves the dataset looking absent — and an absent dataset is graded
     `not_applicable` rather than passed, which is the safe direction.
+
+    Two producers land here. The plan-doc shape `{results: {<dataset>: {metric, score}}}`
+    is what a future harness that emits the union directly would write; the operator's
+    generic wrapper emits `{reports: [<evalscope-report>, ...]}` because EvalScope 1.11
+    writes one report file per dataset and the wrapper merges them. Both read into the
+    same per-dataset metric/score pair.
     """
-    results = (summary or {}).get("results")
-    if not isinstance(results, dict):
-        return {}
-    scores: dict[str, tuple[str, float]] = {}
-    for dataset, entry in results.items():
-        if not isinstance(entry, dict):
-            continue
-        score = entry.get("score")
-        if isinstance(score, bool) or not isinstance(score, (int, float)):
-            continue
-        metric = entry.get("metric")
-        scores[str(dataset)] = (str(metric) if metric else "accuracy", float(score))
-    return scores
+    payload = summary or {}
+    results = payload.get("results")
+    if isinstance(results, dict):
+        scores: dict[str, tuple[str, float]] = {}
+        for dataset, entry in results.items():
+            if not isinstance(entry, dict):
+                continue
+            score = entry.get("score")
+            if isinstance(score, bool) or not isinstance(score, (int, float)):
+                continue
+            metric = entry.get("metric")
+            scores[str(dataset)] = (str(metric) if metric else "accuracy", float(score))
+        return scores
+
+    reports = payload.get("reports")
+    if isinstance(reports, list):
+        scores = {}
+        for report in reports:
+            if not isinstance(report, dict):
+                continue
+            dataset = report.get("dataset_name")
+            metrics = report.get("metrics")
+            if not dataset or not isinstance(metrics, list):
+                continue
+            for metric in metrics:
+                if not isinstance(metric, dict):
+                    continue
+                name = metric.get("identity", {}).get("name") or metric.get("name")
+                score = metric.get("score")
+                if isinstance(score, bool) or not isinstance(score, (int, float)):
+                    continue
+                scores[str(dataset)] = (str(name) if name else "accuracy", float(score))
+                break
+        return scores
+
+    return {}
 
 
 def _parse(version: str) -> tuple[int, int, int] | None:

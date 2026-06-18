@@ -96,12 +96,19 @@ const artifactDir = "/benchmark-artifacts"
 // The command line is the plane's, shipped verbatim in `parameters["command"]`. The operator has
 // no opinion about its flags — it is not in a position to have one, because the harness behind it
 // is a pinned image whose CLI is the plane's problem to track. What the operator does own is the
-// readback: the harness's stdout is teed to a file, then the last JSON-shaped block in that file
-// is framed between the sentinels so `parseBenchmarkLog` finds it the same way it finds aiperf's
-// export. "JSON-shaped" is deliberately weak — the first `{` at the start of a line through the
-// last `}` at the start of a line. It is not a parser and does not pretend to be; if the harness
-// printed no such block, the frame carries the literal `null`, which `extractSummary` already
-// treats as no result rather than a truncated one.
+// readback. Two channels feed it:
+//
+//   - When `report_glob` is set the harness is one that writes its report to disk rather than
+//     printing it — EvalScope at 1.11 emits a human table on stdout and a per-dataset JSON under
+//     `work_dir/reports/<model>/<dataset>.json`. The glob is the plane's, and after the command
+//     finishes a small inline python merges every match into one `{reports: [<parsed>, ...]}`
+//     document and prints that. Python because the image already carries it for the harness
+//     itself, and because awk's idea of "JSON-aware" is not one.
+//   - Without `report_glob` the wrapper falls back to the last JSON-shaped block in stdout,
+//     which is the harness that prints its own report (none today, but the channel is cheap).
+//
+// Both paths land between the same sentinels and are read by the plane's `dataset_scores` the
+// same way. A run that produced no matching report prints `null`.
 //
 // `version_command` is the harness's own `--version` equivalent, supplied the same way; when it
 // is empty the version line records "unknown", which `extractVersion` already handles.
@@ -113,8 +120,18 @@ stdout_log=%s/stdout.log
 echo "%s"
 %s
 echo "%s"
-summary=$(awk '/^\{/{inblock=1; buf=""} inblock{buf=buf $0 "\n"} /^\}/{if(inblock){last=buf; inblock=0}} END{printf "%%s", last}' "$stdout_log")
-if [ -n "$summary" ]; then printf "%%s\n" "$summary"; else echo 'null'; fi
+report_glob=%s
+if [ -n "$report_glob" ]; then
+  python3 - "$report_glob" <<'PYEOF'
+import glob, json, sys
+hits = sorted(glob.glob(sys.argv[1]))
+reports = [json.load(open(p)) for p in hits]
+print(json.dumps({"reports": reports}))
+PYEOF
+else
+  summary=$(awk '/^\{/{inblock=1; buf=""} inblock{buf=buf $0 "\n"} /^\}/{if(inblock){last=buf; inblock=0}} END{printf "%%s", last}' "$stdout_log")
+  if [ -n "$summary" ]; then printf "%%s\n" "$summary"; else echo 'null'; fi
+fi
 echo ""
 echo "%s"
 exit ${rc:-0}
@@ -222,7 +239,9 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 			artifactDir,
 			command,
 			VersionLine, version,
-			SummaryBegin, SummaryEnd,
+			SummaryBegin,
+			shellQuote(strings.TrimSpace(parameters["report_glob"])),
+			SummaryEnd,
 		)
 	}
 

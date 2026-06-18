@@ -134,7 +134,8 @@ def test_evalscope_reaches_the_wire_as_a_command_the_operator_runs_verbatim():
     assert "--limit 500" in command
     assert "--eval-type openai_api" in command
     # The endpoint is a cluster-local fact and the operator's renderer fills it in.
-    assert '"$HANGAR_BENCHMARK_ENDPOINT"' in command
+    # EvalScope treats --api-url as an OpenAI SDK base_url, which expects /v1.
+    assert '"$HANGAR_BENCHMARK_ENDPOINT/v1"' in command
     assert flattened["version_command"] == "evalscope --version"
 
 
