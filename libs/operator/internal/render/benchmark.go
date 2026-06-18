@@ -115,6 +115,7 @@ const artifactDir = "/benchmark-artifacts"
 const genericScript = `set -e
 %s
 export HANGAR_BENCHMARK_ENDPOINT=%s
+export HANGAR_BENCHMARK_MODEL=%s
 stdout_log=%s/stdout.log
 %s 2>&1 | tee "$stdout_log" || rc=$?
 echo "%s"
@@ -232,10 +233,19 @@ func BenchmarkJob(benchmarkID string, parameters map[string]string, opts Options
 		if version == "" {
 			version = "echo unknown"
 		}
+		// The model the request body names is usually the same string the plane records as the
+		// run's model. When it is not — a deployment served under a slug whose underlying
+		// artifact answers to its HF repo id — the plane ships the body-facing name as
+		// `endpoint_model` and the operator substitutes that into the caller's command line.
+		bodyModel := strings.TrimSpace(parameters["endpoint_model"])
+		if bodyModel == "" {
+			bodyModel = model
+		}
 		script = fmt.Sprintf(
 			genericScript,
 			hfCachePreamble(strings.TrimSpace(parameters["tokenizer"])),
 			shellQuote(bench.Endpoint),
+			shellQuote(bodyModel),
 			artifactDir,
 			command,
 			VersionLine, version,

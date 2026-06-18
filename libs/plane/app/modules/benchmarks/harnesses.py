@@ -193,6 +193,14 @@ EVALSCOPE = Harness(
         Parameter("judge_credential_id", str, "", "Credential *reference* the executor redeems. Never a secret."),
         Parameter("judge_temperature", float, 0.0, "Decoding temperature for the grader."),
         Parameter("judge_max_output_tokens", int, 4096, "Generation cap for the grader."),
+        Parameter(
+            "command",
+            str,
+            "",
+            "Full command line, run verbatim. Empty composes one from the other parameters. "
+            "Use $HANGAR_BENCHMARK_ENDPOINT and $HANGAR_BENCHMARK_MODEL as placeholders for the "
+            "cluster-local facts the operator fills in.",
+        ),
         Parameter("extra", str, "", "Extra flags, appended verbatim to the command line."),
     ),
 )
@@ -436,7 +444,19 @@ def wire_parameters(
     for key, value in parameters.items():
         flattened[key] = "true" if value is True else "false" if value is False else str(value)
     if harness.name == EVALSCOPE.name:
-        flattened["command"] = _evalscope_command(parameters, endpoint_model or model or "")
+        # A caller-supplied `command` wins over composition whole, because the CLI it should
+        # match is the pinned image's and only the caller can know a new flag exists before
+        # this plane has been redeployed to name it. `$HANGAR_BENCHMARK_ENDPOINT` and
+        # `$HANGAR_BENCHMARK_MODEL` are the two holes the operator substitutes at render; the
+        # model hole carries the HF repo id rather than the served name, because the request
+        # body is what the frontend resolves against and the frontend answers to the repo id.
+        supplied = str(parameters.get("command") or "").strip()
+        if endpoint_model and endpoint_model != model:
+            flattened["endpoint_model"] = endpoint_model
+        if supplied:
+            flattened["command"] = supplied
+        else:
+            flattened["command"] = _evalscope_command(parameters, endpoint_model or model or "")
         flattened["version_command"] = "evalscope --version"
         # EvalScope 1.11 prints a human table on stdout and a per-dataset JSON file at
         # `<work-dir>/reports/<model>/<dataset>.json`. The operator's generic wrapper reads

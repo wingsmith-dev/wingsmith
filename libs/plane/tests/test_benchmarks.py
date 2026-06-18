@@ -173,6 +173,46 @@ def test_evalscope_includes_the_judge_as_one_json_object():
     assert '"model":"grader"' in command
 
 
+def test_evalscope_a_supplied_command_wins_over_composition_whole():
+    """A new flag must not need a plane deploy."""
+    resolved = harnesses.normalise(
+        harnesses.EVALSCOPE,
+        {
+            "datasets": "mmlu_pro",
+            "command": "evalscope eval --model $HANGAR_BENCHMARK_MODEL --api-url $HANGAR_BENCHMARK_ENDPOINT/v1 --datasets mmlu_pro --eval-type openai_api --some-new-flag from-1.12",
+        },
+        harnesses.DEPLOYMENT,
+    )
+    flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "m")
+    assert flattened["command"].endswith("--some-new-flag from-1.12")
+    assert "$HANGAR_BENCHMARK_ENDPOINT" in flattened["command"]
+
+
+def test_evalscope_endpoint_model_travels_separately_from_the_served_name():
+    """`endpoint_model` is the request body's `model`, not the run's label."""
+    flattened = harnesses.wire_parameters(
+        harnesses.EVALSCOPE,
+        harnesses.normalise(harnesses.EVALSCOPE, {}, harnesses.DEPLOYMENT),
+        None,
+        model="kimi-k3-site-c",
+        endpoint_model="moonshotai/Kimi-K3",
+    )
+    assert flattened["model"] == "kimi-k3-site-c"
+    assert flattened["endpoint_model"] == "moonshotai/Kimi-K3"
+
+
+def test_evalscope_endpoint_model_is_omitted_when_identical():
+    """The operator falls back when it is absent; carrying the same string twice only invites drift."""
+    flattened = harnesses.wire_parameters(
+        harnesses.EVALSCOPE,
+        harnesses.normalise(harnesses.EVALSCOPE, {}, harnesses.DEPLOYMENT),
+        None,
+        model="m",
+        endpoint_model="m",
+    )
+    assert "endpoint_model" not in flattened
+
+
 def test_evalscope_endpoints_go_through_shell_quoting():
     """A parameter is attacker-adjacent by the time it reaches a shell; quoting is not optional."""
     resolved = harnesses.normalise(
