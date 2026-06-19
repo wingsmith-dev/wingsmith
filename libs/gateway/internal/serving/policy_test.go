@@ -25,7 +25,7 @@ func kimiPolicy() *plane.ParameterPolicy {
 			"frequency_penalty": {Enum: []any{float64(0)}},
 			"logprobs":          {Enum: []any{false}},
 		},
-		Deny: []string{"tool_choice.named"},
+		Deny: []string{"tool_choice.named_while_thinking"},
 	}
 }
 
@@ -70,20 +70,68 @@ func TestAbsentParameterIsNotAViolation(t *testing.T) {
 	}
 }
 
-func TestDenyNamedToolChoice(t *testing.T) {
-	named := []byte(`{"model":"m","tool_choice":{"type":"function","function":{"name":"f"}}}`)
-	code, _, ok := checkPolicy(kimiPolicy(), named)
-	if ok {
-		t.Fatal("a named function must be refused")
-	}
-	if code != "unsupported_parameter" {
-		t.Fatalf("code = %q", code)
-	}
+// The matrix measured against api.moonshot.ai/kimi-k3 on 2026-09-04. Exactly
+// one cell is refused, and the two easy over-approximations of it — "an object
+// tool_choice" and "a named function" — both refuse requests the provider
+// serves.
+func TestNamedToolChoiceIsRefusedOnlyWhileThinking(t *testing.T) {
+	const (
+		named   = `{"type":"function","function":{"name":"f"}}`
+		allowed = `{"type":"allowed_tools","allowed_tools":{"mode":"auto","tools":[]}}`
 
-	for _, bare := range []string{`"auto"`, `"none"`, `"required"`} {
-		body := []byte(`{"model":"m","tool_choice":` + bare + `}`)
-		if _, _, ok := checkPolicy(kimiPolicy(), body); !ok {
-			t.Fatalf("tool_choice %s must stay allowed", bare)
+		thinkingOn     = `` // absent: K3 thinks unless it is told not to
+		thinkingOff    = `,"thinking":{"type":"disabled"}`
+		thinkingOnLoud = `,"thinking":{"type":"enabled"}`
+		templateOff    = `,"chat_template_kwargs":{"thinking":false}`
+		templateOn     = `,"chat_template_kwargs":{"thinking":true}`
+	)
+
+	for _, tc := range []struct {
+		name     string
+		choice   string
+		thinking string
+		refused  bool
+	}{
+		{"named, thinking left to the default", named, thinkingOn, true},
+		{"named, thinking asked for", named, thinkingOnLoud, true},
+		{"named, thinking switched off", named, thinkingOff, false},
+		{"named, thinking off via the template", named, templateOff, false},
+		{"named, thinking on via the template", named, templateOn, true},
+
+		// An object, but not the one the provider refuses.
+		{"allowed_tools, thinking on", allowed, thinkingOn, false},
+		{"allowed_tools, thinking off", allowed, thinkingOff, false},
+
+		// The bare strings are a different feature and are never this rule.
+		{"auto", `"auto"`, thinkingOn, false},
+		{"none", `"none"`, thinkingOn, false},
+		{"required", `"required"`, thinkingOn, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"model":"m","tool_choice":` + tc.choice + tc.thinking + `}`)
+			code, _, ok := checkPolicy(kimiPolicy(), body)
+			if ok == tc.refused {
+				t.Fatalf("refused = %v, want %v", !ok, tc.refused)
+			}
+			if tc.refused && code != "unsupported_parameter" {
+				t.Fatalf("code = %q", code)
+			}
+		})
+	}
+}
+
+// A body this rule cannot read is the upstream's problem, not a reason to drop
+// it here. Every one of these would answer 400 upstream anyway, and refusing
+// them locally would only move the error and lose the provider's reason for it.
+func TestUnreadableThinkingIsLeftToTheUpstream(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"m","tool_choice":{"type":"function"},"thinking":"enabled"}`,
+		`{"model":"m","tool_choice":{"type":"function"},"chat_template_kwargs":[]}`,
+		`{"model":"m","tool_choice":[]}`,
+		`{"model":"m","tool_choice":null}`,
+	} {
+		if _, _, ok := checkPolicy(kimiPolicy(), []byte(body)); !ok {
+			t.Fatalf("%s: a shape this rule cannot read must not be refused here", body)
 		}
 	}
 }
@@ -125,7 +173,7 @@ func TestViolationIsStableAcrossRuns(t *testing.T) {
 
 // The policy must survive the plane's own JSON, not just a hand-built struct.
 func TestPolicyDecodesFromPlaneJSON(t *testing.T) {
-	raw := `{"version":1,"parameters":{"temperature":{"enum":[1]},"n":{"min":1,"max":1}},"deny":["tool_choice.named"]}`
+	raw := `{"version":1,"parameters":{"temperature":{"enum":[1]},"n":{"min":1,"max":1}},"deny":["tool_choice.named_while_thinking"]}`
 	var policy plane.ParameterPolicy
 	if err := json.Unmarshal([]byte(raw), &policy); err != nil {
 		t.Fatalf("decode: %v", err)

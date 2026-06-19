@@ -767,7 +767,7 @@ KIMI_POLICY = {
             "frequency_penalty": {"enum": [0]},
             "logprobs": {"enum": [False]},
         },
-        "deny": ["tool_choice.named"],
+        "deny": ["tool_choice.named_while_thinking"],
     }
 }
 """What Moonshot answered 400 to on 2026-09-01, written as a policy."""
@@ -793,7 +793,7 @@ async def test_a_sold_policy_reaches_the_resolved_table():
     assert policy.version == 1
     assert policy.parameters["temperature"].enum == [1]
     assert policy.parameters["logprobs"].enum == [False]
-    assert policy.deny == ["tool_choice.named"]
+    assert policy.deny == ["tool_choice.named_while_thinking"]
 
 
 def test_a_rule_that_constrains_nothing_is_refused():

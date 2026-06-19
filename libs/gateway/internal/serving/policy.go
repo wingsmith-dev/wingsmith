@@ -15,24 +15,93 @@ const supportedPolicyVersion = 1
 
 // denials are the wire features a policy may refuse by name.
 //
-// Every name here is an OpenAI wire concept, never a vendor's. "this endpoint
-// refuses a named function in tool_choice" is a statement about the protocol;
-// which endpoint says it is the plane's business and never this package's.
+// A name here describes a refusal in the terms a policy author can check
+// against the provider. Most are pure OpenAI wire concepts; one names a vendor
+// extension, because the thing being constrained *is* a vendor extension and
+// pretending otherwise would leave the rule unwritable. Which endpoint carries
+// which name stays the plane's business and never this package's.
+//
+// A predicate reads the whole body, so a rule may be a conjunction of more than
+// one field. It refuses only what it can positively identify: a shape it does
+// not recognise is left to the upstream, which will answer for it. Refusing on
+// a guess trades a conformance gap for a broken request.
 var denials = map[string]func(map[string]json.RawMessage) bool{
-	// A named function is `{"type":"function","function":{...}}`. The bare
-	// strings — auto, none, required — are a different thing and stay allowed.
-	"tool_choice.named": func(fields map[string]json.RawMessage) bool {
-		raw, ok := fields["tool_choice"]
-		if !ok {
-			return false
-		}
-		var probe any
-		if err := json.Unmarshal(raw, &probe); err != nil {
-			return false
-		}
-		_, isObject := probe.(map[string]any)
-		return isObject
+	// Moonshot answers this one 400 `invalid_request_error`, with the message
+	// "tool_choice 'specified' is incompatible with thinking enabled".
+	// Measured against api.moonshot.ai, model kimi-k3, on 2026-09-04. The full
+	// matrix has exactly one refused cell:
+	//
+	//	tool_choice                     thinking on   thinking off
+	//	auto / none / required          200           200
+	//	{"type":"function",...}         400           200
+	//	{"type":"allowed_tools",...}    200           200
+	//
+	// So the rule is neither "an object tool_choice" nor "a named function".
+	// Denying either of those wider things would refuse a request the model
+	// serves: allowed_tools in both modes, and a named function whenever the
+	// caller has turned thinking off.
+	"tool_choice.named_while_thinking": func(fields map[string]json.RawMessage) bool {
+		return isNamedFunctionChoice(fields["tool_choice"]) && thinkingEnabled(fields)
 	},
+}
+
+// isNamedFunctionChoice reports the `{"type":"function","function":{...}}` form.
+//
+// The `type` is what separates it from `allowed_tools`, which is also an object
+// and is accepted in both thinking modes. The bare strings — auto, none,
+// required — are a different thing again, and are never this.
+func isNamedFunctionChoice(raw json.RawMessage) bool {
+	value, _ := objectField(raw, "type")
+	return value == "function"
+}
+
+// thinkingEnabled reports whether this request positively reaches the model
+// thinking.
+//
+// Absent means enabled: K3 thinks unless it is told not to, so a caller who
+// sends no `thinking` at all is in the refused cell. Two spellings turn it off,
+// because two of them reach this gateway — Moonshot's `thinking.type`, and the
+// open-source deployment's `chat_template_kwargs.thinking`, which is what the
+// vLLM chat template reads. An endpoint may accept either, and a policy that
+// understood only one would refuse a request whose caller had correctly
+// switched thinking off.
+//
+// A field that is present but unreadable answers false, so the request is not
+// refused here. It is already broken and the upstream will say so in its own
+// words; rejecting it locally would replace the provider's reason with a worse
+// one, and this rule has no standing to speak about a malformed `thinking`.
+func thinkingEnabled(fields map[string]json.RawMessage) bool {
+	if raw, sent := fields["thinking"]; sent {
+		value, readable := objectField(raw, "type")
+		if !readable || value == "disabled" {
+			return false
+		}
+	}
+	if raw, sent := fields["chat_template_kwargs"]; sent {
+		value, readable := objectField(raw, "thinking")
+		if !readable || value == false {
+			return false
+		}
+	}
+	return true
+}
+
+// objectField reads one field out of a JSON object, reporting separately
+// whether the object could be read at all.
+//
+// The two answers are different questions and every caller here needs both: a
+// field this rule cannot parse is not the same as an object that simply does
+// not carry it, and collapsing them would make a malformed body indistinguish-
+// able from a default one.
+func objectField(raw json.RawMessage, name string) (value any, readable bool) {
+	if len(raw) == 0 {
+		return nil, false
+	}
+	var object map[string]any
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return nil, false
+	}
+	return object[name], true
 }
 
 // checkPolicy reports the first violation of an endpoint's request terms, or
