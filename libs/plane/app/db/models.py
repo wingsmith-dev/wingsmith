@@ -1637,6 +1637,10 @@ class BenchmarkRun(BaseMixin):
     summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     artifacts_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # The harness's stdout, tail-capped by the operator at ~64 KiB before it ever reaches
+    # here. Sized so a failed run's traceback is there in full, and small enough that the
+    # sync stream never carries more than one screenful of it.
+    log_tail: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 

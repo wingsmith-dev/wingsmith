@@ -25,6 +25,25 @@ const TypeBenchmarkObserved = "benchmark.observed"
 // added load changes the answer.
 const benchmarkPoll = 5 * time.Second
 
+// logTailCap is the largest amount of a run's stdout that crosses the wire. Sized so a typical
+// harness's last page of errors and progress is there in full, and so `benchmark.observed` stays
+// a frame the hub can carry unfragmented — a run that wants its full log preserved publishes
+// under ArtifactsURI instead.
+const logTailCap = 64 * 1024
+
+// tailBytes returns the last n bytes of s, snapped to a newline so the first visible line is
+// whole. Empty input returns empty rather than a sentinel, the field is omitempty on the wire.
+func tailBytes(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	tail := s[len(s)-n:]
+	if i := strings.IndexByte(tail, '\n'); i >= 0 && i+1 < len(tail) {
+		tail = tail[i+1:]
+	}
+	return tail
+}
+
 // LogReader reads a pod's logs back.
 //
 // Its own interface, and narrow, because it is the one thing in this operator that the
@@ -127,6 +146,7 @@ func (e *Executor) benchmark(ctx context.Context, op wire.OperationDesired) (res
 	summary, version := parseBenchmarkLog(logs)
 	observed.Summary = summary
 	observed.HarnessVersion = version
+	observed.LogTail = tailBytes(logs, logTailCap)
 	if base := e.Benchmark.ArtifactBase; base != "" {
 		observed.ArtifactsURI = strings.TrimSuffix(base, "/") + "/" + e.ClusterID + "/" + benchmarkID + "/"
 	}

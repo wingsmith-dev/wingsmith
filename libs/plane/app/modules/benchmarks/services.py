@@ -213,6 +213,7 @@ class BenchmarkService:
             summary=run.summary,
             artifacts_uri=run.artifacts_uri,
             error=run.error,
+            log_tail=run.log_tail,
             created_at=run.created_at,
             updated_at=run.updated_at,
             started_at=run.started_at,

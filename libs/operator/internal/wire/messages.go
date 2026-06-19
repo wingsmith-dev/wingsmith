@@ -732,9 +732,15 @@ type BenchmarkObserved struct {
 	HarnessVersion string          `json:"harness_version,omitempty"`
 	Summary        json.RawMessage `json:"summary,omitempty"`
 	ArtifactsURI   string          `json:"artifacts_uri,omitempty"`
-	Error          string          `json:"error,omitempty"`
-	StartedAt      *string         `json:"started_at,omitempty"`
-	CompletedAt    *string         `json:"completed_at,omitempty"`
+	// LogTail is the last few KiB of the harness's stdout, tail-biased because that is where
+	// the failure lives. A benchmark that wants its full log preserved should publish it to
+	// `ArtifactsURI`; this channel exists so a failed run and a truncated summary can both be
+	// reconstructed without shell access to a cluster somebody else owns. Capped, never the
+	// whole thing.
+	LogTail     string  `json:"log_tail,omitempty"`
+	Error       string  `json:"error,omitempty"`
+	StartedAt   *string `json:"started_at,omitempty"`
+	CompletedAt *string `json:"completed_at,omitempty"`
 }
 
 // MessageTypes maps every wire type to a constructor for its payload. A type absent here is

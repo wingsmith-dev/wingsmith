@@ -772,6 +772,7 @@ def update_benchmark_run(cluster_id: UUID, payload: BenchmarkObserved) -> Update
         "summary": payload.summary,
         "artifacts_uri": payload.artifacts_uri,
         "error": payload.error,
+        "log_tail": payload.log_tail,
     }
     return (
         update(BenchmarkRun)

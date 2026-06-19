@@ -247,6 +247,7 @@ class BenchmarkRunSchema(Struct):
     summary: dict | None
     artifacts_uri: str | None
     error: str | None
+    log_tail: str | None
     created_at: dt.datetime
     updated_at: dt.datetime | None
     started_at: dt.datetime | None

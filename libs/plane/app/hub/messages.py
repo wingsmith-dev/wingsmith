@@ -838,6 +838,10 @@ class BenchmarkObserved(Struct):
     error: str | None = None
     started_at: str | None = None
     completed_at: str | None = None
+    # The harness's stdout, tail-capped by the operator. Object storage is the right home
+    # for the full log; this field is what a reader sees when there was no `artifacts_uri`
+    # to follow or the run never got that far.
+    log_tail: str | None = None
 
 
 MESSAGE_TYPES: dict[str, type[Struct]] = {
