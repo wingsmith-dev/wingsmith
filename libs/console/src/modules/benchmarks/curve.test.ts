@@ -96,6 +96,7 @@ function run(over: Partial<BenchmarkRun>): BenchmarkRun {
     phase: "succeeded",
     summary: null,
     artifacts_uri: null,
+    log_tail: null,
     error: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: null,

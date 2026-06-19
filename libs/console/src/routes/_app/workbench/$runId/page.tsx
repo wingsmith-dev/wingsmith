@@ -2,6 +2,10 @@ import { DiscardBadge } from "@/components/benchmarks/discard"
 import { LevelBadge } from "@/components/benchmarks/level"
 import { BenchmarkSummaryView } from "@/components/benchmarks/summary-view"
 import { VerdictPanel } from "@/components/benchmarks/verdict"
+import { AgentRun } from "@/components/workbench/agent"
+import { ConformanceRun } from "@/components/workbench/conformance"
+import { EvaluationRun } from "@/components/workbench/evaluation"
+import { MockNotice } from "@/components/workbench/mock-notice"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { Dash } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
@@ -11,12 +15,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { benchmarkPhaseTone, LEVEL_CLAIM } from "@/modules/benchmarks/display"
+import { runKind, runKindMeta } from "@/modules/benchmarks/kinds"
+import { isMockId, mockRequest, mockRun } from "@/modules/benchmarks/mock"
 import {
   useBenchmark,
   useBenchmarkRequest,
   useBenchmarkVerdict,
 } from "@/modules/benchmarks/queries"
-import { isOpen } from "@/modules/benchmarks/types"
+import { isOpen, type BenchmarkRun } from "@/modules/benchmarks/types"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useParams } from "@tanstack/react-router"
 
@@ -29,11 +35,26 @@ import { Link, useParams } from "@tanstack/react-router"
  * and the difference between them is the whole claim.
  */
 export function BenchmarkDetailPage() {
-  const { benchmarkId } = useParams({ from: "/_app/benchmarks/$benchmarkId" })
-  const { data: run, isLoading, error } = useBenchmark(benchmarkId)
-  const { data: request } = useBenchmarkRequest(run?.request_id ?? "")
+  const { runId } = useParams({ from: "/_app/workbench/$runId" })
+  const mock = isMockId(runId)
+
+  /*
+    A mock id resolves locally and asks the plane nothing. The alternative — a
+    fetch that 404s and an error screen behind the row somebody just clicked —
+    makes the switch look broken rather than deliberate.
+  */
+  const query = useBenchmark(mock ? "" : runId)
+  const run = mock ? mockRun(runId) : query.data
+  const isLoading = mock ? false : query.isLoading
+  const error = mock ? null : query.error
+
+  const requestQuery = useBenchmarkRequest(
+    mock || !run?.request_id ? "" : run.request_id
+  )
+  const request = mock ? mockRequest(run!.request_id!) : requestQuery.data
+
   const { data: verdict } = useBenchmarkVerdict(
-    run && !isOpen(run.phase) ? run.id : undefined
+    run && !mock && !isOpen(run.phase) ? run.id : undefined
   )
 
   if (error) {
@@ -57,7 +78,7 @@ export function BenchmarkDetailPage() {
             {run?.request_id && (
               <Button asChild variant="outline">
                 <Link
-                  to="/benchmarks/requests/$requestId"
+                  to="/workbench/requests/$requestId"
                   params={{ requestId: run.request_id }}
                 >
                   Request
@@ -95,7 +116,7 @@ export function BenchmarkDetailPage() {
               </Button>
             )}
             <Button asChild variant="outline">
-              <Link to="/benchmarks">
+              <Link to="/workbench">
                 <IconArrowLeft className="size-4" />
                 All benchmarks
               </Link>
@@ -106,6 +127,9 @@ export function BenchmarkDetailPage() {
 
       <div className="space-y-4 p-4">
         {isLoading && <Skeleton className="h-40 w-full" />}
+        {mock && (
+          <MockNotice what="This whole run is invented, reached from the list's Mock switch." />
+        )}
 
         {run && (
           <>
@@ -249,21 +273,63 @@ export function BenchmarkDetailPage() {
 
             <div>
               <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-                Result
+                Result · {runKindMeta(run.harness).label.toLowerCase()}
               </h2>
-              {run.summary ? (
-                <BenchmarkSummaryView summary={run.summary} />
-              ) : (
-                <div className="rounded-lg border bg-card p-6 text-center text-xs text-muted-foreground">
-                  {run.phase === "pending" || run.phase === "running"
-                    ? "The harness has not reported yet."
-                    : "This run produced no result."}
-                </div>
-              )}
+              <RunBody run={run} />
             </div>
+
+            {run.log_tail && (
+              <div>
+                <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+                  Log tail
+                </h2>
+                <pre className="max-h-[28rem] overflow-auto rounded-lg border bg-muted/30 p-3 font-mono text-2xs whitespace-pre-wrap">
+                  {run.log_tail}
+                </pre>
+                <p className="mt-1 text-2xs text-muted-foreground/60">
+                  Tail-capped by the operator at ~64 KiB. The full run, when it
+                  happens, lives under artifacts_uri — not here.
+                </p>
+              </div>
+            )}
           </>
         )}
       </div>
     </div>
   )
+}
+
+/**
+ * The result, rendered as the kind that produced it.
+ *
+ * Everything above is a fact about a run — its harness, its parameters, what
+ * was behind it when it went — and reads identically whatever was asked. This
+ * is the half that does not: a percentile block, a claim ledger, a transcript
+ * and a score table share no axis, and rendering all four through one generic
+ * key-value dump is how a result page becomes something nobody opens.
+ */
+function RunBody({ run }: { run: BenchmarkRun }) {
+  if (run.phase === "pending" || run.phase === "running")
+    return (
+      <div className="rounded-lg border bg-card p-6 text-center text-xs text-muted-foreground">
+        The harness has not reported yet.
+      </div>
+    )
+
+  switch (runKind(run.harness)) {
+    case "conformance":
+      return <ConformanceRun id={run.id} />
+    case "agent":
+      return <AgentRun id={run.id} />
+    case "evaluation":
+      return <EvaluationRun id={run.id} />
+    default:
+      return run.summary ? (
+        <BenchmarkSummaryView summary={run.summary} />
+      ) : (
+        <div className="rounded-lg border bg-card p-6 text-center text-xs text-muted-foreground">
+          This run produced no result.
+        </div>
+      )
+  }
 }

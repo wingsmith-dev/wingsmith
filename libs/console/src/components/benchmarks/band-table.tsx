@@ -105,8 +105,8 @@ export function BandTable({ bands }: { bands: BenchmarkBand[] }) {
                           asChild
                         >
                           <Link
-                            to="/benchmarks/$benchmarkId"
-                            params={{ benchmarkId: run }}
+                            to="/workbench/$runId"
+                            params={{ runId: run }}
                           >
                             {shortenId(run)}
                           </Link>

@@ -1,7 +1,11 @@
-import { BandTable } from "@/components/benchmarks/band-table"
 import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
 import { LevelBadge, TargetLink } from "@/components/benchmarks/level"
 import { VerdictPanel } from "@/components/benchmarks/verdict"
+import { AgentSuite } from "@/components/workbench/agent"
+import { ConformanceSuite } from "@/components/workbench/conformance"
+import { EvaluationSuite } from "@/components/workbench/evaluation"
+import { PerformanceSuite } from "@/components/workbench/performance"
+import { MockNotice } from "@/components/workbench/mock-notice"
 import { DataTable } from "@/components/layout/data-table"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { Dash } from "@/components/layout/mono"
@@ -17,13 +21,19 @@ import {
   LEVEL_CLAIM,
   STEPPED_MODES,
 } from "@/modules/benchmarks/display"
+import { runKind } from "@/modules/benchmarks/kinds"
+import {
+  isMockId,
+  mockRequest,
+  mockRun,
+  mockRunId,
+} from "@/modules/benchmarks/mock"
 import {
   useBenchmarkRequest,
-  useRequestBands,
   useRequestRuns,
   useRequestVerdict,
 } from "@/modules/benchmarks/queries"
-import { isOpen } from "@/modules/benchmarks/types"
+import { isOpen, type BenchmarkRun } from "@/modules/benchmarks/types"
 import { IconArrowLeft } from "@tabler/icons-react"
 import { Link, useParams } from "@tanstack/react-router"
 
@@ -38,13 +48,24 @@ import { Link, useParams } from "@tanstack/react-router"
  */
 export function BenchmarkRequestPage() {
   const { requestId } = useParams({
-    from: "/_app/benchmarks/requests/$requestId",
+    from: "/_app/workbench/requests/$requestId",
   })
-  const { data: request, isLoading, error } = useBenchmarkRequest(requestId)
+  const mock = isMockId(requestId)
+
+  const query = useBenchmarkRequest(mock ? "" : requestId)
+  const request = mock ? mockRequest(requestId) : query.data
+  const isLoading = mock ? false : query.isLoading
+  const error = mock ? null : query.error
+
   const open = !!request && isOpen(request.phase)
-  const runs = useRequestRuns(requestId)
-  const { data: bands } = useRequestBands(requestId, open)
-  const { data: verdict } = useRequestVerdict(requestId)
+  const liveRuns = useRequestRuns(mock ? "" : requestId)
+  const runs = mock
+    ? {
+        ...liveRuns,
+        items: [mockRun(mockRunId(requestId.split("-")[2] ?? "conformance"))],
+      }
+    : liveRuns
+  const { data: verdict } = useRequestVerdict(mock ? undefined : requestId)
 
   if (error) {
     return (
@@ -68,7 +89,7 @@ export function BenchmarkRequestPage() {
         description={requestId}
         readActions={
           <Button asChild variant="outline">
-            <Link to="/benchmarks">
+            <Link to="/workbench">
               <IconArrowLeft className="size-4" />
               All benchmarks
             </Link>
@@ -78,6 +99,9 @@ export function BenchmarkRequestPage() {
 
       <div className="space-y-4 p-4">
         {isLoading && <Skeleton className="h-40 w-full" />}
+        {mock && (
+          <MockNotice what="This whole request is invented, reached from the list's Mock switch." />
+        )}
 
         {request && (
           <>
@@ -230,12 +254,14 @@ export function BenchmarkRequestPage() {
 
             {verdict && <VerdictPanel verdict={verdict} title="Verdict" />}
 
-            <div>
-              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-                Per input-length band
-              </h2>
-              <BandTable bands={bands?.items ?? []} />
-            </div>
+            <SuiteBody
+              harness={request.harness}
+              requestId={requestId}
+              runs={runs.items}
+              open={open}
+              stepped={!!stepped}
+              parameters={request.parameters}
+            />
 
             <div>
               <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
@@ -257,4 +283,59 @@ export function BenchmarkRequestPage() {
       </div>
     </div>
   )
+}
+
+/**
+ * The half of a suite that depends on what it was asking.
+ *
+ * Above this everything is the same for every kind — the ask, the coverage, the
+ * verdict, the runs — because those are facts about a request and not about the
+ * question it carried. Below it nothing is shared: a load curve, a claim
+ * ledger, a transcript and a score table have no columns in common, and a
+ * generic "results" panel that tried to hold all four would show none of them
+ * properly.
+ */
+function SuiteBody({
+  harness,
+  requestId,
+  runs,
+  open,
+  stepped,
+  parameters,
+}: {
+  harness: string
+  requestId: string
+  runs: BenchmarkRun[] | undefined
+  open: boolean
+  stepped: boolean
+  parameters: Record<string, unknown>
+}) {
+  switch (runKind(harness)) {
+    case "performance":
+      return (
+        <PerformanceSuite
+          requestId={requestId}
+          runs={runs}
+          open={open}
+          stepped={stepped}
+        />
+      )
+    case "conformance":
+      return (
+        <ConformanceSuite
+          id={requestId}
+          reference={
+            typeof parameters.reference_base_url === "string"
+              ? parameters.reference_base_url
+              : null
+          }
+        />
+      )
+    case "agent":
+      return <AgentSuite id={requestId} />
+    case "evaluation":
+      return <EvaluationSuite id={requestId} />
+    default:
+      return null
+  }
 }

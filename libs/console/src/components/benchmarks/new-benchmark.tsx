@@ -100,8 +100,8 @@ export function NewBenchmarkDialog({
           setOpen(false)
           const go = () =>
             navigate({
-              to: "/benchmarks/$benchmarkId",
-              params: { benchmarkId: run.id },
+              to: "/workbench/$runId",
+              params: { runId: run.id },
             })
           toast.success(`${run.harness} run started`, {
             description: run.id,

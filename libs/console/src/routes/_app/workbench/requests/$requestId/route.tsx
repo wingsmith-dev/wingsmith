@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router"
 import { BenchmarkRequestPage } from "./page"
 
-export const Route = createFileRoute("/_app/benchmarks/requests/$requestId")({
+export const Route = createFileRoute("/_app/workbench/requests/$requestId")({
   component: BenchmarkRequestPage,
 })

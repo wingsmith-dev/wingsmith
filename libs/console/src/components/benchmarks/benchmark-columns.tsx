@@ -60,8 +60,8 @@ export function benchmarkColumns(
       cell: (run) => (
         <ResourceCell kind="benchmark">
           <Link
-            to="/benchmarks/$benchmarkId"
-            params={{ benchmarkId: run.id }}
+            to="/workbench/$runId"
+            params={{ runId: run.id }}
             className="block font-mono text-xs hover:underline"
           >
             {run.harness}
@@ -108,7 +108,7 @@ export function benchmarkColumns(
       cell: (run) =>
         run.request_id ? (
           <Link
-            to="/benchmarks/requests/$requestId"
+            to="/workbench/requests/$requestId"
             params={{ requestId: run.request_id }}
             className="font-mono text-2xs hover:underline"
           >

@@ -1,5 +1,5 @@
 import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
-import { NewBenchmarkRequestDialog } from "@/components/benchmarks/new-request"
+import { NewRunDialog } from "@/components/benchmarks/new-run"
 import { ActivityStream } from "@/components/demand/activity-stream"
 import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
 import {
@@ -85,7 +85,8 @@ import {
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
-import { LoadCurvePanel, useWorkbenchCurve } from "./Curve"
+import { LoadCurvePanel } from "@/components/benchmarks/curve"
+import { useWorkbenchCurve } from "@/modules/benchmarks/queries"
 import { EconomicsTab, EconomicsTabContent } from "./Economics"
 import {
   EditCapabilitiesDialog,
@@ -254,7 +255,7 @@ export function WorkloadDetailPage() {
         />
       )}
       {workload && benchOpen && (
-        <NewBenchmarkRequestDialog
+        <NewRunDialog
           open
           level="workload"
           target={workload.id}

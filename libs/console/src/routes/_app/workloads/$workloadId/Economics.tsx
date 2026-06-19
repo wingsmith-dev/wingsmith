@@ -16,7 +16,7 @@ import {
   useWorkloadBenchmarks,
 } from "@/modules/benchmarks/queries"
 import { reading, type BenchmarkCurve } from "@/modules/benchmarks/types"
-import { useWorkbenchCurve } from "./Curve"
+import { useWorkbenchCurve } from "@/modules/benchmarks/queries"
 import {
   DAY_POINTS,
   DEFAULT_PREFILL_MULTIPLE,
@@ -541,14 +541,13 @@ function EconomicsView({ workload }: { workload: Workload }) {
                 nothing.
               </p>
               <p className="text-2xs text-muted-foreground/70">
-                A seeded figure is{" "}
-                <span className="text-foreground">peak</span> throughput — the
-                best a sweep ever saw, usually past the latency band you would
-                sell — so size revenue on a step of the ramp above rather than
-                on it. Prefill defaults to {DEFAULT_PREFILL_MULTIPLE}x decode
-                and is assumed until measured; it is the one number here no
-                benchmark has yet reported, and it moves the answer more than it
-                looks.
+                A seeded figure is <span className="text-foreground">peak</span>{" "}
+                throughput — the best a sweep ever saw, usually past the latency
+                band you would sell — so size revenue on a step of the ramp
+                above rather than on it. Prefill defaults to{" "}
+                {DEFAULT_PREFILL_MULTIPLE}x decode and is assumed until
+                measured; it is the one number here no benchmark has yet
+                reported, and it moves the answer more than it looks.
               </p>
             </div>
           </Panel>
@@ -750,7 +749,7 @@ function OperatingPoint({
 function useNumericDraft(
   value: number | null,
   commit: (value: number | null) => void,
-  empty: number | null,
+  empty: number | null
 ) {
   const [draft, setDraft] = useState<string | null>(null)
   return {

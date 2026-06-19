@@ -76,7 +76,14 @@ const accessItems: NavItem[] = [
   { label: "Policies", to: "/policies", kind: "policy" },
 ]
 
+/**
+ * What the plane was asked to do and what came back. Workbench sits with
+ * Operations and Events rather than beside the serving objects: a run is
+ * imperative and has a lifecycle of its own, which is the thing these three
+ * have in common and the thing an object list does not.
+ */
 const activityItems: NavItem[] = [
+  { label: "Workbench", to: "/workbench", kind: "benchmark" },
   { label: "Operations", to: "/operations", kind: "operation" },
   { label: "Events", to: "/events", kind: "event" },
 ]

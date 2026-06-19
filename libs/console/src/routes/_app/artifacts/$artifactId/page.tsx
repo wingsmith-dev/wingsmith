@@ -416,7 +416,7 @@ function BaselinesPanel({
           variant="ghost"
           className="font-mono text-2xs"
         >
-          <Link to="/benchmarks">Benchmarks</Link>
+          <Link to="/workbench">Workbench</Link>
         </Button>
       </CardHeader>
       <CardContent>

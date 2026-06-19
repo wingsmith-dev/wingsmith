@@ -126,6 +126,7 @@ export interface BenchmarkRun {
   summary: Record<string, unknown> | null
   artifacts_uri: string | null
   error: string | null
+  log_tail: string | null
   created_at: string
   updated_at: string | null
   started_at: string | null

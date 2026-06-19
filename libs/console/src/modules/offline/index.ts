@@ -973,6 +973,7 @@ registerFixtures([
         phase: "pending",
         summary: null,
         artifacts_uri: null,
+        log_tail: null,
         error: null,
         created_at: now,
         updated_at: null,

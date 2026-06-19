@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMemo } from "react"
 import { useCursorList } from "@/lib/paginate"
 import {
   createBenchmark,
@@ -17,6 +18,7 @@ import {
 import {
   curveOpen,
   isOpen,
+  latestSteppedRequest,
   type BenchmarkCreateRequest,
   type BenchmarkCurve,
   type BenchmarkRequest,
@@ -257,3 +259,19 @@ export function useCreateBenchmarkRequest() {
     },
   })
 }
+
+/**
+ * The curve of a workload's most recent ramp, if it has ever run one.
+ *
+ * The request is recovered from the runs rather than listed: the plane has no
+ * way to enumerate requests, and a request whose runs cover more than one step
+ * is a stepped one by definition. One read, shared by the tiles and the panel
+ * through the query cache.
+ */
+export function useWorkbenchCurve(runs: BenchmarkRun[] | undefined) {
+  const request = useMemo(() => latestSteppedRequest(runs), [runs])
+  const query = useBenchmarkCurve(request)
+  return { request, ...query }
+}
+
+export type WorkbenchCurve = ReturnType<typeof useWorkbenchCurve>

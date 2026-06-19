@@ -28,16 +28,14 @@ import {
   type CurveSample,
   type CurveTone,
 } from "@/modules/benchmarks/display"
-import { useBenchmarkCurve } from "@/modules/benchmarks/queries"
+import type { WorkbenchCurve } from "@/modules/benchmarks/queries"
 import {
   curveProgress,
   isOpen,
-  latestSteppedRequest,
   reading,
   readingUnit,
   type BenchmarkCurve,
   type BenchmarkCurvePoint,
-  type BenchmarkRun,
 } from "@/modules/benchmarks/types"
 import { IconChartLine } from "@tabler/icons-react"
 import { useMemo, useState } from "react"
@@ -66,22 +64,6 @@ import { useMemo, useState } from "react"
  */
 
 /* ---- the read --------------------------------------------------------- */
-
-/**
- * The curve of the workload's most recent ramp, if it has ever run one.
- *
- * The request is recovered from the runs rather than listed: the plane has no
- * way to enumerate requests, and a request whose runs cover more than one step
- * is a stepped one by definition. One read, shared by the tiles and the panel
- * through the query cache.
- */
-export function useWorkbenchCurve(runs: BenchmarkRun[] | undefined) {
-  const request = useMemo(() => latestSteppedRequest(runs), [runs])
-  const query = useBenchmarkCurve(request)
-  return { request, ...query }
-}
-
-export type WorkbenchCurve = ReturnType<typeof useWorkbenchCurve>
 
 /* ---- the panel -------------------------------------------------------- */
 
@@ -142,11 +124,7 @@ export function LoadCurvePanel({
     )
   if (!data || state === "empty")
     return (
-      <Panel
-        title="Finding the inflection point"
-        badge={badge}
-        action={action}
-      >
+      <Panel title="Finding the inflection point" badge={badge} action={action}>
         <Note>
           The ramp has been accepted and has not expanded into any step yet.
         </Note>
@@ -154,11 +132,7 @@ export function LoadCurvePanel({
     )
   if (state === "all-failed")
     return (
-      <Panel
-        title="Finding the inflection point"
-        badge={badge}
-        action={action}
-      >
+      <Panel title="Finding the inflection point" badge={badge} action={action}>
         <FailedRamp curve={data} />
       </Panel>
     )
@@ -355,10 +329,7 @@ function Drawn({
         )}
       </Panel>
 
-      <Panel
-        title="Steps"
-        subtitle="Every step of the ramp, warm-ups included"
-      >
+      <Panel title="Steps" subtitle="Every step of the ramp, warm-ups included">
         <StepTable curve={curve} />
       </Panel>
     </>
