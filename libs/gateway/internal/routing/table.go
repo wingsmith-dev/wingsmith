@@ -28,7 +28,12 @@ import (
 // supportedPolicyVersion is the highest endpoint policy version this build
 // reads. It is duplicated from serving deliberately: routing reports what it
 // cannot enforce, serving enforces it, and neither should import the other.
-const supportedPolicyVersion = 1
+//
+// 2 is the scoped-rule shape. 1 was a map of parameter names to constraints
+// plus a list of denial names, and this build no longer reads it — the plane
+// converts a stored v1 policy on the way out, so nothing on this side has to
+// carry two languages.
+const supportedPolicyVersion = 2
 
 // ErrUnknownEndpoint is returned when no endpoint answers to a name.
 var ErrUnknownEndpoint = errors.New("unknown endpoint")
@@ -100,7 +105,7 @@ type Route struct {
 	// endpoint that sells none. It rides the table rather than being fetched per
 	// request for the same reason everything else here does: the table refreshes
 	// on a timer and is never joined on the request path.
-	Policy *plane.ParameterPolicy
+	Policy *plane.Policy
 
 	totalWeight int
 	cursor      *picker
@@ -374,9 +379,21 @@ func (r *Router) Load(ctx context.Context) error {
 		// newer plane is enforced as far as this build reads it, and the part it
 		// cannot read is a conformance gap somebody has to see — once a refresh,
 		// not once a completion.
-		if p := endpoint.Policy; p != nil && p.Version > supportedPolicyVersion {
-			slog.Warn("gateway: endpoint policy is newer than this build",
-				"endpoint", endpoint.Name, "policy_version", p.Version, "supported", supportedPolicyVersion)
+		if p := endpoint.Policy; p != nil {
+			switch {
+			case p.Version > supportedPolicyVersion:
+				slog.Warn("gateway: endpoint policy is newer than this build",
+					"endpoint", endpoint.Name, "policy_version", p.Version, "supported", supportedPolicyVersion)
+			case len(p.Rules) == 0:
+				// A policy that carries no rules enforces nothing, and an
+				// endpoint that sold nothing sends no policy at all — so this
+				// is either an empty one somebody left behind or a plane still
+				// serving the v1 shape this build stopped reading. Both are a
+				// term that is not being honoured, which is the one thing a
+				// consistency policy must never be silent about.
+				slog.Warn("gateway: endpoint policy carries no rules this build can read",
+					"endpoint", endpoint.Name, "policy_version", p.Version)
+			}
 		}
 
 		for _, upstream := range order(endpoint) {

@@ -5,6 +5,7 @@ import datetime as dt
 from types import SimpleNamespace
 
 import pytest
+import msgspec
 
 from app.core.ids import ENDPOINT
 from app.core.ids import new_uid
@@ -26,6 +27,7 @@ from app.modules.endpoints.services import _revision
 from app.modules.endpoints.services import check_shape
 from app.modules.endpoints.services import check_surface
 from app.modules.endpoints.services import check_targets
+from app.modules.endpoints.services import endpoint_policy
 from app.modules.endpoints.repository import EndpointRepository
 
 
@@ -758,7 +760,7 @@ async def test_the_hatch_is_read_with_or_without_the_leading_dashes(key):
     assert table.endpoints[0].upstreams[0].served_model_name == "moonshotai/kimi-k3"
 
 
-KIMI_POLICY = {
+KIMI_POLICY_V1 = {
     "policy": {
         "parameters": {
             "temperature": {"enum": [1]},
@@ -770,7 +772,39 @@ KIMI_POLICY = {
         "deny": ["tool_choice.named_while_thinking"],
     }
 }
-"""What Moonshot answered 400 to on 2026-09-01, written as a policy."""
+"""What Moonshot answered 400 to on 2026-09-01, in the language it was written in.
+
+Kept as a fixture because it is what is actually stored. Nothing writes this
+shape any more, and everything still has to read it."""
+
+
+CHAT = "/v1/chat/completions"
+
+KIMI_POLICY = {
+    "policy": {
+        "version": 2,
+        "rules": [
+            {"route": CHAT, "key": "temperature", "enum": [1]},
+            {"route": CHAT, "key": "top_p", "enum": [0.95]},
+            {"route": CHAT, "key": "presence_penalty", "enum": [0]},
+            {"route": CHAT, "key": "frequency_penalty", "enum": [0]},
+            {"route": CHAT, "key": "logprobs", "enum": [False]},
+            {"route": CHAT, "predicate": "tool_choice.named_while_thinking", "deny": True},
+            {"route": CHAT, "key": "thinking.type", "default": "enabled"},
+            {"route": CHAT, "when_present": "thinking.effort", "key": "reasoning_effort", "drop": True},
+        ],
+    }
+}
+"""The same terms as rules, plus the two v1 could not say.
+
+Every pin carries the path it was measured on, so none of them reaches
+`/v1/embeddings`, `/v1/messages` or `/v1/responses`.
+
+The `thinking.type` default is Moonshot's contract that an omitted type means
+enabled, which the frontend behind this endpoint answers 400 to instead. The
+`reasoning_effort` drop is their contract that `thinking.effort` beats the
+OpenAI-style field and the loser is ignored rather than refused — measured on our
+endpoint as a reasoning trace that did not get shorter when it should have."""
 
 
 @pytest.mark.asyncio
@@ -790,10 +824,128 @@ async def test_a_sold_policy_reaches_the_resolved_table():
     table = await resolution([tunnelled_row(endpoint=endpoint)]).resolved()
     policy = table.endpoints[0].policy
     assert policy is not None
-    assert policy.version == 1
-    assert policy.parameters["temperature"].enum == [1]
-    assert policy.parameters["logprobs"].enum == [False]
-    assert policy.deny == ["tool_choice.named_while_thinking"]
+    assert policy.version == 2
+
+    by_key = {rule.key: rule for rule in policy.rules if rule.key}
+    assert by_key["temperature"].enum == [1]
+    assert by_key["logprobs"].enum == [False]
+    assert by_key["thinking.type"].default == "enabled"
+    assert by_key["reasoning_effort"].drop is True
+    assert by_key["reasoning_effort"].when_present == "thinking.effort"
+    assert all(rule.route == CHAT for rule in policy.rules)
+    assert [rule.predicate for rule in policy.rules if rule.predicate] == ["tool_choice.named_while_thinking"]
+
+
+@pytest.mark.asyncio
+async def test_a_policy_stored_in_the_old_shape_reaches_the_gateway_as_rules():
+    """The migration, and it is a read rather than a batch job.
+
+    Converting here is what makes it one nobody has to schedule: no window where
+    half the rows are in one language, and no way for a policy written before
+    this change to reach a gateway in a shape it stopped reading.
+    """
+    endpoint = FakeEndpoint(name="moonshotai/kimi-k3", surface=KIMI_POLICY_V1)
+    table = await resolution([tunnelled_row(endpoint=endpoint)]).resolved()
+    policy = table.endpoints[0].policy
+    assert policy is not None
+    assert policy.version == 2
+
+    by_key = {rule.key: rule for rule in policy.rules if rule.key}
+    assert by_key["temperature"].enum == [1]
+    assert by_key["logprobs"].enum == [False]
+
+    denied = [rule for rule in policy.rules if rule.predicate]
+    assert [rule.predicate for rule in denied] == ["tool_choice.named_while_thinking"]
+    assert all(rule.deny for rule in denied)
+
+
+def test_a_rule_that_only_removes_a_field_is_valid():
+    """`drop` is the term for a field the provider accepts and ignores.
+
+    Denying one of those would 400 a request the vendor serves, and leaving it in
+    place lets an engine honour a field the provider does not — a wrong answer
+    rather than an error, and the harder of the two to notice.
+    """
+    check_surface(
+        {
+            "policy": {
+                "rules": [
+                    {"when_present": "thinking.effort", "key": "reasoning_effort", "drop": True},
+                    {"key": "logit_bias", "drop": True},
+                ]
+            }
+        }
+    )
+
+
+def test_two_drops_of_one_key_on_different_conditions_are_accepted():
+    """Not a disagreement: both take the field out, in either order, and two
+    reasons to remove one field is an ordinary thing to want."""
+    check_surface(
+        {
+            "policy": {
+                "rules": [
+                    {"when_present": "thinking.effort", "key": "reasoning_effort", "drop": True},
+                    {"when_present": "thinking.type", "key": "reasoning_effort", "drop": True},
+                ]
+            }
+        }
+    )
+
+
+def test_a_default_and_a_drop_on_one_key_are_refused():
+    """One puts the field in and the other takes it out, on requests that match
+    both. There is no answer to that on the request path, so it is refused here."""
+    with pytest.raises(Invalid):
+        check_surface(
+            {
+                "policy": {
+                    "rules": [
+                        {"key": "reasoning_effort", "default": "max"},
+                        {"when_present": "thinking.effort", "key": "reasoning_effort", "drop": True},
+                    ]
+                }
+            }
+        )
+
+
+def test_two_writes_guarded_on_different_paths_still_conflict():
+    """`when_present` narrows nothing for this question: a body carrying both
+    conditions matches both rules, which is exactly the conflict being refused."""
+    with pytest.raises(Invalid):
+        check_surface(
+            {
+                "policy": {
+                    "rules": [
+                        {"when_present": "a", "key": "k", "default": 1},
+                        {"when_present": "b", "key": "k", "default": 2},
+                    ]
+                }
+            }
+        )
+
+
+def test_a_migrated_policy_keeps_the_scope_it_had_which_is_none():
+    """v1 had no route, so a term it sold applied to every path — and it still does.
+
+    Narrowing these to chat completions would be the right guess for every policy
+    in the fleet today and still the wrong thing to do: a migration that quietly
+    stops enforcing a sold term on two protocols is the failure this object
+    exists to prevent. Scoping is an edit an operator makes, one endpoint at a
+    time, and it is visible in the surface when they do.
+    """
+    policy = endpoint_policy(KIMI_POLICY_V1)
+    assert policy is not None
+    assert all(rule.route == "" for rule in policy.rules)
+    assert all(rule.stream is None for rule in policy.rules)
+
+
+def test_a_converted_policy_is_the_same_bytes_every_time():
+    """The gateway polls with `If-None-Match`. A conversion that reordered itself
+    between two reads would move the revision on a table nothing had changed in."""
+    first = msgspec.json.encode(endpoint_policy(KIMI_POLICY_V1))
+    for _ in range(5):
+        assert msgspec.json.encode(endpoint_policy(KIMI_POLICY_V1)) == first
 
 
 def test_a_rule_that_constrains_nothing_is_refused():
@@ -801,11 +953,22 @@ def test_a_rule_that_constrains_nothing_is_refused():
     failure mode a conformance policy must not have: silently not conforming."""
     with pytest.raises(Invalid):
         check_surface({"policy": {"parameters": {"temperature": {}}}})
+    with pytest.raises(Invalid):
+        check_surface({"policy": {"rules": [{"key": "temperature"}]}})
+
+
+def test_a_rule_that_only_fills_a_field_in_is_valid():
+    """A default constrains nothing and is still a term. It is the half of this
+    language that writes instead of refusing, and refusing it as empty would make
+    the one rule K3 needs unwritable."""
+    check_surface({"policy": {"rules": [{"key": "thinking.type", "default": "enabled"}]}})
 
 
 def test_an_inverted_range_is_refused():
     with pytest.raises(Invalid):
         check_surface({"policy": {"parameters": {"temperature": {"min": 5, "max": 1}}}})
+    with pytest.raises(Invalid):
+        check_surface({"policy": {"rules": [{"key": "temperature", "min": 5, "max": 1}]}})
 
 
 def test_an_unknown_field_is_refused_rather_than_ignored():
@@ -813,6 +976,103 @@ def test_an_unknown_field_is_refused_rather_than_ignored():
     so it is refused on write rather than dropped on read."""
     with pytest.raises(Invalid):
         check_surface({"policy": {"parmeters": {"temperature": {"enum": [1]}}}})
+    with pytest.raises(Invalid):
+        check_surface({"policy": {"rules": [{"kye": "temperature", "enum": [1]}]}})
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        pytest.param({"key": "a", "predicate": "b", "deny": True}, id="both subjects"),
+        pytest.param({"enum": [1]}, id="neither subject"),
+        pytest.param({"predicate": "x", "deny": True, "enum": [1]}, id="a predicate with a value term"),
+        pytest.param({"predicate": "x", "deny": True, "default": 1}, id="a predicate with a default"),
+        pytest.param({"predicate": "x"}, id="a predicate that denies nothing"),
+        pytest.param({"key": "a", "deny": True, "enum": [1]}, id="a denied key with an unreachable enum"),
+        pytest.param({"route": "v1/chat/completions", "key": "a", "enum": [1]}, id="a route that is not a path"),
+        pytest.param({"key": "thinking..type", "enum": [1]}, id="a key with an empty segment"),
+        pytest.param({"key": ".thinking", "enum": [1]}, id="a key with a leading dot"),
+        pytest.param({"predicate": "x", "deny": True, "drop": True}, id="a predicate with nothing to drop"),
+        pytest.param({"key": "a", "deny": True, "drop": True}, id="a key both refused and removed"),
+        pytest.param({"key": "a", "drop": True, "default": 1}, id="a key both removed and filled in"),
+        pytest.param({"key": "a", "drop": True, "when_present": "a"}, id="a condition on the rule's own key"),
+        pytest.param({"key": "a", "drop": True, "when_present": "b..c"}, id="a condition with an empty segment"),
+    ],
+)
+def test_a_rule_the_gateway_could_not_act_on_is_refused(rule):
+    """Every one of these would be stored, read, and enforce nothing.
+
+    A key and a predicate are different namespaces — one is read out of the body,
+    the other is looked up in a registry — so a rule that names both names
+    nothing the gateway can resolve. A route that is not a path matches no
+    request. A key with an empty segment resolves to no value. None of them has a
+    symptom anywhere downstream, which is why they have to fail on write.
+    """
+    with pytest.raises(Invalid):
+        check_surface({"policy": {"rules": [rule]}})
+
+
+def test_two_defaults_for_one_key_on_overlapping_scopes_are_refused():
+    """Resolved here so the gateway never has to.
+
+    A default is applied to a request in flight and there is no good answer to
+    "which of these two values" at that point: picking by array order would make
+    the order semantic, and picking the narrower scope would make a policy mean
+    something other than what each of its rules says.
+    """
+    with pytest.raises(Invalid):
+        check_surface(
+            {
+                "policy": {
+                    "rules": [
+                        {"key": "thinking.type", "default": "enabled"},
+                        {"route": CHAT, "key": "thinking.type", "default": "disabled"},
+                    ]
+                }
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "rules",
+    [
+        pytest.param(
+            [
+                {"route": CHAT, "key": "thinking.type", "default": "enabled"},
+                {"route": "/v1/messages", "key": "thinking.type", "default": "disabled"},
+            ],
+            id="different routes",
+        ),
+        pytest.param(
+            [
+                {"stream": True, "key": "thinking.type", "default": "enabled"},
+                {"stream": False, "key": "thinking.type", "default": "disabled"},
+            ],
+            id="different stream modes",
+        ),
+        pytest.param(
+            [
+                {"key": "thinking.type", "default": "enabled"},
+                {"key": "thinking.keep", "default": "all"},
+            ],
+            id="different keys",
+        ),
+    ],
+)
+def test_two_defaults_that_cannot_both_fire_are_accepted(rules):
+    check_surface({"policy": {"rules": rules}})
+
+
+def test_rules_at_version_one_are_refused():
+    """The version names the shape. A policy that claims the language it is not
+    written in is a policy a reader would enforce the wrong half of."""
+    with pytest.raises(Invalid):
+        check_surface({"policy": {"version": 1, "rules": [{"key": "a", "enum": [1]}]}})
+
+
+def test_the_two_languages_cannot_be_mixed_in_one_policy():
+    with pytest.raises(Invalid):
+        check_surface({"policy": {"parameters": {"a": {"enum": [1]}}, "rules": [{"key": "a", "enum": [1]}]}})
 
 
 def test_a_surface_without_a_policy_is_valid():

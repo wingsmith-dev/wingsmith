@@ -25,6 +25,8 @@ from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
 from app.modules.quotas.services import declared_limits
 
+from .schemas import RuleSchema
+from .schemas import PolicySchema
 from .schemas import EndpointSchema
 from .schemas import ResolvedTableSchema
 from .schemas import EndpointTargetSchema
@@ -96,19 +98,83 @@ def check_shape(visibility: str, routing_strategy: str) -> None:
         raise Invalid(f"unknown routing strategy {routing_strategy!r}", {"allowed": sorted(STRATEGIES)})
 
 
-def parameter_policy(surface: dict | None) -> ParameterPolicySchema | None:
+POLICY_VERSION = 2
+"""The policy language the plane emits. A stored v1 policy is converted to it on read."""
+
+
+def endpoint_policy(surface: dict | None) -> PolicySchema | None:
     """The endpoint's request terms, or None when it has not sold any.
 
     Read on every table build and validated on every write, both through this one
     function, so a policy that would not survive the gateway cannot be stored.
+
+    A policy stored in the v1 shape is converted here rather than rewritten in
+    the database. Converting on read is what makes this a migration nobody has to
+    schedule: there is no batch job to run, no window where half the rows are in
+    one language, and no way for a policy written before this change to reach a
+    gateway in a shape it stopped reading. The cost is this function carrying two
+    input shapes, which is one function against every stored surface, forever
+    against the length of one deploy.
     """
     raw = (surface or {}).get("policy")
     if raw is None:
         return None
+    if not isinstance(raw, dict):
+        raise Invalid("surface.policy must be an object", {"field": "surface.policy"})
+    if _is_legacy(raw):
+        return _migrate(_as(raw, ParameterPolicySchema))
+    return _as(raw, PolicySchema)
+
+
+def _as(raw: dict, schema):
+    """Convert, reporting a policy the gateway could not read as a bad request."""
     try:
-        return convert(raw, ParameterPolicySchema)
+        return convert(raw, schema)
     except ValidationError as exc:
-        raise Invalid(f"surface.policy is not a parameter policy: {exc}", {"field": "surface.policy"}) from exc
+        raise Invalid(f"surface.policy is not a policy: {exc}", {"field": "surface.policy"}) from exc
+
+
+def _is_legacy(raw: dict) -> bool:
+    """Which of the two languages this policy is written in.
+
+    Decided on the keys rather than on `version` alone, because `version` is
+    absent far more often than it is wrong and the two shapes have no key in
+    common — `forbid_unknown_fields` then catches every mixture of them, which is
+    what turns a typo into a 400 instead of a rule that silently enforces nothing.
+    """
+    if "rules" in raw:
+        return False
+    return "parameters" in raw or "deny" in raw or raw.get("version") == 1
+
+
+def _migrate(legacy: ParameterPolicySchema) -> PolicySchema:
+    """A v1 policy, read as the language that replaced it.
+
+    Every rule comes out unscoped, which is what it meant: v1 had no route, so a
+    stored parameter pin applied to every path the endpoint answers on and it
+    still does. Narrowing them to `/v1/chat/completions` here would be the right
+    guess for every policy in the fleet today and still the wrong thing to do — a
+    migration that quietly stops enforcing a sold term on two protocols is the
+    failure this whole object exists to prevent, and the operator who wrote the
+    term is the one who gets to say where it applies. Scoping is an edit somebody
+    makes, one endpoint at a time, and it is visible in the surface when they do.
+
+    Parameters are emitted in name order so that a converted policy is the same
+    bytes every time it is read, and the gateway's `If-None-Match` still answers
+    304 on a table nothing has moved in.
+
+    One edge is accepted rather than handled: a v1 parameter name containing a
+    dot was a top-level key spelled with a dot in it, and it converts into a
+    two-segment path. No field on any wire this gateway fronts is spelled that
+    way, so the case is theoretical — it is written down here rather than guarded
+    against, because a guard would be a branch nothing ever takes.
+    """
+    rules = [
+        RuleSchema(key=name, enum=rule.enum, min=rule.min, max=rule.max)
+        for name, rule in sorted(legacy.parameters.items())
+    ]
+    rules.extend(RuleSchema(predicate=name, deny=True) for name in legacy.deny)
+    return PolicySchema(version=POLICY_VERSION, rules=rules)
 
 
 SURFACE_CHOICES = {
@@ -162,20 +228,151 @@ def check_surface(surface: dict) -> None:
         if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
             raise Invalid(f"surface.{field} must be a positive whole number", {"field": f"surface.{field}"})
 
-    policy = parameter_policy(surface)
+    check_policy(endpoint_policy(surface))
+
+
+def check_policy(policy: PolicySchema | None) -> None:
+    """Refuse a policy that would not mean, at the gateway, what its author meant.
+
+    Every check here exists because the alternative is a policy that looks like a
+    working configuration and enforces nothing — silently not conforming, which
+    is the one failure mode a consistency term must not have. A rule that
+    constrains nothing, a route that is not a path, a key with an empty segment:
+    each of them is a term somebody sold and nobody applies, and none of them
+    would produce a symptom anywhere downstream.
+    """
     if policy is None:
         return
-    for name, rule in policy.parameters.items():
-        if rule.enum is None and rule.min is None and rule.max is None:
+    if policy.rules and policy.version < POLICY_VERSION:
+        raise Invalid(
+            f"surface.policy carries rules, so it must declare version {POLICY_VERSION} or above",
+            {"field": "surface.policy.version"},
+        )
+
+    for index, rule in enumerate(policy.rules):
+        _check_rule(rule, f"surface.policy.rules[{index}]")
+
+    _check_one_writer_per_key([rule for rule in policy.rules if rule.default is not None or rule.drop])
+
+
+def _check_rule(rule: RuleSchema, where: str) -> None:
+    """Refuse one rule that does not say something the gateway can act on.
+
+    The subject is named beside the index, because a policy stored in the v1
+    shape is converted before it gets here and its author never wrote an index —
+    they wrote a parameter name, and that is what has to appear in the error.
+    """
+    subject = f"key {rule.key!r}" if rule.key else f"predicate {rule.predicate!r}"
+    if bool(rule.key) == bool(rule.predicate):
+        raise Invalid(
+            f"{where} must name exactly one of key and predicate — a key is a path into the "
+            f"request body, a predicate is a rule the gateway implements",
+            {"field": where},
+        )
+    if rule.route and not rule.route.startswith("/"):
+        raise Invalid(
+            f"{where}.route {rule.route!r} is not a request path — it must start with '/'",
+            {"field": f"{where}.route"},
+        )
+    for field, path in (("key", rule.key), ("when_present", rule.when_present)):
+        if path and not all(segment for segment in path.split(".")):
             raise Invalid(
-                f"surface.policy.parameters.{name} constrains nothing — give enum, min or max",
-                {"field": f"surface.policy.parameters.{name}"},
+                f"{where}.{field} {path!r} is not a JSON path — every segment between the dots must be a name",
+                {"field": f"{where}.{field}"},
             )
-        if rule.min is not None and rule.max is not None and rule.min > rule.max:
+    if rule.when_present and rule.when_present == rule.key:
+        # It reads as a condition and is not one: a key is present or it is not,
+        # and either way the rule does the same thing. Refused because a term
+        # that looks conditional and is unconditional is the kind of policy
+        # somebody writes once and reads wrong for a year.
+        raise Invalid(
+            f"{where}.when_present names its own key {rule.key!r}, which is not a condition",
+            {"field": f"{where}.when_present"},
+        )
+
+    values = rule.enum is not None or rule.min is not None or rule.max is not None or rule.default is not None
+    if rule.predicate:
+        if rule.drop:
             raise Invalid(
-                f"surface.policy.parameters.{name} has min above max",
-                {"field": f"surface.policy.parameters.{name}"},
+                f"{where} names {subject}, which has no key to drop",
+                {"field": where},
             )
+        # A predicate reads the whole body and answers yes or no. There is no
+        # value for a bound to bound or a default to fill in, so a term about one
+        # is a term about nothing.
+        if values:
+            raise Invalid(
+                f"{where} names {subject}, which takes deny and nothing else",
+                {"field": where},
+            )
+        if not rule.deny:
+            raise Invalid(
+                f"{where} names {subject} but does not deny it — it constrains nothing",
+                {"field": where},
+            )
+        return
+
+    if rule.deny and rule.drop:
+        # One answers 400 and the other answers 200 with the field taken out.
+        # There is no request for which both are what the author meant.
+        raise Invalid(
+            f"{where} both denies and drops {subject} — a refusal and a silent removal are different answers",
+            {"field": where},
+        )
+    if (rule.deny or rule.drop) and values:
+        # Deny refuses the key whenever it is sent and drop removes it, so
+        # nothing else on the rule can ever be reached — including a default,
+        # which would be filling in a field the same rule takes away.
+        raise Invalid(
+            f"{where} denies or drops {subject}, so enum, min, max and default on it are unreachable",
+            {"field": where},
+        )
+    if not rule.deny and not rule.drop and not values:
+        raise Invalid(
+            f"{where} ({subject}) constrains nothing — give enum, min, max, deny, drop or default",
+            {"field": where},
+        )
+    if rule.min is not None and rule.max is not None and rule.min > rule.max:
+        raise Invalid(f"{where} ({subject}) has min above max", {"field": where})
+
+
+def _check_one_writer_per_key(writers: list[RuleSchema]) -> None:
+    """Refuse two rules that could disagree about what one key becomes.
+
+    Resolved here so the gateway never has to. A write happens to a request in
+    flight and there is no good answer to "which of these two values" at that
+    point — picking one by array order would make the order semantic, and picking
+    the most specific scope would make a policy mean something different from
+    what each of its rules says. So the conflict is refused where somebody is
+    writing it down and can say which they meant.
+
+    Two drops of one key are not a disagreement: both take it out, in either
+    order, and two conditions for removing the same field is an ordinary thing to
+    want. A default against a default, or a default against a drop, is one.
+    """
+    for first in range(len(writers)):
+        for second in range(first + 1, len(writers)):
+            left, right = writers[first], writers[second]
+            if left.key != right.key or (left.drop and right.drop):
+                continue
+            if _scopes_overlap(left, right):
+                raise Invalid(
+                    f"surface.policy declares two writes to {left.key!r} on scopes that overlap",
+                    {"field": "surface.policy.rules", "key": left.key},
+                )
+
+
+def _scopes_overlap(left: RuleSchema, right: RuleSchema) -> bool:
+    """Whether one request could match both scopes. An omitted term matches everything.
+
+    `when_present` is deliberately not read here. Two rules guarded on different
+    paths still both fire on a request that carries both of them, so a differing
+    condition narrows nothing for this question — treating it as though it did
+    would let exactly the conflict this function exists to refuse through.
+    """
+    routes = not left.route or not right.route or left.route == right.route
+    streams = left.stream is None or right.stream is None or left.stream == right.stream
+    return routes and streams
 
 
 def _revision(endpoint: Endpoint) -> str:
@@ -590,7 +787,7 @@ class EndpointService:
                     upstreams=upstreams,
                     failover_order=[uids[d] for d in endpoint.failover_order if d in uids],
                     limits=declared_limits(quota) if quota is not None else None,
-                    policy=parameter_policy(endpoint.surface),
+                    policy=endpoint_policy(endpoint.surface),
                     revision=_revision_of(own, served),
                 )
             )

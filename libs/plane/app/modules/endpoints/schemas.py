@@ -1,5 +1,7 @@
 import datetime as dt
 
+from typing import Any
+
 from app.core.schemas import UNSET
 from app.core.schemas import Struct
 from app.core.schemas import UnsetType
@@ -103,14 +105,14 @@ class EndpointUpdateRequest(Struct):
 
 
 class ParameterRuleSchema(Struct):
-    """What one request parameter may be set to.
+    """What one request parameter may be set to, in the policy language v1 spoke.
 
     `enum` pins a parameter to an exact set of values; `min`/`max` bound a range.
     Both may be given, and an absent field constrains nothing.
 
-    A rule is data and never an expression. This is read on every request, and it
-    is also the thing somebody reads across a negotiating table — neither survives
-    a small language.
+    Kept only to read what is already stored. Nothing is written in this shape
+    any more — `endpoint_policy` converts it on the way out — and nothing new
+    should be added to it.
     """
 
     enum: list | None = None
@@ -119,13 +121,92 @@ class ParameterRuleSchema(Struct):
 
 
 class ParameterPolicySchema(Struct):
+    """The v1 policy: a map of parameter names to constraints, plus denials.
+
+    Superseded by `PolicySchema` and kept for exactly one reason: it is the shape
+    the stored surfaces are in, and a migration that cannot read what is already
+    written is not a migration. Read, converted, never written.
+
+    It could say what a parameter may be set to and nothing else. It could not
+    say *where* a term applied — so a rule measured against chat completions was
+    enforced against `/v1/embeddings`, `/v1/messages` and `/v1/responses` too —
+    and it could not say what an absent field should become.
+    """
+
+    version: int = 1
+    parameters: dict[str, ParameterRuleSchema] = {}
+    deny: list[str] = []
+
+
+class RuleSchema(Struct):
+    """One term this endpoint sells: where it applies, what it is about, what it says.
+
+    **Scope.** `route` is the request path the term was measured against,
+    `stream` the transport mode, and `when_present` another JSON path the request
+    must carry for this rule to apply at all. All three are optional and an
+    omitted one matches everything, so an unscoped rule behaves exactly as a v1
+    policy did. A term is a claim about one protocol's request shape, and it is a
+    claim somebody measured — writing the path down is what stops it being
+    applied to three other protocols nobody measured.
+
+    `when_present` is a scope and not a term, which is why it sits here and not
+    beside `drop`. "Does this rule look at this request at all" is one question
+    however it is narrowed, and keeping the condition in the scope block means it
+    composes with every term rather than with one of them: the same field that
+    says "drop `reasoning_effort` when `thinking.effort` is set" would say
+    "`temperature` must be 1 while thinking is on", with no second way to spell
+    `when`.
+
+    **Subject.** Exactly one of `key` and `predicate`. A `key` is a JSON path
+    into the request body, dotted for nesting (`thinking.type`). A `predicate`
+    names a rule the gateway implements in Go, out of the same registry the v1
+    `deny` list named. The two are separate namespaces and never fall back to one
+    another: a key is read out of the body, a predicate is looked up in a map.
+
+    **Terms.** `enum`, `min` and `max` say what the value may be; `deny` refuses
+    the request outright — whenever the key is sent at all, or whenever the
+    predicate fires. `default` and `drop` are the terms that write instead of
+    refusing, and neither ever fails a request: `default` says what to put in the
+    request when the key is absent and its parent object is not, and `drop` takes
+    the key back out. `drop` is for a field the provider accepts and ignores —
+    denying one of those would 400 a request the vendor serves, and leaving it in
+    place lets an engine honour a field the provider does not, which is a wrong
+    answer rather than an error and the harder of the two to notice.
+
+    Every rule whose scope matches applies and the request must satisfy all of
+    them. There is no precedence and the order of the list is never read: a term
+    is something that was sold, and a second term does not cancel the first. Two
+    that cannot both hold are an authoring mistake and are refused here, where
+    somebody is writing the policy, rather than on a request already in flight.
+
+    A rule is data and never an expression. This is read on every request, and it
+    is also the thing somebody reads across a negotiating table — neither
+    survives a small language.
+    """
+
+    route: str = ""
+    stream: bool | None = None
+    when_present: str = ""
+    key: str = ""
+    predicate: str = ""
+    enum: list | None = None
+    min: float | None = None
+    max: float | None = None
+    deny: bool = False
+    drop: bool = False
+    default: Any = None
+
+
+class PolicySchema(Struct):
     """The request terms this endpoint enforces, on top of whatever the engine does.
 
     It exists because "consistent with the original model provider" is a term of
     sale, and a provider is sometimes stricter than the engine we run: Moonshot
     answers 400 to any `temperature` but 1, where an ordinary OpenAI-compatible
     server accepts the whole range. Conforming means refusing a request the engine
-    would happily serve.
+    would happily serve — and sometimes it means the opposite, filling in a field
+    the provider treats as having a default so that the engine reads what the
+    provider's own frontend would have.
 
     Absent is the default and means no opinion — every endpoint that has not sold
     a consistency term behaves exactly as it did before this existed. That default
@@ -135,12 +216,12 @@ class ParameterPolicySchema(Struct):
     `version` is what a reader that does not understand a future rule reports
     rather than guesses. The gateway enforces what it knows and counts what it
     does not, because a policy it cannot fully read is a conformance gap somebody
-    must see — never a reason to drop traffic.
+    must see — never a reason to drop traffic. 2 is this shape; a v1 policy is
+    converted on read and reaches the gateway as this one.
     """
 
-    version: int = 1
-    parameters: dict[str, ParameterRuleSchema] = {}
-    deny: list[str] = []
+    version: int = 2
+    rules: list[RuleSchema] = []
 
 
 class ResolvedUpstreamSchema(Struct):
@@ -206,7 +287,7 @@ class ResolvedEndpointSchema(Struct):
     upstreams: list[ResolvedUpstreamSchema]
     failover_order: list[str]
     limits: ResolvedLimitsSchema | None
-    policy: ParameterPolicySchema | None
+    policy: PolicySchema | None
     revision: str
 
 
