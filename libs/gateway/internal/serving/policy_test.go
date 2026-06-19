@@ -593,3 +593,44 @@ func TestMalformedDeclarationIsRefusedOnTheWire(t *testing.T) {
 		t.Fatalf("served declaration: status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 }
+
+// This gateway fronts the Anthropic Messages protocol as well as the OpenAI one,
+// and a policy is attached to an endpoint, not to a wire format — so an
+// Anthropic body reaches a rule written against OpenAI's shape. It must pass
+// through untouched.
+//
+// The distinction that saves it is that `messages[].tools` is an OpenAI-only
+// concept: Anthropic declares tools once at the top level and carries their use
+// as `tool_use` / `tool_result` content blocks, so no message ever holds a
+// `tools` key and the rule never engages. That is a real property of the
+// protocol rather than a lucky accident, but it is worth a test, because the
+// cost of being wrong is refusing every Claude Code request against this
+// endpoint — and a stripper that assumed one protocol's frame shape took this
+// service down once already.
+func TestAnthropicBodiesDoNotTripTheOpenAIShapedRule(t *testing.T) {
+	policy := &plane.ParameterPolicy{Version: 1, Deny: []string{"messages.tools"}}
+
+	for _, body := range []string{
+		// Claude Code's own shape: tools declared once, at the top level.
+		`{"model":"moonshotai/kimi-k3","max_tokens":1024,"system":"You are a helpful assistant.",
+		  "tools":[{"name":"Bash","description":"run a command",
+		            "input_schema":{"type":"object","properties":{"command":{"type":"string"}}}}],
+		  "messages":[{"role":"user","content":"list the files"}]}`,
+
+		// A tool call and its result, as content blocks.
+		`{"model":"moonshotai/kimi-k3","max_tokens":1024,
+		  "messages":[{"role":"user","content":[{"type":"text","text":"list the files"}]},
+		              {"role":"assistant","content":[{"type":"tool_use","id":"tu_1","name":"Bash",
+		                                              "input":{"command":"ls"}}]},
+		              {"role":"user","content":[{"type":"tool_result","tool_use_id":"tu_1",
+		                                         "content":"a.go b.go"}]}]}`,
+
+		// Streaming, which is the shape that actually reaches production.
+		`{"model":"moonshotai/kimi-k3","max_tokens":1024,"stream":true,
+		  "messages":[{"role":"user","content":"hi"}]}`,
+	} {
+		if _, _, ok := checkPolicy(policy, []byte(body)); !ok {
+			t.Fatalf("an Anthropic body was refused by an OpenAI-shaped rule:\n%s", body)
+		}
+	}
+}
