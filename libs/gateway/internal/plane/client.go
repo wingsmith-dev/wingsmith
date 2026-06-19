@@ -30,38 +30,102 @@ type Upstream struct {
 	Role            string `json:"role"`
 }
 
-// ParameterRule is what one request parameter may be set to. An absent field
-// constrains nothing, so the zero value permits everything.
-type ParameterRule struct {
-	Enum []any    `json:"enum"`
-	Min  *float64 `json:"min"`
-	Max  *float64 `json:"max"`
+// Rule is one term an endpoint sells, scoped to where it applies.
+//
+// A rule has a scope, a subject and its terms. The scope decides whether the
+// rule is looked at for this request at all; the subject is what it is about;
+// the terms are what it says. Every rule whose scope matches applies, and the
+// request must satisfy all of them — there is no precedence between rules and
+// the order of the array is never read. Two rules that disagree are two terms
+// that were both sold, which is an authoring mistake and is refused where the
+// policy is written rather than resolved here.
+type Rule struct {
+	// Route is the request path this rule is about — "/v1/chat/completions".
+	// Empty matches every path.
+	//
+	// It is the whole reason rules are a list rather than a map: a term
+	// measured against one protocol is not a term about another, and before
+	// this existed a rule written for chat completions was enforced against
+	// /v1/embeddings, /v1/messages and /v1/responses as well.
+	Route string `json:"route,omitempty"`
+	// Stream narrows a rule to streaming or non-streaming requests. Nil is both.
+	Stream *bool `json:"stream,omitempty"`
+	// WhenPresent narrows a rule to requests that carry another JSON path,
+	// dotted like Key. Empty asks nothing of the body.
+	//
+	// It is a scope and not a term, and it sits here rather than beside Drop for
+	// that reason: "does this rule look at this request at all" is one question,
+	// whether what narrows it is the path the request came in on, the transport
+	// mode, or another field in the body. Putting the condition in the scope
+	// block means it composes with every term rather than with one of them — the
+	// same field that expresses "drop `reasoning_effort` when `thinking.effort`
+	// is set" would express "`temperature` must be 1 while thinking is on",
+	// without another field and without a second way to say `when`.
+	WhenPresent string `json:"when_present,omitempty"`
+
+	// Key is the JSON path this rule constrains, dotted: "thinking.type".
+	// Exclusive with Predicate.
+	Key string `json:"key,omitempty"`
+	// Predicate names a rule this build implements in Go, resolved against the
+	// same registry the old `deny` list named. Exclusive with Key.
+	//
+	// The two are different namespaces and never fall back to one another: a
+	// key is read out of the body, a predicate is looked up in a map. A name
+	// that means nothing to this build is ignored rather than enforced, and
+	// reported at refresh time.
+	Predicate string `json:"predicate,omitempty"`
+
+	Enum []any    `json:"enum,omitempty"`
+	Min  *float64 `json:"min,omitempty"`
+	Max  *float64 `json:"max,omitempty"`
+	// Deny refuses the request: on a key, whenever the key is sent at all; on a
+	// predicate, whenever the predicate fires.
+	Deny bool `json:"deny,omitempty"`
+	// Drop removes the key from the request before forwarding, and answers 200.
+	//
+	// It is the term for a field the provider accepts and ignores. Denying one
+	// of those would 400 a request the vendor serves, and leaving it in place
+	// lets an engine honour a field the provider does not — which is a wrong
+	// answer rather than an error, and the harder of the two to notice.
+	//
+	// The parent object is never removed with the last key out of it: an empty
+	// `thinking` and no `thinking` at all are different requests.
+	Drop bool `json:"drop,omitempty"`
+	// Default is the value to write into an absent key before forwarding. It and
+	// Drop are the terms that write rather than refuse; neither ever fails a
+	// request.
+	//
+	// It fills the key only when the key's parent container is already in the
+	// request, and it never creates an intermediate object. `thinking.type`
+	// with a default of "enabled" fills a `thinking` the caller sent without a
+	// `type`, and does nothing at all to a request that never mentioned
+	// thinking: inventing the parent would change what every other caller gets.
+	Default any `json:"default,omitempty"`
 }
 
-// ParameterPolicy is the request terms an endpoint sells, as the plane resolved
-// them. Nil means no opinion, which is every endpoint that has not sold a
-// consistency term.
+// Policy is the request terms an endpoint sells, as the plane resolved them.
+// Nil means no opinion, which is every endpoint that has not sold a consistency
+// term.
 //
 // Version is the plane's, not ours. A policy naming a version above the one this
 // build understands is still enforced as far as it is understood — dropping
 // traffic because the plane learned a new rule first would trade a conformance
 // gap for an outage.
-type ParameterPolicy struct {
-	Version    int                      `json:"version"`
-	Parameters map[string]ParameterRule `json:"parameters"`
-	Deny       []string                 `json:"deny"`
+type Policy struct {
+	Version int    `json:"version"`
+	Rules   []Rule `json:"rules"`
 }
 
 // Endpoint is one public name and every address currently behind it.
 type Endpoint struct {
-	ID              string           `json:"id"`
-	Name            string           `json:"name"`
-	Visibility      string           `json:"visibility"`
-	RoutingStrategy string           `json:"routing_strategy"`
-	Upstreams       []Upstream       `json:"upstreams"`
-	FailoverOrder   []string         `json:"failover_order"`
-	Policy          *ParameterPolicy `json:"policy"`
-	Revision        string           `json:"revision"`
+	ID              string     `json:"id"`
+	Name            string     `json:"name"`
+	Visibility      string     `json:"visibility"`
+	RoutingStrategy string     `json:"routing_strategy"`
+	Upstreams       []Upstream `json:"upstreams"`
+	FailoverOrder   []string   `json:"failover_order"`
+	Policy          *Policy    `json:"policy"`
+	Revision        string     `json:"revision"`
 }
 
 // Table is the whole routing table at one revision.

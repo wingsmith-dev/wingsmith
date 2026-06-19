@@ -198,11 +198,37 @@ func withRouting(resolver Resolver) http.Handler {
 		// property of the name that was sold, so every upstream behind it must
 		// answer a request the same way — checking after Pick would let the same
 		// call be a 400 or a 200 depending on which cluster took it.
-		if code, message, ok := checkPolicy(route.Policy, body); !ok {
+		//
+		// The path goes in because a term is about one protocol and not about
+		// the endpoint's whole surface. A rule measured against chat completions
+		// used to be enforced against /v1/embeddings, /v1/messages and
+		// /v1/responses as well, which refused requests nobody had measured.
+		if code, message, ok := checkPolicy(route.Policy, r.URL.Path, body); !ok {
 			MarkOutcome(r, metrics.OutcomeClientError)
 			writeError(w, http.StatusBadRequest, code, message)
 			return
 		}
+
+		// The half of a policy that writes instead of refusing: a field the
+		// provider treats as having a default, spelled out; a field the provider
+		// accepts and ignores, taken back out. Both so that the engine behind
+		// this endpoint reads what the provider's own frontend would have.
+		// Applied here, beside the check, because those terms are properties of
+		// the endpoint too — the served-model rewrite below is the one rewrite
+		// that belongs after Pick, because the name it writes is the upstream's
+		// and not the endpoint's.
+		//
+		// A request with nothing to write is returned as the exact bytes that
+		// arrived, so the ordinary path costs one map walk and no re-encoding.
+		conformed, err := rewriteBody(route.Policy, r.URL.Path, body)
+		if err != nil {
+			MarkOutcome(r, metrics.OutcomeInternalError)
+			slog.Error("gateway: could not apply the endpoint's request terms",
+				"model", envelope.Model, "err", err)
+			writeError(w, http.StatusInternalServerError, "routing_error", "Unable to route this request.")
+			return
+		}
+		body = conformed
 
 		upstream, err := route.Pick()
 		if err != nil {

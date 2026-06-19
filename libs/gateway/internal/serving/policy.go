@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
 )
@@ -11,12 +12,21 @@ import (
 // supportedPolicyVersion is the highest policy version this build understands.
 // A table carrying a higher one is enforced as far as it is understood and
 // reported once per refresh, in routing.
-const supportedPolicyVersion = 1
+//
+// 2 is the scoped-rule shape: a list of rules, each with a route and a stream
+// mode it applies to, a key or a predicate it is about, and its terms. 1 was a
+// map of parameter names to constraints plus a flat list of denial names, with
+// no way to say where a rule applied and no way to say what an absent field
+// should become. The plane converts a stored v1 policy on the way out, so only
+// one language reaches this file.
+const supportedPolicyVersion = 2
 
 // denials are the wire features a policy may refuse by name.
 //
-// A name here describes a refusal in the terms a policy author can check
-// against the provider. Most are pure OpenAI wire concepts; one names a vendor
+// A rule names one of these in its `predicate`, which is a namespace of its own
+// and never a JSON path: a key is read out of the body, a predicate is looked
+// up here. A name here describes a refusal in the terms a policy author can
+// check against the provider. Most are pure OpenAI wire concepts; one names a vendor
 // extension, because the thing being constrained *is* a vendor extension and
 // pretending otherwise would leave the rule unwritable. Which endpoint carries
 // which name stays the plane's business and never this package's.
@@ -47,8 +57,8 @@ var denials = map[string]func(map[string]json.RawMessage) bool{
 
 // diagnoses are the denials that answer in their own words.
 //
-// A policy names a rule from here exactly as it names one from `denials`, and
-// the two are looked up in the same pass. What differs is who the refusal is
+// A rule names one from here exactly as it names one from `denials` — same
+// `predicate` field, and the two are looked up in the same pass. What differs is who the refusal is
 // about. A denial is about the endpoint — "this model does not accept feature
 // X" — and one sentence covers it however the request was written. A diagnosis
 // is about the request: which declaration, and what is wrong with it. Answering
@@ -373,23 +383,29 @@ func isJSONNull(raw json.RawMessage) bool {
 	return json.Unmarshal(raw, &value) == nil && value == nil
 }
 
-// checkPolicy reports the first violation of an endpoint's request terms, or
-// ok when there is none.
+// checkPolicy reports the first violation of an endpoint's request terms on
+// this route, or ok when there is none.
 //
 // A nil policy returns immediately without touching the body, which is the
 // whole point of putting this per endpoint: every endpoint that has not sold a
 // consistency term pays one nil check and nothing else.
 //
+// Every rule whose scope matches applies and the request must satisfy all of
+// them. There is no precedence between rules and no most-specific-wins: a term
+// is something that was sold, and a second term does not cancel the first. Two
+// rules that cannot both hold are an authoring mistake, refused where the policy
+// is written rather than resolved here on a request that is already in flight.
+//
 // An absent parameter is never a violation. A provider that pins `temperature`
 // to 1 rejects the request that *sends* something else; it does not demand the
 // field. Requiring it would refuse the minimal request every client starts with.
-func checkPolicy(policy *plane.ParameterPolicy, body []byte) (code string, message string, ok bool) {
-	if policy == nil {
+func checkPolicy(policy *plane.Policy, route string, body []byte) (code string, message string, ok bool) {
+	if policy == nil || len(policy.Rules) == 0 {
 		return "", "", true
 	}
 
 	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil {
+	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
 		// Not this check's business. A JSON body that fails here has already
 		// failed where the caller read its `model`, and been reported there.
 		//
@@ -400,45 +416,318 @@ func checkPolicy(policy *plane.ParameterPolicy, body []byte) (code string, messa
 		return "", "", true
 	}
 
-	for _, name := range sortedKeys(policy.Parameters) {
-		raw, sent := fields[name]
-		if !sent {
-			continue
-		}
-		var value any
-		if err := json.Unmarshal(raw, &value); err != nil {
-			continue
-		}
-		if allowed(policy.Parameters[name], value) {
-			continue
-		}
-		return "invalid_parameter", fmt.Sprintf("The value for '%s' is not accepted by this model.", name), false
-	}
+	for _, rule := range inScope(policy.Rules, route, fields) {
+		switch {
+		case rule.Predicate != "":
+			if !rule.Deny {
+				// A predicate says nothing about a value, so a rule naming one
+				// without denying it constrains nothing. Refused at author time
+				// in the plane; inert here.
+				continue
+			}
+			if refuse, known := denials[rule.Predicate]; known {
+				if refuse(fields) {
+					return "unsupported_parameter",
+						"The request uses a feature this model does not accept.", false
+				}
+				continue
+			}
+			if diagnose, known := diagnoses[rule.Predicate]; known {
+				if code, message, refused := diagnose(fields); refused {
+					return code, message, false
+				}
+				continue
+			}
+			// Reported at refresh time, not here. A rule this build cannot read
+			// is a conformance gap somebody must see, never a reason to drop a
+			// request that may be perfectly fine.
 
-	for _, name := range policy.Deny {
-		if refuse, known := denials[name]; known {
-			if refuse(fields) {
-				return "unsupported_parameter", "The request uses a feature this model does not accept.", false
+		case rule.Key != "":
+			value, present := lookup(fields, rule.Key)
+			if !present {
+				continue
 			}
-			continue
-		}
-		if diagnose, known := diagnoses[name]; known {
-			if code, message, refused := diagnose(fields); refused {
-				return code, message, false
+			if rule.Deny {
+				return "unsupported_parameter",
+					fmt.Sprintf("The parameter '%s' is not accepted by this model.", rule.Key), false
 			}
-			continue
+			if allowed(rule, value) {
+				continue
+			}
+			return "invalid_parameter",
+				fmt.Sprintf("The value for '%s' is not accepted by this model.", rule.Key), false
 		}
-		// Reported at refresh time, not here. A rule this build cannot read is
-		// a conformance gap somebody must see, never a reason to drop a request
-		// that may be perfectly fine.
 	}
 
 	return "", "", true
 }
 
-// allowed reports whether one value satisfies one rule. An empty rule permits
-// everything, which is what an absent constraint has to mean.
-func allowed(rule plane.ParameterRule, value any) bool {
+// rewriteBody returns the request with every writing term this route's rules
+// declare applied to it, and the body untouched when there is nothing to write.
+//
+// It is separate from checkPolicy because the two do different things to a
+// request and only one of them can fail it. A check reads and refuses; this
+// writes and never refuses. Keeping them apart is what lets the check stay a
+// pure function of the body the caller sent.
+//
+// Which rules apply is decided once, against the body as it arrived, and never
+// re-decided as the rewrite proceeds. That is what makes the pass a single
+// simultaneous edit rather than a sequence: a rule whose `when_present` names a
+// key another rule drops would otherwise fire or not depending on which of them
+// ran first, and the order of the list is not part of this language.
+//
+// The body is re-encoded only when something was actually written, so the
+// ordinary request — which is nearly all of them — is forwarded as the exact
+// bytes that arrived.
+func rewriteBody(policy *plane.Policy, route string, body []byte) ([]byte, error) {
+	if policy == nil || len(policy.Rules) == 0 {
+		return body, nil
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
+		// A multipart body, or one that is not a JSON object. Both are left
+		// exactly as they arrived, for the reason checkPolicy states.
+		return body, nil
+	}
+
+	written := false
+	for _, rule := range inScope(policy.Rules, route, fields) {
+		if rule.Key == "" {
+			continue
+		}
+		var changed bool
+		var err error
+		switch {
+		case rule.Drop:
+			changed, err = drop(fields, rule.Key)
+		case rule.Default != nil:
+			changed, err = fill(fields, rule.Key, rule.Default)
+		default:
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		written = written || changed
+	}
+	if !written {
+		return body, nil
+	}
+	return json.Marshal(fields)
+}
+
+// fill writes value at path when the path's parent container is already in the
+// request and carries nothing there, and reports whether it wrote anything.
+//
+// The parent must be present and it is never created. `thinking.type` fills a
+// `thinking` object the caller sent without a `type`; it does nothing to a
+// request that never mentioned thinking, because inventing the parent would
+// turn a request that asked for no thinking at all into one that asked for the
+// default — a change to what every caller of that endpoint gets, made on their
+// behalf by a rule that was only supposed to spell out what they already meant.
+//
+// A key that is present is left alone even when it is null. The caller wrote
+// something there, and a default is for what they left out.
+func fill(fields map[string]json.RawMessage, path string, value any) (bool, error) {
+	names := strings.Split(path, ".")
+	containers, reachable := containersTo(fields, names)
+	if !reachable {
+		return false, nil
+	}
+
+	parent, leaf := containers[len(containers)-1], names[len(names)-1]
+	if _, sent := parent[leaf]; sent {
+		return false, nil
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return false, err
+	}
+	parent[leaf] = encoded
+	return true, reseal(containers, names)
+}
+
+// drop removes the key at path, and reports whether there was one to remove.
+//
+// The parent it came out of stays, even when it is left empty: `{"thinking":{}}`
+// and no `thinking` at all are two different requests, and a rewrite that turned
+// one into the other would be answering a question nobody asked it.
+func drop(fields map[string]json.RawMessage, path string) (bool, error) {
+	names := strings.Split(path, ".")
+	containers, reachable := containersTo(fields, names)
+	if !reachable {
+		return false, nil
+	}
+
+	parent, leaf := containers[len(containers)-1], names[len(names)-1]
+	if _, sent := parent[leaf]; !sent {
+		return false, nil
+	}
+	delete(parent, leaf)
+	return true, reseal(containers, names)
+}
+
+// containersTo decodes the objects a path runs through, one level each,
+// innermost last. It reports false when the path's parent is not in the request
+// or is not an object — the two cases where there is nothing to write into and
+// nothing to take out of.
+//
+// Only the containers on the path are decoded. Everything beside them —
+// `messages`, `tools`, the whole conversation — stays raw bytes and is copied
+// through, which is the same trade withModel makes and for the same reason.
+func containersTo(fields map[string]json.RawMessage, names []string) ([]map[string]json.RawMessage, bool) {
+	containers := make([]map[string]json.RawMessage, 1, len(names))
+	containers[0] = fields
+	for _, name := range names[:len(names)-1] {
+		raw, sent := containers[len(containers)-1][name]
+		if !sent {
+			return nil, false
+		}
+		object, readable := jsonObject(raw)
+		if !readable {
+			return nil, false
+		}
+		containers = append(containers, object)
+	}
+	return containers, true
+}
+
+// reseal re-encodes each container into the one above it, innermost first, so a
+// change to a nested object reaches the root map the caller marshals.
+func reseal(containers []map[string]json.RawMessage, names []string) error {
+	for depth := len(containers) - 1; depth > 0; depth-- {
+		encoded, err := json.Marshal(containers[depth])
+		if err != nil {
+			return err
+		}
+		containers[depth-1][names[depth-1]] = encoded
+	}
+	return nil
+}
+
+// inScope returns the rules that apply to this request, ordered so that the
+// violation reported for a body that breaks two of them is always the same one.
+//
+// Every scope term is optional and an omitted one asks nothing: no route matches
+// every path, a nil stream matches both modes, and no `when_present` matches
+// every body. So an unscoped policy behaves exactly as one written before scopes
+// existed.
+//
+// The order is derived from each rule rather than taken from the array, because
+// the array's order is not part of the language: a policy that means one thing
+// and a re-serialisation of it that means another is a policy nobody can store.
+func inScope(rules []plane.Rule, route string, fields map[string]json.RawMessage) []plane.Rule {
+	type scoped struct {
+		rule  plane.Rule
+		order string
+	}
+
+	matched := make([]scoped, 0, len(rules))
+	for _, rule := range rules {
+		if rule.Route != "" && rule.Route != route {
+			continue
+		}
+		if rule.Stream != nil {
+			streaming, readable := streamOf(fields)
+			if !readable || streaming != *rule.Stream {
+				continue
+			}
+		}
+		if rule.WhenPresent != "" {
+			if _, present := lookup(fields, rule.WhenPresent); !present {
+				continue
+			}
+		}
+		matched = append(matched, scoped{rule: rule, order: ruleOrder(rule)})
+	}
+	sort.Slice(matched, func(i, j int) bool { return matched[i].order < matched[j].order })
+
+	inScope := make([]plane.Rule, len(matched))
+	for i, m := range matched {
+		inScope[i] = m.rule
+	}
+	return inScope
+}
+
+// ruleOrder is a rule's place in the evaluation order, derived from the rule
+// itself.
+//
+// Keys sort before predicates, then by subject, then by the rule's own
+// encoding — which makes the order total without ever consulting the array's
+// index, so two policies that differ only in how their rules were written down
+// report the same violation. Keys first keeps the answer a request already got
+// before scopes existed, when the parameter map was walked ahead of the denial
+// list.
+func ruleOrder(rule plane.Rule) string {
+	kind, subject := "0", rule.Key
+	if rule.Key == "" {
+		kind, subject = "1", rule.Predicate
+	}
+	encoded, err := json.Marshal(rule)
+	if err != nil {
+		encoded = nil
+	}
+	return kind + "\x00" + subject + "\x00" + string(encoded)
+}
+
+// streamOf reads the request's streaming mode, reporting separately whether it
+// could be read at all.
+//
+// Absent is a positive answer and it is false: `stream` defaults to off on every
+// wire this gateway fronts, so a caller who sends nothing is asking for one
+// response. A `stream` that is present but is not a boolean is not readable, and
+// a rule scoped to a streaming mode does not apply to a request whose mode this
+// hop cannot name — the upstream will answer for the field.
+func streamOf(fields map[string]json.RawMessage) (streaming bool, readable bool) {
+	raw, sent := fields["stream"]
+	if !sent {
+		return false, true
+	}
+	var value bool
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return false, false
+	}
+	return value, true
+}
+
+// lookup reads the value at a dotted JSON path out of an already-parsed body.
+//
+// Absent and unreadable answer alike, because both mean the same thing to every
+// caller here: there is no value to judge. A path whose parent is a string, an
+// array or null does not resolve, and a rule about it constrains nothing rather
+// than refusing a body it could not read.
+//
+// Only objects are walked. An index into an array is not a path this language
+// has, and inventing one would put an expression where the design has data.
+func lookup(fields map[string]json.RawMessage, path string) (any, bool) {
+	names := strings.Split(path, ".")
+
+	raw, sent := fields[names[0]]
+	if !sent {
+		return nil, false
+	}
+	for _, name := range names[1:] {
+		object, readable := jsonObject(raw)
+		if !readable {
+			return nil, false
+		}
+		if raw, sent = object[name]; !sent {
+			return nil, false
+		}
+	}
+
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, false
+	}
+	return value, true
+}
+
+// allowed reports whether one value satisfies one rule's value terms. A rule
+// that states none permits everything, which is what an absent constraint has
+// to mean.
+func allowed(rule plane.Rule, value any) bool {
 	if len(rule.Enum) > 0 && !inEnum(rule.Enum, value) {
 		return false
 	}
@@ -473,16 +762,4 @@ func inEnum(permitted []any, value any) bool {
 		}
 	}
 	return false
-}
-
-// sortedKeys keeps the reported violation stable when a request breaks two
-// rules at once. Go randomises map iteration, and a check that names a
-// different parameter each time is one nobody can write a test against.
-func sortedKeys(rules map[string]plane.ParameterRule) []string {
-	names := make([]string, 0, len(rules))
-	for name := range rules {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
 }
