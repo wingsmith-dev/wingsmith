@@ -491,8 +491,17 @@ func rewriteBody(policy *plane.Policy, route string, body []byte) ([]byte, error
 		return body, nil
 	}
 
+	rules := inScope(policy.Rules, route, fields)
+	// A copy reads the request as well as writing it, so every source is read out
+	// of the body as it arrived, before any term has written into it. Same reason
+	// the scopes are decided once: a rule carrying a key that another rule drops,
+	// or that a third writes, would otherwise pick up a different value depending
+	// on which of them ran first, and the order of the list is not part of this
+	// language.
+	sources := carried(rules, fields)
+
 	written := false
-	for _, rule := range inScope(policy.Rules, route, fields) {
+	for _, rule := range rules {
 		if rule.Key == "" {
 			continue
 		}
@@ -501,6 +510,15 @@ func rewriteBody(policy *plane.Policy, route string, body []byte) ([]byte, error
 		switch {
 		case rule.Drop:
 			changed, err = drop(fields, rule.Key)
+		case rule.ValueFrom != "":
+			value, sent := sources[rule.ValueFrom]
+			if !sent {
+				// Nothing to carry. A rule whose source the request does not
+				// have writes nothing, rather than writing a null the caller
+				// never asked for.
+				continue
+			}
+			changed, err = write(fields, rule.Key, value)
 		case rule.Default != nil:
 			changed, err = fill(fields, rule.Key, rule.Default)
 		default:
@@ -545,6 +563,57 @@ func fill(fields map[string]json.RawMessage, path string, value any) (bool, erro
 		return false, err
 	}
 	parent[leaf] = encoded
+	return true, reseal(containers, names)
+}
+
+// carried reads every ValueFrom source out of the request, once, before the
+// rewrite starts. The map is keyed by the source path, so two rules copying the
+// same field read the same bytes.
+//
+// A source that is not in the request is simply absent here, which is how a copy
+// stays conditional without a `when_present` beside it saying the same thing
+// twice.
+func carried(rules []plane.Rule, fields map[string]json.RawMessage) map[string]json.RawMessage {
+	var sources map[string]json.RawMessage
+	for _, rule := range rules {
+		if rule.Key == "" || rule.ValueFrom == "" {
+			continue
+		}
+		value, sent := lookupRaw(fields, rule.ValueFrom)
+		if !sent {
+			continue
+		}
+		if sources == nil {
+			sources = make(map[string]json.RawMessage, len(rules))
+		}
+		sources[rule.ValueFrom] = value
+	}
+	return sources
+}
+
+// write puts value at path, overwriting whatever is there, and reports whether
+// the request actually changed.
+//
+// The parent must already be in the request and is never created — the same
+// restraint fill keeps, for the same reason. What it does not keep is fill's
+// deference to a value the caller wrote: this is the term for a field the
+// provider ignores, and leaving the caller's value in place is exactly the wrong
+// answer.
+//
+// A write of the value that is already there reports false, so a request nothing
+// moved in is still forwarded as the exact bytes that arrived.
+func write(fields map[string]json.RawMessage, path string, value json.RawMessage) (bool, error) {
+	names := strings.Split(path, ".")
+	containers, reachable := containersTo(fields, names)
+	if !reachable {
+		return false, nil
+	}
+
+	parent, leaf := containers[len(containers)-1], names[len(names)-1]
+	if existing, sent := parent[leaf]; sent && string(existing) == string(value) {
+		return false, nil
+	}
+	parent[leaf] = value
 	return true, reseal(containers, names)
 }
 
@@ -701,6 +770,27 @@ func streamOf(fields map[string]json.RawMessage) (streaming bool, readable bool)
 // Only objects are walked. An index into an array is not a path this language
 // has, and inventing one would put an expression where the design has data.
 func lookup(fields map[string]json.RawMessage, path string) (any, bool) {
+	raw, sent := lookupRaw(fields, path)
+	if !sent {
+		return nil, false
+	}
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, false
+	}
+	return value, true
+}
+
+// lookupRaw is lookup without the decode: the bytes at a path, exactly as they
+// arrived.
+//
+// Split out because a copy has no business decoding what it carries. `lookup`
+// answers "what is this value" for a rule that has to compare it against an
+// enum or a bound; `write` only has to put the same JSON somewhere else, and
+// decoding it to `any` and re-encoding it would turn a number the caller wrote
+// as `1` into `1` via float64 — a round trip with nothing to gain and a
+// precision loss to lose.
+func lookupRaw(fields map[string]json.RawMessage, path string) (json.RawMessage, bool) {
 	names := strings.Split(path, ".")
 
 	raw, sent := fields[names[0]]
@@ -716,12 +806,7 @@ func lookup(fields map[string]json.RawMessage, path string) (any, bool) {
 			return nil, false
 		}
 	}
-
-	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
-		return nil, false
-	}
-	return value, true
+	return raw, true
 }
 
 // allowed reports whether one value satisfies one rule's value terms. A rule

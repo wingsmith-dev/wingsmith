@@ -101,6 +101,27 @@ type Rule struct {
 	// `type`, and does nothing at all to a request that never mentioned
 	// thinking: inventing the parent would change what every other caller gets.
 	Default any `json:"default,omitempty"`
+	// ValueFrom is another JSON path whose value is written into Key before
+	// forwarding, overwriting whatever the caller put there. The third writing
+	// term, and the one for a provider that spells a knob differently from the
+	// engine behind it.
+	//
+	// `{key: "reasoning_effort", value_from: "thinking.effort"}` is the whole of
+	// K3's effort contract in one rule: the vendor's own field is carried onto the
+	// field the engine reads, so the level the caller named in `thinking.effort`
+	// is the level that runs, and the `reasoning_effort` they sent beside it is
+	// ignored because it has been overwritten. A request with no `thinking.effort`
+	// is untouched, so a caller who sent only `reasoning_effort` still gets it.
+	//
+	// Overwriting is what separates it from Default, which exists to fill in what
+	// a caller left out and leaves a value they wrote alone. Here the caller's
+	// value is precisely what has to go: a term that deferred to it would be
+	// honouring the field the provider ignores.
+	//
+	// Like Default it never creates an intermediate object, for the same reason. A
+	// source path that is not in the request writes nothing at all — which is what
+	// makes the rule conditional without needing a WhenPresent beside it.
+	ValueFrom string `json:"value_from,omitempty"`
 }
 
 // Policy is the request terms an endpoint sells, as the plane resolved them.

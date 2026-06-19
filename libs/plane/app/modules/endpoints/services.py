@@ -252,7 +252,9 @@ def check_policy(policy: PolicySchema | None) -> None:
     for index, rule in enumerate(policy.rules):
         _check_rule(rule, f"surface.policy.rules[{index}]")
 
-    _check_one_writer_per_key([rule for rule in policy.rules if rule.default is not None or rule.drop])
+    _check_one_writer_per_key(
+        [rule for rule in policy.rules if rule.default is not None or rule.drop or rule.value_from]
+    )
 
 
 def _check_rule(rule: RuleSchema, where: str) -> None:
@@ -274,7 +276,7 @@ def _check_rule(rule: RuleSchema, where: str) -> None:
             f"{where}.route {rule.route!r} is not a request path — it must start with '/'",
             {"field": f"{where}.route"},
         )
-    for field, path in (("key", rule.key), ("when_present", rule.when_present)):
+    for field, path in (("key", rule.key), ("when_present", rule.when_present), ("value_from", rule.value_from)):
         if path and not all(segment for segment in path.split(".")):
             raise Invalid(
                 f"{where}.{field} {path!r} is not a JSON path — every segment between the dots must be a name",
@@ -290,11 +292,25 @@ def _check_rule(rule: RuleSchema, where: str) -> None:
             {"field": f"{where}.when_present"},
         )
 
+    if rule.value_from and rule.value_from == rule.key:
+        # Copying a key onto itself is the same request either way. Refused for
+        # the reason a self-naming `when_present` is: a term that looks like it
+        # moves something and moves nothing is read wrong for a year.
+        raise Invalid(
+            f"{where}.value_from names its own key {rule.key!r}, which copies nothing",
+            {"field": f"{where}.value_from"},
+        )
+
     values = rule.enum is not None or rule.min is not None or rule.max is not None or rule.default is not None
     if rule.predicate:
         if rule.drop:
             raise Invalid(
                 f"{where} names {subject}, which has no key to drop",
+                {"field": where},
+            )
+        if rule.value_from:
+            raise Invalid(
+                f"{where} names {subject}, which has no key to write into",
                 {"field": where},
             )
         # A predicate reads the whole body and answers yes or no. There is no
@@ -319,6 +335,14 @@ def _check_rule(rule: RuleSchema, where: str) -> None:
             f"{where} both denies and drops {subject} — a refusal and a silent removal are different answers",
             {"field": where},
         )
+    if rule.value_from and (rule.deny or rule.drop):
+        # A copy writes the key, a deny refuses it and a drop takes it away.
+        # Whichever the author meant, the other two are not it.
+        raise Invalid(
+            f"{where} both copies into and denies or drops {subject} — a write and a removal "
+            f"are different answers",
+            {"field": where},
+        )
     if (rule.deny or rule.drop) and values:
         # Deny refuses the key whenever it is sent and drop removes it, so
         # nothing else on the rule can ever be reached — including a default,
@@ -327,9 +351,17 @@ def _check_rule(rule: RuleSchema, where: str) -> None:
             f"{where} denies or drops {subject}, so enum, min, max and default on it are unreachable",
             {"field": where},
         )
-    if not rule.deny and not rule.drop and not values:
+    if rule.value_from and values:
+        # The value at the key is about to be replaced by the one carried in, so
+        # a bound on what the caller sent is a bound on something nothing reads,
+        # and a default beside a copy is two writers for one key.
         raise Invalid(
-            f"{where} ({subject}) constrains nothing — give enum, min, max, deny, drop or default",
+            f"{where} copies into {subject}, so enum, min, max and default on it are unreachable",
+            {"field": where},
+        )
+    if not rule.deny and not rule.drop and not rule.value_from and not values:
+        raise Invalid(
+            f"{where} ({subject}) constrains nothing — give enum, min, max, deny, drop, default or value_from",
             {"field": where},
         )
     if rule.min is not None and rule.max is not None and rule.min > rule.max:
@@ -348,7 +380,11 @@ def _check_one_writer_per_key(writers: list[RuleSchema]) -> None:
 
     Two drops of one key are not a disagreement: both take it out, in either
     order, and two conditions for removing the same field is an ordinary thing to
-    want. A default against a default, or a default against a drop, is one.
+    want. A default against a default, or a default against a drop, is one. So is
+    anything against a `value_from`: a copy replaces the key outright, so a second
+    writer beside it — another copy, a default, or a drop — is two answers to
+    "what does this key become", which is the question this refuses to leave to
+    the request path.
     """
     for first in range(len(writers)):
         for second in range(first + 1, len(writers)):

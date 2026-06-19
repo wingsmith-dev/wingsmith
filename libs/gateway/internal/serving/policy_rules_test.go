@@ -624,6 +624,157 @@ func TestReasoningEffortIsDroppedOnlyWhenThinkingEffortIsThere(t *testing.T) {
 	assertSameJSON(t, got, `{"model":"m","thinking":{"effort":"low"},"reasoning_effort":"max"}`)
 }
 
+// What the drop above was measured against, and what it turned out not to be.
+//
+// Dropping `reasoning_effort` makes it *ignored*, which is one half of K3's
+// contract. The other half is that `thinking.effort` is *honoured*, and the drop
+// does nothing for it. Measured on our endpoint 2026-09-04, asking the model its
+// own effective effort — the vendor suite's `_ask_effort` probe, which reads the
+// resolved level off the system prompt instead of inferring it from the length
+// of the trace — answers `max` for `thinking.effort=low` sent alone, with no
+// `reasoning_effort` in the request for any rule to remove. Nothing behind this
+// hop reads `thinking.effort`, so taking the loser away only leaves the engine on
+// its own default, which is `max`. `effort=low` beside `reasoning_effort=max` and
+// `effort=max` alone then both run at max, and the trace-length comparison that
+// was standing in for the contract is a coin flip between two samples of one
+// distribution — which is how it read as a pass.
+//
+// So the term is a copy, not a removal: carry the vendor's field onto the field
+// the engine reads. It subsumes the drop — the caller's `reasoning_effort` is
+// overwritten, so it is ignored — and it closes the half the drop could not.
+func TestThinkingEffortIsCarriedOntoTheFieldTheEngineReads(t *testing.T) {
+	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
+		{Route: chatRoute, Key: "reasoning_effort", ValueFrom: "thinking.effort"},
+	}}
+
+	for _, tc := range []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			"both, so the vendor's field wins by replacing the other",
+			`{"model":"m","thinking":{"effort":"low"},"reasoning_effort":"max"}`,
+			`{"model":"m","thinking":{"effort":"low"},"reasoning_effort":"low"}`,
+		},
+
+		// The half the drop never had. A caller who sent only the vendor's
+		// spelling gets the engine's spelling written for them, which is the
+		// only reason the level they asked for is the level that runs.
+		{
+			"thinking.effort alone is installed rather than left unread",
+			`{"model":"m","thinking":{"type":"enabled","keep":"all","effort":"high"}}`,
+			`{"model":"m","thinking":{"type":"enabled","keep":"all","effort":"high"},"reasoning_effort":"high"}`,
+		},
+
+		// Nothing to defer to, so nothing is written. `reasoning_effort` on its
+		// own is a field the provider honours, and overwriting it would silently
+		// ignore what the caller asked for — the same half of the condition the
+		// drop got right.
+		{
+			"reasoning_effort alone",
+			`{"model":"m","reasoning_effort":"max"}`,
+			`{"model":"m","reasoning_effort":"max"}`,
+		},
+		{
+			"a thinking object with no effort in it",
+			`{"model":"m","thinking":{"type":"enabled"},"reasoning_effort":"max"}`,
+			`{"model":"m","thinking":{"type":"enabled"},"reasoning_effort":"max"}`,
+		},
+		{
+			"neither",
+			`{"model":"m","messages":[]}`,
+			`{"model":"m","messages":[]}`,
+		},
+
+		// A source this hop cannot read is not a source it copies, the same way
+		// an unreadable parent is not a parent.
+		{
+			"thinking sent as a string",
+			`{"model":"m","thinking":"low","reasoning_effort":"max"}`,
+			`{"model":"m","thinking":"low","reasoning_effort":"max"}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := rewriteBody(policy, chatRoute, []byte(tc.body))
+			if err != nil {
+				t.Fatalf("rewrite: %v", err)
+			}
+			assertSameJSON(t, got, tc.want)
+		})
+	}
+
+	// Scoped like everything else: `/v1/responses` has a `reasoning.effort` of
+	// its own and was never measured here.
+	got, err := rewriteBody(policy, responsesRoute,
+		[]byte(`{"model":"m","thinking":{"effort":"low"},"reasoning_effort":"max"}`))
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	assertSameJSON(t, got, `{"model":"m","thinking":{"effort":"low"},"reasoning_effort":"max"}`)
+}
+
+// A copy already carrying the value it would write leaves the request alone, so
+// the exact bytes that arrived are what gets forwarded.
+func TestACarryOfAValueAlreadyThereDoesNotRewriteTheBody(t *testing.T) {
+	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
+		{Route: chatRoute, Key: "reasoning_effort", ValueFrom: "thinking.effort"},
+	}}
+
+	const body = `{"model":"m","thinking":{"effort":"low"},"reasoning_effort":"low"}`
+	got, err := rewriteBody(policy, chatRoute, []byte(body))
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	if string(got) != body {
+		t.Fatalf("body was rewritten:\n got %s\nwant %s", got, body)
+	}
+}
+
+// Every source is read out of the request as it arrived, so a rule that carries a
+// key another rule drops carries the value the caller sent — not whatever the
+// other rule left behind, and not a different answer depending on which of them
+// the evaluation order happened to put first.
+func TestACarryReadsTheBodyAsItArrivedAndNotAsTheRewriteLeftIt(t *testing.T) {
+	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
+		{Route: chatRoute, Key: "reasoning_effort", ValueFrom: "thinking.effort"},
+		{Route: chatRoute, Key: "thinking.effort", Drop: true},
+	}}
+
+	got, err := rewriteBody(policy, chatRoute,
+		[]byte(`{"model":"m","thinking":{"type":"enabled","effort":"low"},"reasoning_effort":"max"}`))
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	assertSameJSON(t, got, `{"model":"m","thinking":{"type":"enabled"},"reasoning_effort":"low"}`)
+}
+
+// A copy never creates the parent it would write into, the same restraint a
+// default keeps and for the same reason: inventing `chat_template_kwargs` on a
+// request that never mentioned it would change what that caller gets.
+func TestACarryNeverInventsTheParentItWritesInto(t *testing.T) {
+	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
+		{Route: chatRoute, Key: "chat_template_kwargs.thinking_effort", ValueFrom: "thinking.effort"},
+	}}
+
+	const body = `{"model":"m","thinking":{"effort":"low"}}`
+	got, err := rewriteBody(policy, chatRoute, []byte(body))
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	if string(got) != body {
+		t.Fatalf("body was rewritten:\n got %s\nwant %s", got, body)
+	}
+
+	got, err = rewriteBody(policy, chatRoute,
+		[]byte(`{"model":"m","thinking":{"effort":"low"},"chat_template_kwargs":{}}`))
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	assertSameJSON(t, got,
+		`{"model":"m","thinking":{"effort":"low"},"chat_template_kwargs":{"thinking_effort":"low"}}`)
+}
+
 // Dropping the last key out of an object leaves the object. An empty `thinking`
 // and no `thinking` at all are different requests, and a rewrite that turned one
 // into the other would be answering a question nobody asked it.

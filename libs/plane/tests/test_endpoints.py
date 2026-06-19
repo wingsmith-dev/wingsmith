@@ -791,7 +791,7 @@ KIMI_POLICY = {
             {"route": CHAT, "key": "logprobs", "enum": [False]},
             {"route": CHAT, "predicate": "tool_choice.named_while_thinking", "deny": True},
             {"route": CHAT, "key": "thinking.type", "default": "enabled"},
-            {"route": CHAT, "when_present": "thinking.effort", "key": "reasoning_effort", "drop": True},
+            {"route": CHAT, "key": "reasoning_effort", "value_from": "thinking.effort"},
         ],
     }
 }
@@ -802,9 +802,16 @@ Every pin carries the path it was measured on, so none of them reaches
 
 The `thinking.type` default is Moonshot's contract that an omitted type means
 enabled, which the frontend behind this endpoint answers 400 to instead. The
-`reasoning_effort` drop is their contract that `thinking.effort` beats the
-OpenAI-style field and the loser is ignored rather than refused — measured on our
-endpoint as a reasoning trace that did not get shorter when it should have."""
+`reasoning_effort` copy is their contract that `thinking.effort` beats the
+OpenAI-style field: the vendor's value is carried onto the field the engine
+actually reads, so the level the caller asked for is the level that runs, and the
+`reasoning_effort` they sent beside it is ignored because it has been replaced.
+
+It was a `drop` first, and a drop is only half the contract. Nothing behind this
+endpoint reads `thinking.effort`, so removing the loser left the engine on its own
+default — `thinking.effort=low` sent with no `reasoning_effort` at all still ran at
+max — and the trace-length comparison standing in for the term was comparing two
+samples of one distribution."""
 
 
 @pytest.mark.asyncio
@@ -830,8 +837,8 @@ async def test_a_sold_policy_reaches_the_resolved_table():
     assert by_key["temperature"].enum == [1]
     assert by_key["logprobs"].enum == [False]
     assert by_key["thinking.type"].default == "enabled"
-    assert by_key["reasoning_effort"].drop is True
-    assert by_key["reasoning_effort"].when_present == "thinking.effort"
+    assert by_key["reasoning_effort"].value_from == "thinking.effort"
+    assert by_key["reasoning_effort"].drop is False
     assert all(rule.route == CHAT for rule in policy.rules)
     assert [rule.predicate for rule in policy.rules if rule.predicate] == ["tool_choice.named_while_thinking"]
 
@@ -906,6 +913,66 @@ def test_a_default_and_a_drop_on_one_key_are_refused():
                     ]
                 }
             }
+        )
+
+
+def test_a_rule_that_carries_one_field_onto_another_is_valid():
+    """`value_from` is the term for a knob the provider and the engine spell
+    differently.
+
+    A drop makes the engine's spelling ignored, which is half of "the provider's
+    field wins". The other half is that the provider's field is read at all, and
+    where nothing downstream reads it the removal leaves the engine on its own
+    default — which is how `thinking.effort=low` ran at max on an endpoint whose
+    policy said the drop was in place.
+    """
+    check_surface({"policy": {"rules": [{"key": "reasoning_effort", "value_from": "thinking.effort"}]}})
+
+
+def test_a_carry_that_names_its_own_key_is_refused():
+    """It copies nothing, and a term that looks like it moves something and does
+    not is read wrong for a year."""
+    with pytest.raises(Invalid):
+        check_surface({"policy": {"rules": [{"key": "reasoning_effort", "value_from": "reasoning_effort"}]}})
+
+
+@pytest.mark.parametrize(
+    "term",
+    [{"drop": True}, {"deny": True}, {"default": "max"}, {"enum": ["low", "max"]}],
+    ids=["drop", "deny", "default", "enum"],
+)
+def test_a_carry_beside_another_term_on_the_same_key_is_refused(term):
+    """The key is about to be replaced by the value carried in, so a bound on what
+    the caller sent bounds something nothing reads, and a second writer is two
+    answers to "what does this key become"."""
+    with pytest.raises(Invalid):
+        check_surface(
+            {"policy": {"rules": [{"key": "reasoning_effort", "value_from": "thinking.effort", **term}]}}
+        )
+
+
+def test_a_carry_and_a_drop_of_one_key_on_overlapping_scopes_are_refused():
+    """Two drops are not a disagreement; a copy against anything is. One writes the
+    key and the other takes it away, on requests that match both."""
+    with pytest.raises(Invalid):
+        check_surface(
+            {
+                "policy": {
+                    "rules": [
+                        {"key": "reasoning_effort", "value_from": "thinking.effort"},
+                        {"when_present": "thinking.type", "key": "reasoning_effort", "drop": True},
+                    ]
+                }
+            }
+        )
+
+
+def test_a_carry_on_a_predicate_is_refused():
+    """A predicate reads the whole body and answers yes or no. There is no key to
+    write into."""
+    with pytest.raises(Invalid):
+        check_surface(
+            {"policy": {"rules": [{"predicate": "messages.tools", "value_from": "thinking.effort"}]}}
         )
 
 

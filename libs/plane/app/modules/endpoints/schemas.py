@@ -165,13 +165,26 @@ class RuleSchema(Struct):
 
     **Terms.** `enum`, `min` and `max` say what the value may be; `deny` refuses
     the request outright — whenever the key is sent at all, or whenever the
-    predicate fires. `default` and `drop` are the terms that write instead of
-    refusing, and neither ever fails a request: `default` says what to put in the
-    request when the key is absent and its parent object is not, and `drop` takes
-    the key back out. `drop` is for a field the provider accepts and ignores —
+    predicate fires. `default`, `drop` and `value_from` are the terms that write
+    instead of refusing, and none of them ever fails a request: `default` says what
+    to put in the request when the key is absent and its parent object is not,
+    `drop` takes the key back out, and `value_from` copies another path's value
+    onto the key. `drop` is for a field the provider accepts and ignores —
     denying one of those would 400 a request the vendor serves, and leaving it in
     place lets an engine honour a field the provider does not, which is a wrong
     answer rather than an error and the harder of the two to notice.
+
+    `value_from` is for the case `drop` looks like it covers and does not: a knob
+    the provider spells one way and the engine behind it spells another. Removing
+    the engine's spelling makes it ignored, which is only half of "the provider's
+    field wins" — the other half is that the provider's field is *read*, and if
+    nothing downstream reads it, the removal just leaves the engine on its own
+    default. `{key: "reasoning_effort", value_from: "thinking.effort"}` says both
+    halves at once: the vendor's value is carried onto the field the engine reads,
+    so it takes effect, and the caller's own `reasoning_effort` is ignored because
+    it has been overwritten. It overwrites where `default` defers, because the
+    value being replaced is exactly the one the provider ignores, and it writes
+    nothing at all when the source path is not in the request.
 
     Every rule whose scope matches applies and the request must satisfy all of
     them. There is no precedence and the order of the list is never read: a term
@@ -195,6 +208,7 @@ class RuleSchema(Struct):
     deny: bool = False
     drop: bool = False
     default: Any = None
+    value_from: str = ""
 
 
 class PolicySchema(Struct):
