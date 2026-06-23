@@ -829,6 +829,11 @@ export function EndpointDetailPage() {
                                 : null}
                             </Dash>
                           </Field>
+                          <Field label="Frontend image">
+                            <Dash>
+                              {backing.workload?.serving.frontend_image ?? null}
+                            </Dash>
+                          </Field>
                           <Field label="Quantization">
                             <Dash>{quantLabel(backing.workload)}</Dash>
                           </Field>

@@ -322,6 +322,9 @@ export function DeploymentDetailPage() {
                         <Field label="Engine runtime">
                           {workload.serving.engine_runtime_version}
                         </Field>
+                        <Field label="Frontend image">
+                          <Dash>{workload.serving.frontend_image}</Dash>
+                        </Field>
                         <Field label="Shape">
                           {workload.serving.shape.device_count}×{" "}
                           {workload.serving.shape.device_class}

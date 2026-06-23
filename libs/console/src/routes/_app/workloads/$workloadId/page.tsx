@@ -526,6 +526,9 @@ export function WorkloadDetailPage() {
                       <Field label="Engine runtime">
                         {workload.serving.engine_runtime_version}
                       </Field>
+                      <Field label="Frontend image">
+                        <Dash>{workload.serving.frontend_image}</Dash>
+                      </Field>
                       <Field label="Parallelism">
                         {parallelismLabel(workload.serving.parallelism)}
                       </Field>
