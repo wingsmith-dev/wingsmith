@@ -31,6 +31,7 @@ from .schemas import EndpointSchema
 from .schemas import ResolvedTableSchema
 from .schemas import EndpointTargetSchema
 from .schemas import EndpointCreateRequest
+from .schemas import EndpointSurfaceSchema
 from .schemas import EndpointTargetRequest
 from .schemas import EndpointUpdateRequest
 from .schemas import ParameterPolicySchema
@@ -193,6 +194,27 @@ repeats to a customer, and nothing downstream would have caught it.
 
 SURFACE_LISTS = frozenset({"protocols", "output_length_params"})
 SURFACE_SCALARS = {"auth_mode", "error_shape", "streaming_transport"}
+
+
+def endpoint_surface(surface: dict | None) -> EndpointSurfaceSchema:
+    """The stored surface, read back in the shape the console and the CLI draw.
+
+    Only the declared fields are carried. The surface is validated key by key on
+    write, so anything else in the column is a key nothing reads — and reporting
+    one would give an operator a term to repeat that no reader honours.
+    """
+    raw = surface or {}
+    return EndpointSurfaceSchema(
+        protocols=list(raw.get("protocols") or []),
+        auth_mode=raw.get("auth_mode"),
+        error_shape=raw.get("error_shape"),
+        streaming_transport=raw.get("streaming_transport"),
+        output_length_params=list(raw.get("output_length_params") or []),
+        cors_enabled=raw.get("cors_enabled"),
+        max_request_bytes=raw.get("max_request_bytes"),
+        request_timeout_seconds=raw.get("request_timeout_seconds"),
+        policy=endpoint_policy(raw),
+    )
 
 
 def check_surface(surface: dict) -> None:
@@ -502,6 +524,7 @@ class EndpointService:
                 if t.deployment_id in uids
             ],
             failover_order=[uids[d] for d in endpoint.failover_order if d in uids],
+            surface=endpoint_surface(endpoint.surface),
             labels=endpoint.labels,
             created_at=endpoint.created_at,
             updated_at=endpoint.updated_at,

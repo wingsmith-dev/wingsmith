@@ -28,6 +28,7 @@ from app.modules.endpoints.services import check_shape
 from app.modules.endpoints.services import check_surface
 from app.modules.endpoints.services import check_targets
 from app.modules.endpoints.services import endpoint_policy
+from app.modules.endpoints.services import endpoint_surface
 from app.modules.endpoints.repository import EndpointRepository
 
 
@@ -1185,3 +1186,71 @@ def test_a_whole_valid_surface_is_accepted():
             "policy": KIMI_POLICY["policy"],
         }
     )
+
+
+# --- the surface, read back ---------------------------------------------------
+
+
+def test_a_surface_is_read_back_field_by_field():
+    """Declared state with no reader is state nobody can check.
+
+    The surface is accepted on a patch and acted on by the gateway, so the
+    object a console or the CLI reads has to carry it — otherwise the only way
+    to see what an endpoint sells is the routing table the gateway polls.
+    """
+    surface = endpoint_surface(
+        {
+            "protocols": ["openai.chat", "openai.responses"],
+            "auth_mode": "api_key",
+            "error_shape": "passthrough",
+            "streaming_transport": "sse",
+            "output_length_params": ["max_tokens"],
+            "cors_enabled": True,
+            "max_request_bytes": 1048576,
+            "request_timeout_seconds": 120,
+        }
+    )
+    assert surface.protocols == ["openai.chat", "openai.responses"]
+    assert surface.auth_mode == "api_key"
+    assert surface.error_shape == "passthrough"
+    assert surface.streaming_transport == "sse"
+    assert surface.output_length_params == ["max_tokens"]
+    assert surface.cors_enabled is True
+    assert surface.max_request_bytes == 1048576
+    assert surface.request_timeout_seconds == 120
+    assert surface.policy is None
+
+
+def test_an_empty_surface_claims_nothing():
+    surface = endpoint_surface({})
+    assert surface.protocols == []
+    assert surface.auth_mode is None
+    assert surface.cors_enabled is None
+    assert surface.policy is None
+    assert endpoint_surface(None).policy is None
+
+
+def test_a_policy_is_read_back_in_the_language_the_gateway_speaks():
+    """A v1 policy converts on read here exactly as it does into the routing table.
+
+    Two readers of the same column that disagreed about its language would show
+    an operator one policy and enforce another.
+    """
+    surface = endpoint_surface(KIMI_POLICY_V1)
+    assert surface.policy is not None
+    assert surface.policy.version == 2
+    by_key = {rule.key: rule for rule in surface.policy.rules if rule.key}
+    assert by_key["temperature"].enum == [1]
+
+    surface = endpoint_surface(KIMI_POLICY)
+    assert surface.policy is not None
+    assert [rule.key for rule in surface.policy.rules if rule.value_from] == ["reasoning_effort"]
+
+
+def test_the_endpoint_schema_carries_the_surface():
+    endpoint = FakeEndpoint(surface=KIMI_POLICY)
+    endpoint.labels = {}
+    endpoint.targets = []
+    rendered = resolution([]).schema(endpoint, "prj_1", {})
+    assert rendered.surface.policy is not None
+    assert msgspec.json.decode(msgspec.json.encode(rendered), type=EndpointSchema).surface.policy is not None

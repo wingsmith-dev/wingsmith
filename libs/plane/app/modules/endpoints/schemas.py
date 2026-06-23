@@ -24,86 +24,6 @@ class EndpointTargetSchema(Struct):
     served_model_name: str | None
 
 
-class EndpointSchema(Struct):
-    """The stable public name clients call. Global and plane-only.
-
-    There is no cluster on this object at any depth. An endpoint spans clusters
-    by construction — that is what the weighted target set and the failover order
-    are for — and it never syncs to one, so a cluster reference here would be a
-    field with no writer and no meaning.
-    """
-
-    id: str
-    name: str
-    slug: str
-    project_id: str
-    visibility: str
-    routing_strategy: str
-    enabled: bool
-    targets: list[EndpointTargetSchema]
-    failover_order: list[str]
-    labels: dict
-    created_at: dt.datetime
-    updated_at: dt.datetime | None
-    revision: str
-
-
-class EndpointTargetRequest(Struct):
-    """One deployment behind one endpoint.
-
-    `served_model_name` corrects what the engine answers to when the plane derived it wrong.
-    Null, the default, means the deployment's own answer stands.
-    """
-
-    deployment: str
-    weight: int = 100
-    role: str = "primary"
-    enabled: bool = True
-    served_model_name: str | None = None
-
-
-class EndpointCreateRequest(Struct):
-    """`slug` is the model id clients send. Empty takes the slug of the weights behind the first
-    target, which is what makes an endpoint over one model answer to that model without anybody
-    typing its name a second time. Give one only to publish an alias."""
-
-    name: str
-    project: str
-    slug: str = ""
-    visibility: str = "private"
-    routing_strategy: str = "weighted"
-    enabled: bool = True
-    targets: list[EndpointTargetRequest] = []
-    failover_order: list[str] = []
-    labels: dict = {}
-
-
-class EndpointUpdateRequest(Struct):
-    """A partial update. An absent field is untouched; an explicit null clears.
-
-    `name` and `project` are absent by design. The name is the internal handle —
-    it is in URLs, in metrics labels and in every link the console holds — and an
-    endpoint exists so that deployments can be replaced without anyone noticing.
-    `slug` is what clients actually send and it *is* patchable, which is the
-    point of the split: the public model id can be corrected without moving the
-    handle everything else is holding. The project owns quota and priority, so moving an endpoint between
-    projects is a different endpoint. Supplying `targets` replaces the whole set:
-    a target is identified by its deployment, and a patch that merged element-wise
-    could not express removing one. `failover_order` orders that set, so it is
-    only accepted alongside it — an order over targets that are about to be
-    replaced is an order over nothing.
-    """
-
-    slug: str | UnsetType = UNSET
-    visibility: str | UnsetType = UNSET
-    routing_strategy: str | UnsetType = UNSET
-    enabled: bool | UnsetType = UNSET
-    targets: list[EndpointTargetRequest] | UnsetType = UNSET
-    failover_order: list[str] | UnsetType = UNSET
-    labels: dict | UnsetType = UNSET
-    surface: dict | UnsetType = UNSET
-
-
 class ParameterRuleSchema(Struct):
     """What one request parameter may be set to, in the policy language v1 spoke.
 
@@ -236,6 +156,111 @@ class PolicySchema(Struct):
 
     version: int = 2
     rules: list[RuleSchema] = []
+
+
+class EndpointSurfaceSchema(Struct):
+    """The terms on which the served API is exposed, as they are read back.
+
+    Typed rather than the bare dict it is stored as, because half of it the
+    gateway acts on and the other half is a disclosure somebody repeats to a
+    customer — and a field that only exists when it was written cannot be drawn
+    either way. Every field is nullable or empty by default and absent means the
+    gateway's own behaviour, never a claim.
+
+    `policy` is converted on the way out by `endpoint_policy`, so a surface
+    stored in the v1 language reads back in the one language the gateway speaks.
+    """
+
+    protocols: list[str] = []
+    auth_mode: str | None = None
+    error_shape: str | None = None
+    streaming_transport: str | None = None
+    output_length_params: list[str] = []
+    cors_enabled: bool | None = None
+    max_request_bytes: int | None = None
+    request_timeout_seconds: int | None = None
+    policy: PolicySchema | None = None
+
+
+class EndpointSchema(Struct):
+    """The stable public name clients call. Global and plane-only.
+
+    There is no cluster on this object at any depth. An endpoint spans clusters
+    by construction — that is what the weighted target set and the failover order
+    are for — and it never syncs to one, so a cluster reference here would be a
+    field with no writer and no meaning.
+    """
+
+    id: str
+    name: str
+    slug: str
+    project_id: str
+    visibility: str
+    routing_strategy: str
+    enabled: bool
+    targets: list[EndpointTargetSchema]
+    failover_order: list[str]
+    surface: EndpointSurfaceSchema
+    labels: dict
+    created_at: dt.datetime
+    updated_at: dt.datetime | None
+    revision: str
+
+
+class EndpointTargetRequest(Struct):
+    """One deployment behind one endpoint.
+
+    `served_model_name` corrects what the engine answers to when the plane derived it wrong.
+    Null, the default, means the deployment's own answer stands.
+    """
+
+    deployment: str
+    weight: int = 100
+    role: str = "primary"
+    enabled: bool = True
+    served_model_name: str | None = None
+
+
+class EndpointCreateRequest(Struct):
+    """`slug` is the model id clients send. Empty takes the slug of the weights behind the first
+    target, which is what makes an endpoint over one model answer to that model without anybody
+    typing its name a second time. Give one only to publish an alias."""
+
+    name: str
+    project: str
+    slug: str = ""
+    visibility: str = "private"
+    routing_strategy: str = "weighted"
+    enabled: bool = True
+    targets: list[EndpointTargetRequest] = []
+    failover_order: list[str] = []
+    labels: dict = {}
+
+
+class EndpointUpdateRequest(Struct):
+    """A partial update. An absent field is untouched; an explicit null clears.
+
+    `name` and `project` are absent by design. The name is the internal handle —
+    it is in URLs, in metrics labels and in every link the console holds — and an
+    endpoint exists so that deployments can be replaced without anyone noticing.
+    `slug` is what clients actually send and it *is* patchable, which is the
+    point of the split: the public model id can be corrected without moving the
+    handle everything else is holding. The project owns quota and priority, so moving an endpoint between
+    projects is a different endpoint. Supplying `targets` replaces the whole set:
+    a target is identified by its deployment, and a patch that merged element-wise
+    could not express removing one. `failover_order` orders that set, so it is
+    only accepted alongside it — an order over targets that are about to be
+    replaced is an order over nothing.
+    """
+
+    slug: str | UnsetType = UNSET
+    visibility: str | UnsetType = UNSET
+    routing_strategy: str | UnsetType = UNSET
+    enabled: bool | UnsetType = UNSET
+    targets: list[EndpointTargetRequest] | UnsetType = UNSET
+    failover_order: list[str] | UnsetType = UNSET
+    labels: dict | UnsetType = UNSET
+    surface: dict | UnsetType = UNSET
 
 
 class ResolvedUpstreamSchema(Struct):
