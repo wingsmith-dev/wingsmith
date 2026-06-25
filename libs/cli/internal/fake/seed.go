@@ -418,9 +418,25 @@ func seed() *state {
 			{DeploymentID: depPending, Weight: 10, Role: "canary", Enabled: false},
 		},
 		FailoverOrder: []string{depRunning, depPending},
-		Labels:        map[string]any{},
-		CreatedAt:     created,
-		Revision:      revision(created),
+		Surface: api.EndpointSurface{
+			Protocols:            []string{"openai.chat"},
+			AuthMode:             "api_key",
+			ErrorShape:           "passthrough",
+			StreamingTransport:   "sse",
+			OutputLengthParams:   []string{"max_tokens"},
+			CORSEnabled:          &surfaceCORS,
+			MaxRequestBytes:      &surfaceMaxBytes,
+			RequestTimeoutSecond: &surfaceTimeout,
+			Policy: &api.EndpointPolicy{
+				Version: 2,
+				Rules: []api.PolicyRule{
+					{Route: "/v1/chat/completions", Key: "temperature", Enum: []any{1}},
+				},
+			},
+		},
+		Labels:    map[string]any{},
+		CreatedAt: created,
+		Revision:  revision(created),
 	})
 
 	// Five models across two clusters, none of them declared here. This is what a plane looks
@@ -668,6 +684,15 @@ func seed() *state {
 func revision(t time.Time) string {
 	return fmt.Sprintf("%d", t.UnixMicro())
 }
+
+// The declared halves of the seeded endpoint's surface, addressable because a surface field that
+// nobody declared is nil and not a zero — three states, and the fake has to be able to express all
+// three the way the plane does.
+var (
+	surfaceCORS     = false
+	surfaceMaxBytes = 1048576
+	surfaceTimeout  = 120
+)
 
 func ptr(t time.Time) *time.Time { return &t }
 

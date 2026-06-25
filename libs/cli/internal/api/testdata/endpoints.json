@@ -10,6 +10,41 @@
             "enabled": true,
             "targets": [],
             "failover_order": [],
+            "surface": {
+                "protocols": [
+                    "openai.chat"
+                ],
+                "auth_mode": "api_key",
+                "error_shape": "passthrough",
+                "streaming_transport": "sse",
+                "output_length_params": [
+                    "max_tokens"
+                ],
+                "cors_enabled": false,
+                "max_request_bytes": 1048576,
+                "request_timeout_seconds": 120,
+                "policy": {
+                    "version": 2,
+                    "rules": [
+                        {
+                            "route": "/v1/chat/completions",
+                            "stream": null,
+                            "when_present": "",
+                            "key": "temperature",
+                            "predicate": "",
+                            "enum": [
+                                1
+                            ],
+                            "min": null,
+                            "max": null,
+                            "deny": false,
+                            "drop": false,
+                            "default": null,
+                            "value_from": ""
+                        }
+                    ]
+                }
+            },
             "labels": {},
             "created_at": "2026-08-19T18:52:43.854292Z",
             "updated_at": null,

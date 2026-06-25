@@ -820,10 +820,63 @@ type Endpoint struct {
 	Enabled         bool             `json:"enabled"`
 	Targets         []EndpointTarget `json:"targets"`
 	FailoverOrder   []string         `json:"failover_order"`
-	Labels          map[string]any   `json:"labels"`
-	CreatedAt       time.Time        `json:"created_at"`
-	UpdatedAt       *time.Time       `json:"updated_at"`
-	Revision        string           `json:"revision"`
+	// Surface is the terms on which the served API is exposed. Declared state: the plane writes
+	// it, the gateway reads it off the resolved table, and nothing on a cluster ever sees it.
+	Surface   EndpointSurface `json:"surface"`
+	Labels    map[string]any  `json:"labels"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt *time.Time      `json:"updated_at"`
+	Revision  string          `json:"revision"`
+}
+
+// EndpointSurface is what this name exposes: which protocols answer at it, how a caller
+// authenticates, the ceilings the gateway applies, and the request policy it enforces.
+//
+// Every field is optional and an absent one is not a claim — it is the gateway's own behaviour.
+// Half of the surface is a term the gateway acts on and half is a disclosure nothing upholds; the
+// console draws the difference, and this read-only view states the values without promising which
+// is which.
+type EndpointSurface struct {
+	Protocols            []string        `json:"protocols"`
+	AuthMode             string          `json:"auth_mode"`
+	ErrorShape           string          `json:"error_shape"`
+	StreamingTransport   string          `json:"streaming_transport"`
+	OutputLengthParams   []string        `json:"output_length_params"`
+	CORSEnabled          *bool           `json:"cors_enabled"`
+	MaxRequestBytes      *int            `json:"max_request_bytes"`
+	RequestTimeoutSecond *int            `json:"request_timeout_seconds"`
+	Policy               *EndpointPolicy `json:"policy"`
+}
+
+// EndpointPolicy is the request terms this endpoint sells, on top of whatever the engine does.
+//
+// Version is what a reader that does not understand a future rule reports rather than guesses. A
+// policy stored in the older language is converted by the plane on read, so only one shape arrives
+// here.
+type EndpointPolicy struct {
+	Version int          `json:"version"`
+	Rules   []PolicyRule `json:"rules"`
+}
+
+// PolicyRule is one term: where it applies, what it is about, and what it says.
+//
+// Route, Stream and WhenPresent are the scope and an omitted one matches everything. Exactly one
+// of Key — a dotted JSON path into the request body — and Predicate — a rule the gateway
+// implements in Go — is the subject. The rest are the terms, and Default, Drop and ValueFrom
+// rewrite a request where Deny refuses one.
+type PolicyRule struct {
+	Route       string   `json:"route"`
+	Stream      *bool    `json:"stream"`
+	WhenPresent string   `json:"when_present"`
+	Key         string   `json:"key"`
+	Predicate   string   `json:"predicate"`
+	Enum        []any    `json:"enum"`
+	Min         *float64 `json:"min"`
+	Max         *float64 `json:"max"`
+	Deny        bool     `json:"deny"`
+	Drop        bool     `json:"drop"`
+	Default     any      `json:"default"`
+	ValueFrom   string   `json:"value_from"`
 }
 
 // --- binding ---------------------------------------------------------------

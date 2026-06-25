@@ -210,3 +210,20 @@ func severityColor(s ui.Style, severity string) string {
 	}
 	return severity
 }
+
+// orDashBool prints a declared boolean, and a dash where nobody declared one. Three states, because
+// "not stated" is not "false".
+func orDashBool(v *bool) string {
+	if v == nil {
+		return "-"
+	}
+	return boolWord(*v)
+}
+
+// orDashInt prints a declared number, and a dash where nobody declared one.
+func orDashInt(v *int) string {
+	if v == nil {
+		return "-"
+	}
+	return strconv.Itoa(*v)
+}

@@ -1167,6 +1167,8 @@ behind it are disposable; the endpoint is the contract.`,
 				}
 				t.Render(w)
 			}
+
+			renderSurface(app, w, s, e.Surface)
 		},
 		next: func(e api.Endpoint) []errs.Action {
 			if len(e.Targets) == 0 {
@@ -1175,6 +1177,102 @@ behind it are disposable; the endpoint is the contract.`,
 			return []errs.Action{{Description: "Its primary deployment", Command: "hgr deployment get " + e.Targets[0].DeploymentID}}
 		},
 	}
+}
+
+// renderSurface prints the terms on which the endpoint's API is exposed.
+//
+// A field nobody declared is a dash and never a default: the surface is where an operator reads
+// what was sold, and printing the gateway's own behaviour as if it had been declared is how a term
+// nobody agreed to gets repeated to a customer.
+func renderSurface(app *App, w io.Writer, s ui.Style, surface api.EndpointSurface) {
+	fmt.Fprintf(w, "\n%s\n", s.Dim("surface"))
+	kv := app.KV()
+	kv.Add("protocols", orDash(strings.Join(surface.Protocols, " ")))
+	kv.Add("auth", orDash(surface.AuthMode))
+	kv.Add("errors", orDash(surface.ErrorShape))
+	kv.Add("streaming", orDash(surface.StreamingTransport))
+	kv.Add("cors", orDashBool(surface.CORSEnabled))
+	kv.Add("max request bytes", orDashInt(surface.MaxRequestBytes))
+	kv.Add("request timeout", orDashInt(surface.RequestTimeoutSecond))
+	kv.Add("output length", orDash(strings.Join(surface.OutputLengthParams, " ")))
+	kv.Render(w)
+
+	if surface.Policy == nil || len(surface.Policy.Rules) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "\n%s\n", s.Dim(fmt.Sprintf("policy v%d", surface.Policy.Version)))
+	t := app.Table(
+		ui.Column{Title: "scope"},
+		ui.Column{Title: "subject"},
+		ui.Column{Title: "terms"},
+	)
+	for _, rule := range surface.Policy.Rules {
+		t.Row(ruleScope(rule), ruleSubject(rule), orDash(strings.Join(ruleTerms(rule), " · ")))
+	}
+	t.Render(w)
+}
+
+// ruleScope is where a rule was measured. An empty scope is every route and both transport modes,
+// which is what an unscoped rule has always meant, so it prints as "any" rather than as a blank.
+func ruleScope(rule api.PolicyRule) string {
+	parts := []string{"any route"}
+	if rule.Route != "" {
+		parts[0] = rule.Route
+	}
+	if rule.Stream != nil {
+		if *rule.Stream {
+			parts = append(parts, "streaming")
+		} else {
+			parts = append(parts, "non-streaming")
+		}
+	}
+	if rule.WhenPresent != "" {
+		parts = append(parts, "when "+rule.WhenPresent+" is sent")
+	}
+	return strings.Join(parts, " · ")
+}
+
+// ruleSubject names the body path a rule reads, or the gateway rule it invokes. The two are
+// separate namespaces and a predicate is marked as one so neither reads as the other.
+func ruleSubject(rule api.PolicyRule) string {
+	if rule.Key != "" {
+		return rule.Key
+	}
+	if rule.Predicate != "" {
+		return "predicate:" + rule.Predicate
+	}
+	return "-"
+}
+
+// ruleTerms is what one rule says, refusals first and rewrites after.
+func ruleTerms(rule api.PolicyRule) []string {
+	var terms []string
+	if rule.Deny {
+		terms = append(terms, "denied")
+	}
+	if len(rule.Enum) > 0 {
+		values := make([]string, 0, len(rule.Enum))
+		for _, v := range rule.Enum {
+			values = append(values, fmt.Sprintf("%v", v))
+		}
+		terms = append(terms, "one of "+strings.Join(values, ", "))
+	}
+	if rule.Min != nil {
+		terms = append(terms, fmt.Sprintf(">= %v", *rule.Min))
+	}
+	if rule.Max != nil {
+		terms = append(terms, fmt.Sprintf("<= %v", *rule.Max))
+	}
+	if rule.Default != nil {
+		terms = append(terms, fmt.Sprintf("defaults to %v", rule.Default))
+	}
+	if rule.Drop {
+		terms = append(terms, "dropped")
+	}
+	if rule.ValueFrom != "" {
+		terms = append(terms, "copied from "+rule.ValueFrom)
+	}
+	return terms
 }
 
 func enabledTargets(e api.Endpoint) int {
