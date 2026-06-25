@@ -3,6 +3,7 @@ import type {
   Artifact,
   ArtifactUpstream,
   EndpointSurface,
+  PolicyRule,
   ServingCapabilities,
   ServingReasoning,
   ServingBehaviour,
@@ -573,7 +574,47 @@ export const SURFACE_ENFORCEMENT: Record<keyof EndpointSurface, SurfaceField> =
       enforcement: "conditional",
       note: "Read with the serving quota's `max_output_tokens` on every request that carries a length field — but only refused while the gateway runs with `enforce`.",
     },
+    policy: {
+      enforcement: "obeyed",
+      note: "The request terms this endpoint sells. The gateway reads them off the resolved table and applies every rule whose scope matches, enforcing what it understands and counting what it does not.",
+    },
   }
+
+/**
+ * The scope a rule was measured on, as one line.
+ *
+ * An empty scope is not a gap: an unscoped rule applies to every route and both
+ * transport modes, which is exactly what a v1 policy meant. Saying "any" says so
+ * rather than leaving a blank an operator reads as missing data.
+ */
+export function policyRuleScope(rule: PolicyRule): string {
+  const parts: string[] = [rule.route || "any route"]
+  if (rule.stream === true) parts.push("streaming")
+  if (rule.stream === false) parts.push("non-streaming")
+  if (rule.when_present) parts.push(`when ${rule.when_present} is sent`)
+  return parts.join(" · ")
+}
+
+/**
+ * What one rule says, in the order the terms are read.
+ *
+ * `deny` refuses, the bounds constrain, and `default`, `drop` and `value_from`
+ * rewrite and never fail a request — so a rule that only rewrites reads as a
+ * rewrite here and never as a refusal.
+ */
+export function policyRuleTerms(rule: PolicyRule): string[] {
+  const terms: string[] = []
+  if (rule.deny) terms.push("denied")
+  if (rule.enum && rule.enum.length > 0)
+    terms.push(`one of ${rule.enum.map((v) => JSON.stringify(v)).join(", ")}`)
+  if (rule.min != null) terms.push(`≥ ${rule.min}`)
+  if (rule.max != null) terms.push(`≤ ${rule.max}`)
+  if (rule.default !== undefined && rule.default !== null)
+    terms.push(`defaults to ${JSON.stringify(rule.default)}`)
+  if (rule.drop) terms.push("dropped from the request")
+  if (rule.value_from) terms.push(`copied from ${rule.value_from}`)
+  return terms
+}
 
 /**
  * The acceptance floor a verdict applies to a declared baseline.

@@ -1,4 +1,5 @@
 import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
+import { EndpointSurfaceCard } from "@/components/demand/endpoint-surface"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { ConfirmDialog, DeleteDialog } from "@/components/layout/destructive"
 import { CopyableId, Dash, Id, Labels } from "@/components/layout/mono"
@@ -875,6 +876,8 @@ export function EndpointDetailPage() {
                     )}
                   </CardContent>
                 </Card>
+
+                <EndpointSurfaceCard surface={endpoint.surface} />
 
                 {/* Traffic — the gateway's request rate for this name. */}
                 <Card>

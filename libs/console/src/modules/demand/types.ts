@@ -1104,12 +1104,12 @@ export interface EndpointTarget {
  */
 export interface EndpointSurface {
   protocols: string[]
-  auth_mode: string
-  error_shape: string
+  auth_mode: string | null
+  error_shape: string | null
   max_request_bytes: number | null
   request_timeout_seconds: number | null
-  streaming_transport: string
-  cors_enabled: boolean
+  streaming_transport: string | null
+  cors_enabled: boolean | null
   /**
    * The request fields that control generation length, most significant first.
    * Membership is support and position is precedence, which is why it is an
@@ -1117,6 +1117,49 @@ export interface EndpointSurface {
    * `max_output_tokens` applies to; it states no number of its own.
    */
   output_length_params: string[]
+  /**
+   * The request terms this endpoint enforces on top of whatever the engine does.
+   * Null on every endpoint that has sold no consistency term, which is most of
+   * them, and null means the gateway forwards what it was given.
+   */
+  policy?: EndpointPolicy | null
+}
+
+/**
+ * `RuleSchema` — one term this endpoint sells: where it applies, what it is
+ * about, and what it says.
+ *
+ * `route`, `stream` and `when_present` are the scope and an omitted one matches
+ * everything. Exactly one of `key` (a dotted JSON path into the request body)
+ * and `predicate` (a rule the gateway implements in Go) is the subject. The
+ * rest are terms: `enum`/`min`/`max` bound the value, `deny` refuses the
+ * request, and `default`/`drop`/`value_from` rewrite it and never fail it.
+ */
+export interface PolicyRule {
+  route?: string
+  stream?: boolean | null
+  when_present?: string
+  key?: string
+  predicate?: string
+  enum?: unknown[] | null
+  min?: number | null
+  max?: number | null
+  deny?: boolean
+  drop?: boolean
+  default?: unknown
+  value_from?: string
+}
+
+/**
+ * `PolicySchema` — the policy the gateway enforces for this endpoint.
+ *
+ * `version` is what a reader that does not understand a future rule reports
+ * rather than guesses. 2 is the scoped-rule shape; a stored v1 policy is
+ * converted by the plane on read and never reaches here.
+ */
+export interface EndpointPolicy {
+  version: number
+  rules: PolicyRule[]
 }
 
 export const ENDPOINT_PROTOCOLS = [
