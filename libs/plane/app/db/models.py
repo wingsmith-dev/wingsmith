@@ -1126,6 +1126,43 @@ class Tenant(BaseMixin):
     projects: Mapped[list[Project]] = relationship("Project", back_populates="tenant", lazy="noload")
 
 
+class TenantToken(BaseMixin):
+    """A console credential that signs in as one tenant, and only as that tenant.
+
+    This is not an inference key. The gateway authenticates the system in front of
+    it and says so in `serving.Guard`; a credential that named a tenant there would
+    turn that hop into a credential store. This one buys a read-only view of what a
+    tenant is being served, and the plane is the only thing that ever resolves it.
+
+    Only the sha256 of the plaintext is stored. The token is high-entropy random, so
+    a fast hash is safe against precomputation and lets a login resolve it with one
+    indexed lookup — the same reasoning as the enrolment token, and the opposite of
+    the admin password, which is human-chosen and therefore bcrypt.
+
+    Many rows per tenant rather than one, for rotation: issue the next, move the
+    reader, revoke the last. `revoked_at` rather than a delete, so a credential that
+    was used has a record that it existed.
+    """
+
+    __tablename__ = "bind_tenant_token"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    tenant_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_tenant.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    """sha256 of the plaintext, which is shown once at mint and is not recoverable."""
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    """Stamped on a successful sign-in, so a token nobody uses can be told from one
+    somebody depends on before it is revoked. Written at most once a minute — see
+    `AuthService.resolve_tenant_token`; a login is not a metric."""
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    tenant: Mapped[Tenant] = relationship("Tenant", lazy="noload")
+
+
 class Project(BaseMixin):
     """The unit quota, priority, and workload ownership attach to, inside a tenant."""
 
@@ -1781,6 +1818,16 @@ class AuthRefreshToken(BaseMixin):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     """sha256 of the plaintext refresh token."""
     name: Mapped[str] = mapped_column(String(128), nullable=False)
+    tenant_token_id: Mapped[UUID | None] = mapped_column(
+        DBUUID, ForeignKey("bind_tenant_token.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    """The tenant credential this session was opened with, or null for an admin.
+
+    A foreign key rather than the tenant's uid, because the question a refresh has
+    to answer is not "does this tenant still exist" but "may this session still be
+    renewed" — and that is revoked one credential at a time. Revoking the token ends
+    every session it opened at the next refresh, and deleting the tenant ends them
+    outright."""
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     replaced_by: Mapped[str | None] = mapped_column(String(64), nullable=True)

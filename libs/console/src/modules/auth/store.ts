@@ -24,14 +24,29 @@ interface LoginResponse {
   access_token: string
   refresh_token: string
   expires_in: number
+  kind?: SessionKind
+  tenant?: string | null
 }
+
+/**
+ * Which application this session may see. `admin` is the console; `tenant` is the
+ * serving view and nothing else.
+ *
+ * It is read off the login response and never off what was typed. A slug is a
+ * claim until the credential behind it is verified, and the plane refuses a
+ * tenant session on every other route regardless — this only decides what to
+ * render, so that a tenant is not shown a navigation full of 401s.
+ */
+export type SessionKind = "admin" | "tenant"
 
 interface AuthState {
   operator: Operator | null
   accessToken: string | null
   refreshToken: string | null
   isAuthenticated: boolean
-  signIn: (password: string) => Promise<void>
+  kind: SessionKind
+  tenant: string | null
+  signIn: (password: string, slug?: string) => Promise<void>
   signOut: () => void
 }
 
@@ -42,32 +57,48 @@ export const useAuthStore = create<AuthState>()(
       accessToken: null,
       refreshToken: null,
       isAuthenticated: false,
+      kind: "admin",
+      tenant: null,
       /**
        * Deliberately not routed through `httpTransport`: that attaches the bearer
        * token this call exists to obtain, and its fixtures mode would answer a
        * login the plane never saw.
        */
-      signIn: async (password: string) => {
+      signIn: async (password: string, slug = "admin") => {
         const response = await fetch(`${BASE_URL}${API_PREFIX}/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password }),
+          body: JSON.stringify({ password, slug }),
         })
         if (!response.ok) {
           throw new Error(
             response.status === 401
-              ? "Incorrect password."
-              : `Sign in failed with status ${response.status}.`
+              ? slug === "admin"
+                ? "Incorrect password."
+                : "That name and token do not match."
+              : response.status === 429
+                ? "Too many attempts. Try again shortly."
+                : `Sign in failed with status ${response.status}.`
           )
         }
         const body = (await response.json()) as LoginResponse
+        const kind = body.kind === "tenant" ? "tenant" : "admin"
         setAuthToken(body.access_token)
         setRefreshToken(body.refresh_token)
         set({
-          operator: ADMIN_OPERATOR,
+          operator:
+            kind === "tenant"
+              ? {
+                  id: `tn_${body.tenant ?? slug}`,
+                  email: "",
+                  name: body.tenant ?? slug,
+                }
+              : ADMIN_OPERATOR,
           accessToken: body.access_token,
           refreshToken: body.refresh_token,
           isAuthenticated: true,
+          kind,
+          tenant: kind === "tenant" ? (body.tenant ?? slug) : null,
         })
       },
       signOut: () => {
@@ -86,6 +117,8 @@ export const useAuthStore = create<AuthState>()(
           accessToken: null,
           refreshToken: null,
           isAuthenticated: false,
+          kind: "admin",
+          tenant: null,
         })
       },
     }),

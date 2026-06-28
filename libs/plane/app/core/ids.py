@@ -30,6 +30,7 @@ BENCHMARK_REQUEST = "bmr_"
 ARTIFACT_BASELINE = "abl_"
 ALERT_THRESHOLD = "alt_"
 SERVING_QUOTA = "sqt_"
+TENANT_TOKEN = "tkn_"
 
 PREFIXES = frozenset(
     {
@@ -60,6 +61,7 @@ PREFIXES = frozenset(
         ARTIFACT_BASELINE,
         ALERT_THRESHOLD,
         SERVING_QUOTA,
+        TENANT_TOKEN,
     }
 )
 

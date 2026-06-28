@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteRouteImport } from './routes/login/route'
+import { Route as ServingRouteRouteImport } from './routes/serving/route'
 import { Route as AppAlertsRouteRouteImport } from './routes/_app/alerts/route'
 import { Route as AppAllocationsRouteRouteImport } from './routes/_app/allocations/route'
 import { Route as AppArtifactsRouteRouteImport } from './routes/_app/artifacts/route'
@@ -59,6 +60,11 @@ const AppRoute = AppRouteImport.update({
 const LoginRouteRoute = LoginRouteRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ServingRouteRoute = ServingRouteRouteImport.update({
+  id: '/serving',
+  path: '/serving',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AppAlertsRouteRoute = AppAlertsRouteRouteImport.update({
@@ -242,6 +248,7 @@ const AppWorkbenchRequestsRequestIdRouteRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
+  '/serving': typeof ServingRouteRoute
   '/alerts': typeof AppAlertsRouteRoute
   '/allocations': typeof AppAllocationsRouteRoute
   '/artifacts': typeof AppArtifactsRouteRouteWithChildren
@@ -280,6 +287,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
+  '/serving': typeof ServingRouteRoute
   '/alerts': typeof AppAlertsRouteRoute
   '/allocations': typeof AppAllocationsRouteRoute
   '/artifacts': typeof AppArtifactsRouteRouteWithChildren
@@ -319,6 +327,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRouteRoute
+  '/serving': typeof ServingRouteRoute
   '/_app': typeof AppRouteWithChildren
   '/_app/alerts': typeof AppAlertsRouteRoute
   '/_app/allocations': typeof AppAllocationsRouteRoute
@@ -360,6 +369,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/serving'
     | '/alerts'
     | '/allocations'
     | '/artifacts'
@@ -398,6 +408,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/login'
+    | '/serving'
     | '/alerts'
     | '/allocations'
     | '/artifacts'
@@ -436,6 +447,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/login'
+    | '/serving'
     | '/_app'
     | '/_app/alerts'
     | '/_app/allocations'
@@ -476,6 +488,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRouteRoute: typeof LoginRouteRoute
+  ServingRouteRoute: typeof ServingRouteRoute
   AppRoute: typeof AppRouteWithChildren
 }
 
@@ -500,6 +513,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/serving': {
+      id: '/serving'
+      path: '/serving'
+      fullPath: '/serving'
+      preLoaderRoute: typeof ServingRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_app/alerts': {
@@ -916,6 +936,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRouteRoute: LoginRouteRoute,
+  ServingRouteRoute: ServingRouteRoute,
   AppRoute: AppRouteWithChildren,
 }
 export const routeTree = rootRouteImport

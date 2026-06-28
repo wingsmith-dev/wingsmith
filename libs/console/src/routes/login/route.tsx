@@ -10,21 +10,32 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 })
 
+/**
+ * One form for both audiences, told apart by the name typed into it.
+ *
+ * `admin` is the fleet operator and the credential is the shared password. Any
+ * other name is a tenant and the credential is their token. Two forms would mean
+ * a second URL to publish and a wrong-door state to design; one field costs the
+ * operator four keystrokes they can leave in place.
+ */
 function LoginPage() {
   const signIn = useAuthStore((s) => s.signIn)
   const navigate = useNavigate()
 
+  const [slug, setSlug] = useState("admin")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
+
+  const tenant = slug.trim() !== "" && slug.trim() !== "admin"
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
     setPending(true)
     setError(null)
     try {
-      await signIn(password)
-      navigate({ to: "/clusters" })
+      await signIn(password, slug.trim() || "admin")
+      navigate({ to: tenant ? "/serving" : "/clusters" })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Sign in failed.")
       setPassword("")
@@ -49,11 +60,27 @@ function LoginPage() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="password">Admin password</Label>
+          <Label htmlFor="slug">Account</Label>
+          <Input
+            id="slug"
+            autoFocus
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            autoComplete="username"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            disabled={pending}
+          />
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="password">
+            {tenant ? "Token" : "Admin password"}
+          </Label>
           <Input
             id="password"
             type="password"
-            autoFocus
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}

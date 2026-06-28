@@ -24,20 +24,20 @@ from logging import getLogger
 from litestar import Controller
 from litestar import post
 from litestar import status_codes
-
 from litestar.di import Provide
 
 from app.config import settings
 from app.core.throttle import FailureBudget
 from app.core.exceptions import NotAuthorized
 from app.core.exceptions import TooManyRequests
+
+from .depends import auth_svc_generator
 from .manager import AuthManager
 from .schemas import LoginRequest
 from .schemas import LoginResponse
+from .schemas import LogoutRequest
 from .schemas import RefreshRequest
 from .schemas import RefreshResponse
-from .schemas import LogoutRequest
-from .depends import auth_svc_generator
 from .service import AuthService
 
 
@@ -64,6 +64,21 @@ slow and loud rather than exact.
 """
 
 
+TENANT_GUESSES = FailureBudget(limit=60, window_seconds=60.0)
+"""Failed tenant sign-ins this process will answer in a rolling minute.
+
+Its own budget rather than a share of `LOGIN_GUESSES`, and the reason is who gets
+locked out. One budget across both kinds would let anyone spend the operator's
+allowance with sixty wrong tenant tokens and leave the fleet unable to sign in
+during an incident — a denial of service handed to an anonymous caller.
+
+Six times the admin limit because the two paths bound different things. There the
+budget bounds *work*, since a guess costs a bcrypt; here it costs one indexed
+lookup, so what it bounds is guessing against 256 bits of randomness, which no
+rate makes reachable. It is a loud line in the log long before it is a defence.
+"""
+
+
 class AuthRoutes(Controller):
     path = "/auth"
     tags = ["Main"]
@@ -71,12 +86,43 @@ class AuthRoutes(Controller):
 
     @post("/login")
     async def login(self, data: LoginRequest, svc: AuthService) -> LoginResponse:
+        """One form, two credentials, told apart by the slug the caller names.
+
+        `admin` is the fleet operator and costs a bcrypt verification. Anything else
+        is a tenant and costs one indexed lookup, so the budget is spent before the
+        admin path and not before the tenant one: a hash is the expensive thing an
+        anonymous caller can buy here, and a hash is what the tenant path never does.
+
+        Both failures answer the same 401 with the same words. Distinguishing "no
+        such tenant" from "wrong token" at an unauthenticated form is an enumeration
+        oracle for the tenant list.
+        """
+        if data.slug and data.slug != "admin":
+            if TENANT_GUESSES.spent():
+                logger.warning("auth.login_throttled", extra={"kind": "tenant"})
+                raise TooManyRequests("too many failed sign-ins; retry shortly")
+            resolved = await svc.resolve_tenant_token(data.password)
+            if resolved is None:
+                TENANT_GUESSES.fail()
+                logger.warning("auth.login_failed", extra={"slug": data.slug, "kind": "tenant"})
+                raise NotAuthorized("invalid credentials")
+            tenant, token = resolved
+            if tenant.slug != data.slug:
+                TENANT_GUESSES.fail()
+                logger.warning("auth.login_failed", extra={"slug": data.slug, "kind": "tenant"})
+                raise NotAuthorized("invalid credentials")
+            return LoginResponse(
+                access_token=AuthManager.issue_session_token(name=tenant.slug, kind="tenant", scope=tenant.uid),
+                refresh_token=await svc.create_refresh_token(name=tenant.slug, tenant_token_id=token.id),
+                expires_in=settings.SESSION_TTL_SECONDS,
+                kind="tenant",
+                tenant=tenant.slug,
+            )
+
         if LOGIN_GUESSES.spent():
             logger.warning("auth.login_throttled")
             raise TooManyRequests("too many failed logins; retry shortly")
-        if not await asyncio.to_thread(
-            AuthManager.verify_admin_password, data.password, settings.ADMIN_PASSWORD_HASH
-        ):
+        if not await asyncio.to_thread(AuthManager.verify_admin_password, data.password, settings.ADMIN_PASSWORD_HASH):
             LOGIN_GUESSES.fail()
             logger.warning("auth.login_failed")
             raise NotAuthorized("invalid credentials")
@@ -93,11 +139,13 @@ class AuthRoutes(Controller):
         result = await svc.rotate_refresh_token(data.refresh_token)
         if result is None:
             raise NotAuthorized("invalid or expired refresh token")
-        new_refresh, access_token = result
+        new_refresh, access_token, kind, tenant = result
         return RefreshResponse(
             access_token=access_token,
             refresh_token=new_refresh,
             expires_in=settings.SESSION_TTL_SECONDS,
+            kind=kind,
+            tenant=tenant,
         )
 
     @post("/logout", status_code=status_codes.HTTP_204_NO_CONTENT)

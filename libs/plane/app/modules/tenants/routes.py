@@ -20,8 +20,10 @@ from app.core.schemas import ListResponse
 
 from .depends import tenant_svc_generator
 from .schemas import TenantSchema
+from .schemas import TenantTokenSchema
 from .schemas import TenantCreateRequest
 from .schemas import TenantUpdateRequest
+from .schemas import TenantTokenCreateRequest
 from .services import TenantService
 
 
@@ -67,3 +69,21 @@ class TenantRoutes(Controller):
     @delete("/{ref:str}", status_code=204)
     async def delete_tenant(self, context: RequestContext, svc: TenantService, ref: str) -> None:
         await svc.delete(ref)
+
+    @get("/{ref:str}/tokens")
+    async def list_tokens(
+        self, context: RequestContext, svc: TenantService, ref: str
+    ) -> Response[list[TenantTokenSchema]]:
+        """The tenant's console credentials. Never the plaintext — only the mint has that."""
+        return Response(await svc.list_tokens(ref))
+
+    @post("/{ref:str}/tokens")
+    async def mint_token(
+        self, context: RequestContext, svc: TenantService, ref: str, data: TenantTokenCreateRequest
+    ) -> Response[TenantTokenSchema]:
+        """Mints a credential and returns its plaintext once. It cannot be read again."""
+        return Response(await svc.mint_token(ref, data), status_code=201)
+
+    @delete("/{ref:str}/tokens/{token_ref:str}", status_code=204)
+    async def revoke_token(self, context: RequestContext, svc: TenantService, ref: str, token_ref: str) -> None:
+        await svc.revoke_token(ref, token_ref)

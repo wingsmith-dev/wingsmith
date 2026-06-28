@@ -21,6 +21,11 @@ lookup on it, and lets a future format change be distinguished instead of
 silently failing to resolve.
 """
 
+TENANT_PREFIX = "hgrt1"
+"""Version tag on tenant console tokens. A tenant token and an enrolment token are
+resolved against different tables and grant unrelated things, so they must never be
+told apart by a failed lookup."""
+
 REFRESH_PREFIX = "hgrr1"
 """Version tag on refresh tokens, so a session token and a refresh token cannot
 be confused."""

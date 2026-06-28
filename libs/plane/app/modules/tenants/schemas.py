@@ -39,3 +39,27 @@ class TenantUpdateRequest(Struct):
 
     name: str | UnsetType = UNSET
     enabled: bool | UnsetType = UNSET
+
+
+class TenantTokenSchema(Struct):
+    """A console credential for one tenant, as it reads back after minting.
+
+    `token` carries the plaintext exactly once, on the response to the mint, and
+    is null on every later read. There is nowhere it could come from afterwards —
+    only the sha256 is stored — and a field that is sometimes the secret is
+    clearer than two shapes for one object.
+    """
+
+    id: str
+    tenant: str
+    name: str
+    token: str | None
+    last_used_at: dt.datetime | None
+    revoked_at: dt.datetime | None
+    created_at: dt.datetime
+
+
+class TenantTokenCreateRequest(Struct):
+    """`name` is for the human who has to decide later whether to revoke it."""
+
+    name: str = "console"

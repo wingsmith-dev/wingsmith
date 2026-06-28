@@ -1,8 +1,10 @@
+import { useAuthStore } from "@/modules/auth/store"
 import { createFileRoute, redirect } from "@tanstack/react-router"
 
-/** The console has no root screen of its own; the overview is the front door. */
+/** Neither application has a root screen; each has a front door and they differ. */
 export const Route = createFileRoute("/")({
   beforeLoad: () => {
-    throw redirect({ to: "/overview" })
+    const { kind } = useAuthStore.getState()
+    throw redirect({ to: kind === "tenant" ? "/serving" : "/overview" })
   },
 })

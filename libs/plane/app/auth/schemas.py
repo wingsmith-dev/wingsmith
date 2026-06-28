@@ -20,13 +20,30 @@ class Principal(Struct):
 
 
 class LoginRequest(Struct):
+    """One form for both kinds of caller: a handle and a credential.
+
+    `slug` names who is signing in — `admin` for the people who operate the fleet,
+    a tenant's slug for the people we serve. It defaults to `admin` so that every
+    caller written against the single-field form keeps working unchanged.
+    """
+
     password: str
+    slug: str = "admin"
 
 
 class LoginResponse(Struct):
+    """`kind` and `tenant` say what was signed in to.
+
+    The console needs it to decide which application to render, and it must come
+    from here rather than from what was typed: the slug is a claim until the
+    credential behind it is verified.
+    """
+
     access_token: str
     refresh_token: str
     expires_in: int
+    kind: str = "admin"
+    tenant: str | None = None
 
 
 class RefreshRequest(Struct):
@@ -37,6 +54,8 @@ class RefreshResponse(Struct):
     access_token: str
     refresh_token: str
     expires_in: int
+    kind: str = "admin"
+    tenant: str | None = None
 
 
 class LogoutRequest(Struct):

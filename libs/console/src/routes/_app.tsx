@@ -14,11 +14,21 @@ function AppErrorComponent({ error }: { error: unknown }) {
   return <ErrorScreen error={error} reset={() => router.invalidate()} />
 }
 
+/**
+ * The operator console. A tenant session reaches nothing under here — the plane
+ * refuses it on every route this shell reads — so it is sent to its own view
+ * instead, which is what makes the boundary a boundary rather than a screen full
+ * of failed panels.
+ */
 export const Route = createFileRoute("/_app")({
   errorComponent: AppErrorComponent,
   beforeLoad: () => {
-    if (!useAuthStore.getState().isAuthenticated) {
+    const session = useAuthStore.getState()
+    if (!session.isAuthenticated) {
       throw redirect({ to: "/login" })
+    }
+    if (session.kind === "tenant") {
+      throw redirect({ to: "/serving" })
     }
   },
   component: AppLayout,

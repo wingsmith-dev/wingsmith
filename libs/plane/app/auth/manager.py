@@ -17,13 +17,15 @@ import secrets
 import bcrypt
 
 from app.config import settings
+from app.core.exceptions import NotAuthorized
+
+from .const import TENANT_PREFIX
+from .const import REFRESH_PREFIX
 from .const import SESSION_PREFIX
 from .const import ENROLMENT_PREFIX
-from .const import REFRESH_PREFIX
 from .const import LOCAL_OPERATOR_TOKEN
 from .const import REMOTE_WRITE_BCRYPT_ROUNDS
 from .schemas import Principal
-from app.core.exceptions import NotAuthorized
 
 
 class AuthManager:
@@ -59,6 +61,50 @@ class AuthManager:
             name=name,
             scopes=("*",),
         )
+
+    @staticmethod
+    def tenant_principal(tenant_uid: str, slug: str) -> Principal:
+        """The identity a tenant's console session runs as.
+
+        `scope` is the tenant's uid and is the whole of this principal's authority:
+        it holds no wildcard, and every route outside the serving view refuses it
+        (`app.core.context.request_context`). The uid rather than the slug, because
+        a slug is a handle somebody reads and the scope is compared.
+        """
+        return Principal(
+            id=tenant_uid,
+            kind="tenant",
+            name=slug,
+            scopes=("serving:read",),
+            scope=tenant_uid,
+        )
+
+    @staticmethod
+    def mint_tenant_token() -> tuple[str, str]:
+        """Mints a tenant console token: `(plaintext, sha256_hex)`.
+
+        Only the hash is stored; the plaintext is shown once at mint. Fast-hashed
+        for the same reason as the enrolment token — 256 bits of machine-generated
+        randomness has no dictionary to walk, and the login needs one indexed
+        lookup rather than a bcrypt over every live row.
+        """
+        token = f"{TENANT_PREFIX}.{secrets.token_urlsafe(32)}"
+        return token, AuthManager.hash_tenant_token(token)
+
+    @staticmethod
+    def hash_tenant_token(token: str) -> str:
+        """The sha256 hex digest stored for, and looked up by, a tenant token."""
+        return hashlib.sha256(token.encode()).hexdigest()
+
+    @staticmethod
+    def looks_like_tenant(token: str | None) -> bool:
+        """Whether a credential is shaped like a tenant token, without a lookup.
+
+        Lets the login route tell "this is not a tenant token" from "this token is
+        not known" before it spends a query, and keeps a mistyped admin password
+        out of the token table's index.
+        """
+        return token is not None and token.startswith(f"{TENANT_PREFIX}.")
 
     @staticmethod
     def bearer_token(header: str | None) -> str | None:
@@ -191,11 +237,22 @@ class AuthManager:
         return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
     @staticmethod
-    def issue_session_token(name: str, ttl_seconds: int | None = None) -> str:
-        """Mints a signed, expiring session token naming an admin principal."""
+    def issue_session_token(
+        name: str,
+        ttl_seconds: int | None = None,
+        kind: str = "admin",
+        scope: str | None = None,
+    ) -> str:
+        """Mints a signed, expiring session token naming a principal.
+
+        The payload carries the kind and the scope because the token is the only
+        thing a request presents: a session that resolved to whatever the server
+        chose to assume would make the tenant view a guess rather than a claim, and
+        the signature is what makes the claim safe to read back.
+        """
         ttl = settings.SESSION_TTL_SECONDS if ttl_seconds is None else ttl_seconds
         expires_at = int(time.time()) + ttl
-        payload = f"{name}:{expires_at}".encode()
+        payload = f"{name}:{kind}:{scope or ''}:{expires_at}".encode()
         payload_b64 = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
         signature = AuthManager._sign(payload)
         return f"{SESSION_PREFIX}.{payload_b64}.{signature}"
@@ -220,12 +277,26 @@ class AuthManager:
         if not hmac.compare_digest(signature.encode(), expected_signature.encode()):
             return None
         try:
-            name, _, expires_raw = payload.decode().rpartition(":")
+            fields = payload.decode().split(":")
+        except UnicodeDecodeError:
+            return None
+        if len(fields) == 2:
+            # A session minted before the payload carried a kind. Admin, as it was
+            # then, so that shipping this does not sign every operator out.
+            fields = [fields[0], "admin", "", fields[1]]
+        if len(fields) != 4:
+            return None
+        name, kind, scope, expires_raw = fields
+        try:
             expires_at = int(expires_raw)
-        except (ValueError, UnicodeDecodeError):
+        except ValueError:
             return None
         if not name or time.time() >= expires_at:
             return None
+        if kind == "tenant":
+            if not scope:
+                return None
+            return AuthManager.tenant_principal(tenant_uid=scope, slug=name)
         return AuthManager.admin_principal(name=name)
 
     @staticmethod

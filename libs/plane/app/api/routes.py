@@ -16,6 +16,7 @@ from app.modules.quotas.routes import QuotaRoutes
 from app.modules.quotas.routes import ServingQuotaRoutes
 from app.modules.devices.routes import DeviceRoutes
 from app.modules.metrics.routes import MetricsRoutes
+from app.modules.serving.routes import ServingRoutes
 from app.modules.tenants.routes import TenantRoutes
 from app.modules.clusters.routes import ClusterRoutes
 from app.modules.policies.routes import PolicyRoutes
@@ -65,6 +66,7 @@ V1_ROUTES = [
     AlertRuleRoutes,
     NotificationChannelRoutes,
     MetricsRoutes,
+    ServingRoutes,
 ]
 
 

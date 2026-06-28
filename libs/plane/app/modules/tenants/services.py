@@ -1,10 +1,17 @@
+from datetime import datetime
+from datetime import timezone
+
 from sqlalchemy import Row
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import AuthManager
 from app.core.ids import TENANT
+from app.core.ids import TENANT_TOKEN
 from app.core.ids import new_uid
 from app.db.models import Tenant
+from app.db.models import TenantToken
 from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
@@ -14,8 +21,10 @@ from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
 
 from .schemas import TenantSchema
+from .schemas import TenantTokenSchema
 from .schemas import TenantCreateRequest
 from .schemas import TenantUpdateRequest
+from .schemas import TenantTokenCreateRequest
 from .repository import TenantRepository
 
 
@@ -114,3 +123,71 @@ class TenantService:
             )
         await self.repo.delete(row[0])
         await self.db.commit()
+
+    def _token(self, token: TenantToken, slug: str, plaintext: str | None = None) -> TenantTokenSchema:
+        return TenantTokenSchema(
+            id=token.uid,
+            tenant=slug,
+            name=token.name,
+            token=plaintext,
+            last_used_at=token.last_used_at,
+            revoked_at=token.revoked_at,
+            created_at=token.created_at,
+        )
+
+    async def list_tokens(self, ref: str) -> "list[TenantTokenSchema]":
+        """Every credential ever minted for this tenant, revoked ones included.
+
+        Revoked rows stay in the answer because the question somebody asks here is
+        not "what works" but "what was ever handed out" — and a credential that
+        disappears when it is revoked cannot be told from one that never existed.
+        """
+        row = await self._one(ref)
+        tenant: Tenant = row[0]
+        result = await self.db.execute(
+            select(TenantToken).where(TenantToken.tenant_id == tenant.id).order_by(TenantToken.seq.asc())
+        )
+        return [self._token(token, tenant.slug) for token in result.scalars().all()]
+
+    async def mint_token(self, ref: str, data: TenantTokenCreateRequest) -> TenantTokenSchema:
+        """Mints a console credential for one tenant and returns it once.
+
+        The plaintext is on this response and nowhere else, ever. Minting a second
+        one does not invalidate the first: rotation is issue, move the reader,
+        revoke — three steps, none of which is a coordinated flip.
+        """
+        row = await self._one(ref)
+        tenant: Tenant = row[0]
+        plaintext, token_hash = AuthManager.mint_tenant_token()
+        token = TenantToken(
+            uid=new_uid(TENANT_TOKEN),
+            tenant_id=tenant.id,
+            token_hash=token_hash,
+            name=data.name or "console",
+        )
+        self.db.add(token)
+        await self.db.flush()
+        await self.db.commit()
+        return self._token(token, tenant.slug, plaintext=plaintext)
+
+    async def revoke_token(self, ref: str, token_ref: str) -> None:
+        """Revokes one credential. Idempotent on an already-revoked one.
+
+        A revoked token also ends the sessions it opened, at their next refresh —
+        `AuthService.rotate_refresh_token` re-checks the credential rather than
+        trusting the session it minted.
+        """
+        row = await self._one(ref)
+        tenant: Tenant = row[0]
+        result = await self.db.execute(
+            select(TenantToken).where(
+                TenantToken.tenant_id == tenant.id,
+                TenantToken.uid == token_ref,
+            )
+        )
+        token = result.scalars().first()
+        if token is None:
+            raise NotFound(f"no token {token_ref!r} on tenant {ref!r}")
+        if token.revoked_at is None:
+            token.revoked_at = datetime.now(tz=timezone.utc)
+            await self.db.commit()
