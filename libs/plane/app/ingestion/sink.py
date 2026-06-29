@@ -244,9 +244,7 @@ class DatabaseSink:
         await db.execute(statements.attach_allocation_devices(allocation_id, cluster_id, payload))
         return True
 
-    async def _release(
-        self, db: AsyncSession, cluster_id: UUID, cluster_uid: str, payload: AllocationObserved
-    ) -> bool:
+    async def _release(self, db: AsyncSession, cluster_id: UUID, cluster_uid: str, payload: AllocationObserved) -> bool:
         """Hands back everything one allocation was holding.
 
         The cluster states a departure by restating the allocation with no

@@ -23,6 +23,7 @@ from msgspec import Raw
 from msgspec import Struct
 from msgspec import json as msgjson
 
+from app.auth import Principal
 from app.hub.sink import Sink
 from app.hub.sink import Liveness
 from app.hub.sink import SinkFrame
@@ -30,7 +31,6 @@ from app.hub.sink import MemorySink
 from app.hub.sink import DesiredSource
 from app.hub.sink import OperationSource
 from app.hub.sink import EmptyDesiredSource
-from app.auth import Principal
 from app.hub.state import SessionState
 from app.hub.state import SessionRegistry
 from app.hub.state import new_id

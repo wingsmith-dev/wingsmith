@@ -1089,7 +1089,7 @@ export function EndpointDetailPage() {
                                     style={{ width: `${weightPct}%` }}
                                   />
                                 </div>
-                                <span className="font-mono text-2xs tabular-nums text-muted-foreground">
+                                <span className="font-mono text-2xs text-muted-foreground tabular-nums">
                                   {weightPct}%
                                 </span>
                               </div>

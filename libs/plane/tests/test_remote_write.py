@@ -14,11 +14,10 @@ import pytest
 
 from sqlalchemy import text
 
-from app.config import settings
-from app.reactor import remote_write
 from app.auth import REMOTE_WRITE_BCRYPT_ROUNDS
 from app.auth import AuthManager
-from app.auth import AuthManager
+from app.config import settings
+from app.reactor import remote_write
 
 from tests.conftest import seed_cluster
 

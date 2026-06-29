@@ -17,7 +17,6 @@ from litestar.testing import create_test_client
 
 from app.auth import STATIC_OPERATOR
 from app.auth import AuthManager
-from app.auth import AuthManager
 from app.core.context import RequestContext
 from app.core.handlers import EXCEPTION_HANDLERS
 from app.core.throttle import FailureBudget

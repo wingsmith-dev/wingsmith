@@ -366,7 +366,7 @@ func TestPruneSupersededDuringARollingUpdate(t *testing.T) {
 			kept: []string{next, frontendPrev},
 		},
 		{
-			name:  "two components rolling at once each keep their own newest",
+			name: "two components rolling at once each keep their own newest",
 			graph: rolling(declaring(
 				graphDeployment(previous, next, frontendPrev, frontendNext), render.FrontendComponent)),
 			objects: []*unstructured.Unstructured{

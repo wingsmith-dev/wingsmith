@@ -252,9 +252,7 @@ def test_a_pinned_revision_is_not_part_of_what_a_model_is_called():
     """
     from app.core.serving import model_slug
 
-    assert model_slug("hf://deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b") == (
-        "deepseek-ai/deepseek-v4-flash-0731"
-    )
+    assert model_slug("hf://deepseek-ai/DeepSeek-V4-Flash-0731@7872f01b") == ("deepseek-ai/deepseek-v4-flash-0731")
 
 
 def test_the_preferred_location_names_the_model_and_the_first_one_answers_otherwise():

@@ -1,8 +1,8 @@
 from litestar.testing import create_test_client
 
-from app.config import settings
 from app.auth import STATIC_OPERATOR
 from app.auth import AuthManager
+from app.config import settings
 from app.core.routes import HealthRoutes
 from app.core.exceptions import NotAuthorized
 

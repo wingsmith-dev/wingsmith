@@ -7,9 +7,9 @@ from litestar.openapi.config import OpenAPIConfig
 
 from app.db import engine
 from app.api import routes
+from app.auth import AuthManager
 from app.utils import logs
 from app.config import settings
-from app.auth import AuthManager
 from app.core.params import reject_unknown_params
 from app.core.context import request_context
 from app.core.handlers import EXCEPTION_HANDLERS

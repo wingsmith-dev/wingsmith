@@ -104,9 +104,7 @@ def test_the_link_to_follow_is_the_branch_and_the_permalink_is_kept_beside_it(co
     stays, because a claim nobody can read back against its own bytes is not one.
     """
     match = corpus.lookup("openai/gpt-oss-20b")
-    assert match.source_uri == (
-        "https://github.com/vllm-project/recipes/blob/main/models/openai/gpt-oss-20b.yaml"
-    )
+    assert match.source_uri == ("https://github.com/vllm-project/recipes/blob/main/models/openai/gpt-oss-20b.yaml")
     assert match.snapshot_uri == (
         f"https://github.com/vllm-project/recipes/blob/{corpus.ref}/models/openai/gpt-oss-20b.yaml"
     )
@@ -177,10 +175,7 @@ def test_a_declared_tp_comes_from_the_variant_first_then_the_strategy_override()
     """A recipe that names neither has not said one — it has said "ask the hardware"."""
     assert _corpus(variants={"default": {"tp": 2}}).lookup("acme/model").declared_tensor_parallel() == 2
     assert (
-        _corpus(strategy_overrides={"single_node_tp": {"tp": 8}})
-        .lookup("acme/model")
-        .declared_tensor_parallel()
-        == 8
+        _corpus(strategy_overrides={"single_node_tp": {"tp": 8}}).lookup("acme/model").declared_tensor_parallel() == 8
     )
     assert (
         _corpus(variants={"default": {"tp": 2}}, strategy_overrides={"single_node_tp": {"tp": 8}})
@@ -408,8 +403,7 @@ def test_an_image_published_only_for_amd_is_not_offered_as_ours(corpus):
     amd_only = [
         recipe
         for recipe in corpus.recipes()
-        if isinstance(recipe.model.get("docker_image"), dict)
-        and not recipe.model["docker_image"].get("nvidia")
+        if isinstance(recipe.model.get("docker_image"), dict) and not recipe.model["docker_image"].get("nvidia")
     ]
 
     assert amd_only, "the corpus no longer has an AMD-only image to check"

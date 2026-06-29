@@ -947,9 +947,7 @@ def test_a_carry_beside_another_term_on_the_same_key_is_refused(term):
     the caller sent bounds something nothing reads, and a second writer is two
     answers to "what does this key become"."""
     with pytest.raises(Invalid):
-        check_surface(
-            {"policy": {"rules": [{"key": "reasoning_effort", "value_from": "thinking.effort", **term}]}}
-        )
+        check_surface({"policy": {"rules": [{"key": "reasoning_effort", "value_from": "thinking.effort", **term}]}})
 
 
 def test_a_carry_and_a_drop_of_one_key_on_overlapping_scopes_are_refused():
@@ -972,9 +970,7 @@ def test_a_carry_on_a_predicate_is_refused():
     """A predicate reads the whole body and answers yes or no. There is no key to
     write into."""
     with pytest.raises(Invalid):
-        check_surface(
-            {"policy": {"rules": [{"predicate": "messages.tools", "value_from": "thinking.effort"}]}}
-        )
+        check_surface({"policy": {"rules": [{"predicate": "messages.tools", "value_from": "thinking.effort"}]}})
 
 
 def test_two_writes_guarded_on_different_paths_still_conflict():

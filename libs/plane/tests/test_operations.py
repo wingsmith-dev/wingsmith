@@ -419,9 +419,7 @@ async def test_a_withdrawn_operation_renders_as_a_cancellation_and_never_again_a
     from app.ingestion.operations import _render
 
     requested = dt.datetime(2026, 8, 19, 14, 31, 44, tzinfo=dt.UTC)
-    rendered = await _render(
-        _StubSession(NODE_UID), _operation(cancel_requested_at=requested), CLUSTER_UID
-    )
+    rendered = await _render(_StubSession(NODE_UID), _operation(cancel_requested_at=requested), CLUSTER_UID)
 
     assert rendered is not None
     type_name, payload = rendered

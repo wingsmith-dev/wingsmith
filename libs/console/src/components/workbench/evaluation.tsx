@@ -32,7 +32,11 @@ interface EvalReport {
       throughput?: { avg_output_tps?: number }
     }
   }
-  execution_summary?: { requested?: number; succeeded?: number; errored?: number }
+  execution_summary?: {
+    requested?: number
+    succeeded?: number
+    errored?: number
+  }
 }
 
 interface EvalSummary {
@@ -63,7 +67,10 @@ export function EvaluationRun({ id }: { id: string }) {
     0
   )
   const totalLatencyMs = named.reduce(
-    (acc, r) => acc + (r.perf_metrics?.summary?.latency?.mean ?? 0) * (r.metrics?.[0]?.num ?? 0),
+    (acc, r) =>
+      acc +
+      (r.perf_metrics?.summary?.latency?.mean ?? 0) *
+        (r.metrics?.[0]?.num ?? 0),
     0
   )
 
@@ -75,7 +82,9 @@ export function EvaluationRun({ id }: { id: string }) {
         <StatTile label="Wall clock" value={formatMs(totalLatencyMs)} small />
         <StatTile
           label="Completed"
-          value={run.finished_at ? new Date(run.finished_at).toLocaleString() : "—"}
+          value={
+            run.finished_at ? new Date(run.finished_at).toLocaleString() : "—"
+          }
           small
         />
       </StatRow>
@@ -105,9 +114,7 @@ export function EvaluationRun({ id }: { id: string }) {
               named.map((r, idx) => {
                 const metric = r.metrics?.[0]
                 const label =
-                  metric?.identity?.name ??
-                  metric?.name ??
-                  "accuracy"
+                  metric?.identity?.name ?? metric?.name ?? "accuracy"
                 const score = metric?.score
                 const num = metric?.num ?? 0
                 return (
@@ -175,7 +182,9 @@ export function EvaluationSuite({ id }: { id: string }) {
           ) : (
             list.map((run) => {
               const summary = (run.summary as EvalSummary | null) ?? null
-              const reports = (summary?.reports ?? []).filter((r) => r.dataset_name)
+              const reports = (summary?.reports ?? []).filter(
+                (r) => r.dataset_name
+              )
               const samples = reports.reduce(
                 (acc, r) => acc + (r.metrics?.[0]?.num ?? 0),
                 0

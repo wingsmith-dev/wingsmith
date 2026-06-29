@@ -104,10 +104,7 @@ export function BandTable({ bands }: { bands: BenchmarkBand[] }) {
                           className="border-amber-500/40 font-mono text-2xs text-amber-700 dark:text-amber-300"
                           asChild
                         >
-                          <Link
-                            to="/workbench/$runId"
-                            params={{ runId: run }}
-                          >
+                          <Link to="/workbench/$runId" params={{ runId: run }}>
                             {shortenId(run)}
                           </Link>
                         </Badge>

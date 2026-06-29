@@ -86,8 +86,7 @@ def _seed(cur) -> dict[str, uuid.UUID]:
     row = cur.fetchone()
     if row is None:
         cur.execute(
-            "INSERT INTO bind_tenant (id, uid, name, slug)"
-            " VALUES (gen_random_uuid(), 'tnt_t', 't', 't') RETURNING id"
+            "INSERT INTO bind_tenant (id, uid, name, slug) VALUES (gen_random_uuid(), 'tnt_t', 't', 't') RETURNING id"
         )
         row = cur.fetchone()
     tenant = row[0]
@@ -209,10 +208,30 @@ def test_the_backfilled_digest_is_the_one_the_plane_would_compute(scratch) -> No
     # digest still matches is the point: the hash keys are frozen, so renaming a column
     # does not move the identity of a configuration.
     names = (
-        "engine", "engine_runtime_version", "engine_runtime_image", "frontend_image", "engine_args", "quantization", "dtype",
-        "tensor_parallel", "pipeline_parallel", "expert_parallel", "context_length", "max_batch_tokens",
-        "kv_cache_dtype", "kv_cache_fraction", "prefix_cache_enabled", "prefix_cache_config", "device_class",
-        "device_count", "device_memory_mib_min", "cpu_cores", "memory_mib", "disk_gib", "overlay", "serving",
+        "engine",
+        "engine_runtime_version",
+        "engine_runtime_image",
+        "frontend_image",
+        "engine_args",
+        "quantization",
+        "dtype",
+        "tensor_parallel",
+        "pipeline_parallel",
+        "expert_parallel",
+        "context_length",
+        "max_batch_tokens",
+        "kv_cache_dtype",
+        "kv_cache_fraction",
+        "prefix_cache_enabled",
+        "prefix_cache_config",
+        "device_class",
+        "device_count",
+        "device_memory_mib_min",
+        "cpu_cores",
+        "memory_mib",
+        "disk_gib",
+        "overlay",
+        "serving",
     )
     workload = SimpleNamespace(**dict(zip(names, row[2:])))
     assert stored == serving_digest(workload, SimpleNamespace(uid=artifact_uid))

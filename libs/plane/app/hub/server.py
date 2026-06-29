@@ -11,10 +11,10 @@ from websockets.asyncio.server import ServerConnection
 from websockets.asyncio.server import serve
 
 from app.db import engine
-from app.utils import logs
-from app.config import settings
 from app.auth import Principal
 from app.auth import AuthManager
+from app.utils import logs
+from app.config import settings
 from app.db.engine import session_factory
 from app.hub.state import SessionRegistry
 from app.hub.state import reaper_loop

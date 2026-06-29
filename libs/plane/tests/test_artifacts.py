@@ -1424,9 +1424,7 @@ def test_a_repo_with_no_chat_template_is_flagged_at_registration():
 def test_a_chat_template_inside_the_tokenizer_config_counts():
     """Older repos carry the template as a key rather than a file, and the frontend reads both."""
     files = tuple(name for name in SERVEABLE_FILES if name != "chat_template.jinja")
-    messages = _messages(
-        hf_model(files=files, tokenizer_config={"chat_template": "{% for m in messages %}"})
-    )
+    messages = _messages(hf_model(files=files, tokenizer_config={"chat_template": "{% for m in messages %}"}))
 
     assert "no chat template" not in messages
 

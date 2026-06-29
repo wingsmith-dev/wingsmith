@@ -15,8 +15,8 @@ import pytest
 
 from msgspec import json as msgjson
 
-from app.hub.sink import MemorySink
 from app.auth import STATIC_OPERATOR
+from app.hub.sink import MemorySink
 from app.hub.state import SessionState
 from app.hub.state import SessionRegistry
 from app.hub.state import new_id

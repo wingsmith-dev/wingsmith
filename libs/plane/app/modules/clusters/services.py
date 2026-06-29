@@ -9,10 +9,10 @@ from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth import AuthManager
 from app.config import settings
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
-from app.auth import AuthManager
 from app.db.models import Cluster
 from app.db.models import ClusterServing
 from app.db.models import ClusterSyncState

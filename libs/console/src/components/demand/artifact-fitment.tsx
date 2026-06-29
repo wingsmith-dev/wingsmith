@@ -79,7 +79,10 @@ const QUANTIZATIONS = ["", "fp8", "int8", "int4", "mxfp4", "awq"]
  * value is absent from its own options renders empty, which reads as "no window
  * chosen" on a form that has one.
  */
-function contextChoices(declared: number | null, current?: number | null): number[] {
+function contextChoices(
+  declared: number | null,
+  current?: number | null
+): number[] {
   const halvings: number[] = []
   if (!declared || declared < 4096) halvings.push(131072, 32768, 8192)
   else
@@ -307,7 +310,9 @@ export function ArtifactFitmentPanel({
     (controlledContext ? contextLengthProp || undefined : ownContextLength) ??
     undefined
   const setContextLength = (value: number) =>
-    controlledContext ? onContextLengthChange(value) : setOwnContextLength(value)
+    controlledContext
+      ? onContextLengthChange(value)
+      : setOwnContextLength(value)
   const choices = contextChoices(declared, contextLength)
   const [concurrency, setConcurrency] = useState(1)
   const [quantization, setQuantization] = useState("")

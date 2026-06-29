@@ -187,9 +187,7 @@ class HuggingFaceClient:
         """A missing `config.json` is not a failure: GGUF repos carry no such file."""
         return await self._json_file(client, slug, sha, "config.json")
 
-    async def _json_file(
-        self, client: httpx.AsyncClient, slug: str, sha: str, path: str
-    ) -> dict[str, Any]:
+    async def _json_file(self, client: httpx.AsyncClient, slug: str, sha: str, path: str) -> dict[str, Any]:
         """One small JSON file from the repo, or `{}` when the repo does not carry it.
 
         Absence is an answer here and not an error. A repo with no

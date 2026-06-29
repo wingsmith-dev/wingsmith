@@ -266,11 +266,7 @@ def native_quant_method(config: dict | None, huggingface_id: str | None = None) 
             return from_name
     quant = effective_config(config).get("quantization_config") or {}
     method = quant.get("quant_method") or quant.get("quant_type")
-    return (
-        _normalize_quant(method)
-        or _normalize_quant(quant.get("format"))
-        or _compressed_tensors_bucket(quant)
-    )
+    return _normalize_quant(method) or _normalize_quant(quant.get("format")) or _compressed_tensors_bucket(quant)
 
 
 def _num_experts(eff: dict) -> int | None:

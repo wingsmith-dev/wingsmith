@@ -10,7 +10,6 @@ import type {
 import {
   emptyCapabilities,
   emptyServing,
-
   emptyUpstream,
 } from "@/modules/demand/display"
 import type {

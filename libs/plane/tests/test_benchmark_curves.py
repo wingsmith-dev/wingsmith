@@ -42,7 +42,9 @@ def aiperf(p90=None, p50=None, total=None, per_stream=None, p95=None):
     return summary or None
 
 
-def run(uid, step, load, p90=None, phase="succeeded", discard=False, version="0.12.0", tokens=2000, digest=DIGEST, **summary):
+def run(
+    uid, step, load, p90=None, phase="succeeded", discard=False, version="0.12.0", tokens=2000, digest=DIGEST, **summary
+):
     return SimpleNamespace(
         uid=uid,
         step_index=step,

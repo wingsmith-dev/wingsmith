@@ -215,9 +215,7 @@ def test_evalscope_endpoint_model_is_omitted_when_identical():
 
 def test_evalscope_endpoints_go_through_shell_quoting():
     """A parameter is attacker-adjacent by the time it reaches a shell; quoting is not optional."""
-    resolved = harnesses.normalise(
-        harnesses.EVALSCOPE, {"datasets": "mmlu_pro"}, harnesses.DEPLOYMENT
-    )
+    resolved = harnesses.normalise(harnesses.EVALSCOPE, {"datasets": "mmlu_pro"}, harnesses.DEPLOYMENT)
     flattened = harnesses.wire_parameters(harnesses.EVALSCOPE, resolved, None, "a'; rm -rf /; echo '")
     assert "rm -rf /" in flattened["command"]
     assert "'\\''" in flattened["command"]

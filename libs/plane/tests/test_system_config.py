@@ -13,10 +13,9 @@ import msgspec
 
 from litestar.testing import TestClient
 
+from app.auth import AuthManager
 from app.config import settings
 from app.api.app import create_app
-from app.auth import AuthManager
-from app.auth import AuthManager
 from app.core.system_routes import effective_config
 
 

@@ -361,8 +361,7 @@ def _check_rule(rule: RuleSchema, where: str) -> None:
         # A copy writes the key, a deny refuses it and a drop takes it away.
         # Whichever the author meant, the other two are not it.
         raise Invalid(
-            f"{where} both copies into and denies or drops {subject} — a write and a removal "
-            f"are different answers",
+            f"{where} both copies into and denies or drops {subject} — a write and a removal are different answers",
             {"field": where},
         )
     if (rule.deny or rule.drop) and values:

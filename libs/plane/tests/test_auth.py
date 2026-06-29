@@ -10,17 +10,17 @@ from litestar.testing import TestClient
 from websockets.exceptions import InvalidStatus
 from websockets.asyncio.client import connect
 
-from app.config import settings
-from app.api.app import create_app
+from app.auth import LOGIN_GUESSES
 from app.auth import LOCAL_OPERATOR_TOKEN
 from app.auth import AuthManager
+from app.config import settings
+from app.api.app import create_app
 from app.hub.server import serve_forever
 from app.hub.server import _resolve_connection
 from app.config.settings import Settings
 from app.config.settings import validate
 from app.config.settings import resolved_admin_auth
 from app.core.exceptions import NotAuthorized
-from app.auth import LOGIN_GUESSES
 
 
 PASSWORD = "correct horse battery staple"
