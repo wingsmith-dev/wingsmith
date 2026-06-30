@@ -1,4 +1,5 @@
 import { api } from "@/lib/api"
+import type { MetricsQuery } from "@/modules/metrics/api"
 import type { Metrics } from "@/modules/metrics/types"
 import type { ServedModelDetail, ServingOverview } from "./types"
 
@@ -19,10 +20,15 @@ export function fetchServedModel(ref: string): Promise<ServedModelDetail> {
 
 export function fetchServedModelMetrics(
   ref: string,
-  span = 3600
+  query: MetricsQuery = {}
 ): Promise<Metrics> {
   return api.get<Metrics>(
     `/serving/models/${encodeURIComponent(ref)}/metrics`,
-    { span }
+    {
+      window: query.window,
+      step: query.step,
+      span: query.span,
+      series: query.series,
+    }
   )
 }

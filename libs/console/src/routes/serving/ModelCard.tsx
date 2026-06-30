@@ -5,7 +5,10 @@ import {
   useServedModel,
   useServedModelMetrics,
 } from "@/modules/serving/queries"
+import type { TimeWindow } from "@/modules/metrics/windows"
 import type { ServedModel, ServedModelState } from "@/modules/serving/types"
+
+import { ServingCharts } from "./ServingCharts"
 
 const TONE: Record<ServedModelState, StatusTone> = {
   serving: "ok",
@@ -54,9 +57,15 @@ function Stat({ label, value }: StatProps) {
  * when the store has nothing. A model nobody called this hour did not serve zero
  * requests at zero latency; it was not measured, and a dash says so.
  */
-export function ModelCard({ model }: { model: ServedModel }) {
+export function ModelCard({
+  model,
+  window,
+}: {
+  model: ServedModel
+  window: TimeWindow
+}) {
   const detail = useServedModel(model.id)
-  const metrics = useServedModelMetrics(model.id)
+  const metrics = useServedModelMetrics(model.id, window)
   const samples = metrics.data?.samples ?? []
 
   const stat = (metric: string) => {
@@ -98,6 +107,8 @@ export function ModelCard({ model }: { model: ServedModel }) {
         <Stat label="Latency p95" value={stat("serving.latency_p95")} />
         <Stat label="Availability" value={stat("serving.availability")} />
       </div>
+
+      <ServingCharts curves={metrics.data?.series ?? []} />
 
       {limits ? (
         <div className="flex flex-wrap gap-x-6 gap-y-1 border-t px-5 py-3 text-xs text-muted-foreground">

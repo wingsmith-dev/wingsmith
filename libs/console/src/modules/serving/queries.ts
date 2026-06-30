@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 
+import { windowQuery, type TimeWindow } from "@/modules/metrics/windows"
+
 import {
   fetchServedModel,
   fetchServedModelMetrics,
@@ -25,11 +27,19 @@ export function useServedModel(ref: string | null) {
   })
 }
 
-export function useServedModelMetrics(ref: string | null) {
+/**
+ * One model's traffic over a chosen span, with the curves asked for.
+ *
+ * `placeholderData` keeps the previous render on screen while a new window
+ * loads, so changing the range redraws rather than collapsing the page to
+ * skeletons and jumping the layout back when the answer arrives.
+ */
+export function useServedModelMetrics(ref: string | null, window: TimeWindow) {
   return useQuery({
-    queryKey: ["serving", "metrics", ref],
-    queryFn: () => fetchServedModelMetrics(ref as string),
+    queryKey: ["serving", "metrics", ref, window.key],
+    queryFn: () => fetchServedModelMetrics(ref as string, windowQuery(window)),
     enabled: ref !== null,
     refetchInterval: REFETCH_MS,
+    placeholderData: (previous) => previous,
   })
 }

@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { createFileRoute, redirect } from "@tanstack/react-router"
 
 import { Button } from "@/components/ui/button"
@@ -6,6 +7,8 @@ import { ErrorScreen } from "@/components/layout/error-screen"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSignOut } from "@/modules/auth/session"
 import { useAuthStore } from "@/modules/auth/store"
+import { WindowToggle } from "@/components/metrics/window-toggle"
+import { DEFAULT_WINDOW, type TimeWindow } from "@/modules/metrics/windows"
 import { useServingOverview } from "@/modules/serving/queries"
 
 import { ModelCard } from "./ModelCard"
@@ -35,6 +38,7 @@ export const Route = createFileRoute("/serving")({
 function ServingPage() {
   const overview = useServingOverview()
   const signOut = useSignOut()
+  const [window, setWindow] = useState<TimeWindow>(DEFAULT_WINDOW)
 
   return (
     <div className="min-h-svh bg-background">
@@ -56,6 +60,10 @@ function ServingPage() {
       </header>
 
       <main className="mx-auto w-full max-w-4xl space-y-4 p-6">
+        <div className="flex items-center justify-end">
+          <WindowToggle value={window} onChange={setWindow} />
+        </div>
+
         {overview.isError ? (
           <ErrorScreen
             error={overview.error}
@@ -72,7 +80,7 @@ function ServingPage() {
           </p>
         ) : (
           overview.data?.models.map((model) => (
-            <ModelCard key={model.id} model={model} />
+            <ModelCard key={model.id} model={model} window={window} />
           ))
         )}
       </main>
