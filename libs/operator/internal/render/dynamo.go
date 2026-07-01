@@ -211,6 +211,19 @@ func (l Layout) devices(dep wire.DeploymentDesired) int {
 // authority.
 const WorkerComponent = "VllmDecodeWorker"
 
+// PrefillComponent is the Dynamo component name for the prefill engine of a disaggregated
+// deployment, beside `WorkerComponent` which stays the decode one.
+//
+// Declared here before anything renders it, because its length is the reason `maxWorkloadName`
+// stopped being derived: it is one byte longer than `VllmDecodeWorker`, and under the old
+// arithmetic merely naming it would have shortened the bound for every deployment in the fleet.
+// `TestComponentBudget` holds it to the budget instead.
+//
+// The spelling is Dynamo's, not ours, for the reason `FrontendComponent` gives below: the name
+// goes into the `nvidia.com/dynamo-component` label and into the Service selector derived from
+// it, so it is matched on rather than read.
+const PrefillComponent = "VllmPrefillWorker"
+
 // FrontendComponent is the Dynamo component name for the OpenAI-compatible frontend.
 //
 // The string is not ours to choose. Dynamo puts a component's name in the `nvidia.com/dynamo-
@@ -307,10 +320,10 @@ func Name(id string) string {
 // maxWorkloadName bounds the rendered name so the objects Dynamo derives from it stay inside the
 // 63 byte limit their own names are held to.
 //
-// Derived rather than chosen. The number that matters is not the graph deployment's own name — it
-// has 253 bytes to spend — but the DynamoComponentDeployment Dynamo names after it, whose name is
-// also the value of the `nvidia.com/selector` label on the Deployment underneath. A label value is
-// 63 bytes, so a graph name that fits perfectly well produces a child the API server refuses:
+// The number that matters is not the graph deployment's own name — it has 253 bytes to spend —
+// but the DynamoComponentDeployment Dynamo names after it, whose name is also the value of the
+// `nvidia.com/selector` label on the Deployment underneath. A label value is 63 bytes, so a graph
+// name that fits perfectly well produces a child the API server refuses:
 //
 //	Deployment.apps "<40 chars>-vllmdecodeworker-bb8c5a8c" is invalid:
 //	spec.selector.matchLabels: must be no more than 63 bytes
@@ -319,32 +332,50 @@ func Name(id string) string {
 // never read — so the deployment reported `placed · 0 of 1 replicas ready` for as long as it
 // existed, with no pod ever created and nothing anywhere saying why.
 //
-// The bound is the longest of the components actually rendered, and not the worker's alone. The
-// worker's is the longest today — `Frontend` is half the length of `VllmDecodeWorker`, so the
-// number does not move and no existing name changes — but a bound derived from one component is a
-// bound that is right by coincidence. A component renamed or added past it would overflow the
-// same 63 bytes, in the same place, with the same silence.
-const maxWorkloadName = maxObjectNameBytes - longestComponentSuffix
+// **Chosen, not derived, and that is the correction.** This was `maxObjectNameBytes` minus a
+// `max()` over the suffixes of whatever components happened to exist, which made the bound a
+// function of the component list: adding `VllmPrefillWorker` — one byte longer than
+// `VllmDecodeWorker` — moved it from 37 to 36 and silently renamed any deployment whose slug was
+// exactly 37 bytes. A rename is a delete and recreate, so that is a weight reload on every
+// cluster, caused by adding a component those deployments do not even render. The bound would
+// have moved again for image serving (plan 05), and again after that.
+//
+// So it is a number now, with room under it, and `TestComponentBudget` is what holds the
+// components to it rather than the other way round. Queried against production on 2026-09-08
+// before taking it: ten deployments, longest rendered name 22 bytes, none at 36 or above. The
+// one-time rename this could have cost was therefore zero, and it was taken while exactly one
+// topology existed. Do not re-derive this from the component list; add a component that fits.
+const maxWorkloadName = 32
 
-// longestComponentSuffix is the worst case over every component this renderer emits.
-const longestComponentSuffix = max(len(componentSuffix), len(frontendSuffix))
+// componentNameBudget is what a component name may spend, and the whole of the contract this
+// file now keeps with itself.
+//
+// `maxObjectNameBytes - maxWorkloadName` is 31, which a suffix spends as a dash, the component
+// name lowercased, a dash, and the eight character spec hash — leaving 21 bytes for the name.
+// `VllmPrefillWorker` is 17, the longest this renderer emits, so there are four characters of
+// slack for whatever plan 05 calls an image worker. A component past this is a compile-time test
+// failure with a name in it, which is the failure this indirection exists to produce: the
+// alternative was a bound that moved under the components and took running deployments with it.
+const componentNameBudget = maxObjectNameBytes - maxWorkloadName - len("-") - len("-") - len(specHashPlaceholder)
 
 // maxObjectNameBytes is the label-value limit the derived name is actually held to.
 const maxObjectNameBytes = 63
 
-// componentSuffix is what Dynamo appends to the graph's name to name one component's objects:
-// a dash, the component lowercased, a dash, and an eight character spec hash.
+// specHashPlaceholder stands in for the hash Dynamo derives for a worker component. Only its
+// length is used; the value is never rendered.
 //
-// Written out rather than lowercased from `WorkerComponent`, because a const has to be a const.
-// `TestComponentSuffixMatchesWorker` is what keeps the two from drifting.
-const componentSuffix = "-vllmdecodeworker-" + specHashPlaceholder
-
-// frontendSuffix is the same for the frontend component. `TestFrontendSuffixMatchesTheComponent`
-// is what keeps this one from drifting.
-const frontendSuffix = "-frontend-" + specHashPlaceholder
-
-// specHashPlaceholder stands in for the hash Dynamo derives per component. Only its length is
-// used; the value is never rendered.
+// One hash per graph and not one per component, which is the opposite of what this constant's
+// name suggests and was measured rather than read: `ComputeDGDWorkersSpecHash` hashes every worker
+// component of a DGD together, so both roles of one deployment carry the same eight characters.
+// Verified on `cluster-site-a` on 2026-09-08 — a two-role graph named its objects
+// `disagg-probe-vllmprefillworker-33e29a11` and `disagg-probe-vllmdecodeworker-33e29a11`. It is
+// also what pairs the roles at runtime: the same hash goes into `DYN_NAMESPACE_WORKER_SUFFIX`,
+// both workers resolve to the runtime namespace `dynamo-33e29a11`, and the frontend matches
+// prefill to decode on exactly that namespace. Rendering the two roles as two graphs would put
+// them in two namespaces and disaggregation would silently stop happening.
+//
+// Replicas are excluded from that hash — `spec.Replicas = nil` before hashing, upstream — which
+// is what makes a ratio change cost nothing. See `docs/plans/10-disaggregated-serving.md` §11.1.
 const specHashPlaceholder = "00000000"
 
 // WorkloadName is the object name one deployment renders under.

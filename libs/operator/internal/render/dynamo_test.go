@@ -402,19 +402,27 @@ func TestTheOwnershipLabelsReachThePodTemplate(t *testing.T) {
 func TestTheDerivedComponentNameFitsALabelValue(t *testing.T) {
 	in := testInputs()
 	in.Deployment.Name = strings.Repeat("a", 200)
-	child := WorkloadName(in.Deployment) + componentSuffix
+	child := WorkloadName(in.Deployment) + "-" + strings.ToLower(WorkerComponent) + "-" + specHashPlaceholder
 	if len(child) > maxObjectNameBytes {
 		t.Fatalf("the derived component name is %d bytes, over the %d a label value holds: %s",
 			len(child), maxObjectNameBytes, child)
 	}
 }
 
-// componentSuffix is written out because a const cannot be lowercased, so nothing but this stops it
-// drifting from the component it stands for.
-func TestComponentSuffixMatchesWorker(t *testing.T) {
-	want := "-" + strings.ToLower(WorkerComponent) + "-" + specHashPlaceholder
-	if componentSuffix != want {
-		t.Fatalf("componentSuffix = %q, want %q", componentSuffix, want)
+// Every component this renderer emits has to fit `componentNameBudget`, which is the contract that
+// replaced a bound derived from the components themselves.
+//
+// The direction matters and is the whole point. The old `maxWorkloadName` was `63 - max(suffixes)`,
+// so adding a longer component shortened the bound and silently renamed deployments that had
+// nothing to do with it — a rename being a delete, a recreate and a weight reload. Now the number
+// is fixed and the components are held to it, so the same mistake is this test failing with the
+// offending name in the message.
+func TestComponentBudget(t *testing.T) {
+	for _, name := range []string{WorkerComponent, PrefillComponent, FrontendComponent} {
+		if got := len(strings.ToLower(name)); got > componentNameBudget {
+			t.Fatalf("component %s is %d bytes, over the %d componentNameBudget allows; "+
+				"a shorter name is the fix, not a smaller maxWorkloadName", name, got, componentNameBudget)
+		}
 	}
 }
 
@@ -866,16 +874,6 @@ func TestTheOverlayRefusalDoesNotApplyBeforeTheClusterOptsIn(t *testing.T) {
 	}
 	if _, err := DynamoGraphDeployment(in, testOptions()); err != nil {
 		t.Fatalf("render: %v", err)
-	}
-}
-
-// frontendSuffix is written out because a const cannot be lowercased, so nothing but this stops it
-// drifting from the component it stands for — and the component's name is what two label lookups
-// match on, so drift there is a lookup that finds nothing rather than a compile error.
-func TestFrontendSuffixMatchesTheComponent(t *testing.T) {
-	want := "-" + strings.ToLower(FrontendComponent) + "-" + specHashPlaceholder
-	if frontendSuffix != want {
-		t.Fatalf("frontendSuffix = %q, want %q", frontendSuffix, want)
 	}
 }
 
