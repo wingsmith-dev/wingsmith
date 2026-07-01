@@ -6,6 +6,7 @@ import datetime as dt
 from uuid import UUID
 from decimal import Decimal
 from dataclasses import replace
+from collections.abc import Sequence
 
 import msgspec
 
@@ -26,6 +27,7 @@ from app.db.models import Policy
 from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import Deployment
+from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import PolicyAttachment
 from app.db.notify import DEPLOYMENT as DEPLOYMENT_KIND
@@ -34,6 +36,12 @@ from app.db.notify import DeclaredChange
 from app.db.notify import DatabaseNotifier
 from app.ingestion import statements
 from app.core.schemas import ListResponse
+from app.core.serving import AGGREGATED
+from app.core.serving import DERIVED_FLAGS
+from app.core.serving import SERVING_ROLES
+from app.core.serving import TOPOLOGY_FLAGS
+from app.core.serving import SERVING_TOPOLOGIES
+from app.core.serving import flag_name
 from app.core.serving import served_model
 from app.core.serving import serving_digest
 from app.core.serving import recipe_engine_args
@@ -270,6 +278,86 @@ def check_capacity(sizing: Sizing | None, device_class: str, device_count: int, 
                 "quantization": sizing.quantization,
             },
         )
+
+
+DISAGGREGATION_INCAPABLE_ENGINES: frozenset[str] = frozenset()
+"""Engines the plane knows have no prefill/decode split, and refuses one for.
+
+Empty, and named anyway. A deny list rather than an allow list because this module refuses only
+what it can prove: `check_capacity` states the governing habit — "the plane does not refuse what
+it has no number for" — and `resolve_engine_runtime_image` returns `None` rather than inventing
+an address for an engine nobody configured. An allow list would refuse every engine added after
+this line was written, which is the failure mode of a closed set that is not actually closed.
+
+The member this exists for is plan 05's omni module, whose pipeline has stages rather than a
+prefill/decode pair. It is not here yet, and naming an engine the plane has never seen would be
+a refusal resting on nothing. When it lands, this is the one line it adds itself to.
+"""
+
+
+def check_topology(serving_topology: str, roles: Sequence[WorkloadRole], engine: str) -> None:
+    """Rejects a disaggregation declaration that cannot be rendered, run, or believed.
+
+    Here beside `check_shape` and `check_capacity` for the reason those two are here: the person
+    can still fix it. A topology mistake that surfaces as a failed reconcile is a mistake
+    discovered by a model that did not start, twenty minutes of weight loading later.
+
+    What is deliberately **not** refused is as load-bearing as what is.
+
+    Weights are free positive integers, not coprime. Coprimality was proposed so that each ratio
+    would have exactly one spelling, but the argument rested on the weights being part of the
+    configuration's identity and they are not — `serving_digest` excludes them. What it costs is
+    real: it makes "two of each" inexpressible as `2:2`, forcing it to be written `1:1` at two
+    groups, which reinterprets a live scale number to say the same thing.
+
+    Per-role capacity is not checked separately, because there is nothing separate to check. The
+    two roles share `device_class`, `device_count` and `tensor_parallel` — the recipe's whole
+    delta is six arguments — so `check_capacity` on the workload already answers for both. A
+    second call with identical inputs would be a check that cannot fail differently.
+
+    Whether a group is expressible in whole nodes is not checked either. It cannot be:
+    `devices.table()` carries per-device memory and not node shape, so devices-per-node is a fact
+    about a cluster rather than about a device class. `_tensor_group_too_wide` already asks it at
+    placement, where the cluster is in hand, and a weaker copy here would refuse workloads that
+    some cluster in the fleet can serve.
+    """
+    if serving_topology not in SERVING_TOPOLOGIES:
+        raise Invalid(
+            f"serving_topology must be one of {sorted(SERVING_TOPOLOGIES)}",
+            {"serving_topology": serving_topology},
+        )
+    if serving_topology == AGGREGATED:
+        if roles:
+            raise Invalid(
+                "an aggregated workload has one worker and no roles: "
+                "declaring a ratio it will not serve at is worse than refusing it",
+                {"serving_topology": serving_topology, "roles": [role.role for role in roles]},
+            )
+        return
+    if engine in DISAGGREGATION_INCAPABLE_ENGINES:
+        raise Invalid(f"the {engine} engine has no prefill/decode split", {"engine": engine})
+
+    declared = [role.role for role in roles]
+    if sorted(declared) != sorted(SERVING_ROLES):
+        raise Invalid(
+            f"a disaggregated workload is exactly the roles {sorted(SERVING_ROLES)}; one of them is not a topology",
+            {"roles": declared},
+        )
+    for role in roles:
+        if role.weight is None or role.weight < 1:
+            raise Invalid(
+                f"the {role.role} weight must be at least 1: a role with no workers is not a role",
+                {"role": role.role, "weight": role.weight},
+            )
+        for key in role.engine_args or {}:
+            flag = flag_name(str(key))
+            if flag in DERIVED_FLAGS or flag in TOPOLOGY_FLAGS:
+                raise Invalid(
+                    f"the {role.role} role may not set --{flag}: it is rendered from a declared column "
+                    "or from the topology, so a value here is not a default but a contradiction "
+                    "of a decision already acted on",
+                    {"role": role.role, "flag": flag},
+                )
 
 
 TRANSPORTS = frozenset({"reasoning_content", "inline_tags"})
@@ -850,17 +938,26 @@ def serving_view(workload: Workload, artifact: Artifact) -> WorkloadServingSchem
     )
 
 
-def apply_serving(workload: Workload, data: WorkloadServingRequest, artifact: Artifact) -> None:
+def apply_serving(
+    workload: Workload, data: WorkloadServingRequest, artifact: Artifact, roles: Sequence[WorkloadRole]
+) -> None:
     """Writes a validated serving configuration onto a workload, digest included.
 
     The digest is computed from the row after the columns have landed on it rather
     than from the request, so what is hashed is what was stored — a coercion the
     write performs and the hash did not see would be a digest that names a
     configuration nobody is running.
+
+    `roles` is passed through rather than read off `workload.roles`, which is `lazy="noload"`
+    and answers an empty list rather than raising. `serving_digest` states the consequence: a
+    noloaded collection would hash a disaggregated workload as having no roles, silently. Both
+    callers here pass nothing today because the declared surface has no `roles` key yet — the
+    wire and the request shape land with the operator work — and when it does, this is the one
+    seam it arrives through.
     """
     for key, value in serving_columns(data, artifact).items():
         setattr(workload, key, value)
-    workload.serving_digest = serving_digest(workload, artifact)
+    workload.serving_digest = serving_digest(workload, artifact, roles)
 
 
 def constraint_name(workload_name: str) -> str:
@@ -1549,7 +1646,7 @@ class WorkloadService:
             labels=data.labels,
             deadline_at=data.deadline_at,
         )
-        apply_serving(workload, data.serving, artifact)
+        apply_serving(workload, data.serving, artifact, ())
 
         started = dt.datetime.now(dt.UTC)
         decision = await self._expand(workload, extra_policies=() if constraint is None else (constraint,))
@@ -1670,7 +1767,7 @@ class WorkloadService:
         if was_derived and "engine_runtime_image" not in declared:
             request.engine_runtime_image = None
         check_serving_request(request, artifact)
-        apply_serving(workload, request, artifact)
+        apply_serving(workload, request, artifact, ())
 
     async def update(self, ref: str, data: WorkloadUpdateRequest, if_match: str | None = None) -> WorkloadSchema:
         """A partial update of what was asked for, globally.

@@ -33,6 +33,7 @@ from app.core.vram import extract_shape
 from app.core.vram import shape_metadata
 from app.db.models import Artifact
 from app.db.models import Workload
+from app.db.models import WorkloadRole
 from app.core.serving import DIGEST_FIELDS
 from app.core.serving import _canonical
 from app.core.serving import served_model
@@ -58,6 +59,7 @@ from app.modules.workloads.services import serving_view
 from app.modules.workloads.services import apply_serving
 from app.modules.workloads.services import check_serving
 from app.modules.workloads.services import check_capacity
+from app.modules.workloads.services import check_topology
 from app.modules.workloads.services import check_footprint
 from app.modules.workloads.services import check_quantization
 from app.modules.workloads.services import resolved_engine_args
@@ -131,6 +133,7 @@ def a_workload(**kwargs) -> Workload:
         "device_memory_mib_min": 0,
         "requires_single_topology_domain": False,
         "topology_domain_kind": None,
+        "serving_topology": "aggregated",
         "cpu_cores": None,
         "memory_mib": None,
         "disk_gib": None,
@@ -842,7 +845,7 @@ def test_renaming_a_column_does_not_move_the_identity_of_a_configuration():
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     expected = "svg_" + hashlib.sha256(body.encode("utf-8")).hexdigest()
 
-    assert serving_digest(workload, artifact) == expected
+    assert serving_digest(workload, artifact, ()) == expected
     assert [key for key, _ in DIGEST_FIELDS][:3] == ["engine", "engine_version", "engine_image"]
     assert [attr for _, attr in DIGEST_FIELDS][:3] == [
         "engine",
@@ -862,9 +865,9 @@ def test_two_workloads_asking_for_the_same_thing_carry_one_digest():
     artifact = Artifact(uid=new_uid(ARTIFACT))
     one, other = a_workload(), a_workload(name="a-different-name")
 
-    assert serving_digest(one, artifact) == serving_digest(other, artifact)
-    assert serving_digest(one, artifact).startswith("svg_")
-    assert len(serving_digest(one, artifact)) == len("svg_") + 64
+    assert serving_digest(one, artifact, ()) == serving_digest(other, artifact, ())
+    assert serving_digest(one, artifact, ()).startswith("svg_")
+    assert len(serving_digest(one, artifact, ())) == len("svg_") + 64
 
 
 @pytest.mark.parametrize(
@@ -905,7 +908,7 @@ def test_every_field_that_decides_what_process_runs_moves_the_digest(field, valu
     result was attributed to the wrong fit.
     """
     artifact = Artifact(uid=new_uid(ARTIFACT))
-    assert serving_digest(a_workload(**{field: value}), artifact) != serving_digest(a_workload(), artifact)
+    assert serving_digest(a_workload(**{field: value}), artifact, ()) != serving_digest(a_workload(), artifact, ())
 
 
 @pytest.mark.parametrize(
@@ -925,14 +928,14 @@ def test_what_is_not_a_footprint_is_not_in_the_digest(field, value):
     name. Two workloads differing only in these ask for the same engine.
     """
     artifact = Artifact(uid=new_uid(ARTIFACT))
-    assert serving_digest(a_workload(**{field: value}), artifact) == serving_digest(a_workload(), artifact)
+    assert serving_digest(a_workload(**{field: value}), artifact, ()) == serving_digest(a_workload(), artifact, ())
 
 
 def test_the_weights_are_part_of_the_configuration():
     """Same engine, same shape, different model is not the same running process."""
     workload = a_workload()
-    assert serving_digest(workload, Artifact(uid=new_uid(ARTIFACT))) != serving_digest(
-        workload, Artifact(uid=new_uid(ARTIFACT))
+    assert serving_digest(workload, Artifact(uid=new_uid(ARTIFACT)), ()) != serving_digest(
+        workload, Artifact(uid=new_uid(ARTIFACT)), ()
     )
 
 
@@ -947,18 +950,18 @@ def test_a_fraction_is_quantised_on_the_way_in_so_a_reload_hashes_the_same():
     """
     artifact = Artifact(uid=new_uid(ARTIFACT))
     written = a_workload()
-    apply_serving(written, a_request(cache=CacheSchema(kv_cache_fraction=0.9)), artifact)
+    apply_serving(written, a_request(cache=CacheSchema(kv_cache_fraction=0.9)), artifact, ())
     assert written.kv_cache_fraction == Decimal("0.9000")
 
     reloaded = a_workload()
-    apply_serving(reloaded, a_request(cache=CacheSchema(kv_cache_fraction=0.9)), artifact)
+    apply_serving(reloaded, a_request(cache=CacheSchema(kv_cache_fraction=0.9)), artifact, ())
     reloaded.kv_cache_fraction = Decimal("0.9000")
-    assert serving_digest(reloaded, artifact) == written.serving_digest
+    assert serving_digest(reloaded, artifact, ()) == written.serving_digest
 
     unquantised = a_workload()
-    apply_serving(unquantised, a_request(cache=CacheSchema(kv_cache_fraction=0.9)), artifact)
+    apply_serving(unquantised, a_request(cache=CacheSchema(kv_cache_fraction=0.9)), artifact, ())
     unquantised.kv_cache_fraction = 0.9
-    assert serving_digest(unquantised, artifact) != written.serving_digest
+    assert serving_digest(unquantised, artifact, ()) != written.serving_digest
 
 
 def test_the_digest_is_read_off_the_row_and_never_off_the_request():
@@ -969,10 +972,10 @@ def test_the_digest_is_read_off_the_row_and_never_off_the_request():
     """
     artifact = Artifact(uid=new_uid(ARTIFACT))
     workload = a_workload()
-    apply_serving(workload, a_request(engine_runtime_version="0.7.0"), artifact)
+    apply_serving(workload, a_request(engine_runtime_version="0.7.0"), artifact, ())
 
     assert workload.engine_runtime_version == "0.7.0"
-    assert workload.serving_digest == serving_digest(workload, artifact)
+    assert workload.serving_digest == serving_digest(workload, artifact, ())
 
 
 def test_the_slug_of_the_weights_is_what_the_engine_answers_to():
@@ -1007,7 +1010,7 @@ def test_a_recipe_default_moves_the_digest():
     workload = a_workload(device_class="h200-141gb-sxm")
 
     assert recipe_engine_args(workload, artifact).get("max-num-seqs") == "32"
-    assert serving_digest(workload, artifact) != serving_digest(workload, Artifact(uid=artifact.uid))
+    assert serving_digest(workload, artifact, ()) != serving_digest(workload, Artifact(uid=artifact.uid), ())
 
 
 def test_a_model_with_no_recipe_hashes_exactly_as_it_did():
@@ -1027,4 +1030,179 @@ def test_a_model_with_no_recipe_hashes_exactly_as_it_did():
     for key, attribute in DIGEST_FIELDS:
         payload[key] = _canonical(getattr(workload, attribute))
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    assert serving_digest(workload, artifact) == "svg_" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+    assert serving_digest(workload, artifact, ()) == "svg_" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+# --------------------------------------------------------------- the disaggregated digest
+
+
+def a_role(role: str, **kwargs) -> WorkloadRole:
+    base = {"role": role, "weight": 1, "max_batch_tokens": None, "engine_args": {}}
+    return WorkloadRole(**{**base, **kwargs})
+
+
+def test_an_aggregated_workload_hashes_exactly_as_it_did_before_roles_existed():
+    """The pin that makes the migration additive, and the reason the fields are conditional.
+
+    Every workload in the fleet is aggregated. If `serving_topology` or the role block reached
+    the payload for them, every digest would move at migration — every deployment's
+    `ServingDigestAnnotation` with it, and every `ops_benchmark_run` would lose the link back to
+    the configuration it measured. The literal is assembled the way the pre-roles code assembled
+    it, so this fails if anyone makes either field unconditional.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    workload = a_workload()
+
+    payload = {"artifact": str(artifact.uid)}
+    for key, attribute in DIGEST_FIELDS:
+        payload[key] = _canonical(getattr(workload, attribute))
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    assert serving_digest(workload, artifact, ()) == "svg_" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+    assert "serving_topology" not in body
+    assert "roles" not in body
+
+
+def test_a_ratio_change_does_not_change_the_identity_of_the_configuration():
+    """1:2 and 2:4 are the same configuration served at two scales, and one digest.
+
+    Not because a digest change would restart anything — it would not; every scale in the system
+    already bumps the generation and re-applies. Because `ops_benchmark_run.serving_digest` is
+    what links a measurement to what it measured, and a weight in the hash would orphan every
+    benchmark on a model the moment somebody added a prefill worker. Those benchmarks are the
+    evidence anyone would use to choose the ratio in the first place.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    workload = a_workload(serving_topology="disaggregated")
+
+    one_two = [a_role("prefill", weight=1), a_role("decode", weight=2)]
+    two_four = [a_role("prefill", weight=2), a_role("decode", weight=4)]
+
+    assert serving_digest(workload, artifact, one_two) == serving_digest(workload, artifact, two_four)
+
+
+def test_the_role_order_they_arrive_in_is_not_part_of_the_configuration():
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    workload = a_workload(serving_topology="disaggregated")
+    roles = [a_role("prefill"), a_role("decode")]
+
+    assert serving_digest(workload, artifact, roles) == serving_digest(workload, artifact, list(reversed(roles)))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("max_batch_tokens", 32768),
+        ("engine_args", {"max-num-seqs": "4"}),
+    ],
+)
+def test_a_role_argument_is_configuration_and_moves_the_digest(field, value):
+    """Prefill at 32768 batched tokens and decode at 2048 are not the same process.
+
+    A sixteenfold difference in how much work one engine step does is exactly what the digest
+    is for. This is the other half of the weights being excluded: what a role *is* belongs in
+    the hash, how many of it there are does not.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    workload = a_workload(serving_topology="disaggregated")
+    plain = [a_role("prefill"), a_role("decode")]
+    changed = [a_role("prefill", **{field: value}), a_role("decode")]
+
+    assert serving_digest(workload, artifact, plain) != serving_digest(workload, artifact, changed)
+
+
+def test_disaggregating_is_a_configuration_change_and_aggregating_back_returns_the_same_digest():
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    aggregated = a_workload()
+    disaggregated = a_workload(serving_topology="disaggregated")
+    roles = [a_role("prefill"), a_role("decode", weight=2)]
+
+    assert serving_digest(aggregated, artifact, ()) != serving_digest(disaggregated, artifact, roles)
+    assert serving_digest(aggregated, artifact, ()) == serving_digest(a_workload(), artifact, ())
+
+
+def test_device_count_is_per_worker_and_the_group_total_is_not_a_column():
+    """The side door the weights would otherwise come back through.
+
+    `device_count` *is* a digest field. If it ever held the group's 24 devices rather than one
+    worker's 8, the weights would be in the hash again — silently, because nothing about the
+    column's name says which of the two it holds. So the group's cost is `Σ (weight × device_count)`,
+    derived where it is used and stored nowhere, and these two assertions are what say so: the
+    weights move nothing, and the per-worker count moves everything.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    workload = a_workload(serving_topology="disaggregated", device_count=8, tensor_parallel=8)
+    roles = [a_role("prefill", weight=1), a_role("decode", weight=2)]
+
+    assert serving_digest(workload, artifact, roles) == serving_digest(
+        workload, artifact, [a_role("prefill", weight=3), a_role("decode", weight=9)]
+    )
+    group = a_workload(serving_topology="disaggregated", device_count=24, tensor_parallel=8)
+    assert serving_digest(group, artifact, roles) != serving_digest(workload, artifact, roles)
+
+
+# ------------------------------------------------------------- refusing a bad topology
+
+
+def test_an_aggregated_workload_may_not_carry_roles():
+    """Silently ignoring them would let somebody believe they had declared a ratio."""
+    with pytest.raises(Invalid):
+        check_topology("aggregated", [a_role("prefill"), a_role("decode")], "vllm")
+
+    assert check_topology("aggregated", (), "vllm") is None
+
+
+@pytest.mark.parametrize(
+    "roles",
+    [
+        [],
+        [a_role("prefill")],
+        [a_role("decode")],
+        [a_role("prefill"), a_role("worker")],
+    ],
+)
+def test_a_disaggregated_workload_is_exactly_two_roles(roles):
+    """One of them is not a topology, and a name outside the set renders a mode no engine takes."""
+    with pytest.raises(Invalid):
+        check_topology("disaggregated", roles, "vllm")
+
+
+def test_a_role_with_no_workers_is_not_a_role():
+    with pytest.raises(Invalid):
+        check_topology("disaggregated", [a_role("prefill", weight=0), a_role("decode")], "vllm")
+
+
+def test_any_pair_of_positive_weights_is_a_legitimate_ratio():
+    """`2:2` says two of each. Coprimality was dropped with the argument that required it.
+
+    It existed so that one footprint had one spelling in the digest — but the weights are not in
+    the digest at all, so all it bought was making "two of each" inexpressible as such.
+    """
+    for prefill, decode in ((1, 2), (2, 2), (3, 1), (2, 4)):
+        assert (
+            check_topology(
+                "disaggregated", [a_role("prefill", weight=prefill), a_role("decode", weight=decode)], "vllm"
+            )
+            is None
+        )
+
+
+@pytest.mark.parametrize(
+    "flag", ["max-num-batched-tokens", "--tensor-parallel-size", "disaggregation-mode", "kv-transfer-config"]
+)
+def test_a_role_may_not_contradict_a_flag_the_plane_already_decided(flag):
+    """Two sources: a typed column somebody filled in, and the topology itself.
+
+    `kv-transfer-config` is the same string on both roles because the transfer mechanism belongs
+    to the topology, and `disaggregation-mode` *is* the role. A value for either from a role's
+    own arguments is a second answer to a settled question, and `engine_args` wins on the command
+    line — so it would not be overruled, it would win.
+    """
+    roles = [a_role("prefill", engine_args={flag: "1"}), a_role("decode")]
+    with pytest.raises(Invalid):
+        check_topology("disaggregated", roles, "vllm")
+
+
+def test_an_unrecognised_topology_is_refused_rather_than_defaulted():
+    with pytest.raises(Invalid):
+        check_topology("hybrid", (), "vllm")

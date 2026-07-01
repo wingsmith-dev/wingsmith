@@ -232,6 +232,7 @@ def test_the_backfilled_digest_is_the_one_the_plane_would_compute(scratch) -> No
         "disk_gib",
         "overlay",
         "serving",
+        "serving_topology",
     )
     workload = SimpleNamespace(**dict(zip(names, row[2:])))
-    assert stored == serving_digest(workload, SimpleNamespace(uid=artifact_uid))
+    assert stored == serving_digest(workload, SimpleNamespace(uid=artifact_uid), ())

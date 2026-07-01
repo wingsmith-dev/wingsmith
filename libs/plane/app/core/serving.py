@@ -6,9 +6,11 @@ import hashlib
 from uuid import UUID
 from typing import Any
 from decimal import Decimal
+from collections.abc import Sequence
 
 from app.db.models import Artifact
 from app.db.models import Workload
+from app.db.models import WorkloadRole
 from app.integrations import dynamo_recipes
 
 
@@ -206,6 +208,38 @@ def recipe_engine_args(workload: Workload, artifact: Artifact) -> dict[str, str]
     return {flag: value for flag, value in defaults.items() if flag not in DERIVED_FLAGS}
 
 
+AGGREGATED = "aggregated"
+DISAGGREGATED = "disaggregated"
+SERVING_TOPOLOGIES = frozenset({AGGREGATED, DISAGGREGATED})
+"""The two ways a workload's weights can be served, and there is no third.
+
+Spelled here rather than in the workloads module because `serving_digest` branches on the
+value and the module validates it, and a closed set with two readers and one spelling is the
+only version of it that cannot drift. `Workload.serving_topology` names the column and says
+why it is not called `topology`.
+"""
+
+PREFILL = "prefill"
+DECODE = "decode"
+SERVING_ROLES = frozenset({PREFILL, DECODE})
+"""The roles a disaggregated workload has, and it has both or it is not one.
+
+Closed for the reason `check_shape` gives about device classes: a role outside the set renders
+a `--disaggregation-mode` no engine accepts, so free text turns a validation error somebody
+can read into a worker that will not start.
+"""
+
+TOPOLOGY_FLAGS = frozenset({"disaggregation-mode", "kv-transfer-config"})
+"""The two flags the topology decides, keyed as the operator keys them.
+
+`DERIVED_FLAGS` is the same statement about the fields a person filled in; these two are
+derived from `serving_topology` and the role instead, which is a decision nobody typed and
+therefore one nobody may contradict from `engine_args`. `kv-transfer-config` is the same
+string on both roles — the transfer mechanism is a property of the topology, not of the role
+— and `disaggregation-mode` is the role itself, so a value for either arriving from a role's
+own arguments is a second answer to a question already settled.
+"""
+
 DIGEST_PREFIX = "svg_"
 
 DIGEST_FIELDS: tuple[tuple[str, str], ...] = (
@@ -259,7 +293,7 @@ placement, priority and labels are not properties of the configuration at all.
 """
 
 
-def serving_digest(workload: Workload, artifact: Artifact) -> str:
+def serving_digest(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRole]) -> str:
     """`svg_` + sha256 over the fields that decide what process runs.
 
     The identity of a serving configuration is its content, and this is that
@@ -276,6 +310,22 @@ def serving_digest(workload: Workload, artifact: Artifact) -> str:
 
     Derived on every write and never accepted from a client: a digest somebody
     else computed is a claim about a configuration rather than a reading of it.
+
+    `roles` is a parameter and not `workload.roles`, for the same reason `artifact` is: the
+    dependency must be impossible to forget. Every relationship on this model is `lazy="noload"`,
+    and a noloaded collection does not raise — SQLAlchemy hands back an **empty list**. A digest
+    that read the attribute would therefore hash a disaggregated workload as if it had no roles
+    whenever the caller had not asked for them, silently, and produce a digest that names a
+    configuration nobody is running. Passing them in makes the omission a `TypeError` at the call
+    site instead of a wrong hash in the database.
+
+    `serving_topology` and the per-role configuration are added **only when the workload is
+    disaggregated**, so every aggregated workload's digest is byte-identical to the one this
+    function returned before roles existed. That is the same trick `engine_defaults` above plays
+    and it is here for the same reason: an absent key and a default value are different hashes,
+    and adding either unconditionally changes every digest in the fleet at migration — every
+    deployment's `ServingDigestAnnotation` with it, and every benchmark's link back to what it
+    measured.
     """
     payload: dict[str, Any] = {"artifact": str(artifact.uid)}
     for key, attribute in DIGEST_FIELDS:
@@ -287,8 +337,40 @@ def serving_digest(workload: Workload, artifact: Artifact) -> str:
     defaults = recipe_engine_args(workload, artifact)
     if defaults:
         payload["engine_defaults"] = _canonical(defaults)
+    if workload.serving_topology == DISAGGREGATED:
+        payload["serving_topology"] = workload.serving_topology
+        payload["roles"] = [_role_config(role) for role in sorted(roles, key=lambda role: role.role)]
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return DIGEST_PREFIX + hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def _role_config(role: WorkloadRole) -> dict[str, Any]:
+    """One role as the digest sees it: what it configures, never how many of it there are.
+
+    `max_batch_tokens` and `engine_args` decide what the process is — prefill runs
+    `--max-num-batched-tokens 32768` against decode's 2048, a sixteenfold difference in how much
+    work one engine step does — so they belong in a hash whose subject is "what process runs".
+
+    `weight` is deliberately absent, and the reason is identity rather than restarts.
+    `ops_benchmark_run.serving_digest` names the configuration a measurement was taken against,
+    and `DIGEST_FIELDS` is explicit that "a run whose digest no longer matches any workload has
+    lost the only link back to what it measured". A weight in this hash would orphan every
+    benchmark ever taken against a model the moment somebody added one prefill worker — and those
+    benchmarks are precisely the measurements somebody would be consulting in order to choose the
+    ratio. The rule is not new: `DIGEST_FIELDS` has always excluded scale, which is why the count
+    of aggregated replicas is not in here either.
+
+    The knock-on that has to be said out loud or the weights return through a side door:
+    `device_count` *is* a digest field and it means **devices per worker** — 8 at TP8, not the
+    group's 24. A group's device cost is `Σ (weight × device_count)`, derived where it is used
+    and stored nowhere, because a column holding the group total would put the weights into this
+    hash silently: nothing about the name says which of the two it holds.
+    """
+    return {
+        "role": role.role,
+        "max_batch_tokens": role.max_batch_tokens,
+        "engine_args": _canonical(role.engine_args or {}),
+    }
 
 
 def _canonical(value: Any) -> Any:

@@ -21,6 +21,7 @@ DEMAND = {
     "demand_artifact_location",
     "demand_artifact_baseline",
     "demand_workload",
+    "demand_workload_role",
     "demand_deployment",
     "demand_deployment_status",
     "demand_discovered_workload",

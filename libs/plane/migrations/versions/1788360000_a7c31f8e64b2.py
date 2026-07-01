@@ -123,7 +123,17 @@ DIGEST_SOURCE = """
            r.prefix_cache_enabled, r.prefix_cache_config,
            r.device_class, r.device_count, r.device_memory_mib_min,
            r.cpu_cores, r.memory_mib, r.disk_gib,
-           r.overlay, r.serving
+           r.overlay, r.serving,
+           -- Not a recipe column and never was: `serving_topology` arrived with
+           -- disaggregation, long after this migration ran. It is selected as a literal for
+           -- the same reason the renames above are aliased — this migration imports the live
+           -- `serving_digest`, so the row has to keep the shape that function expects, and a
+           -- row missing the attribute is an `AttributeError` on the next fresh database.
+           -- The literal is the truth about this point in history: every recipe here was
+           -- aggregated, and `serving_digest` omits the field entirely for those, so the
+           -- digests this backfill writes are byte-identical to the ones it wrote the first
+           -- time it ran.
+           'aggregated' AS serving_topology
       FROM demand_recipe r
       JOIN demand_artifact a ON a.id = r.artifact_id
 """
@@ -165,10 +175,11 @@ def _digests(bind: sa.engine.Connection) -> dict[str, str]:
     attributed to a configuration nobody ran, and it would fail silently — so there
     is one implementation and this calls it. The row's attribute access is what
     `serving_digest` wants, and it reads nothing off a workload that a recipe did not
-    also have.
+    also have. The empty `roles` is the same statement as the `serving_topology` literal in
+    `DIGEST_SOURCE`: recipes predate roles, so there are none to pass and none to hash.
     """
     return {
-        str(row.recipe_id): serving_digest(row, _Artifact(row.artifact_uid))
+        str(row.recipe_id): serving_digest(row, _Artifact(row.artifact_uid), ())
         for row in bind.execute(sa.text(DIGEST_SOURCE))
     }
 

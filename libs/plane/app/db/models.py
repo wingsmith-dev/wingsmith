@@ -709,12 +709,123 @@ class Workload(BaseMixin):
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     requires_single_topology_domain: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     topology_domain_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    serving_topology: Mapped[str] = mapped_column(String(16), nullable=False, server_default="aggregated", index=True)
+    """`aggregated | disaggregated` — whether prefill and decode share an engine loop or are
+    separate processes exchanging a KV cache.
+
+    Named `serving_topology` and not `topology`, which is what it wants to be called, because
+    `topology_domain_kind` and `requires_single_topology_domain` are already on this object and
+    mean something entirely different: an NVLink or rack domain a placement has to fit inside.
+    Two unrelated senses of "topology" one line apart is a comment nobody reads and a bug
+    somebody writes.
+
+    Defaulted rather than nullable. There is no third state: a workload either is disaggregated
+    or is not, and a null would invent a "not yet decided" that nothing can render.
+
+    It is the discriminator every consumer branches on, and it is what makes "does `min_replicas`
+    count replicas or groups" a declared question rather than an inferred one. Under
+    `disaggregated`, `min_replicas` counts **groups** — one group being the per-role weights in
+    `roles` taken together — and the operator multiplies to get each role's process count.
+
+    In `serving_digest`, but only when disaggregated (`app.core.serving.serving_digest`). A
+    topology change changes *which* processes exist, which is a configuration change of the
+    largest available kind; a weight change only changes how many of a role there are, which is
+    what `min_replicas` already does and has never been hashed. Contributed conditionally so
+    that every aggregated workload's digest is byte-identical across the migration — the same
+    trick `engine_defaults` plays there, for the same reason.
+    """
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     deployments: Mapped[list[Deployment]] = relationship("Deployment", back_populates="workload", lazy="noload")
     artifact: Mapped[Artifact] = relationship("Artifact", lazy="noload")
+    roles: Mapped[list[WorkloadRole]] = relationship("WorkloadRole", back_populates="workload", lazy="noload")
+
+
+class WorkloadRole(BaseMixin):
+    """One role in a disaggregated workload, and the little that differs about it.
+
+    Two rows for a `disaggregated` workload — `prefill` and `decode` — and none at all for an
+    `aggregated` one, which is the ordinary case and stays exactly as it was.
+
+    **The table is narrow on purpose.** Across NVIDIA's `disagg-gb300-agentic` recipe the two
+    roles differ on six arguments and agree on everything else: same artifact, same TP8, same
+    device class, same context length, same quantization, same `kv-cache-dtype`, and the same
+    `kv-transfer-config` string on both sides — the transfer mechanism is a property of the
+    topology, not of the role. So a role is one weight, one optional `max_batch_tokens`, and an
+    argument map. Giving each role a full copy of the serving block would be paying for a
+    difference that does not exist.
+
+    Why a table rather than a JSON block on `Workload`, which is how `serving` and
+    `prefix_cache_config` live: placement computes a fit against per-role device counts, and a
+    JSON blob that placement reads is a typed column that has not been declared yet. `weight` is
+    reasoned about; `engine_args` is not, which is why it stays a map inside the row.
+    """
+
+    __tablename__ = "demand_workload_role"
+    __table_args__ = (UniqueConstraint("workload_id", "role", name="uq_demand_workload_role_workload_role"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    workload_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_workload.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    """`prefill | decode`. A closed set, validated on the way in.
+
+    The same argument `check_shape` makes about device classes: a shape without a class is not a
+    shape. A role outside the set renders a `disaggregation-mode` no engine accepts, and the
+    failure is a worker that will not start rather than a validation error somebody can read.
+    """
+    weight: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    """How many workers of this role are in one group. Positive, and free.
+
+    Deliberately NOT constrained coprime. That constraint was proposed so each ratio would have
+    exactly one spelling and `serving_digest` could not differ for two spellings of one
+    footprint — but the weights are not in the digest at all (they are scale, and `DIGEST_FIELDS`
+    has always excluded scale), so the argument it rested on is gone. What
+    coprimality costs is real: it makes "two prefill and two decode" inexpressible as such,
+    forcing it to be written `1:1` with two groups, which reinterprets a live number to say the
+    same thing.
+
+    A role's process count is `deployment.min_replicas * weight`. Any pair of per-role counts is
+    therefore reachable at one group, and the group only earns its keep when scaling load — bump
+    the count and both roles grow together, so the ratio is preserved by construction rather than
+    maintained by something.
+
+    **Kept out of `serving_digest`, and the reason is identity rather than restarts.**
+    `ops_benchmark_run.serving_digest` names the configuration a measurement was taken against,
+    and `DIGEST_FIELDS` is explicit that a run whose digest matches no workload "has lost the
+    only link back to what it measured". A weight in the hash would orphan every benchmark on a
+    model the moment somebody added one prefill worker — and those benchmarks are exactly what
+    anyone choosing a ratio would be reading.
+
+    Not the digest, because the digest is not the mechanism that decides whether pods restart.
+    `renderIsCurrent` (`reconcile/deployment.go:272`) compares the generation as well, and any
+    declared change bumps that — so every scale in the system already fails the check and
+    re-applies, and re-applying is not reloading. What decides a restart is whether the applied
+    object changes a component's own spec and therefore renames the objects Dynamo derives from
+    it. Whether that renaming is per-component or graph-wide is the open question in §11.1 of
+    `docs/plans/10-disaggregated-serving.md`, and it is answered on a cluster, not here.
+    """
+    max_batch_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    """This role's `--max-num-batched-tokens`. Null inherits the workload's.
+
+    The one typed column in the per-role delta, and it is typed because the workload already
+    types it and `DERIVED_FLAGS` already spells it. Prefill wants 32768 and decode 2048 in the
+    published recipe, which is a 16x difference in the thing that decides how much work one
+    engine step does — not a knob to pass through untyped.
+    """
+    engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    """This role's engine arguments, laid over the workload's.
+
+    Declared, like `Workload.engine_args`, and subject to the same rule: it may not name a
+    member of `DERIVED_FLAGS`, nor `disaggregation-mode` or `kv-transfer-config`, both of which
+    the operator now derives from the topology. A value for a derived flag arriving from here is
+    not a default, it is a contradiction of a decision already acted on.
+    """
+
+    workload: Mapped[Workload] = relationship("Workload", back_populates="roles", lazy="noload")
 
 
 class Deployment(BaseMixin):
