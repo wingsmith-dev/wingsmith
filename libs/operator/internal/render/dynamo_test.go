@@ -1257,3 +1257,86 @@ func TestEachRolesPodsCarryTheirRole(t *testing.T) {
 		t.Fatalf("role labels = %v, want them on the two workers and nowhere else", seen)
 	}
 }
+
+// The warm path, which is three flags and easy to get silently wrong.
+//
+// Measured on site-a on 2026-09-08: a 30k-token conversation growing 1.3k a turn held a 96.4% prefix
+// cache hit rate against one prefill worker. That reuse is what these flags protect, and each of
+// them fails silently on its own — as a cold cache and a latency nobody can attribute, never as an
+// error.
+func TestTheWarmPathIsRenderedForDisaggregatedDeployments(t *testing.T) {
+	in := disaggInputs()
+	in.Deployment.Serving.PrefixCacheEnabled = false
+
+	roles, err := workerRoles(in.Deployment)
+	if err != nil {
+		t.Fatalf("workerRoles: %v", err)
+	}
+	for _, role := range roles {
+		args, err := engineArgs(in, role)
+		if err != nil {
+			t.Fatalf("engineArgs: %v", err)
+		}
+		joined := strings.Join(args, " ")
+		switch role.Role {
+		case "prefill":
+			// Prefill is the only role whose prefix cache can be hit, so the workload's "off"
+			// must not reach it: decode never prefills, and copying the flag to both roles is
+			// what forecloses turn-to-turn reuse.
+			if strings.Contains(joined, "--no-enable-prefix-caching") {
+				t.Fatal("prefill caching was disabled, which forecloses every turn-to-turn cache hit")
+			}
+			if !strings.Contains(joined, "--kv-events-config") {
+				t.Fatal("prefill publishes no KV events, so the router indexes an empty tree " +
+					"and silently degrades to load balancing")
+			}
+		case "decode":
+			if !strings.Contains(joined, "--no-enable-prefix-caching") {
+				t.Fatal("decode kept its prefix cache, which buys nothing and costs KV blocks")
+			}
+			if strings.Contains(joined, "--kv-events-config") {
+				t.Fatal("decode publishes KV events it has no prefix cache to advertise")
+			}
+		}
+	}
+}
+
+// An aggregated worker keeps the workload's own answer, unconditionally. This is the other half of
+// the byte-identity bar: the exemption above is for a disaggregated prefill role and nothing else.
+func TestPrefixCachingIsUnchangedForAnAggregatedWorker(t *testing.T) {
+	in := testInputs()
+	in.Deployment.Serving.PrefixCacheEnabled = false
+	args, err := engineArgs(in, workerRole{})
+	if err != nil {
+		t.Fatalf("engineArgs: %v", err)
+	}
+	if !slices.Contains(args, "--no-enable-prefix-caching") {
+		t.Fatal("an aggregated worker stopped honouring its own prefix cache setting")
+	}
+	if strings.Contains(strings.Join(args, " "), "--kv-events-config") {
+		t.Fatal("an aggregated worker was given a KV events config, which renames and reloads it")
+	}
+}
+
+// The frontend's router mode is the third flag, and it is gated on the topology so that no
+// aggregated model in the fleet changes.
+func TestTheFrontendRoutesByKVOnlyWhenDisaggregated(t *testing.T) {
+	routerMode := func(in Inputs) string {
+		spec, err := frontendPodSpec(in, frontendOptions())
+		if err != nil {
+			t.Fatalf("frontendPodSpec: %v", err)
+		}
+		for _, env := range spec.Containers[0].Env {
+			if env.Name == "DYN_ROUTER_MODE" {
+				return env.Value
+			}
+		}
+		return ""
+	}
+	if got := routerMode(disaggInputs()); got != "kv" {
+		t.Fatalf("disaggregated frontend DYN_ROUTER_MODE = %q, want kv", got)
+	}
+	if got := routerMode(testInputs()); got != "" {
+		t.Fatalf("aggregated frontend gained DYN_ROUTER_MODE = %q, which changes every model in the fleet", got)
+	}
+}

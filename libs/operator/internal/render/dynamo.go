@@ -797,6 +797,29 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 		}},
 	}
 
+	// KV-aware routing, and only for a disaggregated deployment.
+	//
+	// The frontend's default is round-robin — upstream's default and the operator sets nothing —
+	// which is invisible with one prefill worker, because round-robin to a pool of one is
+	// perfectly sticky. It stops being invisible the moment a ratio change adds the second one:
+	// alternate turns of the same conversation land on a worker that has never seen it, and each
+	// one re-prefills the whole context. For the agentic shape we are sizing for that is tens of
+	// thousands of tokens per turn, and it would look like disaggregation scaling badly rather
+	// than like a routing default nobody set.
+	//
+	// Conditional on the topology rather than fleet-wide, which is a deliberately conservative
+	// choice: prefix-aware routing would plausibly help an aggregated deployment with several
+	// workers too, but that is a behaviour change to every model in the fleet and nobody has
+	// asked for it. The frontend's objects carry no spec hash — Dynamo suffixes worker components
+	// only — so this rolls frontend pods and renames nothing, and a frontend holds no weights.
+	//
+	// This is half of a pair. The other half is `kvEventsConfig` on the prefill worker: without
+	// the events, KV mode indexes an empty tree and silently degrades to load balancing.
+	if Disaggregated(in.Deployment) {
+		spec.Containers[0].Env = append(spec.Containers[0].Env,
+			corev1.EnvVar{Name: "DYN_ROUTER_MODE", Value: "kv"})
+	}
+
 	// Named by configuration and therefore able to be empty. A volume claiming nothing is
 	// rejected by the API server, so a cluster with no cache volume gets a frontend without
 	// one rather than a deployment that will not apply.
@@ -1028,6 +1051,18 @@ func engineModule(engine string) string {
 // this constant does not answer it.
 const kvTransferConfig = `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`
 
+// kvEventsConfig makes a prefill worker publish which blocks it holds, which is what the frontend
+// indexes to route a conversation back to the worker that already prefilled it.
+//
+// On the prefill role only. Decode does not prefill, so it has no prefix cache worth advertising.
+//
+// Explicit rather than implied, and that is the trap this constant exists to avoid.
+// `create_kv_events_config` upstream returns nil unless this is set — enabling prefix caching is
+// not enough — so a frontend in KV mode with no events subscribes to a stream nobody publishes,
+// every worker scores zero overlap, and the router degrades to load balancing while still
+// reporting itself as a KV router. It fails as a silently cold cache rather than as an error.
+const kvEventsConfig = `{"publisher":"zmq","topic":"kv-events","endpoint":"tcp://*:20080","enable_kv_cache_events":true}`
+
 // engineArgs builds the engine command line from the deployment's serving block.
 //
 // The serving fields are rendered first and engine_args second, so an explicit argument wins over
@@ -1087,6 +1122,9 @@ func engineArgs(in Inputs, role workerRole) ([]string, error) {
 	if role.Role != "" {
 		derived["disaggregation-mode"] = role.Role
 		derived["kv-transfer-config"] = kvTransferConfig
+		if role.Role == "prefill" {
+			derived["kv-events-config"] = kvEventsConfig
+		}
 		if role.Spec != nil {
 			if v := role.Spec.MaxBatchTokens; v != nil {
 				derived["max-num-batched-tokens"] = strconv.Itoa(*v)
@@ -1111,7 +1149,20 @@ func engineArgs(in Inputs, role workerRole) ([]string, error) {
 		}
 	}
 	// vLLM enables prefix caching by default, so only the off case needs saying.
-	if !in.Deployment.Serving.PrefixCacheEnabled {
+	//
+	// **A disaggregated prefill worker is exempt, and that exemption is the whole warm path.**
+	// Prefill is the only role whose prefix cache can be hit: turn N+1 of a conversation resends
+	// turn N's context, and if the worker that prefilled it still holds those blocks the engine
+	// skips them. Decode never prefills, so its prefix cache buys nothing and costs KV blocks —
+	// which is why NVIDIA's own `disagg-kv-router` recipe puts `--no-enable-prefix-caching` on
+	// the decode worker alone and leaves prefill's caching on. Copying that flag onto both roles,
+	// which is what a uniform render does, forecloses the reuse: for the agentic shape we are
+	// sizing for — a 30k prompt growing 1.3k a turn over 25 turns — it is the difference between
+	// ~1.2M tokens prefilled per conversation and ~67k.
+	//
+	// It also disables KV-aware routing by a second route, because the events the router indexes
+	// are only published when prefix caching is on. See `kvEventsConfig`.
+	if !in.Deployment.Serving.PrefixCacheEnabled && role.Role != "prefill" {
 		args = append(args, "--no-enable-prefix-caching")
 	}
 	return args, nil
