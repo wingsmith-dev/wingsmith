@@ -58,15 +58,18 @@ from app.modules.deployments.schemas import DeploymentStatusSchema
 from app.modules.deployments.schemas import DeploymentReplicaRollupSchema
 from app.modules.placement.repository import SUBJECT_WORKLOAD
 
+from .schemas import RoleSchema
 from .schemas import CacheSchema
 from .schemas import ShapeSchema
 from .schemas import OverlaySchema
 from .schemas import ServingSchema
+from .schemas import TopologySchema
 from .schemas import WorkloadSchema
 from .schemas import ReasoningSchema
 from .schemas import ResourcesSchema
 from .schemas import ParallelismSchema
 from .schemas import CapabilitiesSchema
+from .schemas import TopologyViewSchema
 from .schemas import WorkloadScaleSchema
 from .schemas import WorkloadCreateRequest
 from .schemas import WorkloadServingSchema
@@ -358,6 +361,47 @@ def check_topology(serving_topology: str, roles: Sequence[WorkloadRole], engine:
                     "of a decision already acted on",
                     {"role": role.role, "flag": flag},
                 )
+
+
+def group_devices(device_count: int, roles: Sequence[WorkloadRole]) -> int:
+    """Devices one indivisible unit costs: the sum of `weight x device_count` over the roles.
+
+    Derived here and stored nowhere, which is the point. `device_count` is a `serving_digest`
+    field and it means **devices per worker** — 8 at TP8, never the group's 24. A column holding
+    the group total would put the role weights into the hash through a second door, silently,
+    because nothing about such a column's name would say which of the two it held.
+
+    An aggregated workload's group is one worker, so this is its `device_count` and the function
+    is true of both topologies rather than being a disaggregation special case.
+    """
+    if not roles:
+        return device_count
+    return sum(max(role.weight, 0) * device_count for role in roles)
+
+
+def group_nodes_hint(devices: int, group: int) -> str:
+    """What a group does not divide into, in words, or empty when there is nothing to say.
+
+    Not a refusal, and it must not become one. `check_capacity` states the governing habit — "the
+    plane does not refuse what it has no number for" — and the number this lacks is nodes:
+    `devices.table()` carries per-device memory and not node shape, so devices-per-node is a fact
+    about a cluster and not about a device class. Placement asks the real question, per cluster,
+    with the cluster in hand.
+
+    What is cheap here is the arithmetic somebody is about to be surprised by. A 1P:2D group at
+    TP8 is three nodes, and three does not divide four: the fourth node sits idle, costing what a
+    B300 costs, because of a ratio typed weeks earlier. That is not a placement failure — nothing
+    fails, and that is exactly the problem — so it is said at declaration where the ratio is being
+    chosen, in the same breath as the number it follows from.
+    """
+    if group <= 0 or devices <= 0 or devices % group == 0:
+        return ""
+    fits, stranded = divmod(devices, group)
+    return (
+        f"a unit of {group} devices does not divide {devices}: "
+        f"{fits} unit{'' if fits == 1 else 's'} fit and {stranded} device"
+        f"{'' if stranded == 1 else 's'} would sit idle"
+    )
 
 
 TRANSPORTS = frozenset({"reasoning_content", "inline_tags"})
@@ -786,6 +830,54 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
         data.shape.device_count,
         data.parallelism.tensor,
     )
+    check_topology(data.topology.serving_topology, declared_roles(data.topology), data.engine)
+
+
+def topology_view(workload: Workload, roles: Sequence[WorkloadRole]) -> TopologyViewSchema:
+    """The topology block as a read returns it, with the derived numbers filled in.
+
+    Takes the roles rather than reading `workload.roles`, for the reason `serving_digest` gives at
+    length: the relationship is `lazy="noload"` and a noloaded collection answers an empty list
+    rather than raising, so a view that read the attribute would quietly report an aggregated
+    workload wherever the caller had not asked for the rows.
+    """
+    group = group_devices(workload.device_count, roles)
+    return TopologyViewSchema(
+        serving_topology=workload.serving_topology or AGGREGATED,
+        roles=[
+            RoleSchema(
+                role=role.role,
+                weight=role.weight,
+                max_batch_tokens=role.max_batch_tokens,
+                engine_args=role.engine_args or {},
+            )
+            for role in roles
+        ],
+        group_devices=group,
+        group_nodes_hint="",
+    )
+
+
+def declared_roles(topology: TopologySchema) -> list[WorkloadRole]:
+    """The request's role block as the rows that are stored, validated and hashed.
+
+    One conversion, used by validation, by the write and by the digest, so that the thing refused
+    is the thing stored and the thing stored is the thing hashed. `apply_serving` computes the
+    digest from the row after the columns have landed on it for the same reason, and a second
+    reading of the request here would reintroduce exactly the gap that comment closes.
+
+    Detached rows: no `workload_id`, because the caller decides whether these replace an existing
+    workload's roles or belong to one that does not exist yet.
+    """
+    return [
+        WorkloadRole(
+            role=role.role,
+            weight=role.weight,
+            max_batch_tokens=role.max_batch_tokens,
+            engine_args=role.engine_args or {},
+        )
+        for role in topology.roles or ()
+    ]
 
 
 def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
@@ -832,7 +924,9 @@ def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
     }
 
 
-def serving_request(workload: Workload, artifact: Artifact) -> WorkloadServingRequest:
+def serving_request(
+    workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRole] = ()
+) -> WorkloadServingRequest:
     """A stored workload read back as the request that would have created it.
 
     A patch is applied to this and the result validated whole, which is what keeps
@@ -881,10 +975,22 @@ def serving_request(workload: Workload, artifact: Artifact) -> WorkloadServingRe
         ),
         serving=serving_block(workload.serving),
         capabilities=capabilities_block(workload.capabilities),
+        topology=TopologySchema(
+            serving_topology=workload.serving_topology or AGGREGATED,
+            roles=[
+                RoleSchema(
+                    role=role.role,
+                    weight=role.weight,
+                    max_batch_tokens=role.max_batch_tokens,
+                    engine_args=role.engine_args or {},
+                )
+                for role in roles
+            ],
+        ),
     )
 
 
-def serving_view(workload: Workload, artifact: Artifact) -> WorkloadServingSchema:
+def serving_view(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRole] = ()) -> WorkloadServingSchema:
     """The serving block as a read returns it, with the resolved arguments beside it.
 
     Takes the artifact and not its id, because `resolved_engine_args` reads the
@@ -935,6 +1041,7 @@ def serving_view(workload: Workload, artifact: Artifact) -> WorkloadServingSchem
             pod_spec=(workload.overlay or {}).get("pod_spec", {}) or {},
             dynamo=(workload.overlay or {}).get("dynamo", {}) or {},
         ),
+        topology=topology_view(workload, roles),
     )
 
 
@@ -957,6 +1064,7 @@ def apply_serving(
     """
     for key, value in serving_columns(data, artifact).items():
         setattr(workload, key, value)
+    workload.serving_topology = data.topology.serving_topology or AGGREGATED
     workload.serving_digest = serving_digest(workload, artifact, roles)
 
 
@@ -1360,6 +1468,7 @@ class WorkloadService:
         deployment_rows = [d for group in grouped.values() for d in group]
         rollup = await self.repo.replicas([d[0].id for d in deployment_rows])
         adapters = await self.repo.adapter_uids([i for r in rows for i in r[0].adapter_artifact_ids])
+        roles = await self.repo.roles_for([r[0].id for r in rows])
         items = []
         for row in rows:
             workload = row[0]
@@ -1368,7 +1477,7 @@ class WorkloadService:
             items.append(
                 self.schema(
                     workload=workload,
-                    serving=serving_view(workload, artifact),
+                    serving=serving_view(workload, artifact, roles.get(workload.id, [])),
                     project_uid=row.project_uid,
                     priority_class=row.priority_class,
                     pinned_cluster_uid=row.pinned_cluster_uid,
@@ -1646,7 +1755,8 @@ class WorkloadService:
             labels=data.labels,
             deadline_at=data.deadline_at,
         )
-        apply_serving(workload, data.serving, artifact, ())
+        roles = declared_roles(data.serving.topology)
+        apply_serving(workload, data.serving, artifact, roles)
 
         started = dt.datetime.now(dt.UTC)
         decision = await self._expand(workload, extra_policies=() if constraint is None else (constraint,))
@@ -1675,7 +1785,7 @@ class WorkloadService:
         ]
 
         try:
-            await self.repo.add(workload, deployments)
+            await self.repo.add(workload, deployments, roles)
             if constraint is not None:
                 self.db.add(
                     Policy(
@@ -1761,13 +1871,21 @@ class WorkloadService:
         was_derived = workload.engine_runtime_image == resolve_engine_runtime_image(
             workload.engine, workload.engine_runtime_version, None
         )
-        request = serving_request(workload, artifact)
+        stored_roles = await self.repo.roles_of(workload)
+        request = serving_request(workload, artifact, stored_roles)
         for key, value in declared.items():
             setattr(request, key, value)
         if was_derived and "engine_runtime_image" not in declared:
             request.engine_runtime_image = None
         check_serving_request(request, artifact)
-        apply_serving(workload, request, artifact, ())
+        # An update is validated and written as the whole configuration it would leave behind, so
+        # the roles are re-derived from the request rather than from the patch: a patch that says
+        # nothing about the topology has already had the stored one read into `request` above, and
+        # one that restates it replaces the block whole. Either way what is hashed is what is
+        # stored, which is the same rule `apply_serving` keeps for every other column.
+        roles = declared_roles(request.topology)
+        roles = await self.repo.replace_roles(workload, roles)
+        apply_serving(workload, request, artifact, roles)
 
     async def update(self, ref: str, data: WorkloadUpdateRequest, if_match: str | None = None) -> WorkloadSchema:
         """A partial update of what was asked for, globally.

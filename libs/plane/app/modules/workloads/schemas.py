@@ -5,6 +5,7 @@ from msgspec import field
 from app.core.schemas import UNSET
 from app.core.schemas import Struct
 from app.core.schemas import UnsetType
+from app.core.serving import AGGREGATED
 from app.modules.deployments.schemas import DeploymentStatusSchema
 from app.modules.deployments.schemas import DeploymentReplicaRollupSchema
 
@@ -134,6 +135,70 @@ class OverlaySchema(Struct):
     dynamo: dict = {}
 
 
+class RoleSchema(Struct):
+    """One role of a disaggregated workload: its share of the group, and what makes it different.
+
+    Three fields because the difference between prefill and decode is three fields wide. Across
+    NVIDIA's published recipe the two roles agree on the artifact, the tensor degree, the device
+    class, the context length, the quantization and the `kv-cache-dtype` — and on
+    `kv-transfer-config`, which is literally the same string on both sides, because the transfer
+    mechanism belongs to the topology rather than to either role. A schema giving each role a full
+    copy of the serving block would be charging for a difference that does not exist.
+
+    `weight` is scale and the other two are configuration, and that split is load-bearing rather
+    than tidy: the weights are deliberately outside `serving_digest` and the other two are inside
+    it. See `app.core.serving.serving_digest`.
+    """
+
+    role: str
+    weight: int = 1
+    max_batch_tokens: int | None = None
+    engine_args: dict = {}
+
+
+class TopologySchema(Struct):
+    """How a workload's prefill and decode run: one process, or two that exchange a KV cache.
+
+    A block rather than two loose fields so that the aggregated case is expressible by its absence.
+    `roles` on an aggregated workload is refused rather than ignored — silently dropping a declared
+    ratio would let somebody believe they had asked for something.
+
+    Read back with `group_devices` filled in, which is derived and never stored. It is the whole
+    reason this is a block on the response as well as on the request: a person declaring 1:2 at TP8
+    has asked for 24 devices per unit, and placement will refuse or strand in that unit rather than
+    in the 8 they typed. Telling them the number at declaration is cheaper than a workload that
+    expands to nothing.
+    """
+
+    serving_topology: str = AGGREGATED
+    roles: list[RoleSchema] = []
+
+
+class TopologyViewSchema(Struct):
+    """`TopologySchema` as a read returns it, with the derived numbers beside it."""
+
+    serving_topology: str = AGGREGATED
+    roles: list[RoleSchema] = []
+    group_devices: int = 0
+    """Devices one indivisible unit costs: `sum(weight x device_count)` over the roles.
+
+    Derived on every read and stored nowhere. A column holding it would put the role weights into
+    `serving_digest` through a second door — `device_count` is a digest field — and it would do it
+    silently, because nothing about such a column's name would say whether it held the group's
+    total or one worker's.
+    """
+
+    group_nodes_hint: str = ""
+    """What the group does not divide into, in words, or empty when there is nothing to say.
+
+    Placement decides what actually fits and this cannot: `devices.table()` carries per-device
+    memory and not node shape, so devices-per-node is a fact about a cluster rather than about a
+    device class. What this can say is the arithmetic a person is about to be surprised by — that
+    a three-node unit leaves one of four nodes idle — and saying it at declaration is the whole
+    difference between a considered choice and a stranded card nobody noticed.
+    """
+
+
 class WorkloadServingSchema(Struct):
     """How the workload serves its weights, as one block.
 
@@ -175,6 +240,7 @@ class WorkloadServingSchema(Struct):
     shape: ShapeSchema
     resources: ResourcesSchema
     overlay: OverlaySchema
+    topology: TopologyViewSchema
 
 
 class WorkloadServingRequest(Struct):
@@ -209,6 +275,7 @@ class WorkloadServingRequest(Struct):
     overlay: OverlaySchema = field(default_factory=OverlaySchema)
     serving: ServingSchema = field(default_factory=ServingSchema)
     capabilities: CapabilitiesSchema = field(default_factory=CapabilitiesSchema)
+    topology: TopologySchema = field(default_factory=TopologySchema)
 
 
 class WorkloadServingUpdate(Struct):
@@ -243,6 +310,7 @@ class WorkloadServingUpdate(Struct):
     overlay: OverlaySchema | UnsetType = UNSET
     serving: ServingSchema | UnsetType = UNSET
     capabilities: CapabilitiesSchema | UnsetType = UNSET
+    topology: TopologySchema | UnsetType = UNSET
 
 
 class WorkloadDeploymentSchema(Struct):

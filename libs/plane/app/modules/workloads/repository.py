@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from uuid import UUID
+from collections.abc import Sequence
 
 from sqlalchemy import Row
 from sqlalchemy import Select
 from sqlalchemy import case
 from sqlalchemy import func
+from sqlalchemy import delete
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,6 +22,7 @@ from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import Allocation
 from app.db.models import Deployment
+from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import AllocationDevice
 from app.db.models import DeploymentStatus
@@ -320,12 +323,66 @@ class WorkloadRepository:
         )
         return result.scalar_one_or_none()
 
-    async def add(self, workload: Workload, deployments: list[Deployment]) -> Workload:
+    async def add(
+        self, workload: Workload, deployments: list[Deployment], roles: Sequence[WorkloadRole] = ()
+    ) -> Workload:
         self.db.add(workload)
         for deployment in deployments:
             self.db.add(deployment)
         await self.db.flush()
+        for role in roles:
+            role.workload_id = workload.id
+            self.db.add(role)
+        if roles:
+            await self.db.flush()
         return workload
+
+    async def roles_of(self, workload: Workload) -> list[WorkloadRole]:
+        """This workload's role rows, ordered so two reads of one workload agree.
+
+        A query rather than `workload.roles`, which is `lazy="noload"` and answers an empty list
+        rather than raising — the same trap `serving_digest` documents. Every caller that needs
+        the rows asks for them here, so there is one place that can be wrong.
+        """
+        result = await self.db.execute(
+            select(WorkloadRole).where(WorkloadRole.workload_id == workload.id).order_by(WorkloadRole.role)
+        )
+        return list(result.scalars())
+
+    async def roles_for(self, workload_ids: Sequence[UUID]) -> dict[UUID, list[WorkloadRole]]:
+        """The role rows for a page of workloads, in one round trip.
+
+        The same argument the class docstring makes about deployments: a page walked through the
+        relationship is one query per row, and a list endpoint that reports a ratio would pay it
+        for every workload on the page including the aggregated ones that have no rows at all.
+        """
+        if not workload_ids:
+            return {}
+        result = await self.db.execute(
+            select(WorkloadRole).where(WorkloadRole.workload_id.in_(workload_ids)).order_by(WorkloadRole.role)
+        )
+        grouped: dict[UUID, list[WorkloadRole]] = {}
+        for role in result.scalars():
+            grouped.setdefault(role.workload_id, []).append(role)
+        return grouped
+
+    async def replace_roles(self, workload: Workload, roles: Sequence[WorkloadRole]) -> list[WorkloadRole]:
+        """Sets a workload's roles to exactly these, deleting whatever was there.
+
+        Replace rather than merge, matching how the serving request treats every other block it
+        carries: "the sub-blocks replace whole … a patch that named half of one would leave the
+        rest at its defaults rather than at what was stored, and the caller could not tell which
+        it got." A ratio is exactly that kind of block — 1:2 and 2:1 share a role name and mean
+        opposite things, so a merge keyed on the name would silently keep half of the old ratio.
+        """
+        await self.db.execute(delete(WorkloadRole).where(WorkloadRole.workload_id == workload.id))
+        stored = []
+        for role in roles:
+            role.workload_id = workload.id
+            self.db.add(role)
+            stored.append(role)
+        await self.db.flush()
+        return stored
 
     async def delete(self, workload: Workload, deployments: list[Deployment]) -> None:
         """Deletes the expansion and then the workload it hangs off.

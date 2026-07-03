@@ -42,9 +42,11 @@ from app.core.serving import recipe_engine_args
 from app.hub.messages import ServingSpec
 from app.core.exceptions import Invalid
 from app.ingestion.desired import _serving
+from app.modules.workloads.schemas import RoleSchema
 from app.modules.workloads.schemas import CacheSchema
 from app.modules.workloads.schemas import ShapeSchema
 from app.modules.workloads.schemas import ServingSchema
+from app.modules.workloads.schemas import TopologySchema
 from app.modules.workloads.schemas import ReasoningSchema
 from app.modules.workloads.schemas import ResourcesSchema
 from app.modules.workloads.schemas import ParallelismSchema
@@ -58,9 +60,13 @@ from app.modules.workloads.services import serving_args
 from app.modules.workloads.services import serving_view
 from app.modules.workloads.services import apply_serving
 from app.modules.workloads.services import check_serving
+from app.modules.workloads.services import group_devices
 from app.modules.workloads.services import check_capacity
 from app.modules.workloads.services import check_topology
+from app.modules.workloads.services import declared_roles
 from app.modules.workloads.services import check_footprint
+from app.modules.workloads.services import serving_request
+from app.modules.workloads.services import group_nodes_hint
 from app.modules.workloads.services import check_quantization
 from app.modules.workloads.services import resolved_engine_args
 from app.modules.workloads.services import check_serving_request
@@ -1206,3 +1212,106 @@ def test_a_role_may_not_contradict_a_flag_the_plane_already_decided(flag):
 def test_an_unrecognised_topology_is_refused_rather_than_defaulted():
     with pytest.raises(Invalid):
         check_topology("hybrid", (), "vllm")
+
+
+# ------------------------------------------------------- the declared topology surface
+
+
+def test_a_group_costs_the_sum_of_its_roles_and_device_count_stays_per_worker():
+    """The arithmetic that must never become a column.
+
+    `device_count` is a digest field and means devices per worker. The group's cost is derived
+    wherever it is used and stored nowhere, because a column holding it would put the role weights
+    into `serving_digest` through a second door — silently, since nothing about such a column's
+    name would say which of the two it held.
+    """
+    roles = [a_role("prefill", weight=1), a_role("decode", weight=2)]
+    assert group_devices(8, roles) == 24
+    assert group_devices(8, [a_role("prefill", weight=2), a_role("decode", weight=2)]) == 32
+    # An aggregated workload's group is one worker, so the same function answers for both.
+    assert group_devices(8, []) == 8
+
+
+def test_a_group_that_does_not_divide_the_capacity_says_so_rather_than_stranding_it():
+    """Three does not go into four, and a B300 costs too much to find that out by accident."""
+    assert group_nodes_hint(4, 3) != ""
+    assert "1 unit" in group_nodes_hint(4, 3)
+    assert "1 device" in group_nodes_hint(4, 3)
+    # Nothing to say when it divides, and nothing to say when there is no number.
+    assert group_nodes_hint(4, 2) == ""
+    assert group_nodes_hint(6, 3) == ""
+    assert group_nodes_hint(0, 3) == ""
+    assert group_nodes_hint(4, 0) == ""
+
+
+def test_the_topology_is_refused_as_part_of_the_whole_serving_request():
+    """`check_topology` is reached through the one entry point create and update share.
+
+    An update is validated as the whole configuration it would leave behind, so a patch cannot
+    arrive at a topology a create would have refused — which is the property `check_serving_request`
+    exists for, and it only holds if the topology check is inside it.
+    """
+    artifact = an_artifact()
+    bad = a_request()
+    bad.topology = TopologySchema(serving_topology="disaggregated", roles=[RoleSchema(role="prefill")])
+    with pytest.raises(Invalid):
+        check_serving_request(bad, artifact)
+
+    good = a_request()
+    good.topology = TopologySchema(
+        serving_topology="disaggregated",
+        roles=[RoleSchema(role="prefill", weight=1), RoleSchema(role="decode", weight=2)],
+    )
+    assert check_serving_request(good, artifact) is None
+
+
+def test_an_aggregated_request_still_validates_with_no_topology_named():
+    assert check_serving_request(a_request(), an_artifact()) is None
+
+
+def test_the_declared_roles_are_what_gets_validated_stored_and_hashed():
+    """One conversion, so the thing refused is the thing stored and the thing stored is hashed."""
+    block = TopologySchema(
+        serving_topology="disaggregated",
+        roles=[
+            RoleSchema(role="prefill", weight=1, max_batch_tokens=32768, engine_args={"max-num-seqs": "4"}),
+            RoleSchema(role="decode", weight=2, max_batch_tokens=2048),
+        ],
+    )
+    rows = declared_roles(block)
+    assert [(r.role, r.weight, r.max_batch_tokens) for r in rows] == [
+        ("prefill", 1, 32768),
+        ("decode", 2, 2048),
+    ]
+    assert rows[0].engine_args == {"max-num-seqs": "4"}
+    # Detached: the caller decides which workload they belong to.
+    assert all(getattr(r, "workload_id", None) is None for r in rows)
+
+
+def test_the_topology_survives_the_read_and_write_round_trip():
+    """A stored workload read back as the request that would have created it, roles included.
+
+    The update path applies a patch to exactly this object and validates the result whole, so a
+    topology that did not survive the round trip would be silently dropped by any patch that did
+    not restate it.
+    """
+    artifact = an_artifact()
+    workload = a_workload(serving_topology="disaggregated", device_count=8)
+    roles = [a_role("prefill", weight=1), a_role("decode", weight=2, max_batch_tokens=2048)]
+
+    request = serving_request(workload, artifact, roles)
+    assert request.topology.serving_topology == "disaggregated"
+    assert [(r.role, r.weight) for r in request.topology.roles] == [("prefill", 1), ("decode", 2)]
+    assert declared_roles(request.topology)[1].max_batch_tokens == 2048
+
+    view = serving_view(workload, artifact, roles).topology
+    assert view.serving_topology == "disaggregated"
+    assert view.group_devices == 24
+
+
+def test_an_aggregated_workload_reads_back_as_aggregated_with_no_roles():
+    artifact = an_artifact()
+    view = serving_view(a_workload(), artifact, ()).topology
+    assert view.serving_topology == "aggregated"
+    assert view.roles == []
+    assert view.group_devices == a_workload().device_count
