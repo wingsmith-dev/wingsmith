@@ -234,6 +234,92 @@ const PrefillComponent = "VllmPrefillWorker"
 // nothing rather than as a compile error.
 const FrontendComponent = "Frontend"
 
+// Disaggregated says whether a deployment's roles are separate processes.
+//
+// Reads the topology rather than the presence of roles, and both have to agree before anything
+// renders differently: a plane too old to send either leaves both empty, and empty must render
+// exactly what it rendered before this existed. The plane refuses the disagreeing cases at
+// declaration, so this is the last cheap check rather than the only one.
+func Disaggregated(dep wire.DeploymentDesired) bool {
+	return dep.Serving.Topology == "disaggregated" && len(dep.Serving.Roles) > 0
+}
+
+// workerRole is one worker component to render: which Dynamo component it is, how many of it, and
+// the per-role configuration that makes its process different from the other role's.
+//
+// One descriptor rather than a second copy of the render keyed on three constants. The aggregated
+// case is a single descriptor with an empty Role and a nil Spec, which is what keeps its output
+// byte-identical: every disaggregated addition below is guarded on Role being non-empty, so there
+// is one code path and the aggregated branch of it renders what it always did.
+type workerRole struct {
+	// Component is the Dynamo component name, which is also a label value two lookups match on.
+	Component string
+	// Type is the `type` Dynamo puts on the component: `decode` for the aggregated worker as
+	// well, because an aggregated worker decodes — it just prefills too.
+	Type string
+	// Role is `prefill` or `decode` on a disaggregated deployment, and empty on an aggregated
+	// one. Empty is the discriminator for every conditional in this file.
+	Role string
+	// Replicas is the absolute worker count, taken from the wire and never computed here. See
+	// `Replicas` on why this operator does no arithmetic on a replica count.
+	Replicas int
+	// Spec is the per-role configuration, nil when aggregated.
+	Spec *wire.RoleSpec
+}
+
+// workerRoles is the set of worker components this deployment renders, in a stable order.
+//
+// Ordered by the wire's own role list rather than sorted, because the plane owns the order and a
+// re-ordering here would change the rendered object without changing anything about it. Dynamo
+// hashes the components together (see `specHashPlaceholder`), so a spurious re-order is a rename,
+// and a rename is a weight reload.
+func workerRoles(dep wire.DeploymentDesired) ([]workerRole, error) {
+	if !Disaggregated(dep) {
+		return []workerRole{{
+			Component: WorkerComponent,
+			Type:      "decode",
+			Replicas:  Replicas(dep),
+		}}, nil
+	}
+	roles := make([]workerRole, 0, len(dep.Serving.Roles))
+	for i := range dep.Serving.Roles {
+		spec := &dep.Serving.Roles[i]
+		component, kind, err := roleComponent(spec.Role)
+		if err != nil {
+			return nil, err
+		}
+		count, ok := dep.RoleReplicas[spec.Role]
+		if !ok {
+			// The plane multiplies groups by weights and sends the product. A role with a
+			// configuration and no count is a frame that lost half of itself in transit, and
+			// rendering it at some default would serve a ratio nobody declared.
+			return nil, fmt.Errorf("role %q has no replica count on the wire", spec.Role)
+		}
+		if count < 0 {
+			count = 0
+		}
+		roles = append(roles, workerRole{Component: component, Type: kind, Role: spec.Role, Replicas: count, Spec: spec})
+	}
+	return roles, nil
+}
+
+// roleComponent maps a declared role onto the Dynamo component that serves it.
+//
+// Closed, and an unknown role is an error rather than a default. A role this operator does not
+// know renders a `--disaggregation-mode` no engine accepts, which is a worker that will not start
+// — and the plane has already refused anything outside the set, so reaching here means the two
+// disagree and guessing would hide that.
+func roleComponent(role string) (component, kind string, err error) {
+	switch role {
+	case "prefill":
+		return PrefillComponent, "prefill", nil
+	case "decode":
+		return WorkerComponent, "decode", nil
+	default:
+		return "", "", fmt.Errorf("unknown serving role %q", role)
+	}
+}
+
 // DynamoGraphDeployment renders one deployment into the object that serves it.
 //
 // The graph holds the model's worker and, where the cluster has opted in, the frontend that model
@@ -248,33 +334,38 @@ const FrontendComponent = "Frontend"
 // to before it forwards it, so it forwards that deployment id and the in-cluster agent picks the
 // frontend by label. No frontend is chosen by asking anything what models it serves.
 func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured, error) {
-	pod, err := podSpec(in, opts)
+	roles, err := workerRoles(in.Deployment)
 	if err != nil {
 		return nil, err
 	}
-	podMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(pod)
-	if err != nil {
-		return nil, fmt.Errorf("convert pod spec: %w", err)
+	components := make([]any, 0, len(roles)+1)
+	for _, role := range roles {
+		pod, err := podSpec(in, opts, role)
+		if err != nil {
+			return nil, err
+		}
+		podMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(pod)
+		if err != nil {
+			return nil, fmt.Errorf("convert pod spec: %w", err)
+		}
+		component := map[string]any{
+			"name":                  role.Component,
+			"type":                  role.Type,
+			"replicas":              int64(role.Replicas),
+			"globalDynamoNamespace": true,
+			"podTemplate": map[string]any{
+				"metadata": map[string]any{"labels": ownershipLabels(in, role)},
+				"spec":     podMap,
+			},
+		}
+		// A replica that spans machines is one leader-worker group, not several replicas. Dynamo
+		// renders it from the same pod template, which is why the device request above is per node
+		// and not per replica.
+		if n := in.Layout.nodes(); n > 1 {
+			component["multinode"] = map[string]any{"nodeCount": int64(n)}
+		}
+		components = append(components, component)
 	}
-
-	component := map[string]any{
-		"name":                  WorkerComponent,
-		"type":                  "decode",
-		"replicas":              int64(Replicas(in.Deployment)),
-		"globalDynamoNamespace": true,
-		"podTemplate": map[string]any{
-			"metadata": map[string]any{"labels": ownershipLabels(in)},
-			"spec":     podMap,
-		},
-	}
-	// A replica that spans machines is one leader-worker group, not several replicas. Dynamo
-	// renders it from the same pod template, which is why the device request above is per node
-	// and not per replica.
-	if n := in.Layout.nodes(); n > 1 {
-		component["multinode"] = map[string]any{"nodeCount": int64(n)}
-	}
-
-	components := []any{component}
 	if opts.FrontendEnabled {
 		frontend, err := frontendComponent(in, opts)
 		if err != nil {
@@ -289,7 +380,7 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 		"metadata": map[string]any{
 			"name":      WorkloadName(in.Deployment),
 			"namespace": opts.Namespace,
-			"labels":    ownershipLabels(in),
+			"labels":    ownershipLabels(in, workerRole{}),
 			"annotations": map[string]any{
 				GenerationAnnotation:    strconv.FormatInt(in.Deployment.Generation, 10),
 				ServingDigestAnnotation: in.Deployment.Serving.Digest,
@@ -428,13 +519,30 @@ const deploymentIDLabel = "hangar.dev/deployment-id"
 // workload is one the plane put there, and Dynamo does not copy a graph deployment's labels onto
 // the pods it derives from it. Without them on the template, every deployment this operator
 // created came back up the wire as a sighting to be adopted.
-func ownershipLabels(in Inputs) map[string]any {
-	return map[string]any{
+// The role label is added only for a disaggregated deployment, and that conditional is the same
+// one every other addition in this file makes: an aggregated deployment's pod template has to stay
+// byte-identical to what it was, because the template is what Dynamo hashes into the object name
+// and a new label would rename and reload every worker in the fleet.
+//
+// Ingestion reads it back to say which role a replica is, which is the whole reason it is a label
+// rather than something derived from the component name at read time: `roleLabel` is one string
+// this operator writes and the observed path matches on, where a name is a convention two sides
+// would have to keep agreeing about.
+func ownershipLabels(in Inputs, role workerRole) map[string]any {
+	labels := map[string]any{
 		deploymentIDLabel:       in.Deployment.DeploymentID,
 		"hangar.dev/project":    in.Deployment.ProjectID,
 		"hangar.dev/managed-by": "hangar-operator",
 	}
+	if role.Role != "" {
+		labels[roleLabel] = role.Role
+	}
+	return labels
 }
+
+// roleLabel says which role of a disaggregated deployment a pod is. Absent on an aggregated one,
+// where there is one worker and nothing to distinguish.
+const roleLabel = "hangar.dev/role"
 
 // Replicas is what the deployment asks to run right now.
 //
@@ -458,7 +566,7 @@ func Replicas(dep wire.DeploymentDesired) int {
 	return dep.MinReplicas
 }
 
-func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
+func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) {
 	devices := in.Layout.devices(in.Deployment)
 
 	requests := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
@@ -481,7 +589,7 @@ func podSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 		return nil, fmt.Errorf("deployment %s names no engine runtime image", in.Deployment.DeploymentID)
 	}
 
-	args, err := engineArgs(in)
+	args, err := engineArgs(in, role)
 	if err != nil {
 		return nil, err
 	}
@@ -611,7 +719,7 @@ func frontendComponent(in Inputs, opts Options) (map[string]any, error) {
 		"replicas":              int64(replicas),
 		"globalDynamoNamespace": global,
 		"podTemplate": map[string]any{
-			"metadata": map[string]any{"labels": ownershipLabels(in)},
+			"metadata": map[string]any{"labels": ownershipLabels(in, workerRole{})},
 			"spec":     podMap,
 		},
 	}, nil
@@ -906,12 +1014,26 @@ func engineModule(engine string) string {
 	}
 }
 
+// kvTransferConfig is how the two roles move a KV cache between them.
+//
+// One constant and not a per-role value, because it is the same string on both sides —
+// `kv_role: kv_both` on prefill and on decode alike. That is not a simplification: the transfer
+// mechanism is a property of the topology rather than of the role, which is why it is derived from
+// the topology here and refused from a role's own arguments.
+//
+// NixlConnector is what every published vLLM disaggregated recipe in the corpus uses, and it is
+// what was exercised end to end on `cluster-site-a` on 2026-09-08: prefill and decode on
+// two separate nodes, `NIXL compatibility check passed`, and the KV cache moving between them over
+// ordinary VPC networking. Whether it pays for itself over EFA at TP8 is a different question and
+// this constant does not answer it.
+const kvTransferConfig = `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`
+
 // engineArgs builds the engine command line from the deployment's serving block.
 //
 // The serving fields are rendered first and engine_args second, so an explicit argument wins over
 // the derived one. That direction is deliberate: engine_args is the escape hatch for a flag this
 // operator has never heard of, and an escape hatch that loses to a default is not one.
-func engineArgs(in Inputs) ([]string, error) {
+func engineArgs(in Inputs, role workerRole) ([]string, error) {
 	model, isPath, err := modelRef(in.Artifact)
 	if err != nil {
 		return nil, err
@@ -951,6 +1073,28 @@ func engineArgs(in Inputs) ([]string, error) {
 	}
 	for key, value := range in.Deployment.Serving.EngineArgs {
 		derived[strings.TrimPrefix(key, "--")] = value
+	}
+
+	// The role's own layer, above the deployment's and below nothing. Guarded on Role rather than
+	// on Spec so that the aggregated command line is assembled exactly as it was: no new key, no
+	// changed order, and therefore the same pod template and the same object name.
+	//
+	// `disaggregation-mode` and `kv-transfer-config` are derived here and refused from engine_args
+	// by the plane, which is what makes them derived rather than defaulted. They come from the
+	// topology — a decision already made, validated and placed against — and the operator lays
+	// engine_args over its derived flags last, so a value arriving from anywhere else would not be
+	// overruled by this, it would overrule it.
+	if role.Role != "" {
+		derived["disaggregation-mode"] = role.Role
+		derived["kv-transfer-config"] = kvTransferConfig
+		if role.Spec != nil {
+			if v := role.Spec.MaxBatchTokens; v != nil {
+				derived["max-num-batched-tokens"] = strconv.Itoa(*v)
+			}
+			for key, value := range role.Spec.EngineArgs {
+				derived[strings.TrimPrefix(key, "--")] = value
+			}
+		}
 	}
 
 	keys := make([]string, 0, len(derived))

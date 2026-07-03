@@ -341,6 +341,52 @@ type ServingSpec struct {
 	// is whether two deployments would produce the same running process.
 	Digest  string  `json:"digest"`
 	Overlay Overlay `json:"overlay"`
+
+	// Topology is `aggregated` or `disaggregated`, and empty from a plane too old to send it.
+	//
+	// Empty reads as aggregated, which is what `Disaggregated` is for. That is not politeness
+	// about old planes: it is the same guarantee the digest keeps, because an aggregated
+	// deployment must render byte-identically to what it rendered before this field existed.
+	Topology string `json:"topology,omitempty"`
+
+	// Roles is the per-role configuration of a disaggregated deployment, and it carries no
+	// counts.
+	//
+	// The split between this and `DeploymentDesired.RoleReplicas` is the digest split made
+	// structural. What is here decides what the process *is* — prefill runs
+	// `--max-num-batched-tokens` 32768 against decode's 2048 — and is therefore inside
+	// `Digest` above. How many of each there are is scale, it is in the deployment's frame
+	// beside `MinReplicas`, and it is deliberately not hashed: `ops_benchmark_run.serving_digest`
+	// is what links a measurement to the configuration it measured, and a count in that hash
+	// would orphan every benchmark on a model the moment somebody added a prefill worker.
+	//
+	// Empty on an aggregated deployment, and empty is the only way to say that — a single-entry
+	// `roles` meaning "one worker" would make every existing deployment a disaggregated one with
+	// a degenerate ratio, and the render has to stay byte-identical for those.
+	Roles []RoleSpec `json:"roles,omitempty"`
+}
+
+// RoleSpec is one role of a disaggregated deployment: what makes its process different from the
+// other role's, and nothing about how many of it run.
+//
+// Narrow because the difference is narrow. Across NVIDIA's published recipe the two roles differ
+// on six arguments and agree on the artifact, the tensor degree, the device class, the context
+// length, the quantization and the `kv-cache-dtype` — and on `kv-transfer-config`, which is
+// literally the same string on both sides because the transfer mechanism belongs to the topology
+// rather than to the role. So a role is one typed number and an argument map.
+type RoleSpec struct {
+	// Role is `prefill` or `decode`. A closed set, validated by the plane before it is sent,
+	// because a role outside it renders a `--disaggregation-mode` no engine accepts — a worker
+	// that will not start rather than a validation error somebody can read.
+	Role string `json:"role"`
+	// MaxBatchTokens is this role's `--max-num-batched-tokens`, or nil to inherit the
+	// deployment's. Typed rather than left to EngineArgs because the serving spec already types
+	// it and the operator already derives the flag from it.
+	MaxBatchTokens *int `json:"max_batch_tokens,omitempty"`
+	// EngineArgs is laid over the deployment's own, and may not name a flag the operator
+	// derives — including `disaggregation-mode` and `kv-transfer-config`, which this topology
+	// now decides. The plane refuses those at declaration; this only carries what survived.
+	EngineArgs map[string]string `json:"engine_args,omitempty"`
 }
 
 // RuntimeVersion is the Dynamo runtime tag this deployment asks for.
@@ -443,9 +489,25 @@ type DeploymentDesired struct {
 	// it is the number that is actually rendered. MaxReplicas is a ceiling for an autoscaler
 	// that does not exist yet and nothing reads it. Neither may be summed with, or derived
 	// from, anything outside this frame.
-	MinReplicas int                  `json:"min_replicas"`
-	MaxReplicas int                  `json:"max_replicas"`
-	Placement   PlacementConstraints `json:"placement"`
+	MinReplicas int `json:"min_replicas"`
+	MaxReplicas int `json:"max_replicas"`
+	// RoleReplicas is the absolute worker count for each role of a disaggregated deployment,
+	// already multiplied by the plane. Empty on an aggregated one, where `MinReplicas` is the
+	// whole answer.
+	//
+	// Absolute, and that is the point of the field. `MinReplicas` under a disaggregated topology
+	// counts *groups*, and a group is the per-role weights taken together — so the per-role
+	// count is `MinReplicas x weight`. The multiplication happens in the plane and never here,
+	// because `Replicas` below states its own contract: it "renders exactly the number it is
+	// sent, and must never sum, scale, or re-derive it against anything else". An operator doing
+	// arithmetic on a replica count would be the first exception to an invariant that is
+	// currently absolute and cheap to check, and the alternative costs one map on a frame the
+	// plane already sends.
+	//
+	// Keyed by the same role names as `Serving.Roles`, and carried here rather than inside them
+	// because this is scale and those are configuration. See `RoleSpec`.
+	RoleReplicas map[string]int       `json:"role_replicas,omitempty"`
+	Placement    PlacementConstraints `json:"placement"`
 	// Serving is how to run this deployment's model, inlined rather than referenced. It is
 	// never absent and never late: it arrives in the same frame as the deployment that needs
 	// it, so there is no ordering between the two and nothing to wait for.

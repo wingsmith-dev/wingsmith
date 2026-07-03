@@ -1,6 +1,7 @@
 package render
 
 import (
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -287,7 +288,7 @@ func TestTheEngineIsPointedAtThePinnedRevision(t *testing.T) {
 		{Kind: "hf", URI: "hf://openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee"},
 	}
 
-	args, err := engineArgs(in)
+	args, err := engineArgs(in, workerRole{})
 	if err != nil {
 		t.Fatalf("args: %v", err)
 	}
@@ -312,7 +313,7 @@ func TestAnUnpinnedSourceKeepsTheRepoID(t *testing.T) {
 	in := testInputs()
 	in.Artifact.Sources = []wire.ArtifactSource{{Kind: "hf", URI: "hf://openai/gpt-oss-20b"}}
 
-	args, err := engineArgs(in)
+	args, err := engineArgs(in, workerRole{})
 	if err != nil {
 		t.Fatalf("args: %v", err)
 	}
@@ -1026,5 +1027,233 @@ func TestTheFrontendTakesTheCacheAndNothingElseFromTheEngine(t *testing.T) {
 	}
 	if len(spec.Tolerations) != 0 || spec.NodeSelector != nil {
 		t.Error("the frontend is being steered onto the accelerator pool")
+	}
+}
+
+// disaggInputs is testInputs with a 1:2 disaggregated topology declared on it, per-role arguments
+// and all.
+func disaggInputs() Inputs {
+	in := testInputs()
+	in.Deployment.Serving.Topology = "disaggregated"
+	in.Deployment.Serving.Roles = []wire.RoleSpec{
+		{Role: "prefill", MaxBatchTokens: ptr(32768), EngineArgs: map[string]string{"max-num-seqs": "4"}},
+		{Role: "decode", MaxBatchTokens: ptr(2048), EngineArgs: map[string]string{"max-num-seqs": "256"}},
+	}
+	in.Deployment.RoleReplicas = map[string]int{"prefill": 2, "decode": 4}
+	return in
+}
+
+// The bar every other test in this file is held to once, stated as its own test: an aggregated
+// deployment must render byte-for-byte what it rendered before disaggregation existed.
+//
+// Not a nicety. The rendered pod template is what Dynamo hashes into the object name, so a single
+// added label or reordered flag renames every worker in the fleet — and a rename is a delete, a
+// recreate and a weight reload, twenty minutes each for a large model, on clusters where nothing
+// was declared to have changed. `FrontendEnabled` sets itself the same bar and for the same reason.
+func TestAnAggregatedRenderIsUnchangedByDisaggregationExisting(t *testing.T) {
+	plain := testInputs()
+
+	// The same deployment with the fields present but empty, which is what a plane that has been
+	// upgraded sends for every workload nobody has disaggregated.
+	empty := testInputs()
+	empty.Deployment.Serving.Topology = "aggregated"
+	empty.Deployment.Serving.Roles = nil
+	empty.Deployment.RoleReplicas = nil
+
+	want, err := DynamoGraphDeployment(plain, frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	got, err := DynamoGraphDeployment(empty, frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !reflect.DeepEqual(want.Object, got.Object) {
+		t.Fatalf("an aggregated render moved when the topology fields were set to their empty meaning:\nwant %#v\ngot  %#v",
+			want.Object, got.Object)
+	}
+	// And the worker it renders is still the one worker, under the name it always had.
+	comps, _, err := unstructured.NestedSlice(got.Object, "spec", "components")
+	if err != nil {
+		t.Fatalf("components: %v", err)
+	}
+	var comp map[string]any
+	for _, entry := range comps {
+		c, _ := entry.(map[string]any)
+		if c["name"] == WorkerComponent {
+			comp = c
+		}
+	}
+	if comp == nil {
+		t.Fatalf("no %s component in %v", WorkerComponent, comps)
+	}
+	if comp["name"] != WorkerComponent {
+		t.Fatalf("component name = %v, want %v", comp["name"], WorkerComponent)
+	}
+	if comp["replicas"] != int64(2) {
+		t.Fatalf("replicas = %v, want the deployment's own 2", comp["replicas"])
+	}
+	if _, found := comp["podTemplate"].(map[string]any)["metadata"].(map[string]any)["labels"].(map[string]any)[roleLabel]; found {
+		t.Fatalf("an aggregated worker carries a role label, which renames every pod in the fleet")
+	}
+}
+
+// The two-component render: one graph, both roles, each with the count the plane sent.
+func TestADisaggregatedDeploymentRendersBothRoles(t *testing.T) {
+	obj, err := DynamoGraphDeployment(disaggInputs(), frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	comps, _, err := unstructured.NestedSlice(obj.Object, "spec", "components")
+	if err != nil {
+		t.Fatalf("components: %v", err)
+	}
+	if len(comps) != 3 {
+		t.Fatalf("components = %d, want prefill, decode and the frontend", len(comps))
+	}
+	byName := map[string]map[string]any{}
+	for _, entry := range comps {
+		c, _ := entry.(map[string]any)
+		byName[c["name"].(string)] = c
+	}
+	prefill, ok := byName[PrefillComponent]
+	if !ok {
+		t.Fatalf("no %s component in %v", PrefillComponent, byName)
+	}
+	decode, ok := byName[WorkerComponent]
+	if !ok {
+		t.Fatalf("no %s component in %v", WorkerComponent, byName)
+	}
+	if prefill["type"] != "prefill" || decode["type"] != "decode" {
+		t.Fatalf("types = %v/%v, want prefill/decode", prefill["type"], decode["type"])
+	}
+	// Absolute counts, rendered exactly as sent. The plane multiplied groups by weights; this
+	// operator must not multiply anything.
+	if prefill["replicas"] != int64(2) {
+		t.Fatalf("prefill replicas = %v, want the 2 the wire carried", prefill["replicas"])
+	}
+	if decode["replicas"] != int64(4) {
+		t.Fatalf("decode replicas = %v, want the 4 the wire carried", decode["replicas"])
+	}
+}
+
+// The flags that come from the topology rather than from anything a person typed.
+func TestEachRoleGetsItsOwnDerivedFlagsAndArguments(t *testing.T) {
+	for _, tc := range []struct {
+		role           string
+		wantMode       string
+		wantBatch      string
+		wantMaxNumSeqs string
+	}{
+		{"prefill", "prefill", "32768", "4"},
+		{"decode", "decode", "2048", "256"},
+	} {
+		t.Run(tc.role, func(t *testing.T) {
+			in := disaggInputs()
+			roles, err := workerRoles(in.Deployment)
+			if err != nil {
+				t.Fatalf("workerRoles: %v", err)
+			}
+			var role workerRole
+			for _, r := range roles {
+				if r.Role == tc.role {
+					role = r
+				}
+			}
+			args, err := engineArgs(in, role)
+			if err != nil {
+				t.Fatalf("engineArgs: %v", err)
+			}
+			flags := map[string]string{}
+			for i := 0; i < len(args); i++ {
+				if !strings.HasPrefix(args[i], "--") {
+					continue
+				}
+				key := strings.TrimPrefix(args[i], "--")
+				if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
+					flags[key] = args[i+1]
+				} else {
+					flags[key] = ""
+				}
+			}
+			if flags["disaggregation-mode"] != tc.wantMode {
+				t.Fatalf("disaggregation-mode = %q, want %q", flags["disaggregation-mode"], tc.wantMode)
+			}
+			if flags["kv-transfer-config"] != kvTransferConfig {
+				t.Fatalf("kv-transfer-config = %q, want the topology's own %q", flags["kv-transfer-config"], kvTransferConfig)
+			}
+			if flags["max-num-batched-tokens"] != tc.wantBatch {
+				t.Fatalf("max-num-batched-tokens = %q, want the role's %q", flags["max-num-batched-tokens"], tc.wantBatch)
+			}
+			if flags["max-num-seqs"] != tc.wantMaxNumSeqs {
+				t.Fatalf("max-num-seqs = %q, want the role's %q", flags["max-num-seqs"], tc.wantMaxNumSeqs)
+			}
+		})
+	}
+}
+
+// An aggregated worker gets neither flag, which is the other half of the byte-identity bar.
+func TestAnAggregatedWorkerGetsNoTopologyFlags(t *testing.T) {
+	args, err := engineArgs(testInputs(), workerRole{})
+	if err != nil {
+		t.Fatalf("engineArgs: %v", err)
+	}
+	for _, arg := range args {
+		if arg == "--disaggregation-mode" || arg == "--kv-transfer-config" {
+			t.Fatalf("an aggregated worker was given %s, which renames and reloads it", arg)
+		}
+	}
+}
+
+// A role with configuration and no count is a frame that lost half of itself. Rendering it at a
+// default would serve a ratio nobody declared, so it is an error.
+func TestARoleWithNoReplicaCountIsRefused(t *testing.T) {
+	in := disaggInputs()
+	delete(in.Deployment.RoleReplicas, "prefill")
+	if _, err := DynamoGraphDeployment(in, frontendOptions()); err == nil {
+		t.Fatal("rendered a role with no replica count on the wire, want an error")
+	}
+}
+
+// Topology and roles have to agree before anything renders differently, so that neither half of a
+// half-upgraded plane produces a graph nobody declared.
+func TestTopologyAndRolesMustAgreeBeforeAnythingSplits(t *testing.T) {
+	rolesOnly := testInputs()
+	rolesOnly.Deployment.Serving.Roles = disaggInputs().Deployment.Serving.Roles
+	if Disaggregated(rolesOnly.Deployment) {
+		t.Fatal("roles without a topology read as disaggregated")
+	}
+	topologyOnly := testInputs()
+	topologyOnly.Deployment.Serving.Topology = "disaggregated"
+	if Disaggregated(topologyOnly.Deployment) {
+		t.Fatal("a topology without roles reads as disaggregated")
+	}
+}
+
+// The role label is what ingestion reads back to say which role a replica is.
+func TestEachRolesPodsCarryTheirRole(t *testing.T) {
+	obj, err := DynamoGraphDeployment(disaggInputs(), frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	comps, _, _ := unstructured.NestedSlice(obj.Object, "spec", "components")
+	seen := map[string]string{}
+	for _, entry := range comps {
+		c, _ := entry.(map[string]any)
+		name, _ := c["name"].(string)
+		tmpl, ok := c["podTemplate"].(map[string]any)
+		if !ok {
+			continue
+		}
+		labels, _ := tmpl["metadata"].(map[string]any)["labels"].(map[string]any)
+		if v, found := labels[roleLabel]; found {
+			seen[name], _ = v.(string)
+		}
+	}
+	if seen[PrefillComponent] != "prefill" || seen[WorkerComponent] != "decode" {
+		t.Fatalf("role labels = %v, want prefill and decode on their own components", seen)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("role labels = %v, want them on the two workers and nowhere else", seen)
 	}
 }
