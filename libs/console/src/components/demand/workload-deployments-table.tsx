@@ -8,7 +8,9 @@ import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { shortenId } from "@/lib/format"
 import { cn } from "@/lib/utils"
+import { RoleReadinessLine } from "@/components/demand/serving-topology"
 import { deploymentOperationalStatus } from "@/modules/demand/display"
+import { roleReadiness } from "@/modules/demand/topology"
 import type { WorkloadDeployment } from "@/modules/demand/types"
 import { Link } from "@tanstack/react-router"
 
@@ -130,17 +132,40 @@ function columns(
     {
       key: "ready",
       header: `Ready (${unit})`,
-      cell: (deployment) => (
-        <span className="inline-flex items-center gap-2">
-          <span className="font-mono text-xs">
-            {deployment.replicas.ready}/{deployment.desired_replicas}
+      /**
+       * Per role where the cluster reports roles, and the scalar rollup where it
+       * does not.
+       *
+       * A group count against a scalar ready count is two numbers that are not
+       * comparable — `2/1` on a 1:2 group is decode pods over groups — so the
+       * moment roles arrive they replace the pair rather than sitting beside it.
+       * The group total stays underneath, which is what the unit in the header
+       * names.
+       */
+      cell: (deployment) => {
+        const roles = roleReadiness(deployment.status)
+        if (roles) {
+          return (
+            <div className="space-y-0.5">
+              <RoleReadinessLine roles={roles} />
+              <span className="block font-mono text-2xs text-muted-foreground">
+                {deployment.desired_replicas} {unit}
+              </span>
+            </div>
+          )
+        }
+        return (
+          <span className="inline-flex items-center gap-2">
+            <span className="font-mono text-xs">
+              {deployment.replicas.ready}/{deployment.desired_replicas}
+            </span>
+            <ReplicaBar
+              ready={deployment.replicas.ready}
+              total={deployment.desired_replicas}
+            />
           </span>
-          <ReplicaBar
-            ready={deployment.replicas.ready}
-            total={deployment.desired_replicas}
-          />
-        </span>
-      ),
+        )
+      },
     },
     ...(serving
       ? [

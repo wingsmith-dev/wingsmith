@@ -6,6 +6,12 @@ import {
 } from "@/components/layout/form"
 import { formatError } from "@/lib/format"
 import { scaleUnit } from "@/modules/demand/display"
+import {
+  groupDevices,
+  isDisaggregated,
+  rolesAtGroupCount,
+  scaleUnitFor,
+} from "@/modules/demand/topology"
 import type { Workload, WorkloadDeployment } from "@/modules/demand/types"
 import { useCreateOperation } from "@/modules/machinery/queries"
 import { useState } from "react"
@@ -63,7 +69,9 @@ export function ScaleWorkloadDialog({
   const { run, pending, error } = useOperation(workload, () =>
     onOpenChange(false)
   )
-  const unit = workload.scale.unit || scaleUnit(workload.kind)
+  const unit = scaleUnitFor(workload) || scaleUnit(workload.kind)
+  const devices = groupDevices(workload)
+  const roles = rolesAtGroupCount(workload, desired ?? 0)
 
   return (
     <FormDialog
@@ -90,6 +98,24 @@ export function ScaleWorkloadDialog({
         <NumberField label="Minimum" value={min} onChange={setMin} min={0} />
         <NumberField label="Maximum" value={max} onChange={setMax} min={0} />
       </FormGrid>
+      {roles.length > 0 && (
+        /*
+         * A group count is not a replica count and the form must not let the
+         * two be read as one. Three groups at 1:2 is nine processes and
+         * seventy-two devices, and the arithmetic belongs in front of the
+         * person doing it rather than in the rejection they get back.
+         *
+         * This is also the cheap action of the two on this screen: scaling
+         * multiplies the weights out, and nothing about a new prefill process
+         * changes what a decode process is, so no weights reload.
+         */
+        <p className="rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-700 dark:text-emerald-400">
+          {roles.map((role) => `${role.count} ${role.role}`).join(" · ")}
+          {devices ? ` · ${devices * (desired ?? 0)} devices` : ""}. Scaling
+          groups reloads no model weights; the ratio is preserved by
+          construction because both roles grow together.
+        </p>
+      )}
       <p className="text-xs text-muted-foreground">
         The workload's share on each cluster is derived, never typed. Nothing
         autoscales between the minimum and the maximum — they are the bounds
@@ -180,6 +206,140 @@ export function DrainWorkloadDialog({
           label: d.region ? `${d.cluster_name} · ${d.region}` : d.cluster_name,
         }))}
       />
+    </FormDialog>
+  )
+}
+
+/**
+ * Agg ↔ disagg, as an operation and not a field write.
+ *
+ * It is imperative, long-running and able to fail — it changes the device
+ * footprint per unit, so it can sit pending on quota indefinitely, which is the
+ * failure mode `workload.scale` already exists to carry. A PATCH would report
+ * success the moment the plane accepted the intent, and "why has this model
+ * been half-rolled for twenty minutes" would have no answer.
+ *
+ * The new group count is asked for and never inherited. A workload at three
+ * replicas means three aggregated replicas today and would mean three GROUPS —
+ * seventy-two devices at 1:2 and TP8 — the moment the topology flips.
+ * Reinterpreting a live number by a factor of three is the mistake this form
+ * exists to make impossible, so a flip that does not say how many groups it
+ * wants is rejected rather than defaulted.
+ */
+export function ReshapeWorkloadDialog({
+  workload,
+  open,
+  onOpenChange,
+}: {
+  workload: Workload
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const disagg = isDisaggregated(workload)
+  const target = disagg ? "aggregated" : "disaggregated"
+  const [groups, setGroups] = useState<number | null>(null)
+  const [prefill, setPrefill] = useState<number | null>(1)
+  const [decode, setDecode] = useState<number | null>(2)
+  const [armed, setArmed] = useState(false)
+  const { run, pending, error } = useOperation(workload, () =>
+    onOpenChange(false)
+  )
+
+  const perWorker = workload.serving.shape.device_count
+  const perUnit = disagg
+    ? perWorker
+    : ((prefill ?? 0) + (decode ?? 0)) * perWorker
+  const unit = disagg ? "replicas" : "groups"
+
+  return (
+    <FormDialog
+      icon="workload"
+      open={open}
+      onOpenChange={onOpenChange}
+      title={`Reshape ${workload.name}`}
+      description={`Serve this workload ${target}. This changes which processes exist, not how many of them there are.`}
+      error={error}
+      pending={pending}
+      submitLabel={armed ? "Reshape and take the outage" : "Reshape"}
+      disabled={
+        groups === null ||
+        (!disagg && ((prefill ?? 0) < 1 || (decode ?? 0) < 1))
+      }
+      onSubmit={() => {
+        if (!armed) {
+          setArmed(true)
+          return
+        }
+        run(
+          "workload.reshape",
+          {
+            topology: target,
+            desired: groups ?? 0,
+            ...(disagg
+              ? {}
+              : {
+                  roles: [
+                    { role: "prefill", weight: prefill ?? 1 },
+                    { role: "decode", weight: decode ?? 1 },
+                  ],
+                }),
+          },
+          null
+        )
+      }}
+    >
+      <FormGrid>
+        <NumberField
+          label={`Desired ${unit}`}
+          value={groups}
+          onChange={(value) => {
+            setArmed(false)
+            setGroups(value)
+          }}
+          min={0}
+          hint={`${workload.scale.desired} today, counted in ${scaleUnitFor(workload)}.`}
+        />
+        {!disagg && (
+          <>
+            <NumberField
+              label="Prefill per group"
+              value={prefill}
+              onChange={(value) => {
+                setArmed(false)
+                setPrefill(value)
+              }}
+              min={1}
+            />
+            <NumberField
+              label="Decode per group"
+              value={decode}
+              onChange={(value) => {
+                setArmed(false)
+                setDecode(value)
+              }}
+              min={1}
+            />
+          </>
+        )}
+      </FormGrid>
+      <p className="text-xs text-muted-foreground">
+        One {unit.replace(/s$/, "")} costs {perUnit} devices, at {perWorker} per
+        worker. The count is asked for rather than carried over, because the
+        same number means a different amount of hardware on either side of this.
+      </p>
+      <p
+        className={
+          armed
+            ? "rounded-md border border-destructive/50 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+            : "rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400"
+        }
+      >
+        Every replica is replaced and every process reloads its weights, at
+        about twenty minutes each. The rollout wants both generations resident
+        at once and a small fleet cannot hold them, so expect the model to be
+        down for the reload rather than rolled through it.
+        {armed ? " Press the button again to proceed." : ""}
+      </p>
     </FormDialog>
   )
 }

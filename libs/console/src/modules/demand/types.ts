@@ -703,6 +703,13 @@ export interface WorkloadServing {
   shape: ServingShape
   resources: ServingResources
   overlay: ServingOverlay
+  /**
+   * Absent from a plane that predates disaggregation, which reads as
+   * `aggregated` everywhere this console branches. That is not a guess: every
+   * workload such a plane knows about is aggregated by definition, and reading
+   * absent as unknown would render a third state the object model does not have.
+   */
+  topology?: ServingTopologyView
 }
 
 /**
@@ -735,6 +742,13 @@ export interface WorkloadServingRequest {
   overlay?: ServingOverlay
   serving?: ServingBehaviour
   capabilities?: ServingCapabilities
+  /**
+   * Omitted entirely on an aggregated workload rather than sent with an
+   * aggregated value and an empty role list. `serving_digest` only adds the
+   * block to the hashed payload when the workload is disaggregated, so sending
+   * it unconditionally would change every existing digest in the fleet.
+   */
+  topology?: ServingTopologyRequest
 }
 
 /**
@@ -1041,6 +1055,11 @@ export interface DeploymentStatus {
   ready_replicas: number
   updated_replicas: number
   unavailable_replicas: number
+  /**
+   * Per-role counts, where the cluster reports them. The four scalars above
+   * stay the group rollup and are not replaced by this.
+   */
+  roles?: DeploymentRoleObserved[]
   last_error_code: string | null
   last_error_message: string | null
   last_error_at: string | null
@@ -1244,4 +1263,97 @@ export interface EndpointUpdateRequest {
   targets?: EndpointTargetRequest[]
   failover_order?: string[]
   labels?: Record<string, string>
+}
+
+/**
+ * `Workload.serving_topology` — whether one process serves a request or two do.
+ *
+ * Arrives as `topology` on the wire and is named `serving_topology` in the
+ * column, because `ServingShape` two objects away already carries
+ * `topology_domain_kind` for a physical placement domain. This one names a
+ * process split; that one names a fabric. The API shortens it and the column
+ * does not, so both spellings are correct and neither is this console's to pick.
+ */
+export type ServingTopology = "aggregated" | "disaggregated" | (string & {})
+
+/** The roles a disaggregated workload has, and it has both or it is not one. */
+export const SERVING_ROLES = ["prefill", "decode"] as const
+export type ServingRole = (typeof SERVING_ROLES)[number] | (string & {})
+
+/**
+ * One declared role: what that process is, and how many of it per group.
+ *
+ * `weight` is the one field here that is NOT in `serving_digest`, and the split
+ * is the whole of what this console has to make visible. What a role *is* —
+ * `engine_args`, `max_batch_tokens` — decides what process runs, so editing it
+ * renames the objects Dynamo derives and reloads the weights of both roles.
+ * How many of a role there are is scale, and scaling reloads nothing.
+ *
+ * `max_batch_tokens` null inherits the workload's own value rather than meaning
+ * unset; the two roles differ on it by sixteenfold in NVIDIA's own recipe, which
+ * is why it is a typed column per role and not a line in `engine_args`.
+ */
+export interface WorkloadRole {
+  role: ServingRole
+  weight: number
+  engine_args: Record<string, unknown>
+  max_batch_tokens: number | null
+}
+
+/** The write shape of a role. Absent keys leave the stored value alone. */
+export interface WorkloadRoleRequest {
+  role: ServingRole
+  weight?: number
+  engine_args?: Record<string, unknown>
+  max_batch_tokens?: number | null
+}
+
+/**
+ * `TopologySchema` — the write shape. A block rather than two loose fields, so
+ * that the aggregated case is expressible by its absence.
+ */
+export interface ServingTopologyRequest {
+  serving_topology: ServingTopology
+  roles?: WorkloadRoleRequest[]
+}
+
+/**
+ * `TopologyViewSchema` — the same block as a read returns it, with the derived
+ * numbers beside it.
+ *
+ * `group_devices` is derived on every read and stored nowhere. A column holding
+ * it would put the role weights into `serving_digest` through a second door,
+ * because `device_count` is a digest field and nothing about such a column's
+ * name would say which of the two totals it held.
+ */
+export interface ServingTopologyView {
+  serving_topology: ServingTopology
+  roles: WorkloadRole[]
+  group_devices: number
+  /**
+   * What the group does not divide into, in words, or empty when there is
+   * nothing to say. Placement decides what actually fits and this cannot; what
+   * it can say is the arithmetic a person is about to be surprised by.
+   */
+  group_nodes_hint: string
+}
+
+/**
+ * One role's observed counts on `deployment.observed`, added beside the scalars
+ * rather than replacing them.
+ *
+ * The scalar `ready_replicas` stays the group rollup, so a reader that knows
+ * nothing about roles is right, less precisely. This array is what makes it
+ * precise, and it is absent on an aggregated deployment and on any operator too
+ * old to send it — absent and empty must not both be sayable, so `undefined` is
+ * "not reported" and there is no empty-array case to read.
+ *
+ * There is no achieved ratio on the wire and there must not be: it is the
+ * quotient of these two counts, derived at read time, so that ingestion stays
+ * the single writer of observed state.
+ */
+export interface DeploymentRoleObserved {
+  role: ServingRole
+  desired: number
+  ready: number
 }

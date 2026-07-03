@@ -1,4 +1,5 @@
 import type { StatusTone } from "@/components/layout/status-dot"
+import { roleReadiness, rolesReady } from "@/modules/demand/topology"
 import type {
   Artifact,
   ArtifactUpstream,
@@ -245,14 +246,30 @@ export function deploymentOperationalStatus(
   const observed = deployment.status
   const failed =
     observed?.phase === "failed" || Boolean(observed?.last_error_code)
-  const degraded = observed?.phase === "degraded"
+  /**
+   * A role reported at zero outranks whatever the phase says.
+   *
+   * The operator's phase is derived from a scalar count, and on a disaggregated
+   * deployment that count can read `running` on a group total it happens to
+   * match while one of the two roles has no process at all. There is then no
+   * worker to run a prefill and every request fails, so this is not the
+   * `degraded` that still serves — it is the same failure the frontend check
+   * exists to close, one component further along.
+   */
+  const roles = roleReadiness(observed)
+  const roleMissing = roles?.find((role) => role.absent) ?? null
+  const degraded =
+    observed?.phase === "degraded" ||
+    Boolean(roleMissing) ||
+    (roles !== null && !rolesReady(roles))
   const phase = failed
     ? "failed"
     : degraded
       ? "degraded"
       : deployment.admission_phase
-  const reason =
-    failed || degraded
+  const reason = roleMissing
+    ? `no ${roleMissing.role} worker`
+    : failed || degraded
       ? reasonText(
           observed?.last_error_code ??
             observed?.reason ??

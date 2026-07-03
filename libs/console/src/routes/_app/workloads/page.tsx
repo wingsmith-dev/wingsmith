@@ -1,3 +1,4 @@
+import { TopologyBadge } from "@/components/demand/serving-topology"
 import { DataTable, type Column } from "@/components/layout/data-table"
 import { DeleteDialog, RowActions } from "@/components/layout/destructive"
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
@@ -17,6 +18,7 @@ import {
   workloadOperationalStatus,
 } from "@/modules/demand/display"
 import { useDeleteWorkload, useWorkloads } from "@/modules/demand/queries"
+import { scaleUnitFor } from "@/modules/demand/topology"
 import type { Workload } from "@/modules/demand/types"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { useState } from "react"
@@ -40,6 +42,11 @@ function columns(
           >
             <span className="font-mono text-xs">{workload.name}</span>
             <Id value={shortenId(workload.id)} className="ml-2" />
+            {/* On the name and not in a column of its own: almost every
+                workload is aggregated, so a column would be empty down its
+                whole length, and the badge has to be beside the thing it is
+                true of rather than somewhere a reader has to go looking. */}
+            <TopologyBadge workload={workload} />
           </Link>
         </ResourceCell>
       ),
@@ -84,7 +91,7 @@ function columns(
         <span className="font-mono text-xs">
           {workload.scale.ready}/{workload.scale.desired}
           <span className="ml-1 text-2xs text-muted-foreground">
-            {workload.scale.unit}
+            {scaleUnitFor(workload)}
           </span>
         </span>
       ),

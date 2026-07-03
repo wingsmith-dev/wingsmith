@@ -9,6 +9,7 @@ import {
 import {
   DrainWorkloadDialog,
   PauseWorkloadDialog,
+  ReshapeWorkloadDialog,
   ScaleWorkloadDialog,
 } from "@/components/demand/workload-actions"
 import { WorkloadDeploymentsTable } from "@/components/demand/workload-deployments-table"
@@ -83,6 +84,13 @@ import {
   IconTrash,
 } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
+import { RolesPanel } from "@/components/demand/serving-topology"
+import {
+  declaredRatio,
+  groupDevices,
+  isDisaggregated,
+  scaleUnitFor,
+} from "@/modules/demand/topology"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { LoadCurvePanel } from "@/components/benchmarks/curve"
@@ -94,6 +102,8 @@ import {
   EditEngineArgsDialog,
   EditEngineDialog,
   EditPlacementDialog,
+  EditRatioDialog,
+  EditRolesDialog,
   EditServingDialog,
 } from "./EditWorkload"
 
@@ -154,6 +164,7 @@ export function WorkloadDetailPage() {
   const [doomed, setDoomed] = useState(false)
   const [scaling, setScaling] = useState(false)
   const [pausing, setPausing] = useState(false)
+  const [reshaping, setReshaping] = useState(false)
   const [draining, setDraining] = useState<WorkloadDeployment | undefined>()
   const [drainOpen, setDrainOpen] = useState(false)
   const [view, setView] = useState("overview")
@@ -213,6 +224,9 @@ export function WorkloadDetailPage() {
               >
                 Drain
               </Button>
+              <Button variant="outline" onClick={() => setReshaping(true)}>
+                Reshape
+              </Button>
               <Button variant="destructive" onClick={() => setDoomed(true)}>
                 <IconTrash className="size-4" />
                 Delete
@@ -236,6 +250,14 @@ export function WorkloadDetailPage() {
           workload={workload}
           open
           onOpenChange={setScaling}
+        />
+      )}
+      {workload && reshaping && (
+        <ReshapeWorkloadDialog
+          key={`reshape-${workload.revision}`}
+          workload={workload}
+          open
+          onOpenChange={setReshaping}
         />
       )}
       {workload && pausing && (
@@ -349,7 +371,7 @@ export function WorkloadDetailPage() {
                     <WorkloadDeploymentsTable
                       bare
                       deployments={workload.deployments}
-                      unit={scale.unit}
+                      unit={scaleUnitFor(workload)}
                       // TODO-API per-cluster requests/sec is data-plane, seeded here
                       serving={(d) =>
                         (d.desired_replicas * 215).toLocaleString()
@@ -532,6 +554,23 @@ export function WorkloadDetailPage() {
                       <Field label="Parallelism">
                         {parallelismLabel(workload.serving.parallelism)}
                       </Field>
+                      {/* Beside parallelism because it is the same kind of
+                          fact: it decides the footprint. Not beside "Single
+                          domain" two fields down, which reads `topology` in the
+                          other sense — a physical fabric a replica has to fit
+                          inside, not a split between two processes. */}
+                      <Field label="Serving topology">
+                        {isDisaggregated(workload) ? (
+                          <span className="inline-flex items-center gap-2">
+                            disaggregated
+                            <span className="text-2xs text-muted-foreground">
+                              {declaredRatio(workload)}
+                            </span>
+                          </span>
+                        ) : (
+                          "aggregated"
+                        )}
+                      </Field>
                       <Field label="Quantization">
                         <Dash>
                           {[
@@ -561,6 +600,35 @@ export function WorkloadDetailPage() {
                       </Field>
                     </FieldGrid>
                   </Panel>
+
+                  <RolesPanel
+                    workload={workload}
+                    action={
+                      /* Two buttons, and the order is the argument: the free
+                         edit is first and named for what it changes, the
+                         costly one is second and named for what it is. A
+                         single "Edit roles" would put a twenty-minute reload
+                         behind the same click as adding a worker. */
+                      <WriteAction>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditing("ratio")}
+                          >
+                            Ratio
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditing("roles")}
+                          >
+                            Configuration
+                          </Button>
+                        </div>
+                      </WriteAction>
+                    }
+                  />
 
                   <ServingBehaviourCard
                     serving={workload.serving.serving}
@@ -985,6 +1053,18 @@ type EditSection =
   | "args"
   | "serving"
   | "capabilities"
+  /**
+   * Two sections and not one, which is the whole point of the pair.
+   *
+   * `ratio` writes the role weights and is free — a scale, reloading nothing.
+   * `roles` writes what a role IS and costs a weight load on BOTH roles,
+   * because Dynamo's worker spec hash is one value across every worker
+   * component in the graph. Putting them in one form would make the cheap edit
+   * carry the expensive one's warning, and a warning shown on a free action is
+   * a warning nobody reads on the costly one.
+   */
+  | "ratio"
+  | "roles"
 
 function EditDialog({
   section,
@@ -1013,6 +1093,10 @@ function EditDialog({
       return <EditServingDialog {...props} />
     case "capabilities":
       return <EditCapabilitiesDialog {...props} />
+    case "ratio":
+      return <EditRatioDialog {...props} />
+    case "roles":
+      return <EditRolesDialog {...props} />
   }
 }
 
@@ -1074,7 +1158,7 @@ function Vitals({
         tone={operational.needsAttention ? operational.tone : undefined}
       />
       <Vital
-        label={workload.scale.unit}
+        label={scaleUnitFor(workload)}
         value={`${workload.scale.ready}/${workload.scale.desired}`}
         detail={`min ${workload.scale.min} · max ${workload.scale.max}`}
       />
@@ -1083,10 +1167,18 @@ function Vitals({
         value={String(workload.deployments.length)}
         detail={clusters.join(", ") || "none placed"}
       />
+      {/* Devices per WORKER, always. The group's total is derived beside it
+          and never replaces it: `device_count` is a digest field and a tile
+          that quietly showed 24 where the column says 8 would be the same
+          reinterpretation the group count exists to prevent. */}
       <Vital
         label="Hardware"
         value={`${workload.serving.shape.device_count}× ${workload.serving.shape.device_class}`}
-        detail={parallelismLabel(workload.serving.parallelism)}
+        detail={
+          groupDevices(workload)
+            ? `${parallelismLabel(workload.serving.parallelism)} · ${groupDevices(workload)} per group`
+            : parallelismLabel(workload.serving.parallelism)
+        }
       />
     </Card>
   )

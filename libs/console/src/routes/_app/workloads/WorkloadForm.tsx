@@ -33,7 +33,7 @@ import {
   useCreateWorkload,
   useUpdateWorkload,
 } from "@/modules/demand/queries"
-import type { Workload } from "@/modules/demand/types"
+import type { ServingTopology, Workload } from "@/modules/demand/types"
 import { useState } from "react"
 import { toast } from "sonner"
 
@@ -115,6 +115,16 @@ export function WorkloadForm({
   const [pipeline, setPipeline] = useState<number | null>(
     serving?.parallelism.pipeline ?? 1
   )
+  /**
+   * Declared at creation and changed afterwards by `workload.reshape`, never by
+   * this form in edit mode. A flip changes which processes exist and how many
+   * devices a unit costs, so it is imperative and long-running and can sit
+   * pending on quota — the three things that make an operation rather than a
+   * field write.
+   */
+  const [topology, setTopology] = useState<ServingTopology>("aggregated")
+  const [prefillWeight, setPrefillWeight] = useState<number | null>(1)
+  const [decodeWeight, setDecodeWeight] = useState<number | null>(2)
   const [expert, setExpert] = useState<number | null>(
     serving?.parallelism.expert ?? 1
   )
@@ -261,7 +271,28 @@ export function WorkloadForm({
     const total = kind === "gang" ? (gangSize ?? 1) : (desiredScale ?? 1)
     create.mutate(
       {
-        serving: { artifact, ...servingBody },
+        /*
+         * The topology block is omitted entirely when aggregated, and not sent
+         * as `"aggregated"` with an empty role list. Absent and empty must not
+         * both be sayable about a thing with one meaning, and the plane's
+         * digest depends on the key not being there — adding it
+         * unconditionally would change every existing digest in the fleet.
+         */
+        serving: {
+          artifact,
+          ...servingBody,
+          ...(topology === "disaggregated"
+            ? {
+                topology: {
+                  serving_topology: topology,
+                  roles: [
+                    { role: "prefill", weight: prefillWeight ?? 1 },
+                    { role: "decode", weight: decodeWeight ?? 1 },
+                  ],
+                },
+              }
+            : {}),
+        },
         name,
         project,
         kind,
@@ -487,6 +518,32 @@ export function WorkloadForm({
           onChange={setMaxBatchTokens}
           min={0}
         />
+        {!editing && (
+          <SelectField
+            label="Serving topology"
+            value={topology}
+            onChange={(value) => setTopology(value as ServingTopology)}
+            options={["aggregated", "disaggregated"]}
+            hint="Disaggregated runs prefill and decode as separate processes exchanging KV cache over the network."
+          />
+        )}
+        {!editing && topology === "disaggregated" && (
+          <>
+            <NumberField
+              label="Prefill per group"
+              value={prefillWeight}
+              onChange={setPrefillWeight}
+              min={1}
+            />
+            <NumberField
+              label="Decode per group"
+              value={decodeWeight}
+              onChange={setDecodeWeight}
+              min={1}
+              hint={`A group is ${((prefillWeight ?? 0) + (decodeWeight ?? 0)) * (deviceCount ?? 0)} devices, and the total below counts groups.`}
+            />
+          </>
+        )}
         <NumberField
           label="Tensor parallel"
           value={tensor}

@@ -950,6 +950,57 @@ const serving = {
     },
     resources: { cpu_cores: 32, memory_mib: 131_072, disk_gib: 256 },
   },
+  kimi: {
+    artifact_id: artifacts[0].id,
+    engine: "vllm",
+    engine_runtime_version: "0.9.1",
+    engine_runtime_image: "ghcr.io/hangar/vllm:0.9.1",
+    frontend_image: null,
+    engine_args: { "--kv-cache-dtype": "fp8" },
+    quantization: "fp8",
+    dtype: "bfloat16",
+    parallelism: { tensor: 8, pipeline: 1, expert: 1 },
+    context_length: 1_048_576,
+    max_batch_tokens: 8192,
+    cache: {
+      kv_cache_dtype: "fp8",
+      kv_cache_fraction: 0.9,
+      prefix_cache_enabled: true,
+      prefix_cache_config: {},
+    },
+    imported_args: {},
+    serving: emptyServing(),
+    capabilities: emptyCapabilities(),
+    resolved_engine_args: { "kv-cache-dtype": "fp8" },
+    overlay: { pod_spec: {}, dynamo: {} },
+    shape: {
+      device_class: "b300-288gb-sxm",
+      device_count: 8,
+      device_memory_mib_min: 294_912,
+      requires_single_topology_domain: true,
+      topology_domain_kind: "nvswitch",
+    },
+    resources: { cpu_cores: 96, memory_mib: 786_432, disk_gib: 2048 },
+    topology: {
+      serving_topology: "disaggregated",
+      group_devices: 24,
+      group_nodes_hint: "",
+      roles: [
+        {
+          role: "prefill",
+          weight: 1,
+          engine_args: { "enforce-eager": "", "max-num-seqs": "4" },
+          max_batch_tokens: 32_768,
+        },
+        {
+          role: "decode",
+          weight: 2,
+          engine_args: { "max-num-seqs": "256" },
+          max_batch_tokens: 2048,
+        },
+      ],
+    },
+  },
 } satisfies Record<string, Workload["serving"]>
 
 /** `svg_` plus sixty-four hex, the way the plane spells one. */
@@ -966,6 +1017,7 @@ const workloadIds = {
   llama: uid("wkl_"),
   bge: uid("wkl_"),
   eval: uid("wkl_"),
+  kimi: uid("wkl_"),
 }
 
 export const deployments: Deployment[] = [
@@ -1149,6 +1201,66 @@ export const deployments: Deployment[] = [
       at_current_generation: 0,
     },
   },
+  {
+    /**
+     * A disaggregated deployment part way through a scale, which is the state
+     * the console has to render without calling it a fault.
+     *
+     * Declared 1 prefill : 2 decode over two groups, so six processes are
+     * wanted. Four decode are up and one prefill is, which makes the achieved
+     * quotient 1:4 against a declared 1:2 — legitimately disagreeing, because
+     * the roles come up at different speeds and the quotient is derived rather
+     * than stored. The scalars stay the group rollup and are right, less
+     * precisely.
+     */
+    id: uid("dep_"),
+    name: "kimi-k3-disagg",
+    workload_id: workloadIds.kimi,
+    workload_name: "kimi-k3-disagg",
+    cluster_id: clusters[0].id,
+    min_replicas: 2,
+    max_replicas: 2,
+    desired_replicas: 2,
+    admission_phase: "running",
+    admission_reason: null,
+    queued_at: iso(400),
+    admitted_at: iso(399),
+    placed_at: iso(398),
+    generation: 3,
+    enabled: true,
+    created_at: iso(400),
+    updated_at: iso(4),
+    revision: revision(iso(400)),
+    adopted_workload_id: null,
+    adopted_fingerprint: null,
+    authority: "managed",
+    status: {
+      observed_generation: 3,
+      phase: "progressing",
+      reason: "Progressing",
+      message: "prefill scaling out",
+      desired_replicas: 2,
+      ready_replicas: 1,
+      updated_replicas: 1,
+      unavailable_replicas: 1,
+      roles: [
+        { role: "prefill", desired: 2, ready: 1 },
+        { role: "decode", desired: 4, ready: 4 },
+      ],
+      last_error_code: null,
+      last_error_message: null,
+      last_error_at: null,
+      observed_at: iso(1),
+    },
+    replicas: {
+      total: 2,
+      ready: 1,
+      running: 2,
+      pending: 0,
+      failed: 0,
+      at_current_generation: 1,
+    },
+  },
 ]
 
 /** The unit the three scale numbers count, named by kind. */
@@ -1305,6 +1417,38 @@ export const workloads: Workload[] = [
     deadline_at: iso(-360),
     created_at: CREATED,
     updated_at: null,
+    revision: REV,
+  }),
+  /**
+   * The workload the feature exists for: one model served by two processes
+   * exchanging KV cache over the network. `min_replicas` counts GROUPS here,
+   * and a group is three workers and twenty-four devices.
+   */
+  workload(workloadIds.kimi, {
+    name: "kimi-k3-disagg",
+    kind: "service",
+    phase: "placed",
+    project_id: projects[0].id,
+    priority_class: "production",
+    preemptible: false,
+    paused: false,
+    gang_size: 1,
+    serving_digest: digest("d"),
+    serving: serving.kimi,
+    served_model_name: "moonshotai/kimi-k3",
+    adapter_artifact_ids: [],
+    overrides: {},
+    labels: { tier: "prod" },
+    strategy: "pack",
+    cluster_floors: {},
+    max_clusters: 1,
+    pinned_cluster_id: null,
+    bounds: { min: 1, max: 4, desired: 2 },
+    started_at: iso(398),
+    finished_at: null,
+    deadline_at: null,
+    created_at: iso(400),
+    updated_at: iso(4),
     revision: REV,
   }),
 ]
