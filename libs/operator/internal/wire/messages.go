@@ -644,6 +644,16 @@ type ReplicaObserved struct {
 	ObservedGeneration  int64   `json:"observed_generation"`
 	StartedAt           *string `json:"started_at,omitempty"`
 	ObservedAt          string  `json:"observed_at"`
+	// Role is `prefill` or `decode` for a replica of a disaggregated deployment, and empty for
+	// an aggregated one.
+	//
+	// Read off the pod label the renderer stamps, never inferred from the pod's name: the name
+	// is Dynamo's convention and could change under us, where the label is a string this
+	// operator wrote and both sides agree on.
+	//
+	// Omitted when empty so an aggregated deployment's replica frames stay byte-identical to
+	// what they were, which matters to the fixture corpus rather than to any cluster.
+	Role string `json:"role,omitempty"`
 }
 
 // ReplicaEvent reports something that happened to a replica at a point in time.

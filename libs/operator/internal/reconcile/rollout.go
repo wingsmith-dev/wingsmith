@@ -54,6 +54,30 @@ type rollout struct {
 	// `observeRollout` selects on the component to avoid. It exists so that a complete set of
 	// ready workers cannot report `running` while nothing can reach them.
 	frontendUnready bool
+
+	// roleShort says at least one role of a disaggregated deployment has fewer ready workers
+	// than it asked for, even where the totals happen to add up.
+	//
+	// Separate from the counts because the totals cannot express it. Two ready decode workers
+	// and no prefill in a 1P:2D group is two of three — a shortfall that reads as degraded and
+	// would be expected to resolve itself, where in fact nothing is serving at all and the
+	// arithmetic is what hides it. Always false for an aggregated deployment, which has one
+	// role and for which `ready < desired` already says everything.
+	roleShort bool
+}
+
+// countReady counts the pods that are ready and not on their way out.
+//
+// Terminating pods are skipped for the same reason `rolloutFrom` skips them: counting one as
+// unavailable makes a completed rollout look degraded for as long as the old pod takes to go.
+func countReady(pods []corev1.Pod) int {
+	n := 0
+	for i := range pods {
+		if pods[i].DeletionTimestamp.IsZero() && podReady(&pods[i]) {
+			n++
+		}
+	}
+	return n
 }
 
 // phase is the observed phase these counts amount to.
@@ -76,7 +100,7 @@ func (r rollout) phase() string {
 	// A model whose every worker is ready and whose frontend is not is not running, whatever the
 	// replica counts say — under one frontend per model the frontend is the only way in, so
 	// `running` here would have the plane admit it and the gateway prefer it.
-	case r.ready < r.desired, r.frontendUnready:
+	case r.ready < r.desired, r.frontendUnready, r.roleShort:
 		return phaseDegraded
 	default:
 		return phaseRunning
@@ -129,28 +153,54 @@ func (r rollout) message() string {
 // plane would then mark it ready and the gateway would prefer it, which is live traffic at a
 // deployment that has no worker.
 //
-// A hand-written disaggregated topology, which `Serving.Overlay.Dynamo` allows by replacing
-// `spec.components` wholesale, names its own components and its prefill pods are not counted
-// here. That under-reports rather than over-reports, and the direction is deliberate: a shortfall
-// reads as degraded and still serves, where a surplus reads as ready and does not.
+// A disaggregated deployment is counted per role and the roles are summed, which is the change
+// this comment used to anticipate rather than describe. It used to say that a hand-written
+// topology's "prefill pods are not counted here", defending the shortfall as safe because "a
+// shortfall reads as degraded and still serves, where a surplus reads as ready and does not".
+// That defence held while nobody had declared the topology. It stops holding the moment the plane
+// renders the prefill component itself: an uncounted role is a role that can be entirely absent
+// while the deployment reports every replica ready.
+//
+// Per role and not in aggregate, and the difference is the whole point. A 1P:2D group with two
+// ready decode workers and no prefill has two of three workers ready — a shortfall, which reads
+// as degraded and would resolve on its own if it were one. It is not one: nothing is serving,
+// because a decode worker with no prefill peer has nothing to decode from. So `rolesShort` is
+// what decides, and it asks each role separately.
 func (r *SyncedResourceReconciler) observeRollout(
 	ctx context.Context,
 	dep wire.DeploymentDesired,
 ) (rollout, error) {
 	name := render.WorkloadName(dep)
-	var pods corev1.PodList
-	err := r.Client.List(ctx, &pods,
-		client.InNamespace(r.Render.Namespace),
-		client.MatchingLabels{
-			graphDeploymentLabel: name,
-			componentNameLabel:   render.WorkerComponent,
-		},
-	)
+	roles, err := render.WorkerRoles(dep)
 	if err != nil {
-		return rollout{}, fmt.Errorf("list pods for %s: %w", dep.DeploymentID, err)
+		return rollout{}, fmt.Errorf("roles for %s: %w", dep.DeploymentID, err)
 	}
-	out := r.rolloutFrom(pods.Items, dep, render.Replicas(dep), dep.Serving.Engine, dep.Serving.RuntimeVersion())
-	out.trouble = r.diagnose(ctx, name, pods.Items, out)
+
+	var all []corev1.Pod
+	total := 0
+	short := false
+	for _, role := range roles {
+		var pods corev1.PodList
+		err := r.Client.List(ctx, &pods,
+			client.InNamespace(r.Render.Namespace),
+			client.MatchingLabels{
+				graphDeploymentLabel: name,
+				componentNameLabel:   role.Component,
+			},
+		)
+		if err != nil {
+			return rollout{}, fmt.Errorf("list %s pods for %s: %w", role.Component, dep.DeploymentID, err)
+		}
+		total += role.Replicas
+		if countReady(pods.Items) < role.Replicas {
+			short = true
+		}
+		all = append(all, pods.Items...)
+	}
+
+	out := r.rolloutFrom(all, dep, total, dep.Serving.Engine, dep.Serving.RuntimeVersion())
+	out.roleShort = short && render.Disaggregated(dep)
+	out.trouble = r.diagnose(ctx, name, all, out)
 	serving, found := r.frontendState(ctx, name, dep)
 	out.frontendUnready = !serving
 	if out.trouble == nil {
@@ -436,7 +486,12 @@ func (r *SyncedResourceReconciler) rolloutFrom(
 			// were plainly serving. Empty is also the truthful value: which devices a replica
 			// holds is an Allocation, reported by the observe loop, and a pod spec carries a
 			// count rather than the ids.
-			DeviceIDs:            []string{},
+			DeviceIDs: []string{},
+			// Read off the label the renderer stamped rather than inferred from the pod's
+			// name. The name is Dynamo's convention and could change under us; the label is
+			// something this operator wrote and is the one string both sides agree on.
+			// Empty for an aggregated deployment, which has one worker and nothing to say.
+			Role:                 pod.Labels[render.RoleLabel],
 			Phase:                replicaPhase(pod, ready),
 			Ready:                ready,
 			Engine:               engine,

@@ -1093,7 +1093,7 @@ func TestAnAggregatedRenderIsUnchangedByDisaggregationExisting(t *testing.T) {
 	if comp["replicas"] != int64(2) {
 		t.Fatalf("replicas = %v, want the deployment's own 2", comp["replicas"])
 	}
-	if _, found := comp["podTemplate"].(map[string]any)["metadata"].(map[string]any)["labels"].(map[string]any)[roleLabel]; found {
+	if _, found := comp["podTemplate"].(map[string]any)["metadata"].(map[string]any)["labels"].(map[string]any)[RoleLabel]; found {
 		t.Fatalf("an aggregated worker carries a role label, which renames every pod in the fleet")
 	}
 }
@@ -1150,7 +1150,7 @@ func TestEachRoleGetsItsOwnDerivedFlagsAndArguments(t *testing.T) {
 	} {
 		t.Run(tc.role, func(t *testing.T) {
 			in := disaggInputs()
-			roles, err := workerRoles(in.Deployment)
+			roles, err := WorkerRoles(in.Deployment)
 			if err != nil {
 				t.Fatalf("workerRoles: %v", err)
 			}
@@ -1246,7 +1246,7 @@ func TestEachRolesPodsCarryTheirRole(t *testing.T) {
 			continue
 		}
 		labels, _ := tmpl["metadata"].(map[string]any)["labels"].(map[string]any)
-		if v, found := labels[roleLabel]; found {
+		if v, found := labels[RoleLabel]; found {
 			seen[name], _ = v.(string)
 		}
 	}
@@ -1268,7 +1268,7 @@ func TestTheWarmPathIsRenderedForDisaggregatedDeployments(t *testing.T) {
 	in := disaggInputs()
 	in.Deployment.Serving.PrefixCacheEnabled = false
 
-	roles, err := workerRoles(in.Deployment)
+	roles, err := WorkerRoles(in.Deployment)
 	if err != nil {
 		t.Fatalf("workerRoles: %v", err)
 	}

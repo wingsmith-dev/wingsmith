@@ -273,7 +273,7 @@ type workerRole struct {
 // re-ordering here would change the rendered object without changing anything about it. Dynamo
 // hashes the components together (see `specHashPlaceholder`), so a spurious re-order is a rename,
 // and a rename is a weight reload.
-func workerRoles(dep wire.DeploymentDesired) ([]workerRole, error) {
+func WorkerRoles(dep wire.DeploymentDesired) ([]workerRole, error) {
 	if !Disaggregated(dep) {
 		return []workerRole{{
 			Component: WorkerComponent,
@@ -334,7 +334,7 @@ func roleComponent(role string) (component, kind string, err error) {
 // to before it forwards it, so it forwards that deployment id and the in-cluster agent picks the
 // frontend by label. No frontend is chosen by asking anything what models it serves.
 func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured, error) {
-	roles, err := workerRoles(in.Deployment)
+	roles, err := WorkerRoles(in.Deployment)
 	if err != nil {
 		return nil, err
 	}
@@ -525,7 +525,7 @@ const deploymentIDLabel = "hangar.dev/deployment-id"
 // and a new label would rename and reload every worker in the fleet.
 //
 // Ingestion reads it back to say which role a replica is, which is the whole reason it is a label
-// rather than something derived from the component name at read time: `roleLabel` is one string
+// rather than something derived from the component name at read time: `RoleLabel` is one string
 // this operator writes and the observed path matches on, where a name is a convention two sides
 // would have to keep agreeing about.
 func ownershipLabels(in Inputs, role workerRole) map[string]any {
@@ -535,14 +535,14 @@ func ownershipLabels(in Inputs, role workerRole) map[string]any {
 		"hangar.dev/managed-by": "hangar-operator",
 	}
 	if role.Role != "" {
-		labels[roleLabel] = role.Role
+		labels[RoleLabel] = role.Role
 	}
 	return labels
 }
 
 // roleLabel says which role of a disaggregated deployment a pod is. Absent on an aggregated one,
 // where there is one worker and nothing to distinguish.
-const roleLabel = "hangar.dev/role"
+const RoleLabel = "hangar.dev/role"
 
 // Replicas is what the deployment asks to run right now.
 //
