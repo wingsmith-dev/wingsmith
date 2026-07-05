@@ -188,16 +188,6 @@ class TopologyViewSchema(Struct):
     total or one worker's.
     """
 
-    group_nodes_hint: str = ""
-    """What the group does not divide into, in words, or empty when there is nothing to say.
-
-    Placement decides what actually fits and this cannot: `devices.table()` carries per-device
-    memory and not node shape, so devices-per-node is a fact about a cluster rather than about a
-    device class. What this can say is the arithmetic a person is about to be surprised by — that
-    a three-node unit leaves one of four nodes idle — and saying it at declaration is the whole
-    difference between a considered choice and a stranded card nobody noticed.
-    """
-
 
 class WorkloadServingSchema(Struct):
     """How the workload serves its weights, as one block.

@@ -382,6 +382,13 @@ def group_devices(device_count: int, roles: Sequence[WorkloadRole]) -> int:
 def group_nodes_hint(devices: int, group: int) -> str:
     """What a group does not divide into, in words, or empty when there is nothing to say.
 
+    **Spelled here and not yet called from anywhere, deliberately.** The sentence needs a device
+    budget to compare against, and the only place that has one is placement, per cluster — the
+    declaration path knows the group's size and nothing about what it will be placed into. Rather
+    than ship an API field that is always empty, the arithmetic sits here with its test until
+    §5.1 makes the group the unit `PlacementRequest` carries, which is where it belongs and is a
+    change to the placement engine rather than to this module.
+
     Not a refusal, and it must not become one. `check_capacity` states the governing habit — "the
     plane does not refuse what it has no number for" — and the number this lacks is nodes:
     `devices.table()` carries per-device memory and not node shape, so devices-per-node is a fact
@@ -854,7 +861,6 @@ def topology_view(workload: Workload, roles: Sequence[WorkloadRole]) -> Topology
             for role in roles
         ],
         group_devices=group,
-        group_nodes_hint="",
     )
 
 
