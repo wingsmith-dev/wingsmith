@@ -405,6 +405,20 @@ class Resources(Struct):
     disk_gib: int | None = None
 
 
+class RoleSpec(Struct):
+    """One role of a disaggregated deployment: what makes its process different, and no counts.
+
+    The split between this and `DeploymentDesired.role_replicas` is `serving_digest`'s own split
+    made structural. What is here decides what the process *is* — prefill runs
+    `--max-num-batched-tokens` 32768 against decode's 2048 — and is inside the digest. How many of
+    each there are is scale, travels beside `min_replicas`, and is deliberately outside it.
+    """
+
+    role: Literal["prefill", "decode"]
+    max_batch_tokens: int | None = None
+    engine_args: dict[str, str] = {}
+
+
 class ServingSpec(Struct):
     """How to serve an artifact, in enough detail for a cluster to render it.
 
@@ -468,6 +482,21 @@ class ServingSpec(Struct):
     """
     engine_image: str | None = None
     """The same value as `engine_runtime_image`, under the name an older operator reads."""
+
+    topology: Literal["aggregated", "disaggregated"] = "aggregated"
+    """Whether prefill and decode are one process or two exchanging a KV cache.
+
+    Defaulted rather than optional so an operator too old to read it is unaffected, and so an
+    aggregated deployment's frame is byte-identical to what it was.
+    """
+
+    roles: list[RoleSpec] = []
+    """Per-role configuration, empty on an aggregated deployment.
+
+    Empty is the only way to say aggregated. A single-entry list meaning "one worker" would make
+    every existing deployment a disaggregated one with a degenerate ratio, and the render has to
+    stay byte-identical for those.
+    """
 
 
 class PlacementConstraints(Struct):
@@ -545,6 +574,17 @@ class DeploymentDesired(Struct):
     updated_at: str
     authority: Literal["observed", "managed"] = "observed"
     adopt: Adopt | None = None
+    role_replicas: dict[str, int] = {}
+    """The absolute worker count per role, already multiplied by the plane. Empty when aggregated.
+
+    Absolute, and the multiplication is the point. Under a disaggregated topology `min_replicas`
+    counts **groups**, and a group is the per-role weights taken together — so a role's count is
+    `min_replicas x weight`. The plane does that arithmetic because the operator is forbidden it:
+    a receiver "renders exactly the number it is sent and must never sum, scale or re-derive it
+    against anything else", as this class says of `min_replicas` above. Making the operator
+    multiply would be the first exception to an invariant that is currently absolute and cheap to
+    check, and the alternative is one extra map on a frame the plane already sends.
+    """
 
 
 class DeploymentDeleted(Struct):

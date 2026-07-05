@@ -148,11 +148,28 @@ when a node came back, which is the inference `.event` frames exist to avoid.
 
 | Type | Payload |
 |---|---|
-| `deployment.desired` | name, the `serving` block — engine, worker and frontend images, declared args, parallelism, cache settings — this cluster's scale bounds, priority, placement constraints |
+| `deployment.desired` | name, the `serving` block — engine, worker and frontend images, declared args, parallelism, cache settings, topology and per-role configuration — this cluster's scale bounds and per-role worker counts, priority, placement constraints |
 | `deployment.deleted` | id |
 | `artifact.desired` | what weights should be resident, and where they come from |
 | `component.desired` | what is installed and at what version |
 | `cache.desired` | the artifact warm-set for this cluster |
+
+**`deployment.desired` carries a topology, and the counts that go with it are already multiplied.**
+`serving.topology` is `aggregated` or `disaggregated`; `serving.roles` carries each role's
+configuration and `role_replicas` carries each role's absolute worker count. Both are empty on an
+aggregated deployment, and empty is the only way to say aggregated — a single-entry `roles` meaning
+"one worker" would make every existing deployment a disaggregated one with a degenerate ratio.
+
+The split between the two is deliberate and load-bearing. `serving.roles` is *configuration* — what
+makes a prefill process different from a decode one, `max-num-batched-tokens` 32768 against 2048 —
+and is inside `serving.digest`. `role_replicas` is *scale*, and is deliberately outside it: the
+digest is what links an `ops_benchmark_run` to the configuration it measured, and a count in that
+hash would orphan every benchmark on a model the moment somebody added a prefill worker.
+
+`role_replicas` is **absolute and already multiplied**. Under a disaggregated topology
+`min_replicas` counts groups, a group is the per-role weights taken together, and the plane sends
+`min_replicas x weight` per role. A receiver renders exactly the number it is sent — the same rule
+`min_replicas` is held to, and the reason the multiplication is not left to the operator.
 
 **`deployment.desired` carries the deployment's `name`, and the operator renders under it.**
 The id is what everything is keyed by and the name is what everything is called: the objects an

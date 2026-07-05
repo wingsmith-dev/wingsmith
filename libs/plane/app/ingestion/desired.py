@@ -15,6 +15,7 @@ import datetime as dt
 from uuid import UUID
 from typing import Any
 from logging import getLogger
+from collections.abc import Sequence
 from collections.abc import AsyncIterator
 
 from msgspec import Struct
@@ -29,11 +30,13 @@ from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import Component
 from app.db.models import Deployment
+from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
 from app.core.serving import declared_served_model
 from app.hub.messages import Adopt
 from app.hub.messages import Overlay
+from app.hub.messages import RoleSpec
 from app.hub.messages import Resources
 from app.hub.messages import Parallelism
 from app.hub.messages import ServingSpec
@@ -276,7 +279,7 @@ async def _artifacts(db: AsyncSession, cluster_uid: str, cluster_id: UUID) -> li
     ]
 
 
-def _serving(workload: Workload, artifact: Artifact) -> ServingSpec:
+def _serving(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRole] = ()) -> ServingSpec:
     """The engine configuration as the cluster is told it, read off the workload.
 
     Inlined on the deployment rather than sent as an object of its own; the
@@ -325,11 +328,40 @@ def _serving(workload: Workload, artifact: Artifact) -> ServingSpec:
             disk_gib=workload.disk_gib,
         ),
         digest=workload.serving_digest,
+        topology=workload.serving_topology if workload.serving_topology == "disaggregated" else "aggregated",
+        roles=[
+            RoleSpec(
+                role=role.role,
+                max_batch_tokens=role.max_batch_tokens,
+                engine_args={key: str(value) for key, value in (role.engine_args or {}).items()},
+            )
+            for role in roles
+        ],
         overlay=Overlay(
             pod_spec=(workload.overlay or {}).get("pod_spec", {}) or {},
             dynamo=(workload.overlay or {}).get("dynamo", {}) or {},
         ),
     )
+
+
+def _role_replicas(deployment: Deployment, roles: Sequence[WorkloadRole]) -> dict[str, int]:
+    """This cluster's share, multiplied out into an absolute count per role.
+
+    **The plane multiplies and the operator never does.** Under a disaggregated topology
+    `min_replicas` counts groups, and a group is the per-role weights taken together, so a role's
+    worker count is `min_replicas x weight`. The operator is forbidden this arithmetic by its own
+    contract — `Replicas()` says it "renders exactly the number it is sent, and must never sum,
+    scale, or re-derive it against anything else" — and that invariant is currently absolute and
+    cheap to check. Spending it to save one map on a frame the plane already sends would be a bad
+    trade, and it is the kind of exception that is never the last one.
+
+    Empty for an aggregated deployment, where `min_replicas` is the whole answer and an empty map
+    is what says so.
+    """
+    if not roles:
+        return {}
+    share = max(deployment.min_replicas, 0)
+    return {role.role: share * max(role.weight, 0) for role in roles}
 
 
 def _placement(workload: Workload, pools: list[str]) -> PlacementConstraints:
@@ -389,6 +421,21 @@ async def _deployments(
     pools = await db.execute(select(Pool.name).where(Pool.cluster_id == cluster_id, Pool.enabled == True))
     allowed = list(pools.scalars())
 
+    # One query for the page, not one per deployment. Ordered by role so two builds of the same
+    # frame agree: the operator renders the components in the order they arrive, and Dynamo hashes
+    # the components together — a re-ordering here would rename every worker without anything
+    # having changed.
+    role_rows = (
+        await db.execute(
+            select(WorkloadRole)
+            .where(WorkloadRole.workload_id.in_({row[1].id for row in rows}))
+            .order_by(WorkloadRole.role)
+        )
+    ).scalars()
+    roles_by_workload: dict[UUID, list[WorkloadRole]] = {}
+    for role in role_rows:
+        roles_by_workload.setdefault(role.workload_id, []).append(role)
+
     adapters = {
         artifact_id: uid
         for artifact_id, uid in (
@@ -415,7 +462,8 @@ async def _deployments(
                 min_replicas=deployment.min_replicas,
                 max_replicas=deployment.max_replicas,
                 placement=_placement(workload, allowed),
-                serving=_serving(workload, artifact),
+                serving=_serving(workload, artifact, roles_by_workload.get(workload.id, [])),
+                role_replicas=_role_replicas(deployment, roles_by_workload.get(workload.id, [])),
                 artifact_ids=artifact_ids,
                 served_model_name=declared_served_model(workload, artifact),
                 generation=deployment.generation,
