@@ -232,7 +232,17 @@ def test_the_backfilled_digest_is_the_one_the_plane_would_compute(scratch) -> No
         "disk_gib",
         "overlay",
         "serving",
-        "serving_topology",
     )
-    workload = SimpleNamespace(**dict(zip(names, row[2:])))
-    assert stored == serving_digest(workload, SimpleNamespace(uid=artifact_uid), ())
+    # `serving_topology` is stated rather than selected, and it is not in `names` because the
+    # SELECT cannot supply it: `demand_workload.serving_topology` arrives with disaggregation,
+    # many revisions after the one under test. Listing it there put one more name than the row
+    # had values, and `zip` dropped it silently — which is how this became an `AttributeError`
+    # in `serving_digest` rather than a failed assertion. The literal is what the migration's
+    # own SELECT says, and it is the truth about this point in history: everything was
+    # aggregated, and the digest omits the field entirely for those.
+    workload = SimpleNamespace(**dict(zip(names, row[2:], strict=True)), serving_topology="aggregated")
+    # `slug=None` and not an omitted attribute: `demand_artifact.slug` is created a revision
+    # after the one under test, so nothing had a slug when this backfill ran. The stub in the
+    # migration says the same thing, and the two must agree or this asserts against a digest
+    # neither the migration nor the plane would produce.
+    assert stored == serving_digest(workload, SimpleNamespace(uid=artifact_uid, slug=None), ())

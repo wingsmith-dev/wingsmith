@@ -383,7 +383,10 @@ class DiscoveredWorkloadService:
             overrides={},
             labels=dict(workload.labels or {}),
         )
-        apply_serving(deployment_workload, serving, artifact)
+        # No roles: what was discovered is one running process, and promotion records what is
+        # there rather than proposing a shape for it. A disaggregated topology is declared, so
+        # adopting one would mean inferring a ratio from pods nobody said were a group.
+        apply_serving(deployment_workload, serving, artifact, ())
         deployment = Deployment(
             uid=new_uid(DEPLOYMENT),
             workload=deployment_workload,

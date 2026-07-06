@@ -140,10 +140,24 @@ DIGEST_SOURCE = """
 
 
 class _Artifact:
-    """Just enough artifact for `serving_digest`, which reads only the uid."""
+    """Just enough artifact for `serving_digest`: the uid it hashes, and a slug that is None.
+
+    The slug is not selected and must not be — `demand_artifact.slug` is created by
+    `1788370000_e4b9d2a15c73`, one revision after this one, so at this point in history the
+    column does not exist and no artifact has a slug. `None` is therefore not a stand-in for a
+    value this cannot reach; it is the value.
+
+    It is here at all because `serving_digest` grew a read this stub did not have. The docstring
+    used to say the function "reads only the uid", which was true when it was written and became
+    an `AttributeError` on every fresh database the day `served_model_name` started falling back
+    through the slug. Same failure as `serving_topology` above and the same fix: a stub that is a
+    subset of what the live function reads is a migration that crashes later, so it presents
+    every attribute and lets the values say what was true then.
+    """
 
     def __init__(self, uid: str) -> None:
         self.uid = uid
+        self.slug = None
 
 
 BACKFILL = """
