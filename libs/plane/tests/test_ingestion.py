@@ -1181,3 +1181,30 @@ def test_the_serving_block_carries_the_digest_that_names_the_configuration() -> 
     handle on a row somebody could edit underneath all three.
     """
     assert _wire_serving().digest == "svg_" + "0" * 64
+
+
+def test_the_plane_multiplies_groups_by_weights_and_the_operator_never_does():
+    """`role_replicas` is absolute, and this is the test that says the arithmetic happens here.
+
+    `Replicas()` in the operator states its own contract — it "renders exactly the number it is
+    sent, and must never sum, scale, or re-derive it against anything else". That invariant is
+    absolute today and cheap to check, and an operator multiplying groups by weights would be its
+    first exception. So the plane multiplies, and the wire carries the product.
+    """
+    from types import SimpleNamespace
+
+    from app.ingestion.desired import _role_replicas
+
+    roles = [
+        SimpleNamespace(role="prefill", weight=1),
+        SimpleNamespace(role="decode", weight=2),
+    ]
+    # Three groups of a 1:2 ratio is three prefill workers and six decode workers.
+    assert _role_replicas(SimpleNamespace(min_replicas=3), roles) == {"prefill": 3, "decode": 6}
+    # One group is the ratio itself.
+    assert _role_replicas(SimpleNamespace(min_replicas=1), roles) == {"prefill": 1, "decode": 2}
+    # Parked at zero is zero of each, not one of each.
+    assert _role_replicas(SimpleNamespace(min_replicas=0), roles) == {"prefill": 0, "decode": 0}
+    # An aggregated deployment sends nothing, and empty is what says so: min_replicas is the
+    # whole answer and a map with a single entry would make it a degenerate ratio.
+    assert _role_replicas(SimpleNamespace(min_replicas=4), []) == {}
