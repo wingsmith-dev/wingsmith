@@ -1,9 +1,9 @@
+import { SERVING_ROLES } from "@/modules/demand/types"
 import type {
   DeploymentRoleObserved,
   DeploymentStatus,
   ServingRole,
   Workload,
-  WorkloadDeployment,
   WorkloadRole,
 } from "@/modules/demand/types"
 
@@ -271,29 +271,221 @@ export function roleOverrides(
 }
 
 /**
- * The roles the console will not let anybody type an argument into.
+ * The arguments a role may not carry, mirroring the plane's own two sets.
  *
- * `disaggregation-mode` is the role itself and `kv-transfer-config` is the same
- * string on both roles — the transfer mechanism is a property of the topology
- * and not of a role. A value for either arriving from a role's `engine_args` is
- * not a default, it is a contradiction of a decision already acted on, and the
- * plane refuses it. Refusing it in the form as well means the person finds out
- * while they can still fix it.
+ * `DERIVED_FLAGS` is rendered from a column somebody filled in, and
+ * `TOPOLOGY_FLAGS` from the topology and the role — `disaggregation-mode` is
+ * the role itself, and `kv-transfer-config` is the same string on both roles
+ * because the transfer mechanism belongs to the topology. A value for either
+ * from a role's `engine_args` is not a default, it is a contradiction of a
+ * decision already acted on, and the plane refuses it.
+ *
+ * Checked here as well so the person finds out while the form is still open. A
+ * refusal that arrives from the server is the same refusal a minute later with
+ * the reason detached from the field that caused it.
+ *
+ * `max-num-batched-tokens` is on this list and is NOT an omission: it is a
+ * derived flag with a typed field of its own, so it is set through
+ * `max_batch_tokens` beside the argument box rather than inside it.
  */
-export const ROLE_RESERVED_ARGS = [
+export const ROLE_REFUSED_ARGS = [
+  "model",
+  "served-model-name",
+  "revision",
+  "max-model-len",
+  "tensor-parallel-size",
+  "pipeline-parallel-size",
+  "gpu-memory-utilization",
+  "quantization",
+  "dtype",
+  "kv-cache-dtype",
+  "max-num-batched-tokens",
+  "no-enable-prefix-caching",
   "disaggregation-mode",
   "kv-transfer-config",
 ] as const
 
-export function reservedRoleArgs(args: Record<string, unknown>): string[] {
+/** The flag name as the plane keys it: no leading dashes. */
+export function flagName(key: string): string {
+  return key.replace(/^-+/, "")
+}
+
+export function refusedRoleArgs(args: Record<string, unknown>): string[] {
   return Object.keys(args).filter((key) =>
-    (ROLE_RESERVED_ARGS as readonly string[]).includes(key.replace(/^--/, ""))
+    (ROLE_REFUSED_ARGS as readonly string[]).includes(flagName(key))
   )
 }
 
-/** The deployments of a workload that report per-role counts at all. */
-export function deploymentsWithRoles(
-  deployments: WorkloadDeployment[]
-): WorkloadDeployment[] {
-  return deployments.filter((d) => (d.status?.roles?.length ?? 0) > 0)
+/**
+ * What one worker costs to bring up, in minutes.
+ *
+ * K3's weights were measured at about twenty-two minutes on a B300 and the
+ * plan rounds it to twenty. It is a constant here because it is the same
+ * constant everywhere it is quoted, and a number that drifts between two
+ * screens is a number a person stops believing.
+ */
+export const WEIGHT_LOAD_MINUTES = 20
+
+export interface RoleWorkers {
+  role: ServingRole
+  weight: number
+  /** `groups × weight`, the same product the plane sends on the wire. */
+  workers: number
+}
+
+/**
+ * Each role's absolute worker count at the workload's current group total.
+ *
+ * The plane performs this multiplication for the wire and this repeats it for
+ * display, which is safe for the reason it is safe there: the group count and
+ * the weights are both declared, so the product is exact rather than observed.
+ * It is emphatically not a readiness figure — nothing here says a worker is up.
+ */
+export function roleWorkers(workload: Workload): RoleWorkers[] {
+  const groups = workload.scale.desired
+  return declaredRoles(workload).map((role) => ({
+    role: role.role,
+    weight: role.weight,
+    workers: groups * role.weight,
+  }))
+}
+
+export interface RolloutCost {
+  /** Every worker of every role. All of them are replaced. */
+  workers: number
+  perRole: RoleWorkers[]
+  /**
+   * Whether anything answers a request for the whole of the roll.
+   *
+   * Rolling happens in place, one worker at a time within a role, so a role of
+   * two keeps one worker up throughout and a role of one goes to zero while its
+   * only worker reloads. And a decode worker with no prefill peer has nothing
+   * to decode from, so one role at zero is the whole model at zero — which
+   * makes this the difference between a slow window and an outage.
+   */
+  servesThrough: boolean
+  /** The role that empties, when one does. */
+  roleAtRisk: ServingRole | null
+  /**
+   * Minutes, from the longest role rather than the sum: each role is a
+   * Deployment of its own and they are not made to wait for each other.
+   */
+  minutes: number
+}
+
+/**
+ * What a per-role configuration change actually costs this workload.
+ *
+ * Computed rather than quoted. "Three workers reload" is right for 1P:2D at one
+ * group and wrong for everything else, and a number that is sometimes wrong is
+ * a number people learn to skip past — which is the opposite of what a warning
+ * on the destructive path is for.
+ *
+ * Every worker is counted, not just the edited role's. Dynamo hashes one worker
+ * spec across the whole graph, so a change to either role renames both roles'
+ * objects; that was observed directly — adding one environment variable to the
+ * prefill component produced a new decode Deployment under a new name and a
+ * fresh UID.
+ */
+export function rolloutCost(workload: Workload): RolloutCost | null {
+  const perRole = roleWorkers(workload)
+  if (perRole.length === 0) return null
+  const emptied = perRole.find((role) => role.workers <= 1) ?? null
+  const longest = perRole.reduce(
+    (most, role) => Math.max(most, role.workers),
+    0
+  )
+  return {
+    workers: perRole.reduce((total, role) => total + role.workers, 0),
+    perRole,
+    servesThrough: emptied === null,
+    roleAtRisk: emptied?.role ?? null,
+    minutes: longest * WEIGHT_LOAD_MINUTES,
+  }
+}
+
+/** `1 h 20 m`, or `40 m`. Hours because six workers is not a number of minutes. */
+export function formatMinutes(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  const rest = minutes % 60
+  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`
+}
+
+/**
+ * What a group does not divide into, in words, or null when there is nothing
+ * to say.
+ *
+ * The plane spells this arithmetic and cannot call it: the sentence needs a
+ * device budget, and the declaration path has none — `devices.table()` carries
+ * per-device memory and not node shape, so devices-per-node is a fact about a
+ * cluster. The console has budgets the plane's declaration path does not, so it
+ * says the thing here, in the plane's own words, rather than waiting for a
+ * server-side refusal that is not coming.
+ *
+ * Not a refusal and it must not become one. Nothing fails when a ratio strands
+ * a node — that is exactly the problem, and why it is worth saying where the
+ * ratio is being chosen rather than leaving it to be discovered as a bill.
+ */
+export function strandedByRatio(
+  budgetDevices: number,
+  groupDevices: number
+): string | null {
+  if (groupDevices <= 0 || budgetDevices <= 0) return null
+  if (budgetDevices % groupDevices === 0) return null
+  const fits = Math.floor(budgetDevices / groupDevices)
+  const stranded = budgetDevices % groupDevices
+  if (fits === 0) {
+    return (
+      `a unit of ${groupDevices} devices does not fit ${budgetDevices}: ` +
+      `no unit fits and all ${budgetDevices} would sit idle`
+    )
+  }
+  return (
+    `a unit of ${groupDevices} devices does not divide ${budgetDevices}: ` +
+    `${fits} unit${fits === 1 ? " fits" : "s fit"} and ${stranded} device` +
+    `${stranded === 1 ? "" : "s"} would sit idle`
+  )
+}
+
+/**
+ * The per-role starting point, from NVIDIA's own recipe.
+ *
+ * Six arguments are the whole delta between the roles, and these are the ones
+ * with numbers in the recipe rather than in a preference. They are a default
+ * and not a constraint: choosing disaggregated should be one click, and the
+ * person who wants to argue with `max-num-seqs` can, in the same form.
+ *
+ * `max-num-batched-tokens` is a typed field rather than an argument, sixteenfold
+ * apart across the two roles, which is why it is here as a number and not a
+ * string in the map.
+ */
+export const RECIPE_ROLE_DEFAULTS: Record<
+  string,
+  {
+    weight: number
+    max_batch_tokens: number
+    engine_args: Record<string, string>
+  }
+> = {
+  prefill: {
+    weight: 1,
+    max_batch_tokens: 32_768,
+    engine_args: { "max-num-seqs": "4", "enforce-eager": "" },
+  },
+  decode: {
+    weight: 2,
+    max_batch_tokens: 2048,
+    engine_args: { "max-num-seqs": "256" },
+  },
+}
+
+/** The two roles as a fresh declaration, ready to submit unedited. */
+export function recipeRoles(): WorkloadRole[] {
+  return SERVING_ROLES.map((role) => ({
+    role,
+    weight: RECIPE_ROLE_DEFAULTS[role].weight,
+    max_batch_tokens: RECIPE_ROLE_DEFAULTS[role].max_batch_tokens,
+    engine_args: { ...RECIPE_ROLE_DEFAULTS[role].engine_args },
+  }))
 }

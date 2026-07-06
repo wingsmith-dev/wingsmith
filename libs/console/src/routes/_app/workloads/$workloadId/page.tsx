@@ -84,7 +84,7 @@ import {
   IconTrash,
 } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
-import { RolesPanel } from "@/components/demand/serving-topology"
+import { RatioDialog, RolesPanel } from "@/components/demand/serving-topology"
 import {
   declaredRatio,
   groupDevices,
@@ -102,8 +102,6 @@ import {
   EditEngineArgsDialog,
   EditEngineDialog,
   EditPlacementDialog,
-  EditRatioDialog,
-  EditRolesDialog,
   EditServingDialog,
 } from "./EditWorkload"
 
@@ -165,6 +163,7 @@ export function WorkloadDetailPage() {
   const [scaling, setScaling] = useState(false)
   const [pausing, setPausing] = useState(false)
   const [reshaping, setReshaping] = useState(false)
+  const [ratioOpen, setRatioOpen] = useState(false)
   const [draining, setDraining] = useState<WorkloadDeployment | undefined>()
   const [drainOpen, setDrainOpen] = useState(false)
   const [view, setView] = useState("overview")
@@ -224,6 +223,11 @@ export function WorkloadDetailPage() {
               >
                 Drain
               </Button>
+              {isDisaggregated(workload) && (
+                <Button variant="outline" onClick={() => setRatioOpen(true)}>
+                  Ratio
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setReshaping(true)}>
                 Reshape
               </Button>
@@ -250,6 +254,14 @@ export function WorkloadDetailPage() {
           workload={workload}
           open
           onOpenChange={setScaling}
+        />
+      )}
+      {workload && ratioOpen && (
+        <RatioDialog
+          workload={workload}
+          budgetDevices={placement?.gpu_count}
+          open
+          onOpenChange={setRatioOpen}
         />
       )}
       {workload && reshaping && (
@@ -353,6 +365,15 @@ export function WorkloadDetailPage() {
                   <TrafficPanel
                     workloadId={workload.id}
                     placed={workload.deployments.length > 0}
+                  />
+
+                  {/* On the overview and not only in the configuration tab.
+                      Changing the ratio is the action this workload exists to
+                      make cheap, and an action five tabs in is an action
+                      nobody takes. */}
+                  <RolesPanel
+                    workload={workload}
+                    budgetDevices={placement?.gpu_count}
                   />
 
                   <Panel
@@ -603,31 +624,7 @@ export function WorkloadDetailPage() {
 
                   <RolesPanel
                     workload={workload}
-                    action={
-                      /* Two buttons, and the order is the argument: the free
-                         edit is first and named for what it changes, the
-                         costly one is second and named for what it is. A
-                         single "Edit roles" would put a twenty-minute reload
-                         behind the same click as adding a worker. */
-                      <WriteAction>
-                        <div className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setEditing("ratio")}
-                          >
-                            Ratio
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setEditing("roles")}
-                          >
-                            Configuration
-                          </Button>
-                        </div>
-                      </WriteAction>
-                    }
+                    budgetDevices={placement?.gpu_count}
                   />
 
                   <ServingBehaviourCard
@@ -1053,18 +1050,6 @@ type EditSection =
   | "args"
   | "serving"
   | "capabilities"
-  /**
-   * Two sections and not one, which is the whole point of the pair.
-   *
-   * `ratio` writes the role weights and is free — a scale, reloading nothing.
-   * `roles` writes what a role IS and costs a weight load on BOTH roles,
-   * because Dynamo's worker spec hash is one value across every worker
-   * component in the graph. Putting them in one form would make the cheap edit
-   * carry the expensive one's warning, and a warning shown on a free action is
-   * a warning nobody reads on the costly one.
-   */
-  | "ratio"
-  | "roles"
 
 function EditDialog({
   section,
@@ -1093,10 +1078,6 @@ function EditDialog({
       return <EditServingDialog {...props} />
     case "capabilities":
       return <EditCapabilitiesDialog {...props} />
-    case "ratio":
-      return <EditRatioDialog {...props} />
-    case "roles":
-      return <EditRolesDialog {...props} />
   }
 }
 

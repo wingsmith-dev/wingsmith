@@ -1,5 +1,25 @@
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { JsonField, NumberField } from "@/components/layout/form"
+import { WriteAction } from "@/components/layout/write-action"
+import { formatError } from "@/lib/format"
+import { useUpdateWorkload } from "@/modules/demand/queries"
+import {
+  IconLock,
+  IconLockOpen,
+  IconMinus,
+  IconPlus,
+} from "@tabler/icons-react"
+import { useState } from "react"
+import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { Dash } from "@/components/layout/mono"
 import { StatusDot } from "@/components/layout/status-dot"
@@ -8,10 +28,15 @@ import {
   achievedRatio,
   declaredRatio,
   declaredRoles,
+  formatMinutes,
   groupDevices,
-  roleDevices,
+  refusedRoleArgs,
   roleOverrides,
+  rolloutCost,
+  strandedByRatio,
+  WEIGHT_LOAD_MINUTES,
   type RoleReadiness,
+  type RolloutCost,
 } from "@/modules/demand/topology"
 import type { Workload, WorkloadDeployment } from "@/modules/demand/types"
 
@@ -104,18 +129,459 @@ export function RoleReadinessLine({
 }
 
 /**
+ * The ratio, as the cheap thing it is: two steppers and one Apply.
+ *
+ * Free in the literal sense — the weights are outside `serving_digest`, so a
+ * change here is a scale. Rendering prefill's count into prefill's component
+ * leaves decode's component byte-identical, byte-identical components keep
+ * their names, and pods that keep their names do not restart. It was verified
+ * on hardware rather than reasoned about: prefill 1 to 3 renamed nothing and
+ * left the decode Deployment on its original UID, and the warm path holds too,
+ * so an added prefill worker cannot cold-start the cache the others are using.
+ *
+ * So there is no confirmation on this path and there must not be one. This is
+ * the action we expect somebody to take often — it is the whole point of the
+ * feature — and a confirmation here would flatten the distinction the panel
+ * below is built to draw.
+ */
+function RatioControl({
+  workload,
+  budgetDevices,
+  onApplied,
+}: {
+  workload: Workload
+  budgetDevices?: number
+  /** Closes the dialog the control was opened in, when it is in one. */
+  onApplied?: () => void
+}) {
+  const declared = declaredRoles(workload)
+  const update = useUpdateWorkload()
+  const [weights, setWeights] = useState<Record<string, number>>(() =>
+    Object.fromEntries(declared.map((role) => [role.role, role.weight]))
+  )
+
+  const edited = declared.map((role) => ({
+    ...role,
+    weight: weights[role.role] ?? role.weight,
+  }))
+  const changed = edited.some((role, i) => role.weight !== declared[i].weight)
+  const groups = workload.scale.desired
+  const perWorker = workload.serving.shape.device_count
+  const devices = edited.reduce(
+    (total, role) => total + role.weight * perWorker,
+    0
+  )
+  const stranded = strandedByRatio(budgetDevices ?? 0, devices)
+
+  const apply = () =>
+    update.mutate(
+      {
+        ref: workload.id,
+        body: {
+          serving: {
+            topology: {
+              serving_topology: "disaggregated",
+              /*
+               * The WHOLE role, with only the weight moved.
+               *
+               * The block replaces whole and the plane reads each row straight
+               * off the request, so an omitted `max_batch_tokens` stores null
+               * and an omitted `engine_args` stores `{}`. Sending weights alone
+               * would therefore wipe what makes prefill different from decode,
+               * change `serving_digest`, and turn the one action this panel
+               * promises is free into a full reload of both roles. The promise
+               * is only true if this sends everything it is not changing.
+               */
+              roles: edited.map((role) => ({
+                role: role.role,
+                weight: role.weight,
+                max_batch_tokens: role.max_batch_tokens,
+                engine_args: role.engine_args ?? {},
+              })),
+            },
+          },
+        },
+        revision: workload.revision,
+      },
+      {
+        onSuccess: () => {
+          onApplied?.()
+          toast.success("Ratio applied", {
+            description: `${devices} devices per group`,
+          })
+        },
+        onError: (error) =>
+          toast.error(formatError(error, "Could not change the ratio")),
+      }
+    )
+
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div className="flex items-baseline justify-between">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+          Ratio
+        </span>
+        <span className="text-2xs text-emerald-700 dark:text-emerald-400">
+          free · reloads nothing
+        </span>
+      </div>
+
+      <div className="space-y-1.5">
+        {edited.map((role) => (
+          <div key={role.role} className="flex items-center gap-3">
+            <span className="w-16 font-mono text-xs">{role.role}</span>
+            <Stepper
+              label={role.role}
+              value={role.weight}
+              onChange={(weight) =>
+                setWeights((current) => ({ ...current, [role.role]: weight }))
+              }
+            />
+            <span className="font-mono text-2xs text-muted-foreground">
+              → {role.weight * groups} worker
+              {role.weight * groups === 1 ? "" : "s"}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="font-mono text-2xs text-muted-foreground">
+        {groups} group{groups === 1 ? "" : "s"} · {devices} devices per group ·{" "}
+        {devices * groups} in total
+      </div>
+
+      {stranded && (
+        /* Said here because nothing else will say it. The plane spells this
+           arithmetic and cannot run it — the declaration path has no device
+           budget — so a ratio that strands a node produces no error anywhere,
+           which is precisely why it is worth a line at the moment of choosing. */
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2.5 py-1.5 text-2xs text-amber-700 dark:text-amber-400">
+          {stranded}. Nothing refuses this — the devices are simply held and
+          idle.
+        </p>
+      )}
+
+      <WriteAction>
+        <Button
+          size="sm"
+          className="w-full"
+          disabled={!changed || update.isPending}
+          onClick={apply}
+        >
+          {changed
+            ? `Apply ${edited.map((role) => `${role.weight} ${role.role}`).join(" : ")}`
+            : "Apply ratio"}
+        </Button>
+      </WriteAction>
+    </div>
+  )
+}
+
+/** A minus/plus pair. Weights are small integers and a text box invites a typo. */
+function Stepper({
+  label,
+  value,
+  onChange,
+}: {
+  /** The role, so the two steppers are tellable apart by name. */
+  label: string
+  value: number
+  onChange: (value: number) => void
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <Button
+        variant="outline"
+        size="icon"
+        className="size-6"
+        aria-label={`fewer ${label}`}
+        disabled={value <= 1}
+        onClick={() => onChange(value - 1)}
+      >
+        <IconMinus className="size-3" />
+      </Button>
+      <span className="w-6 text-center font-mono text-xs">{value}</span>
+      <Button
+        variant="outline"
+        size="icon"
+        className="size-6"
+        aria-label={`more ${label}`}
+        onClick={() => onChange(value + 1)}
+      >
+        <IconPlus className="size-3" />
+      </Button>
+    </span>
+  )
+}
+
+/**
+ * What the roll actually costs this workload, computed from its own counts.
+ *
+ * Never a fixed sentence. "Three workers reload" is right for 1P:2D at one
+ * group and wrong for every other shape, and a number that is sometimes wrong
+ * teaches people to skip the line it sits on.
+ *
+ * The first sentence is whether the model serves, because that is the whole
+ * decision. Rolling happens in place — one worker at a time within a role — so
+ * a role with two or more workers keeps one up and the model runs slower, while
+ * a role with exactly one goes to zero, and a decode worker with no prefill peer
+ * has nothing to decode from. Those are not two shades of the same warning; they
+ * are "do it now" and "book a window".
+ */
+function RollCost({ cost }: { cost: RolloutCost }) {
+  const counts = cost.perRole
+    .map((role) => `${role.workers} ${role.role}`)
+    .join(" and ")
+  return (
+    <div className="space-y-1.5">
+      {cost.servesThrough ? (
+        <p className="font-medium">
+          The model keeps serving, slower. Workers roll one at a time, so one{" "}
+          {cost.perRole[0]?.role} and one{" "}
+          {cost.perRole[cost.perRole.length - 1]?.role} stay up throughout.
+        </p>
+      ) : (
+        <p className="font-medium">
+          The model stops serving for the whole reload. There is one{" "}
+          {cost.roleAtRisk} worker, and while it reloads there is no{" "}
+          {cost.roleAtRisk} process at all — every request fails, rather than
+          running slower.
+        </p>
+      )}
+      <p>
+        Both roles are renamed and all {cost.workers} workers reload — {counts},
+        about {WEIGHT_LOAD_MINUTES} minutes each, roughly{" "}
+        {formatMinutes(cost.minutes)} for the longest role. Dynamo hashes one
+        worker spec across the whole graph, so editing either role replaces the
+        other role&rsquo;s pods too.
+      </p>
+    </div>
+  )
+}
+
+/**
+ * What each role IS — locked, because the lock is the design.
+ *
+ * These fields and the ratio above sit in one panel and cost radically
+ * different things: the ratio adds workers and reloads nothing, and these
+ * rename every pod in the graph and reload every one of them. Two controls that
+ * look alike and are not is the failure this panel exists to prevent, and it
+ * prevents it spatially — a stray keystroke cannot reach a locked field, so the
+ * two paths are not the same gesture in the same place.
+ *
+ * Unlocking is deliberate and recoverable, which is the right size of gesture
+ * for a painful, survivable outage. Type-the-name is the gesture for losing
+ * data and this loses none.
+ */
+function RoleConfigPanel({ workload }: { workload: Workload }) {
+  const declared = declaredRoles(workload)
+  const cost = rolloutCost(workload)
+  const update = useUpdateWorkload()
+  const [unlocked, setUnlocked] = useState(false)
+  const [batch, setBatch] = useState<Record<string, number | null>>(() =>
+    Object.fromEntries(declared.map((r) => [r.role, r.max_batch_tokens]))
+  )
+  const [args, setArgs] = useState<Record<string, Record<string, unknown>>>(
+    () =>
+      Object.fromEntries(
+        declared.map((r) => [r.role, { ...(r.engine_args ?? {}) }])
+      )
+  )
+  const [valid, setValid] = useState(true)
+
+  const refused = declared.flatMap((role) =>
+    refusedRoleArgs(args[role.role] ?? {}).map((key) => `${role.role}: ${key}`)
+  )
+  const changed = declared.some(
+    (role) =>
+      (batch[role.role] ?? null) !== (role.max_batch_tokens ?? null) ||
+      JSON.stringify(args[role.role] ?? {}) !==
+        JSON.stringify(role.engine_args ?? {})
+  )
+
+  const save = () =>
+    update.mutate(
+      {
+        ref: workload.id,
+        body: {
+          serving: {
+            topology: {
+              serving_topology: "disaggregated",
+              /* The weights ride along unchanged. The block replaces whole,
+                 the way every sub-block of `serving` does, so omitting them
+                 would read as a request to reset the ratio rather than to
+                 leave it alone. */
+              roles: declared.map((role) => ({
+                role: role.role,
+                weight: role.weight,
+                max_batch_tokens: batch[role.role] ?? null,
+                engine_args: args[role.role] ?? {},
+              })),
+            },
+          },
+        },
+        revision: workload.revision,
+      },
+      {
+        onSuccess: () => {
+          setUnlocked(false)
+          toast.success("Role configuration updated", {
+            description: `${workload.name} is reloading`,
+          })
+        },
+        onError: (error) =>
+          toast.error(formatError(error, "Could not update the roles")),
+      }
+    )
+
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div className="flex items-baseline justify-between">
+        <span className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+          Configuration
+        </span>
+        <span className="inline-flex items-center gap-1 text-2xs text-muted-foreground">
+          {unlocked ? (
+            <IconLockOpen className="size-3" />
+          ) : (
+            <IconLock className="size-3" />
+          )}
+          {unlocked ? "unlocked" : "locked"}
+        </span>
+      </div>
+
+      <div className="divide-y rounded-md border">
+        {declared.map((role) => (
+          <div key={role.role} className="space-y-2 px-3 py-2">
+            <div className="font-mono text-xs">{role.role}</div>
+            {unlocked ? (
+              <>
+                <NumberField
+                  label="Max batch tokens"
+                  value={batch[role.role] ?? null}
+                  onChange={(value) =>
+                    setBatch((current) => ({ ...current, [role.role]: value }))
+                  }
+                  min={0}
+                  hint="Blank inherits the workload's own value."
+                />
+                <JsonField
+                  label="Engine args"
+                  value={args[role.role] ?? {}}
+                  rows={3}
+                  onChange={(value, ok) => {
+                    setValid(ok)
+                    if (ok)
+                      setArgs((current) => ({
+                        ...current,
+                        [role.role]: value as Record<string, unknown>,
+                      }))
+                  }}
+                />
+              </>
+            ) : (
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-2xs text-muted-foreground">
+                {roleOverrides(role).length === 0 ? (
+                  <span className="text-muted-foreground/60">
+                    inherits every argument from the workload
+                  </span>
+                ) : (
+                  roleOverrides(role).map((row) => (
+                    <span key={row.key}>
+                      {row.key}={row.value}
+                    </span>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {refused.length > 0 && (
+        <p className="rounded-md border border-destructive/50 bg-destructive/10 px-2.5 py-1.5 text-2xs text-destructive">
+          {refused.join(", ")} — rendered from a declared column or from the
+          topology, so a value here contradicts a decision already acted on. The
+          plane refuses it.
+        </p>
+      )}
+
+      {cost && (
+        <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-2xs text-amber-800 dark:text-amber-300">
+          <RollCost cost={cost} />
+          {!unlocked && (
+            <WriteAction>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setUnlocked(true)}
+              >
+                <IconLockOpen className="size-3" />
+                Unlock to retune
+              </Button>
+            </WriteAction>
+          )}
+        </div>
+      )}
+
+      {unlocked && (
+        <div className="flex gap-2">
+          <Button
+            variant="destructive"
+            size="sm"
+            disabled={
+              !changed || !valid || refused.length > 0 || update.isPending
+            }
+            onClick={save}
+          >
+            {cost?.servesThrough
+              ? `Reload ${cost.workers} workers · ~${formatMinutes(cost.minutes)}`
+              : `Reload ${cost?.workers ?? 0} workers · ~${formatMinutes(cost?.minutes ?? 0)} down`}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setUnlocked(false)
+              setBatch(
+                Object.fromEntries(
+                  declared.map((r) => [r.role, r.max_batch_tokens])
+                )
+              )
+              setArgs(
+                Object.fromEntries(
+                  declared.map((r) => [r.role, { ...(r.engine_args ?? {}) }])
+                )
+              )
+            }}
+          >
+            Cancel
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
  * What each role is, and what it costs — the declared half, not the observed one.
  *
- * Only what a role overrides is listed under it. Repeating the fields it
- * inherits from the workload is how somebody comes to believe a role declares a
- * value it does not, and then edits it in the wrong place.
+ * Two zones, and the split between them is the argument: the ratio is free and
+ * lives behind one click, the configuration is destructive and lives behind a
+ * lock. Putting them in one panel is deliberate — they are both "what the roles
+ * are", and somebody looking for one will find the other — but they must not
+ * look like one control.
  */
 export function RolesPanel({
   workload,
-  action,
+  budgetDevices,
 }: {
   workload: Workload
-  action?: React.ReactNode
+  /**
+   * Devices this workload can expect to have, for the stranding arithmetic.
+   * Absent means no budget is known and nothing is said, rather than a guess.
+   */
+  budgetDevices?: number
 }) {
   const roles = declaredRoles(workload)
   if (roles.length === 0) return null
@@ -123,15 +589,14 @@ export function RolesPanel({
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between pb-2">
+      <CardHeader className="pb-2">
         <CardTitle className="text-sm">Roles</CardTitle>
-        {action}
       </CardHeader>
       <CardContent className="space-y-3">
         <FieldGrid>
-          <Field label="Ratio">
+          <Field label="Declared">
             <div className="space-y-1">
-              <div>{declaredRatio(workload)} declared</div>
+              <div>{declaredRatio(workload)}</div>
               {/* Achieved per cluster, because the quotient is a fact about one
                   deployment's pods and averaging two clusters would produce a
                   ratio no cluster is running. Clusters that report no roles
@@ -155,50 +620,47 @@ export function RolesPanel({
             )}
           </Field>
         </FieldGrid>
-        <div className="divide-y rounded-md border">
-          {roles.map((role) => {
-            const overrides = roleOverrides(role)
-            return (
-              <div key={role.role} className="space-y-1 px-3 py-2">
-                <div className="flex items-baseline justify-between font-mono text-xs">
-                  <span>{role.role}</span>
-                  <span className="text-2xs text-muted-foreground">
-                    ×{role.weight} per group · {roleDevices(workload, role)}{" "}
-                    devices
-                  </span>
-                </div>
-                {overrides.length === 0 ? (
-                  <div className="font-mono text-2xs text-muted-foreground/60">
-                    inherits every argument from the workload
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-2xs text-muted-foreground">
-                    {overrides.map((row) => (
-                      <span key={row.key}>
-                        {row.key}={row.value}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-        {workload.serving.topology?.group_nodes_hint && (
-          /* The arithmetic a person is about to be surprised by, in the
-             plane's own words. It is not a refusal and must not read as one:
-             placement decides what fits, and this cannot — devices per node is
-             a fact about a cluster, not about a device class. */
-          <p className="rounded-md border bg-muted/50 px-3 py-2 text-2xs text-muted-foreground">
-            {workload.serving.topology.group_nodes_hint}
-          </p>
-        )}
-        <p className="text-2xs text-muted-foreground">
-          The weights are scale: changing the ratio adds or removes workers and
-          reloads no weights. Everything else on a role decides what process
-          runs, and editing it restarts both roles.
-        </p>
+
+        <RatioControl workload={workload} budgetDevices={budgetDevices} />
+        <RoleConfigPanel workload={workload} />
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * The ratio on its own, from the page header.
+ *
+ * Not a `FormDialog`, which would put a Save beside the control's own Apply and
+ * make a one-click action a two-click one. The control is the whole dialog.
+ */
+export function RatioDialog({
+  workload,
+  budgetDevices,
+  open,
+  onOpenChange,
+}: {
+  workload: Workload
+  budgetDevices?: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Ratio</DialogTitle>
+          <DialogDescription>
+            How many of each role a group holds. Scale multiplies these; it does
+            not change them.
+          </DialogDescription>
+        </DialogHeader>
+        <RatioControl
+          workload={workload}
+          budgetDevices={budgetDevices}
+          onApplied={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
   )
 }

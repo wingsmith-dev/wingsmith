@@ -1056,8 +1056,9 @@ export interface DeploymentStatus {
   updated_replicas: number
   unavailable_replicas: number
   /**
-   * Per-role counts, where the cluster reports them. The four scalars above
-   * stay the group rollup and are not replaced by this.
+   * Per-role counts. Not served by any plane build today — see
+   * `DeploymentRoleObserved`. The four scalars above stay the group rollup and
+   * are not replaced by this.
    */
   roles?: DeploymentRoleObserved[]
   last_error_code: string | null
@@ -1339,14 +1340,20 @@ export interface ServingTopologyView {
 }
 
 /**
- * One role's observed counts on `deployment.observed`, added beside the scalars
- * rather than replacing them.
+ * One role's observed counts, as `docs/plans/10` §6.2 specifies them.
  *
- * The scalar `ready_replicas` stays the group rollup, so a reader that knows
- * nothing about roles is right, less precisely. This array is what makes it
- * precise, and it is absent on an aggregated deployment and on any operator too
- * old to send it — absent and empty must not both be sayable, so `undefined` is
- * "not reported" and there is no empty-array case to read.
+ * **No plane build serves this today, and this console must not imply one
+ * does.** The operator counts per role and refuses to call a deployment ready
+ * while any role is short (`reconcile/rollout.go`), and it stamps `role` on each
+ * `replica.observed` — but nothing ingests that into the plane, and
+ * `DeploymentStatusSchema` carries only the four scalars. So every reader of
+ * this field falls back, and the fallback is the scalar rollup that has always
+ * been there.
+ *
+ * Kept rather than deleted because the shape is specified and the fallback is
+ * total: a deployment reporting no roles renders exactly as it did before. The
+ * moment ingestion writes it, per-role readiness and the achieved ratio light
+ * up with no further change here.
  *
  * There is no achieved ratio on the wire and there must not be: it is the
  * quotient of these two counts, derived at read time, so that ingestion stays

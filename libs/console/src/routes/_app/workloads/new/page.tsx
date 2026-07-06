@@ -45,6 +45,11 @@ import { toast } from "sonner"
 import { SuggestField } from "@/components/demand/suggest-field"
 import { ArtifactPicker } from "./ArtifactPicker"
 import type { NewWorkloadSearch } from "./route"
+import {
+  RoleParamFields,
+  TopologyChoice,
+} from "@/components/demand/topology-declare"
+import type { WorkloadRole } from "@/modules/demand/types"
 import { Step } from "./Step"
 import { AUTO_WHERE, WhereStep, type WhereChoice } from "./WhereStep"
 
@@ -145,6 +150,15 @@ export function NewWorkloadPage() {
    * to the question and accepting the row is accepting that answer. Raising it again
    * afterwards re-sizes the table, which is the escape hatch working as it reads.
    */
+  /**
+   * The prefill/decode split, or null for aggregated.
+   *
+   * Null and not `"aggregated"` with an empty list, so that the aggregated case
+   * is expressible by absence all the way from this field to the request body —
+   * the plane's digest only hashes the block when it is disaggregated, and
+   * sending it unconditionally would change every existing digest in the fleet.
+   */
+  const [roles, setRoles] = useState<WorkloadRole[] | null>(null)
   const [replicas, setReplicas] = useState<number | null>(1)
   const [name, setName] = useState("")
   const [touchedName, setTouchedName] = useState(false)
@@ -234,6 +248,7 @@ export function NewWorkloadPage() {
     // Other weights, other proposal. Keeping what was typed for the last artifact would
     // carry a parser somebody chose for a different model into this one silently.
     setOverrides({})
+    setRoles(null)
     setWhere(AUTO_WHERE)
     setOpen(2)
   }
@@ -269,6 +284,23 @@ export function NewWorkloadPage() {
       const workload = await createWorkload.mutateAsync({
         serving: {
           ...request,
+          /* Omitted entirely when aggregated rather than sent as `"aggregated"`
+             with an empty role list: absent and empty must not both be sayable
+             about a thing with one meaning, and the digest depends on the key
+             not being there. */
+          ...(roles
+            ? {
+                topology: {
+                  serving_topology: "disaggregated" as const,
+                  roles: roles.map((role) => ({
+                    role: role.role,
+                    weight: role.weight,
+                    max_batch_tokens: role.max_batch_tokens,
+                    engine_args: role.engine_args,
+                  })),
+                },
+              }
+            : {}),
           shape: {
             ...request.shape,
             // Inside the shape because that is what carries it: the fit derives
@@ -349,6 +381,14 @@ export function NewWorkloadPage() {
                 <span className="font-mono text-xs">
                   {footprintSummary(footprint, fit?.label)}
                 </span>
+                {roles && (
+                  <Badge variant="outline" className="font-mono text-2xs">
+                    {roles
+                      .map((role) => `${role.weight} ${role.role}`)
+                      .join(" : ")}{" "}
+                    · {groupDevicesOf(roles, footprint.device_count)} per group
+                  </Badge>
+                )}
                 <Badge variant="outline" className="font-mono text-2xs">
                   derived from the fit
                 </Badge>
@@ -369,6 +409,30 @@ export function NewWorkloadPage() {
               onPick={(picked, row) => pickHow({ footprint: picked, fit: row })}
             />
           )}
+          {how && (
+            /* Under the device shape and not in a step of its own, because it
+               is the same question one level down: the fitment table answers
+               how many devices a WORKER takes, and this answers how many
+               workers an indivisible unit takes. Both decide the footprint,
+               and 8 devices becoming 24 is not a detail to find later.
+
+               Not called "topology" anywhere a person can see, even though the
+               column is `serving_topology`: this step already owns that word
+               for the fabric a replica has to fit inside, and two senses of it
+               on one screen is a bug somebody writes. */
+            <div className="mt-3 space-y-2 border-t pt-3">
+              <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+                Prefill and decode
+              </div>
+              <TopologyChoice
+                roles={roles}
+                onChange={setRoles}
+                deviceCount={how.footprint.device_count}
+                deviceClass={how.footprint.device_class}
+                budgetDevices={fit?.devices_allocatable}
+              />
+            </div>
+          )}
         </Step>
 
         <Step
@@ -386,6 +450,14 @@ export function NewWorkloadPage() {
             overrides={overrides}
           />
           {fit && !fit.fits && <SizingDoubt fit={fit} />}
+          {roles && (
+            <div className="mb-3 space-y-2">
+              <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
+                Per role
+              </div>
+              <RoleParamFields roles={roles} onChange={setRoles} />
+            </div>
+          )}
           {request && (
             <ParamFields
               request={request}
@@ -407,11 +479,15 @@ export function NewWorkloadPage() {
           <div className="space-y-3">
             <FormGrid>
               <NumberField
-                label="Replicas"
+                label={roles ? "Groups" : "Replicas"}
                 value={replicas}
                 onChange={setReplicas}
                 min={1}
-                hint="A total across every cluster. Placement decides how these divide."
+                hint={
+                  roles
+                    ? `A total across every cluster, counted in groups — ${(replicas ?? 0) * groupDevicesOf(roles, how?.footprint.device_count ?? 0)} devices in all. Placement fits a whole group or none of it.`
+                    : "A total across every cluster. Placement decides how these divide."
+                }
               />
               <TextField
                 label="Name"
@@ -846,4 +922,9 @@ function UpstreamClaim({ upstream }: { upstream: UpstreamServing }) {
       {upstream.nightly_required && " · needs a nightly engine build"}
     </p>
   )
+}
+
+/** `Σ weight × device_count`, for a shape that has no workload behind it yet. */
+function groupDevicesOf(roles: WorkloadRole[], deviceCount: number): number {
+  return roles.reduce((total, role) => total + role.weight * deviceCount, 0)
 }

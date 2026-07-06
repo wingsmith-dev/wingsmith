@@ -5,7 +5,12 @@ import {
   declaredRatio,
   groupDevices,
   isDisaggregated,
-  reservedRoleArgs,
+  refusedRoleArgs,
+  rolloutCost,
+  strandedByRatio,
+  roleWorkers,
+  recipeRoles,
+  formatMinutes,
   roleReadiness,
   roleReadinessLabel,
   rolesAtGroupCount,
@@ -217,11 +222,130 @@ describe("what a role may not be told", () => {
     // role itself. A value for either from a role's args is a contradiction of
     // a decision already acted on, not a default.
     expect(
-      reservedRoleArgs({
+      refusedRoleArgs({
         "disaggregation-mode": "prefill",
         "--kv-transfer-config": "{}",
         "max-num-seqs": "4",
       })
     ).toEqual(["disaggregation-mode", "--kv-transfer-config"])
+  })
+
+  it("refuses a derived flag that has a typed field of its own", () => {
+    // `max-num-batched-tokens` is set through `max_batch_tokens` beside the
+    // box, not inside it. The plane rejects it either way.
+    expect(refusedRoleArgs({ "max-num-batched-tokens": "2048" })).toEqual([
+      "max-num-batched-tokens",
+    ])
+    expect(refusedRoleArgs({ "tensor-parallel-size": "8" })).toEqual([
+      "tensor-parallel-size",
+    ])
+  })
+})
+
+describe("what a per-role configuration change costs", () => {
+  it("multiplies the weights by the group count for every role", () => {
+    // The same product the plane sends on the wire. Both are declared, so this
+    // is exact rather than observed.
+    expect(roleWorkers(disagg())).toEqual([
+      { role: "prefill", weight: 1, workers: 2 },
+      { role: "decode", weight: 2, workers: 4 },
+    ])
+  })
+
+  it("counts every worker, not just the role being edited", () => {
+    // Dynamo hashes one worker spec across the whole graph, so an edit to
+    // either role renames both roles' objects.
+    const cost = rolloutCost(disagg())!
+    expect(cost.workers).toBe(6)
+  })
+
+  it("takes the longest role rather than the sum", () => {
+    // Each role is a Deployment of its own; they are not made to wait for one
+    // another. Four decode at twenty minutes each is the critical path.
+    expect(rolloutCost(disagg())!.minutes).toBe(80)
+  })
+
+  it("keeps serving when every role has a worker to spare", () => {
+    const cost = rolloutCost(disagg())!
+    expect(cost.servesThrough).toBe(true)
+    expect(cost.roleAtRisk).toBeNull()
+  })
+
+  it("stops serving when a role has exactly one worker", () => {
+    // Rolling is in place, one worker at a time, so a role of one goes to zero
+    // while its only worker reloads — and a decode worker with no prefill peer
+    // has nothing to decode from. This is the outage case.
+    const single = workload({
+      scale: {
+        unit: "replicas",
+        min: 1,
+        max: 1,
+        desired: 1,
+        placed: 1,
+        ready: 1,
+      },
+      serving: {
+        shape: { device_count: 8 },
+        topology: {
+          serving_topology: "disaggregated",
+          roles: ROLES,
+          group_devices: 0,
+        },
+      },
+    } as unknown as Partial<Workload>)
+    const cost = rolloutCost(single)!
+    expect(cost.servesThrough).toBe(false)
+    expect(cost.roleAtRisk).toBe("prefill")
+    expect(cost.minutes).toBe(40)
+  })
+
+  it("reads long rolls in hours", () => {
+    expect(formatMinutes(40)).toBe("40 min")
+    expect(formatMinutes(120)).toBe("2 h")
+    expect(formatMinutes(80)).toBe("1 h 20 min")
+  })
+})
+
+describe("a ratio that does not divide the hardware", () => {
+  it("says nothing when the group divides the budget", () => {
+    expect(strandedByRatio(48, 24)).toBeNull()
+    expect(strandedByRatio(24, 24)).toBeNull()
+  })
+
+  it("names the idle devices when it does not", () => {
+    // Four nodes cannot express 1:2 at TP8 — three workers is 24 devices, and
+    // 32 leaves a whole node doing nothing. Nothing fails, which is the problem.
+    expect(strandedByRatio(32, 24)).toBe(
+      "a unit of 24 devices does not divide 32: 1 unit fits and 8 devices would sit idle"
+    )
+  })
+
+  it("says so plainly when not even one unit fits", () => {
+    expect(strandedByRatio(16, 24)).toBe(
+      "a unit of 24 devices does not fit 16: no unit fits and all 16 would sit idle"
+    )
+  })
+
+  it("is silent without a budget rather than guessing at one", () => {
+    expect(strandedByRatio(0, 24)).toBeNull()
+    expect(strandedByRatio(32, 0)).toBeNull()
+  })
+})
+
+describe("the starting point for a new disaggregated workload", () => {
+  it("lands the recipe's own numbers, ready to submit unedited", () => {
+    // Choosing disaggregated is one click. The sixteenfold batch-token split
+    // between the roles is the recipe's, not a preference this console invented.
+    const roles = recipeRoles()
+    expect(roles.map((role) => role.role)).toEqual(["prefill", "decode"])
+    expect(roles[0].max_batch_tokens).toBe(32_768)
+    expect(roles[1].max_batch_tokens).toBe(2048)
+    expect(roles[1].weight).toBe(2)
+  })
+
+  it("hands out its own copy, so editing one workload cannot edit the default", () => {
+    const first = recipeRoles()
+    first[0].engine_args["max-num-seqs"] = "999"
+    expect(recipeRoles()[0].engine_args["max-num-seqs"]).toBe("4")
   })
 })
