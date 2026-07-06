@@ -1340,3 +1340,50 @@ func TestTheFrontendRoutesByKVOnlyWhenDisaggregated(t *testing.T) {
 		t.Fatalf("aggregated frontend gained DYN_ROUTER_MODE = %q, which changes every model in the fleet", got)
 	}
 }
+
+func specAnnotations(t *testing.T, obj *unstructured.Unstructured) map[string]string {
+	t.Helper()
+	got, found, err := unstructured.NestedStringMap(obj.Object, "spec", "annotations")
+	if err != nil || !found {
+		t.Fatalf("spec.annotations missing: found %v, err %v", found, err)
+	}
+	return got
+}
+
+func TestEveryRenderCarriesTheRolloutStrategyThatDoesNotDeadlock(t *testing.T) {
+	for name, in := range map[string]Inputs{
+		"aggregated":    testInputs(),
+		"disaggregated": disaggInputs(),
+	} {
+		obj, err := DynamoGraphDeployment(in, frontendOptions())
+		if err != nil {
+			t.Fatalf("%s render: %v", name, err)
+		}
+		got := specAnnotations(t, obj)
+		want := map[string]string{
+			MaxSurgeAnnotation:       "0",
+			MaxUnavailableAnnotation: "1",
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("%s: spec.annotations = %v, want %v", name, got, want)
+		}
+	}
+}
+
+func TestAnOverlayStillOwnsTheRolloutStrategy(t *testing.T) {
+	in := testInputs()
+	in.Deployment.Serving.Overlay.Dynamo = map[string]any{
+		"annotations": map[string]any{"nvidia.com/deployment-strategy": "Recreate"},
+	}
+	obj, err := DynamoGraphDeployment(in, frontendOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	got := specAnnotations(t, obj)
+	if got["nvidia.com/deployment-strategy"] != "Recreate" {
+		t.Fatalf("the overlay did not reach spec.annotations: %v", got)
+	}
+	if got[MaxSurgeAnnotation] != "0" {
+		t.Fatalf("an overlay that adds one annotation dropped the rendered ones: %v", got)
+	}
+}

@@ -161,6 +161,44 @@ const (
 	LayoutAnnotation        = "hangar.dev/layout"
 )
 
+// The rollout strategy Dynamo reads off `spec.annotations` of the graph deployment.
+//
+// Rendered as constants because the numbers below are the only ones that work on a cluster with
+// no spare cards, and every cluster we run is one: a GPU node group is bought for the workload
+// that sits on it, so the spare capacity a rolling update needs is capacity nobody bought.
+// Dynamo's own defaults are 25%/25% (`dgd_worker_rollout_reconciler.go`), which at our counts
+// round to surge 1 / unavailable 0 and deadlock — the new generation's pods sit `Pending` on
+// `Insufficient nvidia.com/gpu` while the old generation is held open because unavailable 0
+// forbids scaling it down. Nothing times out. It was observed live on `site-a`, and surge 0 with
+// unavailable 1 was verified there to roll in place, one worker at a time, without the total
+// replica count across generations ever exceeding desired.
+//
+// Rendered for aggregated deployments as well as disaggregated ones, against §3.4's rule that an
+// aggregated render must not move: four aggregated replicas on four nodes have exactly the same
+// zero spare cards as a 2P:2D group does, so scoping this to disaggregation would leave the
+// deadlock in place for the shape most of the fleet is actually in. The move is a one-time cost
+// on the next re-apply and a permanent removal of a hang.
+//
+// A constant and not a declared field, because there is no rollout block on the wire and the
+// proposed one (`docs/wip-api-gaps.md` item 20) would be an operator-visible knob whose only safe
+// value is this one. When a cluster with spare capacity exists, that plan makes it declared;
+// until then a field would only offer a way to reinstate the deadlock.
+const (
+	MaxSurgeAnnotation       = "nvidia.com/deployment-rolling-update-max-surge"
+	MaxUnavailableAnnotation = "nvidia.com/deployment-rolling-update-max-unavailable"
+
+	maxSurge       = "0"
+	maxUnavailable = "1"
+)
+
+// rolloutStrategy is the graph-level annotation block every render carries.
+func rolloutStrategy() map[string]any {
+	return map[string]any{
+		MaxSurgeAnnotation:       maxSurge,
+		MaxUnavailableAnnotation: maxUnavailable,
+	}
+}
+
 // Layout is how one replica's devices are spread over machines, as the capacity check concluded.
 //
 // Passed in rather than re-derived here, because what was admitted and what is applied have to be
@@ -388,7 +426,12 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 			},
 		},
 		"spec": map[string]any{
-			"components": components,
+			// Set here on the first render rather than patched onto a running graph. Dynamo
+			// propagates `spec.annotations` into every worker pod template and hashes the
+			// template, so arriving late costs a full weight reload — twenty-two minutes a worker
+			// on a checkpoint the size of K3's.
+			"annotations": rolloutStrategy(),
+			"components":  components,
 		},
 	}}
 
