@@ -472,10 +472,52 @@ def test_an_image_cap_does_not_stand_in_for_a_video_one():
     """The caps are separate declarations, and one modality never licenses the other."""
     with pytest.raises(Invalid):
         check_serving(
-            serving(max_videos_per_request=1),
+            serving(max_images_per_request=4, max_videos_per_request=1),
             capabilities(input_modalities=["text", "image"]),
             prefix_cache_enabled=False,
         )
+
+
+@pytest.mark.parametrize(
+    "field_name,modality", [("max_images_per_request", "image"), ("max_videos_per_request", "video")]
+)
+def test_a_declared_modality_needs_its_own_limit(field_name, modality):
+    """The converse guard. An unset cap renders as zero, not as no limit.
+
+    `--limit-mm-per-prompt` carries one map, and vLLM reads every modality missing
+    from it as zero. So a workload that claims the modality and leaves the cap at
+    `None` ships a process that refuses it, with nothing anywhere saying so.
+    """
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(),
+            capabilities(input_modalities=["text", modality]),
+            prefix_cache_enabled=False,
+        )
+    assert (
+        check_serving(
+            serving(**{field_name: 1}),
+            capabilities(input_modalities=["text", modality]),
+            prefix_cache_enabled=False,
+        )
+        is None
+    )
+
+
+def test_a_video_claim_does_not_ride_on_the_image_cap():
+    """The defect this closes: an image cap renders `{"image": N}`, and video is then zero."""
+    with pytest.raises(Invalid):
+        check_serving(
+            serving(max_images_per_request=4),
+            capabilities(input_modalities=["text", "image", "video"]),
+            prefix_cache_enabled=False,
+        )
+    both = serving(max_images_per_request=4, max_videos_per_request=1)
+    assert (
+        check_serving(both, capabilities(input_modalities=["text", "image", "video"]), prefix_cache_enabled=False)
+        is None
+    )
+    assert serving_args("vllm", both) == {"limit-mm-per-prompt": '{"image": 4, "video": 1}'}
 
 
 def test_a_prompt_cache_contract_needs_the_mechanism_under_it():

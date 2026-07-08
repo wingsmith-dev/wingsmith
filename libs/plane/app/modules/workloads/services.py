@@ -442,6 +442,13 @@ Two typed fields and one flag. vLLM takes the whole map at once, so a workload t
 both renders `{"image": 4, "video": 1}` and never two flags — which is why the caps are
 merged here rather than assigned one at a time in `serving_args`.
 
+An unset cap is not "no limit": vLLM reads every modality absent from the map as zero, so
+a workload declaring `video` and leaving `max_videos_per_request` at `None` renders
+`{"image": N}` and is refused the exact modality it claims. `check_serving` therefore
+requires the cap in both directions — a cap needs its modality, and a modality that has a
+cap field needs its cap. Only `image` and `video` are keys here, so `text` and `audio` are
+untouched by that rule.
+
 Named per modality rather than as one generic `max_attachments` because the limits do not
 generalise: an audio limit is seconds, not a count, and a generic field would need a unit
 it cannot have.
@@ -589,9 +596,16 @@ def check_serving(
         )
     for field_name, modality in MODALITY_LIMITS.items():
         limit = getattr(serving, field_name)
+        declared = modality in capabilities.input_modalities
         if limit is None:
+            if declared:
+                raise Invalid(
+                    f"a workload claiming {modality} must set {field_name}, "
+                    f"because an unset cap renders as zero and the engine refuses the modality",
+                    {field_name: None, "input_modalities": capabilities.input_modalities},
+                )
             continue
-        if modality not in capabilities.input_modalities:
+        if not declared:
             raise Invalid(
                 f"a {modality} limit is meaningless without {modality} among the input modalities",
                 {field_name: limit, "input_modalities": capabilities.input_modalities},
