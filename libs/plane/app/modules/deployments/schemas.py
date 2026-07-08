@@ -21,6 +21,19 @@ class DeploymentReplicaRollupSchema(Struct):
     at_current_generation: int
 
 
+class DeploymentRoleObservedSchema(Struct):
+    """One role's own share of a deployment's rollout, as its cluster counted it.
+
+    `desired` is what that cluster rendered for the role and `ready` is what came
+    up, both from one frame — which is what keeps the pair internally consistent
+    in a way a join against `demand_replica` would not be.
+    """
+
+    role: str
+    desired: int
+    ready: int
+
+
 class DeploymentStatusSchema(Struct):
     """What the cluster reports the deployment is doing, and why.
 
@@ -53,6 +66,23 @@ class DeploymentStatusSchema(Struct):
     last_error_message: str | None
     last_error_at: dt.datetime | None
     observed_at: dt.datetime | None
+    roles: list[DeploymentRoleObservedSchema] | None = None
+    """The four scalars above split by role, and absent unless the deployment has roles.
+
+    Additive on purpose: the scalars stay the group rollup and are not replaced, so a
+    client that ignores this field reads the same correct totals it always did. What it
+    cannot read is which role is short, which for a 1P:2D group is the only thing worth
+    watching during a rollout — two ready decode workers and no prefill is `2 of 3`, a
+    shortfall that reads as degraded and resolving, where nothing is serving at all.
+
+    Stored on the observed row rather than derived per read. The ready half could be
+    counted over the replicas; the desired half could not, because how many of a role a
+    cluster was asked for exists only in the frame that reported it.
+
+    `None` rather than `[]` for an aggregated deployment. A single-entry array would make
+    every deployment look like one with a declared ratio, and an empty one would claim the
+    deployment has no roles rather than that the question does not apply.
+    """
 
 
 class DeploymentSchema(Struct):

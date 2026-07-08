@@ -361,6 +361,11 @@ def upsert_deployment_status(cluster_id: UUID, deployment_id: UUID, payload: Dep
         "ready_replicas": payload.ready_replicas,
         "updated_replicas": payload.updated_replicas,
         "unavailable_replicas": payload.unavailable_replicas,
+        # Written whole from the frame, and `[]` when the frame makes no claim. The counts
+        # above are the rollup of this and stay authoritative for anything that only reads
+        # them, so an operator too old to send `roles` leaves a deployment right and coarse
+        # rather than wrong.
+        "roles": [msgspec.to_builtins(role) for role in payload.roles or ()],
         "reason": payload.reason,
         "message": payload.message,
         "last_error_code": error.code if error else None,
@@ -462,6 +467,9 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
         "name": payload.name,
         "phase": payload.phase,
         "ready": payload.ready,
+        # The cluster's own answer about a running pod, not the workload's declaration about
+        # what should exist. Null from an aggregated deployment, which has one worker.
+        "role": payload.role,
         "engine_runtime_version": payload.runtime_version or None,
         "observed_generation": payload.observed_generation,
         "restart_count": payload.restart_count,
@@ -963,6 +971,7 @@ def deployment_status_before(deployment_id: UUID) -> Select:
         DeploymentStatus.reason,
         DeploymentStatus.message,
         DeploymentStatus.ready_replicas,
+        DeploymentStatus.roles,
         DeploymentStatus.observed_generation,
         DeploymentStatus.last_error_code,
     ).where(DeploymentStatus.deployment_id == deployment_id)

@@ -64,6 +64,15 @@ type rollout struct {
 	// arithmetic is what hides it. Always false for an aggregated deployment, which has one
 	// role and for which `ready < desired` already says everything.
 	roleShort bool
+
+	// roles is the per-role split of the counts above, in the order the renderer declares the
+	// roles, and nil for an aggregated deployment.
+	//
+	// Nil rather than a single entry, because the counts are already the whole answer where
+	// there is one role and a degenerate `roles` would make every deployment look disaggregated
+	// to everything downstream. It carries what `roleShort` decided on rather than only the
+	// verdict, so the plane can say which role is short instead of only that one is.
+	roles []wire.RoleObserved
 }
 
 // countReady counts the pods that are ready and not on their way out.
@@ -177,6 +186,7 @@ func (r *SyncedResourceReconciler) observeRollout(
 	}
 
 	var all []corev1.Pod
+	var split []wire.RoleObserved
 	total := 0
 	short := false
 	for _, role := range roles {
@@ -191,15 +201,23 @@ func (r *SyncedResourceReconciler) observeRollout(
 		if err != nil {
 			return rollout{}, fmt.Errorf("list %s pods for %s: %w", role.Component, dep.DeploymentID, err)
 		}
+		ready := countReady(pods.Items)
 		total += role.Replicas
-		if countReady(pods.Items) < role.Replicas {
+		if ready < role.Replicas {
 			short = true
 		}
+		split = append(split, wire.RoleObserved{Role: role.Role, Desired: role.Replicas, Ready: ready})
 		all = append(all, pods.Items...)
 	}
 
 	out := r.rolloutFrom(all, dep, total, dep.Serving.Engine, dep.Serving.RuntimeVersion())
 	out.roleShort = short && render.Disaggregated(dep)
+	// The split is reported only where it says something the totals do not. An aggregated
+	// deployment has one role, so its `roles` would restate `ready of desired` under a second
+	// name and invite a reader to believe a ratio had been declared for it.
+	if render.Disaggregated(dep) {
+		out.roles = split
+	}
 	out.trouble = r.diagnose(ctx, name, all, out)
 	serving, found := r.frontendState(ctx, name, dep)
 	out.frontendUnready = !serving

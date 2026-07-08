@@ -17,6 +17,7 @@
     ],
     "phase": "ready",
     "ready": true,
+    "role": "decode",
     "engine": "vllm",
     "engine_runtime_version": "1.3.1",
     "engine_version": "1.3.1",

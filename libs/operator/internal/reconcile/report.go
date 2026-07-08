@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -90,6 +91,11 @@ type reportKey struct {
 	ready    int
 	desired  int
 	replicas string
+	// roles is part of the key for the reason `replicas` is: a role can go short while the
+	// totals hold still. A prefill worker dying as a decode worker comes ready leaves `2 of 3`
+	// unchanged and moves the deployment from degraded-and-serving to serving nothing, and
+	// suppressing that frame would suppress the only thing that happened.
+	roles string
 	// errorCode is part of the key because a diagnosis can appear without moving anything
 	// else: a deployment holding at zero of one gets its first `ClusterRejected` with the same
 	// phase, counts and replica set it had a pass earlier, and suppressing that frame would
@@ -184,8 +190,10 @@ func (r *SyncedResourceReconciler) reportRollout(res *v1alpha1.SyncedResource, d
 		// Empty, never nil: this loop always knows the whole set, so it always makes the
 		// claim. See wire.DeploymentObserved.ReplicaIDs for why the distinction matters.
 		ReplicaIDs: present,
-		Reason:     out.reason(),
-		Message:    out.message(),
+		// Beside the scalars and never instead of them. See wire.DeploymentObserved.Roles.
+		Roles:   out.roles,
+		Reason:  out.reason(),
+		Message: out.message(),
 		// The failure the shortfall is explained by, when the cluster explained it. The field
 		// has been on the wire and in the plane's schema since the beginning and nothing ever
 		// wrote it, so `last_error_message` was null for every deployment that ever broke.
@@ -337,6 +345,7 @@ func (r *SyncedResourceReconciler) send(reporter Reporter, id string, payload wi
 		// which replicas exist without changing any of the counts. Suppressing that frame
 		// would suppress the prune that goes with it.
 		replicas: strings.Join(payload.ReplicaIDs, ","),
+		roles:    rolesKey(payload.Roles),
 	}
 	if payload.LastError != nil {
 		key.errorCode = payload.LastError.Code
@@ -347,6 +356,13 @@ func (r *SyncedResourceReconciler) send(reporter Reporter, id string, payload wi
 	// pair re-sends on every pass forever, which is the exact loop the key exists to stop.
 	if payload.ReplicaIDs == nil {
 		key.replicas = r.lastReported(id).replicas
+	}
+	// Same inheritance and the same reason: `report` concludes about a write and never reads a
+	// pod, so it makes no claim about the roles either. Comparing its silence against
+	// `reportRollout`'s answer would make each look like news against the other and re-send the
+	// pair forever.
+	if payload.Roles == nil {
+		key.roles = r.lastReported(id).roles
 	}
 	if r.lastReported(id) == key {
 		return
@@ -491,4 +507,19 @@ func (h *reportingHandler) Resync(ctx context.Context) error {
 	}
 	h.reconciler.ForgetAll()
 	return h.reconciler.ResyncDemand(ctx)
+}
+
+// rolesKey flattens the per-role split into the one string the repeat check compares.
+//
+// Order comes from the renderer, which takes it from the wire, so it is stable across passes and
+// a re-ordering would be a change worth reporting rather than noise to be normalised away.
+func rolesKey(roles []wire.RoleObserved) string {
+	if len(roles) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(roles))
+	for _, role := range roles {
+		parts = append(parts, fmt.Sprintf("%s=%d/%d", role.Role, role.Ready, role.Desired))
+	}
+	return strings.Join(parts, ",")
 }

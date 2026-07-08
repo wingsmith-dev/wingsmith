@@ -591,6 +591,17 @@ type LastError struct {
 	At      string `json:"at"`
 }
 
+// RoleObserved is one role's own share of a deployment's rollout.
+//
+// Desired is what this cluster rendered for the role, which is `role_replicas` echoed back, and
+// not a number this operator derived. See DeploymentObserved.Roles for why the scalars beside it
+// are still the whole answer for anyone who does not read this.
+type RoleObserved struct {
+	Role    string `json:"role"`
+	Desired int    `json:"desired"`
+	Ready   int    `json:"ready"`
+}
+
 // DeploymentObserved is the observed state of one deployment.
 type DeploymentObserved struct {
 	DeploymentID        string     `json:"deployment_id"`
@@ -622,6 +633,22 @@ type DeploymentObserved struct {
 
 	// Message is the same fact written for a person, and is never parsed.
 	Message string `json:"message,omitempty"`
+
+	// Roles is the same rollout split by role, and it is added beside the four scalars above
+	// rather than instead of them.
+	//
+	// The scalars stay the group rollup, and that is the compatibility story rather than a
+	// concession to it: a plane too old to read this field sums the roles the same way this
+	// operator already did and is *right, less precisely*. Nothing it can conclude from
+	// `3 of 3 ready` becomes false; it simply cannot see which of the three is the one missing
+	// when it is `2 of 3`, which for a 1P:2D group is the whole question — two ready decode
+	// workers and no prefill serve nothing, and the totals cannot say so.
+	//
+	// Omitted entirely on an aggregated deployment. An empty array would be a claim that this
+	// deployment has no roles, where a single-entry one would make every deployment in the fleet
+	// a disaggregated one with a degenerate ratio; absent is the only spelling that says the
+	// question does not apply.
+	Roles []RoleObserved `json:"roles,omitempty"`
 }
 
 // ReplicaObserved is one running instance on named devices.

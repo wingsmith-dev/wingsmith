@@ -1,6 +1,8 @@
 import inspect
 import datetime as dt
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.core.ids import CLUSTER
@@ -14,6 +16,7 @@ from app.modules.deployments.schemas import DeploymentReplicaRollupSchema
 from app.modules.deployments.services import EMPTY
 from app.modules.deployments.services import PHASES
 from app.modules.deployments.services import AUTHORITIES
+from app.modules.deployments.services import _status
 from app.modules.deployments.services import _revision
 from app.modules.deployments.repository import DeploymentRepository
 
@@ -178,3 +181,46 @@ def test_the_repository_cannot_create_or_delete():
     """Both are placement's, through the workload; neither has a route to reach here."""
     assert not hasattr(DeploymentRepository, "add")
     assert not hasattr(DeploymentRepository, "delete")
+
+
+def test_the_per_role_counts_reach_the_api_beside_the_scalars() -> None:
+    """A rollout's only readable half, on a deployment that has roles.
+
+    The scalars stay the group rollup and are not replaced, so a client that ignores
+    `roles` reads exactly the totals it always did. What it cannot read is which role
+    is short — and for a 1P:2D group that is the whole question, because two ready
+    decode workers and no prefill is `2 of 3` and serves nothing.
+    """
+    status = _status(_status_row([{"role": "prefill", "desired": 1, "ready": 1},
+                                  {"role": "decode", "desired": 2, "ready": 1}]))
+    assert status is not None
+    assert status.ready_replicas == 2 and status.desired_replicas == 3
+    assert [(r.role, r.desired, r.ready) for r in status.roles] == [("prefill", 1, 1), ("decode", 2, 1)]
+
+
+def test_an_aggregated_deployment_reports_no_roles_rather_than_none_of_them() -> None:
+    """`None` and `[]` are different claims, and the column stores the second.
+
+    An empty array out of the API would say this deployment's roles are known to be
+    zero, where the truth is that the question does not apply to it.
+    """
+    assert _status(_status_row([])).roles is None
+
+
+def _status_row(roles: list[dict]):
+    """The columns `_status` reads, with only the ones under test carrying anything."""
+    return SimpleNamespace(
+        observed_generation=14,
+        phase="degraded",
+        reason="Progressing",
+        message="2 of 3 replicas ready",
+        desired_replicas=3,
+        ready_replicas=2,
+        updated_replicas=3,
+        unavailable_replicas=1,
+        roles=roles,
+        last_error_code=None,
+        last_error_message=None,
+        last_error_at=None,
+        observed_at=EPOCH,
+    )

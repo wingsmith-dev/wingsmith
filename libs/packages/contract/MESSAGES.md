@@ -301,12 +301,37 @@ cluster then spreads the replica over whichever machines are free.
 
 | Type | Payload |
 |---|---|
-| `deployment.observed` | phase, `reason`, `message`, replica counts, `replica_ids`, last error |
-| `replica.observed` | which devices, readiness, engine version, the serving digest it came up on, restart count, observed generation |
+| `deployment.observed` | phase, `reason`, `message`, replica counts, per-role counts, `replica_ids`, last error |
+| `replica.observed` | which devices, readiness, its role, engine version, the serving digest it came up on, restart count, observed generation |
 | `replica.event` | started, ready, failed, OOM, preempted |
 | `allocation.observed` | devices currently committed, and to what |
 | `cache.observed` | artifact residency, per node, and eviction pressure |
 | `component.observed` | rollout status per component |
+
+**`deployment.observed` carries `roles`, and the four scalars beside it stay the group rollup.**
+Each entry is `{role, desired, ready}` for one role of a disaggregated deployment, `desired` being
+the `role_replicas` count this cluster rendered and echoed back. The scalars are the sum, unchanged,
+which is what makes this additive in the strong sense: a plane too old to read `roles` is *right,
+less precisely*, rather than merely unbroken.
+
+The precision is the point of sending it. A 1P:2D group with two ready decode workers and no
+prefill is `2 of 3` — a shortfall, which reads as degraded and would be expected to resolve itself.
+It is not one: a decode worker with no prefill peer has nothing to decode from, so nothing is
+serving at all, and the totals cannot express the difference. The operator refuses `running` while
+any role is short for that reason, and `roles` is what lets a reader see which.
+
+Omitted entirely on an aggregated deployment. A single-entry array would make every deployment in
+the fleet a disaggregated one with a degenerate ratio, and an empty array would claim the
+deployment has no roles; absent is the only spelling that says the question does not apply. The
+achieved ratio is the quotient of these counts, derived wherever it is displayed — it is not a
+field, and nothing new goes on the wire for it.
+
+**`replica.observed` carries `role`.** `prefill` or `decode` for a replica of a disaggregated
+deployment, omitted when the deployment is aggregated. It is read off the pod label the operator
+itself stamped, never inferred from the pod's name: the name is Dynamo's convention and can change
+under us, where the label is a string both sides agreed on. It is observed state with ingestion as
+its only writer, which is what keeps a worker that can change role at runtime a revision to this
+field's value rather than to anything declared.
 
 **`deployment.observed` carries `replica_ids`, and it is how the plane forgets a replica while the
 deployment still exists.** A replica that simply stops being reported — a rolled pod, a restarted

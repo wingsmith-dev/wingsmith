@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -513,5 +514,51 @@ func tearDown(t *testing.T, r *SyncedResourceReconciler, dep *v1alpha1.SyncedRes
 	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.Namespace, Name: dep.Name}}
 	if _, err := r.Reconcile(ctx, req); err != nil {
 		t.Fatalf("reconcile after delete: %v", err)
+	}
+}
+
+// The split reaches the frame, and a role moving inside a fixed total is not suppressed.
+//
+// The suppression key exists so a deployment re-examined every fifteen seconds does not spend the
+// stream restating a fact that has not moved. A prefill worker dying as a decode worker comes
+// ready moves nothing the key used to hold — same phase, same reason, same `2 of 3` — and takes
+// the deployment from degraded-and-still-serving to serving nothing, which is the one transition
+// the frame exists to carry.
+func TestARoleMovingInsideAFixedTotalIsNotSuppressed(t *testing.T) {
+	rep := &recordingReporter{}
+	r := &SyncedResourceReconciler{Log: slog.Default(), ClusterID: "ap-cluster-1"}
+	r.Bind(rep)
+	dep := disaggregatedDesired()
+
+	first := rollout{
+		desired: 3, ready: 2, roleShort: true,
+		roles: []wire.RoleObserved{
+			{Role: "prefill", Desired: 1, Ready: 1},
+			{Role: "decode", Desired: 2, Ready: 1},
+		},
+	}
+	second := first
+	second.roles = []wire.RoleObserved{
+		{Role: "prefill", Desired: 1, Ready: 0},
+		{Role: "decode", Desired: 2, Ready: 2},
+	}
+
+	r.reportRollout(declared(t, "deployment", testDeploymentID, dep), dep, first)
+	r.reportRollout(declared(t, "deployment", testDeploymentID, dep), dep, second)
+
+	if len(rep.sent) != 2 {
+		t.Fatalf("sent %d frames, want 2", len(rep.sent))
+	}
+	if !reflect.DeepEqual(rep.sent[0].Roles, first.roles) {
+		t.Errorf("first roles = %+v, want %+v", rep.sent[0].Roles, first.roles)
+	}
+	if rep.sent[1].ReadyReplicas != 2 {
+		t.Errorf("the scalars must not move: ready = %d, want 2", rep.sent[1].ReadyReplicas)
+	}
+
+	// And an identical restatement still says nothing new.
+	r.reportRollout(declared(t, "deployment", testDeploymentID, dep), dep, second)
+	if len(rep.sent) != 2 {
+		t.Fatalf("an unchanged frame was re-sent: %d frames", len(rep.sent))
 	}
 }

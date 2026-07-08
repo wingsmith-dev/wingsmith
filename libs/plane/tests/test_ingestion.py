@@ -16,6 +16,7 @@ from typing import Any
 from pathlib import Path
 
 import pytest
+import msgspec
 
 from msgspec import json as msgjson
 from msgspec import structs
@@ -248,6 +249,30 @@ def test_deployment_status_flattens_the_last_error() -> None:
     assert observed.last_error.message in values
 
 
+def test_deployment_status_stores_the_per_role_counts_beside_the_scalars() -> None:
+    """The split is the only thing that can say which role is short.
+
+    `2 of 3` is the same pair of integers for a missing prefill worker and a missing
+    decode one, and those are a deployment serving nothing and a deployment serving
+    slowly. The scalars stay the rollup — a reader that ignores `roles` is right and
+    merely coarse — which is what makes the column additive rather than a replacement.
+    """
+    observed = payload("deployment.observed")
+    assert observed.roles
+    _, params = compile_sql(statements.upsert_deployment_status(CLUSTER_ID, DEPLOYMENT_ID, observed))
+    stored = next(v for v in params.values() if isinstance(v, list) and v and isinstance(v[0], dict))
+    assert stored == [msgspec.to_builtins(role) for role in observed.roles]
+    assert sum(role.ready for role in observed.roles) == observed.ready_replicas
+    assert sum(role.desired for role in observed.roles) == observed.desired_replicas
+
+
+def test_an_aggregated_deployment_stores_no_roles_at_all() -> None:
+    """Empty, because absent and empty must not both be sayable about one thing."""
+    observed = structs.replace(payload("deployment.observed"), roles=None)
+    _, params = compile_sql(statements.upsert_deployment_status(CLUSTER_ID, DEPLOYMENT_ID, observed))
+    assert [] in params.values()
+
+
 def test_admission_lands_on_the_deployment_and_not_the_workload() -> None:
     """`admission_phase` was written once, as `placed`, and never again.
 
@@ -324,6 +349,23 @@ def test_replica_stores_the_runtime_version_and_not_the_engine() -> None:
     values = scalar_params(params)
     assert observed.engine_runtime_version in values
     assert observed.engine not in values
+
+
+def test_replica_stores_the_role_the_cluster_read_off_its_pod() -> None:
+    """Observed with ingestion as its only writer, and null when there is no ratio.
+
+    It is the cluster's answer about a running pod rather than the workload's
+    declaration about what should exist, and a rollout is exactly the interval in
+    which the two disagree.
+    """
+    observed = payload("replica.observed")
+    assert observed.role == "decode"
+    _, params = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, observed))
+    assert observed.role in scalar_params(params)
+
+    aggregated = structs.replace(observed, role=None)
+    _, params = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, aggregated))
+    assert "decode" not in scalar_params(params)
 
 
 def test_replica_does_not_write_the_devices_it_holds() -> None:
@@ -946,6 +988,7 @@ def test_a_frame_that_restates_the_stored_row_is_not_filed_again() -> None:
         observed.message,
         observed.ready_replicas,
         last_error_code=observed.last_error.code if observed.last_error else None,
+        roles=[msgspec.to_builtins(role) for role in observed.roles or ()],
     )
     assert not _moved(same, observed)
 
@@ -1011,7 +1054,9 @@ class _Stored:
         ready_replicas: int,
         observed_generation: int = 0,
         last_error_code: str | None = None,
+        roles: list[dict] | None = None,
     ) -> None:
+        self.roles = roles or []
         self.last_error_code = last_error_code
         self.phase = phase
         self.reason = reason

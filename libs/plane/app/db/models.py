@@ -947,6 +947,24 @@ class DeploymentStatus(BaseMixin):
     ready_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     updated_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     unavailable_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    roles: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    """The same counts split by role, as the cluster reported them in one frame.
+
+    Stored rather than derived, and the derivation is what argues for the column.
+    `ready` per role could be counted over `demand_replica.role`, but `desired`
+    per role could not: it is the count this cluster rendered, which lives only in
+    the frame that reported it — a rollup over replica rows can say how many
+    prefill workers exist and never how many were asked for, which is precisely
+    the half that makes a shortfall legible. Recomputing one number and storing
+    the other would also split one internally consistent observation across two
+    sources taken at different instants, which is the reason the scalars above are
+    a column rather than a rollup in the first place.
+
+    JSONB and not a table, because nothing joins it, filters on it or aggregates
+    it: it is read whole, with its deployment, and displayed. Empty on an
+    aggregated deployment, which has one role and for which the scalars are
+    already the whole answer.
+    """
     reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -983,6 +1001,18 @@ class Replica(BaseMixin):
     phase: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending", index=True)
     ready: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     ready_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    role: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    """`prefill` or `decode`, and null for a replica of an aggregated deployment.
+
+    Nullable rather than defaulted to `decode`, because "this deployment has one
+    worker" and "this worker is the decode half of a pair" are different facts and
+    a default would erase the difference on every row that predates the column.
+
+    The cluster's own answer, read off the pod label the operator stamped, and the
+    workload's declared roles are not it: the declaration says what should exist,
+    this says what a running pod turned out to be, and a rollout is exactly the
+    interval in which the two disagree.
+    """
     engine_runtime_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
     """The runtime tag this replica reports, which is the declared one echoed back.
 

@@ -68,6 +68,22 @@ SUPPLY_SCOPES = frozenset({"supply", "all"})
 DEMAND_SCOPES = frozenset({"demand", "all"})
 
 
+def _roles(roles: Any) -> tuple:
+    """The per-role counts as a comparable tuple, from either the stored row or the frame.
+
+    One function for both sides because they are the same fact in two shapes — a list of dicts
+    read back out of JSONB, and a list of Structs decoded off the wire — and comparing them
+    directly would be true only by accident.
+    """
+    out = []
+    for role in roles or ():
+        if isinstance(role, dict):
+            out.append((role.get("role"), role.get("desired"), role.get("ready")))
+        else:
+            out.append((role.role, role.desired, role.ready))
+    return tuple(out)
+
+
 def _moved(before: Any, payload: DeploymentObserved) -> bool:
     """Whether this frame says anything the last one did not.
 
@@ -89,6 +105,10 @@ def _moved(before: Any, payload: DeploymentObserved) -> bool:
         or (before.reason or "") != (payload.reason or "")
         or (before.message or "") != (payload.message or "")
         or before.ready_replicas != payload.ready_replicas
+        # A role can go short while the totals hold still: a prefill worker dying as a decode
+        # worker comes ready leaves `2 of 3` unchanged and takes the deployment from
+        # degraded-and-serving to serving nothing.
+        or _roles(before.roles) != _roles(payload.roles)
         # A diagnosis can arrive without moving any of the above: the first frame that explains
         # a shortfall carries the phase, reason and counts the shortfall already had.
         or (before.last_error_code or "") != error

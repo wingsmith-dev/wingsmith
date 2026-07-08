@@ -24,6 +24,7 @@ from .schemas import DeploymentSchema
 from .schemas import DeploymentStatusSchema
 from .schemas import DeploymentUpdateRequest
 from .schemas import DeploymentAuthorityRequest
+from .schemas import DeploymentRoleObservedSchema
 from .schemas import DeploymentReplicaRollupSchema
 from .repository import DeploymentRepository
 
@@ -85,7 +86,29 @@ def _status(row) -> DeploymentStatusSchema | None:
         last_error_message=row.last_error_message,
         last_error_at=row.last_error_at,
         observed_at=row.observed_at,
+        roles=observed_roles(row.roles),
     )
+
+
+def observed_roles(roles) -> list[DeploymentRoleObservedSchema] | None:
+    """The per-role counts, or nothing at all when the cluster reported none.
+
+    The empty case answers as `None` and not as `[]`, because the column stores an
+    aggregated deployment's absence of roles as an empty array and the API must not
+    turn that into a claim that this deployment's roles are known to be zero.
+
+    Public, and imported by `workloads/services.py`, because `DeploymentStatusSchema`
+    is built in two places and a second private copy of this rule is how the two
+    come to disagree about what an empty column means. The duplicate `_status` is
+    the older problem and is not this change's to fix; sharing the part that is new
+    at least stops it growing.
+    """
+    if not roles:
+        return None
+    return [
+        DeploymentRoleObservedSchema(role=role["role"], desired=role["desired"], ready=role["ready"])
+        for role in roles
+    ]
 
 
 def _rollup(row: dict | None) -> DeploymentReplicaRollupSchema:

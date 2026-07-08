@@ -646,6 +646,19 @@ class LastError(Struct):
     at: str
 
 
+class RoleObserved(Struct):
+    """One role's own share of a deployment's rollout, as its cluster counts it.
+
+    `desired` is the `role_replicas` count the cluster rendered, echoed back, and
+    never a number the operator derived — the same rule `desired_replicas` is held
+    to one level up.
+    """
+
+    role: Literal["prefill", "decode"]
+    desired: int
+    ready: int
+
+
 class DeploymentObserved(Struct):
     """What one cluster reports about the deployment it was handed.
 
@@ -676,6 +689,20 @@ class DeploymentObserved(Struct):
     reason: str | None = None
     message: str | None = None
     replica_ids: list[str] | None = None
+    roles: list[RoleObserved] | None = None
+    """The same rollout split by role, beside the four scalars rather than instead of them.
+
+    The scalars stay the group rollup, so a plane reading only those is right and
+    merely coarse. The precision is what the split is for: a 1P:2D group with two
+    ready decode workers and no prefill is `2 of 3`, which reads as a shortfall
+    that will resolve itself, where in fact nothing is serving — a decode worker
+    with no prefill peer has nothing to decode from — and no arrangement of the
+    totals can say so.
+
+    `None` from an aggregated deployment and from an operator that predates the
+    field, and those are the same claim: this deployment has no roles worth
+    naming. An empty list is never sent.
+    """
 
 
 class ReplicaObserved(Struct):
@@ -703,6 +730,15 @@ class ReplicaObserved(Struct):
     """
     engine_version: str = ""
     """The same value under the name an operator older than the rename sends it as."""
+    role: Literal["prefill", "decode"] | None = None
+    """Which role of a disaggregated deployment this replica is, and `None` when it is not one.
+
+    Read by the operator off the pod label it stamped itself rather than off the pod's
+    name, so it is a string both sides agreed on rather than Dynamo's naming convention
+    seen from the outside. Observed, with ingestion as its only writer — which is what
+    keeps a worker that can change role at runtime a value that moves rather than a
+    declaration that has to be revised.
+    """
 
     @property
     def runtime_version(self) -> str:
