@@ -609,7 +609,13 @@ export const STRUCTURED_OUTPUT_MODES = [
   "json_object",
   "json_schema",
 ] as const
-export const TOOL_CHOICE_MODES = ["auto", "none", "required", "named"] as const
+export const TOOL_CHOICE_MODES = [
+  "auto",
+  "none",
+  "required",
+  "named",
+  "allowed_tools",
+] as const
 export const INPUT_MODALITIES = ["text", "image", "audio", "video"] as const
 export const PROMPT_CACHE_MODES = ["off", "automatic", "explicit"] as const
 

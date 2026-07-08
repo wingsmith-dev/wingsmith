@@ -384,7 +384,7 @@ TRANSPORTS = frozenset({"reasoning_content", "inline_tags"})
 STREAM_USAGE = frozenset({"final_chunk", "every_chunk", "on_request"})
 CONTEXT_OVERFLOW = frozenset({"reject", "truncate_input", "clamp_output"})
 STRUCTURED_OUTPUT_MODES = frozenset({"text", "json_object", "json_schema"})
-TOOL_CHOICE_MODES = frozenset({"auto", "none", "required", "named"})
+TOOL_CHOICE_MODES = frozenset({"auto", "none", "required", "named", "allowed_tools"})
 INPUT_MODALITIES = frozenset({"text", "image", "audio", "video"})
 PROMPT_CACHE_MODES = frozenset({"off", "automatic", "explicit"})
 

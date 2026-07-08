@@ -520,6 +520,18 @@ def test_a_video_claim_does_not_ride_on_the_image_cap():
     assert serving_args("vllm", both) == {"limit-mm-per-prompt": '{"image": 4, "video": 1}'}
 
 
+def test_allowed_tools_is_a_declarable_tool_choice_mode():
+    """OpenAI's `tool_choice: {"type": "allowed_tools", ...}`, which upstreams serve today."""
+    assert (
+        check_serving(
+            serving(),
+            capabilities(tool_calling_supported=True, tool_choice_modes=["auto", "allowed_tools"]),
+            prefix_cache_enabled=False,
+        )
+        is None
+    )
+
+
 def test_a_prompt_cache_contract_needs_the_mechanism_under_it():
     """The contract is a claim to a caller; `prefix_cache_enabled` is the flag that makes it true."""
     with pytest.raises(Invalid):
