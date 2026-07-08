@@ -56,6 +56,7 @@ from app.modules.placement.snapshot import PolicySnapshot
 from app.modules.placement.snapshot import CapacitySnapshot
 from app.modules.deployments.schemas import DeploymentStatusSchema
 from app.modules.deployments.schemas import DeploymentReplicaRollupSchema
+from app.modules.deployments.services import observed_roles
 from app.modules.placement.repository import SUBJECT_WORKLOAD
 
 from .schemas import RoleSchema
@@ -377,38 +378,6 @@ def group_devices(device_count: int, roles: Sequence[WorkloadRole]) -> int:
     if not roles:
         return device_count
     return sum(max(role.weight, 0) * device_count for role in roles)
-
-
-def group_nodes_hint(devices: int, group: int) -> str:
-    """What a group does not divide into, in words, or empty when there is nothing to say.
-
-    **Spelled here and not yet called from anywhere, deliberately.** The sentence needs a device
-    budget to compare against, and the only place that has one is placement, per cluster — the
-    declaration path knows the group's size and nothing about what it will be placed into. Rather
-    than ship an API field that is always empty, the arithmetic sits here with its test until
-    §5.1 makes the group the unit `PlacementRequest` carries, which is where it belongs and is a
-    change to the placement engine rather than to this module.
-
-    Not a refusal, and it must not become one. `check_capacity` states the governing habit — "the
-    plane does not refuse what it has no number for" — and the number this lacks is nodes:
-    `devices.table()` carries per-device memory and not node shape, so devices-per-node is a fact
-    about a cluster and not about a device class. Placement asks the real question, per cluster,
-    with the cluster in hand.
-
-    What is cheap here is the arithmetic somebody is about to be surprised by. A 1P:2D group at
-    TP8 is three nodes, and three does not divide four: the fourth node sits idle, costing what a
-    B300 costs, because of a ratio typed weeks earlier. That is not a placement failure — nothing
-    fails, and that is exactly the problem — so it is said at declaration where the ratio is being
-    chosen, in the same breath as the number it follows from.
-    """
-    if group <= 0 or devices <= 0 or devices % group == 0:
-        return ""
-    fits, stranded = divmod(devices, group)
-    return (
-        f"a unit of {group} devices does not divide {devices}: "
-        f"{fits} unit{'' if fits == 1 else 's'} fit and {stranded} device"
-        f"{'' if stranded == 1 else 's'} would sit idle"
-    )
 
 
 TRANSPORTS = frozenset({"reasoning_content", "inline_tags"})
@@ -1063,10 +1032,10 @@ def apply_serving(
 
     `roles` is passed through rather than read off `workload.roles`, which is `lazy="noload"`
     and answers an empty list rather than raising. `serving_digest` states the consequence: a
-    noloaded collection would hash a disaggregated workload as having no roles, silently. Both
-    callers here pass nothing today because the declared surface has no `roles` key yet — the
-    wire and the request shape land with the operator work — and when it does, this is the one
-    seam it arrives through.
+    noloaded collection would hash a disaggregated workload as having no roles, silently. It is
+    the one seam a role set arrives through: promotion passes an empty one because what it
+    adopted is a running process rather than a declared shape, and every declaring caller passes
+    what `declared_roles` read off the request it validated.
     """
     for key, value in serving_columns(data, artifact).items():
         setattr(workload, key, value)
@@ -1118,6 +1087,28 @@ def check_scale(min_scale: int, desired_scale: int, max_scale: int, kind: str, g
         )
 
 
+def _reshape_unavailability(before_devices: int, after_devices: int) -> dict:
+    """What a flip costs while it happens, in the caller's own numbers.
+
+    Carried in the result rather than checked, because nothing here is a refusal: whether to take
+    a full weight reload now is a judgement about traffic that the plane has no input to. What it
+    can do is stop the cost being a surprise, and the cost is larger than the word "reshape"
+    suggests. Dynamo's worker spec hash is one value across every worker component in the graph,
+    so a flip renames both roles' objects and every worker reloads its weights — twenty minutes
+    apiece for a large model. The rollout then holds the old generation up while the new one
+    starts, so the peak is the sum of the two footprints, and on a fleet sized for one of them the
+    new generation waits on cards the old one has not let go of.
+    """
+    return {
+        "reloads": "every worker",
+        "peak_devices": before_devices + after_devices,
+        "note": (
+            "both roles' objects are renamed, so every worker reloads its weights, and the old "
+            "generation holds its devices until the new one is up"
+        ),
+    }
+
+
 def derive_phase(deployments: list[Deployment]) -> str:
     """What a workload's phase is, given what became of it in each cluster.
 
@@ -1165,6 +1156,7 @@ def _status(row) -> DeploymentStatusSchema | None:
         ready_replicas=row.ready_replicas,
         updated_replicas=row.updated_replicas,
         unavailable_replicas=row.unavailable_replicas,
+        roles=observed_roles(row.roles),
         last_error_code=row.last_error_code,
         last_error_message=row.last_error_message,
         last_error_at=row.last_error_at,
@@ -2129,6 +2121,115 @@ class WorkloadService:
             if deployment_row[0].uid not in announced
         )
         result["paused"] = False
+        return await self._finish(result)
+
+    async def reshape(self, ref: str, parameters: dict) -> dict:
+        """Flips a workload between aggregated and disaggregated serving, and re-expands it.
+
+        An operation rather than a `PATCH` on rule 1's own test: it changes the device footprint
+        per unit, so it can sit pending on quota for as long as quota withholds the capacity —
+        the failure mode `workload.scale` already exists to carry. A field write would report
+        success the moment the plane accepted the intent.
+
+        **The new count is named and never inherited.** A workload at `desired 3` means three
+        aggregated replicas today and would mean three *groups* — seventy-two devices at 1:2 and
+        TP8 — the moment the topology flips. The unit under the number changes, so the number is
+        re-stated: a flip that does not say how many it wants is refused, not defaulted. The
+        bounds follow the same argument and default to the count rather than to what they were,
+        because carrying them forward is the same reinterpretation one field over.
+
+        Every deployment's generation is bumped whether or not its share moved. `_reconcile`
+        announces a cluster only when the count changed, and a flip at the same count changes no
+        count at all — while changing which processes exist. The clusters would go on rendering
+        the old topology against a digest that no longer describes it.
+        """
+        row = await self._one(ref)
+        workload = row[0]
+        target = parameters.get("topology")
+        current = workload.serving_topology or AGGREGATED
+        if target not in SERVING_TOPOLOGIES:
+            raise Invalid(
+                f"topology must be one of {sorted(SERVING_TOPOLOGIES)}",
+                {"topology": target},
+            )
+        if target == current:
+            raise Invalid(
+                f"{workload.name} already serves {current}: a reshape changes which processes exist",
+                {"workload": workload.uid, "serving_topology": current},
+            )
+        desired = parameters.get("desired")
+        if not isinstance(desired, int) or isinstance(desired, bool):
+            raise Invalid(
+                "workload.reshape needs an explicit desired count: the unit under it changes with "
+                "the topology, so inheriting the old number would reinterpret it silently",
+                {"parameters": ["desired"], "desired": desired},
+            )
+        min_scale = parameters.get("min", desired)
+        max_scale = parameters.get("max", desired)
+        for name, value in (("min", min_scale), ("max", max_scale)):
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise Invalid(f"{name} must be an integer", {name: value})
+
+        declared = parameters.get("roles") or []
+        if not isinstance(declared, list) or any(not isinstance(item, dict) for item in declared):
+            raise Invalid("roles is a list of {role, weight}", {"roles": declared})
+        try:
+            roles_block = [
+                RoleSchema(
+                    role=str(item["role"]),
+                    weight=item.get("weight", 1),
+                    max_batch_tokens=item.get("max_batch_tokens"),
+                    engine_args=item.get("engine_args") or {},
+                )
+                for item in declared
+            ]
+        except KeyError as exc:
+            raise Invalid("every role names itself", {"roles": declared}) from exc
+
+        artifact = await self.repo.artifact_of(workload)
+        if artifact is None:
+            raise NotFound(f"workload {workload.uid} has no artifact")
+        stored_roles = await self.repo.roles_of(workload)
+        request = serving_request(workload, artifact, stored_roles)
+        request.topology = TopologySchema(serving_topology=target, roles=roles_block)
+        check_serving_request(request, artifact)
+        check_scale(min_scale, desired, max_scale, workload.kind, workload.gang_size)
+
+        before_unit = group_devices(workload.device_count, stored_roles)
+        before_total = before_unit * workload.desired_scale
+        roles = await self.repo.replace_roles(workload, declared_roles(request.topology))
+        apply_serving(workload, request, artifact, roles)
+        after_unit = group_devices(workload.device_count, roles)
+        workload.min_scale = min_scale
+        workload.max_scale = max_scale
+        workload.desired_scale = desired
+
+        deployment_rows = (await self.repo.deployments([workload.id])).get(workload.id, [])
+        for deployment_row in deployment_rows:
+            deployment = deployment_row[0]
+            deployment.generation += 1
+            await self._record(
+                deployment,
+                "reshaped",
+                f"{workload.name} was reshaped from {current} to {target}",
+                {
+                    "workload_id": workload.uid,
+                    "generation": str(deployment.generation),
+                    "serving_topology": target,
+                },
+            )
+        result = await self._reconcile(workload, deployment_rows)
+        announced = {uid for _, uid, _ in result["_announce"]}
+        result["_announce"].extend(
+            (deployment_row.cluster_uid, deployment_row[0].uid, deployment_row[0].generation)
+            for deployment_row in deployment_rows
+            if deployment_row[0].uid not in announced
+        )
+        result["topology"] = {"from": current, "to": target}
+        result["roles"] = {role.role: role.weight for role in roles}
+        result["devices_per_unit"] = {"before": before_unit, "after": after_unit}
+        result["scale"] = {"min": min_scale, "desired": desired, "max": max_scale}
+        result["unavailability"] = _reshape_unavailability(before_total, after_unit * desired)
         return await self._finish(result)
 
     async def drain(self, ref: str, cluster: str | None) -> dict:

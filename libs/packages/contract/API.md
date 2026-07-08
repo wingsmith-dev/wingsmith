@@ -945,7 +945,19 @@ it sits pending for as long as quota withholds the capacity, and "still waiting"
 operation can say. `deployment.roll` and `deployment.benchmark` keep targeting a single Deployment,
 because rolling and measuring are per-cluster acts.
 
-These three are **plane-local**: they change declared state and re-run the expansion, and they are
+**Reshaping a workload is an operation too, and it names its new count.** `workload.reshape`
+(`{"topology": "aggregated" | "disaggregated", "desired": n, "roles": [{"role": "prefill", "weight": 1}, ...]}`)
+flips a workload between one worker and a prefill/decode pair. `roles` is required on the flip to
+`disaggregated` and refused on the flip back, which is the same refusal a declared topology already
+makes. `desired` is required in both directions and never inherited: the unit under the number
+changes with the topology, so a workload at three replicas would silently become three *groups* —
+seventy-two devices at 1:2 and TP8. `min` and `max` are optional and default to `desired` for the
+same reason. A flip that names the topology already in force is refused; a reshape changes which
+processes exist. The result carries the expected unavailability — every worker reloads its weights,
+and the peak device count is the sum of the two footprints while the old generation is still up —
+so somebody can decide whether to take it now.
+
+These four are **plane-local**: they change declared state and re-run the expansion, and they are
 never dispatched to a cluster. `cluster` is therefore absent from a workload-targeted operation
 rather than required, and what reaches the clusters is ordinary declared state with different
 shares. Every other operation type still needs the cluster its target belongs to.

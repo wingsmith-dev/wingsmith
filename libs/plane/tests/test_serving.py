@@ -66,7 +66,6 @@ from app.modules.workloads.services import check_topology
 from app.modules.workloads.services import declared_roles
 from app.modules.workloads.services import check_footprint
 from app.modules.workloads.services import serving_request
-from app.modules.workloads.services import group_nodes_hint
 from app.modules.workloads.services import check_quantization
 from app.modules.workloads.services import resolved_engine_args
 from app.modules.workloads.services import check_serving_request
@@ -1230,18 +1229,6 @@ def test_a_group_costs_the_sum_of_its_roles_and_device_count_stays_per_worker():
     assert group_devices(8, [a_role("prefill", weight=2), a_role("decode", weight=2)]) == 32
     # An aggregated workload's group is one worker, so the same function answers for both.
     assert group_devices(8, []) == 8
-
-
-def test_a_group_that_does_not_divide_the_capacity_says_so_rather_than_stranding_it():
-    """Three does not go into four, and a B300 costs too much to find that out by accident."""
-    assert group_nodes_hint(4, 3) != ""
-    assert "1 unit" in group_nodes_hint(4, 3)
-    assert "1 device" in group_nodes_hint(4, 3)
-    # Nothing to say when it divides, and nothing to say when there is no number.
-    assert group_nodes_hint(4, 2) == ""
-    assert group_nodes_hint(6, 3) == ""
-    assert group_nodes_hint(0, 3) == ""
-    assert group_nodes_hint(4, 0) == ""
 
 
 def test_the_topology_is_refused_as_part_of_the_whole_serving_request():

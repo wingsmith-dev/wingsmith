@@ -814,6 +814,135 @@ async def test_pausing_disables_every_cluster_copy(sessions) -> None:
     assert not any(d.enabled for d in after.deployments)
 
 
+async def _reshape_op(db, workload_uid: str, **parameters):
+    return await OperationService(db, actor="test").create(
+        OperationCreateRequest(type="workload.reshape", target=workload_uid, parameters=parameters)
+    )
+
+
+async def test_reshaping_flips_the_topology_and_writes_the_roles(sessions) -> None:
+    """The flip is the operation, and the group count it lands on is the one it was given."""
+    await seed_demand(sessions)
+    await seed_supply(sessions, "first", devices=8)
+    await seed_supply(sessions, "second", devices=8)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(**scale(2)))
+
+    async with sessions() as db:
+        operation = await _reshape_op(
+            db,
+            workload.id,
+            topology="disaggregated",
+            desired=1,
+            roles=[{"role": "prefill", "weight": 1}, {"role": "decode", "weight": 2}],
+        )
+    assert operation.phase == "succeeded"
+    assert operation.result["topology"] == {"from": "aggregated", "to": "disaggregated"}
+    assert operation.result["devices_per_unit"] == {"before": 4, "after": 12}
+    assert operation.result["unavailability"]["peak_devices"] == 4 * 2 + 12
+
+    async with sessions() as db:
+        after = await WorkloadService(db).get(workload.id)
+    assert after.serving.topology.serving_topology == "disaggregated"
+    assert {r.role: r.weight for r in after.serving.topology.roles} == {"prefill": 1, "decode": 2}
+    assert after.serving.topology.group_devices == 12
+    assert after.scale.desired == 1
+
+
+async def test_a_flip_that_does_not_say_how_many_it_wants_is_refused(sessions) -> None:
+    """Three replicas would silently become three groups, which is three times the devices."""
+    await seed_demand(sessions)
+    await seed_supply(sessions, "first", devices=8)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(**scale(2)))
+
+    async with sessions() as db:
+        operation = await _reshape_op(
+            db,
+            workload.id,
+            topology="disaggregated",
+            roles=[{"role": "prefill", "weight": 1}, {"role": "decode", "weight": 2}],
+        )
+    assert operation.phase == "failed"
+    assert "desired" in operation.error
+
+    async with sessions() as db:
+        after = await WorkloadService(db).get(workload.id)
+    assert after.serving.topology.serving_topology == "aggregated"
+    assert after.scale.desired == 2
+
+
+async def test_reshaping_to_the_topology_it_already_serves_is_refused(sessions) -> None:
+    """A reshape changes which processes exist; asking for the ones that exist is not one."""
+    await seed_demand(sessions)
+    await seed_supply(sessions, "first", devices=8)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(**scale(1)))
+    async with sessions() as db:
+        operation = await _reshape_op(db, workload.id, topology="aggregated", desired=1)
+    assert operation.phase == "failed"
+    assert "already serves" in operation.error
+
+
+async def test_reshaping_back_to_aggregated_drops_the_roles(sessions) -> None:
+    """The reverse flip carries no roles, and the rows go with the topology that needed them."""
+    await seed_demand(sessions)
+    await seed_supply(sessions, "first", devices=8)
+    await seed_supply(sessions, "second", devices=8)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(**scale(1)))
+    async with sessions() as db:
+        assert (
+            await _reshape_op(
+                db,
+                workload.id,
+                topology="disaggregated",
+                desired=1,
+                roles=[{"role": "prefill", "weight": 1}, {"role": "decode", "weight": 1}],
+            )
+        ).phase == "succeeded"
+
+    async with sessions() as db:
+        operation = await _reshape_op(db, workload.id, topology="aggregated", desired=2)
+    assert operation.phase == "succeeded"
+
+    async with sessions() as db:
+        after = await WorkloadService(db).get(workload.id)
+    assert after.serving.topology.serving_topology == "aggregated"
+    assert after.serving.topology.roles == []
+    assert after.serving.topology.group_devices == 4
+    assert after.scale.desired == 2
+
+
+async def test_every_cluster_hears_about_a_flip_that_moved_no_share(sessions) -> None:
+    """The count did not change and the processes did, so a generation that stood still is a
+    cluster still rendering the old topology."""
+    await seed_demand(sessions)
+    await seed_supply(sessions, "first", devices=8)
+
+    async with sessions() as db:
+        workload = await WorkloadService(db).create(create(**scale(1)))
+    before = {d.cluster_name: d.generation for d in workload.deployments}
+
+    async with sessions() as db:
+        operation = await _reshape_op(
+            db,
+            workload.id,
+            topology="disaggregated",
+            desired=1,
+            roles=[{"role": "prefill", "weight": 1}, {"role": "decode", "weight": 1}],
+        )
+    assert operation.phase == "succeeded"
+
+    async with sessions() as db:
+        after = await WorkloadService(db).get(workload.id)
+    assert all(d.generation > before[d.cluster_name] for d in after.deployments)
+
+
 async def test_draining_takes_a_workload_off_one_cluster(sessions) -> None:
     """The totals are untouched; the share is offered to whoever is left."""
     await seed_demand(sessions)

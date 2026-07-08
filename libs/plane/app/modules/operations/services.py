@@ -45,6 +45,7 @@ TYPES: dict[str, tuple[str, str]] = {
     "cache.warm": (ARTIFACT, "cache_warm"),
     "workload.scale": (WORKLOAD, "scale"),
     "workload.pause": (WORKLOAD, "pause"),
+    "workload.reshape": (WORKLOAD, "reshape"),
     "workload.drain": (WORKLOAD, "drain"),
     "deployment.roll": (DEPLOYMENT, "roll"),
     "deployment.benchmark": (DEPLOYMENT, "benchmark"),
@@ -60,7 +61,7 @@ send; `uncordon` shares `cordon` because the wire kind names the mechanism and
 the parameters say which direction.
 """
 
-PLANE_EXECUTED = frozenset({"workload.scale", "workload.pause", "workload.drain"})
+PLANE_EXECUTED = frozenset({"workload.scale", "workload.pause", "workload.reshape", "workload.drain"})
 """Operations the plane carries out itself, rather than handing to a cluster.
 
 A workload spans clusters, so there is no single agent to dispatch these to. What
@@ -339,6 +340,8 @@ class OperationService:
                 result = await service.rescale(target.uid, parameters)
             elif operation.type == "workload.pause":
                 result = await service.set_paused(target.uid, bool(parameters.get("paused", True)))
+            elif operation.type == "workload.reshape":
+                result = await service.reshape(target.uid, parameters)
             else:
                 result = await service.drain(target.uid, parameters.get("cluster"))
         except (Invalid, NotFound, Conflict) as exc:

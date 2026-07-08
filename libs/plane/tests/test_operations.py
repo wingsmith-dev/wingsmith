@@ -77,6 +77,8 @@ MATRIX = [
     ("workload.scale", DEPLOYMENT, False),
     ("workload.scale", CLUSTER, False),
     ("workload.pause", WORKLOAD, True),
+    ("workload.reshape", WORKLOAD, True),
+    ("workload.reshape", DEPLOYMENT, False),
     ("workload.pause", DEPLOYMENT, False),
     ("workload.drain", WORKLOAD, True),
     ("workload.drain", NODE, False),
