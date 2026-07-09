@@ -655,7 +655,10 @@ const localizeScript = `set -eu
 SRC="$1"
 DST="$2"
 
-if [ -e "$DST/.hangar-complete" ]; then
+# The marker alone is not enough to trust a mirror: an earlier build wrote it over a directory
+# of dangling symlinks. A correct mirror holds files, so a top-level symlink means the copy came
+# from the version that did not dereference, and the mirror is redone.
+if [ -e "$DST/.hangar-complete" ] && [ -z "$(find "$DST" -maxdepth 1 -type l -print 2>/dev/null | head -n1)" ]; then
   echo "weights already on this node: $DST"
   exit 0
 fi
