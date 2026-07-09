@@ -243,6 +243,22 @@ type Config struct {
 	// replicas of one model pull it once between them rather than once each.
 	ModelCachePVC string
 
+	// LocalModelCacheDir is a directory on the node's own disk to mirror the weights into, or
+	// empty to read them from the shared volume as before.
+	//
+	// The shared volume is the right place to *keep* weights and the wrong place to *load* them
+	// from. Measured on a p6-b300.48xlarge reading Kimi-K3 over EFS: 1.47 GB/s per node, with
+	// half of each NFS READ's latency spent queued on the client rather than waiting on the
+	// server. Four nodes loading at once cost 19% over one loading alone, which says the ceiling
+	// is per-client and not the filesystem — so it is not a ceiling more replicas can share
+	// their way out of, and 1.4 TB against it is ~16 minutes of a GPU node doing nothing.
+	//
+	// Off unless a cluster names a path, because it is only worth anything where the node has a
+	// disk large enough to hold a model, and that is a fact about the machine that nothing here
+	// can see. A cluster that sets it and cannot honour it still serves: the mirror is a cache,
+	// and `localizeContainer` falls back to the shared path rather than failing the pod.
+	LocalModelCacheDir string
+
 	// InferenceEndpoint is the in-cluster URL of the shared OpenAI-compatible frontend, which is
 	// what a benchmark points its load at.
 	//
@@ -316,6 +332,7 @@ func Load() (*Config, error) {
 		PrefetchMemory:        env("HANGAR_PREFETCH_MEMORY", ""),
 		PrefetchMemoryLimit:   env("HANGAR_PREFETCH_MEMORY_LIMIT", ""),
 		ModelCachePVC:         env("HANGAR_MODEL_CACHE_PVC", "model-cache"),
+		LocalModelCacheDir:    env("HANGAR_LOCAL_MODEL_CACHE_DIR", ""),
 		EnginePullSecrets:     envList("HANGAR_ENGINE_PULL_SECRETS"),
 
 		FrontendEnabled:                envBool("HANGAR_FRONTEND_ENABLED", false),

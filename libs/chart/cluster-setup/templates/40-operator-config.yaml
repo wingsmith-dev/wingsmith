@@ -25,6 +25,9 @@ data:
   {{- end }}
 
   HANGAR_MODEL_CACHE_PVC: {{ .Values.modelCache.pvcName | quote }}
+  {{- with .Values.modelCache.localDir }}
+  HANGAR_LOCAL_MODEL_CACHE_DIR: {{ . | quote }}
+  {{- end }}
 
   HANGAR_MULTINODE: {{ .Values.multinode.enabled | quote }}
 

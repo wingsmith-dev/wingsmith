@@ -68,6 +68,24 @@ modelCache:
   storageClass: ""
   accessMode: ReadWriteMany
   size: 500Gi
+  # A directory on the node's own disk to mirror weights into before serving them, or
+  # empty to read them from the shared volume as before.
+  #
+  # The shared volume is where weights are kept; it is a poor place to load them from.
+  # Measured on a p6-b300.48xlarge reading Kimi-K3 over EFS: 1.47 GB/s per node, half of
+  # each NFS read's latency spent queued on the client. Four nodes loading together cost
+  # 19% over one alone, so the ceiling is per-client rather than the filesystem's, and
+  # 1.4 TB against it is ~16 minutes of a GPU node doing nothing.
+  #
+  # Set it only where the nodes have a disk that can hold a model. The instance store on
+  # a GPU node usually can and its root volume usually cannot; on a node with neither,
+  # the copy is skipped and the engine reads the shared cache exactly as before, so a
+  # wrong answer here costs a slow start and never a failed one.
+  #
+  # The mirror outlives the pod and is wiped with the node, which on spot capacity means
+  # a reclaimed node pays the copy once more. That is the same copy it would have paid
+  # reading over NFS, moved earlier.
+  localDir: ""
 
 # An override, not the switch. Leave it off.
 #

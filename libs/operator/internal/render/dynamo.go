@@ -38,6 +38,26 @@ import (
 // with nothing in either pod's log to say the two were different.
 const HFHome = "/models/hf"
 
+// LocalModels is where a node's own copy of the weights is mounted inside the worker.
+//
+// A second root rather than a mount over /models, because the fallback has to stay reachable: the
+// init container reads the shared copy and writes the local one in the same filesystem namespace,
+// and a worker whose mirror is a symlink back to /models needs both paths to resolve at once.
+const LocalModels = "/models-local"
+
+// localModelPath mirrors a path under /models onto the node-local root, preserving the layout.
+//
+// The layout is preserved rather than flattened so that a directory holding a repo's snapshot
+// keeps the sibling files huggingface_hub and the engines expect to find next to it, and so that
+// the two roots can be compared by eye when one of them is wrong.
+func localModelPath(shared string) (string, bool) {
+	rest, ok := strings.CutPrefix(shared, "/models/")
+	if !ok {
+		return "", false
+	}
+	return LocalModels + "/" + rest, true
+}
+
 // GVK is the Dynamo graph deployment this operator renders into.
 var GVK = schema.GroupVersionKind{Group: "nvidia.com", Version: "v1beta1", Kind: "DynamoGraphDeployment"}
 
@@ -49,6 +69,7 @@ type Options struct {
 	CachePoolValue      string
 	CacheTaintKey       string
 	ModelCachePVC       string
+	LocalModelCacheDir  string
 	PrefetchCPU         string
 	PrefetchMemory      string
 	PrefetchMemoryLimit string
@@ -609,6 +630,117 @@ func Replicas(dep wire.DeploymentDesired) int {
 	return dep.MinReplicas
 }
 
+// localizeScript mirrors one model directory onto the node's own disk before the engine starts.
+//
+// Written as a shell script rather than a Go loop because it runs where the weights are, and the
+// only thing it needs is to be readable by whoever is standing in front of a worker that started
+// slowly and wants to know which copy it read.
+//
+// The contract with the engine is that $DST always resolves to the weights afterwards. It is a
+// real directory when the mirror succeeded and a symlink to the shared copy when it did not, so
+// the worker's --model argument is the same string either way and no argument has to be rendered
+// conditionally on something only the node knows.
+//
+// Failure is a slow start and never a broken one, which is what makes this safe to turn on ahead
+// of the disk being right. A node with no room, a read error part-way through, an interrupted
+// previous attempt: each ends at the symlink, and the engine reads over NFS exactly as it did
+// before this existed.
+//
+// $DST/.hangar-complete is the marker, written last. Its absence is what makes a partial copy
+// worthless rather than dangerous — a mirror interrupted by a spot reclaim is discarded and
+// redone rather than served as if it were whole, and a half-written tensor file is the kind of
+// corruption that surfaces as garbage output rather than as an error.
+const localizeScript = `set -eu
+SRC="$1"
+DST="$2"
+
+if [ -e "$DST/.hangar-complete" ]; then
+  echo "weights already on this node: $DST"
+  exit 0
+fi
+
+fallback() {
+  echo "localizing failed ($1); reading weights from the shared cache instead"
+  rm -rf "$DST" "$DST.partial"
+  mkdir -p "$(dirname "$DST")"
+  ln -sfn "$SRC" "$DST"
+  exit 0
+}
+
+# Checked before copying rather than discovered during it: a node whose disk cannot hold the model
+# would otherwise spend the whole download finding that out, and the fallback is free.
+need=$(du -sk "$SRC" | cut -f1)
+mkdir -p "$(dirname "$DST")"
+free=$(df -Pk "$(dirname "$DST")" | awk "NR==2 {print \$4}")
+if [ "$free" -lt "$need" ]; then
+  fallback "need ${need}K, ${free}K free"
+fi
+
+echo "copying ${need}K from $SRC to $DST"
+rm -rf "$DST" "$DST.partial"
+mkdir -p "$DST.partial"
+cp -a "$SRC/." "$DST.partial/" || fallback "copy error"
+touch "$DST.partial/.hangar-complete"
+mv "$DST.partial" "$DST"
+echo "weights localized: $DST"
+`
+
+// localizeContainers is the init container that fills the node-local mirror, or nothing.
+//
+// It runs on the engine image so that the copy sees the same filesystem the engine will, and it
+// asks for no accelerator: this is a file copy, and a pod that requested a GPU for it would hold
+// eight of them idle for the length of the download.
+func localizeContainers(in Inputs, opts Options, image string) []corev1.Container {
+	if opts.LocalModelCacheDir == "" {
+		return nil
+	}
+	shared, isPath, err := modelRef(in.Artifact)
+	if err != nil || !isPath {
+		return nil
+	}
+	local, ok := localModelPath(shared)
+	if !ok {
+		return nil
+	}
+	return []corev1.Container{{
+		Name:                     "localize-weights",
+		Image:                    image,
+		Command:                  []string{"sh", "-c", localizeScript, "localize", shared, local},
+		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
+		VolumeMounts: append(localModelMount(opts), corev1.VolumeMount{
+			Name: "model-cache", MountPath: "/models", ReadOnly: true,
+		}),
+	}}
+}
+
+// localModelVolume is the node's own disk, or nothing.
+//
+// A hostPath and not an ephemeral volume, because the point is to outlive the pod: a mirror that
+// were wiped on every restart would pay the copy every time and never once collect on it, which
+// is strictly worse than reading from the shared cache.
+//
+// DirectoryOrCreate so that a node which has never held a model is not a scheduling failure.
+func localModelVolume(opts Options) []corev1.Volume {
+	if opts.LocalModelCacheDir == "" {
+		return nil
+	}
+	kind := corev1.HostPathDirectoryOrCreate
+	return []corev1.Volume{{
+		Name: "local-model-cache",
+		VolumeSource: corev1.VolumeSource{
+			HostPath: &corev1.HostPathVolumeSource{Path: opts.LocalModelCacheDir, Type: &kind},
+		},
+	}}
+}
+
+// localModelMount mounts that disk, writable: the init container fills it and the engine reads it.
+func localModelMount(opts Options) []corev1.VolumeMount {
+	if opts.LocalModelCacheDir == "" {
+		return nil
+	}
+	return []corev1.VolumeMount{{Name: "local-model-cache", MountPath: LocalModels}}
+}
+
 func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) {
 	devices := in.Layout.devices(in.Deployment)
 
@@ -632,7 +764,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 		return nil, fmt.Errorf("deployment %s names no engine runtime image", in.Deployment.DeploymentID)
 	}
 
-	args, err := engineArgs(in, role)
+	args, err := engineArgs(in, opts, role)
 	if err != nil {
 		return nil, err
 	}
@@ -651,7 +783,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 			Value:    "true",
 			Effect:   corev1.TaintEffectNoSchedule,
 		}},
-		Volumes: []corev1.Volume{
+		Volumes: append(localModelVolume(opts), []corev1.Volume{
 			{
 				Name: "model-cache",
 				VolumeSource: corev1.VolumeSource{
@@ -664,7 +796,8 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 					EmptyDir: &corev1.EmptyDirVolumeSource{Medium: corev1.StorageMediumMemory, SizeLimit: &shm},
 				},
 			},
-		},
+		}...),
+		InitContainers: localizeContainers(in, opts, image),
 		Containers: []corev1.Container{{
 			Name:       "main",
 			Image:      image,
@@ -700,10 +833,10 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 					Optional:             ptr(true),
 				},
 			}},
-			VolumeMounts: []corev1.VolumeMount{
+			VolumeMounts: append(localModelMount(opts), []corev1.VolumeMount{
 				{Name: "model-cache", MountPath: "/models"},
 				{Name: "dshm", MountPath: "/dev/shm"},
-			},
+			}...),
 			Resources: corev1.ResourceRequirements{Requests: requests, Limits: limits},
 		}},
 	}
@@ -1153,10 +1286,17 @@ func publishesKVEvents(in Inputs, role workerRole) bool {
 // The serving fields are rendered first and engine_args second, so an explicit argument wins over
 // the derived one. That direction is deliberate: engine_args is the escape hatch for a flag this
 // operator has never heard of, and an escape hatch that loses to a default is not one.
-func engineArgs(in Inputs, role workerRole) ([]string, error) {
+func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 	model, isPath, err := modelRef(in.Artifact)
 	if err != nil {
 		return nil, err
+	}
+	// Only a path can be mirrored. A bare repo id is resolved by huggingface_hub against HF_HOME,
+	// which still points at the shared cache, so there is no local directory to name.
+	if isPath && opts.LocalModelCacheDir != "" {
+		if local, ok := localModelPath(model); ok {
+			model = local
+		}
 	}
 
 	derived := map[string]string{

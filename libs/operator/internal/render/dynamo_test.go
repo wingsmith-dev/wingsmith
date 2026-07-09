@@ -288,7 +288,7 @@ func TestTheEngineIsPointedAtThePinnedRevision(t *testing.T) {
 		{Kind: "hf", URI: "hf://openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee"},
 	}
 
-	args, err := engineArgs(in, workerRole{})
+	args, err := engineArgs(in, Options{}, workerRole{})
 	if err != nil {
 		t.Fatalf("args: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestAnUnpinnedSourceKeepsTheRepoID(t *testing.T) {
 	in := testInputs()
 	in.Artifact.Sources = []wire.ArtifactSource{{Kind: "hf", URI: "hf://openai/gpt-oss-20b"}}
 
-	args, err := engineArgs(in, workerRole{})
+	args, err := engineArgs(in, Options{}, workerRole{})
 	if err != nil {
 		t.Fatalf("args: %v", err)
 	}
@@ -1160,7 +1160,7 @@ func TestEachRoleGetsItsOwnDerivedFlagsAndArguments(t *testing.T) {
 					role = r
 				}
 			}
-			args, err := engineArgs(in, role)
+			args, err := engineArgs(in, Options{}, role)
 			if err != nil {
 				t.Fatalf("engineArgs: %v", err)
 			}
@@ -1194,7 +1194,7 @@ func TestEachRoleGetsItsOwnDerivedFlagsAndArguments(t *testing.T) {
 
 // An aggregated worker gets neither flag, which is the other half of the byte-identity bar.
 func TestAnAggregatedWorkerGetsNoTopologyFlags(t *testing.T) {
-	args, err := engineArgs(testInputs(), workerRole{})
+	args, err := engineArgs(testInputs(), Options{}, workerRole{})
 	if err != nil {
 		t.Fatalf("engineArgs: %v", err)
 	}
@@ -1273,7 +1273,7 @@ func TestTheWarmPathIsRenderedForDisaggregatedDeployments(t *testing.T) {
 		t.Fatalf("workerRoles: %v", err)
 	}
 	for _, role := range roles {
-		args, err := engineArgs(in, role)
+		args, err := engineArgs(in, Options{}, role)
 		if err != nil {
 			t.Fatalf("engineArgs: %v", err)
 		}
@@ -1306,7 +1306,7 @@ func TestTheWarmPathIsRenderedForDisaggregatedDeployments(t *testing.T) {
 func TestPrefixCachingIsUnchangedForAnAggregatedWorker(t *testing.T) {
 	in := testInputs()
 	in.Deployment.Serving.PrefixCacheEnabled = false
-	args, err := engineArgs(in, workerRole{})
+	args, err := engineArgs(in, Options{}, workerRole{})
 	if err != nil {
 		t.Fatalf("engineArgs: %v", err)
 	}
@@ -1367,7 +1367,7 @@ func TestTheFrontendRoutesByKVEvenAtOneReplica(t *testing.T) {
 func TestAnAggregatedWorkerPublishesTheEventsTheRouterIndexes(t *testing.T) {
 	in := testInputs()
 	in.Deployment.Serving.PrefixCacheEnabled = true
-	args, err := engineArgs(in, workerRole{})
+	args, err := engineArgs(in, Options{}, workerRole{})
 	if err != nil {
 		t.Fatalf("engineArgs: %v", err)
 	}
@@ -1389,7 +1389,7 @@ func TestAWorkloadMayNameItsOwnKVEventsConfig(t *testing.T) {
 	in := testInputs()
 	in.Deployment.Serving.PrefixCacheEnabled = true
 	in.Deployment.Serving.EngineArgs = map[string]string{"kv-events-config": own}
-	args, err := engineArgs(in, workerRole{})
+	args, err := engineArgs(in, Options{}, workerRole{})
 	if err != nil {
 		t.Fatalf("engineArgs: %v", err)
 	}
@@ -1446,4 +1446,97 @@ func TestAnOverlayStillOwnsTheRolloutStrategy(t *testing.T) {
 	if got[MaxSurgeAnnotation] != "0" {
 		t.Fatalf("an overlay that adds one annotation dropped the rendered ones: %v", got)
 	}
+}
+
+// A cluster that names no local directory renders exactly what it rendered before this existed.
+// The mirror is an optimisation, and an optimisation that changes the pod on a cluster which did
+// not ask for it is a fleet-wide reload nobody declared.
+func TestLocalModelCacheOffByDefault(t *testing.T) {
+	in := testInputs()
+	in.Artifact.Sources = []wire.ArtifactSource{
+		{Kind: "hf", URI: "hf://openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee"},
+	}
+	spec, err := podSpec(in, Options{ModelCachePVC: "model-cache"}, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spec.InitContainers) != 0 {
+		t.Errorf("init containers = %d, want 0 with no local dir named", len(spec.InitContainers))
+	}
+	for _, v := range spec.Volumes {
+		if v.Name == "local-model-cache" {
+			t.Error("rendered a host path volume on a cluster that named no local directory")
+		}
+	}
+	args, err := engineArgs(in, Options{}, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model := argValue(args, "--model"); !strings.HasPrefix(model, "/models/") {
+		t.Errorf("--model = %q, want it under the shared cache", model)
+	}
+}
+
+// With a directory named, the engine reads the mirror and the init container fills it. The two
+// have to agree on the path: a worker pointed at a directory nothing populates does not fail, it
+// hangs on a download it cannot see, so the assertion is that the argument and the copy's
+// destination are the same string.
+func TestLocalModelCacheMirrorsSharedPath(t *testing.T) {
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/var/lib/hangar/models"}
+	in := testInputs()
+	in.Artifact.Sources = []wire.ArtifactSource{
+		{Kind: "hf", URI: "hf://openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee"},
+	}
+	spec, err := podSpec(in, opts, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(spec.InitContainers) != 1 {
+		t.Fatalf("init containers = %d, want 1", len(spec.InitContainers))
+	}
+	init := spec.InitContainers[0]
+	if len(init.Command) != 6 {
+		t.Fatalf("command = %v, want sh -c script $0 src dst", init.Command)
+	}
+	shared, dst := init.Command[4], init.Command[5]
+	if !strings.HasPrefix(shared, "/models/") {
+		t.Errorf("source = %q, want the shared cache", shared)
+	}
+	if want, _ := localModelPath(shared); dst != want {
+		t.Errorf("destination = %q, want %q", dst, want)
+	}
+	if len(init.Resources.Limits) != 0 {
+		t.Errorf("init container asks for %v; a file copy holds no accelerator", init.Resources.Limits)
+	}
+
+	args, err := engineArgs(in, opts, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if model := argValue(args, "--model"); model != dst {
+		t.Errorf("--model = %q, but the copy writes %q; the engine would read an empty path", model, dst)
+	}
+
+	var host *corev1.Volume
+	for i := range spec.Volumes {
+		if spec.Volumes[i].Name == "local-model-cache" {
+			host = &spec.Volumes[i]
+		}
+	}
+	if host == nil || host.HostPath == nil {
+		t.Fatal("no host path volume for the local mirror")
+	}
+	if host.HostPath.Path != opts.LocalModelCacheDir {
+		t.Errorf("host path = %q, want %q", host.HostPath.Path, opts.LocalModelCacheDir)
+	}
+}
+
+// argValue reads the value of a flag from a rendered command line.
+func argValue(args []string, flag string) string {
+	for i, arg := range args {
+		if arg == flag && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
 }

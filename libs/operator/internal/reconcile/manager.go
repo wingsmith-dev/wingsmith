@@ -112,6 +112,7 @@ func RenderOptions(cfg *config.Config) render.Options {
 		PoolLabelKey:        cfg.PoolLabelKey,
 		GPUPoolValue:        cfg.GPUPoolValue,
 		ModelCachePVC:       cfg.ModelCachePVC,
+		LocalModelCacheDir:  cfg.LocalModelCacheDir,
 		CachePoolValue:      cfg.CachePoolValue,
 		CacheTaintKey:       cfg.CacheTaintKey,
 		PrefetchCPU:         cfg.PrefetchCPU,
