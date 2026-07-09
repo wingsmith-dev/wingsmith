@@ -724,6 +724,71 @@ func localizeContainers(in Inputs, opts Options, image string) []corev1.Containe
 	}}
 }
 
+// frontendLocalizeScript copies a model's metadata, and deliberately not its weights.
+//
+// The frontend materializes a model card by opening the path the worker advertised. Once the
+// worker advertises the node-local mirror, the frontend has to be able to open that same string --
+// but the frontend runs on ordinary nodes with no mirror on them and no reason to hold 1.4 TB it
+// will never read. `ignore_weights` is already true on its side; the tokenizer and the configs are
+// all it wants, and they are a few megabytes.
+//
+// So this is the same path with none of the bulk, into an emptyDir rather than the host disk: it
+// is per-pod scratch, it cannot be mistaken for a real mirror by a worker that later lands on the
+// node, and it writes no `.hangar-complete`.
+const frontendLocalizeScript = `set -eu
+SRC="$1"
+DST="$2"
+
+mkdir -p "$DST"
+# Everything a tokenizer or a config might be, and nothing that could be a tensor. Listing what to
+# take rather than what to skip: a new weight file extension would otherwise be copied by default,
+# and 1.4 TB into an emptyDir fills the node's disk rather than failing honestly.
+find "$SRC" -maxdepth 1 -type f \( -name '*.json' -o -name '*.txt' -o -name '*.py' -o -name '*.model' -o -name '*.jinja' \) \
+  -exec cp -L {} "$DST/" \;
+echo "model metadata staged at $DST:"
+ls "$DST"
+`
+
+// frontendLocalizeContainers gives the frontend the path the workers advertise.
+//
+// Without it the frontend reads `/models-local/...` as a Hugging Face repo id, asks the Hub for a
+// model of that name, gets a 404 and retries forever -- so no model card is ever published, and
+// every request to a fleet of perfectly healthy workers is answered with an empty model list.
+func frontendLocalizeContainers(in Inputs, opts Options, image string) []corev1.Container {
+	if opts.LocalModelCacheDir == "" {
+		return nil
+	}
+	shared, isPath, err := modelRef(in.Artifact)
+	if err != nil || !isPath {
+		return nil
+	}
+	local, ok := localModelPath(shared)
+	if !ok {
+		return nil
+	}
+	return []corev1.Container{{
+		Name:                     "stage-model-metadata",
+		Image:                    image,
+		Command:                  []string{"sh", "-c", frontendLocalizeScript, "stage", shared, local},
+		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
+		VolumeMounts: []corev1.VolumeMount{
+			{Name: "local-model-cache", MountPath: LocalModels},
+			{Name: "model-cache", MountPath: "/models", ReadOnly: true},
+		},
+	}}
+}
+
+// frontendLocalModelVolume is scratch, not the host disk. See frontendLocalizeScript.
+func frontendLocalModelVolume(opts Options) []corev1.Volume {
+	if opts.LocalModelCacheDir == "" {
+		return nil
+	}
+	return []corev1.Volume{{
+		Name:         "local-model-cache",
+		VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+	}}
+}
+
 // localModelVolume is the node's own disk, or nothing.
 //
 // A hostPath and not an ephemeral volume, because the point is to outlive the pod: a mirror that
@@ -1106,6 +1171,17 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 		}}
 		spec.Containers[0].VolumeMounts = []corev1.VolumeMount{
 			{Name: "model-cache", MountPath: "/models", ReadOnly: true},
+		}
+
+		// The workers advertise the node-local mirror, so the frontend has to be able to open
+		// that same path -- see frontendLocalizeScript. Nested inside the cache-claim branch
+		// because the metadata is copied *from* the claim: with no cache volume there is
+		// nothing to stage from, and the workers are not localizing either.
+		if init := frontendLocalizeContainers(in, opts, image); len(init) > 0 {
+			spec.InitContainers = init
+			spec.Volumes = append(spec.Volumes, frontendLocalModelVolume(opts)...)
+			spec.Containers[0].VolumeMounts = append(spec.Containers[0].VolumeMounts,
+				corev1.VolumeMount{Name: "local-model-cache", MountPath: LocalModels, ReadOnly: true})
 		}
 	}
 

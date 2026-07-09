@@ -1647,3 +1647,73 @@ func TestOffloadPoolBoundsWorkerMemory(t *testing.T) {
 		t.Error("memory limit rendered with the tier off; that is a fleet-wide OOMKill risk for no gain")
 	}
 }
+
+// A worker that advertises the node-local mirror publishes a path the frontend must be able to
+// open. If it cannot, it reads the path as a Hugging Face repo id, is answered 404, and publishes
+// no model card at all — so a fleet of healthy workers serves an empty model list while every
+// probe passes. That happened on site-d on 2026-09-09 and voided a whole rung.
+func TestFrontendCanOpenThePathTheWorkersAdvertise(t *testing.T) {
+	in := testInputs()
+	// A pinned source, because only a pinned revision resolves to a snapshot directory — which is
+	// the only case where the worker advertises a path at all.
+	in.Artifact.Sources = []wire.ArtifactSource{
+		{Kind: "hf", URI: "hf://openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee"},
+	}
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/disks/0/models"}
+
+	worker, err := engineArgs(in, opts, workerRole{Role: "prefill"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	advertised := argValue(worker, "--model")
+	if !strings.HasPrefix(advertised, LocalModels) {
+		t.Fatalf("worker advertises %q, which is not the local mirror; this test is checking the wrong thing", advertised)
+	}
+
+	spec, err := frontendPodSpec(in, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var mounted bool
+	for _, m := range spec.Containers[0].VolumeMounts {
+		if m.MountPath == LocalModels {
+			mounted = true
+		}
+	}
+	if !mounted {
+		t.Errorf("frontend has no %s mount, so it cannot resolve %q and will serve no model",
+			LocalModels, advertised)
+	}
+	if len(spec.InitContainers) == 0 {
+		t.Fatal("frontend stages no model metadata; the mount would be empty")
+	}
+
+	// Scratch, not the host disk: a frontend's partial copy must never be mistaken for a real
+	// mirror by a worker that later lands on the same node.
+	for _, v := range spec.Volumes {
+		if v.Name == "local-model-cache" {
+			if v.EmptyDir == nil {
+				t.Error("frontend's local model volume is not an emptyDir; a metadata-only copy " +
+					"on the host disk can be mistaken for a complete mirror")
+			}
+			if v.HostPath != nil {
+				t.Error("frontend must not mount the host mirror")
+			}
+		}
+	}
+
+	// And it must not try to copy the weights into that scratch space.
+	script := strings.Join(spec.InitContainers[0].Command, " ")
+	if strings.Contains(script, "safetensors") || !strings.Contains(script, "-name '*.json'") {
+		t.Error("frontend staging should copy metadata by allow-list, never weights")
+	}
+
+	// Off by default: a cluster with no local mirror configured renders exactly as before.
+	plain, err := frontendPodSpec(in, Options{ModelCachePVC: "model-cache"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plain.InitContainers) != 0 {
+		t.Error("frontend stages metadata with no local mirror configured")
+	}
+}
