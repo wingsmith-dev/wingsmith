@@ -811,6 +811,28 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 		requests[corev1.ResourceEphemeralStorage] = *resource.NewQuantity(int64(*n)*1024*1024*1024, resource.BinarySI)
 	}
 
+	// A host KV offload pool is the one allocation here that is both large and unbounded by the
+	// GPU, so it is the one that needs a ceiling: without a limit the pool grows into the node
+	// and the kernel picks a victim, which on a node running one worker per eight GPUs means the
+	// OOM killer takes the thing we are measuring.
+	//
+	// Derived from the pool rather than declared, so the number has a reason. The limit is the
+	// pool plus the declared request -- the pool is what the connector adds on top of everything
+	// the worker already needed, and the request is the best available statement of that. A
+	// deployment that turned the tier on without declaring memory gets no limit, because a
+	// ceiling computed from an unknown floor is a guess, and an OOMKill mid-benchmark is worse
+	// than an unbounded pool we are watching.
+	//
+	// Only when the tier is on: every other worker in the fleet keeps rendering exactly as before,
+	// which keeps a change made for one experiment from becoming a fleet-wide OOMKill risk.
+	if gib, on := offloadTier(in); on {
+		if declared, ok := requests[corev1.ResourceMemory]; ok {
+			ceiling := declared.DeepCopy()
+			ceiling.Add(*resource.NewQuantity(int64(gib)*1024*1024*1024, resource.BinarySI))
+			limits[corev1.ResourceMemory] = ceiling
+		}
+	}
+
 	image := ""
 	if declared := in.Deployment.Serving.RuntimeImage(); declared != nil {
 		image = strings.TrimSpace(*declared)
@@ -1300,6 +1322,69 @@ func engineModule(engine string) string {
 // this constant does not answer it.
 const kvTransferConfig = `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`
 
+// offloadTier reads the host-memory KV offload switch out of the workload's prefix_cache_config.
+//
+// `offload: host` turns it on and `offload_gib` sizes it; anything else is off. The field already
+// runs plane -> DB -> digest -> wire and was ignored here, so turning the tier on is a workload
+// edit and not a release — which is what makes it possible to measure with and without it on the
+// same hardware in one night.
+//
+// Sizing is in GiB because that is the unit the person choosing it thinks in, and it is converted
+// to the bytes vLLM demands here rather than in the workload. `cpu_bytes_to_use` is the whole
+// instance's pool across every TP rank, not per rank -- `CPUOffloadingSpec` multiplies the
+// per-worker block size by world_size before dividing (kv_offload/cpu/spec.py:88-99) -- so the
+// number means what a reader expects it to mean and is not silently multiplied by eight.
+func offloadTier(in Inputs) (gib int, on bool) {
+	cfg := in.Deployment.Serving.PrefixCacheConfig
+	if !strings.EqualFold(strings.TrimSpace(cfg["offload"]), "host") {
+		return 0, false
+	}
+	// A tier that is on but unsized is a configuration error the engine would report as
+	// `cpu_bytes_to_use must be specified`, several minutes into a load. Default it instead.
+	gib = 512
+	if n, err := strconv.Atoi(strings.TrimSpace(cfg["offload_gib"])); err == nil && n > 0 {
+		gib = n
+	}
+	return gib, true
+}
+
+// roleKVTransferConfig is the connector stack for one role.
+//
+// Without the tier, both roles get NixlConnector and this is the constant above.
+//
+// With it, **prefill** gets vLLM's own `MultiConnector` wrapping `OffloadingConnector` and
+// `NixlConnector`, and **decode** is left alone. That asymmetry is the point rather than an
+// omission: prefill is the only role whose cache can be hit, because turn N+1 resends turn N's
+// context, and decode never prefills. Offloading decode's blocks would spend host bandwidth
+// writing what nothing reads. `OffloadingConnector` defaults `offload_prompt_only` to true
+// (kv_offload/base.py:511), which is the same judgement made one layer down.
+//
+// This is vLLM's `MultiConnector` and deliberately not Dynamo's `PdConnector`. `PdConnector`
+// restricts its first connector to `[DynamoConnector, LMCacheConnectorV1, FlexKVConnectorV1]`,
+// none of which implement `SupportsHMA` -- which K3 requires, because its SSM layers need the
+// hybrid KV cache manager. Using it would mean patching the Dynamo runtime to widen that list.
+// `MultiConnector` has no such list: it asserts only that every child supports HMA
+// (multi_connector.py:187-194), and `OffloadingConnector`, `NixlConnector` and `MultiConnector`
+// itself all do. So the tier costs no runtime patch at all.
+//
+// `blocks_per_chunk` is left at its default of 1 rather than set through `block_size`. The two are
+// mutually exclusive and `block_size` is in *tokens* that must divide the engine's block size
+// exactly (offloading/config.py:59-88); since nothing here sets `--block-size`, naming a chunk
+// size would be asserting a relationship to a default we do not control.
+func roleKVTransferConfig(in Inputs, role workerRole) string {
+	gib, on := offloadTier(in)
+	if !on || role.Role != "prefill" {
+		return kvTransferConfig
+	}
+	return fmt.Sprintf(
+		`{"kv_connector":"MultiConnector","kv_role":"kv_both","kv_connector_extra_config":`+
+			`{"connectors":[{"kv_connector":"OffloadingConnector","kv_role":"kv_both",`+
+			`"kv_connector_extra_config":{"spec_name":"CPUOffloadingSpec","cpu_bytes_to_use":%d}},`+
+			`{"kv_connector":"NixlConnector","kv_role":"kv_both"}]}}`,
+		int64(gib)*1024*1024*1024,
+	)
+}
+
 // kvEventsConfig makes a worker publish which blocks it holds, which is what the frontend indexes
 // to route a conversation back to the worker that already prefilled it.
 //
@@ -1424,7 +1509,7 @@ func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 
 	if role.Role != "" {
 		derived["disaggregation-mode"] = role.Role
-		derived["kv-transfer-config"] = kvTransferConfig
+		derived["kv-transfer-config"] = roleKVTransferConfig(in, role)
 		if role.Spec != nil {
 			if v := role.Spec.MaxBatchTokens; v != nil {
 				derived["max-num-batched-tokens"] = strconv.Itoa(*v)

@@ -1,6 +1,7 @@
 package render
 
 import (
+	"encoding/json"
 	"reflect"
 	"slices"
 	"sort"
@@ -1567,5 +1568,82 @@ func TestWorkerProbesDoNotKillASaturatedWorker(t *testing.T) {
 	}
 	if liveBudget < 120 {
 		t.Errorf("liveness tolerates only %ds; a loaded worker stalls longer than that", liveBudget)
+	}
+}
+
+// The offload tier is off unless a workload asks for it, and asking for it must not change decode.
+//
+// Both halves matter. The first is what makes the tier measurable — the same fleet renders with and
+// without it from a workload edit — and the second is the asymmetry the tier is built on: prefill
+// is the only role whose cache can be hit, so decode offloading would spend host bandwidth writing
+// blocks nothing reads.
+func TestHostOffloadTierIsOptInAndPrefillOnly(t *testing.T) {
+	render := func(cfg map[string]string, role string) []string {
+		in := testInputs()
+		in.Deployment.Serving.PrefixCacheConfig = cfg
+		args, err := engineArgs(in, Options{ModelCachePVC: "model-cache"}, workerRole{Role: role})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return args
+	}
+
+	for _, role := range []string{"prefill", "decode"} {
+		if got := argValue(render(nil, role), "--kv-transfer-config"); got != kvTransferConfig {
+			t.Errorf("%s with no prefix_cache_config renders %q; the tier must be opt-in", role, got)
+		}
+	}
+
+	on := map[string]string{"offload": "host", "offload_gib": "256"}
+	if got := argValue(render(on, "decode"), "--kv-transfer-config"); got != kvTransferConfig {
+		t.Errorf("decode renders %q with the tier on; decode never prefills and must not offload", got)
+	}
+
+	prefill := argValue(render(on, "prefill"), "--kv-transfer-config")
+	if !strings.Contains(prefill, `"kv_connector":"MultiConnector"`) ||
+		!strings.Contains(prefill, `"kv_connector":"OffloadingConnector"`) ||
+		!strings.Contains(prefill, `"kv_connector":"NixlConnector"`) {
+		t.Fatalf("prefill renders %q; it must wrap both the offload and the transport connector", prefill)
+	}
+	// GiB in, bytes out — the conversion is the whole reason the field is not passed through.
+	if want := `"cpu_bytes_to_use":274877906944`; !strings.Contains(prefill, want) {
+		t.Errorf("prefill renders %q; 256 GiB must reach the engine as %s", prefill, want)
+	}
+	// The JSON reaches an engine that parses it, so it has to actually be JSON.
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(prefill), &parsed); err != nil {
+		t.Fatalf("prefill kv-transfer-config is not valid JSON: %v", err)
+	}
+}
+
+// An unbounded host pool on a node running one worker per eight GPUs means the OOM killer chooses
+// between the pool and the thing being measured. The ceiling has to leave room for everything the
+// worker needed before the pool existed, which is what the declared request states.
+func TestOffloadPoolBoundsWorkerMemory(t *testing.T) {
+	in := testInputs()
+	in.Deployment.Serving.PrefixCacheConfig = map[string]string{"offload": "host", "offload_gib": "256"}
+	mib := int64(128 * 1024)
+	in.Deployment.Serving.Resources.MemoryMiB = &mib
+
+	spec, err := podSpec(in, Options{ModelCachePVC: "model-cache"}, workerRole{Role: "prefill"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	limit, ok := spec.Containers[0].Resources.Limits[corev1.ResourceMemory]
+	if !ok {
+		t.Fatal("no memory limit with the offload tier on; the pool would grow into the node")
+	}
+	if want := int64(384) * 1024 * 1024 * 1024; limit.Value() != want {
+		t.Errorf("memory limit = %d, want %d (128 GiB requested + a 256 GiB pool)", limit.Value(), want)
+	}
+
+	// Off, nothing is bounded — every other worker in the fleet renders as it did before.
+	in.Deployment.Serving.PrefixCacheConfig = nil
+	spec, err = podSpec(in, Options{ModelCachePVC: "model-cache"}, workerRole{Role: "prefill"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := spec.Containers[0].Resources.Limits[corev1.ResourceMemory]; ok {
+		t.Error("memory limit rendered with the tier off; that is a fleet-wide OOMKill risk for no gain")
 	}
 }
