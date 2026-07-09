@@ -18,7 +18,10 @@ model = "kimi-k3"
 token_env = "MOONSHOT_API_KEY"
 
 context_window = 1048576
-modalities = ["text", "image"]
+# `supports_video_in` is true in this endpoint's own /v1/models entry, and a base64
+# mp4 is answered 200 with a description of the video. Both were measured on
+# 2026-09-08; the claim is not taken from documentation.
+modalities = ["text", "image", "video"]
 protocols = ["chat_completions", "responses", "messages"]
 timeout = 180.0
 

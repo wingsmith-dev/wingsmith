@@ -214,3 +214,82 @@ def efforts(session: Session) -> dict[str, Any]:
         "locations": [f"{level}={locations[level]}" for level in sorted(locations)],
         "all_accepted": all(200 <= status < 300 for status in statuses.values()),
     }
+
+
+TEMPLATE_KWARGS = "chat_template_kwargs"
+ARITHMETIC = "What is 17 * 24? Answer with the number only."
+
+
+@probe(
+    id="thinking.template_kwargs",
+    title="Whether the open-source thinking switch is honoured by an endpoint that speaks another dialect",
+    requirement="Thinking Mode 2 — thinking can be switched off, consistent with the provider",
+    compare=("status", "reasoning_location", "suppressed", "precedence"),
+)
+def template_kwargs(session: Session) -> dict[str, Any]:
+    """`chat_template_kwargs.thinking` sent regardless of the dialect the profile declares.
+
+    Every other probe in this module builds its request from `profile.thinking`, and
+    that is the rule. This one deliberately does not, and the reason is that the field
+    is not a dialect at all. `thinking.type` is one vendor's parameter, and an
+    endpoint that does not speak it is entitled to ignore it. `chat_template_kwargs`
+    is the argument bag the chat template itself reads — it belongs to the model's
+    own template rather than to any vendor's API — so a caller who has ever run this
+    model on an open-source server already has it in their code, and will send it
+    here whatever the profile says this endpoint prefers. The question of whether it
+    arrives is therefore a real question for every endpoint, and asking it only of
+    profiles that declare `chat_template` syntax would ask it of nobody.
+
+    That makes this the one probe here expected to *find* a difference rather than
+    confirm agreement, and the difference is a decision rather than a defect. An
+    endpoint may honour the field, or ignore it and think anyway; both are defensible
+    and they are not the same product. What is not defensible is not knowing which,
+    or having it change without anyone choosing — which is what this pins.
+
+    `precedence` is the second half, and it matters more than it looks. A caller who
+    sends both switches disagreeing has written a contradiction, and the endpoint has
+    to resolve it somehow; if two endpoints resolve it differently then code that
+    works against one silently thinks — and bills — against the other. It collapses
+    to which of the two spellings won, or `agreed` when the endpoint ignored the
+    conflict by ignoring the template field.
+    """
+    _require_thinking(session)
+
+    prompt = [{"role": "user", "content": ARITHMETIC}]
+    off = session.post(
+        "/v1/chat/completions",
+        session.body(max_tokens=MAX_TOKENS, messages=prompt, **{TEMPLATE_KWARGS: {"thinking": False}}),
+    )
+    location = _location(off.at(session.profile.paths.reasoning), off.at(CONTENT_PATH))
+
+    # The contradiction: the vendor dialect asks for thinking, the template field
+    # refuses it. Only sent where the profile has a dialect of its own to contradict
+    # with, which is why it is read alongside `syntax` and not on its own.
+    conflict_fields = session.profile.thinking.body(True)
+    precedence = "not_applicable"
+    conflict_location = None
+    if conflict_fields:
+        conflict = session.post(
+            "/v1/chat/completions",
+            session.body(
+                max_tokens=MAX_TOKENS,
+                messages=prompt,
+                **conflict_fields,
+                **{TEMPLATE_KWARGS: {"thinking": False}},
+            ),
+        )
+        conflict_location = _location(
+            conflict.at(session.profile.paths.reasoning), conflict.at(CONTENT_PATH)
+        )
+        precedence = "vendor_field" if conflict_location != "absent" else "template_kwargs"
+
+    return {
+        "status": off.status,
+        "reasoning_location": location,
+        "suppressed": location == "absent",
+        "precedence": precedence,
+        "syntax": session.profile.thinking.syntax,
+        "conflict_reasoning_location": conflict_location,
+        "reasoning_chars": len(off.at(session.profile.paths.reasoning) or ""),
+        "content_excerpt": (off.at(CONTENT_PATH) or "")[:120],
+    }

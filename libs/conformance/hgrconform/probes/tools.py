@@ -662,3 +662,103 @@ def restraint(session: Session) -> dict[str, Any]:
         "invented_names": sorted(set(invented)),
         "empty_tools_status": empty.status,
     }
+
+
+ALLOWED_TOOLS_MODES = ("auto", "required")
+
+
+def _allowed_tools(mode: str, names: tuple[str, ...]) -> dict[str, Any]:
+    """`tool_choice` in the form that narrows the callable set without naming one call.
+
+    Built from the same declarations the rest of this module sends, so the probe
+    cannot drift into constraining a tool the request never offered.
+    """
+    return {
+        "type": "allowed_tools",
+        "allowed_tools": {
+            "mode": mode,
+            "tools": [{"type": "function", "function": {"name": name}} for name in names],
+        },
+    }
+
+
+@probe(
+    id="tools.allowed_tools",
+    title="tool_choice as a restricted set rather than a single name",
+    requirement="I. Tool Calling — tool_choice modes, including restriction to a subset",
+    compare=("statuses", "called", "restricted", "error_shape", "error_type"),
+)
+def allowed_tools(session: Session) -> dict[str, Any]:
+    """The fifth `tool_choice` mode, which `tools.protocol` does not reach.
+
+    `tools.protocol` asks about the four modes that have existed since the beginning;
+    this asks about the object form that constrains *which* tools may be called while
+    leaving the choice among them to the model. It is a separate probe rather than a
+    fifth row there because it fails differently: the four modes are a string or a
+    named-function object that every OpenAI-compatible decoder has a variant for,
+    while this one is a newer variant an older decoder rejects at the parse, before
+    any policy in front of it has an opinion. Folding it in would have put a decoder
+    failure and a policy refusal in one comparable key.
+
+    Three questions, and only the first two are strongly comparable. Whether the shape
+    is accepted at all is mechanical. Whether a call happened under `required` is
+    contractual. Whether the call that happened respects the restriction is the point
+    of the feature — recorded as `restricted`, which is true when every call names a
+    tool from the allowed set, and vacuously true when no call was made, so it reads
+    only alongside `called`.
+
+    The third mode names a tool absent from `tools`. That is a request a caller can
+    write by mistake, and endpoints disagree on whether it is an error or a narrowing
+    to the empty set; the answer is recorded rather than judged.
+    """
+    cases: dict[str, Any] = {
+        "auto": _allowed_tools("auto", (WEATHER["function"]["name"],)),
+        "required": _allowed_tools("required", (WEATHER["function"]["name"],)),
+        "undeclared": _allowed_tools("required", ("get_stock_price",)),
+    }
+
+    statuses: dict[str, int] = {}
+    called: dict[str, bool] = {}
+    restricted: dict[str, bool] = {}
+    names: dict[str, list[Any]] = {}
+    shapes: dict[str, Any] = {}
+    types: dict[str, Any] = {}
+    excerpts: dict[str, str] = {}
+
+    for case, choice in cases.items():
+        permitted = {
+            entry["function"]["name"]
+            for entry in choice["allowed_tools"]["tools"]
+            if isinstance(entry, dict)
+        }
+        response = session.post(
+            "/v1/chat/completions",
+            session.body(
+                messages=[{"role": "user", "content": ASK_WEATHER}],
+                tools=[WEATHER, CLOCK],
+                tool_choice=choice,
+                max_tokens=256,
+            ),
+        )
+        calls = _calls(response.body)
+        called_names = [dig(call, "function.name") for call in calls]
+        statuses[case] = response.status
+        called[case] = bool(calls)
+        names[case] = called_names
+        restricted[case] = all(name in permitted for name in called_names)
+        error = dig(response.body, "error")
+        shapes[case] = "object" if isinstance(error, dict) else ("none" if response.ok else "unstructured")
+        types[case] = error.get("type") if isinstance(error, dict) else None
+        if not response.ok:
+            excerpts[case] = response.text[:300]
+
+    return {
+        "statuses": statuses,
+        "called": called,
+        "restricted": restricted,
+        "error_shape": shapes,
+        "error_type": types,
+        "tool_names": names,
+        "declared": list(DECLARED),
+        "excerpts": excerpts,
+    }
