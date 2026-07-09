@@ -24,6 +24,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
 
 	"github.com/hangar-dev/hangar/libs/operator/internal/wire"
@@ -667,9 +668,16 @@ fallback() {
   exit 0
 }
 
+# -L on both, because a huggingface_hub snapshot directory is symlinks into ../../blobs and
+# nothing in it is a file. Without dereferencing, the copy takes 492 KB of links pointing
+# outside the mirror, du agrees the model is 492 KB, so the space check passes, the copy
+# reports success, and the marker is written over a directory holding no weights at all. The
+# engine then reads a path that exists and is empty -- which the fallback cannot catch,
+# because the fallback tests for the directory rather than for its contents.
+#
 # Checked before copying rather than discovered during it: a node whose disk cannot hold the model
 # would otherwise spend the whole download finding that out, and the fallback is free.
-need=$(du -sk "$SRC" | cut -f1)
+need=$(du -skL "$SRC" | cut -f1)
 mkdir -p "$(dirname "$DST")"
 free=$(df -Pk "$(dirname "$DST")" | awk "NR==2 {print \$4}")
 if [ "$free" -lt "$need" ]; then
@@ -679,7 +687,7 @@ fi
 echo "copying ${need}K from $SRC to $DST"
 rm -rf "$DST" "$DST.partial"
 mkdir -p "$DST.partial"
-cp -a "$SRC/." "$DST.partial/" || fallback "copy error"
+cp -aL "$SRC/." "$DST.partial/" || fallback "copy error"
 touch "$DST.partial/.hangar-complete"
 mv "$DST.partial" "$DST"
 echo "weights localized: $DST"
@@ -741,6 +749,50 @@ func localModelMount(opts Options) []corev1.VolumeMount {
 	return []corev1.VolumeMount{{Name: "local-model-cache", MountPath: LocalModels}}
 }
 
+// workerProbes replace Dynamo's defaults, which destroy a busy worker rather than a broken one.
+//
+// Dynamo renders liveness as failureThreshold 1, timeoutSeconds 4, periodSeconds 5: a single
+// missed four-second check and the kubelet sends SIGKILL. That is not a hypothetical. On
+// 2026-09-09 it ended a benchmark rung mid-ramp -- both prefill workers killed at concurrency 96,
+// the two steps above it recording "All 1500 inference request(s) failed" because there was
+// nothing behind the frontend, and twenty-five minutes of weight loading spent per kill.
+//
+// What makes zero tolerance the wrong setting here is what /live actually answers. The workers run
+// with DYN_SYSTEM_USE_ENDPOINT_HEALTH_STATUS=["generate"], so the endpoint reports the health of
+// the generate endpoint rather than the liveness of the process, and it returns 503 while the
+// worker is merely not accepting -- which is also what it does for the whole of a model load. A
+// saturated worker and a hung one are indistinguishable through that hole, and the default
+// resolves the ambiguity by killing both.
+//
+// So the two probes are given different jobs, which is the distinction Kubernetes already draws
+// and Dynamo's defaults collapse. Readiness stays quick, because taking a saturated worker out of
+// rotation is cheap and reversible and the router will simply send the next request elsewhere.
+// Liveness is slow, because the only thing it can do is destroy a process that holds a 1.4 TB
+// model. Three minutes before a restart still catches a genuinely wedged worker far sooner than
+// the reload it triggers, and it no longer confuses load for death.
+//
+// The startup probe is left to Dynamo. It already tolerates the load -- it is the reason a
+// twenty-minute start is not a crash loop -- and overriding a probe that works to no purpose is
+// how a render acquires a field nobody can later explain.
+func workerProbes() (liveness, readiness *corev1.Probe) {
+	probe := func(path string, period, timeout, threshold int32) *corev1.Probe {
+		return &corev1.Probe{
+			ProbeHandler: corev1.ProbeHandler{
+				HTTPGet: &corev1.HTTPGetAction{
+					Path:   path,
+					Port:   intstr.FromString("system"),
+					Scheme: corev1.URISchemeHTTP,
+				},
+			},
+			PeriodSeconds:    period,
+			TimeoutSeconds:   timeout,
+			FailureThreshold: threshold,
+			SuccessThreshold: 1,
+		}
+	}
+	return probe("/live", 30, 15, 6), probe("/health", 10, 10, 3)
+}
+
 func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) {
 	devices := in.Layout.devices(in.Deployment)
 
@@ -773,6 +825,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 	// 64MB is far too small, and the failure is a NCCL or bus error at startup that never names
 	// /dev/shm as the cause — so it is sized here rather than left to be rediscovered.
 	shm := resource.MustParse("16Gi")
+	liveness, readiness := workerProbes()
 
 	spec := &corev1.PodSpec{
 		ImagePullSecrets: imagePullSecrets(opts.EnginePullSecrets),
@@ -819,6 +872,8 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 			// exits cleanly and is the difference between "a replica is repeatedly crashing"
 			// and knowing which argument to remove.
 			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
+			LivenessProbe:            liveness,
+			ReadinessProbe:           readiness,
 			Env: []corev1.EnvVar{
 				{Name: "HF_HOME", Value: HFHome},
 				// KV-aware routing decides which worker already holds a prefix by hashing

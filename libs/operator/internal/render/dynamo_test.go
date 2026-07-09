@@ -1540,3 +1540,32 @@ func argValue(args []string, flag string) string {
 	}
 	return ""
 }
+
+// Liveness must be slower to act than readiness. The two probes answer the same endpoint family on
+// a worker whose health reflects whether it is accepting rather than whether it is alive, so the
+// only thing separating a saturated worker from a dead one is how long each probe waits. Readiness
+// takes it out of rotation; liveness destroys a process holding a 1.4 TB model.
+func TestWorkerProbesDoNotKillASaturatedWorker(t *testing.T) {
+	spec, err := podSpec(testInputs(), Options{ModelCachePVC: "model-cache"}, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := spec.Containers[0]
+	if main.LivenessProbe == nil || main.ReadinessProbe == nil {
+		t.Fatal("worker renders no probes; Dynamo's failureThreshold-1 default would apply")
+	}
+
+	live := main.LivenessProbe
+	if live.FailureThreshold < 3 {
+		t.Errorf("liveness failureThreshold = %d; one missed check must not kill a worker", live.FailureThreshold)
+	}
+	liveBudget := live.FailureThreshold * live.PeriodSeconds
+	readyBudget := main.ReadinessProbe.FailureThreshold * main.ReadinessProbe.PeriodSeconds
+	if liveBudget <= readyBudget {
+		t.Errorf("liveness tolerates %ds and readiness %ds; liveness must be the slower of the two, "+
+			"or a busy worker is killed before it is merely de-routed", liveBudget, readyBudget)
+	}
+	if liveBudget < 120 {
+		t.Errorf("liveness tolerates only %ds; a loaded worker stalls longer than that", liveBudget)
+	}
+}
