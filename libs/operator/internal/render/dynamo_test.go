@@ -1318,26 +1318,86 @@ func TestPrefixCachingIsUnchangedForAnAggregatedWorker(t *testing.T) {
 	}
 }
 
-// The frontend's router mode is the third flag, and it is gated on the topology so that no
-// aggregated model in the fleet changes.
-func TestTheFrontendRoutesByKVOnlyWhenDisaggregated(t *testing.T) {
-	routerMode := func(in Inputs) string {
-		spec, err := frontendPodSpec(in, frontendOptions())
-		if err != nil {
-			t.Fatalf("frontendPodSpec: %v", err)
-		}
-		for _, env := range spec.Containers[0].Env {
-			if env.Name == "DYN_ROUTER_MODE" {
-				return env.Value
-			}
-		}
-		return ""
+// The frontend routes by KV whatever the topology, because it is the worker count and not the
+// topology that breaks round-robin. Gated on disaggregation, this left every multi-replica
+// aggregated model in the fleet routing cache-blind: measured on four B300s serving Kimi-K3, one
+// replica at 86% KV usage and a 35.7s TTFT beside an idle one, and `router_kv_hit_rate` with 1701
+// routed requests and zero observations.
+func routerMode(t *testing.T, in Inputs) string {
+	t.Helper()
+	spec, err := frontendPodSpec(in, frontendOptions())
+	if err != nil {
+		t.Fatalf("frontendPodSpec: %v", err)
 	}
-	if got := routerMode(disaggInputs()); got != "kv" {
-		t.Fatalf("disaggregated frontend DYN_ROUTER_MODE = %q, want kv", got)
+	for _, env := range spec.Containers[0].Env {
+		if env.Name == "DYN_ROUTER_MODE" {
+			return env.Value
+		}
 	}
-	if got := routerMode(testInputs()); got != "" {
-		t.Fatalf("aggregated frontend gained DYN_ROUTER_MODE = %q, which changes every model in the fleet", got)
+	return ""
+}
+
+func TestTheFrontendRoutesByKVWhateverTheTopology(t *testing.T) {
+	for name, in := range map[string]Inputs{
+		"aggregated":    testInputs(),
+		"disaggregated": disaggInputs(),
+	} {
+		if got := routerMode(t, in); got != "kv" {
+			t.Fatalf("%s frontend DYN_ROUTER_MODE = %q, want kv — it routes round-robin, "+
+				"so every turn of a conversation lands on a worker that never saw its prefix", name, got)
+		}
+	}
+}
+
+// A one-replica deployment is rendered the same way, deliberately. The KV router with a single
+// registered worker picks the only candidate — the choice round-robin would have made — so there
+// is nothing to gain from a `Replicas > 1` gate and a moving autoscaler count to lose to it.
+func TestTheFrontendRoutesByKVEvenAtOneReplica(t *testing.T) {
+	in := testInputs()
+	in.Deployment.MinReplicas = 1
+	if got := routerMode(t, in); got != "kv" {
+		t.Fatalf("single-replica frontend DYN_ROUTER_MODE = %q, want kv — the mode must not "+
+			"depend on a replica count that moves under an autoscaler", got)
+	}
+}
+
+// The other half of the pair, and the half that costs a rename. An aggregated worker prefills, so
+// it holds exactly the prefix cache the router wants to find; without this flag upstream's
+// `create_kv_events_config` returns None and the frontend's KV mode indexes an empty tree.
+func TestAnAggregatedWorkerPublishesTheEventsTheRouterIndexes(t *testing.T) {
+	in := testInputs()
+	in.Deployment.Serving.PrefixCacheEnabled = true
+	args, err := engineArgs(in, workerRole{})
+	if err != nil {
+		t.Fatalf("engineArgs: %v", err)
+	}
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "--kv-events-config") {
+		t.Fatal("an aggregated worker publishes no KV events, so the frontend's KV router " +
+			"indexes an empty tree and silently degrades to load balancing")
+	}
+	if !strings.Contains(joined, kvEventsConfig) {
+		t.Fatalf("aggregated kv-events-config was not the config the frontend expects: %s", joined)
+	}
+}
+
+// engine_args is the escape hatch and this flag is defaulted, not derived: the plane refuses
+// `disaggregation-mode` and `kv-transfer-config` from engine_args and refuses this one from
+// nobody, so a workload naming its own endpoint must not be overruled by the operator's default.
+func TestAWorkloadMayNameItsOwnKVEventsConfig(t *testing.T) {
+	const own = `{"publisher":"zmq","topic":"mine","endpoint":"tcp://*:29999","enable_kv_cache_events":true}`
+	in := testInputs()
+	in.Deployment.Serving.PrefixCacheEnabled = true
+	in.Deployment.Serving.EngineArgs = map[string]string{"kv-events-config": own}
+	args, err := engineArgs(in, workerRole{})
+	if err != nil {
+		t.Fatalf("engineArgs: %v", err)
+	}
+	if !slices.Contains(args, own) {
+		t.Fatalf("the operator's default overruled the workload's own kv-events-config: %v", args)
+	}
+	if slices.Contains(args, kvEventsConfig) {
+		t.Fatal("both the workload's kv-events-config and the operator's default were rendered")
 	}
 }
 

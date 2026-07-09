@@ -835,32 +835,47 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 				// identical blocks differently and miss every cache hit — silently, as a
 				// performance loss nothing reports.
 				{Name: "PYTHONHASHSEED", Value: "0"},
+				// KV-aware routing, for every deployment this operator renders.
+				//
+				// Upstream's default is round-robin and the operator used to set nothing,
+				// which is invisible at one worker — round-robin to a pool of one is
+				// perfectly sticky — and badly wrong at the second. Alternate turns of one
+				// conversation land on a worker that has never seen it and re-prefill the
+				// whole context. Measured on four B300s serving Kimi-K3 at ~30k context:
+				// one replica at 86% KV usage and 44 running requests with a 35.7s TTFT,
+				// another at 0% and idle, and a fleet prefix hit rate of 56% against the
+				// 94.5% one replica reaches alone. `router_kv_hit_rate` had 1701 routed
+				// requests and zero observations, because nothing routed on KV at all.
+				//
+				// Unconditional, and that is the change. It was previously gated on the
+				// topology being disaggregated, which is the wrong axis twice: it is the
+				// worker *count* that breaks round-robin, not the topology, and every
+				// aggregated multi-replica model in the fleet is the shape that suffers.
+				// Gating on `Replicas > 1` instead was rejected — the count moves under an
+				// autoscaler, and a routing mode that appears and disappears with it rolls
+				// the frontend on a scale event and makes the behaviour under investigation
+				// depend on when you looked.
+				//
+				// Harmless at one worker rather than merely tolerable there: with a single
+				// registered worker the KV router has one candidate and picks it, which is
+				// the choice round-robin would have made. It does not gate startup either —
+				// `DYN_ROUTER_MIN_INITIAL_WORKERS` defaults to 0, so a KV frontend serves
+				// before any worker registers exactly as a round-robin one does.
+				//
+				// Environment and not an argument because the frontend has no argument list
+				// to join: `type: frontend` is what makes Dynamo derive the command, and it
+				// derives `python3 -m dynamo.frontend` with nothing after it — verified on
+				// the live `model-a-frontend`. `--router-mode` reads `DYN_ROUTER_MODE`
+				// (`dynamo/common/configuration/groups/router_args.py`), so the variable is
+				// the same knob and the only one reachable from here.
+				//
+				// This is half of a pair. The other half is `kvEventsConfig` on the worker:
+				// without the events, KV mode indexes an empty tree and silently degrades to
+				// load balancing while still reporting itself as a KV router.
+				{Name: "DYN_ROUTER_MODE", Value: "kv"},
 			},
 			Resources: resources,
 		}},
-	}
-
-	// KV-aware routing, and only for a disaggregated deployment.
-	//
-	// The frontend's default is round-robin — upstream's default and the operator sets nothing —
-	// which is invisible with one prefill worker, because round-robin to a pool of one is
-	// perfectly sticky. It stops being invisible the moment a ratio change adds the second one:
-	// alternate turns of the same conversation land on a worker that has never seen it, and each
-	// one re-prefills the whole context. For the agentic shape we are sizing for that is tens of
-	// thousands of tokens per turn, and it would look like disaggregation scaling badly rather
-	// than like a routing default nobody set.
-	//
-	// Conditional on the topology rather than fleet-wide, which is a deliberately conservative
-	// choice: prefix-aware routing would plausibly help an aggregated deployment with several
-	// workers too, but that is a behaviour change to every model in the fleet and nobody has
-	// asked for it. The frontend's objects carry no spec hash — Dynamo suffixes worker components
-	// only — so this rolls frontend pods and renames nothing, and a frontend holds no weights.
-	//
-	// This is half of a pair. The other half is `kvEventsConfig` on the prefill worker: without
-	// the events, KV mode indexes an empty tree and silently degrades to load balancing.
-	if Disaggregated(in.Deployment) {
-		spec.Containers[0].Env = append(spec.Containers[0].Env,
-			corev1.EnvVar{Name: "DYN_ROUTER_MODE", Value: "kv"})
 	}
 
 	// Named by configuration and therefore able to be empty. A volume claiming nothing is
@@ -1094,17 +1109,44 @@ func engineModule(engine string) string {
 // this constant does not answer it.
 const kvTransferConfig = `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`
 
-// kvEventsConfig makes a prefill worker publish which blocks it holds, which is what the frontend
-// indexes to route a conversation back to the worker that already prefilled it.
-//
-// On the prefill role only. Decode does not prefill, so it has no prefix cache worth advertising.
+// kvEventsConfig makes a worker publish which blocks it holds, which is what the frontend indexes
+// to route a conversation back to the worker that already prefilled it.
 //
 // Explicit rather than implied, and that is the trap this constant exists to avoid.
 // `create_kv_events_config` upstream returns nil unless this is set — enabling prefix caching is
 // not enough — so a frontend in KV mode with no events subscribes to a stream nobody publishes,
 // every worker scores zero overlap, and the router degrades to load balancing while still
 // reporting itself as a KV router. It fails as a silently cold cache rather than as an error.
+//
+// That was read off the runtime image rather than the flag's help text, because the two disagree
+// and the help text is the one that misleads. `python3 -m dynamo.vllm --help` documents only the
+// decode exemption, which reads as "every other worker publishes by default"; the function itself
+// (`dynamo/vllm/args.py:409`) returns None down the fall-through path when no config was passed.
+// Confirmed on the live aggregated `model-a` worker, which logged
+// `Using kv_events_config ... None (use_kv_events=False)` while serving.
 const kvEventsConfig = `{"publisher":"zmq","topic":"kv-events","endpoint":"tcp://*:20080","enable_kv_cache_events":true}`
+
+// publishesKVEvents says whether this role should advertise the blocks it holds.
+//
+// Mirrors upstream's own rule in `create_kv_events_config` rather than inventing one: a worker
+// publishes when it prefills and when its prefix cache is on. Both conditions matter and the
+// second is not decoration — upstream drops the config on a worker with prefix caching disabled,
+// so rendering the flag there would change the worker's argument list, and therefore its spec
+// hash and its name, to buy a value the engine then discards.
+//
+// Aggregated workers are included, which is the fix. An aggregated worker prefills — it just
+// decodes too — so it has exactly the prefix cache the router wants to find, and leaving it out
+// is what left every multi-replica aggregated model in the fleet routing cache-blind. The
+// disaggregated decode role stays excluded: it never prefills, has no prefix cache worth
+// advertising, and upstream refuses the config there anyway.
+func publishesKVEvents(in Inputs, role workerRole) bool {
+	if role.Role == "decode" {
+		return false
+	}
+	// A prefill role's cache is on regardless of the workload's answer — see the exemption
+	// `engineArgs` applies below — so only the aggregated worker consults the setting.
+	return role.Role == "prefill" || in.Deployment.Serving.PrefixCacheEnabled
+}
 
 // engineArgs builds the engine command line from the deployment's serving block.
 //
@@ -1162,12 +1204,29 @@ func engineArgs(in Inputs, role workerRole) ([]string, error) {
 	// topology — a decision already made, validated and placed against — and the operator lays
 	// engine_args over its derived flags last, so a value arriving from anywhere else would not be
 	// overruled by this, it would overrule it.
+	// The events the frontend's KV router indexes, on every role that prefills — the aggregated
+	// worker included, which is why this sits outside the role guard below rather than inside it.
+	//
+	// It is the half of the pair that costs something. Unlike the frontend's `DYN_ROUTER_MODE`,
+	// this lands in the worker's argument list, and `ComputeDGDWorkersSpecHash` covers the worker
+	// components, so adding it renames the worker Deployment and its pods reload their weights
+	// once. That is a real bill and it is paid knowingly: without the events, KV mode on the
+	// frontend indexes an empty tree and buys nothing at all.
+	//
+	// Defaulted and not derived, which is the difference between this flag and the two below it.
+	// The plane refuses `disaggregation-mode` and `kv-transfer-config` from engine_args
+	// (`TOPOLOGY_FLAGS`) and refuses neither this one nor anything else, so a workload is free to
+	// send its own endpoint or topic and this must not overrule it — engine_args is the escape
+	// hatch, and an escape hatch that loses to a default is not one. The deployment's own
+	// engine_args are already merged by the time this runs, so the guard is what lets them win;
+	// a role's engine_args are merged after and win by overwriting.
+	if _, set := derived["kv-events-config"]; !set && publishesKVEvents(in, role) {
+		derived["kv-events-config"] = kvEventsConfig
+	}
+
 	if role.Role != "" {
 		derived["disaggregation-mode"] = role.Role
 		derived["kv-transfer-config"] = kvTransferConfig
-		if role.Role == "prefill" {
-			derived["kv-events-config"] = kvEventsConfig
-		}
 		if role.Spec != nil {
 			if v := role.Spec.MaxBatchTokens; v != nil {
 				derived["max-num-batched-tokens"] = strconv.Itoa(*v)
