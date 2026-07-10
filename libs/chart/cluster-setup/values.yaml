@@ -110,6 +110,30 @@ modelCache:
 multinode:
   enabled: false
 
+# The high-speed fabric a worker pod asks for, so that NIXL can move the KV cache
+# over RDMA instead of falling back to TCP on the pod network.
+#
+# `devices: 0` asks for nothing, which is what every cluster did before this
+# existed, and is correct for any pool without the interfaces. It is not a
+# cosmetic default: with no request the device plugin mounts no /dev/infiniband,
+# UCX finds no RDMA transport, and prefill/decode disaggregation ships the whole
+# KV cache of every request over TCP. On Kimi K3 at 38k input tokens that is
+# ~1.8GB per request, measured at ~300MB/s and 6.1s per transfer. Aggregated
+# serving never crosses a node for KV, so it is unaffected -- which is what makes
+# the mistake look like a verdict on disaggregation rather than on the pod spec.
+#
+# `resource` is the extended-resource name, which belongs to whoever supplies the
+# compute rather than to the fabric. Empty means the AWS EFA device plugin's name,
+# which is what our EC2 pools advertise. A bare-metal or non-EC2 pool runs a
+# different plugin -- `rdma/hca`, `rdma/ib`, a vendor name -- and carries a
+# different number of interfaces per chassis. Read both off the node:
+#   kubectl get node <n> -o jsonpath='{.status.allocatable}'
+# Asking for a name no node advertises leaves the pod Pending with no other
+# symptom, so a wrong value here reads as a scheduling problem.
+fabric:
+  devices: 0
+  resource: ""
+
 dcgm:
   # Empty derives both from the bundled dcgm-exporter. Set them to point at an
   # exporter this chart does not install.
