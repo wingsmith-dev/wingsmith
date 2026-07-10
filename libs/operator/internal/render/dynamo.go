@@ -1474,6 +1474,29 @@ func roleKVTransferConfig(in Inputs, role workerRole) string {
 	)
 }
 
+// aggregatedKVTransferConfig is the offload tier on a worker that has no role.
+//
+// An aggregated worker prefills and decodes in one process, so there is no second worker to
+// move a cache to and no transport connector to compose with -- `OffloadingConnector` stands
+// alone rather than under a `MultiConnector`. That also means an aggregated deployment renders
+// no `kv-transfer-config` at all unless the tier is on, which is why this returns "" rather
+// than a constant: the flag's absence is the normal case.
+//
+// This exists because the tier was written for disaggregated prefill and then the ladder
+// established that aggregated is the faster topology for this model. A cache tier that only
+// works in the arm we are not shipping is not a cache tier.
+func aggregatedKVTransferConfig(in Inputs) string {
+	gib, on := offloadTier(in)
+	if !on {
+		return ""
+	}
+	return fmt.Sprintf(
+		`{"kv_connector":"OffloadingConnector","kv_role":"kv_both","kv_connector_extra_config":`+
+			`{"spec_name":"CPUOffloadingSpec","cpu_bytes_to_use":%d}}`,
+		int64(gib)*1024*1024*1024,
+	)
+}
+
 // kvEventsConfig makes a worker publish which blocks it holds, which is what the frontend indexes
 // to route a conversation back to the worker that already prefilled it.
 //
@@ -1594,6 +1617,16 @@ func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 	// a role's engine_args are merged after and win by overwriting.
 	if _, set := derived["kv-events-config"]; !set && publishesKVEvents(in, role) {
 		derived["kv-events-config"] = kvEventsConfig
+	}
+
+	// An aggregated worker has no role and normally no transfer config. The offload tier is the
+	// one thing that gives it one, so it is set here rather than inside the role branch below.
+	if role.Role == "" {
+		if cfg := aggregatedKVTransferConfig(in); cfg != "" {
+			if _, set := derived["kv-transfer-config"]; !set {
+				derived["kv-transfer-config"] = cfg
+			}
+		}
 	}
 
 	if role.Role != "" {

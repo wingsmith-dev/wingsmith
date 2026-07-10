@@ -1717,3 +1717,53 @@ func TestFrontendCanOpenThePathTheWorkersAdvertise(t *testing.T) {
 		t.Error("frontend stages metadata with no local mirror configured")
 	}
 }
+
+// The ladder established that aggregated is the faster topology for K3, and the offload tier was
+// written for disaggregated prefill. A tier that only works in the arm we are not shipping is not
+// a tier, so an aggregated worker gets one too — standing alone, because there is no second worker
+// to move a cache to and so nothing to compose with.
+func TestOffloadTierReachesAnAggregatedWorker(t *testing.T) {
+	in := testInputs()
+	opts := Options{ModelCachePVC: "model-cache"}
+
+	// Off: an aggregated worker renders no transfer config at all. That is the normal case and
+	// the flag's absence is load-bearing — vLLM behaves differently when it is present and empty.
+	args, err := engineArgs(in, opts, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := argValue(args, "--kv-transfer-config"); got != "" {
+		t.Errorf("aggregated worker renders --kv-transfer-config %q with the tier off", got)
+	}
+
+	in.Deployment.Serving.PrefixCacheConfig = map[string]string{"offload": "host", "offload_gib": "512"}
+	args, err = engineArgs(in, opts, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := argValue(args, "--kv-transfer-config")
+	if !strings.Contains(cfg, `"kv_connector":"OffloadingConnector"`) {
+		t.Fatalf("aggregated worker renders %q; the tier must reach it", cfg)
+	}
+	// No transport connector and so no wrapper: there is nowhere to transfer a cache to.
+	if strings.Contains(cfg, "MultiConnector") || strings.Contains(cfg, "NixlConnector") {
+		t.Errorf("aggregated worker renders %q; it has no peer to transfer to", cfg)
+	}
+	if want := `"cpu_bytes_to_use":549755813888`; !strings.Contains(cfg, want) {
+		t.Errorf("rendered %q, want 512 GiB as %s", cfg, want)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(cfg), &parsed); err != nil {
+		t.Fatalf("aggregated kv-transfer-config is not valid JSON: %v", err)
+	}
+
+	// And the deployment's own engine_args still win, as they do for every other derived flag.
+	in.Deployment.Serving.EngineArgs = map[string]string{"kv-transfer-config": `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`}
+	args, err = engineArgs(in, opts, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := argValue(args, "--kv-transfer-config"); strings.Contains(got, "Offloading") {
+		t.Errorf("derived config overruled engine_args: %q", got)
+	}
+}
