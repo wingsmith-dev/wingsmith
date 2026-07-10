@@ -85,6 +85,17 @@ type Options struct {
 	// a cluster turns it on when it has installed the thing that makes it true.
 	MultinodeEnabled bool
 
+	// EFADevices is how many Elastic Fabric Adapter interfaces a worker pod requests.
+	//
+	// Zero asks for none, which is what this operator did until a disaggregated benchmark was
+	// measured moving KV at ~300MB/s: without the `vpc.amazonaws.com/efa` resource the device
+	// plugin mounts no /dev/infiniband, UCX finds no RDMA transport, and NIXL sends the KV cache
+	// over TCP. A p6-b300.48xlarge advertises 16, and one worker owns the whole node, so 16 is
+	// the value for that pool. Per-cluster because the resource does not exist without the AWS
+	// EFA device plugin, and asking for a resource no node advertises leaves the pod Pending
+	// forever.
+	EFADevices int
+
 	// EnginePullSecrets are Secrets in the workload namespace the kubelet presents when pulling
 	// the serving block's EngineRuntimeImage. Frontends receive them too because, when neither a
 	// deployment nor the cluster names a frontend image, they run that same engine image.
@@ -874,11 +885,28 @@ func workerProbes() (liveness, readiness *corev1.Probe) {
 	return probe("/live", 30, 15, 6), probe("/health", 10, 10, 3)
 }
 
+// efaResource is the extended resource the AWS EFA device plugin advertises. Requesting it is
+// what causes /dev/infiniband to be mounted into the container.
+const efaResource = corev1.ResourceName("vpc.amazonaws.com/efa")
+
 func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) {
 	devices := in.Layout.devices(in.Deployment)
 
 	requests := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
 	limits := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
+	// EFA is requested by count on both sides, as the device plugin requires: it is an extended
+	// resource, so it is not overcommittable and request must equal limit.
+	//
+	// Every worker asks, not only the disaggregated ones. A prefill/decode pair needs it for the
+	// KV handoff, but the resource is per-node and one worker owns its node, so a worker that
+	// does not use the fabric costs nothing by holding it, whereas a worker that needs it and did
+	// not ask silently runs on TCP -- which is the failure this exists to prevent, and it is
+	// invisible in every health signal we have.
+	if opts.EFADevices > 0 {
+		efa := *resource.NewQuantity(int64(opts.EFADevices), resource.DecimalSI)
+		requests[efaResource] = efa
+		limits[efaResource] = efa
+	}
 	if n := in.Deployment.Serving.Resources.CPUCores; n != nil {
 		requests[corev1.ResourceCPU] = *resource.NewQuantity(int64(*n), resource.DecimalSI)
 	}

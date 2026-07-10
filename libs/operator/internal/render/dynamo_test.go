@@ -1767,3 +1767,49 @@ func TestOffloadTierReachesAnAggregatedWorker(t *testing.T) {
 		t.Errorf("derived config overruled engine_args: %q", got)
 	}
 }
+
+// A worker that does not ask for EFA does not get /dev/infiniband, and NIXL then moves the KV
+// cache over TCP without saying so. The whole disaggregation arm of the K3 benchmark ran that
+// way — ~300MB/s and 6.1s per transfer — while the nodes advertised 16 idle fabric adapters.
+// Nothing in a health check, a probe, or an engine log reports it, so it is asserted here.
+func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
+	const efa = corev1.ResourceName("vpc.amazonaws.com/efa")
+
+	in := testInputs()
+
+	off, err := podSpec(in, Options{}, workerRole{Role: "decode"})
+	if err != nil {
+		t.Fatalf("render with EFA off: %v", err)
+	}
+	if _, ok := off.Containers[0].Resources.Requests[efa]; ok {
+		t.Fatal("asked for EFA on a cluster that declared none; the pod would stay Pending forever")
+	}
+
+	on, err := podSpec(in, Options{EFADevices: 16}, workerRole{Role: "decode"})
+	if err != nil {
+		t.Fatalf("render with EFA on: %v", err)
+	}
+	req, ok := on.Containers[0].Resources.Requests[efa]
+	if !ok {
+		t.Fatal("declared 16 EFA devices and the pod asked for none")
+	}
+	if req.Value() != 16 {
+		t.Fatalf("asked for %d EFA devices, want 16", req.Value())
+	}
+	// An extended resource is not overcommittable: the kubelet rejects a pod whose limit and
+	// request disagree, and it does so at admission, which reads as a scheduling failure.
+	lim := on.Containers[0].Resources.Limits[efa]
+	if lim.Value() != req.Value() {
+		t.Fatalf("EFA request %d != limit %d; the kubelet will reject the pod", req.Value(), lim.Value())
+	}
+
+	// Aggregated workers ask too. One worker owns its node, so holding an interface it may not
+	// use costs nothing, while a worker that needed it and did not ask fails silently.
+	agg, err := podSpec(testInputs(), Options{EFADevices: 16}, workerRole{})
+	if err != nil {
+		t.Fatalf("render aggregated: %v", err)
+	}
+	if _, ok := agg.Containers[0].Resources.Requests[efa]; !ok {
+		t.Fatal("aggregated worker asked for no EFA")
+	}
+}

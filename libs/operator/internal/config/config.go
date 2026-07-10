@@ -155,6 +155,21 @@ type Config struct {
 	// initialisation rather than failing. A cluster sets it once it has installed one of them.
 	Multinode bool
 
+	// EFADevices is how many Elastic Fabric Adapter interfaces a worker pod asks for.
+	//
+	// A per-cluster fact, like Multinode: the resource only exists where the AWS EFA device
+	// plugin is installed and the instance type carries the NICs. Zero means ask for none, which
+	// is what every cluster did before this existed.
+	//
+	// It is not cosmetic. Without the resource the plugin does not mount /dev/infiniband into the
+	// container, so NIXL's UCX layer finds no RDMA transport and falls back to TCP over the pod
+	// network. Prefill/decode disaggregation moves the whole KV cache of every request across
+	// that link -- on Kimi K3 at 38k input tokens it is ~1.8GB per request -- and on TCP it ran
+	// at ~300MB/s, 6.1s per transfer, against a fabric that should do far better. Aggregated
+	// serving never crosses a node for KV and so was never affected, which is precisely what made
+	// the resulting benchmark comparison look like a verdict on disaggregation.
+	EFADevices int
+
 	// EnginePullSecrets are Secrets in WorkloadNamespace the kubelet presents when pulling a
 	// deployment's EngineRuntimeImage. Empty for the anonymous NVIDIA runtime; set on clusters
 	// that run private engine builds such as the GLM 5.3 runtime in GHCR.
@@ -347,6 +362,7 @@ func Load() (*Config, error) {
 		FrontendGlobalDynamoNamespace:  envBool("HANGAR_FRONTEND_GLOBAL_DYNAMO_NAMESPACE", true),
 
 		Multinode:             envBool("HANGAR_MULTINODE", false),
+		EFADevices:            envInt("HANGAR_EFA_DEVICES", 0),
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		BenchmarkArtifactBase: env("HANGAR_BENCHMARK_ARTIFACT_BASE", ""),
 		BenchmarkTimeout:      envDuration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),
