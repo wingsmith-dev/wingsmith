@@ -120,6 +120,7 @@ func RenderOptions(cfg *config.Config) render.Options {
 		PrefetchMemoryLimit: cfg.PrefetchMemoryLimit,
 		MultinodeEnabled:    cfg.Multinode,
 		EFADevices:          cfg.EFADevices,
+		FabricResource:      cfg.FabricResource,
 		EnginePullSecrets:   cfg.EnginePullSecrets,
 
 		FrontendEnabled:         cfg.FrontendEnabled,

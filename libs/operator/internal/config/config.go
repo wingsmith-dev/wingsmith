@@ -170,6 +170,11 @@ type Config struct {
 	// the resulting benchmark comparison look like a verdict on disaggregation.
 	EFADevices int
 
+	// FabricResource is the extended-resource name for those interfaces. Empty uses the AWS EFA
+	// plugin's name, which is what our EC2 pools advertise; a bare-metal or non-EC2 pool uses a
+	// different plugin with a different name and sets this.
+	FabricResource string
+
 	// EnginePullSecrets are Secrets in WorkloadNamespace the kubelet presents when pulling a
 	// deployment's EngineRuntimeImage. Empty for the anonymous NVIDIA runtime; set on clusters
 	// that run private engine builds such as the GLM 5.3 runtime in GHCR.
@@ -363,6 +368,7 @@ func Load() (*Config, error) {
 
 		Multinode:             envBool("HANGAR_MULTINODE", false),
 		EFADevices:            envInt("HANGAR_EFA_DEVICES", 0),
+		FabricResource:        env("HANGAR_FABRIC_RESOURCE", ""),
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		BenchmarkArtifactBase: env("HANGAR_BENCHMARK_ARTIFACT_BASE", ""),
 		BenchmarkTimeout:      envDuration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),

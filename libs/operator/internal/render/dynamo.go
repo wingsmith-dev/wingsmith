@@ -12,6 +12,7 @@
 package render
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -95,6 +96,11 @@ type Options struct {
 	// EFA device plugin, and asking for a resource no node advertises leaves the pod Pending
 	// forever.
 	EFADevices int
+
+	// FabricResource is the extended-resource name to ask for, when EFADevices is non-zero.
+	// Empty means defaultFabricResource, the AWS EFA plugin's name. See that constant for why
+	// this is not hardcoded.
+	FabricResource string
 
 	// EnginePullSecrets are Secrets in the workload namespace the kubelet presents when pulling
 	// the serving block's EngineRuntimeImage. Frontends receive them too because, when neither a
@@ -885,9 +891,17 @@ func workerProbes() (liveness, readiness *corev1.Probe) {
 	return probe("/live", 30, 15, 6), probe("/health", 10, 10, 3)
 }
 
-// efaResource is the extended resource the AWS EFA device plugin advertises. Requesting it is
-// what causes /dev/infiniband to be mounted into the container.
-const efaResource = corev1.ResourceName("vpc.amazonaws.com/efa")
+// defaultFabricResource is what the AWS EFA device plugin advertises, which is what our clusters
+// run on today. It is a default and not a constant on purpose: the resource name is a property of
+// whoever supplies the compute, not of the fabric.
+//
+// On EC2 the plugin is the AWS one and the name is this. On bare metal, or any provider using the
+// upstream RDMA plugins, it is something else entirely -- `rdma/hca`, `rdma/ib`, or a vendor name
+// -- and the number of interfaces differs with the chassis. Anyone bringing up a non-EC2 pool sets
+// FabricResource and EFADevices to whatever `kubectl get node -o json` shows under allocatable.
+// Asking for a name no node advertises leaves the pod Pending with no other symptom, so the wrong
+// value here looks like a scheduling problem rather than a configuration one.
+const defaultFabricResource = "vpc.amazonaws.com/efa"
 
 func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) {
 	devices := in.Layout.devices(in.Deployment)
@@ -903,9 +917,10 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 	// not ask silently runs on TCP -- which is the failure this exists to prevent, and it is
 	// invisible in every health signal we have.
 	if opts.EFADevices > 0 {
-		efa := *resource.NewQuantity(int64(opts.EFADevices), resource.DecimalSI)
-		requests[efaResource] = efa
-		limits[efaResource] = efa
+		name := corev1.ResourceName(cmp.Or(strings.TrimSpace(opts.FabricResource), defaultFabricResource))
+		count := *resource.NewQuantity(int64(opts.EFADevices), resource.DecimalSI)
+		requests[name] = count
+		limits[name] = count
 	}
 	if n := in.Deployment.Serving.Resources.CPUCores; n != nil {
 		requests[corev1.ResourceCPU] = *resource.NewQuantity(int64(*n), resource.DecimalSI)

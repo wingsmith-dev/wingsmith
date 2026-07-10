@@ -1803,6 +1803,20 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 		t.Fatalf("EFA request %d != limit %d; the kubelet will reject the pod", req.Value(), lim.Value())
 	}
 
+	// The resource name is a property of the compute supplier, not of the fabric: EC2 runs the
+	// AWS plugin, bare metal runs something else advertising a different name. Baking in the AWS
+	// name would strand every non-EC2 pool on TCP with no symptom but a Pending pod.
+	bare, err := podSpec(in, Options{EFADevices: 8, FabricResource: "rdma/hca"}, workerRole{Role: "decode"})
+	if err != nil {
+		t.Fatalf("render with a non-AWS fabric resource: %v", err)
+	}
+	if _, ok := bare.Containers[0].Resources.Requests[efa]; ok {
+		t.Fatal("asked for the AWS resource on a pool that declared a different one")
+	}
+	if got := bare.Containers[0].Resources.Requests[corev1.ResourceName("rdma/hca")]; got.Value() != 8 {
+		t.Fatalf("asked for %d rdma/hca, want 8", got.Value())
+	}
+
 	// Aggregated workers ask too. One worker owns its node, so holding an interface it may not
 	// use costs nothing, while a worker that needed it and did not ask fails silently.
 	agg, err := podSpec(testInputs(), Options{EFADevices: 16}, workerRole{})
