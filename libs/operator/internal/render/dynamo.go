@@ -743,9 +743,22 @@ mkdir -p "$DST"
 # Everything a tokenizer or a config might be, and nothing that could be a tensor. Listing what to
 # take rather than what to skip: a new weight file extension would otherwise be copied by default,
 # and 1.4 TB into an emptyDir fills the node's disk rather than failing honestly.
-find "$SRC" -maxdepth 1 -type f \( -name '*.json' -o -name '*.txt' -o -name '*.py' -o -name '*.model' -o -name '*.jinja' \) \
+# -type l as well as -type f, and cp -L: in a huggingface_hub cache every entry in a snapshot
+# directory is a symlink into ../../blobs/, so -type f alone matches nothing and stages an empty
+# directory -- which fails exactly like having no directory at all, only later and more quietly.
+find "$SRC" -maxdepth 1 \( -type f -o -type l \) \
+  \( -name '*.json' -o -name '*.txt' -o -name '*.py' -o -name '*.model' -o -name '*.jinja' \) \
   -exec cp -L {} "$DST/" \;
-echo "model metadata staged at $DST:"
+staged=$(ls -1 "$DST" | wc -l)
+if [ "$staged" -eq 0 ]; then
+  # Loudly, because the quiet version of this failure is what cost a benchmark rung: the frontend
+  # comes up, passes every probe, and serves an empty model list. A pod that will not start is a
+  # far cheaper way to learn that the source layout is not what this script assumed.
+  echo "staged no metadata from $SRC; refusing to start a frontend that would serve nothing" >&2
+  ls -la "$SRC" | head -20 >&2
+  exit 1
+fi
+echo "model metadata staged at $DST ($staged files):"
 ls "$DST"
 `
 
