@@ -948,12 +948,30 @@ func fabricSecurityContext(opts Options) *corev1.SecurityContext {
 	}
 }
 
-// fabricEnvFor returns nothing when no fabric is declared.
-func fabricEnvFor(opts Options) []corev1.EnvVar {
+// hugePagesAllowed says whether Kubernetes will accept a huge-page request on this container.
+// It will not unless cpu or memory is also requested, and the rejection happens where almost
+// nothing reads it.
+func hugePagesAllowed(requests corev1.ResourceList) bool {
+	_, cpu := requests[corev1.ResourceCPU]
+	_, mem := requests[corev1.ResourceMemory]
+	return cpu || mem
+}
+
+// fabricEnvFor returns nothing when no fabric is declared, and turns huge pages off when the
+// pod could not reserve any.
+func fabricEnvFor(opts Options, hugePages bool) []corev1.EnvVar {
 	if opts.EFADevices == 0 {
 		return nil
 	}
-	return fabricEnv()
+	env := fabricEnv()
+	if !hugePages {
+		for i := range env {
+			if env[i].Name == "FI_EFA_USE_HUGE_PAGE" {
+				env[i].Value = "0"
+			}
+		}
+	}
+	return env
 }
 
 func fabricEnv() []corev1.EnvVar {
@@ -974,6 +992,16 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 
 	requests := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
 	limits := corev1.ResourceList{"nvidia.com/gpu": *resource.NewQuantity(int64(devices), resource.DecimalSI)}
+	if n := in.Deployment.Serving.Resources.CPUCores; n != nil {
+		requests[corev1.ResourceCPU] = *resource.NewQuantity(int64(*n), resource.DecimalSI)
+	}
+	if n := in.Deployment.Serving.Resources.MemoryMiB; n != nil {
+		requests[corev1.ResourceMemory] = *resource.NewQuantity(*n*1024*1024, resource.BinarySI)
+	}
+	if n := in.Deployment.Serving.Resources.DiskGiB; n != nil {
+		requests[corev1.ResourceEphemeralStorage] = *resource.NewQuantity(int64(*n)*1024*1024*1024, resource.BinarySI)
+	}
+
 	// EFA is requested by count on both sides, as the device plugin requires: it is an extended
 	// resource, so it is not overcommittable and request must equal limit.
 	//
@@ -988,22 +1016,22 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 		requests[name] = count
 		limits[name] = count
 
-		// libfabric's EFA provider registers its bounce buffers from huge pages when
-		// FI_EFA_USE_HUGE_PAGE is on, and the pod has to ask for them by name or the
-		// allocation fails inside the provider rather than at admission. The host reserves
-		// them at boot (efa-hugepages-reserve.sh); this claims a slice.
-		huge := resource.MustParse(efaHugePages)
-		requests[corev1.ResourceHugePagesPrefix+"2Mi"] = huge
-		limits[corev1.ResourceHugePagesPrefix+"2Mi"] = huge
-	}
-	if n := in.Deployment.Serving.Resources.CPUCores; n != nil {
-		requests[corev1.ResourceCPU] = *resource.NewQuantity(int64(*n), resource.DecimalSI)
-	}
-	if n := in.Deployment.Serving.Resources.MemoryMiB; n != nil {
-		requests[corev1.ResourceMemory] = *resource.NewQuantity(*n*1024*1024, resource.BinarySI)
-	}
-	if n := in.Deployment.Serving.Resources.DiskGiB; n != nil {
-		requests[corev1.ResourceEphemeralStorage] = *resource.NewQuantity(int64(*n)*1024*1024*1024, resource.BinarySI)
+		// libfabric's EFA provider takes its bounce buffers from huge pages when
+		// FI_EFA_USE_HUGE_PAGE is on, and the pod must ask for them by name or the allocation
+		// fails inside the provider rather than at admission. The host reserves them at boot
+		// (efa-hugepages-reserve.sh); this claims a slice.
+		//
+		// Only when the deployment has declared cpu or memory. Kubernetes rejects a container
+		// that asks for huge pages and neither -- "HugePages require cpu or memory" -- and it
+		// rejects it at Deployment creation, where the message reaches the Dynamo operator's
+		// log and nothing else: the DGD simply sits at observedGeneration=0 with no pods. The
+		// env var is set from the same condition in fabricEnvFor, because asking libfabric to
+		// use huge pages the pod never reserved is the failure this pairing exists to avoid.
+		if hugePagesAllowed(requests) {
+			huge := resource.MustParse(efaHugePages)
+			requests[corev1.ResourceHugePagesPrefix+"2Mi"] = huge
+			limits[corev1.ResourceHugePagesPrefix+"2Mi"] = huge
+		}
 	}
 
 	// A host KV offload pool is the one allocation here that is both large and unbounded by the
@@ -1099,7 +1127,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 			SecurityContext:          fabricSecurityContext(opts),
 			LivenessProbe:            liveness,
 			ReadinessProbe:           readiness,
-			Env: append(fabricEnvFor(opts), []corev1.EnvVar{
+			Env: append(fabricEnvFor(opts, hugePagesAllowed(requests)), []corev1.EnvVar{
 				{Name: "HF_HOME", Value: HFHome},
 				// KV-aware routing decides which worker already holds a prefix by hashing
 				// block contents. Python salts hashes per process by default, so without a

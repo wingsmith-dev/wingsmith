@@ -1832,13 +1832,42 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 	if !full.HostIPC {
 		t.Fatal("fabric declared without hostIPC")
 	}
-	if _, ok := full.Containers[0].Resources.Requests[corev1.ResourceHugePagesPrefix+"2Mi"]; !ok {
-		t.Fatal("FI_EFA_USE_HUGE_PAGE is set but the pod asks for no huge pages")
+	envOf := func(spec *corev1.PodSpec) map[string]string {
+		m := map[string]string{}
+		for _, e := range spec.Containers[0].Env {
+			m[e.Name] = e.Value
+		}
+		return m
 	}
-	env := map[string]string{}
-	for _, e := range full.Containers[0].Env {
-		env[e.Name] = e.Value
+
+	// Huge pages and FI_EFA_USE_HUGE_PAGE are one decision, and Kubernetes will not accept the
+	// request at all unless the container also asks for cpu or memory. Rendering the env var
+	// without the reservation asks libfabric to use pages the pod never got; rendering the
+	// reservation without cpu or memory is rejected at Deployment creation, where the message
+	// lands in the Dynamo operator's log and the DGD just sits at observedGeneration=0 with no
+	// pods and no explanation. Assert both directions.
+	if _, ok := full.Containers[0].Resources.Requests[corev1.ResourceHugePagesPrefix+"2Mi"]; ok {
+		t.Fatal("asked for huge pages on a container declaring neither cpu nor memory; the Deployment is rejected")
 	}
+	if got := envOf(full)["FI_EFA_USE_HUGE_PAGE"]; got != "0" {
+		t.Fatalf("FI_EFA_USE_HUGE_PAGE=%q with no huge pages reserved, want 0", got)
+	}
+
+	withMem := testInputs()
+	mib := int64(524288)
+	withMem.Deployment.Serving.Resources.MemoryMiB = &mib
+	sized, err := podSpec(withMem, Options{EFADevices: 16, NIXLBackends: []string{"LIBFABRIC"}}, workerRole{Role: "decode"})
+	if err != nil {
+		t.Fatalf("render with memory declared: %v", err)
+	}
+	if _, ok := sized.Containers[0].Resources.Requests[corev1.ResourceHugePagesPrefix+"2Mi"]; !ok {
+		t.Fatal("memory is declared, so huge pages are permitted, but none were requested")
+	}
+	if got := envOf(sized)["FI_EFA_USE_HUGE_PAGE"]; got != "1" {
+		t.Fatalf("FI_EFA_USE_HUGE_PAGE=%q with huge pages reserved, want 1", got)
+	}
+
+	env := envOf(full)
 	if env["FI_PROVIDER"] != "efa" {
 		t.Fatalf("FI_PROVIDER=%q, want efa; libfabric would be free to pick shm or tcp", env["FI_PROVIDER"])
 	}
