@@ -175,6 +175,11 @@ type Config struct {
 	// different plugin with a different name and sets this.
 	FabricResource string
 
+	// NIXLBackends names the NIXL plugins the KV connector registers, comma-separated. Empty
+	// keeps vLLM's default of UCX. On EC2 this wants LIBFABRIC: EFA is a libfabric provider, and
+	// with UCX selected the KV cache moved at ~39MB/s even with all 16 interfaces mounted.
+	NIXLBackends []string
+
 	// EnginePullSecrets are Secrets in WorkloadNamespace the kubelet presents when pulling a
 	// deployment's EngineRuntimeImage. Empty for the anonymous NVIDIA runtime; set on clusters
 	// that run private engine builds such as the GLM 5.3 runtime in GHCR.
@@ -369,6 +374,7 @@ func Load() (*Config, error) {
 		Multinode:             envBool("HANGAR_MULTINODE", false),
 		EFADevices:            envInt("HANGAR_EFA_DEVICES", 0),
 		FabricResource:        env("HANGAR_FABRIC_RESOURCE", ""),
+		NIXLBackends:          envList("HANGAR_NIXL_BACKENDS"),
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		BenchmarkArtifactBase: env("HANGAR_BENCHMARK_ARTIFACT_BASE", ""),
 		BenchmarkTimeout:      envDuration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),

@@ -121,6 +121,7 @@ func RenderOptions(cfg *config.Config) render.Options {
 		MultinodeEnabled:    cfg.Multinode,
 		EFADevices:          cfg.EFADevices,
 		FabricResource:      cfg.FabricResource,
+		NIXLBackends:        cfg.NIXLBackends,
 		EnginePullSecrets:   cfg.EnginePullSecrets,
 
 		FrontendEnabled:         cfg.FrontendEnabled,

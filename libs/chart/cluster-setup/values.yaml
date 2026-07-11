@@ -133,6 +133,21 @@ multinode:
 fabric:
   devices: 0
   resource: ""
+  # NIXL plugins the KV connector registers. Empty leaves vLLM's default of UCX.
+  #
+  # On EC2 this must be LIBFABRIC. EFA is a libfabric provider; NIXL ships
+  # libplugin_UCX.so and libplugin_LIBFABRIC.so side by side and defaults to the
+  # wrong one. Measured here with all 16 interfaces mounted and UCX still
+  # selected: 5.6-5.9s per transfer, ~39MB/s, the same as before the devices
+  # existed. NVIDIA's EFA guide calls this "a silent-failure path -- getting it
+  # wrong manifests as ~100s TTFT", which is exactly what we saw and spent a
+  # night attributing to the topology.
+  #
+  # The runtime image must also carry libfabric itself. NVIDIA's published image
+  # ships the plugin but not the library (`libfabric.so.1 => not found`), and the
+  # EKS host's EFA install is the minimal profile with no libfabric either. Ours
+  # is appended registry-side; see hangar-runtime/kimi-k3.
+  nixlBackends: []
 
 dcgm:
   # Empty derives both from the bundled dcgm-exporter. Set them to point at an

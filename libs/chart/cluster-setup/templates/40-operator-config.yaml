@@ -35,6 +35,9 @@ data:
   {{- with .Values.fabric.resource }}
   HANGAR_FABRIC_RESOURCE: {{ . | quote }}
   {{- end }}
+  {{- with .Values.fabric.nixlBackends }}
+  HANGAR_NIXL_BACKENDS: {{ join "," . | quote }}
+  {{- end }}
 
   {{- with .Values.operator.engine.imagePullSecrets }}
   HANGAR_ENGINE_PULL_SECRETS: {{ join "," . | quote }}

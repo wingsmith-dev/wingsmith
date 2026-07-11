@@ -102,6 +102,11 @@ type Options struct {
 	// this is not hardcoded.
 	FabricResource string
 
+	// NIXLBackends names the NIXL plugins the KV connector should register, most specific first.
+	// Empty leaves vLLM's default of ["UCX"]. See nixlBackendsFragment for why EC2 needs
+	// ["LIBFABRIC"] and what it costs to leave it alone.
+	NIXLBackends []string
+
 	// EnginePullSecrets are Secrets in the workload namespace the kubelet presents when pulling
 	// the serving block's EngineRuntimeImage. Frontends receive them too because, when neither a
 	// deployment nor the cluster names a frontend image, they run that same engine image.
@@ -903,6 +908,67 @@ func workerProbes() (liveness, readiness *corev1.Probe) {
 // value here looks like a scheduling problem rather than a configuration one.
 const defaultFabricResource = "vpc.amazonaws.com/efa"
 
+// efaHugePages is what NVIDIA's own EFA-on-AWS guide requests alongside FI_EFA_USE_HUGE_PAGE=1.
+const efaHugePages = "5120Mi"
+
+// fabricEnv is what libfabric needs to choose EFA and use it properly.
+//
+// FI_PROVIDER pins the provider rather than letting libfabric pick; the shm and tcp providers
+// are also present and either would "work" while moving nothing over the fabric.
+//
+// FI_EFA_USE_DEVICE_RDMA turns on the device's own RDMA read/write rather than emulating it in
+// software. FI_EFA_ENABLE_SHM* are off because NIXL transfers here are always between nodes, and
+// the shm path adds a fork-unsafe mapping for a case that cannot occur.
+//
+// The rest is the tuning block from the same guide. FI_EFA_MR_MAX_CACHED_SIZE=0 disables the
+// size ceiling on the memory-registration cache, which matters because a K3 KV transfer registers
+// a large contiguous region and re-registering it per transfer is most of what makes a slow
+// fabric look like a slow model.
+// fabricSecurityContext widens a worker container so NIXL can register GPU memory with the NIC.
+//
+// This is the most invasive thing this operator renders, so it is worth being plain about it: a
+// privileged container is not meaningfully isolated from its node. It is here because NVIDIA's
+// EFA-on-AWS guide requires it for fi_mr_reg against CUDA VRAM and says IPC_LOCK alone is not
+// enough, and because the failure without it is silent -- the KV path falls back and reports
+// success while running at a fraction of the fabric's speed.
+//
+// Two things bound it. It applies only where a cluster has declared a fabric, so every cluster
+// that has not renders exactly the container it always did. And it applies to GPU worker pods,
+// which on these pools own their whole node and run nothing but an inference engine.
+//
+// If NIXL ever registers VRAM without this -- the DMA-BUF path on a 5.12+ kernel is the likely
+// route -- delete it. It is a workaround for a driver interface, not a design decision.
+func fabricSecurityContext(opts Options) *corev1.SecurityContext {
+	if opts.EFADevices == 0 {
+		return nil
+	}
+	return &corev1.SecurityContext{
+		Privileged:   ptr(true),
+		Capabilities: &corev1.Capabilities{Add: []corev1.Capability{"IPC_LOCK"}},
+	}
+}
+
+// fabricEnvFor returns nothing when no fabric is declared.
+func fabricEnvFor(opts Options) []corev1.EnvVar {
+	if opts.EFADevices == 0 {
+		return nil
+	}
+	return fabricEnv()
+}
+
+func fabricEnv() []corev1.EnvVar {
+	return []corev1.EnvVar{
+		{Name: "FI_PROVIDER", Value: "efa"},
+		{Name: "FI_EFA_USE_DEVICE_RDMA", Value: "1"},
+		{Name: "FI_EFA_ENABLE_SHM_TRANSFER", Value: "0"},
+		{Name: "FI_EFA_ENABLE_SHM", Value: "0"},
+		{Name: "FI_EFA_FORK_SAFE", Value: "0"},
+		{Name: "FI_EFA_USE_HUGE_PAGE", Value: "1"},
+		{Name: "FI_EFA_MR_MAX_CACHED_COUNT", Value: "524288"},
+		{Name: "FI_EFA_MR_MAX_CACHED_SIZE", Value: "0"},
+	}
+}
+
 func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) {
 	devices := in.Layout.devices(in.Deployment)
 
@@ -921,6 +987,14 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 		count := *resource.NewQuantity(int64(opts.EFADevices), resource.DecimalSI)
 		requests[name] = count
 		limits[name] = count
+
+		// libfabric's EFA provider registers its bounce buffers from huge pages when
+		// FI_EFA_USE_HUGE_PAGE is on, and the pod has to ask for them by name or the
+		// allocation fails inside the provider rather than at admission. The host reserves
+		// them at boot (efa-hugepages-reserve.sh); this claims a slice.
+		huge := resource.MustParse(efaHugePages)
+		requests[corev1.ResourceHugePagesPrefix+"2Mi"] = huge
+		limits[corev1.ResourceHugePagesPrefix+"2Mi"] = huge
 	}
 	if n := in.Deployment.Serving.Resources.CPUCores; n != nil {
 		requests[corev1.ResourceCPU] = *resource.NewQuantity(int64(*n), resource.DecimalSI)
@@ -976,6 +1050,10 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 	spec := &corev1.PodSpec{
 		ImagePullSecrets: imagePullSecrets(opts.EnginePullSecrets),
 		NodeSelector:     podNodeSelector(in, opts),
+		// NIXL registers CUDA VRAM with the EFA NIC through fi_mr_reg, and NVIDIA's EFA-on-AWS
+		// guide is explicit that IPC_LOCK alone does not permit it. See fabricSecurityContext
+		// for what that widens and why it is scoped the way it is.
+		HostIPC: opts.EFADevices > 0,
 		Tolerations: []corev1.Toleration{{
 			Key:      "nvidia.com/gpu",
 			Operator: corev1.TolerationOpEqual,
@@ -1018,16 +1096,17 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 			// exits cleanly and is the difference between "a replica is repeatedly crashing"
 			// and knowing which argument to remove.
 			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
+			SecurityContext:          fabricSecurityContext(opts),
 			LivenessProbe:            liveness,
 			ReadinessProbe:           readiness,
-			Env: []corev1.EnvVar{
+			Env: append(fabricEnvFor(opts), []corev1.EnvVar{
 				{Name: "HF_HOME", Value: HFHome},
 				// KV-aware routing decides which worker already holds a prefix by hashing
 				// block contents. Python salts hashes per process by default, so without a
 				// fixed seed the frontend and the workers hash identical blocks differently
 				// and every cache hit is missed — silently, as a performance loss.
 				{Name: "PYTHONHASHSEED", Value: "0"},
-			},
+			}...),
 			EnvFrom: []corev1.EnvFromSource{{
 				SecretRef: &corev1.SecretEnvSource{
 					LocalObjectReference: corev1.LocalObjectReference{Name: "hf-token-secret"},
@@ -1454,6 +1533,39 @@ func engineModule(engine string) string {
 // this constant does not answer it.
 const kvTransferConfig = `{"kv_connector":"NixlConnector","kv_role":"kv_both"}`
 
+// nixlBackendsFragment is the `backends` entry for a NixlConnector's extra config, or "" to let
+// vLLM choose.
+//
+// vLLM defaults this to `["UCX"]` (nixl/base_worker.py:261), and on EC2 that is the wrong plugin.
+// NIXL ships `libplugin_UCX.so` and `libplugin_LIBFABRIC.so` side by side; EFA is a libfabric
+// provider, and UCX reaches it only through a path that does not perform. Measured on this
+// cluster with all 16 EFA interfaces mounted into the container and UCX still selected: 5.6-5.9s
+// per transfer at 220MB each, about 39MB/s -- indistinguishable from the TCP numbers taken before
+// the devices existed. Mounting the fabric is necessary and not sufficient; something has to ask
+// for the plugin that speaks to it.
+//
+// Empty keeps vLLM's default, so a cluster with no fabric renders exactly what it did before.
+func nixlBackendsFragment(opts Options) string {
+	if len(opts.NIXLBackends) == 0 {
+		return ""
+	}
+	quoted := make([]string, 0, len(opts.NIXLBackends))
+	for _, b := range opts.NIXLBackends {
+		if b = strings.TrimSpace(b); b != "" {
+			quoted = append(quoted, strconv.Quote(b))
+		}
+	}
+	if len(quoted) == 0 {
+		return ""
+	}
+	return `,"kv_connector_extra_config":{"backends":[` + strings.Join(quoted, ",") + `]}`
+}
+
+// nixlConnector renders one NixlConnector, with the cluster's backend choice applied.
+func nixlConnector(opts Options) string {
+	return `{"kv_connector":"NixlConnector","kv_role":"kv_both"` + nixlBackendsFragment(opts) + `}`
+}
+
 // offloadTier reads the host-memory KV offload switch out of the workload's prefix_cache_config.
 //
 // `offload: host` turns it on and `offload_gib` sizes it; anything else is off. The field already
@@ -1503,17 +1615,17 @@ func offloadTier(in Inputs) (gib int, on bool) {
 // mutually exclusive and `block_size` is in *tokens* that must divide the engine's block size
 // exactly (offloading/config.py:59-88); since nothing here sets `--block-size`, naming a chunk
 // size would be asserting a relationship to a default we do not control.
-func roleKVTransferConfig(in Inputs, role workerRole) string {
+func roleKVTransferConfig(in Inputs, opts Options, role workerRole) string {
 	gib, on := offloadTier(in)
 	if !on || role.Role != "prefill" {
-		return kvTransferConfig
+		return nixlConnector(opts)
 	}
 	return fmt.Sprintf(
 		`{"kv_connector":"MultiConnector","kv_role":"kv_both","kv_connector_extra_config":`+
 			`{"connectors":[{"kv_connector":"OffloadingConnector","kv_role":"kv_both",`+
 			`"kv_connector_extra_config":{"spec_name":"CPUOffloadingSpec","cpu_bytes_to_use":%d}},`+
-			`{"kv_connector":"NixlConnector","kv_role":"kv_both"}]}}`,
-		int64(gib)*1024*1024*1024,
+			`%s]}}`,
+		int64(gib)*1024*1024*1024, nixlConnector(opts),
 	)
 }
 
@@ -1674,7 +1786,7 @@ func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 
 	if role.Role != "" {
 		derived["disaggregation-mode"] = role.Role
-		derived["kv-transfer-config"] = roleKVTransferConfig(in, role)
+		derived["kv-transfer-config"] = roleKVTransferConfig(in, opts, role)
 		if role.Spec != nil {
 			if v := role.Spec.MaxBatchTokens; v != nil {
 				derived["max-num-batched-tokens"] = strconv.Itoa(*v)

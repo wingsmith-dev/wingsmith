@@ -1817,6 +1817,49 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 		t.Fatalf("asked for %d rdma/hca, want 8", got.Value())
 	}
 
+	// The fabric is a package: the resource alone gets /dev/infiniband mounted and nothing more.
+	// Without the LIBFABRIC backend NIXL still selects UCX, which on EC2 moved KV at ~39MB/s with
+	// all 16 interfaces present -- indistinguishable from the TCP numbers. Without privileged,
+	// fi_mr_reg cannot register CUDA VRAM. Each of these fails silently on its own, so the render
+	// asserts all of them together.
+	full, err := podSpec(in, Options{EFADevices: 16, NIXLBackends: []string{"LIBFABRIC"}}, workerRole{Role: "decode"})
+	if err != nil {
+		t.Fatalf("render full fabric: %v", err)
+	}
+	if sc := full.Containers[0].SecurityContext; sc == nil || sc.Privileged == nil || !*sc.Privileged {
+		t.Fatal("fabric declared but the container is not privileged; fi_mr_reg on VRAM will fail")
+	}
+	if !full.HostIPC {
+		t.Fatal("fabric declared without hostIPC")
+	}
+	if _, ok := full.Containers[0].Resources.Requests[corev1.ResourceHugePagesPrefix+"2Mi"]; !ok {
+		t.Fatal("FI_EFA_USE_HUGE_PAGE is set but the pod asks for no huge pages")
+	}
+	env := map[string]string{}
+	for _, e := range full.Containers[0].Env {
+		env[e.Name] = e.Value
+	}
+	if env["FI_PROVIDER"] != "efa" {
+		t.Fatalf("FI_PROVIDER=%q, want efa; libfabric would be free to pick shm or tcp", env["FI_PROVIDER"])
+	}
+	if env["HF_HOME"] != HFHome {
+		t.Fatal("fabric env displaced the existing container env rather than adding to it")
+	}
+
+	// A cluster with no fabric renders the container it always did: no privilege, no host IPC,
+	// no libfabric env. This is the assertion that keeps the blast radius at one cluster.
+	if off.HostIPC {
+		t.Fatal("no fabric declared but hostIPC is set")
+	}
+	if off.Containers[0].SecurityContext != nil {
+		t.Fatal("no fabric declared but the container was given a security context")
+	}
+	for _, e := range off.Containers[0].Env {
+		if strings.HasPrefix(e.Name, "FI_") {
+			t.Fatalf("no fabric declared but %s is set", e.Name)
+		}
+	}
+
 	// Aggregated workers ask too. One worker owns its node, so holding an interface it may not
 	// use costs nothing, while a worker that needed it and did not ask fails silently.
 	agg, err := podSpec(testInputs(), Options{EFADevices: 16}, workerRole{})
