@@ -13,6 +13,8 @@ package render
 
 import (
 	"cmp"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -852,6 +854,139 @@ func localModelMount(opts Options) []corev1.VolumeMount {
 	return []corev1.VolumeMount{{Name: "local-model-cache", MountPath: LocalModels}}
 }
 
+// jitCacheRoot is where a node keeps the FlashInfer wrappers its workers have already compiled.
+//
+// Under the model mirror rather than beside it, because it is the same node-local disk held for
+// the same reason: something expensive to produce, worth keeping across a pod, and worth nothing
+// if it has to be produced again. One directory per runtime image sits beneath it.
+const jitCacheRoot = LocalModels + "/flashinfer"
+
+// mutableTags are the tags a later build is expected to take over.
+var mutableTags = map[string]bool{
+	"latest": true, "main": true, "master": true, "dev": true,
+	"edge": true, "nightly": true, "stable": true, "head": true,
+}
+
+// jitCacheSlug names the directory one runtime image may keep its compiled wrappers in.
+//
+// FlashInfer keys its own cache path on its version and the CUDA architecture and on nothing
+// else, so two images carrying the same FlashInfer release resolve to the same directory -- and a
+// host FFI wrapper built inside one of them is loaded by the other. Everything the wrapper was
+// actually compiled against is what differs between two such images, and none of it is in that
+// path. So the image reference is the key here, and its digest or tag is what makes it one.
+//
+// Empty for a reference that cannot be told apart across builds -- no tag, or a moving one -- and
+// an empty slug turns the persistence off for that deployment, leaving it to compile into the
+// container as it does today. Recompiling costs four minutes. Loading a wrapper built by a
+// different image costs a symbol bound to the wrong code, and nothing reports that.
+func jitCacheSlug(image string) string {
+	ref := strings.TrimSpace(image)
+	if ref == "" {
+		return ""
+	}
+	if _, digest, ok := strings.Cut(ref, "@sha256:"); ok {
+		if len(digest) < 12 {
+			return ""
+		}
+		return "sha256-" + digest[:12]
+	}
+	tag := ""
+	if i := strings.LastIndex(ref, ":"); i >= 0 && !strings.Contains(ref[i+1:], "/") {
+		tag = ref[i+1:]
+	}
+	if tag == "" || mutableTags[tag] {
+		return ""
+	}
+	// The tag alone would collide between two registries publishing the same version, which on a
+	// disk shared by every worker on the node is the same mismatch the tag is here to prevent.
+	// The digest of the whole reference settles it; the tag stays in the name so that whoever is
+	// standing on the node can read what a directory holds.
+	sum := sha256.Sum256([]byte(ref))
+	return jitCacheTagName(tag) + "-" + hex.EncodeToString(sum[:])[:12]
+}
+
+// maxJitCacheTagName caps the readable half of a slug. The digest after it is what makes the name
+// unique, so a truncated tag costs legibility and nothing else.
+const maxJitCacheTagName = 64
+
+// jitCacheTagName reduces a tag to a directory name, keeping what a tag is normally made of.
+func jitCacheTagName(tag string) string {
+	var b strings.Builder
+	for _, r := range tag {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '.' || r == '_' || r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteByte('-')
+		}
+	}
+	out := strings.Trim(b.String(), "-.")
+	if len(out) > maxJitCacheTagName {
+		out = strings.Trim(out[:maxJitCacheTagName], "-.")
+	}
+	return out
+}
+
+// jitCacheEnabled says whether this pod can keep its compiled wrappers on the node.
+//
+// Both halves are required and neither is a guess: without a node-local disk there is nowhere to
+// keep them, and without a slug there is no name they can be kept under safely.
+func jitCacheEnabled(opts Options, image string) bool {
+	return opts.LocalModelCacheDir != "" && jitCacheSlug(image) != ""
+}
+
+// jitCacheEnv moves FlashInfer's workspace off the container's ephemeral layer.
+//
+// FLASHINFER_WORKSPACE_BASE is the whole of the surface. FlashInfer reads it once, at import, and
+// derives everything below it -- `<base>/.cache/flashinfer/<version>/<arch>/cached_ops` is where
+// the wrappers land, and the version and the arch are its own idea rather than ours. The cubin
+// and AOT roots answer to separate variables, and both are already answered by the
+// flashinfer-cubin and flashinfer-jit-cache packages baked into the image, so neither is set.
+//
+// What this is worth: a Kimi-K3 worker spends 245 seconds of a 648-second start JIT-compiling one
+// MoE wrapper, single-threaded, with all eight tensor-parallel ranks blocked on its file lock.
+// The cubins are in the image and the AOT wheel is installed; this is the host FFI wrapper, and
+// it is the same wrapper on every start of the same image.
+func jitCacheEnv(opts Options, image string) []corev1.EnvVar {
+	if !jitCacheEnabled(opts, image) {
+		return nil
+	}
+	return []corev1.EnvVar{{Name: "FLASHINFER_WORKSPACE_BASE", Value: jitCacheRoot + "/" + jitCacheSlug(image)}}
+}
+
+// workerSecurityContext is fabricSecurityContext, plus root when the worker writes to the node.
+//
+// Root is here for one reason and it is worth writing down, because the alternative looks obvious
+// and does not work. FlashInfer calls os.makedirs on its workspace at *import* time, before vLLM
+// starts and with nothing to catch the error. The workspace is under /models-local, which is a
+// hostPath: the kubelet creates it root-owned 0755 and the node's copy of the weights is written
+// into it by a root init container. fsGroup does not apply to hostPath volumes, so the pod's
+// fsGroup: 1000 leaves that directory root-owned no matter what it says, and a worker running as
+// the image's uid 1000 gets a PermissionError on import -- in every rank, before it has logged
+// anything, as a crash loop rather than a slow start. Root is what makes the directory writable
+// without a second privileged step in front of the worker.
+//
+// The concession is smaller than it reads. These pods already run privileged wherever a cluster
+// has declared a fabric, they own their whole node, and they run nothing but an inference engine.
+// The two writable mounts are that hostPath, whose contents are already root-written, and the EFS
+// claim, which is mounted through an access point that forces every operation to uid 1000
+// whatever the caller is -- so nothing on the shared filesystem changes hands.
+//
+// Applied only where the cache is actually kept. A cluster with no node-local disk renders the
+// container it always did, as uid 1000.
+func workerSecurityContext(opts Options, image string) *corev1.SecurityContext {
+	sc := fabricSecurityContext(opts)
+	if !jitCacheEnabled(opts, image) {
+		return sc
+	}
+	if sc == nil {
+		sc = &corev1.SecurityContext{}
+	}
+	sc.RunAsUser = ptr(int64(0))
+	return sc
+}
+
 // workerProbes replace Dynamo's defaults, which destroy a busy worker rather than a broken one.
 //
 // Dynamo renders liveness as failureThreshold 1, timeoutSeconds 4, periodSeconds 5: a single
@@ -1124,10 +1259,10 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 			// exits cleanly and is the difference between "a replica is repeatedly crashing"
 			// and knowing which argument to remove.
 			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
-			SecurityContext:          fabricSecurityContext(opts),
+			SecurityContext:          workerSecurityContext(opts, image),
 			LivenessProbe:            liveness,
 			ReadinessProbe:           readiness,
-			Env: append(fabricEnvFor(opts, hugePagesAllowed(requests)), []corev1.EnvVar{
+			Env: append(append(fabricEnvFor(opts, hugePagesAllowed(requests)), jitCacheEnv(opts, image)...), []corev1.EnvVar{
 				{Name: "HF_HOME", Value: HFHome},
 				// KV-aware routing decides which worker already holds a prefix by hashing
 				// block contents. Python salts hashes per process by default, so without a

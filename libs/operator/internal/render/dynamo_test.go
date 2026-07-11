@@ -1899,3 +1899,116 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 		t.Fatal("aggregated worker asked for no EFA")
 	}
 }
+
+// The workspace has to be keyed on the image and not only on what FlashInfer keys it on itself.
+// FlashInfer's own path carries its version and the CUDA arch, so two images shipping the same
+// release land in the same directory and one reads back a host wrapper the other compiled.
+func TestJITCacheSlugSeparatesImages(t *testing.T) {
+	a := jitCacheSlug("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
+	b := jitCacheSlug("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa5")
+	if a == "" || b == "" {
+		t.Fatalf("slugs = %q, %q; a versioned tag is keyable", a, b)
+	}
+	if a == b {
+		t.Errorf("two image tags share the directory %q", a)
+	}
+	if !strings.HasPrefix(a, "1.4.0-patched.1-efa4-") {
+		t.Errorf("slug = %q, want the tag readable at the front of it", a)
+	}
+
+	same := jitCacheSlug("quay.io/other/vllm-runtime:1.4.0-patched.1-efa4")
+	if same == a {
+		t.Errorf("two registries share the directory %q", a)
+	}
+
+	digest := jitCacheSlug("ghcr.io/x/y@sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08")
+	if digest != "sha256-9f86d081884c" {
+		t.Errorf("digest slug = %q", digest)
+	}
+}
+
+// A tag a later build takes over cannot key a cache, because the danger is not a stale directory
+// -- it is a directory whose name still matches and whose contents no longer do.
+func TestJITCacheSlugRefusesMovingTags(t *testing.T) {
+	for _, ref := range []string{"", "ghcr.io/x/vllm-runtime", "ghcr.io/x/vllm-runtime:latest", "vllm:dev"} {
+		if slug := jitCacheSlug(ref); slug != "" {
+			t.Errorf("jitCacheSlug(%q) = %q, want none", ref, slug)
+		}
+	}
+}
+
+// The persistence and the root that makes it writable arrive together, and both are absent on a
+// cluster with no node-local disk: that worker starts as it always did, slowly.
+func TestJITCacheNeedsANodeLocalDisk(t *testing.T) {
+	in := testInputs()
+	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
+
+	bare, err := podSpec(in, Options{ModelCachePVC: "model-cache"}, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := containerEnv(bare.Containers[0], "FLASHINFER_WORKSPACE_BASE"); v != "" {
+		t.Errorf("workspace base = %q with no local disk to hold it", v)
+	}
+	if sc := bare.Containers[0].SecurityContext; sc != nil && sc.RunAsUser != nil {
+		t.Errorf("worker runs as %d with nothing on the node to write", *sc.RunAsUser)
+	}
+
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models"}
+	local, err := podSpec(in, opts, workerRole{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := containerEnv(local.Containers[0], "FLASHINFER_WORKSPACE_BASE")
+	if !strings.HasPrefix(base, jitCacheRoot+"/") {
+		t.Fatalf("workspace base = %q, want it under %q", base, jitCacheRoot)
+	}
+	if !strings.Contains(base, "1.4.0-patched.1-efa4") {
+		t.Errorf("workspace base = %q, want the image tag in it", base)
+	}
+	// The base is under the hostPath mount, so the worker has to carry that mount for the path
+	// to resolve at all.
+	var mounted bool
+	for _, m := range local.Containers[0].VolumeMounts {
+		if m.MountPath == LocalModels {
+			mounted = true
+		}
+	}
+	if !mounted {
+		t.Errorf("workspace base is %q but the worker has no %s mount", base, LocalModels)
+	}
+	sc := local.Containers[0].SecurityContext
+	if sc == nil || sc.RunAsUser == nil || *sc.RunAsUser != 0 {
+		t.Fatalf("security context = %+v, want root: the hostPath is root-owned", sc)
+	}
+}
+
+// Root is added to the fabric context rather than replacing it. A worker that lost IPC_LOCK to
+// gain a cache would run its KV path on the slow fallback and report success.
+func TestJITCacheKeepsTheFabricContext(t *testing.T) {
+	in := testInputs()
+	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", EFADevices: 16}
+
+	spec, err := podSpec(in, opts, workerRole{Role: "decode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sc := spec.Containers[0].SecurityContext
+	if sc == nil || sc.Privileged == nil || !*sc.Privileged || len(sc.Capabilities.Add) != 1 {
+		t.Fatalf("security context = %+v, want the fabric widening intact", sc)
+	}
+	if sc.RunAsUser == nil || *sc.RunAsUser != 0 {
+		t.Errorf("security context = %+v, want root as well", sc)
+	}
+}
+
+// containerEnv reads one variable out of a rendered container.
+func containerEnv(c corev1.Container, name string) string {
+	for _, e := range c.Env {
+		if e.Name == name {
+			return e.Value
+		}
+	}
+	return ""
+}
