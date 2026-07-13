@@ -1954,7 +1954,7 @@ func TestJITCacheNeedsANodeLocalDisk(t *testing.T) {
 		t.Errorf("worker runs as %d with nothing on the node to write", *sc.RunAsUser)
 	}
 
-	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models"}
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", JITCacheOptIn: true}
 	local, err := podSpec(in, opts, workerRole{})
 	if err != nil {
 		t.Fatal(err)
@@ -1988,7 +1988,7 @@ func TestJITCacheNeedsANodeLocalDisk(t *testing.T) {
 func TestJITCacheKeepsTheFabricContext(t *testing.T) {
 	in := testInputs()
 	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
-	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", EFADevices: 16}
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", EFADevices: 16, JITCacheOptIn: true}
 
 	spec, err := podSpec(in, opts, workerRole{Role: "decode"})
 	if err != nil {
@@ -2000,6 +2000,30 @@ func TestJITCacheKeepsTheFabricContext(t *testing.T) {
 	}
 	if sc.RunAsUser == nil || *sc.RunAsUser != 0 {
 		t.Errorf("security context = %+v, want root as well", sc)
+	}
+}
+
+// A cluster that has not asked for the JIT cache renders as it did before it existed. The feature
+// is under suspicion of costing throughput -- 6.68 req/s against 4.79 on byte-identical renders --
+// so the default has to be the shape that was measured, not the newer one.
+func TestJITCacheIsOptIn(t *testing.T) {
+	in := testInputs()
+	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-patched.1-efa4")
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", EFADevices: 16}
+
+	spec, err := podSpec(in, opts, workerRole{Role: "decode"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := containerEnv(spec.Containers[0], "FLASHINFER_WORKSPACE_BASE"); v != "" {
+		t.Errorf("workspace base = %q without opting in", v)
+	}
+	sc := spec.Containers[0].SecurityContext
+	if sc == nil || sc.Privileged == nil || !*sc.Privileged {
+		t.Fatalf("security context = %+v, want the fabric widening intact", sc)
+	}
+	if sc.RunAsUser != nil {
+		t.Errorf("worker runs as %d without opting in", *sc.RunAsUser)
 	}
 }
 

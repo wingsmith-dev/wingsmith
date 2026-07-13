@@ -67,13 +67,19 @@ var GVK = schema.GroupVersionKind{Group: "nvidia.com", Version: "v1beta1", Kind:
 
 // Options are the per-cluster conventions the render needs and the plane does not declare.
 type Options struct {
-	Namespace           string
-	PoolLabelKey        string
-	GPUPoolValue        string
-	CachePoolValue      string
-	CacheTaintKey       string
-	ModelCachePVC       string
-	LocalModelCacheDir  string
+	Namespace          string
+	PoolLabelKey       string
+	GPUPoolValue       string
+	CachePoolValue     string
+	CacheTaintKey      string
+	ModelCachePVC      string
+	LocalModelCacheDir string
+	// JITCacheOptIn turns on keeping FlashInfer's compiled wrappers on the node. Off by default
+	// and opt-in per cluster, because the feature buys startup time and is under suspicion of
+	// costing steady-state throughput: a 2P:2D fleet measured 6.68 req/s without it and 4.79
+	// with it, on otherwise byte-identical renders. Until that is attributed, a cluster that has
+	// not asked for it renders as it did before -- as uid 1000, with no FLASHINFER_WORKSPACE_BASE.
+	JITCacheOptIn       bool
 	PrefetchCPU         string
 	PrefetchMemory      string
 	PrefetchMemoryLimit string
@@ -933,7 +939,7 @@ func jitCacheTagName(tag string) string {
 // Both halves are required and neither is a guess: without a node-local disk there is nowhere to
 // keep them, and without a slug there is no name they can be kept under safely.
 func jitCacheEnabled(opts Options, image string) bool {
-	return opts.LocalModelCacheDir != "" && jitCacheSlug(image) != ""
+	return opts.JITCacheOptIn && opts.LocalModelCacheDir != "" && jitCacheSlug(image) != ""
 }
 
 // jitCacheEnv moves FlashInfer's workspace off the container's ephemeral layer.
