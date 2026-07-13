@@ -74,10 +74,15 @@ function Panel({
 /**
  * What a tenant's traffic looked like over the chosen window.
  *
- * Three charts and not one: requests, tokens and latency are three different
- * units, and putting any two of them on one pair of axes would need a second
- * y-scale — which makes the crossings of the two lines look like events when
- * they are an artefact of how the scales were chosen.
+ * One chart per unit, and not one chart: requests, tokens, seconds and a
+ * percentage do not share an axis, and putting any two of them on one pair
+ * would need a second y-scale — which makes the crossings of the two lines look
+ * like events when they are an artefact of how the scales were chosen.
+ *
+ * Time to first token is split from end-to-end latency for the same reason they
+ * are separate rows in an acceptance document: they are quoted against separate
+ * ceilings, and a reader checking one against its threshold should not have to
+ * pick its line out of the other's.
  */
 export function ServingCharts({ curves }: { curves: MetricSeries[] }) {
   const traffic: ChartSeries[] = [
@@ -101,6 +106,30 @@ export function ServingCharts({ curves }: { curves: MetricSeries[] }) {
       label: "Input",
       color: CATEGORICAL[1],
       points: rate(curves, "serving.input_tokens_per_second"),
+    },
+  ]
+
+  const ttft: ChartSeries[] = [
+    {
+      key: "p50",
+      label: "p50",
+      color: STEP[0],
+      points: quantile(curves, "serving.ttft_p50"),
+    },
+    {
+      key: "p95",
+      label: "p95",
+      color: STEP[1],
+      points: quantile(curves, "serving.ttft_p95"),
+    },
+  ]
+
+  const cache: ChartSeries[] = [
+    {
+      key: "cached",
+      label: "Cached",
+      color: CATEGORICAL[0],
+      points: quantile(curves, "serving.cache_hit_ratio"),
     },
   ]
 
@@ -129,6 +158,18 @@ export function ServingCharts({ curves }: { curves: MetricSeries[] }) {
     <div className="grid gap-6 border-t p-5 lg:grid-cols-2">
       <Panel title="Requests / sec" series={traffic} unit="per_second" />
       <Panel title="Tokens / sec" series={tokens} unit="per_second" />
+      <Panel
+        title="Time to first token"
+        series={ttft}
+        unit="seconds"
+        note="Measured from the front door, so it excludes your network to us — a client-side TTFT is this plus the round trip."
+      />
+      <Panel
+        title="Cached input"
+        series={cache}
+        unit="percent"
+        note="Cached input tokens over input tokens, read off the same usage object your client sees as prompt_tokens_details.cached_tokens."
+      />
       <Panel
         title="Latency"
         className="lg:col-span-2"

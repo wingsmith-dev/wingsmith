@@ -95,7 +95,7 @@ export function ModelCard({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-5 p-5 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-5 p-5 sm:grid-cols-3 lg:grid-cols-6">
         <Stat
           label="Requests / sec"
           value={stat("serving.requests_per_second")}
@@ -104,7 +104,9 @@ export function ModelCard({
           label="Output tokens / sec"
           value={stat("serving.output_tokens_per_second")}
         />
+        <Stat label="TTFT p50" value={stat("serving.ttft_p50")} />
         <Stat label="Latency p95" value={stat("serving.latency_p95")} />
+        <Stat label="Cached input" value={stat("serving.cache_hit_ratio")} />
         <Stat label="Availability" value={stat("serving.availability")} />
       </div>
 

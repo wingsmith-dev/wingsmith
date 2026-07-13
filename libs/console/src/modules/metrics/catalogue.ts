@@ -199,6 +199,15 @@ const INFERENCE: MetricDefinition[] = [
     scale: "invariant",
   },
   {
+    name: "inference.tpot_p50",
+    title: "Time per output token (p50)",
+    unit: "seconds",
+    family: "inference",
+    group: "latency",
+    scale: "invariant",
+    note: "Its own registered series, not a percentile knob on the p95 one.",
+  },
+  {
     name: "inference.tpot",
     title: "Time per output token (p95)",
     unit: "seconds",
@@ -390,6 +399,15 @@ const SERVING: MetricDefinition[] = [
     family: "serving",
     group: "latency",
     scale: "invariant",
+  },
+  {
+    name: "serving.cache_hit_ratio",
+    title: "Cached input tokens, front door",
+    unit: "percent",
+    family: "serving",
+    group: "throughput",
+    scale: "invariant",
+    note: "Cached input over input, off the usage object we return — the figure a caller can reconcile against their own prompt_tokens_details.cached_tokens.",
   },
   {
     name: "serving.requests_in_flight",

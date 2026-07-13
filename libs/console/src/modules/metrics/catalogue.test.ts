@@ -51,6 +51,7 @@ describe("catalogue", () => {
       "inference.prefix_cache_hit_rate",
       "inference.ttft_p50",
       "inference.ttft_p90",
+      "inference.tpot_p50",
       "inference.queue_time",
       "inference.prefill_time",
       "inference.decode_time",
@@ -70,6 +71,7 @@ describe("catalogue", () => {
       "serving.requests_in_flight",
       "serving.input_tokens_per_second",
       "serving.output_tokens_per_second",
+      "serving.cache_hit_ratio",
     ]
     expect(CATALOGUE.map((metric) => metric.name).sort()).toEqual(
       expected.sort()
@@ -223,6 +225,7 @@ describe("the serving family", () => {
       "serving.requests_in_flight",
       "serving.input_tokens_per_second",
       "serving.output_tokens_per_second",
+      "serving.cache_hit_ratio",
     ]) {
       expect(metricDefinition(name)!.title, name).toMatch(/front door/i)
     }

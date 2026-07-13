@@ -113,6 +113,7 @@ INFERENCE_METRICS: tuple[Metric, ...] = (
     Metric("inference.ttft_p50", "seconds", "inference", "Time to first token (p50)"),
     Metric("inference.ttft_p90", "seconds", "inference", "Time to first token (p90)"),
     Metric("inference.ttft_p99", "seconds", "inference", "Time to first token (p99)"),
+    Metric("inference.tpot_p50", "seconds", "inference", "Time per output token (p50)"),
     Metric("inference.tpot_p99", "seconds", "inference", "Time per output token (p99)"),
     Metric("inference.latency_p99", "seconds", "inference", "End-to-end latency (p99)"),
     Metric("inference.queue_time", "seconds", "inference", "Time waiting in queue (p95)"),
@@ -133,9 +134,9 @@ experiences and is scale-invariant. An acceptance floor of "30 tokens/second" me
 the second — thirty aggregate tokens a second on a serving GPU would be a fault —
 and reading the wrong one gives a check that passes under every condition.
 
-`ttft_p50`, `ttft_p90` and the three `_p99` entries sit beside the p95 `ttft`,
-`tpot` and `latency` because they are named percentiles somebody is held to, not a
-query dimension. A percentile a caller can ask for is a name in this vocabulary;
+`ttft_p50`, `ttft_p90`, `tpot_p50` and the three `_p99` entries sit beside the p95
+`ttft`, `tpot` and `latency` because they are named percentiles somebody is held to,
+not a query dimension. A percentile a caller can ask for is a name in this vocabulary;
 that is the cost of keeping PromQL out of it. Each is quantiled out of the buckets
 in its own right — a tail read off the p95 next to it would be a number nothing
 measured, which is worse than a cell that says it was not measured.
@@ -160,6 +161,7 @@ SERVING_METRICS: tuple[Metric, ...] = (
     Metric("serving.requests_in_flight", "count", "serving", "Requests in flight", aggregate="sum"),
     Metric("serving.input_tokens_per_second", "per_second", "serving", "Input tokens/sec", aggregate="sum"),
     Metric("serving.output_tokens_per_second", "per_second", "serving", "Output tokens/sec", aggregate="sum"),
+    Metric("serving.cache_hit_ratio", "percent", "serving", "Cached input tokens"),
 )
 """What the front door saw, which is the only place a failure rate can be measured.
 
@@ -176,6 +178,15 @@ that failed before an engine saw them.
 `serving.availability` has no floor and no rounding of its own. Whether 99.4% is
 an outage is a threshold somebody declared, which belongs to whoever declared it;
 this is the measurement it is compared against.
+
+`cache_hit_ratio` is the front door's account of the same thing
+`inference.prefix_cache_hit_rate` reports from inside the engine, and it exists
+beside it because they answer to different people. The engine's is hits over
+lookups on one vLLM instance; this is cached input tokens over input tokens for
+one endpoint, read off the usage object we return to the caller — so it is the
+number a buyer can reconcile against their own client's
+`prompt_tokens_details.cached_tokens`, and the only one of the two that is
+scoped to a tenant at all.
 """
 
 

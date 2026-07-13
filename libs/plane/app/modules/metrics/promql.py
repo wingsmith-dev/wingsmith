@@ -126,6 +126,11 @@ GATEWAY_TTFT = "hangar_gateway_ttft_seconds_bucket"
 GATEWAY_TOKENS = "hangar_gateway_tokens_total"
 GATEWAY_IN_FLIGHT = "hangar_gateway_requests_in_flight"
 
+INPUT = 'direction="input"'
+CACHED_INPUT = 'direction="cached_input"'
+"""The two token directions a cache-hit ratio is built from. `output` is not one
+of them, and `cached_input` is a subset of `input` rather than a sibling."""
+
 LIVE = 'origin="live"'
 """Every gateway query carries it. The conformance suite sends deliberately
 malformed requests at a live endpoint, so counting its probes would manufacture
@@ -198,6 +203,29 @@ def _failure_ratio(group: str) -> str:
     return f"({failed} or ({counted} * 0)) / ({counted} > 0) * 100"
 
 
+def _cache_hit_ratio(group: str) -> str:
+    """Cached input tokens over input tokens, as a percentage, per group or in total.
+
+    Sound as a ratio because cached input is a *subset* of input rather than a
+    fourth kind of token — the gateway reads all three off the upstream's own
+    usage object, so the denominator already contains the numerator and the
+    result cannot exceed 100%.
+
+    The numerator needs none of the union `_failure_ratio` uses: the gateway
+    records `cached_input` on every request that carried a usage object, zero
+    included, so the series exists wherever `input` does. The denominator is
+    still filtered to `> 0` for the same reason as there — a window nothing
+    called has both rates at zero over series still being scraped from earlier
+    traffic, and answering 0% cached for a period nothing measured is the
+    invented number this module refuses. No series, no sample, and the console
+    says it was not measured.
+    """
+    aggregate = f"sum by ({group})" if group else "sum"
+    cached = f"{aggregate} (rate($SERIES{{{_gateway_where(CACHED_INPUT)}}}[$WINDOW]))"
+    served = f"{aggregate} (rate($SERIES{{{_gateway_where(INPUT)}}}[$WINDOW]))"
+    return f"{cached} / ({served} > 0) * 100"
+
+
 DIALECT: dict[str, Expression] = {
     "gpu.utilization": Expression(("DCGM_FI_DEV_GPU_UTIL",)),
     "gpu.memory_used": Expression(("DCGM_FI_DEV_FB_USED",)),
@@ -234,6 +262,10 @@ DIALECT: dict[str, Expression] = {
     "inference.ttft_p50": Expression(("vllm:time_to_first_token_seconds_bucket",), P50, P50_BY),
     "inference.ttft_p90": Expression(("vllm:time_to_first_token_seconds_bucket",), P90),
     "inference.ttft_p99": Expression(("vllm:time_to_first_token_seconds_bucket",), P99),
+    "inference.tpot_p50": Expression(
+        ("vllm:time_per_output_token_seconds_bucket", "vllm:inter_token_latency_seconds_bucket"),
+        P50,
+    ),
     "inference.tpot_p99": Expression(
         ("vllm:time_per_output_token_seconds_bucket", "vllm:inter_token_latency_seconds_bucket"),
         P99,
@@ -263,8 +295,9 @@ DIALECT: dict[str, Expression] = {
         f"100 - ({_failure_ratio('$BY')})",
     ),
     "serving.requests_in_flight": _gateway_gauge(GATEWAY_IN_FLIGHT),
-    "serving.input_tokens_per_second": _gateway_rate(GATEWAY_TOKENS, 'direction="input"'),
+    "serving.input_tokens_per_second": _gateway_rate(GATEWAY_TOKENS, INPUT),
     "serving.output_tokens_per_second": _gateway_rate(GATEWAY_TOKENS, 'direction="output"'),
+    "serving.cache_hit_ratio": Expression((GATEWAY_TOKENS,), _cache_hit_ratio(""), _cache_hit_ratio("$BY")),
 }
 """`direction="cached_input"` is never summed into either token rate. The gateway
 records all three from the upstream's own usage object, and cached input is a
