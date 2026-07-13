@@ -13,8 +13,8 @@ import {
   type TimeWindow,
 } from "@/modules/metrics/windows"
 import { useServingOverview } from "@/modules/serving/queries"
+import { ModelCard } from "@/components/serving/model-card"
 
-import { ModelCard } from "./ModelCard"
 import { RefreshButton } from "./RefreshButton"
 
 /**

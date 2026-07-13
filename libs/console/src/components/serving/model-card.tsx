@@ -8,7 +8,7 @@ import {
 import type { TimeWindow } from "@/modules/metrics/windows"
 import type { ServedModel, ServedModelState } from "@/modules/serving/types"
 
-import { ServingCharts } from "./ServingCharts"
+import { ServingCharts } from "./serving-charts"
 
 const TONE: Record<ServedModelState, StatusTone> = {
   serving: "ok",
@@ -56,16 +56,23 @@ function Stat({ label, value }: StatProps) {
  * The numbers come from the gateway's own series and are absent — never zero —
  * when the store has nothing. A model nobody called this hour did not serve zero
  * requests at zero latency; it was not measured, and a dash says so.
+ *
+ * `tenant` is absent on the tenant's own page and names the customer when an
+ * admin is looking at one. Nothing else differs between the two readers: an
+ * admin inspecting a tenant should see the page that tenant sees, not a second
+ * rendering of it that can drift from what the customer is looking at.
  */
 export function ModelCard({
   model,
   window,
+  tenant,
 }: {
   model: ServedModel
   window: TimeWindow
+  tenant?: string
 }) {
-  const detail = useServedModel(model.id)
-  const metrics = useServedModelMetrics(model.id, window)
+  const detail = useServedModel(model.id, tenant)
+  const metrics = useServedModelMetrics(model.id, window, tenant)
   const samples = metrics.data?.samples ?? []
 
   const stat = (metric: string) => {

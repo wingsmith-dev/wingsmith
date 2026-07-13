@@ -113,8 +113,13 @@ class ServingService:
         tenants. Resolving the reference here first is what stops a tenant reading
         another tenant's traffic by naming their endpoint — the metrics query is
         given a uid this tenant was proved to own, never the string they sent.
+
+        The tenant is resolved before the endpoint for the same reason `model`
+        does it: an admin looking at a customer may name them by slug, and the
+        endpoint query joins on the uid.
         """
-        row = await self.repo.model(self.tenant_uid, ref)
+        tenant = await self._tenant()
+        row = await self.repo.model(tenant.uid, ref)
         if row is None:
             raise NotFound(f"no model {ref!r}")
         return row[0].uid

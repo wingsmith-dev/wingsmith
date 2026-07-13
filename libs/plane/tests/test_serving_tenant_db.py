@@ -133,6 +133,16 @@ async def test_another_tenants_model_cannot_be_measured(db: AsyncSession) -> Non
         await ServingService(db, mine.uid).metrics_ref("openai/gpt-oss-120b")
 
 
+async def test_an_admin_may_name_a_tenant_by_slug_on_every_read(db: AsyncSession) -> None:
+    """The only way to look at what a customer sees, and a slug is what a link carries."""
+    await served(db, "globex", "moonshotai/kimi-k3")
+
+    svc = ServingService(db, "globex")
+    assert [model.model for model in (await svc.overview()).models] == ["moonshotai/kimi-k3"]
+    assert (await svc.model("moonshotai/kimi-k3")).model.model == "moonshotai/kimi-k3"
+    assert (await svc.metrics_ref("moonshotai/kimi-k3")).startswith("end_")
+
+
 async def test_a_model_with_no_deployment_behind_it_is_degraded_not_missing(db: AsyncSession) -> None:
     """ "Nowhere to go right now" and "no such model" must not collapse into one answer."""
     tenant = await served(db, "globex", "moonshotai/kimi-k3")

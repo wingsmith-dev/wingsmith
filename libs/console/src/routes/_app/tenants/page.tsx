@@ -24,7 +24,13 @@ function columns(
       cell: (tenant) => (
         <ResourceCell kind="tenant">
           <span className="block">
-            <span className="font-mono text-xs">{tenant.slug}</span>
+            <Link
+              to="/tenants/$tenantId"
+              params={{ tenantId: tenant.slug }}
+              className="font-mono text-xs hover:underline"
+            >
+              {tenant.slug}
+            </Link>
             <Id value={shortenId(tenant.id)} className="ml-2" />
           </span>
         </ResourceCell>

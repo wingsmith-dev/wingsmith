@@ -11,18 +11,24 @@ import {
 /** How often the view re-reads. Slow: this is a status page, not a dashboard. */
 const REFETCH_MS = 30_000
 
-export function useServingOverview() {
+/**
+ * `tenant` is undefined on the tenant's own page — the plane scopes that read by
+ * the session — and is the tenant being inspected when an admin opens one. It is
+ * in the key either way, so an admin walking two tenants does not read the first
+ * one's models out of the cache under the second one's name.
+ */
+export function useServingOverview(tenant?: string) {
   return useQuery({
-    queryKey: ["serving", "overview"],
-    queryFn: fetchServingOverview,
+    queryKey: ["serving", "overview", tenant ?? null],
+    queryFn: () => fetchServingOverview(tenant),
     refetchInterval: REFETCH_MS,
   })
 }
 
-export function useServedModel(ref: string | null) {
+export function useServedModel(ref: string | null, tenant?: string) {
   return useQuery({
-    queryKey: ["serving", "model", ref],
-    queryFn: () => fetchServedModel(ref as string),
+    queryKey: ["serving", "model", tenant ?? null, ref],
+    queryFn: () => fetchServedModel(ref as string, tenant),
     enabled: ref !== null,
   })
 }
@@ -34,10 +40,15 @@ export function useServedModel(ref: string | null) {
  * loads, so changing the range redraws rather than collapsing the page to
  * skeletons and jumping the layout back when the answer arrives.
  */
-export function useServedModelMetrics(ref: string | null, window: TimeWindow) {
+export function useServedModelMetrics(
+  ref: string | null,
+  window: TimeWindow,
+  tenant?: string
+) {
   return useQuery({
-    queryKey: ["serving", "metrics", ref, window.key],
-    queryFn: () => fetchServedModelMetrics(ref as string, windowQuery(window)),
+    queryKey: ["serving", "metrics", tenant ?? null, ref, window.key],
+    queryFn: () =>
+      fetchServedModelMetrics(ref as string, windowQuery(window), tenant),
     enabled: ref !== null,
     refetchInterval: REFETCH_MS,
     placeholderData: (previous) => previous,

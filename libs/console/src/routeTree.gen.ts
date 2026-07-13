@@ -43,6 +43,7 @@ import { Route as AppEndpointsEndpointIdRouteRouteImport } from './routes/_app/e
 import { Route as AppNodesNodeIdRouteRouteImport } from './routes/_app/nodes/$nodeId/route'
 import { Route as AppOperationsOperationIdRouteRouteImport } from './routes/_app/operations/$operationId/route'
 import { Route as AppPoolsPoolIdRouteRouteImport } from './routes/_app/pools/$poolId/route'
+import { Route as AppTenantsTenantIdRouteRouteImport } from './routes/_app/tenants/$tenantId/route'
 import { Route as AppWorkbenchRunIdRouteRouteImport } from './routes/_app/workbench/$runId/route'
 import { Route as AppWorkloadsWorkloadIdRouteRouteImport } from './routes/_app/workloads/$workloadId/route'
 import { Route as AppWorkloadsNewRouteRouteImport } from './routes/_app/workloads/new/route'
@@ -222,6 +223,11 @@ const AppPoolsPoolIdRouteRoute = AppPoolsPoolIdRouteRouteImport.update({
   path: '/$poolId',
   getParentRoute: () => AppPoolsRouteRoute,
 } as any)
+const AppTenantsTenantIdRouteRoute = AppTenantsTenantIdRouteRouteImport.update({
+  id: '/$tenantId',
+  path: '/$tenantId',
+  getParentRoute: () => AppTenantsRouteRoute,
+} as any)
 const AppWorkbenchRunIdRouteRoute = AppWorkbenchRunIdRouteRouteImport.update({
   id: '/$runId',
   path: '/$runId',
@@ -268,7 +274,7 @@ export interface FileRoutesByFullPath {
   '/projects': typeof AppProjectsRouteRoute
   '/quotas': typeof AppQuotasRouteRoute
   '/settings': typeof AppSettingsRouteRoute
-  '/tenants': typeof AppTenantsRouteRoute
+  '/tenants': typeof AppTenantsRouteRouteWithChildren
   '/workbench': typeof AppWorkbenchRouteRouteWithChildren
   '/workloads': typeof AppWorkloadsRouteRouteWithChildren
   '/artifacts/$artifactId': typeof AppArtifactsArtifactIdRouteRoute
@@ -279,6 +285,7 @@ export interface FileRoutesByFullPath {
   '/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
   '/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
+  '/tenants/$tenantId': typeof AppTenantsTenantIdRouteRoute
   '/workbench/$runId': typeof AppWorkbenchRunIdRouteRoute
   '/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
   '/workloads/new': typeof AppWorkloadsNewRouteRoute
@@ -307,7 +314,7 @@ export interface FileRoutesByTo {
   '/projects': typeof AppProjectsRouteRoute
   '/quotas': typeof AppQuotasRouteRoute
   '/settings': typeof AppSettingsRouteRoute
-  '/tenants': typeof AppTenantsRouteRoute
+  '/tenants': typeof AppTenantsRouteRouteWithChildren
   '/workbench': typeof AppWorkbenchRouteRouteWithChildren
   '/workloads': typeof AppWorkloadsRouteRouteWithChildren
   '/artifacts/$artifactId': typeof AppArtifactsArtifactIdRouteRoute
@@ -318,6 +325,7 @@ export interface FileRoutesByTo {
   '/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
   '/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
+  '/tenants/$tenantId': typeof AppTenantsTenantIdRouteRoute
   '/workbench/$runId': typeof AppWorkbenchRunIdRouteRoute
   '/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
   '/workloads/new': typeof AppWorkloadsNewRouteRoute
@@ -348,7 +356,7 @@ export interface FileRoutesById {
   '/_app/projects': typeof AppProjectsRouteRoute
   '/_app/quotas': typeof AppQuotasRouteRoute
   '/_app/settings': typeof AppSettingsRouteRoute
-  '/_app/tenants': typeof AppTenantsRouteRoute
+  '/_app/tenants': typeof AppTenantsRouteRouteWithChildren
   '/_app/workbench': typeof AppWorkbenchRouteRouteWithChildren
   '/_app/workloads': typeof AppWorkloadsRouteRouteWithChildren
   '/_app/artifacts/$artifactId': typeof AppArtifactsArtifactIdRouteRoute
@@ -359,6 +367,7 @@ export interface FileRoutesById {
   '/_app/nodes/$nodeId': typeof AppNodesNodeIdRouteRoute
   '/_app/operations/$operationId': typeof AppOperationsOperationIdRouteRoute
   '/_app/pools/$poolId': typeof AppPoolsPoolIdRouteRoute
+  '/_app/tenants/$tenantId': typeof AppTenantsTenantIdRouteRoute
   '/_app/workbench/$runId': typeof AppWorkbenchRunIdRouteRoute
   '/_app/workloads/$workloadId': typeof AppWorkloadsWorkloadIdRouteRoute
   '/_app/workloads/new': typeof AppWorkloadsNewRouteRoute
@@ -400,6 +409,7 @@ export interface FileRouteTypes {
     | '/nodes/$nodeId'
     | '/operations/$operationId'
     | '/pools/$poolId'
+    | '/tenants/$tenantId'
     | '/workbench/$runId'
     | '/workloads/$workloadId'
     | '/workloads/new'
@@ -439,6 +449,7 @@ export interface FileRouteTypes {
     | '/nodes/$nodeId'
     | '/operations/$operationId'
     | '/pools/$poolId'
+    | '/tenants/$tenantId'
     | '/workbench/$runId'
     | '/workloads/$workloadId'
     | '/workloads/new'
@@ -479,6 +490,7 @@ export interface FileRouteTypes {
     | '/_app/nodes/$nodeId'
     | '/_app/operations/$operationId'
     | '/_app/pools/$poolId'
+    | '/_app/tenants/$tenantId'
     | '/_app/workbench/$runId'
     | '/_app/workloads/$workloadId'
     | '/_app/workloads/new'
@@ -732,6 +744,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPoolsPoolIdRouteRouteImport
       parentRoute: typeof AppPoolsRouteRoute
     }
+    '/_app/tenants/$tenantId': {
+      id: '/_app/tenants/$tenantId'
+      path: '/$tenantId'
+      fullPath: '/tenants/$tenantId'
+      preLoaderRoute: typeof AppTenantsTenantIdRouteRouteImport
+      parentRoute: typeof AppTenantsRouteRoute
+    }
     '/_app/workbench/$runId': {
       id: '/_app/workbench/$runId'
       path: '/$runId'
@@ -854,6 +873,18 @@ const AppPoolsRouteRouteWithChildren = AppPoolsRouteRoute._addFileChildren(
   AppPoolsRouteRouteChildren,
 )
 
+interface AppTenantsRouteRouteChildren {
+  AppTenantsTenantIdRouteRoute: typeof AppTenantsTenantIdRouteRoute
+}
+
+const AppTenantsRouteRouteChildren: AppTenantsRouteRouteChildren = {
+  AppTenantsTenantIdRouteRoute: AppTenantsTenantIdRouteRoute,
+}
+
+const AppTenantsRouteRouteWithChildren = AppTenantsRouteRoute._addFileChildren(
+  AppTenantsRouteRouteChildren,
+)
+
 interface AppWorkbenchRouteRouteChildren {
   AppWorkbenchRunIdRouteRoute: typeof AppWorkbenchRunIdRouteRoute
   AppWorkbenchRequestsRequestIdRouteRoute: typeof AppWorkbenchRequestsRequestIdRouteRoute
@@ -901,7 +932,7 @@ interface AppRouteChildren {
   AppProjectsRouteRoute: typeof AppProjectsRouteRoute
   AppQuotasRouteRoute: typeof AppQuotasRouteRoute
   AppSettingsRouteRoute: typeof AppSettingsRouteRoute
-  AppTenantsRouteRoute: typeof AppTenantsRouteRoute
+  AppTenantsRouteRoute: typeof AppTenantsRouteRouteWithChildren
   AppWorkbenchRouteRoute: typeof AppWorkbenchRouteRouteWithChildren
   AppWorkloadsRouteRoute: typeof AppWorkloadsRouteRouteWithChildren
 }
@@ -926,7 +957,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppProjectsRouteRoute: AppProjectsRouteRoute,
   AppQuotasRouteRoute: AppQuotasRouteRoute,
   AppSettingsRouteRoute: AppSettingsRouteRoute,
-  AppTenantsRouteRoute: AppTenantsRouteRoute,
+  AppTenantsRouteRoute: AppTenantsRouteRouteWithChildren,
   AppWorkbenchRouteRoute: AppWorkbenchRouteRouteWithChildren,
   AppWorkloadsRouteRoute: AppWorkloadsRouteRouteWithChildren,
 }
