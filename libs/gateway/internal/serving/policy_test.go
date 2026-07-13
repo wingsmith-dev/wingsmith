@@ -111,7 +111,12 @@ func TestNamedToolChoiceIsRefusedOnlyWhileThinking(t *testing.T) {
 		{"named, thinking left to the default", named, thinkingOn, true},
 		{"named, thinking asked for", named, thinkingOnLoud, true},
 		{"named, thinking switched off", named, thinkingOff, false},
-		{"named, thinking off via the template", named, templateOff, false},
+		// The template spelling is not read. Moonshot has no
+		// `chat_template_kwargs`, ignores it and thinks anyway, so a request
+		// carrying it is in the refused cell there whatever it says. The
+		// endpoint's policy drops the field before the engine sees it, which is
+		// what keeps this reading and the engine's behaviour the same fact.
+		{"named, thinking off via the template", named, templateOff, true},
 		{"named, thinking on via the template", named, templateOn, true},
 
 		// An object, but not the one the provider refuses.
@@ -142,7 +147,6 @@ func TestNamedToolChoiceIsRefusedOnlyWhileThinking(t *testing.T) {
 func TestUnreadableThinkingIsLeftToTheUpstream(t *testing.T) {
 	for _, body := range []string{
 		`{"model":"m","tool_choice":{"type":"function"},"thinking":"enabled"}`,
-		`{"model":"m","tool_choice":{"type":"function"},"chat_template_kwargs":[]}`,
 		`{"model":"m","tool_choice":[]}`,
 		`{"model":"m","tool_choice":null}`,
 	} {
@@ -652,5 +656,58 @@ func TestAnthropicBodiesDoNotTripTheOpenAIShapedRule(t *testing.T) {
 		if _, _, ok := checkPolicy(policy, chatRoute, []byte(body)); !ok {
 			t.Fatalf("an Anthropic body was refused by an OpenAI-shaped rule:\n%s", body)
 		}
+	}
+}
+
+// `chat_template_kwargs` is a vLLM concept and not a provider one. Moonshot has
+// no such field, ignores it, and thinks anyway — so honouring it here answered
+// 200 to a request the provider answers 400 to, and turned thinking off on an
+// endpoint sold as consistent with one that leaves it on.
+//
+// The field is taken out of the body by a `drop` term rather than read here, so
+// this test is about the reading half: whatever the caller spells there, it does
+// not move this rule.
+func TestTheTemplateThinkingKwargIsNotReadAsThinkingOff(t *testing.T) {
+	named := `{"type":"function","function":{"name":"f"}}`
+
+	for _, kwargs := range []string{
+		`{"thinking":false}`,
+		`{"thinking":true}`,
+		`{"thinking":"no"}`,
+		`[]`,
+		`null`,
+	} {
+		body := []byte(`{"model":"m","tool_choice":` + named + `,"chat_template_kwargs":` + kwargs + `}`)
+		if _, _, ok := checkPolicy(kimiPolicy(), chatRoute, body); ok {
+			t.Errorf("chat_template_kwargs %s moved a rule it must not reach", kwargs)
+		}
+	}
+
+	// And the spelling the provider does read still works.
+	body := []byte(`{"model":"m","tool_choice":` + named + `,"thinking":{"type":"disabled"},"chat_template_kwargs":{"thinking":true}}`)
+	if _, _, ok := checkPolicy(kimiPolicy(), chatRoute, body); !ok {
+		t.Error("thinking.type disabled must still be read, whatever the template kwarg says")
+	}
+}
+
+// The drop term the rule above assumes, enforced end to end: the field a
+// provider ignores must not reach an engine that does not.
+func TestTheTemplateThinkingKwargIsTakenOutOfTheBody(t *testing.T) {
+	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
+		{Route: chatRoute, Key: "chat_template_kwargs.thinking", Drop: true},
+	}}
+
+	body := []byte(`{"model":"m","messages":[],"chat_template_kwargs":{"thinking":false,"custom":1}}`)
+	rewritten, err := rewriteBody(policy, chatRoute, body)
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	if strings.Contains(string(rewritten), `"thinking"`) {
+		t.Errorf("the kwarg reached the engine: %s", rewritten)
+	}
+	// Only that key. The object is the caller's and may carry kwargs this
+	// endpoint has no opinion about.
+	if !strings.Contains(string(rewritten), `"custom":1`) {
+		t.Errorf("the drop took a sibling with it: %s", rewritten)
 	}
 }

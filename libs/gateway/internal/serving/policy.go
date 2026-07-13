@@ -1,6 +1,7 @@
 package serving
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -77,6 +78,11 @@ var diagnoses = map[string]func(map[string]json.RawMessage) (code string, messag
 	// its shape: that array is served today, and a rule that quietly acquired
 	// an opinion about it would break traffic nobody asked about.
 	"messages.tools": malformedMessageTools,
+	// Named for the paths it reads — the media content parts on an element of
+	// `messages`. It answers in its own words for the same reason the rule above
+	// does: "this model does not accept video" is the wrong sentence to hand
+	// somebody whose video is fine and whose base64 lost its last block.
+	"messages.media": undecodableMessageMedia,
 }
 
 // isNamedFunctionChoice reports the `{"type":"function","function":{...}}` form.
@@ -93,12 +99,20 @@ func isNamedFunctionChoice(raw json.RawMessage) bool {
 // thinking.
 //
 // Absent means enabled: K3 thinks unless it is told not to, so a caller who
-// sends no `thinking` at all is in the refused cell. Two spellings turn it off,
-// because two of them reach this gateway — Moonshot's `thinking.type`, and the
-// open-source deployment's `chat_template_kwargs.thinking`, which is what the
-// vLLM chat template reads. An endpoint may accept either, and a policy that
-// understood only one would refuse a request whose caller had correctly
-// switched thinking off.
+// sends no `thinking` at all is in the refused cell.
+//
+// `thinking.type` is the only spelling read. `chat_template_kwargs.thinking` is
+// what the vLLM chat template reads and it used to be read here too, on the
+// grounds that a caller who had correctly switched thinking off should not be
+// refused for it. That was true of the engine and never of the provider:
+// Moonshot has no `chat_template_kwargs`, ignores it, and thinks anyway — so a
+// request carrying it is in the *refused* cell there, and honouring it here
+// answered 200 where the endpoint's own provider answers 400.
+//
+// The spelling is handled where an ignored field belongs, as a `drop` term on
+// the endpoint's policy, which takes it out of the body before the engine can
+// act on it. That makes the two halves agree: the field reaches neither the
+// engine's behaviour nor this rule's reading of the request.
 //
 // A field that is present but unreadable answers false, so the request is not
 // refused here. It is already broken and the upstream will say so in its own
@@ -108,12 +122,6 @@ func thinkingEnabled(fields map[string]json.RawMessage) bool {
 	if raw, sent := fields["thinking"]; sent {
 		value, readable := objectField(raw, "type")
 		if !readable || value == "disabled" {
-			return false
-		}
-	}
-	if raw, sent := fields["chat_template_kwargs"]; sent {
-		value, readable := objectField(raw, "thinking")
-		if !readable || value == false {
 			return false
 		}
 	}
@@ -847,4 +855,253 @@ func inEnum(permitted []any, value any) bool {
 		}
 	}
 	return false
+}
+
+// mediaParts are the content-part shapes that carry media by value, and where
+// the bytes sit inside each one.
+//
+// `image_url` is deliberately absent. The frontend decodes an image itself and
+// already answers 400 for one it cannot read, so a rule here would be a second
+// opinion about a question that is already answered correctly — and the format
+// list below would be the thing deciding it, which is worse than the decoder.
+// Video and audio are here because their bytes are not decoded until the worker,
+// where a failure is a Python exception with no status on it and the frontend
+// has nothing to triage: `Failed to generate completions`, 500, on a request
+// that was the caller's mistake.
+//
+// `url` carries a data URL; `data` carries bare base64 with the container named
+// in a sibling `format`. Two spellings because the wire has two: `video_url`
+// follows the `image_url` shape the compatible servers settled on, and
+// `input_audio` follows OpenAI's own audio part.
+var mediaParts = map[string]string{
+	"video_url":   "url",
+	"audio_url":   "url",
+	"input_audio": "data",
+}
+
+// mediaSignatures are the leading bytes of a container this rule can recognise,
+// as (offset, magic) pairs.
+//
+// One table for audio and video rather than one each, and no branch on which
+// part carried the bytes. A container is not a modality: audio arrives inside
+// MP4 and Ogg as often as video does, and a rule that demanded a video magic
+// under `video_url` would refuse an audio-only MP4 that the engine plays.
+var mediaSignatures = []struct {
+	offset int
+	magic  string
+}{
+	{4, "ftyp"},             // ISO BMFF — mp4, m4a, mov, 3gp
+	{0, "\x1a\x45\xdf\xa3"}, // EBML — Matroska, WebM
+	{0, "OggS"},             // Ogg — Vorbis, Opus, Theora
+	{0, "RIFF"},             // RIFF — wav, avi
+	{0, "fLaC"},
+	{0, "FLV\x01"},
+	{0, "ID3"},      // mp3 with a tag
+	{0, "\xff\xfb"}, // mp3 without one, the common layer III frame headers
+	{0, "\xff\xf3"},
+	{0, "\xff\xf2"},
+	{0, "#!AMR"},
+	{0, "FORM"},             // AIFF
+	{0, "\x00\x00\x01\xba"}, // MPEG program stream
+	{0, "\x00\x00\x01\xb3"}, // MPEG video elementary stream
+}
+
+// transportStreamSync and transportStreamPacket are the MPEG-TS sync byte and
+// the stride it repeats on.
+//
+// TS is not in mediaSignatures because its signature is one byte, and one byte
+// admits one payload in every 256 whatever the payload is — an allowlist with a
+// hole that size in it is not one. Two syncs a packet apart is the cheapest test
+// that actually distinguishes a transport stream from a coincidence.
+const (
+	transportStreamSync   = 0x47
+	transportStreamPacket = 188
+)
+
+// shortestMedia is the fewest bytes this rule will look at before calling a
+// payload truncated.
+//
+// It is the longest offset+magic above rather than a round number, so the
+// question "could these bytes match anything we know" has one answer: below this
+// length no signature can be checked, and refusing is not a guess about the
+// format but a statement about the length.
+const shortestMedia = 8
+
+// undecodableMessageMedia refuses a media content part whose bytes cannot be a
+// container, before the request reaches an engine that would answer 500 for it.
+//
+// This is the narrowest form of the rule that is still worth having. Three
+// things are refused — base64 that does not decode, an empty payload, and a
+// payload too short or too unlike any container this build knows — and nothing
+// else. In particular a well-formed container the decoder still rejects is not
+// refused here: the engine is the thing that knows whether a stream inside a
+// valid MP4 is playable, and this rule has no standing to pre-empt it.
+//
+// A remote URL is never touched. Fetching an address a caller supplied is an
+// egress decision, and this rule reads the request it was given.
+//
+// The signature list is an allowlist, which is the one place this rule can be
+// wrong in the direction that costs a customer a request: a container nobody
+// here has heard of is refused with a 400 where the engine might have served it.
+// That is the trade the list is, and it is why the list is generous, why the
+// error names the length or the encoding whenever that is the actual fault, and
+// why `image_url` — the one modality that already gets a correct answer — is
+// not in `mediaParts`.
+func undecodableMessageMedia(fields map[string]json.RawMessage) (string, string, bool) {
+	messages, readable := jsonArray(fields["messages"])
+	if !readable {
+		return "", "", false
+	}
+
+	for index, raw := range messages {
+		message, readable := jsonObject(raw)
+		if !readable {
+			continue
+		}
+		parts, isArray := jsonArray(message["content"])
+		if !isArray {
+			// A string content carries no media, and a content this rule cannot
+			// read is one the upstream will answer for.
+			continue
+		}
+		for position, raw := range parts {
+			part, readable := jsonObject(raw)
+			if !readable {
+				continue
+			}
+			kind, stated := jsonString(part["type"])
+			if !stated {
+				continue
+			}
+			field, carriesMedia := mediaParts[kind]
+			if !carriesMedia {
+				continue
+			}
+			payload, stated := jsonString(objectRaw(part[kind], field))
+			if !stated || payload == "" {
+				// An unstated payload is a shape fault, not an encoding one, and
+				// the upstream's own words for it are better than a guess here.
+				continue
+			}
+			encoded, byValue := mediaBase64(field, payload)
+			if !byValue {
+				// A remote reference, or a data URL that is not base64. Neither
+				// is bytes this rule was given.
+				continue
+			}
+			if fault := mediaFault(encoded); fault != "" {
+				return refusal("The %s in messages[%d].content[%d] %s.", kind, index, position, fault)
+			}
+		}
+	}
+
+	return "", "", false
+}
+
+// mediaBase64 returns the base64 payload a content part carries by value, and
+// whether it carried one at all.
+//
+// The field name decides how to read it, which is why it is carried in
+// `mediaParts` rather than assumed. A `data` field is already the encoding —
+// `input_audio` names its container in a sibling `format` and needs no URL. A
+// `url` field is base64 only when the data URL says `;base64`: the
+// percent-encoded form is legal and this rule cannot judge it, so it reports no
+// payload rather than decoding the wrong thing. An `http(s)` URL is a reference
+// and reports the same.
+func mediaBase64(field, payload string) (string, bool) {
+	if field == "data" {
+		return payload, true
+	}
+	if !strings.HasPrefix(payload, "data:") {
+		return "", false
+	}
+	comma := strings.IndexByte(payload, ',')
+	if comma < 0 {
+		// `data:` with no comma is not a data URL at all. Left to the upstream,
+		// which will say so about the whole part rather than about its bytes.
+		return "", false
+	}
+	if !strings.Contains(payload[:comma], ";base64") {
+		return "", false
+	}
+	return payload[comma+1:], true
+}
+
+// mediaFault names what is wrong with a payload, or returns empty when nothing
+// this rule can see is.
+//
+// The three faults are worded so a caller can act on each: which of the encoding
+// and the bytes is wrong, and if the bytes, whether there were too few of them
+// to be anything or enough to be something this build does not know.
+func mediaFault(encoded string) string {
+	trimmed := strings.TrimSpace(encoded)
+	decoded, err := base64.StdEncoding.DecodeString(trimmed)
+	if err != nil {
+		// Both alphabets, because a caller who built the payload URL-safe is
+		// making a portability mistake and not sending a corrupt file. Both are
+		// the padded encodings: the engine decodes with Python's `b64decode`,
+		// which requires the padding, so accepting an unpadded payload here
+		// would forward a request this rule had declared sound and the worker
+		// then answers 500 for — which is the whole defect, one layer along.
+		decoded, err = base64.URLEncoding.DecodeString(trimmed)
+	}
+	if err != nil {
+		return "is not valid base64"
+	}
+	if len(decoded) == 0 {
+		return "decodes to no bytes"
+	}
+	if len(decoded) < shortestMedia {
+		return fmt.Sprintf("decodes to %d bytes, which is too few to be a media container — the payload looks truncated", len(decoded))
+	}
+	if !hasMediaSignature(decoded) {
+		return "does not decode to a media container this endpoint recognises"
+	}
+	return ""
+}
+
+// hasMediaSignature reports whether the bytes begin like a container in
+// mediaSignatures, or like a transport stream.
+func hasMediaSignature(decoded []byte) bool {
+	if isTransportStream(decoded) {
+		return true
+	}
+	for _, signature := range mediaSignatures {
+		end := signature.offset + len(signature.magic)
+		if len(decoded) < end {
+			continue
+		}
+		if string(decoded[signature.offset:end]) == signature.magic {
+			return true
+		}
+	}
+	return false
+}
+
+// objectRaw reads one field out of a JSON object without decoding its value.
+//
+// objectField's counterpart for a field whose value is read as JSON rather than
+// compared as a Go value. It answers with an empty RawMessage for an object it
+// cannot read, so a caller that then asks for a string gets "not stated" — which
+// is what an unreadable container means to every caller here.
+func objectRaw(raw json.RawMessage, name string) json.RawMessage {
+	object, readable := jsonObject(raw)
+	if !readable {
+		return nil
+	}
+	return object[name]
+}
+
+// isTransportStream reports two MPEG-TS sync bytes one packet apart.
+//
+// A payload shorter than a packet and a half cannot be tested this way and is
+// not a transport stream as far as this rule is concerned. That is the same
+// answer the length test gives and for the same reason: below the length at
+// which a format is identifiable, refusing is a statement about the bytes there
+// are and not a guess about the ones there are not.
+func isTransportStream(decoded []byte) bool {
+	if len(decoded) <= transportStreamPacket {
+		return false
+	}
+	return decoded[0] == transportStreamSync && decoded[transportStreamPacket] == transportStreamSync
 }

@@ -916,3 +916,182 @@ func TestADropReachesTheUpstream(t *testing.T) {
 		t.Fatalf("body = %s, want it forwarded untouched", seen)
 	}
 }
+
+// mediaPolicy is the one rule these tests are about.
+var mediaPolicy = &plane.Policy{Version: 2, Rules: []plane.Rule{
+	{Route: chatRoute, Predicate: "messages.media", Deny: true},
+}}
+
+// A real MP4 header is eight bytes and this rule reads exactly those, so the
+// fixtures are the signatures themselves rather than files. Base64 of
+// "\0\0\0\x18ftypisom" and of "\x1a\x45\xdf\xa3" plus padding.
+const (
+	mp4Header  = "AAAAGGZ0eXBpc29t"
+	webmHeader = "GkXfowAAAAAAAAAA"
+	// The four zero bytes the conformance corpus and the vendor's own probe send.
+	stubBytes = "AAAAAA=="
+)
+
+func mediaBody(part string) []byte {
+	return []byte(`{"model":"moonshotai/kimi-k3","messages":[{"role":"user","content":[` +
+		`{"type":"text","text":"what is in this"},` + part + `]}]}`)
+}
+
+// The defect. A video whose bytes cannot be a container reached the worker, which
+// raised a Python exception with no status on it; the frontend had nothing to
+// triage and answered 500 `Failed to generate completions` to a request that was
+// the caller's mistake. Measured against model-a on 2026-09-10.
+func TestAnUndecodableVideoIsRefusedRatherThanForwarded(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		part string
+		says string
+	}{
+		{
+			"the four zero bytes the vendor's own probe sends",
+			`{"type":"video_url","video_url":{"url":"data:video/mp4;base64,` + stubBytes + `"}}`,
+			"too few",
+		},
+		{
+			"base64 that lost its last block",
+			`{"type":"video_url","video_url":{"url":"data:video/mp4;base64,AAAAGGZ0eXBpc29"}}`,
+			"not valid base64",
+		},
+		{
+			"an empty payload",
+			`{"type":"video_url","video_url":{"url":"data:video/mp4;base64,"}}`,
+			"",
+		},
+		{
+			"enough bytes, and no container among them",
+			`{"type":"video_url","video_url":{"url":"data:video/mp4;base64,` +
+				"bm90IGEgdmlkZW8gYXQgYWxs" + `"}}`,
+			"recognises",
+		},
+		{
+			"audio, by the part name OpenAI gives it",
+			`{"type":"input_audio","input_audio":{"data":"` + stubBytes + `","format":"wav"}}`,
+			"too few",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			code, message, ok := checkPolicy(mediaPolicy, chatRoute, mediaBody(tc.part))
+			if ok {
+				t.Fatal("the request was forwarded, and the engine answers 500 for it")
+			}
+			if code != "invalid_parameter" {
+				t.Errorf("code = %q, want invalid_parameter so the status is 400", code)
+			}
+			if tc.says != "" && !strings.Contains(message, tc.says) {
+				t.Errorf("message %q does not say %q", message, tc.says)
+			}
+			if !strings.Contains(message, "messages[0].content[1]") {
+				t.Errorf("message %q does not say which part is wrong", message)
+			}
+		})
+	}
+}
+
+// The other half, and the half that costs a customer traffic if it is wrong.
+func TestMediaThisRuleHasNoStandingOverIsForwarded(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		part string
+	}{
+		{
+			"an MP4 that is what it says it is",
+			`{"type":"video_url","video_url":{"url":"data:video/mp4;base64,` + mp4Header + `"}}`,
+		},
+		{
+			"a WebM, whose magic is at offset zero rather than four",
+			`{"type":"video_url","video_url":{"url":"data:video/webm;base64,` + webmHeader + `"}}`,
+		},
+		{
+			// A container is not a modality. Refusing an MP4 under `video_url`
+			// for carrying audio, or the reverse, would refuse a file the engine
+			// plays.
+			"audio inside an MP4",
+			`{"type":"input_audio","input_audio":{"data":"` + mp4Header + `","format":"m4a"}}`,
+		},
+		{
+			// Fetching an address a caller supplied is an egress decision and
+			// this rule reads the request it was given.
+			"a remote reference, which is nobody's bytes to judge here",
+			`{"type":"video_url","video_url":{"url":"https://example.com/clip.mp4"}}`,
+		},
+		{
+			// The percent-encoded data URL is legal and this rule cannot read it.
+			"a data URL that is not base64",
+			`{"type":"video_url","video_url":{"url":"data:video/mp4,%00%00%00%18ftypisom"}}`,
+		},
+		{
+			// An image is decoded by the frontend, which already answers 400 for
+			// one it cannot read. A second opinion here would be the format list
+			// deciding what the decoder already decides correctly.
+			"an image, which this rule does not read at all",
+			`{"type":"image_url","image_url":{"url":"data:image/png;base64,` + stubBytes + `"}}`,
+		},
+		{
+			"a shape fault rather than an encoding one, which the upstream words better",
+			`{"type":"video_url","video_url":{}}`,
+		},
+		{
+			"a part this build has never heard of",
+			`{"type":"hologram_url","hologram_url":{"url":"data:model/obj;base64,` + stubBytes + `"}}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, message, ok := checkPolicy(mediaPolicy, chatRoute, mediaBody(tc.part)); !ok {
+				t.Fatalf("refused a request it has no standing over: %s", message)
+			}
+		})
+	}
+}
+
+// A string content carries no media, and an Anthropic body carries its own part
+// names. Neither may be refused by a rule about OpenAI media parts — the cost of
+// being wrong here is every request against the endpoint.
+func TestBodiesWithoutOpenAIMediaPartsAreUntouched(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"moonshotai/kimi-k3","messages":[{"role":"user","content":"hi"}]}`,
+		`{"model":"moonshotai/kimi-k3","max_tokens":16,"messages":[{"role":"user",
+		  "content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"` + stubBytes + `"}}]}]}`,
+		`{"model":"moonshotai/kimi-k3","input":"hi"}`,
+	} {
+		if _, message, ok := checkPolicy(mediaPolicy, chatRoute, []byte(body)); !ok {
+			t.Fatalf("refused a body carrying no OpenAI media part: %s\n%s", message, body)
+		}
+	}
+}
+
+// The refusal has to stay legible to the conformance board, which reads the
+// message to tell "this endpoint has no video route" apart from "this endpoint
+// has one and disliked the bytes". Getting this wrong reports an endpoint that
+// serves video as one that cannot.
+func TestTheRefusalReadsAsAPayloadFaultAndNotAsAMissingModality(t *testing.T) {
+	part := `{"type":"video_url","video_url":{"url":"data:video/mp4;base64,` + stubBytes + `"}}`
+	_, message, ok := checkPolicy(mediaPolicy, chatRoute, mediaBody(part))
+	if ok {
+		t.Fatal("the request was forwarded")
+	}
+	lower := strings.ToLower(message)
+
+	// hgrconform's PAYLOAD vocabulary: one of these has to appear.
+	payload := []string{"invalid", "prepare", "decode", "corrupt", "unsupported", "failed to load", "truncated"}
+	found := false
+	for _, needle := range payload {
+		if strings.Contains(lower, needle) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("message %q matches no payload-fault needle, so the video row collapses to `other`", message)
+	}
+
+	// And none of the vocabulary that means the modality was never configured.
+	for _, needle := range []string{"at most 0", "may be provided", "limit_mm", "limit-mm", "not enabled", "does not support"} {
+		if strings.Contains(lower, needle) {
+			t.Errorf("message %q reads as a capped modality because of %q", message, needle)
+		}
+	}
+}
