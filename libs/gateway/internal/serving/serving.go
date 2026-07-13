@@ -167,6 +167,13 @@ func withRouting(resolver Resolver) http.Handler {
 			writeError(w, http.StatusBadRequest, "invalid_json", "Request body is not valid JSON.")
 			return
 		}
+
+		// The caller's own bytes, before either rewrite below touches them, so
+		// that a refusal from an engine can be answered in the caller's own
+		// vocabulary rather than the engine's. See callerFieldsNamedIn.
+		if !isMultipart {
+			r = withCallerBody(r, body)
+		}
 		if envelope.Model == "" {
 			MarkOutcome(r, metrics.OutcomeClientError)
 			writeError(w, http.StatusBadRequest, "missing_model", "You must provide a model identifier.")

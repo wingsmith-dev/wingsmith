@@ -104,3 +104,18 @@ from the data plane.
   model has nowhere to go" are different answers and a caller acts differently on each.
 - **A deployment the plane reports as not running.** Deprioritised, not excluded. Readiness is
   observed and can lag; refusing to route to a model that is in fact serving is the worse failure.
+- **An upstream answers with an error.** The body is discarded and replaced with one of this hop's
+  own objects, keyed on the upstream's status. Never forwarded, never wrapped, never passed through
+  because it was already the right shape. An engine's message names the infrastructure that produced
+  it — a path, a served name, a ClusterIP, a framework's reason phrase — and the set of errors a
+  caller sees has to be a property of what was sold rather than of which engine build is running.
+  The engine's own body is logged here and nowhere else.
+- **An upstream answers `401`, `403` or `404`.** `502`, not the status that arrived. The credential is
+  this hop's and the caller has never seen it, and a path that was routed here is not one the engine
+  gets to call missing — both are misconfigurations on our side and telling a caller otherwise sends
+  them to rotate a working key. This counts a former `client_error` against `upstream_error`, which
+  is the intended reading: it was our fault before and the number said otherwise.
+- **A response header from behind this hop.** Deleted unless it is on the forwarded list in
+  `errors.go`. An allowlist, because what a caller needs is small and closed while what an engine
+  might add is neither. A `Location` is reduced to a path first: the authority a frontend builds one
+  from is the address the agent dialled.

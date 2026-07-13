@@ -161,13 +161,23 @@ func TestAtMostFourStopSequencesReachTheEngine(t *testing.T) {
 	}
 }
 
-func TestTopLevelUpstreamErrorsAreWrappedInTheOpenAIShape(t *testing.T) {
+// errorFrom sends one completion at an upstream that answers with the given
+// status and body, and returns what the caller got.
+func errorFrom(t *testing.T, status int, header http.Header, body string) *httptest.ResponseRecorder {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte(`{"message":"bad stop","type":"Internal Server Error","code":500}`))
+		for name, values := range header {
+			for _, value := range values {
+				w.Header().Add(name, value)
+			}
+		}
+		if w.Header().Get("Content-Type") == "" {
+			w.Header().Set("Content-Type", "application/json")
+		}
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
 	}))
-	defer server.Close()
+	t.Cleanup(server.Close)
 	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, server.URL, nil),
 	}}})
@@ -175,28 +185,115 @@ func TestTopLevelUpstreamErrorsAreWrappedInTheOpenAIShape(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
 		strings.NewReader(`{"model":"chat"}`)))
-	if rec.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", rec.Code)
-	}
-	var body map[string]any
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	errorObject, ok := body["error"].(map[string]any)
-	if !ok || errorObject["message"] != "bad stop" || errorObject["code"] != float64(500) {
-		t.Fatalf("body = %#v, want the original error under error", body)
-	}
-	if _, exists := body["message"]; exists {
-		t.Fatalf("body = %#v, top-level message survived", body)
+	return rec
+}
+
+// TestNoUpstreamErrorBodyReachesTheCaller is the whole of the passthrough rule.
+//
+// Every shape an engine can answer with — a bare object, the OpenAI envelope
+// already built, prose, a body over any cap this hop might read under — arrives
+// as one of this hop's own objects and none of the engine's own words.
+func TestNoUpstreamErrorBodyReachesTheCaller(t *testing.T) {
+	secret := "kimi-k3-frontend.dynamo.svc.cluster.local"
+	for _, test := range []struct {
+		name   string
+		status int
+		body   string
+		want   errorBody
+	}{
+		{
+			name:   "a bare object, which is Dynamo's shape",
+			status: http.StatusInternalServerError,
+			body:   `{"message":"engine crashed in ` + secret + `","type":"Internal Server Error","code":500}`,
+			want:   errorBody{Message: "The model failed to answer this request.", Type: "api_error", Code: "upstream_error"},
+		},
+		{
+			name:   "the OpenAI envelope, which used to pass untouched",
+			status: http.StatusBadRequest,
+			body:   `{"error":{"message":"model ` + secret + ` does not exist","type":"invalid_request_error","code":"bad_param"}}`,
+			want:   errorBody{Message: "The request was not accepted by this model.", Type: "invalid_request_error", Code: "invalid_request"},
+		},
+		{
+			name:   "prose, which is what a framework's default handler writes",
+			status: http.StatusServiceUnavailable,
+			body:   "no worker for " + secret,
+			want:   errorBody{Message: "This model is temporarily unavailable.", Type: "overloaded_error", Code: "no_capacity"},
+		},
+		{
+			name:   "a body larger than anything this hop buffers",
+			status: http.StatusInternalServerError,
+			body:   `{"message":"` + strings.Repeat(secret+" ", 8<<10) + `"}`,
+			want:   errorBody{Message: "The model failed to answer this request.", Type: "api_error", Code: "upstream_error"},
+		},
+		{
+			name:   "a status nobody anticipated, which is still one of these objects",
+			status: http.StatusTeapot,
+			body:   `{"message":"` + secret + `"}`,
+			want:   errorBody{Message: "The request was not accepted by this model.", Type: "invalid_request_error", Code: "invalid_request"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rec := errorFrom(t, test.status, nil, test.body)
+			if strings.Contains(rec.Body.String(), secret) {
+				t.Fatalf("body = %s, the upstream's own words survived", rec.Body)
+			}
+			var envelope errorEnvelope
+			if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode %s: %v", rec.Body, err)
+			}
+			if envelope.Error != test.want {
+				t.Fatalf("error = %#v, want %#v", envelope.Error, test.want)
+			}
+		})
 	}
 }
 
-func TestAnUpstreamOpenAIErrorPassesThroughUntouched(t *testing.T) {
-	want := `{"error":{"message":"bad request","type":"invalid_request_error","code":"bad_param"}}`
+// TestAnUpstreamStatusIsAnsweredWithTheStatusThisHopMeansByIt covers the three
+// statuses that are not forwarded as they arrived, because forwarding them would
+// tell a caller something untrue about their own request.
+func TestAnUpstreamStatusIsAnsweredWithTheStatusThisHopMeansByIt(t *testing.T) {
+	for _, test := range []struct {
+		upstream int
+		want     int
+		why      string
+	}{
+		{http.StatusUnauthorized, http.StatusBadGateway, "the credential is ours and the caller has never seen it"},
+		{http.StatusForbidden, http.StatusBadGateway, "the credential is ours and the caller has never seen it"},
+		{http.StatusNotFound, http.StatusBadGateway, "the path was routed here, so a 404 is a misconfigured upstream"},
+		{http.StatusBadRequest, http.StatusBadRequest, "a bad request stays the caller's"},
+		{http.StatusTooManyRequests, http.StatusTooManyRequests, "a throttle stays a throttle"},
+		{http.StatusServiceUnavailable, http.StatusServiceUnavailable, "capacity stays capacity"},
+	} {
+		rec := errorFrom(t, test.upstream, nil, `{"message":"upstream"}`)
+		if rec.Code != test.want {
+			t.Fatalf("upstream %d became %d, want %d: %s", test.upstream, rec.Code, test.want, test.why)
+		}
+	}
+}
+
+// TestOnlyForwardedResponseHeadersLeaveTheGateway is the header half of the same
+// boundary. Anything behind this hop may describe itself in a header; none of it
+// leaves here.
+func TestOnlyForwardedResponseHeadersLeaveTheGateway(t *testing.T) {
+	upstream := http.Header{
+		"Content-Type":                {"application/json"},
+		"Cache-Control":               {"no-cache"},
+		"X-Accel-Buffering":           {"no"},
+		"Retry-After":                 {"3"},
+		"X-Ratelimit-Remaining":       {"41"},
+		"Ratelimit-Reset":             {"60"},
+		"Server":                      {"uvicorn"},
+		"X-Dynamo-Worker":             {"decode-0"},
+		"X-Request-Id":                {"7f3c"},
+		"X-Vllm-Engine":               {"v1"},
+		"Www-Authenticate":            {"Bearer realm=\"dynamo\""},
+		"Access-Control-Allow-Origin": {"*"},
+	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(want))
+		for name, values := range upstream {
+			w.Header()[name] = values
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer server.Close()
 	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
@@ -206,8 +303,62 @@ func TestAnUpstreamOpenAIErrorPassesThroughUntouched(t *testing.T) {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
 		strings.NewReader(`{"model":"chat"}`)))
-	if rec.Code != http.StatusBadRequest || rec.Body.String() != want {
-		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)
+
+	for _, name := range []string{"Content-Type", "Cache-Control", "X-Accel-Buffering",
+		"Retry-After", "X-Ratelimit-Remaining", "Ratelimit-Reset"} {
+		if rec.Header().Get(name) == "" {
+			t.Errorf("%s was dropped, and a caller needs it", name)
+		}
+	}
+	for _, name := range []string{"Server", "X-Dynamo-Worker", "X-Request-Id", "X-Vllm-Engine",
+		"Www-Authenticate", "Access-Control-Allow-Origin"} {
+		if got := rec.Header().Get(name); got != "" {
+			t.Errorf("%s = %q, and it names what is behind this hop", name, got)
+		}
+	}
+}
+
+// TestARedirectLeavesHereAsAPath is the leak a framework opens by construction:
+// FastAPI answers a trailing slash with a 307 whose Location it builds from the
+// Host header, and the Host the frontend sees is the address the agent dialled.
+func TestARedirectLeavesHereAsAPath(t *testing.T) {
+	for _, test := range []struct {
+		upstream string
+		want     string
+	}{
+		{"http://kimi-k3-frontend.dynamo.svc.cluster.local:8000/v1/models", "/v1/models"},
+		{"https://clu_ap.tunnel.hangar.internal/v1/models?limit=2", "/v1/models?limit=2"},
+		{"http://10.0.3.4:8000/v1/models#top", "/v1/models#top"},
+		{"/v1/models", "/v1/models"},
+	} {
+		rec := errorFrom(t, http.StatusTemporaryRedirect,
+			http.Header{"Location": {test.upstream}}, "")
+		if got := rec.Header().Get("Location"); got != test.want {
+			t.Errorf("Location = %q, want %q", got, test.want)
+		}
+	}
+}
+
+// TestTheCatalogDoesNotNameWhoRunsIt: owned_by is the one field on the one
+// response a caller can read without sending a request, and it used to name this
+// project.
+func TestTheCatalogDoesNotNameWhoRunsIt(t *testing.T) {
+	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{"chat": {}}}})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+
+	body := strings.ToLower(rec.Body.String())
+	for _, needle := range []string{"hangar", "acme", "partner", "dynamo", "vllm"} {
+		if strings.Contains(body, needle) {
+			t.Fatalf("the catalog says %q: %s", needle, rec.Body)
+		}
+	}
+	var list modelList
+	if err := json.Unmarshal(rec.Body.Bytes(), &list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if list.Data[0].OwnedBy != "system" {
+		t.Fatalf("owned_by = %q", list.Data[0].OwnedBy)
 	}
 }
 
@@ -472,6 +623,77 @@ func TestTheResolvedDeploymentIsForwardedAndACallersOwnIsNot(t *testing.T) {
 					t.Fatalf("the header is present as %v, want it absent rather than empty",
 						seen[tunnel.HeaderDeploymentID])
 				}
+			}
+		})
+	}
+}
+
+// TestTheErrorClassFollowsTheStatus is what a client switches on to decide
+// whether a retry is worth anything. Every error this hop writes and every one it
+// substitutes for an upstream's takes its class from the same function, so a 503
+// cannot arrive labelled as the caller's own bad request.
+func TestTheErrorClassFollowsTheStatus(t *testing.T) {
+	for status, want := range map[int]string{
+		http.StatusBadRequest:            "invalid_request_error",
+		http.StatusUnauthorized:          "authentication_error",
+		http.StatusForbidden:             "permission_error",
+		http.StatusNotFound:              "invalid_request_error",
+		http.StatusRequestEntityTooLarge: "invalid_request_error",
+		http.StatusTooManyRequests:       "rate_limit_error",
+		http.StatusInternalServerError:   "api_error",
+		http.StatusBadGateway:            "api_error",
+		http.StatusServiceUnavailable:    "overloaded_error",
+	} {
+		rec := httptest.NewRecorder()
+		writeError(rec, status, "code", "message")
+
+		var envelope errorEnvelope
+		if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if envelope.Error.Type != want {
+			t.Errorf("%d is type %q, want %q", status, envelope.Error.Type, want)
+		}
+	}
+}
+
+// TestTheGatewaysOwnRefusalsCarryTheRightClass walks the statuses through the
+// real handler rather than the writer, because the classes only matter on the
+// answers a caller actually receives.
+func TestTheGatewaysOwnRefusalsCarryTheRightClass(t *testing.T) {
+	handler := New(Config{
+		Router:  stubResolver{routes: map[string]routing.Route{"chat": {}}},
+		Callers: NewTokenGuard("secret"),
+	})
+
+	for _, test := range []struct {
+		name   string
+		token  string
+		body   string
+		status int
+		want   string
+	}{
+		{name: "no token", body: `{"model":"chat"}`, status: http.StatusUnauthorized, want: "authentication_error"},
+		{name: "unknown model", token: "secret", body: `{"model":"nope"}`, status: http.StatusNotFound, want: "invalid_request_error"},
+		{name: "no upstream", token: "secret", body: `{"model":"chat"}`, status: http.StatusServiceUnavailable, want: "overloaded_error"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(test.body))
+			if test.token != "" {
+				request.Header.Set("Authorization", "Bearer "+test.token)
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, request)
+
+			if rec.Code != test.status {
+				t.Fatalf("status = %d, want %d: %s", rec.Code, test.status, rec.Body)
+			}
+			var envelope errorEnvelope
+			if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if envelope.Error.Type != test.want {
+				t.Fatalf("type = %q, want %q", envelope.Error.Type, test.want)
 			}
 		})
 	}

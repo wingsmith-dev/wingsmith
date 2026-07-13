@@ -23,10 +23,18 @@ func TestARequestTravelsDownARealTunnel(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = pool.Close() })
 
+	// The path is carried back on a channel and not on a response header,
+	// because a response header is exactly what this hop now deletes: the
+	// cluster is not allowed to describe itself to a caller, and a test that
+	// asserted through one would be asserting the leak.
+	seenPath := make(chan string, 1)
 	inCluster := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
+		select {
+		case seenPath <- r.URL.Path:
+		default:
+		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("X-Seen-Path", r.URL.Path)
 		_, _ = w.Write([]byte("data: " + string(body) + "\n\n"))
 		_, _ = w.Write([]byte("data: [DONE]\n\n"))
 	})
@@ -58,8 +66,13 @@ func TestARequestTravelsDownARealTunnel(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body %q", rec.Code, rec.Body.String())
 	}
-	if rec.Header().Get("X-Seen-Path") != "/v1/chat/completions" {
-		t.Fatalf("the cluster saw path %q", rec.Header().Get("X-Seen-Path"))
+	select {
+	case path := <-seenPath:
+		if path != "/v1/chat/completions" {
+			t.Fatalf("the cluster saw path %q", path)
+		}
+	default:
+		t.Fatal("the cluster was never reached")
 	}
 	want := "data: {\"model\":\"chat\"}\n\ndata: [DONE]\n\n"
 	if rec.Body.String() != want {

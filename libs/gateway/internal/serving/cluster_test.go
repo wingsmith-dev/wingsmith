@@ -33,10 +33,14 @@ func (s stubTunnels) RoundTripper(string) http.RoundTripper {
 		if s.trip != nil {
 			return s.trip(r)
 		}
+		// Which leg served the request travels in the body and not in a
+		// response header, because a response header from behind this hop is
+		// deleted on the way out — see filterResponseHeaders. A test asserting
+		// through one would be asserting the leak.
 		return &http.Response{
 			StatusCode: http.StatusOK,
-			Header:     http.Header{"X-Via": []string{"tunnel"}},
-			Body:       io.NopCloser(strings.NewReader("{}")),
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"via":"tunnel"}`)),
 			Request:    r,
 		}, nil
 	})
@@ -47,8 +51,7 @@ func (s stubTunnels) RoundTripper(string) http.RoundTripper {
 // dialled at it when this replica holds no tunnel to it.
 func TestTheTunnelIsPreferredAndTheAddressIsTheFallback(t *testing.T) {
 	direct := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("X-Via", "address")
-		_, _ = w.Write([]byte("{}"))
+		_, _ = w.Write([]byte(`{"via":"address"}`))
 	}))
 	defer direct.Close()
 	address, err := url.Parse(direct.URL)
@@ -92,8 +95,14 @@ func TestTheTunnelIsPreferredAndTheAddressIsTheFallback(t *testing.T) {
 				}
 				return
 			}
-			if got := rec.Header().Get("X-Via"); got != tc.wantVia {
-				t.Fatalf("served via %q, want %q", got, tc.wantVia)
+			var served struct {
+				Via string `json:"via"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &served); err != nil {
+				t.Fatalf("body = %q", rec.Body.String())
+			}
+			if served.Via != tc.wantVia {
+				t.Fatalf("served via %q, want %q", served.Via, tc.wantVia)
 			}
 		})
 	}
