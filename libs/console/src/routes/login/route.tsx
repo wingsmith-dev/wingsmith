@@ -17,6 +17,12 @@ export const Route = createFileRoute("/login")({
  * other name is a tenant and the credential is their token. Two forms would mean
  * a second URL to publish and a wrong-door state to design; one field costs the
  * operator four keystrokes they can leave in place.
+ *
+ * Only the tenant credential is trimmed. A token is `hgrt1.` and 32 url-safe
+ * random bytes, so it can never legitimately carry surrounding whitespace and a
+ * pasted one that does is a paste artefact — which otherwise fails the hash
+ * lookup and reports itself as a wrong token. The admin password is not ours to
+ * assume that about and is sent exactly as typed.
  */
 function LoginPage() {
   const signIn = useAuthStore((s) => s.signIn)
@@ -34,7 +40,7 @@ function LoginPage() {
     setPending(true)
     setError(null)
     try {
-      await signIn(password, slug.trim() || "admin")
+      await signIn(tenant ? password.trim() : password, slug.trim() || "admin")
       navigate({ to: tenant ? "/serving" : "/clusters" })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Sign in failed.")

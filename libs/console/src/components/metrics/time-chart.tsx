@@ -20,6 +20,72 @@ import type { MetricSeriesPoint, MetricUnit } from "@/modules/metrics/types"
  * colour-vision separation against this console's own surfaces before they were
  * written down — see `SERIES` in `serving-charts.tsx`.
  */
+/**
+ * A smooth path through the points, using monotone cubic interpolation.
+ *
+ * Monotone rather than a natural or Catmull-Rom spline, and the difference is
+ * not cosmetic: those two overshoot badly. Catmull-Rom through 10, 10, 90, 10,
+ * 10 dips to 4.1 either side of the peak — on these charts that is a rate below
+ * zero, or a latency faster than the fastest request measured, drawn in the gap
+ * where a reader is least able to check it.
+ *
+ * The Fritsch–Carlson condition clamps each tangent so the curve cannot reverse
+ * direction inside a rising or falling run. It bounds rather than eliminates:
+ * around a local peak the curve can still sit a hair above the point itself —
+ * 0.007% on a 0, 5, 40, 42, 41 series — which is smoothing, not an invented
+ * excursion. A flat run stays flat, because a zero slope zeroes both tangents.
+ */
+function splinePath(points: { x: number; y: number }[]): string {
+  if (points.length === 0) return ""
+  if (points.length < 3) {
+    return points
+      .map(
+        (p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`
+      )
+      .join(" ")
+  }
+
+  const last = points.length - 1
+  const slopes = points
+    .slice(0, last)
+    .map((p, i) => (points[i + 1].y - p.y) / (points[i + 1].x - p.x || 1))
+
+  const tangents = points.map((_, i) => {
+    if (i === 0) return slopes[0]
+    if (i === last) return slopes[last - 1]
+    return (slopes[i - 1] + slopes[i]) / 2
+  })
+
+  for (let i = 0; i < slopes.length; i += 1) {
+    if (slopes[i] === 0) {
+      tangents[i] = 0
+      tangents[i + 1] = 0
+      continue
+    }
+    const alpha = tangents[i] / slopes[i]
+    const beta = tangents[i + 1] / slopes[i]
+    const magnitude = alpha * alpha + beta * beta
+    if (magnitude > 9) {
+      const scale = 3 / Math.sqrt(magnitude)
+      tangents[i] = scale * alpha * slopes[i]
+      tangents[i + 1] = scale * beta * slopes[i]
+    }
+  }
+
+  let path = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`
+  for (let i = 0; i < last; i += 1) {
+    const from = points[i]
+    const to = points[i + 1]
+    const third = (to.x - from.x) / 3
+    const c1x = from.x + third
+    const c1y = from.y + tangents[i] * third
+    const c2x = to.x - third
+    const c2y = to.y - tangents[i + 1] * third
+    path += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${to.x.toFixed(1)},${to.y.toFixed(1)}`
+  }
+  return path
+}
+
 export interface ChartSeries {
   key: string
   label: string
@@ -248,12 +314,9 @@ export function TimeChart({
             {drawn.map((s) => (
               <path
                 key={s.key}
-                d={s.points
-                  .map(
-                    (p, i) =>
-                      `${i === 0 ? "M" : "L"}${x(p.at).toFixed(1)},${y(p.value).toFixed(1)}`
-                  )
-                  .join(" ")}
+                d={splinePath(
+                  s.points.map((p) => ({ x: x(p.at), y: y(p.value) }))
+                )}
                 fill="none"
                 stroke={s.color}
                 strokeWidth={2}
