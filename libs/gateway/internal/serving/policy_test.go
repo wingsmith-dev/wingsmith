@@ -711,3 +711,63 @@ func TestTheTemplateThinkingKwargIsTakenOutOfTheBody(t *testing.T) {
 		t.Errorf("the drop took a sibling with it: %s", rewritten)
 	}
 }
+
+// allowedToolsPolicy is the pair of drops that answers `tool_choice:
+// {"type":"allowed_tools",...}` the way Moonshot's own frontend does.
+//
+// Measured against api.moonshot.ai, model kimi-k3, on 2026-09-10: the field is
+// accepted and ignored. `prompt_tokens` is 202 whether it is sent or not, and
+// `{"mode":"required","tools":[get_time]}` on a weather question still calls
+// `get_weather`. So the vendor neither filters the tool list nor forces the
+// subset, and the conforming answer is to take the field out — Dynamo's
+// frontend refuses to deserialize it at all, which is a 400 on a request the
+// vendor serves.
+//
+// Two rules because there are two spellings in the wild and they nest
+// differently: OpenAI's own is `tool_choice.allowed_tools.{mode,tools}`, and the
+// flat one the Kimi guidance suite sends is `tool_choice.{mode,tools}`.
+func allowedToolsPolicy() *plane.Policy {
+	return &plane.Policy{Version: 2, Rules: []plane.Rule{
+		{Route: chatRoute, Key: "tool_choice", Drop: true, WhenPresent: "tool_choice.allowed_tools"},
+		{Route: chatRoute, Key: "tool_choice", Drop: true, WhenPresent: "tool_choice.mode"},
+	}}
+}
+
+func TestAllowedToolsIsTakenOutOfTheBodyAndNothingElseIs(t *testing.T) {
+	for _, c := range []struct {
+		name       string
+		toolChoice string
+		dropped    bool
+	}{
+		{"the flat spelling the guidance suite sends",
+			`{"type":"allowed_tools","mode":"auto","tools":[{"type":"function","name":"get_weather"}]}`, true},
+		{"OpenAI's nested spelling",
+			`{"type":"allowed_tools","allowed_tools":{"mode":"auto","tools":[{"type":"function","name":"get_weather"}]}}`, true},
+		// The scalars are served. A rule that reached them would refuse
+		// three modes the vendor answers, which is the whole risk of keying
+		// the drop on a sub-path rather than on the key.
+		{"auto", `"auto"`, false},
+		{"required", `"required"`, false},
+		{"none", `"none"`, false},
+		// Named function has `function`, not `mode`, so it stays whole and the
+		// existing named_while_thinking deny is still the thing that governs it.
+		{"a named function", `{"type":"function","function":{"name":"get_weather"}}`, false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			body := []byte(`{"model":"m","messages":[],"tools":[{"type":"function"}],"tool_choice":` + c.toolChoice + `}`)
+			rewritten, err := rewriteBody(allowedToolsPolicy(), chatRoute, body)
+			if err != nil {
+				t.Fatalf("rewrite: %v", err)
+			}
+			gone := !strings.Contains(string(rewritten), `"tool_choice"`)
+			if gone != c.dropped {
+				t.Errorf("tool_choice dropped=%v, want %v: %s", gone, c.dropped, rewritten)
+			}
+			// Whatever happened to tool_choice, the tools the caller declared
+			// are the ones the model must still be offered.
+			if !strings.Contains(string(rewritten), `"tools"`) {
+				t.Errorf("the drop took the tools array with it: %s", rewritten)
+			}
+		})
+	}
+}
