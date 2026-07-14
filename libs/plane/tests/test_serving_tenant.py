@@ -167,3 +167,40 @@ def test_the_service_has_no_write_method():
     """An observed-and-borrowed surface has no writer here. Absent methods, not refusing ones."""
     banned = {"create", "update", "patch", "delete", "set", "add", "remove"}
     assert not banned & {name for name in dir(ServingService) if not name.startswith("_")}
+
+
+def test_the_admin_view_of_a_customer_is_outside_the_tenant_surface():
+    """The whole security argument for the path shape, stated as a test.
+
+    Whose view an admin is reading is a path segment, so "may this caller name
+    that tenant" is answered by the routing table: `/v1/tenants` is not
+    `TENANT_SURFACE`, so a tenant credential never reaches the handler. The
+    query-parameter shape this replaced asked the same question at request time,
+    on the one surface a tenant *can* reach.
+    """
+    assert not _tenant_may(request("/v1/tenants/globex/serving"))
+    assert not _tenant_may(request("/v1/tenants/globex/serving/models/moonshotai/kimi-k3"))
+
+
+def test_a_tenant_session_is_401_on_another_tenants_serving_view():
+    with TestClient(app=create_app()) as client:
+        response = client.get(
+            "/v1/tenants/someone-else/serving",
+            headers={"Authorization": f"Bearer {tenant_session()}"},
+        )
+    assert response.status_code == 401
+
+
+def test_the_tenant_scoped_surface_takes_no_tenant_from_the_caller():
+    """The defect this shape was written for.
+
+    `depends` used to read `?tenant=` for an admin, and no handler declared the
+    parameter — so the request was refused as an unknown query parameter before
+    the dependency that wanted it ever ran, and the admin view was unreachable
+    by construction. Nothing on this surface reads a tenant from the request
+    now, so there is no parameter to declare and none to forget.
+    """
+    from app.modules.serving.routes import ServingRoutes
+
+    for handler in (ServingRoutes.overview, ServingRoutes.model, ServingRoutes.model_metrics):
+        assert "tenant" not in handler.__annotations__

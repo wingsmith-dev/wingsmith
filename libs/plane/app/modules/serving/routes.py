@@ -1,15 +1,26 @@
 """The serving view: what one tenant is being served, and nothing else.
 
-This is the only surface a tenant credential can reach — `app.core.context`
-refuses one everywhere else — which makes the module's boundary the security
-boundary. Two rules follow, and both are load-bearing rather than tidiness:
+`/v1/serving` is the only surface a tenant credential can reach —
+`app.core.context` refuses one everywhere else — which makes the module's
+boundary the security boundary. Two rules follow, and both are load-bearing
+rather than tidiness:
 
-Nothing here takes a tenant from the caller. The scope comes off the principal in
-`depends`, so no handler can be written that reads the wrong one.
+Nothing on `/v1/serving` takes a tenant from the caller. The scope comes off the
+principal in `depends`, so no handler can be written that reads the wrong one.
 
 Nothing here writes. A tenant sees declared state somebody else declared and
 observed state ingestion wrote; a write on this surface would be a second writer
 of both.
+
+An admin reads a customer's view through the second controller, mounted under
+`/v1/tenants/{ref}/serving`. It renders the same three reads from the same
+service, so the console never grows a second rendering of what a tenant sees.
+Which tenant is a path segment there rather than a query parameter on the
+tenant-scoped surface, and that is the whole security argument: `/v1/tenants` is
+outside `TENANT_SURFACE`, so a tenant credential cannot reach it at all. The
+query-parameter shape it replaces could never have worked — the dependency read
+`?tenant=`, the handlers never declared it, and the request was refused as an
+unknown parameter before the dependency ran.
 """
 
 from litestar import Response
@@ -22,6 +33,7 @@ from app.modules.metrics.schemas import MetricsSchema
 from app.modules.metrics.services import MetricsService
 
 from .depends import serving_svc_generator
+from .depends import tenant_serving_svc_generator
 from .schemas import ServingOverviewSchema
 from .schemas import ServedModelDetailSchema
 from .services import ServingService
@@ -58,6 +70,47 @@ class ServingRoutes(Controller):
         sees it, so what reaches the query is a uid this tenant was proved to own
         rather than a name they typed.
         """
+        uid = await svc.metrics_ref(ref)
+        metrics = MetricsService(db=context.db)
+        return Response(await metrics.endpoint(uid, window, step, span, series))
+
+
+class TenantServingRoutes(Controller):
+    """A customer's serving view, for somebody who is not that customer.
+
+    Every handler is the tenant-scoped one with a different way of deciding
+    whose view it is, so the two cannot drift: same service, same schemas, same
+    reads. Only the dependency differs.
+    """
+
+    tags = ["Serving"]
+    path = "/tenants/{tenant:str}/serving"
+    dependencies = {"svc": Provide(tenant_serving_svc_generator)}
+
+    @get()
+    async def overview(
+        self, context: RequestContext, svc: ServingService, tenant: str
+    ) -> Response[ServingOverviewSchema]:
+        return Response(await svc.overview())
+
+    @get("/models/{ref:str}")
+    async def model(
+        self, context: RequestContext, svc: ServingService, tenant: str, ref: str
+    ) -> Response[ServedModelDetailSchema]:
+        return Response(await svc.model(ref))
+
+    @get("/models/{ref:str}/metrics")
+    async def model_metrics(
+        self,
+        context: RequestContext,
+        svc: ServingService,
+        tenant: str,
+        ref: str,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> Response[MetricsSchema]:
         uid = await svc.metrics_ref(ref)
         metrics = MetricsService(db=context.db)
         return Response(await metrics.endpoint(uid, window, step, span, series))
