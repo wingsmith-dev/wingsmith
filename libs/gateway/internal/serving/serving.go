@@ -118,9 +118,13 @@ func New(cfg Config) http.Handler {
 // `Stop` is JSON-only and stays empty for a multipart request, which costs
 // nothing: the check it feeds is gated on the completion paths, and none of
 // them are multipart.
+//
+// `NvExt` is held only to know that one was sent. What is inside it is read by
+// withoutSteeringHints, exactly as the runtime reads it, and not from this copy.
 type modelEnvelope struct {
 	Model string          `json:"model"`
 	Stop  json.RawMessage `json:"stop"`
+	NvExt json.RawMessage `json:"nvext"`
 }
 
 // withRouting dispatches a request to the cluster serving its `model`.
@@ -201,6 +205,24 @@ func withRouting(resolver Resolver) http.Handler {
 		}
 		markEndpoint(r, route.ID, route.Name)
 
+		// Before the endpoint's own terms and not after them, so that a field a
+		// plane-authored rule writes into `nvext` is not taken back out as if a
+		// caller had sent it.
+		if len(envelope.NvExt) > 0 {
+			scrubbed, removed, err := withoutSteeringHints(body)
+			if err != nil {
+				MarkOutcome(r, metrics.OutcomeInternalError)
+				slog.Error("gateway: could not remove routing hints from the request",
+					"model", envelope.Model, "err", err)
+				writeError(w, http.StatusInternalServerError, "routing_error", "Unable to route this request.")
+				return
+			}
+			if len(removed) > 0 {
+				slog.Debug("gateway: removed caller routing hints", "fields", removed)
+			}
+			body = scrubbed
+		}
+
 		// The endpoint's own terms, before an upstream is chosen. A policy is a
 		// property of the name that was sold, so every upstream behind it must
 		// answer a request the same way — checking after Pick would let the same
@@ -270,6 +292,12 @@ func withRouting(resolver Resolver) http.Handler {
 				return
 			}
 			body = rewritten
+		}
+
+		// The runtime's own steering headers, taken off the caller's request before
+		// anything this hop stamps is written. See stripSteeringHeaders.
+		if stripped := stripSteeringHeaders(r.Header); len(stripped) > 0 {
+			slog.Debug("gateway: removed caller routing headers", "headers", stripped)
 		}
 
 		// The deployment this request was resolved to, forwarded so the agent

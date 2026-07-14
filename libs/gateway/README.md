@@ -115,6 +115,12 @@ from the data plane.
   gets to call missing — both are misconfigurations on our side and telling a caller otherwise sends
   them to rotate a working key. This counts a former `client_error` against `upstream_error`, which
   is the intended reading: it was our fault before and the number said otherwise.
+- **A request header or `nvext` field that steers the serving runtime.** Deleted before the request
+  leaves. Dynamo reads a worker pin, a data-parallel rank, a queue priority, a queue class, a request
+  id and a session binding from a caller's headers — every `x-dynamo-*`, the unprefixed worker and
+  rank aliases, and the agent harness session headers — and from `nvext`. Which worker runs a
+  request, and ahead of whom, is not a caller's to choose. A request carrying none of them is
+  forwarded as the bytes that arrived. The names are in `steering.go`.
 - **A response header from behind this hop.** Deleted unless it is on the forwarded list in
   `errors.go`. An allowlist, because what a caller needs is small and closed while what an engine
   might add is neither. A `Location` is reduced to a path first: the authority a frontend builds one
