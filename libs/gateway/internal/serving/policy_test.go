@@ -771,3 +771,93 @@ func TestAllowedToolsIsTakenOutOfTheBodyAndNothingElseIs(t *testing.T) {
 		})
 	}
 }
+
+// The provider's temperature pin, both modes, as measured on 2026-09-11.
+//
+// Two cells are accepted and every other one is a 400, which is why this is a
+// predicate rather than an `enum` on the key: the accepted value depends on
+// another field of the same request, and `when_present` cannot ask the question
+// because thinking is on by the *absence* of `thinking`.
+func TestTemperatureIsPinnedPerThinkingMode(t *testing.T) {
+	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
+		{Route: chatRoute, Predicate: "temperature.not_pinned_for_mode", Deny: true},
+	}}
+
+	for _, probe := range []struct {
+		thinking string
+		value    string
+		accepted bool
+	}{
+		// Thinking on, spelled and by omission. Only 1 is served.
+		{`,"thinking":{"type":"enabled"}`, "1", true},
+		{`,"thinking":{"type":"enabled"}`, "1.0", true},
+		{`,"thinking":{"type":"enabled"}`, "0.6", false},
+		{`,"thinking":{"type":"enabled"}`, "0", false},
+		{"", "1", true},
+		{"", "0.6", false},
+		{"", "0", false},
+
+		// Thinking off. Only 0.6 is served — and 1.0, which is the accepted
+		// value one line up, is refused here. This is the half the report that
+		// prompted the rule called "fine on both".
+		{`,"thinking":{"type":"disabled"}`, "0.6", true},
+		{`,"thinking":{"type":"disabled"}`, "1", false},
+		{`,"thinking":{"type":"disabled"}`, "0", false},
+	} {
+		body := []byte(`{"model":"m","messages":[],"temperature":` + probe.value + probe.thinking + `}`)
+		_, _, ok := checkPolicy(policy, chatRoute, body)
+		if ok != probe.accepted {
+			t.Errorf("temperature %s%s: accepted=%v, want %v", probe.value, probe.thinking, ok, probe.accepted)
+		}
+	}
+}
+
+// An absent temperature is not a violation — the minimal request every client
+// starts with must still be served — and a malformed one belongs to the
+// upstream, which can say what is wrong with it in its own words.
+func TestTheTemperaturePinDemandsNothingAndDiagnosesNothingItCannotRead(t *testing.T) {
+	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
+		{Route: chatRoute, Predicate: "temperature.not_pinned_for_mode", Deny: true},
+	}}
+
+	for _, body := range []string{
+		`{"model":"m","messages":[]}`,
+		`{"model":"m","messages":[],"temperature":null}`,
+		`{"model":"m","messages":[],"temperature":"hot"}`,
+		`{"model":"m","messages":[],"temperature":1,"thinking":"broken"}`,
+	} {
+		if _, _, ok := checkPolicy(policy, chatRoute, []byte(body)); !ok {
+			t.Errorf("refused a request this rule has no standing to refuse:\n%s", body)
+		}
+	}
+}
+
+// The refusal names the value that would have worked, and which mode decided
+// it. A caller who sent 0.6 with thinking on is one field away from a served
+// request and must be able to see which field.
+func TestTheTemperaturePinSaysWhichValueTheModeAllows(t *testing.T) {
+	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
+		{Route: chatRoute, Predicate: "temperature.not_pinned_for_mode", Deny: true},
+	}}
+
+	for _, probe := range []struct{ body, code, message string }{
+		{
+			`{"model":"m","messages":[],"temperature":0.6,"thinking":{"type":"enabled"}}`,
+			"invalid_parameter",
+			"The only accepted value for 'temperature' is 1 while thinking is enabled.",
+		},
+		{
+			`{"model":"m","messages":[],"temperature":1,"thinking":{"type":"disabled"}}`,
+			"invalid_parameter",
+			"The only accepted value for 'temperature' is 0.6 while thinking is disabled.",
+		},
+	} {
+		code, message, ok := checkPolicy(policy, chatRoute, []byte(probe.body))
+		if ok {
+			t.Fatalf("served a temperature the provider refuses:\n%s", probe.body)
+		}
+		if code != probe.code || message != probe.message {
+			t.Errorf("got %s %q, want %s %q", code, message, probe.code, probe.message)
+		}
+	}
+}
