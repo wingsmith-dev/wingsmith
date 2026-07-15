@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -1391,6 +1392,10 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	if err != nil {
 		return nil, err
 	}
+	router, err := frontendRouterEnv(in.Deployment.Serving.Router)
+	if err != nil {
+		return nil, fmt.Errorf("deployment %s: %w", in.Deployment.DeploymentID, err)
+	}
 	resources, err := frontendResources(opts)
 	if err != nil {
 		return nil, err
@@ -1407,7 +1412,7 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 			// The same reason as the worker's: a frontend that exits on a bad flag or a
 			// missing credential should say so where the plane can read it.
 			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
-			Env: []corev1.EnvVar{
+			Env: append([]corev1.EnvVar{
 				{Name: "DYN_ENABLE_ANTHROPIC_API", Value: strconv.FormatBool(opts.AnthropicAPIEnabled)},
 				{Name: "DYN_STRIP_ANTHROPIC_PREAMBLE", Value: strconv.FormatBool(opts.AnthropicStripPreamble)},
 				// The same fixed seed the worker gets, and it is worth nothing unless it
@@ -1417,45 +1422,7 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 				// identical blocks differently and miss every cache hit — silently, as a
 				// performance loss nothing reports.
 				{Name: "PYTHONHASHSEED", Value: "0"},
-				// KV-aware routing, for every deployment this operator renders.
-				//
-				// Upstream's default is round-robin and the operator used to set nothing,
-				// which is invisible at one worker — round-robin to a pool of one is
-				// perfectly sticky — and badly wrong at the second. Alternate turns of one
-				// conversation land on a worker that has never seen it and re-prefill the
-				// whole context. Measured on four B300s serving Kimi-K3 at ~30k context:
-				// one replica at 86% KV usage and 44 running requests with a 35.7s TTFT,
-				// another at 0% and idle, and a fleet prefix hit rate of 56% against the
-				// 94.5% one replica reaches alone. `router_kv_hit_rate` had 1701 routed
-				// requests and zero observations, because nothing routed on KV at all.
-				//
-				// Unconditional, and that is the change. It was previously gated on the
-				// topology being disaggregated, which is the wrong axis twice: it is the
-				// worker *count* that breaks round-robin, not the topology, and every
-				// aggregated multi-replica model in the fleet is the shape that suffers.
-				// Gating on `Replicas > 1` instead was rejected — the count moves under an
-				// autoscaler, and a routing mode that appears and disappears with it rolls
-				// the frontend on a scale event and makes the behaviour under investigation
-				// depend on when you looked.
-				//
-				// Harmless at one worker rather than merely tolerable there: with a single
-				// registered worker the KV router has one candidate and picks it, which is
-				// the choice round-robin would have made. It does not gate startup either —
-				// `DYN_ROUTER_MIN_INITIAL_WORKERS` defaults to 0, so a KV frontend serves
-				// before any worker registers exactly as a round-robin one does.
-				//
-				// Environment and not an argument because the frontend has no argument list
-				// to join: `type: frontend` is what makes Dynamo derive the command, and it
-				// derives `python3 -m dynamo.frontend` with nothing after it — verified on
-				// the live `model-a-frontend`. `--router-mode` reads `DYN_ROUTER_MODE`
-				// (`dynamo/common/configuration/groups/router_args.py`), so the variable is
-				// the same knob and the only one reachable from here.
-				//
-				// This is half of a pair. The other half is `kvEventsConfig` on the worker:
-				// without the events, KV mode indexes an empty tree and silently degrades to
-				// load balancing while still reporting itself as a KV router.
-				{Name: "DYN_ROUTER_MODE", Value: "kv"},
-			},
+			}, router...),
 			Resources: resources,
 		}},
 	}
@@ -1490,6 +1457,97 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	}
 
 	return spec, nil
+}
+
+// DefaultRouterMode is the frontend's routing mode when a deployment declares none.
+const DefaultRouterMode = "kv"
+
+// routerModes is every `DYN_ROUTER_MODE` a deployment may declare: Dynamo 1.5.0's `--router-mode`
+// choices less `direct`, which routes to a worker id the request has to carry. Nothing in front of a
+// Hangar frontend sets one, so a frontend in that mode refuses every request it is sent.
+var routerModes = map[string]bool{
+	"kv": true, "round-robin": true, "random": true, "power-of-two": true,
+	"least-loaded": true, "device-aware-weighted": true,
+}
+
+// routerQueuePolicies is Dynamo 1.5.0's `--router-queue-policy` choices.
+var routerQueuePolicies = map[string]bool{"fcfs": true, "wspt": true}
+
+// frontendRouterEnv is the router configuration a frontend is started with, as environment.
+//
+// `DYN_ROUTER_MODE` is always rendered, and `kv` when nothing is declared. Upstream's default is
+// round-robin and the operator used to set nothing, which is invisible at one worker and badly wrong
+// at the second: alternate turns of one conversation land on a worker that has never seen it and
+// re-prefill the whole context. Measured on four B300s serving Kimi-K3 at ~30k context: one replica
+// at 86% KV usage and a 35.7s TTFT beside an idle one, and a fleet prefix hit rate of 56% against
+// the 94.5% one replica reaches alone. It is not gated on topology or on `Replicas > 1`: it is the
+// worker count that breaks round-robin, and a mode that moved with an autoscaled count would roll
+// the frontend on a scale event. With one registered worker the KV router picks the only candidate,
+// and `DYN_ROUTER_MIN_INITIAL_WORKERS` defaults to 0, so it gates nothing at startup either.
+//
+// Every other variable is rendered only when declared, in a fixed order, so a deployment that
+// declares none renders byte-identically to one from before the block existed. Dynamo hashes the
+// frontend's pod template, and an added variable is a rolled frontend.
+//
+// Environment and not arguments because the frontend has no argument list to join: `type: frontend`
+// makes Dynamo derive `python3 -m dynamo.frontend` with nothing after it, and each of these flags
+// reads its `DYN_ROUTER_*` variable as its default (`dynamo/common/configuration/groups`).
+//
+// KV mode is half of a pair. The other half is `kvEventsConfig` on the worker: without the events,
+// KV mode indexes an empty tree and silently degrades to load balancing.
+//
+// The plane has already refused anything outside what Dynamo accepts. The checks here are the last
+// cheap ones, because a bad value is a frontend that exits at startup rather than an error somebody
+// can read on the deployment.
+func frontendRouterEnv(router *wire.RouterSpec) ([]corev1.EnvVar, error) {
+	mode := DefaultRouterMode
+	if router != nil && router.Mode != nil {
+		mode = *router.Mode
+	}
+	if !routerModes[mode] {
+		return nil, fmt.Errorf("unknown router mode %q", mode)
+	}
+	env := []corev1.EnvVar{{Name: "DYN_ROUTER_MODE", Value: mode}}
+	if router == nil {
+		return env, nil
+	}
+	if v := router.QueueThreshold; v != nil {
+		value, err := routerFloat("queue_threshold", *v)
+		if err != nil {
+			return nil, err
+		}
+		env = append(env, corev1.EnvVar{Name: "DYN_ROUTER_QUEUE_THRESHOLD", Value: value})
+	}
+	if p := router.QueuePolicy; p != nil {
+		if !routerQueuePolicies[*p] {
+			return nil, fmt.Errorf("unknown router queue policy %q", *p)
+		}
+		env = append(env, corev1.EnvVar{Name: "DYN_ROUTER_QUEUE_POLICY", Value: *p})
+	}
+	if v := router.KVOverlapScoreCredit; v != nil {
+		value, err := routerFloat("kv_overlap_score_credit", *v)
+		if err != nil {
+			return nil, err
+		}
+		env = append(env, corev1.EnvVar{Name: "DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT", Value: value})
+	}
+	return env, nil
+}
+
+// routerFloat spells a router number the way Python writes a float: `1.0`, never `1`.
+//
+// Dynamo parses either. The spelling is fixed because it is part of the pod template Dynamo hashes,
+// and it is Python's because that is how the values were first set by hand on a running frontend,
+// so declaring the same numbers renders the same template instead of rolling it.
+func routerFloat(field string, v float64) (string, error) {
+	if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+		return "", fmt.Errorf("router %s must be a finite number >= 0, got %v", field, v)
+	}
+	out := strconv.FormatFloat(v, 'f', -1, 64)
+	if !strings.Contains(out, ".") {
+		out += ".0"
+	}
+	return out, nil
 }
 
 // imagePullSecrets converts configured names into the pod form, preserving their order while
