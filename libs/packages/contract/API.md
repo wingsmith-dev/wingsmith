@@ -496,8 +496,8 @@ are a nested `serving` object on the workload, sent on `POST /v1/workloads` and 
 `GET /v1/workloads` and `GET /v1/workloads/{ref}`. It mirrors `deployment.desired.serving` in
 `MESSAGES.md` field for field — `engine`, `engine_runtime_version`, `engine_runtime_image`, `frontend_image`,
 `engine_args`, `quantization`, `dtype`, `parallelism`, `context_length`, `max_batch_tokens`,
-`kv_cache_dtype`, `kv_cache_fraction`, `prefix_cache_enabled`, `prefix_cache_config`, `resources`
-and `overlay` — and adds `artifact`, which is the weights this configuration serves and is required,
+`kv_cache_dtype`, `kv_cache_fraction`, `prefix_cache_enabled`, `prefix_cache_config`, `resources`,
+`overlay` and `router` — and adds `artifact`, which is the weights this configuration serves and is required,
 plus `capabilities` and `imported_args`. `served_model_name` stays on the workload beside the block
 rather than inside it, because it is a public name and not part of the footprint.
 
@@ -524,6 +524,19 @@ render: the ones the plane derives from the block — parallelism, context lengt
 the KV-cache settings — with `engine_args` laid over the top, so a key the caller declared wins over
 the derived one under the same spelling. It is on the read shape only, it is never accepted on a
 write, and it is the one place to look before asking why an engine came up with a flag nobody typed.
+
+**`router` is how the workload's own frontend routes, and every field of it is typed.**
+`serving.router` is `{mode, queue_threshold, queue_policy, kv_overlap_score_credit}`, each nullable,
+and a read returns all four with `null` for what was not declared. `mode` is one of `kv`,
+`round-robin`, `random`, `power-of-two`, `least-loaded` or `device-aware-weighted`, and null means the
+operator's default, `kv`. `queue_threshold` and `kv_overlap_score_credit` are finite numbers `>= 0`.
+`queue_policy` is `fcfs` or `wspt` and is refused without a `queue_threshold`, and the three KV
+settings are refused beside any `mode` other than `kv`. A violation is `409 invalid`. On `PATCH` the
+block replaces whole, like `cache`: send every field you mean to keep, and `{}` clears it. It is part
+of `serving_digest` only while something in it is set, so a workload that never declares a router
+keeps the digest it had. Setting one is a serving change like any other and bumps every deployment's
+generation; on the cluster it rolls the frontend and never a worker. There is no passthrough for any
+other `DYN_*` variable, deliberately.
 
 **Scale is declared as a total and read as a share.** `min`, `max` and `desired` on a workload count
 across every cluster it may use; each deployment's `min_replicas` / `max_replicas` /

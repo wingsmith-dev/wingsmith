@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import datetime as dt
 
 from uuid import UUID
@@ -44,6 +45,7 @@ from app.core.serving import SERVING_TOPOLOGIES
 from app.core.serving import flag_name
 from app.core.serving import served_model
 from app.core.serving import serving_digest
+from app.core.serving import declared_router
 from app.core.serving import recipe_engine_args
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
@@ -62,6 +64,7 @@ from app.modules.placement.repository import SUBJECT_WORKLOAD
 from .schemas import RoleSchema
 from .schemas import CacheSchema
 from .schemas import ShapeSchema
+from .schemas import RouterSchema
 from .schemas import OverlaySchema
 from .schemas import ServingSchema
 from .schemas import TopologySchema
@@ -514,6 +517,63 @@ def _reasoning_declared(reasoning: ReasoningSchema) -> bool:
     )
 
 
+ROUTER_MODES = frozenset({"kv", "round-robin", "random", "power-of-two", "least-loaded", "device-aware-weighted"})
+"""The `--router-mode` choices of Dynamo 1.5.0's frontend, less `direct`.
+
+`direct` routes to a worker id the request itself carries. Nothing in front of a Hangar frontend sets
+one, so a frontend in that mode refuses every request the gateway forwards to it.
+"""
+
+ROUTER_QUEUE_POLICIES = frozenset({"fcfs", "wspt"})
+"""The `--router-queue-policy` choices of Dynamo 1.5.0's frontend.
+
+The Rust config also parses `lcfs`, but the flag the frontend is started through does not offer it,
+so a value only the lower layer accepts is not one to declare.
+"""
+
+KV_ROUTER_SETTINGS = ("queue_threshold", "queue_policy", "kv_overlap_score_credit")
+"""The settings only the KV router reads. Dynamo builds its KV configuration for `kv` mode alone."""
+
+
+def check_router(router: RouterSchema) -> None:
+    """Rejects a router block Dynamo would refuse, or one that would silently do nothing.
+
+    The ranges are Dynamo's own: `kv-router` validates `router_queue_threshold` as `>= 0` and
+    `overlap_score_credit` as finite and non-negative, and the frontend fails at startup on
+    anything else — a crash-looping frontend rather than an error on the declaration.
+
+    The two consistency rules are this plane's, and they are the `structured_output_backend` rule
+    again: a setting that cannot take effect is refused rather than stored, because storing it lets
+    somebody believe they asked for something. The router only queues once a threshold is set, so a
+    policy without one orders an empty queue; and a KV setting beside another mode is never read.
+    """
+    if router.mode is not None and router.mode not in ROUTER_MODES:
+        raise Invalid(
+            f"unknown router mode {router.mode!r}",
+            {"mode": router.mode, "allowed": sorted(ROUTER_MODES)},
+        )
+    if router.queue_policy is not None and router.queue_policy not in ROUTER_QUEUE_POLICIES:
+        raise Invalid(
+            f"unknown router queue_policy {router.queue_policy!r}",
+            {"queue_policy": router.queue_policy, "allowed": sorted(ROUTER_QUEUE_POLICIES)},
+        )
+    for field_name in ("queue_threshold", "kv_overlap_score_credit"):
+        value = getattr(router, field_name)
+        if value is not None and not (math.isfinite(value) and value >= 0):
+            raise Invalid(f"router {field_name} must be a finite number >= 0", {field_name: value})
+    if router.queue_policy is not None and router.queue_threshold is None:
+        raise Invalid(
+            "a router queue_policy is meaningless without a queue_threshold, because the router only queues once one is set",
+            {"queue_policy": router.queue_policy, "queue_threshold": None},
+        )
+    kv_only = {name: getattr(router, name) for name in KV_ROUTER_SETTINGS if getattr(router, name) is not None}
+    if kv_only and router.mode not in (None, "kv"):
+        raise Invalid(
+            f"{', '.join(sorted(kv_only))} only apply to the kv router, and mode is {router.mode!r}",
+            {"mode": router.mode, **kv_only},
+        )
+
+
 def check_serving(
     serving: ServingSchema,
     capabilities: CapabilitiesSchema,
@@ -767,6 +827,10 @@ def serving_block(stored: dict | None) -> ServingSchema:
     return msgspec.convert(stored or {}, ServingSchema)
 
 
+def router_block(stored: dict | None) -> RouterSchema:
+    return msgspec.convert(declared_router(stored), RouterSchema)
+
+
 def capabilities_block(stored: dict | None) -> CapabilitiesSchema:
     return msgspec.convert(stored or {}, CapabilitiesSchema)
 
@@ -812,6 +876,7 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
         disk_gib=data.resources.disk_gib,
     )
     check_serving(data.serving, data.capabilities, data.cache.prefix_cache_enabled)
+    check_router(data.router)
     check_quantization(data.quantization)
     check_floor(data.shape.device_class, data.shape.device_memory_mib_min)
     check_capacity(
@@ -910,6 +975,7 @@ def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
         "overlay": msgspec.to_builtins(data.overlay),
         "serving": msgspec.to_builtins(data.serving),
         "capabilities": msgspec.to_builtins(data.capabilities),
+        "router": declared_router(msgspec.to_builtins(data.router)),
     }
 
 
@@ -964,6 +1030,7 @@ def serving_request(
         ),
         serving=serving_block(workload.serving),
         capabilities=capabilities_block(workload.capabilities),
+        router=router_block(workload.router),
         topology=TopologySchema(
             serving_topology=workload.serving_topology or AGGREGATED,
             roles=[
@@ -1031,6 +1098,7 @@ def serving_view(workload: Workload, artifact: Artifact, roles: Sequence[Workloa
             dynamo=(workload.overlay or {}).get("dynamo", {}) or {},
         ),
         topology=topology_view(workload, roles),
+        router=router_block(workload.router),
     )
 
 

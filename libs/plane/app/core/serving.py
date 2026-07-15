@@ -326,6 +326,12 @@ def serving_digest(workload: Workload, artifact: Artifact, roles: Sequence[Workl
     and adding either unconditionally changes every digest in the fleet at migration — every
     deployment's `ServingDigestAnnotation` with it, and every benchmark's link back to what it
     measured.
+
+    `router` is added **only when the workload declares a setting**, for the same reason. It is in
+    the digest at all because it decides which worker serves a request and how long the request
+    waits for one, and that is exactly what a benchmark run anchored on this digest measured. It
+    is read with `getattr` because migrations hash rows from before `demand_workload.router`
+    existed, and a row with no column declared no router.
     """
     payload: dict[str, Any] = {"artifact": str(artifact.uid)}
     for key, attribute in DIGEST_FIELDS:
@@ -337,11 +343,44 @@ def serving_digest(workload: Workload, artifact: Artifact, roles: Sequence[Workl
     defaults = recipe_engine_args(workload, artifact)
     if defaults:
         payload["engine_defaults"] = _canonical(defaults)
+    router = declared_router(getattr(workload, "router", None))
+    if router:
+        payload["router"] = router
     if workload.serving_topology == DISAGGREGATED:
         payload["serving_topology"] = workload.serving_topology
         payload["roles"] = [_role_config(role) for role in sorted(roles, key=lambda role: role.role)]
     body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return DIGEST_PREFIX + hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+ROUTER_FIELDS = ("mode", "queue_threshold", "queue_policy", "kv_overlap_score_credit")
+"""The frontend router settings a workload can declare, in the order they render.
+
+Each is one `DYN_ROUTER_*` variable on the deployment's own frontend. The operator renders them in
+this order after `DYN_ROUTER_MODE`, and a field that is not declared renders nothing.
+"""
+
+ROUTER_NUMBERS = frozenset({"queue_threshold", "kv_overlap_score_credit"})
+
+
+def declared_router(stored: dict | None) -> dict[str, Any]:
+    """The router settings a workload declares, with every unset one left out.
+
+    The one normalisation for a block with three readers: the column stores it, the digest hashes it
+    and the wire sends it, and all three must agree that `{}` and a block of nulls are the same
+    statement. If they did not, a workload that never declared a router would change its digest the
+    first time anything rewrote its row, and every deployment of it would re-render.
+
+    Numbers are coerced to `float` so that `1` and `1.0` hash the same: a JSON body may carry either,
+    and JSONB hands back whichever was written.
+    """
+    declared: dict[str, Any] = {}
+    for key in ROUTER_FIELDS:
+        value = (stored or {}).get(key)
+        if value is None:
+            continue
+        declared[key] = float(value) if key in ROUTER_NUMBERS else str(value)
+    return declared
 
 
 def _role_config(role: WorkloadRole) -> dict[str, Any]:

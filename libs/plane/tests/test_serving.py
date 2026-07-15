@@ -38,13 +38,16 @@ from app.core.serving import DIGEST_FIELDS
 from app.core.serving import _canonical
 from app.core.serving import served_model
 from app.core.serving import serving_digest
+from app.core.serving import declared_router
 from app.core.serving import recipe_engine_args
+from app.hub.messages import RouterSpec
 from app.hub.messages import ServingSpec
 from app.core.exceptions import Invalid
 from app.ingestion.desired import _serving
 from app.modules.workloads.schemas import RoleSchema
 from app.modules.workloads.schemas import CacheSchema
 from app.modules.workloads.schemas import ShapeSchema
+from app.modules.workloads.schemas import RouterSchema
 from app.modules.workloads.schemas import ServingSchema
 from app.modules.workloads.schemas import TopologySchema
 from app.modules.workloads.schemas import ReasoningSchema
@@ -56,6 +59,8 @@ from app.modules.workloads.schemas import WorkloadServingRequest
 from app.modules.workloads.services import sizing_for
 from app.modules.workloads.services import check_floor
 from app.modules.workloads.services import check_shape
+from app.modules.workloads.services import check_router
+from app.modules.workloads.services import router_block
 from app.modules.workloads.services import serving_args
 from app.modules.workloads.services import serving_view
 from app.modules.workloads.services import apply_serving
@@ -1356,3 +1361,127 @@ def test_an_aggregated_workload_reads_back_as_aggregated_with_no_roles():
     assert view.serving_topology == "aggregated"
     assert view.roles == []
     assert view.group_devices == a_workload().device_count
+
+
+# --------------------------------------------------------------------------- router
+
+
+USE1_ROUTER = RouterSchema(mode="kv", queue_threshold=1.0, queue_policy="wspt", kv_overlap_score_credit=8.0)
+"""The four settings the Kimi K3 benchmark on site-d passes with, hand-patched there before this block existed."""
+
+
+def test_the_router_the_use1_benchmark_runs_on_is_accepted():
+    check_router(USE1_ROUTER)
+    check_router(RouterSchema())
+
+
+def test_kv_settings_beside_an_undeclared_mode_are_accepted_because_the_default_is_kv():
+    check_router(RouterSchema(queue_threshold=0.0, kv_overlap_score_credit=0.0))
+
+
+@pytest.mark.parametrize(
+    "router",
+    [
+        RouterSchema(mode="direct"),
+        RouterSchema(mode="kv-aware"),
+        RouterSchema(queue_threshold=1.0, queue_policy="lcfs"),
+        RouterSchema(queue_threshold=-0.1),
+        RouterSchema(queue_threshold=float("nan")),
+        RouterSchema(kv_overlap_score_credit=-1.0),
+        RouterSchema(kv_overlap_score_credit=float("inf")),
+        RouterSchema(queue_policy="wspt"),
+        RouterSchema(mode="round-robin", kv_overlap_score_credit=8.0),
+        RouterSchema(mode="random", queue_threshold=1.0),
+    ],
+    ids=[
+        "direct-mode",
+        "unknown-mode",
+        "lcfs-policy",
+        "negative-threshold",
+        "nan-threshold",
+        "negative-credit",
+        "infinite-credit",
+        "policy-without-threshold",
+        "credit-beside-round-robin",
+        "threshold-beside-random",
+    ],
+)
+def test_a_router_dynamo_would_refuse_or_never_read_is_refused(router):
+    """Each of these is a frontend that exits at startup, or a setting that silently does nothing."""
+    with pytest.raises(Invalid):
+        check_router(router)
+
+
+def test_a_router_is_validated_with_the_rest_of_the_configuration():
+    with pytest.raises(Invalid):
+        check_serving_request(a_request(router=RouterSchema(mode="direct")), an_artifact())
+
+
+@pytest.mark.parametrize("router", [None, {}, {"mode": None, "queue_threshold": None}])
+def test_an_undeclared_router_leaves_the_digest_byte_identical(router):
+    """Every stored digest predates the block, and a digest that moved would re-render its deployment.
+
+    Asserted against the hash spelled out without a router key, not merely against another call, so
+    a router key that crept into the payload as `{}` or as nulls fails here.
+    """
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    workload = a_workload(router=router)
+    payload = {"artifact": str(artifact.uid)}
+    for key, attribute in DIGEST_FIELDS:
+        payload[key] = _canonical(getattr(workload, attribute))
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+    assert serving_digest(workload, artifact, ()) == "svg_" + hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+
+def test_a_declared_router_moves_the_digest_and_spelling_does_not():
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    base = serving_digest(a_workload(), artifact, ())
+    declared = serving_digest(a_workload(router={"queue_threshold": 1.0}), artifact, ())
+
+    assert declared != base
+    assert serving_digest(a_workload(router={"queue_threshold": 1}), artifact, ()) == declared
+    assert serving_digest(a_workload(router={"mode": None, "queue_threshold": 1.0}), artifact, ()) == declared
+    assert serving_digest(a_workload(router={"queue_threshold": 1.0, "mode": "kv"}), artifact, ()) != declared
+
+
+def test_only_declared_router_settings_are_stored():
+    artifact = an_artifact()
+    declared = a_workload()
+    apply_serving(declared, a_request(router=RouterSchema(queue_threshold=1.0, queue_policy="wspt")), artifact, ())
+    assert declared.router == {"queue_threshold": 1.0, "queue_policy": "wspt"}
+
+    undeclared = a_workload()
+    apply_serving(undeclared, a_request(), artifact, ())
+    assert undeclared.router == {}
+    stored = undeclared.serving_digest
+    undeclared.router = None
+    assert serving_digest(undeclared, artifact, ()) == stored
+
+
+def test_the_router_reads_back_as_declared_with_nulls_for_the_rest():
+    workload = a_workload(router={"queue_threshold": 1.0})
+    assert rendered(workload).router == RouterSchema(queue_threshold=1.0)
+    assert rendered(a_workload()).router == RouterSchema()
+    assert serving_request(workload, an_artifact()).router == RouterSchema(queue_threshold=1.0)
+    assert router_block({"mode": None, "kv_overlap_score_credit": 8}) == RouterSchema(kv_overlap_score_credit=8.0)
+
+
+def test_the_wire_carries_a_router_only_when_one_is_declared():
+    """None, not an empty block, so a workload that declares nothing sends the frame it always sent."""
+    artifact = an_artifact()
+    assert _serving(a_workload(), artifact).router is None
+    assert _serving(a_workload(router={}), artifact).router is None
+
+    workload = a_workload(router=declared_router(msgspec.to_builtins(USE1_ROUTER)))
+    spec = _serving(workload, artifact)
+    assert spec.router == RouterSpec(mode="kv", queue_threshold=1.0, queue_policy="wspt", kv_overlap_score_credit=8.0)
+    assert json.loads(msgspec.json.encode(spec))["router"] == {
+        "mode": "kv",
+        "queue_threshold": 1.0,
+        "queue_policy": "wspt",
+        "kv_overlap_score_credit": 8.0,
+    }
+    assert json.loads(msgspec.json.encode(_serving(workload, artifact).router)) == json.loads(
+        msgspec.json.encode(RouterSpec(**declared_router(workload.router)))
+    )

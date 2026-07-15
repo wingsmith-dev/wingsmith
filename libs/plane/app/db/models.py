@@ -685,6 +685,16 @@ class Workload(BaseMixin):
     `engine_args` passthrough, where the plane could neither validate them nor say what it had
     asked for.
     """
+    router: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    """How this workload's own Dynamo frontend routes between its workers.
+
+    `mode`, `queue_threshold`, `queue_policy` and `kv_overlap_score_credit`, each rendered as one
+    `DYN_ROUTER_*` variable on the frontend. Only declared keys are stored, so `{}` is the one way to
+    say nothing was declared, and nothing is what every workload from before the column says. Its own
+    column rather than a key inside `serving`, because `serving` is replaced whole by a patch that
+    only meant to change a parser, and a router setting that vanished with it would be a benchmark
+    configuration silently undone.
+    """
     capabilities: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     """What this serving configuration can do, asserted and never rendered.
 

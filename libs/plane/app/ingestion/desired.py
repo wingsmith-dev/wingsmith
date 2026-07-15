@@ -33,11 +33,13 @@ from app.db.models import Deployment
 from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
+from app.core.serving import declared_router
 from app.core.serving import declared_served_model
 from app.hub.messages import Adopt
 from app.hub.messages import Overlay
 from app.hub.messages import RoleSpec
 from app.hub.messages import Resources
+from app.hub.messages import RouterSpec
 from app.hub.messages import Parallelism
 from app.hub.messages import ServingSpec
 from app.hub.messages import CacheDesired
@@ -341,7 +343,18 @@ def _serving(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRol
             pod_spec=(workload.overlay or {}).get("pod_spec", {}) or {},
             dynamo=(workload.overlay or {}).get("dynamo", {}) or {},
         ),
+        router=_router(workload),
     )
+
+
+def _router(workload: Workload) -> RouterSpec | None:
+    """The frontend router settings as the cluster is told them, or None when none are declared.
+
+    None rather than an empty block, so a workload that declares nothing sends what it sent before
+    the block existed and "declared nothing" has one spelling on the wire.
+    """
+    declared = declared_router(workload.router)
+    return RouterSpec(**declared) if declared else None
 
 
 def _role_replicas(deployment: Deployment, roles: Sequence[WorkloadRole]) -> dict[str, int]:

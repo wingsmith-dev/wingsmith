@@ -135,6 +135,31 @@ class OverlaySchema(Struct):
     dynamo: dict = {}
 
 
+class RouterSchema(Struct):
+    """How this workload's own Dynamo frontend routes requests between its workers.
+
+    One field per Dynamo setting, each rendered as one `DYN_ROUTER_*` variable on the frontend and
+    nothing else. Null renders nothing and leaves Dynamo's default in place, except `mode`, where
+    null is the operator's default of `kv`.
+
+    - `mode` — `kv`, `round-robin`, `random`, `power-of-two`, `least-loaded` or
+      `device-aware-weighted`.
+    - `queue_threshold` — a fraction of a worker's batched-token budget above which the router holds
+      requests back rather than dispatching them. Null means the router does not queue.
+    - `queue_policy` — `fcfs` or `wspt`, the order a queued request leaves in. Needs a threshold.
+    - `kv_overlap_score_credit` — how much a cached prefix discounts a worker's prefill load when the
+      KV router picks one.
+
+    Typed rather than an environment passthrough, so the plane can refuse a value Dynamo would refuse
+    at startup and say what it asked for. It replaces whole on a patch, like `cache`.
+    """
+
+    mode: str | None = None
+    queue_threshold: float | None = None
+    queue_policy: str | None = None
+    kv_overlap_score_credit: float | None = None
+
+
 class RoleSchema(Struct):
     """One role of a disaggregated workload: its share of the group, and what makes it different.
 
@@ -231,6 +256,7 @@ class WorkloadServingSchema(Struct):
     resources: ResourcesSchema
     overlay: OverlaySchema
     topology: TopologyViewSchema
+    router: RouterSchema = field(default_factory=RouterSchema)
 
 
 class WorkloadServingRequest(Struct):
@@ -266,6 +292,7 @@ class WorkloadServingRequest(Struct):
     serving: ServingSchema = field(default_factory=ServingSchema)
     capabilities: CapabilitiesSchema = field(default_factory=CapabilitiesSchema)
     topology: TopologySchema = field(default_factory=TopologySchema)
+    router: RouterSchema = field(default_factory=RouterSchema)
 
 
 class WorkloadServingUpdate(Struct):
@@ -277,7 +304,7 @@ class WorkloadServingUpdate(Struct):
     workload, and it is cheap.
 
     The sub-blocks replace whole. `parallelism`, `cache`, `shape`, `resources`,
-    `serving` and `capabilities` are groups whose fields are meaningless apart, so
+    `serving`, `capabilities` and `router` are groups whose fields are meaningless apart, so
     a patch that named half of one would leave the rest at its defaults rather
     than at what was stored, and the caller could not tell which it got. Sending a
     block means stating it.
@@ -301,6 +328,7 @@ class WorkloadServingUpdate(Struct):
     serving: ServingSchema | UnsetType = UNSET
     capabilities: CapabilitiesSchema | UnsetType = UNSET
     topology: TopologySchema | UnsetType = UNSET
+    router: RouterSchema | UnsetType = UNSET
 
 
 class WorkloadDeploymentSchema(Struct):
