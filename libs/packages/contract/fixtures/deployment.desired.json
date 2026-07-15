@@ -74,7 +74,13 @@
             "max-num-seqs": "256"
           }
         }
-      ]
+      ],
+      "router": {
+        "mode": "kv",
+        "queue_threshold": 1.0,
+        "queue_policy": "wspt",
+        "kv_overlap_score_credit": 8.0
+      }
     },
     "lifecycle": "service",
     "priority_class": "production",

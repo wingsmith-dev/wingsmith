@@ -419,6 +419,22 @@ class RoleSpec(Struct):
     engine_args: dict[str, str] = {}
 
 
+class RouterSpec(Struct, omit_defaults=True):
+    """How a deployment's own frontend routes between its workers. Every field optional.
+
+    Each field is one `DYN_ROUTER_*` variable on the frontend, and an absent field renders no
+    variable, so Dynamo's own default stands — except `mode`, whose absence the operator renders as
+    `kv`, which is what it rendered before this block existed. A typed block rather than an
+    environment passthrough: the plane validates every value against what Dynamo accepts before it
+    is sent.
+    """
+
+    mode: Literal["kv", "round-robin", "random", "power-of-two", "least-loaded", "device-aware-weighted"] | None = None
+    queue_threshold: float | None = None
+    queue_policy: Literal["fcfs", "wspt"] | None = None
+    kv_overlap_score_credit: float | None = None
+
+
 class ServingSpec(Struct):
     """How to serve an artifact, in enough detail for a cluster to render it.
 
@@ -496,6 +512,13 @@ class ServingSpec(Struct):
     Empty is the only way to say aggregated. A single-entry list meaning "one worker" would make
     every existing deployment a disaggregated one with a degenerate ratio, and the render has to
     stay byte-identical for those.
+    """
+
+    router: RouterSpec | None = None
+    """The frontend's router settings, or None when the workload declares none.
+
+    None renders exactly what a deployment rendered before the block existed. A block is only sent
+    when at least one field is set, so "declared nothing" has one spelling on the wire.
     """
 
 

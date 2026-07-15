@@ -148,7 +148,7 @@ when a node came back, which is the inference `.event` frames exist to avoid.
 
 | Type | Payload |
 |---|---|
-| `deployment.desired` | name, the `serving` block — engine, worker and frontend images, declared args, parallelism, cache settings, topology and per-role configuration — this cluster's scale bounds and per-role worker counts, priority, placement constraints |
+| `deployment.desired` | name, the `serving` block — engine, worker and frontend images, declared args, parallelism, cache settings, topology and per-role configuration, the frontend's router settings — this cluster's scale bounds and per-role worker counts, priority, placement constraints |
 | `deployment.deleted` | id |
 | `artifact.desired` | what weights should be resident, and where they come from |
 | `component.desired` | what is installed and at what version |
@@ -275,6 +275,27 @@ right often enough to be the honest default, since the Dynamo runtime image carr
 and the engines together, and it is reached only after the two places that could have said
 something better both declined. An empty string is not an override at any level and is treated as
 absent, per §2.
+
+**The frontend's router is declared on the serving block, one typed field per setting.**
+`serving.router` carries `mode`, `queue_threshold`, `queue_policy` and `kv_overlap_score_credit`, and
+each renders exactly one `DYN_ROUTER_*` variable on this deployment's own frontend. Every field is
+optional, and the block is absent when a workload declares none. Absent renders what the operator
+rendered before the block existed — `DYN_ROUTER_MODE=kv` and nothing else — so neither a plane nor an
+operator learning the field rolls any frontend. A declared field renders even when it restates
+Dynamo's default, because the block records what was asked for.
+
+It is closed, not an environment passthrough. `mode` is Dynamo 1.5.0's `--router-mode` set less
+`direct`, which routes on a worker id nothing in front of a Hangar frontend sends; `queue_policy` is
+`fcfs` or `wspt`; both numbers are finite and non-negative, and render in Python's float spelling
+(`1.0`, never `1`), because the value is part of the pod template Dynamo hashes. `queue_policy` needs
+`queue_threshold`, and the three KV settings need `mode` to be `kv` or absent. The plane refuses
+anything else at declaration, and the operator refuses it again at render, because a frontend handed a
+value Dynamo rejects exits at startup instead of saying why.
+
+The block is inside `serving.digest` when something in it is set and absent from it otherwise, so no
+digest written before it existed moves. It is in the digest at all because which worker serves a
+request, and how long the request waits for one, is what a benchmark anchored on that digest
+measured. It never reaches a worker: a router change rolls the frontend and nothing else.
 
 The device shape is deliberately absent from `serving`, and stays absent now that the block travels
 on the deployment itself. It reaches the cluster on the deployment's `placement`, derived from that

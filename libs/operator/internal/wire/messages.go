@@ -364,6 +364,34 @@ type ServingSpec struct {
 	// `roles` meaning "one worker" would make every existing deployment a disaggregated one with
 	// a degenerate ratio, and the render has to stay byte-identical for those.
 	Roles []RoleSpec `json:"roles,omitempty"`
+
+	// Router is how this deployment's own frontend routes between its workers, and nil from a
+	// plane too old to send it or for a workload that declares nothing.
+	//
+	// Nil and a block with every field nil are the same statement, and both render exactly what
+	// the frontend rendered before this field existed: KV routing and nothing else. That is the
+	// byte-identity bar `Topology` keeps, for the same reason — Dynamo hashes the frontend's pod
+	// template, so an extra variable is a rolled frontend on every deployment in the fleet.
+	Router *RouterSpec `json:"router,omitempty"`
+}
+
+// RouterSpec is the frontend's router configuration, one field per Dynamo setting it renders.
+//
+// Typed and closed rather than an environment passthrough. Each field names exactly one
+// `DYN_ROUTER_*` variable, the plane validates every value against what Dynamo accepts before it
+// is sent, and a nil field renders no variable at all, so Dynamo's own default stands.
+type RouterSpec struct {
+	// Mode is `DYN_ROUTER_MODE`. Nil keeps the operator's own default, `kv`.
+	Mode *string `json:"mode,omitempty"`
+	// QueueThreshold is `DYN_ROUTER_QUEUE_THRESHOLD`: a fraction of a worker's batched-token
+	// budget above which requests wait in the router. Nil means the router does not queue.
+	QueueThreshold *float64 `json:"queue_threshold,omitempty"`
+	// QueuePolicy is `DYN_ROUTER_QUEUE_POLICY`, `fcfs` or `wspt`, and means nothing without a
+	// QueueThreshold.
+	QueuePolicy *string `json:"queue_policy,omitempty"`
+	// KVOverlapScoreCredit is `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT`: how much a cached prefix on a
+	// worker discounts its prefill load when the KV router picks one.
+	KVOverlapScoreCredit *float64 `json:"kv_overlap_score_credit,omitempty"`
 }
 
 // RoleSpec is one role of a disaggregated deployment: what makes its process different from the
