@@ -109,7 +109,9 @@ from the data plane.
   because it was already the right shape. An engine's message names the infrastructure that produced
   it — a path, a served name, a ClusterIP, a framework's reason phrase — and the set of errors a
   caller sees has to be a property of what was sold rather than of which engine build is running.
-  The engine's own body is logged here and nowhere else.
+  The engine's own body is logged here and nowhere else. A `4xx` body that mentions a known reason,
+  such as `invalid video file`, is answered with a fixed message from this hop's own table for that
+  reason: the body selects the message and is never quoted.
 - **An upstream answers `401`, `403` or `404`.** `502`, not the status that arrived. The credential is
   this hop's and the caller has never seen it, and a path that was routed here is not one the engine
   gets to call missing — both are misconfigurations on our side and telling a caller otherwise sends

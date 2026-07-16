@@ -63,6 +63,61 @@ func TestAnEngineSInternalTypeNamesCannotReachACaller(t *testing.T) {
 	}
 }
 
+// TestAKnownRefusalIsAnsweredWithOurOwnMessage is a reason the engine gave that
+// this hop recognises: it selects a fixed message, and only on a 4xx.
+func TestAKnownRefusalIsAnsweredWithOurOwnMessage(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		status     int
+		upstream   string
+		wantStatus int
+		want       errorBody
+	}{
+		{
+			name:       "the flat dynamo body",
+			status:     http.StatusBadRequest,
+			upstream:   `{"message":"ValueError: invalid video file","type":"Bad Request","code":400}`,
+			wantStatus: http.StatusBadRequest,
+			want: errorBody{
+				Message: "invalid video file", Type: "invalid_request_error", Code: "invalid_request",
+			},
+		},
+		{
+			name:       "any other 4xx body",
+			status:     http.StatusBadRequest,
+			upstream:   `{"message":"ValueError: invalid audio file","type":"Bad Request","code":400}`,
+			wantStatus: http.StatusBadRequest,
+			want: errorBody{
+				Message: "The request was not accepted by this model.",
+				Type:    "invalid_request_error", Code: "invalid_request",
+			},
+		},
+		{
+			name:       "a 5xx that says the same thing",
+			status:     http.StatusInternalServerError,
+			upstream:   `{"message":"ValueError: invalid video file","type":"Internal Server Error","code":500}`,
+			wantStatus: http.StatusBadGateway,
+			want: errorBody{
+				Message: "The model failed to answer this request.",
+				Type:    "api_error", Code: "upstream_error",
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rec, got := refusalFor(t, test.status, test.upstream, `{"model":"chat","messages":[]}`)
+			if rec.Code != test.wantStatus {
+				t.Fatalf("status = %d, want %d", rec.Code, test.wantStatus)
+			}
+			if got != test.want {
+				t.Fatalf("error = %#v, want %#v", got, test.want)
+			}
+			if strings.Contains(rec.Body.String(), "ValueError") {
+				t.Fatalf("body = %s, the engine's own words were quoted", rec.Body)
+			}
+		})
+	}
+}
+
 // TestARefusalNamesTheCallerSOwnFieldWhenTheEngineComplainedAboutIt is the other
 // half of the line: a 4xx that says nothing at all is a 4xx nobody can debug, so
 // a field the caller themselves sent is reported back when the engine's own

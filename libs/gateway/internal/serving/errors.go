@@ -151,7 +151,9 @@ type upstreamFailure struct {
 // and a caller matching on a message is not supposed to be a caller we broke.
 //
 // A status absent here falls to upstreamFallback, so a status nobody anticipated
-// is still one of these objects and not a passthrough.
+// is still one of these objects and not a passthrough. A 4xx whose body carries
+// a reason listed in knownRefusals keeps this status and code but takes that
+// entry's fixed message instead, which is still our string and not the engine's.
 var upstreamFailures = map[int]upstreamFailure{
 	http.StatusBadRequest: {
 		Status: http.StatusBadRequest, Code: "invalid_request",
@@ -219,6 +221,36 @@ func upstreamFallback(status int) upstreamFailure {
 	}
 }
 
+// knownRefusals are the upstream 4xx reasons this hop recognises and answers
+// with a message of its own.
+//
+// The needle is looked for in the upstream body and the message is a constant
+// here, so a match emits a string from this table and never one from the
+// engine. The body is consulted, as callerFieldsNamedIn consults it, and not
+// quoted. Needles are lower case and matched against the lowered body, so an
+// engine that prefixes an exception class or changes case still matches.
+var knownRefusals = []struct {
+	needle  string
+	message string
+}{
+	{needle: "invalid video file", message: "invalid video file"},
+}
+
+// knownRefusalIn returns the fixed message for the first known reason the
+// upstream body mentions.
+func knownRefusalIn(detail string) (string, bool) {
+	if detail == "" {
+		return "", false
+	}
+	lowered := strings.ToLower(detail)
+	for _, refusal := range knownRefusals {
+		if strings.Contains(lowered, refusal.needle) {
+			return refusal.message, true
+		}
+	}
+	return "", false
+}
+
 // replaceErrorResponse substitutes this hop's own error object for whatever an
 // upstream sent, discarding the upstream body entirely.
 //
@@ -246,7 +278,14 @@ func replaceErrorResponse(resp *http.Response) error {
 	}
 
 	message := failure.Message
-	if status < http.StatusInternalServerError && resp.Request != nil {
+	reason, recognised := "", false
+	if status < http.StatusInternalServerError && failure.Status < http.StatusInternalServerError {
+		reason, recognised = knownRefusalIn(detail)
+	}
+	switch {
+	case recognised:
+		message = reason
+	case status < http.StatusInternalServerError && resp.Request != nil:
 		if named := callerFieldsNamedIn(detail, callerBodyFrom(resp.Request.Context())); len(named) > 0 {
 			message += " Check these fields: " + strings.Join(named, ", ") + "."
 		}
@@ -329,6 +368,10 @@ func logUpstreamError(resp *http.Response, detail string, readErr error) {
 // string the caller never wrote impossible to emit rather than merely filtered
 // — the eight needles the conformance profiles list are a symptom of that class
 // and not the definition of it.
+//
+// knownRefusals is the other consultation and has the same shape: a reason the
+// body mentions selects a fixed message from our own table. When one matches,
+// its message is the answer and no field names are appended.
 //
 // The cost is honest and stated: an engine that names only its own type, as
 // serde does for an untagged enum, contributes nothing, and the caller gets the
