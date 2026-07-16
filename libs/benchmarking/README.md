@@ -14,6 +14,26 @@ It exists because "is the endpoint fast?" is four different questions, and becau
 one tool's answer to any of them is not checkable. Four tools measuring the same
 load point is.
 
+## Two halves
+
+The load generators above are the client half: they say what a caller experienced. The
+`fleet` package and the gates are the server half: they say what the deployment was doing
+while that happened, and whether the run is comparable to anything at all.
+
+| | |
+|---|---|
+| `hgrbench/fleet/adapters.py` | what each **serving engine** calls the numbers, in the same field-map style `metrics.py` uses for harnesses. Adding an engine is one entry; nothing else names a metric. |
+| `hgrbench/fleet/scrape.py` | a directory of Prometheus scrapes read as the fleet that served **one** run — window pinned to the run rather than guessed from the dump, per-pod deltas, roles inferred from behaviour rather than from pod names. |
+| `hgrbench/profile.py` | the workload profile (committed TOML, per use case) and the deployment profile (measured, per model x topology x build). |
+| `hgrbench/calibrate.py` | the pass that produces a deployment profile: capacity, healthy hit band, noise floor, standard cell. |
+| `hgrbench/gate.py` | `pre` before a run, `post` after it, `compare` when a claim is made. Four outcomes, and `unknown` is not a pass. |
+| `profiles/` | `agentic-multiturn.toml`, `single-turn.toml`, and `deployments/`. |
+
+Read [`METHOD.md`](METHOD.md) before using any of it. The short version: the tooling
+holds no numbers, every threshold is read from the deployment or measured at bring-up,
+and a gate with no profile refuses rather than judging against constants from some other
+fleet.
+
 ## What is here, and why four
 
 | Harness | What it is for | Load model |

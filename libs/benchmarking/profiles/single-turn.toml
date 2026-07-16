@@ -1,0 +1,24 @@
+name = "single-turn"
+description = """
+Independent one-shot requests with no shared history: classification, extraction,
+summarisation of unrelated documents. Deliberately the counter-example to
+agentic-multiturn. Nothing is reused between requests, so there is no working set that
+grows, no session ceiling on concurrency, and no cache cliff to stay under -- and the
+capacity checks that are load-bearing for the agentic shape would be pure noise here.
+
+This profile exists to keep a finding from one shape from being enforced on another.
+"""
+
+checks = ["slo"]
+
+[shape]
+shared_prefix_tokens = 0
+session_context_tokens = 0
+new_tokens_per_turn = 2000
+output_tokens = 256
+turns = 1
+
+[slo]
+ttft_p90_seconds = 1.0
+decode_tokens_per_second_per_user_p90 = 30.0
+
