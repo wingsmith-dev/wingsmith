@@ -9,7 +9,8 @@ guessing from the prompt alone.
 The audio and video probes ask a smaller question on purpose. Transcription quality is
 not comparable between two endpoints without a corpus; what is comparable is whether the
 content part is routed at all, and what the endpoint says when it declines. So a single
-malformed part goes in, and the status and the error shape come out.
+malformed part goes in, and the status and the error shape come out. What a real clip
+does once it is routed is asked in `video.py`.
 """
 
 from __future__ import annotations

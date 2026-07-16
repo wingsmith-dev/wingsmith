@@ -68,9 +68,10 @@ So: never a token count, a latency, a generated string, an id, a raw rate or a c
 index in `compare`. The shape of the answer goes in `compare`; the raw values stay in
 `observed` as evidence.
 
-The one deliberate exception is `tokens.prompt_accounting`, which compares reported
-prompt token counts directly. Two endpoints serving one model must tokenize
-identically, so there the number *is* the answer.
+The deliberate exceptions are `tokens.prompt_accounting` and the prompt counts in the
+`video` probes, which compare reported prompt token counts directly. Two endpoints
+serving one model must tokenize identically, and must turn one committed clip into
+the same number of tokens, so there the number *is* the answer.
 
 ## Keeping that true
 
@@ -93,6 +94,7 @@ regression test on the rule above, and it is the check to run after writing a pr
 | `streaming`, `length`, `sampling` | streaming and usage location, output caps and reasoning-only exhaustion, parameter acceptance |
 | `structured`, `tools` | `response_format` in three modes, tool-call protocol, round trip, restraint, tool call id uniqueness across turns on both the chat and Messages surfaces |
 | `thinking`, `cache`, `multimodal`, `tokens` | thinking mode, cached tokens, image input, token accounting |
+| `video` | video input with the clips in `assets/video/`: understanding, image and video order, token cost and frame sampling, count, duration and size limits, streaming |
 | `eos`, `limits` | EOS suppression rate, burst policy |
 
 Not here, on purpose:
