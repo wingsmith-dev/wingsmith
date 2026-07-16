@@ -22,6 +22,7 @@ protocols = ["chat_completions"]
 leak_needles = [
     "hangar",
     "acme",
+    "partner",
     "dynamo",
     "vllm",
     "svc.cluster.local",

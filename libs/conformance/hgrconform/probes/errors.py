@@ -67,7 +67,20 @@ def shape(session: Session) -> dict[str, Any]:
     compare=(),
 )
 def leakage(session: Session) -> dict[str, Any]:
-    """Not compared against the reference, deliberately — see this module's docstring."""
+    """Not compared against the reference, deliberately — see this module's docstring.
+
+    The probe set is wider than the errors in its name. A refusal is where a name
+    leaks most often and not the only place it can: the catalog is the one response
+    that can be read without sending a request, a redirect carries the address of
+    whatever built it, and a response header is written by every hop on the path
+    whether or not the status is an error. All four are checked here rather than
+    split across probes, because the finding is the same finding wherever the
+    string turns up and a customer does not care which probe found it.
+
+    `where` names the request, and `in_headers` says whether it was a header rather
+    than a body — the recorded exchange keeps no response headers, so a header leak
+    would otherwise be a finding nobody could reproduce from the artifact.
+    """
     needles = session.profile.leak_needles
     if not needles:
         raise Skip("profile declares no leak_needles")
@@ -76,13 +89,28 @@ def leakage(session: Session) -> dict[str, Any]:
         session.post("/v1/chat/completions", session.body(model="hgrconform-no-such-model")),
         session.post("/v1/chat/completions", {"model": session.profile.model}),
         session.get("/v1/hgrconform-no-such-route"),
+        # The catalog. Answered without an engine and by whichever hop owns the
+        # model list, so it is the one response whose every field is written by us.
+        session.get("/v1/models"),
+        # A trailing slash. A framework answers this with a redirect whose Location
+        # it builds from the Host header it was reached on, which is the address of
+        # the hop that dialled it and not one a customer may have.
+        session.get("/v1/models/"),
+        # Not part of the served API, and that is the point: if it answers at all,
+        # it answers with whatever an internal probe was written to say.
+        session.get("/readyz"),
     ]
 
     found: dict[str, list[str]] = {}
+    in_headers: dict[str, list[str]] = {}
     for response in probes_sent:
-        haystack = f"{response.text}\n{' '.join(f'{k}: {v}' for k, v in response.headers.items())}".lower()
+        headers = " ".join(f"{k}: {v}" for k, v in response.headers.items())
         for needle in needles:
-            if needle.lower() in haystack:
+            lowered = needle.lower()
+            if lowered in headers.lower():
+                found.setdefault(needle, []).append(response.path)
+                in_headers.setdefault(needle, []).append(response.path)
+            elif lowered in response.text.lower():
                 found.setdefault(needle, []).append(response.path)
 
     return {
@@ -90,6 +118,7 @@ def leakage(session: Session) -> dict[str, Any]:
         "needles_found": sorted(found),
         "leaked": bool(found),
         "where": {needle: sorted(set(paths)) for needle, paths in found.items()},
+        "in_headers": {needle: sorted(set(paths)) for needle, paths in in_headers.items()},
     }
 
 
