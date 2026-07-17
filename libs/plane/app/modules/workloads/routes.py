@@ -15,6 +15,8 @@ from .depends import workload_svc_generator
 from .schemas import WorkloadSchema
 from .schemas import WorkloadCreateRequest
 from .schemas import WorkloadUpdateRequest
+from .schemas import WorkloadRevisionSchema
+from .schemas import WorkloadRevisionUpdate
 from .schemas import WorkloadPlacementSchema
 from .services import WorkloadService
 
@@ -90,6 +92,61 @@ class WorkloadRoutes(Controller):
     ) -> Response[WorkloadPlacementSchema]:
         """Where the workload physically landed, derived from its live allocations."""
         return Response(await svc.placement(ref, project))
+
+    @get("/{ref:str}/revisions")
+    async def workload_revisions(
+        self,
+        context: RequestContext,
+        svc: WorkloadService,
+        ref: str,
+        project: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> Response[ListResponse[WorkloadRevisionSchema]]:
+        """Every serving configuration this workload has held, newest first.
+
+        Each entry's `serving` block is a body this same controller accepts: `PATCH` it back
+        under `serving` and the workload returns to that configuration. There is no rollback
+        verb because there is nothing for one to do that an ordinary update does not — and a
+        revision that would no longer validate is refused by the checks that refuse any patch,
+        rather than restored by a path that never learned about them.
+        """
+        return Response(await svc.revisions(ref, project, limit=limit, cursor=cursor))
+
+    @get("/{ref:str}/revisions/{revision:str}")
+    async def workload_revision(
+        self,
+        context: RequestContext,
+        svc: WorkloadService,
+        ref: str,
+        revision: str,
+        project: str | None = None,
+    ) -> Response[WorkloadRevisionSchema]:
+        """One revision, by `wkr_` id or by the number the history lists it under.
+
+        A number is what somebody reads off the history and types back, and it is unique only
+        within the workload — which is why it is resolved here rather than at `/v1/revisions`.
+        """
+        return Response(await svc.revision(ref, revision, project))
+
+    @patch("/{ref:str}/revisions/{revision:str}")
+    async def annotate_revision(
+        self,
+        context: RequestContext,
+        svc: WorkloadService,
+        ref: str,
+        revision: str,
+        data: WorkloadRevisionUpdate,
+        project: str | None = None,
+    ) -> Response[WorkloadRevisionSchema]:
+        """Writes why a configuration was chosen, onto the revision holding it.
+
+        The only write a revision accepts. Everything else on it records what ran, and editing
+        that would be editing history; a note is an account of the record rather than part of
+        it, and the account is often written after the run that explains it. Sending `null`
+        clears one.
+        """
+        return Response(await svc.annotate(ref, revision, data, project))
 
     @patch("/{ref:str}")
     async def update_workload(

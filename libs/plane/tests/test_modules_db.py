@@ -19,6 +19,7 @@ from pathlib import Path
 
 import bcrypt
 import pytest
+import msgspec
 import psycopg
 
 from sqlalchemy import text
@@ -32,6 +33,7 @@ from app.auth import ENROLMENT_PREFIX
 from app.auth import AuthManager
 from app.core.ids import NODE
 from app.core.ids import TENANT
+from app.core.ids import REPLICA
 from app.core.ids import new_uid
 from app.db.notify import MemoryNotifier
 from app.hub.server import _resolve_connection
@@ -76,6 +78,7 @@ from app.modules.workloads.schemas import OverlaySchema
 from app.modules.workloads.schemas import WorkloadCreateRequest
 from app.modules.workloads.schemas import WorkloadServingUpdate
 from app.modules.workloads.schemas import WorkloadUpdateRequest
+from app.modules.workloads.schemas import WorkloadRevisionUpdate
 from app.modules.workloads.schemas import WorkloadServingRequest
 from app.modules.artifacts.services import ArtifactService
 from app.modules.components.schemas import ComponentCreateRequest
@@ -703,6 +706,269 @@ async def test_naming_a_runtime_image_in_the_same_patch_wins(db: AsyncSession) -
         ),
     )
     assert patched.serving.engine_runtime_image == pinned
+
+
+# --------------------------------------------------------------------------- revisions
+
+
+async def test_a_created_workload_starts_its_history_at_revision_one(db: AsyncSession) -> None:
+    _, _, _, workload = await a_workload(db)
+
+    history = await WorkloadService(db).revisions(workload.id)
+
+    assert [(r.number, r.reason) for r in history.items] == [(1, "created")]
+    assert history.items[0].serving_digest == workload.serving_digest
+
+
+async def test_a_serving_patch_appends_a_revision_and_leaves_the_old_one_alone(db: AsyncSession) -> None:
+    """The point of the table: what it was is still readable after it is no longer what it is."""
+    _, _, _, workload = await a_workload(db)
+    before = workload.serving_digest
+
+    await WorkloadService(db).update(
+        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(context_length=16384))
+    )
+    history = await WorkloadService(db).revisions(workload.id)
+
+    assert [(r.number, r.reason) for r in history.items] == [(2, "updated"), (1, "created")]
+    assert history.items[0].serving["context_length"] == 16384
+    assert history.items[1].serving["context_length"] == 8192
+    assert history.items[1].serving_digest == before
+
+
+async def test_a_revision_is_a_patch_body_which_is_the_whole_of_rollback(db: AsyncSession) -> None:
+    """No rollback operation exists, and this is why one is not needed.
+
+    A revision is stored as the request that would restate it, so going back is an ordinary
+    update carrying an old body — validated on the way in by the same checks as any other.
+    """
+    _, _, _, workload = await a_workload(db)
+    original = workload.serving_digest
+    service = WorkloadService(db)
+
+    await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(context_length=16384)))
+    first = await service.revision(workload.id, "1")
+    restored = await service.update(
+        workload.id,
+        WorkloadUpdateRequest(serving=msgspec.convert(first.serving, WorkloadServingUpdate)),
+    )
+
+    assert restored.serving.context_length == 8192
+    assert restored.serving_digest == original
+
+
+async def test_a_revision_records_the_weights_beside_the_body_rather_than_inside_it(
+    db: AsyncSession,
+) -> None:
+    """The snapshot has to decode as a patch, and a patch may not repoint the weights."""
+    _, _, artifact, workload = await a_workload(db)
+
+    only = (await WorkloadService(db).revisions(workload.id)).items[0]
+
+    assert only.artifact == artifact.id
+    assert "artifact" not in only.serving
+
+
+async def test_going_back_appends_rather_than_rewinds(db: AsyncSession) -> None:
+    """History is what happened. Revision 1 coming back is revision 3, not a deleted revision 2."""
+    _, _, _, workload = await a_workload(db)
+    service = WorkloadService(db)
+
+    await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(context_length=16384)))
+    first = await service.revision(workload.id, "1")
+    await service.update(
+        workload.id, WorkloadUpdateRequest(serving=msgspec.convert(first.serving, WorkloadServingUpdate))
+    )
+
+    history = await service.revisions(workload.id)
+    assert [r.number for r in history.items] == [3, 2, 1]
+    assert history.items[0].serving_digest == history.items[2].serving_digest
+
+
+async def test_a_patch_that_changes_nothing_files_nothing(db: AsyncSession) -> None:
+    """A retried patch is idempotent everywhere else, and a history that counts retries lies."""
+    _, _, _, workload = await a_workload(db)
+    service = WorkloadService(db)
+
+    await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(context_length=16384)))
+    await service.update(workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(context_length=16384)))
+
+    assert [r.number for r in (await service.revisions(workload.id)).items] == [2, 1]
+
+
+async def test_a_write_that_is_not_serving_configuration_files_nothing(db: AsyncSession) -> None:
+    """Labels are on the workload and not in the snapshot; filing one would append a duplicate."""
+    _, _, _, workload = await a_workload(db)
+
+    await WorkloadService(db).update(workload.id, WorkloadUpdateRequest(labels={"team": "search"}))
+
+    assert [r.number for r in (await WorkloadService(db).revisions(workload.id)).items] == [1]
+
+
+async def test_a_workload_older_than_its_history_files_the_configuration_it_was_running(
+    db: AsyncSession,
+) -> None:
+    """The pre-image seed. Without it the edit somebody wants to undo is the unrecorded one."""
+    _, _, _, workload = await a_workload(db)
+    before = workload.serving_digest
+    await db.execute(text("DELETE FROM demand_workload_revision"))
+    await db.commit()
+
+    await WorkloadService(db).update(
+        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(context_length=16384))
+    )
+    history = await WorkloadService(db).revisions(workload.id)
+
+    assert [(r.number, r.reason) for r in history.items] == [(2, "updated"), (1, "imported")]
+    assert history.items[1].serving_digest == before
+    assert history.items[1].serving["context_length"] == 8192
+
+
+async def test_a_note_travels_with_the_change_that_needed_explaining(db: AsyncSession) -> None:
+    _, _, _, workload = await a_workload(db)
+    service = WorkloadService(db)
+
+    await service.update(
+        workload.id,
+        WorkloadUpdateRequest(
+            serving=WorkloadServingUpdate(context_length=16384),
+            note="the eval suite was truncating at 8k",
+        ),
+    )
+    history = await service.revisions(workload.id)
+
+    assert history.items[0].note == "the eval suite was truncating at 8k"
+    assert history.items[1].note is None
+
+
+async def test_a_note_with_no_change_comments_on_what_is_running(db: AsyncSession) -> None:
+    """A note is never dropped: with no revision to file it on, it lands on the one in force."""
+    _, _, _, workload = await a_workload(db)
+    service = WorkloadService(db)
+
+    await service.update(workload.id, WorkloadUpdateRequest(note="kept at 8k deliberately, see HGR-4"))
+    history = await service.revisions(workload.id)
+
+    assert [r.number for r in history.items] == [1]
+    assert history.items[0].note == "kept at 8k deliberately, see HGR-4"
+
+
+async def test_a_redundant_patch_moves_the_note_rather_than_filing_a_revision(db: AsyncSession) -> None:
+    _, _, _, workload = await a_workload(db)
+    service = WorkloadService(db)
+
+    await service.update(
+        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(context_length=16384), note="first try")
+    )
+    await service.update(
+        workload.id, WorkloadUpdateRequest(serving=WorkloadServingUpdate(context_length=16384), note="second try")
+    )
+    history = await service.revisions(workload.id)
+
+    assert [r.number for r in history.items] == [2, 1]
+    assert history.items[0].note == "second try"
+
+
+async def test_a_revision_can_be_annotated_after_the_fact(db: AsyncSession) -> None:
+    """Why a change was made is usually known after the benchmark that explains it."""
+    _, _, _, workload = await a_workload(db)
+    service = WorkloadService(db)
+
+    annotated = await service.annotate(
+        workload.id, "1", WorkloadRevisionUpdate(note="baseline, measured at 4.2k tok/s")
+    )
+
+    assert annotated.note == "baseline, measured at 4.2k tok/s"
+    assert (await service.revision(workload.id, "1")).note == "baseline, measured at 4.2k tok/s"
+    assert (await service.annotate(workload.id, "1", WorkloadRevisionUpdate(note=None))).note is None
+
+
+async def test_annotating_changes_nothing_else_about_a_revision(db: AsyncSession) -> None:
+    """The record of what ran is append-only; the account of it is the one mutable field."""
+    _, _, _, workload = await a_workload(db)
+    service = WorkloadService(db)
+    before = await service.revision(workload.id, "1")
+
+    await service.annotate(workload.id, "1", WorkloadRevisionUpdate(note="why"))
+    after = await service.revision(workload.id, "1")
+
+    assert (after.serving, after.serving_digest, after.artifact) == (
+        before.serving,
+        before.serving_digest,
+        before.artifact,
+    )
+    with pytest.raises(NotFound):
+        await service.annotate(workload.id, "9", WorkloadRevisionUpdate(note="nowhere"))
+
+
+async def test_a_revision_is_addressable_by_number_or_by_id(db: AsyncSession) -> None:
+    _, _, _, workload = await a_workload(db)
+    service = WorkloadService(db)
+
+    by_number = await service.revision(workload.id, "1")
+    by_id = await service.revision(workload.id, by_number.id)
+
+    assert by_number.id == by_id.id
+    assert by_number.id.startswith("wkr_")
+    with pytest.raises(NotFound):
+        await service.revision(workload.id, "9")
+
+
+async def test_history_is_scoped_to_its_own_workload(db: AsyncSession) -> None:
+    """`number` is unique per workload, so a bare one must never resolve across the table."""
+    cluster, project, artifact = await an_environment(db)
+    service = WorkloadService(db)
+    first = await service.create(
+        WorkloadCreateRequest(cluster=cluster.id, serving=a_serving(artifact.id), name="one", project=project.id)
+    )
+    second = await service.create(
+        WorkloadCreateRequest(cluster=cluster.id, serving=a_serving(artifact.id), name="two", project=project.id)
+    )
+
+    assert [r.number for r in (await service.revisions(first.id)).items] == [1]
+    assert [r.number for r in (await service.revisions(second.id)).items] == [1]
+    assert (await service.revision(first.id, "1")).id != (await service.revision(second.id, "1")).id
+
+
+async def test_which_version_is_live_is_counted_over_replicas_and_not_declared(db: AsyncSession) -> None:
+    """Two configurations are up at once during a roll, so the answer is a map and not a field."""
+    _, _, _, workload = await a_workload(db)
+    deployment = workload.deployments[0]
+    await db.execute(
+        text(
+            "INSERT INTO demand_replica (uid, deployment_id, cluster_id, name, phase, ready, serving_digest) "
+            "SELECT :uid, d.id, d.cluster_id, :name, 'ready', true, :digest "
+            "FROM demand_deployment d WHERE d.uid = :dep"
+        ),
+        [
+            {"uid": new_uid(REPLICA), "name": "old-0", "digest": "svg_old", "dep": deployment.id},
+            {"uid": new_uid(REPLICA), "name": "new-0", "digest": workload.serving_digest, "dep": deployment.id},
+            {"uid": new_uid(REPLICA), "name": "new-1", "digest": workload.serving_digest, "dep": deployment.id},
+        ],
+    )
+    await db.commit()
+
+    reread = await WorkloadService(db).get(workload.id)
+
+    assert reread.deployments[0].live_digests == {"svg_old": 1, workload.serving_digest: 2}
+
+
+async def test_a_replica_that_is_not_ready_is_not_live(db: AsyncSession) -> None:
+    """A replica still pulling an image has a digest and is serving nothing with it."""
+    _, _, _, workload = await a_workload(db)
+    await db.execute(
+        text(
+            "INSERT INTO demand_replica (uid, deployment_id, cluster_id, name, phase, ready, serving_digest) "
+            "SELECT :uid, d.id, d.cluster_id, :name, 'starting', false, :digest "
+            "FROM demand_deployment d WHERE d.uid = :dep"
+        ),
+        [{"uid": new_uid(REPLICA), "name": "new-0", "digest": "svg_new", "dep": workload.deployments[0].id}],
+    )
+    await db.commit()
+
+    reread = await WorkloadService(db).get(workload.id)
+
+    assert reread.deployments[0].live_digests == {}
 
 
 async def test_a_frontend_image_survives_the_api_round_trip(db: AsyncSession) -> None:

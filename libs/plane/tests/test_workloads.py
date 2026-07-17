@@ -114,6 +114,19 @@ def test_the_weights_a_workload_serves_cannot_be_repointed_by_a_patch():
     assert "engine" in fields and "shape" in fields
 
 
+def test_a_revision_snapshot_decodes_as_a_patch_because_the_two_structs_agree():
+    """A revision is stored to be resent, so the patch has to accept everything the read holds.
+
+    `artifact` is the one deliberate difference and is recorded on the revision row instead.
+    Any other field added to one struct and not the other silently makes old revisions
+    un-reappliable, which is the failure this pins.
+    """
+    request = set(WorkloadServingRequest.__struct_fields__)
+    update = set(WorkloadServingUpdate.__struct_fields__)
+    assert request - update == {"artifact"}
+    assert update - request == set()
+
+
 def test_the_serving_configuration_is_declared_on_the_workload_and_patchable():
     """It is stated inline rather than named: there is no shared object to point at."""
     assert "serving" in WorkloadCreateRequest.__struct_fields__

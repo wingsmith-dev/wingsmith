@@ -356,6 +356,62 @@ class WorkloadDeploymentSchema(Struct):
     placed_at: dt.datetime | None
     replicas: DeploymentReplicaRollupSchema
     status: DeploymentStatusSchema | None
+    live_digests: dict[str, int] = {}
+    """Ready replicas in this cluster per serving configuration they actually came up on.
+
+    The observed answer to "which version is live", and a map rather than a string because
+    during a roll there are two and the pair is the whole point. One entry is a settled
+    deployment; two is a rollout in progress; an entry that is not the workload's current
+    `serving_digest` is a cluster still running what it was asked for last time.
+
+    Empty when no ready replica has reported a digest — a cluster whose agent has not resynced
+    since the column existed, or an operator too old to stamp the annotation. Empty means not
+    known, never "none".
+    """
+
+
+class WorkloadRevisionUpdate(Struct):
+    """The only write a revision accepts, and it is a comment.
+
+    A revision is otherwise append-only: `serving`, `serving_digest` and `artifact` are a record
+    of what ran and editing one would be editing history. The note is the exception because it
+    is not part of the record — it is somebody's account of it, and an account is frequently
+    written after the fact, when the benchmark that explains the change has finished.
+    """
+
+    note: str | None
+
+
+class WorkloadRevisionSchema(Struct):
+    """One entry in a workload's serving history, and the body that would restate it.
+
+    `serving` is a `WorkloadServingUpdate` as it was stored, which makes it exactly the body
+    that restates this configuration: `PATCH /v1/workloads/{ref}` with `{"serving": <this>}`,
+    validated on the way in by the same checks that validate a hand-written patch. That is the
+    whole of rollback, and why there is no operation for it.
+
+    It is handed back as an object rather than re-typed through the patch struct on purpose. A
+    snapshot is a record of what was asked for at the time, and decoding it through today's
+    struct would re-default a field added since and reject one removed since — making the oldest
+    revisions, the ones most worth having, the first to become unreadable.
+
+    `artifact` sits beside it rather than inside it because the weights are not patchable: a
+    workload is a reproducible way to serve some specific weights, and repointing it is a new
+    workload. It is here so that a revision is a complete record of what ran, and a reader can
+    see that a configuration from before a weights swap is not one to reapply blind.
+
+    `number` counts from 1 within the workload. It never rewinds, so going back to revision 2
+    appends a new one carrying revision 2's snapshot rather than deleting what came after.
+    """
+
+    id: str
+    number: int
+    serving_digest: str
+    artifact: str
+    reason: str
+    note: str | None
+    created_at: dt.datetime
+    serving: dict
 
 
 class WorkloadScaleSchema(Struct):
@@ -538,6 +594,13 @@ class WorkloadCreateRequest(Struct):
     adapter_artifacts: list[str] = []
     overrides: dict = {}
     labels: dict = {}
+    note: str | None = None
+    """Why this configuration, in your own words. Lands on the revision this create files.
+
+    Not a description of the workload — that is what `labels` and the name are for. It
+    describes the *configuration*, and it travels with the revision rather than the row, so it
+    is still attached to this setting after three edits have moved on from it.
+    """
 
 
 class WorkloadUpdateRequest(Struct):
@@ -566,3 +629,15 @@ class WorkloadUpdateRequest(Struct):
     strategy: str | UnsetType = UNSET
     cluster_floors: dict | UnsetType = UNSET
     max_clusters: int | None | UnsetType = UNSET
+    note: str | None | UnsetType = UNSET
+    """Why this change, written at the moment somebody still knows.
+
+    It lands on the revision this patch files. A patch that files none — one carrying only a
+    note, or one that arrives at the configuration already in force — puts it on the revision
+    currently in force instead, so a note is never silently dropped and commenting on what is
+    running needs no separate call.
+
+    It is the one field here that reaches a revision rather than the workload, and the only
+    mutable thing about a revision: what the configuration was is a fact, why it changed is
+    often understood later.
+    """

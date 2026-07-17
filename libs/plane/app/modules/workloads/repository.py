@@ -26,6 +26,7 @@ from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import AllocationDevice
 from app.db.models import DeploymentStatus
+from app.db.models import WorkloadRevision
 from app.core.filters import ref_ids
 
 
@@ -364,6 +365,87 @@ class WorkloadRepository:
         grouped: dict[UUID, list[WorkloadRole]] = {}
         for role in result.scalars():
             grouped.setdefault(role.workload_id, []).append(role)
+        return grouped
+
+    async def last_revision(self, workload_id: UUID) -> WorkloadRevision | None:
+        """The highest-numbered revision this workload has, or None when it has no history.
+
+        None is what says "this workload predates its own history", which is the one case that
+        has to seed an `imported` revision from the pre-image before appending the new one.
+        """
+        result = await self.db.execute(
+            select(WorkloadRevision)
+            .where(WorkloadRevision.workload_id == workload_id)
+            .order_by(WorkloadRevision.number.desc())
+            .limit(1)
+        )
+        return result.scalars().first()
+
+    async def revisions(self, workload_id: UUID, limit: int, before: int | None = None) -> Sequence[WorkloadRevision]:
+        """A page of history, newest first, over-fetched by one so the caller can page.
+
+        Ordered and paged on `number` rather than on `BaseMixin.seq`, which is a global identity
+        column: two workloads' histories interleave in it, and a cursor built from it would skip
+        rows of the one being read.
+        """
+        query = (
+            select(WorkloadRevision)
+            .where(WorkloadRevision.workload_id == workload_id)
+            .order_by(WorkloadRevision.number.desc())
+            .limit(limit + 1)
+        )
+        if before is not None:
+            query = query.where(WorkloadRevision.number < before)
+        result = await self.db.execute(query)
+        return list(result.scalars())
+
+    async def revision(self, workload_id: UUID, ref: str) -> WorkloadRevision | None:
+        """One revision of one workload, by `wkr_` id or by its number.
+
+        A number is the spelling somebody reads off the history and types back, and it is only
+        unique within the workload — which is why this takes the workload and the reference
+        together rather than resolving a bare number against the table.
+        """
+        query = select(WorkloadRevision).where(WorkloadRevision.workload_id == workload_id)
+        if ref.isdigit():
+            query = query.where(WorkloadRevision.number == int(ref))
+        else:
+            query = query.where(WorkloadRevision.uid == ref)
+        result = await self.db.execute(query)
+        return result.scalars().first()
+
+    def live_digest_query(self, deployment_ids: Sequence[UUID]) -> Select:
+        """Ready replicas per deployment per configuration — the observed half of versioning.
+
+        Counted here rather than stored anywhere, because "which version is live" has no scalar
+        answer: during a roll two configurations are up in one cluster, and across clusters they
+        can differ for as long as an agent stays disconnected.
+
+        Only ready replicas are counted. A replica still pulling an image has a digest and is
+        not serving it, and a rollout that reported the new configuration as live before it
+        answered a request would be exactly the wrong way round.
+        """
+        return (
+            select(
+                Replica.deployment_id,
+                Replica.serving_digest,
+                func.count(Replica.id).label("ready"),
+            )
+            .where(
+                Replica.deployment_id.in_(deployment_ids),
+                Replica.ready.is_(True),
+                Replica.serving_digest.is_not(None),
+            )
+            .group_by(Replica.deployment_id, Replica.serving_digest)
+        )
+
+    async def live_digests(self, deployment_ids: Sequence[UUID]) -> dict[UUID, dict[str, int]]:
+        grouped: dict[UUID, dict[str, int]] = {}
+        if not deployment_ids:
+            return grouped
+        result = await self.db.execute(self.live_digest_query(deployment_ids))
+        for row in result.all():
+            grouped.setdefault(row.deployment_id, {})[row.serving_digest] = row.ready
         return grouped
 
     async def replace_roles(self, workload: Workload, roles: Sequence[WorkloadRole]) -> list[WorkloadRole]:

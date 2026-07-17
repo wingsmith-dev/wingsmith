@@ -20,6 +20,7 @@ from app.config import settings
 from app.core.ids import POLICY
 from app.core.ids import WORKLOAD
 from app.core.ids import DEPLOYMENT
+from app.core.ids import WORKLOAD_REVISION
 from app.core.ids import new_uid
 from app.core.vram import Sizing
 from app.core.vram import sizing_of
@@ -31,6 +32,7 @@ from app.db.models import Deployment
 from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import PolicyAttachment
+from app.db.models import WorkloadRevision
 from app.db.notify import DEPLOYMENT as DEPLOYMENT_KIND
 from app.db.notify import Notifier
 from app.db.notify import DeclaredChange
@@ -79,6 +81,8 @@ from .schemas import WorkloadCreateRequest
 from .schemas import WorkloadServingSchema
 from .schemas import WorkloadServingUpdate
 from .schemas import WorkloadUpdateRequest
+from .schemas import WorkloadRevisionSchema
+from .schemas import WorkloadRevisionUpdate
 from .schemas import WorkloadServingRequest
 from .schemas import WorkloadPlacementSchema
 from .schemas import WorkloadDeploymentSchema
@@ -1226,6 +1230,45 @@ def _revision(workload: Workload, deployments: list[Deployment]) -> str:
     return str(int(max(stamps).timestamp() * 1_000_000))
 
 
+def serving_snapshot(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRole]) -> dict:
+    """A stored workload's serving configuration as the patch that would restate it.
+
+    `serving_request` reads the workload back as the request that would have *created* it, which
+    carries one field a patch may not: `artifact`. The weights are not patchable — repointing a
+    workload at other weights makes every deployment expanded from it mean something else — so
+    the snapshot a revision keeps is that reading minus the artifact, and the artifact is
+    recorded beside it instead.
+
+    Popping rather than rebuilding the dict by hand on purpose. There is one description of a
+    serving configuration in this module and it is `WorkloadServingRequest`; a second list of
+    its fields spelled out here would be a field added to one and forgotten in the other.
+    """
+    snapshot = msgspec.to_builtins(serving_request(workload, artifact, roles))
+    snapshot.pop("artifact", None)
+    return snapshot
+
+
+def _revision_view(row: WorkloadRevision) -> WorkloadRevisionSchema:
+    """One revision as a read returns it.
+
+    `serving` is handed back as the object it was stored as rather than re-typed through
+    `WorkloadServingUpdate`. A snapshot is a record of what was asked for at the time, and
+    decoding it through today's struct would re-default a field added since and reject one
+    removed since — which would make the oldest revisions, the ones most worth having, the
+    first to become unreadable.
+    """
+    return WorkloadRevisionSchema(
+        id=row.uid,
+        number=row.number,
+        serving_digest=row.serving_digest,
+        artifact=row.artifact_uid,
+        reason=row.reason,
+        note=row.note,
+        created_at=row.created_at,
+        serving=row.snapshot,
+    )
+
+
 def _status(row) -> DeploymentStatusSchema | None:
     if row is None:
         return None
@@ -1450,6 +1493,118 @@ class WorkloadService:
                 moment=rejected,
             )
 
+    async def _seed_revision(self, workload: Workload, pre: WorkloadServingRequest, digest: str) -> None:
+        """Records what a workload was already serving, once, before its history begins.
+
+        A workload created before `demand_workload_revision` existed has nothing in it, and the
+        first edit after the upgrade would otherwise file only the state it *arrived at* —
+        leaving the one configuration somebody is most likely to want back, the one they just
+        replaced, unrecorded. So the pre-image every serving write already builds for its own
+        validation is filed first, as `imported`.
+
+        Does nothing for a workload that already has history, which is every workload created
+        from here on. `pre` must be read before the write mutates it: `serving_request` returns
+        a struct the callers go on to `setattr` their patch onto.
+        """
+        if await self.repo.last_revision(workload.id) is not None:
+            return
+        snapshot = msgspec.to_builtins(pre)
+        self.db.add(
+            WorkloadRevision(
+                uid=new_uid(WORKLOAD_REVISION),
+                workload_id=workload.id,
+                number=1,
+                serving_digest=digest,
+                artifact_uid=snapshot.pop("artifact", ""),
+                snapshot=snapshot,
+                reason="imported",
+            )
+        )
+        await self.db.flush()
+
+    async def record_revision(
+        self, workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRole], reason: str
+    ) -> None:
+        """Appends the serving configuration the workload now holds, in the caller's transaction.
+
+        Called after `apply_serving`, never before: what is filed has to be what was stored, the
+        same rule the digest itself keeps. Declared state, and nothing reconciles against it —
+        no generation moves and no cluster is told.
+
+        Only the serving configuration is versioned. `overrides`, `labels` and the adapter list
+        are on the workload and not in `WorkloadServingRequest`, so filing a revision when one
+        of those moves would append a row identical to the one above it.
+
+        A write that leaves the configuration where it was files nothing. Re-sending a patch is
+        idempotent everywhere else in this service and a history that recorded the retry would
+        be a history nobody trusts to mean a change.
+        """
+        snapshot = serving_snapshot(workload, artifact, roles)
+        last = await self.repo.last_revision(workload.id)
+        if last is not None and last.snapshot == snapshot:
+            return
+        self.db.add(
+            WorkloadRevision(
+                uid=new_uid(WORKLOAD_REVISION),
+                workload_id=workload.id,
+                number=1 if last is None else last.number + 1,
+                serving_digest=workload.serving_digest,
+                artifact_uid=artifact.uid,
+                snapshot=snapshot,
+                reason=reason,
+            )
+        )
+        await self.db.flush()
+
+    async def _note(self, workload: Workload, note: str | None) -> None:
+        """Attaches a caller's account of a change to the revision that change produced.
+
+        Called after the write, so the revision in force is the one the write just filed — and
+        when the write filed nothing, the one it left in force. That is what makes a note
+        impossible to drop: a patch carrying only a note comments on what is running, and a
+        patch that arrives at the configuration already in force comments on that, rather than
+        either of them being a quiet no-op.
+        """
+        last = await self.repo.last_revision(workload.id)
+        if last is not None:
+            last.note = note
+
+    async def annotate(
+        self, ref: str, revision: str, data: WorkloadRevisionUpdate, project: str | None = None
+    ) -> WorkloadRevisionSchema:
+        """Writes why a configuration was chosen, onto the revision that holds it.
+
+        The only write a revision takes. Everything else about it is a record of what ran and
+        editing that would be editing history; the note is an account of the record, and an
+        account is usually written after the run that explains it.
+        """
+        workload = (await self._one(ref, project))[0]
+        found = await self.repo.revision(workload.id, revision)
+        if found is None:
+            raise NotFound(f"no revision {revision!r} of workload {workload.uid}")
+        found.note = data.note
+        await self.db.commit()
+        return _revision_view(found)
+
+    async def revisions(
+        self, ref: str, project: str | None = None, limit: int | None = None, cursor: str | None = None
+    ) -> ListResponse[WorkloadRevisionSchema]:
+        """This workload's serving history, newest first."""
+        workload = (await self._one(ref, project))[0]
+        size = clamp_limit(limit)
+        rows = await self.repo.revisions(workload.id, size, decode_cursor(cursor))
+        kept, next_cursor = page(list(rows), size, lambda r: r.number)
+        items = [_revision_view(row) for row in kept]
+        return ListResponse(items=items, count=len(items), next_cursor=next_cursor)
+
+    async def revision(self, ref: str, revision: str, project: str | None = None) -> WorkloadRevisionSchema:
+        """One revision, by `wkr_` id or by the number the history lists it under."""
+        workload = (await self._one(ref, project))[0]
+        found = await self.repo.revision(workload.id, revision)
+        if found is None:
+            raise NotFound(f"no revision {revision!r} of workload {workload.uid}")
+        return _revision_view(found)
+
     async def _announce(self, cluster_uid: str, uid: str, generation: int) -> None:
         """Wakes whichever hub holds this cluster's stream, after the write is committed.
 
@@ -1514,7 +1669,9 @@ class WorkloadService:
             artifact_tag=artifact_tag,
         )
 
-    def _deployment(self, row, replicas: DeploymentReplicaRollupSchema) -> WorkloadDeploymentSchema:
+    def _deployment(
+        self, row, replicas: DeploymentReplicaRollupSchema, live: dict[str, int]
+    ) -> WorkloadDeploymentSchema:
         deployment = row[0]
         return WorkloadDeploymentSchema(
             id=deployment.uid,
@@ -1535,18 +1692,20 @@ class WorkloadService:
             placed_at=deployment.placed_at,
             replicas=replicas,
             status=_status(row.DeploymentStatus),
+            live_digests=live,
         )
 
     async def _render(self, rows: list) -> list[WorkloadSchema]:
         """One page of workloads, their expansions, and their replica counts.
 
-        Three queries whatever the page size, and never one per row.
+        A fixed number of queries whatever the page size, and never one per row.
         """
         if not rows:
             return []
         grouped = await self.repo.deployments([r[0].id for r in rows])
         deployment_rows = [d for group in grouped.values() for d in group]
         rollup = await self.repo.replicas([d[0].id for d in deployment_rows])
+        live = await self.repo.live_digests([d[0].id for d in deployment_rows])
         adapters = await self.repo.adapter_uids([i for r in rows for i in r[0].adapter_artifact_ids])
         roles = await self.repo.roles_for([r[0].id for r in rows])
         items = []
@@ -1562,7 +1721,9 @@ class WorkloadService:
                     priority_class=row.priority_class,
                     pinned_cluster_uid=row.pinned_cluster_uid,
                     adapter_uids=[adapters[i] for i in workload.adapter_artifact_ids if i in adapters],
-                    deployments=[self._deployment(d, _rollup(rollup.get(d[0].id))) for d in group],
+                    deployments=[
+                        self._deployment(d, _rollup(rollup.get(d[0].id)), live.get(d[0].id, {})) for d in group
+                    ],
                     rows=[d[0] for d in group],
                     artifact_tag=artifact.name,
                     served_model_name=served_model(workload, artifact),
@@ -1866,6 +2027,9 @@ class WorkloadService:
 
         try:
             await self.repo.add(workload, deployments, roles)
+            await self.record_revision(workload, artifact, roles, "created")
+            if data.note is not None:
+                await self._note(workload, data.note)
             if constraint is not None:
                 self.db.add(
                     Policy(
@@ -1953,6 +2117,7 @@ class WorkloadService:
         )
         stored_roles = await self.repo.roles_of(workload)
         request = serving_request(workload, artifact, stored_roles)
+        await self._seed_revision(workload, request, workload.serving_digest)
         for key, value in declared.items():
             setattr(request, key, value)
         if was_derived and "engine_runtime_image" not in declared:
@@ -1966,6 +2131,7 @@ class WorkloadService:
         roles = declared_roles(request.topology)
         roles = await self.repo.replace_roles(workload, roles)
         apply_serving(workload, request, artifact, roles)
+        await self.record_revision(workload, artifact, roles, "updated")
 
     async def update(self, ref: str, data: WorkloadUpdateRequest, if_match: str | None = None) -> WorkloadSchema:
         """A partial update of what was asked for, globally.
@@ -1988,6 +2154,7 @@ class WorkloadService:
             raise Conflict("workload changed since it was read", {"revision": revision})
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
+        note = fields.pop("note", UNSET)
         if "strategy" in fields and fields["strategy"] not in STRATEGIES:
             raise Invalid(f"unknown strategy {fields['strategy']!r}", {"allowed": sorted(STRATEGIES)})
         if fields.get("max_clusters") is not None and fields.get("max_clusters", 1) < 1:
@@ -2005,6 +2172,9 @@ class WorkloadService:
             workload.adapter_artifact_ids = await self._adapter_ids(fields.pop("adapter_artifacts"))
         for key, value in fields.items():
             setattr(workload, key, value)
+
+        if note is not UNSET:
+            await self._note(workload, note)
 
         bumped = bool({"overrides", "adapter_artifacts", "labels", "serving"} & set(data.to_dict(exclude_unset=True)))
         if bumped:
@@ -2273,6 +2443,7 @@ class WorkloadService:
             raise NotFound(f"workload {workload.uid} has no artifact")
         stored_roles = await self.repo.roles_of(workload)
         request = serving_request(workload, artifact, stored_roles)
+        await self._seed_revision(workload, request, workload.serving_digest)
         request.topology = TopologySchema(serving_topology=target, roles=roles_block)
         check_serving_request(request, artifact)
         check_scale(min_scale, desired, max_scale, workload.kind, workload.gang_size)
@@ -2281,6 +2452,9 @@ class WorkloadService:
         before_total = before_unit * workload.desired_scale
         roles = await self.repo.replace_roles(workload, declared_roles(request.topology))
         apply_serving(workload, request, artifact, roles)
+        await self.record_revision(workload, artifact, roles, "reshaped")
+        if "note" in parameters:
+            await self._note(workload, parameters["note"])
         after_unit = group_devices(workload.device_count, roles)
         workload.min_scale = min_scale
         workload.max_scale = max_scale

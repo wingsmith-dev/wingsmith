@@ -411,6 +411,10 @@ class DiscoveredWorkloadService:
         )
         try:
             await self.repo.add(deployment_workload, deployment)
+            # Revision 1 is what was already running, which is the one configuration on this
+            # object nobody chose. Filing it is what lets a later edit be compared against the
+            # thing the cluster was doing before the plane took an opinion.
+            await WorkloadService(self.db).record_revision(deployment_workload, artifact, (), "promoted")
             await self.repo.decide(
                 {
                     "cluster_id": workload.cluster_id,
