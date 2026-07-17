@@ -368,6 +368,27 @@ def test_replica_stores_the_role_the_cluster_read_off_its_pod() -> None:
     assert "decode" not in scalar_params(params)
 
 
+def test_replica_stores_the_configuration_it_came_up_on() -> None:
+    """The observed half of versioning: what a process started from, not what was declared.
+
+    The frame has carried it since disaggregation and the plane used to drop it, which left
+    "which version is live" answerable only by inference from an engine version that moves for
+    other reasons.
+    """
+    observed = payload("replica.observed")
+    _, params = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, observed))
+    assert observed.serving_digest in scalar_params(params)
+
+
+def test_a_replica_with_no_digest_to_report_stores_null_and_not_an_empty_string() -> None:
+    """Null is "not known". An operator too old to stamp the annotation sends an empty string,
+    and storing that would make a cluster with nothing to say indistinguishable from one
+    running a configuration nobody can name."""
+    silent = structs.replace(payload("replica.observed"), serving_digest="")
+    _, params = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, silent))
+    assert "" not in scalar_params(params)
+
+
 def test_replica_does_not_write_the_devices_it_holds() -> None:
     """A replica's commitment is an allocation, not a column on the replica."""
     sql, _ = compile_sql(statements.upsert_replica(CLUSTER_ID, DEPLOYMENT_ID, payload("replica.observed")))

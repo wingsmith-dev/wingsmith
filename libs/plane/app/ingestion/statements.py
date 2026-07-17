@@ -456,8 +456,8 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
     so a replica re-reported after a reconnect keeps the identity it was first
     given. The devices it holds are not written here — a replica's commitment is
     an `Allocation`, which `allocation.observed` carries — and `engine` is not
-    stored because it is the workload's, not the replica's; `engine_runtime_version` is,
-    because that is the one that lags during a rollout.
+    stored because it is the workload's, not the replica's; `engine_runtime_version` and
+    `serving_digest` are, because those are the ones that lag during a rollout.
     """
     values: dict[str, Any] = {
         "uid": observed_uid(payload.replica_id, REPLICA),
@@ -471,6 +471,11 @@ def upsert_replica(cluster_id: UUID, deployment_id: UUID, payload: ReplicaObserv
         # what should exist. Null from an aggregated deployment, which has one worker.
         "role": payload.role,
         "engine_runtime_version": payload.runtime_version or None,
+        # The configuration this process actually started from, read off the annotation the
+        # operator rendered it with. Empty from an operator too old to stamp one, and stored as
+        # null rather than as the declared digest: "not known" and "up to date" are the two
+        # answers a rollout has to keep apart.
+        "serving_digest": payload.serving_digest or None,
         "observed_generation": payload.observed_generation,
         "restart_count": payload.restart_count,
         "started_at": parse_ts(payload.started_at) if payload.started_at else None,
