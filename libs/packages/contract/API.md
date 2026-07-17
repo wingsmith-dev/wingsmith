@@ -176,7 +176,7 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/device-classes` | the shared dictionary, read-only — see below |
 | `/v1/pools` | declared, with observed membership |
 | `/v1/artifacts` | declared, plus two read-only derived views, one operation, and a declared baseline sub-resource — see below |
-| `/v1/workloads`, `/v1/endpoints` | declared, plus a read-only resolution — see below |
+| `/v1/workloads`, `/v1/endpoints` | declared, plus a read-only resolution and a read-only serving history — see below |
 | `/v1/deployments` | declared, per-cluster, read-mostly — see below |
 | `/v1/discovered` | observed, read-only, plus the decision verbs — see below |
 | `/v1/replicas`, `/v1/allocations` | observed, read-only |
@@ -511,6 +511,55 @@ with the artifact as its uid. The plane recomputes it on every write and a body 
 `served_model_name` and `labels` are deliberately outside it, as are scale and placement, because the
 question it answers is "would this produce the same running process" and none of those change the
 process.
+
+**A workload keeps every serving configuration it has held, and going back is an ordinary
+update.** `GET /v1/workloads/{ref}/revisions` lists them newest first and
+`GET /v1/workloads/{ref}/revisions/{n}` reads one, by its `wkr_` id or by the number the list shows.
+Each entry carries `number`, `serving_digest`, `artifact`, `reason`, `note`, `created_at` and
+`serving` — and `serving` is a **patch body**: send it back as `PATCH /v1/workloads/{ref}` with
+`{"serving": <that>}` and the workload returns to that configuration, validated on the way in by
+exactly the checks that validate a hand-written patch.
+
+There is deliberately no rollback verb. A revision that would no longer pass validation — a device
+class the catalogue has dropped, a runtime version the shape can no longer hold — is refused by the
+checks that refuse any other patch, where a restore path of its own would be a second, weaker
+description of a legal configuration. `artifact` sits beside `serving` rather than inside it for the
+same reason the patch has no `artifact` field: the weights are not patchable, and a revision from
+before a weights swap is a record, not something to reapply blind.
+
+**`note` is why, and it is the only mutable thing about a revision.** `POST /v1/workloads`,
+`PATCH /v1/workloads/{ref}` and `workload.reshape` all take a `note`, which lands on the revision
+that write files — so the reason for a change is recorded by the call that makes it, while somebody
+still knows it. `PATCH /v1/workloads/{ref}/revisions/{n}` with `{"note": "..."}` writes or rewrites
+one afterwards, and `null` clears it; that is the only write a revision accepts. The split is
+deliberate: what a configuration *was* is a fact and editing it would be editing history, while why
+it was changed is frequently understood later — a parameter moved on a hunch and explained by the
+benchmark that ran after it.
+
+A note is never silently dropped. A patch carrying only a note, or one that arrives at the
+configuration already in force, files no revision and puts the note on the revision in force
+instead — so commenting on what is running needs no separate call. `note` is free text and is never
+parsed; `reason` is the closed set naming which write it was, and the two answer different
+questions.
+
+`number` counts from 1 within the workload and never rewinds: going back to revision 2 appends
+revision 5 carrying revision 2's body. A revision is appended by a create, a serving `PATCH`, a
+`workload.reshape` and a promotion — the writes that move `serving_digest` — and by nothing else. A
+patch that only moves `labels`, `overrides` or the adapter list files none, because none of those is
+in the body; neither does a patch that arrives at the configuration already in force. `reason` names
+which write it was: `created`, `updated`, `reshaped`, `promoted`, or `imported` for the one entry
+that is not a write at all — the configuration a workload older than its own history was already
+running, recorded from the pre-image of its first serving edit.
+
+**What is declared and what is live are different questions, and only the first has one answer.**
+`serving_digest` on the workload is what the plane declared. What is *running* is counted over
+replicas: each deployment carries `live_digests`, a `{serving_digest: ready_replicas}` map read off
+the configuration each ready replica actually came up on. One entry is a settled deployment, two is a
+rollout in progress, and an entry that is not the workload's current digest is a cluster still
+running what it was asked for last time. It is a map and not a field because during every roll — and
+across clusters for as long as an agent stays disconnected — several configurations are live at once,
+and there is no scalar that is true of all of them. An empty map is "no ready replica has reported
+one", never "none".
 
 **`capabilities` is asserted and `imported_args` is observed, and neither is ever rendered.**
 `capabilities` is what somebody says this configuration can do — tools, vision, structured output —

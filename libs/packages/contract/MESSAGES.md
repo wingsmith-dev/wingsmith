@@ -514,6 +514,11 @@ frame name one configuration the same way, so a replica still running the previo
 visible as such rather than inferred from an engine version that moves for other reasons. It
 replaces `recipe_id`, which named an object that no longer exists and was mutable besides.
 
+The plane stores it on the replica, and that column is the whole of its answer to "which version is
+live". Declared state says what was asked for; counting these says what is running, and during a
+roll the two differ by construction. An empty string is a cluster that has not got one to report and
+is stored as null — not known, never "the declared one".
+
 **`replica.observed` carries `observed_generation`.** A replica's phase says whether it is up; the
 generation says which version of the deployment it is up *at*. A rollout is exactly the interval in
 which those two disagree, so a reader without the generation cannot distinguish "four ready" mid-roll
