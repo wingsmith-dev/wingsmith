@@ -92,8 +92,11 @@ modelCache:
 # Whether this cluster can run a replica whose devices do not fit on one machine is
 # discovered, not declared: the operator reads the API groups it is served and
 # reports a leader-worker backend — Grove or LeaderWorkerSet — if one is there. So
-# the way to turn multi-node on is `dynamo-platform.grove.enabled`, and the
+# the way to turn multi-node on is `dynamo-platform.global.grove.install`, and the
 # capability follows on the next observation tick with nothing set here.
+# `dynamo-platform.global.grove.enabled` is the other half of that pair and turns
+# on the integration only, for a cluster where Grove was installed by something
+# other than this chart.
 #
 # This exists because detection matches on group name. A backend serving a group
 # nobody anticipated would read as absent, and this asserts it by hand until the
@@ -488,8 +491,33 @@ dcgm-exporter:
 # The Dynamo operator + NATS, the bus Dynamo's Frontend and workers use for
 # request/response and KV-cache events; the hangar operator never touches it. NATS
 # must be turned on explicitly — 1.4.x defaults `global.nats.install` to false, and
-# without it Dynamo's deployments have nothing to route over. etcd, Grove and KAI
-# stay off at their subchart defaults; component discovery is the Kubernetes API.
+# without it Dynamo's deployments have nothing to route over. etcd and KAI stay off
+# at their subchart defaults; component discovery is the Kubernetes API.
+#
+# Grove is the leader-worker backend a multi-node replica renders onto, and it is
+# written out here rather than left at its default because the two keys are not the
+# same question and the names do not say so. `install` bundles NVIDIA's Grove
+# subchart and deploys the Grove operator cluster-wide; `enabled` only tells the
+# Dynamo operator it may emit PodCliqueSets, and is implied by `install`. A cluster
+# that got Grove from somewhere else — an NVIDIA install, a platform team, a
+# separate release — sets `enabled` alone and leaves `install` false, or it gets two
+# Grove operators reconciling the same CRDs.
+#
+# Both default off, which is what every cluster in the fleet is already running.
+# Turning `install` on is a cluster-wide change: it adds CRDs, a controller
+# deployment and three admission webhooks that intercept `grove.io` objects, so it
+# is a deliberate act on a cluster meant to serve a model too large for one node,
+# not a default. NVIDIA's own note is that production installs are recommended to
+# install Grove separately rather than through this subchart — the bundled copy is
+# pinned to the platform chart's version and upgrades only when it does, which for
+# an alpha controller is the wrong coupling. Take the bundle to get a cluster
+# serving multi-node today; move to a separate release when the cluster matters.
+#
+# The hangar operator needs neither key. It discovers the backend by reading the API
+# groups the cluster serves and matching `grove` — Grove serves `grove.io` and
+# `scheduler.grove.io` — so the capability appears on the next observation tick after
+# the CRDs land, whatever this file says. These keys install the thing; `multinode.enabled`
+# above only overrides the reading.
 #
 # `podMonitors.enabled` is pinned false rather than left `null`, and the pin is why
 # this cluster's serving metrics are reachable at all. Null means auto-detect: the
@@ -505,6 +533,9 @@ dynamo-platform:
   global:
     nats:
       install: true
+    grove:
+      install: false
+      enabled: false
   dynamo-operator:
     dynamo:
       metrics:
