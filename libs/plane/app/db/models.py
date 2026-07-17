@@ -838,6 +838,86 @@ class WorkloadRole(BaseMixin):
     workload: Mapped[Workload] = relationship("Workload", back_populates="roles", lazy="noload")
 
 
+class WorkloadRevision(BaseMixin):
+    """One serving configuration a workload has held, kept as the request that would restate it.
+
+    Declared state, append-only, and written by exactly the writes that move
+    `Workload.serving_digest` — a create, a serving patch, a reshape, and a promotion. Nothing
+    here reaches a cluster and nothing reconciles against it: the workload row is still the only
+    declaration, and this is the record of what that row said before.
+
+    `snapshot` is a `WorkloadServingUpdate` as msgspec renders it — the patch shape, not the
+    column shape. `serving_request` already reads a stored workload back as "the request that
+    would have created it", and `_apply_serving_patch` already applies a patch onto that and
+    revalidates the whole thing, so what is stored here is that reading minus the one field a
+    patch may not carry: a revision is a body that can be sent straight back to
+    `PATCH /v1/workloads/{ref}`. That is what makes a rollback an ordinary update rather than an
+    operation of its own — there is no restore path to write, no second description of a legal
+    configuration, and a revision that would no longer validate is refused by the same checks
+    that refuse a hand-written one.
+
+    `number` counts from 1 within the workload and never rewinds. Going back to revision 2
+    appends revision 5 carrying revision 2's snapshot, because the history is what happened
+    rather than where the workload can still get to. `BaseMixin.seq` is a global identity
+    column and is not this.
+
+    `serving_digest` is copied off the workload after the write landed, so it names the same
+    configuration that `ops_benchmark_run.serving_digest` and `demand_replica.serving_digest`
+    name. It is deliberately not unique here: a workload edited A to B and back to A has two
+    revisions carrying one digest, which is why a running replica resolves to a *configuration*
+    and never to a revision number.
+    """
+
+    __tablename__ = "demand_workload_revision"
+    __table_args__ = (UniqueConstraint("workload_id", "number", name="uq_demand_workload_revision_number"),)
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    workload_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_workload.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    serving_digest: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
+    artifact_uid: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
+    """Which weights this configuration served, recorded rather than referenced.
+
+    A plain uid and not a foreign key: a revision is a statement about what happened, and a
+    history that could be made un-writable by an artifact somebody deleted would be a history
+    that stops recording exactly when the record starts to matter.
+
+    It is here rather than inside `snapshot` because `snapshot` is a patch body and the weights
+    are not patchable — `WorkloadServingUpdate` has no `artifact` field, deliberately, since
+    repointing a workload at other weights makes every deployment expanded from it mean
+    something else. Folding the two together would give a snapshot that no longer decodes as
+    the thing it exists to be resent as.
+    """
+    snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    """Why somebody made this change, in their own words.
+
+    The one mutable field on an otherwise append-only row, and the split is the point: what the
+    configuration *was* is a fact and cannot be edited, while why it was changed is frequently
+    only understood later — a parameter moved on a hunch and explained by the benchmark that
+    ran afterwards. Writable through the revision, and settable in the same breath as the change
+    by a `note` on the create, the patch or the reshape that files it.
+
+    Free text and never parsed. `reason` is the closed set naming which write this was, and the
+    two are not the same question: `reason` says a patch did it, this says the context window
+    was doubled because the eval suite was truncating.
+    """
+    reason: Mapped[str] = mapped_column(String(32), nullable=False, server_default="updated")
+    """Which write appended this — `created`, `updated`, `reshaped`, `promoted` or `imported`.
+
+    `imported` is the one that is not a write at all. It is the configuration a workload was
+    already running when its history began, recorded from the pre-image the next edit read
+    before it changed anything. Without it, a workload older than this table would have its
+    first recorded revision be the state *after* the first edit — and the edit somebody wants
+    to undo is usually that one.
+    """
+
+    workload: Mapped[Workload] = relationship("Workload", lazy="noload")
+
+
 class Deployment(BaseMixin):
     """One workload's share on one cluster. The unit the agent obeys.
 
@@ -1030,6 +1110,23 @@ class Replica(BaseMixin):
     running process, so it corroborates nothing on its own. It is here because a
     replica that outlives an edit to its workload still says which runtime it started
     under, and that is the one question the workload's own column cannot answer.
+    """
+    serving_digest: Mapped[str | None] = mapped_column(String(71), nullable=True, index=True)
+    """The configuration this replica actually came up on, read off the annotation it was
+    rendered with.
+
+    The observed half of versioning, and the only one there is: `Workload.serving_digest` says
+    what the plane declared, and this says what a running process was started from. A rollout is
+    exactly the interval in which the two disagree, and so is a cluster whose agent has not
+    reconnected since the last edit.
+
+    Deliberately not a field on the workload. "Which version is live" has no scalar answer —
+    several are, during every roll and across every cluster — so it is counted over these rows
+    rather than stored as declared state with a second writer.
+
+    Nullable because a replica reported before this column existed has no answer, and because
+    an operator too old to stamp the annotation sends an empty string. Null is "not known",
+    never "the declared one".
     """
     observed_generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
     restart_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
