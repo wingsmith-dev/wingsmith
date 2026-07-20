@@ -56,7 +56,7 @@ func routeTo(t *testing.T, address string, headers http.Header) routing.Route {
 		t.Fatalf("parse: %v", err)
 	}
 	return routing.NewRoute("chat", "weighted",
-		routing.NewUpstream("ap", 100, true, NewReverseProxy(parsed, headers)))
+		routing.NewUpstream("ap", 100, true, NewReverseProxy(parsed, headers, 0)))
 }
 
 func TestBodyIsForwardedVerbatim(t *testing.T) {

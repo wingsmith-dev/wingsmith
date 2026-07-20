@@ -90,7 +90,7 @@ func TestForwarding(t *testing.T) {
 			}))
 			defer upstream.Close()
 
-			handler := NewHandler(tc.target(t, upstream))
+			handler := NewHandler(tc.target(t, upstream), 0)
 			recorder := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
 				strings.NewReader(`{"model":"qwen3"}`))
@@ -141,7 +141,7 @@ func TestAStreamArrivesTokenByToken(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	proxy := httptest.NewServer(NewHandler(targetFor(t, upstream)))
+	proxy := httptest.NewServer(NewHandler(targetFor(t, upstream), 0))
 	defer proxy.Close()
 
 	response, err := http.Post(proxy.URL+"/v1/chat/completions", "application/json",
@@ -187,7 +187,7 @@ func TestAClientHangingUpAbortsTheFrontendCall(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	proxy := httptest.NewServer(NewHandler(targetFor(t, upstream)))
+	proxy := httptest.NewServer(NewHandler(targetFor(t, upstream), 0))
 	defer proxy.Close()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -236,7 +236,7 @@ func TestTheHandlerReadsTheAddressPerRequest(t *testing.T) {
 	defer second.Close()
 
 	target := &movingTarget{url: targetFor(t, first).url}
-	handler := NewHandler(target)
+	handler := NewHandler(target, 0)
 	if body := call(t, handler); body != "first" {
 		t.Fatalf("body = %q, want the first frontend", body)
 	}
@@ -300,7 +300,7 @@ func TestTheHeaderPicksTheFrontendAndNeverReachesIt(t *testing.T) {
 	handler := NewHandler(setTarget{
 		shared:       targetFor(t, shared).url,
 		byDeployment: map[string]*url.URL{"dep_01j9x2": targetFor(t, kimi).url},
-	})
+	}, 0)
 
 	for _, tc := range []struct {
 		name       string
@@ -364,7 +364,7 @@ func TestASingleFrontendClusterIgnoresTheHeaderEntirely(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	handler := NewHandler(targetFor(t, upstream))
+	handler := NewHandler(targetFor(t, upstream), 0)
 	for _, deployment := range []string{"", "dep_01j9x2"} {
 		request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
 			strings.NewReader(`{"model":"qwen3"}`))
@@ -391,7 +391,7 @@ func TestASingleFrontendClusterIgnoresTheHeaderEntirely(t *testing.T) {
 // caller — and whoever reads the log — that one model is mid-rollout rather than
 // that the cluster is serving nothing.
 func TestANamedDeploymentWithNoFrontendAndNoFallbackIsItsOwn503(t *testing.T) {
-	handler := NewHandler(setTarget{byDeployment: map[string]*url.URL{}})
+	handler := NewHandler(setTarget{byDeployment: map[string]*url.URL{}}, 0)
 
 	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
 		strings.NewReader(`{"model":"qwen3"}`))
@@ -438,4 +438,65 @@ func namedFrontend(t *testing.T, name string) (*httptest.Server, *http.Header) {
 	}))
 	t.Cleanup(server.Close)
 	return server, &seen
+}
+
+// The agent is the innermost of three hops arming a response-header timer, and
+// only the smallest of the three is ever observed. A caller that passes nothing
+// must therefore land above the hops outside it, not on a bare zero — which
+// net/http reads as no bound at all — and not on some small local constant.
+func TestAnUnsetBoundLandsAboveTheHopsOutsideThisOne(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		configure time.Duration
+		want      time.Duration
+	}{
+		{"unset", 0, tunnel.InnerHopTimeout(0)},
+		{"negative is not no bound", -time.Second, tunnel.InnerHopTimeout(0)},
+		{"derived from a raised budget", tunnel.InnerHopTimeout(90 * time.Minute), 91 * time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			transport, ok := newReverseProxy(tc.configure).Transport.(*http.Transport)
+			if !ok {
+				t.Fatal("the frontend proxy is not on a transport this hop configures")
+			}
+			if transport.ResponseHeaderTimeout != tc.want {
+				t.Fatalf("response header timeout = %s, want %s", transport.ResponseHeaderTimeout, tc.want)
+			}
+			if transport.ResponseHeaderTimeout <= tunnel.DefaultResponseHeaderTimeout {
+				t.Fatalf("this hop gives up at %s, before the gateway's %s, so the gateway's bound means nothing",
+					transport.ResponseHeaderTimeout, tunnel.DefaultResponseHeaderTimeout)
+			}
+		})
+	}
+}
+
+// The bound still exists. A frontend that accepted a request and has said
+// nothing is wedged rather than thinking, and the point of making the number
+// configurable was to size it correctly, not to delete it.
+func TestAFrontendThatSaysNothingIsStillGivenUpOn(t *testing.T) {
+	release := make(chan struct{})
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	defer upstream.Close()
+	defer close(release)
+
+	handler := NewHandler(targetFor(t, upstream), 200*time.Millisecond)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
+		strings.NewReader(`{"model":"qwen3"}`))
+
+	started := time.Now()
+	handler.ServeHTTP(recorder, request)
+	elapsed := time.Since(started)
+
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want 502 (body %s)", recorder.Code, recorder.Body)
+	}
+	if elapsed < 200*time.Millisecond {
+		t.Errorf("gave up after %s, before the bound it was given", elapsed)
+	}
+	if elapsed > 10*time.Second {
+		t.Errorf("took %s to give up on a 200ms bound", elapsed)
+	}
 }

@@ -43,6 +43,7 @@ func main() {
 	tunnelCert := flag.String("tunnel-cert", "", "PEM certificate for the tunnel listener (HANGAR_GATEWAY_TUNNEL_TLS_CERT env fallback); without it the listener is plaintext and TLS must be terminated in front of it")
 	tunnelKey := flag.String("tunnel-key", "", "PEM private key for the tunnel listener (HANGAR_GATEWAY_TUNNEL_TLS_KEY env fallback)")
 	gatewayID := flag.String("gateway-id", "", "this replica's stable identity, reported to dialling agents; empty takes the hostname (HANGAR_GATEWAY_ID env fallback)")
+	headerTimeout := flag.Duration("response-header-timeout", 0, "how long a cluster may hold a request without sending a response header, zero for the built-in default (HANGAR_RESPONSE_HEADER_TIMEOUT env fallback)")
 	replicas := flag.Int("gateways", 0, "how many gateway replicas are running, reported to dialling agents so they know how many tunnels to hold; must match the manifest's replica count (HANGAR_GATEWAY_REPLICAS env fallback)")
 	flag.Parse()
 
@@ -89,6 +90,20 @@ func main() {
 	if *replicas == 0 {
 		*replicas = envInt("HANGAR_GATEWAY_REPLICAS")
 	}
+	// The same variable name the agent reads, and it has to stay that way. Both
+	// ends of the tunnel arm a response-header timer from this number and only
+	// the smaller of the two is ever observed, so raising it here alone buys the
+	// caller nothing — see tunnel.InnerHopTimeout. Setting it in one place and
+	// not the other is the one way left to get this wrong, which is why the
+	// value is logged at startup on both ends.
+	if *headerTimeout == 0 {
+		*headerTimeout = envDuration("HANGAR_RESPONSE_HEADER_TIMEOUT")
+	}
+	if *headerTimeout <= 0 {
+		*headerTimeout = tunnel.DefaultResponseHeaderTimeout
+	}
+	slog.Info("gateway: response header timeout", "timeout", *headerTimeout,
+		"agent_must_be_at_least", tunnel.InnerHopTimeout(*headerTimeout))
 	planeToken := os.Getenv("HANGAR_OPERATOR_TOKEN")
 	callerToken := os.Getenv("HANGAR_GATEWAY_TOKEN")
 
@@ -124,7 +139,7 @@ func main() {
 	// disabled would then ask a nil pool for coverage on every request.
 	var tunnels serving.Tunnels
 	var reach routing.Reachability
-	pool, listener, err := newTunnels(*tunnelAddr, *gatewayID, *replicas, planeClient, recorder)
+	pool, listener, err := newTunnels(*tunnelAddr, *gatewayID, *replicas, *headerTimeout, planeClient, recorder)
 	if err != nil {
 		slog.Error("gateway: could not set up the tunnel listener", "err", err)
 		os.Exit(1)
@@ -141,11 +156,12 @@ func main() {
 		planeClient,
 		func(target routing.Target) http.Handler {
 			return serving.NewClusterHandler(serving.ClusterConfig{
-				ClusterID:   target.ClusterID,
-				ClusterName: target.ClusterName,
-				Headers:     credentials.Headers(target.CredentialID),
-				URL:         target.URL,
-				Tunnels:     tunnels,
+				ClusterID:             target.ClusterID,
+				ClusterName:           target.ClusterName,
+				Headers:               credentials.Headers(target.CredentialID),
+				URL:                   target.URL,
+				Tunnels:               tunnels,
+				ResponseHeaderTimeout: *headerTimeout,
 			})
 		},
 		routerOpts...,
@@ -258,12 +274,12 @@ const tunnelCertReloadEvery = 10 * time.Minute
 // they have covered every replica, and the replicas they missed answer nothing
 // for those clusters while looking healthy. Too high only costs the agents some
 // redials that find no home. It is logged at startup for exactly that reason.
-func newTunnels(addr, id string, replicas int, verifier tunnel.Verifier, recorder *metrics.Recorder) (*tunnel.Pool, *tunnel.Listener, error) {
+func newTunnels(addr, id string, replicas int, headerTimeout time.Duration, verifier tunnel.Verifier, recorder *metrics.Recorder) (*tunnel.Pool, *tunnel.Listener, error) {
 	if addr == "" || addr == "off" {
 		slog.Warn("gateway: tunnel listener disabled, only clusters with a published serving address are reachable")
 		return nil, nil, nil
 	}
-	pool, err := tunnel.NewPool(tunnel.PoolConfig{Observer: recorder})
+	pool, err := tunnel.NewPool(tunnel.PoolConfig{Observer: recorder, ResponseHeaderTimeout: headerTimeout})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -301,6 +317,22 @@ func envInt(key string) int {
 		return 0
 	}
 	return n
+}
+
+// envDuration reads a duration from the environment, treating anything
+// unparseable as absent, for the same reason envInt does: a malformed value in a
+// ConfigMap must not be an outage of the data plane.
+func envDuration(key string) time.Duration {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || d < 0 {
+		slog.Warn("gateway: ignoring unreadable environment value", "key", key, "value", raw)
+		return 0
+	}
+	return d
 }
 
 // serveTunnels binds the tunnel port and accepts dials until shutdown.

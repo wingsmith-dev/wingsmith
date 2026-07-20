@@ -113,7 +113,7 @@ func proxyRoute(t *testing.T, id, name, deployment, cluster, address string) rou
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	return handlerUpstream(t, id, name, deployment, cluster, NewReverseProxy(parsed, nil))
+	return handlerUpstream(t, id, name, deployment, cluster, NewReverseProxy(parsed, nil, 0))
 }
 
 func post(t *testing.T, handler http.Handler, body string, headers ...string) *httptest.ResponseRecorder {

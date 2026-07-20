@@ -94,7 +94,49 @@ type PoolConfig struct {
 // DefaultResponseHeaderTimeout is how long a cluster gets to produce a response
 // header. Prefill on a long prompt is slow; a serving runtime that has accepted
 // a stream and said nothing for this long is wedged, not thinking.
-const DefaultResponseHeaderTimeout = 5 * time.Minute
+//
+// Sized for the non-streamed case, which is the one that pays. A streaming
+// completion sends its header at the first token and disarms this timer in
+// seconds, so it never sees the number at all; a non-streamed one sends no
+// header until the last token is generated, so for that shape this timer covers
+// the entire generation, prefill included.
+//
+// The number comes off a measurement rather than a guess. Nothing on this fleet
+// caps max_tokens, and on 2026-09-01 one 1M-context K3 sample ran 140k output
+// tokens at 93 tok/s — 25 minutes, and it was killed rather than finished, so
+// that is a floor and not a tail. Non-streamed, that whole generation sits
+// inside this timer, with 1M-context prefill in front of it. Forty-five minutes
+// covers the longest one anybody has watched, with room.
+//
+// It is still a bound and not the absence of one. A request waiting here holds
+// one of the agent's concurrent stream slots for the whole wait, so a frontend
+// that accepted a stream and has said nothing for three quarters of an hour is
+// wedged, not thinking — and the number is small enough that one on-call shift
+// catches it.
+const DefaultResponseHeaderTimeout = 45 * time.Minute
+
+// InnerHopMargin is how much longer each hop towards the serving runtime waits
+// than the hop outside it.
+const InnerHopMargin = time.Minute
+
+// InnerHopTimeout is the response-header bound for a hop closer to the serving
+// runtime than the one holding budget.
+//
+// The inference path arms this timer three times — the gateway's upstream
+// transport, the tunnel, and the agent's proxy to the local frontend — and only
+// the smallest of the three is ever observed. That is the whole failure this
+// function exists to prevent: raising one hop and not the others changes nothing
+// a caller can see, because the innermost still fires first and the gateway
+// still answers upstream_unavailable at the old wall. So every hop derives from
+// one number, and the inner hops add this margin rather than matching exactly,
+// so that when something really is wedged it is the outermost hop — the only one
+// holding the caller's connection — that gives up first and says so.
+func InnerHopTimeout(budget time.Duration) time.Duration {
+	if budget <= 0 {
+		budget = DefaultResponseHeaderTimeout
+	}
+	return budget + InnerHopMargin
+}
 
 // DefaultHealthInterval is how often a tunnel that x/net has closed is noticed.
 const DefaultHealthInterval = time.Second

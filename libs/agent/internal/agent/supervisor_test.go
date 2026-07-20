@@ -36,7 +36,7 @@ func TestTunnelCarriesARequestToTheClusterFrontend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dynamo.New: %v", err)
 	}
-	server, err := tunnel.NewConnector(tunnel.ConnectorConfig{Handler: dynamo.NewHandler(resolver)})
+	server, err := tunnel.NewConnector(tunnel.ConnectorConfig{Handler: dynamo.NewHandler(resolver, 0)})
 	if err != nil {
 		t.Fatalf("tunnel.NewConnector: %v", err)
 	}

@@ -397,7 +397,14 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 // Headers are applied on the outbound leg only and overwrite whatever arrived
 // under the same names: a caller must not be able to influence the credential
 // this hop presents.
-func NewReverseProxy(upstream *url.URL, headers http.Header) *httputil.ReverseProxy {
+//
+// headerTimeout bounds how long the upstream may hold the request without
+// answering; zero takes tunnel.DefaultResponseHeaderTimeout, which is the same
+// number every other hop on the inference path derives from.
+func NewReverseProxy(upstream *url.URL, headers http.Header, headerTimeout time.Duration) *httputil.ReverseProxy {
+	if headerTimeout <= 0 {
+		headerTimeout = tunnel.DefaultResponseHeaderTimeout
+	}
 	return &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(upstream)
@@ -421,7 +428,7 @@ func NewReverseProxy(upstream *url.URL, headers http.Header) *httputil.ReversePr
 			Proxy:                 http.ProxyFromEnvironment,
 			MaxIdleConnsPerHost:   64,
 			IdleConnTimeout:       90 * time.Second,
-			ResponseHeaderTimeout: 5 * time.Minute,
+			ResponseHeaderTimeout: headerTimeout,
 			ExpectContinueTimeout: time.Second,
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {

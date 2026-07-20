@@ -40,18 +40,27 @@ type DeploymentTarget interface {
 // and no way to say so.
 type targetKey struct{}
 
-// idleTimeout, headerTimeout and the connection pool size are the local
-// equivalents of the gateway's own upstream transport. The frontend is one
-// ClusterIP a few milliseconds away, so the pool is generous and the header
-// timeout is the only bound: generation legitimately runs for minutes at long
-// contexts, and there is no round-trip deadline for that reason.
+// idleTimeout and the connection pool size are the local equivalents of the
+// gateway's own upstream transport. The frontend is one ClusterIP a few
+// milliseconds away, so the pool is generous and the response-header bound is
+// the only one: generation legitimately runs for minutes at long contexts, and
+// there is no round-trip deadline for that reason.
+//
+// That bound is not a constant here, and it is the innermost of three on the
+// inference path — the gateway's transport, the tunnel, then this. Only the
+// smallest of the three is ever observed, so this one has to be the largest or
+// the two outside it mean nothing; the caller passes tunnel.InnerHopTimeout of
+// the fleet-wide budget for exactly that reason.
 const (
 	idleConnsPerHost = 64
 	idleTimeout      = 90 * time.Second
-	headerTimeout    = 5 * time.Minute
 )
 
 // NewHandler builds the agent's local proxy.
+//
+// headerTimeout bounds how long the frontend may hold a request without sending
+// a response header, and must be at least what the gateway and the tunnel use —
+// tunnel.InnerHopTimeout of the fleet budget is how the agent binary derives it.
 //
 // Every request that arrived over the tunnel lands here and is forwarded to the
 // frontend serving the deployment the gateway already resolved it to. That is
@@ -67,8 +76,8 @@ const (
 // ship dark: every cluster runs one shared frontend and none renders a
 // per-deployment one yet, so every request falls through to exactly the address
 // it reached before.
-func NewHandler(target Target) http.Handler {
-	proxy := newReverseProxy()
+func NewHandler(target Target, headerTimeout time.Duration) http.Handler {
+	proxy := newReverseProxy(headerTimeout)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		upstream, err := frontendFor(target, r.Header.Get(tunnel.HeaderDeploymentID))
 		if err != nil {
@@ -126,7 +135,14 @@ func frontendFor(target Target, deploymentID string) (*url.URL, error) {
 }
 
 // newReverseProxy forwards to whichever address the handler resolved.
-func newReverseProxy() *httputil.ReverseProxy {
+//
+// A non-positive headerTimeout takes tunnel.InnerHopTimeout of the fleet default
+// rather than meaning "no bound", so a caller that forgets the setting still
+// lands above the hops outside this one instead of below them.
+func newReverseProxy(headerTimeout time.Duration) *httputil.ReverseProxy {
+	if headerTimeout <= 0 {
+		headerTimeout = tunnel.InnerHopTimeout(0)
+	}
 	return &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			// Stripped on the outbound leg and not on the inbound request, so

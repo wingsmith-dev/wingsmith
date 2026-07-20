@@ -581,3 +581,67 @@ func (o recordingObserver) TunnelClosed(clusterID string, _ int) {
 	default:
 	}
 }
+
+// The three hops on the inference path each arm a response-header timer, and
+// only the smallest one is ever observed. So a fix that raises the outer hops
+// without raising the innermost is not a fix: the innermost still fires first
+// and the caller still gets the same 502 at the same wall.
+func TestEveryHopInwardsWaitsLongerThanTheOneOutsideIt(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		budget time.Duration
+	}{
+		{"the default budget", DefaultResponseHeaderTimeout},
+		{"a budget an operator raised", 90 * time.Minute},
+		{"a budget an operator lowered", 10 * time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inner := InnerHopTimeout(tc.budget)
+			if inner <= tc.budget {
+				t.Fatalf("inner hop waits %s against an outer %s; the inner one fires first", inner, tc.budget)
+			}
+			if inner != tc.budget+InnerHopMargin {
+				t.Errorf("inner hop = %s, want the budget plus one margin (%s)", inner, tc.budget+InnerHopMargin)
+			}
+		})
+	}
+}
+
+// Zero is "nothing was configured", not "no bound". A hop that read it as no
+// bound would hold a stream slot for a wedged frontend forever; one that read it
+// as a small number would fire before the hops outside it.
+func TestAnUnsetInnerBudgetFallsBackAboveTheDefault(t *testing.T) {
+	if got := InnerHopTimeout(0); got != DefaultResponseHeaderTimeout+InnerHopMargin {
+		t.Fatalf("InnerHopTimeout(0) = %s, want %s", got, DefaultResponseHeaderTimeout+InnerHopMargin)
+	}
+	if InnerHopTimeout(0) <= DefaultResponseHeaderTimeout {
+		t.Fatal("an unconfigured inner hop does not outlast the default outer one")
+	}
+}
+
+// The number itself is a claim about the fleet, and it is measured: one
+// 1M-context K3 sample ran 140k output tokens over 25 minutes before it was
+// killed. Non-streamed, that whole generation sits inside this timer and the old
+// five minutes cut it off at 300 seconds. This pins the floor so that a later
+// tidy-up cannot walk it back without saying so.
+func TestTheDefaultCoversALongNonStreamedGeneration(t *testing.T) {
+	if DefaultResponseHeaderTimeout < 30*time.Minute {
+		t.Fatalf("default is %s; a 1M-context effort=max generation, non-streamed, does not finish in that",
+			DefaultResponseHeaderTimeout)
+	}
+}
+
+// The pool takes the budget it is given and nothing rounds it, because the
+// gateway's two paths into a cluster — the tunnel and a published address — have
+// to present the same wall to a caller.
+func TestThePoolKeepsTheBudgetItIsGiven(t *testing.T) {
+	pool := newPool(t, PoolConfig{ResponseHeaderTimeout: 90 * time.Minute})
+	if pool.cfg.ResponseHeaderTimeout != 90*time.Minute {
+		t.Fatalf("pool budget = %s, want the 90m it was configured with", pool.cfg.ResponseHeaderTimeout)
+	}
+	unset := newPool(t, PoolConfig{})
+	if unset.cfg.ResponseHeaderTimeout != DefaultResponseHeaderTimeout {
+		t.Fatalf("unconfigured pool budget = %s, want the default %s",
+			unset.cfg.ResponseHeaderTimeout, DefaultResponseHeaderTimeout)
+	}
+}

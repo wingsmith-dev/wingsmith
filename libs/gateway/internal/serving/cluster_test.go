@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
 	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
@@ -203,5 +205,75 @@ func TestATunnelledRequestKeepsItsBodyReplayable(t *testing.T) {
 	}
 	if seen != `{"model":"chat"}` {
 		t.Fatalf("replayed body = %q", seen)
+	}
+}
+
+// headerTimeoutOf reads the bound a proxy's own transport arms, or zero when the
+// transport is not one of ours — which is the tunnelled case, where the pool
+// owns the bound instead.
+func headerTimeoutOf(t *testing.T, proxy *httputil.ReverseProxy) time.Duration {
+	t.Helper()
+	transport, ok := proxy.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("proxy transport is %T, not the one this hop configures", proxy.Transport)
+	}
+	return transport.ResponseHeaderTimeout
+}
+
+// A non-streamed completion sends no response header until its last token, so
+// this bound is the whole generation for that shape. Five minutes cut off the
+// long ones; the bound is configurable now, and an unset one has to land on the
+// fleet-wide default rather than on no bound at all.
+func TestTheUpstreamBoundIsConfigurableAndDefaultsToTheFleetBudget(t *testing.T) {
+	upstream, err := url.Parse("https://cluster.example")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	for _, tc := range []struct {
+		name      string
+		configure time.Duration
+		want      time.Duration
+	}{
+		{"unset takes the shared default", 0, tunnel.DefaultResponseHeaderTimeout},
+		{"a negative value is not no bound", -time.Second, tunnel.DefaultResponseHeaderTimeout},
+		{"a raised value is kept", 90 * time.Minute, 90 * time.Minute},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := headerTimeoutOf(t, NewReverseProxy(upstream, nil, tc.configure)); got != tc.want {
+				t.Fatalf("response header timeout = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// The default has to be the number the agent derives its own from, or the two
+// ends of the tunnel disagree about the wall and the innermost hop wins. This is
+// the whole of the fix: one constant, three hops.
+func TestTheGatewayDefaultIsTheSameNumberTheAgentDerivesFrom(t *testing.T) {
+	if tunnel.DefaultResponseHeaderTimeout >= tunnel.InnerHopTimeout(tunnel.DefaultResponseHeaderTimeout) {
+		t.Fatal("the gateway's default is not smaller than the agent's, so the agent gives up first")
+	}
+}
+
+// A cluster reachable both ways must present one wall. A caller cannot see which
+// leg carried its request, so a bound that differed between them would make the
+// timeout depend on whether the cluster's agent happened to be connected.
+func TestBothLegsIntoAClusterCarryTheSameBound(t *testing.T) {
+	upstream, err := url.Parse("https://cluster.example")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	const budget = 70 * time.Minute
+	direct := NewReverseProxy(upstream, nil, budget)
+	tunnelled := NewTunnelProxy("clu_1", nil, stubTunnels{live: 1}, budget)
+
+	if got := headerTimeoutOf(t, direct); got != budget {
+		t.Fatalf("direct leg bound = %s, want %s", got, budget)
+	}
+	// The tunnelled leg's transport is the pool's, which arms the bound from
+	// PoolConfig rather than from this proxy — so what is asserted here is that
+	// the seam is still one field wide and nothing else was left behind on it.
+	if _, ours := tunnelled.Transport.(*http.Transport); ours {
+		t.Fatal("the tunnelled leg is still on the gateway's own transport, so it never reaches a cluster")
 	}
 }

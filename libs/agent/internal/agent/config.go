@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/hangar-dev/hangar/libs/packages/tunnel"
 )
 
 // Config is the fully resolved agent configuration.
@@ -93,6 +95,17 @@ type Config struct {
 	// frontend package's default.
 	DiscoveryInterval time.Duration
 
+	// ResponseHeaderTimeout is the fleet-wide bound on how long a serving runtime may hold a
+	// request without sending a response header. It is the gateway's number, not this agent's:
+	// the agent's own proxy to the frontend runs at tunnel.InnerHopTimeout of it.
+	//
+	// The same variable name the gateway reads, deliberately. A non-streamed completion sends no
+	// header until the last token is generated, so on that shape this timer bounds the whole
+	// generation — and because every hop on the path arms one, only the smallest is ever
+	// observed. Raising it at one hop and not the others changes nothing a caller can see, which
+	// is why this is one number carried to both ends rather than a per-hop setting.
+	ResponseHeaderTimeout time.Duration
+
 	// LogLevel is one of debug, info, warn, error.
 	LogLevel slog.Level
 
@@ -121,6 +134,7 @@ func Load() (*Config, error) {
 		InferenceEndpoint:     env("HANGAR_INFERENCE_ENDPOINT", ""),
 		WorkloadNamespace:     env("HANGAR_WORKLOAD_NAMESPACE", "dynamo"),
 		DiscoveryInterval:     envDuration("HANGAR_FRONTEND_DISCOVERY_INTERVAL", 0),
+		ResponseHeaderTimeout: envDuration("HANGAR_RESPONSE_HEADER_TIMEOUT", tunnel.DefaultResponseHeaderTimeout),
 		LogFormat:             env("HANGAR_LOG_FORMAT", "json"),
 	}
 
@@ -176,6 +190,15 @@ func (c *Config) validate() error {
 	}
 	if c.DrainTimeout <= 0 {
 		return fmt.Errorf("HANGAR_DRAIN_TIMEOUT must be positive")
+	}
+	// Refused rather than clamped. A value below the default is very likely somebody trying to
+	// bound generation with the wrong knob, and silently accepting it reintroduces exactly the
+	// bug this setting exists to fix: the innermost hop firing first and every long non-streamed
+	// completion coming back 502 at a wall nothing in the gateway names.
+	if c.ResponseHeaderTimeout < tunnel.DefaultResponseHeaderTimeout {
+		return fmt.Errorf("HANGAR_RESPONSE_HEADER_TIMEOUT must be >= %s, the bound the gateway defaults to; "+
+			"a smaller one here fires first and turns a long non-streamed completion into a 502",
+			tunnel.DefaultResponseHeaderTimeout)
 	}
 	if c.HealthAddr == "" {
 		return fmt.Errorf("HANGAR_HEALTH_ADDR must not be empty")

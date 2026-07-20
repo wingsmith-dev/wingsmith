@@ -58,7 +58,7 @@ func run() error {
 	// SIGTERM has to drain instead: the server's Shutdown sends GOAWAY and lets the streams
 	// already accepted finish, each of which is a generation somebody is reading.
 	server, err := tunnel.NewConnector(tunnel.ConnectorConfig{
-		Handler:     dynamo.NewHandler(resolver),
+		Handler:     dynamo.NewHandler(resolver, tunnel.InnerHopTimeout(cfg.ResponseHeaderTimeout)),
 		Limits:      tunnel.Limits{MaxConcurrentStreams: uint32(cfg.MaxConcurrentStreams)}, //nolint:gosec // bounded by validate
 		BaseContext: context.Background(),
 	})
@@ -117,7 +117,8 @@ func run() error {
 	log.Info("agent: dialling out",
 		"gateway", cfg.Gateway,
 		"conns_per_gateway", cfg.ConnsPerGateway,
-		"health", cfg.HealthAddr)
+		"health", cfg.HealthAddr,
+		"response_header_timeout", tunnel.InnerHopTimeout(cfg.ResponseHeaderTimeout))
 
 	<-ctx.Done()
 	log.Info("agent: draining", "tunnels", supervisor.Tunnels(), "timeout", cfg.DrainTimeout)

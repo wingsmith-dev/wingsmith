@@ -203,6 +203,17 @@ agent:
   # `host:port` or a URL. Empty discovers the Service carrying Dynamo's frontend
   # labels; set it only if this cluster fronts its models with something else.
   frontendEndpoint: ""
+  # How long the local frontend may hold a request without sending a response
+  # header, as a Go duration. Empty takes the agent's own default, which is the
+  # same number the gateway defaults to.
+  #
+  # A non-streamed completion sends no header until its last token, so on that
+  # shape this bounds the whole generation. Every hop on the path — the gateway,
+  # the tunnel, this agent — arms the same timer and only the smallest of them is
+  # ever observed, so raising this alone does nothing: a cluster that needs longer
+  # than the default needs HANGAR_RESPONSE_HEADER_TIMEOUT raised on the gateway in
+  # the plane's own infra/ too, and the same value in both places.
+  responseHeaderTimeout: ""
   # A proxy, not a runtime: it copies bytes and holds streams open. No CPU limit,
   # because throttling the data path is latency on every token.
   resources:

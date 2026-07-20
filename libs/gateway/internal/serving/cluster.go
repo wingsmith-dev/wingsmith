@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"time"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
 	"github.com/hangar-dev/hangar/libs/packages/tunnel"
@@ -35,6 +36,16 @@ type ClusterConfig struct {
 	URL *url.URL
 	// Tunnels, when set, is where a tunnelled request goes.
 	Tunnels Tunnels
+	// ResponseHeaderTimeout bounds how long the cluster may hold a request
+	// without answering, on whichever of the two paths it is forwarded down.
+	// Zero takes tunnel.DefaultResponseHeaderTimeout.
+	//
+	// One field and not two on purpose. The tunnelled path and the direct path
+	// are alternatives rather than layers — a request takes one or the other —
+	// so a gateway that bounded them differently would give the same caller two
+	// different walls depending on whether the cluster's agent happened to be
+	// connected.
+	ResponseHeaderTimeout time.Duration
 }
 
 // NewClusterHandler forwards to one cluster, over its tunnel when there is one
@@ -52,10 +63,10 @@ type ClusterConfig struct {
 func NewClusterHandler(cfg ClusterConfig) http.Handler {
 	handler := &clusterHandler{clusterID: cfg.ClusterID, tunnels: cfg.Tunnels}
 	if cfg.Tunnels != nil {
-		handler.tunnelled = NewTunnelProxy(cfg.ClusterID, cfg.Headers, cfg.Tunnels)
+		handler.tunnelled = NewTunnelProxy(cfg.ClusterID, cfg.Headers, cfg.Tunnels, cfg.ResponseHeaderTimeout)
 	}
 	if cfg.URL != nil {
-		handler.direct = NewReverseProxy(cfg.URL, cfg.Headers)
+		handler.direct = NewReverseProxy(cfg.URL, cfg.Headers, cfg.ResponseHeaderTimeout)
 	}
 	if handler.tunnelled == nil && handler.direct == nil {
 		slog.Warn("gateway: cluster has no tunnel and no serving address, it will report no capacity",
@@ -93,8 +104,8 @@ func (h *clusterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // accounting all behave exactly as they do against a public address. That the
 // seam is one parameter wide is the whole reason the tunnel was built as an
 // http.RoundTripper.
-func NewTunnelProxy(clusterID string, headers http.Header, tunnels Tunnels) *httputil.ReverseProxy {
-	proxy := NewReverseProxy(tunnel.Authority(clusterID), headers)
+func NewTunnelProxy(clusterID string, headers http.Header, tunnels Tunnels, headerTimeout time.Duration) *httputil.ReverseProxy {
+	proxy := NewReverseProxy(tunnel.Authority(clusterID), headers, headerTimeout)
 	proxy.Transport = tunnels.RoundTripper(clusterID)
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		markTunnelError(w, r, clusterID, err)

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/hangar-dev/hangar/libs/packages/tunnel"
 )
 
 // minimal is a configuration that loads, so a case can break exactly one thing.
@@ -114,6 +116,10 @@ func TestValidateWantsANamespaceOrAnEndpoint(t *testing.T) {
 		DrainTimeout:     time.Second,
 		HealthAddr:       ":8081",
 		LogFormat:        "json",
+		// The bound Load would have filled in. It is required rather than
+		// zero-means-default so that a hand-built Config cannot arrive at the
+		// innermost hop with a smaller bound than the gateway's.
+		ResponseHeaderTimeout: tunnel.DefaultResponseHeaderTimeout,
 	}
 
 	err := base.validate()
@@ -125,5 +131,51 @@ func TestValidateWantsANamespaceOrAnEndpoint(t *testing.T) {
 	withEndpoint.InferenceEndpoint = "http://dynamo-frontend.dynamo.svc.cluster.local:8000"
 	if err := withEndpoint.validate(); err != nil {
 		t.Fatalf("validate with an endpoint: %v", err)
+	}
+}
+
+// The agent is the innermost of three hops arming a response-header timer, and
+// only the smallest of the three is ever observed. So it reads the same variable
+// name the gateway does, defaults to the same number, and refuses anything below
+// it — a smaller value here would fire first and hand every long non-streamed
+// completion back as a 502 at a wall nothing in the gateway names.
+func TestTheResponseHeaderBoundIsSharedWithTheGateway(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		value   string
+		want    time.Duration
+		wantErr string
+	}{
+		{name: "unset takes the gateway's default", value: "", want: tunnel.DefaultResponseHeaderTimeout},
+		{name: "a raised value is kept", value: "90m", want: 90 * time.Minute},
+		{name: "the default itself is accepted", value: tunnel.DefaultResponseHeaderTimeout.String(), want: tunnel.DefaultResponseHeaderTimeout},
+		{name: "below the gateway's default is refused", value: "5m", wantErr: "HANGAR_RESPONSE_HEADER_TIMEOUT"},
+		{name: "zero is refused rather than read as no bound", value: "0s", wantErr: "HANGAR_RESPONSE_HEADER_TIMEOUT"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			env := minimal()
+			env["HANGAR_RESPONSE_HEADER_TIMEOUT"] = tc.value
+			cfg, err := load(t, env)
+			if tc.wantErr != "" {
+				if err == nil {
+					t.Fatalf("Load accepted %q, which fires before the gateway's own bound", tc.value)
+				}
+				if !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("error = %v, want it to name %s", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if cfg.ResponseHeaderTimeout != tc.want {
+				t.Fatalf("ResponseHeaderTimeout = %s, want %s", cfg.ResponseHeaderTimeout, tc.want)
+			}
+			// The config carries the fleet budget; what the local proxy arms is
+			// one margin above it, so the hops outside this one give up first.
+			if tunnel.InnerHopTimeout(cfg.ResponseHeaderTimeout) <= cfg.ResponseHeaderTimeout {
+				t.Fatal("the agent's own bound does not outlast the budget it shares with the gateway")
+			}
+		})
 	}
 }

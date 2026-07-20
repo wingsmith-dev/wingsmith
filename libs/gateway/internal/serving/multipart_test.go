@@ -70,7 +70,7 @@ func multipartRoute(t *testing.T, address string, servedModelName string) routin
 		t.Fatalf("parse: %v", err)
 	}
 	route := routing.NewRoute("whisper", "weighted",
-		routing.NewUpstream("ap", 100, true, NewReverseProxy(parsed, nil)))
+		routing.NewUpstream("ap", 100, true, NewReverseProxy(parsed, nil, 0)))
 	route.Upstreams[0].ServedModelName = servedModelName
 	return route
 }
