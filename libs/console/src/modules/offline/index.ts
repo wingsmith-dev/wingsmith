@@ -612,6 +612,88 @@ collection({
 })
 
 /**
+ * One workload's serving history.
+ *
+ * Synthesised from the corpus rather than stated beside it, and deliberately one entry per
+ * workload: none of these has been edited, so `created` is the honest whole of their history.
+ * Inventing a plausible-looking string of past configurations would make the offline plane read
+ * as though it had a past the corpus cannot show the consequences of.
+ *
+ * The note is the one thing writable here, the same as against the real plane.
+ */
+const revisionNotes = new Map<string, string | null>()
+
+function workloadByRef(ref: string): Workload {
+  const found = workloads.find((w) => w.id === ref || w.name === ref)
+  if (!found) throw new NotFoundError(`no workload '${ref}'`)
+  return found
+}
+
+/**
+ * A stored workload read back as the patch that would restate it — the same conversion the plane
+ * makes, and the reason a revision can be resent verbatim. `artifact_id` and
+ * `resolved_engine_args` and `topology.group_devices` are what a read
+ * has and a patch does not: the weights are not patchable, and the other two are derived on every
+ * read and stored nowhere.
+ */
+function servingSnapshot(workload: Workload) {
+  const body: Record<string, unknown> = { ...workload.serving }
+  delete body.artifact_id
+  delete body.resolved_engine_args
+  if (body.topology) {
+    const topology: Record<string, unknown> = { ...body.topology }
+    delete topology.group_devices
+    body.topology = topology
+  }
+  return body
+}
+
+function firstRevision(workload: Workload) {
+  return {
+    id: `wkr_${workload.id.slice(4)}`,
+    number: 1,
+    serving_digest: workload.serving_digest,
+    artifact: workload.serving.artifact_id,
+    reason: "created",
+    note: revisionNotes.get(workload.id) ?? null,
+    created_at: workload.created_at,
+    serving: servingSnapshot(workload),
+  }
+}
+
+registerFixtures([
+  {
+    method: "GET",
+    path: "/workloads/:ref/revisions",
+    handler: ({ params, query }: FixtureContext) =>
+      page([firstRevision(workloadByRef(params.ref))], query),
+  },
+  {
+    method: "GET",
+    path: "/workloads/:ref/revisions/:revision",
+    handler: ({ params }: FixtureContext) => {
+      const workload = workloadByRef(params.ref)
+      const only = firstRevision(workload)
+      if (params.revision !== only.id && params.revision !== "1")
+        throw new NotFoundError(
+          `no revision '${params.revision}' of workload ${workload.id}`
+        )
+      return only
+    },
+  },
+  {
+    method: "PATCH",
+    path: "/workloads/:ref/revisions/:revision",
+    handler: ({ params, body }: FixtureContext) => {
+      const workload = workloadByRef(params.ref)
+      const note = (body as { note?: string | null })?.note ?? null
+      revisionNotes.set(workload.id, note)
+      return firstRevision(workload)
+    },
+  },
+])
+
+/**
  * Project, phase and labels are workload facts read through the parent: a
  * deployment carries its own admission phase, and `?phase=` asks about that.
  */
@@ -1401,6 +1483,9 @@ registerFixtures([
             placed_at: created.placed_at,
             replicas: created.replicas,
             status: created.status,
+            // A promotion adopts what a cluster is already running, and the cluster has not
+            // reported a digest for it yet. Empty is "not known", which is exactly right here.
+            live_digests: {},
           },
         ],
       }

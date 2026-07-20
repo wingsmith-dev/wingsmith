@@ -1274,7 +1274,29 @@ const SCALE_UNIT: Record<string, string> = {
  * Projects a deployment into the row the workload carries for it, so the
  * per-cluster table and the deployment page cannot drift apart.
  */
-function share(deployment: Deployment): WorkloadDeployment {
+/**
+ * Which configurations are up in one cluster, derived from the rollout the corpus already
+ * states rather than declared a second time.
+ *
+ * A deployment whose ready replicas are not all at the current generation is mid-roll, and that
+ * is exactly the state the column exists to render: the ones that have caught up are on the
+ * workload's declared digest, the rest are still on the one before it. A settled deployment gets
+ * a single entry, which is the ordinary case.
+ */
+function liveDigests(
+  deployment: Deployment,
+  declared: string
+): Record<string, number> {
+  const ready = deployment.replicas.ready
+  const caught = Math.min(deployment.replicas.at_current_generation, ready)
+  const behind = ready - caught
+  const live: Record<string, number> = {}
+  if (caught > 0) live[declared] = caught
+  if (behind > 0) live[digest("f")] = behind
+  return live
+}
+
+function share(deployment: Deployment, declared: string): WorkloadDeployment {
   const cluster = clusters.find((c) => c.id === deployment.cluster_id)!
   return {
     id: deployment.id,
@@ -1295,6 +1317,7 @@ function share(deployment: Deployment): WorkloadDeployment {
     placed_at: deployment.placed_at,
     replicas: deployment.replicas,
     status: deployment.status,
+    live_digests: liveDigests(deployment, declared),
   }
 }
 
@@ -1327,7 +1350,7 @@ function workload(
   const { bounds, artifact_tag = null, ...rest } = fields
   const shares = deployments
     .filter((d) => d.workload_id === id)
-    .map((d) => share(d))
+    .map((d) => share(d, rest.serving_digest))
   return {
     ...rest,
     artifact_tag,
