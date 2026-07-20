@@ -55,6 +55,7 @@ export function WorkloadDeploymentsTable({
   deployments,
   unit,
   serving,
+  servingDigest,
   bare,
 }: {
   deployments: WorkloadDeployment[]
@@ -65,6 +66,11 @@ export function WorkloadDeploymentsTable({
    * today from a seeded mock, marked `TODO-API` at the call site.
    */
   serving?: (deployment: WorkloadDeployment) => string
+  /**
+   * The configuration the workload currently declares. When given, adds a column saying which
+   * configurations are actually up in each cluster and whether they are that one.
+   */
+  servingDigest?: string
   /** Inside a card, where the card's edge is the frame. */
   bare?: boolean
 }) {
@@ -80,7 +86,7 @@ export function WorkloadDeploymentsTable({
 
   return (
     <DataTable
-      columns={columns(unit, serving)}
+      columns={columns(unit, serving, servingDigest)}
       list={list}
       rowKey={(deployment) => deployment.id}
       empty="Placement has not put this anywhere yet."
@@ -91,7 +97,8 @@ export function WorkloadDeploymentsTable({
 
 function columns(
   unit: string,
-  serving?: (deployment: WorkloadDeployment) => string
+  serving?: (deployment: WorkloadDeployment) => string,
+  servingDigest?: string
 ): Column<WorkloadDeployment>[] {
   const rows: Column<WorkloadDeployment>[] = [
     {
@@ -209,6 +216,56 @@ function columns(
         </span>
       ),
     },
+    ...(servingDigest
+      ? [
+          {
+            key: "configuration",
+            header: "Running",
+            align: "right" as const,
+            secondary: true,
+            /**
+             * Which serving configurations this cluster actually has up, and how many replicas
+             * are on each.
+             *
+             * Beside the generation rather than folded into it, because they answer different
+             * questions: a generation moves when a share is rescaled or a workload is paused, and
+             * neither changes the process. The digest only moves when the configuration does.
+             *
+             * Two rows here is a rollout in progress. One row that is not the declared digest is
+             * a cluster still running what it was asked for last time — an agent that has not
+             * reconnected, or an apply that has not landed. Nothing at all means no ready replica
+             * has reported a digest, which is not the same as nothing running.
+             */
+            cell: (deployment: WorkloadDeployment) => {
+              const entries = Object.entries(deployment.live_digests ?? {})
+              if (!entries.length)
+                return (
+                  <span className="font-mono text-2xs text-muted-foreground/70">
+                    <Dash>{null}</Dash>
+                  </span>
+                )
+              return (
+                <div className="space-y-0.5">
+                  {entries.map(([digest, ready]) => (
+                    <div
+                      key={digest}
+                      className={cn(
+                        "font-mono text-2xs",
+                        digest === servingDigest
+                          ? "text-foreground"
+                          : "text-muted-foreground/70"
+                      )}
+                    >
+                      {ready} x {shortenId(digest)}
+                      {digest === servingDigest ? "" : " (stale)"}
+                    </div>
+                  ))}
+                </div>
+              )
+            },
+          },
+        ]
+      : []),
     {
       key: "enabled",
       header: "Enabled",

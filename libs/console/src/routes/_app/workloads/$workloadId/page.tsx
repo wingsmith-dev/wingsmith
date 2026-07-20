@@ -95,6 +95,7 @@ import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { LoadCurvePanel } from "@/components/benchmarks/curve"
 import { useWorkbenchCurve } from "@/modules/benchmarks/queries"
+import { WorkloadRevisions } from "@/components/demand/workload-revisions"
 import { EconomicsTab, EconomicsTabContent } from "./Economics"
 import {
   EditCapabilitiesDialog,
@@ -393,6 +394,7 @@ export function WorkloadDetailPage() {
                       bare
                       deployments={workload.deployments}
                       unit={scaleUnitFor(workload)}
+                      servingDigest={workload.serving_digest}
                       // TODO-API per-cluster requests/sec is data-plane, seeded here
                       serving={(d) =>
                         (d.desired_replicas * 215).toLocaleString()
@@ -923,15 +925,9 @@ export function WorkloadDetailPage() {
 
                   <Panel
                     title="Revision history"
-                    subtitle="Serving configuration changes over time"
+                    subtitle="Every serving configuration this workload has held, newest first"
                   >
-                    {/* TODO-API revision history not exposed — only the current revision is on the workload */}
-                    <DataTable
-                      columns={revisionColumns}
-                      list={staticList(MOCK_REVISIONS)}
-                      rowKey={(r) => r.version}
-                      empty=""
-                    />
+                    <WorkloadRevisions workload={workload} />
                   </Panel>
 
                   <Panel
@@ -2273,92 +2269,5 @@ const replicaColumns = [
         </span>
       </span>
     ),
-  },
-]
-
-interface RevisionRow {
-  version: string
-  change: string
-  rollout: string
-  status: string
-  statusTone: "ok" | "neutral"
-  deployed: string
-}
-const MOCK_REVISIONS: RevisionRow[] = [
-  {
-    version: "v12",
-    change: "llama-3.1-70b-chat-fp8 (serving updated)",
-    rollout: "Rolling",
-    status: "Active",
-    statusTone: "ok",
-    deployed: "Aug 14",
-  },
-  {
-    version: "v11",
-    change: "Quantization bf16 → fp8",
-    rollout: "Canary (10% → 100%)",
-    status: "Superseded",
-    statusTone: "neutral",
-    deployed: "Aug 09",
-  },
-  {
-    version: "v10",
-    change: "Hardware 8x A100 → 8x H100",
-    rollout: "Rolling",
-    status: "Superseded",
-    statusTone: "neutral",
-    deployed: "Jul 30",
-  },
-  {
-    version: "v9",
-    change: "Initial release (bf16, 8x A100)",
-    rollout: "Rolling",
-    status: "Superseded",
-    statusTone: "neutral",
-    deployed: "Jul 28",
-  },
-]
-const revisionColumns = [
-  {
-    key: "version",
-    header: "Version",
-    cell: (r: RevisionRow) => (
-      <span
-        className={cn(
-          "rounded-full px-1.5 py-0.5 font-mono text-2xs",
-          r.status === "Active"
-            ? "bg-primary/15 text-primary"
-            : "bg-muted text-muted-foreground"
-        )}
-      >
-        {r.version}
-      </span>
-    ),
-  },
-  {
-    key: "change",
-    header: "Change",
-    cell: (r: RevisionRow) => <span className="text-xs">{r.change}</span>,
-  },
-  {
-    key: "rollout",
-    header: "Rollout",
-    cell: (r: RevisionRow) => <span className="text-xs">{r.rollout}</span>,
-  },
-  {
-    key: "status",
-    header: "Status",
-    cell: (r: RevisionRow) => (
-      <span className="inline-flex items-center gap-2">
-        <StatusDot tone={r.statusTone} />
-        <span className="text-2xs text-muted-foreground">{r.status}</span>
-      </span>
-    ),
-  },
-  {
-    key: "deployed",
-    header: "Deployed",
-    align: "right" as const,
-    cell: (r: RevisionRow) => mono(r.deployed),
   },
 ]
