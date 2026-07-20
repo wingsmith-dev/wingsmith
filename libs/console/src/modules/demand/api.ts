@@ -19,6 +19,8 @@ import type {
   Workload,
   WorkloadCreateRequest,
   WorkloadPlacement,
+  WorkloadRevision,
+  WorkloadRevisionUpdate,
   WorkloadUpdateRequest,
 } from "./types"
 
@@ -238,6 +240,50 @@ export function updateWorkload(
 
 export function deleteWorkload(ref: string): Promise<void> {
   return api.delete<void>(`/workloads/${encodeURIComponent(ref)}`)
+}
+
+/**
+ * Every serving configuration this workload has held, newest first.
+ *
+ * There is no reapply endpoint beside this one and there does not need to be: each entry's
+ * `serving` is a patch body, so going back is `updateWorkload` carrying it.
+ */
+export function fetchWorkloadRevisions(
+  ref: string,
+  project?: string,
+  cursor?: string,
+  limit?: number
+): Promise<ListResponse<WorkloadRevision>> {
+  return api.list<WorkloadRevision>(
+    `/workloads/${encodeURIComponent(ref)}/revisions`,
+    { project, cursor, limit }
+  )
+}
+
+/** One revision, by `wkr_` id or by the number the history lists it under. */
+export function fetchWorkloadRevision(
+  ref: string,
+  revision: string,
+  project?: string
+): Promise<WorkloadRevision> {
+  return api.get<WorkloadRevision>(
+    `/workloads/${encodeURIComponent(ref)}/revisions/${encodeURIComponent(revision)}`,
+    { project }
+  )
+}
+
+/** Writes why a configuration was chosen. The only write a revision accepts. */
+export function annotateWorkloadRevision(
+  ref: string,
+  revision: string,
+  body: WorkloadRevisionUpdate,
+  project?: string
+): Promise<WorkloadRevision> {
+  return api.patch<WorkloadRevision>(
+    `/workloads/${encodeURIComponent(ref)}/revisions/${encodeURIComponent(revision)}`,
+    body,
+    { query: { project } }
+  )
 }
 
 export function fetchDeployments(

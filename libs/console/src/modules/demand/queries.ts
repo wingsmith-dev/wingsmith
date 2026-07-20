@@ -6,6 +6,7 @@ import {
 } from "@tanstack/react-query"
 import { useAllPages, useCursorList } from "@/lib/paginate"
 import {
+  annotateWorkloadRevision,
   createArtifact,
   createArtifactBaseline,
   createEndpoint,
@@ -25,6 +26,7 @@ import {
   fetchEndpoints,
   fetchWorkload,
   fetchWorkloadPlacement,
+  fetchWorkloadRevisions,
   fetchWorkloads,
   refreshArtifact,
   resolveArtifact,
@@ -52,6 +54,7 @@ import type {
   EndpointUpdateRequest,
   Workload,
   WorkloadCreateRequest,
+  WorkloadRevisionUpdate,
   WorkloadUpdateRequest,
 } from "./types"
 
@@ -375,6 +378,46 @@ export function useUpdateWorkload() {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ["workloads"] })
       client.invalidateQueries({ queryKey: ["deployments"] })
+    },
+  })
+}
+
+/**
+ * One workload's serving history, newest first.
+ *
+ * Not polled. Declared state that only this console's own writes move, and every one of those
+ * already invalidates `["workloads"]` — a timer here would re-fetch an append-only list that
+ * cannot have changed.
+ */
+export function useWorkloadRevisions(ref: string, project?: string) {
+  return useCursorList(["workloads", "revisions", ref, project], (cursor) =>
+    fetchWorkloadRevisions(ref, project, cursor)
+  )
+}
+
+/**
+ * Writes why a configuration was chosen, onto the revision holding it.
+ *
+ * Invalidates only the history: a note reaches no cluster, moves no digest and changes nothing
+ * about the workload itself.
+ */
+export function useAnnotateWorkloadRevision() {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: {
+      ref: string
+      revision: string
+      body: WorkloadRevisionUpdate
+      project?: string
+    }) =>
+      annotateWorkloadRevision(
+        vars.ref,
+        vars.revision,
+        vars.body,
+        vars.project
+      ),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ["workloads", "revisions"] })
     },
   })
 }

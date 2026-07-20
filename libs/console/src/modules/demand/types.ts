@@ -769,6 +769,53 @@ export type WorkloadServingUpdate = Partial<
   Omit<WorkloadServingRequest, "artifact">
 >
 
+/**
+ * `WorkloadRevisionSchema` — one serving configuration a workload has held.
+ *
+ * `serving` is a `WorkloadServingUpdate` and that is the whole point: a revision is stored as
+ * the body that restates it, so going back is `PATCH /v1/workloads/{ref}` carrying it, validated
+ * on the way in by the same checks as any hand-written patch. There is no rollback verb and
+ * nothing here needs one.
+ *
+ * `artifact` sits beside `serving` rather than inside it because the weights are not patchable —
+ * repointing a workload at other bytes is a different workload. A revision from before a weights
+ * swap is a record, not something to reapply blind.
+ *
+ * `number` counts from 1 within the workload and never rewinds: going back to revision 2 appends
+ * a new one carrying revision 2's body rather than deleting what came after.
+ */
+export interface WorkloadRevision {
+  id: string
+  number: number
+  serving_digest: string
+  artifact: string
+  reason: WorkloadRevisionReason
+  /** Why, in somebody's words. The only mutable thing about a revision. */
+  note: string | null
+  created_at: string
+  serving: WorkloadServingUpdate
+}
+
+/**
+ * Which write filed a revision.
+ *
+ * `imported` is the one that is not a write: the configuration a workload older than its own
+ * history was already running, recorded from the pre-image of its first serving edit.
+ */
+export type WorkloadRevisionReason =
+  "created" | "updated" | "reshaped" | "promoted" | "imported" | (string & {})
+
+/**
+ * The only write a revision accepts.
+ *
+ * Everything else on it records what ran, and editing that would be editing history. The note is
+ * an account of the record rather than part of it, and an account is usually written after the
+ * run that explains it. `null` clears one.
+ */
+export interface WorkloadRevisionUpdate {
+  note: string | null
+}
+
 /** `Workload.kind` — one scheduling supertype across serving and batch. */
 export type WorkloadKind = "service" | "task" | "gang" | (string & {})
 
@@ -838,6 +885,16 @@ export interface WorkloadDeployment {
   placed_at: string | null
   replicas: DeploymentReplicaRollup
   status: DeploymentStatus | null
+  /**
+   * Ready replicas in this cluster per serving configuration they actually came up on.
+   *
+   * The observed answer to "which version is live", and a map because there is often more
+   * than one: two entries is a rollout in progress, and an entry that is not the workload's
+   * `serving_digest` is a cluster still running what it was asked for last time. Empty is "no
+   * ready replica has reported one" — a cluster whose agent has not resynced, or an operator
+   * too old to stamp the annotation — and never "none running".
+   */
+  live_digests: Record<string, number>
 }
 
 /**
@@ -974,6 +1031,8 @@ export interface WorkloadCreateRequest {
   adapter_artifacts?: string[]
   overrides?: Record<string, unknown>
   labels?: Record<string, string>
+  /** Why this configuration, landing on the revision this create files. */
+  note?: string | null
 }
 
 /**
@@ -997,6 +1056,13 @@ export interface WorkloadUpdateRequest {
   strategy?: WorkloadStrategy
   cluster_floors?: Record<string, number>
   max_clusters?: number | null
+  /**
+   * Why this change, landing on the revision the patch files.
+   *
+   * A patch that files none — one carrying only a note, or one arriving at the configuration
+   * already in force — puts it on the revision in force instead, so it is never dropped.
+   */
+  note?: string | null
 }
 
 /**
