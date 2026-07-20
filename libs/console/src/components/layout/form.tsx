@@ -172,6 +172,48 @@ export function TextField({
   )
 }
 
+/**
+ * Prose, where `TextField` is an identifier.
+ *
+ * Not mono by default and not one line: the fields that use this are somebody writing a sentence
+ * — why a parameter moved, what a run showed — and a monospace single-line input tells them to
+ * write a token instead.
+ */
+export function TextareaField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  hint,
+  rows = 3,
+  className,
+  disabled,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  hint?: string
+  rows?: number
+  className?: string
+  disabled?: boolean
+}) {
+  const id = useId()
+  return (
+    <Row label={label} hint={hint} htmlFor={id} className={className}>
+      <Textarea
+        id={id}
+        rows={rows}
+        value={value}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="text-xs"
+      />
+    </Row>
+  )
+}
+
 export function NumberField({
   label,
   value,
