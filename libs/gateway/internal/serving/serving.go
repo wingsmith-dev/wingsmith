@@ -259,6 +259,29 @@ func withRouting(resolver Resolver) http.Handler {
 		}
 		body = conformed
 
+		// The media identity the serving runtime drops on the way to a
+		// disaggregated decode worker, put back as the one field that survives
+		// the handoff into its prefix-cache block hash. See `mediaIdentity`.
+		//
+		// After the endpoint's terms rather than before them, so a rule that
+		// writes a media part is inside the identity, and before `Pick` because
+		// the salt is a property of the request and not of the cluster that
+		// takes it — the same body has to hash the same way wherever it lands.
+		if hasMediaPart(body) {
+			salted, written, err := withMediaCacheSalt(body)
+			if err != nil {
+				MarkOutcome(r, metrics.OutcomeInternalError)
+				slog.Error("gateway: could not derive the media cache salt",
+					"model", envelope.Model, "err", err)
+				writeError(w, http.StatusInternalServerError, "routing_error", "Unable to route this request.")
+				return
+			}
+			if written {
+				slog.Debug("gateway: wrote the media cache salt", "model", envelope.Model)
+			}
+			body = salted
+		}
+
 		upstream, err := route.Pick()
 		if err != nil {
 			MarkOutcome(r, metrics.OutcomeNoUpstream)
