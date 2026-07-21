@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import AuthManager
 from app.core.ids import TENANT
 from app.core.ids import TENANT_TOKEN
+from app.core.ids import TENANT_API_KEY
 from app.core.ids import new_uid
 from app.db.models import Tenant
 from app.db.models import TenantToken
+from app.db.models import TenantAPIKey
 from app.core.schemas import ListResponse
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
@@ -25,12 +27,27 @@ from .schemas import TenantTokenSchema
 from .schemas import TenantCreateRequest
 from .schemas import TenantUpdateRequest
 from .schemas import TenantTokenCreateRequest
+from .schemas import TenantAPIKeySchema
+from .schemas import TenantAPIKeyCreateRequest
 from .repository import TenantRepository
 
 
 def _revision(tenant: Tenant) -> str:
     stamp = tenant.updated_at or tenant.created_at
     return str(int(stamp.timestamp() * 1_000_000))
+
+
+INGRESS_VALUES = ("internal", "public")
+AUTH_VALUES = ("none", "api_key")
+
+
+def _check_ingress_auth(ingress: str, auth: str) -> None:
+    """Field-level shape only. Whether `public` + `none` makes sense is the
+    tenant's call, not this service's — see docs/plans/17 §"The model"."""
+    if ingress not in INGRESS_VALUES:
+        raise Invalid(f"ingress must be one of {INGRESS_VALUES}, got {ingress!r}")
+    if auth not in AUTH_VALUES:
+        raise Invalid(f"auth must be one of {AUTH_VALUES}, got {auth!r}")
 
 
 class TenantService:
@@ -44,6 +61,9 @@ class TenantService:
             slug=tenant.slug,
             name=tenant.name,
             enabled=tenant.enabled,
+            ingress=tenant.ingress,
+            auth=tenant.auth,
+            host=tenant.host,
             project_count=project_count,
             created_at=tenant.created_at,
             updated_at=tenant.updated_at,
@@ -85,7 +105,16 @@ class TenantService:
             raise Invalid("slug is required")
         if not data.name:
             raise Invalid("name is required")
-        tenant = Tenant(uid=new_uid(TENANT), slug=data.slug, name=data.name, enabled=data.enabled)
+        _check_ingress_auth(data.ingress, data.auth)
+        tenant = Tenant(
+            uid=new_uid(TENANT),
+            slug=data.slug,
+            name=data.name,
+            enabled=data.enabled,
+            ingress=data.ingress,
+            auth=data.auth,
+            host=data.host,
+        )
         try:
             await self.repo.add(tenant)
             await self.db.commit()
@@ -100,10 +129,16 @@ class TenantService:
         if if_match is not None and if_match != _revision(tenant):
             raise Conflict("tenant changed since it was read", {"revision": _revision(tenant)})
 
-        for field, value in data.to_dict(exclude_unset=True).items():
+        fields = data.to_dict(exclude_unset=True)
+        _check_ingress_auth(fields.get("ingress", tenant.ingress), fields.get("auth", tenant.auth))
+        for field, value in fields.items():
             setattr(tenant, field, value)
 
-        await self.db.flush()
+        try:
+            await self.db.flush()
+        except IntegrityError as exc:
+            await self.db.rollback()
+            raise Conflict(f"host {fields.get('host')!r} is already in use") from exc
         await self.db.commit()
         return await self.get(tenant.uid)
 
@@ -190,4 +225,62 @@ class TenantService:
             raise NotFound(f"no token {token_ref!r} on tenant {ref!r}")
         if token.revoked_at is None:
             token.revoked_at = datetime.now(tz=timezone.utc)
+            await self.db.commit()
+
+    def _key(self, key: TenantAPIKey, slug: str, plaintext: str | None = None) -> TenantAPIKeySchema:
+        return TenantAPIKeySchema(
+            id=key.uid,
+            tenant=slug,
+            name=key.name,
+            key=plaintext,
+            last_used_at=key.last_used_at,
+            revoked_at=key.revoked_at,
+            created_at=key.created_at,
+        )
+
+    async def list_keys(self, ref: str) -> "list[TenantAPIKeySchema]":
+        """Every key ever minted for this tenant, revoked ones included — same
+        reasoning as `list_tokens`."""
+        row = await self._one(ref)
+        tenant: Tenant = row[0]
+        result = await self.db.execute(
+            select(TenantAPIKey).where(TenantAPIKey.tenant_id == tenant.id).order_by(TenantAPIKey.seq.asc())
+        )
+        return [self._key(key, tenant.slug) for key in result.scalars().all()]
+
+    async def mint_key(self, ref: str, data: TenantAPIKeyCreateRequest) -> TenantAPIKeySchema:
+        """Mints a gateway inference key for one tenant and returns it once.
+
+        Operator-only, same as `mint_token` — a tenant does not mint its own
+        inference credentials through this route, an operator hands them out.
+        """
+        row = await self._one(ref)
+        tenant: Tenant = row[0]
+        plaintext, key_hash = AuthManager.mint_tenant_api_key()
+        key = TenantAPIKey(
+            uid=new_uid(TENANT_API_KEY),
+            tenant_id=tenant.id,
+            key_hash=key_hash,
+            name=data.name or "default",
+        )
+        self.db.add(key)
+        await self.db.flush()
+        await self.db.commit()
+        return self._key(key, tenant.slug, plaintext=plaintext)
+
+    async def revoke_key(self, ref: str, key_ref: str) -> None:
+        """Revokes one key. Idempotent on an already-revoked one."""
+        row = await self._one(ref)
+        tenant: Tenant = row[0]
+        result = await self.db.execute(
+            select(TenantAPIKey).where(
+                TenantAPIKey.tenant_id == tenant.id,
+                TenantAPIKey.uid == key_ref,
+            )
+        )
+        key = result.scalars().first()
+        if key is None:
+            raise NotFound(f"no key {key_ref!r} on tenant {ref!r}")
+        if key.revoked_at is None:
+            key.revoked_at = datetime.now(tz=timezone.utc)
             await self.db.commit()

@@ -20,6 +20,7 @@ from app.config import settings
 from app.core.exceptions import NotAuthorized
 
 from .const import TENANT_PREFIX
+from .const import TENANT_API_KEY_PREFIX
 from .const import REFRESH_PREFIX
 from .const import SESSION_PREFIX
 from .const import ENROLMENT_PREFIX
@@ -95,6 +96,22 @@ class AuthManager:
     def hash_tenant_token(token: str) -> str:
         """The sha256 hex digest stored for, and looked up by, a tenant token."""
         return hashlib.sha256(token.encode()).hexdigest()
+
+    @staticmethod
+    def mint_tenant_api_key() -> tuple[str, str]:
+        """Mints a gateway inference key: `(plaintext, sha256_hex)`.
+
+        Same shape and reasoning as `mint_tenant_token` — high-entropy,
+        fast-hashed, shown once — under `TENANT_API_KEY_PREFIX` so the two
+        credential kinds can never resolve against the wrong table.
+        """
+        key = f"{TENANT_API_KEY_PREFIX}.{secrets.token_urlsafe(32)}"
+        return key, AuthManager.hash_tenant_api_key(key)
+
+    @staticmethod
+    def hash_tenant_api_key(key: str) -> str:
+        """The sha256 hex digest stored for, and looked up by, a tenant API key."""
+        return hashlib.sha256(key.encode()).hexdigest()
 
     @staticmethod
     def looks_like_tenant(token: str | None) -> bool:

@@ -17,6 +17,9 @@ class TenantSchema(Struct):
     slug: str
     name: str
     enabled: bool
+    ingress: str
+    auth: str
+    host: str | None
     project_count: int
     created_at: dt.datetime
     updated_at: dt.datetime | None
@@ -27,6 +30,9 @@ class TenantCreateRequest(Struct):
     slug: str
     name: str
     enabled: bool = True
+    ingress: str = "internal"
+    auth: str = "none"
+    host: str | None = None
 
 
 class TenantUpdateRequest(Struct):
@@ -39,6 +45,32 @@ class TenantUpdateRequest(Struct):
 
     name: str | UnsetType = UNSET
     enabled: bool | UnsetType = UNSET
+    ingress: str | UnsetType = UNSET
+    auth: str | UnsetType = UNSET
+    host: str | None | UnsetType = UNSET
+
+
+class TenantAPIKeySchema(Struct):
+    """An inference credential for one tenant, as it reads back after minting.
+
+    `key` carries the plaintext exactly once, on the response to the mint, and
+    is null on every later read — same shape as `TenantTokenSchema.token`, and
+    for the same reason: only the sha256 is ever stored.
+    """
+
+    id: str
+    tenant: str
+    name: str
+    key: str | None
+    last_used_at: dt.datetime | None
+    revoked_at: dt.datetime | None
+    created_at: dt.datetime
+
+
+class TenantAPIKeyCreateRequest(Struct):
+    """`name` is for the human who has to decide later whether to revoke it."""
+
+    name: str = "default"
 
 
 class TenantTokenSchema(Struct):

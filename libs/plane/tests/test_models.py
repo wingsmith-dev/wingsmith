@@ -36,6 +36,7 @@ DEMAND = {
 BINDING = {
     "bind_tenant",
     "bind_tenant_token",
+    "bind_tenant_api_key",
     "bind_project",
     "bind_quota",
     "bind_serving_quota",

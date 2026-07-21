@@ -49,7 +49,7 @@ def test_the_read_shape_says_how_much_a_delete_would_take():
 
 
 def test_slug_is_identity_and_so_is_not_patchable():
-    assert set(TenantUpdateRequest.__struct_fields__) == {"name", "enabled"}
+    assert set(TenantUpdateRequest.__struct_fields__) == {"name", "enabled", "ingress", "auth", "host"}
 
 
 def test_update_request_leaves_absent_fields_unset():

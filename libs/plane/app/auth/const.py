@@ -26,6 +26,11 @@ TENANT_PREFIX = "hgrt1"
 resolved against different tables and grant unrelated things, so they must never be
 told apart by a failed lookup."""
 
+TENANT_API_KEY_PREFIX = "hgrk1"
+"""Version tag on tenant API keys. A gateway inference credential, distinct from
+`TENANT_PREFIX`: the console token signs in here, the API key calls the gateway,
+and the two must never resolve against each other's table."""
+
 REFRESH_PREFIX = "hgrr1"
 """Version tag on refresh tokens, so a session token and a refresh token cannot
 be confused."""

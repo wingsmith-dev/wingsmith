@@ -24,6 +24,8 @@ from .schemas import TenantTokenSchema
 from .schemas import TenantCreateRequest
 from .schemas import TenantUpdateRequest
 from .schemas import TenantTokenCreateRequest
+from .schemas import TenantAPIKeySchema
+from .schemas import TenantAPIKeyCreateRequest
 from .services import TenantService
 
 
@@ -87,3 +89,21 @@ class TenantRoutes(Controller):
     @delete("/{ref:str}/tokens/{token_ref:str}", status_code=204)
     async def revoke_token(self, context: RequestContext, svc: TenantService, ref: str, token_ref: str) -> None:
         await svc.revoke_token(ref, token_ref)
+
+    @get("/{ref:str}/keys")
+    async def list_keys(
+        self, context: RequestContext, svc: TenantService, ref: str
+    ) -> Response[list[TenantAPIKeySchema]]:
+        """The tenant's gateway inference keys. Never the plaintext — only the mint has that."""
+        return Response(await svc.list_keys(ref))
+
+    @post("/{ref:str}/keys")
+    async def mint_key(
+        self, context: RequestContext, svc: TenantService, ref: str, data: TenantAPIKeyCreateRequest
+    ) -> Response[TenantAPIKeySchema]:
+        """Mints a gateway inference key and returns its plaintext once. It cannot be read again."""
+        return Response(await svc.mint_key(ref, data), status_code=201)
+
+    @delete("/{ref:str}/keys/{key_ref:str}", status_code=204)
+    async def revoke_key(self, context: RequestContext, svc: TenantService, ref: str, key_ref: str) -> None:
+        await svc.revoke_key(ref, key_ref)

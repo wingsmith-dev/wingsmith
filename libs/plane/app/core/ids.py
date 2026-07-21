@@ -32,6 +32,7 @@ ARTIFACT_BASELINE = "abl_"
 ALERT_THRESHOLD = "alt_"
 SERVING_QUOTA = "sqt_"
 TENANT_TOKEN = "tkn_"
+TENANT_API_KEY = "tak_"
 
 PREFIXES = frozenset(
     {
@@ -64,6 +65,7 @@ PREFIXES = frozenset(
         ALERT_THRESHOLD,
         SERVING_QUOTA,
         TENANT_TOKEN,
+        TENANT_API_KEY,
     }
 )
 

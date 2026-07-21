@@ -1361,17 +1361,32 @@ class WarmSet(BaseMixin):
 
 
 class Tenant(BaseMixin):
-    """The billing and isolation root. Projects hang off it; quota attaches below it."""
+    """The billing and isolation root. Projects hang off it; quota attaches below it.
+
+    `ingress` and `auth` are how the gateway decides who a caller is and whether
+    to believe them (docs/plans/17). `ingress` says which listener the tenant's
+    traffic arrives on; `auth` says whether the gateway checks a key on it.
+    `host` is the name that resolves to this tenant, checked against the
+    request's `Host` header — null until a tenant is given one.
+    """
 
     __tablename__ = "bind_tenant"
+    __table_args__ = (
+        CheckConstraint("ingress IN ('internal', 'public')", name="ck_bind_tenant_ingress"),
+        CheckConstraint("auth IN ('none', 'api_key')", name="ck_bind_tenant_auth"),
+    )
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
     slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    ingress: Mapped[str] = mapped_column(String(16), nullable=False, server_default="internal")
+    auth: Mapped[str] = mapped_column(String(16), nullable=False, server_default="none")
+    host: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
 
     projects: Mapped[list[Project]] = relationship("Project", back_populates="tenant", lazy="noload")
+    api_keys: Mapped[list["TenantAPIKey"]] = relationship("TenantAPIKey", back_populates="tenant", lazy="noload")
 
 
 class TenantToken(BaseMixin):
@@ -1409,6 +1424,35 @@ class TenantToken(BaseMixin):
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     tenant: Mapped[Tenant] = relationship("Tenant", lazy="noload")
+
+
+class TenantAPIKey(BaseMixin):
+    """An inference credential, checked by the gateway on a tenant's public listener.
+
+    This is the credential `TenantToken` says it must not become: `TenantToken`
+    signs in to the console, this one calls the gateway. Keeping them as separate
+    tables means revoking a console session can never touch inference traffic and
+    the other way round.
+
+    Only the sha256 of the plaintext is stored, for the same reason as
+    `TenantToken.token_hash`. One tenant, many keys — one per caller, so revoking
+    Globex's caller X does not revoke caller Y.
+    """
+
+    __tablename__ = "bind_tenant_api_key"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    tenant_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("bind_tenant.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    """sha256 of the plaintext, which is shown once at mint and is not recoverable."""
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    last_used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    tenant: Mapped[Tenant] = relationship("Tenant", back_populates="api_keys", lazy="noload")
 
 
 class Project(BaseMixin):
