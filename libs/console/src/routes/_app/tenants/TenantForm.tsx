@@ -1,19 +1,30 @@
 import {
   FormDialog,
   FormGrid,
+  SelectField,
   SwitchField,
   TextField,
 } from "@/components/layout/form"
 import { formatError } from "@/lib/format"
 import { useCreateTenant, useUpdateTenant } from "@/modules/binding/queries"
-import type { Tenant } from "@/modules/binding/types"
+import type { Tenant, TenantAuth, TenantIngress } from "@/modules/binding/types"
 import { useState } from "react"
 import { toast } from "sonner"
 
+const INGRESS_OPTIONS: { value: TenantIngress; label: string }[] = [
+  { value: "internal", label: "internal — reached only from inside the fleet" },
+  { value: "public", label: "public — reached at the tenant's own host" },
+]
+
+const AUTH_OPTIONS: { value: TenantAuth; label: string }[] = [
+  { value: "none", label: "none — the caller is trusted by listener alone" },
+  { value: "api_key", label: "api_key — the gateway checks a key" },
+]
+
 /**
- * A tenant is deliberately three fields. It is the root projects hang off, not a
- * place to keep billing accounts or contacts — those are their own objects when
- * they exist, rather than columns smuggled onto this one.
+ * A tenant carries the billing and isolation root, plus how the gateway is to
+ * trust it (docs/plans/17): which listener it arrives on, whether a key is
+ * checked, and the host that names it.
  */
 export function TenantForm({
   open,
@@ -31,6 +42,11 @@ export function TenantForm({
   const [slug, setSlug] = useState(tenant?.slug ?? "")
   const [name, setName] = useState(tenant?.name ?? "")
   const [enabled, setEnabled] = useState(tenant?.enabled ?? true)
+  const [ingress, setIngress] = useState<TenantIngress>(
+    tenant?.ingress ?? "internal"
+  )
+  const [auth, setAuth] = useState<TenantAuth>(tenant?.auth ?? "none")
+  const [host, setHost] = useState(tenant?.host ?? "")
 
   const pending = create.isPending || update.isPending
   const error = create.error ?? update.error
@@ -41,11 +57,12 @@ export function TenantForm({
   }
 
   const submit = () => {
+    const hostValue = host.trim() || null
     if (editing) {
       update.mutate(
         {
           ref: tenant.id,
-          body: { name, enabled },
+          body: { name, enabled, ingress, auth, host: hostValue },
           revision: tenant.revision,
         },
         {
@@ -57,7 +74,7 @@ export function TenantForm({
       return
     }
     create.mutate(
-      { slug, name, enabled },
+      { slug, name, enabled, ingress, auth, host: hostValue },
       {
         onSuccess: () => done("created"),
         onError: (e) => toast.error(formatError(e, "Could not create tenant")),
@@ -95,6 +112,31 @@ export function TenantForm({
         hint="Disabling one blocks every project beneath it from scheduling."
         checked={enabled}
         onChange={setEnabled}
+      />
+
+      <FormGrid>
+        <SelectField
+          label="Ingress"
+          value={ingress}
+          onChange={(v) => setIngress(v as TenantIngress)}
+          options={INGRESS_OPTIONS}
+          hint="Which gateway listener this tenant's traffic arrives on."
+        />
+        <SelectField
+          label="Auth"
+          value={auth}
+          onChange={(v) => setAuth(v as TenantAuth)}
+          options={AUTH_OPTIONS}
+          hint="`public` with `none` is unauthenticated inference for anyone who finds the host."
+        />
+      </FormGrid>
+
+      <TextField
+        label="Host"
+        value={host}
+        onChange={setHost}
+        placeholder="globex.hangar.dev"
+        hint="The name that resolves to this tenant, matched against the request's Host header."
       />
     </FormDialog>
   )

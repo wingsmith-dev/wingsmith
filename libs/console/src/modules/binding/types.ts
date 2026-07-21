@@ -8,11 +8,21 @@
  * `project_count` is on the read shape because the only destructive question
  * anyone asks of a tenant is what deleting it would take with it.
  */
+export type TenantIngress = "internal" | "public"
+
+export type TenantAuth = "none" | "api_key"
+
 export interface Tenant {
   id: string
   slug: string
   name: string
   enabled: boolean
+  /** Which listener this tenant's traffic arrives on (docs/plans/17). */
+  ingress: TenantIngress
+  /** Whether the gateway checks a key on this tenant's requests. */
+  auth: TenantAuth
+  /** The name that resolves to this tenant, checked against `Host`. Null until set. */
+  host: string | null
   project_count: number
   created_at: string
   updated_at: string | null
@@ -23,12 +33,38 @@ export interface TenantCreateRequest {
   slug: string
   name: string
   enabled?: boolean
+  ingress?: TenantIngress
+  auth?: TenantAuth
+  host?: string | null
 }
 
 /** The slug namespaces every project beneath it, so it is not patchable. */
 export interface TenantUpdateRequest {
   name?: string
   enabled?: boolean
+  ingress?: TenantIngress
+  auth?: TenantAuth
+  host?: string | null
+}
+
+/**
+ * `TenantAPIKeySchema` — a gateway inference credential, distinct from the
+ * console sign-in token: this one is what a caller on the tenant's public
+ * listener presents, not what signs in here.
+ */
+export interface TenantAPIKey {
+  id: string
+  tenant: string
+  name: string
+  /** Present only on the mint response — shown once, never returned by a list. */
+  key: string | null
+  last_used_at: string | null
+  revoked_at: string | null
+  created_at: string
+}
+
+export interface TenantAPIKeyCreateRequest {
+  name?: string
 }
 
 export interface ProjectTenant {

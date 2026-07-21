@@ -32,12 +32,14 @@ import {
   priorityClasses,
   projects,
   tenants,
+  tenantKeys,
   quotas,
   workloads,
 } from "./data"
 import { revision, uid } from "./ids"
 import { collection } from "./registry"
 import type { Artifact, Deployment, Workload } from "@/modules/demand/types"
+import type { Tenant, TenantAPIKey } from "@/modules/binding/types"
 import {
   emptyCapabilities,
   emptyServing,
@@ -728,6 +730,55 @@ collection({
   searchable: (t) => [t.slug, t.name],
   filter: (t, q) => bool(q.bool("enabled"), t.enabled),
 })
+
+function tenantByRef(ref: string): Tenant {
+  const found = tenants.find((t) => t.id === ref || t.slug === ref)
+  if (!found) throw new NotFoundError(`no tenant '${ref}'`)
+  return found
+}
+
+registerFixtures([
+  {
+    method: "GET",
+    path: "/tenants/:ref/keys",
+    handler: ({ params }: FixtureContext) => {
+      const tenant = tenantByRef(params.ref)
+      return tenantKeys.filter((k) => k.tenant === tenant.slug)
+    },
+  },
+  {
+    method: "POST",
+    path: "/tenants/:ref/keys",
+    handler: ({ params, body }: FixtureContext) => {
+      const tenant = tenantByRef(params.ref)
+      const name = (body as { name?: string })?.name || "default"
+      const key: TenantAPIKey = {
+        id: uid("tak_"),
+        tenant: tenant.slug,
+        name,
+        key: `hgrk1.${uid("")}`,
+        last_used_at: null,
+        revoked_at: null,
+        created_at: new Date().toISOString(),
+      }
+      tenantKeys.push(key)
+      return key
+    },
+  },
+  {
+    method: "DELETE",
+    path: "/tenants/:ref/keys/:keyRef",
+    handler: ({ params }: FixtureContext) => {
+      const tenant = tenantByRef(params.ref)
+      const found = tenantKeys.find(
+        (k) => k.tenant === tenant.slug && k.id === params.keyRef
+      )
+      if (!found) throw new NotFoundError(`no key '${params.keyRef}'`)
+      if (!found.revoked_at) found.revoked_at = new Date().toISOString()
+      return null
+    },
+  },
+])
 
 collection({
   path: "/projects",

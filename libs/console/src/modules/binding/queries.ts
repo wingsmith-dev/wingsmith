@@ -21,7 +21,10 @@ import {
   fetchProject,
   fetchProjects,
   fetchTenant,
+  fetchTenantKeys,
   fetchTenants,
+  mintTenantKey,
+  revokeTenantKey,
   fetchQuota,
   fetchQuotas,
   fetchResolvedServingQuotas,
@@ -52,6 +55,7 @@ import type {
   QuotaUpdateRequest,
   ServingQuotaCreateRequest,
   ServingQuotaUpdateRequest,
+  TenantAPIKeyCreateRequest,
   TenantCreateRequest,
   TenantUpdateRequest,
 } from "./types"
@@ -110,6 +114,33 @@ export function useDeleteTenant() {
       client.invalidateQueries({ queryKey: ["tenants"] })
       client.invalidateQueries({ queryKey: ["projects"] })
     },
+  })
+}
+
+export function useTenantKeys(ref: string) {
+  return useQuery({
+    queryKey: ["tenants", "keys", ref],
+    queryFn: () => fetchTenantKeys(ref),
+    enabled: !!ref,
+  })
+}
+
+/** The mint response carries the plaintext once; nothing later ever will. */
+export function useMintTenantKey(ref: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (body: TenantAPIKeyCreateRequest) => mintTenantKey(ref, body),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: ["tenants", "keys", ref] }),
+  })
+}
+
+export function useRevokeTenantKey(ref: string) {
+  const client = useQueryClient()
+  return useMutation({
+    mutationFn: (keyRef: string) => revokeTenantKey(ref, keyRef),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: ["tenants", "keys", ref] }),
   })
 }
 

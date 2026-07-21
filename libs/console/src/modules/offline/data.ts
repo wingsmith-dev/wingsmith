@@ -18,6 +18,7 @@ import type {
   Project,
   Quota,
   Tenant,
+  TenantAPIKey,
 } from "@/modules/binding/types"
 import type {
   Allocation,
@@ -701,12 +702,17 @@ const tenant = {
 export const tenants: Tenant[] = [
   {
     ...tenant,
+    ingress: "internal",
+    auth: "none",
+    host: null,
     project_count: 2,
     created_at: CREATED,
     updated_at: null,
     revision: REV,
   },
 ]
+
+export const tenantKeys: TenantAPIKey[] = []
 
 export const priorityClasses: PriorityClass[] = [
   {

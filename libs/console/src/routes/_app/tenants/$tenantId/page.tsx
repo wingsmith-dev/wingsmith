@@ -17,6 +17,7 @@ import { useProjects, useTenant } from "@/modules/binding/queries"
 import type { Project, Tenant } from "@/modules/binding/types"
 
 import { TenantForm } from "../TenantForm"
+import { TenantKeys } from "./Keys"
 import { TenantServed } from "./Served"
 
 const PROJECT_COLUMNS: Column<Project>[] = [
@@ -85,6 +86,17 @@ function Identity({ tenant }: { tenant: Tenant }) {
           <StatusLabel tone={tenant.enabled ? "ok" : "danger"}>
             {tenant.enabled ? "yes" : "no"}
           </StatusLabel>
+        </Field>
+        <Field label="Ingress">
+          <span className="font-mono text-xs">{tenant.ingress}</span>
+        </Field>
+        <Field label="Auth">
+          <span className="font-mono text-xs">{tenant.auth}</span>
+        </Field>
+        <Field label="Host">
+          <span className="font-mono text-xs">
+            <Dash>{tenant.host}</Dash>
+          </span>
         </Field>
         <Field label="Projects">{tenant.project_count}</Field>
         <Field label="Created">{formatAbsolute(tenant.created_at)}</Field>
@@ -158,6 +170,8 @@ export function TenantDetailPage() {
         {tenant && <Identity tenant={tenant} />}
 
         {tenant && <TenantServed tenant={tenant.id} />}
+
+        {tenant && <TenantKeys tenant={tenant.id} />}
 
         <div>
           <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">

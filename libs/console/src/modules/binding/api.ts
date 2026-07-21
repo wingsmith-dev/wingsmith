@@ -17,6 +17,8 @@ import type {
   ServingQuotaCreateRequest,
   ServingQuotaUpdateRequest,
   Tenant,
+  TenantAPIKey,
+  TenantAPIKeyCreateRequest,
   TenantCreateRequest,
   TenantUpdateRequest,
 } from "./types"
@@ -91,6 +93,27 @@ export function updateTenant(
 
 export function deleteTenant(ref: string): Promise<void> {
   return api.delete<void>(`/tenants/${encodeURIComponent(ref)}`)
+}
+
+export function fetchTenantKeys(ref: string): Promise<TenantAPIKey[]> {
+  return api.get<TenantAPIKey[]>(`/tenants/${encodeURIComponent(ref)}/keys`)
+}
+
+/** Returns the plaintext once, in `key`. It cannot be read again. */
+export function mintTenantKey(
+  ref: string,
+  body: TenantAPIKeyCreateRequest
+): Promise<TenantAPIKey> {
+  return api.post<TenantAPIKey>(
+    `/tenants/${encodeURIComponent(ref)}/keys`,
+    body
+  )
+}
+
+export function revokeTenantKey(ref: string, keyRef: string): Promise<void> {
+  return api.delete<void>(
+    `/tenants/${encodeURIComponent(ref)}/keys/${encodeURIComponent(keyRef)}`
+  )
 }
 
 export function fetchProjects(
