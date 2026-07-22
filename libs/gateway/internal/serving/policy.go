@@ -83,6 +83,87 @@ var diagnoses = map[string]func(map[string]json.RawMessage) (code string, messag
 	// does: "this model does not accept video" is the wrong sentence to hand
 	// somebody whose video is fine and whose base64 lost its last block.
 	"messages.media": undecodableMessageMedia,
+	// Named for the key it constrains and the thing that decides which value is
+	// pinned, the way `tool_choice.named_while_thinking` is. It answers in its
+	// own words because the accepted value is not a constant: a generic "the
+	// value for 'temperature' is not accepted" would leave a caller who sent
+	// 0.6 with thinking on unable to tell that 0.6 is the *only* value accepted
+	// one line away, with thinking off.
+	"temperature.not_pinned_for_mode": temperatureOffProviderPin,
+}
+
+// temperaturePins are the only temperature the provider accepts, per thinking mode.
+//
+// Measured against api.moonshot.ai, model kimi-k3, on 2026-09-11. The matrix is
+// two cells wide and every other value in it is a 400:
+//
+//	temperature   thinking on   thinking off
+//	1.0           200           400
+//	0.6           400           200
+//	0.0           400           400
+//
+// Which is a stricter rule than an `enum` on the key can express, and stricter
+// than the vendor verifier's own table believes. `IMMUTABLE_PARAMS` asserts 0.6
+// and 0.0 are both accepted with thinking on; the provider those tests describe
+// refuses both. That contradiction is the whole reason this is a term an
+// endpoint opts into rather than behaviour compiled in: one document asks for
+// the table, the other asks for the provider, and which one an endpoint is sold
+// against is a commercial decision.
+//
+// Thinking-off is the half nobody had looked at. The report that prompted this
+// said "thinking-off is fine on both", which is true of 0.6 and of nothing
+// else — 0.0 and 1.0 are refused there too, and are the cells a caller
+// switching thinking off at runtime walks into first.
+var temperaturePins = map[bool]float64{true: 1, false: 0.6}
+
+// temperatureOffProviderPin refuses a temperature the provider would refuse, in
+// the mode this request is actually in.
+//
+// An absent `temperature` is never a violation, here as everywhere else in this
+// file: the provider pins the value a caller sends and does not demand the
+// field. A present-but-unreadable one is left to the upstream for the same
+// reason `thinkingEnabled` leaves a malformed `thinking` alone — it is already
+// broken, and replacing the engine's reason with ours makes it harder to fix.
+//
+// `null` counts as unreadable and not as zero. Decoding it into a float64
+// leaves the zero value behind and reports no error, which would refuse
+// `temperature: null` as though the caller had asked for 0 — a request the
+// provider serves, since a null field is an absent one on this wire.
+//
+// A malformed `thinking` makes this rule abstain outright rather than fall back
+// to a mode. `thinkingEnabled` answers false for one, which is right for a
+// refusal that only fires while thinking is on and wrong here: the mode is what
+// *chooses* the pinned value, so reading it as "off" would refuse
+// `temperature: 1` — correct in the mode the request is probably in — on the
+// strength of a field nobody could parse.
+func temperatureOffProviderPin(fields map[string]json.RawMessage) (string, string, bool) {
+	raw, sent := fields["temperature"]
+	if !sent {
+		return "", "", false
+	}
+	var value *float64
+	if err := json.Unmarshal(raw, &value); err != nil || value == nil {
+		return "", "", false
+	}
+	if raw, present := fields["thinking"]; present {
+		if _, readable := objectField(raw, "type"); !readable {
+			return "", "", false
+		}
+	}
+	thinking := thinkingEnabled(fields)
+	pinned := temperaturePins[thinking]
+	if *value == pinned {
+		return "", "", false
+	}
+	mode := "disabled"
+	if thinking {
+		mode = "enabled"
+	}
+	return "invalid_parameter",
+		fmt.Sprintf(
+			"The only accepted value for 'temperature' is %v while thinking is %s.",
+			pinned, mode,
+		), true
 }
 
 // isNamedFunctionChoice reports the `{"type":"function","function":{...}}` form.
