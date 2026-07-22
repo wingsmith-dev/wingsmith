@@ -181,6 +181,8 @@ not created. Writing to an observed resource is a category error and returns `40
 | `/v1/discovered` | observed, read-only, plus the decision verbs — see below |
 | `/v1/replicas`, `/v1/allocations` | observed, read-only |
 | `/v1/tenants`, `/v1/projects`, `/v1/quotas`, `/v1/priority-classes`, `/v1/policies` | declared |
+| `/v1/tenants/{ref}/tokens`, `/v1/tenants/{ref}/keys` | declared credential sub-resources — mint, list, revoke |
+| `/v1/gateway/tenants` | read-only, unpaginated, belongs to no object — see below |
 | `/v1/components` | declared version, observed rollout |
 | `/v1/placement` | one dry-run verb, writes nothing — see below |
 | `/v1/operations` | see §7 |
@@ -248,6 +250,20 @@ gateway rewrites the request's `model` to this before forwarding, so the public 
 equal the served one. It rides the upstream rather than the endpoint because one endpoint can front
 two clusters running different serving configurations, and there is no single answer to put one
 level up.
+
+**Each resolved endpoint also carries `tenant_id`, the endpoint's project's tenant** — what lets the
+gateway answer only for the tenant a request belongs to (docs/plans/17), without a second lookup per
+request. There is exactly one tenant per endpoint; this is not a cross-tenant endpoint's table. The
+project's own stamp feeds the table's revision alongside the endpoint's, so a project's tenant
+reassignment is never silently missed by a poller holding a `304`.
+
+**`GET /v1/gateway/tenants` is the gateway's own feed, separate from `/v1/tenants`.** It answers
+host→tenant and hash→key in one unpaginated, `ETag`ged read — the same shape as
+`/v1/endpoints/resolved`, and polled on the same timer. It exists as its own surface because
+`key_hashes` must never reach a console response: a console or CLI read of a tenant never carries
+key material, only `/v1/tenants/{ref}/keys` does, and that route never returns a hash, only the
+plaintext once at mint. A revoked key drops out of `key_hashes` — that is the whole mechanism a
+revoke has — but its stamp still feeds the revision, so revocation is never missed behind a `304`.
 
 **It is `Artifact.slug`, stored, and nothing else declares it.** The slug is written once on the
 way in, derived from the location that names the weights: `hf://moonshotai/Kimi-K3` becomes
@@ -678,6 +694,20 @@ beneath it, and `DELETE` is refused with `409` while any project still hangs off
 foreign key cascades, and a delete that silently took quotas and allocations with it is not a delete
 anyone asked for. `project_count` is on the read shape so a caller can see what a delete would
 refuse over.
+
+**A tenant also carries `ingress`, `auth` and `host` — how the gateway is to trust it (docs/plans/17).**
+`ingress` is `internal` or `public` and says which gateway listener the tenant's traffic arrives on;
+`auth` is `none` or `api_key` and says whether the gateway checks a key on it; `host` is the single
+name that resolves to the tenant, matched against the request's `Host` header. `public` with `none`
+is accepted rather than refused — a tenant that wants unauthenticated public serving is free to
+declare it, and the gateway does not second-guess the choice. `host` is one column, not a table:
+nothing needs a second name today, and adding one later is an additive migration.
+
+**`/v1/tenants/{ref}/keys` mints and revokes the credential a caller presents to the gateway**,
+distinct from `/v1/tenants/{ref}/tokens`: a token signs in to the console, a key calls the gateway,
+and keeping them in separate tables means revoking one can never touch the other. Only the sha256 of
+a key is stored; the plaintext is on the mint response exactly once and nowhere else, ever. One
+tenant holds many keys — one per caller — so revoking one caller's key never revokes another's.
 
 **`GET /v1/discovered/{ref}/serving-draft` reads a sighting as the objects needed to adopt it.** A
 `GET` because it is one: the same sighting derives the same draft every time, and asking changes
