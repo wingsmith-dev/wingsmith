@@ -317,6 +317,11 @@ class ResolvedEndpointSchema(Struct):
     `policy` rides here for the same reasons and is null far more often — it
     is set only on an endpoint that has sold a consistency term. Null means the
     gateway forwards what it is given, which is what every other endpoint wants.
+
+    `tenant_id` is the endpoint's project's tenant, carried here so the gateway
+    can answer only for the tenant a request belongs to (docs/plans/17) without
+    a second lookup per request. There is exactly one tenant per endpoint —
+    this is not a cross-tenant endpoint's table.
     """
 
     id: str
@@ -327,6 +332,7 @@ class ResolvedEndpointSchema(Struct):
     failover_order: list[str]
     limits: ResolvedLimitsSchema | None
     policy: PolicySchema | None
+    tenant_id: str
     revision: str
 
 

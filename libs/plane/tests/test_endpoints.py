@@ -391,10 +391,35 @@ class FakeArtifact:
         self.updated_at = None
 
 
+class FakeProject:
+    def __init__(self) -> None:
+        self.created_at = EPOCH
+        self.updated_at = None
+
+
+class FakeTenant:
+    def __init__(self, uid="ten_1") -> None:
+        self.uid = uid
+        self.created_at = EPOCH
+        self.updated_at = None
+
+
 class FakeRow(tuple):
     """A `Row` is a tuple with labels; the resolution reads it positionally."""
 
-    def __new__(cls, endpoint, target, deployment, cluster, serving, quota=None, artifact=None, workload=None):
+    def __new__(
+        cls,
+        endpoint,
+        target,
+        deployment,
+        cluster,
+        serving,
+        quota=None,
+        artifact=None,
+        workload=None,
+        project=None,
+        tenant=None,
+    ):
         return super().__new__(
             cls,
             (
@@ -406,6 +431,8 @@ class FakeRow(tuple):
                 quota,
                 artifact if artifact is not None else FakeArtifact(),
                 workload if workload is not None else FakeWorkload(),
+                project if project is not None else FakeProject(),
+                tenant if tenant is not None else FakeTenant(),
             ),
         )
 
@@ -626,6 +653,39 @@ async def test_draining_a_cluster_moves_the_revision_the_gateway_polls():
     drained[3].phase = "draining"
     drained[3].updated_at = EPOCH + dt.timedelta(hours=1)
     after = await resolution([drained]).resolved()
+    assert after.revision != before.revision
+    assert after.endpoints[0].revision != before.endpoints[0].revision
+
+
+@pytest.mark.asyncio
+async def test_a_resolved_endpoint_carries_its_tenants_uid():
+    """What lets the gateway answer only for the tenant a request belongs to."""
+    row = FakeRow(
+        FakeEndpoint(),
+        FakeTarget(),
+        FakeDeployment(),
+        FakeCluster(),
+        FakeServing(),
+        tenant=FakeTenant(uid="ten_globex"),
+    )
+    table = await resolution([row]).resolved()
+    assert table.endpoints[0].tenant_id == "ten_globex"
+
+
+@pytest.mark.asyncio
+async def test_a_projects_reassignment_moves_the_revision():
+    """A caught-up gateway must not sit behind a `304` after a project's tenant moves.
+
+    `tenant_id` on the resolved endpoint would otherwise be able to change
+    silently: the endpoint row itself is untouched, and only the project's own
+    stamp says the reassignment happened.
+    """
+    before = await resolution([upstream_row()]).resolved()
+    moved = upstream_row()
+    project = FakeProject()
+    project.updated_at = EPOCH + dt.timedelta(hours=1)
+    moved = FakeRow(*moved[:8], project, FakeTenant(uid="ten_globex"))
+    after = await resolution([moved]).resolved()
     assert after.revision != before.revision
     assert after.endpoints[0].revision != before.endpoints[0].revision
 

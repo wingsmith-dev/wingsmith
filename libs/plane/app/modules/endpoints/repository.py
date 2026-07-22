@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ids import is_uid
 from app.db.models import Cluster
 from app.db.models import Project
+from app.db.models import Tenant
 from app.db.models import Artifact
 from app.db.models import Endpoint
 from app.db.models import Workload
@@ -125,6 +126,15 @@ class EndpointRepository:
 
         The workload also carries `serving_digest`, which is what the resolution's
         revision is versioned by — see `_revision_of`.
+
+        `Project` and `Tenant` are the last two entities, joined inward rather
+        than out: `Endpoint.project_id` and `Project.tenant_id` are both NOT
+        NULL and 1:1, so — like the workload and artifact hops — they multiply
+        no rows. They carry `tenant_id` onto the resolved endpoint, which is
+        what lets the gateway answer only for the tenant a request belongs to
+        (docs/plans/17); `Project`'s own stamp goes into the revision so a
+        project's tenant reassignment is not silently missed by a poller
+        holding a `304`.
         """
         query = (
             select(
@@ -136,7 +146,11 @@ class EndpointRepository:
                 ServingQuota,
                 Artifact,
                 Workload,
+                Project,
+                Tenant,
             )
+            .join(Project, Project.id == Endpoint.project_id)
+            .join(Tenant, Tenant.id == Project.tenant_id)
             .outerjoin(EndpointTarget, EndpointTarget.endpoint_id == Endpoint.id)
             .outerjoin(Deployment, EndpointTarget.deployment_id == Deployment.id)
             .outerjoin(Cluster, Deployment.cluster_id == Cluster.id)

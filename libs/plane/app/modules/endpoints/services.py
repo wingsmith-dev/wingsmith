@@ -793,12 +793,14 @@ class EndpointService:
         for endpoint_id in order:
             endpoint = endpoints[endpoint_id]
             quota = grouped[endpoint_id][0][5]
-            own: list[dt.datetime | None] = [_stamp(endpoint), _stamp(quota)]
+            project = grouped[endpoint_id][0][8]
+            tenant = grouped[endpoint_id][0][9]
+            own: list[dt.datetime | None] = [_stamp(endpoint), _stamp(quota), _stamp(project)]
             upstreams: list[ResolvedUpstreamSchema] = []
             uids: dict[UUID, str] = {}
 
             served: list[str] = []
-            for _, target, deployment, cluster, serving, _, artifact, workload in grouped[endpoint_id]:
+            for _, target, deployment, cluster, serving, _, artifact, workload, _, _ in grouped[endpoint_id]:
                 if target is None:
                     continue
                 own.extend([_stamp(target), _stamp(deployment), _stamp(cluster), _stamp(serving)])
@@ -846,6 +848,7 @@ class EndpointService:
                     failover_order=[uids[d] for d in endpoint.failover_order if d in uids],
                     limits=declared_limits(quota) if quota is not None else None,
                     policy=endpoint_policy(endpoint.surface),
+                    tenant_id=tenant.uid,
                     revision=_revision_of(own, served),
                 )
             )
