@@ -106,6 +106,10 @@ type Route struct {
 	// request for the same reason everything else here does: the table refreshes
 	// on a timer and is never joined on the request path.
 	Policy *plane.Policy
+	// TenantID is the endpoint's project's tenant (docs/plans/17), carried the
+	// same way Policy is — read on every request and refreshed on a timer,
+	// never fetched per request.
+	TenantID string
 
 	totalWeight int
 	cursor      *picker
@@ -372,6 +376,7 @@ func (r *Router) Load(ctx context.Context) error {
 			Name:      endpoint.Name,
 			Strategy:  endpoint.RoutingStrategy,
 			Policy:    endpoint.Policy,
+			TenantID:  endpoint.TenantID,
 			Upstreams: make([]Upstream, 0, len(endpoint.Upstreams)),
 		}
 
@@ -579,6 +584,25 @@ func (r *Router) Names() []string {
 	names := make([]string, 0, len(r.routes))
 	for name := range r.routes {
 		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// NamesForTenant lists what this gateway serves on behalf of one tenant.
+//
+// A tenant's own catalog, for the public listener (docs/plans/17): a caller
+// identified as one tenant sees that tenant's models and no others', the same
+// way a resolve outside it reads as "no such model" rather than "here is what
+// you cannot have."
+func (r *Router) NamesForTenant(tenantID string) []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	names := make([]string, 0, len(r.routes))
+	for name, route := range r.routes {
+		if route.TenantID == tenantID {
+			names = append(names, name)
+		}
 	}
 	sort.Strings(names)
 	return names

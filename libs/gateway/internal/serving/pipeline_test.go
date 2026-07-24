@@ -80,21 +80,14 @@ func TestAStageThatWrapsTheRequestCarriesItToTheNextOne(t *testing.T) {
 	}
 }
 
-func TestRoutingStagesOpenWithTheCatalog(t *testing.T) {
-	stages := routingStages(stubResolver{})
-	if len(stages) < 2 {
-		t.Fatalf("expected more than one stage, got %d", len(stages))
-	}
+func TestRoutingStagesAnswerTheCatalogAheadOfEveryBodyParsingStage(t *testing.T) {
+	// nil Tenants and ZoneInternal: the tenant stages ahead of the catalog
+	// must be no-ops on this build, the same as before they existed, so a
+	// nil Tenants must never be dereferenced.
+	stages := routingStages(stubResolver{}, nil, ZoneInternal)
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
-	// The catalog stage is first: a GET /v1/models must be answered without
-	// any of the body-parsing stages behind it ever running, since there is
-	// no body to parse.
-	next, ok := stages[0](w, r, &requestState{})
-	if ok {
-		t.Fatalf("stageCatalog should have stopped the pipeline for GET /v1/models")
-	}
-	_ = next
+	runPipeline(stages, w, r)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", w.Code)
 	}

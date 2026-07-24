@@ -8,6 +8,7 @@ import (
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
 	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
+	"github.com/hangar-dev/hangar/libs/gateway/internal/tenancy"
 	"github.com/hangar-dev/hangar/libs/packages/tunnel"
 )
 
@@ -25,6 +26,12 @@ type requestState struct {
 	envelope    modelEnvelope
 	route       routing.Route
 	upstream    routing.Upstream
+	// zone and tenant are set by stageZone and stageTenantFromHost
+	// (tenant_stages.go). zone is ZoneInternal on every request until a
+	// second listener exists to ever set it otherwise; tenant is the zero
+	// Tenant until the public zone resolves one.
+	zone   Zone
+	tenant tenancy.Tenant
 }
 
 // stage is one step of routing a request to an upstream. It returns the
@@ -36,8 +43,17 @@ type stage func(w http.ResponseWriter, r *http.Request, req *requestState) (*htt
 // routingStages is the ordered pipeline withRouting runs for every request.
 // Each stage either narrows what the next one needs to know or refuses the
 // request outright; the first to write a response ends the chain.
-func routingStages(resolver Resolver) []stage {
+//
+// The tenant stages run first, ahead of the catalog: which tenant a caller
+// is scopes both /v1/models and routing (docs/plans/17), so both have to
+// come after zone, host and key are settled and not before. Every one of
+// them is a no-op unless zone is ZonePublic, which nothing in this build can
+// construct yet — see Zone in tenant_stages.go.
+func routingStages(resolver Resolver, tenants Tenants, zone Zone) []stage {
 	return []stage{
+		stageZone(zone),
+		stageTenantFromHost(tenants),
+		stageKeyCheck(tenants),
 		stageCatalog(resolver),
 		stageReadBody,
 		stageParseEnvelope,
@@ -73,13 +89,21 @@ func runPipeline(stages []stage, w http.ResponseWriter, r *http.Request) {
 // not any one cluster — is what knows the whole set. It is the only stage
 // that can be the whole of a request; every stage after it assumes a body
 // worth routing.
+//
+// A tenant identified by the public zone sees its own catalog and nothing
+// past it (docs/plans/17); every other caller still sees the whole table,
+// exactly as before.
 func stageCatalog(resolver Resolver) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
 			return r, true
 		}
 		markEndpoint(r, metrics.EndpointCatalog, "")
-		writeModelList(w, resolver.Names())
+		names := resolver.Names()
+		if req.zone == ZonePublic {
+			names = resolver.NamesForTenant(req.tenant.ID)
+		}
+		writeModelList(w, names)
 		return r, false
 	}
 }
@@ -158,9 +182,17 @@ func stageValidateStopSequences(w http.ResponseWriter, r *http.Request, req *req
 }
 
 // stageResolve turns the request's model into the endpoint serving it.
+//
+// Another tenant's model reads as "no such model" on the public zone, not as
+// a refusal that would confirm the endpoint exists at all (docs/plans/17) —
+// the same reasoning `ResolvedEndpointSchema`'s own doc comment gives for
+// dropping cross-tenant visibility at the plane rather than only here.
 func stageResolve(resolver Resolver) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 		route, err := resolver.Resolve(req.envelope.Model)
+		if err == nil && req.zone == ZonePublic && route.TenantID != req.tenant.ID {
+			err = routing.ErrUnknownEndpoint
+		}
 		if err != nil {
 			if errors.Is(err, routing.ErrUnknownEndpoint) {
 				MarkOutcome(r, metrics.OutcomeClientError)

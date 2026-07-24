@@ -33,6 +33,16 @@ func (s stubResolver) Names() []string {
 	return names
 }
 
+func (s stubResolver) NamesForTenant(tenantID string) []string {
+	names := make([]string, 0, len(s.routes))
+	for name, route := range s.routes {
+		if route.TenantID == tenantID {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 func (s stubResolver) Revision() string { return "1" }
 
 func upstreamServer(t *testing.T) (*httptest.Server, *http.Request) {

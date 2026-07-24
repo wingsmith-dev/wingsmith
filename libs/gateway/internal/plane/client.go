@@ -146,7 +146,10 @@ type Endpoint struct {
 	Upstreams       []Upstream `json:"upstreams"`
 	FailoverOrder   []string   `json:"failover_order"`
 	Policy          *Policy    `json:"policy"`
-	Revision        string     `json:"revision"`
+	// TenantID is the endpoint's project's tenant (docs/plans/17). There is
+	// exactly one per endpoint; this is not a cross-tenant endpoint's table.
+	TenantID string `json:"tenant_id"`
+	Revision string `json:"revision"`
 }
 
 // Table is the whole routing table at one revision.

@@ -88,6 +88,35 @@ func TestLoadBuildsRoutesAndKeepsTheRevision(t *testing.T) {
 	}
 }
 
+func TestATenantIDOnAnEndpointCarriesOntoItsRouteAndIntoNamesForTenant(t *testing.T) {
+	source := &stubSource{tables: []plane.Table{{
+		Revision: "1",
+		Endpoints: []plane.Endpoint{
+			{Name: "chat", RoutingStrategy: "weighted", TenantID: "ten_globex",
+				Upstreams: []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")}},
+			{Name: "batch", RoutingStrategy: "weighted", TenantID: "ten_acme",
+				Upstreams: []plane.Upstream{upstream("ap", "dep_b", "http://ap.svc:8000", 100, "running")}},
+		},
+	}}}
+
+	router := New(source, factory())
+	if err := router.Load(context.Background()); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	route, err := router.Resolve("chat")
+	if err != nil || route.TenantID != "ten_globex" {
+		t.Fatalf("route.TenantID = %q, %v, want ten_globex", route.TenantID, err)
+	}
+
+	if got := router.NamesForTenant("ten_globex"); len(got) != 1 || got[0] != "chat" {
+		t.Fatalf("NamesForTenant(ten_globex) = %v, want [chat]", got)
+	}
+	if got := router.NamesForTenant("ten_nobody"); len(got) != 0 {
+		t.Fatalf("NamesForTenant(ten_nobody) = %v, want none", got)
+	}
+}
+
 func TestLoadSendsTheCurrentRevisionBackAndKeepsTheTableOnFailure(t *testing.T) {
 	source := &stubSource{
 		tables: []plane.Table{{

@@ -599,8 +599,9 @@ type brokenResolver struct{}
 func (brokenResolver) Resolve(string) (routing.Route, error) {
 	return routing.Route{}, errors.New("the table is on fire")
 }
-func (brokenResolver) Names() []string  { return nil }
-func (brokenResolver) Revision() string { return "" }
+func (brokenResolver) Names() []string                { return nil }
+func (brokenResolver) NamesForTenant(string) []string { return nil }
+func (brokenResolver) Revision() string               { return "" }
 
 type timeoutError struct{}
 

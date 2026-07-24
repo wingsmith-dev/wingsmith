@@ -47,6 +47,8 @@ const maxRequestBodyBytes = 32 << 20
 type Resolver interface {
 	Resolve(name string) (routing.Route, error)
 	Names() []string
+	// NamesForTenant lists a public-zone caller's own catalog (docs/plans/17).
+	NamesForTenant(tenantID string) []string
 	Revision() string
 }
 
@@ -69,6 +71,13 @@ type Config struct {
 	// Ready, when set, gates `GET /readyz`. Nil means always ready, which is
 	// what a gateway whose upstreams all have addresses is.
 	Ready ReadinessChecker
+	// Tenants is the host-to-tenant and hash-to-tenant lookup (docs/plans/17).
+	// Nil is safe: with Zone left at its default every stage that reads it is
+	// a no-op regardless.
+	Tenants Tenants
+	// Zone says which listener this handler serves. Defaults to ZoneInternal,
+	// which is every listener that exists today.
+	Zone Zone
 }
 
 // New builds the gateway handler.
@@ -102,7 +111,7 @@ func New(cfg Config) http.Handler {
 		_, _ = w.Write([]byte("ready: " + detail))
 	})
 
-	var handler http.Handler = withRouting(cfg.Router)
+	var handler http.Handler = withRouting(cfg.Router, cfg.Tenants, cfg.Zone)
 	if cfg.Callers != nil {
 		handler = withGuard(cfg.Callers, handler)
 	} else {
@@ -134,10 +143,10 @@ type modelEnvelope struct {
 // one function that keeps growing.
 //
 // `GET /v1/models` is answered from the table, because the gateway — not any
-// one cluster — is what knows the whole set. That is `stageCatalog`, the first
-// stage in the pipeline.
-func withRouting(resolver Resolver) http.Handler {
-	stages := routingStages(resolver)
+// one cluster — is what knows the whole set. That is `stageCatalog`, ahead of
+// it the tenant stages that scope it (tenant_stages.go).
+func withRouting(resolver Resolver, tenants Tenants, zone Zone) http.Handler {
+	stages := routingStages(resolver, tenants, zone)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		runPipeline(stages, w, r)
 	})

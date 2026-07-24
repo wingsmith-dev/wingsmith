@@ -21,6 +21,7 @@ import (
 	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
 	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
 	"github.com/hangar-dev/hangar/libs/gateway/internal/serving"
+	"github.com/hangar-dev/hangar/libs/gateway/internal/tenancy"
 	"github.com/hangar-dev/hangar/libs/packages/tunnel"
 )
 
@@ -176,6 +177,19 @@ func main() {
 	}
 	go router.RunResync(ctx, *resync)
 
+	// Same failure posture as the routing table, and the same reason: coming
+	// up with nothing loaded would mean the tenant and key stages have never
+	// seen a tenant at all. Inert today regardless — Zone stays ZoneInternal
+	// below until a second listener exists to ever set it otherwise
+	// (docs/plans/17) — but loaded and refreshing from here on so that the
+	// listener swap is the only thing left to do when it lands.
+	tenants := tenancy.New(planeClient)
+	if err := tenants.Load(ctx); err != nil {
+		slog.Error("gateway: could not load the tenant table", "err", err)
+		os.Exit(1)
+	}
+	go tenants.RunResync(ctx, *resync)
+
 	// A second listener, on its own port. The request path answers callers and
 	// nothing else: a scrape endpoint on the same mux is one loose NetworkPolicy
 	// away from being reachable by anyone who can reach the API, and it is the
@@ -203,6 +217,9 @@ func main() {
 			Metrics: recorder,
 			Probes:  serving.NewProbeMarker(*probeToken),
 			Ready:   readiness,
+			Tenants: tenants,
+			// Zone is left at its default, ZoneInternal: this is the only
+			// listener that exists. See docs/plans/17's next step.
 		}),
 		// No WriteTimeout: it is absolute rather than idle-based, so any value
 		// would sever long generations and SSE streams mid-token.
