@@ -43,6 +43,44 @@ func TestResolvedSendsTheRevisionBackAndReadsA304AsNotModified(t *testing.T) {
 	}
 }
 
+func TestTenantsResolvedSendsTheRevisionBackAndReadsA304AsNotModified(t *testing.T) {
+	var seen string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/gateway/tenants" {
+			t.Fatalf("path = %q, want /v1/gateway/tenants", r.URL.Path)
+		}
+		seen = r.Header.Get("If-None-Match")
+		if r.Header.Get("Authorization") != "Bearer token" {
+			t.Errorf("authorization = %q", r.Header.Get("Authorization"))
+		}
+		if seen == "9-1" {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"revision":"9-1","tenants":[{"id":"ten_1","slug":"globex","enabled":true,` +
+			`"ingress":"public","auth":"api_key","host":"globex.hangar.dev","key_hashes":["abc"]}]}`))
+	}))
+	defer server.Close()
+
+	client := New(server.URL, "token", time.Second)
+
+	table, err := client.TenantsResolved(context.Background(), "")
+	if err != nil {
+		t.Fatalf("first fetch: %v", err)
+	}
+	if table.Revision != "9-1" || len(table.Tenants) != 1 {
+		t.Fatalf("table = %+v", table)
+	}
+	if table.Tenants[0].Host != "globex.hangar.dev" || table.Tenants[0].KeyHashes[0] != "abc" {
+		t.Fatalf("tenant = %+v", table.Tenants[0])
+	}
+
+	if _, err := client.TenantsResolved(context.Background(), "9-1"); !errors.Is(err, ErrNotModified) {
+		t.Fatalf("second fetch = %v, want ErrNotModified", err)
+	}
+}
+
 func TestAnErrorStatusIsReportedRatherThanDecoded(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

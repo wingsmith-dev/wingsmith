@@ -155,6 +155,29 @@ type Table struct {
 	Endpoints []Endpoint `json:"endpoints"`
 }
 
+// GatewayTenant is one tenant, as the gateway needs to trust it (docs/plans/17).
+//
+// `KeyHashes` carries only the live ones — a revoked key is dropped from the
+// plane's own feed, and that drop is the whole mechanism a revoke has. Its
+// stamp still moved `TenantTable.Revision`, which is what a poller needs and
+// nothing more: this hop never sees a plaintext key, only the sha256 it
+// checks a presented one against.
+type GatewayTenant struct {
+	ID        string   `json:"id"`
+	Slug      string   `json:"slug"`
+	Enabled   bool     `json:"enabled"`
+	Ingress   string   `json:"ingress"`
+	Auth      string   `json:"auth"`
+	Host      string   `json:"host"`
+	KeyHashes []string `json:"key_hashes"`
+}
+
+// TenantTable is every tenant at one revision.
+type TenantTable struct {
+	Revision string          `json:"revision"`
+	Tenants  []GatewayTenant `json:"tenants"`
+}
+
 // ErrNotModified reports that the caller's revision is still current.
 //
 // A sentinel rather than a nil table, because "nothing changed" and "the table
@@ -208,6 +231,39 @@ func (c *Client) Resolved(ctx context.Context, revision string) (Table, error) {
 	var table Table
 	if err := json.NewDecoder(resp.Body).Decode(&table); err != nil {
 		return Table{}, fmt.Errorf("plane resolved: decode: %w", err)
+	}
+	return table, nil
+}
+
+// TenantsResolved fetches the gateway's tenant feed, or reports
+// ErrNotModified when revision still holds. Same shape as Resolved, against
+// the surface docs/plans/17 adds specifically for this hop.
+func (c *Client) TenantsResolved(ctx context.Context, revision string) (TenantTable, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/gateway/tenants", nil)
+	if err != nil {
+		return TenantTable{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	if revision != "" {
+		req.Header.Set("If-None-Match", revision)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return TenantTable{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNotModified {
+		return TenantTable{}, ErrNotModified
+	}
+	if resp.StatusCode != http.StatusOK {
+		return TenantTable{}, fmt.Errorf("plane gateway tenants: unexpected status %d", resp.StatusCode)
+	}
+
+	var table TenantTable
+	if err := json.NewDecoder(resp.Body).Decode(&table); err != nil {
+		return TenantTable{}, fmt.Errorf("plane gateway tenants: decode: %w", err)
 	}
 	return table, nil
 }
