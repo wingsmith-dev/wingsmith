@@ -106,7 +106,14 @@ func main() {
 	slog.Info("gateway: response header timeout", "timeout", *headerTimeout,
 		"agent_must_be_at_least", tunnel.InnerHopTimeout(*headerTimeout))
 	planeToken := os.Getenv("HANGAR_OPERATOR_TOKEN")
-	callerToken := os.Getenv("HANGAR_GATEWAY_TOKEN")
+	// HANGAR_GATEWAY_PUBLIC_LISTEN is deliberately read only from the
+	// environment, never a flag — the reason is the same one metricsAddr and
+	// tunnelAddr are read from both: a manifest naming a flag this binary
+	// does not know reaches flag.Parse before main runs and exits 2, which is
+	// a crashloop of the data plane. An unset variable is inert, which is
+	// what "off" needs to mean for a listener defaulting closed. Empty means
+	// off; docs/plans/17's rollout is the thing that turns it on.
+	publicAddr := os.Getenv("HANGAR_GATEWAY_PUBLIC_LISTEN")
 
 	if *planeURL == "" || planeToken == "" {
 		slog.Error("gateway: -plane-url and HANGAR_OPERATOR_TOKEN are both required")
@@ -121,15 +128,6 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	// Assigned through a nil check rather than directly: a (*TokenGuard)(nil) stored in a Guard
-	// interface is not a nil interface, so a gateway with no token configured would reject every
-	// caller instead of trusting its network.
-	var callers serving.Guard
-	if guard := serving.NewTokenGuard(callerToken); guard != nil {
-		callers = guard
-		slog.Info("gateway: caller token enforced", "tokens", guard.Accepted())
-	}
 
 	recorder := metrics.New()
 	planeClient := plane.New(*planeURL, planeToken, 5*time.Second)
@@ -213,13 +211,14 @@ func main() {
 		Addr: *listenAddr,
 		Handler: serving.New(serving.Config{
 			Router:  router,
-			Callers: callers,
 			Metrics: recorder,
 			Probes:  serving.NewProbeMarker(*probeToken),
 			Ready:   readiness,
 			Tenants: tenants,
-			// Zone is left at its default, ZoneInternal: this is the only
-			// listener that exists. See docs/plans/17's next step.
+			// Zone is left at its default, ZoneInternal: this is the
+			// ClusterIP port with no ingress, the network boundary that
+			// used to be HANGAR_GATEWAY_TOKEN (docs/plans/17). Acme's
+			// edge dials this one and is trusted by having reached it.
 		}),
 		// No WriteTimeout: it is absolute rather than idle-based, so any value
 		// would sever long generations and SSE streams mid-token.
@@ -235,6 +234,37 @@ func main() {
 		}
 	}()
 
+	// The public listener, off unless HANGAR_GATEWAY_PUBLIC_LISTEN names an
+	// address. A caller here identifies itself by the `Host` it dials rather
+	// than by which port it reached — the internal listener's own proof — so
+	// every request run through it takes the tenant and key stages the
+	// internal listener's Zone skips (docs/plans/17).
+	var publicSrv *http.Server
+	if publicAddr != "" {
+		publicSrv = &http.Server{
+			Addr: publicAddr,
+			Handler: serving.New(serving.Config{
+				Router:  router,
+				Metrics: recorder,
+				Probes:  serving.NewProbeMarker(*probeToken),
+				Ready:   readiness,
+				Tenants: tenants,
+				Zone:    serving.ZonePublic,
+			}),
+			ReadHeaderTimeout: 10 * time.Second,
+			IdleTimeout:       120 * time.Second,
+		}
+		go func() {
+			slog.Info("gateway: public listening", "addr", publicAddr)
+			if err := publicSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("gateway: public serve failed", "err", err)
+				stop()
+			}
+		}()
+	} else {
+		slog.Info("gateway: public listener disabled, set HANGAR_GATEWAY_PUBLIC_LISTEN to enable it")
+	}
+
 	<-ctx.Done()
 	slog.Info("gateway: shutting down")
 
@@ -247,6 +277,11 @@ func main() {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("gateway: shutdown failed", "err", err)
+	}
+	if publicSrv != nil {
+		if err := publicSrv.Shutdown(shutdownCtx); err != nil {
+			slog.Error("gateway: public shutdown failed", "err", err)
+		}
 	}
 	// After the request path and not before it: the in-flight requests being
 	// drained above are being carried by these tunnels, and a GOAWAY sent first

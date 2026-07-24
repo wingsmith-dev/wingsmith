@@ -116,7 +116,8 @@ func bearerToken(r *http.Request) (string, bool) {
 // same digest the plane stores, so a key is never compared to anything in
 // its plaintext form on this hop or that one. A digest looked up by map key
 // rather than compared byte-by-byte against a small fixed set, which is why
-// this needs no constant-time comparison the way TokenGuard's does.
+// this needs no constant-time comparison the way the retired shared-token
+// guard's did.
 func keyHash(key string) string {
 	sum := sha256.Sum256([]byte(key))
 	return hex.EncodeToString(sum[:])

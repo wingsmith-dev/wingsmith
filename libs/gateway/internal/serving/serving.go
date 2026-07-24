@@ -56,10 +56,6 @@ type Resolver interface {
 type Config struct {
 	// Router resolves a request's `model` to an upstream.
 	Router Resolver
-	// Callers, when set, is the shared secret every request must present. Empty
-	// means the gateway trusts its network, which is the in-cluster case: a
-	// ClusterIP service with no ingress in front of it.
-	Callers Guard
 	// Metrics, when set, receives one observation per request. Nil means the
 	// handler behaves exactly as it did before there was a /metrics endpoint,
 	// which is what keeps every existing caller of New compiling and every
@@ -111,13 +107,12 @@ func New(cfg Config) http.Handler {
 		_, _ = w.Write([]byte("ready: " + detail))
 	})
 
-	var handler http.Handler = withRouting(cfg.Router, cfg.Tenants, cfg.Zone)
-	if cfg.Callers != nil {
-		handler = withGuard(cfg.Callers, handler)
-	} else {
-		slog.Warn("gateway: no caller token configured, anything that can reach this port can use it")
-	}
-	mux.Handle("/", handler)
+	// Trust comes from the zone alone now (docs/plans/17): the internal zone is
+	// the network boundary that used to be a shared token, and the public zone
+	// is the tenant and key stages inside withRouting. Neither is a mux-level
+	// wrapper any more, which is what a shared secret in front of every zone
+	// alike could never have been.
+	mux.Handle("/", withRouting(cfg.Router, cfg.Tenants, cfg.Zone))
 
 	return observed(cfg.Metrics, cfg.Probes, mux)
 }

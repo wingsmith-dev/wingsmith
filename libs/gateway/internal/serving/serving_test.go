@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
 	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
 	"github.com/hangar-dev/hangar/libs/packages/tunnel"
 )
@@ -391,37 +392,13 @@ func TestModelListIsAnsweredLocally(t *testing.T) {
 	}
 }
 
-func TestHealthzAnswersWithoutTheGuard(t *testing.T) {
-	handler := New(Config{Router: stubResolver{}, Callers: NewTokenGuard("secret")})
+func TestHealthzAnswersRegardlessOfZoneOrTenant(t *testing.T) {
+	handler := New(Config{Router: stubResolver{}, Zone: ZonePublic, Tenants: tenantsFor(t, globex())})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
 	if rec.Code != http.StatusOK {
-		t.Fatalf("healthz = %d, want it to answer with no token", rec.Code)
-	}
-}
-
-func TestGuardRejectsCallersWithoutTheToken(t *testing.T) {
-	handler := New(Config{Router: stubResolver{}, Callers: NewTokenGuard("secret")})
-
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chat"}`)))
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want 401", rec.Code)
-	}
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chat"}`))
-	req.Header.Set("Authorization", "Bearer secret")
-	rec = httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	if rec.Code == http.StatusUnauthorized {
-		t.Fatal("the right token must be accepted")
-	}
-}
-
-func TestAnEmptyTokenLeavesTheGatewayOpenRatherThanAcceptingEmptyStrings(t *testing.T) {
-	if NewTokenGuard("") != nil {
-		t.Fatal("an unset token must not build a guard")
+		t.Fatalf("healthz = %d, want it to answer regardless", rec.Code)
 	}
 }
 
@@ -512,43 +489,6 @@ func TestWithModelReplacesOnlyTheModel(t *testing.T) {
 		if string(fields[key]) != want {
 			t.Fatalf("%s = %s, want %s untouched", key, fields[key], want)
 		}
-	}
-}
-
-func TestBothTokensAreAcceptedDuringARotation(t *testing.T) {
-	guard := NewTokenGuard("old-secret,new-secret")
-	for _, token := range []string{"old-secret", "new-secret"} {
-		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-		req.Header.Set("Authorization", "Bearer "+token)
-		if !guard.Allow(req) {
-			t.Fatalf("%s was refused; a rotation with no overlap is a coordinated flip", token)
-		}
-	}
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	req.Header.Set("Authorization", "Bearer retired-secret")
-	if guard.Allow(req) {
-		t.Fatal("a token outside the set was accepted")
-	}
-}
-
-func TestSeparatorsAndSpacingAreNotTokens(t *testing.T) {
-	guard := NewTokenGuard(" old-secret , new-secret ,, ")
-	for _, token := range []string{"old-secret", "new-secret"} {
-		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-		req.Header.Set("Authorization", "Bearer "+token)
-		if !guard.Allow(req) {
-			t.Fatalf("%s was refused; surrounding space must not be part of the secret", token)
-		}
-	}
-	for _, empty := range []string{"", " "} {
-		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-		req.Header.Set("Authorization", "Bearer "+empty)
-		if guard.Allow(req) {
-			t.Fatalf("a trailing comma admitted %q as a token", empty)
-		}
-	}
-	if NewTokenGuard(" , ,, ") != nil {
-		t.Fatal("a value that is all separators must leave the gateway open, not admit nothing")
 	}
 }
 
@@ -671,9 +611,14 @@ func TestTheErrorClassFollowsTheStatus(t *testing.T) {
 // real handler rather than the writer, because the classes only matter on the
 // answers a caller actually receives.
 func TestTheGatewaysOwnRefusalsCarryTheRightClass(t *testing.T) {
+	tenants := tenantsFor(t, plane.GatewayTenant{
+		ID: "ten_x", Slug: "x", Enabled: true, Ingress: "public", Auth: "api_key",
+		Host: "x.hangar.dev", KeyHashes: []string{keyHash("secret")},
+	})
 	handler := New(Config{
-		Router:  stubResolver{routes: map[string]routing.Route{"chat": {}}},
-		Callers: NewTokenGuard("secret"),
+		Router:  stubResolver{routes: map[string]routing.Route{"chat": {TenantID: "ten_x"}}},
+		Tenants: tenants,
+		Zone:    ZonePublic,
 	})
 
 	for _, test := range []struct {
@@ -689,6 +634,7 @@ func TestTheGatewaysOwnRefusalsCarryTheRightClass(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(test.body))
+			request.Host = "x.hangar.dev"
 			if test.token != "" {
 				request.Header.Set("Authorization", "Bearer "+test.token)
 			}

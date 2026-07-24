@@ -17,8 +17,9 @@ cluster, and the agent, which dials out to the gateway and carries inference req
 | Path | What it owns |
 |---|---|
 | `cmd/gateway/` | the binary: flags, listeners, shutdown |
-| `internal/serving/` | the HTTP entry point — mux, reverse proxy, caller guard, per-request observation, readiness, usage |
+| `internal/serving/` | the HTTP entry point — mux, reverse proxy, the tenant and key stages, per-request observation, readiness, usage |
 | `internal/routing/` | the model-to-cluster table and upstream selection |
+| `internal/tenancy/` | the host-to-tenant and hash-to-tenant table |
 | `internal/plane/` | client for the plane's HTTP API |
 | `internal/metrics/` | the Prometheus registry |
 | `../packages/tunnel/` | the wire, its own module, both ends of it |
@@ -26,14 +27,38 @@ cluster, and the agent, which dials out to the gateway and carries inference req
 
 ## What it does not do
 
-- **No authentication, metering, or billing.** Whoever puts a gateway in front of their users
-  already has a place where that happens. Two systems counting tokens is two systems disagreeing
-  about an invoice. The only check here is `HANGAR_GATEWAY_TOKEN`, and it asks one question: is
-  this hop being called by the system that is supposed to call it.
+- **No metering or billing.** Whoever puts a gateway in front of their users already has a place
+  where that happens. Two systems counting tokens is two systems disagreeing about an invoice.
 - **No replica selection.** The serving runtime inside a cluster routes on live queue depth and
   KV-cache residency. That state does not leave the cluster and should not.
 - **No catalog.** `GET /v1/models` lists names, not context lengths or quantization. Describing a
   model is the job of whatever is selling it.
+
+This used to say "no authentication" too. It is reversed for authentication only, and only in the
+shape docs/plans/17 describes: which tenant a request belongs to, and whether it proved it. There is
+still no metering, no billing, and no user identity below the tenant — a tenant's own auth for its
+own users happens in front of this hop, exactly as it always has.
+
+## Tenancy and the two listeners
+
+There is one binary, one routing table, and two listeners over it (docs/plans/17). Which one accepted
+a connection is the one fact about a caller nothing it sends can forge, and it is what the trust
+decision rests on — `internal/serving.Zone`.
+
+- **The internal listener** (`-listen` / `HANGAR_GATEWAY_PUBLIC_LISTEN` unset) is a ClusterIP with no
+  ingress. Reaching it at all is the proof; a tenant behind it may declare `auth: none`. Acme's
+  own edge is `internal` + `none` — it authenticates and bills its own users, then calls here, and
+  nothing about that changed.
+- **The public listener** (`HANGAR_GATEWAY_PUBLIC_LISTEN`) sits behind a `*.hangar.dev` wildcard. A
+  request there is identified by its `Host` header, checked against a key when the tenant declares
+  `auth: api_key`, and scoped to that tenant's own catalog and routing — another tenant's model reads
+  as `404`, never `403`. This is how a tenant reaches the gateway directly instead of through
+  Acme's inference edge.
+
+`HANGAR_GATEWAY_TOKEN` and the shared-secret guard it configured are gone. Their job — is this hop
+being called by the system that is supposed to call it — is answered by which listener a caller
+reached, which is a stronger claim than a bearer token ever was: it cannot be copied out of one
+caller's config and pasted into another's.
 
 ## Configuration
 
@@ -42,20 +67,21 @@ cluster, and the agent, which dials out to the gateway and carries inference req
 | `-listen` | listen address, default `:8080` |
 | `-plane-url` / `HANGAR_PLANE_URL` | the plane's base URL |
 | `HANGAR_OPERATOR_TOKEN` | how it reads the plane |
-| `-resync` | how often to re-read the table, default 30s |
-| `HANGAR_GATEWAY_TOKEN` | shared token callers must present; unset means the gateway trusts its network |
+| `-resync` | how often to re-read the routing table and the tenant table, default 30s |
+| `HANGAR_GATEWAY_PUBLIC_LISTEN` | address for the public, tenant-identified listener; unset (the default) means off — env only, never a flag, for the reason below |
 | `-credentials` / `HANGAR_GATEWAY_CREDENTIALS` | JSON file of `{"<credential id>": {"<header>": "<value>"}}` |
 | `-metrics-listen` / `HANGAR_GATEWAY_METRICS_LISTEN` | where `/metrics` is served, default `:9090`, `off` to disable |
 | `-probe-token` / `HANGAR_GATEWAY_PROBE_TOKEN` | what the conformance runner presents to mark its traffic as a probe; a comma-separated pair while rotating |
 | `-tunnel-listen` / `HANGAR_GATEWAY_TUNNEL_LISTEN` | where cluster agents dial, default `:8443`, `off` to disable |
 | `-tunnel-cert` / `-tunnel-key` (`HANGAR_GATEWAY_TUNNEL_TLS_CERT` / `_KEY`) | PEM pair for the tunnel listener; neither means plaintext, and TLS has to be terminated in front of it |
 
-Neither of the last two is required and neither is fatal by its absence, which is a deploy
-constraint rather than a courtesy: `just deploy plane` runs `kubectl apply -k infra/`, and `infra/`
-carries this component's manifest, so a manifest naming a flag the running image does not know
-reaches the old binary and `flag.Parse` exits 2. Prefer the environment variable when adding either
-to a manifest — an unknown variable is inert, an unknown flag is a crashloop of the data plane
-caused by deploying the control plane.
+None of the last three is required and none is fatal by its absence, which is a deploy constraint
+rather than a courtesy: `just deploy plane` runs `kubectl apply -k infra/`, and `infra/` carries this
+component's manifest, so a manifest naming a flag the running image does not know reaches the old
+binary and `flag.Parse` exits 2. Prefer the environment variable when adding one to a manifest — an
+unknown variable is inert, an unknown flag is a crashloop of the data plane caused by deploying the
+control plane. `HANGAR_GATEWAY_PUBLIC_LISTEN` goes further and carries no flag at all, because a
+manifest naming its address is exactly the change that turns docs/plans/17's rollout on.
 
 The credential file is how a reference on a cluster's serving address becomes headers on the wire.
 The plane stores the reference and never the secret, so the material is mounted next to the process

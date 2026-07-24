@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
+	"github.com/hangar-dev/hangar/libs/gateway/internal/plane"
 	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -330,9 +331,14 @@ func TestAProxyErrorSeparatesATimeoutFromACallerHangingUp(t *testing.T) {
 
 func TestARejectedCallerIsOutsideTheRatioRatherThanInsideTheNumerator(t *testing.T) {
 	recorder := metrics.New()
-	handler := New(Config{Metrics: recorder, Router: stubResolver{}, Callers: NewTokenGuard("secret")})
+	tenants := tenantsFor(t, plane.GatewayTenant{
+		ID: "ten_x", Slug: "x", Enabled: true, Ingress: "public", Auth: "api_key", Host: "x.hangar.dev",
+	})
+	handler := New(Config{Metrics: recorder, Router: stubResolver{}, Tenants: tenants, Zone: ZonePublic})
 
-	post(t, handler, `{"model":"chat"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chat"}`))
+	req.Host = "x.hangar.dev"
+	handler.ServeHTTP(httptest.NewRecorder(), req)
 
 	if got := requests(t, recorder, map[string]string{"status": "401", "outcome": "auth_rejected"}); got != 1 {
 		t.Fatalf("auth_rejected = %v, want 1", got)
