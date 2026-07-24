@@ -20,7 +20,7 @@ const (
 	// reached only by systems this fleet runs. A tenant on this zone may
 	// declare auth: none, because the zone itself is the proof.
 	ZoneInternal Zone = iota
-	// ZonePublic is the *.hangar.dev listener a tenant's own caller reaches
+	// ZonePublic is the *.hangar.example.com listener a tenant's own caller reaches
 	// directly. Not wired to any listener yet — see docs/plans/17's next
 	// step — so nothing in this build can ever construct a handler with this
 	// zone, and every stage below that reads it is unreachable in production

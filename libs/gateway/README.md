@@ -49,7 +49,7 @@ decision rests on — `internal/serving.Zone`.
   ingress. Reaching it at all is the proof; a tenant behind it may declare `auth: none`. Acme's
   own edge is `internal` + `none` — it authenticates and bills its own users, then calls here, and
   nothing about that changed.
-- **The public listener** (`HANGAR_GATEWAY_PUBLIC_LISTEN`) sits behind a `*.hangar.dev` wildcard. A
+- **The public listener** (`HANGAR_GATEWAY_PUBLIC_LISTEN`) sits behind a `*.hangar.example.com` wildcard. A
   request there is identified by its `Host` header, checked against a key when the tenant declares
   `auth: api_key`, and scoped to that tenant's own catalog and routing — another tenant's model reads
   as `404`, never `403`. This is how a tenant reaches the gateway directly instead of through
