@@ -20,11 +20,10 @@ const (
 	// reached only by systems this fleet runs. A tenant on this zone may
 	// declare auth: none, because the zone itself is the proof.
 	ZoneInternal Zone = iota
-	// ZonePublic is the *.hangar.example.com listener a tenant's own caller reaches
-	// directly. Not wired to any listener yet — see docs/plans/17's next
-	// step — so nothing in this build can ever construct a handler with this
-	// zone, and every stage below that reads it is unreachable in production
-	// until that lands.
+	// ZonePublic is the *.hangar.example.com listener a tenant's own caller
+	// reaches directly, served by HANGAR_GATEWAY_PUBLIC_LISTEN. A tenant is on
+	// it once its row carries a host; one whose host is empty is not in the
+	// index at all and stays reachable only on the internal zone.
 	ZonePublic
 )
 
@@ -55,13 +54,13 @@ func stageZone(zone Zone) stage {
 // stageTenantFromHost resolves which tenant a request belongs to, from the
 // `Host` header.
 //
-// Only the public zone enforces this today. The internal zone cannot be
-// reached by any listener but the existing one — every caller there is
-// Acme's own edge — and scoping it against a tenant nobody has finished
-// giving a host to would change what Acme sees the moment this ships,
-// rather than the moment docs/plans/17's rollout actually flips it on. Once
-// the public listener exists this stage's refusal path stops being
-// unreachable and starts being the point.
+// Only the public zone resolves a tenant. The internal zone deliberately does
+// not, and the consequence is worth stating plainly: an internal caller has no
+// tenant, so it sees the whole catalog and stageResolve's cross-tenant check
+// never fires for it — every tenant's models are reachable on that port,
+// including ones that are otherwise public and key-gated. The boundary is what
+// makes that safe (ADR 0016), not anything in this file, and `auth: none` on an
+// internal tenant describes the zone rather than a decision about that tenant.
 func stageTenantFromHost(tenants Tenants) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 		if req.zone != ZonePublic {
