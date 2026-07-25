@@ -569,6 +569,10 @@ func checkPolicy(policy *plane.Policy, route string, body []byte) (code string, 
 // ordinary request — which is nearly all of them — is forwarded as the exact
 // bytes that arrived.
 func rewriteBody(policy *plane.Policy, route string, body []byte) ([]byte, error) {
+	body, err := withoutMediaDecodeKwargs(route, body)
+	if err != nil {
+		return nil, err
+	}
 	if policy == nil || len(policy.Rules) == 0 {
 		return body, nil
 	}
@@ -620,6 +624,64 @@ func rewriteBody(policy *plane.Policy, route string, body []byte) ([]byte, error
 	}
 	if !written {
 		return body, nil
+	}
+	return json.Marshal(fields)
+}
+
+// chatCompletionsRoute is the one route that carries media by value, and so the
+// only one the strip below has anything to say about.
+const chatCompletionsRoute = "/v1/chat/completions"
+
+// mediaDecodeKwargs is the request field that reconfigures the engine's media
+// loader — `--media-io-kwargs` spelled per request.
+const mediaDecodeKwargs = "media_io_kwargs"
+
+// withoutMediaDecodeKwargs removes the caller's media decode settings from a
+// chat completion body, and returns the exact bytes that arrived when there
+// were none.
+//
+// It is not a policy term and it is not a refusal. Every bound on video decode
+// lives in the serving recipe and in the worker — frame rate, per-frame size,
+// decoded bytes, fetch bytes (docs/decisions/0017) — and this field is the one
+// API surface that sets the same knobs from outside. Leaving it to a rule an
+// endpoint opts into would make those bounds true only where somebody
+// remembered to write the rule; leaving it to the caller would make them true
+// until the first request that says otherwise.
+//
+// Dropped silently rather than refused. The field is a tuning hint on a request
+// that is otherwise fine, and a 400 would break a client whose own defaults
+// happen to spell out what we already do. What they asked for is not what they
+// get, and the answer is still the answer to their question.
+//
+// `extra_body` is stripped as well. An OpenAI client merges that object into the
+// top level before it sends, so the nesting only reaches this hop when a caller
+// hand-wrote it — which the engine ignores today, and would stop ignoring the
+// day anything on the path learns to unwrap it. The object itself stays, empty
+// or not, for the reason `drop` leaves a parent behind.
+func withoutMediaDecodeKwargs(route string, body []byte) ([]byte, error) {
+	if route != chatCompletionsRoute {
+		return body, nil
+	}
+	fields, readable := jsonObject(body)
+	if !readable {
+		return body, nil
+	}
+
+	_, carried := fields[mediaDecodeKwargs]
+	nested, nestedReadable := jsonObject(fields["extra_body"])
+	_, carriedNested := nested[mediaDecodeKwargs]
+	if !carried && !(nestedReadable && carriedNested) {
+		return body, nil
+	}
+
+	delete(fields, mediaDecodeKwargs)
+	if nestedReadable && carriedNested {
+		delete(nested, mediaDecodeKwargs)
+		encoded, err := json.Marshal(nested)
+		if err != nil {
+			return nil, err
+		}
+		fields["extra_body"] = encoded
 	}
 	return json.Marshal(fields)
 }

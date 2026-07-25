@@ -861,3 +861,122 @@ func TestTheTemperaturePinSaysWhichValueTheModeAllows(t *testing.T) {
 		}
 	}
 }
+
+// Bound 5 of docs/decisions/0017: the field that reconfigures the engine's media
+// loader is the caller's one way to unwind every decode bound the recipe and the
+// worker hold, so it does not reach an upstream and it does not depend on a
+// policy being attached.
+func TestMediaDecodeKwargsNeverReachTheEngine(t *testing.T) {
+	for _, c := range []struct {
+		name    string
+		body    string
+		kept    []string
+		dropped bool
+	}{
+		{
+			name:    "at the top level",
+			body:    `{"model":"m","messages":[],"media_io_kwargs":{"video":{"num_frames":-1}}}`,
+			kept:    []string{`"model"`, `"messages"`},
+			dropped: true,
+		},
+		{
+			name:    "hand-written inside extra_body",
+			body:    `{"model":"m","messages":[],"extra_body":{"media_io_kwargs":{"video":{"num_frames":-1}},"custom":1}}`,
+			kept:    []string{`"extra_body"`, `"custom":1`},
+			dropped: true,
+		},
+		{
+			name:    "in both places at once",
+			body:    `{"model":"m","media_io_kwargs":{},"extra_body":{"media_io_kwargs":{}}}`,
+			kept:    []string{`"extra_body"`},
+			dropped: true,
+		},
+		{
+			name:    "an extra_body this hop cannot read is left to the upstream",
+			body:    `{"model":"m","extra_body":"media_io_kwargs"}`,
+			kept:    []string{`"extra_body":"media_io_kwargs"`},
+			dropped: false,
+		},
+		{
+			name:    "a request that never asked for it",
+			body:    `{"model":"m","messages":[{"role":"user","content":"hi"}]}`,
+			kept:    []string{`"messages"`},
+			dropped: false,
+		},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			rewritten, err := rewriteBody(nil, chatRoute, []byte(c.body))
+			if err != nil {
+				t.Fatalf("rewrite: %v", err)
+			}
+			carried := strings.Contains(string(c.body), `"media_io_kwargs":`)
+			if gone := carried && !strings.Contains(string(rewritten), `"media_io_kwargs":`); gone != c.dropped {
+				t.Errorf("media_io_kwargs dropped=%v, want %v: %s", gone, c.dropped, rewritten)
+			}
+			if !c.dropped && string(rewritten) != c.body {
+				t.Errorf("a request with nothing to strip was re-encoded: %s", rewritten)
+			}
+			for _, kept := range c.kept {
+				if !strings.Contains(string(rewritten), kept) {
+					t.Errorf("the strip took %s with it: %s", kept, rewritten)
+				}
+			}
+		})
+	}
+}
+
+// The strip is silent. A tuning hint on an otherwise valid request is not a
+// reason to fail the request, and a client whose own defaults spell out what we
+// already do must not see a 400 for agreeing with us.
+func TestMediaDecodeKwargsAreDroppedAndNotRefused(t *testing.T) {
+	body := []byte(`{"model":"m","messages":[],"media_io_kwargs":{"video":{"num_frames":-1}}}`)
+	if _, _, ok := checkPolicy(kimiPolicy(), chatRoute, body); !ok {
+		t.Fatal("the field must be dropped, never refused")
+	}
+}
+
+// The strip runs beside the endpoint's own terms and neither one costs the
+// other: a policy still writes what it declares, and a request carrying nothing
+// to strip is still forwarded as the exact bytes that arrived.
+func TestMediaDecodeKwargsStripCoexistsWithPolicyTerms(t *testing.T) {
+	policy := &plane.Policy{Version: 2, Rules: []plane.Rule{
+		{Route: chatRoute, Key: "chat_template_kwargs.thinking", Drop: true},
+	}}
+
+	body := []byte(`{"model":"m","media_io_kwargs":{},"chat_template_kwargs":{"thinking":false}}`)
+	rewritten, err := rewriteBody(policy, chatRoute, body)
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	if strings.Contains(string(rewritten), `"media_io_kwargs"`) ||
+		strings.Contains(string(rewritten), `"thinking"`) {
+		t.Errorf("both terms must apply in one pass: %s", rewritten)
+	}
+
+	untouched := []byte(`{"model":"m","messages":[]}`)
+	forwarded, err := rewriteBody(nil, chatRoute, untouched)
+	if err != nil {
+		t.Fatalf("rewrite: %v", err)
+	}
+	if &forwarded[0] != &untouched[0] {
+		t.Errorf("a request with nothing to write was re-encoded: %s", forwarded)
+	}
+}
+
+// The field is a chat-completions surface. The other protocols this hop fronts
+// carry their own bodies and nobody has measured this key on them, so it is left
+// exactly where it was found.
+func TestMediaDecodeKwargsStripIsScopedToChatCompletions(t *testing.T) {
+	for _, route := range []string{embeddingsRoute, messagesRoute, responsesRoute} {
+		t.Run(route, func(t *testing.T) {
+			body := []byte(`{"model":"m","media_io_kwargs":{}}`)
+			rewritten, err := rewriteBody(nil, route, body)
+			if err != nil {
+				t.Fatalf("rewrite: %v", err)
+			}
+			if !strings.Contains(string(rewritten), `"media_io_kwargs"`) {
+				t.Errorf("stripped off the route it was measured on: %s", rewritten)
+			}
+		})
+	}
+}
