@@ -42,8 +42,12 @@ var ErrNoCluster = errors.New("tunnel: request carries no cluster")
 var ErrBodyTooLarge = errors.New("tunnel: request body too large to keep replayable")
 
 // maxReplayBytes caps the body the pool will hold in order to keep a request
-// replayable. Matched to the gateway's own request cap.
-const maxReplayBytes = 32 << 20
+// replayable. Matched to the gateway's own request cap — move them together.
+//
+// This guards the path that arrives without a buffer already read. The gateway
+// does not take it: it has the body from routing and passes it to `Replayable`,
+// which reuses that buffer and is bounded by `maxRequestBodyBytes` instead.
+const maxReplayBytes = 100 << 20
 
 // maxTunnelAttempts bounds how many tunnels one request may be offered to.
 //

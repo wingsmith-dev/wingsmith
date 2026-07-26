@@ -37,11 +37,17 @@ import (
 // Routing has to see the body, so this is the one place the gateway is not a
 // pure stream. A long-context prompt is legitimately large, not unbounded.
 //
-// It also caps an upload, which is a harder limit than it looks: an hour of
-// audio is around 50 MiB and does not fit. That is deliberate for now — the
-// answer to a long upload is a presigned upload and a job, not a larger buffer
-// on a synchronous hop, and callers see the duration they may send as a size.
-const maxRequestBodyBytes = 32 << 20
+// It also caps an upload. At 100 MiB an hour of audio (~50 MiB) fits, which is
+// why it is this rather than the 32 MiB it was. The ceiling is memory, not
+// policy: the body stays resident for the whole upstream call so the request
+// remains replayable, one copy per request in flight (`tunnel.Replayable`
+// reuses this buffer rather than taking a second). Raise this and the
+// gateway's memory limit moves with it, or a handful of concurrent large
+// requests is an OOM rather than a 413.
+//
+// The answer to an upload larger than this is still a presigned upload and a
+// job, not a bigger buffer on a synchronous hop.
+const maxRequestBodyBytes = 100 << 20
 
 // Resolver is the routing lookup this handler needs.
 type Resolver interface {
