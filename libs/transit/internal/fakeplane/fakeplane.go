@@ -35,6 +35,7 @@ type Upstream struct {
 type Endpoint struct {
 	ID              string     `json:"id"`
 	Name            string     `json:"name"`
+	Aliases         []string   `json:"aliases"`
 	Visibility      string     `json:"visibility"`
 	RoutingStrategy string     `json:"routing_strategy"`
 	Upstreams       []Upstream `json:"upstreams"`

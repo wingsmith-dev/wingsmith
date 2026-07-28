@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -97,8 +98,16 @@ type Route struct {
 	// ID is the endpoint's uid. It is carried for one reason: a metric
 	// labelled by a public model name is joined against a plane object that
 	// renames freely, and a rename would silently split a series in two.
-	ID        string
-	Name      string
+	ID string
+	// Name is the endpoint's canonical model id, and the only one anything
+	// downstream ever sees. Usage, policy, metrics and logs are keyed on it,
+	// which is what makes a rename cheap: the old id becomes an alias and no
+	// record is renamed.
+	Name string
+	// Aliases are the other keys this route is indexed under. They are here to
+	// be reported, not to be resolved through — resolution is one map lookup
+	// over every key alike.
+	Aliases   []string
 	Strategy  string
 	Upstreams []Upstream
 	// Policy is the request terms this endpoint sells, or nil for the ordinary
@@ -322,7 +331,14 @@ type Router struct {
 
 	mu       sync.RWMutex
 	revision string
-	routes   map[string]Route
+	// routes is keyed by every name that reaches a route — the canonical and
+	// each of its aliases, all lowercased — so resolving an alias costs the
+	// same one lookup as resolving the canonical.
+	routes map[string]Route
+	// canonicals lists the routes' own names, sorted, and is what the catalog
+	// is answered from. An alias in `GET /v1/models` would show one model
+	// several times in a client's picker.
+	canonicals []string
 	// proxies is keyed by address and credential together, so upstreams sharing
 	// both share a connection pool and one presenting a different credential
 	// never borrows another's.
@@ -368,12 +384,14 @@ func (r *Router) Load(ctx context.Context) error {
 	}
 
 	next := make(map[string]Route, len(table.Endpoints))
+	built := make([]Route, 0, len(table.Endpoints))
 	used := make(map[string]bool, len(pools))
 
 	for _, endpoint := range table.Endpoints {
 		route := Route{
 			ID:        endpoint.ID,
 			Name:      endpoint.Name,
+			Aliases:   endpoint.Aliases,
 			Strategy:  endpoint.RoutingStrategy,
 			Policy:    endpoint.Policy,
 			TenantID:  endpoint.TenantID,
@@ -468,14 +486,17 @@ func (r *Router) Load(ctx context.Context) error {
 		}
 
 		// Carried across refreshes so a resync does not restart every route's
-		// rotation at the same upstream.
-		if prior, ok := previous[route.Name]; ok && prior.cursor != nil {
+		// rotation at the same upstream. Keyed on the canonical, so churn in an
+		// endpoint's alias set does not reset its weighted round-robin.
+		if prior, ok := previous[routeKey(route.Name)]; ok && prior.cursor != nil {
 			route.cursor = prior.cursor
 		} else {
 			route.cursor = newPicker()
 		}
-		next[route.Name] = route
+		built = append(built, route)
 	}
+
+	canonicals := index(next, built)
 
 	for key := range pools {
 		if !used[key] {
@@ -486,14 +507,60 @@ func (r *Router) Load(ctx context.Context) error {
 	r.mu.Lock()
 	r.revision = table.Revision
 	r.routes = next
+	r.canonicals = canonicals
 	r.proxies = pools
 	r.mu.Unlock()
 
-	r.observe(func(o Observer) { o.TableApplied(len(next), samples(next)) })
+	r.observe(func(o Observer) { o.TableApplied(len(built), samples(built)) })
 
 	slog.Info("gateway: routing table loaded",
-		"revision", table.Revision, "endpoints", len(next), "upstreams", len(pools))
+		"revision", table.Revision, "endpoints", len(built), "upstreams", len(pools))
 	return nil
+}
+
+// routeKey is how a public model id is indexed and looked up. Lowercased, so that
+// `Kimi-K3` and `kimi-k3` are one route rather than two somebody has to keep in
+// step — the plane lowercases what it stores and a caller types what they like.
+func routeKey(name string) string { return strings.ToLower(strings.TrimSpace(name)) }
+
+// index binds every name that reaches a route into one map, and returns the
+// canonical names in sorted order.
+//
+// Canonicals are bound before any alias, so an alias can never shadow some
+// other endpoint's own model id whatever order the plane listed them in. Within
+// each pass the first binding of a key wins and a second is refused with an
+// error in the log: the plane refuses this namespace collision at write time,
+// so one arriving here is a misconfiguration, and picking between two bindings
+// by table order would make routing depend on the order rows came back — worse
+// than a loud complaint, because it is silent and it moves.
+func index(into map[string]Route, routes []Route) []string {
+	canonicals := make([]string, 0, len(routes))
+	for _, route := range routes {
+		name := routeKey(route.Name)
+		if held, taken := into[name]; taken {
+			slog.Error("gateway: two endpoints claim one model id, keeping the first",
+				"model", name, "keeping", held.ID, "ignoring", route.ID)
+			continue
+		}
+		into[name] = route
+		canonicals = append(canonicals, route.Name)
+	}
+	for _, route := range routes {
+		for _, alias := range route.Aliases {
+			name := routeKey(alias)
+			if name == "" {
+				continue
+			}
+			if held, taken := into[name]; taken {
+				slog.Error("gateway: an alias claims a model id that is already bound, keeping the first",
+					"model", name, "keeping", held.ID, "ignoring", route.ID)
+				continue
+			}
+			into[name] = route
+		}
+	}
+	sort.Strings(canonicals)
+	return canonicals
 }
 
 // reachability builds the liveness test for one upstream.
@@ -522,7 +589,7 @@ func (r *Router) observe(fn func(Observer)) {
 }
 
 // samples flattens a loaded table into what the observer reports on.
-func samples(routes map[string]Route) []metrics.UpstreamSample {
+func samples(routes []Route) []metrics.UpstreamSample {
 	flat := make([]metrics.UpstreamSample, 0, len(routes))
 	for _, route := range routes {
 		endpoint := route.ID
@@ -569,7 +636,7 @@ func order(endpoint plane.Endpoint) []plane.Upstream {
 // Resolve returns the route answering to a name.
 func (r *Router) Resolve(name string) (Route, error) {
 	r.mu.RLock()
-	route, ok := r.routes[name]
+	route, ok := r.routes[routeKey(name)]
 	r.mu.RUnlock()
 	if !ok {
 		return Route{}, ErrUnknownEndpoint
@@ -581,11 +648,8 @@ func (r *Router) Resolve(name string) (Route, error) {
 func (r *Router) Names() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	names := make([]string, 0, len(r.routes))
-	for name := range r.routes {
-		names = append(names, name)
-	}
-	sort.Strings(names)
+	names := make([]string, len(r.canonicals))
+	copy(names, r.canonicals)
 	return names
 }
 
@@ -598,13 +662,12 @@ func (r *Router) Names() []string {
 func (r *Router) NamesForTenant(tenantID string) []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	names := make([]string, 0, len(r.routes))
-	for name, route := range r.routes {
-		if route.TenantID == tenantID {
+	names := make([]string, 0, len(r.canonicals))
+	for _, name := range r.canonicals {
+		if r.routes[routeKey(name)].TenantID == tenantID {
 			names = append(names, name)
 		}
 	}
-	sort.Strings(names)
 	return names
 }
 
@@ -634,7 +697,10 @@ func (r *Router) ClusterReach() []ClusterReach {
 	r.mu.RUnlock()
 
 	byCluster := make(map[string]ClusterReach)
-	for _, route := range routes {
+	for name, route := range routes {
+		if routeKey(route.Name) != name {
+			continue
+		}
 		for _, upstream := range route.Upstreams {
 			reach := byCluster[upstream.ClusterID]
 			reach.ClusterID = upstream.ClusterID

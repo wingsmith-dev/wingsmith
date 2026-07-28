@@ -139,8 +139,12 @@ type Policy struct {
 
 // Endpoint is one public name and every address currently behind it.
 type Endpoint struct {
-	ID              string     `json:"id"`
-	Name            string     `json:"name"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Aliases are the other public model ids that resolve to this endpoint.
+	// The plane lowercases them and holds them in one namespace with every
+	// endpoint's name, so an alias is only ever an extra key into this route.
+	Aliases         []string   `json:"aliases"`
 	Visibility      string     `json:"visibility"`
 	RoutingStrategy string     `json:"routing_strategy"`
 	Upstreams       []Upstream `json:"upstreams"`

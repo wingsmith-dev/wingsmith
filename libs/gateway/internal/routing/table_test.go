@@ -360,3 +360,161 @@ func TestUpstreamsSharingAnAddressAndCredentialShareAProxy(t *testing.T) {
 		t.Fatalf("upstream = %q", rec.Header().Get("X-Upstream"))
 	}
 }
+
+func TestAnAliasResolvesToTheSameRouteAsItsCanonical(t *testing.T) {
+	source := &stubSource{tables: []plane.Table{{
+		Revision: "1",
+		Endpoints: []plane.Endpoint{{
+			ID:              "end_1",
+			Name:            "kimi-k3",
+			Aliases:         []string{"moonshotai/kimi-k3"},
+			RoutingStrategy: "weighted",
+			Upstreams:       []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")},
+		}},
+	}}}
+
+	router := New(source, factory())
+	if err := router.Load(context.Background()); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+
+	canonical, err := router.Resolve("kimi-k3")
+	if err != nil {
+		t.Fatalf("resolve canonical: %v", err)
+	}
+	alias, err := router.Resolve("moonshotai/kimi-k3")
+	if err != nil {
+		t.Fatalf("resolve alias: %v", err)
+	}
+	if alias.ID != canonical.ID || alias.Name != "kimi-k3" {
+		t.Fatalf("alias route = %q/%q, want end_1/kimi-k3", alias.ID, alias.Name)
+	}
+}
+
+func TestAnAliasResolvesWhateverCaseItIsTypedIn(t *testing.T) {
+	source := &stubSource{tables: []plane.Table{{
+		Revision: "1",
+		Endpoints: []plane.Endpoint{{
+			ID: "end_1", Name: "kimi-k3", Aliases: []string{"moonshotai/kimi-k3"}, RoutingStrategy: "weighted",
+			Upstreams: []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")},
+		}},
+	}}}
+
+	router := New(source, factory())
+	if err := router.Load(context.Background()); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	for _, typed := range []string{"MoonshotAI/Kimi-K3", "KIMI-K3"} {
+		if route, err := router.Resolve(typed); err != nil || route.Name != "kimi-k3" {
+			t.Fatalf("Resolve(%q) = %q, %v", typed, route.Name, err)
+		}
+	}
+}
+
+func TestTheCatalogListsCanonicalsAndNeverAnAlias(t *testing.T) {
+	// An alias in GET /v1/models shows one model several times in a client's picker.
+	source := &stubSource{tables: []plane.Table{{
+		Revision: "1",
+		Endpoints: []plane.Endpoint{{
+			ID: "end_1", Name: "kimi-k3", Aliases: []string{"moonshotai/kimi-k3", "kimi"},
+			RoutingStrategy: "weighted", TenantID: "ten_globex",
+			Upstreams: []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")},
+		}},
+	}}}
+
+	router := New(source, factory())
+	if err := router.Load(context.Background()); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if got := router.Names(); len(got) != 1 || got[0] != "kimi-k3" {
+		t.Fatalf("Names() = %v, want [kimi-k3]", got)
+	}
+	if got := router.NamesForTenant("ten_globex"); len(got) != 1 || got[0] != "kimi-k3" {
+		t.Fatalf("NamesForTenant() = %v, want [kimi-k3]", got)
+	}
+}
+
+func TestAnAliasCollidingWithAnotherEndpointKeepsTheFirstBinding(t *testing.T) {
+	// The plane refuses this at write time, so one arriving here is a
+	// misconfiguration. Picking between the two by table order would make
+	// routing depend on the order rows came back.
+	source := &stubSource{tables: []plane.Table{{
+		Revision: "1",
+		Endpoints: []plane.Endpoint{
+			{ID: "end_1", Name: "kimi-k3", Aliases: []string{"shared"}, RoutingStrategy: "weighted",
+				Upstreams: []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")}},
+			{ID: "end_2", Name: "gpt-oss-120b", Aliases: []string{"shared"}, RoutingStrategy: "weighted",
+				Upstreams: []plane.Upstream{upstream("us", "dep_b", "http://us.svc:8000", 100, "running")}},
+		},
+	}}}
+
+	router := New(source, factory())
+	if err := router.Load(context.Background()); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	route, err := router.Resolve("shared")
+	if err != nil || route.ID != "end_1" {
+		t.Fatalf("Resolve(shared) = %q, %v, want end_1", route.ID, err)
+	}
+	if got := router.Names(); len(got) != 2 {
+		t.Fatalf("Names() = %v, want both endpoints", got)
+	}
+}
+
+func TestAnAliasNeverShadowsAnotherEndpointsOwnModelID(t *testing.T) {
+	// Canonicals bind before any alias, so the outcome does not depend on the
+	// order the plane happened to list the two endpoints in.
+	source := &stubSource{tables: []plane.Table{{
+		Revision: "1",
+		Endpoints: []plane.Endpoint{
+			{ID: "end_1", Name: "kimi-k3", Aliases: []string{"gpt-oss-120b"}, RoutingStrategy: "weighted",
+				Upstreams: []plane.Upstream{upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running")}},
+			{ID: "end_2", Name: "gpt-oss-120b", RoutingStrategy: "weighted",
+				Upstreams: []plane.Upstream{upstream("us", "dep_b", "http://us.svc:8000", 100, "running")}},
+		},
+	}}}
+
+	router := New(source, factory())
+	if err := router.Load(context.Background()); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	route, err := router.Resolve("gpt-oss-120b")
+	if err != nil || route.ID != "end_2" {
+		t.Fatalf("Resolve(gpt-oss-120b) = %q, %v, want end_2", route.ID, err)
+	}
+}
+
+func TestAliasChurnDoesNotResetTheWeightedRotation(t *testing.T) {
+	// The cursor is keyed on the canonical. Publishing or retiring an alias is a
+	// public-name change and must not move traffic between clusters.
+	endpoint := func(aliases ...string) plane.Endpoint {
+		return plane.Endpoint{
+			ID: "end_1", Name: "chat", Aliases: aliases, RoutingStrategy: "weighted",
+			Upstreams: []plane.Upstream{
+				upstream("ap", "dep_a", "http://ap.svc:8000", 100, "running"),
+				upstream("us", "dep_b", "http://us.svc:8000", 100, "running"),
+			},
+		}
+	}
+	source := &stubSource{tables: []plane.Table{
+		{Revision: "1", Endpoints: []plane.Endpoint{endpoint()}},
+		{Revision: "2", Endpoints: []plane.Endpoint{endpoint("chat-legacy")}},
+	}}
+
+	router := New(source, factory())
+	if err := router.Load(context.Background()); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	route, _ := router.Resolve("chat")
+	first, _ := route.Pick()
+
+	if err := router.Load(context.Background()); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	route, _ = router.Resolve("chat-legacy")
+	second, _ := route.Pick()
+
+	if first.ClusterID == second.ClusterID {
+		t.Fatalf("both picks went to %q: the rotation restarted", first.ClusterID)
+	}
+}
