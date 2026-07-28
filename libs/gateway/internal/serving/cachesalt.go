@@ -53,7 +53,21 @@ var saltParts = map[string]string{
 // Every part contributes its kind and a length prefix, so an image and a video
 // holding identical bytes are different identities and two parts cannot be
 // rearranged into the same digest as one.
-func mediaIdentity(fields map[string]json.RawMessage, callerSalt string) (string, bool) {
+//
+// The text is in the digest for the same reason the media is, and the media
+// alone was not enough. Deriving the salt from the media put the image identity
+// back and was verified 24 of 24 on 2026-09-12, but it makes every question
+// about one image share a salt, and a prompt that differs only after the
+// placeholder run still collides in the block hash underneath — measured on
+// 2026-09-14 as one answer served to six different questions about one
+// document, on both endpoints, and reproduced under a caller's own shared salt,
+// so the collision is the engine's and the salt is only the lever we hold. An
+// identity the engine cannot contradict is therefore the whole prompt: same
+// request means the same salt and a repeat still reuses everything, a different
+// question means a different salt and no false match. What it costs is the
+// image prefix a second question about one image used to reuse, which is the
+// reuse that was returning the first question's answer.
+func promptIdentity(fields map[string]json.RawMessage, callerSalt string) (string, bool) {
 	messages, readable := jsonArray(fields["messages"])
 	if !readable {
 		return "", false
@@ -64,6 +78,15 @@ func mediaIdentity(fields map[string]json.RawMessage, callerSalt string) (string
 	for _, raw := range messages {
 		message, readable := jsonObject(raw)
 		if !readable {
+			continue
+		}
+		if role, stated := jsonString(message["role"]); stated {
+			writeSegment(digest, "role")
+			writeSegment(digest, role)
+		}
+		if text, isString := jsonString(message["content"]); isString {
+			writeSegment(digest, "text")
+			writeSegment(digest, text)
 			continue
 		}
 		parts, isArray := jsonArray(message["content"])
@@ -81,6 +104,12 @@ func mediaIdentity(fields map[string]json.RawMessage, callerSalt string) (string
 			}
 			field, carriesMedia := saltParts[kind]
 			if !carriesMedia {
+				// Anything that is not media is still prompt, and a prompt that
+				// differs only here is the collision this closes.
+				if text, stated := jsonString(part[kind]); stated {
+					writeSegment(digest, kind)
+					writeSegment(digest, text)
+				}
 				continue
 			}
 			payload, stated := jsonString(objectRaw(part[kind], field))
@@ -92,6 +121,8 @@ func mediaIdentity(fields map[string]json.RawMessage, callerSalt string) (string
 			carried = true
 		}
 	}
+	// A request carrying no media keeps the text path it has always had: the
+	// engine never dropped an identity it was not given.
 	if !carried {
 		return "", false
 	}
@@ -138,7 +169,7 @@ func writeSegment(digest hash.Hash, value string) {
 }
 
 // withMediaCacheSalt returns the body with `nvext.cache_salt` set to the
-// request's media identity, and whether it wrote one.
+// request's prompt identity, and whether it wrote one.
 //
 // A request carrying no media is returned as the exact bytes that arrived, so
 // the text path pays one walk and no re-encoding. The `nvext` object is created
@@ -169,7 +200,7 @@ func withMediaCacheSalt(body []byte) ([]byte, bool, error) {
 		callerSalt, _ = jsonString(raw)
 	}
 
-	salt, carried := mediaIdentity(fields, callerSalt)
+	salt, carried := promptIdentity(fields, callerSalt)
 	if !carried {
 		return body, false, nil
 	}

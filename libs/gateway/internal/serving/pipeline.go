@@ -281,9 +281,9 @@ func stageRewritePolicy(w http.ResponseWriter, r *http.Request, req *requestStat
 	return r, true
 }
 
-// stageMediaCacheSalt puts back the media identity the serving runtime drops
+// stageMediaCacheSalt puts back the prompt identity the serving runtime drops
 // on the way to a disaggregated decode worker, as the one field that survives
-// the handoff into its prefix-cache block hash. See `mediaIdentity`.
+// the handoff into its prefix-cache block hash. See `promptIdentity`.
 //
 // After the endpoint's terms rather than before them, so a rule that writes a
 // media part is inside the identity, and before `Pick` because the salt is a

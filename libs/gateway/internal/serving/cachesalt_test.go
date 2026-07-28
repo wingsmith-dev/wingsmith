@@ -16,6 +16,26 @@ func imageBody(t *testing.T, pixels string) string {
 		`{"type":"text","text":"what is this?"}]}]}`
 }
 
+// imageQuestionBody is a chat request carrying one inline image and one
+// question about it, so two bodies can differ in the question alone.
+func imageQuestionBody(t *testing.T, pixels, question string) string {
+	t.Helper()
+	url := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte(pixels))
+	return `{"model":"chat","messages":[{"role":"user","content":[` +
+		`{"type":"image_url","image_url":{"url":"` + url + `"}},` +
+		`{"type":"text","text":` + mustJSON(t, question) + `}]}]}`
+}
+
+// mustJSON quotes a string the way the wire carries it.
+func mustJSON(t *testing.T, value string) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal %q: %v", value, err)
+	}
+	return string(encoded)
+}
+
 // saltOf returns the cache_salt the gateway wrote, and whether it wrote one.
 func saltOf(t *testing.T, body string) (string, bool) {
 	t.Helper()
@@ -229,5 +249,53 @@ func TestTheSaltIsNotTakenBackOutAsACallersHint(t *testing.T) {
 	}
 	if !strings.Contains(string(scrubbed), "cache_salt") {
 		t.Errorf("the salt did not survive the scrub: %s", scrubbed)
+	}
+}
+
+// TestTwoQuestionsAboutOneImageNeverShareACacheIdentity is the 2026-09-14
+// regression: the media-only identity gave every question about one document
+// the same salt, and the block hash underneath then served the first question's
+// answer to all six of them.
+func TestTwoQuestionsAboutOneImageNeverShareACacheIdentity(t *testing.T) {
+	first, ok := saltOf(t, imageQuestionBody(t, "identical pixels", "what is the value for 'TO:'?"))
+	if !ok {
+		t.Fatal("no salt written for a request carrying an image")
+	}
+	second, ok := saltOf(t, imageQuestionBody(t, "identical pixels", "what is the value for 'MANUFACTURER'?"))
+	if !ok {
+		t.Fatal("no salt written for a request carrying an image")
+	}
+	if first == second {
+		t.Errorf("two questions about one image share the salt %q", first)
+	}
+}
+
+// TestOneQuestionAboutOneImageKeepsItsReuse is the other half: the salt must
+// still not be a per-request nonce, or an identical repeat re-prefills.
+func TestOneQuestionAboutOneImageKeepsItsReuse(t *testing.T) {
+	question := "what is the value for 'TO:'?"
+	first, _ := saltOf(t, imageQuestionBody(t, "identical pixels", question))
+	second, _ := saltOf(t, imageQuestionBody(t, "identical pixels", question))
+	if first != second {
+		t.Errorf("one request hashed two ways: %q and %q", first, second)
+	}
+}
+
+// TestAPriorTurnIsInsideTheIdentity pins that the collision is closed for a
+// conversation too, where the turn that differs is not the one carrying media.
+func TestAPriorTurnIsInsideTheIdentity(t *testing.T) {
+	body := func(answer string) string {
+		return `{"model":"chat","messages":[` +
+			`{"role":"user","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,aGVsbG8="}},{"type":"text","text":"what is this?"}]},` +
+			`{"role":"assistant","content":"` + answer + `"},` +
+			`{"role":"user","content":[{"type":"text","text":"and the date?"}]}]}`
+	}
+	first, ok := saltOf(t, body("a receipt"))
+	if !ok {
+		t.Fatal("no salt written for a conversation carrying an image")
+	}
+	second, _ := saltOf(t, body("an invoice"))
+	if first == second {
+		t.Errorf("two conversations share the salt %q", first)
 	}
 }
