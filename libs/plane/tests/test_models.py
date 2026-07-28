@@ -29,6 +29,7 @@ DEMAND = {
     "demand_workload_adoption",
     "demand_replica",
     "demand_endpoint",
+    "demand_endpoint_alias",
     "demand_endpoint_target",
     "demand_warm_set",
 }

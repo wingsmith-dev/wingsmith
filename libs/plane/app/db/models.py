@@ -1288,6 +1288,43 @@ class Endpoint(BaseMixin):
     targets: Mapped[list[EndpointTarget]] = relationship(
         "EndpointTarget", back_populates="endpoint", lazy="noload", cascade="all, delete-orphan"
     )
+    aliases: Mapped[list[EndpointAlias]] = relationship(
+        "EndpointAlias", back_populates="endpoint", lazy="noload", cascade="all, delete-orphan"
+    )
+
+
+class EndpointAlias(BaseMixin):
+    """An additional public model id that resolves to one endpoint.
+
+    The third of three names, and the only one a caller chooses between. `slug` is the canonical
+    one and every internal record — usage, policy, metrics, logs — is keyed on it;
+    `EndpointTarget.served_model_name` is what one engine answers to. An alias is neither: it is a
+    string a client may type, and the gateway turns it into the canonical before any other stage
+    runs. That is what makes a rename cheap — the old id becomes an alias and nothing downstream
+    is renamed.
+
+    It hangs off the endpoint rather than off the workload or the gateway because the public name
+    a caller types is what an endpoint *is*. The gateway resolves and never defines: it holds no
+    catalog of its own, and an alias reaches it as one more key into the same route.
+
+    `alias` is globally unique, which makes aliases and canonical slugs one namespace. The index
+    only stops two endpoints claiming one alias; the rest of that namespace — an alias equal to
+    some endpoint's slug, or a slug moved onto somebody's alias — is the service's to refuse,
+    because the two live in different tables and no constraint spans them.
+
+    Stored lowercased, and resolved case-insensitively, so `Kimi-K3` and `kimi-k3` are not two
+    routes somebody has to keep in step.
+    """
+
+    __tablename__ = "demand_endpoint_alias"
+
+    id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
+    endpoint_id: Mapped[UUID] = mapped_column(
+        DBUUID, ForeignKey("demand_endpoint.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    alias: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+
+    endpoint: Mapped[Endpoint] = relationship("Endpoint", back_populates="aliases", lazy="noload")
 
 
 class EndpointTarget(BaseMixin):
@@ -1386,7 +1423,7 @@ class Tenant(BaseMixin):
     host: Mapped[str | None] = mapped_column(String(255), unique=True, nullable=True)
 
     projects: Mapped[list[Project]] = relationship("Project", back_populates="tenant", lazy="noload")
-    api_keys: Mapped[list["TenantAPIKey"]] = relationship("TenantAPIKey", back_populates="tenant", lazy="noload")
+    api_keys: Mapped[list[TenantAPIKey]] = relationship("TenantAPIKey", back_populates="tenant", lazy="noload")
 
 
 class TenantToken(BaseMixin):
