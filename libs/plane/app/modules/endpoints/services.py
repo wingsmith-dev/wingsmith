@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.ids import ENDPOINT
 from app.core.ids import new_uid
 from app.db.models import Endpoint
+from app.db.models import EndpointAlias
 from app.db.models import EndpointTarget
 from app.core.schemas import ListResponse
 from app.core.serving import served_model
@@ -90,6 +91,36 @@ def public_model(endpoint: Endpoint) -> str:
     is told what to route on every time it polls (`next[route.Name]` in `routing/table.go`).
     """
     return str(endpoint.slug)
+
+
+def alias_names(endpoint: Endpoint) -> list[str]:
+    """The other public ids this endpoint answers to, sorted.
+
+    Sorted rather than left in insertion order because the set is what matters and the order is
+    not a fact anybody declared — it also goes into the resolved table's revision, which must not
+    move because two rows came back the other way round.
+    """
+    return sorted(alias.alias for alias in endpoint.aliases)
+
+
+def normalise_aliases(values: list[str]) -> list[str]:
+    """Trims, lowercases and deduplicates a declared alias set.
+
+    Lowercased here and matched case-insensitively at the gateway, so `Kimi-K3` and `kimi-k3` are
+    one route rather than two somebody has to keep in step. An empty string is refused rather than
+    dropped: it is a route on the empty string, and a caller who typed one meant something.
+
+    Deduplication is not a collision. Two spellings of one alias in one request say the same thing
+    twice, and the set they describe is unambiguous.
+    """
+    cleaned: list[str] = []
+    for value in values:
+        alias = str(value).strip().lower()
+        if not alias:
+            raise Invalid("an alias cannot be empty")
+        if alias not in cleaned:
+            cleaned.append(alias)
+    return cleaned
 
 
 def check_shape(visibility: str, routing_strategy: str) -> None:
@@ -511,6 +542,7 @@ class EndpointService:
             visibility=endpoint.visibility,
             routing_strategy=endpoint.routing_strategy,
             enabled=endpoint.enabled,
+            aliases=alias_names(endpoint),
             targets=[
                 EndpointTargetSchema(
                     deployment_id=uids[t.deployment_id],
@@ -615,6 +647,32 @@ class EndpointService:
             order.append(deployment.id)
         return rows, order
 
+    async def _check_namespace(self, slug: str, aliases: list[str], endpoint_id: UUID | None = None) -> None:
+        """Refuses a public id that two endpoints would answer to.
+
+        Aliases and canonical slugs are one namespace, and no database constraint can say so: the
+        unique index on `alias` stops two endpoints claiming one alias and nothing else. The four
+        refusals here are the rest of it — an alias equal to this endpoint's own slug, an alias
+        equal to any other endpoint's slug, an alias another endpoint already holds, and the
+        symmetric case of a slug moved onto somebody else's alias.
+
+        It has to be a refusal and not a preference, because the gateway resolves a duplicate key
+        by keeping whichever binding it indexed first. That is the right behaviour there — order-
+        dependent routing is worse than a loud misconfiguration — but it means the plane is the
+        only place the ambiguity can actually be prevented.
+        """
+        owner = await self.repo.get_alias_owner(slug)
+        if owner is not None and owner != endpoint_id:
+            raise Conflict(f"{slug!r} is already an alias of another endpoint", {"slug": slug})
+        for alias in aliases:
+            if alias == slug:
+                raise Conflict(f"{alias!r} is already this endpoint's own model id", {"alias": alias})
+            if await self.repo.name_exists(alias, exclude_id=endpoint_id):
+                raise Conflict(f"{alias!r} is already another endpoint's model id", {"alias": alias})
+            owner = await self.repo.get_alias_owner(alias)
+            if owner is not None and owner != endpoint_id:
+                raise Conflict(f"{alias!r} is already an alias of another endpoint", {"alias": alias})
+
     async def create(self, data: EndpointCreateRequest) -> EndpointSchema:
         check_shape(data.visibility, data.routing_strategy)
         check_targets(data.targets)
@@ -636,6 +694,9 @@ class EndpointService:
         if not slug:
             slug = str(data.name)
 
+        aliases = normalise_aliases(data.aliases)
+        await self._check_namespace(slug, aliases)
+
         endpoint = Endpoint(
             uid=new_uid(ENDPOINT),
             project_id=project.id,
@@ -647,6 +708,7 @@ class EndpointService:
             enabled=data.enabled,
             labels=data.labels,
             targets=targets,
+            aliases=[EndpointAlias(alias=alias) for alias in aliases],
         )
         try:
             await self.repo.add(endpoint)
@@ -695,6 +757,17 @@ class EndpointService:
             slug = str(fields.pop("slug")).strip().lower()
             if slug:
                 endpoint.slug = slug
+
+        aliases = fields.pop("aliases", UNSET)
+        if aliases is not UNSET:
+            aliases = normalise_aliases(aliases)
+        await self._check_namespace(
+            endpoint.slug,
+            aliases if aliases is not UNSET else alias_names(endpoint),
+            endpoint_id=endpoint.id,
+        )
+        if aliases is not UNSET:
+            await self.repo.replace_aliases(endpoint.id, aliases)
 
         for key, value in fields.items():
             setattr(endpoint, key, value)
@@ -796,10 +869,11 @@ class EndpointService:
             project = grouped[endpoint_id][0][8]
             tenant = grouped[endpoint_id][0][9]
             own: list[dt.datetime | None] = [_stamp(endpoint), _stamp(quota), _stamp(project)]
+            aliases = alias_names(endpoint)
             upstreams: list[ResolvedUpstreamSchema] = []
             uids: dict[UUID, str] = {}
 
-            served: list[str] = []
+            served: list[str] = list(aliases)
             for _, target, deployment, cluster, serving, _, artifact, workload, _, _ in grouped[endpoint_id]:
                 if target is None:
                     continue
@@ -842,6 +916,7 @@ class EndpointService:
                 ResolvedEndpointSchema(
                     id=endpoint.uid,
                     name=public_model(endpoint),
+                    aliases=aliases,
                     visibility=endpoint.visibility,
                     routing_strategy=endpoint.routing_strategy,
                     upstreams=upstreams,

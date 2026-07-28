@@ -198,6 +198,7 @@ class EndpointSchema(Struct):
     visibility: str
     routing_strategy: str
     enabled: bool
+    aliases: list[str]
     targets: list[EndpointTargetSchema]
     failover_order: list[str]
     surface: EndpointSurfaceSchema
@@ -224,7 +225,13 @@ class EndpointTargetRequest(Struct):
 class EndpointCreateRequest(Struct):
     """`slug` is the model id clients send. Empty takes the slug of the weights behind the first
     target, which is what makes an endpoint over one model answer to that model without anybody
-    typing its name a second time. Give one only to publish an alias."""
+    typing its name a second time. Give one only to publish an alias.
+
+    `aliases` are the other names a caller may type for this endpoint. They resolve to `slug` and
+    nothing downstream ever sees them: usage, policy and metrics are keyed on the canonical, which
+    is what makes a rename cheap — the old id moves into this list and no record is renamed. They
+    share one namespace with every endpoint's slug, so an alias that is already somebody's public
+    id is refused rather than silently shadowing it."""
 
     name: str
     project: str
@@ -232,6 +239,7 @@ class EndpointCreateRequest(Struct):
     visibility: str = "private"
     routing_strategy: str = "weighted"
     enabled: bool = True
+    aliases: list[str] = []
     targets: list[EndpointTargetRequest] = []
     failover_order: list[str] = []
     labels: dict = {}
@@ -251,9 +259,15 @@ class EndpointUpdateRequest(Struct):
     could not express removing one. `failover_order` orders that set, so it is
     only accepted alongside it — an order over targets that are about to be
     replaced is an order over nothing.
+
+    `aliases` replaces the whole set for the same reason `targets` does: an alias has no identity
+    beyond its own string, so a merge could add one and never remove one. Omitting it leaves the
+    set alone; sending `[]` clears it, and the two must stay distinguishable — retiring the last
+    alias of a renamed endpoint is a deliberate act and is how its old public id stops answering.
     """
 
     slug: str | UnsetType = UNSET
+    aliases: list[str] | UnsetType = UNSET
     visibility: str | UnsetType = UNSET
     routing_strategy: str | UnsetType = UNSET
     enabled: bool | UnsetType = UNSET
@@ -322,10 +336,16 @@ class ResolvedEndpointSchema(Struct):
     can answer only for the tenant a request belongs to (docs/plans/17) without
     a second lookup per request. There is exactly one tenant per endpoint —
     this is not a cross-tenant endpoint's table.
+
+    `name` is the canonical model id and `aliases` are the other strings that reach it. The
+    gateway indexes both into one route and resolves before any other stage runs, so a deny rule
+    written against the canonical cannot be walked past by typing an alias. `GET /v1/models`
+    lists `name` only: an alias in that list shows one model several times in a client's picker.
     """
 
     id: str
     name: str
+    aliases: list[str]
     visibility: str
     routing_strategy: str
     upstreams: list[ResolvedUpstreamSchema]

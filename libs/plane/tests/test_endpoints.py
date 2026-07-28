@@ -11,6 +11,7 @@ from app.core.ids import ENDPOINT
 from app.core.ids import new_uid
 from app.db.models import Endpoint
 from app.core.exceptions import Invalid
+from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
 from app.modules.endpoints.routes import EndpointRoutes
 from app.modules.endpoints.schemas import EndpointSchema
@@ -294,9 +295,12 @@ class FakeRepo:
 class FakeEndpoint:
     id = 1
 
-    def __init__(self, uid="end_1", name="chat", enabled=True, slug="", surface=None) -> None:
+    def __init__(self, uid="end_1", name="chat", enabled=True, slug="", surface=None, aliases=()) -> None:
         self.uid = uid
         self.name = name
+        self.aliases = [SimpleNamespace(alias=a) for a in aliases]
+        self.targets = []
+        self.labels = {}
         # Defaulted to the name so that a fake built without an opinion behaves like a real
         # endpoint created without one: a slug is never empty on a row, because the create path
         # falls back to the artifact and then to the name before it writes.
@@ -730,10 +734,23 @@ class _CreatedRow(tuple):
 class FakeCreateRepo:
     """Enough of the repository for `create` to run with no database under it."""
 
-    def __init__(self, artifact_slug="", deployment=None) -> None:
+    def __init__(self, artifact_slug="", deployment=None, alias_owners=None, slugs=()) -> None:
         self.artifact_slug_value = artifact_slug
         self.deployment = deployment
         self.added = None
+        self.alias_owners = alias_owners or {}
+        self.slugs = dict(slugs) if isinstance(slugs, dict) else {s: 2 for s in slugs}
+        self.replaced = None
+
+    async def get_alias_owner(self, alias):
+        return self.alias_owners.get(alias)
+
+    async def name_exists(self, slug, exclude_id=None):
+        owner = self.slugs.get(slug)
+        return owner is not None and owner != exclude_id
+
+    async def replace_aliases(self, endpoint_id, aliases):
+        self.replaced = (endpoint_id, aliases)
 
     async def project_by_ref(self, ref):
         return SimpleNamespace(id=uuid.uuid4(), uid="prj_1")
@@ -1310,3 +1327,114 @@ def test_the_endpoint_schema_carries_the_surface():
     rendered = resolution([]).schema(endpoint, "prj_1", {})
     assert rendered.surface.policy is not None
     assert msgspec.json.decode(msgspec.json.encode(rendered), type=EndpointSchema).surface.policy is not None
+
+
+class FakeUpdateRepo(FakeCreateRepo):
+    """`update` reads one row and writes through the same seams `create` does."""
+
+    def __init__(self, endpoint, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.endpoint = endpoint
+        self.added = endpoint
+
+    async def get(self, ref):
+        return _CreatedRow((self.endpoint,))
+
+
+def updating(repo) -> EndpointService:
+    svc = EndpointService.__new__(EndpointService)
+    svc.db = SimpleNamespace(commit=_noop, rollback=_noop, flush=_noop)
+    svc.repo = repo
+    return svc
+
+
+@pytest.mark.asyncio
+async def test_a_declared_alias_is_lowercased_and_deduplicated():
+    repo = FakeCreateRepo()
+    created = await creating(repo).create(
+        EndpointCreateRequest(
+            name="chat", project="acme", slug="kimi-k3", aliases=["MoonshotAI/Kimi-K3", "moonshotai/kimi-k3"]
+        )
+    )
+    assert created.aliases == ["moonshotai/kimi-k3"]
+
+
+@pytest.mark.asyncio
+async def test_an_empty_alias_is_refused_rather_than_dropped():
+    """A route on the empty string is not what somebody who typed one meant."""
+    with pytest.raises(Invalid):
+        await creating(FakeCreateRepo()).create(EndpointCreateRequest(name="chat", project="acme", aliases=["  "]))
+
+
+@pytest.mark.asyncio
+async def test_an_alias_may_not_be_the_endpoints_own_model_id():
+    with pytest.raises(Conflict):
+        await creating(FakeCreateRepo()).create(
+            EndpointCreateRequest(name="chat", project="acme", slug="kimi-k3", aliases=["kimi-k3"])
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_alias_may_not_shadow_another_endpoints_model_id():
+    """One namespace. The gateway keeps whichever binding it indexed first, so the only place the
+    ambiguity can be prevented is here."""
+    repo = FakeCreateRepo(slugs=["gpt-oss-120b"])
+    with pytest.raises(Conflict):
+        await creating(repo).create(
+            EndpointCreateRequest(name="chat", project="acme", slug="kimi-k3", aliases=["gpt-oss-120b"])
+        )
+
+
+@pytest.mark.asyncio
+async def test_an_alias_another_endpoint_already_holds_is_refused():
+    repo = FakeCreateRepo(alias_owners={"moonshotai/kimi-k3": 99})
+    with pytest.raises(Conflict):
+        await creating(repo).create(
+            EndpointCreateRequest(name="chat", project="acme", slug="kimi-k3", aliases=["moonshotai/kimi-k3"])
+        )
+
+
+@pytest.mark.asyncio
+async def test_renaming_an_endpoint_onto_an_existing_alias_is_refused():
+    """The symmetric half of the namespace, and the one a unique index cannot reach: the alias
+    lives in another table, so nothing but this check stands between the two rows."""
+    endpoint = FakeEndpoint(slug="kimi-k3")
+    repo = FakeUpdateRepo(endpoint, alias_owners={"gpt-oss-120b": 99})
+    with pytest.raises(Conflict):
+        await updating(repo).update("end_1", EndpointUpdateRequest(slug="gpt-oss-120b"))
+
+
+@pytest.mark.asyncio
+async def test_an_endpoint_may_keep_an_alias_it_already_owns_through_an_update():
+    endpoint = FakeEndpoint(slug="kimi-k3", aliases=["moonshotai/kimi-k3"])
+    repo = FakeUpdateRepo(endpoint, alias_owners={"moonshotai/kimi-k3": endpoint.id})
+    await updating(repo).update("end_1", EndpointUpdateRequest(enabled=False))
+    assert repo.replaced is None
+
+
+@pytest.mark.asyncio
+async def test_sending_an_alias_set_replaces_the_whole_set_and_sending_none_leaves_it():
+    """An alias has no identity beyond its own string, so a merge could only ever add one.
+    Omitting the field and clearing it have to stay different acts."""
+    endpoint = FakeEndpoint(slug="kimi-k3", aliases=["moonshotai/kimi-k3"])
+    repo = FakeUpdateRepo(endpoint, alias_owners={"moonshotai/kimi-k3": endpoint.id})
+    await updating(repo).update("end_1", EndpointUpdateRequest(aliases=[]))
+    assert repo.replaced == (endpoint.id, [])
+
+
+@pytest.mark.asyncio
+async def test_a_resolved_endpoint_carries_its_aliases_beside_the_canonical():
+    endpoint = FakeEndpoint(slug="kimi-k3", aliases=["moonshotai/kimi-k3"])
+    table = await resolution([tunnelled_row(endpoint=endpoint)]).resolved()
+    assert table.endpoints[0].name == "kimi-k3"
+    assert table.endpoints[0].aliases == ["moonshotai/kimi-k3"]
+
+
+@pytest.mark.asyncio
+async def test_adding_an_alias_moves_the_revision_the_gateway_polls():
+    """Otherwise the alias sits behind a 304 and the name a client was told to use 404s."""
+    before = await resolution([tunnelled_row(endpoint=FakeEndpoint(slug="kimi-k3"))]).resolved()
+    after = await resolution(
+        [tunnelled_row(endpoint=FakeEndpoint(slug="kimi-k3", aliases=["moonshotai/kimi-k3"]))]
+    ).resolved()
+    assert before.revision != after.revision

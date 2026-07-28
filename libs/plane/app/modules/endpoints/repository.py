@@ -4,19 +4,21 @@ from uuid import UUID
 
 from sqlalchemy import Row
 from sqlalchemy import Select
+from sqlalchemy import delete
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ids import is_uid
+from app.db.models import Tenant
 from app.db.models import Cluster
 from app.db.models import Project
-from app.db.models import Tenant
 from app.db.models import Artifact
 from app.db.models import Endpoint
 from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import ServingQuota
+from app.db.models import EndpointAlias
 from app.db.models import ClusterServing
 from app.db.models import EndpointTarget
 from app.core.filters import ref_ids
@@ -37,7 +39,7 @@ class EndpointRepository:
         return (
             select(Endpoint, Project.uid.label("project_uid"))
             .join(Project, Endpoint.project_id == Project.id)
-            .options(selectinload(Endpoint.targets))
+            .options(selectinload(Endpoint.targets), selectinload(Endpoint.aliases))
         )
 
     def get_query(self, ref: str) -> Select:
@@ -158,6 +160,7 @@ class EndpointRepository:
             .outerjoin(ServingQuota, ServingQuota.endpoint_id == Endpoint.id)
             .outerjoin(Workload, Deployment.workload_id == Workload.id)
             .outerjoin(Artifact, Workload.artifact_id == Artifact.id)
+            .options(selectinload(Endpoint.aliases))
             .where(Endpoint.enabled.is_(True))
             .order_by(Endpoint.seq.asc())
         )
@@ -225,6 +228,49 @@ class EndpointRepository:
             .limit(1)
         )
         return (result.scalar_one_or_none() or "").strip()
+
+    def alias_owner_query(self, alias: str) -> Select:
+        return select(EndpointAlias.endpoint_id).where(EndpointAlias.alias == alias)
+
+    def slug_owner_query(self, slug: str) -> Select:
+        return select(Endpoint.id).where(Endpoint.slug == slug)
+
+    async def get_alias_owner(self, alias: str) -> UUID | None:
+        """Which endpoint already answers to this alias, if any.
+
+        The unique index makes at most one, and a `None` here is the only reason the service is
+        allowed to write the row — the constraint is the backstop, not the check, because the
+        message a caller needs names the endpoint that holds it.
+        """
+        result = await self.db.execute(self.alias_owner_query(alias).limit(1))
+        return result.scalar_one_or_none()
+
+    async def name_exists(self, slug: str, exclude_id: UUID | None = None) -> bool:
+        """Whether any other endpoint is already published under this public id.
+
+        The other half of the one namespace aliases and slugs share. No constraint spans the two
+        tables, so an alias shadowing somebody's slug — or a slug moved onto somebody's alias —
+        would otherwise be accepted and then resolved by whichever the gateway indexed first.
+        """
+        query = self.slug_owner_query(slug)
+        if exclude_id is not None:
+            query = query.where(Endpoint.id != exclude_id)
+        result = await self.db.execute(query.limit(1))
+        return result.scalar_one_or_none() is not None
+
+    async def replace_aliases(self, endpoint_id: UUID, aliases: list[str]) -> None:
+        """Replaces an endpoint's whole alias set.
+
+        A full replace and never a merge: an alias has no identity beyond its own string, so
+        there is nothing to match a patch against and a merge could only ever add. The delete is
+        flushed before the inserts because `alias` is globally unique — moving one alias between
+        two of an endpoint's own rows would otherwise collide with the row it is replacing.
+        """
+        await self.db.execute(delete(EndpointAlias).where(EndpointAlias.endpoint_id == endpoint_id))
+        await self.db.flush()
+        for alias in aliases:
+            self.db.add(EndpointAlias(endpoint_id=endpoint_id, alias=alias))
+        await self.db.flush()
 
     async def add(self, endpoint: Endpoint) -> Endpoint:
         self.db.add(endpoint)
