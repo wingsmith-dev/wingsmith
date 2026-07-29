@@ -476,6 +476,19 @@ def _stamp(row) -> dt.datetime | None:
     return row.updated_at or row.created_at
 
 
+def _alias_term(alias: str) -> str:
+    """One alias, as it enters the revision's content hash.
+
+    Prefixed, because `_served` hashes a *set* and an alias is very often a string already in it.
+    Renaming an endpoint means publishing the engine's own name as the alias — `moonshotai/kimi-k3`
+    aliased onto `kimi-k3`, where that is exactly what the artifact's slug already resolves to — so
+    folding the bare string in makes the one change that matters invisible. Nothing else moves on
+    an alias-only update, so the gateway keeps its `If-None-Match`, gets a `304`, and 404s the name
+    a client was just told to use.
+    """
+    return f"alias\x1e{alias}"
+
+
 def _served(values: list[str]) -> str:
     """The third revision term: what the engines behind this table answer to.
 
@@ -873,7 +886,7 @@ class EndpointService:
             upstreams: list[ResolvedUpstreamSchema] = []
             uids: dict[UUID, str] = {}
 
-            served: list[str] = list(aliases)
+            served: list[str] = [_alias_term(alias) for alias in aliases]
             for _, target, deployment, cluster, serving, _, artifact, workload, _, _ in grouped[endpoint_id]:
                 if target is None:
                     continue

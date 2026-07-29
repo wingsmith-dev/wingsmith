@@ -2137,3 +2137,79 @@ async def test_the_story_survives_the_workload_it_is_about(db: AsyncSession) -> 
     kinds = [kind for kind, _ in await _story(db, created.id)]
     assert "workload.requested" in kinds
     assert "workload.deleted" in kinds
+
+
+async def test_an_alias_reaches_the_resolved_table_however_it_was_declared(db: AsyncSession) -> None:
+    """The loader and the write path, not the shape. Every unit test above builds its endpoint by
+    hand, so none of them exercises whether the resolution's own query loads the alias rows — and
+    `lazy="noload"` answers an unloaded collection with `[]` rather than raising, which would be a
+    silently empty alias set on the table the gateway routes from.
+
+    The read is taken from a second session because that is what the API does: one session per
+    request. `expire_on_commit=False` means a writer's own session keeps the collection it loaded
+    before the write, so reading back through it would prove nothing about what a poller sees.
+    """
+    _, project, _, deployment = await a_deployment(db)
+    endpoints = EndpointService(db)
+    created = await endpoints.create(
+        EndpointCreateRequest(
+            name="kimi",
+            project=project.id,
+            slug="kimi-k3",
+            targets=[EndpointTargetRequest(deployment=deployment.id)],
+        )
+    )
+    assert created.aliases == []
+
+    fresh = async_sessionmaker(db.bind, expire_on_commit=False)
+
+    async def resolution():
+        async with fresh() as session:
+            return await EndpointService(session).resolved()
+
+    before = await resolution()
+    assert before.endpoints[0].aliases == []
+
+    await endpoints.update(created.id, EndpointUpdateRequest(aliases=["moonshotai/kimi-k3"]))
+    added = await resolution()
+    assert added.endpoints[0].name == "kimi-k3"
+    assert added.endpoints[0].aliases == ["moonshotai/kimi-k3"]
+    assert added.revision != before.revision
+
+    await endpoints.update(created.id, EndpointUpdateRequest(aliases=[]))
+    cleared = await resolution()
+    assert cleared.endpoints[0].aliases == []
+    assert cleared.revision != added.revision
+
+
+async def test_an_alias_moves_the_revision_even_when_an_engine_already_answers_to_that_name(
+    db: AsyncSession,
+) -> None:
+    """The case this feature is *for*, and the one the revision missed.
+
+    Renaming an endpoint means publishing its engine's own name as the alias — which is exactly
+    the string already in the revision's served-name set. That set is deduplicated, so folding
+    aliases into it made the one change that matters invisible: a gateway holding an `If-None-Match`
+    gets a `304`, keeps a table with no alias in it, and 404s the name a client was just told to
+    use. Nothing else moves on an alias-only update, so there is no second term to save it.
+    """
+    _, project, _, deployment = await a_deployment(db)
+    endpoints = EndpointService(db)
+    created = await endpoints.create(
+        EndpointCreateRequest(
+            name="kimi",
+            project=project.id,
+            slug="kimi-k3",
+            targets=[EndpointTargetRequest(deployment=deployment.id, served_model_name="moonshotai/kimi-k3")],
+        )
+    )
+
+    fresh = async_sessionmaker(db.bind, expire_on_commit=False)
+
+    async def revision():
+        async with fresh() as session:
+            return (await EndpointService(session).resolved()).revision
+
+    before = await revision()
+    await endpoints.update(created.id, EndpointUpdateRequest(aliases=["moonshotai/kimi-k3"]))
+    assert await revision() != before
