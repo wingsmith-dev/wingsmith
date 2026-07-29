@@ -749,8 +749,8 @@ class FakeCreateRepo:
         owner = self.slugs.get(slug)
         return owner is not None and owner != exclude_id
 
-    async def replace_aliases(self, endpoint_id, aliases):
-        self.replaced = (endpoint_id, aliases)
+    async def replace_aliases(self, endpoint, aliases):
+        self.replaced = (endpoint, aliases)
 
     async def project_by_ref(self, ref):
         return SimpleNamespace(id=uuid.uuid4(), uid="prj_1")
@@ -1419,7 +1419,7 @@ async def test_sending_an_alias_set_replaces_the_whole_set_and_sending_none_leav
     endpoint = FakeEndpoint(slug="kimi-k3", aliases=["moonshotai/kimi-k3"])
     repo = FakeUpdateRepo(endpoint, alias_owners={"moonshotai/kimi-k3": endpoint.id})
     await updating(repo).update("end_1", EndpointUpdateRequest(aliases=[]))
-    assert repo.replaced == (endpoint.id, [])
+    assert repo.replaced == (endpoint, [])
 
 
 @pytest.mark.asyncio

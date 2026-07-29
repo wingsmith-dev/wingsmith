@@ -780,7 +780,7 @@ class EndpointService:
             endpoint_id=endpoint.id,
         )
         if aliases is not UNSET:
-            await self.repo.replace_aliases(endpoint.id, aliases)
+            await self.repo.replace_aliases(endpoint, aliases)
 
         for key, value in fields.items():
             setattr(endpoint, key, value)

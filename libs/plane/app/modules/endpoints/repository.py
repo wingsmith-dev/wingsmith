@@ -4,7 +4,6 @@ from uuid import UUID
 
 from sqlalchemy import Row
 from sqlalchemy import Select
-from sqlalchemy import delete
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -258,18 +257,22 @@ class EndpointRepository:
         result = await self.db.execute(query.limit(1))
         return result.scalar_one_or_none() is not None
 
-    async def replace_aliases(self, endpoint_id: UUID, aliases: list[str]) -> None:
+    async def replace_aliases(self, endpoint: Endpoint, aliases: list[str]) -> None:
         """Replaces an endpoint's whole alias set.
 
-        A full replace and never a merge: an alias has no identity beyond its own string, so
-        there is nothing to match a patch against and a merge could only ever add. The delete is
-        flushed before the inserts because `alias` is globally unique — moving one alias between
-        two of an endpoint's own rows would otherwise collide with the row it is replacing.
+        A full replace and never a merge: an alias has no identity beyond its own string, so there
+        is nothing to match a patch against and a merge could only ever add.
+
+        Through the relationship rather than with a `delete()` statement, and emptied with a flush
+        of its own before the new rows are attached — the same two steps, for the same two reasons,
+        that `EndpointService.update` uses on `targets`. `alias` is globally unique, so a single
+        flush could order an insert before the delete of the row it replaces; and a Core statement
+        writes past the identity map, which leaves the session holding the collection it loaded
+        before the write and makes the PATCH answer with the set it just replaced.
         """
-        await self.db.execute(delete(EndpointAlias).where(EndpointAlias.endpoint_id == endpoint_id))
+        endpoint.aliases = []
         await self.db.flush()
-        for alias in aliases:
-            self.db.add(EndpointAlias(endpoint_id=endpoint_id, alias=alias))
+        endpoint.aliases = [EndpointAlias(alias=alias) for alias in aliases]
         await self.db.flush()
 
     async def add(self, endpoint: Endpoint) -> Endpoint:

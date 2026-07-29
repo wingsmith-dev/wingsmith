@@ -2213,3 +2213,27 @@ async def test_an_alias_moves_the_revision_even_when_an_engine_already_answers_t
     before = await revision()
     await endpoints.update(created.id, EndpointUpdateRequest(aliases=["moonshotai/kimi-k3"]))
     assert await revision() != before
+
+
+async def test_the_patch_that_changes_aliases_reports_what_it_wrote(db: AsyncSession) -> None:
+    """The response a console renders, from the session that just wrote.
+
+    `replace_aliases` writes the rows with Core statements, which the session's identity map never
+    sees, and the app's sessions are `expire_on_commit=False` — so the endpoint keeps the alias
+    collection it loaded before the write and the PATCH answers with the set it just replaced.
+    """
+    _, project, _, deployment = await a_deployment(db)
+    endpoints = EndpointService(db)
+    created = await endpoints.create(
+        EndpointCreateRequest(
+            name="kimi",
+            project=project.id,
+            slug="kimi-k3",
+            aliases=["old-name"],
+            targets=[EndpointTargetRequest(deployment=deployment.id)],
+        )
+    )
+    assert created.aliases == ["old-name"]
+
+    patched = await endpoints.update(created.id, EndpointUpdateRequest(aliases=["moonshotai/kimi-k3"]))
+    assert patched.aliases == ["moonshotai/kimi-k3"]
