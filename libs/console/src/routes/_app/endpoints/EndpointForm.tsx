@@ -6,6 +6,7 @@ import {
   FormDialog,
   FormGrid,
   LabelsField,
+  ListField,
   SelectField,
   SwitchField,
   TextField,
@@ -42,6 +43,7 @@ export function EndpointForm({
   const [name, setName] = useState(endpoint?.name ?? "")
   const [project, setProject] = useState(endpoint?.project_id ?? "")
   const [slug, setSlug] = useState(endpoint?.slug ?? "")
+  const [aliases, setAliases] = useState<string[]>(endpoint?.aliases ?? [])
   const [visibility, setVisibility] = useState(
     endpoint?.visibility ?? "private"
   )
@@ -70,6 +72,7 @@ export function EndpointForm({
 
   const shared = {
     slug: slug.trim(),
+    aliases,
     visibility,
     routing_strategy: routing,
     enabled,
@@ -175,6 +178,19 @@ export function EndpointForm({
           options={ROUTING_STRATEGIES}
         />
       </FormGrid>
+
+      {/* Beside the slug and not under a disclosure, because an alias is the
+          other half of the same decision: the slug is the id clients should
+          send and these are the ids that still work. Retiring one is deleting
+          its line, and the plane reads an empty set as "retire them all" — the
+          field is only sent because the form always sends the whole shape. */}
+      <ListField
+        label="Aliases"
+        value={aliases}
+        onChange={setAliases}
+        placeholder="moonshotai/kimi-k3"
+        hint="One per line. Other ids clients may send as `model`; they resolve to the slug and are never listed by /v1/models."
+      />
 
       <SwitchField label="Enabled" checked={enabled} onChange={setEnabled} />
 

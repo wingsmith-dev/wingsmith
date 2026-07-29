@@ -371,6 +371,58 @@ export function LabelsField({
 }
 
 /**
+ * A set of strings, one per line.
+ *
+ * A textarea rather than a row of chips with an add button, for the same reason `LabelsField` is
+ * one: the sets these hold are small, they are edited by pasting a name somebody was given, and a
+ * chip editor turns that paste into one interaction per item.
+ *
+ * Blank lines are dropped rather than sent, because a trailing newline is how a textarea ends and
+ * not something anybody declared.
+ */
+export function ListField({
+  label,
+  value,
+  onChange,
+  hint,
+  placeholder,
+  className,
+}: {
+  label: string
+  value: string[]
+  onChange: (value: string[]) => void
+  hint?: string
+  placeholder?: string
+  className?: string
+}) {
+  const id = useId()
+  const [text, setText] = useState(() => value.join("\n"))
+
+  const apply = (next: string) => {
+    setText(next)
+    onChange(
+      next
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+    )
+  }
+
+  return (
+    <Row label={label} hint={hint} htmlFor={id} className={className}>
+      <Textarea
+        id={id}
+        rows={3}
+        value={text}
+        onChange={(e) => apply(e.target.value)}
+        placeholder={placeholder}
+        className="font-mono text-xs"
+      />
+    </Row>
+  )
+}
+
+/**
  * A free-form JSON object field. Returns `undefined` while the text does not
  * parse, so a caller can disable submit rather than post something malformed.
  */

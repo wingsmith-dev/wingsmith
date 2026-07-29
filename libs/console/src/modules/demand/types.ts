@@ -1290,6 +1290,18 @@ export interface Endpoint {
    * that model without anybody typing its name twice. Setting it is publishing an alias.
    */
   slug: string
+  /**
+   * The other model ids that reach this endpoint. Lowercased, and never empty strings.
+   *
+   * `slug` is the canonical one and everything downstream — usage, policy, metrics, logs — is
+   * keyed on it, which is what makes a rename cheap: the old id moves in here and no record is
+   * renamed. `GET /v1/models` lists the canonical only, so an alias never shows a model twice in
+   * a client's picker.
+   *
+   * They share one namespace with every endpoint's slug: an alias already published as somebody's
+   * model id is refused rather than silently shadowing it.
+   */
+  aliases: string[]
   project_id: string
   visibility: string
   routing_strategy: string
@@ -1318,6 +1330,7 @@ export interface EndpointCreateRequest {
   project: string
   /** Empty takes the slug of the weights behind the first target. Give one only for an alias. */
   slug?: string
+  aliases?: string[]
   visibility?: string
   routing_strategy?: string
   enabled?: boolean
@@ -1329,6 +1342,8 @@ export interface EndpointCreateRequest {
 
 export interface EndpointUpdateRequest {
   slug?: string
+  /** Replaces the whole set. Omitting it leaves the aliases alone; `[]` retires every one. */
+  aliases?: string[]
   visibility?: string
   routing_strategy?: string
   enabled?: boolean

@@ -763,6 +763,17 @@ export function EndpointDetailPage() {
                           routes.
                         </p>
                       </Field>
+                      <Field label="Aliases">
+                        <Dash>
+                          {endpoint.aliases.length > 0
+                            ? endpoint.aliases.join(", ")
+                            : null}
+                        </Dash>
+                        <p className="mt-1 font-mono text-2xs text-muted-foreground/50">
+                          Also accepted as <code>model</code>. Never listed by{" "}
+                          <code>/v1/models</code>.
+                        </p>
+                      </Field>
                       <Field label="Name">
                         {endpoint.name}
                         <p className="mt-1 font-mono text-2xs text-muted-foreground/50">
