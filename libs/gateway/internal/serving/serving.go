@@ -302,6 +302,7 @@ func observed(recorder *metrics.Recorder, probes *ProbeMarker, next http.Handler
 		obs := &observation{start: start, origin: probes.Origin(r), recorder: recorder}
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK, obs: obs}
 		r = r.WithContext(context.WithValue(r.Context(), observationKey{}, obs))
+		r, ident := newIdentity(r)
 
 		// Deferred, and the panic is recovered, because httputil.ReverseProxy
 		// reports a failure halfway through copying a response body by panicking
@@ -320,15 +321,40 @@ func observed(recorder *metrics.Recorder, probes *ProbeMarker, next http.Handler
 			}
 			if !isProbePath(r.URL.Path) {
 				elapsed := time.Since(start)
-				slog.Info("gateway: request",
+
+				// The sample is taken before the line rather than after it,
+				// because the line carries the same counts. Two reads of the
+				// observation would be two different freezes of it.
+				sample := obs.sample(rec.status, elapsed)
+
+				fields := []any{
 					"method", r.Method,
 					"path", r.URL.Path,
 					"status", rec.status,
 					"duration_ms", elapsed.Milliseconds(),
 					"aborted", aborted != nil,
-				)
+					"endpoint", sample.EndpointName,
+					"outcome", string(sample.Outcome),
+				}
+				fields = append(fields, ident.fields()...)
+				if sample.HaveTTFT {
+					fields = append(fields, "ttft_ms", sample.TTFT.Milliseconds())
+				}
+				// Absent, not zero, when the upstream disclosed no usage: a
+				// streaming caller gets a usage object only when it asked for
+				// one, and a logged 0 would be counted as a real zero by any
+				// query that sums this field.
+				if sample.HaveUsage {
+					fields = append(fields,
+						"input_tokens", sample.InputTokens,
+						"cached_input_tokens", sample.CachedInputTokens,
+						"output_tokens", sample.OutputTokens,
+					)
+				}
+				slog.Info("gateway: request", fields...)
+
 				if recorder != nil {
-					recorder.Observe(obs.sample(rec.status, elapsed))
+					recorder.Observe(sample)
 				}
 			}
 			if aborted != nil {

@@ -73,7 +73,7 @@ func stageTenantFromHost(tenants Tenants) stage {
 			return r, false
 		}
 		req.tenant = tenant
-		return r, true
+		return withTenantIdentity(r, tenant.ID, tenant.Slug), true
 	}
 }
 
@@ -96,7 +96,14 @@ func stageKeyCheck(tenants Tenants) stage {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "This tenant requires a key.")
 			return r, false
 		}
-		owner, ok := tenants.Current().TenantByKeyHash(keyHash(presented))
+		// Recorded before the lookup rather than after it, so a rejection is
+		// logged against the key that was tried. A refusal nobody can attribute
+		// is the one an on-call cannot act on: "someone is sending a stale key"
+		// and "this key is stale" are the same line with and without this.
+		hash := keyHash(presented)
+		r = withKeyIdentity(r, hash)
+
+		owner, ok := tenants.Current().TenantByKeyHash(hash)
 		if !ok || owner.ID != req.tenant.ID {
 			MarkOutcome(r, metrics.OutcomeAuthRejected)
 			writeError(w, http.StatusUnauthorized, "unauthorized", "This key does not belong to this tenant.")
