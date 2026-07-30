@@ -10,6 +10,7 @@ const PATHS: Record<MetricScope, string> = {
   deployment: "deployments",
   workload: "workloads",
   endpoint: "endpoints",
+  tenant: "tenants",
 }
 
 export interface MetricsQuery {

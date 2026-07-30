@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/layout/page-header"
 import { RefreshButton } from "@/components/layout/refresh-button"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
+import { MetricsPanel } from "@/components/metrics/metrics-panel"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -168,6 +169,20 @@ export function TenantDetailPage() {
       <div className="space-y-4 p-4">
         {isLoading && <Skeleton className="h-40 w-full" />}
         {tenant && <Identity tenant={tenant} />}
+
+        {tenant && (
+          <div>
+            <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+              Traffic
+            </h2>
+            <MetricsPanel
+              scope="tenant"
+              refId={tenant.id}
+              family="serving"
+              lead={["serving.requests_in_flight"]}
+            />
+          </div>
+        )}
 
         {tenant && <TenantServed tenant={tenant.id} />}
 

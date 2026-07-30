@@ -728,3 +728,36 @@ def test_the_fleet_asks_for_the_five_figures_an_overview_shows():
         "inference.requests_running",
         "inference.output_tokens_per_second",
     ]
+
+
+# --- the tenant scope --------------------------------------------------------
+
+
+def test_the_tenant_route_declares_every_parameter_the_console_sends():
+    """The tenant detail page reads its in-flight chart from this one route."""
+    assert query_params("/v1/metrics/tenants/{ref:str}") == {"window", "step", "span", "series"}
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_tenant_is_a_404_rather_than_an_empty_measurement():
+    """A misspelled slug answering with no samples reads as a tenant sending no traffic."""
+    with pytest.raises(NotFound):
+        await MetricsService(db=EmptySession()).tenant("no-such-tenant")  # type: ignore[arg-type]
+
+
+def test_a_tenants_endpoints_go_into_one_matcher_rather_than_one_query_each():
+    """A total assembled from a page of endpoints is a total of that page."""
+    scope = Scope(
+        kind="tenant",
+        cluster="",
+        match={"endpoint": ("end_a", "end_b", "end_c")},
+        breakdown="endpoint",
+    )
+    assert selector(scope) == 'hangar_endpoint=~"end_a|end_b|end_c"'
+
+
+def test_a_tenant_owning_no_endpoint_selects_nothing_rather_than_everything():
+    """An empty match is dropped from the selector, so an unscoped query would
+    report the whole front door's traffic as one tenant's. The service must not
+    reach the backend at all in that case — see MetricsService.tenant."""
+    assert selector(Scope(kind="tenant", cluster="", match={"endpoint": ()})) == ""

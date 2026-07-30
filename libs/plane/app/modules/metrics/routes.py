@@ -154,6 +154,25 @@ class MetricsRoutes(Controller):
         """
         return Response(await svc.serving(window, step, span, series))
 
+    @get("/tenants/{ref:str}")
+    async def tenant_metrics(
+        self,
+        context: RequestContext,
+        svc: MetricsService,
+        ref: str,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> Response[MetricsSchema]:
+        """One tenant's traffic at the front door, with one breakdown row per endpoint.
+
+        Here rather than on the tenant object for the reason at the top of this
+        module: a tenant read must not start failing because a Prometheus is
+        unreachable. `cluster` is null — the gateway belongs to no cluster.
+        """
+        return Response(await svc.tenant(ref, window, step, span, series))
+
     @get("/endpoints/{ref:str}")
     async def endpoint_metrics(
         self,

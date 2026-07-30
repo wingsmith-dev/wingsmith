@@ -48,6 +48,7 @@ const MEMBER: Record<MetricScope, string> = {
   deployment: "device",
   workload: "cluster",
   endpoint: "cluster",
+  tenant: "endpoint",
 }
 
 /**

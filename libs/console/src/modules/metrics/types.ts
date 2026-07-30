@@ -13,6 +13,7 @@ export type MetricScope =
   | "deployment"
   | "workload"
   | "endpoint"
+  | "tenant"
 
 export type MetricUnit =
   | "percent"

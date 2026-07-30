@@ -61,6 +61,7 @@ from app.core.ids import is_uid
 from app.db.models import Node
 from app.db.models import Pool
 from app.db.models import Device
+from app.db.models import Tenant
 from app.db.models import Cluster
 from app.db.models import Project
 from app.db.models import Artifact
@@ -739,6 +740,61 @@ class MetricsService:
             with_series=series,
             no_source=NO_GATEWAY,
         )
+
+    async def tenant(
+        self,
+        ref: str,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> MetricsSchema:
+        """One tenant's traffic at the front door, summed over the endpoints it owns.
+
+        The gateway's series carry no tenant label — `hangar_endpoint` is the
+        finest identity on them — so a tenant is not a dimension of the
+        measurement here. It is a set of endpoint uids resolved in the plane,
+        matched in one selector, which is why this is a read of its own rather
+        than a filter a client could apply to `serving`.
+
+        Every uid goes into a single matcher. A total assembled from a page of
+        endpoints is a total of that page and moves when somebody pages, the same
+        trap `serving` states.
+
+        A tenant that owns no endpoint answers with no samples and says why. The
+        alternative is worse than useless: an empty match is dropped from the
+        selector, so the query would narrow nothing and report the whole front
+        door's traffic as that tenant's.
+        """
+        query = select(Tenant).where(Tenant.uid == ref if is_uid(ref) else Tenant.slug == ref)
+        tenant = (await self.db.execute(query)).scalars().first()
+        if tenant is None:
+            raise NotFound(f"no tenant {ref!r}")
+
+        owned = await self.db.execute(
+            select(Endpoint.uid, Endpoint.name)
+            .join(Project, Endpoint.project_id == Project.id)
+            .where(Project.tenant_id == tenant.id)
+        )
+        endpoints = {uid: name for uid, name in owned.all()}
+
+        source = self._gateway()
+        answer = await self._answer_source(
+            source,
+            None,
+            self._scope("tenant", source, breakdown="endpoint", endpoint=tuple(endpoints)),
+            tenant.uid,
+            family("serving") if endpoints else (),
+            window,
+            step,
+            span,
+            labels=endpoints,
+            with_series=series,
+            no_source=NO_GATEWAY,
+        )
+        if source is not None and not endpoints:
+            answer.unavailable = "this tenant owns no endpoint, so the front door has nothing to attribute to it"
+        return answer
 
     async def serving(
         self,
