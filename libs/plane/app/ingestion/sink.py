@@ -119,6 +119,11 @@ def _moved(before: Any, payload: DeploymentObserved) -> bool:
 #: them is what makes an earlier stage of the same generation impossible rather than merely old.
 SETTLED_PHASES = frozenset({"placed", "running", "degraded"})
 
+#: The reasons a `pending` frame can carry that describe a step on the way to applying rather than
+#: a state the deployment has come to rest in. They are the operator's `stageRank` keys, and its
+#: `stage` helper is the only thing that sends them.
+STAGE_REASONS = frozenset({"Accepted", "Rendering"})
+
 
 def _regressed(before, payload) -> bool:
     """Whether this frame describes a step the deployment has already moved past.
@@ -134,14 +139,19 @@ def _regressed(before, payload) -> bool:
     console shows a healthy deployment as waiting for its weights until the next
     pass puts it back. Every hub reconnect produced that flicker.
 
-    The stage set is ordered by contract (MESSAGES.md) and a deployment walks it
-    once per generation, so an earlier stage arriving for a generation already
-    past it is stale by definition. Narrow on purpose: only `pending` is refused,
-    and only against a generation that has already been placed. A genuine
-    regression — degraded, failed, a redeploy — either is not `pending` or
-    carries a new generation, and lands normally.
+    What makes a frame stale is its reason, not its phase. A stage is true once
+    per instruction and the operator walks the set once per generation, so a
+    stage arriving for a generation already placed is stale by definition. A
+    `pending` that names a *state* — `NoSchedulableCapacity`, `WeightsNotResident`
+    — is a fact about now, and the generation cannot move to tell it apart from a
+    replay: nothing was redeployed. Judging those two alike is what let a cluster
+    that lost its nodes report `NoSchedulableCapacity` every fifteen seconds for
+    hours into a guard that dropped every frame, while the plane went on showing
+    the deployment as running four of four (LOG.md 2026-09-14).
     """
     if before is None or payload.phase != "pending":
+        return False
+    if (payload.reason or "") not in STAGE_REASONS:
         return False
     if before.observed_generation != payload.generation:
         return False

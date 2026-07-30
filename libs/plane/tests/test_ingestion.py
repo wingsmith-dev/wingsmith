@@ -1060,6 +1060,22 @@ def test_a_deployment_still_coming_up_accepts_its_next_stage() -> None:
     assert not _regressed(waiting, stage)
 
 
+def test_a_pending_state_at_a_settled_generation_is_not_a_replayed_stage() -> None:
+    """A workload whose nodes are reclaimed reports `NoSchedulableCapacity` at the generation it
+    was already serving on — nothing was redeployed, so the generation cannot move to separate it
+    from a stage replay. Refusing it left the plane showing four of four ready for hours while the
+    operator said the opposite every fifteen seconds (LOG.md 2026-09-14)."""
+    observed = payload("deployment.observed")
+    lost = structs.replace(
+        observed,
+        phase="pending",
+        reason="NoSchedulableCapacity",
+        ready_replicas=0,
+    )
+    serving = _Stored("running", "Serving", "4 of 4 replicas ready", 4, lost.generation)
+    assert not _regressed(serving, lost)
+
+
 def test_the_first_frame_for_a_deployment_is_never_stale() -> None:
     assert not _regressed(None, payload("deployment.observed"))
 
