@@ -162,7 +162,7 @@ function Identity({ tenant }: { tenant: Tenant }) {
 export function TenantDetailPage() {
   const { tenantId } = useParams({ from: "/_app/tenants/$tenantId" })
   const { tab } = useSearch({ from: "/_app/tenants/$tenantId" })
-  const navigate = useNavigate({ from: "/_app/tenants/$tenantId" })
+  const navigate = useNavigate({ from: "/tenants/$tenantId" })
   const { data: tenant, isLoading, error } = useTenant(tenantId)
   const projects = useProjects({ tenant: tenantId })
   const [editing, setEditing] = useState(false)
@@ -206,7 +206,7 @@ export function TenantDetailPage() {
       />
 
       <Tabs
-        value={tab}
+        value={tab ?? "overview"}
         onValueChange={(next) =>
           navigate({ search: { tab: next as TenantTab }, replace: true })
         }

@@ -6,7 +6,14 @@ export const TENANT_TABS = ["overview", "serving", "keys"] as const
 export type TenantTab = (typeof TENANT_TABS)[number]
 
 export interface TenantSearch {
-  tab: TenantTab
+  /**
+   * Optional to the type system, always present after validation.
+   *
+   * Declaring it required would make every `Link` to a tenant carry a tab, so
+   * the tenants table would have to name one to link to a row at all — and the
+   * default belongs here, not at each of the call sites.
+   */
+  tab?: TenantTab
 }
 
 function tab(value: unknown): TenantTab {
