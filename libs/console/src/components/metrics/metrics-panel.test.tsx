@@ -156,6 +156,25 @@ describe("MetricsPanel", () => {
     expect(screen.getAllByText("Time to first token (p95)")).toHaveLength(1)
   })
 
+  it("draws the lead row and nothing else when it is asked for a summary", () => {
+    answer(metrics())
+    render(
+      <MetricsPanel
+        scope="deployment"
+        refId="dep_1"
+        family="inference"
+        lead={["inference.ttft", "inference.output_tokens_per_stream"]}
+        leadOnly
+      />
+    )
+    expect(screen.getAllByText("Time to first token (p95)")).toHaveLength(1)
+    // The group headings, the picker and the store footer are what a summary
+    // is a summary of: an overview carrying all of them is the whole page again.
+    expect(screen.queryByText("Latency")).not.toBeInTheDocument()
+    expect(screen.queryByText("Throughput")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button")).not.toBeInTheDocument()
+  })
+
   it("offers nothing that edits observed measurement", () => {
     answer(metrics())
     render(<MetricsPanel scope="deployment" refId="dep_1" family="inference" />)

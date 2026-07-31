@@ -1,6 +1,11 @@
 import { useState } from "react"
-import { IconArrowLeft } from "@tabler/icons-react"
-import { Link, useParams } from "@tanstack/react-router"
+import {
+  IconArrowLeft,
+  IconBolt,
+  IconKey,
+  IconLayoutDashboard,
+} from "@tabler/icons-react"
+import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router"
 
 import { DataTable, type Column } from "@/components/layout/data-table"
 import { Field, FieldGrid } from "@/components/layout/field"
@@ -13,13 +18,29 @@ import { MetricsPanel } from "@/components/metrics/metrics-panel"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatAbsolute, formatError, formatRelative } from "@/lib/format"
 import { useProjects, useTenant } from "@/modules/binding/queries"
 import type { Project, Tenant } from "@/modules/binding/types"
 
+import type { TenantTab } from "./route"
 import { TenantForm } from "../TenantForm"
 import { TenantKeys } from "./Keys"
 import { TenantServed } from "./Served"
+
+/**
+ * The three charts a tenant's traffic is read from, and three because that is
+ * what fills the lead row — `MetricsPanel` gives one lead metric the whole width,
+ * which turns a sparkline into a stripe across an empty card.
+ *
+ * How much of us they are holding, how long they wait for a first token, and how
+ * fast it comes out once it does. The rest are tiles below.
+ */
+const TRAFFIC_LEAD = [
+  "serving.requests_in_flight",
+  "serving.ttft_p50",
+  "serving.output_tokens_per_second",
+]
 
 const PROJECT_COLUMNS: Column<Project>[] = [
   {
@@ -70,6 +91,22 @@ const PROJECT_COLUMNS: Column<Project>[] = [
     ),
   },
 ]
+
+function ViewTab({
+  value,
+  icon: Icon,
+  children,
+}: React.PropsWithChildren<{
+  value: string
+  icon: typeof IconLayoutDashboard
+}>) {
+  return (
+    <TabsTrigger value={value}>
+      <Icon />
+      {children}
+    </TabsTrigger>
+  )
+}
 
 function Identity({ tenant }: { tenant: Tenant }) {
   return (
@@ -124,6 +161,8 @@ function Identity({ tenant }: { tenant: Tenant }) {
  */
 export function TenantDetailPage() {
   const { tenantId } = useParams({ from: "/_app/tenants/$tenantId" })
+  const { tab } = useSearch({ from: "/_app/tenants/$tenantId" })
+  const navigate = useNavigate({ from: "/_app/tenants/$tenantId" })
   const { data: tenant, isLoading, error } = useTenant(tenantId)
   const projects = useProjects({ tenant: tenantId })
   const [editing, setEditing] = useState(false)
@@ -166,40 +205,80 @@ export function TenantDetailPage() {
         }
       />
 
-      <div className="space-y-4 p-4">
-        {isLoading && <Skeleton className="h-40 w-full" />}
-        {tenant && <Identity tenant={tenant} />}
+      <Tabs
+        value={tab}
+        onValueChange={(next) =>
+          navigate({ search: { tab: next as TenantTab }, replace: true })
+        }
+        className="flex-col gap-0"
+      >
+        <TabsList variant="underline" className="bg-card px-4">
+          <ViewTab value="overview" icon={IconLayoutDashboard}>
+            Overview
+          </ViewTab>
+          <ViewTab value="serving" icon={IconBolt}>
+            Serving
+          </ViewTab>
+          <ViewTab value="keys" icon={IconKey}>
+            Keys
+          </ViewTab>
+        </TabsList>
 
-        {tenant && (
-          <div>
-            <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-              Traffic
-            </h2>
-            <MetricsPanel
-              scope="tenant"
-              refId={tenant.id}
-              family="serving"
-              lead={["serving.requests_in_flight"]}
-            />
-          </div>
-        )}
+        <div className="space-y-4 p-4">
+          {isLoading && <Skeleton className="h-40 w-full" />}
 
-        {tenant && <TenantServed tenant={tenant.id} />}
+          <TabsContent value="overview" className="space-y-4">
+            {tenant && <Identity tenant={tenant} />}
 
-        {tenant && <TenantKeys tenant={tenant.id} />}
+            {/*
+             * The lead charts only. Enough to say whether this tenant is worth
+             * opening Serving for, and not so much that the answer is buried.
+             */}
+            {tenant && (
+              <div>
+                <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+                  Traffic
+                </h2>
+                <MetricsPanel
+                  scope="tenant"
+                  refId={tenant.id}
+                  family="serving"
+                  lead={TRAFFIC_LEAD}
+                  leadOnly
+                />
+              </div>
+            )}
 
-        <div>
-          <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-            Projects
-          </h2>
-          <DataTable
-            columns={PROJECT_COLUMNS}
-            list={projects}
-            rowKey={(project) => project.id}
-            empty="No projects. Nothing can be deployed or served for this tenant until one exists."
-          />
+            <div>
+              <h2 className="mb-2 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
+                Projects
+              </h2>
+              <DataTable
+                columns={PROJECT_COLUMNS}
+                list={projects}
+                rowKey={(project) => project.id}
+                empty="No projects. Nothing can be deployed or served for this tenant until one exists."
+              />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="serving" className="space-y-4">
+            {tenant && (
+              <MetricsPanel
+                scope="tenant"
+                refId={tenant.id}
+                family="serving"
+                lead={TRAFFIC_LEAD}
+              />
+            )}
+            {tenant && <TenantServed tenant={tenant.id} />}
+          </TabsContent>
+
+          <TabsContent value="keys">
+            {tenant && <TenantKeys tenant={tenant.id} />}
+          </TabsContent>
         </div>
-      </div>
+      </Tabs>
 
       {tenant && editing && (
         <TenantForm

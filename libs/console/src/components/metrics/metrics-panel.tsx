@@ -135,6 +135,7 @@ export function MetricsPanel({
   family = "gpu",
   series = true,
   lead,
+  leadOnly = false,
 }: {
   scope: MetricScope
   refId: string | undefined
@@ -144,8 +145,19 @@ export function MetricsPanel({
    * Metric names to promote to full-size charts above the rest. A page that is
    * mostly about how a thing is performing names the two or three numbers that
    * mean that, and they stop competing with everything else for the same tile.
+   *
+   * Three is the number that fills the row. One is given the whole width, which
+   * draws a sparkline as a stripe across an empty card.
    */
   lead?: string[]
+  /**
+   * Draw the lead row and nothing else — no tiles, no breakdown, no picker.
+   *
+   * For a summary that sits above other content and answers whether to go and
+   * look properly. The full panel belongs on the page that is about measurement;
+   * an overview carrying all of it is the reason a page needs tabs.
+   */
+  leadOnly?: boolean
 }) {
   const { data, isLoading, error } = useMetrics(scope, refId, { series })
   const [selected, setSelected] = useState<string[]>(DEFAULT_TILES[family])
@@ -200,14 +212,16 @@ export function MetricsPanel({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex justify-end">
-        <MetricPicker
-          family={family}
-          selected={selected}
-          available={data.samples.map((sample) => sample.metric)}
-          onChange={setSelected}
-        />
-      </div>
+      {!leadOnly && (
+        <div className="flex justify-end">
+          <MetricPicker
+            family={family}
+            selected={selected}
+            available={data.samples.map((sample) => sample.metric)}
+            onChange={setSelected}
+          />
+        </div>
+      )}
 
       {led.length > 0 && (
         <div
@@ -224,26 +238,27 @@ export function MetricsPanel({
         </div>
       )}
 
-      {groups.map((group) => (
-        <div key={group.group} className="flex flex-col gap-1.5">
-          {groups.length > 1 && (
-            <div className="font-mono text-2xs tracking-wider text-muted-foreground/50 uppercase">
-              {group.label}
+      {!leadOnly &&
+        groups.map((group) => (
+          <div key={group.group} className="flex flex-col gap-1.5">
+            {groups.length > 1 && (
+              <div className="font-mono text-2xs tracking-wider text-muted-foreground/50 uppercase">
+                {group.label}
+              </div>
+            )}
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {group.samples.map((sample) => tile(sample, "sm"))}
             </div>
-          )}
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {group.samples.map((sample) => tile(sample, "sm"))}
           </div>
-        </div>
-      ))}
+        ))}
 
-      <Breakdown data={data} family={family} />
-      {data.source ? (
+      {!leadOnly && <Breakdown data={data} family={family} />}
+      {!leadOnly && data.source ? (
         <div className="font-mono text-2xs text-muted-foreground/50">
           {data.window} window · {data.source.kind} · {data.source.url}
         </div>
       ) : null}
-      {family === "inference" ? (
+      {!leadOnly && family === "inference" ? (
         <p className="max-w-3xl text-2xs text-muted-foreground/50">
           {AVAILABILITY_SOURCE}
         </p>
