@@ -159,10 +159,11 @@ func TestSetAndGetCoverEverySettableKey(t *testing.T) {
 		"current_context": "prod",
 		"output":          "json",
 		"fake":            "true",
-		"context.server":  "https://plane.example",
-		"context.token":   "hgr_pat_0123456789abcdef",
-		"context.project": "prj_1",
-		"context.user":    "operator",
+		"context.server":        "https://plane.example",
+		"context.token":         "hgr_pat_0123456789abcdef",
+		"context.refresh_token": "hgr_rt_0123456789abcdef",
+		"context.project":       "prj_1",
+		"context.user":          "operator",
 	}
 	for _, key := range Keys() {
 		value, ok := values[key]
@@ -176,7 +177,7 @@ func TestSetAndGetCoverEverySettableKey(t *testing.T) {
 		if err != nil {
 			t.Fatalf("get %s: %v", key, err)
 		}
-		if key == "context.token" {
+		if key == "context.token" || key == "context.refresh_token" {
 			if got == value {
 				t.Error("the token was echoed back in full; `hgr config get` would print a credential")
 			}

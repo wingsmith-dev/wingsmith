@@ -54,8 +54,15 @@ type App struct {
 
 	Project string
 
+	// authOptional is set for commands that must run before a token exists —
+	// `login` above all — so setup does not refuse them for want of one.
+	authOptional bool
+
 	flags globalFlags
 }
+
+// annotationAuthOptional marks a command that setup must not gate on a token.
+const annotationAuthOptional = "auth_optional"
 
 type globalFlags struct {
 	output     string
@@ -182,6 +189,7 @@ Nothing is running yet? Add --fake for a complete offline control plane.`,
 
 func (a *App) setup(cmd *cobra.Command) error {
 	g := a.flags
+	a.authOptional = cmd.Annotations[annotationAuthOptional] == "true"
 
 	cfg, err := config.Load(firstNonEmpty(g.configPath, os.Getenv("HANGAR_CONFIG")))
 	if err != nil {
@@ -284,7 +292,7 @@ func (a *App) connect() error {
 		return nil
 	}
 	server := firstNonEmpty(a.Context.Server, config.DefaultServer)
-	if a.Context.Token == "" {
+	if a.Context.Token == "" && !a.authOptional {
 		return errs.New(errs.CodeAuthRequired, "no token for context %q", a.Cfg.CurrentContext).
 			WithCausef("looked in --token, HANGAR_TOKEN, and %s", a.Cfg.Path()).
 			WithFix("Store a token", "hgr config set context.token <token>").

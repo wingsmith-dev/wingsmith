@@ -36,6 +36,8 @@ func register(app *App, root *cobra.Command) {
 		componentNoun().command(app),
 		eventNoun().command(app),
 
+		newLoginCmd(app),
+		newLogoutCmd(app),
 		newContextCmd(app),
 		newConfigCmd(app),
 		newWhoamiCmd(app),

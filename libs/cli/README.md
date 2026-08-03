@@ -194,8 +194,10 @@ Precedence is flag → environment → config file → default.
 | `--agent` | `HANGAR_AGENT` | — |
 | `--timeout` | `HANGAR_TIMEOUT` | — |
 
-Auth is a static bearer token for now: it goes out as `Authorization: Bearer …`. There is no
-login flow, no refresh, and no keychain yet.
+Auth is a bearer token, sent as `Authorization: Bearer …`. `hgr login` trades the admin password
+for a short-lived session token and stores it in the active context; a static operator token can be
+set with `hgr config set context.token` or `HANGAR_TOKEN` instead. See *CLI auth* in the root
+`CLAUDE.md`. No keychain yet.
 
 ---
 

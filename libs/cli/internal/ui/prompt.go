@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/hangar-dev/hangar/libs/cli/internal/errs"
+	"golang.org/x/term"
 )
 
 // Prompter collects input from a human. Every method fails with a typed error
@@ -64,6 +65,25 @@ func (p *Prompter) Ask(question, def, flag string) (string, error) {
 		return def, nil
 	}
 	return v, nil
+}
+
+// Secret requests a value without echoing it, for a password or token. It
+// turns the terminal's echo off around the read when stdin is a terminal, and
+// falls back to a plain line read otherwise (a pipe carries no echo anyway).
+func (p *Prompter) Secret(question, flag string) (string, error) {
+	if !p.Enabled {
+		return "", p.disabled(question, flag)
+	}
+	fmt.Fprintf(p.Out, "%s %s ", p.Style.Cyan("?"), p.Style.Bold(question))
+	if f, ok := p.In.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		b, err := term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(p.Out)
+		if err != nil {
+			return "", errs.Wrap(err, errs.CodeInputRequired, "could not read input")
+		}
+		return strings.TrimSpace(string(b)), nil
+	}
+	return p.read()
 }
 
 // Confirm asks a yes/no question. `assumeYes` short-circuits to true.

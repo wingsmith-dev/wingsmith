@@ -20,10 +20,11 @@ const DefaultServer = "https://plane.hangar.dev"
 // Context is one named server + credential + tenancy set. Named after the
 // kubeconfig notion because operators already carry that vocabulary.
 type Context struct {
-	Server  string `yaml:"server,omitempty" json:"server,omitempty"`
-	Token   string `yaml:"token,omitempty" json:"-"`
-	Project string `yaml:"project,omitempty" json:"project,omitempty"`
-	User    string `yaml:"user,omitempty" json:"user,omitempty"`
+	Server       string `yaml:"server,omitempty" json:"server,omitempty"`
+	Token        string `yaml:"token,omitempty" json:"-"`
+	RefreshToken string `yaml:"refresh_token,omitempty" json:"-"`
+	Project      string `yaml:"project,omitempty" json:"project,omitempty"`
+	User         string `yaml:"user,omitempty" json:"user,omitempty"`
 }
 
 // File is the on-disk config document.
@@ -140,7 +141,7 @@ func (f *File) ContextNames() []string {
 // explicit means a typo is an error instead of a silently ignored setting.
 var settable = []string{
 	"current_context", "output", "fake",
-	"context.server", "context.token", "context.project", "context.user",
+	"context.server", "context.token", "context.refresh_token", "context.project", "context.user",
 }
 
 // Keys lists every settable configuration key.
@@ -167,6 +168,11 @@ func (f *File) Get(key string) (string, error) {
 			return "", nil
 		}
 		return Redact(c.Token), nil
+	case "context.refresh_token":
+		if c.RefreshToken == "" {
+			return "", nil
+		}
+		return Redact(c.RefreshToken), nil
 	}
 	return "", unknownKey(key)
 }
@@ -191,6 +197,9 @@ func (f *File) Set(key, value string) error {
 		f.SetContext(name, c)
 	case "context.token":
 		c.Token = value
+		f.SetContext(name, c)
+	case "context.refresh_token":
+		c.RefreshToken = value
 		f.SetContext(name, c)
 	case "context.project":
 		c.Project = value
