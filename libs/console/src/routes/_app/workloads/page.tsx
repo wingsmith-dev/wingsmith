@@ -57,14 +57,9 @@ function columns(
       cell: (workload) => {
         const status = workloadOperationalStatus(workload)
         return (
-          <div className="space-y-0.5">
+          <span title={status.reason ?? undefined}>
             <StatusLabel tone={status.tone}>{status.phase}</StatusLabel>
-            {status.needsAttention && (
-              <div className="font-mono text-2xs text-muted-foreground">
-                {[status.reason, status.placement].filter(Boolean).join(" · ")}
-              </div>
-            )}
-          </div>
+          </span>
         )
       },
     },

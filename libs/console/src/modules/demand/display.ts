@@ -224,105 +224,171 @@ export function reasonText(reason: string): string {
   return REASON_TEXT[reason] ?? reason
 }
 
+/**
+ * The closed set a workload or deployment reads as in the console.
+ *
+ * Derived here from `admission_phase`, the observed phase, `reason` and the
+ * replica counts, because no single field on the wire answers "what is it doing
+ * now". Ordered by how loudly each one should win a rollup: a workload with one
+ * failed cluster and one serving cluster reads `failed`.
+ */
+export const LIFECYCLE_STATES = [
+  "failed",
+  "blocked",
+  "degraded",
+  "awaiting capacity",
+  "pending",
+  "downloading",
+  "starting",
+  "stopping",
+  "paused",
+  "running",
+] as const
+
+export type LifecycleState = (typeof LIFECYCLE_STATES)[number]
+
+const LIFECYCLE_TONES: Record<LifecycleState, StatusTone> = {
+  failed: "danger",
+  blocked: "warn",
+  degraded: "warn",
+  "awaiting capacity": "warn",
+  pending: "neutral",
+  downloading: "info",
+  starting: "info",
+  stopping: "neutral",
+  paused: "warn",
+  running: "ok",
+}
+
+const ATTENTION: ReadonlySet<LifecycleState> = new Set([
+  "failed",
+  "blocked",
+  "degraded",
+])
+
+const DOWNLOAD_REASONS = new Set([
+  "ArtifactNotDeclared",
+  "WeightsNotResident",
+  "WarmSetIncomplete",
+])
+const CAPACITY_REASONS = new Set(["NoSchedulableCapacity", "PodUnschedulable"])
+
 export interface OperationalStatus {
-  phase: string
+  phase: LifecycleState
   tone: StatusTone
   reason: string | null
   placement: string
   needsAttention: boolean
 }
 
+function operational(
+  phase: LifecycleState,
+  reason: string | null,
+  placement: string
+): OperationalStatus {
+  return {
+    phase,
+    tone: LIFECYCLE_TONES[phase],
+    reason,
+    placement,
+    needsAttention: ATTENTION.has(phase),
+  }
+}
+
 /**
- * The state an operator needs first, with placement retained as a separate fact.
+ * Where one deployment is in its lifecycle.
  *
- * `admission_phase` answers whether placement handed the work to a cluster. The
- * observed status answers what happened after that. A fatal observation must win
- * the Status column without erasing the useful fact that the deployment was
- * placed successfully.
+ * Only an observed `failed` is a failure. The operator sends `last_error_code`
+ * for waits that clear on their own too — an unschedulable pod, a crash loop —
+ * and reading every error code as fatal showed deployments that were still
+ * loading their weights as failed.
+ *
+ * Zero ready replicas with no complaint is `starting`, whatever the per-role
+ * counts say: every role reads absent before its first worker has loaded, and
+ * that is not the missing-role fault `degraded` is for.
  */
 export function deploymentOperationalStatus(
   deployment: WorkloadDeployment
 ): OperationalStatus {
   const observed = deployment.status
-  const failed =
-    observed?.phase === "failed" || Boolean(observed?.last_error_code)
-  /**
-   * A role reported at zero outranks whatever the phase says.
-   *
-   * The operator's phase is derived from a scalar count, and on a disaggregated
-   * deployment that count can read `running` on a group total it happens to
-   * match while one of the two roles has no process at all. There is then no
-   * worker to run a prefill and every request fails, so this is not the
-   * `degraded` that still serves — it is the same failure the frontend check
-   * exists to close, one component further along.
-   */
-  const roles = roleReadiness(observed)
-  const roleMissing = roles?.find((role) => role.absent) ?? null
-  const degraded =
-    observed?.phase === "degraded" ||
-    Boolean(roleMissing) ||
-    (roles !== null && !rolesReady(roles))
-  const phase = failed
-    ? "failed"
-    : degraded
-      ? "degraded"
-      : deployment.admission_phase
-  const reason = roleMissing
-    ? `no ${roleMissing.role} worker`
-    : failed || degraded
-      ? reasonText(
-          observed?.last_error_code ??
-            observed?.reason ??
-            observed?.phase ??
-            phase
-        )
-      : null
+  const placement = deployment.placed_at ? "placed" : deployment.admission_phase
+  const code = observed?.last_error_code ?? null
+  const reason = observed?.reason ?? null
+  const text = (key: string | null) => (key ? reasonText(key) : null)
 
-  return {
-    phase,
-    tone: workloadPhaseTone(phase),
-    reason,
-    placement: deployment.placed_at ? "placed" : deployment.admission_phase,
-    needsAttention: failed || degraded,
+  if (observed?.phase === "failed" || deployment.admission_phase === "failed") {
+    return operational(
+      "failed",
+      text(code ?? reason ?? deployment.admission_reason ?? "failed"),
+      placement
+    )
   }
+  if (!observed) {
+    if (deployment.admission_phase === "pending") {
+      return operational("pending", deployment.admission_reason ?? null, placement)
+    }
+    return operational("starting", null, placement)
+  }
+  if (observed.phase === "terminating") {
+    return operational("stopping", null, placement)
+  }
+  if (reason && CAPACITY_REASONS.has(reason)) {
+    return operational("awaiting capacity", text(reason), placement)
+  }
+  if (reason && DOWNLOAD_REASONS.has(reason)) {
+    return operational("downloading", text(reason), placement)
+  }
+
+  const roles = roleReadiness(observed)
+  const ready = roles
+    ? roles.reduce((sum, role) => sum + role.ready, 0)
+    : observed.ready_replicas
+  if (ready === 0) {
+    if (code) return operational("blocked", text(code), placement)
+    if (observed.phase === "pending" || observed.phase === "admitted") {
+      return operational("pending", text(reason), placement)
+    }
+    return operational("starting", text(reason), placement)
+  }
+
+  const roleMissing = roles?.find((role) => role.absent) ?? null
+  if (roleMissing) {
+    return operational("degraded", `no ${roleMissing.role} worker`, placement)
+  }
+  if (
+    observed.phase === "degraded" ||
+    (roles !== null && !rolesReady(roles)) ||
+    observed.ready_replicas < observed.desired_replicas
+  ) {
+    return operational("degraded", text(code ?? reason), placement)
+  }
+  return operational("running", null, placement)
 }
 
-/** The loudest per-cluster observation on a global workload. */
+/** The loudest per-cluster lifecycle state on a global workload. */
 export function workloadOperationalStatus(
   workload: Workload
 ): OperationalStatus {
-  if (workload.paused) {
-    return {
-      phase: "paused",
-      tone: "warn",
-      reason: null,
-      placement:
-        workload.scale.placed >= workload.scale.desired
-          ? "placed"
-          : `${workload.scale.placed}/${workload.scale.desired} placed`,
-      needsAttention: false,
-    }
-  }
-
-  const deployments = workload.deployments.map(deploymentOperationalStatus)
-  const observed =
-    deployments.find((status) => status.phase === "failed") ??
-    deployments.find((status) => status.phase === "degraded")
   const placement =
     workload.scale.placed >= workload.scale.desired
       ? "placed"
       : `${workload.scale.placed}/${workload.scale.desired} placed`
-
-  if (observed) {
-    return { ...observed, placement }
+  if (workload.paused) return operational("paused", null, placement)
+  if (workload.deployments.length === 0) {
+    return operational(
+      workload.phase === "failed" ? "failed" : "pending",
+      null,
+      placement
+    )
   }
-  return {
-    phase: workload.phase,
-    tone: workloadPhaseTone(workload.phase),
-    reason: null,
-    placement,
-    needsAttention: workload.phase === "failed",
-  }
+  const loudest = workload.deployments
+    .map(deploymentOperationalStatus)
+    .reduce((a, b) =>
+      LIFECYCLE_STATES.indexOf(b.phase) < LIFECYCLE_STATES.indexOf(a.phase)
+        ? b
+        : a
+    )
+  return { ...loudest, placement }
 }
 
 /**

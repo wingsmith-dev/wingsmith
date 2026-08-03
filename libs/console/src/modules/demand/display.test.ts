@@ -136,10 +136,76 @@ describe("workload operational status", () => {
     }
 
     expect(workloadOperationalStatus(placed)).toMatchObject({
-      phase: "placed",
+      phase: "starting",
       tone: "info",
       reason: null,
       needsAttention: false,
+    })
+  })
+
+  it("reads a deployment waiting on weights as downloading, not failed", () => {
+    const base = workloads[0]
+    const deployment = base.deployments[0]
+    const loading: Workload = {
+      ...base,
+      deployments: [
+        {
+          ...deployment,
+          admission_phase: "placed",
+          status: {
+            observed_generation: deployment.generation,
+            phase: "pending",
+            reason: "WeightsNotResident",
+            message: null,
+            desired_replicas: 1,
+            ready_replicas: 0,
+            updated_replicas: 0,
+            unavailable_replicas: 1,
+            roles: [],
+            last_error_code: null,
+            last_error_message: null,
+            last_error_at: null,
+            observed_at: "2026-09-02T12:01:00Z",
+          },
+        },
+      ],
+    }
+    expect(workloadOperationalStatus(loading)).toMatchObject({
+      phase: "downloading",
+      needsAttention: false,
+    })
+  })
+
+  it("does not call a non-fatal error code a failure", () => {
+    const base = workloads[0]
+    const deployment = base.deployments[0]
+    const crashing: Workload = {
+      ...base,
+      deployments: [
+        {
+          ...deployment,
+          admission_phase: "placed",
+          status: {
+            observed_generation: deployment.generation,
+            phase: "placed",
+            reason: "CrashLooping",
+            message: null,
+            desired_replicas: 1,
+            ready_replicas: 0,
+            updated_replicas: 0,
+            unavailable_replicas: 1,
+            roles: [],
+            last_error_code: "CrashLooping",
+            last_error_message: "back-off",
+            last_error_at: "2026-09-02T12:01:00Z",
+            observed_at: "2026-09-02T12:01:00Z",
+          },
+        },
+      ],
+    }
+    expect(workloadOperationalStatus(crashing)).toMatchObject({
+      phase: "blocked",
+      needsAttention: true,
     })
   })
 })
