@@ -251,3 +251,24 @@ func TestNothingIsDiagnosedOnceEveryReplicaIsReady(t *testing.T) {
 		t.Fatalf("diagnosed a deployment that is serving: %+v", found)
 	}
 }
+
+// A worker that is up and loading weights past the window is loading, not stalled. Reporting it
+// as NoReplicasStarted showed a deployment still reading its weights as failed.
+func TestARunningPodPastTheWindowIsStillLoading(t *testing.T) {
+	const graph = "chat-iad"
+	r := diagnoser(t, graphObject(graph, stallAfter+time.Hour))
+	pod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "chat-iad-abc", Namespace: testRender.Namespace},
+		Status:     corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+
+	out := rollout{desired: 1}
+	out.trouble = r.diagnose(context.Background(), graph, []corev1.Pod{pod}, out)
+
+	if out.trouble != nil {
+		t.Fatalf("trouble = %+v, want none while the pod is running", out.trouble)
+	}
+	if out.phase() != phasePlaced {
+		t.Errorf("phase = %q, want %q", out.phase(), phasePlaced)
+	}
+}

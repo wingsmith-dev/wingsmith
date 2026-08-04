@@ -92,7 +92,7 @@ func (r *SyncedResourceReconciler) diagnose(
 	if summary != nil {
 		return summary
 	}
-	return r.stalled(ctx, name, out)
+	return r.stalled(ctx, name, pods, out)
 }
 
 // rejectedBy reads the conditions of the objects Dynamo derived from the graph, and of the graph
@@ -340,7 +340,18 @@ func containerTrouble(pod *corev1.Pod) *trouble {
 // individually behaving as designed. The age comes from the rendered graph rather than from the
 // declared object, because the graph is created by the apply and is therefore the moment the
 // cluster was actually asked to run something.
-func (r *SyncedResourceReconciler) stalled(ctx context.Context, name string, out rollout) *trouble {
+//
+// A pod that is Running and not Ready is not silent: its container is up and loading weights, and
+// for a model of hundreds of gigabytes read off network storage that takes longer than the window.
+// Reporting that as a fatal stall showed deployments that were loading as failed. A process that
+// hangs there is the readiness and startup probes' to kill, and a restart is then reported as a
+// crash loop.
+func (r *SyncedResourceReconciler) stalled(ctx context.Context, name string, pods []corev1.Pod, out rollout) *trouble {
+	for i := range pods {
+		if pods[i].DeletionTimestamp.IsZero() && pods[i].Status.Phase == corev1.PodRunning {
+			return nil
+		}
+	}
 	var graph unstructured.Unstructured
 	graph.SetGroupVersionKind(render.GVK)
 	key := client.ObjectKey{Namespace: r.Render.Namespace, Name: name}
