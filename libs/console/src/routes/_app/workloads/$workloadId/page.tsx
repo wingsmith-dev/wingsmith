@@ -1123,7 +1123,10 @@ function Vitals({
       <Vital
         label="Status"
         value={
-          <span className="inline-flex items-center gap-2">
+          <span
+            className="inline-flex items-center gap-2"
+            title={attention || undefined}
+          >
             <StatusDot
               tone={operational.tone}
               pulse={operational.tone === "danger"}
@@ -1131,7 +1134,7 @@ function Vitals({
             {operational.phase}
           </span>
         }
-        detail={operational.needsAttention ? attention : operational.placement}
+        detail={operational.placement}
         tone={operational.needsAttention ? operational.tone : undefined}
       />
       <Vital

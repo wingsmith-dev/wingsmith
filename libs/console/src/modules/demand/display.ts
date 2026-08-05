@@ -272,6 +272,18 @@ const DOWNLOAD_REASONS = new Set([
   "WarmSetIncomplete",
 ])
 const CAPACITY_REASONS = new Set(["NoSchedulableCapacity", "PodUnschedulable"])
+/**
+ * Codes that describe a deployment on its way up rather than something wrong.
+ * `ComponentNotReady` arrives as `last_error_code` for the whole time a worker is
+ * loading its weights into device memory.
+ */
+const PROGRESS_CODES = new Set([
+  "Accepted",
+  "Rendering",
+  "Applied",
+  "ComponentNotReady",
+  "Progressing",
+])
 
 export interface OperationalStatus {
   phase: LifecycleState
@@ -312,14 +324,15 @@ export function deploymentOperationalStatus(
 ): OperationalStatus {
   const observed = deployment.status
   const placement = deployment.placed_at ? "placed" : deployment.admission_phase
-  const code = observed?.last_error_code ?? null
+  const raw = observed?.last_error_code ?? null
+  const code = raw && !PROGRESS_CODES.has(raw) ? raw : null
   const reason = observed?.reason ?? null
   const text = (key: string | null) => (key ? reasonText(key) : null)
 
   if (observed?.phase === "failed" || deployment.admission_phase === "failed") {
     return operational(
       "failed",
-      text(code ?? reason ?? deployment.admission_reason ?? "failed"),
+      text(raw ?? reason ?? deployment.admission_reason ?? "failed"),
       placement
     )
   }

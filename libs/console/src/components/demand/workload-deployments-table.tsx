@@ -191,16 +191,13 @@ function columns(
       header: "Status",
       cell: (deployment) => {
         const status = deploymentOperationalStatus(deployment)
-        const detail = status.needsAttention
-          ? [status.reason, status.placement].filter(Boolean).join(" · ")
-          : deployment.admission_reason
+        const detail = [status.reason, status.placement]
+          .filter(Boolean)
+          .join(" · ")
         return (
-          <div className="space-y-0.5">
+          <span title={detail || undefined}>
             <StatusLabel tone={status.tone}>{status.phase}</StatusLabel>
-            <div className="font-mono text-2xs text-muted-foreground">
-              <Dash>{detail}</Dash>
-            </div>
-          </div>
+          </span>
         )
       },
     },

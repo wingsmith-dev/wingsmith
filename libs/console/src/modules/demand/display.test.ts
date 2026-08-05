@@ -208,4 +208,37 @@ describe("workload operational status", () => {
       needsAttention: true,
     })
   })
+
+  it("reads a worker loading weights as starting, not blocked", () => {
+    const base = workloads[0]
+    const deployment = base.deployments[0]
+    const loading: Workload = {
+      ...base,
+      deployments: [
+        {
+          ...deployment,
+          admission_phase: "placed",
+          status: {
+            observed_generation: deployment.generation,
+            phase: "placed",
+            reason: "ComponentNotReady",
+            message: null,
+            desired_replicas: 1,
+            ready_replicas: 0,
+            updated_replicas: 0,
+            unavailable_replicas: 1,
+            roles: [],
+            last_error_code: "ComponentNotReady",
+            last_error_message: "Deployment is not ready",
+            last_error_at: "2026-09-02T12:01:00Z",
+            observed_at: "2026-09-02T12:01:00Z",
+          },
+        },
+      ],
+    }
+    expect(workloadOperationalStatus(loading)).toMatchObject({
+      phase: "starting",
+      needsAttention: false,
+    })
+  })
 })
