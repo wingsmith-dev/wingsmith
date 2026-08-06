@@ -104,7 +104,10 @@ def workload_clause(ref: str):
 
     The artifact leg is scoped to the clusters this workload is deployed on. The
     same weights may back several workloads, and a download on a cluster this
-    workload never reached is somebody else's timeline.
+    workload never reached is somebody else's timeline. It is also bounded to
+    events since the workload was created: the weights outlive every workload that
+    loads them, and without the bound a workload minutes old showed the downloads
+    an earlier workload waited on weeks ago.
     """
     deployments = select(Deployment.id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
     replicas = select(Replica.id).where(Replica.deployment_id.in_(deployments))
@@ -112,6 +115,7 @@ def workload_clause(ref: str):
     clusters = (
         select(Deployment.cluster_id).join(Workload, Workload.id == Deployment.workload_id).where(Workload.uid == ref)
     )
+    created = select(Workload.created_at).where(Workload.uid == ref).scalar_subquery()
     return or_(
         Event.subject_id.in_(subject_subquery(ref)),
         Event.subject_id.in_(deployments),
@@ -121,6 +125,7 @@ def workload_clause(ref: str):
             Event.subject_type == "artifact",
             Event.subject_id.in_(artifact),
             Event.cluster_id.in_(clusters),
+            Event.occurred_at >= created,
         ),
     )
 
