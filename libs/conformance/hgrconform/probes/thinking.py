@@ -264,11 +264,12 @@ def template_kwargs(session: Session) -> dict[str, Any]:
 
     # The contradiction: the vendor dialect asks for thinking, the template field
     # refuses it. Only sent where the profile has a dialect of its own to contradict
-    # with, which is why it is read alongside `syntax` and not on its own.
+    # with, which is why it is read alongside `syntax` and not on its own. A profile
+    # whose dialect *is* the template field has nothing to contradict it with.
     conflict_fields = session.profile.thinking.body(True)
     precedence = "not_applicable"
     conflict_location = None
-    if conflict_fields:
+    if conflict_fields and TEMPLATE_KWARGS not in conflict_fields:
         conflict = session.post(
             "/v1/chat/completions",
             session.body(
