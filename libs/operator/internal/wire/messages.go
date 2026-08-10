@@ -373,6 +373,33 @@ type ServingSpec struct {
 	// byte-identity bar `Topology` keeps, for the same reason — Dynamo hashes the frontend's pod
 	// template, so an extra variable is a rolled frontend on every deployment in the fleet.
 	Router *RouterSpec `json:"router,omitempty"`
+
+	// OutputModality is what the engine emits: `image` or `video` for a diffusion workload, and
+	// empty for everything else, which means text.
+	//
+	// Empty rather than `text` on a chat deployment so that its frame is byte-identical to what it
+	// was before this field existed. It renders as `--output-modalities` on the omni engine and is
+	// refused by the render on any other, because `dynamo.vllm` has no such flag.
+	OutputModality string `json:"output_modality,omitempty"`
+
+	// Diffusion is the per-deployment pipeline configuration of an omni worker, nil when none is
+	// declared.
+	Diffusion *DiffusionSpec `json:"diffusion,omitempty"`
+}
+
+// DiffusionSpec is what vLLM-Omni reads from a stage-config file and not from its command line.
+//
+// Typed rather than a raw YAML blob, for the reason RouterSpec is: the operator writes the file
+// and owns its fixed parts (one stage, the devices the pod holds, the executor), and the plane
+// declares only the two things that vary per model. The Dynamo omni CLI refuses
+// `--model-class-name`, so the class has no other way in, and omni's default of 50 inference
+// steps is wrong for every distilled model we serve.
+type DiffusionSpec struct {
+	// ModelClassName is the pipeline class, e.g. `LTX2Pipeline`, or empty to let omni infer it.
+	ModelClassName string `json:"model_class_name,omitempty"`
+	// DefaultSamplingParams are the stage's defaults, e.g. `num_inference_steps` and
+	// `guidance_scale`. A request's own values still win.
+	DefaultSamplingParams map[string]any `json:"default_sampling_params,omitempty"`
 }
 
 // RouterSpec is the frontend's router configuration, one field per Dynamo setting it renders.

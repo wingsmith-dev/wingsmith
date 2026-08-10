@@ -365,6 +365,16 @@ type workerRole struct {
 // hashes the components together (see `specHashPlaceholder`), so a spurious re-order is a rename,
 // and a rename is a weight reload.
 func WorkerRoles(dep wire.DeploymentDesired) ([]workerRole, error) {
+	if IsOmni(dep) {
+		if Disaggregated(dep) {
+			return nil, fmt.Errorf("the omni engine has no prefill/decode split to disaggregate")
+		}
+		return []workerRole{{
+			Component: OmniComponent,
+			Type:      omniType,
+			Replicas:  Replicas(dep),
+		}}, nil
+	}
 	if !Disaggregated(dep) {
 		return []workerRole{{
 			Component: WorkerComponent,
@@ -540,7 +550,7 @@ const maxWorkloadName = 32
 // `maxObjectNameBytes - maxWorkloadName` is 31, which a suffix spends as a dash, the component
 // name lowercased, a dash, and the eight character spec hash — leaving 21 bytes for the name.
 // `VllmPrefillWorker` is 17, the longest this renderer emits, so there are four characters of
-// slack for whatever plan 05 calls an image worker. A component past this is a compile-time test
+// slack; `OmniComponent`, plan 05's image and video worker, spends 10. A component past this is a compile-time test
 // failure with a name in it, which is the failure this indirection exists to produce: the
 // alternative was a bound that moved under the components and took running deployments with it.
 const componentNameBudget = maxObjectNameBytes - maxWorkloadName - len("-") - len("-") - len(specHashPlaceholder)
@@ -1206,7 +1216,26 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 		return nil, fmt.Errorf("deployment %s names no engine runtime image", in.Deployment.DeploymentID)
 	}
 
-	args, err := engineArgs(in, opts, role)
+	module, err := engineModule(in.Deployment.Serving.Engine)
+	if err != nil {
+		return nil, err
+	}
+	var (
+		args        []string
+		stageConfig string
+	)
+	if module == "vllm.omni" {
+		if stageConfig, err = omniStageConfig(in); err != nil {
+			return nil, err
+		}
+		args, err = omniArgs(in, opts, stageConfig != "")
+	} else {
+		if m := in.Deployment.Serving.OutputModality; m != "" && m != "text" {
+			return nil, fmt.Errorf("the %s engine emits text and cannot serve output modality %q; "+
+				"image and video are the omni engine's", in.Deployment.Serving.Engine, m)
+		}
+		args, err = engineArgs(in, opts, role)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1249,7 +1278,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 			Name:       "main",
 			Image:      image,
 			WorkingDir: "/workspace/examples/backends/vllm",
-			Command:    []string{"python3", "-m", "dynamo." + engineModule(in.Deployment.Serving.Engine)},
+			Command:    []string{"python3", "-m", "dynamo." + module},
 			Args:       args,
 			// What an engine says on its way out, kept where the plane can read it.
 			//
@@ -1289,6 +1318,17 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 			}...),
 			Resources: corev1.ResourceRequirements{Requests: requests, Limits: limits},
 		}},
+	}
+
+	if stageConfig != "" {
+		spec.Volumes = append(spec.Volumes, corev1.Volume{
+			Name:         omniStageVolume,
+			VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}},
+		})
+		spec.InitContainers = append(spec.InitContainers, omniStageContainer(image, stageConfig))
+		spec.Containers[0].VolumeMounts = append(spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name: omniStageVolume, MountPath: omniStageDir, ReadOnly: true,
+		})
 	}
 
 	return applyPodOverlay(spec, in.Deployment.Serving.Overlay.PodSpec)
@@ -1735,15 +1775,176 @@ func splitDomain(domain string) (kind, key string, ok bool) {
 }
 
 // engineModule maps a declared engine onto the Dynamo entrypoint that runs it.
-func engineModule(engine string) string {
-	switch strings.ToLower(engine) {
+//
+// Closed, and an unknown engine is an error. It used to fall through to `vllm`, which was a
+// harmless guess while every engine served chat. With omni beside it, a guess is a workload that
+// comes up healthy answering the wrong API, so a name this operator has never heard of fails the
+// render and says so.
+func engineModule(engine string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(engine)) {
+	case "vllm":
+		return "vllm", nil
 	case "sglang":
-		return "sglang"
+		return "sglang", nil
 	case "trtllm", "tensorrt-llm", "tensorrt_llm":
-		return "trtllm"
+		return "trtllm", nil
+	case "omni", "vllm-omni", "vllm_omni":
+		return "vllm.omni", nil
 	default:
-		return "vllm"
+		return "", fmt.Errorf("unknown engine %q: this operator renders vllm, sglang, trtllm and omni", engine)
 	}
+}
+
+// IsOmni says whether a deployment runs the vLLM-Omni diffusion engine.
+func IsOmni(dep wire.DeploymentDesired) bool {
+	module, err := engineModule(dep.Serving.Engine)
+	return err == nil && module == "vllm.omni"
+}
+
+// OmniComponent is the Dynamo component name for a vLLM-Omni worker, and `worker` its type.
+//
+// A diffusion worker has no prefill/decode split, so the two constants that name a
+// disaggregation role do not describe it. `type` is not decorative — Dynamo derives port mapping,
+// frontend detection and the `nvidia.com/dynamo-component-type` label from it — and `worker` is
+// what the hand-built graph on site-a ran with on 2026-09-23 and registered with the frontend.
+//
+// Nothing outside this file matches on a worker's component name: the agent's resolver and the
+// benchmark executor look up `Frontend`, and the rollout reader and supersede pruning take the
+// name from `WorkerRoles`, so they follow this constant rather than assuming the vLLM one.
+const (
+	OmniComponent = "OmniWorker"
+	omniType      = "worker"
+)
+
+// Output modalities an omni worker can be told to emit.
+const (
+	OutputImage = "image"
+	OutputVideo = "video"
+)
+
+// omniMediaURL is where the omni worker writes what it generates before returning it inline.
+//
+// A pod-local path because image and video are synchronous today: the frontend answers with the
+// bytes, and nothing reads the directory afterwards. Video jobs (plan 07) will point this at
+// object storage, which is the whole of the worker half of that change.
+const omniMediaURL = "file:///tmp/dynamo_media"
+
+// Where the omni stage configuration is written inside the worker pod.
+const (
+	omniStageDir    = "/etc/omni"
+	omniStagePath   = omniStageDir + "/stage.yaml"
+	omniStageVolume = "omni-stage"
+	omniStageEnv    = "HANGAR_OMNI_STAGE_CONFIG"
+)
+
+// omniStageConfig is the stage-config file for a deployment that declares a diffusion block, or
+// "" when it declares none and omni's own defaults stand.
+//
+// JSON, which YAML parses, so the file needs no YAML encoder here. The fixed parts are what worked
+// by hand on site-a: one stage, synchronous chunks, the multiprocessing executor, one sequence at a
+// time. `devices` is every device the pod holds, counted from zero, because that is how the
+// container sees them.
+func omniStageConfig(in Inputs) (string, error) {
+	d := in.Deployment.Serving.Diffusion
+	if d == nil || (d.ModelClassName == "" && len(d.DefaultSamplingParams) == 0) {
+		return "", nil
+	}
+	n := in.Layout.devices(in.Deployment)
+	ids := make([]string, n)
+	for i := range ids {
+		ids[i] = strconv.Itoa(i)
+	}
+	stage := map[string]any{
+		"stage_id":     0,
+		"devices":      strings.Join(ids, ","),
+		"max_num_seqs": 1,
+	}
+	if d.ModelClassName != "" {
+		stage["model_class_name"] = d.ModelClassName
+	}
+	if len(d.DefaultSamplingParams) > 0 {
+		stage["default_sampling_params"] = d.DefaultSamplingParams
+	}
+	body, err := json.Marshal(map[string]any{
+		"async_chunk":                  false,
+		"distributed_executor_backend": "mp",
+		"stages":                       []any{stage},
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode omni stage config: %w", err)
+	}
+	return string(body), nil
+}
+
+// omniStageContainer writes the stage configuration into a volume the worker reads it from.
+//
+// An init container over an emptyDir, and not a ConfigMap. A ConfigMap is a second object with
+// its own lifecycle — this operator has no RBAC for one, would have to apply it, name it by
+// content so an edit reaches the pod, and prune the old ones — while this is part of the pod
+// template, so Dynamo's spec hash covers the configuration and an edit rolls the worker like any
+// other serving change. The worker's own image does the writing, so there is nothing new to pull.
+func omniStageContainer(image, config string) corev1.Container {
+	return corev1.Container{
+		Name:                     "omni-stage-config",
+		Image:                    image,
+		Command:                  []string{"sh", "-c", `printf '%s' "$` + omniStageEnv + `" > ` + omniStagePath},
+		Env:                      []corev1.EnvVar{{Name: omniStageEnv, Value: config}},
+		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
+		VolumeMounts:             []corev1.VolumeMount{{Name: omniStageVolume, MountPath: omniStageDir}},
+	}
+}
+
+// omniArgs is the omni worker's command line.
+//
+// Its own list rather than engineArgs with flags removed, because the two programs share almost
+// nothing: `dynamo.vllm.omni` takes none of the KV, context or prefix-cache flags the chat worker
+// is built around, and exits on any of them. What it does take was established by hand on site-a:
+// the model, the served name, the output modality, the media URL, the stage-config path, and
+// `--quantization`. engine_args is laid over last, as everywhere else, so `--vae-use-tiling` is
+// `{"vae-use-tiling": ""}`.
+func omniArgs(in Inputs, opts Options, stage bool) ([]string, error) {
+	modality := in.Deployment.Serving.OutputModality
+	if modality != OutputImage && modality != OutputVideo {
+		return nil, fmt.Errorf("the omni engine needs an output modality of %q or %q, got %q",
+			OutputImage, OutputVideo, modality)
+	}
+	model, isPath, err := modelRef(in.Artifact)
+	if err != nil {
+		return nil, err
+	}
+	if isPath && opts.LocalModelCacheDir != "" {
+		if local, ok := localModelPath(model); ok {
+			model = local
+		}
+	}
+	derived := map[string]string{
+		"model":               model,
+		"served-model-name":   servedModelName(in),
+		"output-modalities":   modality,
+		"media-output-fs-url": omniMediaURL,
+	}
+	if stage {
+		derived["stage-configs-path"] = omniStagePath
+	}
+	if v := in.Deployment.Serving.Quantization; v != nil && *v != "" {
+		derived["quantization"] = *v
+	}
+	for key, value := range in.Deployment.Serving.EngineArgs {
+		derived[strings.TrimPrefix(key, "--")] = value
+	}
+	keys := make([]string, 0, len(derived))
+	for key := range derived {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	args := make([]string, 0, len(keys)*2)
+	for _, key := range keys {
+		args = append(args, "--"+key)
+		if derived[key] != "" {
+			args = append(args, derived[key])
+		}
+	}
+	return args, nil
 }
 
 // kvTransferConfig is how the two roles move a KV cache between them.

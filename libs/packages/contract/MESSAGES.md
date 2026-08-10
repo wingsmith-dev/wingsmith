@@ -297,6 +297,16 @@ digest written before it existed moves. It is in the digest at all because which
 request, and how long the request waits for one, is what a benchmark anchored on that digest
 measured. It never reaches a worker: a router change rolls the frontend and nothing else.
 
+**A diffusion deployment says what it emits and how its pipeline is configured.**
+`serving.output_modality` is `image` or `video` for the `omni` engine (`python3 -m dynamo.vllm.omni`)
+and absent for every other engine, where absent means text; it renders as `--output-modalities`.
+`serving.diffusion` is optional and carries `model_class_name` and `default_sampling_params`, which
+the operator writes into a one-stage vLLM-Omni stage-config file and points `--stage-configs-path` at.
+Both are absent from a chat deployment's frame, so neither moves a chat render. The plane refuses an
+omni workload without an output modality and a non-omni one with `image` or `video`; the operator
+refuses both again at render, and refuses any engine it does not know rather than rendering a chat
+server for it.
+
 The device shape is deliberately absent from `serving`, and stays absent now that the block travels
 on the deployment itself. It reaches the cluster on the deployment's `placement`, derived from that
 same configuration. Two copies of one fact on one wire is two things that can disagree, and the

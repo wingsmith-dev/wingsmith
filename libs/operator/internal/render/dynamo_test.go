@@ -420,7 +420,7 @@ func TestTheDerivedComponentNameFitsALabelValue(t *testing.T) {
 // is fixed and the components are held to it, so the same mistake is this test failing with the
 // offending name in the message.
 func TestComponentBudget(t *testing.T) {
-	for _, name := range []string{WorkerComponent, PrefillComponent, FrontendComponent} {
+	for _, name := range []string{WorkerComponent, PrefillComponent, OmniComponent, FrontendComponent} {
 		if got := len(strings.ToLower(name)); got > componentNameBudget {
 			t.Fatalf("component %s is %d bytes, over the %d componentNameBudget allows; "+
 				"a shorter name is the fix, not a smaller maxWorkloadName", name, got, componentNameBudget)
