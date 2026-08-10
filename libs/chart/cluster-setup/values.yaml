@@ -149,7 +149,7 @@ fabric:
   # The runtime image must also carry libfabric itself. NVIDIA's published image
   # ships the plugin but not the library (`libfabric.so.1 => not found`), and the
   # EKS host's EFA install is the minimal profile with no libfabric either. Ours
-  # is appended registry-side; see hangar-runtime/kimi-k3.
+  # is appended registry-side; see hangar-runtime/frontend.
   nixlBackends: []
 
 dcgm:
@@ -282,7 +282,7 @@ frontend:
   # made Kimi K3 unusable -- tool-call ids reused across turns, and extended
   # thinking forced on through `/v1/messages` -- are in the frontend binary, so
   # the fix is a patched runtime and the fix ships as an image.
-  # `hangar-runtime/kimi-k3/` builds it and it lands in a private GHCR repository,
+  # `hangar-runtime/frontend/` builds it and it lands in a private GHCR repository,
   # which needs a credential where nvcr.io needs none.
   #
   # Naming one here is also what renders the credential into `dynamo` at all: a
