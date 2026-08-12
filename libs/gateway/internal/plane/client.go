@@ -28,6 +28,9 @@ type Upstream struct {
 	CredentialID    string `json:"credential_id"`
 	Weight          int    `json:"weight"`
 	Role            string `json:"role"`
+	// OutputModality is what the engine behind this upstream emits: `text`, `image` or `video`.
+	// Empty from a plane that predates the field, which reads as text.
+	OutputModality string `json:"output_modality,omitempty"`
 }
 
 // Rule is one term an endpoint sells, scoped to where it applies.

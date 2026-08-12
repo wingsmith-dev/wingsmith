@@ -548,6 +548,10 @@ type modelObject struct {
 	ID      string `json:"id"`
 	Object  string `json:"object"`
 	OwnedBy string `json:"owned_by"`
+	// OutputModality is what the model generates — `text`, `image` or `video` — so a client can
+	// tell which of /v1/chat/completions, /v1/images/generations and /v1/videos it answers.
+	// Not an OpenAI field; clients that do not know it ignore it.
+	OutputModality string `json:"output_modality,omitempty"`
 }
 
 type modelList struct {
@@ -570,11 +574,11 @@ const modelOwner = "system"
 // Deliberately bare: context length, quantization and display names are catalog
 // facts, and hangar serves models rather than describing them. Whatever sits in
 // front of this hop owns its own catalog.
-func writeModelList(w http.ResponseWriter, names []string) {
+func writeModelList(w http.ResponseWriter, names []string, kinds map[string]string) {
 	sort.Strings(names)
 	data := make([]modelObject, 0, len(names))
 	for _, name := range names {
-		data = append(data, modelObject{ID: name, Object: "model", OwnedBy: modelOwner})
+		data = append(data, modelObject{ID: name, Object: "model", OwnedBy: modelOwner, OutputModality: kinds[name]})
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)

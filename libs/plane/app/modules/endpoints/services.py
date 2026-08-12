@@ -17,7 +17,9 @@ from app.db.models import Endpoint
 from app.db.models import EndpointAlias
 from app.db.models import EndpointTarget
 from app.core.schemas import ListResponse
+from app.core.serving import TEXT
 from app.core.serving import served_model
+from app.core.serving import output_modality
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -920,6 +922,7 @@ class EndpointService:
                         else None,
                         weight=target.weight,
                         role=target.role,
+                        output_modality=output_modality(workload.serving) if workload is not None else TEXT,
                     )
                 )
 

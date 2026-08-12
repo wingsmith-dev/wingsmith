@@ -60,6 +60,7 @@ func routingStages(resolver Resolver, tenants Tenants, zone Zone) []stage {
 		stageValidateModel,
 		stageValidateStopSequences,
 		stageResolve(resolver),
+		stageCheckModality,
 		stageStripSteeringHints,
 		stageCheckPolicy,
 		stageRewritePolicy,
@@ -103,7 +104,13 @@ func stageCatalog(resolver Resolver) stage {
 		if req.zone == ZonePublic {
 			names = resolver.NamesForTenant(req.tenant.ID)
 		}
-		writeModelList(w, names)
+		kinds := make(map[string]string, len(names))
+		for _, name := range names {
+			if route, err := resolver.Resolve(name); err == nil {
+				kinds[name] = routeModality(route)
+			}
+		}
+		writeModelList(w, names, kinds)
 		return r, false
 	}
 }

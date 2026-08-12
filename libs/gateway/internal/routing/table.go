@@ -71,6 +71,9 @@ type Upstream struct {
 	// put the hardware footprint on the public API surface, so re-fitting a model
 	// at a different tensor degree renamed the model every client codes against.
 	ServedModelName string
+	// OutputModality is what this upstream's engine emits — `text`, `image` or `video` — and
+	// empty for text. It decides which paths the upstream answers; see `serving.pathAnswered`.
+	OutputModality string
 
 	handler http.Handler
 	// reachable answers whether this upstream can be used right now. Nil means
@@ -475,6 +478,7 @@ func (r *Router) Load(ctx context.Context) error {
 				ClusterName:     upstream.ClusterName,
 				URL:             upstream.URL,
 				ServedModelName: upstream.ServedModelName,
+				OutputModality:  upstream.OutputModality,
 				Weight:          weight,
 				Role:            upstream.Role,
 				Ready:           upstream.AdmissionPhase == "running",

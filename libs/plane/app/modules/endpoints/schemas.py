@@ -312,6 +312,14 @@ class ResolvedUpstreamSchema(Struct):
     credential_id: str | None
     weight: int
     role: str
+    output_modality: str = "text"
+    """What the engine behind this upstream emits: `text`, `image` or `video`.
+
+    From the workload's `serving.output_modality`, and here for the reason `served_model_name`
+    is: it is a fact about the upstream. The gateway refuses a path the upstream does not answer
+    — `/v1/images/generations` to a chat model, `/v1/embeddings` to an image model — and reports
+    it beside the name on `GET /v1/models`.
+    """
 
 
 class ResolvedEndpointSchema(Struct):

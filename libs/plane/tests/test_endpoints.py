@@ -372,8 +372,10 @@ class FakeWorkload:
         engine_args=None,
         served_model_name=None,
         serving_digest=DIGEST,
+        serving=None,
     ) -> None:
         self.name = name
+        self.serving = serving or {}
         self.engine_args = engine_args or {}
         self.served_model_name = served_model_name
         self.serving_digest = serving_digest
@@ -491,6 +493,21 @@ async def test_an_upstream_carries_the_name_the_engine_answers_to():
     upstream = table.endpoints[0].upstreams[0]
     assert upstream.served_model_name == "meta-llama/llama-3.3-70b-instruct"
     assert upstream.served_model_name != table.endpoints[0].name
+
+
+@pytest.mark.asyncio
+async def test_an_upstream_carries_what_its_engine_emits():
+    """The gateway refuses a path the upstream does not answer, and this is what it reads.
+
+    Text for every workload that declares nothing, which is every workload before plan 05, so a
+    gateway reading this table routes exactly as it did.
+    """
+    chat = await resolution([tunnelled_row(workload=FakeWorkload())]).resolved()
+    assert chat.endpoints[0].upstreams[0].output_modality == "text"
+
+    image = FakeWorkload(serving={"output_modality": "image"})
+    table = await resolution([tunnelled_row(workload=image)]).resolved()
+    assert table.endpoints[0].upstreams[0].output_modality == "image"
 
 
 @pytest.mark.asyncio

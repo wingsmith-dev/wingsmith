@@ -251,6 +251,15 @@ equal the served one. It rides the upstream rather than the endpoint because one
 two clusters running different serving configurations, and there is no single answer to put one
 level up.
 
+**Each upstream carries `output_modality`: `text`, `image` or `video`.** It is the workload's
+`serving.output_modality`, and `text` when the workload declares none. The gateway refuses, with a
+`404 unsupported_path`, a request to a path no upstream of the endpoint answers: a text upstream
+answers every path except `/v1/images/*` and `/v1/videos*`; an image upstream answers `/v1/images/*`
+and `/v1/chat/completions` (Dynamo returns the image as an `image_url` content part); a video
+upstream answers `/v1/videos*` only. The check runs before an upstream is picked, so the answer does
+not depend on which cluster would have taken the request. `GET /v1/models` on the gateway reports
+the same value as `output_modality` beside each model id.
+
 **Each resolved endpoint also carries `tenant_id`, the endpoint's project's tenant** — what lets the
 gateway answer only for the tenant a request belongs to (docs/plans/17), without a second lookup per
 request. There is exactly one tenant per endpoint; this is not a cross-tenant endpoint's table. The
