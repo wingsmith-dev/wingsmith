@@ -12,6 +12,7 @@ canonical document it decoded. `TIMESTAMP_PATTERN` is the validation seam.
 
 import re
 
+from typing import Any
 from typing import Literal
 
 from msgspec import Raw
@@ -435,6 +436,13 @@ class RouterSpec(Struct, omit_defaults=True):
     kv_overlap_score_credit: float | None = None
 
 
+class DiffusionSpec(Struct):
+    """What a vLLM-Omni worker reads from its stage-config file. The operator writes the file."""
+
+    model_class_name: str | None = None
+    default_sampling_params: dict[str, Any] = {}
+
+
 class ServingSpec(Struct):
     """How to serve an artifact, in enough detail for a cluster to render it.
 
@@ -520,6 +528,16 @@ class ServingSpec(Struct):
     None renders exactly what a deployment rendered before the block existed. A block is only sent
     when at least one field is set, so "declared nothing" has one spelling on the wire.
     """
+
+    output_modality: Literal["image", "video"] | None = None
+    """What an omni worker emits, rendered as `--output-modalities`. None on every chat deployment.
+
+    None rather than `text`, so an operator that predates the field and one that knows it read a
+    chat deployment's frame the same way.
+    """
+
+    diffusion: DiffusionSpec | None = None
+    """The omni worker's stage configuration, or None to leave omni's defaults in place."""
 
 
 class PlacementConstraints(Struct):

@@ -80,6 +80,13 @@
         "queue_threshold": 1.0,
         "queue_policy": "wspt",
         "kv_overlap_score_credit": 8.0
+      },
+      "output_modality": "image",
+      "diffusion": {
+        "model_class_name": "ZImagePipeline",
+        "default_sampling_params": {
+          "num_inference_steps": 8
+        }
       }
     },
     "lifecycle": "service",

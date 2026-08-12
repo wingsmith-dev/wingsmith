@@ -219,6 +219,34 @@ only version of it that cannot drift. `Workload.serving_topology` names the colu
 why it is not called `topology`.
 """
 
+OMNI_ENGINES = frozenset({"omni", "vllm-omni", "vllm_omni"})
+"""The spellings of the vLLM-Omni engine, which Dynamo runs as `python3 -m dynamo.vllm.omni`.
+
+The operator accepts the same three (`engineModule` in `libs/operator/internal/render/dynamo.go`).
+It is the one engine here that emits images and video rather than text, runs inside the
+`vllm-runtime` image, and has no prefill/decode split.
+"""
+
+TEXT = "text"
+OUTPUT_MODALITIES = frozenset({TEXT, "image", "video"})
+"""What a workload's engine emits. `text` is every engine but omni; `image` and `video` are omni's.
+
+A null `serving.output_modality` means text, and is how every workload declared before the field
+existed reads. The routing table carries the resolved value so the gateway can refuse a path the
+upstream does not answer.
+"""
+
+
+def is_omni(engine: str | None) -> bool:
+    """Whether an engine name is the vLLM-Omni diffusion engine, in any accepted spelling."""
+    return (engine or "").strip().lower() in OMNI_ENGINES
+
+
+def output_modality(serving: dict | None) -> str:
+    """The output modality a stored `serving` block declares, `text` when it declares none."""
+    return str((serving or {}).get("output_modality") or TEXT)
+
+
 PREFILL = "prefill"
 DECODE = "decode"
 SERVING_ROLES = frozenset({PREFILL, DECODE})

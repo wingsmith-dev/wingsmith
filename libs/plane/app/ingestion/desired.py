@@ -14,6 +14,7 @@ import datetime as dt
 
 from uuid import UUID
 from typing import Any
+from typing import Literal
 from logging import getLogger
 from collections.abc import Sequence
 from collections.abc import AsyncIterator
@@ -34,6 +35,7 @@ from app.db.models import WorkloadRole
 from app.db.models import PriorityClass
 from app.db.models import ArtifactLocation
 from app.core.serving import declared_router
+from app.core.serving import output_modality
 from app.core.serving import declared_served_model
 from app.hub.messages import Adopt
 from app.hub.messages import Overlay
@@ -43,6 +45,7 @@ from app.hub.messages import RouterSpec
 from app.hub.messages import Parallelism
 from app.hub.messages import ServingSpec
 from app.hub.messages import CacheDesired
+from app.hub.messages import DiffusionSpec
 from app.hub.messages import ArtifactSource
 from app.hub.messages import CacheWarmEntry
 from app.hub.messages import ArtifactDesired
@@ -344,6 +347,29 @@ def _serving(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRol
             dynamo=(workload.overlay or {}).get("dynamo", {}) or {},
         ),
         router=_router(workload),
+        output_modality=_output_modality(workload),
+        diffusion=_diffusion(workload),
+    )
+
+
+def _output_modality(workload: Workload) -> Literal["image", "video"] | None:
+    """What an omni worker emits, or None for text."""
+    modality = output_modality(workload.serving)
+    if modality == "image":
+        return "image"
+    if modality == "video":
+        return "video"
+    return None
+
+
+def _diffusion(workload: Workload) -> DiffusionSpec | None:
+    """The stage configuration as the cluster is told it, or None when none is declared."""
+    declared = (workload.serving or {}).get("diffusion")
+    if not declared:
+        return None
+    return DiffusionSpec(
+        model_class_name=declared.get("model_class_name") or None,
+        default_sampling_params=dict(declared.get("default_sampling_params") or {}),
     )
 
 

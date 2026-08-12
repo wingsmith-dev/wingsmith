@@ -39,11 +39,15 @@ from app.db.notify import DeclaredChange
 from app.db.notify import DatabaseNotifier
 from app.ingestion import statements
 from app.core.schemas import ListResponse
+from app.core.serving import TEXT
 from app.core.serving import AGGREGATED
+from app.core.serving import OMNI_ENGINES
 from app.core.serving import DERIVED_FLAGS
 from app.core.serving import SERVING_ROLES
 from app.core.serving import TOPOLOGY_FLAGS
+from app.core.serving import OUTPUT_MODALITIES
 from app.core.serving import SERVING_TOPOLOGIES
+from app.core.serving import is_omni
 from app.core.serving import flag_name
 from app.core.serving import served_model
 from app.core.serving import serving_digest
@@ -291,18 +295,17 @@ def check_capacity(sizing: Sizing | None, device_class: str, device_count: int, 
         )
 
 
-DISAGGREGATION_INCAPABLE_ENGINES: frozenset[str] = frozenset()
+DISAGGREGATION_INCAPABLE_ENGINES: frozenset[str] = OMNI_ENGINES
 """Engines the plane knows have no prefill/decode split, and refuses one for.
 
-Empty, and named anyway. A deny list rather than an allow list because this module refuses only
-what it can prove: `check_capacity` states the governing habit — "the plane does not refuse what
-it has no number for" — and `resolve_engine_runtime_image` returns `None` rather than inventing
-an address for an engine nobody configured. An allow list would refuse every engine added after
-this line was written, which is the failure mode of a closed set that is not actually closed.
+A deny list rather than an allow list because this module refuses only what it can prove:
+`check_capacity` states the governing habit — "the plane does not refuse what it has no number
+for" — and `resolve_engine_runtime_image` returns `None` rather than inventing an address for an
+engine nobody configured. An allow list would refuse every engine added after this line was
+written, which is the failure mode of a closed set that is not actually closed.
 
-The member this exists for is plan 05's omni module, whose pipeline has stages rather than a
-prefill/decode pair. It is not here yet, and naming an engine the plane has never seen would be
-a refusal resting on nothing. When it lands, this is the one line it adds itself to.
+Plan 05's omni engine is the member: its pipeline has stages rather than a prefill/decode pair,
+and the operator renders it as one aggregated `worker`.
 """
 
 
@@ -345,7 +348,7 @@ def check_topology(serving_topology: str, roles: Sequence[WorkloadRole], engine:
                 {"serving_topology": serving_topology, "roles": [role.role for role in roles]},
             )
         return
-    if engine in DISAGGREGATION_INCAPABLE_ENGINES:
+    if (engine or "").strip().lower() in DISAGGREGATION_INCAPABLE_ENGINES:
         raise Invalid(f"the {engine} engine has no prefill/decode split", {"engine": engine})
 
     declared = [role.role for role in roles]
@@ -694,6 +697,62 @@ def check_serving(
         )
 
 
+def check_output(engine: str, serving: ServingSchema) -> None:
+    """Rejects an output modality the engine cannot emit, or a diffusion block it cannot read.
+
+    The one place the plane knows something about an engine, and it knows it because the
+    command line differs: only `dynamo.vllm.omni` takes `--output-modalities` and a stage-config
+    file, and omni exits without the former. So an omni workload must say `image` or `video`, and
+    every other engine emits text and may not claim otherwise — a chat worker handed an image
+    modality would either crash on the flag or come up healthy answering the wrong API.
+    """
+    modality = serving.output_modality
+    if modality is not None and modality not in OUTPUT_MODALITIES:
+        raise Invalid(
+            f"unknown output_modality {modality!r}",
+            {"output_modality": modality, "allowed": sorted(OUTPUT_MODALITIES)},
+        )
+    if is_omni(engine):
+        if modality in (None, TEXT):
+            raise Invalid(
+                "the omni engine needs output_modality image or video: it is what "
+                "--output-modalities renders from, and the worker will not start without it",
+                {"engine": engine, "output_modality": modality},
+            )
+        diffusion = serving.diffusion
+        if diffusion is not None and diffusion.model_class_name is not None and not diffusion.model_class_name.strip():
+            raise Invalid(
+                "diffusion.model_class_name cannot be blank", {"model_class_name": diffusion.model_class_name}
+            )
+        return
+    if modality not in (None, TEXT):
+        raise Invalid(
+            f"the {engine} engine emits text; image and video are the omni engine's",
+            {"engine": engine, "output_modality": modality},
+        )
+    if serving.diffusion is not None:
+        raise Invalid(
+            f"a diffusion block is read only by the omni engine, not {engine}",
+            {"engine": engine},
+        )
+
+
+def stored_serving(serving: ServingSchema) -> dict:
+    """The typed serving block as the `serving` column holds it.
+
+    `output_modality` and `diffusion` are left out when unset, and `text` is stored as unset.
+    The column is hashed whole into `serving_digest`, so a key that every write started adding
+    would move the digest of every chat workload the next time it was saved — and with it every
+    deployment's rendered annotation and every benchmark's link to what it measured.
+    """
+    stored = msgspec.to_builtins(serving)
+    if stored.get("output_modality") in (None, TEXT):
+        stored.pop("output_modality", None)
+    if stored.get("diffusion") is None:
+        stored.pop("diffusion", None)
+    return stored
+
+
 def serving_args(engine: str, serving: ServingSchema) -> dict[str, str]:
     """The engine arguments the typed serving block speaks for, keyed without dashes."""
     flags = SERVING_FLAGS.get(engine.strip().lower(), {})
@@ -772,10 +831,15 @@ def resolve_engine_runtime_image(engine: str, engine_runtime_version: str, decla
     workload exactly as it was before this existed. That is deliberate: inventing an
     address for an engine the plane has never been told about would trade a
     visible "no image" for an `ImagePullBackOff` on a cluster.
+
+    The omni engine borrows vLLM's repository unless it has one of its own: Dynamo ships
+    `dynamo.vllm.omni` inside `vllm-runtime`, so it is the same image with a different module.
     """
     if declared:
         return declared
-    repository = engine_runtime_repos().get((engine or "").strip().lower())
+    key = (engine or "").strip().lower()
+    repos = engine_runtime_repos()
+    repository = repos.get(key) or (repos.get("vllm") if is_omni(key) else None)
     if not repository:
         return None
     tag = (engine_runtime_version or "").strip()
@@ -880,6 +944,7 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
         disk_gib=data.resources.disk_gib,
     )
     check_serving(data.serving, data.capabilities, data.cache.prefix_cache_enabled)
+    check_output(data.engine, data.serving)
     check_router(data.router)
     check_quantization(data.quantization)
     check_floor(data.shape.device_class, data.shape.device_memory_mib_min)
@@ -977,7 +1042,7 @@ def serving_columns(data: WorkloadServingRequest, artifact: Artifact) -> dict:
         "memory_mib": data.resources.memory_mib,
         "disk_gib": data.resources.disk_gib,
         "overlay": msgspec.to_builtins(data.overlay),
-        "serving": msgspec.to_builtins(data.serving),
+        "serving": stored_serving(data.serving),
         "capabilities": msgspec.to_builtins(data.capabilities),
         "router": declared_router(msgspec.to_builtins(data.router)),
     }

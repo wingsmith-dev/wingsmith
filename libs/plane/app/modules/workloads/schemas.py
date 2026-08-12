@@ -67,6 +67,20 @@ class ReasoningSchema(Struct):
     suppress_eos_until_think_end: bool = False
 
 
+class DiffusionSchema(Struct):
+    """What a vLLM-Omni worker reads from its stage-config file rather than its command line.
+
+    Two fields because only two vary per model. The operator writes the rest of the file —
+    one stage, the devices the pod holds, the executor — and the Dynamo omni CLI refuses
+    `--model-class-name`, so the pipeline class has no other way in. `default_sampling_params`
+    exists because omni defaults every model to 50 inference steps, which is wrong for every
+    distilled model: FLUX.2-klein wants 4 and Z-Image-Turbo 8. A request's own values still win.
+    """
+
+    model_class_name: str | None = None
+    default_sampling_params: dict = {}
+
+
 class ServingSchema(Struct):
     """What the served API does, as the engine will actually be told to behave.
 
@@ -87,6 +101,15 @@ class ServingSchema(Struct):
     tool_call_parser: str | None = None
     max_images_per_request: int | None = None
     max_videos_per_request: int | None = None
+    output_modality: str | None = None
+    """What the engine emits: `image` or `video` on the omni engine, null (text) on every other.
+
+    Here and not on `capabilities`, because it renders — `--output-modalities` on the worker —
+    and because the routing table carries it to the gateway, which refuses a path the upstream
+    does not answer.
+    """
+    diffusion: DiffusionSchema | None = None
+    """The omni worker's stage configuration, null to leave omni's own defaults in place."""
 
 
 class CapabilitiesSchema(Struct):
