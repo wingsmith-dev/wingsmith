@@ -222,6 +222,7 @@
       "memory_mib": 190464,
       "form_factor": "nvl",
       "devices_per_node": 72,
+      "host_architecture": "arm64",
       "aliases": {
         "gfd": [
           "NVIDIA-GB200-NVL72",
@@ -241,6 +242,7 @@
       "memory_mib": 294912,
       "form_factor": "nvl",
       "devices_per_node": 72,
+      "host_architecture": "arm64",
       "aliases": {
         "gfd": [
           "NVIDIA-GB300-NVL72",

@@ -68,6 +68,11 @@ class DeviceClass:
     `None` unless the part is sold as a rack-scale domain: a GB300 NVL72 is 72 devices
     and one node, whatever number of chassis that is. `None` means the caller's default
     applies, and a cluster's own observed topology outranks both.
+
+    `host_architecture` is the CPU the card is attached to, and empty means x86-64 — every
+    class but the Grace superchips, which are `arm64`. It exists because some engines are built
+    for one of the two only: vLLM-Omni ships amd64 images, so a diffusion workload on a GB200
+    would be admitted, placed, and never start.
     """
 
     name: str
@@ -78,6 +83,7 @@ class DeviceClass:
     form_factor: str
     aliases: dict[str, tuple[str, ...]]
     devices_per_node: int | None = None
+    host_architecture: str = ""
 
 
 def normalize(value: str) -> str:
@@ -185,6 +191,7 @@ def load(path: Path | None = None) -> DeviceTable:
             form_factor=entry["form_factor"],
             aliases={k: tuple(v) for k, v in entry.get("aliases", {}).items()},
             devices_per_node=entry.get("devices_per_node"),
+            host_architecture=entry.get("host_architecture", ""),
         )
         for entry in document.get("classes", [])
     ]

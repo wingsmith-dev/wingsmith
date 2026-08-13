@@ -237,6 +237,14 @@ upstream does not answer.
 """
 
 
+AMD64_ONLY_ENGINES = OMNI_ENGINES
+"""Engines whose runtime images are built for x86-64 hosts only.
+
+vLLM-Omni is the member: Dynamo's omni path has no arm64 build, so a Grace device class
+(`host_architecture: arm64` in `libs/packages/contract/devices.json`) cannot serve it.
+"""
+
+
 def is_omni(engine: str | None) -> bool:
     """Whether an engine name is the vLLM-Omni diffusion engine, in any accepted spelling."""
     return (engine or "").strip().lower() in OMNI_ENGINES

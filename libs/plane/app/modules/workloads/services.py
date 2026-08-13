@@ -46,6 +46,7 @@ from app.core.serving import DERIVED_FLAGS
 from app.core.serving import SERVING_ROLES
 from app.core.serving import TOPOLOGY_FLAGS
 from app.core.serving import OUTPUT_MODALITIES
+from app.core.serving import AMD64_ONLY_ENGINES
 from app.core.serving import SERVING_TOPOLOGIES
 from app.core.serving import is_omni
 from app.core.serving import flag_name
@@ -737,6 +738,26 @@ def check_output(engine: str, serving: ServingSchema) -> None:
         )
 
 
+def check_host_architecture(engine: str, device_class: str) -> None:
+    """Rejects an engine on a device class whose host CPU it has no build for.
+
+    Placement matches a workload's device class exactly, so refusing the pair here keeps it off
+    every cluster — named ones included — before anything is admitted. The alternative is a
+    workload placed on a GB200 and an amd64 image pulled onto an arm64 node, which fails in a
+    pod log rather than on the declaration. A class the table does not carry is not refused:
+    the plane does not refuse what it has no fact for.
+    """
+    if (engine or "").strip().lower() not in AMD64_ONLY_ENGINES:
+        return
+    device = devices.table().get(device_class)
+    if device is not None and device.host_architecture not in ("", "amd64"):
+        raise Invalid(
+            f"the {engine} engine is built for amd64 hosts only and {device_class} is attached to "
+            f"{device.host_architecture}",
+            {"engine": engine, "device_class": device_class, "host_architecture": device.host_architecture},
+        )
+
+
 def stored_serving(serving: ServingSchema) -> dict:
     """The typed serving block as the `serving` column holds it.
 
@@ -945,6 +966,7 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
     )
     check_serving(data.serving, data.capabilities, data.cache.prefix_cache_enabled)
     check_output(data.engine, data.serving)
+    check_host_architecture(data.engine, data.shape.device_class)
     check_router(data.router)
     check_quantization(data.quantization)
     check_floor(data.shape.device_class, data.shape.device_memory_mib_min)

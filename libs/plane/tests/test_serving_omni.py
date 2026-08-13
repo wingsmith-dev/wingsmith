@@ -24,6 +24,7 @@ from app.modules.workloads.services import check_topology
 from app.modules.workloads.services import declared_roles
 from app.modules.workloads.services import stored_serving
 from app.modules.workloads.services import check_serving_request
+from app.modules.workloads.services import check_host_architecture
 from app.modules.workloads.services import resolve_engine_runtime_image
 
 from tests.test_serving import a_workload
@@ -141,3 +142,18 @@ def test_a_chat_frame_carries_neither():
     wire = _serving(a_workload(), Artifact(uid=new_uid(ARTIFACT), slug="meta-llama/llama-3.1-8b-instruct"))
     assert wire.output_modality is None
     assert wire.diffusion is None
+
+
+@pytest.mark.parametrize("device_class", ["gb200-186gb-nvl", "gb300-288gb-nvl"])
+def test_omni_is_never_declared_on_a_grace_device_class(device_class):
+    with pytest.raises(Invalid, match="amd64 hosts only"):
+        check_host_architecture("omni", device_class)
+    artifact = Artifact(uid=new_uid(ARTIFACT), name="z-image-turbo", digest="sha256:beef")
+    with pytest.raises(Invalid, match="amd64 hosts only"):
+        check_serving_request(an_omni_request(shape=ShapeSchema(device_class=device_class)), artifact)
+
+
+def test_a_chat_engine_on_grace_and_omni_on_x86_are_both_fine():
+    check_host_architecture("vllm", "gb300-288gb-nvl")
+    check_host_architecture("omni", "h100-80gb-sxm")
+    check_host_architecture("omni", "a-class-nobody-has-heard-of")

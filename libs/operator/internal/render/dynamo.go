@@ -1744,8 +1744,20 @@ func NodeSelector(dep wire.DeploymentDesired, opts Options) map[string]string {
 	for key, value := range dep.Placement.NodeSelector {
 		out[key] = value
 	}
+	if IsOmni(dep) {
+		out[archLabel] = "amd64"
+	}
 	return out
 }
+
+// archLabel is the well-known node label for a node's CPU architecture.
+//
+// Pinned to amd64 on an omni worker because vLLM-Omni has no arm64 build: on a Grace node the
+// image pulls and the container dies on its first instruction. The plane refuses an omni
+// workload on a Grace device class before it is placed; this is the cluster's own half, and
+// because the capacity check reads the same selector, a cluster with only arm64 GPU nodes
+// reports no capacity rather than rendering a pod that cannot run.
+const archLabel = "kubernetes.io/arch"
 
 // podNodeSelector is what the render actually lands on: the deployment's selector, plus the fabric
 // when the replica was pinned to one.

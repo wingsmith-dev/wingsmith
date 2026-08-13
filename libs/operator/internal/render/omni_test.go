@@ -186,3 +186,23 @@ func TestTheStageSpansEveryDeviceThePodHolds(t *testing.T) {
 		t.Fatalf("stage config = %s", config)
 	}
 }
+
+func TestAnOmniWorkerIsPinnedToAmd64Nodes(t *testing.T) {
+	obj, err := DynamoGraphDeployment(omniInputs(), testOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if got := renderedPod(t, obj).NodeSelector[archLabel]; got != "amd64" {
+		t.Fatalf("%s = %q, want amd64", archLabel, got)
+	}
+	if got := NodeSelector(omniInputs().Deployment, testOptions())[archLabel]; got != "amd64" {
+		t.Fatalf("the capacity check's selector does not carry the arch: %q", got)
+	}
+	chat, err := DynamoGraphDeployment(testInputs(), testOptions())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if _, set := renderedPod(t, chat).NodeSelector[archLabel]; set {
+		t.Fatal("a chat worker gained an arch selector; its pod template must not move")
+	}
+}
