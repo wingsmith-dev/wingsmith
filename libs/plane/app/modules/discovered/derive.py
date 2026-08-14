@@ -20,6 +20,10 @@ from app.core.schemas import Struct
 
 
 # Dynamo's own labels, which say more about a workload than most operators say anywhere.
+OMNI_MODULE = "dynamo.vllm.omni"
+"""The module an omni worker runs, which is how a sighting is read as one: its image is the
+same `vllm-runtime` a chat worker runs, so only the command line tells them apart."""
+
 LABEL_GRAPH = "dynamo-graph-deployment-name"
 LABEL_COMPONENT = "dynamo-component"
 LABEL_COMPONENT_TYPE = "dynamo-component-type"
@@ -102,6 +106,8 @@ class ServingDraft(Struct):
     confident: bool
     notes: list[str]
     artifact: ArtifactDraft
+    output_modality: str | None = None
+    """`--output-modalities` off an omni worker, and None on every other engine."""
 
 
 def parse_args(args: list[str]) -> dict[str, str]:
@@ -374,10 +380,13 @@ def derive(
     values = parse_args(args)
     image = spec.get("image")
     engine, engine_runtime_version = engine_runtime_from_image(image)
+    omni = OMNI_MODULE in list(spec.get("command") or []) + args
+    if omni:
+        engine = "omni"
 
     if engine is None:
         notes.append("could not tell which engine this runs; every field below is unread")
-    elif engine != "vllm":
+    elif engine not in ("vllm", "omni"):
         notes.append(f"read as {engine!r}, but only vLLM arguments are understood")
 
     model_ref = values.get("model") or None
@@ -385,7 +394,16 @@ def derive(
         notes.append("no --model argument, so the weights could not be identified")
 
     context_length = _int(values, "max-model-len")
-    if context_length is None:
+    output_modality = values.get("output-modalities") or None
+    if omni:
+        if output_modality not in ("image", "video"):
+            notes.append("an omni worker with no --output-modalities image or video; set it by hand")
+        if "stage-configs-path" in values:
+            notes.append(
+                "the stage configuration is a file inside the pod and cannot be read from here; "
+                "declare serving.diffusion to keep it across the next render"
+            )
+    elif context_length is None:
         notes.append("no --max-model-len, so context length needs setting by hand")
 
     tensor_parallel = _int(values, "tensor-parallel-size") or 1
@@ -432,7 +450,12 @@ def derive(
         device_class=device_class,
         cpu_cores=_cpu_cores(requests),
         memory_mib=_memory_mib(requests),
-        confident=engine == "vllm" and model_ref is not None and context_length is not None,
+        confident=model_ref is not None
+        and (
+            (engine == "vllm" and context_length is not None)
+            or (engine == "omni" and output_modality in ("image", "video"))
+        ),
         notes=notes,
         artifact=derive_artifact(model_ref, values, _quantization(model_ref, values)),
+        output_modality=output_modality if omni else None,
     )

@@ -209,10 +209,13 @@ def check_shape(
     tensor_parallel: int,
     pipeline_parallel: int,
     expert_parallel: int,
-    context_length: int,
+    context_length: int | None,
     kv_cache_fraction: float | None,
 ) -> None:
     """Rejects a shape that cannot be placed.
+
+    `context_length` is None where the engine has no such thing — a diffusion model on omni —
+    and is then not checked.
 
     Two rules, both from heterogeneity being a scheduling constraint rather than
     an enrolment detail. A shape without a device class is not a shape — you
@@ -229,7 +232,7 @@ def check_shape(
         ("expert_parallel", expert_parallel),
         ("context_length", context_length),
     ):
-        if value < 1:
+        if value is not None and value < 1:
             raise Invalid(f"{name} must be at least 1", {name: value})
     span = tensor_parallel * pipeline_parallel
     if device_count % span:
@@ -954,7 +957,7 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
         tensor_parallel=data.parallelism.tensor,
         pipeline_parallel=data.parallelism.pipeline,
         expert_parallel=data.parallelism.expert,
-        context_length=data.context_length,
+        context_length=None if is_omni(data.engine) else data.context_length,
         kv_cache_fraction=data.cache.kv_cache_fraction,
     )
     check_footprint(

@@ -299,8 +299,14 @@ class WorkloadServingRequest(Struct):
     artifact: str
     engine: str
     engine_runtime_version: str
-    context_length: int
     shape: ShapeSchema
+    context_length: int = 0
+    """The engine's `--max-model-len`. Required of every text engine; a diffusion model has none.
+
+    Defaulted rather than required so an omni workload can leave it out: 0 is stored, hashed,
+    sent, and rendered by nothing. On any other engine `check_shape` refuses anything below 1,
+    which is what omitting it always amounted to.
+    """
     engine_runtime_image: str | None = None
     frontend_image: str | None = None
     engine_args: dict = {}

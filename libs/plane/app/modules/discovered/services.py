@@ -11,6 +11,7 @@ from app.db.models import Workload
 from app.db.models import Deployment
 from app.db.models import DiscoveredWorkload
 from app.core.schemas import ListResponse
+from app.core.serving import is_omni
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -19,6 +20,7 @@ from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
 from app.modules.workloads.schemas import CacheSchema
 from app.modules.workloads.schemas import ShapeSchema
+from app.modules.workloads.schemas import ServingSchema
 from app.modules.workloads.schemas import WorkloadSchema
 from app.modules.workloads.schemas import ResourcesSchema
 from app.modules.workloads.schemas import ParallelismSchema
@@ -58,17 +60,19 @@ def serving_from_draft(draft: ServingDraft, artifact_ref: str) -> WorkloadServin
     device class are what a workload cannot exist without, and a promotion that
     guessed at any of them would declare a configuration nobody looked at against a
     model that is already serving.
+
+    An omni worker has no context length and needs an output modality instead: a
+    diffusion model has no `--max-model-len` to read, and `--output-modalities` is the
+    flag the worker will not start without.
     """
-    missing = [
-        name
-        for name, value in (
-            ("engine", draft.engine),
-            ("engine_runtime_version", draft.engine_runtime_version),
-            ("context_length", draft.context_length),
-            ("device_class", draft.device_class),
-        )
-        if not value
-    ]
+    omni = is_omni(draft.engine)
+    required = (
+        ("engine", draft.engine),
+        ("engine_runtime_version", draft.engine_runtime_version),
+        ("output_modality", draft.output_modality) if omni else ("context_length", draft.context_length),
+        ("device_class", draft.device_class),
+    )
+    missing = [name for name, value in required if not value]
     if missing:
         raise Invalid(
             "the cluster's report does not say enough about this workload to declare it",
@@ -96,6 +100,7 @@ def serving_from_draft(draft: ServingDraft, artifact_ref: str) -> WorkloadServin
             device_count=draft.device_count,
         ),
         resources=ResourcesSchema(cpu_cores=draft.cpu_cores, memory_mib=draft.memory_mib),
+        serving=ServingSchema(output_modality=draft.output_modality) if omni else ServingSchema(),
     )
 
 
