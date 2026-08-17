@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"slices"
@@ -596,6 +597,9 @@ func newWorkloadCreateCmd(app *App) *cobra.Command {
 		cpuCores             int
 		memoryMiB            int
 		diskGiB              int
+		outputModality       string
+		modelClass           string
+		samplingDefaults     []string
 	)
 	cmd := &cobra.Command{
 		Use:     "create <name>",
@@ -615,20 +619,41 @@ already single-cluster by construction, because its ranks are co-scheduled.
 
 The serving flags are the workload's own: there is no shared configuration to
 name and nothing to reuse by id. Two workloads given the same flags get the same
-serving_digest, which is the whole of what sharing used to buy.`,
+serving_digest, which is the whole of what sharing used to buy.
+
+An image or video model runs on --engine omni (Dynamo's vLLM-Omni worker) and
+needs --output-modality image|video instead of --context-length. --model-class
+and --sampling-default go into the worker's stage configuration; the second is
+how a distilled model gets its step count, because omni defaults every model to
+50 inference steps.`,
 		Example: `  hgr workload create chat --artifact llama-3.1-70b --class h100-80 --scale 8
   hgr workload create chat --artifact llama-3.1-70b --class h100-80 --devices 8 --tensor-parallel 8
   hgr workload create sweep --artifact llama-3.1-70b --class h100-80 --kind task --scale 200
-  hgr workload create train --artifact llama-3.1-70b --class h100-80 --kind gang --gang-size 64`,
+  hgr workload create train --artifact llama-3.1-70b --class h100-80 --kind gang --gang-size 64
+  hgr workload create z-image-turbo --artifact z-image-turbo --project initech-inference \
+    --class h100-80gb-sxm --engine omni --engine-runtime-version 1.4.1 \
+    --output-modality image --sampling-default num_inference_steps=8`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if artifact == "" || project == "" {
 				return errs.New(errs.CodeInputRequired, "a workload needs --artifact and --project").
 					WithCause("what to run, and who is charged for it")
 			}
-			if class == "" || contextLength <= 0 {
+			omni := isOmniEngine(engine)
+			if class == "" || (!omni && contextLength <= 0) {
 				return errs.New(errs.CodeInputRequired, "a workload needs --class and --context-length").
 					WithCause("a device count without a device class is not a shape, and the engine is told a context length either way")
+			}
+			if omni && outputModality == "" {
+				return errs.New(errs.CodeInputRequired, "an omni workload needs --output-modality image or video").
+					WithCause("it is the --output-modalities the worker will not start without")
+			}
+			if !omni && (outputModality != "" || modelClass != "" || len(samplingDefaults) > 0) {
+				return errs.New(errs.CodeUsage, "--output-modality, --model-class and --sampling-default are for --engine omni")
+			}
+			behaviour, err := omniBehaviour(outputModality, modelClass, samplingDefaults)
+			if err != nil {
+				return err
 			}
 			parsedFloors, err := api.ParseKV(floors, "floor")
 			if err != nil {
@@ -687,7 +712,8 @@ serving_digest, which is the whole of what sharing used to buy.`,
 					PrefixCacheEnabled: prefixCache,
 					PrefixCacheConfig:  map[string]any{},
 				},
-				Overlay: api.ServingOverlay{PodSpec: map[string]any{}, Dynamo: map[string]any{}},
+				Overlay:   api.ServingOverlay{PodSpec: map[string]any{}, Dynamo: map[string]any{}},
+				Behaviour: behaviour,
 			}
 			if cmd.Flags().Changed("max-batch-tokens") {
 				serving.MaxBatchTokens = &maxBatchTokens
@@ -771,7 +797,57 @@ serving_digest, which is the whole of what sharing used to buy.`,
 	fl.IntVar(&cpuCores, "cpu", 0, "CPU cores per replica")
 	fl.IntVar(&memoryMiB, "memory", 0, "host memory per replica, in MiB")
 	fl.IntVar(&diskGiB, "disk", 0, "scratch disk per replica, in GiB")
+	fl.StringVar(&outputModality, "output-modality", "", "what an omni worker emits: image|video")
+	fl.StringVar(&modelClass, "model-class", "", "omni pipeline class, e.g. LTX2Pipeline (default: inferred by omni)")
+	fl.StringArrayVar(&samplingDefaults, "sampling-default", nil,
+		"omni default sampling parameter (KEY=VALUE, repeatable), e.g. num_inference_steps=8")
 	return cmd
+}
+
+// isOmniEngine is the plane's and the operator's set of spellings for vLLM-Omni.
+func isOmniEngine(engine string) bool {
+	switch strings.ToLower(strings.TrimSpace(engine)) {
+	case "omni", "vllm-omni", "vllm_omni":
+		return true
+	}
+	return false
+}
+
+// omniBehaviour is the serving block an omni workload sends, or nil for every
+// other workload so that the plane's defaults stand untouched.
+//
+// A sampling value is sent as the JSON it reads as — 8 as a number, 4.0 as a
+// number, true as a boolean — and as a string only when it is none of those,
+// because the stage config hands it to the pipeline as it arrives.
+func omniBehaviour(modality, modelClass string, defaults []string) (*api.ServingBehaviour, error) {
+	if modality == "" {
+		return nil, nil
+	}
+	if modality != "image" && modality != "video" {
+		return nil, errs.New(errs.CodeUsage, "--output-modality is image or video, not %q", modality)
+	}
+	parsed, err := api.ParseKV(defaults, "sampling-default")
+	if err != nil {
+		return nil, err
+	}
+	b := api.DefaultServingBehaviour()
+	b.OutputModality = &modality
+	if modelClass == "" && len(parsed) == 0 {
+		return &b, nil
+	}
+	d := &api.ServingDiffusion{ModelClassName: optionalString(modelClass)}
+	if len(parsed) > 0 {
+		d.DefaultSamplingParams = map[string]any{}
+		for k, v := range parsed {
+			var value any
+			if err := json.Unmarshal([]byte(v), &value); err != nil {
+				value = v
+			}
+			d.DefaultSamplingParams[k] = value
+		}
+	}
+	b.Diffusion = d
+	return &b, nil
 }
 
 // optionalString reads an unset string flag as absent rather than as empty. The

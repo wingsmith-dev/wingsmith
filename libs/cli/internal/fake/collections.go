@@ -1842,6 +1842,14 @@ func normalizeServing(sv api.ServingSpec) api.ServingSpec {
 // artifact is resolved to its id here, and the derivations are the plane's:
 // nothing a client sent decides them.
 func servingOf(artifactID string, req api.ServingRequest) api.ServingSpec {
+	behaviour := api.DefaultServingBehaviour()
+	if req.Behaviour != nil {
+		behaviour = *req.Behaviour
+	}
+	var capabilities api.ServingCapabilities
+	if req.Capabilities != nil {
+		capabilities = *req.Capabilities
+	}
 	return api.ServingSpec{
 		ArtifactID: artifactID,
 		Engine:     req.Engine, EngineRuntimeVersion: req.EngineRuntimeVersion,
@@ -1850,7 +1858,7 @@ func servingOf(artifactID string, req api.ServingRequest) api.ServingSpec {
 		Quantization: req.Quantization, Dtype: req.Dtype,
 		Parallelism:   req.Parallelism,
 		ContextLength: req.ContextLength, MaxBatchTokens: req.MaxBatchTokens,
-		Cache: req.Cache, Behaviour: req.Behaviour, Capabilities: req.Capabilities,
+		Cache: req.Cache, Behaviour: behaviour, Capabilities: capabilities,
 		Shape: req.Shape, Resources: req.Resources, Overlay: req.Overlay,
 	}
 }

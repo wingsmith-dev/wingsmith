@@ -423,6 +423,30 @@ type ServingBehaviour struct {
 	ToolCallParser          *string          `json:"tool_call_parser"`
 	MaxImagesPerRequest     *int             `json:"max_images_per_request"`
 	MaxVideosPerRequest     *int             `json:"max_videos_per_request"`
+	// OutputModality is what the engine emits: `image` or `video` on the omni
+	// engine, nil (text) on every other.
+	OutputModality *string `json:"output_modality,omitempty"`
+	// Diffusion is the omni worker's stage configuration, nil for omni's own
+	// defaults.
+	Diffusion *ServingDiffusion `json:"diffusion,omitempty"`
+}
+
+// ServingDiffusion is what a vLLM-Omni worker reads from its stage-config file:
+// the pipeline class and the per-model sampling defaults. The operator writes
+// the rest of the file.
+type ServingDiffusion struct {
+	ModelClassName        *string        `json:"model_class_name,omitempty"`
+	DefaultSamplingParams map[string]any `json:"default_sampling_params,omitempty"`
+}
+
+// DefaultServingBehaviour is the block the plane assumes when a request sends
+// none. A request that sends one sends all of it, so it starts from these.
+func DefaultServingBehaviour() ServingBehaviour {
+	return ServingBehaviour{
+		Reasoning:       ServingReasoning{Transport: "reasoning_content"},
+		StreamUsage:     "final_chunk",
+		ContextOverflow: "reject",
+	}
 }
 
 // ServingCapabilities is what this engine × artifact is claimed to be able to
@@ -496,24 +520,28 @@ type ServingSpec struct {
 // there is no digest here and no resolved args, because neither is ever accepted
 // from a client.
 type ServingRequest struct {
-	Artifact             string              `json:"artifact"`
-	Engine               string              `json:"engine"`
-	EngineRuntimeVersion string              `json:"engine_runtime_version"`
-	ContextLength        int                 `json:"context_length"`
-	Shape                ServingShape        `json:"shape"`
-	EngineRuntimeImage   *string             `json:"engine_runtime_image,omitempty"`
-	FrontendImage        *string             `json:"frontend_image,omitempty"`
-	EngineArgs           map[string]any      `json:"engine_args,omitempty"`
-	ImportedArgs         map[string]any      `json:"imported_args,omitempty"`
-	Quantization         *string             `json:"quantization,omitempty"`
-	Dtype                *string             `json:"dtype,omitempty"`
-	Parallelism          ServingParallelism  `json:"parallelism"`
-	MaxBatchTokens       *int                `json:"max_batch_tokens,omitempty"`
-	Cache                ServingCache        `json:"cache"`
-	Resources            ServingResources    `json:"resources"`
-	Overlay              ServingOverlay      `json:"overlay"`
-	Behaviour            ServingBehaviour    `json:"serving"`
-	Capabilities         ServingCapabilities `json:"capabilities"`
+	Artifact             string             `json:"artifact"`
+	Engine               string             `json:"engine"`
+	EngineRuntimeVersion string             `json:"engine_runtime_version"`
+	ContextLength        int                `json:"context_length,omitempty"`
+	Shape                ServingShape       `json:"shape"`
+	EngineRuntimeImage   *string            `json:"engine_runtime_image,omitempty"`
+	FrontendImage        *string            `json:"frontend_image,omitempty"`
+	EngineArgs           map[string]any     `json:"engine_args,omitempty"`
+	ImportedArgs         map[string]any     `json:"imported_args,omitempty"`
+	Quantization         *string            `json:"quantization,omitempty"`
+	Dtype                *string            `json:"dtype,omitempty"`
+	Parallelism          ServingParallelism `json:"parallelism"`
+	MaxBatchTokens       *int               `json:"max_batch_tokens,omitempty"`
+	Cache                ServingCache       `json:"cache"`
+	Resources            ServingResources   `json:"resources"`
+	Overlay              ServingOverlay     `json:"overlay"`
+	// Behaviour and Capabilities are nil unless a flag set something in them, so
+	// the plane's own defaults stand. Sent as zero values they were refused: an
+	// empty transport and null modality lists are not the defaults, they are
+	// invalid.
+	Behaviour    *ServingBehaviour    `json:"serving,omitempty"`
+	Capabilities *ServingCapabilities `json:"capabilities,omitempty"`
 }
 
 // WorkloadScale is the declared total and what the shares actually add up to.
