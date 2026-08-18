@@ -1432,7 +1432,7 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	if err != nil {
 		return nil, err
 	}
-	router, err := frontendRouterEnv(in.Deployment.Serving.Router)
+	router, err := frontendRouterEnv(in.Deployment.Serving.Router, IsOmni(in.Deployment))
 	if err != nil {
 		return nil, fmt.Errorf("deployment %s: %w", in.Deployment.DeploymentID, err)
 	}
@@ -1502,6 +1502,12 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 // DefaultRouterMode is the frontend's routing mode when a deployment declares none.
 const DefaultRouterMode = "kv"
 
+// OmniRouterMode is the default for an omni deployment instead. A diffusion request has no prefix
+// to reuse and an omni worker publishes no KV events, and Dynamo 1.5.0's image path through a
+// `kv` frontend fails every request at 0 ms with "KV routing should not call generate on
+// PushRouter" — observed on one of z-image-turbo's two frontends on site-a.
+const OmniRouterMode = "round-robin"
+
 // routerModes is every `DYN_ROUTER_MODE` a deployment may declare: Dynamo 1.5.0's `--router-mode`
 // choices less `direct`, which routes to a worker id the request has to carry. Nothing in front of a
 // Hangar frontend sets one, so a frontend in that mode refuses every request it is sent.
@@ -1539,8 +1545,11 @@ var routerQueuePolicies = map[string]bool{"fcfs": true, "wspt": true}
 // The plane has already refused anything outside what Dynamo accepts. The checks here are the last
 // cheap ones, because a bad value is a frontend that exits at startup rather than an error somebody
 // can read on the deployment.
-func frontendRouterEnv(router *wire.RouterSpec) ([]corev1.EnvVar, error) {
+func frontendRouterEnv(router *wire.RouterSpec, omni bool) ([]corev1.EnvVar, error) {
 	mode := DefaultRouterMode
+	if omni {
+		mode = OmniRouterMode
+	}
 	if router != nil && router.Mode != nil {
 		mode = *router.Mode
 	}

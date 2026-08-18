@@ -206,3 +206,14 @@ func TestAnOmniWorkerIsPinnedToAmd64Nodes(t *testing.T) {
 		t.Fatal("a chat worker gained an arch selector; its pod template must not move")
 	}
 }
+
+func TestAnOmniFrontendRoundRobinsUnlessARouterIsDeclared(t *testing.T) {
+	in := omniInputs()
+	if got := routerMode(t, in); got != OmniRouterMode {
+		t.Fatalf("omni DYN_ROUTER_MODE = %q, want %q", got, OmniRouterMode)
+	}
+	in.Deployment.Serving.Router = &wire.RouterSpec{Mode: ptr("random")}
+	if got := routerMode(t, in); got != "random" {
+		t.Fatalf("declared DYN_ROUTER_MODE = %q, want random", got)
+	}
+}
