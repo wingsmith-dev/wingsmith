@@ -163,7 +163,7 @@ class RouterSchema(Struct):
 
     One field per Dynamo setting, each rendered as one `DYN_ROUTER_*` variable on the frontend and
     nothing else. Null renders nothing and leaves Dynamo's default in place, except `mode`, where
-    null is the operator's default of `kv`.
+    null is the operator's default of `kv`, or `round-robin` for an omni workload.
 
     - `mode` — `kv`, `round-robin`, `random`, `power-of-two`, `least-loaded` or
       `device-aware-weighted`.
