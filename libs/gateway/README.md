@@ -153,3 +153,8 @@ from the data plane.
   `errors.go`. An allowlist, because what a caller needs is small and closed while what an engine
   might add is neither. A `Location` is reduced to a path first: the authority a frontend builds one
   from is the address the agent dialled.
+- **`X-Request-Id`.** Every response carries one, including the errors this hop writes itself. A
+  caller's own value is kept when it is at most 128 characters of `[A-Za-z0-9._:-]`; otherwise a
+  UUIDv4 is minted. The same id is the `request_id` on the `gateway: request` access line and on the
+  upstream-error lines, and it is forwarded to the cluster, where Dynamo's frontend attaches
+  `x-request-id` to its own trace context. An upstream's own `X-Request-Id` never replaces it.

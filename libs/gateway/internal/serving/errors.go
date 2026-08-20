@@ -340,8 +340,11 @@ func logUpstreamError(resp *http.Response, detail string, readErr error) {
 		level = slog.LevelError
 	}
 	attrs := []any{"status", resp.StatusCode}
-	if resp.Request != nil && resp.Request.URL != nil {
-		attrs = append(attrs, "path", resp.Request.URL.Path)
+	if resp.Request != nil {
+		attrs = append(attrs, "request_id", resp.Request.Header.Get(headerRequestID))
+		if resp.Request.URL != nil {
+			attrs = append(attrs, "path", resp.Request.URL.Path)
+		}
 	}
 	if readErr != nil {
 		attrs = append(attrs, "read_err", readErr)

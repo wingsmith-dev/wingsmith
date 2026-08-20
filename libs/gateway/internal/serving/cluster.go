@@ -122,7 +122,7 @@ func NewTunnelProxy(clusterID string, headers http.Header, tunnels Tunnels, head
 func markTunnelError(w http.ResponseWriter, r *http.Request, clusterID string, err error) {
 	fault := tunnel.Classify(err)
 	slog.Error("gateway: tunnelled request failed",
-		"cluster_id", clusterID, "path", r.URL.Path, "fault", fault.String(), "err", err)
+		"request_id", r.Header.Get(headerRequestID), "cluster_id", clusterID, "path", r.URL.Path, "fault", fault.String(), "err", err)
 
 	switch fault {
 	case tunnel.FaultNoTunnel:

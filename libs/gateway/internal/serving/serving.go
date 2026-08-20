@@ -247,7 +247,8 @@ func NewReverseProxy(upstream *url.URL, headers http.Header, headerTimeout time.
 			// that hung up are three different failures wearing one status
 			// code, and only two of them are ours.
 			markProxyError(r, err)
-			slog.Error("gateway: upstream failed", "path", r.URL.Path, "err", err)
+			slog.Error("gateway: upstream failed",
+				"request_id", r.Header.Get(headerRequestID), "path", r.URL.Path, "err", err)
 			writeError(w, http.StatusBadGateway, "upstream_unavailable",
 				"The cluster serving this model did not respond.")
 		},
@@ -304,6 +305,13 @@ func observed(recorder *metrics.Recorder, probes *ProbeMarker, next http.Handler
 		r = r.WithContext(context.WithValue(r.Context(), observationKey{}, obs))
 		r, ident := newIdentity(r)
 
+		// Set on the inbound request so the proxy forwards it, and on the response before anything
+		// else writes, so an error this hop writes itself carries it as well as a proxied answer.
+		// The upstream's own copy is dropped by filterResponseHeaders and never doubles it.
+		requestID := requestIDFor(r)
+		r.Header.Set(headerRequestID, requestID)
+		w.Header().Set(headerRequestID, requestID)
+
 		// Deferred, and the panic is recovered, because httputil.ReverseProxy
 		// reports a failure halfway through copying a response body by panicking
 		// http.ErrAbortHandler rather than through ErrorHandler. That panic
@@ -328,6 +336,7 @@ func observed(recorder *metrics.Recorder, probes *ProbeMarker, next http.Handler
 				sample := obs.sample(rec.status, elapsed)
 
 				fields := []any{
+					"request_id", requestID,
 					"method", r.Method,
 					"path", r.URL.Path,
 					"status", rec.status,

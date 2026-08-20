@@ -321,11 +321,14 @@ func TestOnlyForwardedResponseHeadersLeaveTheGateway(t *testing.T) {
 			t.Errorf("%s was dropped, and a caller needs it", name)
 		}
 	}
-	for _, name := range []string{"Server", "X-Dynamo-Worker", "X-Request-Id", "X-Vllm-Engine",
+	for _, name := range []string{"Server", "X-Dynamo-Worker", "X-Vllm-Engine",
 		"Www-Authenticate", "Access-Control-Allow-Origin"} {
 		if got := rec.Header().Get(name); got != "" {
 			t.Errorf("%s = %q, and it names what is behind this hop", name, got)
 		}
+	}
+	if got := rec.Header().Values("X-Request-Id"); len(got) != 1 || got[0] == "7f3c" {
+		t.Errorf("X-Request-Id = %q, want this hop's own id and only that", got)
 	}
 }
 
