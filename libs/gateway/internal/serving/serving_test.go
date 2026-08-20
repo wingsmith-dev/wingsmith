@@ -657,3 +657,36 @@ func TestTheGatewaysOwnRefusalsCarryTheRightClass(t *testing.T) {
 		})
 	}
 }
+
+// TestABodilessRequestIsNotRefusedAsInvalidJSON because a GET has no body to be malformed. With
+// no body there is no `model` either, so a bodiless read is a path this hop does not route, and a
+// bodiless POST is a missing model.
+func TestABodilessRequestIsNotRefusedAsInvalidJSON(t *testing.T) {
+	server, _ := upstreamServer(t)
+	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+		"chat": routeTo(t, server.URL, nil),
+	}}})
+
+	for _, tc := range []struct {
+		method, path string
+		status       int
+		code         string
+	}{
+		{http.MethodGet, "/v1/models/chat", http.StatusNotFound, "unsupported_path"},
+		{http.MethodDelete, "/v1/files/file_1", http.StatusNotFound, "unsupported_path"},
+		{http.MethodHead, "/v1/chat/completions", http.StatusNotFound, ""},
+		{http.MethodPost, "/v1/chat/completions", http.StatusBadRequest, "missing_model"},
+	} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+		if rec.Code != tc.status {
+			t.Errorf("%s %s = %d %s, want %d", tc.method, tc.path, rec.Code, rec.Body, tc.status)
+		}
+		if strings.Contains(rec.Body.String(), "invalid_json") {
+			t.Errorf("%s %s: body = %s, a bodiless request was parsed as JSON", tc.method, tc.path, rec.Body)
+		}
+		if tc.code != "" && !strings.Contains(rec.Body.String(), tc.code) {
+			t.Errorf("%s %s: body = %s, want %s", tc.method, tc.path, rec.Body, tc.code)
+		}
+	}
+}

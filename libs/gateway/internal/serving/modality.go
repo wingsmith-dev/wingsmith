@@ -83,3 +83,29 @@ func stageCheckModality(w http.ResponseWriter, r *http.Request, req *requestStat
 			" and does not answer "+r.URL.Path+".")
 	return r, false
 }
+
+// stageVideoRetrieval answers the async half of the OpenAI video API, which nothing behind this
+// hop implements.
+//
+// Dynamo 1.5.0's frontend serves `POST /v1/videos` synchronously — the response is the finished
+// video — and has no job store, so `GET /v1/videos/{id}`, its `/content`, a listing and a `DELETE`
+// have nothing to read or cancel. Answered before the body is read, because these requests carry
+// no body and no `model`, and without this they reached the JSON parse and came back as a 400
+// about a body the caller never sent. A 404 `unsupported_path`, as stageCheckModality answers a
+// path an engine has no handler for, with a message that says what to do instead.
+//
+// `POST` to any videos path is left alone, including Dynamo's experimental `/v1/videos/stream`.
+func stageVideoRetrieval(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
+	if r.Method == http.MethodPost {
+		return r, true
+	}
+	if r.URL.Path != "/v1/videos" && !strings.HasPrefix(r.URL.Path, "/v1/videos/") {
+		return r, true
+	}
+	markEndpoint(r, metrics.EndpointUnknown, "")
+	MarkOutcome(r, metrics.OutcomeClientError)
+	writeError(w, http.StatusNotFound, "unsupported_path",
+		"Video generation is synchronous: POST /v1/videos returns the finished video. "+
+			"There is no video job to retrieve, list or delete.")
+	return r, false
+}

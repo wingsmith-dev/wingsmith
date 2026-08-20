@@ -99,3 +99,45 @@ func TestTheCatalogReportsWhatEachModelGenerates(t *testing.T) {
 		t.Fatalf("catalog kinds = %v", got)
 	}
 }
+
+// TestRetrievingAVideoJobSaysGenerationIsSynchronous is the client's `GET /v1/videos/{id}`: it
+// used to reach the JSON parse and come back as a 400 about a body it never sent. Nothing behind
+// this hop keeps video jobs, so the answer is a 404 that says what to call instead.
+func TestRetrievingAVideoJobSaysGenerationIsSynchronous(t *testing.T) {
+	server, seen := steeringUpstream(t)
+	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+		"wan": modalityRoute(t, "wan", server.URL, "video"),
+	}}})
+
+	for _, tc := range []struct{ method, path string }{
+		{http.MethodGet, "/v1/videos/video_68c1f2"},
+		{http.MethodGet, "/v1/videos/video_68c1f2/content"},
+		{http.MethodDelete, "/v1/videos/video_68c1f2"},
+		{http.MethodGet, "/v1/videos"},
+	} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(tc.method, tc.path, nil))
+
+		var envelope errorEnvelope
+		_ = json.Unmarshal(rec.Body.Bytes(), &envelope)
+		if rec.Code != http.StatusNotFound || envelope.Error.Code != "unsupported_path" {
+			t.Errorf("%s %s = %d %s, want 404 unsupported_path", tc.method, tc.path, rec.Code, rec.Body)
+		}
+		if !strings.Contains(envelope.Error.Message, "POST /v1/videos returns the finished video") {
+			t.Errorf("%s %s: message = %q, want it to say generation is synchronous", tc.method, tc.path, envelope.Error.Message)
+		}
+		if envelope.Error.Type != "invalid_request_error" {
+			t.Errorf("%s %s: type = %q", tc.method, tc.path, envelope.Error.Type)
+		}
+	}
+	if seen.header != nil {
+		t.Fatalf("a video retrieval reached the cluster")
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/videos",
+		strings.NewReader(`{"model":"wan","prompt":"a fox"}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("POST /v1/videos = %d %s, want it proxied", rec.Code, rec.Body)
+	}
+}

@@ -55,6 +55,7 @@ func routingStages(resolver Resolver, tenants Tenants, zone Zone) []stage {
 		stageTenantFromHost(tenants),
 		stageKeyCheck(tenants),
 		stageCatalog(resolver),
+		stageVideoRetrieval,
 		stageReadBody,
 		stageParseEnvelope,
 		stageValidateModel,
@@ -132,6 +133,10 @@ func stageReadBody(w http.ResponseWriter, r *http.Request, req *requestState) (*
 
 // stageParseEnvelope decides how the routing key is carried and extracts it.
 //
+// An empty body is not a malformed one: a GET, a DELETE or a HEAD has none, and "not valid JSON"
+// would send its caller to debug a body they never sent. It leaves the envelope empty, and
+// stageValidateModel gives the answer that fits the method.
+//
 // The choice is made once and used twice: here to read it, and after Pick to
 // write the served name back. A multipart body is not a lesser case of a JSON
 // one — there is no object to unmarshal — so the form travels with the
@@ -145,6 +150,10 @@ func stageParseEnvelope(w http.ResponseWriter, r *http.Request, req *requestStat
 	boundary, isMultipart := multipartContentType(r.Header.Get("Content-Type"))
 	req.boundary = boundary
 	req.isMultipart = isMultipart
+
+	if len(req.body) == 0 {
+		return r, true
+	}
 
 	if isMultipart {
 		model, err := modelFromMultipart(req.body, boundary)
@@ -168,7 +177,17 @@ func stageParseEnvelope(w http.ResponseWriter, r *http.Request, req *requestStat
 }
 
 // stageValidateModel refuses a request that named no model at all.
+//
+// A bodiless read — GET, HEAD, DELETE — is refused as a path this hop does not answer rather than
+// as a missing field: the model is routed from the body, so there is no request of that shape this
+// gateway can route, and "provide a model" would be advice nobody can follow on a GET.
 func stageValidateModel(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
+	if req.envelope.Model == "" && len(req.body) == 0 && bodilessMethod(r.Method) {
+		MarkOutcome(r, metrics.OutcomeClientError)
+		writeError(w, http.StatusNotFound, "unsupported_path",
+			r.Method+" "+r.URL.Path+" is not answered here.")
+		return r, false
+	}
 	if req.envelope.Model == "" {
 		MarkOutcome(r, metrics.OutcomeClientError)
 		writeError(w, http.StatusBadRequest, "missing_model", "You must provide a model identifier.")
@@ -420,4 +439,8 @@ func stageForward(w http.ResponseWriter, r *http.Request, req *requestState) (*h
 
 	req.upstream.Handler().ServeHTTP(w, r)
 	return r, false
+}
+
+func bodilessMethod(method string) bool {
+	return method == http.MethodGet || method == http.MethodHead || method == http.MethodDelete
 }
