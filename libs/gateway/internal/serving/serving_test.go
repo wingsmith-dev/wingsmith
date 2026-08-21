@@ -199,12 +199,13 @@ func errorFrom(t *testing.T, status int, header http.Header, body string) *httpt
 	return rec
 }
 
-// TestNoUpstreamErrorBodyReachesTheCaller is the whole of the passthrough rule.
+// TestNoUpstreamErrorBodyReachesTheCallerAsItArrived is the whole of the passthrough rule.
 //
 // Every shape an engine can answer with — a bare object, the OpenAI envelope
 // already built, prose, a body over any cap this hop might read under — arrives
-// as one of this hop's own objects and none of the engine's own words.
-func TestNoUpstreamErrorBodyReachesTheCaller(t *testing.T) {
+// as one of this hop's own objects. The engine's message may be quoted inside
+// it; the address of what is behind this hop may not.
+func TestNoUpstreamErrorBodyReachesTheCallerAsItArrived(t *testing.T) {
 	secret := "kimi-k3-frontend.dynamo.svc.cluster.local"
 	for _, test := range []struct {
 		name   string
@@ -216,13 +217,13 @@ func TestNoUpstreamErrorBodyReachesTheCaller(t *testing.T) {
 			name:   "a bare object, which is Dynamo's shape",
 			status: http.StatusInternalServerError,
 			body:   `{"message":"engine crashed in ` + secret + `","type":"Internal Server Error","code":500}`,
-			want:   errorBody{Message: "The model failed to answer this request.", Type: "api_error", Code: "upstream_error"},
+			want:   errorBody{Message: "The model failed to answer this request: engine crashed in [redacted]", Type: "api_error", Code: "upstream_error"},
 		},
 		{
 			name:   "the OpenAI envelope, which used to pass untouched",
 			status: http.StatusBadRequest,
 			body:   `{"error":{"message":"model ` + secret + ` does not exist","type":"invalid_request_error","code":"bad_param"}}`,
-			want:   errorBody{Message: "The request was not accepted by this model.", Type: "invalid_request_error", Code: "invalid_request"},
+			want:   errorBody{Message: "model [redacted] does not exist", Type: "invalid_request_error", Code: "invalid_request"},
 		},
 		{
 			name:   "prose, which is what a framework's default handler writes",

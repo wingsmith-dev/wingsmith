@@ -139,21 +139,22 @@ type upstreamFailure struct {
 	Message string
 }
 
-// upstreamFailures is the whole vocabulary of errors that can come from behind
-// this hop. Every upstream error is answered from this table and never from the
-// engine's own body.
+// upstreamFailures is the whole vocabulary of statuses, types and codes that can
+// come from behind this hop. Every upstream error is answered with one of these
+// objects, and the `type` and `code` a client switches on are always ours.
 //
-// The reason is not only that an engine's message names the infrastructure that
-// produced it — a path, a served name, a ClusterIP, a framework's reason phrase.
-// It is that the set of errors a caller sees has to be a property of what was
-// sold rather than of which engine build happens to be running: an upgrade that
-// rewords a vLLM validation message is not supposed to be a change to our API,
-// and a caller matching on a message is not supposed to be a caller we broke.
+// The message is the one field an engine can contribute. On an `invalid_request`
+// (a caller's 4xx) and on an `upstream_error` from a 5xx, a JSON error message
+// from the engine is quoted after sanitizeUpstreamMessage strips what names the
+// infrastructure behind this hop. It used to be never quoted, and a client
+// sending an image width vllm-omni refuses was told only that the model failed:
+// a caller cannot fix an input nobody names. The cost is that an upgrade which
+// rewords an engine's message rewords ours; the status, type and code do not move.
 //
 // A status absent here falls to upstreamFallback, so a status nobody anticipated
 // is still one of these objects and not a passthrough. A 4xx whose body carries
 // a reason listed in knownRefusals keeps this status and code but takes that
-// entry's fixed message instead, which is still our string and not the engine's.
+// entry's fixed message instead.
 var upstreamFailures = map[int]upstreamFailure{
 	http.StatusBadRequest: {
 		Status: http.StatusBadRequest, Code: "invalid_request",
@@ -205,13 +206,13 @@ var upstreamFailures = map[int]upstreamFailure{
 
 // upstreamFallback answers a status the table does not name.
 //
-// A 4xx stays a 4xx because the class is the one thing an unrecognised status
-// still says reliably — do not retry this — and a 5xx becomes 502 because
-// whatever it was happened behind this hop.
+// A 4xx is passed through as the status that arrived, because the class is the
+// one thing an unrecognised status still says reliably — do not retry this — and
+// a 5xx becomes 502 because whatever it was happened behind this hop.
 func upstreamFallback(status int) upstreamFailure {
 	if status < http.StatusInternalServerError {
 		return upstreamFailure{
-			Status: http.StatusBadRequest, Code: "invalid_request",
+			Status: status, Code: "invalid_request",
 			Message: "The request was not accepted by this model.",
 		}
 	}
@@ -252,14 +253,14 @@ func knownRefusalIn(detail string) (string, bool) {
 }
 
 // replaceErrorResponse substitutes this hop's own error object for whatever an
-// upstream sent, discarding the upstream body entirely.
+// upstream sent.
 //
 // It replaces rather than normalises. Wrapping the engine's own object in the
 // OpenAI envelope was enough to make the shape right and not enough to make the
 // content ours: the message, the type and the code were still the engine's, an
 // oversized body was streamed through untouched, and a body that already had an
-// `error` key passed unread. The engine's detail is logged here instead, which
-// is the only place it is wanted.
+// `error` key passed unread. What survives of the engine's body is its message,
+// sanitised and capped (see upstreamFailures); the full detail is logged here.
 //
 // A response that is not an error is left alone, which is every response on the
 // hot path. Nothing here runs for a 200.
@@ -277,6 +278,15 @@ func replaceErrorResponse(resp *http.Response) error {
 		failure = upstreamFallback(status)
 	}
 
+	var ctx context.Context = context.Background()
+	if resp.Request != nil {
+		ctx = resp.Request.Context()
+	}
+	quoted := ""
+	if failure.Code == "invalid_request" || failure.Code == "upstream_error" && status >= http.StatusInternalServerError {
+		quoted = sanitizeUpstreamMessage(upstreamMessage(detail), servedNameFrom(ctx))
+	}
+
 	message := failure.Message
 	reason, recognised := "", false
 	if status < http.StatusInternalServerError && failure.Status < http.StatusInternalServerError {
@@ -285,8 +295,12 @@ func replaceErrorResponse(resp *http.Response) error {
 	switch {
 	case recognised:
 		message = reason
-	case status < http.StatusInternalServerError && resp.Request != nil:
-		if named := callerFieldsNamedIn(detail, callerBodyFrom(resp.Request.Context())); len(named) > 0 {
+	case quoted != "" && failure.Status >= http.StatusInternalServerError:
+		message = strings.TrimSuffix(failure.Message, ".") + ": " + quoted
+	case quoted != "":
+		message = quoted
+	case status < http.StatusInternalServerError:
+		if named := callerFieldsNamedIn(detail, callerBodyFrom(ctx)); len(named) > 0 {
 			message += " Check these fields: " + strings.Join(named, ", ") + "."
 		}
 	}
@@ -354,16 +368,13 @@ func logUpstreamError(resp *http.Response, detail string, readErr error) {
 		"gateway: upstream error, answering with this hop's own object", attrs...)
 }
 
-// callerFieldsNamedIn is where the line between preserved and replaced 4xx
-// detail actually sits, and it is worth stating exactly.
+// callerFieldsNamedIn is the fallback for a 4xx whose body has no JSON message
+// to quote — prose from a framework's default handler, most often.
 //
 // A 4xx is often the only thing telling a caller what they did wrong, so
 // answering every one of them with the same sentence makes the endpoint
-// undebuggable. But an engine's prose is the leak: it names Rust types, serde
-// variants, module paths, ClusterIPs and framework reason phrases, and it
-// rewords itself on an upgrade. Both halves cannot be had from the same string.
-//
-// So the engine's body is never quoted, only consulted. It is used as a
+// undebuggable. Prose is not quoted, because it is the body most likely to be a
+// trace, so it is only consulted. It is used as a
 // selector over the caller's own vocabulary: a top-level field name the caller
 // themselves wrote is reported back to them when the upstream's complaint
 // mentions it, and nothing else is. The output alphabet is therefore fixed

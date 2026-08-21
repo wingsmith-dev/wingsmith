@@ -379,7 +379,7 @@ func stageRewriteServedModel(w http.ResponseWriter, r *http.Request, req *reques
 		return r, false
 	}
 	req.body = rewritten
-	return r, true
+	return withServedName(r, served, req.envelope.Model), true
 }
 
 // stageStripSteeringHeaders removes the runtime's own steering headers from

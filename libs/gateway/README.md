@@ -130,14 +130,19 @@ from the data plane.
   model has nowhere to go" are different answers and a caller acts differently on each.
 - **A deployment the plane reports as not running.** Deprioritised, not excluded. Readiness is
   observed and can lag; refusing to route to a model that is in fact serving is the worse failure.
-- **An upstream answers with an error.** The body is discarded and replaced with one of this hop's
-  own objects, keyed on the upstream's status. Never forwarded, never wrapped, never passed through
-  because it was already the right shape. An engine's message names the infrastructure that produced
-  it — a path, a served name, a ClusterIP, a framework's reason phrase — and the set of errors a
-  caller sees has to be a property of what was sold rather than of which engine build is running.
-  The engine's own body is logged here and nowhere else. A `4xx` body that mentions a known reason,
-  such as `invalid video file`, is answered with a fixed message from this hop's own table for that
-  reason: the body selects the message and is never quoted.
+- **An upstream answers with an error.** The body is replaced with one of this hop's own objects,
+  keyed on the upstream's status; the `type` and `code` are always ours. A caller's `4xx` keeps its
+  status (`422` becomes `400`) and a `5xx` becomes `502 upstream_error`. When the engine's body is a
+  JSON error (`{"message"}`, `{"error":{"message"}}`, `{"error":"..."}`, `{"detail"}`), its message
+  is quoted: as the whole message on a `4xx`, after "The model failed to answer this request:" on a
+  `5xx`. Before it is quoted it is cut to its first line (no tracebacks), a leading exception class
+  is dropped, URLs, cluster-internal hostnames, IP addresses, source files and filesystem paths
+  become `[redacted]`, the served model name reads back as the caller's, and it is capped at 500
+  bytes. Prose bodies are never quoted. A `4xx` body that mentions a known reason, such as
+  `invalid video file`, is answered with a fixed message from this hop's own table. The full body
+  is logged with the request id. Dynamo 1.5.0 itself forwards a backend's message only for a `4xx`
+  (an `InvalidArgument`); an unhandled worker exception is a `500` whose message is the frontend's
+  generic "Failed to generate images", so that is all a `5xx` can quote.
 - **An upstream answers `401`, `403` or `404`.** `502`, not the status that arrived. The credential is
   this hop's and the caller has never seen it, and a path that was routed here is not one the engine
   gets to call missing — both are misconfigurations on our side and telling a caller otherwise sends
