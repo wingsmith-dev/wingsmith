@@ -143,13 +143,17 @@ type upstreamFailure struct {
 // come from behind this hop. Every upstream error is answered with one of these
 // objects, and the `type` and `code` a client switches on are always ours.
 //
-// The message is the one field an engine can contribute. On an `invalid_request`
-// (a caller's 4xx) and on an `upstream_error` from a 5xx, a JSON error message
-// from the engine is quoted after sanitizeUpstreamMessage strips what names the
-// infrastructure behind this hop. It used to be never quoted, and a client
-// sending an image width vllm-omni refuses was told only that the model failed:
-// a caller cannot fix an input nobody names. The cost is that an upgrade which
-// rewords an engine's message rewords ours; the status, type and code do not move.
+// The message is the one field an engine can contribute, and only on an
+// `invalid_request` — a caller's 4xx. There a JSON error message from the engine
+// is quoted after sanitizeUpstreamMessage strips what names the infrastructure
+// behind this hop, because a caller cannot fix an input nobody names: the
+// vllm-omni layer raises ValueError for a validation failure, which Dynamo's
+// frontend answers 400 InvalidArgument with the message. The cost is that an
+// upgrade which rewords an engine's message rewords ours; the status, type and
+// code do not move.
+//
+// A 5xx is never quoted. It happened behind this hop, the caller cannot act on
+// it, and a server-side message is where a path, a trace or an address lives.
 //
 // A status absent here falls to upstreamFallback, so a status nobody anticipated
 // is still one of these objects and not a passthrough. A 4xx whose body carries
@@ -283,7 +287,7 @@ func replaceErrorResponse(resp *http.Response) error {
 		ctx = resp.Request.Context()
 	}
 	quoted := ""
-	if failure.Code == "invalid_request" || failure.Code == "upstream_error" && status >= http.StatusInternalServerError {
+	if failure.Code == "invalid_request" {
 		quoted = sanitizeUpstreamMessage(upstreamMessage(detail), servedNameFrom(ctx))
 	}
 
@@ -295,8 +299,6 @@ func replaceErrorResponse(resp *http.Response) error {
 	switch {
 	case recognised:
 		message = reason
-	case quoted != "" && failure.Status >= http.StatusInternalServerError:
-		message = strings.TrimSuffix(failure.Message, ".") + ": " + quoted
 	case quoted != "":
 		message = quoted
 	case status < http.StatusInternalServerError:

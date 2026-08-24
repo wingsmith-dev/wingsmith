@@ -96,54 +96,21 @@ func TestAnEngineSRefusalReachesTheCallerAsItsOwnStatus(t *testing.T) {
 	}
 }
 
-// TestAServerFailureKeeps502AndSaysWhatTheEngineSaid: a 5xx is still ours, so the status stays
-// 502, but a caller with an engine message in hand can act on it where the bare sentence gave
-// them nothing.
-func TestAServerFailureKeeps502AndSaysWhatTheEngineSaid(t *testing.T) {
-	for _, test := range []struct {
-		name     string
-		upstream string
-		want     string
-	}{
-		{
-			name:     "Dynamo's own public message",
-			upstream: `{"message":"Failed to generate images","type":"Internal Server Error","code":500}`,
-			want:     "The model failed to answer this request: Failed to generate images",
-		},
-		{
-			name:     "an exception class is dropped",
-			upstream: `{"message":"ValueError: invalid video file","type":"Internal Server Error","code":500}`,
-			want:     "The model failed to answer this request: invalid video file",
-		},
-		{
-			name: "a traceback is dropped",
-			upstream: `{"message":"RuntimeError: CUDA out of memory\nTraceback (most recent call last):\n` +
-				`  File \"/opt/vllm/worker.py\", line 12, in run"}`,
-			want: "The model failed to answer this request: CUDA out of memory",
-		},
-		{
-			name:     "prose is not quoted",
-			upstream: `Internal Server Error`,
-			want:     "The model failed to answer this request.",
-		},
-		{
-			name:     "an empty message is not quoted",
-			upstream: `{"message":""}`,
-			want:     "The model failed to answer this request.",
-		},
+// TestAServerFailureIsNeverQuoted: a 5xx happened behind this hop, so it is answered as this
+// hop's own 502 and nothing the engine said reaches the caller, however it was shaped.
+func TestAServerFailureIsNeverQuoted(t *testing.T) {
+	for _, upstream := range []string{
+		`{"message":"Failed to generate images","type":"Internal Server Error","code":500}`,
+		`{"message":"ValueError: invalid video file","type":"Internal Server Error","code":500}`,
+		`{"error":{"message":"temperature handler panicked"}}`,
+		`{"message":"RuntimeError: CUDA out of memory\nTraceback (most recent call last):"}`,
+		`Internal Server Error`,
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			rec, got := refusalFor(t, http.StatusInternalServerError, test.upstream, `{"model":"chat","temperature":1}`)
-			if rec.Code != http.StatusBadGateway || got.Code != "upstream_error" || got.Type != "api_error" {
-				t.Fatalf("status = %d, error = %#v, want 502 upstream_error", rec.Code, got)
-			}
-			if got.Message != test.want {
-				t.Fatalf("message = %q, want %q", got.Message, test.want)
-			}
-			if strings.Contains(got.Message, "Check these fields") {
-				t.Fatalf("message = %q, a 5xx pointed at the caller's fields", got.Message)
-			}
-		})
+		rec, got := refusalFor(t, http.StatusInternalServerError, upstream, `{"model":"chat","temperature":1}`)
+		want := errorBody{Message: "The model failed to answer this request.", Type: "api_error", Code: "upstream_error"}
+		if rec.Code != http.StatusBadGateway || got != want {
+			t.Fatalf("%s: status = %d, error = %#v, want 502 %#v", upstream, rec.Code, got, want)
+		}
 	}
 }
 
@@ -164,7 +131,7 @@ func TestAQuotedMessageNamesNothingBehindThisHop(t *testing.T) {
 		},
 		{
 			name:   "a URL and an address",
-			status: http.StatusInternalServerError,
+			status: http.StatusBadRequest,
 			detail: "connect to http://10.100.4.17:9345/generate failed; peer 10.100.4.18:9345",
 			never:  []string{"10.100.4.17", "10.100.4.18", "http://", "/generate"},
 		},
@@ -176,7 +143,7 @@ func TestAQuotedMessageNamesNothingBehindThisHop(t *testing.T) {
 		},
 		{
 			name:   "a source file and a filesystem path",
-			status: http.StatusInternalServerError,
+			status: http.StatusBadRequest,
 			detail: "error in /usr/local/lib/python3.12/site-packages/vllm_omni/diffusion.py:212 loading /models/hub/wan",
 			never:  []string{"/usr/local", "site-packages", "diffusion.py", "/models/hub"},
 		},

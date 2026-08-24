@@ -203,8 +203,8 @@ func errorFrom(t *testing.T, status int, header http.Header, body string) *httpt
 //
 // Every shape an engine can answer with — a bare object, the OpenAI envelope
 // already built, prose, a body over any cap this hop might read under — arrives
-// as one of this hop's own objects. The engine's message may be quoted inside
-// it; the address of what is behind this hop may not.
+// as one of this hop's own objects. A 4xx engine message may be quoted inside
+// it, sanitised; a 5xx never is; the address of what is behind this hop never is.
 func TestNoUpstreamErrorBodyReachesTheCallerAsItArrived(t *testing.T) {
 	secret := "kimi-k3-frontend.dynamo.svc.cluster.local"
 	for _, test := range []struct {
@@ -217,7 +217,7 @@ func TestNoUpstreamErrorBodyReachesTheCallerAsItArrived(t *testing.T) {
 			name:   "a bare object, which is Dynamo's shape",
 			status: http.StatusInternalServerError,
 			body:   `{"message":"engine crashed in ` + secret + `","type":"Internal Server Error","code":500}`,
-			want:   errorBody{Message: "The model failed to answer this request: engine crashed in [redacted]", Type: "api_error", Code: "upstream_error"},
+			want:   errorBody{Message: "The model failed to answer this request.", Type: "api_error", Code: "upstream_error"},
 		},
 		{
 			name:   "the OpenAI envelope, which used to pass untouched",

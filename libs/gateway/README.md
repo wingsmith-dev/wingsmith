@@ -132,17 +132,18 @@ from the data plane.
   observed and can lag; refusing to route to a model that is in fact serving is the worse failure.
 - **An upstream answers with an error.** The body is replaced with one of this hop's own objects,
   keyed on the upstream's status; the `type` and `code` are always ours. A caller's `4xx` keeps its
-  status (`422` becomes `400`) and a `5xx` becomes `502 upstream_error`. When the engine's body is a
-  JSON error (`{"message"}`, `{"error":{"message"}}`, `{"error":"..."}`, `{"detail"}`), its message
-  is quoted: as the whole message on a `4xx`, after "The model failed to answer this request:" on a
-  `5xx`. Before it is quoted it is cut to its first line (no tracebacks), a leading exception class
-  is dropped, URLs, cluster-internal hostnames, IP addresses, source files and filesystem paths
-  become `[redacted]`, the served model name reads back as the caller's, and it is capped at 500
-  bytes. Prose bodies are never quoted. A `4xx` body that mentions a known reason, such as
-  `invalid video file`, is answered with a fixed message from this hop's own table. The full body
-  is logged with the request id. Dynamo 1.5.0 itself forwards a backend's message only for a `4xx`
-  (an `InvalidArgument`); an unhandled worker exception is a `500` whose message is the frontend's
-  generic "Failed to generate images", so that is all a `5xx` can quote.
+  status (`422` becomes `400`) and a `5xx` becomes `502 upstream_error`.
+  **A `4xx` engine message is passed through, sanitised.** When the body is a JSON error
+  (`{"message"}`, `{"error":{"message"}}`, `{"error":"..."}`, `{"detail"}`), its message is cut to
+  its first line (no tracebacks), a leading exception class is dropped, URLs, cluster-internal
+  hostnames, IP addresses, source files, filesystem paths and any token naming the stack (the
+  conformance leak needles) become `[redacted]`, the served model name reads back as the caller's,
+  and it is capped at 500 bytes. This is how input errors reach a caller: the vllm-omni layer
+  raises `ValueError` for a validation failure, and Dynamo's frontend answers that `400`
+  `InvalidArgument` with the message. A `4xx` prose body is never quoted, and one that mentions a
+  known reason, such as `invalid video file`, is answered with a fixed message from this hop's own
+  table. **A `5xx` is never quoted**: the caller gets the fixed sentence and nothing the engine
+  said. The full body is logged with the request id either way.
 - **An upstream answers `401`, `403` or `404`.** `502`, not the status that arrived. The credential is
   this hop's and the caller has never seen it, and a path that was routed here is not one the engine
   gets to call missing — both are misconfigurations on our side and telling a caller otherwise sends
