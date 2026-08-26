@@ -52,6 +52,28 @@ export function Dash({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+/** A monospace value held to one line; the whole string is on hover. */
+export function Truncated({
+  value,
+  className,
+}: {
+  value: string
+  className?: string
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className={cn("block max-w-full truncate", className)}>
+          {value}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-sm break-all font-mono text-2xs">
+        {value}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
 /**
  * A declared value and its observed counterpart, kept side by side. They are
  * never merged: `desired` is what we asked for and `observed` is what came

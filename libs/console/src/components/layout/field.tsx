@@ -6,7 +6,7 @@ export function Field({
   className,
 }: React.PropsWithChildren<{ label: string; className?: string }>) {
   return (
-    <div className={cn("space-y-0.5", className)}>
+    <div className={cn("min-w-0 space-y-0.5", className)}>
       <div className="font-mono text-2xs tracking-wider text-muted-foreground/60 uppercase">
         {label}
       </div>
