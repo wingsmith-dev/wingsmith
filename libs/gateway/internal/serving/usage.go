@@ -40,6 +40,9 @@ type usageTail struct {
 	filled bool
 	obs    *observation
 	done   bool
+	// media counts generated outputs as they pass, for a successful image or video response.
+	// Nil on every other response, which then pays nothing for it.
+	media *mediaCounter
 }
 
 func newUsageTail(src io.ReadCloser, obs *observation) *usageTail {
@@ -50,6 +53,9 @@ func (t *usageTail) Read(p []byte) (int, error) {
 	n, err := t.src.Read(p)
 	if n > 0 {
 		t.write(p[:n])
+		if t.media != nil {
+			t.media.write(p[:n])
+		}
 	}
 	if err == io.EOF {
 		t.finish()
@@ -95,8 +101,12 @@ func (t *usageTail) finish() {
 		return
 	}
 	t.done = true
-	if counts, ok := parseUsage(t.bytes()); ok {
+	tail := t.bytes()
+	if counts, ok := parseUsage(tail); ok {
 		t.obs.recordUsage(counts)
+	}
+	if t.media != nil {
+		t.obs.recordMedia(t.media.count, tail)
 	}
 }
 
@@ -196,6 +206,10 @@ func observeUsage(resp *http.Response) error {
 	if obs == nil {
 		return nil
 	}
-	resp.Body = newUsageTail(resp.Body, obs)
+	tail := newUsageTail(resp.Body, obs)
+	if resp.StatusCode < http.StatusMultipleChoices {
+		tail.media = obs.mediaCounter()
+	}
+	resp.Body = tail
 	return nil
 }

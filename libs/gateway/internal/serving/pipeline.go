@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
 	"github.com/hangar-dev/hangar/libs/gateway/internal/routing"
@@ -65,6 +66,7 @@ func routingStages(resolver Resolver, tenants Tenants, zone Zone) []stage {
 		stageStripSteeringHints,
 		stageCheckPolicy,
 		stageRewritePolicy,
+		stageMediaFacts,
 		stageMediaCacheSalt,
 		stagePickUpstream,
 		stageRewriteServedModel,
@@ -437,6 +439,8 @@ func stageForward(w http.ResponseWriter, r *http.Request, req *requestState) (*h
 	release := inFlight(r)
 	defer release()
 
+	start := time.Now()
+	defer func() { markUpstreamDuration(r, time.Since(start)) }()
 	req.upstream.Handler().ServeHTTP(w, r)
 	return r, false
 }

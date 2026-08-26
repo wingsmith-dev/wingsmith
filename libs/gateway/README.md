@@ -118,6 +118,25 @@ the gateway keeps serving what it has, and that gauge climbing beside
 `hangar_gateway_routing_table_refresh_success` at 0 is exactly the shape of a plane outage seen
 from the data plane.
 
+Text usage is the upstream's own `usage` object, read from a 64 KiB tail of the response and
+written as `input_tokens`/`output_tokens` on the `gateway: request` line and
+`hangar_gateway_tokens_total`. Image and video generations have none — Dynamo 1.5.0's image and
+video responses carry no usage the worker could fill — so this hop records raw facts for a
+successful `/v1/images/generations`, `/v1/images/edits`, `/v1/videos`, or `/v1/chat/completions`
+answered by an image model, on the same line and in `hangar_gateway_generated_total{unit}`:
+
+- `images` / `videos`: outputs counted as the response streams past (each `b64_json` or `url` in
+  `data`, or each `"type":"image_url"` part of a chat answer). Nothing is buffered beyond the tail.
+- `size` with `size_source=request|response`: the request's `size`, else the image response's own
+  `size` field. No default is assumed, because the engine may apply its own.
+- `video_seconds`, `video_frames`: as the request stated them — `seconds` (string or number), or
+  `nvext.num_frames / nvext.fps`, with frames as `seconds * fps` when only those are given.
+- `upstream_ms` (`upstream_seconds` in the series): wall time from the forward to the last response
+  byte, the nearest this hop comes to GPU time; `inference_time_s` beside it when the response
+  carried one (Dynamo's video response does).
+
+No pricing, and nothing is added to the response body the caller sees.
+
 ## Failure behaviour
 
 - **The plane is down.** The table already loaded keeps serving. What it is built from changes on

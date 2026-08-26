@@ -74,6 +74,7 @@ type Recorder struct {
 	ttft        *prometheus.HistogramVec
 	ttftByInput *prometheus.HistogramVec
 	tokens      *prometheus.CounterVec
+	generated   *prometheus.CounterVec
 	inFlight    *prometheus.GaugeVec
 	upstreamUp  *prometheus.GaugeVec
 
@@ -142,6 +143,11 @@ func New(opts ...Option) *Recorder {
 		Help: "Tokens reported by the upstream's own usage object. Observability, not metering: this is not an invoice and must never be reconciled against one.",
 	}, append(append([]string{}, routedLabels...), "direction"))
 
+	r.generated = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "hangar_gateway_generated_total",
+		Help: "What successful image and video generations produced, counted by this hop because the engine reports no usage for either: images, videos, video_seconds and video_frames as the request stated them, and upstream_seconds of wall time inside the cluster. Observability, not metering.",
+	}, append(append([]string{}, routedLabels...), "unit"))
+
 	r.inFlight = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "hangar_gateway_requests_in_flight",
 		Help: "Requests currently being proxied to a cluster.",
@@ -199,7 +205,7 @@ func New(opts ...Option) *Recorder {
 	r.registerTunnels()
 
 	r.registry.MustRegister(
-		r.requests, r.duration, r.ttft, r.ttftByInput, r.tokens,
+		r.requests, r.duration, r.ttft, r.ttftByInput, r.tokens, r.generated,
 		r.inFlight, r.upstreamUp,
 		r.tunnels, r.tunnelDials, r.tunnelCoverage,
 		r.tableRefreshes, r.tableRefreshOK, r.tableEndpoints, r.tableConfirmUnx, age,
@@ -255,6 +261,17 @@ type Sample struct {
 	OutputTokens      int64
 	CachedInputTokens int64
 	HaveUsage         bool
+
+	// Media is what an image or video generation produced, assembled by the gateway because the
+	// engine reports no usage for either. Raw facts, not a price. Absent when HaveMedia is false.
+	HaveMedia    bool
+	MediaKind    string
+	MediaOutputs int64
+	VideoSeconds float64
+	VideoFrames  int64
+	// UpstreamSeconds is the wall time the request spent inside a cluster, the nearest this hop
+	// can come to the GPU time it cost.
+	UpstreamSeconds float64
 }
 
 // Observe records one finished request.
@@ -293,7 +310,30 @@ func (r *Recorder) Observe(s Sample) {
 		r.tokens.WithLabelValues(append(labels, string(DirectionOutput))...).Add(float64(s.OutputTokens))
 		r.tokens.WithLabelValues(append(labels, string(DirectionCachedInput))...).Add(float64(s.CachedInputTokens))
 	}
+
+	if s.HaveMedia {
+		labels := []string{endpoint, s.EndpointName, string(origin), s.Deployment, s.Cluster}
+		outputs := UnitImages
+		if s.MediaKind == "video" {
+			outputs = UnitVideos
+			r.generated.WithLabelValues(append(labels, string(UnitVideoSeconds))...).Add(s.VideoSeconds)
+			r.generated.WithLabelValues(append(labels, string(UnitVideoFrames))...).Add(float64(s.VideoFrames))
+		}
+		r.generated.WithLabelValues(append(labels, string(outputs))...).Add(float64(s.MediaOutputs))
+		r.generated.WithLabelValues(append(labels, string(UnitUpstreamSeconds))...).Add(s.UpstreamSeconds)
+	}
 }
+
+// Unit is what hangar_gateway_generated_total counts. A closed set, so it is a safe label.
+type Unit string
+
+const (
+	UnitImages          Unit = "images"
+	UnitVideos          Unit = "videos"
+	UnitVideoSeconds    Unit = "video_seconds"
+	UnitVideoFrames     Unit = "video_frames"
+	UnitUpstreamSeconds Unit = "upstream_seconds"
+)
 
 // InFlight marks a request as being proxied and returns the release.
 func (r *Recorder) InFlight(endpoint, endpointName string, origin Origin, deployment, cluster string) func() {

@@ -43,6 +43,8 @@ type observation struct {
 	firstByte    time.Time
 	usage        usageCounts
 	haveUsage    bool
+	// media is set for an image or video generation request and nil otherwise (media.go).
+	media *mediaFacts
 }
 
 type observationKey struct{}
@@ -201,7 +203,28 @@ func (o *observation) sample(status int, elapsed time.Duration) metrics.Sample {
 		sample.OutputTokens = o.usage.output
 		sample.CachedInputTokens = o.usage.cachedInput
 	}
+
+	if m := o.media; m != nil && m.haveOutputs {
+		sample.HaveMedia = true
+		sample.MediaKind = m.kind
+		sample.MediaOutputs = m.outputs
+		sample.UpstreamSeconds = m.upstream.Seconds()
+		if m.haveSeconds {
+			sample.VideoSeconds = m.seconds
+		}
+		if m.haveFrames {
+			sample.VideoFrames = m.frames
+		}
+	}
 	return sample
+}
+
+// mediaFields freezes the media facts for the access line. The facts are only complete once the
+// response has finished, which is when the line is written.
+func (o *observation) mediaFields() []any {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.media.fields()
 }
 
 // ProbeMarker recognises the conformance suite's own traffic.

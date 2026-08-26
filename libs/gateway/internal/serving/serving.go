@@ -360,6 +360,7 @@ func observed(recorder *metrics.Recorder, probes *ProbeMarker, next http.Handler
 						"output_tokens", sample.OutputTokens,
 					)
 				}
+				fields = append(fields, obs.mediaFields()...)
 				slog.Info("gateway: request", fields...)
 
 				if recorder != nil {
