@@ -1,7 +1,5 @@
 import { EnforcementBadge } from "@/components/demand/enforcement"
-import { Field, FieldGrid } from "@/components/layout/field"
 import { Dash } from "@/components/layout/mono"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -12,186 +10,143 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
-  SURFACE_ENFORCEMENT,
-  policyRuleScope,
-  policyRuleTerms,
-} from "@/modules/demand/display"
-import type { EndpointSurface, PolicyRule } from "@/modules/demand/types"
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import { SURFACE_ENFORCEMENT } from "@/modules/demand/display"
+import type { EndpointSurface } from "@/modules/demand/types"
 
-/** One declared field, with the badge that says what is done with it. */
-function SurfaceField({
-  label,
-  field,
-  children,
-}: React.PropsWithChildren<{
-  label: string
-  field: keyof EndpointSurface
-}>) {
-  const entry = SURFACE_ENFORCEMENT[field]
-  return (
-    <Field label={label}>
-      <div className="flex items-center gap-2">
-        <span>{children}</span>
-        <EnforcementBadge kind={entry.enforcement} />
-      </div>
-      <p className="mt-1 text-2xs leading-relaxed text-muted-foreground/60">
-        {entry.note}
-      </p>
-    </Field>
-  )
-}
+type SurfaceScalar = Exclude<keyof EndpointSurface, "policy">
 
-/** A rule's subject: a body path, or the name of a rule the gateway implements. */
-function RuleSubject({ rule }: { rule: PolicyRule }) {
-  if (rule.key) return <span className="font-mono text-xs">{rule.key}</span>
-  if (rule.predicate)
-    return (
-      <span className="inline-flex items-center gap-1.5">
-        <Badge variant="outline" className="font-mono text-2xs">
-          predicate
-        </Badge>
-        <span className="font-mono text-xs">{rule.predicate}</span>
-      </span>
-    )
-  return <Dash>{null}</Dash>
+/**
+ * The surface read top to bottom: first what the gateway upholds on every
+ * request, then what is conditionally one, then the claims nothing enforces.
+ * Position is the enforcement story, so the column of badges repeats it.
+ */
+const SURFACE_ROWS: { key: SurfaceScalar; label: string }[] = [
+  { key: "request_timeout_seconds", label: "Request timeout" },
+  { key: "streaming_transport", label: "Streaming transport" },
+  { key: "cors_enabled", label: "CORS" },
+  { key: "output_length_params", label: "Output length params" },
+  { key: "protocols", label: "Protocols" },
+  { key: "auth_mode", label: "Auth mode" },
+  { key: "error_shape", label: "Error shape" },
+  { key: "max_request_bytes", label: "Max request bytes" },
+]
+
+/** One field's value as it is read in the table, or null where the endpoint sets nothing. */
+function surfaceValue(key: SurfaceScalar, surface: EndpointSurface) {
+  switch (key) {
+    case "protocols":
+      return surface.protocols.length > 0 ? surface.protocols.join(", ") : null
+    case "output_length_params":
+      return surface.output_length_params.length > 0
+        ? surface.output_length_params.join(" → ")
+        : null
+    case "cors_enabled":
+      return surface.cors_enabled == null
+        ? null
+        : surface.cors_enabled
+          ? "enabled"
+          : "disabled"
+    case "max_request_bytes":
+      return surface.max_request_bytes?.toLocaleString() ?? null
+    case "request_timeout_seconds":
+      return surface.request_timeout_seconds != null
+        ? `${surface.request_timeout_seconds}s`
+        : null
+    default:
+      return surface[key]
+  }
 }
 
 /**
- * The terms on which this endpoint's API is exposed, read-only.
+ * A term's name. What the gateway actually does with it — the note on its
+ * enforcement entry — is the hover affordance, because eight paragraphs of
+ * small print read as none.
+ */
+function SurfaceTerm({
+  field,
+  label,
+}: {
+  field: SurfaceScalar
+  label: string
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          className="cursor-help rounded-sm underline decoration-muted-foreground/40 decoration-dotted underline-offset-[3px] focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          {label}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs text-2xs">
+        {SURFACE_ENFORCEMENT[field].note}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+/**
+ * The terms on which this endpoint's API is exposed, read-only, as one table:
+ * a term, its value, and what the gateway does with it.
  *
- * Every field carries its own enforcement badge because half of the surface is
- * a term the gateway acts on and half is a disclosure nothing upholds. Drawing
- * the eight of them identically is what turns a disclosure into a promise an
- * operator repeats to a customer.
+ * Half the surface is a term the gateway acts on and half is a disclosure
+ * nothing upholds. A table is what keeps that distinction honest — every
+ * field carries its enforcement in its row, so a claim can never be drawn to
+ * look like a term somebody sold to a customer.
  *
- * The policy is a separate block and a table rather than a field, because a
- * rule has a scope, a subject and terms — three columns — and because there is
- * no precedence in the list: every rule whose scope matches applies, so the
- * order is never something to read.
+ * The request policy is its own card: a rule has a scope, a subject and terms
+ * of its own, and it answers a different question — not what this name
+ * exposes, but what the gateway will do to a request on the way through.
  */
 export function EndpointSurfaceCard({
   surface,
 }: {
   surface: EndpointSurface | undefined
 }) {
-  const rules = surface?.policy?.rules ?? []
   return (
     <Card>
       <CardHeader className="pb-2">
         <CardTitle className="text-sm">API surface</CardTitle>
         <p className="mt-1 text-2xs text-muted-foreground">
-          What this name exposes, and what the gateway does with each term
+          Which of these the gateway upholds, and which it only documents
         </p>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent>
         {surface ? (
-          <FieldGrid>
-            <SurfaceField label="Protocols" field="protocols">
-              <Dash>
-                {surface.protocols.length > 0
-                  ? surface.protocols.join(", ")
-                  : null}
-              </Dash>
-            </SurfaceField>
-            <SurfaceField label="Auth mode" field="auth_mode">
-              <Dash>{surface.auth_mode}</Dash>
-            </SurfaceField>
-            <SurfaceField label="Error shape" field="error_shape">
-              <Dash>{surface.error_shape}</Dash>
-            </SurfaceField>
-            <SurfaceField
-              label="Streaming transport"
-              field="streaming_transport"
-            >
-              <Dash>{surface.streaming_transport}</Dash>
-            </SurfaceField>
-            <SurfaceField label="CORS" field="cors_enabled">
-              <Dash>
-                {surface.cors_enabled == null
-                  ? null
-                  : surface.cors_enabled
-                    ? "enabled"
-                    : "disabled"}
-              </Dash>
-            </SurfaceField>
-            <SurfaceField label="Max request bytes" field="max_request_bytes">
-              <Dash>
-                {surface.max_request_bytes != null
-                  ? surface.max_request_bytes.toLocaleString()
-                  : null}
-              </Dash>
-            </SurfaceField>
-            <SurfaceField
-              label="Request timeout"
-              field="request_timeout_seconds"
-            >
-              <Dash>
-                {surface.request_timeout_seconds != null
-                  ? `${surface.request_timeout_seconds}s`
-                  : null}
-              </Dash>
-            </SurfaceField>
-            <SurfaceField
-              label="Output length params"
-              field="output_length_params"
-            >
-              <Dash>
-                {surface.output_length_params.length > 0
-                  ? surface.output_length_params.join(" → ")
-                  : null}
-              </Dash>
-            </SurfaceField>
-          </FieldGrid>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Term</TableHead>
+                <TableHead>Value</TableHead>
+                <TableHead>Enforcement</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {SURFACE_ROWS.map(({ key, label }) => (
+                <TableRow key={key}>
+                  <TableCell className="text-xs">
+                    <SurfaceTerm field={key} label={label} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    <Dash>{surfaceValue(key, surface)}</Dash>
+                  </TableCell>
+                  <TableCell>
+                    <EnforcementBadge kind={SURFACE_ENFORCEMENT[key].enforcement} />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         ) : (
           <p className="font-mono text-2xs text-muted-foreground/60">
             No surface declared. The gateway forwards what it is given.
           </p>
         )}
-
-        <div className="border-t pt-3">
-          <div className="mb-3 flex items-center gap-2">
-            <p className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-              request policy
-            </p>
-            <EnforcementBadge kind={SURFACE_ENFORCEMENT.policy.enforcement} />
-            {surface?.policy ? (
-              <Badge variant="outline" className="font-mono text-2xs">
-                v{surface.policy.version}
-              </Badge>
-            ) : null}
-          </div>
-          {rules.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Scope</TableHead>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Terms</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rules.map((rule, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-mono text-2xs text-muted-foreground">
-                      {policyRuleScope(rule)}
-                    </TableCell>
-                    <TableCell>
-                      <RuleSubject rule={rule} />
-                    </TableCell>
-                    <TableCell className="font-mono text-2xs">
-                      <Dash>{policyRuleTerms(rule).join(" · ") || null}</Dash>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <p className="font-mono text-2xs text-muted-foreground/60">
-              No consistency term sold on this endpoint. The gateway forwards
-              every request as it was written.
-            </p>
-          )}
-        </div>
       </CardContent>
     </Card>
   )

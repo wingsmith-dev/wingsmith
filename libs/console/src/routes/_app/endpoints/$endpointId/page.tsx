@@ -1,8 +1,15 @@
 import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
+import { EndpointPolicyCard } from "@/components/demand/endpoint-policy"
 import { EndpointSurfaceCard } from "@/components/demand/endpoint-surface"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { ConfirmDialog, DeleteDialog } from "@/components/layout/destructive"
-import { CopyableId, Dash, Id, Labels } from "@/components/layout/mono"
+import {
+  CopyableId,
+  Dash,
+  Id,
+  Labels,
+  Truncated,
+} from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { RefreshButton } from "@/components/layout/refresh-button"
 import {
@@ -30,6 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { formatError, shortenId } from "@/lib/format"
 import { formatMetric, sampleOf } from "@/modules/metrics/format"
@@ -65,11 +73,15 @@ import { EndpointForm } from "../EndpointForm"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import {
+  IconApi,
   IconArrowLeft,
   IconArrowUpRight,
+  IconChartHistogram,
+  IconListDetails,
   IconPencil,
   IconPlayerPause,
   IconPlayerPlay,
+  IconShieldCheck,
   IconTrash,
 } from "@tabler/icons-react"
 import { Link, useNavigate, useParams } from "@tanstack/react-router"
@@ -389,6 +401,7 @@ export function EndpointDetailPage() {
   const [doomed, setDoomed] = useState(false)
   const [pausing, setPausing] = useState(false)
   const [chartWindow, setChartWindow] = useState<TimeWindow>(DEFAULT_WINDOW)
+  const [view, setView] = useState("overview")
 
   const { data: deploymentOptions } = useDeploymentOptions()
   const { data: workloadOptions } = useWorkloadOptions()
@@ -671,149 +684,254 @@ export function EndpointDetailPage() {
         />
       )}
 
-      <div className="space-y-4 p-4">
-        {isLoading && <Skeleton className="h-40 w-full" />}
+      {isLoading && (
+        <div className="p-4">
+          <Skeleton className="h-40 w-full" />
+        </div>
+      )}
 
-        {endpoint && (
-          <>
-            {/* The gateway's own series, read at the front door. Absent
-                measurements render as an em dash, never as a zero. The toggle
-                governs the stat strip and both charts under it, because the
-                tiles are the same query's instant values — a tile read over one
-                lookback beside a curve drawn over another is two measurements
-                wearing one heading. Availability is not in that strip and names
-                its own span, for that same reason. */}
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-                measured at the front door
-              </span>
-              <WindowToggle value={chartWindow} onChange={setChartWindow} />
-            </div>
+      {endpoint && (
+        <Tabs value={view} onValueChange={setView} className="flex-col gap-0">
+          <TabsList variant="underline" className="bg-card px-4">
+            <ViewTab value="overview" icon={IconListDetails}>
+              Overview
+            </ViewTab>
+            <ViewTab value="api-surface" icon={IconApi}>
+              API surface
+            </ViewTab>
+            <ViewTab value="policies" icon={IconShieldCheck}>
+              Policies
+            </ViewTab>
+            <ViewTab value="analytics" icon={IconChartHistogram}>
+              Analytics
+            </ViewTab>
+          </TabsList>
 
-            <div className="grid gap-4 lg:grid-cols-3">
-              <div className="space-y-4 lg:col-span-2">
-                {/* The strip carries only what no card below it repeats: a
-                    rate, the percentile people scan for, and the failure share.
-                    p50 and p95 are in the latency card's legend, and putting
-                    them here as well is the same number twice. */}
-                {live.isLoading ? (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    {[0, 1, 2].map((i) => (
-                      <Skeleton key={i} className="h-[68px]" />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                    <StatTile
-                      label="Requests / sec"
-                      value={reading(metrics, "serving.requests_per_second")}
-                    />
-                    <StatTile
-                      label="p99 latency"
-                      value={reading(metrics, "serving.latency_p99")}
-                    />
-                    <StatTile
-                      label="Failed requests"
-                      value={reading(metrics, "serving.failure_ratio")}
-                      tone={
-                        failure?.value == null
-                          ? "default"
-                          : failure.value > 1
-                            ? "danger"
-                            : failure.value > 0
-                              ? "warn"
-                              : "ok"
-                      }
-                    />
-                  </div>
-                )}
-
-                {unmeasured && (
-                  <Card size="sm" className="px-3 py-2.5">
-                    <p className="font-mono text-2xs text-muted-foreground/60">
-                      {unmeasured}
-                    </p>
+          <div className="space-y-4 p-4">
+            {/* ---- Overview ---- */}
+            <TabsContent value="overview">
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="space-y-4 lg:col-span-2">
+                  {/* Declared fields, and the workload's serving config this
+                      name ultimately runs. */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Details</CardTitle>
+                      <CardAction>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Edit endpoint"
+                          onClick={() => setEditing(true)}
+                        >
+                          <IconPencil />
+                        </Button>
+                      </CardAction>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <FieldGrid>
+                        <Field label="Slug">
+                          <CopyableId value={endpoint.slug} className="text-2xs">
+                            {endpoint.slug}
+                          </CopyableId>
+                        </Field>
+                        <Field label="Aliases">
+                          <Dash>
+                            {endpoint.aliases.length > 0
+                              ? endpoint.aliases.join(", ")
+                              : null}
+                          </Dash>
+                        </Field>
+                        <Field label="Name">{endpoint.name}</Field>
+                        <Field label="Project">{endpoint.project_id}</Field>
+                        <Field label="Visibility">{endpoint.visibility}</Field>
+                        <Field label="Routing strategy">
+                          {endpoint.routing_strategy}
+                        </Field>
+                        <Field label="Enabled">
+                          {endpoint.enabled ? "yes" : "no"}
+                        </Field>
+                        <Field label="Created">
+                          {new Date(endpoint.created_at).toLocaleDateString()}
+                        </Field>
+                        <Field label="Failover order">
+                          <Dash>
+                            {endpoint.failover_order.length > 0
+                              ? endpoint.failover_order.join(" → ")
+                              : null}
+                          </Dash>
+                        </Field>
+                        <Field label="Region affinity">
+                          <Dash>
+                            {regions.length > 0 ? regions.join(", ") : null}
+                          </Dash>
+                        </Field>
+                        <Field label="Labels">
+                          <Labels labels={endpoint.labels} />
+                        </Field>
+                      </FieldGrid>
+                    </CardContent>
                   </Card>
-                )}
 
-                {/* Details & backing — the endpoint's own fields and the
-                    workload's serving config it ultimately runs. */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Details</CardTitle>
-                    <CardAction>
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="Edit endpoint"
-                        onClick={() => setEditing(true)}
-                      >
-                        <IconPencil />
-                      </Button>
-                    </CardAction>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <FieldGrid>
-                      <Field label="Slug">
-                        <CopyableId value={endpoint.slug} className="text-2xs">
-                          {endpoint.slug}
-                        </CopyableId>
-                        <p className="mt-1 font-mono text-2xs text-muted-foreground/50">
-                          Sent as <code>model</code> on the OpenAI-compatible
-                          routes.
-                        </p>
-                      </Field>
-                      <Field label="Aliases">
-                        <Dash>
-                          {endpoint.aliases.length > 0
-                            ? endpoint.aliases.join(", ")
-                            : null}
-                        </Dash>
-                        <p className="mt-1 font-mono text-2xs text-muted-foreground/50">
-                          Also accepted as <code>model</code>. Never listed by{" "}
-                          <code>/v1/models</code>.
-                        </p>
-                      </Field>
-                      <Field label="Name">
-                        {endpoint.name}
-                        <p className="mt-1 font-mono text-2xs text-muted-foreground/50">
-                          The internal handle. Not what clients send.
-                        </p>
-                      </Field>
-                      <Field label="Project">{endpoint.project_id}</Field>
-                      <Field label="Visibility">{endpoint.visibility}</Field>
-                      <Field label="Routing strategy">
-                        {endpoint.routing_strategy}
-                      </Field>
-                      <Field label="Enabled">
-                        {endpoint.enabled ? "yes" : "no"}
-                      </Field>
-                      <Field label="Created">
-                        {new Date(endpoint.created_at).toLocaleDateString()}
-                      </Field>
-                      <Field label="Failover order">
-                        <Dash>
-                          {endpoint.failover_order.length > 0
-                            ? endpoint.failover_order.join(" → ")
-                            : null}
-                        </Dash>
-                      </Field>
-                      <Field label="Region affinity">
-                        <Dash>
-                          {regions.length > 0 ? regions.join(", ") : null}
-                        </Dash>
-                      </Field>
-                      <Field label="Labels">
-                        <Labels labels={endpoint.labels} />
-                      </Field>
-                    </FieldGrid>
+                  {/* Routing — real targets, weighted, with the deployment's
+                      observed state inlined. One card covers what traffic is
+                      sent where and how it is doing. */}
+                  <Card className="gap-0 overflow-hidden p-0">
+                    <div className="border-b bg-muted/30 px-4 py-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-sm">Routing</CardTitle>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="font-mono text-2xs"
+                          >
+                            {endpoint.routing_strategy}
+                          </Badge>
+                          <Button
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Edit routing"
+                            onClick={() => setEditing(true)}
+                          >
+                            <IconPencil />
+                          </Button>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-2xs text-muted-foreground">
+                        How traffic is split across backing deployments
+                      </p>
+                    </div>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Deployment</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Weight</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Replicas</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {endpoint.targets.map((target) => {
+                          const { deployment, region } =
+                            resolved.get(target.deployment_id) ?? {}
+                          const rollup = deployment?.replicas
+                          const totalWeight = endpoint.targets.reduce(
+                            (s, t) => s + (t.enabled ? t.weight : 0),
+                            0
+                          )
+                          const weightPct =
+                            totalWeight > 0 && target.enabled
+                              ? Math.round((target.weight / totalWeight) * 100)
+                              : 0
+                          return (
+                            <TableRow key={target.deployment_id}>
+                              <TableCell className="py-3.5">
+                                <Link
+                                  to="/deployments/$deploymentId"
+                                  params={{
+                                    deploymentId: target.deployment_id,
+                                  }}
+                                  className="group inline-flex flex-col gap-0.5"
+                                >
+                                  <span className="inline-flex items-center gap-1 font-mono text-xs group-hover:underline">
+                                    {deployment?.name ??
+                                      shortenId(target.deployment_id)}
+                                    <IconArrowUpRight className="size-3 text-muted-foreground" />
+                                  </span>
+                                  {region && (
+                                    <span className="font-mono text-2xs text-muted-foreground">
+                                      {region}
+                                    </span>
+                                  )}
+                                </Link>
+                              </TableCell>
+                              <TableCell className="py-3.5">
+                                <Badge
+                                  variant={
+                                    target.role === "primary"
+                                      ? "default"
+                                      : "secondary"
+                                  }
+                                  className="font-mono text-2xs"
+                                >
+                                  {target.role}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="py-3.5">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
+                                    <div
+                                      className="h-full rounded-full bg-primary"
+                                      style={{ width: `${weightPct}%` }}
+                                    />
+                                  </div>
+                                  <span className="font-mono text-2xs text-muted-foreground tabular-nums">
+                                    {weightPct}%
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="py-3.5">
+                                <StatusLabel
+                                  tone={
+                                    !target.enabled
+                                      ? "neutral"
+                                      : rollup != null &&
+                                          rollup.ready >= rollup.total &&
+                                          rollup.total > 0
+                                        ? "ok"
+                                        : "warn"
+                                  }
+                                >
+                                  {!target.enabled
+                                    ? "Disabled"
+                                    : (deployment?.status?.phase ??
+                                      deployment?.admission_phase ??
+                                      "Pending")}
+                                </StatusLabel>
+                              </TableCell>
+                              <TableCell className="py-3.5">
+                                {rollup != null ? (
+                                  <ReplicaBar
+                                    ready={rollup.ready}
+                                    total={rollup.total}
+                                  />
+                                ) : (
+                                  <span className="text-muted-foreground/40">
+                                    —
+                                  </span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                        {endpoint.targets.length === 0 && (
+                          <TableRow>
+                            <TableCell
+                              colSpan={5}
+                              className="py-10 text-center text-sm text-muted-foreground"
+                            >
+                              No targets — this endpoint routes nowhere.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </Card>
+                </div>
 
-                    {backing?.workload || backing?.artifact ? (
-                      <div className="border-t pt-3">
-                        <p className="mb-3 font-mono text-2xs tracking-[0.18em] text-muted-foreground/50 uppercase">
-                          serving &amp; artifact
-                        </p>
-                        <FieldGrid>
+                <div className="space-y-4">
+                  {/* Serving & artifact — the workload's serving config this
+                      name ultimately runs. */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">
+                        Serving &amp; artifact
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {backing?.workload || backing?.artifact ? (
+                        <FieldGrid className="sm:grid-cols-1">
                           <Field label="Workload">
                             {backing.workload ? (
                               <Link
@@ -842,9 +960,13 @@ export function EndpointDetailPage() {
                             </Dash>
                           </Field>
                           <Field label="Frontend image">
-                            <Dash>
-                              {backing.workload?.serving.frontend_image ?? null}
-                            </Dash>
+                            {backing.workload?.serving.frontend_image ? (
+                              <Truncated
+                                value={backing.workload.serving.frontend_image}
+                              />
+                            ) : (
+                              <Dash>{null}</Dash>
+                            )}
                           </Field>
                           <Field label="Quantization">
                             <Dash>{quantLabel(backing.workload)}</Dash>
@@ -878,337 +1000,283 @@ export function EndpointDetailPage() {
                             )}
                           </Field>
                         </FieldGrid>
-                      </div>
-                    ) : (
-                      <p className="font-mono text-2xs text-muted-foreground/60">
-                        No backing workload resolved for this endpoint's
-                        targets.
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
+                      ) : (
+                        <p className="font-mono text-2xs text-muted-foreground/60">
+                          No backing workload resolved for this endpoint's
+                          targets.
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
 
-                <EndpointSurfaceCard surface={endpoint.surface} />
-
-                {/* Traffic — the gateway's request rate for this name. */}
-                <Card>
-                  <CardHeader className="flex-row items-start justify-between gap-2 pb-2">
-                    <div>
-                      <CardTitle className="text-sm">Traffic</CardTitle>
+                  {/* Activity — the event log, filtered by this endpoint. The
+                      rows are its targets' deployments and their replicas: an
+                      endpoint is a name and a weighting, and everything that
+                      can go wrong with it goes wrong behind it. */}
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Activity</CardTitle>
                       <p className="text-2xs text-muted-foreground">
-                        Requests per second, counted at the front door
+                        Recorded against the deployments this name routes to
                       </p>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {events.error ? (
+                        <p className="font-mono text-2xs text-destructive">
+                          {formatError(events.error, "Could not read the log")}
+                        </p>
+                      ) : (
+                        <DeploymentTimeline
+                          events={events.items}
+                          loading={events.isLoading}
+                          empty={
+                            endpoint.targets.length === 0
+                              ? "This endpoint routes nowhere, so nothing can be recorded against it."
+                              : "Nothing has been recorded against this endpoint's targets yet."
+                          }
+                        />
+                      )}
+                      {events.hasNextPage && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          disabled={events.isFetchingNextPage}
+                          onClick={() => events.fetchNextPage()}
+                        >
+                          {events.isFetchingNextPage ? "Loading…" : "Load more"}
+                        </Button>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            </TabsContent>
+
+            {/* ---- API surface ---- */}
+            <TabsContent value="api-surface">
+              <EndpointSurfaceCard surface={endpoint.surface} />
+            </TabsContent>
+
+            {/* ---- Policies ---- */}
+            <TabsContent value="policies">
+              <EndpointPolicyCard policy={endpoint.surface?.policy} />
+            </TabsContent>
+
+            {/* ---- Analytics ---- */}
+            <TabsContent value="analytics" className="space-y-4">
+              {/* The gateway's own series, read at the front door. Absent
+                  measurements render as an em dash, never as a zero. The toggle
+                  governs the stat strip and both charts under it, because the
+                  tiles are the same query's instant values — a tile read over
+                  one lookback beside a curve drawn over another is two
+                  measurements wearing one heading. Availability is not in that
+                  strip and names its own span, for that same reason. */}
+              <div className="flex items-center justify-end gap-2">
+                <WindowToggle value={chartWindow} onChange={setChartWindow} />
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-3">
+                <div className="space-y-4 lg:col-span-2">
+                  {/* The strip carries only what no card below it repeats: a
+                      rate, the percentile people scan for, and the failure
+                      share. p50 and p95 are in the latency card's legend, and
+                      putting them here as well is the same number twice. */}
+                  {live.isLoading ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {[0, 1, 2].map((i) => (
+                        <Skeleton key={i} className="h-[68px]" />
+                      ))}
                     </div>
-                    <span className="font-mono text-2xs text-muted-foreground/60">
-                      {chartWindow.label}
-                    </span>
-                  </CardHeader>
-                  <CardContent>
-                    {live.isLoading ? (
-                      <Skeleton className="h-28" />
-                    ) : metrics ? (
-                      <Chart
-                        data={metrics}
-                        curves={[
-                          {
-                            metric: "serving.requests_per_second",
-                            tone: "primary",
-                          },
-                        ]}
-                        spanLabel={chartWindow.label}
-                        fill
-                        label="request rate"
+                  ) : (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <StatTile
+                        label="Requests / sec"
+                        value={reading(metrics, "serving.requests_per_second")}
                       />
-                    ) : (
-                      <EmptyNote>nothing is measuring this endpoint</EmptyNote>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Latency — the gateway's percentiles, which include the hop
-                    and every request that failed before an engine saw it. Not
-                    the same measurement as a deployment's `inference.latency`,
-                    and the two disagreeing is not a fault. */}
-                <Card>
-                  <CardHeader className="flex-row items-start justify-between gap-2 pb-2">
-                    <div>
-                      <CardTitle className="text-sm">Latency</CardTitle>
-                      <p className="text-2xs text-muted-foreground">
-                        End-to-end percentiles, hop and queue included
-                      </p>
+                      <StatTile
+                        label="p99 latency"
+                        value={reading(metrics, "serving.latency_p99")}
+                      />
+                      <StatTile
+                        label="Failed requests"
+                        value={reading(metrics, "serving.failure_ratio")}
+                        tone={
+                          failure?.value == null
+                            ? "default"
+                            : failure.value > 1
+                              ? "danger"
+                              : failure.value > 0
+                                ? "warn"
+                                : "ok"
+                        }
+                      />
                     </div>
-                    <span className="font-mono text-2xs text-muted-foreground/60">
-                      {chartWindow.label}
-                    </span>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {live.isLoading ? (
-                      <Skeleton className="h-24" />
-                    ) : metrics ? (
-                      <>
+                  )}
+
+                  {unmeasured && (
+                    <Card size="sm" className="px-3 py-2.5">
+                      <p className="font-mono text-2xs text-muted-foreground/60">
+                        {unmeasured}
+                      </p>
+                    </Card>
+                  )}
+
+                  {/* Traffic — the gateway's request rate for this name. */}
+                  <Card>
+                    <CardHeader className="flex-row items-start justify-between gap-2 pb-2">
+                      <div>
+                        <CardTitle className="text-sm">Traffic</CardTitle>
+                        <p className="text-2xs text-muted-foreground">
+                          Requests per second, counted at the front door
+                        </p>
+                      </div>
+                      <span className="font-mono text-2xs text-muted-foreground/60">
+                        {chartWindow.label}
+                      </span>
+                    </CardHeader>
+                    <CardContent>
+                      {live.isLoading ? (
+                        <Skeleton className="h-28" />
+                      ) : metrics ? (
                         <Chart
                           data={metrics}
                           curves={[
-                            { metric: "serving.latency_p99", tone: "danger" },
-                            { metric: "serving.latency_p95", tone: "warn" },
-                            { metric: "serving.latency_p50", tone: "primary" },
+                            {
+                              metric: "serving.requests_per_second",
+                              tone: "primary",
+                            },
                           ]}
                           spanLabel={chartWindow.label}
-                          label="latency"
+                          fill
+                          label="request rate"
                         />
-                        <div className="flex flex-wrap items-center gap-4 pl-[72px] text-2xs text-muted-foreground">
-                          <span className="inline-flex items-center gap-1.5">
-                            <span className="size-2 rounded-full bg-destructive" />
-                            p99{" "}
-                            <span className="font-mono text-foreground">
-                              {reading(metrics, "serving.latency_p99")}
-                            </span>
-                          </span>
-                          <span className="inline-flex items-center gap-1.5">
-                            <span className="size-2 rounded-full bg-amber-500" />
-                            p95{" "}
-                            <span className="font-mono text-foreground">
-                              {reading(metrics, "serving.latency_p95")}
-                            </span>
-                          </span>
-                          <span className="inline-flex items-center gap-1.5">
-                            <span className="size-2 rounded-full bg-primary" />
-                            p50{" "}
-                            <span className="font-mono text-foreground">
-                              {reading(metrics, "serving.latency_p50")}
-                            </span>
-                          </span>
-                        </div>
-                        <div className="border-t pt-3">
-                          <FieldGrid>
-                            <Field label="Time to first token (p50)">
-                              {reading(metrics, "serving.ttft_p50")}
-                            </Field>
-                            <Field label="Time to first token (p95)">
-                              {reading(metrics, "serving.ttft_p95")}
-                            </Field>
-                            <Field label="Requests in flight">
-                              {reading(metrics, "serving.requests_in_flight")}
-                            </Field>
-                            <Field label="Tokens/sec in · out">
-                              {reading(
-                                metrics,
-                                "serving.input_tokens_per_second"
-                              )}{" "}
-                              ·{" "}
-                              {reading(
-                                metrics,
-                                "serving.output_tokens_per_second"
-                              )}
-                            </Field>
-                          </FieldGrid>
-                        </div>
-                      </>
-                    ) : (
-                      <EmptyNote>nothing is measuring this endpoint</EmptyNote>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* Routing — real targets, weighted, with the deployment's
-                    observed state inlined. One card covers what traffic is sent
-                    where and how it is doing. */}
-                <Card className="gap-0 overflow-hidden p-0">
-                  <div className="border-b bg-muted/30 px-4 py-3">
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-sm">Routing</CardTitle>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="font-mono text-2xs">
-                          {endpoint.routing_strategy}
-                        </Badge>
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label="Edit routing"
-                          onClick={() => setEditing(true)}
-                        >
-                          <IconPencil />
-                        </Button>
-                      </div>
-                    </div>
-                    <p className="mt-1 text-2xs text-muted-foreground">
-                      How traffic is split across backing deployments
-                    </p>
-                  </div>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Deployment</TableHead>
-                        <TableHead>Role</TableHead>
-                        <TableHead>Weight</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Replicas</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {endpoint.targets.map((target) => {
-                        const { deployment, region } =
-                          resolved.get(target.deployment_id) ?? {}
-                        const rollup = deployment?.replicas
-                        const totalWeight = endpoint.targets.reduce(
-                          (s, t) => s + (t.enabled ? t.weight : 0),
-                          0
-                        )
-                        const weightPct =
-                          totalWeight > 0 && target.enabled
-                            ? Math.round((target.weight / totalWeight) * 100)
-                            : 0
-                        return (
-                          <TableRow key={target.deployment_id}>
-                            <TableCell className="py-3.5">
-                              <Link
-                                to="/deployments/$deploymentId"
-                                params={{
-                                  deploymentId: target.deployment_id,
-                                }}
-                                className="group inline-flex flex-col gap-0.5"
-                              >
-                                <span className="inline-flex items-center gap-1 font-mono text-xs group-hover:underline">
-                                  {deployment?.name ??
-                                    shortenId(target.deployment_id)}
-                                  <IconArrowUpRight className="size-3 text-muted-foreground" />
-                                </span>
-                                {region && (
-                                  <span className="font-mono text-2xs text-muted-foreground">
-                                    {region}
-                                  </span>
-                                )}
-                              </Link>
-                            </TableCell>
-                            <TableCell className="py-3.5">
-                              <Badge
-                                variant={
-                                  target.role === "primary"
-                                    ? "default"
-                                    : "secondary"
-                                }
-                                className="font-mono text-2xs"
-                              >
-                                {target.role}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="py-3.5">
-                              <div className="flex items-center gap-2">
-                                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-secondary">
-                                  <div
-                                    className="h-full rounded-full bg-primary"
-                                    style={{ width: `${weightPct}%` }}
-                                  />
-                                </div>
-                                <span className="font-mono text-2xs text-muted-foreground tabular-nums">
-                                  {weightPct}%
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="py-3.5">
-                              <StatusLabel
-                                tone={
-                                  !target.enabled
-                                    ? "neutral"
-                                    : rollup != null &&
-                                        rollup.ready >= rollup.total &&
-                                        rollup.total > 0
-                                      ? "ok"
-                                      : "warn"
-                                }
-                              >
-                                {!target.enabled
-                                  ? "Disabled"
-                                  : (deployment?.status?.phase ??
-                                    deployment?.admission_phase ??
-                                    "Pending")}
-                              </StatusLabel>
-                            </TableCell>
-                            <TableCell className="py-3.5">
-                              {rollup != null ? (
-                                <ReplicaBar
-                                  ready={rollup.ready}
-                                  total={rollup.total}
-                                />
-                              ) : (
-                                <span className="text-muted-foreground/40">
-                                  —
-                                </span>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                      {endpoint.targets.length === 0 && (
-                        <TableRow>
-                          <TableCell
-                            colSpan={5}
-                            className="py-10 text-center text-sm text-muted-foreground"
-                          >
-                            No targets — this endpoint routes nowhere.
-                          </TableCell>
-                        </TableRow>
+                      ) : (
+                        <EmptyNote>nothing is measuring this endpoint</EmptyNote>
                       )}
-                    </TableBody>
-                  </Table>
-                </Card>
-              </div>
+                    </CardContent>
+                  </Card>
 
-              <div className="space-y-4">
-                <AvailabilityCard
-                  windowLabel={chartWindow.label}
-                  loading={live.isLoading}
-                  percent={availableNow?.value ?? null}
-                  historyLoading={fortnight.isLoading}
-                  history={availableFortnight?.value ?? null}
-                  days={days}
-                />
+                  {/* Latency — the gateway's percentiles, which include the hop
+                      and every request that failed before an engine saw it. Not
+                      the same measurement as a deployment's
+                      `inference.latency`, and the two disagreeing is not a
+                      fault. */}
+                  <Card>
+                    <CardHeader className="flex-row items-start justify-between gap-2 pb-2">
+                      <div>
+                        <CardTitle className="text-sm">Latency</CardTitle>
+                        <p className="text-2xs text-muted-foreground">
+                          End-to-end percentiles, hop and queue included
+                        </p>
+                      </div>
+                      <span className="font-mono text-2xs text-muted-foreground/60">
+                        {chartWindow.label}
+                      </span>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {live.isLoading ? (
+                        <Skeleton className="h-24" />
+                      ) : metrics ? (
+                        <>
+                          <Chart
+                            data={metrics}
+                            curves={[
+                              { metric: "serving.latency_p99", tone: "danger" },
+                              { metric: "serving.latency_p95", tone: "warn" },
+                              { metric: "serving.latency_p50", tone: "primary" },
+                            ]}
+                            spanLabel={chartWindow.label}
+                            label="latency"
+                          />
+                          <div className="flex flex-wrap items-center gap-4 pl-[72px] text-2xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="size-2 rounded-full bg-destructive" />
+                              p99{" "}
+                              <span className="font-mono text-foreground">
+                                {reading(metrics, "serving.latency_p99")}
+                              </span>
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="size-2 rounded-full bg-amber-500" />
+                              p95{" "}
+                              <span className="font-mono text-foreground">
+                                {reading(metrics, "serving.latency_p95")}
+                              </span>
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <span className="size-2 rounded-full bg-primary" />
+                              p50{" "}
+                              <span className="font-mono text-foreground">
+                                {reading(metrics, "serving.latency_p50")}
+                              </span>
+                            </span>
+                          </div>
+                          <div className="border-t pt-3">
+                            <FieldGrid>
+                              <Field label="Time to first token (p50)">
+                                {reading(metrics, "serving.ttft_p50")}
+                              </Field>
+                              <Field label="Time to first token (p95)">
+                                {reading(metrics, "serving.ttft_p95")}
+                              </Field>
+                              <Field label="Requests in flight">
+                                {reading(metrics, "serving.requests_in_flight")}
+                              </Field>
+                              <Field label="Tokens/sec in · out">
+                                {reading(
+                                  metrics,
+                                  "serving.input_tokens_per_second"
+                                )}{" "}
+                                ·{" "}
+                                {reading(
+                                  metrics,
+                                  "serving.output_tokens_per_second"
+                                )}
+                              </Field>
+                            </FieldGrid>
+                          </div>
+                        </>
+                      ) : (
+                        <EmptyNote>nothing is measuring this endpoint</EmptyNote>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
 
-                {/* Activity — the event log, filtered by this endpoint. The
-                    rows are its targets' deployments and their replicas: an
-                    endpoint is a name and a weighting, and everything that can
-                    go wrong with it goes wrong behind it. */}
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Activity</CardTitle>
-                    <p className="text-2xs text-muted-foreground">
-                      Recorded against the deployments this name routes to
-                    </p>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    {events.error ? (
-                      <p className="font-mono text-2xs text-destructive">
-                        {formatError(events.error, "Could not read the log")}
-                      </p>
-                    ) : (
-                      <DeploymentTimeline
-                        events={events.items}
-                        loading={events.isLoading}
-                        empty={
-                          endpoint.targets.length === 0
-                            ? "This endpoint routes nowhere, so nothing can be recorded against it."
-                            : "Nothing has been recorded against this endpoint's targets yet."
-                        }
-                      />
-                    )}
-                    {events.hasNextPage && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full"
-                        disabled={events.isFetchingNextPage}
-                        onClick={() => events.fetchNextPage()}
-                      >
-                        {events.isFetchingNextPage ? "Loading…" : "Load more"}
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
+                <div className="space-y-4">
+                  <AvailabilityCard
+                    windowLabel={chartWindow.label}
+                    loading={live.isLoading}
+                    percent={availableNow?.value ?? null}
+                    historyLoading={fortnight.isLoading}
+                    history={availableFortnight?.value ?? null}
+                    days={days}
+                  />
+                </div>
               </div>
-            </div>
-          </>
-        )}
-      </div>
+            </TabsContent>
+
+          </div>
+        </Tabs>
+      )}
     </div>
+  )
+}
+
+/** One tab in the underline list, with its icon. */
+function ViewTab({
+  value,
+  icon: Icon,
+  children,
+}: React.PropsWithChildren<{
+  value: string
+  icon: typeof IconApi
+}>) {
+  return (
+    <TabsTrigger value={value}>
+      <Icon />
+      {children}
+    </TabsTrigger>
   )
 }
