@@ -1953,6 +1953,7 @@ func omniArgs(in Inputs, opts Options, stage bool) ([]string, error) {
 	for key, value := range in.Deployment.Serving.EngineArgs {
 		derived[strings.TrimPrefix(key, "--")] = value
 	}
+	withoutContentLogging(derived)
 	keys := make([]string, 0, len(derived))
 	for key := range derived {
 		keys = append(keys, key)
@@ -2246,6 +2247,8 @@ func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 		}
 	}
 
+	withoutContentLogging(derived)
+
 	keys := make([]string, 0, len(derived))
 	for key := range derived {
 		keys = append(keys, key)
@@ -2277,6 +2280,25 @@ func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 		args = append(args, "--no-enable-prefix-caching")
 	}
 	return args, nil
+}
+
+// contentLoggingFlags are the engine flags that write a request's prompt or its completion to the
+// worker's log: vLLM's `--enable-log-requests` and `--enable-log-outputs`, and SGLang's
+// `--log-requests` and its level.
+//
+// Zero retention of request content is a promise made about the whole serving path, and a worker's
+// stdout is collected, shipped and kept by whatever the cluster's log pipeline is — with a retention
+// and an audience nobody agreed to for a caller's prompt. Both engines default these off, so the
+// only way one reaches a command line is engine_args, which is the escape hatch and wins over
+// everything else here. This is the one thing it does not win over: the plane refuses these keys on
+// a workload, and this removes them again for any row written before it did.
+var contentLoggingFlags = []string{"enable-log-requests", "enable-log-outputs", "log-requests", "log-requests-level"}
+
+// withoutContentLogging deletes every content-logging flag from an assembled argument map.
+func withoutContentLogging(derived map[string]string) {
+	for _, flag := range contentLoggingFlags {
+		delete(derived, flag)
+	}
 }
 
 // servedModelName is the model id an API client sends, as the plane resolved it.
