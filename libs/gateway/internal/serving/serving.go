@@ -80,6 +80,11 @@ type Config struct {
 	// Zone says which listener this handler serves. Defaults to ZoneInternal,
 	// which is every listener that exists today.
 	Zone Zone
+	// LogUpstreamBodies writes a discarded upstream error body to the log
+	// whole. Off by default and off in production: an engine's error can quote
+	// the request it refused, and a caller's content does not belong in a log.
+	// See logUpstreamError.
+	LogUpstreamBodies bool
 }
 
 // New builds the gateway handler.
@@ -118,7 +123,11 @@ func New(cfg Config) http.Handler {
 	// is the tenant and key stages inside withRouting. Neither is a mux-level
 	// wrapper any more, which is what a shared secret in front of every zone
 	// alike could never have been.
-	mux.Handle("/", withRouting(cfg.Router, cfg.Tenants, cfg.Zone))
+	var routed http.Handler = withRouting(cfg.Router, cfg.Tenants, cfg.Zone)
+	if cfg.LogUpstreamBodies {
+		routed = withUpstreamBodiesLogged(routed)
+	}
+	mux.Handle("/", routed)
 
 	return observed(cfg.Metrics, cfg.Probes, mux)
 }

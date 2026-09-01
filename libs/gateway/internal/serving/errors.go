@@ -16,14 +16,15 @@ import (
 const (
 	maxStopSequences = 4
 	// maxLoggedFailureLen and maxLoggedRefusalLen bound how much of a discarded
-	// upstream error body reaches the log. The body never reaches a caller, so
-	// this is the only place its detail survives.
+	// upstream error body is read. What is read is consulted for the caller's
+	// message and summarised on the log line; it reaches the log whole only
+	// under -log-upstream-bodies (see logUpstreamError).
 	//
-	// Two caps and two levels, because the two classes are produced by different
-	// things at different rates. A 5xx is rare and ours to fix, and a stack trace
-	// is the whole value of the line. A 4xx is a caller's, arrives as fast as a
-	// caller can loop, and one bad client must not be able to fill the log with
-	// an engine's validation prose.
+	// Two caps, because the two classes are produced by different things at
+	// different rates. A 5xx is rare and ours to fix, and when bodies are being
+	// logged a stack trace is the whole value of the line. A 4xx is a caller's,
+	// arrives as fast as a caller can loop, and one bad client must not be able
+	// to fill a debugging log with an engine's validation prose.
 	maxLoggedFailureLen = 8 << 10
 	maxLoggedRefusalLen = 1 << 10
 	// maxNamedFields bounds how many of the caller's own field names one
@@ -264,7 +265,8 @@ func knownRefusalIn(detail string) (string, bool) {
 // content ours: the message, the type and the code were still the engine's, an
 // oversized body was streamed through untouched, and a body that already had an
 // `error` key passed unread. What survives of the engine's body is its message,
-// sanitised and capped (see upstreamFailures); the full detail is logged here.
+// sanitised and capped (see upstreamFailures); the log gets a content-free
+// summary of it (see logUpstreamError).
 //
 // A response that is not an error is left alone, which is every response on the
 // hot path. Nothing here runs for a 200.
@@ -339,24 +341,36 @@ func readUpstreamError(resp *http.Response) (string, error) {
 	if resp.Body == nil {
 		return "", nil
 	}
-	limit := int64(maxLoggedRefusalLen)
-	if resp.StatusCode >= http.StatusInternalServerError {
-		limit = maxLoggedFailureLen
-	}
-	detail, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	detail, err := io.ReadAll(io.LimitReader(resp.Body, int64(readLimit(resp.StatusCode))))
 	_ = resp.Body.Close()
 	return string(detail), err
 }
 
-// logUpstreamError records the discarded body at the level its class deserves.
-// The read and the log are two calls so that the same bytes serve both.
+// logUpstreamError records that an upstream refused or failed, without what it
+// said.
+//
+// The body is not logged by default, because it is not ours to keep. An engine's
+// validation message quotes the input it rejected — a prompt's opening words, a
+// field value, a tool argument — and a 5xx trace can carry the request it was
+// handling. A log line has a retention and an audience nobody agreed to for a
+// caller's content, so the line carries a bounded, content-free summary: the
+// status, the engine's own error type and code when the body is JSON that names
+// them and they are short identifiers, and how much body there was. That is
+// enough to tell a validation storm from a crash loop and to grep for a request
+// id, which is what this line is read for.
+//
+// The full body is written only when the gateway runs with
+// -log-upstream-bodies, which is a debugging switch for a cluster nobody's
+// traffic is on. It is off in production and must stay off there.
 func logUpstreamError(resp *http.Response, detail string, readErr error) {
 	level := slog.LevelWarn
 	if resp.StatusCode >= http.StatusInternalServerError {
 		level = slog.LevelError
 	}
+	ctx := context.Background()
 	attrs := []any{"status", resp.StatusCode}
 	if resp.Request != nil {
+		ctx = resp.Request.Context()
 		attrs = append(attrs, "request_id", resp.Request.Header.Get(headerRequestID))
 		if resp.Request.URL != nil {
 			attrs = append(attrs, "path", resp.Request.URL.Path)
@@ -365,9 +379,112 @@ func logUpstreamError(resp *http.Response, detail string, readErr error) {
 	if readErr != nil {
 		attrs = append(attrs, "read_err", readErr)
 	}
-	attrs = append(attrs, "upstream_body", detail)
+	attrs = append(attrs, upstreamErrorSummary(detail, readLimit(resp.StatusCode))...)
+	if upstreamBodiesLogged(ctx) {
+		attrs = append(attrs, "upstream_body", detail)
+	}
 	slog.Log(context.Background(), level,
 		"gateway: upstream error, answering with this hop's own object", attrs...)
+}
+
+// readLimit is the cap readUpstreamError reads a body of this status under.
+func readLimit(status int) int {
+	if status >= http.StatusInternalServerError {
+		return maxLoggedFailureLen
+	}
+	return maxLoggedRefusalLen
+}
+
+// maxLoggedIdentifierLen bounds an engine's error type or code on the log line.
+const maxLoggedIdentifierLen = 64
+
+// upstreamErrorSummary is what the log may say about a discarded error body.
+//
+// Every value is either a number this hop measured or an identifier the engine
+// put in a `type` or `code` field, and an identifier is kept only when it looks
+// like one: short, and made of nothing but letters, digits and `_ . -`. A
+// `type` an engine filled with prose — or with the caller's own text — fails
+// that and is dropped rather than truncated, because a truncated sentence is
+// still somebody's sentence.
+func upstreamErrorSummary(detail string, limit int) []any {
+	attrs := []any{"body_bytes", len(detail), "body_truncated", len(detail) >= limit}
+	errType, errCode := upstreamErrorIdentity(detail)
+	if errType != "" {
+		attrs = append(attrs, "engine_error_type", errType)
+	}
+	if errCode != "" {
+		attrs = append(attrs, "engine_error_code", errCode)
+	}
+	return attrs
+}
+
+// upstreamErrorIdentity reads `type` and `code` out of the error shapes
+// upstreamMessage knows: flat, or nested under `error`.
+func upstreamErrorIdentity(detail string) (string, string) {
+	var body struct {
+		Type  json.RawMessage `json:"type"`
+		Code  json.RawMessage `json:"code"`
+		Error json.RawMessage `json:"error"`
+	}
+	if json.Unmarshal([]byte(detail), &body) != nil {
+		return "", ""
+	}
+	errType, errCode := identifier(body.Type), identifier(body.Code)
+	if len(body.Error) > 0 {
+		var nested struct {
+			Type json.RawMessage `json:"type"`
+			Code json.RawMessage `json:"code"`
+		}
+		if json.Unmarshal(body.Error, &nested) == nil {
+			if t := identifier(nested.Type); t != "" {
+				errType = t
+			}
+			if c := identifier(nested.Code); c != "" {
+				errCode = c
+			}
+		}
+	}
+	return errType, errCode
+}
+
+// identifier returns a JSON string or number as text when it is short and
+// made only of identifier characters, and "" otherwise.
+func identifier(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		var number json.Number
+		if json.Unmarshal(raw, &number) != nil {
+			return ""
+		}
+		value = number.String()
+	}
+	if value == "" || len(value) > maxLoggedIdentifierLen {
+		return ""
+	}
+	for i := 0; i < len(value); i++ {
+		if !isNameByte(value, i) && value[i] != '.' && value[i] != '-' {
+			return ""
+		}
+	}
+	return value
+}
+
+// upstreamBodiesKey marks a request whose handler was built with
+// Config.LogUpstreamBodies.
+type upstreamBodiesKey struct{}
+
+func withUpstreamBodiesLogged(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), upstreamBodiesKey{}, true)))
+	})
+}
+
+func upstreamBodiesLogged(ctx context.Context) bool {
+	on, _ := ctx.Value(upstreamBodiesKey{}).(bool)
+	return on
 }
 
 // callerFieldsNamedIn is the fallback for a 4xx whose body has no JSON message
@@ -391,8 +508,8 @@ func logUpstreamError(resp *http.Response, detail string, readErr error) {
 //
 // The cost is honest and stated: an engine that names only its own type, as
 // serde does for an untagged enum, contributes nothing, and the caller gets the
-// generic sentence. There is nothing in such a message that is ours to say. The
-// full text is in the log at warn, capped, which is the one place it is wanted.
+// generic sentence. There is nothing in such a message that is ours to say, and
+// it is not kept in the log either (see logUpstreamError).
 func callerFieldsNamedIn(detail string, callerBody []byte) []string {
 	if detail == "" || len(callerBody) == 0 {
 		return nil

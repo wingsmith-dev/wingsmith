@@ -46,6 +46,7 @@ func main() {
 	gatewayID := flag.String("gateway-id", "", "this replica's stable identity, reported to dialling agents; empty takes the hostname (HANGAR_GATEWAY_ID env fallback)")
 	headerTimeout := flag.Duration("response-header-timeout", 0, "how long a cluster may hold a request without sending a response header, zero for the built-in default (HANGAR_RESPONSE_HEADER_TIMEOUT env fallback)")
 	replicas := flag.Int("gateways", 0, "how many gateway replicas are running, reported to dialling agents so they know how many tunnels to hold; must match the manifest's replica count (HANGAR_GATEWAY_REPLICAS env fallback)")
+	logUpstreamBodies := flag.Bool("log-upstream-bodies", false, "write discarded upstream error bodies to the log whole; they can quote the caller's request, so this is for debugging a cluster carrying no customer traffic and is off in production (HANGAR_GATEWAY_LOG_UPSTREAM_BODIES=true env fallback)")
 	flag.Parse()
 
 	if *planeURL == "" {
@@ -90,6 +91,12 @@ func main() {
 	}
 	if *replicas == 0 {
 		*replicas = envInt("HANGAR_GATEWAY_REPLICAS")
+	}
+	if !*logUpstreamBodies {
+		*logUpstreamBodies = envBool("HANGAR_GATEWAY_LOG_UPSTREAM_BODIES")
+	}
+	if *logUpstreamBodies {
+		slog.Warn("gateway: logging upstream error bodies whole; they can carry request content, never run this with customer traffic")
 	}
 	// The same variable name the agent reads, and it has to stay that way. Both
 	// ends of the tunnel arm a response-header timer from this number and only
@@ -215,6 +222,8 @@ func main() {
 			Probes:  serving.NewProbeMarker(*probeToken),
 			Ready:   readiness,
 			Tenants: tenants,
+			// Off unless asked for: zero retention of request content.
+			LogUpstreamBodies: *logUpstreamBodies,
 			// Zone is left at its default, ZoneInternal: this is the
 			// ClusterIP port with no ingress, the network boundary that
 			// used to be HANGAR_GATEWAY_TOKEN (docs/plans/17). Acme's
@@ -385,6 +394,21 @@ func envDuration(key string) time.Duration {
 		return 0
 	}
 	return d
+}
+
+// envBool reads a boolean from the environment. Anything strconv.ParseBool
+// cannot read is false, which for the one switch read this way is the safe side.
+func envBool(key string) bool {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return false
+	}
+	on, err := strconv.ParseBool(raw)
+	if err != nil {
+		slog.Warn("gateway: ignoring unreadable environment value", "key", key, "value", raw)
+		return false
+	}
+	return on
 }
 
 // serveTunnels binds the tunnel port and accepts dials until shutdown.
