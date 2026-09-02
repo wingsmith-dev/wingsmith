@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -2294,10 +2295,15 @@ func engineArgs(in Inputs, opts Options, role workerRole) ([]string, error) {
 // a workload, and this removes them again for any row written before it did.
 var contentLoggingFlags = []string{"enable-log-requests", "enable-log-outputs", "log-requests", "log-requests-level"}
 
-// withoutContentLogging deletes every content-logging flag from an assembled argument map.
+// withoutContentLogging deletes every content-logging flag from an assembled argument map, under
+// any spelling the engine's parser would accept: leading dashes and `_` for `-` both name the same
+// flag to vLLM and SGLang.
 func withoutContentLogging(derived map[string]string) {
-	for _, flag := range contentLoggingFlags {
-		delete(derived, flag)
+	for key := range derived {
+		normal := strings.ReplaceAll(strings.TrimLeft(key, "-"), "_", "-")
+		if slices.Contains(contentLoggingFlags, normal) {
+			delete(derived, key)
+		}
 	}
 }
 
