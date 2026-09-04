@@ -12,6 +12,7 @@ from app.db.models import Artifact
 from app.db.models import Workload
 from app.db.models import WorkloadRole
 from app.integrations import dynamo_recipes
+from app.core.exceptions import Invalid
 
 
 SERVED_MODEL_ARGS = ("served-model-name", "served_model_name")
@@ -275,6 +276,34 @@ string on both roles — the transfer mechanism is a property of the topology, n
 — and `disaggregation-mode` is the role itself, so a value for either arriving from a role's
 own arguments is a second answer to a question already settled.
 """
+
+CONTENT_LOGGING_FLAGS = frozenset({"enable-log-requests", "enable-log-outputs", "log-requests", "log-requests-level"})
+"""Engine flags that write a request's prompt or its completion to the worker's log.
+
+Refused on every workload, at the deployment level and on a role, because zero
+retention of request content is a promise about the whole serving path and a
+worker's stdout is kept by whatever log pipeline the cluster runs. vLLM and
+SGLang both default these off, so `engine_args` is the only way one arrives. The
+operator removes them again at render (`contentLoggingFlags` in
+`libs/operator/internal/render/dynamo.go`) for any row written before this check.
+"""
+
+
+def check_retention(engine_args: dict | None, where: str = "the workload") -> None:
+    """Refuses an `engine_args` map that turns on request-content logging.
+
+    Both engines' parsers treat `_` and `-` in a flag name as the same character, so
+    `enable_log_requests` is refused as well as `--enable-log-requests`.
+    """
+    for key in engine_args or {}:
+        flag = flag_name(str(key)).replace("_", "-")
+        if flag in CONTENT_LOGGING_FLAGS:
+            raise Invalid(
+                f"{where} may not set --{flag}: it writes request content to the worker's log, "
+                "and request content is never retained",
+                {"flag": flag},
+            )
+
 
 DIGEST_PREFIX = "svg_"
 

@@ -52,6 +52,7 @@ from app.core.serving import is_omni
 from app.core.serving import flag_name
 from app.core.serving import served_model
 from app.core.serving import serving_digest
+from app.core.serving import check_retention
 from app.core.serving import declared_router
 from app.core.serving import recipe_engine_args
 from app.core.exceptions import Invalid
@@ -980,6 +981,9 @@ def check_serving_request(data: WorkloadServingRequest, artifact: Artifact) -> N
         data.parallelism.tensor,
     )
     check_topology(data.topology.serving_topology, declared_roles(data.topology), data.engine)
+    check_retention(data.engine_args)
+    for role in declared_roles(data.topology):
+        check_retention(role.engine_args, f"the {role.role} role")
 
 
 def topology_view(workload: Workload, roles: Sequence[WorkloadRole]) -> TopologyViewSchema:
