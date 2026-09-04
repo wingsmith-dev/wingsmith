@@ -1311,6 +1311,33 @@ def test_the_topology_is_refused_as_part_of_the_whole_serving_request():
     assert check_serving_request(good, artifact) is None
 
 
+@pytest.mark.parametrize(
+    "flag", ["enable-log-requests", "--enable-log-outputs", "enable_log_requests", "log-requests", "log-requests-level"]
+)
+def test_an_engine_flag_that_logs_request_content_is_refused(flag):
+    """Zero retention: no workload may turn on the engine's prompt or completion logging."""
+    with pytest.raises(Invalid) as refused:
+        check_serving_request(a_request(engine_args={flag: ""}), an_artifact())
+    assert refused.value.detail["flag"] == flag.lstrip("-").replace("_", "-")
+
+
+def test_a_role_cannot_turn_on_request_content_logging_either():
+    request = a_request()
+    request.topology = TopologySchema(
+        serving_topology="disaggregated",
+        roles=[
+            RoleSchema(role="prefill", weight=1),
+            RoleSchema(role="decode", weight=2, engine_args={"enable-log-outputs": ""}),
+        ],
+    )
+    with pytest.raises(Invalid):
+        check_serving_request(request, an_artifact())
+
+
+def test_the_explicit_off_spelling_of_request_logging_is_allowed():
+    assert check_serving_request(a_request(engine_args={"no-enable-log-requests": ""}), an_artifact()) is None
+
+
 def test_an_aggregated_request_still_validates_with_no_topology_named():
     assert check_serving_request(a_request(), an_artifact()) is None
 
