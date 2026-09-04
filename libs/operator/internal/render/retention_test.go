@@ -27,6 +27,7 @@ func contentLogging() map[string]string {
 		"enable-log-outputs":    "",
 		"log-requests":          "",
 		"log-requests-level":    "2",
+		"--enable_log_outputs":  "",
 		"max-num-seqs":          "64",
 	}
 }
@@ -34,8 +35,10 @@ func contentLogging() map[string]string {
 func assertNoContentLogging(t *testing.T, rendered string) {
 	t.Helper()
 	for _, flag := range contentLoggingFlags {
-		if strings.Contains(rendered, `"--`+flag+`"`) {
-			t.Errorf("--%s reached a worker's command line", flag)
+		for _, spelling := range []string{flag, strings.ReplaceAll(flag, "-", "_")} {
+			if strings.Contains(rendered, `"--`+spelling+`"`) {
+				t.Errorf("--%s reached a worker's command line", spelling)
+			}
 		}
 	}
 	if !strings.Contains(rendered, `"--max-num-seqs"`) {
