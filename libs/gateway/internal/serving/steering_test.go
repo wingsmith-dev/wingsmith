@@ -68,12 +68,12 @@ func TestACallersSteeringHeadersNeverReachTheCluster(t *testing.T) {
 		"X-Session-Id":                     {"opencode-1"},
 		"x-dynamo-prefill-dp-rank":         {"1"},
 		"X_dynamo_request_priority":        {"100"},
+		"X-Tenant-Id":                      {"acme"},
 	}
 	kept := http.Header{
 		"User-Agent":       {"OpenAI/Python 1.99.0"},
 		"X-Stainless-Lang": {"python"},
 		"X-Request-Id":     {"trace-7f3c"},
-		"X-Tenant-Id":      {"acme"},
 	}
 	sent := http.Header{}
 	for name, values := range steering {
@@ -220,7 +220,7 @@ func TestSteeringHeadersAreMatchedWhateverTheirSpelling(t *testing.T) {
 		"X-Codex-Turn-Metadata":      true,
 		"X-Dynamo":                   false,
 		"X-Request-Id":               false,
-		"X-Tenant-Id":                false,
+		"X-Tenant-Id":                true,
 		"X-Thread-Id":                false,
 		"Authorization":              false,
 		"X-Hangar-Origin":            false,

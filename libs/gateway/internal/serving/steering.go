@@ -21,6 +21,11 @@ const steeringHeaderPrefix = "x-dynamo-"
 // turned on. Affinity is off on the fleet today, which is exactly why these cannot be
 // left to pass: they would start pinning workers the day it is enabled, with nothing
 // in this repository changing.
+//
+// `x-tenant-id` is the odd one: Dynamo (since 1.4) reads it as the request's
+// `cache_salt` and lets it override the body's. Passed through, it would let a caller
+// replace the tenant salt this hop writes with one naming another tenant's cache, or
+// with a constant that puts every image back on one identity.
 var steeringHeaders = map[string]bool{
 	"x-worker-instance-id":          true,
 	"x-prefill-instance-id":         true,
@@ -35,6 +40,7 @@ var steeringHeaders = map[string]bool{
 	"x-claude-code-parent-agent-id": true,
 	"x-codex-parent-thread-id":      true,
 	"x-codex-turn-metadata":         true,
+	"x-tenant-id":                   true,
 }
 
 // steeringHints are the `nvext` fields Dynamo turns into a routing decision: the body
