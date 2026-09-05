@@ -67,7 +67,7 @@ var saltParts = map[string]string{
 // question means a different salt and no false match. What it costs is the
 // image prefix a second question about one image used to reuse, which is the
 // reuse that was returning the first question's answer.
-func promptIdentity(fields map[string]json.RawMessage, callerSalt string) (string, bool) {
+func promptIdentity(fields map[string]json.RawMessage) (string, bool) {
 	messages, readable := jsonArray(fields["messages"])
 	if !readable {
 		return "", false
@@ -121,19 +121,10 @@ func promptIdentity(fields map[string]json.RawMessage, callerSalt string) (strin
 			carried = true
 		}
 	}
-	// A request carrying no media keeps the text path it has always had: the
-	// engine never dropped an identity it was not given.
+	// A request carrying no media has no identity here: the engine never
+	// dropped one it was not given, and the tenant scope is what separates it.
 	if !carried {
 		return "", false
-	}
-
-	// A caller's own salt is folded in rather than honoured as it stands. A
-	// caller sending one constant salt across different images would otherwise
-	// reintroduce exactly the collision this closes, and a caller isolating
-	// themselves still gets that isolation from the fold.
-	if callerSalt != "" {
-		writeSegment(digest, "caller")
-		writeSegment(digest, callerSalt)
 	}
 	return hex.EncodeToString(digest.Sum(nil)), true
 }
@@ -168,19 +159,67 @@ func writeSegment(digest hash.Hash, value string) {
 	digest.Write([]byte(value))
 }
 
-// withMediaCacheSalt returns the body with `nvext.cache_salt` set to the
-// request's prompt identity, and whether it wrote one.
+// cacheScope is whose prefix cache a request may reuse.
 //
-// A request carrying no media is returned as the exact bytes that arrived, so
-// the text path pays one walk and no re-encoding. The `nvext` object is created
-// when absent, which the policy machinery cannot do — `containersTo` reports
-// false when the parent object is missing and `fill` never creates one.
+// A prefix cache shared between tenants on one deployment is a side channel: how
+// fast a prompt's first token comes back says whether somebody else sent the same
+// prefix recently, and a system prompt or a document is exactly the prefix worth
+// probing for. Dynamo folds `cache_salt` into every block hash (and, since 1.4,
+// into the KV router's overlap score), so a salt per tenant gives each tenant its
+// own cache on hardware they share, and keeps every hit inside one tenant.
+//
+// Tenant is the plane's tenant id: the one the public zone resolved from the host,
+// or on the internal zone the tenant that owns the endpoint. Caller is the
+// internal caller's own narrower scope, from `X-Hangar-Cache-Scope` — an internal
+// platform serving many customers through one tenant names the customer there —
+// and is honoured only on the internal zone, whose callers this fleet runs.
+type cacheScope struct {
+	Tenant string
+	Caller string
+}
+
+func (s cacheScope) empty() bool {
+	return s.Tenant == "" && s.Caller == ""
+}
+
+// cacheScopeHeader is the internal zone's narrower cache scope. It is read and
+// removed by stageCacheSalt and never reaches a cluster.
+const cacheScopeHeader = "X-Hangar-Cache-Scope"
+
+// cacheSaltPaths are the generation paths whose engine keeps a prefix cache and
+// whose request Dynamo reads `nvext.cache_salt` from. Embeddings, images and
+// video are left alone: no prefix is reused across their requests, and a field
+// written into a request nobody reads it from buys nothing.
+var cacheSaltPaths = map[string]bool{
+	"/v1/chat/completions": true,
+	"/v1/completions":      true,
+	"/v1/responses":        true,
+	"/v1/messages":         true,
+}
+
+// withCacheSalt returns the body with `nvext.cache_salt` set to the request's
+// cache identity, and whether it wrote one.
+//
+// The identity is the tenant scope, then the prompt identity when the request
+// carries media (see promptIdentity), then any salt the caller sent. A request
+// with neither a scope nor media is returned as the exact bytes that arrived.
+// The `nvext` object is created when absent, which the policy machinery cannot
+// do — `containersTo` reports false when the parent object is missing and `fill`
+// never creates one.
+//
+// A caller's own salt is folded in rather than honoured as it stands. Honoured,
+// a caller sending one constant salt across different images would reintroduce
+// the collision the prompt identity closes, and a caller naming another
+// tenant's salt would share that tenant's cache; folded, a caller isolating
+// itself still gets that isolation and can never widen it.
 //
 // It must run after `withoutSteeringHints`, which removes the routing fields a
-// caller put in `nvext`. `cache_salt` is deliberately not one of those: it
-// narrows prefix sharing for the request that carries it and nobody else, which
-// is a caller isolating itself rather than steering anyone.
-func withMediaCacheSalt(body []byte) ([]byte, bool, error) {
+// caller put in `nvext`. `cache_salt` is deliberately not one of those.
+func withCacheSalt(body []byte, scope cacheScope) ([]byte, bool, error) {
+	media := hasMediaPart(body)
+	if scope.empty() && !media {
+		return body, false, nil
+	}
 	fields, _, ok := topLevelFields(body)
 	if !ok {
 		return body, false, nil
@@ -195,17 +234,36 @@ func withMediaCacheSalt(body []byte) ([]byte, bool, error) {
 		}
 	}
 
-	var callerSalt string
-	if raw, present := hints["cache_salt"]; present {
-		callerSalt, _ = jsonString(raw)
+	var prompt string
+	var carried bool
+	if media {
+		prompt, carried = promptIdentity(fields)
 	}
-
-	salt, carried := promptIdentity(fields, callerSalt)
-	if !carried {
+	if scope.empty() && !carried {
 		return body, false, nil
 	}
 
-	encodedSalt, err := json.Marshal(salt)
+	digest := sha256.New()
+	if scope.Tenant != "" {
+		writeSegment(digest, "tenant")
+		writeSegment(digest, scope.Tenant)
+	}
+	if scope.Caller != "" {
+		writeSegment(digest, "scope")
+		writeSegment(digest, scope.Caller)
+	}
+	if carried {
+		writeSegment(digest, "prompt")
+		writeSegment(digest, prompt)
+	}
+	if raw, present := hints["cache_salt"]; present {
+		if callerSalt, _ := jsonString(raw); callerSalt != "" {
+			writeSegment(digest, "caller")
+			writeSegment(digest, callerSalt)
+		}
+	}
+
+	encodedSalt, err := json.Marshal(hex.EncodeToString(digest.Sum(nil)))
 	if err != nil {
 		return nil, false, err
 	}

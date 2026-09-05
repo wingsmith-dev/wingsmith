@@ -39,9 +39,9 @@ func mustJSON(t *testing.T, value string) string {
 // saltOf returns the cache_salt the gateway wrote, and whether it wrote one.
 func saltOf(t *testing.T, body string) (string, bool) {
 	t.Helper()
-	out, written, err := withMediaCacheSalt([]byte(body))
+	out, written, err := withCacheSalt([]byte(body), cacheScope{})
 	if err != nil {
-		t.Fatalf("withMediaCacheSalt: %v", err)
+		t.Fatalf("withCacheSalt: %v", err)
 	}
 	if !written {
 		return "", false
@@ -92,9 +92,9 @@ func TestTheSameImageKeepsTheReuseTheCacheExistsFor(t *testing.T) {
 // nothing and grows no nvext it did not have.
 func TestATextRequestIsForwardedAsTheBytesThatArrived(t *testing.T) {
 	body := `{"model":"chat","messages":[{"role":"user","content":"no media here"}]}`
-	out, written, err := withMediaCacheSalt([]byte(body))
+	out, written, err := withCacheSalt([]byte(body), cacheScope{})
 	if err != nil {
-		t.Fatalf("withMediaCacheSalt: %v", err)
+		t.Fatalf("withCacheSalt: %v", err)
 	}
 	if written {
 		t.Errorf("wrote a salt for a request carrying no media: %s", out)
@@ -150,9 +150,9 @@ func mustSalt(t *testing.T, body string) string {
 func TestTheRestOfNvextSurvivesTheSalt(t *testing.T) {
 	body := strings.TrimSuffix(imageBody(t, "pixels"), "}") +
 		`,"nvext":{"max_thinking_tokens":512}}`
-	out, written, err := withMediaCacheSalt([]byte(body))
+	out, written, err := withCacheSalt([]byte(body), cacheScope{})
 	if err != nil {
-		t.Fatalf("withMediaCacheSalt: %v", err)
+		t.Fatalf("withCacheSalt: %v", err)
 	}
 	if !written {
 		t.Fatal("no salt written for a request carrying an image")
@@ -234,9 +234,9 @@ func TestTheSaltIsNotTakenBackOutAsACallersHint(t *testing.T) {
 			t.Fatal("cache_salt is a steering hint; the salt would be scrubbed before it is sent")
 		}
 	}
-	salted, written, err := withMediaCacheSalt([]byte(imageBody(t, "pixels")))
+	salted, written, err := withCacheSalt([]byte(imageBody(t, "pixels")), cacheScope{})
 	if err != nil || !written {
-		t.Fatalf("withMediaCacheSalt: %v, written=%v", err, written)
+		t.Fatalf("withCacheSalt: %v, written=%v", err, written)
 	}
 	scrubbed, removed, err := withoutSteeringHints(salted)
 	if err != nil {

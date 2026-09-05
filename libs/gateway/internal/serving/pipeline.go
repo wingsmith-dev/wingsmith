@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
@@ -67,7 +68,7 @@ func routingStages(resolver Resolver, tenants Tenants, zone Zone) []stage {
 		stageCheckPolicy,
 		stageRewritePolicy,
 		stageMediaFacts,
-		stageMediaCacheSalt,
+		stageCacheSalt,
 		stagePickUpstream,
 		stageRewriteServedModel,
 		stageStripSteeringHeaders,
@@ -309,31 +310,56 @@ func stageRewritePolicy(w http.ResponseWriter, r *http.Request, req *requestStat
 	return r, true
 }
 
-// stageMediaCacheSalt puts back the prompt identity the serving runtime drops
-// on the way to a disaggregated decode worker, as the one field that survives
-// the handoff into its prefix-cache block hash. See `promptIdentity`.
+// stageCacheSalt writes the request's cache identity into `nvext.cache_salt`:
+// the tenant it belongs to, so no two tenants share a prefix cache, and the
+// prompt identity the serving runtime drops on the way to a disaggregated decode
+// worker when the request carries media. See `cacheScope` and `promptIdentity`.
 //
 // After the endpoint's terms rather than before them, so a rule that writes a
 // media part is inside the identity, and before `Pick` because the salt is a
 // property of the request and not of the cluster that takes it — the same
 // body has to hash the same way wherever it lands.
-func stageMediaCacheSalt(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
-	if !hasMediaPart(req.body) {
+func stageCacheSalt(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
+	scope := requestCacheScope(r, req)
+	r.Header.Del(cacheScopeHeader)
+	if req.isMultipart {
 		return r, true
 	}
-	salted, written, err := withMediaCacheSalt(req.body)
+	salted, written, err := withCacheSalt(req.body, scope)
 	if err != nil {
 		MarkOutcome(r, metrics.OutcomeInternalError)
-		slog.Error("gateway: could not derive the media cache salt",
+		slog.Error("gateway: could not derive the cache salt",
 			"model", req.envelope.Model, "err", err)
 		writeError(w, http.StatusInternalServerError, "routing_error", "Unable to route this request.")
 		return r, false
 	}
 	if written {
-		slog.Debug("gateway: wrote the media cache salt", "model", req.envelope.Model)
+		slog.Debug("gateway: wrote the cache salt", "model", req.envelope.Model)
 	}
 	req.body = salted
 	return r, true
+}
+
+// requestCacheScope is the tenant scope a request's prefix cache is keyed by, or
+// the empty scope where no tenant salt is written.
+//
+// Only a text endpoint on a generation path is scoped: those are the requests a
+// prefix cache serves, and the paths Dynamo reads the salt from. On the public
+// zone the tenant is the one the host resolved and `X-Hangar-Cache-Scope` is
+// ignored, because a public caller could name anything in it. On the internal
+// zone it is the endpoint's owner, narrowed by that header when the internal
+// caller sends one.
+func requestCacheScope(r *http.Request, req *requestState) cacheScope {
+	if !cacheSaltPaths[r.URL.Path] || routeModality(req.route) != modalityText {
+		return cacheScope{}
+	}
+	if req.zone == ZonePublic {
+		return cacheScope{Tenant: req.tenant.ID}
+	}
+	return cacheScope{
+		Tenant: req.route.TenantID,
+		Caller: strings.TrimSpace(r.Header.Get(cacheScopeHeader)),
+	}
 }
 
 // stagePickUpstream chooses which upstream behind the endpoint takes this
