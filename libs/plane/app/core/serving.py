@@ -305,6 +305,37 @@ def check_retention(engine_args: dict | None, where: str = "the workload") -> No
             )
 
 
+def check_overlay_retention(overlay: object) -> None:
+    """Refuses an overlay that writes a content-logging flag onto a container.
+
+    The overlay is merged over the rendered pod and graph after the operator has
+    assembled and filtered the engine's arguments, so a flag in a container's
+    `args` or `command` there is the one spelling the operator cannot take back
+    out. Every string in it is read as a possible flag, `--flag` and `--flag=value`
+    alike.
+    """
+    if isinstance(overlay, dict):
+        for value in overlay.values():
+            check_overlay_retention(value)
+        return
+    if isinstance(overlay, list | tuple):
+        for value in overlay:
+            check_overlay_retention(value)
+        return
+    if not isinstance(overlay, str):
+        return
+    for token in overlay.split():
+        if not token.startswith("-"):
+            continue
+        flag = flag_name(token.split("=", 1)[0]).replace("_", "-")
+        if flag in CONTENT_LOGGING_FLAGS:
+            raise Invalid(
+                f"the overlay may not set --{flag}: it writes request content to the worker's log, "
+                "and request content is never retained",
+                {"flag": flag},
+            )
+
+
 DIGEST_PREFIX = "svg_"
 
 DIGEST_FIELDS: tuple[tuple[str, str], ...] = (
