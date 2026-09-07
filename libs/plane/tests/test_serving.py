@@ -48,6 +48,7 @@ from app.modules.workloads.schemas import RoleSchema
 from app.modules.workloads.schemas import CacheSchema
 from app.modules.workloads.schemas import ShapeSchema
 from app.modules.workloads.schemas import RouterSchema
+from app.modules.workloads.schemas import OverlaySchema
 from app.modules.workloads.schemas import ServingSchema
 from app.modules.workloads.schemas import TopologySchema
 from app.modules.workloads.schemas import ReasoningSchema
@@ -1332,6 +1333,29 @@ def test_a_role_cannot_turn_on_request_content_logging_either():
     )
     with pytest.raises(Invalid):
         check_serving_request(request, an_artifact())
+
+
+@pytest.mark.parametrize(
+    "overlay",
+    [
+        OverlaySchema(pod_spec={"containers": [{"name": "main", "args": ["--enable-log-requests"]}]}),
+        OverlaySchema(
+            pod_spec={"containers": [{"name": "main", "command": ["sh", "-c", "vllm serve --enable-log-outputs"]}]}
+        ),
+        OverlaySchema(
+            dynamo={"spec": {"services": {"worker": {"extraPodSpec": {"args": ["--log-requests-level=2"]}}}}}
+        ),
+    ],
+)
+def test_an_overlay_cannot_turn_on_request_content_logging(overlay):
+    """The overlay merges after the operator filters engine args, so the plane is the only check on it."""
+    with pytest.raises(Invalid):
+        check_serving_request(a_request(overlay=overlay), an_artifact())
+
+
+def test_an_overlay_without_content_logging_is_untouched():
+    overlay = OverlaySchema(pod_spec={"containers": [{"name": "main", "args": ["--no-enable-log-requests", "-v"]}]})
+    assert check_serving_request(a_request(overlay=overlay), an_artifact()) is None
 
 
 def test_the_explicit_off_spelling_of_request_logging_is_allowed():
