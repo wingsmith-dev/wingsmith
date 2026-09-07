@@ -3,6 +3,7 @@ import datetime as dt
 from app.core.schemas import UNSET
 from app.core.schemas import Struct
 from app.core.schemas import UnsetType
+from app.modules.metrics.objectives import DEFAULT_AVAILABILITY_OBJECTIVE
 
 
 class QuotaUsageSchema(Struct):
@@ -164,7 +165,7 @@ class ServingQuotaCreateRequest(Struct):
     queue_timeout_ms: int | None = None
     limit_scope: str = "per_replica"
     success_rate_objective: float | None = None
-    availability_objective: str = "availability-2026.1"
+    availability_objective: str = DEFAULT_AVAILABILITY_OBJECTIVE
     objective_window_seconds: int = 600
     enforced: bool = False
 

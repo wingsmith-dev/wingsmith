@@ -16,6 +16,8 @@ from app.core.exceptions import NotFound
 from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
+from app.modules.metrics.objectives import AVAILABILITY_OBJECTIVES
+from app.modules.metrics.objectives import DEFAULT_AVAILABILITY_OBJECTIVE
 
 from .schemas import QuotaSchema
 from .schemas import QuotaUsageSchema
@@ -233,18 +235,6 @@ those two error directions is chosen rather than avoided.
 """
 
 ON_EXCEED = frozenset({"reject", "queue"})
-
-AVAILABILITY_OBJECTIVES = frozenset({"availability-2026.1"})
-"""The objective versions a commitment may name.
-
-TODO: read this from the metrics module's frozen objectives table once it lands.
-The entry, not the quota row, decides which outcomes sit in the numerator and the
-denominator; naming a version that does not exist is refused rather than
-defaulted, because silently substituting a different definition of failure under
-a commercial commitment is the failure this check exists for.
-"""
-
-DEFAULT_AVAILABILITY_OBJECTIVE = "availability-2026.1"
 
 DEFAULT_OUTPUT_LENGTH_PARAMS = ("max_completion_tokens", "max_tokens", "max_output_tokens")
 

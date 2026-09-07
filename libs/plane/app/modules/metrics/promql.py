@@ -31,6 +31,9 @@ from app.core.devices import table
 
 from .backend import Scope
 from .registry import Metric
+from .objectives import AVAILABILITY_2026_1
+from .objectives import AVAILABILITY_OBJECTIVES
+from .objectives import Objective
 
 
 logger = logging.getLogger(__name__)
@@ -136,17 +139,15 @@ LIVE = 'origin="live"'
 malformed requests at a live endpoint, so counting its probes would manufacture
 the availability breach they exist to detect."""
 
-FAILED = 'outcome=~"shed|no_upstream|upstream_error|upstream_timeout|internal_error"'
-"""The outcomes that are ours. Matched by name and never by status class.
+FAILED = AVAILABILITY_2026_1.failed_matcher
+"""The outcomes that are ours, matched by name and never by status class.
 
-`rate_limited` is out because a 429 issued to an identified caller over its own
-declared limit is the standard's carve-out, and `shed` — the same status code,
-issued by the gateway to protect itself — is in. Keying this off `status="429"`
-would turn every capacity incident into a clean bill of health. See
+Rendered from the frozen objectives table (`objectives.py`) rather than written
+here, so the number and the definition a quota names cannot drift apart. See
 `libs/gateway/internal/metrics/outcome.go`, which is where the set is closed.
 """
 
-COUNTED = 'outcome!="canceled"'
+COUNTED = AVAILABILITY_2026_1.counted_matcher
 """A caller that hung up took its own request away; charging it to the endpoint
 would make an availability number a function of client behaviour."""
 
@@ -174,7 +175,7 @@ def _gateway_gauge(series: str) -> Expression:
     return Expression((series,), f"sum({inner})", f"sum by ($BY) ({inner})")
 
 
-def _failure_ratio(group: str) -> str:
+def _failure_ratio(group: str, objective: Objective = AVAILABILITY_2026_1) -> str:
     """Failed requests over counted requests, as a percentage, per group or in total.
 
     Two different shapes of nothing meet in this one expression and a plain
@@ -198,8 +199,8 @@ def _failure_ratio(group: str) -> str:
     available and it is not 0% either.
     """
     aggregate = f"sum by ({group})" if group else "sum"
-    failed = f"{aggregate} (rate($SERIES{{{_gateway_where(FAILED)}}}[$WINDOW]))"
-    counted = f"{aggregate} (rate($SERIES{{{_gateway_where(COUNTED)}}}[$WINDOW]))"
+    failed = f"{aggregate} (rate($SERIES{{{_gateway_where(objective.failed_matcher)}}}[$WINDOW]))"
+    counted = f"{aggregate} (rate($SERIES{{{_gateway_where(objective.counted_matcher)}}}[$WINDOW]))"
     return f"({failed} or ({counted} * 0)) / ({counted} > 0) * 100"
 
 
@@ -288,12 +289,6 @@ DIALECT: dict[str, Expression] = {
     "serving.latency_p99": _gateway_quantile(GATEWAY_DURATION, "0.99"),
     "serving.ttft_p50": _gateway_quantile(GATEWAY_TTFT, "0.50"),
     "serving.ttft_p95": _gateway_quantile(GATEWAY_TTFT, "0.95"),
-    "serving.failure_ratio": Expression((GATEWAY_REQUESTS,), _failure_ratio(""), _failure_ratio("$BY")),
-    "serving.availability": Expression(
-        (GATEWAY_REQUESTS,),
-        f"100 - ({_failure_ratio('')})",
-        f"100 - ({_failure_ratio('$BY')})",
-    ),
     "serving.requests_in_flight": _gateway_gauge(GATEWAY_IN_FLIGHT),
     "serving.input_tokens_per_second": _gateway_rate(GATEWAY_TOKENS, INPUT),
     "serving.output_tokens_per_second": _gateway_rate(GATEWAY_TOKENS, 'direction="output"'),
@@ -303,6 +298,22 @@ DIALECT: dict[str, Expression] = {
 records all three from the upstream's own usage object, and cached input is a
 subset of input rather than a fourth kind of token — adding it double-counts the
 prompt."""
+
+for _objective in AVAILABILITY_OBJECTIVES.values():
+    DIALECT[_objective.failure_metric] = Expression(
+        (GATEWAY_REQUESTS,), _failure_ratio("", _objective), _failure_ratio("$BY", _objective)
+    )
+    DIALECT[_objective.availability_metric] = Expression(
+        (GATEWAY_REQUESTS,),
+        f"100 - ({_failure_ratio('', _objective)})",
+        f"100 - ({_failure_ratio('$BY', _objective)})",
+    )
+"""Each objective's failure and availability metrics, rendered from its own entry.
+
+Generated rather than written out so the outcome sets exist once: a hand-copied
+regex here is how the denominator drifts away from the definition a quota names,
+and a drifted denominator is a wrong availability number that renders perfectly.
+"""
 
 
 def is_quantile(name: str) -> bool:
