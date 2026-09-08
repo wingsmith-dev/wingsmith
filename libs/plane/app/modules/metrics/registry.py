@@ -156,6 +156,7 @@ SERVING_METRICS: tuple[Metric, ...] = (
     Metric("serving.latency_p99", "seconds", "serving", "Latency (p99)"),
     Metric("serving.ttft_p50", "seconds", "serving", "Time to first token (p50)"),
     Metric("serving.ttft_p95", "seconds", "serving", "Time to first token (p95)"),
+    Metric("serving.ttft_p99", "seconds", "serving", "Time to first token (p99)"),
     Metric("serving.failure_ratio", "percent", "serving", "Failed requests"),
     Metric("serving.availability", "percent", "serving", "Availability"),
     Metric("serving.requests_in_flight", "count", "serving", "Requests in flight", aggregate="sum"),

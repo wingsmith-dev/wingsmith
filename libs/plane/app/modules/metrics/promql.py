@@ -289,6 +289,7 @@ DIALECT: dict[str, Expression] = {
     "serving.latency_p99": _gateway_quantile(GATEWAY_DURATION, "0.99"),
     "serving.ttft_p50": _gateway_quantile(GATEWAY_TTFT, "0.50"),
     "serving.ttft_p95": _gateway_quantile(GATEWAY_TTFT, "0.95"),
+    "serving.ttft_p99": _gateway_quantile(GATEWAY_TTFT, "0.99"),
     "serving.requests_in_flight": _gateway_gauge(GATEWAY_IN_FLIGHT),
     "serving.input_tokens_per_second": _gateway_rate(GATEWAY_TOKENS, INPUT),
     "serving.output_tokens_per_second": _gateway_rate(GATEWAY_TOKENS, 'direction="output"'),
