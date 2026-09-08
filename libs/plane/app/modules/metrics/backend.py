@@ -45,11 +45,17 @@ class Scope:
 
 @dataclass(frozen=True)
 class Window:
-    """How far back to look, and — for curves — how finely and over how long."""
+    """How far back to look, and — for curves — how finely and over how long.
+
+    `at` is the moment a sample is taken, as epoch seconds, and `None` is now. A
+    report about a period that has ended is a lookback of the period's length
+    taken at its end, not a lookback from now that happens to cover it.
+    """
 
     lookback: str
     step: str = ""
     span: int = 0
+    at: float | None = None
 
 
 @dataclass(frozen=True)

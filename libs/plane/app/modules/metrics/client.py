@@ -62,8 +62,11 @@ class Client:
             raise MetricsUnavailable(payload.get("error", "query failed"), {"query": params.get("query", "")})
         return payload.get("data", {})
 
-    async def instant(self, query: str) -> list[dict]:
-        data = await self._call("query", {"query": query})
+    async def instant(self, query: str, at: float | None = None) -> list[dict]:
+        params = {"query": query}
+        if at is not None:
+            params["time"] = f"{at:.3f}"
+        data = await self._call("query", params)
         return data.get("result", [])
 
     async def range(self, query: str, start: float, end: float, step: str) -> list[dict]:

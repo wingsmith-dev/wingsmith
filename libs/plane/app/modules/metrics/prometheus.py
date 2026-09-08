@@ -74,9 +74,15 @@ class PrometheusBackend:
                 out[metric.name] = None
                 continue
             expression = await self._expression(metric, where, request.window.lookback)
-            result = await self.client.instant(expression)
+            result = await self._instant(expression, request.window.at)
             out[metric.name] = _value(result[0]) if result else None
         return out
+
+    async def _instant(self, expression: str, at: float | None) -> list[dict]:
+        """One instant query, taken now or at the moment the window names."""
+        if at is None:
+            return await self.client.instant(expression)
+        return await self.client.instant(expression, at=at)
 
     async def breakdown(self, request: Request) -> dict[str, dict[str, float | None]]:
         by = LABELS.get(request.scope.breakdown, "")
@@ -88,7 +94,7 @@ class PrometheusBackend:
             if not self.answers(metric):
                 continue
             expression = await self._expression(metric, where, request.window.lookback, by=by)
-            for entry in await self.client.instant(expression):
+            for entry in await self._instant(expression, request.window.at):
                 key = entry.get("metric", {}).get(by, "")
                 if not key:
                     continue
