@@ -8,17 +8,28 @@ unreachable, and a client that wants both should ask for both.
 There is no `POST` anywhere in this module and there is no state to write.
 """
 
+import datetime as dt
+
 from litestar import Response
 from litestar import Controller
 from litestar import get
 from litestar.di import Provide
+from litestar.params import Parameter
 
 from app.core.context import RequestContext
 
+from .sla import PeriodQuery
 from .depends import metrics_svc_generator
 from .schemas import MetricsSchema
+from .schemas import SlaReportSchema
 from .schemas import SourceListSchema
 from .services import MetricsService
+
+
+PERIOD_FROM = Parameter(query="from", default=None, required=False)
+"""`from` on a report's query string. A Python keyword, so the handler calls it `start`."""
+
+PERIOD_TO = Parameter(query="to", default=None, required=False)
 
 
 class MetricsRoutes(Controller):
@@ -190,6 +201,23 @@ class MetricsRoutes(Controller):
         was refused before it was routed belongs to no cluster.
         """
         return Response(await svc.endpoint(ref, window, step, span, series))
+
+    @get("/endpoints/{ref:str}/sla")
+    async def endpoint_sla(
+        self,
+        context: RequestContext,
+        svc: MetricsService,
+        ref: str,
+        month: str | None = None,
+        start: dt.datetime | None = PERIOD_FROM,
+        end: dt.datetime | None = PERIOD_TO,
+    ) -> Response[SlaReportSchema]:
+        """One endpoint's service level over a period, against the objective its quota declares.
+
+        `month` is `YYYY-MM` in UTC; `from`/`to` are ISO 8601. Neither is the
+        current calendar month, measured up to now.
+        """
+        return Response(await svc.endpoint_sla(ref, PeriodQuery(month=month, start=start, end=end)))
 
     @get("/deployments/{ref:str}")
     async def deployment_metrics(

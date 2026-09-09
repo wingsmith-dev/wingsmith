@@ -23,13 +23,19 @@ query-parameter shape it replaces could never have worked — the dependency rea
 unknown parameter before the dependency ran.
 """
 
+import datetime as dt
+
 from litestar import Response
 from litestar import Controller
 from litestar import get
 from litestar.di import Provide
 
 from app.core.context import RequestContext
+from app.modules.metrics.sla import PeriodQuery
+from app.modules.metrics.routes import PERIOD_TO
+from app.modules.metrics.routes import PERIOD_FROM
 from app.modules.metrics.schemas import MetricsSchema
+from app.modules.metrics.schemas import SlaReportSchema
 from app.modules.metrics.services import MetricsService
 
 from .depends import serving_svc_generator
@@ -74,6 +80,25 @@ class ServingRoutes(Controller):
         metrics = MetricsService(db=context.db)
         return Response(await metrics.endpoint(uid, window, step, span, series))
 
+    @get("/models/{ref:str}/sla")
+    async def model_sla(
+        self,
+        context: RequestContext,
+        svc: ServingService,
+        ref: str,
+        month: str | None = None,
+        start: dt.datetime | None = PERIOD_FROM,
+        end: dt.datetime | None = PERIOD_TO,
+    ) -> Response[SlaReportSchema]:
+        """One model's service level over a period, against the objective it was sold under.
+
+        Resolved against this tenant first, as `model_metrics` is, so the report is
+        only ever about an endpoint this tenant was proved to own.
+        """
+        uid = await svc.metrics_ref(ref)
+        metrics = MetricsService(db=context.db)
+        return Response(await metrics.endpoint_sla(uid, PeriodQuery(month=month, start=start, end=end)))
+
 
 class TenantServingRoutes(Controller):
     """A customer's serving view, for somebody who is not that customer.
@@ -114,3 +139,18 @@ class TenantServingRoutes(Controller):
         uid = await svc.metrics_ref(ref)
         metrics = MetricsService(db=context.db)
         return Response(await metrics.endpoint(uid, window, step, span, series))
+
+    @get("/models/{ref:str}/sla")
+    async def model_sla(
+        self,
+        context: RequestContext,
+        svc: ServingService,
+        tenant: str,
+        ref: str,
+        month: str | None = None,
+        start: dt.datetime | None = PERIOD_FROM,
+        end: dt.datetime | None = PERIOD_TO,
+    ) -> Response[SlaReportSchema]:
+        uid = await svc.metrics_ref(ref)
+        metrics = MetricsService(db=context.db)
+        return Response(await metrics.endpoint_sla(uid, PeriodQuery(month=month, start=start, end=end)))
