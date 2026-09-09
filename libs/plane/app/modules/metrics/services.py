@@ -51,6 +51,7 @@ label to narrow by.
 """
 
 import logging
+import datetime as dt
 
 from uuid import UUID
 
@@ -69,6 +70,7 @@ from app.db.models import Endpoint
 from app.db.models import Workload
 from app.db.models import Allocation
 from app.db.models import Deployment
+from app.db.models import ServingQuota
 from app.db.models import AllocationDevice
 from app.core.filters import ref_ids
 from app.core.serving import served_model
@@ -76,6 +78,11 @@ from app.config.settings import settings
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
 
+from .sla import Period
+from .sla import PeriodQuery
+from .sla import verdict
+from .sla import request_count
+from .sla import resolve_period
 from .client import MetricsUnavailable
 from .promql import is_quantile
 from .promql import worker_identity
@@ -88,7 +95,10 @@ from .schemas import SeriesSchema
 from .schemas import SourceSchema
 from .schemas import MetricsSchema
 from .schemas import BreakdownSchema
+from .schemas import SlaReportSchema
+from .schemas import PercentilesSchema
 from .schemas import SeriesPointSchema
+from .schemas import SlaObjectiveSchema
 from .sources import Source
 from .sources import shared
 from .sources import resolve
@@ -97,6 +107,8 @@ from .registry import BY_NAME
 from .registry import ENGINES
 from .registry import Metric
 from .registry import family
+from .objectives import DEFAULT_AVAILABILITY_OBJECTIVE
+from .objectives import objective
 
 
 logger = logging.getLogger(__name__)
@@ -127,6 +139,16 @@ Not `family("inference")`. A fleet answer is one query per metric over every
 cluster's series at once, and the whole vocabulary would be a page of them for
 figures nobody put on an overview.
 """
+
+SLA_PERCENTILES: tuple[str, ...] = (
+    "serving.latency_p50",
+    "serving.latency_p95",
+    "serving.latency_p99",
+    "serving.ttft_p50",
+    "serving.ttft_p95",
+    "serving.ttft_p99",
+)
+"""The tails an SLA report quotes, each quantiled out of the period's own buckets."""
 
 RESERVED_ENDPOINTS: dict[str, str] = {
     "_catalog": "Model catalogue",
@@ -740,6 +762,103 @@ class MetricsService:
             with_series=series,
             no_source=NO_GATEWAY,
         )
+
+    async def endpoint_sla(self, ref: str, query: PeriodQuery, now: dt.datetime | None = None) -> SlaReportSchema:
+        """One endpoint's service level over a period, against what its quota promised.
+
+        The quota is one indexed read in this database, joined onto a measurement
+        response, which is the direction ADR 0003 permits: it cannot fail on its
+        own, and the response it joins is already one whose failure is a reason
+        rather than an error. The period is resolved before anything is fetched so
+        a malformed one is refused without touching the store.
+        """
+        period = resolve_period(query, now or dt.datetime.now(dt.UTC))
+        query_endpoint = select(Endpoint).where(Endpoint.uid == ref if is_uid(ref) else Endpoint.name == ref)
+        endpoint = (await self.db.execute(query_endpoint)).scalars().first()
+        if endpoint is None:
+            raise NotFound(f"no endpoint {ref!r}")
+        quota = (
+            (await self.db.execute(select(ServingQuota).where(ServingQuota.endpoint_id == endpoint.id)))
+            .scalars()
+            .first()
+        )
+        return await self.sla(endpoint, quota, period)
+
+    async def sla(self, endpoint: Endpoint, quota: ServingQuota | None, period: Period) -> SlaReportSchema:
+        """The report for a resolved endpoint, quota and period. Touches the store and not the session.
+
+        The definition is the one the quota names, resolved through the frozen
+        table, and the default for an endpoint with no quota — every endpoint's
+        availability is computed under some definition, and the report says which.
+        """
+        definition = objective(quota.availability_objective if quota else DEFAULT_AVAILABILITY_OBJECTIVE)
+        source = self._gateway()
+        report = SlaReportSchema(
+            endpoint=endpoint.uid,
+            endpoint_name=endpoint.name,
+            period_start=period.start,
+            period_end=period.end,
+            partial=period.partial,
+            definition=definition.version if definition else quota.availability_objective,
+            definition_text=definition.description if definition else "",
+            source=SourceSchema(**source.public()) if source else None,
+            requests=None,
+            availability=None,
+            failure_ratio=None,
+            latency=PercentilesSchema(p50=None, p95=None, p99=None),
+            ttft=PercentilesSchema(p50=None, p95=None, p99=None),
+            objective=SlaObjectiveSchema(
+                success_rate=float(quota.success_rate_objective) if quota.success_rate_objective is not None else None,
+                window_seconds=quota.objective_window_seconds,
+                enforced=quota.enforced,
+            )
+            if quota is not None
+            else None,
+            met=None,
+            error_budget_consumed=None,
+        )
+        if definition is None:
+            report.unavailable = (
+                f"the quota names an availability definition this plane does not hold: {report.definition!r}"
+            )
+            return report
+        if source is None:
+            report.unavailable = NO_GATEWAY
+            return report
+
+        names = (
+            "serving.requests_per_second",
+            definition.failure_metric,
+            definition.availability_metric,
+            *SLA_PERCENTILES,
+        )
+        request = Request(
+            scope=self._scope("endpoint", source, endpoint=(endpoint.uid,)),
+            metrics=tuple(BY_NAME[name] for name in names),
+            window=Window(lookback=period.lookback, at=period.end.timestamp()),
+        )
+        try:
+            values = await for_source(source, self.timeout).samples(request)
+        except MetricsUnavailable as error:
+            report.unavailable = error.message
+            return report
+
+        report.requests = request_count(values.get("serving.requests_per_second"), period)
+        report.failure_ratio = values.get(definition.failure_metric)
+        report.availability = values.get(definition.availability_metric)
+        report.latency = PercentilesSchema(
+            p50=values.get("serving.latency_p50"),
+            p95=values.get("serving.latency_p95"),
+            p99=values.get("serving.latency_p99"),
+        )
+        report.ttft = PercentilesSchema(
+            p50=values.get("serving.ttft_p50"),
+            p95=values.get("serving.ttft_p95"),
+            p99=values.get("serving.ttft_p99"),
+        )
+        if report.objective is not None:
+            report.met, report.error_budget_consumed = verdict(report.failure_ratio, report.objective.success_rate)
+        return report
 
     async def tenant(
         self,
