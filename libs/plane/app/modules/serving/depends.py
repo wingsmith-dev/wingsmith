@@ -21,17 +21,14 @@ async def serving_svc_generator(context: RequestContext) -> AsyncGenerator[Servi
     """
     if context.principal.kind != "tenant":
         raise Invalid(
-            "this surface is scoped to the calling tenant — "
-            "read a customer's view at /v1/tenants/{ref}/serving"
+            "this surface is scoped to the calling tenant — read a customer's view at /v1/tenants/{ref}/serving"
         )
     if not context.principal.scope:
         raise Invalid("this session names no tenant")
     yield ServingService(db=context.db, tenant_uid=context.principal.scope)
 
 
-async def tenant_serving_svc_generator(
-    context: RequestContext, tenant: str
-) -> AsyncGenerator[ServingService, None]:
+async def tenant_serving_svc_generator(context: RequestContext, tenant: str) -> AsyncGenerator[ServingService, None]:
     """The same three reads, scoped to the customer named in the path.
 
     It needs no principal check of its own. `/v1/tenants` is outside

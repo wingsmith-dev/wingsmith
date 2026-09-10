@@ -801,7 +801,6 @@ class MetricsService:
             partial=period.partial,
             definition=definition.version if definition else quota.availability_objective,
             definition_text=definition.description if definition else "",
-            source=SourceSchema(**source.public()) if source else None,
             requests=None,
             availability=None,
             failure_ratio=None,

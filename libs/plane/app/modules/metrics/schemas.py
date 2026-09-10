@@ -85,6 +85,9 @@ class SlaReportSchema(Struct):
     latencies are seconds. A figure is `None` when nothing was measured, which is
     not zero; `met` and `error_budget_consumed` are `None` whenever the reading
     or the commitment they need is missing.
+
+    There is no `source` on it, unlike a metrics answer: a tenant reads this
+    report, and the address of the store behind the front door is not theirs.
     """
 
     endpoint: str
@@ -96,7 +99,6 @@ class SlaReportSchema(Struct):
     definition: str
     """The version of the availability definition every figure was computed under."""
     definition_text: str
-    source: SourceSchema | None
     requests: int | None
     availability: float | None
     failure_ratio: float | None
