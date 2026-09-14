@@ -1,0 +1,30 @@
+{
+  "endpoint": "end_01k2v7q9hx3m8c4r6t0w5y1z2a",
+  "endpoint_name": "kimi-k3",
+  "period_start": "2026-09-01T00:00:00Z",
+  "period_end": "2026-10-01T00:00:00Z",
+  "partial": false,
+  "definition": "availability-2026.1",
+  "definition_text": "Live traffic only. Failed: shed, no_upstream, upstream_error, upstream_timeout, internal_error. Counted: every outcome except canceled, so a caller's own 4xx and a 429 over its declared limit count as served, and a caller hanging up counts as neither.",
+  "requests": 9901440,
+  "availability": 99.969,
+  "failure_ratio": 0.031,
+  "latency": {
+    "p50": 1.42,
+    "p95": 6.8,
+    "p99": 14.1
+  },
+  "ttft": {
+    "p50": 0.31,
+    "p95": 0.92,
+    "p99": 2.4
+  },
+  "objective": {
+    "success_rate": 0.999,
+    "window_seconds": 600,
+    "enforced": true
+  },
+  "met": true,
+  "error_budget_consumed": 0.3099999999999997,
+  "unavailable": null
+}
