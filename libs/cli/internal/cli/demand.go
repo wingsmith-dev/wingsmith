@@ -1252,6 +1252,9 @@ behind it are disposable; the endpoint is the contract.`,
 			}
 			return []errs.Action{{Description: "Its primary deployment", Command: "hgr deployment get " + e.Targets[0].DeploymentID}}
 		},
+		extra: func(app *App) []*cobra.Command {
+			return []*cobra.Command{newEndpointSLACmd(app)}
+		},
 	}
 }
 
