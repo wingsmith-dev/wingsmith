@@ -1057,6 +1057,53 @@ type ResolvedServingQuota struct {
 	Revision               string               `json:"revision"`
 }
 
+// SLAQuery is the period an SLA report covers: a `YYYY-MM` month, a from/to
+// range, or neither, which the plane reads as the current calendar month.
+type SLAQuery struct {
+	Month string
+	From  *time.Time
+	To    *time.Time
+}
+
+// SLAPercentiles is one latency at the three percentiles a contract quotes, in
+// seconds. A nil is a percentile nothing measured, never zero.
+type SLAPercentiles struct {
+	P50 *float64 `json:"p50"`
+	P95 *float64 `json:"p95"`
+	P99 *float64 `json:"p99"`
+}
+
+// SLAObjective is the commitment the endpoint was sold under, quoted from its
+// serving quota. SuccessRate is a fraction in (0, 1].
+type SLAObjective struct {
+	SuccessRate   *float64 `json:"success_rate"`
+	WindowSeconds int      `json:"window_seconds"`
+	Enforced      bool     `json:"enforced"`
+}
+
+// SLAReport is one endpoint's service level over a period, measured at the
+// front door. Availability and FailureRatio are percentages on 0-100; Met and
+// ErrorBudgetConsumed are nil whenever the reading or the commitment they need
+// is missing, because a false that means "not measured" is worse than none.
+type SLAReport struct {
+	Endpoint            string         `json:"endpoint"`
+	EndpointName        string         `json:"endpoint_name"`
+	PeriodStart         time.Time      `json:"period_start"`
+	PeriodEnd           time.Time      `json:"period_end"`
+	Partial             bool           `json:"partial"`
+	Definition          string         `json:"definition"`
+	DefinitionText      string         `json:"definition_text"`
+	Requests            *int64         `json:"requests"`
+	Availability        *float64       `json:"availability"`
+	FailureRatio        *float64       `json:"failure_ratio"`
+	Latency             SLAPercentiles `json:"latency"`
+	TTFT                SLAPercentiles `json:"ttft"`
+	Objective           *SLAObjective  `json:"objective"`
+	Met                 *bool          `json:"met"`
+	ErrorBudgetConsumed *float64       `json:"error_budget_consumed"`
+	Unavailable         *string        `json:"unavailable"`
+}
+
 // ResolvedServingQuotaTable is every enabled endpoint that carries a
 // commitment, resolved for one fleet. Unpaginated, like the routing table it
 // sits beside.

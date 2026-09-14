@@ -350,6 +350,23 @@ func (c *Client) Endpoint(ctx context.Context, ref string) (Endpoint, error) {
 	return one[Endpoint](ctx, c, "/v1/endpoints", ref, nil)
 }
 
+// EndpointSLA reads one endpoint's SLA report off the metrics surface.
+func (c *Client) EndpointSLA(ctx context.Context, ref string, sq SLAQuery) (SLAReport, error) {
+	q := url.Values{}
+	if sq.Month != "" {
+		q.Set("month", sq.Month)
+	}
+	if sq.From != nil {
+		q.Set("from", sq.From.UTC().Format(time.RFC3339))
+	}
+	if sq.To != nil {
+		q.Set("to", sq.To.UTC().Format(time.RFC3339))
+	}
+	var out SLAReport
+	err := c.get(ctx, "/v1/metrics/endpoints/"+url.PathEscape(ref)+"/sla", q, &out)
+	return out, err
+}
+
 // --- binding ---------------------------------------------------------------
 
 func (c *Client) Tenants(ctx context.Context, o ListOpts) (Page[Tenant], error) {
