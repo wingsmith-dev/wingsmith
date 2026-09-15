@@ -1,6 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 
-import { fetchMetrics, fetchServingMetrics, type MetricsQuery } from "./api"
+import {
+  fetchEndpointSla,
+  fetchMetrics,
+  fetchServingMetrics,
+  type MetricsQuery,
+} from "./api"
 import type { MetricScope } from "./types"
 
 /** Measurement goes stale on its own, so it refetches; inventory does not and does not. */
@@ -34,5 +39,24 @@ export function useServingMetrics(query: MetricsQuery = {}) {
     refetchInterval: REFRESH_MS,
     retry: 1,
     staleTime: REFRESH_MS / 2,
+  })
+}
+
+/**
+ * An endpoint's SLA report for one calendar month. A month that has ended does
+ * not move, so only the running one refetches.
+ */
+export function useEndpointSla(
+  ref: string | undefined,
+  month: string,
+  running: boolean
+) {
+  return useQuery({
+    queryKey: ["metrics", "endpoint-sla", ref, month],
+    queryFn: () => fetchEndpointSla(ref!, month),
+    enabled: Boolean(ref),
+    refetchInterval: running ? REFRESH_MS * 10 : false,
+    retry: 1,
+    staleTime: running ? REFRESH_MS : 10 * 60_000,
   })
 }

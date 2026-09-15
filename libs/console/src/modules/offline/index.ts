@@ -37,6 +37,7 @@ import {
   workloads,
 } from "./data"
 import { revision, uid } from "./ids"
+import type { SlaReport } from "@/modules/metrics/types"
 import { collection } from "./registry"
 import type { Artifact, Deployment, Workload } from "@/modules/demand/types"
 import type { Tenant, TenantAPIKey } from "@/modules/binding/types"
@@ -1710,5 +1711,60 @@ registerFixtures([
     method: "GET",
     path: "/placement/reservations",
     handler: ({ query }: FixtureContext) => reservations(query),
+  },
+])
+
+/**
+ * An endpoint's SLA report, synthesised. The plane judges the month; this only
+ * has to give the card every shape it draws: the first endpoint meets three
+ * nines, the second misses them, and the rest declare no objective at all.
+ * The running month is measured up to now and says so.
+ */
+registerFixtures([
+  {
+    method: "GET",
+    path: "/metrics/endpoints/:ref/sla",
+    handler: ({ params, query }: FixtureContext): SlaReport => {
+      const index = endpoints.findIndex(
+        (e) => e.id === params.ref || e.name === params.ref
+      )
+      if (index < 0) throw new NotFoundError(`no endpoint '${params.ref}'`)
+      const endpoint = endpoints[index]
+      const now = new Date()
+      const month =
+        query?.get("month") ??
+        `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`
+      const [year, number] = month.split("-").map(Number)
+      const start = new Date(Date.UTC(year, number - 1, 1))
+      const next = new Date(Date.UTC(year, number, 1))
+      const partial = next > now
+      const end = partial ? now : next
+      const seconds = (end.getTime() - start.getTime()) / 1000
+      const failure = index === 1 ? 0.164 : 0.012 + (index % 5) * 0.009
+      const objective = index < 2 ? 0.999 : null
+      const allowed = objective === null ? null : (1 - objective) * 100
+      return {
+        endpoint: endpoint.id,
+        endpoint_name: endpoint.name,
+        period_start: start.toISOString(),
+        period_end: end.toISOString(),
+        partial,
+        definition: "availability-2026.1",
+        definition_text:
+          "Live traffic only. Failed: shed, no_upstream, upstream_error, upstream_timeout, internal_error. Counted: every outcome except canceled.",
+        requests: Math.round(seconds * (3.2 + index)),
+        availability: 100 - failure,
+        failure_ratio: failure,
+        latency: { p50: 1.12 + index / 10, p95: 4.8, p99: 11.6 },
+        ttft: { p50: 0.24, p95: 0.71, p99: 1.9 },
+        objective:
+          objective === null
+            ? null
+            : { success_rate: objective, window_seconds: 600, enforced: true },
+        met: allowed === null ? null : failure <= allowed,
+        error_budget_consumed: allowed === null ? null : failure / allowed,
+        unavailable: null,
+      }
+    },
   },
 ])

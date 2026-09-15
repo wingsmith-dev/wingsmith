@@ -1,6 +1,6 @@
 import { api } from "@/lib/api"
 
-import type { Metrics, MetricScope } from "./types"
+import type { Metrics, MetricScope, SlaReport } from "./types"
 
 const PATHS: Record<MetricScope, string> = {
   cluster: "clusters",
@@ -50,4 +50,12 @@ export function fetchServingMetrics(query: MetricsQuery = {}) {
     span: query.span,
     step: query.step,
   })
+}
+
+/**
+ * One endpoint's SLA report for a calendar month (`YYYY-MM`, UTC), or for the
+ * current month up to now when no month is given.
+ */
+export function fetchEndpointSla(ref: string, month?: string) {
+  return api.get<SlaReport>(`/metrics/endpoints/${ref}/sla`, { month })
 }
