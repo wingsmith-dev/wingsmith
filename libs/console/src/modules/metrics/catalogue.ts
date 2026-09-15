@@ -401,6 +401,14 @@ const SERVING: MetricDefinition[] = [
     scale: "invariant",
   },
   {
+    name: "serving.ttft_p99",
+    title: "Time to first token (p99), front door",
+    unit: "seconds",
+    family: "serving",
+    group: "latency",
+    scale: "invariant",
+  },
+  {
     name: "serving.cache_hit_ratio",
     title: "Cached input tokens, front door",
     unit: "percent",
@@ -487,6 +495,7 @@ export const DEFAULT_TILES: Record<MetricFamily, string[]> = {
     "serving.latency_p99",
     "serving.ttft_p50",
     "serving.ttft_p95",
+    "serving.ttft_p99",
     "serving.requests_in_flight",
     "serving.input_tokens_per_second",
     "serving.output_tokens_per_second",
