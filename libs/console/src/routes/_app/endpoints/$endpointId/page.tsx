@@ -70,6 +70,7 @@ import {
   useWorkloadOptions,
 } from "@/modules/demand/queries"
 import { EndpointForm } from "../EndpointForm"
+import { SlaCard } from "./SlaCard"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import {
@@ -1253,6 +1254,7 @@ export function EndpointDetailPage() {
                     history={availableFortnight?.value ?? null}
                     days={days}
                   />
+                  <SlaCard endpointId={endpointId} />
                 </div>
               </div>
             </TabsContent>
