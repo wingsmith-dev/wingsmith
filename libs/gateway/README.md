@@ -74,6 +74,7 @@ caller's config and pasted into another's.
 | `-probe-token` / `HANGAR_GATEWAY_PROBE_TOKEN` | what the conformance runner presents to mark its traffic as a probe; a comma-separated pair while rotating |
 | `-tunnel-listen` / `HANGAR_GATEWAY_TUNNEL_LISTEN` | where cluster agents dial, default `:8443`, `off` to disable |
 | `-tunnel-cert` / `-tunnel-key` (`HANGAR_GATEWAY_TUNNEL_TLS_CERT` / `_KEY`) | PEM pair for the tunnel listener; neither means plaintext, and TLS has to be terminated in front of it |
+| `-log-upstream-bodies` / `HANGAR_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
 
 None of the last three is required and none is fatal by its absence, which is a deploy constraint
 rather than a courtesy: `just deploy plane` runs `kubectl apply -k infra/`, and `infra/` carries this
@@ -86,6 +87,44 @@ manifest naming its address is exactly the change that turns docs/plans/17's rol
 The credential file is how a reference on a cluster's serving address becomes headers on the wire.
 The plane stores the reference and never the secret, so the material is mounted next to the process
 that redeems it.
+
+## What it never keeps
+
+Request and response content is not retained by this hop, and that is a promise made to buyers, so
+it is held in code rather than in a log pipeline's configuration.
+
+- **The access line** (`gateway: request`) carries the request id, method, path (never the query),
+  status, outcome, timings, token counts, the tenant and a 12-character key-hash prefix. Never a
+  body, a header value or a model's answer.
+- **A discarded upstream error** is logged as a content-free summary: status, the engine's own
+  `type`/`code` when they parse as short identifiers, the body's length and whether it was
+  truncated. An engine's validation message quotes the input it rejected and a 5xx trace can carry
+  the request it was handling, so the body itself reaches the log only under
+  `-log-upstream-bodies`, which is off in production.
+- **Engine logging** is the operator's half: `--enable-log-requests`, `--enable-log-outputs`,
+  `--log-requests` and `--log-requests-level` are refused by the plane on a workload, a role and an
+  overlay, and stripped by the operator's renderer under any spelling.
+
+## Prefix-cache isolation
+
+Dynamo folds `nvext.cache_salt` into every KV block hash (and, since 1.4, into the router's overlap
+score), so the salt decides whose prefix cache a request may reuse. Unsalted, two tenants on one
+deployment share a cache, and time to first token tells one of them what the other sent recently.
+
+Every text generation request (`/v1/chat/completions`, `/v1/completions`, `/v1/responses`,
+`/v1/messages`) on a text endpoint is salted with its tenant:
+
+- on the public listener, the tenant the `Host` resolved;
+- on the internal listener, the tenant that owns the endpoint, narrowed by `X-Hangar-Cache-Scope`
+  when the internal caller sends one. A platform serving many customers through one tenant names the
+  customer there, and gets one cache per customer. The header is ignored on the public listener and
+  removed before the request leaves this hop.
+
+A request carrying media still has the prompt identity folded in on top (`cachesalt.go`), so the
+2026-09-12 image collision stays closed inside a tenant. A caller's own `cache_salt` is folded in,
+never honoured as it stands: it can narrow its own sharing and can never name another tenant's.
+`x-tenant-id`, which Dynamo reads as a salt that overrides the body's, is stripped with the other
+steering headers. An endpoint with no owning tenant on the internal listener is left as it was.
 
 ## What it measures
 
