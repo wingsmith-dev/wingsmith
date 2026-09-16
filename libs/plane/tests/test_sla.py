@@ -25,6 +25,7 @@ from app.modules.metrics.sla import verdict
 from app.modules.metrics.sla import request_count
 from app.modules.metrics.sla import resolve_period
 from app.modules.metrics.client import MetricsUnavailable
+from app.modules.metrics.services import TENANT_UNAVAILABLE
 from app.modules.metrics.services import MetricsService
 
 
@@ -308,6 +309,42 @@ async def test_a_quota_naming_a_definition_this_plane_does_not_hold_is_not_measu
     assert report.definition == "availability-2031.1"
     assert report.availability is None
     assert "availability-2031.1" in report.unavailable
+
+
+@pytest.mark.parametrize(
+    ("sources_value", "raises"),
+    [
+        (SHARED, MetricsUnavailable("cannot reach the metrics store for partner-inference-usw2: connection refused")),
+        ("", None),
+    ],
+    ids=["store-down", "no-gateway-store"],
+)
+async def test_a_tenant_reads_one_generic_line_where_the_operator_reads_the_reason(sources_value, raises):
+    """The operator's reason names the cluster, the store's error and the setting; a tenant gets none of it."""
+    backend = StubBackend(MEASURED, raises=raises)
+    with with_sources(sources_value), with_backend(backend):
+        tenant = await MetricsService(db=ScriptedSession([endpoint()], [quota()])).tenant_sla(  # type: ignore[arg-type]
+            "kimi-k3", PeriodQuery(month="2026-09"), now=NOW
+        )
+        operator = await MetricsService(db=ScriptedSession([endpoint()], [quota()])).endpoint_sla(  # type: ignore[arg-type]
+            "kimi-k3", PeriodQuery(month="2026-09"), now=NOW
+        )
+
+    assert tenant.unavailable == TENANT_UNAVAILABLE
+    assert tenant.met is None
+    assert operator.unavailable != TENANT_UNAVAILABLE
+    for detail in ("partner-inference-usw2", "connection refused", "HANGAR_METRICS_SOURCES"):
+        assert detail not in tenant.unavailable
+
+
+async def test_a_tenant_reading_a_measured_report_gets_it_whole():
+    with with_sources(), with_backend(StubBackend(MEASURED)):
+        report = await MetricsService(db=ScriptedSession([endpoint()], [quota()])).tenant_sla(  # type: ignore[arg-type]
+            "kimi-k3", PeriodQuery(month="2026-09"), now=NOW
+        )
+
+    assert report.unavailable is None
+    assert report.met is True
 
 
 async def test_the_endpoint_and_its_quota_are_read_before_the_store():
