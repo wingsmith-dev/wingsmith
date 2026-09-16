@@ -93,11 +93,13 @@ class ServingRoutes(Controller):
         """One model's service level over a period, against the objective it was sold under.
 
         Resolved against this tenant first, as `model_metrics` is, so the report is
-        only ever about an endpoint this tenant was proved to own.
+        only ever about an endpoint this tenant was proved to own. A report that
+        could not be measured says so in one generic line: the operator's reason
+        names the infrastructure behind the endpoint.
         """
         uid = await svc.metrics_ref(ref)
         metrics = MetricsService(db=context.db)
-        return Response(await metrics.endpoint_sla(uid, PeriodQuery(month=month, start=start, end=end)))
+        return Response(await metrics.tenant_sla(uid, PeriodQuery(month=month, start=start, end=end)))
 
 
 class TenantServingRoutes(Controller):
