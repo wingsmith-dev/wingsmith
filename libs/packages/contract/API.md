@@ -503,6 +503,28 @@ endpoint reference is `404`. Until something scrapes the gateway these answer wi
 null, or with `unavailable` set if no store is configured for them at all: an endpoint nobody has
 called is not 100% available, and it is not 0% either.
 
+**`GET /v1/metrics/endpoints/{ref}/sla` is an endpoint's service level over a period**, the one
+measurement read here that is judged against a commitment. It takes `month` (`YYYY-MM`, UTC) or
+`from`/`to` (ISO 8601; `to` defaults to now), never both; neither is the current calendar month up
+to now. A period is at most 93 days and at least a minute, and one that is still running is
+measured up to now and answers `partial: true`. It is measured as one lookback of the period's own
+length taken at its end, so September asked in October reads September. The answer is not a
+`MetricsSchema`: it carries `requests`, `availability` and `failure_ratio` (percentages on 0–100),
+`latency` and `ttft` at p50/p95/p99, the `definition` it was computed under, the endpoint's
+`objective` quoted from its serving quota (`null` when there is no quota), `met` and
+`error_budget_consumed` (failure spent over failure allowed, `1.0` being the whole budget). The
+success-rate objective is a fraction and the failure ratio a percentage, so the allowance is
+`(1 - success_rate_objective) * 100`. `met` and `error_budget_consumed` are `null` whenever the
+reading or the objective they need is missing. It carries no `source`, because the owning tenant
+reads it too, at `GET /v1/serving/models/{ref}/sla` (and an admin at
+`GET /v1/tenants/{tenant}/serving/models/{ref}/sla`), resolved against that tenant first.
+
+The definition is an entry of the frozen objectives table (`app/modules/metrics/objectives.py`),
+named by the quota's `availability_objective`. An entry says which gateway outcomes are failures
+and which are not counted at all; `availability-2026.1` fails `shed`, `no_upstream`,
+`upstream_error`, `upstream_timeout` and `internal_error`, and leaves only `canceled` out. Entries
+are superseded and never edited, and the gateway failure expressions are rendered from them.
+
 **`/v1/workloads` is what you create; `/v1/deployments` is what that became.** A Workload is the
 global declaration — a serving configuration, a total scale, a kind, a priority, and the regions or
 clusters it may use. A Deployment is that workload on **one** cluster, and it is still exactly what the operator

@@ -103,6 +103,10 @@ grouped in help the way the model groups them.
 
 Plus CLI-local commands: `context`, `config`, `whoami`, `explain`, `version`.
 
+`hgr endpoint sla <endpoint>` is the one measurement command: an endpoint's service level for the
+current month to date, a `--month YYYY-MM`, or a `--from`/`--to` range, with the verdict against the
+success-rate objective its serving quota declares (`GET /v1/metrics/endpoints/{ref}/sla`).
+
 Declared, observed, and operations stay three different things at the CLI surface too. An
 operation is never a status field: `hgr operation ls` is where drain, warm, and upgrade will
 live, not a `--drain` flag hiding on `cluster`.
