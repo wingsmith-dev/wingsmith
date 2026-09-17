@@ -288,6 +288,76 @@ operator removes them again at render (`contentLoggingFlags` in
 `libs/operator/internal/render/dynamo.go`) for any row written before this check.
 """
 
+LOG_LEVEL_FLAGS = frozenset({"log-level"})
+"""Engine flags that set a log level, refused at a level that logs request content.
+
+SGLang's `--log-level`. At debug its tool-call detectors log the model's output
+text (`function_call/gigachat3_detector.py`, `entrypoints/openai/serving_chat.py`
+in 0.5.21), so a debug worker writes completions to its log with no
+content-logging flag set.
+"""
+
+VERBOSE_LEVELS = frozenset({"debug", "trace", "notset"})
+"""Log levels at which some engine on the serving path writes request content.
+
+Checked against the sources on 2026-10-06. Dynamo's frontend logs every chat,
+completions and responses request whole at `trace` (`lib/llm/src/http/service/openai.rs`),
+and `DYN_LOG=debug` is mapped onto vLLM's and SGLang's Python loggers by
+`dynamo.runtime.logging`. vLLM at DEBUG logs streamed completion text in its tool
+parsers (`delta_text: %s`) and the rendered prompt on a placeholder mismatch
+(`entrypoints/chat_utils.py`). `info` and above log neither.
+"""
+
+
+def is_verbose(level: str) -> bool:
+    """Whether a log level, by name or by Python's number, is one that logs request content."""
+    value = level.strip().lower()
+    if value.isdigit():
+        return int(value) < 20
+    return value in VERBOSE_LEVELS
+
+
+def _dyn_log_is_verbose(value: str) -> bool:
+    """`DYN_LOG` is a list of tracing directives, `level` or `target=level`; any one verbose is enough."""
+    return any(is_verbose(directive.rsplit("=", 1)[-1]) for directive in value.split(",") if directive.strip())
+
+
+def _switched_on(value: str) -> bool:
+    return value.strip().lower() not in {"", "0", "false", "no", "off"}
+
+
+CONTENT_LOGGING_ENV = {
+    "DYN_LOG": _dyn_log_is_verbose,
+    "DYN_LOGGING_CONFIG_PATH": lambda value: True,
+    "VLLM_LOGGING_LEVEL": is_verbose,
+    "VLLM_DEBUG_LOG_API_SERVER_RESPONSE": _switched_on,
+}
+"""Environment variables that can make a worker or the frontend log request content, and the values that do.
+
+`DYN_LOGGING_CONFIG_PATH` is refused outright: it names a file of tracing filters
+merged after `DYN_LOG`, which the plane cannot read. `VLLM_DEBUG_LOG_API_SERVER_RESPONSE`
+logs every response body vLLM's own API server returns. A variable here set
+through `valueFrom` is refused too, for the same reason as the config path. The
+operator drops all of them again after the overlays are merged
+(`withoutContentLoggingEnv` in `libs/operator/internal/render/retention.go`).
+"""
+
+
+def _refuse_flag(flag: str, where: str) -> None:
+    raise Invalid(
+        f"{where} may not set --{flag}: it writes request content to the worker's log, "
+        "and request content is never retained",
+        {"flag": flag},
+    )
+
+
+def _refuse_level(flag: str, level: str, where: str) -> None:
+    raise Invalid(
+        f"{where} may not set --{flag} to {level!r}: at that level the engine writes request content "
+        "to the worker's log, and request content is never retained",
+        {"flag": flag, "value": level},
+    )
+
 
 def check_retention(engine_args: dict | None, where: str = "the workload") -> None:
     """Refuses an `engine_args` map that turns on request-content logging.
@@ -295,45 +365,73 @@ def check_retention(engine_args: dict | None, where: str = "the workload") -> No
     Both engines' parsers treat `_` and `-` in a flag name as the same character, so
     `enable_log_requests` is refused as well as `--enable-log-requests`.
     """
-    for key in engine_args or {}:
+    for key, value in (engine_args or {}).items():
         flag = flag_name(str(key)).replace("_", "-")
         if flag in CONTENT_LOGGING_FLAGS:
-            raise Invalid(
-                f"{where} may not set --{flag}: it writes request content to the worker's log, "
-                "and request content is never retained",
-                {"flag": flag},
-            )
+            _refuse_flag(flag, where)
+        if flag in LOG_LEVEL_FLAGS and is_verbose(str(value or "")):
+            _refuse_level(flag, str(value), where)
+
+
+def _check_tokens(tokens: Sequence[str]) -> None:
+    """Reads a command line, `--flag value` and `--flag=value` alike, for a content-logging flag."""
+    for index, token in enumerate(tokens):
+        if not token.startswith("-"):
+            continue
+        name, has_value, value = token.partition("=")
+        flag = flag_name(name).replace("_", "-")
+        if flag in CONTENT_LOGGING_FLAGS:
+            _refuse_flag(flag, "the overlay")
+        if flag in LOG_LEVEL_FLAGS:
+            level = value if has_value else (tokens[index + 1] if index + 1 < len(tokens) else "")
+            if is_verbose(level):
+                _refuse_level(flag, level, "the overlay")
+
+
+def _check_env(entry: dict) -> None:
+    name = entry.get("name")
+    if not isinstance(name, str) or name not in CONTENT_LOGGING_ENV:
+        return
+    if "valueFrom" in entry:
+        raise Invalid(
+            f"the overlay may not set {name} from a reference: the plane cannot read its value, "
+            "and some values of it write request content to the log",
+            {"env": name},
+        )
+    value = entry.get("value")
+    if value is not None and CONTENT_LOGGING_ENV[name](str(value)):
+        raise Invalid(
+            f"the overlay may not set {name}={value!r}: it writes request content to the log, "
+            "and request content is never retained",
+            {"env": name, "value": str(value)},
+        )
 
 
 def check_overlay_retention(overlay: object) -> None:
-    """Refuses an overlay that writes a content-logging flag onto a container.
+    """Refuses an overlay that turns on request-content logging on any container.
 
     The overlay is merged over the rendered pod and graph after the operator has
     assembled and filtered the engine's arguments, so a flag in a container's
     `args` or `command` there is the one spelling the operator cannot take back
     out. Every string in it is read as a possible flag, `--flag` and `--flag=value`
-    alike.
+    alike, and the strings of one list are read as one command line so that
+    `["--log-level", "debug"]` is seen as the pair it is. Every `{name, value}`
+    map is read as a possible environment variable, which covers a pod's `env`
+    and a Dynamo component's `envs` alike.
     """
     if isinstance(overlay, dict):
+        _check_env(overlay)
         for value in overlay.values():
             check_overlay_retention(value)
         return
     if isinstance(overlay, list | tuple):
+        _check_tokens([token for value in overlay if isinstance(value, str) for token in value.split()])
         for value in overlay:
-            check_overlay_retention(value)
+            if not isinstance(value, str):
+                check_overlay_retention(value)
         return
-    if not isinstance(overlay, str):
-        return
-    for token in overlay.split():
-        if not token.startswith("-"):
-            continue
-        flag = flag_name(token.split("=", 1)[0]).replace("_", "-")
-        if flag in CONTENT_LOGGING_FLAGS:
-            raise Invalid(
-                f"the overlay may not set --{flag}: it writes request content to the worker's log, "
-                "and request content is never retained",
-                {"flag": flag},
-            )
+    if isinstance(overlay, str):
+        _check_tokens(overlay.split())
 
 
 DIGEST_PREFIX = "svg_"
