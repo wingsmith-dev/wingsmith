@@ -190,7 +190,7 @@ func TestPodOverlayMergesByName(t *testing.T) {
 	in.Deployment.Serving.Overlay.PodSpec = map[string]any{
 		"containers": []any{map[string]any{
 			"name": "main",
-			"env":  []any{map[string]any{"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"}},
+			"env":  []any{map[string]any{"name": "VLLM_LOGGING_LEVEL", "value": "WARNING"}},
 		}},
 	}
 	obj, err := DynamoGraphDeployment(in, testOptions())
@@ -198,7 +198,7 @@ func TestPodOverlayMergesByName(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 	main := renderedPod(t, obj).Containers[0]
-	if v, ok := envValue(main, "VLLM_LOGGING_LEVEL"); !ok || v != "DEBUG" {
+	if v, ok := envValue(main, "VLLM_LOGGING_LEVEL"); !ok || v != "WARNING" {
 		t.Fatalf("overlay env not merged: %q, %v", v, ok)
 	}
 	if v, ok := envValue(main, "PYTHONHASHSEED"); !ok || v != "0" {

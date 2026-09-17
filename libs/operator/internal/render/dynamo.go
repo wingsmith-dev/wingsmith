@@ -502,6 +502,7 @@ func DynamoGraphDeployment(in Inputs, opts Options) (*unstructured.Unstructured,
 	if err := applyDynamoOverlay(obj, in.Deployment.Serving.Overlay.Dynamo); err != nil {
 		return nil, err
 	}
+	obj.Object = withoutContentLoggingEnv(obj.Object).(map[string]any)
 	if opts.FrontendEnabled {
 		if err := checkFrontendSurvivedOverlay(obj, in); err != nil {
 			return nil, err
@@ -2297,11 +2298,15 @@ var contentLoggingFlags = []string{"enable-log-requests", "enable-log-outputs", 
 
 // withoutContentLogging deletes every content-logging flag from an assembled argument map, under
 // any spelling the engine's parser would accept: leading dashes and `_` for `-` both name the same
-// flag to vLLM and SGLang.
+// flag to vLLM and SGLang. A log level verbose enough to log request content (`logLevelFlags`) is
+// deleted too, which leaves the engine at its default of info.
 func withoutContentLogging(derived map[string]string) {
-	for key := range derived {
+	for key, value := range derived {
 		normal := strings.ReplaceAll(strings.TrimLeft(key, "-"), "_", "-")
 		if slices.Contains(contentLoggingFlags, normal) {
+			delete(derived, key)
+		}
+		if slices.Contains(logLevelFlags, normal) && isVerbose(value) {
 			delete(derived, key)
 		}
 	}
