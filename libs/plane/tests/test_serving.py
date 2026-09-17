@@ -1358,6 +1358,88 @@ def test_an_overlay_without_content_logging_is_untouched():
     assert check_serving_request(a_request(overlay=overlay), an_artifact()) is None
 
 
+@pytest.mark.parametrize("level", ["debug", "DEBUG", "trace", "10"])
+def test_an_engine_log_level_that_logs_request_content_is_refused(level):
+    """SGLang's detectors log completion text at debug, so the level is a content-logging switch too."""
+    with pytest.raises(Invalid) as refused:
+        check_serving_request(a_request(engine_args={"--log_level": level}), an_artifact())
+    assert refused.value.detail["flag"] == "log-level"
+
+
+def test_a_role_cannot_raise_its_log_level_to_debug_either():
+    request = a_request()
+    request.topology = TopologySchema(
+        serving_topology="disaggregated",
+        roles=[
+            RoleSchema(role="prefill", weight=1, engine_args={"log-level": "debug"}),
+            RoleSchema(role="decode", weight=2),
+        ],
+    )
+    with pytest.raises(Invalid):
+        check_serving_request(request, an_artifact())
+
+
+@pytest.mark.parametrize("level", ["info", "warning", "error", "20"])
+def test_an_engine_log_level_that_logs_no_request_content_is_allowed(level):
+    assert check_serving_request(a_request(engine_args={"log-level": level}), an_artifact()) is None
+
+
+def env_overlay(entry: dict, where: str = "pod_spec") -> OverlaySchema:
+    if where == "pod_spec":
+        return OverlaySchema(pod_spec={"containers": [{"name": "main", "env": [entry]}]})
+    return OverlaySchema(dynamo={"spec": {"components": {"VllmDecodeWorker": {"envs": [entry]}}}})
+
+
+@pytest.mark.parametrize("where", ["pod_spec", "dynamo"])
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"name": "DYN_LOG", "value": "debug"},
+        {"name": "DYN_LOG", "value": "info,dynamo_llm::http=trace"},
+        {"name": "DYN_LOGGING_CONFIG_PATH", "value": "/etc/dynamo/logging.toml"},
+        {"name": "VLLM_LOGGING_LEVEL", "value": "DEBUG"},
+        {"name": "VLLM_DEBUG_LOG_API_SERVER_RESPONSE", "value": "true"},
+        {"name": "DYN_LOG", "valueFrom": {"configMapKeyRef": {"name": "logging", "key": "level"}}},
+    ],
+    ids=["dyn-debug", "dyn-target-trace", "dyn-config-file", "vllm-debug", "vllm-response-bodies", "value-from"],
+)
+def test_an_overlay_env_that_logs_request_content_is_refused(entry, where):
+    """The overlay is the one place an environment variable reaches a worker or the frontend from."""
+    with pytest.raises(Invalid) as refused:
+        check_serving_request(a_request(overlay=env_overlay(entry, where)), an_artifact())
+    assert refused.value.detail["env"] == entry["name"]
+
+
+@pytest.mark.parametrize(
+    "entry",
+    [
+        {"name": "DYN_LOG", "value": "info,dynamo_llm=warn"},
+        {"name": "VLLM_LOGGING_LEVEL", "value": "WARNING"},
+        {"name": "VLLM_DEBUG_LOG_API_SERVER_RESPONSE", "value": "False"},
+        {"name": "NCCL_DEBUG", "value": "INFO"},
+        {"name": "HF_TOKEN", "valueFrom": {"secretKeyRef": {"name": "hf", "key": "token"}}},
+    ],
+)
+def test_an_overlay_env_that_logs_no_request_content_is_untouched(entry):
+    assert check_serving_request(a_request(overlay=env_overlay(entry)), an_artifact()) is None
+
+
+@pytest.mark.parametrize(
+    "args",
+    [["--log-level", "debug"], ["--log-level=DEBUG"], ["sh", "-c", "python -m dynamo.sglang --log-level debug"]],
+)
+def test_an_overlay_command_line_that_raises_the_log_level_is_refused(args):
+    overlay = OverlaySchema(pod_spec={"containers": [{"name": "main", "args": args}]})
+    with pytest.raises(Invalid) as refused:
+        check_serving_request(a_request(overlay=overlay), an_artifact())
+    assert refused.value.detail["flag"] == "log-level"
+
+
+def test_an_overlay_command_line_at_info_is_untouched():
+    overlay = OverlaySchema(pod_spec={"containers": [{"name": "main", "args": ["--log-level", "info"]}]})
+    assert check_serving_request(a_request(overlay=overlay), an_artifact()) is None
+
+
 def test_the_explicit_off_spelling_of_request_logging_is_allowed():
     assert check_serving_request(a_request(engine_args={"no-enable-log-requests": ""}), an_artifact()) is None
 
