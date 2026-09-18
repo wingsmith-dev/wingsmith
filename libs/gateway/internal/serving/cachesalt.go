@@ -220,6 +220,11 @@ func withCacheSalt(body []byte, scope cacheScope) ([]byte, bool, error) {
 	if scope.empty() && !media {
 		return body, false, nil
 	}
+	if !media {
+		if out, written, handled, err := splicedCacheSalt(body, scope); handled {
+			return out, written, err
+		}
+	}
 	fields, _, ok := topLevelFields(body)
 	if !ok {
 		return body, false, nil
@@ -243,6 +248,22 @@ func withCacheSalt(body []byte, scope cacheScope) ([]byte, bool, error) {
 		return body, false, nil
 	}
 
+	encodedHints, err := saltedHints(hints, cacheSalt(scope, prompt, carried, hints))
+	if err != nil {
+		return nil, false, err
+	}
+	fields["nvext"] = encodedHints
+
+	rewritten, err := json.Marshal(fields)
+	if err != nil {
+		return nil, false, err
+	}
+	return rewritten, true, nil
+}
+
+// cacheSalt is the request's cache identity: the tenant scope, then the prompt
+// identity when the request carries media, then any salt the caller sent.
+func cacheSalt(scope cacheScope, prompt string, carried bool, hints map[string]json.RawMessage) string {
 	digest := sha256.New()
 	if scope.Tenant != "" {
 		writeSegment(digest, "tenant")
@@ -262,27 +283,218 @@ func withCacheSalt(body []byte, scope cacheScope) ([]byte, bool, error) {
 			writeSegment(digest, callerSalt)
 		}
 	}
+	return hex.EncodeToString(digest.Sum(nil))
+}
 
-	encodedSalt, err := json.Marshal(hex.EncodeToString(digest.Sum(nil)))
+// saltedHints is the `nvext` object with `cache_salt` set, encoded.
+func saltedHints(hints map[string]json.RawMessage, salt string) ([]byte, error) {
+	encodedSalt, err := json.Marshal(salt)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 	if hints == nil {
 		hints = make(map[string]json.RawMessage, 1)
 	}
 	hints["cache_salt"] = encodedSalt
+	return json.Marshal(hints)
+}
 
-	encodedHints, err := json.Marshal(hints)
-	if err != nil {
-		return nil, false, err
+// splicedCacheSalt writes a text request's salt into the bytes that arrived,
+// rather than decoding and re-encoding the whole body.
+//
+// A text request carries no media, so the identity needs nothing from the body
+// but its `nvext`, and the prompt — which is nearly all of a long-context body —
+// does not have to be copied into a map and marshalled back out. The body is
+// scanned once for its top-level keys; the `nvext` value, which is small, is the
+// only part decoded, and it is replaced in place, or inserted after the opening
+// brace when there is none. Re-encoding a 4 MB prompt cost about 31 ms a request
+// (BenchmarkCacheSaltLargeText).
+//
+// handled is false for anything this does not take on — a body the scan cannot
+// read, or `nvext` repeated, which the full re-encode collapses to one copy — and
+// the caller falls back to that re-encode.
+func splicedCacheSalt(body []byte, scope cacheScope) (out []byte, written, handled bool, err error) {
+	open, spans, ok := topLevelValues(body, "nvext")
+	if !ok || len(spans) > 1 {
+		return nil, false, false, nil
 	}
-	fields["nvext"] = encodedHints
+	var hints map[string]json.RawMessage
+	if len(spans) == 1 {
+		if json.Unmarshal(body[spans[0].start:spans[0].end], &hints) != nil {
+			// Not an object: as in withCacheSalt, leave it for the runtime to refuse.
+			return body, false, true, nil
+		}
+	}
+	encoded, err := saltedHints(hints, cacheSalt(scope, "", false, hints))
+	if err != nil {
+		return nil, false, true, err
+	}
 
-	rewritten, err := json.Marshal(fields)
-	if err != nil {
-		return nil, false, err
+	if len(spans) == 1 {
+		at := spans[0]
+		out = make([]byte, 0, len(body)-(at.end-at.start)+len(encoded))
+		out = append(out, body[:at.start]...)
+		out = append(out, encoded...)
+		return append(out, body[at.end:]...), true, true, nil
 	}
-	return rewritten, true, nil
+	field := append([]byte(`"nvext":`), encoded...)
+	rest := body[open+1:]
+	if next := skipSpace(rest, 0); next < len(rest) && rest[next] != '}' {
+		field = append(field, ',')
+	}
+	out = make([]byte, 0, len(body)+len(field))
+	out = append(out, body[:open+1]...)
+	out = append(out, field...)
+	return append(out, rest...), true, true, nil
+}
+
+// valueSpan is where one JSON value sits in a body, as [start, end).
+type valueSpan struct{ start, end int }
+
+// topLevelValues scans a JSON object one level deep without decoding it, and
+// returns the offset of its opening brace and the span of every value whose key
+// is exactly key, after unescaping as a JSON decoder would.
+//
+// The body has already been accepted by json.Unmarshal in stageParseEnvelope, and
+// every later rewrite is json.Marshal output, so this only has to find structure
+// in valid JSON. Anything it does not recognise is reported as !ok rather than
+// guessed at.
+func topLevelValues(body []byte, key string) (open int, spans []valueSpan, ok bool) {
+	i := skipSpace(body, 0)
+	if i >= len(body) || body[i] != '{' {
+		return 0, nil, false
+	}
+	open = i
+	i = skipSpace(body, i+1)
+	if i < len(body) && body[i] == '}' {
+		return open, nil, true
+	}
+	for i < len(body) {
+		if body[i] != '"' {
+			return 0, nil, false
+		}
+		end, ok := skipString(body, i)
+		if !ok {
+			return 0, nil, false
+		}
+		name := body[i:end]
+		i = skipSpace(body, end)
+		if i >= len(body) || body[i] != ':' {
+			return 0, nil, false
+		}
+		start := skipSpace(body, i+1)
+		stop, ok := skipValue(body, start)
+		if !ok {
+			return 0, nil, false
+		}
+		if keyIs(name, key) {
+			spans = append(spans, valueSpan{start, stop})
+		}
+		i = skipSpace(body, stop)
+		if i >= len(body) {
+			return 0, nil, false
+		}
+		switch body[i] {
+		case ',':
+			i = skipSpace(body, i+1)
+		case '}':
+			return open, spans, true
+		default:
+			return 0, nil, false
+		}
+	}
+	return 0, nil, false
+}
+
+// keyIs compares a quoted JSON key with a plain one, unescaping only when the key
+// holds an escape: `"nv\u0065xt"` is `nvext` to every decoder downstream.
+func keyIs(quoted []byte, key string) bool {
+	if bytes.IndexByte(quoted, '\\') < 0 {
+		return string(quoted[1:len(quoted)-1]) == key
+	}
+	var name string
+	return json.Unmarshal(quoted, &name) == nil && name == key
+}
+
+func skipSpace(body []byte, i int) int {
+	for i < len(body) {
+		switch body[i] {
+		case ' ', '\t', '\n', '\r':
+			i++
+		default:
+			return i
+		}
+	}
+	return i
+}
+
+// skipString returns the offset just past the string opening at i. It jumps from
+// quote to quote rather than reading every byte, which is what keeps a prompt of
+// megabytes cheap: a quote ends the string unless an odd run of backslashes
+// precedes it.
+func skipString(body []byte, i int) (int, bool) {
+	j := i + 1
+	for {
+		k := bytes.IndexByte(body[j:], '"')
+		if k < 0 {
+			return 0, false
+		}
+		j += k
+		slashes := 0
+		for p := j - 1; p > i && body[p] == '\\'; p-- {
+			slashes++
+		}
+		if slashes%2 == 0 {
+			return j + 1, true
+		}
+		j++
+	}
+}
+
+// skipValue returns the offset just past the value starting at i.
+func skipValue(body []byte, i int) (int, bool) {
+	if i >= len(body) {
+		return 0, false
+	}
+	switch body[i] {
+	case '"':
+		return skipString(body, i)
+	case '{', '[':
+		depth := 0
+		for i < len(body) {
+			k := bytes.IndexAny(body[i:], `"{}[]`)
+			if k < 0 {
+				return 0, false
+			}
+			i += k
+			switch body[i] {
+			case '"':
+				end, ok := skipString(body, i)
+				if !ok {
+					return 0, false
+				}
+				i = end
+				continue
+			case '{', '[':
+				depth++
+			default:
+				depth--
+			}
+			i++
+			if depth == 0 {
+				return i, true
+			}
+		}
+		return 0, false
+	default:
+		for j := i; j < len(body); j++ {
+			switch body[j] {
+			case ',', '}', ']', ' ', '\t', '\n', '\r':
+				return j, j > i
+			}
+		}
+		return 0, false
+	}
 }
 
 // hasMediaPart is a cheap guard so a text request does not pay a JSON walk.
