@@ -103,7 +103,11 @@ it is held in code rather than in a log pipeline's configuration.
   `-log-upstream-bodies`, which is off in production.
 - **Engine logging** is the operator's half: `--enable-log-requests`, `--enable-log-outputs`,
   `--log-requests` and `--log-requests-level` are refused by the plane on a workload, a role and an
-  overlay, and stripped by the operator's renderer under any spelling.
+  overlay, and stripped by the operator's renderer under any spelling. So is any log level at which
+  an engine writes request content — SGLang's `--log-level debug`, `DYN_LOG` with a `debug` or
+  `trace` directive, `VLLM_LOGGING_LEVEL=DEBUG`, `VLLM_DEBUG_LOG_API_SERVER_RESPONSE` and
+  `DYN_LOGGING_CONFIG_PATH` — refused in the plane and dropped from the rendered graph after the
+  overlays merge (`libs/operator/internal/render/retention.go`).
 
 ## Prefix-cache isolation
 
@@ -125,6 +129,12 @@ A request carrying media still has the prompt identity folded in on top (`caches
 never honoured as it stands: it can narrow its own sharing and can never name another tenant's.
 `x-tenant-id`, which Dynamo reads as a salt that overrides the body's, is stripped with the other
 steering headers. An endpoint with no owning tenant on the internal listener is left as it was.
+
+The salt is spliced into the bytes that arrived rather than written by re-encoding the body: a text
+request's `nvext` is the only part decoded (`splicedCacheSalt`). Re-encoding cost about 31 ms on a
+4 MB prompt and splicing about 5 ms, most of it the media check every request already paid
+(`BenchmarkCacheSaltLargeText`). A request carrying media, or a repeated `nvext`, still takes the
+full re-encode.
 
 ## What it measures
 

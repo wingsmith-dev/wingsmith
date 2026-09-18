@@ -517,7 +517,10 @@ success-rate objective is a fraction and the failure ratio a percentage, so the 
 `(1 - success_rate_objective) * 100`. `met` and `error_budget_consumed` are `null` whenever the
 reading or the objective they need is missing. It carries no `source`, because the owning tenant
 reads it too, at `GET /v1/serving/models/{ref}/sla` (and an admin at
-`GET /v1/tenants/{tenant}/serving/models/{ref}/sla`), resolved against that tenant first.
+`GET /v1/tenants/{tenant}/serving/models/{ref}/sla`), resolved against that tenant first. For the
+same reason the tenant route's `unavailable` is always the one line `service level data is
+temporarily unavailable`; the operator and admin routes say why (the cluster, the store's error,
+the setting to fix).
 
 The definition is an entry of the frozen objectives table (`app/modules/metrics/objectives.py`),
 named by the quota's `availability_objective`. An entry says which gateway outcomes are failures
