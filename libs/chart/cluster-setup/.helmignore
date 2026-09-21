@@ -1,0 +1,7 @@
+# helm package bundles everything not listed here.
+*.local.yaml
+*.local.yml
+.env
+.env.*
+.DS_Store
+*.tgz

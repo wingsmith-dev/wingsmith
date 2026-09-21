@@ -1,0 +1,34 @@
+name: guard
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  leaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.18.4 detect --source /repo --redact --no-banner
+
+      # Fork PRs get no secrets; the push to main after merge still runs this.
+      - name: denylist
+        env:
+          DENYLIST: ${{ secrets.HANGAR_DENYLIST }}
+        run: |
+          if [ -z "$DENYLIST" ]; then
+            echo "::notice::HANGAR_DENYLIST unavailable, skipping"
+            exit 0
+          fi
+          printf '%s\n' "$DENYLIST" > "$RUNNER_TEMP/denylist"
+          HANGAR_DENYLIST="$RUNNER_TEMP/denylist" scripts/check-leaks.sh tree
+          # Every line ever added, and every author and message, not just what HEAD holds.
+          git log --all -p --format='%an%n%ae%n%B' | HANGAR_DENYLIST="$RUNNER_TEMP/denylist" scripts/check-leaks.sh message /dev/stdin

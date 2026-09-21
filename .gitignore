@@ -1,0 +1,23 @@
+# Credentials and per-environment values never live in this repository.
+.env
+.env.*
+!.env.example
+*.local.yaml
+*.local.yml
+.auth/
+.local/
+*.pem
+*.key
+kubeconfig*
+
+# Tooling
+node_modules/
+dist/
+.venv/
+__pycache__/
+*.pyc
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+.DS_Store
+.claude/
