@@ -2,8 +2,8 @@
 # machine. Costs nothing to run against — it is our hardware — and it is the only
 # endpoint here that can be checked without a vendor key.
 #
-#   kubectl --context acme -n hangar port-forward svc/hangar-gateway 8080:80
-#   export HANGAR_GATEWAY_TOKEN=$(kubectl --context acme -n hangar \
+#   kubectl -n hangar port-forward svc/hangar-gateway 8080:80
+#   export HANGAR_GATEWAY_TOKEN=$(kubectl -n hangar \
 #       get secret hangar-secrets -o jsonpath='{.data.HANGAR_GATEWAY_TOKEN}' | base64 -d)
 #   just conformance gateway
 
@@ -18,11 +18,10 @@ protocols = ["chat_completions"]
 
 # What a customer must never see in an error body. These are the names of everything
 # between the gateway and the engine — if any of them reaches a 4xx body, that is a
-# finding today and it needs no reference endpoint to establish.
+# finding today and it needs no reference endpoint to establish. Add the names your own
+# infrastructure goes by here, and to the gateway's HANGAR_GATEWAY_REDACT_NAMES.
 leak_needles = [
     "hangar",
-    "acme",
-    "partner",
     "dynamo",
     "vllm",
     "svc.cluster.local",

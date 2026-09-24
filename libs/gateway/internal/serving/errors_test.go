@@ -139,7 +139,7 @@ func TestAQuotedMessageNamesNothingBehindThisHop(t *testing.T) {
 			name:   "a word that names the stack",
 			status: http.StatusBadRequest,
 			detail: "vllm_omni rejected the request: see ghcr.io/hangar-dev/runtime and Dynamo docs",
-			never:  []string{"vllm", "ghcr.io", "acme", "Dynamo"},
+			never:  []string{"vllm", "ghcr.io", "Dynamo"},
 		},
 		{
 			name:   "a source file and a filesystem path",
@@ -160,6 +160,24 @@ func TestAQuotedMessageNamesNothingBehindThisHop(t *testing.T) {
 				t.Fatalf("message = %q, want the address replaced rather than the message dropped", got.Message)
 			}
 		})
+	}
+}
+
+// TestAnOperatorsOwnNamesAreRedacted so that a deployment can add the names its own infrastructure
+// goes by without patching the gateway.
+func TestAnOperatorsOwnNamesAreRedacted(t *testing.T) {
+	t.Cleanup(func() { RedactNames(nil) })
+	message := "rejected by example-corp-edge-2 (contact ops@example-corp)"
+	if got := sanitizeUpstreamMessage(message, servedName{}); !strings.Contains(got, "example-corp") {
+		t.Fatalf("message = %q, an unconfigured name should pass through", got)
+	}
+	RedactNames([]string{" example-corp ", ""})
+	got := sanitizeUpstreamMessage(message, servedName{})
+	if strings.Contains(got, "example-corp") || !strings.Contains(got, redacted) {
+		t.Fatalf("message = %q, want example-corp redacted", got)
+	}
+	if got := sanitizeUpstreamMessage("vllm said no", servedName{}); strings.Contains(got, "vllm") {
+		t.Fatalf("message = %q, the built-in names must still apply", got)
 	}
 }
 

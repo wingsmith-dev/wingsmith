@@ -73,6 +73,7 @@ caller's config and pasted into another's.
 | `-metrics-listen` / `HANGAR_GATEWAY_METRICS_LISTEN` | where `/metrics` is served, default `:9090`, `off` to disable |
 | `-probe-token` / `HANGAR_GATEWAY_PROBE_TOKEN` | what the conformance runner presents to mark its traffic as a probe; a comma-separated pair while rotating |
 | `-tunnel-listen` / `HANGAR_GATEWAY_TUNNEL_LISTEN` | where cluster agents dial, default `:8443`, `off` to disable |
+| `HANGAR_GATEWAY_REDACT_NAMES` | comma-separated names your own infrastructure goes by, redacted from quoted engine messages on top of the built-in stack names; env only |
 | `-tunnel-cert` / `-tunnel-key` (`HANGAR_GATEWAY_TUNNEL_TLS_CERT` / `_KEY`) | PEM pair for the tunnel listener; neither means plaintext, and TLS has to be terminated in front of it |
 | `-log-upstream-bodies` / `HANGAR_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
 
@@ -205,7 +206,7 @@ No pricing, and nothing is added to the response body the caller sees.
   (`{"message"}`, `{"error":{"message"}}`, `{"error":"..."}`, `{"detail"}`), its message is cut to
   its first line (no tracebacks), a leading exception class is dropped, URLs, cluster-internal
   hostnames, IP addresses, source files, filesystem paths and any token naming the stack (the
-  conformance leak needles) become `[redacted]`, the served model name reads back as the caller's,
+  conformance leak needles, plus `HANGAR_GATEWAY_REDACT_NAMES`) become `[redacted]`, the served model name reads back as the caller's,
   and it is capped at 500 bytes. This is how input errors reach a caller: the vllm-omni layer
   raises `ValueError` for a validation failure, and Dynamo's frontend answers that `400`
   `InvalidArgument` with the message. A `4xx` prose body is never quoted, and one that mentions a

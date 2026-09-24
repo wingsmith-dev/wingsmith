@@ -112,6 +112,12 @@ func main() {
 	}
 	slog.Info("gateway: response header timeout", "timeout", *headerTimeout,
 		"agent_must_be_at_least", tunnel.InnerHopTimeout(*headerTimeout))
+	// Comma-separated names this deployment's infrastructure goes by, stripped from any engine
+	// message quoted back to a caller on top of the built-in stack names. Environment only, for the
+	// reason the comment above the flags gives.
+	if names := os.Getenv("HANGAR_GATEWAY_REDACT_NAMES"); names != "" {
+		serving.RedactNames(strings.Split(names, ","))
+	}
 	planeToken := os.Getenv("HANGAR_OPERATOR_TOKEN")
 	// HANGAR_GATEWAY_PUBLIC_LISTEN is deliberately read only from the
 	// environment, never a flag — the reason is the same one metricsAddr and

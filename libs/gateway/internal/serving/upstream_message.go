@@ -89,11 +89,32 @@ var (
 	sourceFile      = regexp.MustCompile(`[^\s"'()]*\.(?:py|rs|go|cc|cpp|cu|h)(?::\d+)?\b`)
 	systemPath      = regexp.MustCompile(`(?:^|[\s"'(=])(/(?:usr|opt|home|root|app|workspace|tmp|var|etc|lib|lib64|srv|mnt|data|models|cache)(?:/[^\s"'()]*)?)`)
 	whitespace      = regexp.MustCompile(`\s+`)
-	// internalName is any token that names the stack behind this hop. The words are the
+	// internalName is any token that names the stack behind this hop. The built-in words are the
 	// conformance suite's leak needles (libs/conformance/profiles/gateway.toml), so a quoted
-	// message cannot fail the leak probe.
-	internalName = regexp.MustCompile(`(?i)[^\s"'(),;]*(?:hangar|acme|partner|dynamo|vllm|ghcr\.io)[^\s"'(),;]*`)
+	// message cannot fail the leak probe. An operator adds its own names with RedactNames.
+	internalName = internalNamePattern(nil)
 )
+
+// stackNames are the words every deployment redacts: the components between this hop and the
+// engine, whoever runs them.
+var stackNames = []string{"hangar", "dynamo", "vllm", "ghcr.io"}
+
+// RedactNames adds names an operator's own infrastructure goes by (its company, its clusters, a
+// partner's) to the words stripped from a quoted upstream message. It is meant to be called once
+// at startup, before the handler serves.
+func RedactNames(names []string) {
+	internalName = internalNamePattern(names)
+}
+
+func internalNamePattern(extra []string) *regexp.Regexp {
+	words := make([]string, 0, len(stackNames)+len(extra))
+	for _, name := range append(append([]string{}, stackNames...), extra...) {
+		if name = strings.TrimSpace(name); name != "" {
+			words = append(words, regexp.QuoteMeta(name))
+		}
+	}
+	return regexp.MustCompile(`(?i)[^\s"'(),;]*(?:` + strings.Join(words, "|") + `)[^\s"'(),;]*`)
+}
 
 // sanitizeUpstreamMessage makes an engine's message fit to put in front of a caller, or returns ""
 // when nothing fit is left.
