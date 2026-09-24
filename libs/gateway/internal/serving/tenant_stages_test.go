@@ -144,7 +144,7 @@ func TestTheCatalogOnThePublicZoneListsOnlyThisTenantsModels(t *testing.T) {
 	acmesChat := routeTo(t, server.URL, nil)
 	acmesChat.TenantID = "ten_acme"
 	handler := publicHandler(t, map[string]routing.Route{
-		"chat":       globexRoute(t, server.URL),
+		"chat":   globexRoute(t, server.URL),
 		"acme-x": acmesChat,
 	}, tenants)
 

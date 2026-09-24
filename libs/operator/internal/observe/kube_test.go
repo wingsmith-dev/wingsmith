@@ -235,7 +235,7 @@ func TestDeviceClassPrecedence(t *testing.T) {
 // pool, no pool of that name is declared, and the plane stores a null pool without complaining.
 func TestKubePoolLabelKeyIsConfigurable(t *testing.T) {
 	node := gpuNode("gpu-a", map[string]string{
-		labelGPUCount:       "1",
+		labelGPUCount:      "1",
 		"example.com/pool": "gpu",
 	}, nil, true, false)
 

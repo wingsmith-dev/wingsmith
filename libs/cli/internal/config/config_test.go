@@ -156,9 +156,9 @@ func TestContextNamesAreStable(t *testing.T) {
 func TestSetAndGetCoverEverySettableKey(t *testing.T) {
 	f, _ := Load(filepath.Join(t.TempDir(), "c.yaml"))
 	values := map[string]string{
-		"current_context": "prod",
-		"output":          "json",
-		"fake":            "true",
+		"current_context":       "prod",
+		"output":                "json",
+		"fake":                  "true",
 		"context.server":        "https://plane.example",
 		"context.token":         "hgr_pat_0123456789abcdef",
 		"context.refresh_token": "hgr_rt_0123456789abcdef",
