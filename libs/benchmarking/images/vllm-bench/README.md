@@ -15,7 +15,7 @@ Two source trees, one runtime tree:
 
 | Dir | Committed | What |
 |---|---|---|
-| `upstream/` | no (gitignored) | fetched verbatim by `vendor.sh` |
+| `upstream/` | yes, verbatim | fetched by `vendor.sh`; vLLM's code under Apache-2.0, headers intact |
 | `stubs/` | yes | `vllm.{logger,tokenizers,inputs,lora,multimodal,transformers_utils,utils}` — the part that is not reproducible |
 
 The Dockerfile COPYs both into `/bench`, so the split is visible in the repo and invisible at runtime.

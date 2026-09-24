@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Fetch the upstream vLLM benchmark sources into ./upstream/ (gitignored).
+# Fetch the upstream vLLM benchmark sources into ./upstream/. The result is committed, so
+# re-run this only when bumping TAG, and commit what it writes.
 #
 # This script writes ONLY under upstream/. The hand-written stubs under stubs/
 # replace the torch-dependent vllm internals and are never touched here.

@@ -2,3 +2,8 @@ Hangar
 Copyright 2026 The Hangar Authors
 
 This product includes software developed by The Hangar Authors.
+
+This product includes software developed by the vLLM project
+(https://github.com/vllm-project/vllm), licensed under the Apache License 2.0.
+Files under libs/benchmarking/images/vllm-bench/upstream/ are copied verbatim
+from vLLM v0.28.0 and keep their original copyright and license headers.
