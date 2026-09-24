@@ -46,14 +46,14 @@ a connection is the one fact about a caller nothing it sends can forge, and it i
 decision rests on — `internal/serving.Zone`.
 
 - **The internal listener** (`-listen` / `HANGAR_GATEWAY_PUBLIC_LISTEN` unset) is a ClusterIP with no
-  ingress. Reaching it at all is the proof; a tenant behind it may declare `auth: none`. Acme's
+  ingress. Reaching it at all is the proof; a tenant behind it may declare `auth: none`. An operator's
   own edge is `internal` + `none` — it authenticates and bills its own users, then calls here, and
   nothing about that changed.
 - **The public listener** (`HANGAR_GATEWAY_PUBLIC_LISTEN`) sits behind a `*.hangar.example.com` wildcard. A
   request there is identified by its `Host` header, checked against a key when the tenant declares
   `auth: api_key`, and scoped to that tenant's own catalog and routing — another tenant's model reads
   as `404`, never `403`. This is how a tenant reaches the gateway directly instead of through
-  Acme's inference edge.
+  the operator's own inference edge.
 
 `HANGAR_GATEWAY_TOKEN` and the shared-secret guard it configured are gone. Their job — is this hop
 being called by the system that is supposed to call it — is answered by which listener a caller

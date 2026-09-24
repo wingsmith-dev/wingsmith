@@ -54,5 +54,5 @@ bump on the harness must not silently rewrite the shape the plane reads.
 ## What this image is not
 
 - Not a job spec. The Job is rendered by the operator, with this image named as its container.
-- Not a Gradio dashboard. That is the sibling deployment at `apps/evalscope/` in the acme
-  repo, kept around as a results browser. This image is for execution only.
+- Not a Gradio dashboard. This image is for execution only; browse results with whatever reads
+  EvalScope's output.

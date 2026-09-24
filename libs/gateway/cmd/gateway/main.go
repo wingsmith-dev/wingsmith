@@ -232,7 +232,7 @@ func main() {
 			LogUpstreamBodies: *logUpstreamBodies,
 			// Zone is left at its default, ZoneInternal: this is the
 			// ClusterIP port with no ingress, the network boundary that
-			// used to be HANGAR_GATEWAY_TOKEN (docs/plans/17). Acme's
+			// used to be HANGAR_GATEWAY_TOKEN (docs/plans/17). An operator's own
 			// edge dials this one and is trusted by having reached it.
 		}),
 		// No WriteTimeout: it is absolute rather than idle-based, so any value

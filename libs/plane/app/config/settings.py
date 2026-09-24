@@ -222,7 +222,7 @@ class Settings:
 
     The hub's host, which is not necessarily the host serving this request: the
     console and the hub can be separate names in front of separate Services, and
-    in Acme's deployment they are.
+    in some deployments they are.
 
     Used to build the operator's `HANGAR_HUB_URL` in the setup instructions when
     it is not set explicitly. Empty falls back to the `Host` header of the

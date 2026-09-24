@@ -15,7 +15,7 @@ protocols = ["chat_completions"]
 
 # Strings that would tell a customer who is really serving the request. Ours, not
 # the model vendor's — see probes/errors.py.
-leak_needles = ["hangar", "acme", "partner", "dynamo", "vllm", "internal.svc"]
+leak_needles = ["hangar", "dynamo", "vllm", "internal.svc"]
 
 [thinking]
 # none | kimi | chat_template | reasoning_effort

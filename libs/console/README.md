@@ -6,9 +6,6 @@ It talks to `libs/plane` over HTTP and nothing else — never to a cluster direc
 the hub. Every cluster fact you see here reached the plane through the operator's sync
 stream and was denormalised into Postgres first.
 
-The stack and directory layout deliberately mirror Acme's `libs/admin`. That is a
-velocity shortcut, not a design position: no shared code, no obligation to stay aligned.
-
 ## Commands
 
 ```bash

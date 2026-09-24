@@ -5,7 +5,7 @@ Revises: c7f2a9d41e86
 Create Date: 2026-09-12 10:00:00.000000
 
 `bind_tenant` gains `ingress`, `auth` and `host`. `ingress` and `auth` default to `internal`
-and `none`, which is the setting Acme is meant to run under, so every existing tenant reads
+and `none`, which is how tenants behind an operator's own edge run, so every existing tenant reads
 as it already behaves. `host` is nullable and unique, and empty for every tenant until one is
 given a hostname to answer on.
 

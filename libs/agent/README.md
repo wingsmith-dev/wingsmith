@@ -3,7 +3,7 @@
 The cluster end of hangar's data plane. One Deployment per GPU cluster, `hangar-agent`, and it is
 how an inference request gets into a cluster at all.
 
-It dials **out**. Acme owns every cluster but not the networks they sit in, so nothing ever
+It dials **out**. An operator owns every cluster but not always the networks they sit in, so nothing ever
 dials into a GPU cluster — not the gateway, not the plane, not a laptop. The agent opens the
 connection and the request travels back down it.
 

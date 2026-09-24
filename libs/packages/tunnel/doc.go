@@ -14,7 +14,7 @@
 // Kubernetes. A change to any of those must not be able to reach the wire
 // format.
 //
-// Acme owns every cluster but not the networks they sit in, so nothing may
+// An operator owns every cluster but not always the networks they sit in, so nothing may
 // dial into one. The agent inside the cluster dials out to the gateway, and
 // then the roles on that single connection are reversed: the agent runs the
 // HTTP/2 *server* and the gateway runs the HTTP/2 *client*. The gateway

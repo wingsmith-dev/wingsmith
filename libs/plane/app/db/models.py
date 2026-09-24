@@ -1473,7 +1473,7 @@ class TenantAPIKey(BaseMixin):
 
     Only the sha256 of the plaintext is stored, for the same reason as
     `TenantToken.token_hash`. One tenant, many keys — one per caller, so revoking
-    Globex's caller X does not revoke caller Y.
+    one caller does not revoke another.
     """
 
     __tablename__ = "bind_tenant_api_key"

@@ -297,5 +297,3 @@ The transport itself is exercised against a live plane when one is pointed at:
 HANGAR_TEST_SERVER=http://localhost:8000 go test ./internal/api/
 ```
 
-Structure and conventions are lifted from Acme's `libs/cli` deliberately — same shape, no
-shared code. See the root [`CLAUDE.md`](../../CLAUDE.md) for why.

@@ -2,7 +2,7 @@
 # every other Kimi K3 endpoint is judged against.
 #
 #   export MOONSHOT_API_KEY=...
-#   just conformance kimi-k3-acme --reference moonshot-kimi-k3
+#   just conformance <your-kimi-k3-profile> --reference moonshot-kimi-k3
 #
 # `api.moonshot.ai` is the international host. `api.moonshot.cn` is a separate
 # account namespace and rejects this key, so the two are not interchangeable.
