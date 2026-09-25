@@ -57,7 +57,7 @@ function LoginPage() {
         className="w-full max-w-sm space-y-6 rounded-xl border bg-card p-8"
       >
         <div className="flex items-center justify-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-md bg-white text-[#0b1220]">
+          <div className="flex size-9 items-center justify-center rounded-md bg-foreground text-background">
             <HangarMark className="size-5" />
           </div>
           <p className="text-base leading-none font-semibold tracking-[0.14em] uppercase">

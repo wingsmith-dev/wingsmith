@@ -1,22 +1,10 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
-export const ACCENTS = [
-  "cyan",
-  "indigo",
-  "cobalt",
-  "violet",
-  "magenta",
-] as const
-
-export type Accent = (typeof ACCENTS)[number]
-
 interface SettingsState {
   /** Refuses every write from this browser. See `ReadOnlyError`. */
   readOnly: boolean
   setReadOnly: (readOnly: boolean) => void
-  accent: Accent
-  setAccent: (accent: Accent) => void
   /** Shows the unit-economics view. Off by default; see `useEconomics`. */
   economics: boolean
   setEconomics: (economics: boolean) => void
@@ -35,35 +23,10 @@ export const useSettingsStore = create<SettingsState>()(
       setReadOnly: (readOnly) => set({ readOnly }),
       economics: import.meta.env.VITE_ECONOMICS === "true",
       setEconomics: (economics) => set({ economics }),
-      accent: "cyan",
-      setAccent: (accent) => {
-        applyAccent(accent)
-        set({ accent })
-      },
     }),
-    {
-      name: "hangar.settings",
-      onRehydrateStorage: () => (state) => applyAccent(state?.accent ?? "cyan"),
-    }
+    { name: "hangar.settings" }
   )
 )
-
-/**
- * Paints the accent kept in `localStorage` before the first render, so a reload
- * comes back in the operator's colour instead of the default and then switching.
- */
-export function applyStoredAccent(): void {
-  applyAccent(useSettingsStore.getState().accent)
-}
-
-/** The accent is a data attribute on the root, so it composes with `.dark`. */
-function applyAccent(accent: Accent): void {
-  document.documentElement.dataset.accent = accent
-}
-
-export function useAccent(): Accent {
-  return useSettingsStore((s) => s.accent)
-}
 
 export function useReadOnly(): boolean {
   return useSettingsStore((s) => s.readOnly)

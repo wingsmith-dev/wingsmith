@@ -27,11 +27,7 @@ import { BASE_URL } from "@/lib/api/http"
 import { transport } from "@/lib/api"
 import { useAuthStore } from "@/modules/auth/store"
 import { useSignOut } from "@/modules/auth/session"
-import {
-  ACCENTS,
-  useSettingsStore,
-  type Accent,
-} from "@/modules/settings/store"
+import { useSettingsStore } from "@/modules/settings/store"
 import { usePolicies, usePriorityClasses } from "@/modules/binding/queries"
 import type { Policy, PriorityClass } from "@/modules/binding/types"
 import { useClusterOptions } from "@/modules/clusters/queries"
@@ -1040,8 +1036,6 @@ function ReadOnlyPanel() {
 
 function AppearancePanel() {
   const { theme, setTheme } = useTheme()
-  const accent = useSettingsStore((s) => s.accent)
-  const setAccent = useSettingsStore((s) => s.setAccent)
 
   return (
     <Panel
@@ -1050,33 +1044,6 @@ function AppearancePanel() {
       description="held in this browser, never written to the plane"
     >
       <div className="space-y-4">
-        <div className="space-y-1.5">
-          <Label>Accent</Label>
-          <p className="text-2xs text-muted-foreground/70">
-            Drives the active nav item, resource glyphs, buttons and focus
-            rings. Green, amber and red are reserved for ok, warn and danger.
-          </p>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {ACCENTS.map((value) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setAccent(value as Accent)}
-                data-accent={value}
-                aria-pressed={accent === value}
-                className={
-                  accent === value
-                    ? "flex items-center gap-2 rounded-md border-2 border-primary bg-primary/10 px-2.5 py-1.5 font-mono text-2xs"
-                    : "flex items-center gap-2 rounded-md border px-2.5 py-1.5 font-mono text-2xs hover:bg-accent"
-                }
-              >
-                <span className="size-3.5 rounded-full bg-primary" />
-                {value}
-              </button>
-            ))}
-          </div>
-        </div>
-
         <div className="space-y-1.5">
           <Label htmlFor="theme">Theme</Label>
           <Select

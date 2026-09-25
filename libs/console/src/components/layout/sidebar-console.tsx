@@ -140,7 +140,7 @@ export function ConsoleSidebar({
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader className="gap-3 p-4">
         <div className="flex items-center gap-2">
-          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white text-[#0b1220]">
+          <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-foreground text-background">
             <HangarMark className="size-4" />
           </div>
           <span className="truncate text-sm leading-none font-semibold tracking-[0.14em] uppercase group-data-[collapsible=icon]:hidden">

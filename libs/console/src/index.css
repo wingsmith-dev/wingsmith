@@ -1,4 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Geist+Mono:wght@300;400;500;600&display=swap");
+@import "@fontsource-variable/plus-jakarta-sans";
+@import "@fontsource-variable/geist-mono";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -98,90 +99,11 @@
   --scrollbar-hover: oklch(1 0 0 / 32%);
 }
 
-/* Accent candidates. Primary drives the active nav item, the logo tile, every
-   resource glyph, submit buttons, focus rings and chart-1 — so the hue is load
-   bearing, not decoration. Green, amber and red are all spoken for by ok, warn
-   and danger, which is why every candidate here sits in the blue-to-magenta arc. */
-:root[data-accent="cyan"] {
-  --primary: oklch(0.545 0.128 208);
-  --ring: oklch(0.545 0.128 208);
-  --sidebar-primary: oklch(0.545 0.128 208);
-  --sidebar-ring: oklch(0.545 0.128 208);
-  --chart-1: oklch(0.545 0.128 208);
-}
-
-.dark[data-accent="cyan"] {
-  --primary: oklch(0.68 0.115 208);
-  --ring: oklch(0.68 0.115 208);
-  --sidebar-primary: oklch(0.68 0.115 208);
-  --sidebar-ring: oklch(0.68 0.115 208);
-  --chart-1: oklch(0.68 0.115 208);
-}
-:root[data-accent="indigo"] {
-  --primary: oklch(0.52 0.19 272);
-  --ring: oklch(0.52 0.19 272);
-  --sidebar-primary: oklch(0.52 0.19 272);
-  --sidebar-ring: oklch(0.52 0.19 272);
-  --chart-1: oklch(0.52 0.19 272);
-}
-
-.dark[data-accent="indigo"] {
-  --primary: oklch(0.66 0.17 272);
-  --ring: oklch(0.66 0.17 272);
-  --sidebar-primary: oklch(0.66 0.17 272);
-  --sidebar-ring: oklch(0.66 0.17 272);
-  --chart-1: oklch(0.66 0.17 272);
-}
-:root[data-accent="cobalt"] {
-  --primary: oklch(0.53 0.17 255);
-  --ring: oklch(0.53 0.17 255);
-  --sidebar-primary: oklch(0.53 0.17 255);
-  --sidebar-ring: oklch(0.53 0.17 255);
-  --chart-1: oklch(0.53 0.17 255);
-}
-
-.dark[data-accent="cobalt"] {
-  --primary: oklch(0.68 0.15 255);
-  --ring: oklch(0.68 0.15 255);
-  --sidebar-primary: oklch(0.68 0.15 255);
-  --sidebar-ring: oklch(0.68 0.15 255);
-  --chart-1: oklch(0.68 0.15 255);
-}
-:root[data-accent="violet"] {
-  --primary: oklch(0.55 0.205 295);
-  --ring: oklch(0.55 0.205 295);
-  --sidebar-primary: oklch(0.55 0.205 295);
-  --sidebar-ring: oklch(0.55 0.205 295);
-  --chart-1: oklch(0.55 0.205 295);
-}
-
-.dark[data-accent="violet"] {
-  --primary: oklch(0.69 0.18 295);
-  --ring: oklch(0.69 0.18 295);
-  --sidebar-primary: oklch(0.69 0.18 295);
-  --sidebar-ring: oklch(0.69 0.18 295);
-  --chart-1: oklch(0.69 0.18 295);
-}
-:root[data-accent="magenta"] {
-  --primary: oklch(0.56 0.215 350);
-  --ring: oklch(0.56 0.215 350);
-  --sidebar-primary: oklch(0.56 0.215 350);
-  --sidebar-ring: oklch(0.56 0.215 350);
-  --chart-1: oklch(0.56 0.215 350);
-}
-
-.dark[data-accent="magenta"] {
-  --primary: oklch(0.7 0.19 350);
-  --ring: oklch(0.7 0.19 350);
-  --sidebar-primary: oklch(0.7 0.19 350);
-  --sidebar-ring: oklch(0.7 0.19 350);
-  --chart-1: oklch(0.7 0.19 350);
-}
 
 @theme inline {
-  --font-sans: "Plus Jakarta Sans", sans-serif;
-  --font-mono: "Geist Mono", monospace;
-  --font-heading: "Plus Jakarta Sans", sans-serif;
+  --font-sans: "Plus Jakarta Sans Variable", sans-serif;
+  --font-mono: "Geist Mono Variable", monospace;
+  --font-heading: "Plus Jakarta Sans Variable", sans-serif;
   /* Type scale, nudged up one notch from Tailwind's defaults. The console is
        read for hours at a desk, and the stock scale bottoms out too small for
        dense monospaced identifiers. */
