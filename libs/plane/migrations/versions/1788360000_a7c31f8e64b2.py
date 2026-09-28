@@ -40,7 +40,7 @@ workload ever named.
 `Recipe.name`, `Recipe.version` and `Recipe.lifecycle` are dropped and not replaced. A
 workload has a name; a serving configuration no longer needs one of its own. If a
 named, versioned, sellable configuration is wanted later it is a catalog object
-pointing at a `serving_digest` — the open question in `docs/plans/01` §344 — and it is
+pointing at a `serving_digest` — the open question in the founding object model §344 — and it is
 not this.
 
 Irreversible in one respect, stated plainly: `downgrade()` rebuilds the table and the

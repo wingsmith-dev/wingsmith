@@ -1,5 +1,5 @@
 # The enrolment token is a credential and does not ship here. Auth is stubbed: a static bearer
-# token, no rotation — see docs/plans/01 §11.5. Before applying this bundle, create it out of
+# token, no rotation — an open question. Before applying this bundle, create it out of
 # band, e.g.:
 #
 #   kubectl create secret generic hangar-operator -n hangar-system \

@@ -153,7 +153,7 @@ type Endpoint struct {
 	Upstreams       []Upstream `json:"upstreams"`
 	FailoverOrder   []string   `json:"failover_order"`
 	Policy          *Policy    `json:"policy"`
-	// TenantID is the endpoint's project's tenant (docs/plans/17). There is
+	// TenantID is the endpoint's project's tenant (docs/decisions/0016). There is
 	// exactly one per endpoint; this is not a cross-tenant endpoint's table.
 	TenantID string `json:"tenant_id"`
 	Revision string `json:"revision"`
@@ -165,7 +165,7 @@ type Table struct {
 	Endpoints []Endpoint `json:"endpoints"`
 }
 
-// GatewayTenant is one tenant, as the gateway needs to trust it (docs/plans/17).
+// GatewayTenant is one tenant, as the gateway needs to trust it (docs/decisions/0016).
 //
 // `KeyHashes` carries only the live ones — a revoked key is dropped from the
 // plane's own feed, and that drop is the whole mechanism a revoke has. Its
@@ -247,7 +247,7 @@ func (c *Client) Resolved(ctx context.Context, revision string) (Table, error) {
 
 // TenantsResolved fetches the gateway's tenant feed, or reports
 // ErrNotModified when revision still holds. Same shape as Resolved, against
-// the surface docs/plans/17 adds specifically for this hop.
+// the surface ADR 0016 adds specifically for this hop.
 func (c *Client) TenantsResolved(ctx context.Context, revision string) (TenantTable, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/v1/gateway/tenants", nil)
 	if err != nil {

@@ -4,7 +4,7 @@ The envelope, correlation rules, and resume semantics are in [`PROTOCOL.md`](PRO
 document is the type registry: what exists, which way it flows, and what its payload holds.
 
 Naming is `<noun>.<verb>`. The noun is an object from
-[`docs/plans/01-object-model-and-architecture.md`](../../../docs/plans/01-object-model-and-architecture.md);
+[`docs/architecture`](../../../docs/architecture/README.md);
 the verb says what kind of frame it is.
 
 | Verb | Direction | Shape |

@@ -17,7 +17,7 @@ export interface Tenant {
   slug: string
   name: string
   enabled: boolean
-  /** Which listener this tenant's traffic arrives on (docs/plans/17). */
+  /** Which listener this tenant's traffic arrives on (docs/decisions/0016). */
   ingress: TenantIngress
   /** Whether the gateway checks a key on this tenant's requests. */
   auth: TenantAuth

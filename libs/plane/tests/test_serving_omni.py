@@ -1,6 +1,6 @@
 """The omni engine on the serving block: output modality, the diffusion block, and the wire.
 
-Plan 05 (`docs/plans/05-image-serving.md`). The output modality is a serving field, not a
+Image and video serving. The output modality is a serving field, not a
 capability, because it renders — `--output-modalities` — and because the routing table carries it.
 """
 

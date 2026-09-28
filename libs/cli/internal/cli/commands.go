@@ -5,7 +5,7 @@ import (
 )
 
 // register attaches every command to the root. The noun set is the object
-// model from docs/plans/01, grouped the way the model groups it, and every
+// model from the object model in docs/architecture, grouped the way the model groups it, and every
 // noun now reaches the real API: nothing here is a stub.
 func register(app *App, root *cobra.Command) {
 	root.AddCommand(

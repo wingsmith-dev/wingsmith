@@ -7,7 +7,7 @@ answer as one that ran throughout, and "how long has this been true" is a fact
 about the alert row (`first_seen_at`) rather than something this module has to
 persist.
 
-Every condition here answers a question `docs/plans/01` left to a human reading a
+Every condition here answers a question the founding object model left to a human reading a
 dashboard, and the four were chosen from one incident: a spot node went away, the
 deployment on it stopped serving, and the plane stayed green for seventeen hours
 because a cluster with nothing on it looks exactly like a cluster with nothing

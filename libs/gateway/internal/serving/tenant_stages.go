@@ -12,7 +12,7 @@ import (
 
 // Zone says which listener accepted a connection — the one fact about a
 // caller that nothing it sends can forge, and what the tenant and auth
-// stages below rest their trust decision on (docs/plans/17).
+// stages below rest their trust decision on (docs/decisions/0016).
 type Zone int
 
 const (

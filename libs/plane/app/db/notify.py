@@ -5,7 +5,7 @@ so a write to declared state has no way of reaching the cluster it concerns unti
 the operator next reconnects and is streamed a full resync. This is the wakeup
 that closes that gap, and it lives here — beside the engine rather than in either
 process — because the writer and the listener are in different binaries and
-neither may import the other (see `libs/plane/CLAUDE.md`). The listening half is
+neither may import the other. The listening half is
 `app.hub.dispatch`.
 
 What travels is a **hint**: the cluster, the kind, and the uid of what changed —

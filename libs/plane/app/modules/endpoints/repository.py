@@ -133,7 +133,7 @@ class EndpointRepository:
         NULL and 1:1, so — like the workload and artifact hops — they multiply
         no rows. They carry `tenant_id` onto the resolved endpoint, which is
         what lets the gateway answer only for the tenant a request belongs to
-        (docs/plans/17); `Project`'s own stamp goes into the revision so a
+        (docs/decisions/0016); `Project`'s own stamp goes into the revision so a
         project's tenant reassignment is not silently missed by a poller
         holding a `304`.
         """

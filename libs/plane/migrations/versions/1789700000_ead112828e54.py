@@ -14,7 +14,7 @@ a column reused from `bind_tenant_token` — that one signs in to the console, t
 gateway, and a single table would mean revoking one kind of credential could touch the other.
 
 Additive, and nothing reads any of it yet: the resolved routing table does not carry `tenant_id`
-until docs/plans/17's next step, so the gateway has no way to reach these columns from this
+until a later step, so the gateway has no way to reach these columns from this
 migration alone.
 """
 

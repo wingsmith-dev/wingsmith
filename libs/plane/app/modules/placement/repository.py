@@ -3,7 +3,7 @@
 This file exists so `engine.py` never has to. Placement is worth having as a pure
 function only if something else does the I/O, and that something has to live
 somewhere — putting it in the same directory keeps the module shaped like every
-other one (`CLAUDE.md`), while the purity rule stays exactly where it was: on
+other one, while the purity rule stays exactly where it was: on
 `engine.py`, `snapshot.py` and `decision.py`, none of which import this.
 
 Every value handed to the engine is a plain struct built here. Nothing an ORM row

@@ -91,7 +91,7 @@ observed
 
 ## The noun set
 
-The nouns are the object model in [`docs/plans/01-object-model-and-architecture.md`](../../docs/plans/01-object-model-and-architecture.md),
+The nouns are the object model in [`docs/architecture`](../../docs/architecture/README.md),
 grouped in help the way the model groups them.
 
 | Group | Nouns | Kind |
@@ -200,8 +200,7 @@ Precedence is flag → environment → config file → default.
 
 Auth is a bearer token, sent as `Authorization: Bearer …`. `hgr login` trades the admin password
 for a short-lived session token and stores it in the active context; a static operator token can be
-set with `hgr config set context.token` or `HANGAR_TOKEN` instead. See *CLI auth* in the root
-`CLAUDE.md`. No keychain yet.
+set with `hgr config set context.token` or `HANGAR_TOKEN` instead. No keychain yet.
 
 ---
 

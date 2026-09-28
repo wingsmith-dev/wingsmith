@@ -1,5 +1,5 @@
 // Package tenancy holds what the gateway needs to trust a tenant: which host
-// names it, and which key hashes are allowed to speak for it (docs/plans/17).
+// names it, and which key hashes are allowed to speak for it (docs/decisions/0016).
 //
 // It refreshes on the same timer as the routing table and takes the same
 // failure posture: the first load must succeed, and every one after that

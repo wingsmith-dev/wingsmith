@@ -261,7 +261,7 @@ not depend on which cluster would have taken the request. `GET /v1/models` on th
 the same value as `output_modality` beside each model id.
 
 **Each resolved endpoint also carries `tenant_id`, the endpoint's project's tenant** — what lets the
-gateway answer only for the tenant a request belongs to (docs/plans/17), without a second lookup per
+gateway answer only for the tenant a request belongs to (docs/decisions/0016), without a second lookup per
 request. There is exactly one tenant per endpoint; this is not a cross-tenant endpoint's table. The
 project's own stamp feeds the table's revision alongside the endpoint's, so a project's tenant
 reassignment is never silently missed by a poller holding a `304`.
@@ -729,7 +729,7 @@ foreign key cascades, and a delete that silently took quotas and allocations wit
 anyone asked for. `project_count` is on the read shape so a caller can see what a delete would
 refuse over.
 
-**A tenant also carries `ingress`, `auth` and `host` — how the gateway is to trust it (docs/plans/17).**
+**A tenant also carries `ingress`, `auth` and `host` — how the gateway is to trust it (docs/decisions/0016).**
 `ingress` is `internal` or `public` and says which gateway listener the tenant's traffic arrives on;
 `auth` is `none` or `api_key` and says whether the gateway checks a key on it; `host` is the single
 name that resolves to the tenant, matched against the request's `Host` header. `public` with `none`
@@ -1194,5 +1194,5 @@ object's `revision`, and a mismatch is `409 conflict`.
 **Draft.** §1–§5 are settled and clients should be written against them. §6's path list is settled
 in shape but individual query dimensions will grow. Payload schemas per resource are not yet
 written here — they follow the object model in
-[`docs/plans/01`](../../../docs/plans/01-object-model-and-architecture.md) and become binding as each
+[`docs/architecture`](../../../docs/architecture/README.md) and become binding as each
 resource is implemented.

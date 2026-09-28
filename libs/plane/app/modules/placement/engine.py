@@ -721,7 +721,7 @@ def expand(demand: WorkloadDemand, snapshot: CapacitySnapshot) -> ExpansionDecis
     Splittability is a property of `kind` and is the one thing this branches on:
     `service` and `task` fan out, `gang` is atomic and comes back with a single
     share or with none at all. Nothing below a workload is entitled to read `kind`
-    (`CLAUDE.md` rule on the supertype); expansion is above it.
+    (it is the supertype's, not theirs); expansion is above it.
 
     `pack` is the default because it makes an existing single-cluster workload
     re-expand onto the same single cluster: spreading is a thing you ask for, not

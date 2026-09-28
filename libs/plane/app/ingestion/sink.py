@@ -147,7 +147,7 @@ def _regressed(before, payload) -> bool:
     replay: nothing was redeployed. Judging those two alike is what let a cluster
     that lost its nodes report `NoSchedulableCapacity` every fifteen seconds for
     hours into a guard that dropped every frame, while the plane went on showing
-    the deployment as running four of four (LOG.md 2026-09-14).
+    the deployment as running four of four.
     """
     if before is None or payload.phase != "pending":
         return False

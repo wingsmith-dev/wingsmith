@@ -1064,7 +1064,7 @@ def test_a_pending_state_at_a_settled_generation_is_not_a_replayed_stage() -> No
     """A workload whose nodes are reclaimed reports `NoSchedulableCapacity` at the generation it
     was already serving on — nothing was redeployed, so the generation cannot move to separate it
     from a stage replay. Refusing it left the plane showing four of four ready for hours while the
-    operator said the opposite every fifteen seconds (LOG.md 2026-09-14)."""
+    operator said the opposite every fifteen seconds."""
     observed = payload("deployment.observed")
     lost = structs.replace(
         observed,

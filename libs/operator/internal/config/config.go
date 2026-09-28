@@ -21,7 +21,7 @@ type Config struct {
 	HubURL string
 
 	// EnrolmentToken is a static bearer token presented on dial. Auth is stubbed: the real
-	// credential and rotation model is an open question in docs/plans/01 §11.5.
+	// credential and rotation model is still an open question.
 	EnrolmentToken string
 
 	// TLSInsecureSkipVerify disables hub certificate verification. Local development only.

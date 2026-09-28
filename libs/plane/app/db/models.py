@@ -815,8 +815,8 @@ class WorkloadRole(BaseMixin):
     declared change bumps that — so every scale in the system already fails the check and
     re-applies, and re-applying is not reloading. What decides a restart is whether the applied
     object changes a component's own spec and therefore renames the objects Dynamo derives from
-    it. Whether that renaming is per-component or graph-wide is the open question in §11.1 of
-    `docs/plans/10-disaggregated-serving.md`, and it is answered on a cluster, not here.
+    it. Whether that renaming is per-component or graph-wide is still open, and it is answered on a
+    cluster, not here.
     """
     max_batch_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     """This role's `--max-num-batched-tokens`. Null inherits the workload's.
@@ -1401,7 +1401,7 @@ class Tenant(BaseMixin):
     """The billing and isolation root. Projects hang off it; quota attaches below it.
 
     `ingress` and `auth` are how the gateway decides who a caller is and whether
-    to believe them (docs/plans/17). `ingress` says which listener the tenant's
+    to believe them (docs/decisions/0016). `ingress` says which listener the tenant's
     traffic arrives on; `auth` says whether the gateway checks a key on it.
     `host` is the name that resolves to this tenant, checked against the
     request's `Host` header — null until a tenant is given one.

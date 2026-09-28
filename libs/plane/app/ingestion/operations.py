@@ -3,8 +3,7 @@
 Beside `desired.py` rather than inside it, and the distance is the point. That
 module renders the resync snapshot, and everything a snapshot carries is
 prunable by definition: what is absent from a complete snapshot is what the
-cluster stops running. An operation is the third kind of thing (`CLAUDE.md`, rule
-1) — imperative, long-running, and usually half-done by the time a session drops
+cluster stops running. An operation is the third kind of thing — imperative, long-running, and usually half-done by the time a session drops
 — so folding it into that stream would make a drain that is already evicting pods
 cancellable by a reconnect. Keeping the renderer in its own file means there is
 no query shape in which an operation can accidentally end up inside

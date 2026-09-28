@@ -2,7 +2,7 @@ from app.core.schemas import Struct
 
 
 class GatewayTenantSchema(Struct):
-    """One tenant, as the gateway needs to trust it (docs/plans/17).
+    """One tenant, as the gateway needs to trust it (docs/decisions/0016).
 
     `key_hashes` carries only the live ones — a revoked key is dropped from
     here, and that drop is the whole mechanism a revoke has. It still moves

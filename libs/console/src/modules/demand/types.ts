@@ -1427,7 +1427,7 @@ export interface ServingTopologyView {
 }
 
 /**
- * One role's observed counts, as `docs/plans/10` §6.2 specifies them.
+ * One role's observed counts.
  *
  * **No plane build serves this today, and this console must not imply one
  * does.** The operator counts per role and refuses to call a deployment ready

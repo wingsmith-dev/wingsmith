@@ -326,7 +326,7 @@ frontend:
     # still discovers every worker, so a model one of them cannot tokenize still
     # empties that frontend's model list — the blast radius is not yet contained.
     # Narrowing both halves costs a restart of every worker on the cluster; see
-    # docs/plans/06-frontend-topology.md §9 before changing it.
+    # docs/decisions/0013-*.md before changing it.
     globalDynamoNamespace: true
     # Left empty to take the operator's own defaults.
     resources:

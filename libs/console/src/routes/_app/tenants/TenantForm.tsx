@@ -23,7 +23,7 @@ const AUTH_OPTIONS: { value: TenantAuth; label: string }[] = [
 
 /**
  * A tenant carries the billing and isolation root, plus how the gateway is to
- * trust it (docs/plans/17): which listener it arrives on, whether a key is
+ * trust it (docs/decisions/0016): which listener it arrives on, whether a key is
  * checked, and the host that names it.
  */
 export function TenantForm({

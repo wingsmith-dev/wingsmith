@@ -125,7 +125,7 @@ func main() {
 	// does not know reaches flag.Parse before main runs and exits 2, which is
 	// a crashloop of the data plane. An unset variable is inert, which is
 	// what "off" needs to mean for a listener defaulting closed. Empty means
-	// off; docs/plans/17's rollout is the thing that turns it on.
+	// off; an operator that accepts direct tenants turns it on.
 	publicAddr := os.Getenv("HANGAR_GATEWAY_PUBLIC_LISTEN")
 
 	if *planeURL == "" || planeToken == "" {
@@ -192,7 +192,7 @@ func main() {
 	// up with nothing loaded would mean the tenant and key stages have never
 	// seen a tenant at all. Inert today regardless — Zone stays ZoneInternal
 	// below until a second listener exists to ever set it otherwise
-	// (docs/plans/17) — but loaded and refreshing from here on so that the
+	// (docs/decisions/0016) — but loaded and refreshing from here on so that the
 	// listener swap is the only thing left to do when it lands.
 	tenants := tenancy.New(planeClient)
 	if err := tenants.Load(ctx); err != nil {
@@ -232,7 +232,7 @@ func main() {
 			LogUpstreamBodies: *logUpstreamBodies,
 			// Zone is left at its default, ZoneInternal: this is the
 			// ClusterIP port with no ingress, the network boundary that
-			// used to be HANGAR_GATEWAY_TOKEN (docs/plans/17). An operator's own
+			// used to be HANGAR_GATEWAY_TOKEN (docs/decisions/0016). An operator's own
 			// edge dials this one and is trusted by having reached it.
 		}),
 		// No WriteTimeout: it is absolute rather than idle-based, so any value
@@ -253,7 +253,7 @@ func main() {
 	// address. A caller here identifies itself by the `Host` it dials rather
 	// than by which port it reached — the internal listener's own proof — so
 	// every request run through it takes the tenant and key stages the
-	// internal listener's Zone skips (docs/plans/17).
+	// internal listener's Zone skips (docs/decisions/0016).
 	var publicSrv *http.Server
 	if publicAddr != "" {
 		publicSrv = &http.Server{

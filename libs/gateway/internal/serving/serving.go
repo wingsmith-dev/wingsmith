@@ -53,7 +53,7 @@ const maxRequestBodyBytes = 100 << 20
 type Resolver interface {
 	Resolve(name string) (routing.Route, error)
 	Names() []string
-	// NamesForTenant lists a public-zone caller's own catalog (docs/plans/17).
+	// NamesForTenant lists a public-zone caller's own catalog (docs/decisions/0016).
 	NamesForTenant(tenantID string) []string
 	Revision() string
 }
@@ -73,7 +73,7 @@ type Config struct {
 	// Ready, when set, gates `GET /readyz`. Nil means always ready, which is
 	// what a gateway whose upstreams all have addresses is.
 	Ready ReadinessChecker
-	// Tenants is the host-to-tenant and hash-to-tenant lookup (docs/plans/17).
+	// Tenants is the host-to-tenant and hash-to-tenant lookup (docs/decisions/0016).
 	// Nil is safe: with Zone left at its default every stage that reads it is
 	// a no-op regardless.
 	Tenants Tenants
@@ -118,7 +118,7 @@ func New(cfg Config) http.Handler {
 		_, _ = w.Write([]byte("ready: " + detail))
 	})
 
-	// Trust comes from the zone alone now (docs/plans/17): the internal zone is
+	// Trust comes from the zone alone now (docs/decisions/0016): the internal zone is
 	// the network boundary that used to be a shared token, and the public zone
 	// is the tenant and key stages inside withRouting. Neither is a mux-level
 	// wrapper any more, which is what a shared secret in front of every zone

@@ -43,7 +43,7 @@ AUTH_VALUES = ("none", "api_key")
 
 def _check_ingress_auth(ingress: str, auth: str) -> None:
     """Field-level shape only. Whether `public` + `none` makes sense is the
-    tenant's call, not this service's — see docs/plans/17 §"The model"."""
+    tenant's call, not this service's."""
     if ingress not in INGRESS_VALUES:
         raise Invalid(f"ingress must be one of {INGRESS_VALUES}, got {ingress!r}")
     if auth not in AUTH_VALUES:

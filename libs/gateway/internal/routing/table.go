@@ -118,7 +118,7 @@ type Route struct {
 	// request for the same reason everything else here does: the table refreshes
 	// on a timer and is never joined on the request path.
 	Policy *plane.Policy
-	// TenantID is the endpoint's project's tenant (docs/plans/17), carried the
+	// TenantID is the endpoint's project's tenant (docs/decisions/0016), carried the
 	// same way Policy is — read on every request and refreshed on a timer,
 	// never fetched per request.
 	TenantID string
@@ -659,7 +659,7 @@ func (r *Router) Names() []string {
 
 // NamesForTenant lists what this gateway serves on behalf of one tenant.
 //
-// A tenant's own catalog, for the public listener (docs/plans/17): a caller
+// A tenant's own catalog, for the public listener (docs/decisions/0016): a caller
 // identified as one tenant sees that tenant's models and no others', the same
 // way a resolve outside it reads as "no such model" rather than "here is what
 // you cannot have."

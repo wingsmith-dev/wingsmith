@@ -110,8 +110,7 @@ type ListenerConfig struct {
 	// one both mean one.
 	//
 	// It is a number this process is told rather than one it discovers. The
-	// gateway has no Kubernetes client and is not getting one — see
-	// libs/gateway/CLAUDE.md — so the manifest that sets the replica count is
+	// gateway has no Kubernetes client and is not getting one, so the manifest that sets the replica count is
 	// also what sets this, and the two live beside each other in one file.
 	Gateways int
 	// Verifier checks enrolment tokens. Required: a listener with no verifier

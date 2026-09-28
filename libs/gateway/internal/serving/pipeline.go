@@ -47,7 +47,7 @@ type stage func(w http.ResponseWriter, r *http.Request, req *requestState) (*htt
 // request outright; the first to write a response ends the chain.
 //
 // The tenant stages run first, ahead of the catalog: which tenant a caller
-// is scopes both /v1/models and routing (docs/plans/17), so both have to
+// is scopes both /v1/models and routing (docs/decisions/0016), so both have to
 // come after zone, host and key are settled and not before. Every one of
 // them is a no-op unless zone is ZonePublic, which nothing in this build can
 // construct yet — see Zone in tenant_stages.go.
@@ -96,7 +96,7 @@ func runPipeline(stages []stage, w http.ResponseWriter, r *http.Request) {
 // worth routing.
 //
 // A tenant identified by the public zone sees its own catalog and nothing
-// past it (docs/plans/17); every other caller still sees the whole table,
+// past it (docs/decisions/0016); every other caller still sees the whole table,
 // exactly as before.
 func stageCatalog(resolver Resolver) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
@@ -213,7 +213,7 @@ func stageValidateStopSequences(w http.ResponseWriter, r *http.Request, req *req
 // stageResolve turns the request's model into the endpoint serving it.
 //
 // Another tenant's model reads as "no such model" on the public zone, not as
-// a refusal that would confirm the endpoint exists at all (docs/plans/17) —
+// a refusal that would confirm the endpoint exists at all (docs/decisions/0016) —
 // the same reasoning `ResolvedEndpointSchema`'s own doc comment gives for
 // dropping cross-tenant visibility at the plane rather than only here.
 func stageResolve(resolver Resolver) stage {

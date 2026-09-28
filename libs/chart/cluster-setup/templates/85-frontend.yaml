@@ -20,7 +20,7 @@
 # namespace is a label value, and `globalDynamoNamespace` above is what sets it to
 # the shared one on both halves. What does vary with what is running is the binary:
 # every model on a cluster must be servable by this one image, tokenizer and parser
-# registries included. See `docs/plans/06-frontend-topology.md`.
+# registries included. See docs/decisions/0013-*.md.
 #
 # Two things find it by Dynamo's own labels rather than by name, because the name
 # is the part that varies between clusters: the serving agent

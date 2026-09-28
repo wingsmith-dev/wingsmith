@@ -574,7 +574,7 @@ const maxObjectNameBytes = 63
 // them in two namespaces and disaggregation would silently stop happening.
 //
 // Replicas are excluded from that hash — `spec.Replicas = nil` before hashing, upstream — which
-// is what makes a ratio change cost nothing. See `docs/plans/10-disaggregated-serving.md` §11.1.
+// is what makes a ratio change cost nothing.
 const specHashPlaceholder = "00000000"
 
 // WorkloadName is the object name one deployment renders under.
