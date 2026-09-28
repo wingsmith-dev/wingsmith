@@ -212,6 +212,7 @@ def test_validate_is_frictionless_in_local_with_nothing_configured():
 # --- HTTP API wiring -----------------------------------------------------
 
 
+@pytest.mark.database
 def test_unauthenticated_request_succeeds_when_admin_auth_is_disabled():
     with TestClient(app=create_app()) as client:
         response = client.get("/v1/clusters")
@@ -249,6 +250,7 @@ def test_wrong_token_is_401_when_admin_auth_is_enabled(monkeypatch):
     assert response.status_code == 401
 
 
+@pytest.mark.database
 def test_correct_operator_token_is_accepted(monkeypatch):
     monkeypatch.setattr(settings, "OPERATOR_TOKEN", "op-token")
     enable_admin_auth(monkeypatch)
@@ -257,6 +259,7 @@ def test_correct_operator_token_is_accepted(monkeypatch):
     assert response.status_code == 200
 
 
+@pytest.mark.database
 def test_admin_login_succeeds_with_the_right_password(monkeypatch):
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:
@@ -299,6 +302,7 @@ def test_throttled_login_refuses_the_right_password_too(monkeypatch):
     assert response.status_code == 429
 
 
+@pytest.mark.database
 def test_a_correct_login_does_not_spend_the_budget(monkeypatch):
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:
@@ -316,6 +320,7 @@ def test_schema_is_not_served_outside_local(monkeypatch):
     assert response.status_code == 404
 
 
+@pytest.mark.database
 def test_session_token_from_login_is_accepted_on_a_protected_route(monkeypatch):
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:

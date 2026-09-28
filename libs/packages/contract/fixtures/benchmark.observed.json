@@ -103,6 +103,7 @@
     },
     "artifacts_uri": "s3://hangar-benchmarks/clu_01j9x2aaaaaaaaaaaaaaaaaaaa/bmk_01j9x2mmmmmmmmmmmmmmmmmmmm/",
     "error": "the job hit its deadline after 62 of 100 requests; the summary covers those 62",
+    "log_tail": "[aiperf] request 61/100 done\n[aiperf] request 62/100 done\n[aiperf] deadline reached, writing partial summary\n",
     "started_at": "2026-08-20T09:38:04.000Z",
     "completed_at": "2026-08-20T09:41:50.900Z",
     "observed_at": "2026-08-20T09:41:52.200Z"

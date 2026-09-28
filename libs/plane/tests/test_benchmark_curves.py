@@ -344,7 +344,7 @@ def test_no_display_field_is_also_a_gradeable_one():
 
 def test_no_display_id_can_be_named_by_a_check_because_read_cannot_see_one():
     for field_id in summaries.DISPLAY_ONLY:
-        for adapter in (summaries.AIPERF_0_4, summaries.CONFORMANCE_0_1, summaries.EVALSCOPE_0_19):
+        for adapter in (summaries.AIPERF_0_4, summaries.CONFORMANCE_0_1, summaries.EVALSCOPE_1_11):
             assert summaries.read(adapter, {"anything": 1}, field_id).value is None
 
 

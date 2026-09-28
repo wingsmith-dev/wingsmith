@@ -499,7 +499,7 @@ def run(uid, tokens, p90=None, p50=None, avg=None, requests=100, discard=False, 
     summary = None
     if p90 is not None or p50 is not None or avg is not None:
         ttft = {key: value for key, value in (("p90", p90), ("p50", p50), ("avg", avg)) if value is not None}
-        summary = {"time_to_first_token": ttft, "request_count": requests}
+        summary = {"time_to_first_token": ttft, "request_count": {"avg": requests}}
     return SimpleNamespace(
         uid=uid,
         harness="aiperf",
