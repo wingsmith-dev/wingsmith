@@ -70,3 +70,14 @@ class UnknownParameter(PlaneError):
 
     code = "unknown_parameter"
     status = 400
+
+
+class InvalidParameter(PlaneError):
+    """A query parameter the handler declares, carrying a value it cannot take.
+
+    400, like `UnknownParameter`: the request is malformed before any resource
+    is consulted.
+    """
+
+    code = "invalid_parameter"
+    status = 400

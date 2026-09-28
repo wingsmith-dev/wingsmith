@@ -50,6 +50,7 @@ series — a fifth join, on `hangar_endpoint`, against a store that has no clust
 label to narrow by.
 """
 
+import re
 import logging
 import datetime as dt
 
@@ -77,6 +78,7 @@ from app.core.serving import served_model
 from app.config.settings import settings
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
+from app.core.exceptions import InvalidParameter
 
 from .sla import Period
 from .sla import PeriodQuery
@@ -169,6 +171,36 @@ made without telling the callers, and a row that is filtered out cannot show tha
 """
 
 
+DURATION = re.compile(r"^[1-9][0-9]{0,5}(ms|s|m|h|d|w)$")
+"""A Prometheus duration, one unit. `window` is spliced into PromQL text, so this
+is the only thing standing between a caller and the query language: a tenant who
+could close the range selector could read every other tenant's series."""
+
+MIN_SPAN = 60
+MAX_SPAN = 30 * 24 * 3600
+MAX_POINTS = 11_000
+"""Prometheus refuses a range query over 11,000 points per series."""
+
+_SECONDS = {"ms": 0.001, "s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
+
+
+def _seconds(duration: str) -> float:
+    unit = duration.lstrip("0123456789")
+    return int(duration[: -len(unit)]) * _SECONDS[unit]
+
+
+def checked_window(window: str, step: str, span: int) -> Window:
+    """The window a caller asked for, or `InvalidParameter`. Applies to every scope."""
+    for name, value in (("window", window), ("step", step)):
+        if not DURATION.match(value):
+            raise InvalidParameter(f"{name} must be a duration like 5m or 60s", {name: value})
+    if not MIN_SPAN <= span <= MAX_SPAN:
+        raise InvalidParameter(f"span must be between {MIN_SPAN} and {MAX_SPAN} seconds", {"span": span})
+    if span / _seconds(step) > MAX_POINTS:
+        raise InvalidParameter(f"span / step must be at most {MAX_POINTS} points", {"span": span, "step": step})
+    return Window(lookback=window, step=step, span=span)
+
+
 class MetricsService:
     """Reads measurement. Owns no state and writes nothing, in any mode."""
 
@@ -254,7 +286,8 @@ class MetricsService:
         arguments here. `no_source` is the caller's own reason, because why a
         store is missing depends on what was being asked for.
         """
-        lookback = window or self.window
+        checked = checked_window(window or self.window, step or settings.METRICS_STEP, span)
+        lookback = checked.lookback
         answer = MetricsSchema(
             scope=scope.kind,
             ref=ref,
@@ -270,7 +303,7 @@ class MetricsService:
         request = Request(
             scope=scope,
             metrics=metrics,
-            window=Window(lookback=lookback, step=step or settings.METRICS_STEP, span=span),
+            window=checked,
         )
         titles = {m.name: m for m in metrics}
         try:
@@ -578,8 +611,8 @@ class MetricsService:
         returns no labels of its own, so two clusters' curves for one metric
         would otherwise arrive identical and a chart could only draw one of them.
         """
+        lookback = checked_window(window or self.window, step or settings.METRICS_STEP, span).lookback
         workload, artifact = await self._workload(ref, project)
-        lookback = window or self.window
         answer = MetricsSchema(scope="workload", ref=workload.uid, cluster=None, source=None, window=lookback)
         engine = ENGINES.get(workload.engine)
         if engine is None or not engine.metrics:

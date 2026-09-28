@@ -59,7 +59,7 @@ class Client:
         except json.JSONDecodeError as error:
             raise MetricsUnavailable("metrics store returned something that is not JSON") from error
         if payload.get("status") != "success":
-            raise MetricsUnavailable(payload.get("error", "query failed"), {"query": params.get("query", "")})
+            raise MetricsUnavailable(payload.get("error", "query failed"))
         return payload.get("data", {})
 
     async def instant(self, query: str, at: float | None = None) -> list[dict]:

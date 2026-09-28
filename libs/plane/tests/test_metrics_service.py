@@ -18,6 +18,7 @@ from app.db.models import Workload
 from app.core.serving import served_model
 from app.core.exceptions import Invalid
 from app.core.exceptions import NotFound
+from app.core.exceptions import InvalidParameter
 from app.modules.metrics import sources
 from app.modules.metrics.client import MetricsUnavailable
 from app.modules.metrics.backend import Curve
@@ -235,6 +236,27 @@ async def test_the_span_and_step_reach_the_request():
     await answer(service(), backend, Scope(kind="cluster"), step="15s", span=900)
     assert backend.requests[0].window.step == "15s"
     assert backend.requests[0].window.span == 900
+
+
+@pytest.mark.parametrize(
+    "asked",
+    [
+        {"window": "5m])) or sum(rate(other_tenant_total[5m"},
+        {"window": "5m]"},
+        {"window": "5"},
+        {"window": "0m"},
+        {"window": "1h30m"},
+        {"step": "15s&query=up"},
+        {"span": 10},
+        {"span": 60 * 24 * 3600},
+        {"step": "1s", "span": 86400},
+    ],
+)
+async def test_a_window_that_is_not_a_plain_duration_never_reaches_a_backend(asked):
+    backend = StubBackend(samples={})
+    with pytest.raises(InvalidParameter):
+        await answer(service(), backend, Scope(kind="cluster"), **asked)
+    assert not backend.requests
 
 
 # --- breakdown --------------------------------------------------------------
