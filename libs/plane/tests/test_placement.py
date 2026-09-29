@@ -893,3 +893,56 @@ def test_a_reservation_is_not_preemptible():
 
     assert decision.placed is False
     assert verdict_for(decision, "iad-1").preemption is None
+
+
+# --- a workload's own devices -----------------------------------------------
+
+
+def own(prefix, count, workload="wkl_1", node="n0", **kw):
+    return [
+        DeviceSnapshot(uid=f"{prefix}{i}", node=node, device_class="h100", held_by=hold(workload, **kw))
+        for i in range(count)
+    ]
+
+
+def test_scaling_up_keeps_the_replicas_where_they_already_run():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", own("a-own", 4) + devices("a", count=1)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(unit_device_count=1, desired_scale=5, existing={"clu_a": 4}), snapshot)
+    assert shares_of(decision) == {"iad-1": 5}
+
+
+def test_re_expanding_unchanged_on_a_full_cluster_keeps_the_deployment():
+    snapshot = supply(
+        cluster("clu_a", "iad-1", own("a-own", 8)),
+        cluster("clu_b", "sfo-1", devices("b", count=8)),
+    )
+    decision = expand(demand(unit_device_count=2, desired_scale=4, existing={"clu_a": 4}), snapshot)
+    assert shares_of(decision) == {"iad-1": 4}
+
+
+def test_another_workloads_devices_are_still_taken():
+    snapshot = supply(cluster("clu_a", "iad-1", own("a-other", 8, workload="wkl_2")))
+    decision = expand(demand(unit_device_count=2, desired_scale=1), snapshot)
+    assert decision.shares == ()
+
+
+def test_a_workloads_own_draw_does_not_count_against_its_quota_headroom():
+    snap = CapacitySnapshot(
+        clusters=(cluster("c1", "iad-1", own("own", 4, workload="wl_1") + devices("c1", count=4)),),
+        quotas=(QuotaSnapshot(project="proj_a", device_class="h100", limit_devices=6, allocated_devices=4),),
+    )
+    verdict = verdict_for(place(request(6), snap), "iad-1")
+    assert verdict.quota_headroom == 6
+    assert verdict.feasible is True
+
+
+def test_a_workload_never_preempts_itself():
+    snap = CapacitySnapshot(
+        clusters=(cluster("c1", "iad-1", own("own", 4, workload="wl_1", priority_value=10, preemptible=True)),),
+    )
+    decision = place(request(4, priority_value=100, preempts=True), snap)
+    assert decision.placed is True
+    assert decision.requires_preemption is False

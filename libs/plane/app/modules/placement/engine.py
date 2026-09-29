@@ -122,10 +122,14 @@ def _evaluate(request: PlacementRequest, cluster: ClusterSnapshot, snapshot: Cap
         for d in cluster.devices
         if d.device_class == request.device_class and d.memory_mib >= request.device_memory_mib_min
     )
-    free = tuple(d for d in candidates if d.free)
+    free = tuple(d for d in candidates if _free_for(d, request.workload))
     supply = _Supply(candidates, free, _owed(request, cluster))
     quota = _quota_for(request, cluster, snapshot.quotas)
-    headroom = _headroom(quota, _quota_reserved(request, cluster, quota, snapshot))
+    headroom = _headroom(
+        quota,
+        _quota_reserved(request, cluster, quota, snapshot),
+        _quota_own_draw(request, cluster, quota, snapshot),
+    )
     if not candidates:
         reasons.append(
             Rejection(
@@ -283,14 +287,33 @@ def _quota_for(
     return scoped or globalish
 
 
-def _headroom(quota: QuotaSnapshot | None, reserved: int) -> int | None:
+def _free_for(device: DeviceSnapshot, workload: str) -> bool:
+    """Free, or held by the workload being placed.
+
+    Re-expansion places a workload's whole demand again, not the difference. Its
+    running replicas hold their devices, and reading those as taken would make the
+    workload compete with itself: a scale-up from four to five on a cluster with one
+    free device would move four replicas elsewhere, and an unchanged re-expansion on
+    a full cluster would delete the deployment that is serving. `_owed` makes the
+    same exclusion for devices promised but not yet bound.
+    """
+    if device.free:
+        return True
+    hold = device.held_by
+    return (
+        hold is not None and hold.workload == workload and device.schedulable and device.healthy and device.allocatable
+    )
+
+
+def _headroom(quota: QuotaSnapshot | None, reserved: int, own: int = 0) -> int | None:
     """Devices the project may still take, or None when nothing caps it.
 
     `allocated_devices` is the observed draw and `reserved` is the declared one that
     has not been observed yet. Both come off the cap, because a quota that only
     counts what a cluster has confirmed lets a project spend the same devices twice —
     the same double-spend `_owed` closes for capacity, asked of the ceiling instead of
-    the fleet.
+    the fleet. `own` is the part of the observed draw held by the workload being
+    placed, which is given back for the reason `_free_for` gives.
     """
     if quota is None:
         return None
@@ -299,7 +322,7 @@ def _headroom(quota: QuotaSnapshot | None, reserved: int) -> int | None:
         cap = quota.guaranteed_devices if cap is None else min(cap, quota.guaranteed_devices)
     if cap is None:
         return None
-    return max(cap - quota.allocated_devices - reserved, 0)
+    return max(cap - max(quota.allocated_devices - own, 0) - reserved, 0)
 
 
 def _owed(request: PlacementRequest, cluster: ClusterSnapshot) -> tuple[ReservedUnit, ...]:
@@ -339,6 +362,24 @@ def _quota_reserved(
         for c in scope
         for unit in c.reserved
         if unit.project == request.project and unit.workload != request.workload
+    )
+
+
+def _quota_own_draw(
+    request: PlacementRequest,
+    cluster: ClusterSnapshot,
+    quota: QuotaSnapshot | None,
+    snapshot: CapacitySnapshot,
+) -> int:
+    """Devices the workload being placed already holds, over its quota's scope."""
+    if quota is None:
+        return 0
+    scope = snapshot.clusters if quota.cluster is None else (cluster,)
+    return sum(
+        1
+        for c in scope
+        for d in c.devices
+        if d.device_class == quota.device_class and d.held_by is not None and d.held_by.workload == request.workload
     )
 
 
@@ -637,6 +678,7 @@ def _reclaimable(request: PlacementRequest, devices: tuple[DeviceSnapshot, ...])
         if d.healthy
         and d.allocatable
         and d.held_by is not None
+        and d.held_by.workload != request.workload
         and d.held_by.preemptible
         and d.held_by.priority_value < request.priority_value
     ]
