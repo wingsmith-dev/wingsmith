@@ -7,3 +7,17 @@ This product includes software developed by the vLLM project
 (https://github.com/vllm-project/vllm), licensed under the Apache License 2.0.
 Files under libs/benchmarking/images/vllm-bench/upstream/ are copied verbatim
 from vLLM v0.28.0 and keep their original copyright and license headers.
+
+Container images
+----------------
+The Dockerfiles under hangar-runtime build images that bundle third-party
+binaries under their own licenses, which apply to anyone who redistributes a
+built image:
+
+- hangar-runtime/worker/vllm-omni/video installs PyAV wheels whose bundled
+  FFmpeg is built with libx264 (GPL-2.0-or-later). Corresponding source is
+  published by the PyAV project (https://github.com/PyAV-Org/pyav-ffmpeg).
+- hangar-runtime/worker/vllm/efa installs AWS libfabric and rdma-core
+  (BSD/GPL-2.0 dual-licensed).
+- hangar-runtime/worker/vllm/nixl-mamba-prefill ships modified vLLM source files
+  (Apache-2.0); the modifications are the patches in that directory.
