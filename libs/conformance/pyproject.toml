@@ -1,6 +1,7 @@
 [project]
 name = "hgrconform"
 version = "0.1.0"
+license = "Apache-2.0"
 description = "Check an OpenAI-compatible endpoint against the wire spec, and against the endpoint it claims to be consistent with"
 requires-python = ">=3.11"
 dependencies = ["httpx>=0.27", "jsonschema>=4.21"]

@@ -33,3 +33,9 @@ dependencies:
     version: "1.4.1"
     repository: oci://nvcr.io/nvidia/ai-dynamo
     condition: dynamo-platform.enabled
+
+home: https://github.com/hangar-dev/hangar
+sources:
+  - https://github.com/hangar-dev/hangar/tree/main/libs/chart/cluster-setup
+annotations:
+  artifacthub.io/license: Apache-2.0

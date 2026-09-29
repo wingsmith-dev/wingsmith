@@ -1,6 +1,7 @@
 [project]
 name = "hgrbench"
 version = "0.1.0"
+license = "Apache-2.0"
 description = "Run this project's benchmark harnesses locally against an OpenAI-compatible endpoint, and compare what they say"
 requires-python = ">=3.11"
 dependencies = []
