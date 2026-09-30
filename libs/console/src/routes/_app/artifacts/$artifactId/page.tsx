@@ -188,8 +188,7 @@ export function ArtifactDetailPage() {
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
               <StatCard label="Size" value={formatBytes(artifact.size_bytes)} />
-              {/* TODO-API Artifact carries no file manifest — showing registered locations as the file count. */}
-              <StatCard label="Files" value={artifact.locations.length} />
+              <StatCard label="Locations" value={artifact.locations.length} />
               <StatCard
                 label="Workloads"
                 value={usage.data?.workload_count ?? workloads.loaded}
@@ -659,14 +658,6 @@ function FingerprintPanel({ artifact }: { artifact: Artifact }) {
                 unverified
               </Badge>
             )}
-          </Field>
-          {/* TODO-API No re-verification timestamp on the object. */}
-          <Field label="Last verified">
-            <Dash>{null}</Dash>
-          </Field>
-          {/* TODO-API No security-scan result on the object. */}
-          <Field label="Security scan">
-            <Dash>{null}</Dash>
           </Field>
         </FieldGrid>
       </CardContent>

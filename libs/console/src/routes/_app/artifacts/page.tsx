@@ -29,35 +29,28 @@ import { toast } from "sonner"
 import { Link } from "@tanstack/react-router"
 
 /**
- * The artifact lifecycle the reference draws — ready / importing / failed /
- * deprecated — is not a field the plane sends today. It is derived here from
- * `verified` and the location set so the filter and status column read the way
- * the design intends; the day the plane grows an explicit state, this collapses
- * to a field read.
+ * What the plane can say about an artifact's bytes: whether any location is
+ * registered, and whether they were verified. The plane has no lifecycle state
+ * (importing / failed / deprecated), so none is shown.
  */
-// TODO-API artifact has no lifecycle status; deriving from verified/locations.
-type ArtifactStatus = "ready" | "importing" | "failed" | "deprecated"
+type ArtifactStatus = "verified" | "unverified" | "unlocated"
 
 const STATUS_TONES: Record<ArtifactStatus, StatusTone> = {
-  ready: "ok",
-  importing: "neutral",
-  failed: "danger",
-  deprecated: "warn",
+  verified: "ok",
+  unverified: "warn",
+  unlocated: "neutral",
 }
 
 const STATUS_TABS: { value: ArtifactStatus | typeof ALL; label: string }[] = [
   { value: ALL, label: "All" },
-  { value: "ready", label: "Ready" },
-  { value: "importing", label: "Importing" },
-  { value: "failed", label: "Failed" },
-  { value: "deprecated", label: "Deprecated" },
+  { value: "verified", label: "Verified" },
+  { value: "unverified", label: "Unverified" },
+  { value: "unlocated", label: "No location" },
 ]
 
 function artifactStatus(artifact: Artifact): ArtifactStatus {
-  // TODO-API mocked lifecycle: no bytes located yet reads as importing.
-  if (artifact.locations.length === 0) return "importing"
-  if (!artifact.verified) return "failed"
-  return "ready"
+  if (artifact.locations.length === 0) return "unlocated"
+  return artifact.verified ? "verified" : "unverified"
 }
 
 function columns(
@@ -91,14 +84,7 @@ function columns(
       header: "Status",
       cell: (artifact) => {
         const status = artifactStatus(artifact)
-        return (
-          <StatusLabel
-            tone={STATUS_TONES[status]}
-            pulse={status === "importing"}
-          >
-            {status}
-          </StatusLabel>
-        )
+        return <StatusLabel tone={STATUS_TONES[status]}>{status}</StatusLabel>
       },
     },
     {
@@ -261,7 +247,7 @@ export function ArtifactsPage() {
         const usage = usages.get(a.id)
         return !!usage && usage.workload_count + usage.downstream_count > 0
       }).length,
-      attention: items.filter((a) => artifactStatus(a) === "failed").length,
+      attention: items.filter((a) => artifactStatus(a) === "unverified").length,
     }
   }, [list.items, usages])
 

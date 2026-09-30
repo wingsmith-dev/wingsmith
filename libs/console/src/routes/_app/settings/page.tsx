@@ -40,7 +40,6 @@ import { useDeviceClasses } from "@/modules/supply/queries"
 import type { DeviceClass } from "@/modules/supply/types"
 import {
   IconArrowUpRight,
-  IconBuildingBank,
   IconDeviceDesktopAnalytics,
   IconEye,
   IconServerCog,
@@ -53,7 +52,7 @@ import type { SettingsSection } from "./route"
 
 /**
  * Three kinds of thing live here. **Definitions** are reference data — hardware
- * types, providers, scheduling classes and guardrails the rest of the console
+ * types, scheduling classes and guardrails the rest of the console
  * points at; they are the plane's, read constantly and written rarely. **Plane**
  * is the running process described back to you: nothing under it is editable
  * from anywhere, which is why it is not filed with the definitions it sits
@@ -88,7 +87,6 @@ export function SettingsPage() {
 
 const SECTIONS: Record<SettingsSection, React.ComponentType> = {
   "gpu-models": GpuModelsSection,
-  providers: ProvidersSection,
   priority: PriorityClassesSection,
   policies: PoliciesSection,
   configuration: ConfigurationSection,
@@ -102,11 +100,6 @@ const NAV_ITEMS = [
     section: "gpu-models" as const,
     label: "GPU models",
     icon: IconDeviceDesktopAnalytics,
-  },
-  {
-    section: "providers" as const,
-    label: "Providers & regions",
-    icon: IconBuildingBank,
   },
   {
     section: "priority" as const,
@@ -295,87 +288,6 @@ function GpuModelRow({ entry }: { entry: DeviceClass }) {
         )}
       </TableCell>
     </TableRow>
-  )
-}
-
-// TODO-API providers & regions: the plane has no provider/registration
-// registry; these rows are mocked reference data.
-const PROVIDERS = [
-  {
-    id: "aws",
-    name: "Amazon Web Services",
-    distribution: "eks",
-    regions: "us-east-1, eu-central-1, ap-southeast-1",
-    clusters: "3 clusters",
-  },
-  {
-    id: "gcp",
-    name: "Google Cloud",
-    distribution: "gke",
-    regions: "us-west-2",
-    clusters: "1 cluster",
-  },
-  {
-    id: "azure",
-    name: "Microsoft Azure",
-    distribution: "aks",
-    regions: "us-west-2",
-    clusters: "1 cluster",
-  },
-  {
-    id: "equinix",
-    name: "Equinix Metal",
-    distribution: "bare-metal",
-    regions: "us-central, eu-west-2",
-    clusters: "2 clusters",
-  },
-  {
-    id: "on-prem",
-    name: "On-premises",
-    distribution: "kubeadm",
-    regions: "us-central",
-    clusters: "1 cluster",
-  },
-]
-
-function ProvidersSection() {
-  return (
-    <Panel
-      id="providers"
-      title="Providers & regions"
-      description="where clusters can be registered"
-    >
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Provider</TableHead>
-              <TableHead>Name</TableHead>
-              <TableHead>Distribution</TableHead>
-              <TableHead>Regions</TableHead>
-              <TableHead>Clusters</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {PROVIDERS.map((p) => (
-              <TableRow key={p.id}>
-                <TableCell className="font-mono text-2xs">{p.id}</TableCell>
-                <TableCell className="text-xs">{p.name}</TableCell>
-                <TableCell className="font-mono text-2xs text-muted-foreground">
-                  {p.distribution}
-                </TableCell>
-                <TableCell className="font-mono text-2xs text-muted-foreground">
-                  {p.regions}
-                </TableCell>
-                <TableCell className="font-mono text-2xs tabular-nums">
-                  {p.clusters}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    </Panel>
   )
 }
 

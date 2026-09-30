@@ -124,9 +124,9 @@ import {
  * The page is split into six views — overview, performance, workbench,
  * placement, lifecycle, logs. Events, operations, the endpoints routing to the
  * workload, its live placement, its performance across every cluster it landed
- * in and its benchmark run history are read from the plane; tuning analytics,
- * rollout, probes and logs are not yet backed, so those are deterministic mock
- * values, each marked `TODO-API`.
+ * in and its benchmark run history are read from the plane. Anything the plane
+ * does not report is left off the page, or drawn as an explicit "not measured
+ * yet" frame — never as an invented figure.
  */
 export function WorkloadDetailPage() {
   const { workloadId } = useParams({ from: "/_app/workloads/$workloadId" })
@@ -395,10 +395,6 @@ export function WorkloadDetailPage() {
                       deployments={workload.deployments}
                       unit={scaleUnitFor(workload)}
                       servingDigest={workload.serving_digest}
-                      // TODO-API per-cluster requests/sec is data-plane, seeded here
-                      serving={(d) =>
-                        (d.desired_replicas * 215).toLocaleString()
-                      }
                     />
                   </Panel>
 
@@ -782,10 +778,6 @@ export function WorkloadDetailPage() {
                   label="GPUs allocated"
                   value={placement ? String(placement.gpu_count) : "—"}
                 />
-                {/* TODO-API topology packing metrics not exposed at workload scope */}
-                <StatTile label="Node packing" value="75%" />
-                <StatTile label="Spot instances" value="0%" />
-                <StatTile label="Rescheduled (7d)" value="1" />
               </StatRow>
 
               <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
@@ -845,14 +837,6 @@ export function WorkloadDetailPage() {
                       <Field label="Fan-out cap">
                         {workload.max_clusters ?? "none"}
                       </Field>
-                      {/* TODO-API affinity / anti-affinity / tolerations not modelled by the plane */}
-                      <Field label="Node affinity">gpu-type=H100</Field>
-                      <Field label="Anti-affinity">
-                        Spread across nodes (soft)
-                      </Field>
-                      <Field label="Placement grouping">
-                        NVLink-grouped GPU pairs
-                      </Field>
                       <Field label="Pinned cluster">
                         {workload.pinned_cluster_id ? (
                           <Link
@@ -868,16 +852,6 @@ export function WorkloadDetailPage() {
                           "none"
                         )}
                       </Field>
-                    </FieldGrid>
-                  </Panel>
-
-                  <Panel title="Capacity">
-                    {/* TODO-API pool capacity accounting not exposed at workload scope */}
-                    <FieldGrid>
-                      <Field label="GPUs in pool">48</Field>
-                      <Field label="Allocated to this workload">12</Field>
-                      <Field label="Idle on shared nodes">6</Field>
-                      <Field label="Spot / on-demand">0% / 100%</Field>
                     </FieldGrid>
                   </Panel>
 
@@ -898,98 +872,31 @@ export function WorkloadDetailPage() {
             <TabsContent value="lifecycle" className="space-y-4">
               <StatRow>
                 <StatTile label="Current revision" value={workload.revision} />
-                {/* TODO-API rollout strategy is not a declared field on the workload */}
-                <StatTile label="Rollout strategy" value="Rolling" small />
                 <StatTile
                   label="Started"
                   value={formatRelative(workload.started_at)}
                 />
-                {/* TODO-API rollback / time-to-healthy history not exposed */}
-                <StatTile label="Rollbacks (30d)" value="0" />
-                <StatTile label="Time to healthy" value="3m 42s" />
               </StatRow>
 
-              <div className="grid gap-4 md:grid-cols-[2fr_1fr]">
-                <div className="flex min-w-0 flex-col gap-4">
-                  <Panel
-                    title="Operations"
-                    subtitle="Scale, pause and drain — plane-local, each with its own phase"
-                  >
-                    <DataTable
-                      columns={operationColumns()}
-                      list={operations}
-                      rowKey={(operation) => operation.id}
-                      empty="Nothing has been asked of this workload."
-                    />
-                  </Panel>
+              <div className="flex min-w-0 flex-col gap-4">
+                <Panel
+                  title="Operations"
+                  subtitle="Scale, pause and drain — plane-local, each with its own phase"
+                >
+                  <DataTable
+                    columns={operationColumns()}
+                    list={operations}
+                    rowKey={(operation) => operation.id}
+                    empty="Nothing has been asked of this workload."
+                  />
+                </Panel>
 
-                  <Panel
-                    title="Revision history"
-                    subtitle="Every serving configuration this workload has held, newest first"
-                  >
-                    <WorkloadRevisions workload={workload} />
-                  </Panel>
-
-                  <Panel
-                    title="Canary analysis"
-                    subtitle="v11 → v12, quantization migration"
-                  >
-                    {/* TODO-API canary comparison not computed by the plane */}
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <CanaryCard
-                        label="Baseline · bf16"
-                        metrics={[
-                          ["Error rate", "0.04%"],
-                          ["p99 latency", "340ms"],
-                          ["Cost / 1M tok", "$7.85"],
-                        ]}
-                      />
-                      <CanaryCard
-                        canary
-                        label="Canary · fp8"
-                        metrics={[
-                          ["Error rate", "0.03%"],
-                          ["p99 latency", "305ms"],
-                          ["Cost / 1M tok", "$4.20"],
-                        ]}
-                      />
-                    </div>
-                  </Panel>
-                </div>
-
-                <div className="flex min-w-0 flex-col gap-4">
-                  <Panel title="Rollout strategy">
-                    {/* TODO-API rollout tuning not modelled by the plane */}
-                    <FieldGrid>
-                      <Field label="Strategy">Rolling update</Field>
-                      <Field label="Max surge">25%</Field>
-                      <Field label="Max unavailable">0</Field>
-                      <Field label="Min ready seconds">10</Field>
-                    </FieldGrid>
-                  </Panel>
-
-                  <Panel title="Health checks">
-                    {/* TODO-API probe configuration not exposed at workload scope */}
-                    <FieldGrid>
-                      <Field label="Readiness probe">GET /health · 10s</Field>
-                      <Field label="Liveness probe">GET /health · 30s</Field>
-                      <Field label="Startup probe">60s · 10s period</Field>
-                      <Field label="Failure threshold">3 consecutive</Field>
-                    </FieldGrid>
-                  </Panel>
-
-                  <Panel title="Rollback safety">
-                    {/* TODO-API automatic-rollback policy not modelled by the plane */}
-                    <FieldGrid>
-                      <Field label="Automatic rollback">Enabled</Field>
-                      <Field label="Trigger">Error rate &gt; 1% for 5m</Field>
-                      <Field label="Last automatic rollback">
-                        <Dash>{null}</Dash>
-                      </Field>
-                      <Field label="Grace period">10m</Field>
-                    </FieldGrid>
-                  </Panel>
-                </div>
+                <Panel
+                  title="Revision history"
+                  subtitle="Every serving configuration this workload has held, newest first"
+                >
+                  <WorkloadRevisions workload={workload} />
+                </Panel>
               </div>
             </TabsContent>
 
@@ -2092,37 +1999,6 @@ function LegendSwatch({ children }: React.PropsWithChildren) {
   )
 }
 
-/* ---- canary comparison ---------------------------------------------- */
-
-function CanaryCard({
-  label,
-  metrics,
-  canary,
-}: {
-  label: string
-  metrics: [string, string][]
-  canary?: boolean
-}) {
-  return (
-    <div
-      className={cn(
-        "flex flex-col gap-2 rounded-md border px-3.5 py-3",
-        canary && "border-primary/35 bg-primary/5"
-      )}
-    >
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-        {label}
-      </span>
-      {metrics.map(([k, v]) => (
-        <div key={k} className="flex items-baseline justify-between text-xs">
-          <span>{k}</span>
-          <span className="font-mono">{v}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 /**
  * A panel for an answer the plane cannot give yet.
  *
@@ -2144,7 +2020,6 @@ function Unbacked({ title, note }: { title: string; note: string }) {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {/* TODO-API nothing on the plane answers this; see the note. */}
         <p className="text-2xs text-muted-foreground/60">{note}</p>
       </CardContent>
     </Card>
@@ -2152,8 +2027,7 @@ function Unbacked({ title, note }: { title: string; note: string }) {
 }
 
 /**
- * A `ListState` wrapper for rows already in hand — a derived table, or one of
- * the designed-but-unbacked ones — so they render through the same `DataTable`
+ * A `ListState` wrapper for rows already in hand — a derived table — so they render through the same `DataTable`
  * as the paged, live queries.
  */
 function staticList<T>(items: T[]) {
@@ -2168,7 +2042,7 @@ function staticList<T>(items: T[]) {
   }
 }
 
-/* ---- mocked columns and rows (all TODO-API, see call sites) ---------- */
+/* ---- columns ------------------------------------------------------- */
 
 const mono = (v: string) => <span className="font-mono text-xs">{v}</span>
 

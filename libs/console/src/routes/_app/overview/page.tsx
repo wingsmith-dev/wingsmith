@@ -21,17 +21,10 @@ import {
   useUndecidedDiscovered,
 } from "@/modules/overview/queries"
 import { IconEye } from "@tabler/icons-react"
-import * as React from "react"
 import { CapacityPressure } from "./CapacityPressure"
 import { ClusterReachability } from "./ClusterReachability"
 import { NeedsAttention } from "./NeedsAttention"
 import { RecentOperations } from "./RecentOperations"
-import { SegTabs } from "./SegTabs"
-import {
-  ServingTraffic,
-  TRAFFIC_WINDOWS,
-  type TrafficWindow,
-} from "./ServingTraffic"
 import { StatCard } from "./StatCard"
 
 /** Above this share of the fleet allocated, a placement is a coin toss. */
@@ -45,8 +38,6 @@ const FULL_PERCENT = 90
  * operations feed is the one recent slice, and it says so.
  */
 export function OverviewPage() {
-  const [window, setWindow] = React.useState<TrafficWindow>("24h")
-
   const clusters = useOverviewClusters()
   const nodes = useOverviewNodes()
   const devices = useOverviewDevices()
@@ -97,14 +88,6 @@ export function OverviewPage() {
       <PageHeader
         title="Overview"
         description="what is broken, what is tight, what changed"
-        readActions={
-          <SegTabs
-            aria-label="Traffic window"
-            value={window}
-            onChange={setWindow}
-            options={TRAFFIC_WINDOWS.map((value) => ({ value, label: value }))}
-          />
-        }
       />
 
       <div className="flex flex-col gap-5 p-4">
@@ -184,7 +167,6 @@ export function OverviewPage() {
               isLoading={devices.isLoading}
               error={devices.error}
             />
-            <ServingTraffic window={window} />
           </div>
 
           <div className="flex min-w-0 flex-col gap-4">

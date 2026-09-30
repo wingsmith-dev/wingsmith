@@ -54,18 +54,11 @@ function ReplicaBar({ ready, total }: { ready: number; total: number }) {
 export function WorkloadDeploymentsTable({
   deployments,
   unit,
-  serving,
   servingDigest,
   bare,
 }: {
   deployments: WorkloadDeployment[]
   unit: string
-  /**
-   * When given, adds a per-cluster requests/sec column. Serving rate is
-   * data-plane and not on the deployment object, so the caller supplies it —
-   * today from a seeded mock, marked `TODO-API` at the call site.
-   */
-  serving?: (deployment: WorkloadDeployment) => string
   /**
    * The configuration the workload currently declares. When given, adds a column saying which
    * configurations are actually up in each cluster and whether they are that one.
@@ -86,7 +79,7 @@ export function WorkloadDeploymentsTable({
 
   return (
     <DataTable
-      columns={columns(unit, serving, servingDigest)}
+      columns={columns(unit, servingDigest)}
       list={list}
       rowKey={(deployment) => deployment.id}
       empty="Placement has not put this anywhere yet."
@@ -97,7 +90,6 @@ export function WorkloadDeploymentsTable({
 
 function columns(
   unit: string,
-  serving?: (deployment: WorkloadDeployment) => string,
   servingDigest?: string
 ): Column<WorkloadDeployment>[] {
   const rows: Column<WorkloadDeployment>[] = [
@@ -174,18 +166,6 @@ function columns(
         )
       },
     },
-    ...(serving
-      ? [
-          {
-            key: "serving",
-            header: "Requests/sec",
-            align: "right" as const,
-            cell: (deployment: WorkloadDeployment) => (
-              <span className="font-mono text-xs">{serving(deployment)}</span>
-            ),
-          },
-        ]
-      : []),
     {
       key: "admission",
       header: "Status",

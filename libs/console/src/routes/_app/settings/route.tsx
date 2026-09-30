@@ -4,7 +4,6 @@ import { SettingsPage } from "./page"
 
 export const SETTINGS_SECTIONS = [
   "gpu-models",
-  "providers",
   "priority",
   "policies",
   "configuration",

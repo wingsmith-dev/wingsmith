@@ -3,7 +3,7 @@ import { InFlightOperations } from "@/components/machinery/in-flight"
 import { MetricsSection } from "@/components/metrics/metrics-section"
 import { OperationActions } from "@/components/machinery/operation-actions"
 import { DataTable } from "@/components/layout/data-table"
-import { CopyableId, Dash, Labels } from "@/components/layout/mono"
+import { Dash, Labels } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import {
   StatusDot,
@@ -219,10 +219,6 @@ export function NodeDetailPage() {
                             .join(" · ") || null}
                         </Dash>
                       </Field>
-                      {/* TODO-API node schema carries no internal IP */}
-                      <Field label="Internal IP">
-                        <CopyableId value="10.0.0.0">10.0.0.0</CopyableId>
-                      </Field>
                       <Field label="CPU">{node.cpu_cores ?? "—"} cores</Field>
                       <Field label="Host memory">
                         {gibibytes(node.memory_mib)}
@@ -238,10 +234,6 @@ export function NodeDetailPage() {
                       </Field>
                       <Field label="Driver">
                         <Dash>{node.driver_version}</Dash>
-                      </Field>
-                      {/* TODO-API node schema carries no CUDA runtime version */}
-                      <Field label="CUDA">
-                        <span className="text-muted-foreground/40">—</span>
                       </Field>
                       <Field label="Operator">
                         <Dash>{node.operator_version}</Dash>

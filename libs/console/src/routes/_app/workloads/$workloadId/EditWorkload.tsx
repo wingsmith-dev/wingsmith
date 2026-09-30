@@ -172,9 +172,9 @@ export function EditDetailsDialog({
  * re-runs placement and moves shares between clusters, so the digest is
  * untouched and no pod is replaced for a change made here.
  *
- * Two fields on the panel are deliberately absent. Affinity, anti-affinity and
- * placement grouping are not modelled by the plane at all — the panel shows
- * seeded values marked `TODO-API` — and the pin is create-only, because a
+ * Two things are deliberately absent. Affinity, anti-affinity and placement
+ * grouping are not modelled by the plane at all, so neither the panel nor this
+ * dialog shows them — and the pin is create-only, because a
  * pinned workload is never checked for capacity and moving that decision after
  * the fact is a different operation from editing a policy.
  */

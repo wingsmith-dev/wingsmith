@@ -10,43 +10,6 @@ import * as React from "react"
 import { Panel, PanelEmpty } from "./Panel"
 import { SegTabs } from "./SegTabs"
 
-/**
- * The two sightings the mockup shows that the plane cannot report.
- *
- * `/v1/discovered` reports *workloads* a cluster was already running, and
- * nothing else: there is no sighting object for an image-cache layer the
- * artifact catalogue has never seen, and no sighting for a set of engine
- * arguments that matches no declared workload. Both rows below are the mockup's own
- * numbers, kept so the panel reads as designed.
- *
- * TODO-API: catalogue-gap sightings. Needs either `/v1/discovered/artifacts`
- * (unregistered image or weight digests observed in a cluster's cache) and
- * `/v1/discovered/serving` (observed engine argv matching no workload), or a
- * `kind` discriminator on `/v1/discovered` widening it past workloads.
- */
-const MOCK_CATALOGUE_GAPS: AttentionItem[] = [
-  {
-    id: "mock:discovered-artifact",
-    group: "discovered",
-    tone: "neutral",
-    kind: "artifact",
-    title: "Unregistered artifact in cluster image cache",
-    detail: "sha256:9f3c1a…e04b · gptq-int4 · not in catalog",
-    pill: "artifact",
-    action: { label: "Review", link: { to: "/artifacts" } },
-  },
-  {
-    id: "mock:discovered-serving",
-    group: "discovered",
-    tone: "neutral",
-    kind: "workload",
-    title: "Deployment params match no declared workload",
-    detail: "vllm 0.6.3 · tp=4 · max-model-len=32768 · adopt it?",
-    pill: "serving",
-    action: { label: "Review", link: { to: "/discovered" } },
-  },
-]
-
 type Filter = "all" | "discovered" | "health"
 
 const ICON_TONE: Record<StatusTone, string> = {
@@ -74,10 +37,7 @@ export function NeedsAttention({
 }) {
   const [filter, setFilter] = React.useState<Filter>("all")
 
-  const all = React.useMemo(
-    () => [...(items ?? []), ...MOCK_CATALOGUE_GAPS],
-    [items]
-  )
+  const all = items ?? []
   const discovered = all.filter((item) => item.group === "discovered")
   const health = all.filter((item) => item.group === "health")
   const shown =

@@ -106,17 +106,6 @@ function columns(
       ),
     },
     {
-      key: "endpoint",
-      header: "Endpoint",
-      secondary: true,
-      cell: () => (
-        // TODO-API No endpoint reference on the Workload object; the endpoint that targets it is not resolved here.
-        <span className="font-mono text-2xs text-muted-foreground">
-          <Dash>{null}</Dash>
-        </span>
-      ),
-    },
-    {
       key: "updated",
       header: "Updated",
       align: "right",
@@ -199,7 +188,7 @@ export function WorkloadsPage() {
       />
 
       <div className="space-y-4 p-4">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <StatTile
             label="Workloads"
             value={list.isLoading ? "—" : list.loaded}
@@ -208,8 +197,6 @@ export function WorkloadsPage() {
             label="Replicas running"
             value={list.isLoading ? "—" : `${readyReplicas}/${desiredReplicas}`}
           />
-          {/* TODO-API No aggregate request-rate on the workloads list; this is a placeholder. */}
-          <StatTile label="Requests / sec" value={list.isLoading ? "—" : "—"} />
           <StatTile
             label="Needs attention"
             value={list.isLoading ? "—" : needsAttention}

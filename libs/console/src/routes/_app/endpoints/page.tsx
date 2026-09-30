@@ -5,7 +5,6 @@ import { Dash, Id } from "@/components/layout/mono"
 import { PageHeader } from "@/components/layout/page-header"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusDot, type StatusTone } from "@/components/layout/status-dot"
-import { Sparkline } from "@/components/metrics/sparkline"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { formatError, shortenId } from "@/lib/format"
@@ -26,41 +25,12 @@ import type {
 } from "@/modules/demand/types"
 import { formatMetric, valueOf } from "@/modules/metrics/format"
 import { useServingMetrics } from "@/modules/metrics/queries"
-import type { MetricSample, MetricSeriesPoint } from "@/modules/metrics/types"
+import type { MetricSample } from "@/modules/metrics/types"
 import { IconArrowUpRight } from "@tabler/icons-react"
 import { Link, useNavigate, useSearch } from "@tanstack/react-router"
 import { useMemo, useState } from "react"
 import { toast } from "sonner"
 import { EndpointForm } from "./EndpointForm"
-
-/**
- * A stable pseudo-random seed from an id, so a row's sparkline stays put across
- * renders rather than flickering each paint.
- */
-function seed(id: string): number {
-  let hash = 0
-  for (let i = 0; i < id.length; i++) {
-    hash = (hash * 31 + id.charCodeAt(i)) | 0
-  }
-  return Math.abs(hash)
-}
-
-/**
- * A short series shaped by the seed, for sparkline form only.
- *
- * TODO-API the numbers beside these curves are the gateway's own, but the shape
- * is not: `/metrics/serving` breaks down per endpoint in samples and draws its
- * curves from the aggregate expression, so there is no per-endpoint series to
- * plot without a query per row. Give the serving scope per-endpoint curves and
- * this goes away.
- */
-function mockTrail(id: string, salt: number): MetricSeriesPoint[] {
-  const base = seed(`${id}:${salt}`)
-  return Array.from({ length: 8 }, (_, at) => ({
-    at,
-    value: 10 + ((base >> at) % 7) + at * ((base % 3) - 1),
-  }))
-}
 
 interface Health {
   tone: StatusTone
@@ -288,23 +258,13 @@ function columns(
       key: "traffic",
       header: "Traffic",
       cell: (endpoint) => {
-        const { now, availability, measured } = read(endpoint)
+        const { now } = read(endpoint)
         const rate = valueOf(now, "serving.requests_per_second")
         if (rate === null) return <Dash>{null}</Dash>
-        const tone = health(endpoint, availability, measured).tone
         return (
-          <div className="flex flex-col gap-1">
-            {/* TODO-API the curve is mocked; the figure under it is not. */}
-            <div className="w-14">
-              <Sparkline
-                points={mockTrail(endpoint.id, 1)}
-                tone={tone === "ok" ? "primary" : "warn"}
-              />
-            </div>
-            <span className="font-mono text-2xs tabular-nums">
-              {formatMetric(rate, "per_second")}
-            </span>
-          </div>
+          <span className="font-mono text-2xs tabular-nums">
+            {formatMetric(rate, "per_second")}
+          </span>
         )
       },
     },
@@ -313,24 +273,14 @@ function columns(
       header: "Latency (p50 / p99)",
       secondary: true,
       cell: (endpoint) => {
-        const { now, availability, measured } = read(endpoint)
+        const { now } = read(endpoint)
         const p50 = valueOf(now, "serving.latency_p50")
         const p99 = valueOf(now, "serving.latency_p99")
         if (p50 === null && p99 === null) return <Dash>{null}</Dash>
-        const tone = health(endpoint, availability, measured).tone
         return (
-          <div className="flex flex-col gap-1">
-            {/* TODO-API the curve is mocked; the figures under it are not. */}
-            <div className="w-14">
-              <Sparkline
-                points={mockTrail(endpoint.id, 2)}
-                tone={tone === "ok" ? "primary" : "warn"}
-              />
-            </div>
-            <span className="font-mono text-2xs tabular-nums">
-              {formatMetric(p50, "seconds")} / {formatMetric(p99, "seconds")}
-            </span>
-          </div>
+          <span className="font-mono text-2xs tabular-nums">
+            {formatMetric(p50, "seconds")} / {formatMetric(p99, "seconds")}
+          </span>
         )
       },
     },

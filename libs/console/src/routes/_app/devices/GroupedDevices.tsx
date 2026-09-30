@@ -172,7 +172,7 @@ function ModelGroup({ name, devices }: { name: string; devices: Device[] }) {
 }
 
 function ClusterRow({ row }: { row: ClusterRollup }) {
-  // TODO-API "Allocation" is allocated/total from device state — real GPU
+  // "Allocation" is allocated/total from device state — real GPU
   // utilisation is telemetry and does not flow through the plane.
   const pct = row.total ? Math.round((row.allocated / row.total) * 100) : 0
   const hot = pct >= 90
@@ -268,8 +268,6 @@ function Count({
  */
 function specLine(device: Device | undefined): string {
   if (!device) return ""
-  // TODO-API fabric link (NVLink/PCIe gen) and board power (W) are not in
-  // DeviceSchema — the reference shows them, device state does not carry them.
   return [
     gibibytes(device.memory_mib),
     device.vendor,
