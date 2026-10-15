@@ -1035,7 +1035,7 @@ func (a *App) runWorkloadOperation(cmd *cobra.Command, opType, ref string, param
 	op, err := a.Backend.CreateOperation(ctx, api.OperationRequest{
 		Type: opType, Target: qualifyOperationTarget(opType, wl.ID),
 		Reason: reason, Parameters: params,
-	}, "")
+	}, a.idempotencyKey(""))
 	if err != nil {
 		return err
 	}

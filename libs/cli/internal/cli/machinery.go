@@ -2,6 +2,8 @@ package cli
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -444,7 +446,7 @@ rather than inside the cluster an hour later.`,
 			if err := app.Confirm(fmt.Sprintf("start %s on %s?", args[0], args[1])); err != nil {
 				return err
 			}
-			op, err := app.Backend.CreateOperation(ctx, req, idempotencyKey)
+			op, err := app.Backend.CreateOperation(ctx, req, app.idempotencyKey(idempotencyKey))
 			if err != nil {
 				return err
 			}
@@ -463,7 +465,7 @@ rather than inside the cluster an hour later.`,
 	fl.StringVar(&deadline, "deadline", "", "give up after a duration or at an RFC 3339 time")
 	fl.StringArrayVar(&params, "param", nil, "operation parameter (KEY=VALUE, repeatable)")
 	fl.StringVar(&cluster, "cluster", "", "cluster, for targets that do not carry one")
-	fl.StringVar(&idempotencyKey, "idempotency-key", "", "retry safely: the same key returns the same operation")
+	fl.StringVar(&idempotencyKey, "idempotency-key", "", "retry safely: the same key returns the same operation (default: a fresh key, reported in the agent envelope's meta)")
 	fl.BoolVar(&wait, "wait", false, "poll until the operation reaches a terminal phase")
 	fl.StringVar(&interval, "interval", "2s", "how often to poll while waiting")
 	return cmd
@@ -518,6 +520,24 @@ stopped, so a failure is reported with the operation's own error. Exits 11
 	}
 	cmd.Flags().StringVar(&interval, "interval", "2s", "how often to poll")
 	return cmd
+}
+
+// idempotencyKey is the key an operation is created under. One is always sent:
+// without it a create retried after a dropped response makes a second drain.
+// A key the caller did not choose is minted per invocation and reported in
+// the envelope's meta, so a script can retry with it.
+func (a *App) idempotencyKey(given string) string {
+	key := given
+	if key == "" {
+		var b [16]byte
+		if _, err := rand.Read(b[:]); err == nil {
+			key = "hgr-" + hex.EncodeToString(b[:])
+		}
+	}
+	if key != "" {
+		a.Out.AddMeta("idempotency_key", key)
+	}
+	return key
 }
 
 func pollInterval(raw string) (time.Duration, error) {

@@ -87,3 +87,28 @@ func TestAWaitHasItsOwnDeadline(t *testing.T) {
 		t.Fatalf("a wait that ran out exited %d, want 8 (TIMEOUT): %s", code, errOut)
 	}
 }
+
+// Every operation is created under an idempotency key, and the one minted for
+// it is reported so the caller can retry with it.
+func TestOperationsAlwaysCarryAnIdempotencyKey(t *testing.T) {
+	t.Setenv("HANGAR_FAKE_STATE", t.TempDir()+"/state.json")
+	for _, args := range [][]string{
+		{"operation", "create", "node.cordon", "iad-1-n01"},
+		{"workload", "scale", "chat", "3"},
+	} {
+		out, errOut, code := run(t, append([]string{"--agent", "--yes"}, args...)...)
+		if code != 0 {
+			t.Fatalf("%v exit %d: %s", args, code, errOut)
+		}
+		var env struct {
+			Meta map[string]any `json:"meta"`
+		}
+		if err := json.Unmarshal([]byte(out), &env); err != nil {
+			t.Fatal(err)
+		}
+		key, _ := env.Meta["idempotency_key"].(string)
+		if !strings.HasPrefix(key, "hgr-") || len(key) != len("hgr-")+32 {
+			t.Errorf("%v reported idempotency key %q", args, key)
+		}
+	}
+}
