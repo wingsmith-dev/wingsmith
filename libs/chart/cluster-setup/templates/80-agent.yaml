@@ -7,8 +7,8 @@
 # Separate from the operator on purpose — a different binary, a different
 # Deployment, a different pod. The operator is a leader-elected singleton that
 # reconciles declared state; this is a horizontally scaled proxy on the request
-# path. Rule 4: the data plane never crosses the control plane, so they share
-# neither a process nor a connection. They do share the enrolment token, which is
+# path. The data plane never crosses the control plane, so they share neither a
+# process nor a connection. They do share the enrolment token, which is
 # identity rather than a path.
 #
 # The binary is libs/agent/cmd/agent and the settings below are the ones it
@@ -195,7 +195,7 @@ spec:
             # and /metrics — the agent has no listener on its data path, so
             # this port is the only thing reachable here at all.
             #
-            # TODO: nothing scrapes it. The metrics agent's scrape configs keep
+            # Nothing in this chart scrapes it: the metrics agent's scrape configs keep
             # dcgm-exporter and Dynamo's pods, so the agent's own coverage and
             # churn counters stay inside the pod.
             - name: probe

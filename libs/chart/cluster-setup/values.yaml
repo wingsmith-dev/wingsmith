@@ -146,8 +146,8 @@ modelCache:
 # This exists because detection matches on group name. A backend serving a group
 # nobody anticipated would read as absent, and this asserts it by hand until the
 # match is fixed. It can only widen: a cluster the operator can see a backend in is
-# capable whatever this says, because a stale `false` that disabled a working
-# cluster would be the same class of bug this replaced.
+# capable whatever this says, because a stale `false` must never disable a working
+# cluster.
 #
 # Setting it true on a cluster with no backend is the one way left to get the old
 # failure — the CRD accepts the field and produces a single pod holding a fraction

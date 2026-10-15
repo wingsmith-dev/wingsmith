@@ -14,8 +14,8 @@
 # per-workload object. No manifest edit is needed when a model is added: it
 # discovers workers itself, and a model added or removed never edits this file.
 #
-# It discovers them through the Kubernetes API and not over NATS, whatever this
-# comment said before. `DYN_DISCOVERY_BACKEND=kubernetes` on the running pods, and
+# It discovers them through the Kubernetes API, not over NATS:
+# `DYN_DISCOVERY_BACKEND=kubernetes` on the running pods, and
 # the frontend lists objects labelled `nvidia.com/dynamo-namespace` — the Dynamo
 # namespace is a label value, and `globalDynamoNamespace` above is what sets it to
 # the shared one on both halves. What does vary with what is running is the binary:
