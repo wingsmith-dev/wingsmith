@@ -143,3 +143,23 @@ def test_messages_id_uniqueness_reads_tool_use_blocks() -> None:
     assert observed["unique_across_turns"] is False
     assert observed["id_shape"] == "name_index"
     assert observed["repeated_ids"] == ["get_weather:0"]
+
+
+def test_every_eos_bucket_is_reachable_at_the_minimum_sample_size() -> None:
+    from hgrconform.probes import eos
+
+    n = eos.MIN_SAMPLES
+    reached = {eos._bucket(count, n) for count in range(n + 1)}
+    assert reached == {"none", "rare", "occasional", "frequent"}
+    assert eos._bucket(0, 0) == "no-samples"
+
+
+def test_a_small_eos_override_is_raised_to_the_minimum(monkeypatch) -> None:
+    from hgrconform.probes import eos
+
+    monkeypatch.setenv(eos.SAMPLES_ENV, "5")
+    assert eos.sample_size() == eos.MIN_SAMPLES
+    monkeypatch.setenv(eos.SAMPLES_ENV, "200")
+    assert eos.sample_size() == 200
+    monkeypatch.delenv(eos.SAMPLES_ENV)
+    assert eos.sample_size() == eos.SAMPLES

@@ -110,8 +110,8 @@ def find(id: str) -> Probe | None:
 def select(only: tuple[str, ...] = (), skip_heavy: bool = True) -> list[Probe]:
     """The probes to run, narrowed by id or by group prefix.
 
-    Heavy probes are out unless asked for by name or unlocked, because one of them
-    sends a thousand requests to answer a single row of the standard.
+    Heavy probes are out unless asked for by name or unlocked, because they send
+    dozens of requests (`eos.suppression` sends fifty by default) to answer one question.
     """
     chosen = all_probes()
     if only:

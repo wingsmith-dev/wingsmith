@@ -7,8 +7,14 @@ suppress it. One request cannot see this, so the probe sends many and records ho
 often it happened.
 
 The rate itself is not comparable — two runs of fifty samples never agree on a float
-— so the compared key is the bucket the rate falls in. The raw rate, the counts and
-the sample size stay in the observation as evidence.
+— so the compared key is the bucket the rate falls in. The raw rate, the counts, the
+finish reasons and the sample size stay in the observation as evidence.
+
+The buckets are only as fine as the sample allows. The smallest non-zero rate a run
+of `n` samples can observe is `1/n`, so a bucket whose ceiling is below that can
+never be reached and two endpoints differing only there would always agree.
+`MIN_SAMPLES` is chosen so every bucket is reachable, and a smaller override is
+raised to it rather than honoured.
 
 Samples run concurrently, because serial execution of even the reduced default makes
 this probe unusable. That is safe: `Session` locks the step that writes evidence,
@@ -30,6 +36,11 @@ from hgrconform.probes.registry import probe
 
 SAMPLES = 50
 WORKERS = 8
+# Upper bounds of the non-zero buckets. `rare` needs 1/n below its ceiling to be
+# reachable at all, which is where MIN_SAMPLES comes from.
+RARE_BELOW = 0.05
+OCCASIONAL_BELOW = 0.20
+MIN_SAMPLES = 40
 SAMPLES_ENV = "HGRCONFORM_EOS_SAMPLES"
 WORKERS_ENV = "HGRCONFORM_EOS_WORKERS"
 
@@ -52,6 +63,11 @@ def _positive_int(name: str, default: int) -> int:
     return value if value > 0 else default
 
 
+def sample_size() -> int:
+    """The number of samples to send: the override if any, never below MIN_SAMPLES."""
+    return max(MIN_SAMPLES, _positive_int(SAMPLES_ENV, SAMPLES))
+
+
 def _bucket(count: int, total: int) -> str:
     """The bucket a count falls in, kept apart from the case where nothing was sampled.
 
@@ -65,9 +81,9 @@ def _bucket(count: int, total: int) -> str:
     rate = count / total
     if rate <= 0:
         return "none"
-    if rate < 0.01:
+    if rate < RARE_BELOW:
         return "rare"
-    if rate < 0.05:
+    if rate < OCCASIONAL_BELOW:
         return "occasional"
     return "frequent"
 
@@ -76,7 +92,7 @@ def _bucket(count: int, total: int) -> str:
     id="eos.suppression",
     title="How often a reasoning request returns `finish_reason: stop` with empty content",
     requirement="II. Reasoning 4 — EOS emitted during the reasoning phase must be suppressed",
-    compare=("empty_content_bucket", "empty_stop_bucket", "finish_reasons", "any_empty_content"),
+    compare=("empty_content_bucket", "empty_stop_bucket"),
     heavy=True,
 )
 def suppression(session: Session) -> dict[str, Any]:
@@ -86,12 +102,16 @@ def suppression(session: Session) -> dict[str, Any]:
     text at all; `empty_stop` narrows that to the ones that also claimed `stop`, which
     is the shape the requirement describes — a truncation or a content filter arriving
     as an empty body is a different defect and says so through its own finish reason.
+
+    Only the buckets are compared. Whether any sample at all came back empty, and the
+    set of finish reasons seen, both turn on a single rare event in a run of fifty,
+    so two honest endpoints disagree on them by chance.
     """
     thinking = session.profile.thinking
     if thinking.syntax == "none" and not thinking.default_on:
         raise Skip("profile declares no way to request reasoning")
 
-    samples = _positive_int(SAMPLES_ENV, SAMPLES)
+    samples = sample_size()
     workers = _positive_int(WORKERS_ENV, WORKERS)
     body = session.body(messages=[{"role": "user", "content": PROMPT}], **thinking.body(True))
 
@@ -131,6 +151,7 @@ def suppression(session: Session) -> dict[str, Any]:
         "empty_stop_rate": round(len(empty_stop) / denominator, 4) if denominator else None,
         "empty_content_bucket": _bucket(len(empty_content), denominator),
         "empty_stop_bucket": _bucket(len(empty_stop), denominator),
+        "smallest_observable_rate": round(1 / denominator, 4) if denominator else None,
         "any_empty_content": bool(empty_content),
         "finish_reasons": sorted(reasons),
         "finish_reason_counts": reasons,
