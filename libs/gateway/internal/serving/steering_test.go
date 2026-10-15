@@ -231,3 +231,41 @@ func TestSteeringHeadersAreMatchedWhateverTheirSpelling(t *testing.T) {
 		}
 	}
 }
+
+// TestCallerCredentialsNeverLeaveThisHop pins that a caller's API key, cookie
+// and probe token are redeemed here and never reach a cluster, while the
+// address's own credential, even under the same name, still does.
+func TestCallerCredentialsNeverLeaveThisHop(t *testing.T) {
+	server, seen := steeringUpstream(t)
+	stamped := http.Header{}
+	stamped.Set("Authorization", "Bearer cluster-credential")
+	header := http.Header{
+		"Authorization":        {"Bearer tenant-key"},
+		"Proxy-Authorization":  {"Basic abc"},
+		"Cookie":               {"session=1"},
+		"X-Api-Key":            {"tenant-key"},
+		"X-Hangar-Probe-Token": {"probe-secret"},
+		"X-Hangar-Origin":      {"probe"},
+		cacheScopeHeader:       {"org_1"},
+		"User-Agent":           {"client/1.0"},
+	}
+	sendThrough(t, routeTo(t, server.URL, stamped), `{"model":"chat"}`, header)
+
+	if got := seen.header.Get("Authorization"); got != "Bearer cluster-credential" {
+		t.Errorf("Authorization = %q, want only the address's own credential", got)
+	}
+	for _, name := range []string{"Proxy-Authorization", "Cookie", "X-Api-Key", "X-Hangar-Probe-Token", "X-Hangar-Origin", cacheScopeHeader} {
+		if got := seen.header.Values(name); len(got) != 0 {
+			t.Errorf("%s reached the cluster as %q", name, got)
+		}
+	}
+	if got := seen.header.Get("User-Agent"); got != "client/1.0" {
+		t.Errorf("User-Agent = %q, an ordinary header should pass", got)
+	}
+
+	server, seen = steeringUpstream(t)
+	sendThrough(t, routeTo(t, server.URL, nil), `{"model":"chat"}`, header)
+	if got := seen.header.Values("Authorization"); len(got) != 0 {
+		t.Errorf("Authorization reached a cluster with no credential of its own as %q", got)
+	}
+}

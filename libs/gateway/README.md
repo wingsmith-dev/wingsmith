@@ -233,6 +233,10 @@ No pricing, and nothing is added to the response body the caller sees.
   rank aliases, and the agent harness session headers — and from `nvext`. Which worker runs a
   request, and ahead of whom, is not a caller's to choose. A request carrying none of them is
   forwarded as the bytes that arrived. The names are in `steering.go`.
+- **A caller's own credentials.** `Authorization`, `Proxy-Authorization`, `Cookie`, `X-Api-Key`,
+  `X-Hangar-Probe-Token`, `X-Hangar-Origin` and `X-Hangar-Cache-Scope` are removed before the
+  request leaves. A tenant's key is redeemed here and no cluster, agent or engine log gets a copy.
+  The credential a serving address sits behind is written after the removal, so it still goes out.
 - **A response header from behind this hop.** Deleted unless it is on the forwarded list in
   `errors.go`. An allowlist, because what a caller needs is small and closed while what an engine
   might add is neither. A `Location` is reduced to a path first: the authority a frontend builds one

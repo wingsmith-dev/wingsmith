@@ -217,12 +217,30 @@ func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	return body, true
 }
 
+// callerCredentialHeaders are what a caller presents to this hop and nothing
+// past it may see. The tenant's API key, a session cookie and the conformance
+// runner's probe token are all redeemed here; forwarding them would hand every
+// serving cluster, agent and engine log a copy of a credential that is not
+// theirs. Removed from the outbound request before the address's own
+// credential is written, so a credential header this hop stamps under one of
+// these names is still sent.
+var callerCredentialHeaders = []string{
+	"Authorization",
+	"Proxy-Authorization",
+	"Cookie",
+	"X-Api-Key",
+	"X-Hangar-Probe-Token",
+	"X-Hangar-Origin",
+	cacheScopeHeader,
+}
+
 // NewReverseProxy forwards to one serving address, stamping the credential the
 // address sits behind onto every outbound request.
 //
-// Headers are applied on the outbound leg only and overwrite whatever arrived
-// under the same names: a caller must not be able to influence the credential
-// this hop presents.
+// The caller's own credentials are removed first (callerCredentialHeaders).
+// Headers are then applied on the outbound leg only and overwrite whatever
+// arrived under the same names: a caller must not be able to influence the
+// credential this hop presents.
 //
 // headerTimeout bounds how long the upstream may hold the request without
 // answering; zero takes tunnel.DefaultResponseHeaderTimeout, which is the same
@@ -236,6 +254,9 @@ func NewReverseProxy(upstream *url.URL, headers http.Header, headerTimeout time.
 			r.SetURL(upstream)
 			r.Out.Host = upstream.Host
 			r.SetXForwarded()
+			for _, name := range callerCredentialHeaders {
+				r.Out.Header.Del(name)
+			}
 			for name, values := range headers {
 				r.Out.Header[name] = values
 			}
