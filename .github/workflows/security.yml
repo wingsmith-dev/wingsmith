@@ -1,0 +1,121 @@
+name: security
+
+# Known vulnerabilities in what the components depend on: govulncheck for each Go module (only
+# vulnerable code that is reachable), pip-audit for the Python projects, pnpm audit for the console.
+# A finding fails its job so it shows; Dependabot opens the bumps. This workflow is not meant to be
+# a required check: a disclosure against a dependency should not block unrelated changes.
+#
+# Pull requests run it only when they change dependencies; main and the weekly run see everything.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - "**/go.mod"
+      - "**/go.sum"
+      - "**/uv.lock"
+      - "**/pyproject.toml"
+      - libs/console/package.json
+      - libs/console/pnpm-lock.yaml
+      - .github/workflows/security.yml
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GO_VERSION: "1.25"
+  UV_VERSION: "0.9.18"
+  # The newest govulncheck that builds with GO_VERSION; later releases need a newer Go.
+  GOVULNCHECK_VERSION: "v1.7.0"
+  PIP_AUDIT_VERSION: "2.10.1"
+
+jobs:
+  govulncheck:
+    name: govulncheck (${{ matrix.module }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - libs/operator
+          - libs/cli
+          - libs/gateway
+          - libs/agent
+          - libs/packages/tunnel
+          - libs/transit
+    defaults:
+      run:
+        working-directory: ${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The newest patch release, so a standard-library finding is one a toolchain bump can fix.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          check-latest: true
+          cache-dependency-path: libs/**/go.sum
+      - run: go run "golang.org/x/vuln/cmd/govulncheck@$GOVULNCHECK_VERSION" ./...
+
+  pip-audit:
+    name: pip-audit (${{ matrix.project }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - libs/plane
+          - libs/conformance
+    defaults:
+      run:
+        working-directory: ${{ matrix.project }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      # What the project installs at run time, from the lockfile, hashes included; dev tools are
+      # not shipped and are left out.
+      - run: |
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt -q -o "$RUNNER_TEMP/requirements.txt"
+          uvx "pip-audit@$PIP_AUDIT_VERSION" -r "$RUNNER_TEMP/requirements.txt" \
+            --disable-pip --require-hashes --progress-spinner off
+
+  pnpm-audit:
+    name: pnpm audit (console)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: libs/console
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: libs/console/.nvmrc
+          package-manager-cache: false
+      - run: corepack enable && pnpm --version
+      # Reads the lockfile only; nothing is installed. The build's own tooling is not shipped.
+      - run: pnpm audit --prod

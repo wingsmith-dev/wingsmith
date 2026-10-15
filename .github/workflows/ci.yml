@@ -458,33 +458,3 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image }}
 
-  vulncheck:
-    name: vulncheck (${{ matrix.module }})
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    # Reports known vulnerabilities in reachable code; Dependabot opens the bumps. Not required, so
-    # a disclosure against a dependency does not block unrelated changes.
-    continue-on-error: true
-    strategy:
-      fail-fast: false
-      matrix:
-        module:
-          - libs/operator
-          - libs/cli
-          - libs/gateway
-          - libs/agent
-          - libs/packages/tunnel
-          - libs/transit
-    defaults:
-      run:
-        working-directory: ${{ matrix.module }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          check-latest: true
-          cache-dependency-path: libs/**/go.sum
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
