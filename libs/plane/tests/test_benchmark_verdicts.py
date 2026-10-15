@@ -111,12 +111,12 @@ def test_the_accuracy_harness_grades_at_every_level():
         assert harnesses.resolve("evalscope", level) is harnesses.EVALSCOPE
 
 
-def test_a_level_nothing_declares_is_refused_before_the_harness_is_consulted():
+def test_an_undeclared_level_is_refused():
     with pytest.raises(Invalid):
         harnesses.resolve("evalscope", "fleet")
 
 
-def test_a_knob_that_only_means_something_at_one_level_is_refused_elsewhere():
+def test_a_level_bound_knob_is_refused_elsewhere():
     """Below the endpoint there is nothing to fail over to."""
     with pytest.raises(Invalid):
         harnesses.normalise(harnesses.CONFORMANCE, {"failover_probe": True}, harnesses.DEPLOYMENT)
@@ -129,14 +129,14 @@ def test_a_level_restricted_knob_left_at_its_default_is_not_an_error():
     assert resolved["failover_probe"] is False
 
 
-def test_a_decoding_parameter_is_a_float_and_a_form_posted_one_is_coerced():
+def test_decoding_parameters_coerce_to_float():
     resolved = harnesses.normalise(harnesses.EVALSCOPE, {"temperature": "0.7"}, harnesses.WORKLOAD)
     assert resolved["temperature"] == 0.7
     assert resolved["top_p"] == 1.0
 
 
 @pytest.mark.parametrize("value", ["hot", -0.5, float("inf"), float("nan")])
-def test_a_temperature_that_is_not_a_number_is_refused_rather_than_defaulted(value):
+def test_a_non_numeric_temperature_is_refused(value):
     with pytest.raises(Invalid):
         harnesses.normalise(harnesses.EVALSCOPE, {"temperature": value}, harnesses.WORKLOAD)
 
@@ -165,7 +165,7 @@ def test_a_dataset_list_is_normalised_and_deduplicated():
     assert resolved["datasets"] == "mmlu_pro,hle"
 
 
-def test_an_empty_dataset_list_is_not_an_error_and_is_not_a_default_set():
+def test_an_empty_dataset_list_stays_empty():
     resolved = harnesses.normalise(harnesses.EVALSCOPE, {}, harnesses.WORKLOAD)
     assert resolved["datasets"] == ""
 
@@ -196,7 +196,7 @@ def test_a_credential_reference_names_a_grader_no_base_url_points_at():
         harnesses.normalise(harnesses.EVALSCOPE, {"judge_credential_id": "cre_x"}, harnesses.ENDPOINT)
 
 
-def test_an_external_grader_is_endpoint_level_work_and_is_refused_inside_a_cluster():
+def test_external_grader_is_refused_in_a_cluster():
     """A cluster-dispatched benchmark job mounts no credential and is built for no egress."""
     judged = {"judge_base_url": "https://judge.example", "judge_model": "grader", "judge_credential_id": "cre_x"}
     for level in (harnesses.DEPLOYMENT, harnesses.WORKLOAD):
@@ -206,7 +206,7 @@ def test_an_external_grader_is_endpoint_level_work_and_is_refused_inside_a_clust
     assert resolved["judge_credential_id"] == "cre_x"
 
 
-def test_a_locally_resolvable_judge_needs_no_credential_and_is_allowed_in_a_cluster():
+def test_local_judge_is_allowed_in_a_cluster():
     resolved = harnesses.normalise(
         harnesses.EVALSCOPE,
         {"judge_base_url": "http://grader.hangar.svc", "judge_model": "grader"},
@@ -218,14 +218,14 @@ def test_a_locally_resolvable_judge_needs_no_credential_and_is_allowed_in_a_clus
 # ---------------------------------------------------------------- criteria
 
 
-def test_the_criteria_are_a_frozen_table_and_an_unknown_version_is_refused():
+def test_unknown_criteria_version_is_refused():
     assert verdicts.resolve_criteria(None) is verdicts.ACCEPTANCE_2026_1
     assert verdicts.resolve_criteria("acceptance-2026.1") is verdicts.ACCEPTANCE_2026_1
     with pytest.raises(Invalid):
         verdicts.resolve_criteria("acceptance-2027.1")
 
 
-def test_the_acceptance_floor_lives_on_the_criteria_and_not_on_the_baseline_row():
+def test_acceptance_floor_comes_from_the_criteria():
     """Two artifacts must not be graded against two silently different standards."""
     assert CRITERIA.baseline_floor == 0.85
 
@@ -276,7 +276,7 @@ def test_a_dataset_with_no_declared_baseline_is_never_a_pass():
     assert check(verdict, "accuracy.mmlu_pro").outcome == verdicts.INCONCLUSIVE
 
 
-def test_a_dataset_that_was_not_sat_is_not_applicable_rather_than_failed():
+def test_an_unsat_dataset_is_not_applicable():
     """A partial eval is a partial eval; the request's own list says which exam was sat."""
     verdict = verdicts.verdict(accuracy_facts(0.9)._replace(summary={"results": {}}), CRITERIA)
     assert check(verdict, "accuracy.mmlu_pro").outcome == verdicts.NOT_APPLICABLE
@@ -290,7 +290,7 @@ def test_score_on_other_metric_is_inconclusive():
     assert verdicts.verdict(graded, CRITERIA).outcome == verdicts.INCONCLUSIVE
 
 
-def test_an_accuracy_verdict_over_a_heterogeneous_coverage_is_not_attributable():
+def test_heterogeneous_accuracy_is_not_attributable():
     """Two upstreams on two quantizations produce one score belonging to neither."""
     verdict = verdicts.verdict(accuracy_facts(0.9)._replace(homogeneous=False), CRITERIA)
     assert verdict.outcome == verdicts.INCONCLUSIVE
@@ -300,7 +300,7 @@ def test_an_accuracy_verdict_over_a_heterogeneous_coverage_is_not_attributable()
 # ---------------------------------------------------------------- performance
 
 
-def test_a_run_inside_its_band_passes_all_three_time_to_first_token_checks():
+def test_a_run_inside_its_band_passes_ttft():
     verdict = verdicts.verdict(facts(input_tokens=2000, summary=aiperf_summary(p90=4000.0)), CRITERIA)
     assert verdict.outcome == verdicts.PASS
     assert check(verdict, summaries.TTFT_P90).threshold == 5000.0
@@ -326,12 +326,12 @@ def test_a_run_that_declared_no_prompt_length_cannot_claim_a_band():
     assert verdict.outcome == verdicts.INCONCLUSIVE
 
 
-def test_the_standard_sets_no_target_above_256k_and_that_is_not_a_pass():
+def test_no_target_above_256k_is_not_a_pass():
     verdict = verdicts.verdict(facts(input_tokens=300_000), CRITERIA)
     assert check(verdict, "ttft").outcome == verdicts.NOT_APPLICABLE
 
 
-def test_a_summary_missing_a_path_names_the_path_rather_than_reading_zero():
+def test_a_missing_summary_path_is_named():
     verdict = verdicts.verdict(facts(summary={"request_count": 10}), CRITERIA)
     assert verdict.outcome == verdicts.INCONCLUSIVE
     assert "time_to_first_token.p90" in check(verdict, summaries.TTFT_P90).detail
@@ -352,7 +352,7 @@ def test_a_small_model_is_held_to_the_hundred_token_floor():
     assert check(verdict, summaries.OUTPUT_SPEED_PER_STREAM).threshold == 100.0
 
 
-def test_a_large_model_is_held_to_the_floor_of_the_tier_the_buyer_assigned():
+def test_a_large_model_uses_its_assigned_tier():
     l1 = verdicts.verdict(facts(parameter_count=70_000_000_000, tier="L1"), CRITERIA)
     l2 = verdicts.verdict(facts(parameter_count=70_000_000_000, tier="L2"), CRITERIA)
     assert check(l1, summaries.OUTPUT_SPEED_PER_STREAM).threshold == 30.0
@@ -365,7 +365,7 @@ def test_an_unstated_tier_does_not_silently_take_the_lenient_branch():
     assert verdict.outcome == verdicts.INCONCLUSIVE
 
 
-def test_an_artifact_with_no_parameter_count_cannot_choose_a_population():
+def test_no_parameter_count_means_no_population():
     verdict = verdicts.verdict(facts(parameter_count=None), CRITERIA)
     assert check(verdict, summaries.OUTPUT_SPEED_PER_STREAM).outcome == verdicts.INCONCLUSIVE
 
@@ -409,7 +409,7 @@ def test_an_advisory_failure_gates_only_when_the_run_was_strict():
     assert check(lenient, "conformance.advisory").outcome == verdicts.NOT_APPLICABLE
 
 
-def test_a_summary_that_counts_failures_but_enumerates_none_contradicted_itself():
+def test_counted_but_unlisted_failures_contradict():
     verdict = verdicts.verdict(conformance_facts({"total": 84, "pass": 80, "fail": 4, "skip": 0, "error": 0}), CRITERIA)
     assert verdict.outcome == verdicts.INCONCLUSIVE
 
@@ -611,12 +611,12 @@ def test_a_run_that_reported_no_latency_is_named_rather_than_dropped():
     assert report.ttft_p90_ms == 900.0
 
 
-def test_a_run_with_no_declared_prompt_length_lands_in_unknown_rather_than_nowhere():
+def test_no_prompt_length_lands_in_unknown():
     report = buckets.reaggregate([buckets.sample(run("bmk_1", None, p90=900.0))])[0]
     assert report.band == "unknown"
 
 
-def test_a_band_nothing_landed_in_is_absent_rather_than_reported_empty():
+def test_an_empty_band_is_absent():
     reports = buckets.reaggregate([buckets.sample(run("bmk_1", 2000, p90=900.0))])
     assert [report.band for report in reports] == ["lt6k"]
 
@@ -656,13 +656,13 @@ def test_a_sweep_walks_prompt_length_and_a_ramp_walks_load():
     assert steps_for(harnesses.AIPERF, request(mode="ramp", steps=[1, 4, 16])) == [1, 4, 16]
 
 
-def test_a_stepped_mode_with_no_steps_is_refused_rather_than_collapsed_to_one_run():
+def test_a_stepped_mode_without_steps_is_refused():
     """A caller who asked for a sweep and got one point has a claim covering six bands."""
     with pytest.raises(Invalid):
         steps_for(harnesses.AIPERF, request(mode="sweep"))
 
 
-def test_repeated_steps_are_collapsed_and_a_non_positive_one_is_refused():
+def test_steps_dedupe_and_refuse_non_positive():
     assert steps_for(harnesses.AIPERF, request(mode="ramp", steps=[4, 4, 8])) == [4, 8]
     with pytest.raises(Invalid):
         steps_for(harnesses.AIPERF, request(mode="ramp", steps=[0]))
@@ -695,7 +695,7 @@ def test_coverage_is_homogeneous_only_when_every_entry_agrees():
     assert homogeneous([]) is True
 
 
-def test_the_request_surface_is_a_collection_beside_the_runs_and_not_a_subresource():
+def test_requests_are_a_sibling_collection():
     methods = {name for name, member in vars(BenchmarkRoutes).items() if hasattr(member, "fn")}
     assert {"create_request", "get_request", "get_request_verdict", "get_request_bands", "get_verdict"} <= methods
     assert "update_request" not in methods
@@ -712,7 +712,7 @@ def test_the_harness_catalogue_serves_the_levels_as_well_as_the_knobs():
 
 
 @pytest.mark.asyncio
-async def test_a_harness_at_a_level_it_does_not_grade_at_is_refused_before_the_database():
+async def test_harness_at_an_ungraded_level_is_refused():
     """The same rule the parameter table already applies to knobs, applied to targets."""
     with pytest.raises(Invalid):
         await BenchmarkService(db=None).create_request(request(level="endpoint", harness="aiperf", target="end_x"))
@@ -767,7 +767,7 @@ class BaselineSession:
 
 
 @pytest.mark.asyncio
-async def test_a_baseline_declared_through_the_route_is_the_floor_a_run_is_graded_against():
+async def test_a_route_declared_baseline_is_the_floor():
     """The write side and the grading side must agree on one number, spelled one way.
 
     `ArtifactBaselineService` converts `Numeric` to float at the schema boundary

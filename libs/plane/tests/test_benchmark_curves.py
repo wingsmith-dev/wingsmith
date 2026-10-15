@@ -74,7 +74,7 @@ def test_the_step_field_a_mode_walks_is_the_one_the_expansion_created():
     assert curves.STEP_FIELDS == STEPPED
 
 
-def test_a_curve_is_listed_by_step_index_whatever_order_the_rows_arrive_in():
+def test_a_curve_is_ordered_by_step_index():
     points = curves.points(
         [run("bmk_2", 2, 64, p90=900.0), run("bmk_0", 0, 16, p90=300.0), run("bmk_1", 1, 4, p90=200.0)],
         curves.CONCURRENCY,
@@ -99,7 +99,7 @@ def test_every_reading_the_contract_names_is_on_every_point():
     }
 
 
-def test_a_reading_that_did_not_resolve_is_named_rather_than_read_as_zero():
+def test_an_unresolved_reading_is_named():
     point = ramp((8, 300.0))[0]
     absent = point.readings["output_tps_total"]
     assert absent.value is None
@@ -140,7 +140,7 @@ def test_unmapped_harness_version_reads_nothing():
     assert point.readings["ttft_p90_ms"] == curves.Value(None, "", "")
 
 
-def test_a_run_that_declared_no_load_has_a_null_step_value_rather_than_a_zero():
+def test_no_declared_load_has_a_null_step():
     bare = SimpleNamespace(
         uid="bmk_0",
         step_index=0,
@@ -182,7 +182,7 @@ def test_knee_is_read_in_load_order():
     assert "between concurrency 16 and concurrency 64" in knee.reason
 
 
-def test_a_ramp_that_never_crossed_says_so_rather_than_naming_its_top_step():
+def test_a_ramp_that_never_crossed_says_so():
     knee = curves.knee(ramp((8, 300.0), (16, 600.0), (32, 1200.0), (64, 2400.0)), CRITERIA)
     assert knee.found is False
     assert (knee.step_index, knee.step_value) == (None, None)
@@ -204,13 +204,13 @@ def test_a_single_point_curve_has_no_crossing_to_find():
     assert "a crossing needs at least two" in knee.reason
 
 
-def test_an_empty_curve_says_nothing_succeeded_rather_than_nothing_at_all():
+def test_an_empty_curve_says_nothing_succeeded():
     knee = curves.knee([], CRITERIA)
     assert knee.found is False
     assert knee.reason.startswith("0 of the request's runs succeeded")
 
 
-def test_a_curve_whose_only_readable_steps_were_discarded_cannot_be_read():
+def test_an_all_discarded_curve_cannot_be_read():
     knee = curves.knee(ramp((8, 300.0), (16, 9000.0), discard=True), CRITERIA)
     assert knee.found is False
     assert "a crossing needs at least two" in knee.reason
@@ -226,14 +226,14 @@ def test_missing_knee_reading_stops_the_walk():
     assert "the run at concurrency 16 reported no time_to_first_token.p90" in knee.reason
 
 
-def test_a_curve_that_crosses_back_under_is_refused_rather_than_read_confidently():
+def test_a_curve_that_crosses_back_is_refused():
     knee = curves.knee(ramp((8, 300.0), (16, 6000.0), (32, 900.0), (64, 7000.0)), CRITERIA)
     assert knee.found is False
     assert "is not monotone" in knee.reason
     assert "concurrency 16" in knee.reason and "concurrency 32" in knee.reason
 
 
-def test_a_workload_ramp_with_a_run_per_target_is_not_averaged_into_one_curve():
+def test_per_target_runs_are_not_averaged():
     """Two deployments on two device classes cross at two loads; one curve through both describes no machine."""
     points = curves.points(
         [
@@ -249,7 +249,7 @@ def test_a_workload_ramp_with_a_run_per_target_is_not_averaged_into_one_curve():
     assert "one per placed target" in knee.reason
 
 
-def test_steps_that_measured_two_serving_configurations_are_not_one_curve():
+def test_two_serving_configs_are_not_one_curve():
     """One graded run per step is not enough: the steps have to be the same machine."""
     points = curves.points(
         [
@@ -284,7 +284,7 @@ def test_a_ramp_that_declared_no_prompt_length_cannot_claim_a_ceiling():
     assert "no band applies" in knee.reason
 
 
-def test_the_standard_sets_no_ceiling_above_256k_and_that_is_not_a_knee():
+def test_no_ceiling_above_256k_is_not_a_knee():
     points = curves.points(
         [run("bmk_0", 0, 8, p90=300.0, tokens=300_000), run("bmk_1", 1, 16, p90=900.0, tokens=300_000)],
         curves.CONCURRENCY,
@@ -295,7 +295,7 @@ def test_the_standard_sets_no_ceiling_above_256k_and_that_is_not_a_knee():
 
 
 @pytest.mark.parametrize("band,ceiling", [("lt6k", 5_000.0), ("16k_32k", 8_000.0), ("64k_128k", 35_000.0)])
-def test_the_threshold_comes_from_the_pinned_criteria_and_is_never_a_literal_here(band, ceiling):
+def test_threshold_comes_from_pinned_criteria(band, ceiling):
     tokens = {"lt6k": 2000, "16k_32k": 20_000, "64k_128k": 100_000}[band]
     points = curves.points(
         [
@@ -309,7 +309,7 @@ def test_the_threshold_comes_from_the_pinned_criteria_and_is_never_a_literal_her
     assert knee.found is True
 
 
-def test_a_knee_is_answered_against_the_criteria_version_it_is_asked_for():
+def test_a_knee_uses_the_requested_criteria():
     """Derived at read against a pinned table, which is what a stored knee cannot be."""
     assert curves.knee(ramp((8, 300.0)), verdicts.resolve_criteria(None)).method == curves.FIRST_CROSSING
     with pytest.raises(Invalid):
@@ -325,7 +325,7 @@ def test_knee_always_names_method_and_metric():
 # ---------------------------------------------------------------- display is not gradeable
 
 
-def test_the_aggregate_output_rate_is_unreachable_from_the_grading_reader():
+def test_aggregate_output_rate_is_not_gradeable():
     """The whole reason the map has two halves: a check that could reach this could never fail."""
     summary = {"output_token_throughput": {"avg": 8000.0}, "request_throughput": {"avg": 3.16}}
     for field_id in (summaries.OUTPUT_SPEED_TOTAL, summaries.REQUEST_THROUGHPUT):
@@ -342,7 +342,7 @@ def test_no_display_field_is_also_a_gradeable_one():
     assert shown == summaries.DISPLAY_ONLY
 
 
-def test_no_display_id_can_be_named_by_a_check_because_read_cannot_see_one():
+def test_a_check_cannot_name_a_display_id():
     for field_id in summaries.DISPLAY_ONLY:
         for adapter in (summaries.AIPERF_0_4, summaries.CONFORMANCE_0_1, summaries.EVALSCOPE_1_11):
             assert summaries.read(adapter, {"anything": 1}, field_id).value is None
@@ -397,7 +397,7 @@ def service(request, runs):
     return svc
 
 
-async def test_the_curve_read_carries_the_knee_and_every_reading_to_the_wire():
+async def test_the_curve_read_reaches_the_wire():
     runs = [run("bmk_0", 0, 8, p90=300.0, total=8000.0), run("bmk_1", 1, 16, p90=9000.0)]
     answer = await service(request_row(), runs).curve("bmr_0")
     assert answer.request == "bmr_0"

@@ -1015,7 +1015,7 @@ async def test_a_tenant_reads_its_endpoint_without_the_store_behind_it():
     assert [(s.metric, s.value) for s in got.samples] == [("serving.availability", 99.95)]
 
 
-async def test_a_tenant_gets_a_generic_reason_when_its_endpoint_cannot_be_measured():
+async def test_unmeasurable_tenant_endpoint_reason():
     svc = endpoint_service([Endpoint(uid=ENDPOINT, name="gemma-chat")])
     with with_sources(""), with_backend(StubBackend()):
         got = await svc.tenant_endpoint(ENDPOINT)

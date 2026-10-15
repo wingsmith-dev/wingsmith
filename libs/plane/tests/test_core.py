@@ -403,7 +403,7 @@ def test_an_ipv6_caller_is_charged_as_its_slash_64(monkeypatch):
     assert client_address(peer("2001:db8:1:2::1")) != client_address(peer("2001:db8:1:3::1"))
 
 
-def test_revision_follows_the_last_write_and_if_match_refuses_an_older_one():
+def test_revision_and_if_match():
     import datetime as dt
 
     from types import SimpleNamespace

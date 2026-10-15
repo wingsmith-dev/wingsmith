@@ -67,7 +67,7 @@ def test_form_posted_strings_are_coerced_to_the_declared_type():
     assert resolved["streaming"] is False
 
 
-def test_a_value_that_cannot_be_coerced_is_refused_rather_than_defaulted():
+def test_an_uncoercible_value_is_refused():
     """Silently defaulting would produce a run that measured something nobody asked for."""
     with pytest.raises(Invalid):
         harnesses.normalise(harnesses.AIPERF, {"concurrency": "lots"})
@@ -159,7 +159,7 @@ def test_the_overridden_image_is_what_reaches_the_wire():
     assert flattened["image"] == override
 
 
-def test_evalscope_reaches_the_wire_as_a_command_the_operator_runs_verbatim():
+def test_evalscope_wire_carries_a_verbatim_command():
     """The operator's generic case is generic because the command line is composed here."""
     resolved = harnesses.normalise(
         harnesses.EVALSCOPE,
@@ -229,7 +229,7 @@ def test_evalscope_a_supplied_command_wins_over_composition_whole():
     assert "$HANGAR_BENCHMARK_ENDPOINT" in flattened["command"]
 
 
-def test_evalscope_endpoint_model_travels_separately_from_the_served_name():
+def test_evalscope_endpoint_model_is_separate():
     """`endpoint_model` is the request body's `model`, not the run's label."""
     flattened = harnesses.wire_parameters(
         harnesses.EVALSCOPE,
@@ -445,16 +445,16 @@ def test_a_pinned_revision_is_stripped_from_the_tokenizer_reference():
     assert resolved == "Qwen/Qwen3-32B"
 
 
-def test_the_workload_wins_over_the_artifact_when_it_names_a_tokenizer():
+def test_workload_tokenizer_beats_the_artifact():
     workload = _workload(tokenizer="org/other-tokenizer")
     assert tokenizer_for(workload, _artifact(digest="hf:Qwen/Qwen3-32B")) == "org/other-tokenizer"
 
 
-def test_a_content_addressed_artifact_falls_back_to_its_repository_shaped_name():
+def test_content_addressed_artifact_uses_repo_name():
     assert tokenizer_for(_workload(), _artifact(digest="sha256:abc", name="Qwen/Qwen3-32B")) == "Qwen/Qwen3-32B"
 
 
-def test_nothing_repository_shaped_resolves_to_nothing_rather_than_a_guess():
+def test_no_repo_shaped_name_resolves_to_none():
     assert tokenizer_for(_workload(), _artifact(digest="sha256:abc", name="qwen3.8-27b")) == ""
 
 
@@ -463,7 +463,7 @@ def test_a_tokenizer_discovery_read_off_the_running_workload_is_used():
     assert tokenizer_for(_workload(), artifact) == "org/other"
 
 
-def test_an_engine_argument_written_the_way_discovery_writes_them_is_read():
+def test_discovery_style_engine_argument_is_read():
     workload = SimpleNamespace(name="qwen3.8-27b", engine_args={"--tokenizer": "org/other"})
     assert tokenizer_for(workload, _artifact(digest="hf:Qwen/Qwen3.8-27B")) == "org/other"
 
@@ -546,7 +546,7 @@ async def test_an_unmeasured_configuration_is_a_zero_count_and_not_a_miss():
     assert summary.peak_output_tokens_per_second is None
 
 
-def test_the_serving_summary_is_keyed_on_the_digest_and_its_peak_can_be_absent():
+def test_serving_summary_keyed_on_digest():
     assert set(ServingBenchmarkSummarySchema.__struct_fields__) == {
         "serving_digest",
         "run_count",
