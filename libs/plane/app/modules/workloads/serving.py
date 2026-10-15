@@ -79,8 +79,29 @@ its operator runs.
 Tool-call parsing under Dynamo is the chat processor's job — `--dyn-chat-processor`
 on the frontend, whose Rust preprocessor derives the parser from the model — and
 wiring it is a separate change against Dynamo's own configuration rather than one
-more row here. The field stays on the workload and records the intent; nothing
-renders it today, which is the honest state and is visible rather than fatal."""
+more row here. The field stays on the workload and records the intent. Where nothing
+renders it, `hashed_serving` leaves it out of `serving_digest`, so setting it neither
+names a new configuration nor restarts a worker."""
+
+
+FLAG_ONLY_FIELDS = ("tool_call_parser", "structured_output_backend")
+"""Serving fields whose only effect is the engine flag `SERVING_FLAGS` maps them to.
+
+Where the engine's table has no row for one, the field reaches no command line, and
+hashing it would make a recorded intent look like a different running process.
+"""
+
+
+def hashed_serving(engine: str, stored: dict | None) -> dict:
+    """The stored serving block as `serving_digest` should see it: what nothing renders reads as unset.
+
+    Unset rather than removed, so a workload that never named the field hashes exactly
+    as it did before: an absent key and a null one are different digests.
+    """
+    flags = SERVING_FLAGS.get((engine or "").strip().lower(), {})
+    return {
+        key: None if key in FLAG_ONLY_FIELDS and key not in flags else value for key, value in (stored or {}).items()
+    }
 
 
 MODALITY_LIMITS: dict[str, str] = {
@@ -194,9 +215,6 @@ def serving_companion_args(engine: str, serving: ServingSchema) -> dict[str, str
     """
     implied = SERVING_IMPLIED_FLAGS.get(engine.strip().lower(), {})
     args: dict[str, str] = {}
-    if serving.tool_call_parser:
-        for flag in implied.get("tool_call_parser", ()):
-            args[flag] = ""
     for field_name in MODALITY_LIMITS:
         if getattr(serving, field_name) is None:
             continue
@@ -578,7 +596,9 @@ def apply_serving(
     for key, value in serving_columns(data, artifact).items():
         setattr(workload, key, value)
     workload.serving_topology = data.topology.serving_topology or AGGREGATED
-    workload.serving_digest = serving_digest(workload, artifact, roles)
+    workload.serving_digest = serving_digest(
+        workload, artifact, roles, serving=hashed_serving(workload.engine, workload.serving)
+    )
 
 
 def serving_snapshot(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRole]) -> dict:

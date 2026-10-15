@@ -487,7 +487,9 @@ placement, priority and labels are not properties of the configuration at all.
 """
 
 
-def serving_digest(workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRole]) -> str:
+def serving_digest(
+    workload: Workload, artifact: Artifact, roles: Sequence[WorkloadRole], serving: dict | None = None
+) -> str:
     """`svg_` + sha256 over the fields that decide what process runs.
 
     The identity of a serving configuration is its content, and this is that
@@ -526,10 +528,16 @@ def serving_digest(workload: Workload, artifact: Artifact, roles: Sequence[Workl
     waits for one, and that is exactly what a benchmark run anchored on this digest measured. It
     is read with `getattr` because migrations hash rows from before `demand_workload.router`
     existed, and a row with no column declared no router.
+
+    `serving` replaces the stored serving block in the hash when given. The workload
+    service passes the block less the fields nothing renders for the workload's engine,
+    so recording an intent that reaches no command line neither changes the digest nor
+    restarts a worker. Left out, the stored block is hashed whole.
     """
     payload: dict[str, Any] = {"artifact": str(artifact.uid)}
     for key, attribute in DIGEST_FIELDS:
-        payload[key] = _canonical(getattr(workload, attribute))
+        value = serving if key == "serving" and serving is not None else getattr(workload, attribute)
+        payload[key] = _canonical(value)
     # Only when the recipe actually supplies something, so that the digest of a model the
     # corpus does not cover is byte-identical to the one this function returned before
     # recipe defaults existed. An absent key and an empty map are different hashes, and

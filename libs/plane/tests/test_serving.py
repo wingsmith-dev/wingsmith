@@ -1618,3 +1618,33 @@ def test_the_wire_carries_a_router_only_when_one_is_declared():
     assert json.loads(msgspec.json.encode(_serving(workload, artifact).router)) == json.loads(
         msgspec.json.encode(RouterSpec(**declared_router(workload.router)))
     )
+
+
+def test_a_parser_nothing_renders_does_not_move_the_digest():
+    """vLLM under Dynamo takes no tool-call parser flag, so naming one is a recorded intent, not a new process."""
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    plain = a_workload()
+    apply_serving(plain, a_request(), artifact, ())
+    parsed = a_workload()
+    apply_serving(parsed, a_request(serving=serving(tool_call_parser="hermes")), artifact, ())
+
+    assert parsed.serving["tool_call_parser"] == "hermes"
+    assert parsed.serving_digest == plain.serving_digest
+
+
+def test_a_parser_the_engine_renders_still_moves_the_digest():
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    plain = a_workload(engine="sglang")
+    apply_serving(plain, a_request(engine="sglang"), artifact, ())
+    parsed = a_workload(engine="sglang")
+    apply_serving(parsed, a_request(engine="sglang", serving=serving(tool_call_parser="qwen25")), artifact, ())
+
+    assert parsed.serving_digest != plain.serving_digest
+
+
+def test_hashing_an_unrendered_field_as_unset_keeps_every_other_digest_where_it_was():
+    """A workload that never named a parser hashes exactly as the stored block always did."""
+    artifact = Artifact(uid=new_uid(ARTIFACT))
+    workload = a_workload()
+    apply_serving(workload, a_request(), artifact, ())
+    assert workload.serving_digest == serving_digest(workload, artifact, ())
