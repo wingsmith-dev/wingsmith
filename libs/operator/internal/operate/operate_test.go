@@ -26,9 +26,6 @@ import (
 
 const testCluster = "clu_01j9x2aaaaaaaaaaaaaaaaaaaa"
 
-// allKinds is the allowlist of an operator configured to perform everything it implements.
-var allKinds = []string{KindCordon, KindDrain, KindBenchmark}
-
 // benchImages allowlists the harness image the test operations name.
 var benchImages = []string{"ghcr.io/hangar-dev/aiperf:0.4.1"}
 
@@ -120,7 +117,7 @@ func runOperationOn(t *testing.T, readOnly bool, op wire.OperationDesired, objec
 	}
 	c := builder.Build()
 	rec := &recorder{}
-	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default(), ReadOnly: readOnly, Allowed: allKinds})
+	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default(), ReadOnly: readOnly})
 	e.Bind(rec)
 
 	payload, err := json.Marshal(op)
@@ -374,7 +371,6 @@ func laneExecutor(t *testing.T, probe *laneProbe, depth int, objects ...client.O
 	e := New(&Executor{
 		Client:         c,
 		ClusterID:      testCluster,
-		Allowed:        allKinds,
 		Log:            discardLogger(),
 		Render:         render.Options{Namespace: benchNS},
 		Benchmark:      render.BenchmarkOptions{Endpoint: "http://frontend.dynamo.svc.cluster.local:8000", Images: benchImages},

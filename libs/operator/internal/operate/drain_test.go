@@ -39,7 +39,7 @@ func drainClient(refuse interceptor.Funcs, objects ...client.Object) client.Clie
 func runDrain(t *testing.T, c client.Client, op wire.OperationDesired) *recorder {
 	t.Helper()
 	rec := &recorder{}
-	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default(), Allowed: allKinds,
+	e := New(&Executor{Client: c, ClusterID: testCluster, Log: slog.Default(),
 		DrainTimeout: 300 * time.Millisecond, DrainRetry: 5 * time.Millisecond})
 	e.Bind(rec)
 

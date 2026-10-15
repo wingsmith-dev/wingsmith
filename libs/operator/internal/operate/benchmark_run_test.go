@@ -131,7 +131,6 @@ func runBenchmark(t *testing.T, logs LogReader, op wire.OperationDesired, object
 	e := New(&Executor{
 		Client:    c,
 		ClusterID: testCluster,
-		Allowed:   allKinds,
 		Log:       discardLogger(),
 		Render:    render.Options{Namespace: benchNS},
 		Benchmark: render.BenchmarkOptions{Endpoint: "http://frontend.dynamo.svc.cluster.local:8000", Images: benchImages},
@@ -400,7 +399,6 @@ func TestAJobThatCannotBeReadFailsTheRun(t *testing.T) {
 	e := New(&Executor{
 		Client:    c,
 		ClusterID: testCluster,
-		Allowed:   allKinds,
 		Log:       discardLogger(),
 		Render:    render.Options{Namespace: benchNS},
 		Benchmark: render.BenchmarkOptions{Endpoint: "http://frontend:8000", Images: benchImages},
@@ -438,7 +436,6 @@ func TestABenchmarkDeadlineEndsTheWait(t *testing.T) {
 	e := New(&Executor{
 		Client:           c,
 		ClusterID:        testCluster,
-		Allowed:          allKinds,
 		Log:              discardLogger(),
 		Render:           render.Options{Namespace: benchNS},
 		Benchmark:        render.BenchmarkOptions{Endpoint: "http://frontend:8000", Images: benchImages},

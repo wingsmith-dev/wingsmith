@@ -40,7 +40,6 @@ func teeUnder(t *testing.T) (syncpkg.Handler, *spyHandler, *recorder) {
 	e := New(&Executor{
 		Client:    fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).Build(),
 		ClusterID: testCluster,
-		Allowed:   allKinds,
 		Log:       slog.Default(),
 	})
 	e.Bind(rec)
@@ -108,7 +107,6 @@ func TestResyncIsPassedDownAndLeavesOperationsAlone(t *testing.T) {
 	e := New(&Executor{
 		Client:    fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).Build(),
 		ClusterID: testCluster,
-		Allowed:   allKinds,
 		Log:       slog.Default(),
 	})
 	e.Bind(&recorder{})
@@ -151,7 +149,6 @@ func TestHandleIgnoresAFrameItIsNotFor(t *testing.T) {
 	e := New(&Executor{
 		Client:    fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).Build(),
 		ClusterID: testCluster,
-		Allowed:   allKinds,
 		Log:       slog.Default(),
 	})
 	if err := e.Handle(context.Background(), envelope(t, "node.observed", map[string]string{})); err != nil {
@@ -165,7 +162,6 @@ func TestReportWithNoReporterBoundDoesNotPanic(t *testing.T) {
 	e := New(&Executor{
 		Client:    fake.NewClientBuilder().WithScheme(clientgoscheme.Scheme).Build(),
 		ClusterID: testCluster,
-		Allowed:   allKinds,
 		Log:       slog.Default(),
 	})
 	e.report(operation("cordon", "gpu-0", nil), wire.OperationObserved{})

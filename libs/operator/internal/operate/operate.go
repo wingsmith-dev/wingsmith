@@ -83,11 +83,11 @@ type Executor struct {
 	ClusterID string
 	Log       *slog.Logger
 
-	// ReadOnly refuses every operation. See config.Config.ReadOnly.
+	// ReadOnly refuses every operation except the kinds Allowed names. See
+	// config.Config.ReadOnly and config.Config.AllowedOperations.
 	ReadOnly bool
 
-	// Allowed are the operation kinds this operator performs when it is not read-only. Empty
-	// means none: every kind is opt-in per cluster. See config.Config.AllowedOperations.
+	// Allowed are the operation kinds a read-only operator still performs. Empty means none.
 	Allowed []string
 
 	// Render and Benchmark are what a benchmark run needs to become a job: the cluster's local
@@ -498,15 +498,12 @@ func (e *Executor) run(ctx context.Context, op wire.OperationDesired) {
 // A refused kind is refused here rather than at the handler, so that the refusal travels the same
 // route as any other failure: an `operation.observed` that says why.
 func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[string]string, error) {
-	if e.ReadOnly {
-		return nil, fmt.Errorf("this operator is read-only and performs no operations, so not %q", op.Kind)
-	}
-	if !e.permits(op.Kind) {
+	if e.ReadOnly && !e.permits(op.Kind) {
 		if len(e.Allowed) == 0 {
-			return nil, fmt.Errorf("this operator allows no operations (HANGAR_ALLOWED_OPERATIONS is empty), so not %q", op.Kind)
+			return nil, fmt.Errorf("this operator is read-only and will not perform %q", op.Kind)
 		}
 		return nil, fmt.Errorf(
-			"this operator performs only %s, not %q",
+			"this operator is read-only and performs only %s, not %q",
 			strings.Join(e.Allowed, ", "), op.Kind,
 		)
 	}
@@ -522,7 +519,7 @@ func (e *Executor) dispatch(ctx context.Context, op wire.OperationDesired) (map[
 	}
 }
 
-// permits reports whether this operator is configured to perform this kind.
+// permits reports whether a read-only operator still performs this kind.
 func (e *Executor) permits(kind string) bool {
 	for _, allowed := range e.Allowed {
 		if allowed == kind {

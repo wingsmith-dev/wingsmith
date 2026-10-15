@@ -78,16 +78,18 @@ type Config struct {
 	BackoffMin time.Duration
 	BackoffMax time.Duration
 
-	// ReadOnly runs the operator as an observer: it reports what the cluster has and refuses
-	// every write, both the reconciler and every operation kind. This is how a cluster is first
-	// pointed at a plane. Declared state still arrives and is stored in its CRDs, so turning this
-	// off later starts from a complete view.
+	// ReadOnly runs the operator as an observer: it reports what the cluster has, runs no
+	// reconciler, and refuses every operation kind AllowedOperations does not name. This is how a
+	// cluster is first pointed at a plane. Declared state still arrives and is stored in its CRDs,
+	// so turning this off later starts from a complete view.
 	ReadOnly bool
 
-	// AllowedOperations are the operation kinds (cordon, drain, benchmark) a writing operator
-	// performs. Empty, the default, means none. Each kind is opt-in per cluster because they
-	// differ in blast radius: a benchmark runs an allowlisted harness image, a drain evicts
-	// serving pods. Ignored when ReadOnly is set.
+	// AllowedOperations are the operation kinds (cordon, drain, benchmark) a read-only operator
+	// still performs. Empty, the default, means none. A list rather than a switch because the
+	// kinds differ in blast radius: a benchmark runs an allowlisted harness image, a drain evicts
+	// serving pods. Ignored when ReadOnly is false: a managed cluster already lets the plane
+	// decide what runs in its workload namespace, so it performs every kind. The chart grants
+	// the operator's RBAC on the same rule.
 	AllowedOperations []string
 
 	// LeaderElection enables controller-runtime leader election.

@@ -28,11 +28,12 @@ data:
   HANGAR_LIVENESS_TIMEOUT: 30s
   HANGAR_SEND_QUEUE_SIZE: "1024"
   HANGAR_LEADER_ELECTION: "true"
-  # Observe and report, write nothing: no reconciler and no operations. This is how a cluster is
-  # first pointed at a plane. Set to "false" when the cluster should serve what the plane declares.
+  # Observe and report: no reconciler, and only the operations listed below. This is how a cluster
+  # is first pointed at a plane. Set to "false" when the cluster should serve what the plane
+  # declares; a managed cluster performs every operation kind.
   HANGAR_READ_ONLY: "true"
-  # Operation kinds a writing operator performs, comma-separated: cordon, drain, benchmark. Empty
-  # means none. Ignored while HANGAR_READ_ONLY is true.
+  # Operation kinds a read-only operator still performs, comma-separated: cordon, drain,
+  # benchmark. Empty means none. Ignored once HANGAR_READ_ONLY is false.
   HANGAR_ALLOWED_OPERATIONS: ""
   # The node label that names a node's pool, the pool holding GPU nodes, and the pool (and its
   # taint) model-prefetch jobs run on.

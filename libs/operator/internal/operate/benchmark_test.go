@@ -78,15 +78,15 @@ func TestExtractVersionStopsAtTheSummaryMarker(t *testing.T) {
 	}
 }
 
-// --------------------------------------------------------------------- read-only and the allowlist
+// --------------------------------------------------------------------- read-only, and its exceptions
 
-func allowing(readOnly bool, allowed ...string) *Executor {
-	return New(&Executor{Log: discardLogger(), ReadOnly: readOnly, Allowed: allowed})
+func readOnlyExecutor(allowed ...string) *Executor {
+	return New(&Executor{Log: discardLogger(), ReadOnly: true, Allowed: allowed})
 }
 
-// Read-only means no operations at all, whatever the allowlist says.
-func TestAReadOnlyOperatorRefusesEveryKindEvenWhenAllowed(t *testing.T) {
-	e := allowing(true, "drain", "cordon", "benchmark")
+// Read-only with no allowlist, the chart's default, refuses every kind.
+func TestAReadOnlyOperatorWithNoAllowlistRefusesEverything(t *testing.T) {
+	e := readOnlyExecutor()
 	for _, kind := range []string{"drain", "cordon", "benchmark"} {
 		_, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: kind})
 		if err == nil || !strings.Contains(err.Error(), "read-only") {
@@ -95,29 +95,35 @@ func TestAReadOnlyOperatorRefusesEveryKindEvenWhenAllowed(t *testing.T) {
 	}
 }
 
-// An empty allowlist is none, not all: every kind is opt-in per cluster.
-func TestAnEmptyAllowlistRefusesEverything(t *testing.T) {
-	e := allowing(false)
-	for _, kind := range []string{"drain", "cordon", "benchmark"} {
-		_, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: kind})
-		if err == nil || !strings.Contains(err.Error(), "HANGAR_ALLOWED_OPERATIONS") {
-			t.Errorf("an operator with no allowlist performed %q: %v", kind, err)
-		}
+// The plane may not own what runs here and may still be asked to measure it.
+func TestAReadOnlyOperatorPerformsAnAllowedKind(t *testing.T) {
+	e := readOnlyExecutor("benchmark")
+	_, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: "benchmark"})
+	if err != nil && strings.Contains(err.Error(), "read-only") {
+		t.Errorf("benchmark was allowed and still refused as read-only: %v", err)
 	}
 }
 
 // Allowing one kind must not allow the rest, and the refusal names what is allowed.
 func TestAllowingOneKindDoesNotAllowTheOthers(t *testing.T) {
-	e := allowing(false, "benchmark")
+	e := readOnlyExecutor("benchmark")
 	for _, kind := range []string{"drain", "cordon"} {
 		_, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: kind})
 		if err == nil || !strings.Contains(err.Error(), "performs only benchmark") {
-			t.Errorf("%q was performed by an operator allowing only benchmark: %v", kind, err)
+			t.Errorf("%q was performed by a read-only operator allowing only benchmark: %v", kind, err)
 		}
 	}
-	_, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: "benchmark"})
-	if err != nil && strings.Contains(err.Error(), "performs only") {
-		t.Errorf("benchmark was allowed and still refused: %v", err)
+}
+
+// A managed operator performs every kind; the allowlist is the read-only exception only. The
+// chart grants RBAC on the same rule, so a second gate here would refuse what it permitted.
+func TestTheAllowlistDoesNotConstrainAManagedOperator(t *testing.T) {
+	e := New(&Executor{Log: discardLogger(), ReadOnly: false})
+	for _, kind := range []string{"drain", "cordon", "benchmark"} {
+		_, err := e.dispatch(t.Context(), wire.OperationDesired{Kind: kind})
+		if err != nil && strings.Contains(err.Error(), "read-only") {
+			t.Errorf("a managed operator refused %q as read-only: %v", kind, err)
+		}
 	}
 }
 
