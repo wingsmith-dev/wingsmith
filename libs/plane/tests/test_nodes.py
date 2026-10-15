@@ -187,3 +187,33 @@ def test_schema_projection_includes_the_device_rollup():
     assert schema.cordoned is True
     assert schema.ready is False
     assert schema.pool is None
+
+
+class Result:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def all(self):
+        return self.rows
+
+
+class Session:
+    def __init__(self, rows):
+        self.rows = rows
+        self.queries = []
+
+    async def execute(self, query):
+        self.queries.append(query)
+        return Result(self.rows)
+
+
+async def test_a_node_name_two_clusters_share_is_refused_rather_than_picked():
+    session = Session([("node-a",), ("node-b",)])
+    with pytest.raises(Invalid, match="name a cluster"):
+        await NodeRepository(session).get("gpu-node-04")
+
+
+async def test_a_named_cluster_narrows_a_node_name():
+    session = Session([("node-a",)])
+    assert await NodeRepository(session).get("gpu-node-04", cluster="iad-1") == ("node-a",)
+    assert "'iad-1'" in compiled(session.queries[0])

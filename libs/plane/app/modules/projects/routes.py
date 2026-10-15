@@ -77,9 +77,12 @@ class ProjectRoutes(Controller):
         ref: str,
         data: ProjectUpdateRequest,
         if_match: str | None = Parameter(header="If-Match", default=None),
+        tenant: str | None = None,
     ) -> Response[ProjectSchema]:
-        return Response(await svc.update(ref, data, if_match=if_match))
+        return Response(await svc.update(ref, data, if_match=if_match, tenant=tenant))
 
     @delete("/{ref:str}", status_code=204)
-    async def delete_project(self, context: RequestContext, svc: ProjectService, ref: str) -> None:
-        await svc.delete(ref)
+    async def delete_project(
+        self, context: RequestContext, svc: ProjectService, ref: str, tenant: str | None = None
+    ) -> None:
+        await svc.delete(ref, tenant=tenant)

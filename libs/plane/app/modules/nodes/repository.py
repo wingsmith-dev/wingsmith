@@ -15,6 +15,7 @@ from app.db.models import Pool
 from app.db.models import Device
 from app.db.models import Cluster
 from app.db.models import AllocationDevice
+from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 
 
@@ -32,10 +33,17 @@ class NodeRepository:
             .outerjoin(self.pool, Node.pool_id == self.pool.id)
         )
 
-    async def get(self, ref: str) -> Row | None:
+    def get_query(self, ref: str, cluster: str | None = None) -> Select:
+        """A node name is unique only inside its cluster, so `cluster` narrows it."""
         column = Node.uid if is_uid(ref) else Node.name
-        result = await self.db.execute(self._base().where(column == ref))
-        return result.first()
+        query = self._base().where(column == ref)
+        if cluster is not None:
+            query = query.where(Node.cluster_id.in_(ref_ids(Cluster, cluster)))
+        return query
+
+    async def get(self, ref: str, cluster: str | None = None) -> Row | None:
+        result = await self.db.execute(self.get_query(ref, cluster).limit(2))
+        return at_most_one(list(result.all()), "node", ref, "use its id or name a cluster")
 
     def query(
         self,

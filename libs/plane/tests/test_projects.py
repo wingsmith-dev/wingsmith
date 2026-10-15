@@ -1,8 +1,12 @@
 import pytest
 import msgspec
 
+from sqlalchemy.dialects import postgresql
+
 from app.core.ids import PROJECT
 from app.core.ids import new_uid
+from app.core.exceptions import Invalid
+from app.core.exceptions import NotFound
 from app.modules.projects.routes import ProjectRoutes
 from app.modules.projects.schemas import ProjectSchema
 from app.modules.projects.schemas import ProjectTenantSchema
@@ -129,3 +133,48 @@ def test_a_project_s_references_and_name_are_bounded():
     ):
         with pytest.raises(msgspec.ValidationError):
             msgspec.json.decode(msgspec.json.encode(body), type=ProjectCreateRequest)
+
+
+class Result:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def all(self):
+        return self.rows
+
+
+class Session:
+    def __init__(self, rows):
+        self.rows = rows
+        self.queries = []
+
+    async def execute(self, query):
+        self.queries.append(query)
+        return Result(self.rows)
+
+
+async def test_a_slug_two_tenants_share_is_refused_rather_than_picked():
+    session = Session([("project-a",), ("project-b",)])
+    with pytest.raises(Invalid, match="name a tenant"):
+        await ProjectRepository(session).get("research")
+
+
+async def test_a_slug_one_tenant_holds_resolves_to_that_project():
+    session = Session([("project-a",)])
+    assert await ProjectRepository(session).get("research", tenant="acme") == ("project-a",)
+
+
+async def test_a_conditional_write_locks_the_project_row_it_checks():
+    session = Session([("project-a",)])
+    await ProjectRepository(session).get("research", lock=True)
+    assert "FOR UPDATE OF bind_project" in str(session.queries[0].compile(dialect=postgresql.dialect()))
+
+
+async def test_a_delete_naming_the_tenant_narrows_the_slug_it_resolves():
+    from app.modules.projects.services import ProjectService
+
+    session = Session([])
+    with pytest.raises(NotFound):
+        await ProjectService(session).delete("research", tenant="acme")
+    sql = str(session.queries[0].compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True}))
+    assert "'acme'" in sql

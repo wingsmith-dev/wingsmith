@@ -2,7 +2,7 @@
 
 `GET` list and `GET` one, and nothing else. There is no `POST`, `PATCH` or
 `DELETE` because a node is discovered rather than declared, and the operations
-that act on one — drain, cordon, reboot — are `POST /v1/operations` with a type
+that act on one — drain, cordon — are `POST /v1/operations` with a type
 and a target, not verbs hung off this path.
 """
 
@@ -59,5 +59,7 @@ class NodeRoutes(Controller):
         return Response(await svc.summary())
 
     @get("/{ref:str}")
-    async def get_node(self, context: RequestContext, svc: NodeService, ref: str) -> Response[NodeSchema]:
-        return Response(await svc.get(ref))
+    async def get_node(
+        self, context: RequestContext, svc: NodeService, ref: str, cluster: str | None = None
+    ) -> Response[NodeSchema]:
+        return Response(await svc.get(ref, cluster))

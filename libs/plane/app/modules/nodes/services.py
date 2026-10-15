@@ -73,8 +73,8 @@ class NodeService:
             updated_at=node.updated_at,
         )
 
-    async def get(self, ref: str) -> NodeSchema:
-        row = await self.repo.get(ref)
+    async def get(self, ref: str, cluster: str | None = None) -> NodeSchema:
+        row = await self.repo.get(ref, cluster)
         if row is None:
             raise NotFound(f"no node {ref!r}")
         node_id = row[0].id

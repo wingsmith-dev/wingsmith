@@ -53,8 +53,8 @@ class ProjectService:
     def _row(self, row: Row) -> ProjectSchema:
         return self.schema(row[0], row[1], row.default_priority_class)
 
-    async def _one(self, ref: str, tenant: str | None = None) -> Row:
-        row = await self.repo.get(ref, tenant)
+    async def _one(self, ref: str, tenant: str | None = None, lock: bool = False) -> Row:
+        row = await self.repo.get(ref, tenant, lock=lock)
         if row is None:
             raise NotFound(f"no project {ref!r}")
         return row
@@ -109,8 +109,10 @@ class ProjectService:
             raise Conflict(f"project {data.slug!r} already exists in {data.tenant!r}") from exc
         return await self.get(project.uid)
 
-    async def update(self, ref: str, data: ProjectUpdateRequest, if_match: str | None = None) -> ProjectSchema:
-        row = await self._one(ref)
+    async def update(
+        self, ref: str, data: ProjectUpdateRequest, if_match: str | None = None, tenant: str | None = None
+    ) -> ProjectSchema:
+        row = await self._one(ref, tenant, lock=True)
         project: Project = row[0]
         if if_match is not None and if_match != _revision(project):
             raise Conflict("project changed since it was read", {"revision": _revision(project)})
@@ -135,14 +137,14 @@ class ProjectService:
             raise Conflict("project conflicts with an existing one") from exc
         return await self.get(project.uid)
 
-    async def delete(self, ref: str) -> None:
+    async def delete(self, ref: str, tenant: str | None = None) -> None:
         """A project holding workloads or allocations refuses to go.
 
         Both foreign keys are `ON DELETE RESTRICT`, so the database is the one
         saying no; this turns that into the contract's `409 conflict` rather than
         letting an integrity error surface as a 500.
         """
-        row = await self._one(ref)
+        row = await self._one(ref, tenant)
         try:
             await self.repo.delete(row[0])
             await self.db.commit()

@@ -7,6 +7,7 @@ from app.core.ids import is_uid
 from app.db.models import Tenant
 from app.db.models import Project
 from app.db.models import PriorityClass
+from app.core.lookup import at_most_one
 from app.core.filters import ref_ids
 
 
@@ -64,9 +65,17 @@ class ProjectRepository:
             query = query.where(Project.name.ilike(f"%{search}%"))
         return query
 
-    async def get(self, ref: str, tenant: str | None = None) -> Row | None:
-        result = await self.db.execute(self.get_query(ref, tenant).limit(1))
-        return result.first()
+    async def get(self, ref: str, tenant: str | None = None, lock: bool = False) -> Row | None:
+        """The one project `ref` names; a slug two tenants share is refused unless `tenant` narrows it.
+
+        `lock` holds the project row until the transaction ends, so a conditional write's
+        If-Match check and the write it guards see the same revision.
+        """
+        query = self.get_query(ref, tenant).limit(2)
+        if lock:
+            query = query.with_for_update(of=Project).execution_options(populate_existing=True)
+        result = await self.db.execute(query)
+        return at_most_one(list(result.all()), "project", ref, "use its id or name a tenant")
 
     async def list(self, **kwargs) -> list[Row]:
         result = await self.db.execute(self.list_query(**kwargs))
