@@ -220,6 +220,14 @@ class Settings:
     prefetch job's layout has to be the one the engine later reads.
     """
 
+    BENCHMARK_CONFORMANCE_IMAGE: str = ""
+    """Image the `conformance` benchmark harness runs when a request names none.
+    Empty refuses such runs with a message naming this setting."""
+
+    BENCHMARK_EVALSCOPE_IMAGE: str = ""
+    """Image the `evalscope` benchmark harness runs when a request names none, built from
+    `libs/benchmarking/images/evalscope`. Empty refuses such runs with a message naming this setting."""
+
     ADMIN_AUTH: str = ""
     """`enabled` or `disabled`. Empty means "not explicitly set", which resolves
     to `disabled` when `APP_ENV == "local"` and `enabled` everywhere else — see

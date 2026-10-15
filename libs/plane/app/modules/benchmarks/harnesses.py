@@ -84,7 +84,7 @@ class Harness(NamedTuple):
     def image(self) -> str:
         """The default image for a run, or empty when its setting is unset."""
         if self.image_setting:
-            return str(getattr(settings, self.image_setting, "") or "").strip()
+            return str(getattr(settings, self.image_setting) or "").strip()
         return self.pinned_image
 
 
@@ -176,7 +176,10 @@ gateway fault is told from an engine fault, and that is the first question asked
 endpoint probe fails. `failover_probe` is endpoint-only: below the endpoint there is
 nothing to fail over to.
 
-The image is built from `libs/conformance` and named by `HANGAR_BENCHMARK_CONFORMANCE_IMAGE`.
+The image is named by `HANGAR_BENCHMARK_CONFORMANCE_IMAGE` or the request's `image`. This repository
+builds no image for this harness and the plane composes no command line for it, so the operator
+refuses to render a run until one does; `libs/conformance` (`hgrconform`) runs probes of this kind
+from a workstation today.
 `max_probes` caps the enumerated failure list, so it has a stated ceiling even in a total outage;
 the per-probe record goes to object storage behind `artifacts_uri`, never onto the summary.
 """

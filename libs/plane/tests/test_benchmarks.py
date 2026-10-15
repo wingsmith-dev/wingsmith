@@ -1,4 +1,5 @@
 import datetime as dt
+import dataclasses
 
 from types import SimpleNamespace
 
@@ -9,6 +10,8 @@ from app.core.ids import CLUSTER
 from app.core.ids import DEPLOYMENT
 from app.core.ids import BENCHMARK_RUN
 from app.core.ids import new_uid
+from app.config.settings import Settings
+from app.config.settings import load as load_settings
 from app.core.exceptions import Invalid
 from app.modules.benchmarks import harnesses
 from app.modules.benchmarks.follow import DEFAULT_MESSAGES
@@ -95,15 +98,31 @@ def test_a_pinned_harness_image_is_a_version_rather_than_floating():
             assert ":" in harness.pinned_image.rsplit("/", 1)[-1], harness.name
 
 
-def test_a_harness_image_comes_from_its_setting(monkeypatch):
-    monkeypatch.setattr(
-        harnesses.settings, "BENCHMARK_EVALSCOPE_IMAGE", "registry.example/evalscope:1.11.1", raising=False
+def test_every_image_setting_is_a_plane_setting():
+    names = {spec.name for spec in dataclasses.fields(Settings)}
+    for harness in harnesses.HARNESSES.values():
+        if harness.image_setting:
+            assert harness.image_setting in names, harness.name
+
+
+def test_harness_image_settings_load_from_the_environment():
+    loaded = load_settings(
+        {
+            "HANGAR_BENCHMARK_EVALSCOPE_IMAGE": "registry.example/evalscope:1.11.1",
+            "HANGAR_BENCHMARK_CONFORMANCE_IMAGE": "registry.example/conformance:0.1.0",
+        }
     )
+    assert loaded.BENCHMARK_EVALSCOPE_IMAGE == "registry.example/evalscope:1.11.1"
+    assert loaded.BENCHMARK_CONFORMANCE_IMAGE == "registry.example/conformance:0.1.0"
+
+
+def test_a_harness_image_comes_from_its_setting(monkeypatch):
+    monkeypatch.setattr(harnesses.settings, "BENCHMARK_EVALSCOPE_IMAGE", "registry.example/evalscope:1.11.1")
     assert harnesses.resolve_image(harnesses.EVALSCOPE, None) == "registry.example/evalscope:1.11.1"
 
 
-def test_an_unconfigured_harness_image_is_refused_with_the_setting_to_fill(monkeypatch):
-    monkeypatch.setattr(harnesses.settings, "BENCHMARK_CONFORMANCE_IMAGE", "", raising=False)
+def test_an_unset_harness_image_is_refused(monkeypatch):
+    monkeypatch.setattr(harnesses.settings, "BENCHMARK_CONFORMANCE_IMAGE", "")
     with pytest.raises(Invalid) as caught:
         harnesses.resolve_image(harnesses.CONFORMANCE, None)
     assert caught.value.detail == {"harness": "conformance", "setting": "HANGAR_BENCHMARK_CONFORMANCE_IMAGE"}
