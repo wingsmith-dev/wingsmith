@@ -3,6 +3,7 @@ import inspect
 import datetime as dt
 
 from types import SimpleNamespace
+from collections import namedtuple
 
 import pytest
 import msgspec
@@ -410,37 +411,37 @@ class FakeTenant:
         self.updated_at = None
 
 
-class FakeRow(tuple):
-    """A `Row` is a tuple with labels; the resolution reads it positionally."""
+_RESOLVED = namedtuple(
+    "_RESOLVED",
+    "Endpoint EndpointTarget Deployment Cluster ClusterServing ServingQuota Artifact Workload Project Tenant",
+)
 
-    def __new__(
-        cls,
+
+def FakeRow(
+    endpoint,
+    target,
+    deployment,
+    cluster,
+    serving,
+    quota=None,
+    artifact=None,
+    workload=None,
+    project=None,
+    tenant=None,
+):
+    """A `Row` of `resolved_query`, labelled by entity the way SQLAlchemy labels it."""
+    return _RESOLVED(
         endpoint,
         target,
         deployment,
         cluster,
         serving,
-        quota=None,
-        artifact=None,
-        workload=None,
-        project=None,
-        tenant=None,
-    ):
-        return super().__new__(
-            cls,
-            (
-                endpoint,
-                target,
-                deployment,
-                cluster,
-                serving,
-                quota,
-                artifact if artifact is not None else FakeArtifact(),
-                workload if workload is not None else FakeWorkload(),
-                project if project is not None else FakeProject(),
-                tenant if tenant is not None else FakeTenant(),
-            ),
-        )
+        quota,
+        artifact if artifact is not None else FakeArtifact(),
+        workload if workload is not None else FakeWorkload(),
+        project if project is not None else FakeProject(),
+        tenant if tenant is not None else FakeTenant(),
+    )
 
 
 def resolution(rows) -> EndpointService:
@@ -450,7 +451,7 @@ def resolution(rows) -> EndpointService:
     return svc
 
 
-def upstream_row(phase="active", endpoint=None, **kwargs) -> FakeRow:
+def upstream_row(phase="active", endpoint=None, **kwargs) -> _RESOLVED:
     return FakeRow(
         endpoint or FakeEndpoint(),
         FakeTarget(),
@@ -460,7 +461,7 @@ def upstream_row(phase="active", endpoint=None, **kwargs) -> FakeRow:
     )
 
 
-def tunnelled_row(phase="active", endpoint=None, workload=None, artifact=None, **kwargs) -> FakeRow:
+def tunnelled_row(phase="active", endpoint=None, workload=None, artifact=None, **kwargs) -> _RESOLVED:
     """A cluster that publishes no serving address, which is every cluster we run."""
     return FakeRow(
         endpoint or FakeEndpoint(),

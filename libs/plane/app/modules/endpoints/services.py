@@ -880,7 +880,7 @@ class EndpointService:
         grouped: dict[UUID, list] = {}
         endpoints: dict[UUID, Endpoint] = {}
         for row in rows:
-            endpoint = row[0]
+            endpoint = row.Endpoint
             if endpoint.id not in grouped:
                 order.append(endpoint.id)
                 grouped[endpoint.id] = []
@@ -892,16 +892,17 @@ class EndpointService:
         items: list[ResolvedEndpointSchema] = []
         for endpoint_id in order:
             endpoint = endpoints[endpoint_id]
-            quota = grouped[endpoint_id][0][5]
-            project = grouped[endpoint_id][0][8]
-            tenant = grouped[endpoint_id][0][9]
+            first = grouped[endpoint_id][0]
+            quota, project, tenant = first.ServingQuota, first.Project, first.Tenant
             own: list[dt.datetime | None] = [_stamp(endpoint), _stamp(quota), _stamp(project)]
             aliases = alias_names(endpoint)
             upstreams: list[ResolvedUpstreamSchema] = []
             uids: dict[UUID, str] = {}
 
             served: list[str] = [_alias_term(alias) for alias in aliases]
-            for _, target, deployment, cluster, serving, _, artifact, workload, _, _ in grouped[endpoint_id]:
+            for row in grouped[endpoint_id]:
+                target, deployment, cluster = row.EndpointTarget, row.Deployment, row.Cluster
+                serving, artifact, workload = row.ClusterServing, row.Artifact, row.Workload
                 if target is None:
                     continue
                 own.extend([_stamp(target), _stamp(deployment), _stamp(cluster), _stamp(serving)])
