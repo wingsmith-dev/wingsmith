@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] Every commit is signed off (`git commit -s`). See [CONTRIBUTING.md](../CONTRIBUTING.md#sign-your-commits-dco).
+- [ ] Every commit is signed off (`git commit -s`). See [CONTRIBUTING.md](https://github.com/hangar-dev/hangar/blob/main/CONTRIBUTING.md#sign-your-commits-dco).
 - [ ] Tests cover the behaviour change.
 - [ ] READMEs, docs and ADRs the change makes wrong are updated.
 - [ ] No hostnames, credentials or other private details in code, commits or this description.
