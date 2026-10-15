@@ -7,6 +7,7 @@ import { deriveFleetAttention } from "./attention"
 import {
   allocationTotals,
   capacityByClass,
+  freshnessNote,
   reachabilityRows,
   replicaFootprint,
   staleClusters,
@@ -258,6 +259,39 @@ describe("reachability", () => {
   it("caveats the page with every cluster whose link is degraded", () => {
     const dropped = cluster({ id: "clu_2", reachable: false })
     expect(staleClusters([cluster(), dropped])).toEqual([dropped])
+  })
+})
+
+describe("freshnessNote", () => {
+  it("says nothing while the cluster list is loading", () => {
+    expect(freshnessNote(undefined, false)).toBeNull()
+  })
+
+  it("does not claim every cluster is reporting when the list failed", () => {
+    expect(freshnessNote(undefined, true)).toMatch(/unavailable/)
+    expect(freshnessNote([cluster()], true)).toMatch(/unavailable/)
+  })
+
+  it("does not claim every cluster is reporting when there are none", () => {
+    const note = freshnessNote([], false)
+    expect(note).toMatch(/No clusters/)
+    expect(note).not.toMatch(/Every cluster/)
+  })
+
+  it("reassures only when clusters exist and none is stale", () => {
+    expect(freshnessNote([cluster()], false)).toMatch(/Every cluster/)
+  })
+
+  it("names the stale clusters", () => {
+    const dropped = cluster({
+      id: "clu_2",
+      name: "east",
+      display_name: null,
+      reachable: false,
+    })
+    expect(freshnessNote([cluster(), dropped], false)).toMatch(
+      /Counts may exclude east/
+    )
   })
 })
 

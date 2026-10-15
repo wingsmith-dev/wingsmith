@@ -1,12 +1,11 @@
 import { PageHeader } from "@/components/layout/page-header"
-import { clusterLabel } from "@/modules/clusters/display"
 import { deriveFleetAttention } from "@/modules/overview/attention"
 import {
   allocationTotals,
   capacityByClass,
+  freshnessNote,
   reachabilityRows,
   replicaFootprint,
-  staleClusters,
   summariseEndpointHealth,
   unschedulableReplicas,
 } from "@/modules/overview/fleet"
@@ -20,6 +19,7 @@ import {
   useRecentOperations,
   useUndecidedDiscovered,
 } from "@/modules/overview/queries"
+import { useReadOnly } from "@/modules/settings/store"
 import { IconEye } from "@tabler/icons-react"
 import { CapacityPressure } from "./CapacityPressure"
 import { ClusterReachability } from "./ClusterReachability"
@@ -56,7 +56,8 @@ export function OverviewPage() {
   const pending = deployments.data && unschedulableReplicas(deployments.data)
   const capacity = devices.data && capacityByClass(devices.data)
   const reachability = clusters.data && reachabilityRows(clusters.data)
-  const stale = clusters.data ? staleClusters(clusters.data) : []
+  const readOnly = useReadOnly()
+  const freshness = freshnessNote(clusters.data, Boolean(clusters.error))
 
   const attention =
     clusters.data ||
@@ -183,15 +184,14 @@ export function OverviewPage() {
           </div>
         </div>
 
-        <p className="flex items-center gap-2 text-2xs text-muted-foreground">
-          <IconEye className="size-3.5 shrink-0" />
-          Read-only console.{" "}
-          {stale.length === 0
-            ? "Every cluster is reporting, so the counts above are current."
-            : `Counts may exclude ${stale
-                .map(clusterLabel)
-                .join(", ")} — last reconcile is older than the page.`}
-        </p>
+        {(readOnly || freshness) && (
+          <p className="flex items-center gap-2 text-2xs text-muted-foreground">
+            {readOnly && <IconEye className="size-3.5 shrink-0" />}
+            {[readOnly && "Read-only console.", freshness]
+              .filter(Boolean)
+              .join(" ")}
+          </p>
+        )}
       </div>
     </div>
   )

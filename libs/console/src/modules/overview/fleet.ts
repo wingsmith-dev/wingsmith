@@ -228,6 +228,30 @@ export function staleClusters(clusters: Cluster[]): Cluster[] {
     .map((row) => row.cluster)
 }
 
+/**
+ * The caveat under the overview's counts: whether they cover every cluster.
+ *
+ * Says nothing while the cluster list is loading, and never claims every cluster
+ * is reporting when the list failed or is empty — in both cases nothing is known
+ * to be reporting.
+ */
+export function freshnessNote(
+  clusters: Cluster[] | undefined,
+  failed: boolean
+): string | null {
+  if (failed)
+    return "Cluster state is unavailable, so the counts above may be incomplete."
+  if (!clusters) return null
+  if (clusters.length === 0)
+    return "No clusters are registered, so there is nothing to count yet."
+  const stale = staleClusters(clusters)
+  if (stale.length === 0)
+    return "Every cluster is reporting, so the counts above are current."
+  return `Counts may exclude ${stale
+    .map((c) => c.display_name ?? c.name)
+    .join(", ")}: last reconcile is older than the page.`
+}
+
 /** Replicas ready fleet-wide, and how many clusters are carrying them. */
 export function replicaFootprint(deployments: Deployment[]): {
   ready: number
