@@ -53,11 +53,20 @@ def test_hub_url_is_the_configured_one(monkeypatch):
 
 def test_hub_url_is_refused_when_unset_rather_than_guessed(monkeypatch):
     """The request's Host header is the caller's to choose, so it is never a fallback."""
+    monkeypatch.setattr(settings, "APP_ENV", "production")
     monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "")
     monkeypatch.setattr(settings, "PUBLIC_HOST", "hangar.example")
     with pytest.raises(Invalid) as refused:
         _hub_url()
     assert refused.value.detail == {"setting": "HANGAR_HUB_PUBLIC_URL"}
+
+
+def test_hub_url_defaults_to_the_compose_hub_under_local(monkeypatch):
+    """`just dev` and `just fleet` set no hub URL; local falls back to settings, never the request."""
+    monkeypatch.setattr(settings, "APP_ENV", "local")
+    monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "")
+    monkeypatch.setattr(settings, "PUBLIC_HOST", "attacker.example")
+    assert _hub_url() == f"ws://localhost:{settings.HUB_PORT}{settings.HUB_PATH}"
 
 
 def test_hub_url_must_be_a_websocket_url(monkeypatch):
@@ -102,6 +111,7 @@ def setup_service(cluster) -> ClusterService:
 
 async def test_minting_without_a_hub_url_writes_nothing(monkeypatch):
     """Refusing after the rotation would strand a working cluster on a dead token."""
+    monkeypatch.setattr(settings, "APP_ENV", "production")
     monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "")
     cluster = FakeCluster(token_hash="existing")
     svc = setup_service(cluster)

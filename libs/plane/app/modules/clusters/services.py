@@ -217,8 +217,14 @@ def _hub_url() -> str:
     forged header decide where a new cluster's operator sends its enrolment
     token. A plane that has not said where its hub is gets a refusal naming the
     setting instead of a guess, and the refusal comes before anything is minted.
+
+    `APP_ENV=local` is the exception: unset there means the compose hub on this
+    machine, built from settings rather than the request, so `just dev` and
+    `just fleet` work without extra configuration.
     """
     url = settings.HUB_PUBLIC_URL.strip()
+    if not url and settings.APP_ENV == "local":
+        return f"ws://localhost:{settings.HUB_PORT}{settings.HUB_PATH}"
     if not url:
         raise Invalid(
             "this plane has no public hub URL; set HANGAR_HUB_PUBLIC_URL to the wss:// address clusters dial",

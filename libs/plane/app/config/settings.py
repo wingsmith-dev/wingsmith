@@ -267,9 +267,10 @@ class Settings:
     HUB_PUBLIC_URL: str = ""
     """The `wss://` URL cluster operators dial, written into the setup values.
 
-    Required for cluster setup. Empty refuses to render setup values or mint an
-    enrolment token rather than guessing the address from a request header,
-    which a caller controls.
+    Required for cluster setup outside `APP_ENV=local`. Empty refuses to render
+    setup values or mint an enrolment token rather than guessing the address
+    from a request header, which a caller controls. Under `local`, empty means
+    `ws://localhost:{HUB_PORT}{HUB_PATH}`, the compose hub.
     """
 
     OPERATOR_IMAGE: str = ""
