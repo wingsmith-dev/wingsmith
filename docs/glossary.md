@@ -124,8 +124,10 @@ not yet acted on (see the [roadmap](roadmap.md)).
 
 **Project.** A unit inside a tenant that device quota attaches to.
 
-**Quota.** Device quota per project, cluster and device class: a guaranteed floor plus optional
-over-quota share. Checked by placement at admission.
+**Quota.** A ceiling on how many devices of one class a project may hold, either in one cluster or
+across the fleet; a cluster's own quota takes precedence over a fleet-wide one there. Checked by
+placement at admission. It also records a guaranteed floor and an over-quota weight that nothing
+acts on yet (see the [roadmap](roadmap.md)).
 
 **Reactor.** The plane process (or loop inside the hub) that derives alerts and reconciles derived
 configuration, under a lease.

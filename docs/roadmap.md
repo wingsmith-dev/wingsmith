@@ -11,13 +11,16 @@ There are no dates. Order within a section is roughly the order the work is expe
 
 - **Task and gang workloads.** A Workload carries a `kind`, and the object model reserves `task`
   (batch work that runs to completion) and `gang` (N devices together or none, for training and
-  multi-node jobs) beside `service`. Only `service` is rendered: the operator turns a deployment
-  into an NVIDIA Dynamo graph and has no renderer for a Job, JobSet or other batch object. Queueing
+  multi-node jobs) beside `service`. The plane refuses `task` and `gang` workloads at creation:
+  the operator turns a deployment into an NVIDIA Dynamo graph and has no renderer for a Job, JobSet
+  or other batch object. Queueing
   policy, deadlines, checkpointing and elastic resize all depend on this and are not started.
-- **Preemption.** PriorityClass carries a `preemptible` flag and placement reports how many devices
-  lower-priority work could free, but nothing evicts anything. Placement does not count preemptible
-  or reclaimable devices as available capacity, so a workload is only placed where devices are free
-  today.
+- **Preemption.** PriorityClass carries a `preemptible` flag, but nothing evicts anything and the
+  `preemption` field in placement answers is always null. Placement counts only free devices as
+  capacity, so a workload is only placed where devices are free today.
+- **Quota floors and fair share.** A Quota records a guaranteed floor, a limit and an over-quota
+  weight, but placement uses it only as a ceiling on what the project may hold. The floor is not
+  reserved against other projects, and idle capacity is not shared out by weight.
 - **Engines other than NVIDIA Dynamo.** The wire carries Hangar's own objects so a second renderer
   is possible, but Dynamo (with vLLM, SGLang or TensorRT-LLM inside it) is the only one.
 

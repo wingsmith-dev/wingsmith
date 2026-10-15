@@ -206,7 +206,7 @@ Global decisions are cheap and rare; local decisions are expensive and constant.
 devices would need an accurate live model of every card in every region and would be wrong
 constantly. Collapsing the split in either direction brings back failure 4 from §2.1.
 
-### 3.4 The data plane never touches the control plane
+### 3.4 Inference traffic never passes through the control plane
 
 Inference traffic, logs, metric streams and model weights flow directly or through the edge. None of
 them pass through the control plane.
@@ -296,7 +296,7 @@ Neither is expensive if designed in. Both are painful once placement assumes dev
 | Object | Kind | Holds |
 |---|---|---|
 | **Artifact** | declared | immutable, content-addressed weights: digest, size, format, licence, one or more locations |
-| **Workload** | declared, plane-only | what you asked to run, globally: the artifact and a reproducible way to serve it (engine and version, quantization, TP/PP/EP, context length, KV and prefix cache configuration, engine arguments, the resulting device shape and class), plus kind (only `service` is rendered; `task` and `gang` are reserved), total scale bounds, priority, and which clusters it may use. Has many Deployments |
+| **Workload** | declared, plane-only | what you asked to run, globally: the artifact and a reproducible way to serve it (engine and version, quantization, TP/PP/EP, context length, KV and prefix cache configuration, engine arguments, the resulting device shape and class), plus kind (only `service` is accepted; `task` and `gang` are reserved), total scale bounds, priority, and which clusters it may use. Has many Deployments |
 | **Deployment** | declared | one workload on one cluster, with **that cluster's share** of the scale. The unit the operator reconciles, carrying the serving configuration inlined |
 | **Replica** | observed | a running instance on named devices, with readiness and engine version |
 | **Endpoint** | declared, plane-only | the stable public name clients call; resolves to N deployments with weights, failover and canary |
@@ -383,9 +383,11 @@ spread, so spreading is opt-in.
 residencies, device classes and allowed or denied clusters (§8). Explicit cluster pinning survives as
 a deliberate escape hatch and attaches to the Workload.
 
-**Quota and admission stay per cluster** and therefore stay on Deployment: quota is keyed by
-(project, cluster, device class), and a workload can be admitted in one cluster while queued in
-another. There is no global admission phase, because there is nothing global to admit against.
+**Admission stays per cluster** and therefore stays on Deployment: a workload can be admitted in
+one cluster while queued in another. Quota is keyed by project and device class, and is either
+scoped to one cluster or fleet-wide. A fleet-wide quota is spent once across every cluster, so
+placement counts what the project holds and has been placed everywhere before admitting it in any
+one of them. A cluster's own quota takes precedence over a fleet-wide one in that cluster.
 
 **Scaling is an operation, not a field write** (§3.1). `workload.scale`, `workload.pause` and
 `workload.drain` are long-running and can fail; a scale can sit pending on quota indefinitely.
@@ -485,15 +487,18 @@ rollout. The frontend's router mode is declared on the workload rather than rend
 | Object | Kind | Holds |
 |---|---|---|
 | **Tenant / Project** | declared | the unit quota attaches to |
-| **Quota** | declared | guaranteed floor plus over-quota fair share, per project per cluster per device class |
+| **Quota** | declared | a device ceiling per project and device class, in one cluster or fleet-wide; also records a guaranteed floor and an over-quota weight, not yet acted on |
 | **PriorityClass** | declared | a priority and a `preemptible` flag; recorded, not yet acted on |
 | **Policy** | declared | placement constraints: region, residency, device class, cost ceiling, allowed clusters. Attachable to tenant, endpoint, workload or cluster |
 | **Allocation** | observed | devices currently committed to a replica |
 
-Quota is the primitive this group is designed around: a guaranteed floor per project, cluster and
-device class, checked by placement at admission, with room for an over-quota share of idle
-capacity. A plain namespace quota is not enough because it is a hard cap per cluster, with no
-notion of a device class or of the fleet.
+Quota is the primitive this group is designed around. Today it is a ceiling: placement refuses to
+admit a deployment that would take a project past the guaranteed devices for that class, or,
+when over-quota is enabled, past its limit if it has one, checked in one cluster or across the
+fleet. The floor is not
+reserved against other projects and idle capacity is not shared out by weight; both are on the
+[roadmap](../roadmap.md). A plain namespace quota is not enough because it is a hard cap per
+cluster, with no notion of a device class or of the fleet.
 
 A second, unrelated quota, **ServingQuota**, declares an endpoint's committed request rate, token
 rate and concurrency. It is stored and shown but not yet enforced by the gateway.
@@ -642,9 +647,9 @@ put in place for that, and this is how far each one goes today:
 
 | Accommodation | Today |
 |---|---|
-| **One Workload root with a kind discriminator**, `service \| task \| gang`, and one placement path | Only `service` is rendered. The operator has no renderer for `task` or `gang`, so those kinds never reach a cluster. |
+| **One Workload root with a kind discriminator**, `service \| task \| gang`, and one placement path | Only `service` is accepted. The plane refuses `task` and `gang` at creation, because the operator has no renderer for them. |
 | **An explicit admission phase**: `pending → admitted → placed → running` | Built, and used by serving: admission succeeds unless quota refuses it. |
-| **PriorityClass on every workload** | Recorded. Nothing acts on priority or on the `preemptible` flag, and placement does not count devices held by preemptible work as available. |
+| **PriorityClass on every workload** | Recorded. Nothing acts on priority or on the `preemptible` flag, and placement counts only free devices as capacity. |
 | **Atomic allocation inside one topology domain** | Built in placement for workloads that declare a topology requirement, which multi-node tensor parallelism needs for serving anyway. |
 
 The motivation for wanting both kinds of work in one system is a mixed fleet: batch work fills the
