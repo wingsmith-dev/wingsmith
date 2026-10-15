@@ -262,6 +262,7 @@ class Runner:
             capture_output=True,
             text=True,
             timeout=timeout,
+            env={**os.environ, **invocation.env} if invocation.env else None,
         )
         elapsed = time.monotonic() - clock
         body = (done.stdout or "") + (done.stderr or "")

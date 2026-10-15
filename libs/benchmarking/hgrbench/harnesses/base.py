@@ -14,8 +14,10 @@ exit, forever. Docker will not swap variants for a tag it already holds, so a ta
 alone cannot express "the one that runs here".
 
 **The bearer token is passed as a container environment variable and expanded by a
-shell inside the container.** Put it in the argv and it is in `ps` and in shell
-history on the host. The one harness that has no header flag at all (GuideLLM)
+shell inside the container.** The `docker run` argv names the variable and never
+carries its value (`-e HGR_BENCH_TOKEN`, inherited from the docker CLI's own
+environment). Put the value in the argv and it is in `ps` and in shell history on
+the host. The one harness that has no header flag at all (GuideLLM)
 still takes it this way, because its `api_key=` attribute is expanded by the
 in-container shell rather than by ours.
 """
@@ -61,6 +63,8 @@ class Invocation:
 
     argv: list[str]
     display: str
+    env: dict[str, str] = field(default_factory=dict)
+    """Set in the docker CLI's environment, for the `-e NAME` entries in `argv` to inherit."""
 
 
 @dataclass
@@ -152,6 +156,7 @@ def docker_argv(
     *,
     mount_results_at: str,
     env: dict[str, str] | None = None,
+    inherit: tuple[str, ...] = (),
     entrypoint: str = "",
     args: list[str] | None = None,
     mount_hf_at: str = "/hf",
@@ -170,6 +175,9 @@ def docker_argv(
     argv += ["-e", f"HF_HOME={mount_hf_at}"]
     for key, value in (env or {}).items():
         argv += ["-e", f"{key}={value}"]
+    # Name only: docker copies the value from its own environment, so it is never on a command line.
+    for key in inherit:
+        argv += ["-e", key]
     argv += [
         "-v",
         f"{ctx.hf_cache}:{mount_hf_at}",
@@ -198,12 +206,9 @@ def redacted(argv: list[str], token: str) -> str:
     return " ".join(shlex.quote(part) for part in shown)
 
 
-def with_token(ctx: Context, env: dict[str, str] | None = None) -> dict[str, str]:
-    """The environment for a run, with the token under its one agreed name."""
-    out = dict(env or {})
-    if ctx.has_token:
-        out[TOKEN_ENV] = ctx.token
-    return out
+def with_token(ctx: Context) -> dict[str, str]:
+    """The docker CLI's extra environment for a run: the token under its one agreed name."""
+    return {TOKEN_ENV: ctx.token} if ctx.has_token else {}
 
 
 def shell_command(ctx: Context, script: str, *, mount_results_at: str, entrypoint: str = "sh") -> Invocation:
@@ -213,14 +218,15 @@ def shell_command(ctx: Context, script: str, *, mount_results_at: str, entrypoin
     in it is expanded by the container's shell from the environment — which is the
     whole point.
     """
+    secrets = with_token(ctx)
     argv = docker_argv(
         ctx,
         mount_results_at=mount_results_at,
-        env=with_token(ctx),
+        inherit=tuple(secrets),
         entrypoint=entrypoint,
         args=["-c", script],
     )
-    return Invocation(argv, redacted(argv, ctx.token))
+    return Invocation(argv, redacted(argv, ctx.token), env=secrets)
 
 
 def read_json(path: Path) -> Any:
