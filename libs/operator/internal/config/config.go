@@ -431,8 +431,6 @@ func env(key, def string) string {
 	return def
 }
 
-// envList reads a comma-separated list, dropping blanks and surrounding space so that a
-// ConfigMap value written across a line, or with a trailing comma, means what it looks like.
 // DefaultBenchmarkImages are the harness images the plane pins for aiperf and evalscope.
 var DefaultBenchmarkImages = []string{
 	"nvcr.io/nvidia/ai-dynamo/aiperf:0.12.0",
@@ -447,6 +445,8 @@ func envListOr(key string, def []string) []string {
 	return append([]string(nil), def...)
 }
 
+// envList reads a comma-separated list, dropping blanks and surrounding space so that a
+// ConfigMap value written across a line, or with a trailing comma, means what it looks like.
 func envList(key string) []string {
 	raw := strings.TrimSpace(os.Getenv(key))
 	if raw == "" {
