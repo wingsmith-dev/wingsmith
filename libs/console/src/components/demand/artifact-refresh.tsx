@@ -19,7 +19,7 @@ import type { Artifact } from "@/modules/demand/types"
  * word on them would be a trap.
  *
  * Disabled when the artifact records no source, because the plane refuses that with a
- * `409` and there is nothing the person could do differently. The reason is on the
+ * `422` and there is nothing the person could do differently. The reason is on the
  * button rather than in the failure.
  */
 export function RefreshSourceButton({

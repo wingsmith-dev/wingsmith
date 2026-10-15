@@ -92,15 +92,19 @@ export class NotFoundError extends PlaneError {
   }
 }
 
-/**
- * `409`. The plane spends this status on two different codes: `conflict` for a
- * failed `If-Match`, and `invalid` for a request that is well formed but asks
- * for something incoherent — writing to an observed resource, say.
- */
+/** `409 conflict`: a failed `If-Match`, or a write that collides with current state. */
 export class ConflictError extends PlaneError {
   constructor(code: string, message: string, detail?: Record<string, unknown>) {
     super(409, code, message, detail)
     this.name = "ConflictError"
+  }
+}
+
+/** `422 invalid`: a well-formed request that asks for something the plane refuses. */
+export class InvalidError extends PlaneError {
+  constructor(message: string, detail?: Record<string, unknown>) {
+    super(422, "invalid", message, detail)
+    this.name = "InvalidError"
   }
 }
 

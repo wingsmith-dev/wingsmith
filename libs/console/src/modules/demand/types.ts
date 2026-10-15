@@ -496,7 +496,7 @@ export interface ArtifactRefresh {
   notes: ResolveNote[]
 }
 
-/** The four kinds the plane accepts. Anything else is `409 invalid`. */
+/** The four kinds the plane accepts. Anything else is `422 invalid`. */
 export const ARTIFACT_KINDS = [
   "adapter",
   "dataset",

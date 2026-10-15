@@ -66,6 +66,7 @@ export const api = {
 export {
   ConflictError,
   ForbiddenError,
+  InvalidError,
   NetworkError,
   NotAuthorizedError,
   NotFoundError,

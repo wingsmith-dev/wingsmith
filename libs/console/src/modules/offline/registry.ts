@@ -6,7 +6,7 @@ import {
   type FixtureContext,
   type FixtureQuery,
 } from "@/lib/api/fixtures"
-import { ConflictError, NotFoundError } from "@/lib/api/transport"
+import { NotFoundError } from "@/lib/api/transport"
 
 /** Every object the plane can return has at least an id. */
 interface Row {
@@ -79,12 +79,4 @@ export function collection<T extends Row>(opts: CollectionOptions<T>) {
   ])
 
   return { resolve }
-}
-
-/** The plane's `409 invalid` for writing to something that is only observed. */
-export function observedWrite(singular: string): never {
-  throw new ConflictError(
-    "invalid",
-    `${singular} is observed and cannot be written`
-  )
 }

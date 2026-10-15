@@ -7,6 +7,7 @@ import { applyRefreshedTokens } from "@/modules/auth/store"
 import {
   ConflictError,
   ForbiddenError,
+  InvalidError,
   NetworkError,
   NotAuthorizedError,
   NotFoundError,
@@ -65,6 +66,10 @@ function toError(status: number, payload: unknown): PlaneError {
       return new NotFoundError(message, detail)
     case 409:
       return new ConflictError(code, message, detail)
+    case 422:
+      return code === "invalid"
+        ? new InvalidError(message, detail)
+        : new PlaneError(status, code, message, detail)
     default:
       return new PlaneError(status, code, message, detail)
   }

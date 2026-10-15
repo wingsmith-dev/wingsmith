@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { fixtureTransport } from "@/lib/api/fixtures"
-import { ConflictError } from "@/lib/api/transport"
+import { InvalidError } from "@/lib/api/transport"
 import type { ArtifactRefresh } from "@/modules/demand/types"
 import "./index"
 import { artifacts, deviceClasses } from "./data"
@@ -48,7 +48,7 @@ describe("offline artifact refresh", () => {
 
   it("refuses an artifact whose bytes came from somewhere we cannot ask", async () => {
     await expect(refresh("llama-3.3-70b-instruct")).rejects.toThrow(
-      ConflictError
+      InvalidError
     )
   })
 })

@@ -4,7 +4,7 @@ import {
   type FixtureContext,
   type FixtureQuery,
 } from "@/lib/api/fixtures"
-import { ConflictError, NotFoundError } from "@/lib/api/transport"
+import { ConflictError, InvalidError, NotFoundError } from "@/lib/api/transport"
 import { fitment } from "./fitment"
 import {
   OPERATION_TYPES,
@@ -402,8 +402,7 @@ registerFixtures([
 
       const source = artifactSource(found)
       if (!source)
-        throw new ConflictError(
-          "invalid",
+        throw new InvalidError(
           `artifact ${found.id} records no source to re-read; only huggingface artifacts can be refreshed`,
           {
             artifact: found.id,
@@ -462,13 +461,11 @@ registerFixtures([
       const source = query.get("source") ?? ""
       const slug = hfSlug(source)
       if (!slug)
-        throw new ConflictError(
-          "invalid",
+        throw new InvalidError(
           `'${source}' is not a HuggingFace repo — expected owner/name`
         )
       if (HF_GATED.includes(slug))
-        throw new ConflictError(
-          "invalid",
+        throw new InvalidError(
           `'${slug}' is gated on HuggingFace and the plane has no accepted licence for it`,
           { source, token: "HANGAR_HF_TOKEN" }
         )
@@ -1054,11 +1051,9 @@ registerFixtures([
       const data = body as BenchmarkCreateRequest
       const harness = HARNESSES.find((h) => h.name === data.harness)
       if (!harness) {
-        throw new ConflictError(
-          "invalid",
-          `unknown benchmark harness '${data.harness}'`,
-          { allowed: HARNESSES.map((h) => h.name) }
-        )
+        throw new InvalidError(`unknown benchmark harness '${data.harness}'`, {
+          allowed: HARNESSES.map((h) => h.name),
+        })
       }
       const deployment = deployments.find((d) => d.id === data.deployment)
       if (!deployment) {
@@ -1069,8 +1064,7 @@ registerFixtures([
         (key) => !known.has(key)
       )
       if (unknown.length > 0) {
-        throw new ConflictError(
-          "invalid",
+        throw new InvalidError(
           `${harness.name} does not accept ${unknown.join(", ")}`,
           { harness: harness.name, unknown }
         )
@@ -1125,17 +1119,12 @@ registerFixtures([
       const data = body as OperationCreateRequest
       const prefix = OPERATION_TYPES[data.type as keyof typeof OPERATION_TYPES]
       if (!prefix) {
-        throw new ConflictError(
-          "invalid",
-          `unknown operation type '${data.type}'`,
-          {
-            allowed: Object.keys(OPERATION_TYPES).sort(),
-          }
-        )
+        throw new InvalidError(`unknown operation type '${data.type}'`, {
+          allowed: Object.keys(OPERATION_TYPES).sort(),
+        })
       }
       if (!data.target.startsWith(prefix)) {
-        throw new ConflictError(
-          "invalid",
+        throw new InvalidError(
           `${data.type} acts on ${TARGET_KINDS[prefix]} targets, not '${data.target}'`,
           { type: data.type, expected_prefix: prefix, target: data.target }
         )
@@ -1152,8 +1141,7 @@ registerFixtures([
           clusterRef(data.cluster ?? undefined) ??
           null)
       if (!planeLocal && cluster === null) {
-        throw new ConflictError(
-          "invalid",
+        throw new InvalidError(
           `${data.type} needs a cluster: its target does not belong to one`,
           { type: data.type, target: data.target }
         )
@@ -1243,7 +1231,7 @@ function decide(
   const workload = sighting(ref)
   if (workload.status === "promoted") {
     throw new ConflictError(
-      "invalid",
+      "conflict",
       `'${workload.name}' is already declared as ${workload.deployment_id}`
     )
   }
