@@ -352,78 +352,32 @@ transit-live url model *args:
 
 # ── Benchmark from here ───────────────────────────────────────────────────────
 
-# The same harness the plane's benchmarks module schedules in a cluster, at the same version. It is
-# pulled by digest for the host architecture, never by tag: the tag is multi-arch, and on Apple
-# silicon the amd64 variant starts its supervisor and then never spawns a worker — no output, no
-# CPU, no exit. Docker will not swap variants for a tag it already holds.
-_aiperf      := "nvcr.io/nvidia/ai-dynamo/aiperf"
-_aiperf_tag  := "0.12.0"
-
 # What `just bench` is for, and what it is not.
 #
 # The load generator is local, so every number carries this machine's own path to the endpoint.
 # Read a run for shape and for whether the path works at all, not as the cluster's latency. For a
-# number worth quoting, run the benchmark in the cluster, where the plane schedules this same
+# number worth quoting, run the benchmark in the cluster, where the plane schedules the same AIPerf
 # image beside the engine.
 #
+# It is one AIPerf cell run by hgrbench: dev/bench_plan.py writes the plan from the BENCH_*
+# variables it documents, and hgrbench pins the image by digest, runs it, and renders the report.
 # The URL is resolved inside the container, so `host.docker.internal` is how it reaches a
-# port-forward on this machine. BENCH_TOKEN is sent as a bearer token when set; the gateway's
-# internal listener needs none. The tokenizer is a Hugging Face repository and not the served
-# model name — AIPerf defaults it to `--model`, which fails the tokenizer load before it sends a
-# request. Everything after the recipe name goes to `aiperf profile` unchanged.
+# port-forward on this machine. BENCH_TOKEN, when set, is passed to the container by name and
+# never appears on a command line. Everything after the recipe name goes to `hgrbench run`.
 #
-#   just bench
-#   BENCH_CONCURRENCY=32 BENCH_REQUESTS=500 just bench
-#   BENCH_URL=http://host.docker.internal:9000 just bench --warmup-request-count 20
+#   BENCH_MODEL=openai/gpt-oss-20b just bench
+#   BENCH_MODEL=served-name BENCH_TOKENIZER=org/repo BENCH_CONCURRENCY=32 just bench
+#   BENCH_MODEL=org/model just bench --dry-run
 
 # One AIPerf run from this machine against an endpoint, and an HTML report of it
 bench *args:
     #!/usr/bin/env bash
     set -euo pipefail
-    model="${BENCH_MODEL:-gpt-oss-120b}"
-    url="${BENCH_URL:-http://host.docker.internal:8080}"
-    tokenizer="${BENCH_TOKENIZER:-openai/gpt-oss-120b}"
-    export BENCH_ARCH=$([ "$(uname -m)" = "x86_64" ] && echo amd64 || echo arm64)
-    digest=$(docker manifest inspect {{_aiperf}}:{{_aiperf_tag}} | python3 -c '
-    import json, os, sys
-    manifests = json.load(sys.stdin)["manifests"]
-    want = os.environ["BENCH_ARCH"]
-    for m in manifests:
-        platform = m.get("platform", {})
-        if platform.get("architecture") == want and platform.get("os") == "linux":
-            print(m["digest"])
-            break
-    else:
-        sys.exit(f"{want}/linux is not in the aiperf manifest list")
-    ')
-    docker pull -q "{{_aiperf}}@$digest" >/dev/null
-    out=".local/aiperf/$(date +%Y%m%d-%H%M%S)"
-    mkdir -p "$out" "$HOME/.cache/huggingface"
-    cmd="aiperf profile --model '$model' --url '$url'"
-    cmd+=" --endpoint-type '${BENCH_ENDPOINT_TYPE:-chat}' --streaming"
-    if [ -n "${BENCH_TOKEN:-}" ]; then
-      cmd+=" -H \"Authorization: Bearer \$BENCH_TOKEN\""
-    fi
-    cmd+=" --tokenizer '$tokenizer'"
-    cmd+=" --concurrency ${BENCH_CONCURRENCY:-10} --request-count ${BENCH_REQUESTS:-100}"
-    cmd+=" --synthetic-input-tokens-mean ${BENCH_ISL:-2000}"
-    cmd+=" --output-tokens-mean ${BENCH_OSL:-256}"
-    cmd+=" --extra-inputs ignore_eos:true --ui simple --artifact-dir /artifacts {{args}}"
-    docker run --rm \
-      -e HF_HOME=/hf -e BENCH_TOKEN="${BENCH_TOKEN:-}" \
-      -v "$HOME/.cache/huggingface:/hf" -v "$PWD/$out:/artifacts" \
-      "{{_aiperf}}@$digest" "$cmd"
-    just bench-report "$out"
-
-# Render an AIPerf artifact directory as one self-contained HTML page
-bench-report dir:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    report=$(python3 dev/aiperf_report.py "{{dir}}")
-    echo "$report"
-    if [ -z "${BENCH_NO_OPEN:-}" ] && command -v open >/dev/null 2>&1; then
-      open "$report"
-    fi
+    plans=".local/bench/plans"
+    mkdir -p "$plans"
+    plan="$plans/bench-$(date +%Y%m%d-%H%M%S).toml"
+    uv run --no-project --python 3.12 python dev/bench_plan.py >"$plan"
+    {{_bench_py}} python -m hgrbench run "$plan" {{args}}
 
 # A suite is four harnesses against the same load points, from a plan committed in
 # libs/benchmarking/plans. `just bench` above is the quick one-harness check; this is the one that
@@ -439,19 +393,19 @@ bench-report dir:
 
 # Run a whole benchmark plan: four harnesses, one comparison report  [smoke | deep]
 bench-suite plan="smoke" *args:
-    @PYTHONPATH={{_bench}} python3 -m hgrbench run {{plan}} {{args}}
+    @{{_bench_py}} python -m hgrbench run {{plan}} {{args}}
 
 # What the suite runner can drive, and what each harness is for
 bench-harnesses:
-    @PYTHONPATH={{_bench}} python3 -m hgrbench harnesses
+    @{{_bench_py}} python -m hgrbench harnesses
 
 # The suite plans in this checkout, with what each one costs to run
 bench-plans:
-    @PYTHONPATH={{_bench}} python3 -m hgrbench plans
+    @{{_bench_py}} python -m hgrbench plans
 
-# Re-render a suite run's report from what is already on disk  [latest by default]
-bench-suite-report run="":
-    @PYTHONPATH={{_bench}} python3 -m hgrbench report {{run}}
+# Re-render a run's report, from `bench` or `bench-suite`, from what is already on disk  [latest by default]
+bench-report run="":
+    @{{_bench_py}} python -m hgrbench report {{run}}
 
 # ── Conformance ───────────────────────────────────────────────────────────────
 #
@@ -464,7 +418,7 @@ bench-suite-report run="":
 # model is a profile, not code.
 #
 #   just conformance example                              # observe one endpoint
-#   just conformance gateway --reference moonshot-kimi-k3 # and diff against the provider
+#   just conformance gateway --reference <profile>        # and diff against the provider
 #   just conformance example --probe tools --probe cache  # narrow it
 #   just conformance example --heavy                      # include the 1000-sample probes
 #
