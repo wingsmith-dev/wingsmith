@@ -729,41 +729,40 @@ validates --param against and there is no second answer to what AIPerf takes.`,
 // waitForBenchmark polls one run to a terminal phase, reporting phase changes
 // rather than every poll.
 func (a *App) waitForBenchmark(cmd *cobra.Command, ref string, every time.Duration) error {
-	ctx, cancel := a.RequestContext()
-	defer cancel()
-
 	step := a.Report.Step("waiting for " + ref)
 	last := ""
-	for {
-		run, err := a.Backend.Benchmark(ctx, ref)
+	var run api.BenchmarkRun
+	err := a.poll(every, func(ctx context.Context) (bool, error) {
+		var err error
+		run, err = a.Backend.Benchmark(ctx, ref)
 		if err != nil {
-			step.Fail("failed")
-			return err
+			return false, err
 		}
 		if run.Phase != last {
 			step.Update("%s · %s", run.Harness, run.Phase)
 			last = run.Phase
 		}
-		if run.Terminal() {
-			if run.Phase == api.OpSucceeded {
-				step.Done("%s %s", run.Harness, run.Phase)
-				return a.emitBenchmark(cmd, run)
-			}
-			step.Fail("%s %s", run.Harness, run.Phase)
-			e := errs.New(errs.CodeInvalidState, "benchmark %s ended as %s", run.ID, run.Phase)
-			if run.Error != nil {
-				e = e.WithCause(*run.Error)
-			}
-			return e.WithFix("Inspect it", "hgr benchmark get "+run.ID)
-		}
-		select {
-		case <-ctx.Done():
-			step.Fail("timed out")
-			return errs.New(errs.CodeTimeout, "benchmark %s was still %s after %s", run.ID, run.Phase, a.Timeout).
+		return run.Terminal(), nil
+	})
+	if err != nil {
+		e := errs.As(err)
+		step.Fail("%s", strings.ToLower(string(e.Code)))
+		if e.Code == errs.CodeTimeout && run.ID != "" {
+			e = errs.New(errs.CodeTimeout, "benchmark %s was still %s after %s", run.ID, run.Phase, a.WaitTimeout).
 				WithFix("Keep watching", "hgr benchmark get "+run.ID)
-		case <-time.After(every):
 		}
+		return e
 	}
+	if run.Phase == api.OpSucceeded {
+		step.Done("%s %s", run.Harness, run.Phase)
+		return a.emitBenchmark(cmd, run)
+	}
+	step.Fail("%s %s", run.Harness, run.Phase)
+	e := errs.New(errs.CodeOperationFailed, "benchmark %s ended as %s", run.ID, run.Phase)
+	if run.Error != nil {
+		e = e.WithCause(*run.Error)
+	}
+	return e.WithFix("Inspect it", "hgr benchmark get "+run.ID)
 }
 
 func (a *App) emitBenchmark(cmd *cobra.Command, run api.BenchmarkRun) error {

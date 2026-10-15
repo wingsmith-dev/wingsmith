@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -494,38 +495,28 @@ marked and reaches its terminal phase when the cluster reports it.`,
 }
 
 func newOperationWaitCmd(app *App) *cobra.Command {
-	var (
-		interval string
-		timeout  string
-	)
+	var interval string
 	cmd := &cobra.Command{
 		Use:   "wait <operation-id>",
 		Short: "Poll an operation until it finishes",
-		Long: `Polling is the whole point of an operation having an id.
+		Long: `Poll an operation until it reaches a terminal phase, printing each phase change.
 
-A drain is the case that matters: it is slow, it can stall, and the answers to
-"is it moving" and "why did it stop" are on the object rather than in a log.
-Exits non-zero if the operation ends in anything but success.`,
+A drain can take a long time and can stall; the operation records why it
+stopped, so a failure is reported with the operation's own error. Exits 11
+(OPERATION_FAILED) if the operation ends in anything but success, and 8
+(TIMEOUT) if it is still running when --wait-timeout runs out.`,
 		Example: `  hgr operation wait opr_01m0dj…
-  hgr operation wait opr_01m0dj… --interval 5s --timeout 30m`,
+  hgr operation wait opr_01m0dj… --interval 5s --wait-timeout 2h`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			every, err := pollInterval(interval)
 			if err != nil {
 				return err
 			}
-			if timeout != "" {
-				d, err := api.ParseDuration(timeout)
-				if err != nil {
-					return err
-				}
-				app.Timeout = d
-			}
 			return app.waitForOperation(cmd, args[0], every)
 		},
 	}
 	cmd.Flags().StringVar(&interval, "interval", "2s", "how often to poll")
-	cmd.Flags().StringVar(&timeout, "timeout", "", "give up after this long (default: the global --timeout)")
 	return cmd
 }
 
@@ -544,41 +535,77 @@ func pollInterval(raw string) (time.Duration, error) {
 // phase change rather than every poll, so a slow drain prints a line when
 // something actually happened.
 func (a *App) waitForOperation(cmd *cobra.Command, ref string, every time.Duration) error {
-	ctx, cancel := a.RequestContext()
-	defer cancel()
-
 	step := a.Report.Step("waiting for " + ref)
 	last := ""
-	for {
-		op, err := a.Backend.Operation(ctx, ref)
+	var op api.Operation
+	err := a.poll(every, func(ctx context.Context) (bool, error) {
+		var err error
+		op, err = a.Backend.Operation(ctx, ref)
 		if err != nil {
-			step.Fail("failed")
-			return err
+			return false, err
 		}
 		if op.Phase != last {
 			step.Update("%s · %s", op.Type, op.Phase)
 			last = op.Phase
 		}
-		if op.Terminal() {
-			if op.Phase == api.OpSucceeded {
-				step.Done("%s %s", op.Type, op.Phase)
-				return a.emitOperation(cmd, op)
-			}
-			step.Fail("%s %s", op.Type, op.Phase)
-			e := errs.New(errs.CodeInvalidState, "operation %s ended as %s", op.ID, op.Phase)
-			if op.Error != nil {
-				e = e.WithCause(*op.Error)
-			}
-			return e.WithFix("Inspect it", "hgr operation get "+op.ID)
+		return op.Terminal(), nil
+	})
+	if err != nil {
+		e := errs.As(err)
+		step.Fail("%s", strings.ToLower(string(e.Code)))
+		if e.Code == errs.CodeTimeout && op.ID != "" {
+			e = errs.New(errs.CodeTimeout, "operation %s was still %s after %s", op.ID, op.Phase, a.WaitTimeout).
+				WithFix("Keep watching", "hgr operation wait "+op.ID)
+		}
+		return e
+	}
+	if op.Phase == api.OpSucceeded {
+		step.Done("%s %s", op.Type, op.Phase)
+		return a.emitOperation(cmd, op)
+	}
+	step.Fail("%s %s", op.Type, op.Phase)
+	e := errs.New(errs.CodeOperationFailed, "operation %s ended as %s", op.ID, op.Phase)
+	if op.Error != nil {
+		e = e.WithCause(*op.Error)
+	}
+	return e.WithFix("Inspect it", "hgr operation get "+op.ID)
+}
+
+// poll calls check every `every` until it reports done, the wait runs out, or
+// the user interrupts. The wait has its own deadline, --wait-timeout, and each
+// call inside it still has the per-request --timeout: a drain can take an hour
+// and no single request should.
+func (a *App) poll(every time.Duration, check func(ctx context.Context) (bool, error)) error {
+	waitCtx, cancel := context.WithTimeout(a.Ctx, a.WaitTimeout)
+	defer cancel()
+	for {
+		reqCtx, reqCancel := context.WithTimeout(waitCtx, a.Timeout)
+		done, err := check(reqCtx)
+		reqCancel()
+		if err != nil {
+			return a.waitError(waitCtx, err)
+		}
+		if done {
+			return nil
 		}
 		select {
-		case <-ctx.Done():
-			step.Fail("timed out")
-			return errs.New(errs.CodeTimeout, "operation %s was still %s after %s", op.ID, op.Phase, a.Timeout).
-				WithFix("Keep watching", "hgr operation wait "+op.ID)
+		case <-waitCtx.Done():
+			return a.waitError(waitCtx, waitCtx.Err())
 		case <-time.After(every):
 		}
 	}
+}
+
+// waitError tells an interrupt from the wait running out from a failed call.
+func (a *App) waitError(waitCtx context.Context, err error) error {
+	switch {
+	case a.Ctx.Err() != nil:
+		return errs.New(errs.CodeInterrupted, "interrupted")
+	case errors.Is(waitCtx.Err(), context.DeadlineExceeded):
+		return errs.New(errs.CodeTimeout, "still not finished after %s", a.WaitTimeout).
+			WithFix("Wait longer", "--wait-timeout 2h")
+	}
+	return err
 }
 
 func (a *App) emitOperation(cmd *cobra.Command, op api.Operation) error {

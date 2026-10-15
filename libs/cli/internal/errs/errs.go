@@ -41,6 +41,10 @@ const (
 	CodeInteractiveUnavailable Code = "INTERACTIVE_UNAVAILABLE"
 	CodeUnimplemented          Code = "UNIMPLEMENTED"
 
+	// CodeOperationFailed is an operation or benchmark that was waited on and
+	// ended in anything but success: the request was fine, the work was not.
+	CodeOperationFailed Code = "OPERATION_FAILED"
+
 	CodeInterrupted Code = "INTERRUPTED"
 	CodeInternal    Code = "INTERNAL"
 )
@@ -65,6 +69,7 @@ var exitCodes = map[Code]int{
 	CodeRateLimited:            9,
 	CodeServerError:            10,
 	CodeNetwork:                10,
+	CodeOperationFailed:        11,
 	CodeInterrupted:            130,
 	CodeInternal:               1,
 }
@@ -234,7 +239,7 @@ var explanations = map[Code]Explanation{
 	},
 	CodeTimeout: {
 		Summary:  "The operation did not complete within the deadline.",
-		Fixes:    []string{"Raise --timeout", "Poll with `hgr operation get <id>`"},
+		Fixes:    []string{"Raise --timeout for one request, or --wait-timeout for a --wait", "Poll with `hgr operation get <id>`"},
 		Retryabl: true,
 	},
 	CodeRateLimited: {
@@ -264,6 +269,11 @@ var explanations = map[Code]Explanation{
 		Summary: "The command is registered but not implemented yet.",
 		Detail:  "The plane's API contract for this noun is still being written. Only `cluster` is wired end to end.",
 		Fixes:   []string{"hgr cluster ls"},
+	},
+	CodeOperationFailed: {
+		Summary: "An operation or benchmark that was waited on did not succeed.",
+		Detail:  "The request was accepted and the work ran, but it ended failed or cancelled. The object carries the reason.",
+		Fixes:   []string{"hgr operation get <id>", "hgr benchmark get <id>"},
 	},
 	CodeInterrupted: {
 		Summary: "The command was interrupted.",

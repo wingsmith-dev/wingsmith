@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -68,4 +69,21 @@ func containsFutureDeadline(t *testing.T, out string) bool {
 		t.Fatal(err)
 	}
 	return op.DeadlineAt != nil && op.DeadlineAt.After(time.Now().Add(time.Hour))
+}
+
+// --wait is bounded by --wait-timeout, not by the per-request --timeout: a
+// short request timeout must not cut a long wait short, and a wait that runs
+// out is TIMEOUT with exit 8.
+func TestAWaitHasItsOwnDeadline(t *testing.T) {
+	t.Setenv("HANGAR_FAKE_STATE", t.TempDir()+"/state.json")
+	out, errOut, code := run(t, "operation", "create", "node.drain", "iad-1-n02", "--yes",
+		"--wait", "--interval", "250ms", "--timeout", "100ms", "-o", "json")
+	if code != 0 {
+		t.Fatalf("a wait longer than --timeout was cut short: exit %d %s %s", code, out, errOut)
+	}
+
+	_, errOut, code = run(t, "benchmark", "run", "chat", "--wait", "--interval", "250ms", "--wait-timeout", "600ms", "--yes")
+	if code != 8 || !strings.Contains(errOut, "TIMEOUT") {
+		t.Fatalf("a wait that ran out exited %d, want 8 (TIMEOUT): %s", code, errOut)
+	}
 }

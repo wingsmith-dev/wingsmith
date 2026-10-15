@@ -19,7 +19,7 @@ var allCodes = []Code{
 	CodeConflict, CodeInvalidState,
 	CodeQuotaExceeded, CodeCapacityUnavailable,
 	CodeTimeout, CodeRateLimited,
-	CodeServerError, CodeNetwork,
+	CodeServerError, CodeNetwork, CodeOperationFailed,
 	CodeConfirmationRequired, CodeInteractiveUnavailable, CodeUnimplemented,
 	CodeInterrupted, CodeInternal,
 }
@@ -58,7 +58,7 @@ func TestExitCodesStayWhereTheyAre(t *testing.T) {
 	pinned := map[Code]int{
 		CodeOK: 0, CodeInternal: 1, CodeUsage: 2, CodeAuthRequired: 3, CodeNotFound: 4,
 		CodeConflict: 5, CodeQuotaExceeded: 6, CodeCapacityUnavailable: 7, CodeTimeout: 8,
-		CodeRateLimited: 9, CodeServerError: 10, CodeInterrupted: 130,
+		CodeRateLimited: 9, CodeServerError: 10, CodeOperationFailed: 11, CodeInterrupted: 130,
 	}
 	for code, want := range pinned {
 		if got := (&Error{Code: code}).ExitCode(); got != want {

@@ -51,6 +51,9 @@ type App struct {
 	NoInput bool
 	Debug   bool
 	Timeout time.Duration
+	// WaitTimeout bounds a whole --wait, which polls many requests each
+	// bounded by Timeout.
+	WaitTimeout time.Duration
 
 	Project string
 	// projectSet is whether a project was named anywhere (flag, environment or
@@ -113,6 +116,7 @@ type globalFlags struct {
 	token      string
 	configPath string
 	timeout    string
+	waitTO     string
 	quiet      bool
 	debug      bool
 	yes        bool
@@ -202,6 +206,7 @@ Nothing is running yet? Add --fake for a complete offline control plane.`,
 	f.StringVar(&g.token, "token", "", "API token (prefer HANGAR_TOKEN)")
 	f.StringVar(&g.configPath, "config", "", "path to the config file")
 	f.StringVar(&g.timeout, "timeout", "", "per-request timeout (default 60s)")
+	f.StringVar(&g.waitTO, "wait-timeout", "", "how long --wait and operation wait poll before giving up (default 30m)")
 	f.BoolVarP(&g.quiet, "quiet", "q", false, "print only identifiers and errors")
 	f.BoolVar(&g.debug, "debug", false, "print stack traces, timings, and raw payloads")
 	f.BoolVarP(&g.yes, "yes", "y", false, "assume yes to confirmation prompts")
@@ -313,6 +318,14 @@ func (a *App) setup(cmd *cobra.Command) error {
 			return err
 		}
 		a.Timeout = d
+	}
+	a.WaitTimeout = 30 * time.Minute
+	if v := firstNonEmpty(g.waitTO, os.Getenv("HANGAR_WAIT_TIMEOUT")); v != "" {
+		d, err := api.ParseDuration(v)
+		if err != nil {
+			return err
+		}
+		a.WaitTimeout = d
 	}
 
 	format, formatArg, err := a.resolveFormat()
