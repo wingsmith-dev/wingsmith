@@ -303,15 +303,15 @@ func TestStatusColourGroupsStatusesByMeaning(t *testing.T) {
 // not understand it prints as garbage around the label.
 func TestLinksAreOnlyEmittedWhenSupported(t *testing.T) {
 	off := Style{Level: ColorNone, Links: false}
-	if got := off.Link("docs", "https://docs.hangar.dev"); strings.Contains(got, "\x1b]8") {
+	if got := off.Link("docs", "https://example.com/docs"); strings.Contains(got, "\x1b]8") {
 		t.Errorf("a link was emitted to a terminal that does not support it: %q", got)
 	} else if !strings.Contains(got, "docs") {
 		t.Errorf("the label was lost: %q", got)
 	}
 
 	on := Style{Level: ColorTrue, Links: true}
-	got := on.Link("docs", "https://docs.hangar.dev")
-	if !strings.Contains(got, "https://docs.hangar.dev") || !strings.Contains(got, "docs") {
+	got := on.Link("docs", "https://example.com/docs")
+	if !strings.Contains(got, "https://example.com/docs") || !strings.Contains(got, "docs") {
 		t.Errorf("the link is missing its target or label: %q", got)
 	}
 }
