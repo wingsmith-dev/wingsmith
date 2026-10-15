@@ -34,11 +34,8 @@ const (
 	// OutcomeAuthRejected is a caller that presented no credential or a bad one.
 	OutcomeAuthRejected Outcome = "auth_rejected"
 	// OutcomeRateLimited is a 429 issued because an identified caller is over a
-	// declared limit. Nothing in this binary produces it yet: it needs both an
-	// identity and a declared limit, and the gateway enforces neither today.
-	// The member exists anyway, because the standard's carve-out has to be
-	// expressible in the label set before a limiter can land — a 429 that
-	// cannot say which kind it is has to be counted as a failure.
+	// declared limit: a tenant over the gateway's per-tenant in-flight cap or
+	// request rate (serving.Limiter).
 	OutcomeRateLimited Outcome = "rate_limited"
 	// OutcomeShed is a 429 or 503 this hop issued to protect itself, or an
 	// upstream's own 429. Not attributable to the caller, so it is a failure.

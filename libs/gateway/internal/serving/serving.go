@@ -85,6 +85,14 @@ type Config struct {
 	// the request it refused, and a caller's content does not belong in a log.
 	// See logUpstreamError.
 	LogUpstreamBodies bool
+	// Limiter bounds each tenant's requests in flight and rate. Nil enforces
+	// nothing. Share one across every listener on a replica.
+	Limiter *Limiter
+	// AllowUnauthenticatedPublic serves a tenant declaring `auth: none` on the
+	// public zone. Off by default: a public listener that takes requests
+	// without a key is a choice an operator makes on purpose, not one a
+	// tenant row makes for them.
+	AllowUnauthenticatedPublic bool
 }
 
 // New builds the gateway handler.
@@ -129,7 +137,7 @@ func New(cfg Config) http.Handler {
 	// is the tenant and key stages inside withRouting. Neither is a mux-level
 	// wrapper any more, which is what a shared secret in front of every zone
 	// alike could never have been.
-	var routed http.Handler = withRouting(cfg.Router, cfg.Tenants, cfg.Zone)
+	var routed http.Handler = withRouting(cfg)
 	if cfg.LogUpstreamBodies {
 		routed = withUpstreamBodiesLogged(routed)
 	}
@@ -161,8 +169,8 @@ type modelEnvelope struct {
 // `GET /v1/models` is answered from the table, because the gateway — not any
 // one cluster — is what knows the whole set. That is `stageCatalog`, ahead of
 // it the tenant stages that scope it (tenant_stages.go).
-func withRouting(resolver Resolver, tenants Tenants, zone Zone) http.Handler {
-	stages := routingStages(resolver, tenants, zone)
+func withRouting(cfg Config) http.Handler {
+	stages := routingStages(cfg)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		runPipeline(stages, w, r)
 	})

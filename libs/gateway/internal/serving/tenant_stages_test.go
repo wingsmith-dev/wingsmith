@@ -178,12 +178,26 @@ func TestATenantDeclaringNoAuthIsNotAskedForAKey(t *testing.T) {
 	route := routeTo(t, server.URL, nil)
 	route.TenantID = "ten_open"
 	route.Visibility = "public"
-	handler := publicHandler(t, map[string]routing.Route{"chat": route}, tenants)
+	handler := New(Config{
+		Router:                     stubResolver{routes: map[string]routing.Route{"chat": route}},
+		Tenants:                    tenants,
+		Zone:                       ZonePublic,
+		AllowUnauthenticatedPublic: true,
+	})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, requestTo("open.hangar.dev", `{"model":"chat"}`))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s, want 200 — auth: none takes no key at all", rec.Code, rec.Body.String())
+	}
+
+	// Without the gateway's own opt-in, the tenant row alone does not open an
+	// unauthenticated public endpoint.
+	refusing := publicHandler(t, map[string]routing.Route{"chat": route}, tenants)
+	rec = httptest.NewRecorder()
+	refusing.ServeHTTP(rec, requestTo("open.hangar.dev", `{"model":"chat"}`))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 without AllowUnauthenticatedPublic", rec.Code)
 	}
 }
 

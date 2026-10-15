@@ -84,6 +84,9 @@ does not learn whether a tenant is enabled.
 | `-tunnel-listen` / `HANGAR_GATEWAY_TUNNEL_LISTEN` | where cluster agents dial, default `:8443`, `off` to disable |
 | `HANGAR_GATEWAY_REDACT_NAMES` | comma-separated names your own infrastructure goes by, redacted from quoted engine messages on top of the built-in stack names; env only |
 | `-tunnel-cert` / `-tunnel-key` (`HANGAR_GATEWAY_TUNNEL_TLS_CERT` / `_KEY`) | PEM pair for the tunnel listener; neither means plaintext, and TLS has to be terminated in front of it |
+| `HANGAR_GATEWAY_TENANT_MAX_IN_FLIGHT` | requests one tenant may have in flight on one replica, default `1024`, `0` for no cap |
+| `HANGAR_GATEWAY_TENANT_RPS` / `HANGAR_GATEWAY_TENANT_BURST` | sustained requests per second one tenant may send to one replica, and the burst above it; unset means no rate limit |
+| `HANGAR_GATEWAY_PUBLIC_ALLOW_NO_AUTH` | `true` serves a public tenant declaring `auth: none`; off by default, so such a tenant gets `401` |
 | `-log-upstream-bodies` / `HANGAR_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
 
 None of the last three is required and none is fatal by its absence, which is a deploy constraint
@@ -97,6 +100,22 @@ manifest naming its address is exactly the change that turns direct tenants on.
 The credential file is how a reference on a cluster's serving address becomes headers on the wire.
 The plane stores the reference and never the secret, so the material is mounted next to the process
 that redeems it.
+
+## Limits
+
+Each replica bounds every tenant it serves: at most `HANGAR_GATEWAY_TENANT_MAX_IN_FLIGHT` requests
+in flight (default 1024), and, when `HANGAR_GATEWAY_TENANT_RPS` is set, a token-bucket request rate.
+A tenant over either gets `429 rate_limited` with `Retry-After`, counted as the `rate_limited`
+outcome rather than as a failure of this hop. On the public listener the tenant is the host's and
+the check runs before the body is read; on the internal listener it is the endpoint's owner, which
+is known only once the body names a model. The limits are per replica, so the fleet-wide figure is
+the per-replica value times the replica count.
+
+On the internal listener an operator's edge is usually one tenant carrying every customer, so size
+the in-flight cap to the edge's own concurrency, or set it to `0` there.
+
+These are protective limits. The serving quota an endpoint sells, which the plane publishes on the
+routing table as `limits`, is not enforced by the gateway yet.
 
 ## What it never keeps
 

@@ -224,6 +224,13 @@ func main() {
 	readiness := serving.NewReadiness(router, recorder)
 	go readiness.RunCoverage(ctx, 15*time.Second)
 
+	limiter := serving.NewLimiter(serving.TenantLimits{
+		MaxInFlight: envIntDefault("HANGAR_GATEWAY_TENANT_MAX_IN_FLIGHT", serving.DefaultTenantMaxInFlight),
+		RPS:         envFloat("HANGAR_GATEWAY_TENANT_RPS"),
+		Burst:       envInt("HANGAR_GATEWAY_TENANT_BURST"),
+	})
+	allowNoAuth := envBool("HANGAR_GATEWAY_PUBLIC_ALLOW_NO_AUTH")
+
 	srv := &http.Server{
 		Addr: *listenAddr,
 		Handler: serving.New(serving.Config{
@@ -232,6 +239,7 @@ func main() {
 			Probes:  serving.NewProbeMarker(*probeToken),
 			Ready:   readiness,
 			Tenants: tenants,
+			Limiter: limiter,
 			// Off unless asked for: zero retention of request content.
 			LogUpstreamBodies: *logUpstreamBodies,
 			// The ClusterIP port with no ingress (docs/decisions/0016). The
@@ -269,7 +277,11 @@ func main() {
 				Probes:  serving.NewProbeMarker(*probeToken),
 				Ready:   readiness,
 				Tenants: tenants,
+				Limiter: limiter,
 				Zone:    serving.ZonePublic,
+				// A tenant declaring `auth: none` is refused here unless the
+				// operator opts in.
+				AllowUnauthenticatedPublic: allowNoAuth,
 			}),
 			ReadHeaderTimeout: 10 * time.Second,
 			IdleTimeout:       120 * time.Second,
@@ -389,6 +401,37 @@ func envInt(key string) int {
 		return 0
 	}
 	return n
+}
+
+// envIntDefault reads a non-negative integer from the environment, returning
+// def when the variable is unset or unreadable. Unlike envInt, an explicit 0 is
+// kept, so a default can be switched off.
+func envIntDefault(key string, def int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 0 {
+		slog.Warn("gateway: ignoring unreadable environment value", "key", key, "value", raw)
+		return def
+	}
+	return n
+}
+
+// envFloat reads a non-negative number from the environment, treating anything
+// unparseable as absent.
+func envFloat(key string) float64 {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0
+	}
+	f, err := strconv.ParseFloat(raw, 64)
+	if err != nil || f < 0 {
+		slog.Warn("gateway: ignoring unreadable environment value", "key", key, "value", raw)
+		return 0
+	}
+	return f
 }
 
 // envDuration reads a duration from the environment, treating anything

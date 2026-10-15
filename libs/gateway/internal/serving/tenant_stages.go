@@ -176,10 +176,23 @@ func refuseDisabledTenant(w http.ResponseWriter, r *http.Request) {
 // `Host` header, not against any tenant a valid key happens to name: a key
 // stolen from one tenant must not authenticate as another just because it
 // hashes to a row in the table.
-func stageKeyCheck(tenants Tenants) stage {
+//
+// A public tenant declaring anything but `api_key` is refused unless the
+// gateway was started with allowNoAuth: a tenant row alone must not be able to
+// open an unauthenticated public endpoint.
+func stageKeyCheck(tenants Tenants, allowNoAuth bool) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
-		if req.zone != ZonePublic || req.tenant.Auth != "api_key" {
+		if req.zone != ZonePublic {
 			return r, true
+		}
+		if req.tenant.Auth != "api_key" {
+			if allowNoAuth {
+				return r, true
+			}
+			MarkOutcome(r, metrics.OutcomeAuthRejected)
+			writeError(w, http.StatusUnauthorized, "unauthorized",
+				"This tenant does not accept unauthenticated requests on this listener.")
+			return r, false
 		}
 		presented, ok := bearerToken(r)
 		if !ok {

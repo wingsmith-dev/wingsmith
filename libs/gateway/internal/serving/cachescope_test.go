@@ -123,12 +123,11 @@ func TestOnlyTextGenerationPathsAreScoped(t *testing.T) {
 // caller's X-Hangar-Cache-Scope neither changes it nor reaches the cluster.
 func TestThePublicZoneScopesByTheHostsTenantAndIgnoresTheScopeHeader(t *testing.T) {
 	server, seen := steeringUpstream(t)
-	tenant := globex()
-	tenant.Auth = "none"
-	handler := publicHandler(t, map[string]routing.Route{"chat": globexRoute(t, server.URL)}, tenantsFor(t, tenant))
+	handler := publicHandler(t, map[string]routing.Route{"chat": globexRoute(t, server.URL)}, tenantsFor(t, globex()))
 
 	send := func(headers ...string) string {
 		rec := httptest.NewRecorder()
+		headers = append(headers, "Authorization", "Bearer secret-key")
 		handler.ServeHTTP(rec, requestTo("globex.hangar.dev", sharedPrompt, headers...))
 		if rec.Code != http.StatusOK {
 			t.Fatalf("status = %d, body = %s", rec.Code, rec.Body)

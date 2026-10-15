@@ -33,6 +33,9 @@ type requestState struct {
 	// which resolves none.
 	zone   Zone
 	tenant tenancy.Tenant
+	// release is everything a stage holds for the life of the request, run in
+	// reverse once the pipeline returns: a tenant's admission, buffered bytes.
+	release []func()
 }
 
 // stage is one step of routing a request to an upstream. It returns the
@@ -50,21 +53,24 @@ type stage func(w http.ResponseWriter, r *http.Request, req *requestState) (*htt
 // come after zone, host and key are settled and not before. The host, key and
 // enabled stages are no-ops on the internal zone, whose tenant is the
 // endpoint's and is checked once stageResolve has found it.
-func routingStages(resolver Resolver, tenants Tenants, zone Zone) []stage {
+func routingStages(cfg Config) []stage {
+	resolver, tenants, zone := cfg.Router, cfg.Tenants, cfg.Zone
 	return []stage{
 		stageZone(zone),
 		stageTenantFromHost(tenants),
-		stageKeyCheck(tenants),
+		stageKeyCheck(tenants, cfg.AllowUnauthenticatedPublic),
 		stageTenantEnabled,
 		stageCatalog(resolver, tenants),
 		stageVideoRetrieval,
 		stageSupportedPath,
+		stageTenantLimit(cfg.Limiter, ZonePublic),
 		stageReadBody,
 		stageParseEnvelope,
 		stageValidateModel,
 		stageValidateStopSequences,
 		stageResolve(resolver),
 		stageEndpointTenantEnabled(tenants),
+		stageTenantLimit(cfg.Limiter, ZoneInternal),
 		stageCheckModality,
 		stageStripSteeringHints,
 		stageCheckPolicy,
@@ -83,6 +89,11 @@ func routingStages(resolver Resolver, tenants Tenants, zone Zone) []stage {
 // the first one that has already written a response.
 func runPipeline(stages []stage, w http.ResponseWriter, r *http.Request) {
 	req := &requestState{}
+	defer func() {
+		for i := len(req.release) - 1; i >= 0; i-- {
+			req.release[i]()
+		}
+	}()
 	for _, s := range stages {
 		var ok bool
 		r, ok = s(w, r, req)

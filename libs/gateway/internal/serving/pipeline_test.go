@@ -82,9 +82,9 @@ func TestAStageThatWrapsTheRequestCarriesItToTheNextOne(t *testing.T) {
 
 func TestRoutingStagesAnswerTheCatalogAheadOfEveryBodyParsingStage(t *testing.T) {
 	// nil Tenants and ZoneInternal: the tenant stages ahead of the catalog
-	// must be no-ops on this build, the same as before they existed, so a
-	// nil Tenants must never be dereferenced.
-	stages := routingStages(stubResolver{}, nil, ZoneInternal)
+	// are no-ops on the internal zone, so a nil Tenants must never be
+	// dereferenced.
+	stages := routingStages(Config{Router: stubResolver{}, Zone: ZoneInternal})
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
 	runPipeline(stages, w, r)
