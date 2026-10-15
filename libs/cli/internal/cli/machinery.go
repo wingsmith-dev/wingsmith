@@ -434,7 +434,7 @@ rather than inside the cluster an hour later.`,
 				Parameters: parameters, Cluster: cluster,
 			}
 			if deadline != "" {
-				at, err := parseTime(deadline, "deadline")
+				at, err := parseDeadline(deadline, "deadline")
 				if err != nil {
 					return err
 				}

@@ -479,13 +479,40 @@ func optBool(cmd *cobra.Command, name string, value bool) *bool {
 	return &v
 }
 
+// parseTime reads a point in the past: a duration ago, or an RFC 3339 time.
+// It is what --since and --until mean.
 func parseTime(raw, what string) (*time.Time, error) {
+	return parseDurationInstant(raw, what, -1)
+}
+
+// parseDeadline reads a point in the future: a duration from now, or an RFC
+// 3339 time. A deadline already behind us would expire the operation before it
+// started, so one is refused.
+func parseDeadline(raw, what string) (*time.Time, error) {
+	t, err := parseDurationInstant(raw, what, +1)
+	if err != nil || t == nil {
+		return t, err
+	}
+	if !t.After(time.Now()) {
+		return nil, errs.New(errs.CodeUsage, "--%s %q is in the past", what, raw).
+			WithCause("a deadline is a duration from now, such as 30m, or a future RFC 3339 time")
+	}
+	return t, nil
+}
+
+// parseDurationInstant turns a duration into a time `direction` of now: -1 for ago,
+// +1 for from now. A negative duration is refused rather than silently
+// flipping which side of now it lands on.
+func parseDurationInstant(raw, what string, direction time.Duration) (*time.Time, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, nil
 	}
 	if d, err := time.ParseDuration(raw); err == nil {
-		t := time.Now().UTC().Add(-d)
+		if d <= 0 {
+			return nil, errs.New(errs.CodeUsage, "--%s %q must be a positive duration", what, raw)
+		}
+		t := time.Now().UTC().Add(direction * d)
 		return &t, nil
 	}
 	t, err := time.Parse(time.RFC3339, raw)

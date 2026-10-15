@@ -656,7 +656,7 @@ did not use the same image are not the same comparison group.`,
 				Deployment: args[0], Harness: harness, Image: image, Reason: reason, Parameters: parameters,
 			}
 			if deadline != "" {
-				at, err := parseTime(deadline, "deadline")
+				at, err := parseDeadline(deadline, "deadline")
 				if err != nil {
 					return err
 				}

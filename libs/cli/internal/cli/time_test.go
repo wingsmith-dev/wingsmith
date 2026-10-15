@@ -1,0 +1,71 @@
+package cli
+
+import (
+	"encoding/json"
+	"testing"
+	"time"
+)
+
+func TestADurationDeadlineIsInTheFuture(t *testing.T) {
+	before := time.Now()
+	at, err := parseDeadline("30m", "deadline")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !at.After(before.Add(29*time.Minute)) || at.After(before.Add(31*time.Minute)) {
+		t.Errorf("--deadline 30m became %s, want about 30 minutes from now", at)
+	}
+}
+
+func TestASinceIsInThePast(t *testing.T) {
+	before := time.Now()
+	at, err := parseTime("1h", "since")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !at.Before(before.Add(-59 * time.Minute)) {
+		t.Errorf("--since 1h became %s, want about an hour ago", at)
+	}
+}
+
+func TestBadInstantsAreRefused(t *testing.T) {
+	past := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
+	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	for _, raw := range []string{"-5m", "0s", past, "tomorrow"} {
+		if _, err := parseDeadline(raw, "deadline"); err == nil {
+			t.Errorf("--deadline %q was accepted", raw)
+		}
+	}
+	if _, err := parseDeadline(future, "deadline"); err != nil {
+		t.Errorf("a future RFC 3339 deadline was refused: %v", err)
+	}
+	if _, err := parseTime("-5m", "since"); err == nil {
+		t.Error("--since -5m was accepted")
+	}
+	if at, err := parseDeadline("", "deadline"); at != nil || err != nil {
+		t.Error("an absent deadline is not nil")
+	}
+}
+
+// End to end: the operation the plane receives carries a deadline ahead of now.
+func TestOperationCreateSendsAFutureDeadline(t *testing.T) {
+	t.Setenv("HANGAR_FAKE_STATE", t.TempDir()+"/state.json")
+	out, errOut, code := run(t, "operation", "create", "node.drain", "iad-1-n02", "--deadline", "2h", "--yes", "-o", "json")
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut)
+	}
+	if !containsFutureDeadline(t, out) {
+		t.Errorf("deadline is not in the future: %s", out)
+	}
+}
+
+func containsFutureDeadline(t *testing.T, out string) bool {
+	t.Helper()
+	var op struct {
+		DeadlineAt *time.Time `json:"deadline_at"`
+	}
+	if err := json.Unmarshal([]byte(out), &op); err != nil {
+		t.Fatal(err)
+	}
+	return op.DeadlineAt != nil && op.DeadlineAt.After(time.Now().Add(time.Hour))
+}
