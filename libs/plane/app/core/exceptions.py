@@ -1,9 +1,9 @@
 class PlaneError(Exception):
     """Base class for errors raised by the plane.
 
-    `code` is the contract and is what clients branch on; `status` exists only so
-    that anything speaking HTTP status codes gets the same information. The
-    message is for people and is never parsed.
+    `code` is the contract clients branch on; `status` carries the same information for HTTP-only
+    callers: 400 for a malformed request, 422 for a valid one the plane refuses, 409 only for a
+    conflict with current state.
     """
 
     code = "error"
@@ -36,48 +36,28 @@ class Conflict(PlaneError):
 
 
 class Invalid(PlaneError):
-    """A request that is well-formed but asks for something incoherent.
-
-    Writing to an observed resource is the canonical case: `POST /v1/devices` is
-    not a validation failure, it is a category error, and per `libs/packages/contract/API.md`
-    it answers 409 rather than 400.
-    """
+    """A well-formed request that asks for something the plane will not do (422)."""
 
     code = "invalid"
-    status = 409
+    status = 422
 
 
 class TooManyRequests(PlaneError):
-    """A caller that has spent a budget the plane keeps to bound its own work.
-
-    The only budget today is on failed credential verifications
-    (`app.core.throttle`), where the refusal is the useful part: a caller that
-    keeps presenting tokens nothing knows is either broken or guessing, and both
-    deserve to be slowed down rather than served at line rate.
-    """
+    """A caller that has spent a budget the plane keeps to bound its own work (`app.core.throttle`)."""
 
     code = "rate_limited"
     status = 429
 
 
 class UnknownParameter(PlaneError):
-    """A request carrying a query parameter the matched handler does not declare.
-
-    400 rather than 409: unlike `Invalid`, nothing is being asked of the resource
-    at all — the request itself is malformed, and answering it would mean
-    returning a set the caller believes is filtered when it is not.
-    """
+    """A query parameter the matched handler does not declare (400, see API.md §1)."""
 
     code = "unknown_parameter"
     status = 400
 
 
 class InvalidParameter(PlaneError):
-    """A query parameter the handler declares, carrying a value it cannot take.
-
-    400, like `UnknownParameter`: the request is malformed before any resource
-    is consulted.
-    """
+    """A declared query parameter carrying a value it cannot take (400)."""
 
     code = "invalid_parameter"
     status = 400

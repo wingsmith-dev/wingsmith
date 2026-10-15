@@ -137,6 +137,38 @@ def test_plane_errors_render_as_the_contract_envelope():
     }
 
 
+def test_an_invalid_request_is_422_and_a_conflict_stays_409():
+    from litestar import get
+
+    from app.core.handlers import EXCEPTION_HANDLERS
+    from app.core.exceptions import Conflict
+
+    @get("/invalid", sync_to_thread=False)
+    def invalid() -> None:
+        raise Invalid("devices are observed, not created")
+
+    @get("/conflict", sync_to_thread=False)
+    def conflict() -> None:
+        raise Conflict("revision mismatch")
+
+    handlers = [invalid, conflict]
+    with create_test_client(route_handlers=handlers, exception_handlers=EXCEPTION_HANDLERS) as client:
+        refused = client.get("/invalid")
+        clashed = client.get("/conflict")
+
+    assert (refused.status_code, refused.json()["code"]) == (422, "invalid")
+    assert (clashed.status_code, clashed.json()["code"]) == (409, "conflict")
+
+
+def test_framework_404_and_405_carry_contract_codes():
+    with TestClient(app=create_app()) as client:
+        missing = client.get("/v1/no-such-collection")
+        not_allowed = client.post("/v1/devices", json={})
+
+    assert (missing.status_code, missing.json()["code"]) == (404, "not_found")
+    assert (not_allowed.status_code, not_allowed.json()["code"]) == (405, "method_not_allowed")
+
+
 def test_unknown_query_parameter_is_rejected_with_the_contract_envelope():
     with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/nodes", params={"status": "ready"})

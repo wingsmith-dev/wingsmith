@@ -30,7 +30,10 @@ breaking every client, and lists that never paginate are a temporary condition.
 ```
 
 `code` is the contract; `message` is for people. HTTP status carries the same information for
-anything that only speaks status codes, but clients should branch on `code`.
+anything that only speaks status codes, but clients should branch on `code`. A malformed request
+(a body that does not decode, an unknown or unparseable query parameter) is `400`; a well-formed
+request the plane refuses is `422 invalid`; `409 conflict` is kept for a clash with current state,
+such as a stale `If-Match` revision or a duplicate name.
 
 **Unknown query parameters are rejected**, `400` with `code: "unknown_parameter"`, and `detail`
 carrying `unknown` (the offending names) and `accepted` (everything that route declares). The
@@ -167,7 +170,7 @@ state it leaves behind.
 
 Declared objects take the full set: `GET` list, `GET` one, `POST`, `PATCH`, `DELETE`.
 Observed objects are **read-only** — there is no `POST /v1/devices`, because devices are discovered,
-not created. Writing to an observed resource is a category error and returns `409 invalid`.
+not created. Writing to an observed resource has no route and returns `405 method_not_allowed`.
 
 | Path | Kind |
 |---|---|
@@ -457,7 +460,7 @@ at all, which is the first thing to check when a panel is empty. Everything else
 Every one of them takes `window`, `step`, `span` (seconds, default `3600`) and `series` (default
 `false`), and nothing else — `series=false` is the normal read and the points are only computed when
 asked for. `GET /v1/metrics/workloads/{ref}` also takes `project`, because a bare workload name is
-unique only within its project; an ambiguous one answers `409 invalid` listing the candidates, which
+unique only within its project; an ambiguous one answers `422 invalid` listing the candidates, which
 is exactly what `GET /v1/workloads/{ref}` does with the same reference. None of these is a list, so
 none of them accepts `limit` or `cursor`, and passing one is `400 unknown_parameter` like anywhere
 else.
@@ -557,7 +560,7 @@ made to share a row; they simply have the same digest, and that is the whole mec
 **`serving_digest` is derived, read-only, and is the identity of the configuration.** `svg_` followed
 by a sha256 over the canonical JSON of exactly the fields that reach an engine — the block above,
 with the artifact as its uid. The plane recomputes it on every write and a body carrying one is
-`409 invalid`: it is an answer, not an assertion. `imported_args`, `capabilities`,
+`422 invalid`: it is an answer, not an assertion. `imported_args`, `capabilities`,
 `served_model_name` and `labels` are deliberately outside it, as are scale and placement, because the
 question it answers is "would this produce the same running process" and none of those change the
 process.
@@ -630,7 +633,7 @@ and a read returns all four with `null` for what was not declared. `mode` is one
 `round-robin`, `random`, `power-of-two`, `least-loaded` or `device-aware-weighted`, and null means the
 operator's default, `kv`. `queue_threshold` and `kv_overlap_score_credit` are finite numbers `>= 0`.
 `queue_policy` is `fcfs` or `wspt` and is refused without a `queue_threshold`, and the three KV
-settings are refused beside any `mode` other than `kv`. A violation is `409 invalid`. On `PATCH` the
+settings are refused beside any `mode` other than `kv`. A violation is `422 invalid`. On `PATCH` the
 block replaces whole, like `cache`: send every field you mean to keep, and `{}` clears it. It is part
 of `serving_digest` only while something in it is set, so a workload that never declares a router
 keeps the digest it had. Setting one is a serving change like any other and bumps every deployment's
@@ -769,8 +772,8 @@ suggested device count and context length that is a suggestion and is never appl
 `existing_id` when the catalogue already holds that digest. It is a preview endpoint and not a
 second door into the catalogue: `POST /v1/artifacts` remains the only way to create one, so the
 claim above — one way to create each object rather than two that must agree — still holds. Unknown
-slug is `404 not found`; a gated repository is `409 invalid` naming the gate and the token variable
-to set, because the fix is a credential and not a retry; a malformed source is `409 invalid`; the
+slug is `404 not found`; a gated repository is `422 invalid` naming the gate and the token variable
+to set, because the fix is a credential and not a retry; a malformed source is `422 invalid`; the
 Hub being down or refusing is `500`, since the failure is upstream of us and the caller's request
 was fine.
 
@@ -797,7 +800,7 @@ The caller sends `source`, the plane resolves the manifest, computes the digest,
 resolved draft underneath whatever the caller stated — `name`, `kind` and `project` win where given,
 `metadata` merges with the caller's keys on top, and `digest` and `verified` always come from the
 draft, because those two are the plane's answer and not the caller's. Sending both `source` and
-`digest` is `409 invalid` rather than a precedence rule: the two disagree or they are redundant, and
+`digest` is `422 invalid` rather than a precedence rule: the two disagree or they are redundant, and
 neither is worth guessing at. Sending neither is refused too — an artifact without a digest has no
 identity — as is a request that resolves to no name, since an artifact nobody can name cannot be
 found again.
@@ -861,7 +864,7 @@ stale record to be corrected, it is different bytes, and different bytes are a d
 writing the new size and parameter count over this digest would leave a row describing weights
 nobody can fetch. The detail carries `resolved_digest` and `existing_id`, so a client can offer
 registering the new source or point at the artifact that already holds it. An artifact with no
-recoverable source — no `metadata.huggingface_id` and no `hf://` location — is `409 invalid`,
+recoverable source — no `metadata.huggingface_id` and no `hf://` location — is `422 invalid`,
 because there is nowhere to go back and ask.
 
 **`GET /v1/artifacts/{ref}/fitment` answers what hardware this artifact runs on.** Derived at read
@@ -989,7 +992,7 @@ did it not land in iad-1" is asked before anything is created, and the decision 
 reason per cluster.
 
 It takes **exactly one of `workload` and `shape`**, and `project` is required with either. Naming
-both, or neither, is `400 invalid` — "a preview names exactly one of workload and shape" — rather
+both, or neither, is `422 invalid` — "a preview names exactly one of workload and shape" — rather
 than a precedence rule, because the two forms answer for different subjects and guessing which one
 was meant would return a verdict about something the caller did not ask about. `priority_class` and
 `replicas` are optional in both forms and override whatever the subject declares, which is what
@@ -1060,7 +1063,7 @@ either in the id prefix or in the `kind:` half. The same two forms are accepted 
 filter on `GET /v1/operations`.
 
 Names are unique inside a cluster and not above it. A qualified name matching more than one object
-is `400 invalid` listing the candidates, never a guess; `cluster` on the create body narrows it
+is `422 invalid` listing the candidates, never a guess; `cluster` on the create body narrows it
 first, and a name matching none is `404 not found`.
 
 **Scaling, pausing and draining a workload are operations.** `workload.scale`
@@ -1175,7 +1178,7 @@ points and the knee are derived at read, exactly as the verdict is.
 
 **`GET /v1/benchmarks/harnesses`** returns each harness with the parameters it accepts, their
 types and their defaults. Clients render their form from it rather than carrying a second copy of
-what AIPerf takes; a parameter the named harness does not accept is `400 invalid` at creation and
+what AIPerf takes; a parameter the named harness does not accept is `422 invalid` at creation and
 not a job that fails inside a cluster ten minutes later.
 
 There is no `PATCH` and no `DELETE` on a run. A measurement is not editable, and deleting one

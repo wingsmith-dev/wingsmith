@@ -26,9 +26,17 @@ def validation_handler(request: Request, exc: ValidationException) -> Response[E
     )
 
 
+# Framework errors that have a name in the contract's vocabulary.
+HTTP_CODES = {
+    400: "invalid_request",
+    404: "not_found",
+    405: "method_not_allowed",
+}
+
+
 def http_error_handler(request: Request, exc: HTTPException) -> Response[ErrorResponse]:
     return Response(
-        ErrorResponse(code="http_error", message=exc.detail, detail={}),
+        ErrorResponse(code=HTTP_CODES.get(exc.status_code, "http_error"), message=exc.detail, detail={}),
         status_code=exc.status_code,
     )
 
