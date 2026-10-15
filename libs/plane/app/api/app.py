@@ -1,4 +1,5 @@
 from logging import getLogger
+from importlib import metadata
 
 from litestar import Litestar
 from litestar.di import Provide
@@ -41,18 +42,22 @@ def _allowed_origins() -> list[str]:
     return [origin.strip() for origin in settings.ALLOWED_ORIGINS.split(",") if origin.strip()]
 
 
-def _openapi_config() -> OpenAPIConfig | None:
-    """The schema endpoints, served under `local` only.
+def _version() -> str:
+    try:
+        return metadata.version("hangar-plane")
+    except metadata.PackageNotFoundError:
+        return "0.0.0+unknown"
 
-    Litestar serves `/schema` by default, and it answers before `request_context`
-    — there is nowhere in an `OpenAPIConfig` to require a credential. Behind a
-    port-forward that costs nothing. Behind an ingress it publishes every route,
-    parameter and shape in the API to anyone who asks, which is a map of what to
-    try the login against. `None` is how Litestar is told not to serve it.
+
+def _openapi_config() -> OpenAPIConfig:
+    """The schema endpoints, served in every environment under `/schema`.
+
+    The API's shape is the published contract, so the schema is public like the
+    source it is generated from. It names routes and fields, never data, and
+    every route it lists still answers `401` without a credential. The version
+    is the package's own, so a client can tell which plane it is reading.
     """
-    if settings.APP_ENV != "local":
-        return None
-    return OpenAPIConfig(title="Hangar", version="1.0.0")
+    return OpenAPIConfig(title="Hangar", version=_version())
 
 
 def create_app() -> Litestar:

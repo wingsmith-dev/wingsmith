@@ -508,12 +508,17 @@ def test_tenant_failures_never_spend_the_admin_budget(monkeypatch):
     assert admin.status_code == 401
 
 
-def test_schema_is_not_served_outside_local(monkeypatch):
+def test_the_schema_is_served_outside_local_with_the_package_version(monkeypatch):
+    from importlib import metadata
+
     monkeypatch.setattr(settings, "APP_ENV", "production")
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:
         response = client.get("/schema/openapi.json")
-    assert response.status_code == 404
+    assert response.status_code == 200
+    document = response.json()
+    assert document["info"]["version"] == metadata.version("hangar-plane")
+    assert "/v1/clusters" in document["paths"]
 
 
 @pytest.mark.database

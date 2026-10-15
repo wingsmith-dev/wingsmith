@@ -5,10 +5,10 @@ import argparse
 import uvicorn
 
 from app.config import settings
-from app.config.settings import api_host
 from app.api.app import create_app
 from app.api.app import on_startup
 from app.api.app import on_shutdown
+from app.config.settings import api_host
 
 
 async def _cycle() -> None:
