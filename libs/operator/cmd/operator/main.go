@@ -86,6 +86,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if cfg.TLSInsecureSkipVerify {
+		log.Warn("hub certificate verification is disabled; anyone on the path can impersonate the hub " +
+			"and declare workloads on this cluster. Use HANGAR_HUB_CA_FILE instead outside local development")
+	}
 
 	restCfg, err := ctrl.GetConfig()
 	if err != nil {
