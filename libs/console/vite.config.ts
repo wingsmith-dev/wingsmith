@@ -7,12 +7,15 @@ import { defineConfig, loadEnv } from "vite"
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "")
 
-  // Point the dev server at an API on another origin without tripping its CORS
-  // allowlist: set VITE_API_PROXY (e.g. a `kubectl port-forward` of the prod
-  // api on http://localhost:8000) and leave VITE_API_BASE_URL empty. The browser
-  // then only ever talks to :5273, and Vite forwards /v1 and /health server-side,
-  // so there is no cross-origin request for the plane's CORS policy to reject.
-  const apiProxy = env.VITE_API_PROXY
+  // The dev server forwards /v1 and /health to the plane, so the browser only
+  // ever talks to :5273 and there is no cross-origin request for the plane's
+  // CORS policy to reject. VITE_API_PROXY picks the target (e.g. a
+  // `kubectl port-forward`); without it, the local stack from `just dev` on
+  // :8000. Setting VITE_API_BASE_URL instead makes the browser call that origin
+  // directly and turns the proxy off.
+  const apiProxy =
+    env.VITE_API_PROXY ||
+    (env.VITE_API_BASE_URL ? undefined : "http://localhost:8000")
 
   return {
     plugins: [
@@ -20,6 +23,9 @@ export default defineConfig(({ mode }) => {
         routesDirectory: "./src/routes",
         generatedRouteTree: "./src/routeTree.gen.ts",
         routeFileIgnorePattern: "(^|/)(page\\.tsx|[A-Z][^/]*\\.tsx)$",
+        // Each route's component loads when the route is first visited, not
+        // with the shell.
+        autoCodeSplitting: true,
       }),
       react(),
       tailwindcss(),

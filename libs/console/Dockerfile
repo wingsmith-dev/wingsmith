@@ -11,23 +11,21 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm install --frozen-lockfile
 
 COPY . .
-
-# Vite substitutes these at build time, not at container start: the output is a bundle of static
-# files with the values already inlined, so an image built against one API is an image that only
-# ever talks to that API. Changing where the console points is a rebuild, which is why they are
-# build args rather than the environment entries they look like they should be.
-ARG VITE_API_BASE_URL
-ARG VITE_API_MODE
-ARG VITE_API_PROJECT
-ARG VITE_READ_ONLY
 RUN pnpm run build
 
 FROM nginx:1.27-alpine
 
-# The router is client-side, so every path below / exists only once the bundle is running. Without
-# the fallback, a reload on /clusters/abc is a 404 from nginx for a page the console can render
-# perfectly well — the server is being asked for a file that was never meant to exist.
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# Nothing about the plane is baked into the bundle. 40-hangar-config.sh writes config.js and the
+# CSP from these at container start, so one image serves any plane. An empty base URL means the
+# API answers on the console's own origin (behind the same ingress).
+ENV HANGAR_API_BASE_URL="" \
+    HANGAR_READ_ONLY="false"
+
+# The router is client-side, so every path below / exists only once the bundle is running; the
+# server config falls back to index.html for anything that is not a built file.
+RUN rm -f /etc/nginx/conf.d/default.conf
+COPY docker/default.conf.template docker/security-headers.conf.template /etc/nginx/hangar/
+COPY docker/40-hangar-config.sh /docker-entrypoint.d/40-hangar-config.sh
 COPY --from=build /src/dist /usr/share/nginx/html
 
 EXPOSE 8080

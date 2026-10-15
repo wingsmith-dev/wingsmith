@@ -944,10 +944,9 @@ function AppearancePanel() {
 }
 
 /**
- * An empty {@link BASE_URL} is the plane image's deliberate setting, not a
- * missing one — every request goes to the origin that served the console. Naming
- * that origin is the only way the field can be read as configured rather than
- * blank.
+ * An empty {@link BASE_URL} is a deliberate setting, not a missing one — every
+ * request goes to the origin that served the console. Naming that origin is the
+ * only way the field can be read as configured rather than blank.
  */
 function PlanePanel() {
   const origin = typeof window === "undefined" ? null : window.location.origin
@@ -979,7 +978,8 @@ function PlanePanel() {
           </Field>
         </FieldGrid>
         <p className="font-mono text-2xs text-muted-foreground/60">
-          Set with VITE_API_BASE_URL and VITE_API_MODE at build time.
+          Set by the deployment: HANGAR_API_BASE_URL on the console image, or
+          VITE_API_BASE_URL for a dev server.
         </p>
       </div>
     </Panel>

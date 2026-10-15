@@ -1,4 +1,8 @@
 node_modules
 dist
+coverage
 .git
 *.log
+.env
+.env.*
+!.env.example

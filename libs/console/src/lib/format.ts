@@ -54,4 +54,3 @@ export function shortenId(value: string, chars = 6): string {
 
   return value.length > chars + 4 ? value.slice(0, chars + 4) : value
 }
-

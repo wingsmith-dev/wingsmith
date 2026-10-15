@@ -1,5 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
+import { config } from "@/lib/config"
 
 interface SettingsState {
   /** Refuses every write from this browser. See `ReadOnlyError`. */
@@ -16,7 +17,7 @@ interface SettingsState {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      readOnly: import.meta.env.VITE_READ_ONLY === "true",
+      readOnly: config.readOnly,
       setReadOnly: (readOnly) => set({ readOnly }),
     }),
     { name: "hangar.settings" }
@@ -30,4 +31,3 @@ export function useReadOnly(): boolean {
 export function isReadOnly(): boolean {
   return useSettingsStore.getState().readOnly
 }
-
