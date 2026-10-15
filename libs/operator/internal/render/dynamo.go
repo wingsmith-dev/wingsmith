@@ -7,8 +7,6 @@
 package render
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -69,12 +67,9 @@ type Options struct {
 	CachePoolValue string
 	CacheTaintKey  string
 	// CacheTaintValue is the value the cache pool's taint carries. Empty tolerates any value.
-	CacheTaintValue    string
-	ModelCachePVC      string
-	LocalModelCacheDir string
-	// JITCacheOptIn keeps FlashInfer's compiled wrappers on the node. Off by default: it saves
-	// startup time and is suspected of costing steady-state throughput.
-	JITCacheOptIn       bool
+	CacheTaintValue     string
+	ModelCachePVC       string
+	LocalModelCacheDir  string
 	PrefetchCPU         string
 	PrefetchMemory      string
 	PrefetchMemoryLimit string
@@ -676,7 +671,7 @@ func localizeContainers(in Inputs, opts Options, image string) []corev1.Containe
 		Image:                    image,
 		Command:                  []string{"sh", "-c", localizeScript, "localize", shared, local},
 		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
-		VolumeMounts: append(localModelMount(opts), corev1.VolumeMount{
+		VolumeMounts: append(localModelMount(opts, false), corev1.VolumeMount{
 			Name: "model-cache", MountPath: "/models", ReadOnly: true,
 		}),
 	}}
@@ -740,6 +735,7 @@ func frontendLocalizeContainers(in Inputs, opts Options, image string) []corev1.
 	return []corev1.Container{{
 		Name:                     "stage-model-metadata",
 		Image:                    image,
+		SecurityContext:          frontendContainerSecurityContext(),
 		Command:                  []string{"sh", "-c", frontendLocalizeScript, "stage", shared, local},
 		TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
 		VolumeMounts: []corev1.VolumeMount{
@@ -780,124 +776,13 @@ func localModelVolume(opts Options) []corev1.Volume {
 	}}
 }
 
-// localModelMount mounts that disk, writable: the init container fills it and the engine reads it.
-func localModelMount(opts Options) []corev1.VolumeMount {
+// localModelMount mounts that disk: writable for the init container that fills it, read-only for
+// the engine, which has no reason to change a mirror other workers on the node also load from.
+func localModelMount(opts Options, readOnly bool) []corev1.VolumeMount {
 	if opts.LocalModelCacheDir == "" {
 		return nil
 	}
-	return []corev1.VolumeMount{{Name: "local-model-cache", MountPath: LocalModels}}
-}
-
-// jitCacheRoot is where a node keeps the FlashInfer wrappers its workers have already compiled.
-//
-// Under the model mirror rather than beside it, because it is the same node-local disk held for
-// the same reason: something expensive to produce, worth keeping across a pod, and worth nothing
-// if it has to be produced again. One directory per runtime image sits beneath it.
-const jitCacheRoot = LocalModels + "/flashinfer"
-
-// mutableTags are the tags a later build is expected to take over.
-var mutableTags = map[string]bool{
-	"latest": true, "main": true, "master": true, "dev": true,
-	"edge": true, "nightly": true, "stable": true, "head": true,
-}
-
-// jitCacheSlug names the directory one runtime image may keep its compiled wrappers in.
-//
-// FlashInfer keys its own cache path on its version and the CUDA architecture and on nothing
-// else, so two images carrying the same FlashInfer release resolve to the same directory -- and a
-// host FFI wrapper built inside one of them is loaded by the other. Everything the wrapper was
-// actually compiled against is what differs between two such images, and none of it is in that
-// path. So the image reference is the key here, and its digest or tag is what makes it one.
-//
-// Empty for a reference that cannot be told apart across builds -- no tag, or a moving one -- and
-// an empty slug turns the persistence off for that deployment, leaving it to compile into the
-// container as it does today. Recompiling costs four minutes. Loading a wrapper built by a
-// different image costs a symbol bound to the wrong code, and nothing reports that.
-func jitCacheSlug(image string) string {
-	ref := strings.TrimSpace(image)
-	if ref == "" {
-		return ""
-	}
-	if _, digest, ok := strings.Cut(ref, "@sha256:"); ok {
-		if len(digest) < 12 {
-			return ""
-		}
-		return "sha256-" + digest[:12]
-	}
-	tag := ""
-	if i := strings.LastIndex(ref, ":"); i >= 0 && !strings.Contains(ref[i+1:], "/") {
-		tag = ref[i+1:]
-	}
-	if tag == "" || mutableTags[tag] {
-		return ""
-	}
-	// The tag alone would collide between two registries publishing the same version, which on a
-	// disk shared by every worker on the node is the same mismatch the tag is here to prevent.
-	// The digest of the whole reference settles it; the tag stays in the name so that whoever is
-	// standing on the node can read what a directory holds.
-	sum := sha256.Sum256([]byte(ref))
-	return jitCacheTagName(tag) + "-" + hex.EncodeToString(sum[:])[:12]
-}
-
-// maxJitCacheTagName caps the readable half of a slug. The digest after it is what makes the name
-// unique, so a truncated tag costs legibility and nothing else.
-const maxJitCacheTagName = 64
-
-// jitCacheTagName reduces a tag to a directory name, keeping what a tag is normally made of.
-func jitCacheTagName(tag string) string {
-	var b strings.Builder
-	for _, r := range tag {
-		switch {
-		case (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
-			r == '.' || r == '_' || r == '-':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('-')
-		}
-	}
-	out := strings.Trim(b.String(), "-.")
-	if len(out) > maxJitCacheTagName {
-		out = strings.Trim(out[:maxJitCacheTagName], "-.")
-	}
-	return out
-}
-
-// jitCacheEnabled says whether this pod can keep its compiled wrappers on the node.
-//
-// Both halves are required and neither is a guess: without a node-local disk there is nowhere to
-// keep them, and without a slug there is no name they can be kept under safely.
-func jitCacheEnabled(opts Options, image string) bool {
-	return opts.JITCacheOptIn && opts.LocalModelCacheDir != "" && jitCacheSlug(image) != ""
-}
-
-// jitCacheEnv moves FlashInfer's workspace off the container's ephemeral layer, so a host FFI
-// wrapper compiled on one start of an image is reused on the next instead of being rebuilt with
-// every tensor-parallel rank blocked on its lock. FLASHINFER_WORKSPACE_BASE is read once, at
-// import; FlashInfer derives the version and architecture directories below it.
-func jitCacheEnv(opts Options, image string) []corev1.EnvVar {
-	if !jitCacheEnabled(opts, image) {
-		return nil
-	}
-	return []corev1.EnvVar{{Name: "FLASHINFER_WORKSPACE_BASE", Value: jitCacheRoot + "/" + jitCacheSlug(image)}}
-}
-
-// workerSecurityContext is fabricSecurityContext, plus root when the worker keeps its JIT cache on
-// the node.
-//
-// FlashInfer creates its workspace at import, and the workspace is under a hostPath the kubelet
-// creates root-owned; fsGroup does not apply to hostPath volumes, so a non-root worker crash-loops
-// on a PermissionError before logging anything. Applied only where the cache is kept; every other
-// worker renders as the image's own user.
-func workerSecurityContext(opts Options, image string) *corev1.SecurityContext {
-	sc := fabricSecurityContext(opts)
-	if !jitCacheEnabled(opts, image) {
-		return sc
-	}
-	if sc == nil {
-		sc = &corev1.SecurityContext{}
-	}
-	sc.RunAsUser = ptr(int64(0))
-	return sc
+	return []corev1.VolumeMount{{Name: "local-model-cache", MountPath: LocalModels, ReadOnly: readOnly}}
 }
 
 // workerProbes replace Dynamo's defaults, which kill a busy worker rather than a broken one.
@@ -1160,10 +1045,10 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 			// exits cleanly and is the difference between "a replica is repeatedly crashing"
 			// and knowing which argument to remove.
 			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
-			SecurityContext:          workerSecurityContext(opts, image),
+			SecurityContext:          fabricSecurityContext(opts),
 			LivenessProbe:            liveness,
 			ReadinessProbe:           readiness,
-			Env: append(append(fabricEnvFor(opts, hugePagesAllowed(requests)), jitCacheEnv(opts, image)...), []corev1.EnvVar{
+			Env: append(fabricEnvFor(opts, hugePagesAllowed(requests)), []corev1.EnvVar{
 				{Name: "HF_HOME", Value: HFHome},
 				// KV-aware routing decides which worker already holds a prefix by hashing
 				// block contents. Python salts hashes per process by default, so without a
@@ -1177,7 +1062,7 @@ func podSpec(in Inputs, opts Options, role workerRole) (*corev1.PodSpec, error) 
 					Optional:             ptr(true),
 				},
 			}},
-			VolumeMounts: append(localModelMount(opts), []corev1.VolumeMount{
+			VolumeMounts: append(localModelMount(opts, true), []corev1.VolumeMount{
 				{Name: "model-cache", MountPath: "/models"},
 				{Name: "dshm", MountPath: "/dev/shm"},
 			}...),
@@ -1276,9 +1161,11 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 		// frontend-specific image is configured. Duplicates are removed when both settings name
 		// the same fleet-wide credential.
 		ImagePullSecrets: imagePullSecrets(opts.FrontendPullSecrets, opts.EnginePullSecrets),
+		SecurityContext:  frontendPodSecurityContext(),
 		Containers: []corev1.Container{{
-			Name:  "main",
-			Image: image,
+			Name:            "main",
+			Image:           image,
+			SecurityContext: frontendContainerSecurityContext(),
 			// The same reason as the worker's: a frontend that exits on a bad flag or a
 			// missing credential should say so where the plane can read it.
 			TerminationMessagePolicy: corev1.TerminationMessageFallbackToLogsOnError,
@@ -1327,6 +1214,24 @@ func frontendPodSpec(in Inputs, opts Options) (*corev1.PodSpec, error) {
 	}
 
 	return spec, nil
+}
+
+// frontendPodSecurityContext gives the frontend the runtime's default seccomp profile. It keeps
+// the image's user: the frontend runs the engine image when no frontend image is configured, and
+// that image's user owns the cache directories it writes.
+func frontendPodSecurityContext() *corev1.PodSecurityContext {
+	return &corev1.PodSecurityContext{
+		SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
+	}
+}
+
+// frontendContainerSecurityContext drops every capability and privilege escalation. A frontend
+// serves HTTP on an unprivileged port and reads its model metadata; it needs neither.
+func frontendContainerSecurityContext() *corev1.SecurityContext {
+	return &corev1.SecurityContext{
+		AllowPrivilegeEscalation: ptr(false),
+		Capabilities:             &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}},
+	}
 }
 
 // DefaultRouterMode is the frontend's routing mode when a deployment declares none.

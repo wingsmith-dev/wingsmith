@@ -1884,130 +1884,49 @@ func TestWorkersAskForTheFabricTheyTransferKVOver(t *testing.T) {
 	}
 }
 
-// The workspace has to be keyed on the image and not only on what FlashInfer keys it on itself.
-// FlashInfer's own path carries its version and the CUDA arch, so two images shipping the same
-// release land in the same directory and one reads back a host wrapper the other compiled.
-func TestJITCacheSlugSeparatesImages(t *testing.T) {
-	a := jitCacheSlug("ghcr.io/hangar-dev/vllm-runtime:1.4.0-efa.4")
-	b := jitCacheSlug("ghcr.io/hangar-dev/vllm-runtime:1.4.0-efa.5")
-	if a == "" || b == "" {
-		t.Fatalf("slugs = %q, %q; a versioned tag is keyable", a, b)
+// The engine reads the node-local mirror and only the init container that fills it may write it:
+// every worker on the node loads from the same directory.
+func TestOnlyTheLocalizerWritesTheNodeLocalMirror(t *testing.T) {
+	in := testInputs()
+	in.Artifact.Sources = []wire.ArtifactSource{
+		{Kind: "hf", URI: "hf://openai/gpt-oss-20b@6cee5e81ee83917806bbde320786a8fb61efebee"},
 	}
-	if a == b {
-		t.Errorf("two image tags share the directory %q", a)
+	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/disks/0/models"}
+	spec, err := podSpec(in, opts, workerRole{})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.HasPrefix(a, "1.4.0-efa.4-") {
-		t.Errorf("slug = %q, want the tag readable at the front of it", a)
+	if len(spec.InitContainers) == 0 {
+		t.Fatal("no localizer rendered; this test is checking the wrong thing")
 	}
-
-	same := jitCacheSlug("quay.io/other/vllm-runtime:1.4.0-efa.4")
-	if same == a {
-		t.Errorf("two registries share the directory %q", a)
-	}
-
-	digest := jitCacheSlug("ghcr.io/x/y@sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08")
-	if digest != "sha256-9f86d081884c" {
-		t.Errorf("digest slug = %q", digest)
-	}
-}
-
-// A tag a later build takes over cannot key a cache, because the danger is not a stale directory
-// -- it is a directory whose name still matches and whose contents no longer do.
-func TestJITCacheSlugRefusesMovingTags(t *testing.T) {
-	for _, ref := range []string{"", "ghcr.io/x/vllm-runtime", "ghcr.io/x/vllm-runtime:latest", "vllm:dev"} {
-		if slug := jitCacheSlug(ref); slug != "" {
-			t.Errorf("jitCacheSlug(%q) = %q, want none", ref, slug)
+	mount := func(c corev1.Container) *corev1.VolumeMount {
+		for i := range c.VolumeMounts {
+			if c.VolumeMounts[i].MountPath == LocalModels {
+				return &c.VolumeMounts[i]
+			}
 		}
+		return nil
+	}
+	if m := mount(spec.InitContainers[0]); m == nil || m.ReadOnly {
+		t.Errorf("localizer mount = %+v, want writable", m)
+	}
+	if m := mount(spec.Containers[0]); m == nil || !m.ReadOnly {
+		t.Errorf("engine mount = %+v, want read-only", m)
 	}
 }
 
-// The persistence and the root that makes it writable arrive together, and both are absent on a
-// cluster with no node-local disk: that worker starts as it always did, slowly.
-func TestJITCacheNeedsANodeLocalDisk(t *testing.T) {
-	in := testInputs()
-	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-efa.4")
-
-	bare, err := podSpec(in, Options{ModelCachePVC: "model-cache"}, workerRole{})
+func TestTheFrontendRunsWithoutCapabilities(t *testing.T) {
+	spec, err := frontendPodSpec(testInputs(), frontendOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v := containerEnv(bare.Containers[0], "FLASHINFER_WORKSPACE_BASE"); v != "" {
-		t.Errorf("workspace base = %q with no local disk to hold it", v)
+	if sc := spec.SecurityContext; sc == nil || sc.SeccompProfile == nil {
+		t.Errorf("pod security context = %+v, want a seccomp profile", sc)
 	}
-	if sc := bare.Containers[0].SecurityContext; sc != nil && sc.RunAsUser != nil {
-		t.Errorf("worker runs as %d with nothing on the node to write", *sc.RunAsUser)
-	}
-
-	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", JITCacheOptIn: true}
-	local, err := podSpec(in, opts, workerRole{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	base := containerEnv(local.Containers[0], "FLASHINFER_WORKSPACE_BASE")
-	if !strings.HasPrefix(base, jitCacheRoot+"/") {
-		t.Fatalf("workspace base = %q, want it under %q", base, jitCacheRoot)
-	}
-	if !strings.Contains(base, "1.4.0-efa.4") {
-		t.Errorf("workspace base = %q, want the image tag in it", base)
-	}
-	// The base is under the hostPath mount, so the worker has to carry that mount for the path
-	// to resolve at all.
-	var mounted bool
-	for _, m := range local.Containers[0].VolumeMounts {
-		if m.MountPath == LocalModels {
-			mounted = true
-		}
-	}
-	if !mounted {
-		t.Errorf("workspace base is %q but the worker has no %s mount", base, LocalModels)
-	}
-	sc := local.Containers[0].SecurityContext
-	if sc == nil || sc.RunAsUser == nil || *sc.RunAsUser != 0 {
-		t.Fatalf("security context = %+v, want root: the hostPath is root-owned", sc)
-	}
-}
-
-// Root is added to the fabric context rather than replacing it. A worker that lost IPC_LOCK to
-// gain a cache would run its KV path on the slow fallback and report success.
-func TestJITCacheKeepsTheFabricContext(t *testing.T) {
-	in := testInputs()
-	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-efa.4")
-	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", Fabric: FabricEFA, FabricDevices: 16, FabricPrivileged: true, JITCacheOptIn: true}
-
-	spec, err := podSpec(in, opts, workerRole{Role: "decode"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	sc := spec.Containers[0].SecurityContext
-	if sc == nil || sc.Privileged == nil || !*sc.Privileged || len(sc.Capabilities.Add) != 1 {
-		t.Fatalf("security context = %+v, want the fabric widening intact", sc)
-	}
-	if sc.RunAsUser == nil || *sc.RunAsUser != 0 {
-		t.Errorf("security context = %+v, want root as well", sc)
-	}
-}
-
-// A cluster that has not asked for the JIT cache renders as it did before it existed. The feature
-// is under suspicion of costing throughput -- 6.68 req/s against 4.79 on byte-identical renders --
-// so the default has to be the shape that was measured, not the newer one.
-func TestJITCacheIsOptIn(t *testing.T) {
-	in := testInputs()
-	in.Deployment.Serving.EngineRuntimeImage = ptr("ghcr.io/hangar-dev/vllm-runtime:1.4.0-efa.4")
-	opts := Options{ModelCachePVC: "model-cache", LocalModelCacheDir: "/mnt/k8s-disks/0/hangar/models", Fabric: FabricEFA, FabricDevices: 16, FabricPrivileged: true}
-
-	spec, err := podSpec(in, opts, workerRole{Role: "decode"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if v := containerEnv(spec.Containers[0], "FLASHINFER_WORKSPACE_BASE"); v != "" {
-		t.Errorf("workspace base = %q without opting in", v)
-	}
-	sc := spec.Containers[0].SecurityContext
-	if sc == nil || sc.Privileged == nil || !*sc.Privileged {
-		t.Fatalf("security context = %+v, want the fabric widening intact", sc)
-	}
-	if sc.RunAsUser != nil {
-		t.Errorf("worker runs as %d without opting in", *sc.RunAsUser)
+	csc := spec.Containers[0].SecurityContext
+	if csc == nil || csc.AllowPrivilegeEscalation == nil || *csc.AllowPrivilegeEscalation ||
+		csc.Capabilities == nil || len(csc.Capabilities.Drop) == 0 {
+		t.Errorf("container security context = %+v, want no escalation and every capability dropped", csc)
 	}
 }
 
