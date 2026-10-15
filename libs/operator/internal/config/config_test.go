@@ -189,10 +189,13 @@ func TestTheFabricIsDeclaredWholeOrNotAtAll(t *testing.T) {
 		{"fabric without devices", map[string]string{"HANGAR_FABRIC": "efa"}, false},
 		{"rdma without a resource", map[string]string{"HANGAR_FABRIC": "rdma", "HANGAR_FABRIC_DEVICES": "8"}, false},
 		{"unknown fabric", map[string]string{"HANGAR_FABRIC": "infiniband", "HANGAR_FABRIC_DEVICES": "8"}, false},
+		{"older efa spelling", map[string]string{"HANGAR_EFA_DEVICES": "16"}, true},
+		{"older efa spelling at zero", map[string]string{"HANGAR_EFA_DEVICES": "0"}, true},
+		{"both spellings", map[string]string{"HANGAR_EFA_DEVICES": "16", "HANGAR_FABRIC": "efa", "HANGAR_FABRIC_DEVICES": "16"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, k := range []string{"HANGAR_FABRIC", "HANGAR_FABRIC_DEVICES", "HANGAR_FABRIC_RESOURCE", "HANGAR_FABRIC_PRIVILEGED"} {
+			for _, k := range []string{"HANGAR_FABRIC", "HANGAR_FABRIC_DEVICES", "HANGAR_FABRIC_RESOURCE", "HANGAR_FABRIC_PRIVILEGED", "HANGAR_EFA_DEVICES"} {
 				t.Setenv(k, "")
 			}
 			for k, v := range base {
@@ -230,5 +233,28 @@ func TestFabricPrivilegeDefaultsOnForEFAOnly(t *testing.T) {
 	}
 	if c.FabricPrivileged {
 		t.Error("a non-EFA fabric runs privileged without asking")
+	}
+}
+
+// The chart still writes HANGAR_EFA_DEVICES. Dropping it silently would turn the fabric off on
+// every install that sets it and move KV over TCP with nothing saying so.
+func TestTheOlderEFASpellingStillDeclaresTheFabric(t *testing.T) {
+	t.Setenv("HANGAR_CLUSTER_ID", "c")
+	t.Setenv("HANGAR_HUB_URL", "wss://h/x")
+	t.Setenv("HANGAR_EFA_DEVICES", "16")
+	t.Setenv("HANGAR_FABRIC_RESOURCE", "vpc.amazonaws.com/efa")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Fabric != "efa" || c.FabricDevices != 16 || !c.FabricPrivileged {
+		t.Errorf("fabric = %q x%d privileged=%v, want efa x16 privileged", c.Fabric, c.FabricDevices, c.FabricPrivileged)
+	}
+	warned := false
+	for _, w := range c.Warnings() {
+		warned = warned || strings.Contains(w, "HANGAR_EFA_DEVICES")
+	}
+	if !warned {
+		t.Errorf("warnings = %v, want one naming HANGAR_EFA_DEVICES", c.Warnings())
 	}
 }

@@ -229,6 +229,9 @@ type Config struct {
 	// be starved and report its own latency as the engine's.
 	BenchmarkCPU    string
 	BenchmarkMemory string
+
+	// legacyEFA records that the fabric came from HANGAR_EFA_DEVICES, for a startup warning.
+	legacyEFA bool
 }
 
 // Load reads configuration from the environment, applying defaults and validating the result.
@@ -299,6 +302,16 @@ func Load() (*Config, error) {
 		DCGMTimeout:           l.duration("HANGAR_DCGM_TIMEOUT", 5*time.Second),
 	}
 
+	// HANGAR_EFA_DEVICES is the older spelling of an EFA fabric, still what the chart writes.
+	// Honoured only when HANGAR_FABRIC is unset, so a chart that has not moved to the new keys
+	// keeps its fabric instead of quietly falling back to TCP.
+	if efa := l.int("HANGAR_EFA_DEVICES", 0); efa != 0 {
+		if c.Fabric != "" || c.FabricDevices != 0 {
+			l.errs = append(l.errs, fmt.Errorf("HANGAR_EFA_DEVICES and HANGAR_FABRIC/HANGAR_FABRIC_DEVICES are both set; keep only HANGAR_FABRIC=efa with HANGAR_FABRIC_DEVICES"))
+		} else {
+			c.Fabric, c.FabricDevices, c.legacyEFA = "efa", efa, true
+		}
+	}
 	c.FabricPrivileged = l.bool("HANGAR_FABRIC_PRIVILEGED", c.Fabric == "efa")
 
 	lvl, err := parseLevel(env("HANGAR_LOG_LEVEL", "info"))
@@ -397,7 +410,8 @@ func (c *Config) validate() error {
 	return nil
 }
 
-// Warnings are settings that are valid but weaken the hub connection, for logging at startup.
+// Warnings are settings that are valid but weaken the hub connection or are spelled the old way,
+// for logging at startup.
 func (c *Config) Warnings() []string {
 	var out []string
 	if strings.HasPrefix(c.HubURL, "ws://") {
@@ -405,6 +419,9 @@ func (c *Config) Warnings() []string {
 	}
 	if c.TLSInsecureSkipVerify {
 		out = append(out, "HANGAR_HUB_INSECURE_SKIP_VERIFY is on; the hub certificate is not verified")
+	}
+	if c.legacyEFA {
+		out = append(out, "HANGAR_EFA_DEVICES is read as HANGAR_FABRIC=efa with HANGAR_FABRIC_DEVICES; set those instead")
 	}
 	return out
 }
