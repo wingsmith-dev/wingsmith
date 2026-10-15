@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"sync"
 	"time"
 )
@@ -81,7 +82,22 @@ const (
 	// ReasonAdopt is an agent that authenticated and then failed to speak
 	// HTTP/2.
 	ReasonAdopt = "adopt"
+	// ReasonLimit is a dial that authenticated while its cluster, or this
+	// replica, already held as many tunnels as the pool allows.
+	ReasonLimit = "limit"
+	// ReasonDuplicate is a dial to a replica the agent said it already covers.
+	// It is answered with this reason but is not a refusal and is not counted
+	// as one; see DuplicateObserver.
+	ReasonDuplicate = "duplicate"
 )
+
+// DuplicateObserver is optionally implemented by a DialObserver to count dials
+// that landed on a replica the agent already covers. They are kept apart from
+// refusals because they are the normal cost of finding every replica behind a
+// load-balanced address, not a dial that failed.
+type DuplicateObserver interface {
+	TunnelDialDuplicate()
+}
 
 // ErrListenerClosed is returned by Serve on a listener that has been shut down
 // or closed.
@@ -370,6 +386,27 @@ func (l *Listener) authenticate(ctx context.Context, conn net.Conn) (string, Hel
 		return "", Hello{}, err
 	}
 
+	// An agent that already holds its quota here is told so, with the replica
+	// count it dialled to learn, instead of being handed a tunnel it will close.
+	if l.cfg.GatewayID != "" && slices.Contains(hello.Covered, l.cfg.GatewayID) {
+		accept := l.accept(identity)
+		accept.OK, accept.Reason, accept.Error = false, ReasonDuplicate, ReasonDuplicate
+		_ = WriteAccept(conn, accept)
+		if counter, ok := l.cfg.Dials.(DuplicateObserver); ok {
+			counter.TunnelDialDuplicate()
+		}
+		return "", Hello{}, ErrDuplicate
+	}
+
+	if err := l.cfg.Pool.Admit(identity.ClusterID); err != nil {
+		reason := ReasonLimit
+		if errors.Is(err, ErrPoolClosed) {
+			reason = ReasonUnavailable
+		}
+		l.reject(conn, remote, reason, err)
+		return "", Hello{}, err
+	}
+
 	// The pool key is the uid, never the claim and never the name: everything past
 	// this point — the pool, the routing table lookup, every metric label — keys
 	// on the one identifier a rename cannot move. The accept carries both, so the
@@ -435,7 +472,7 @@ func (l *Listener) resolve(ctx context.Context, token string) (Identity, error) 
 // reject answers a refused dial, so an agent logs why rather than an EOF.
 // The caller closes the connection.
 func (l *Listener) reject(conn net.Conn, remote, reason string, err error) {
-	_ = WriteAccept(conn, Accept{Error: reason})
+	_ = WriteAccept(conn, Accept{Reason: reason, Error: reason})
 	l.refuse(remote, reason, err)
 }
 

@@ -56,6 +56,18 @@ var ErrHandshake = errors.New("tunnel: unreadable handshake")
 // during a control-plane outage or keep a revoked token working through one.
 var ErrRejected = errors.New("tunnel: enrolment token rejected")
 
+// ErrRefused means the gateway turned the dial away for a reason that is not
+// about the credential: the plane could not be reached to check it, the
+// gateway is at its tunnel limit, or the dial did not complete. Unlike
+// ErrRejected it is worth retrying with a backoff.
+var ErrRefused = errors.New("tunnel: dial refused")
+
+// ErrDuplicate means the dial reached a gateway replica the agent said it
+// already holds its quota of tunnels to. It is ordinary: the address is load
+// balanced and the agent cannot choose the replica. The Accept that comes with
+// it still names the replica and the replica count.
+var ErrDuplicate = errors.New("tunnel: replica already covered")
+
 // Hello is what an agent presents when it dials in.
 type Hello struct {
 	// Token is the cluster's enrolment token, the same value the operator
@@ -68,12 +80,21 @@ type Hello struct {
 	ClusterID string `json:"cluster_id,omitempty"`
 	// Agent names the pod, for logs. Never a metric label.
 	Agent string `json:"agent,omitempty"`
+	// Covered lists the gateway replicas, by GatewayID, this agent already holds
+	// its quota of tunnels to. A replica that finds itself here answers
+	// ReasonDuplicate rather than accepting a tunnel the agent would close at
+	// once, which the gateway would otherwise count as a failed dial.
+	Covered []string `json:"covered,omitempty"`
 }
 
 // Accept is the gateway's answer. An agent that reads OK false must not
-// retry immediately: nothing about its credential will have changed.
+// retry immediately: back off, and for ReasonUnauthorized expect nothing to
+// change until its credential does.
 type Accept struct {
-	OK        bool   `json:"ok"`
+	OK bool `json:"ok"`
+	// Reason is why a dial was refused, one of the Reason constants. Empty when
+	// OK.
+	Reason    string `json:"reason,omitempty"`
 	ClusterID string `json:"cluster_id,omitempty"`
 	// ClusterName is the same cluster under the name its own configuration uses,
 	// sent so that an agent can recognise the answer as being about itself.
@@ -131,9 +152,27 @@ func Handshake(ctx context.Context, conn net.Conn, hello Hello) (Accept, error) 
 		return Accept{}, err
 	}
 	if !accept.OK {
-		return accept, fmt.Errorf("%w: %s", ErrRejected, accept.Error)
+		return accept, refusal(accept)
 	}
 	return accept, nil
+}
+
+// refusal maps a refused Accept to the sentinel the agent acts on. Only a
+// refused credential is ErrRejected; a plane the gateway could not reach is not
+// the agent's fault and must not read as one.
+func refusal(accept Accept) error {
+	reason := accept.Reason
+	if reason == "" {
+		reason = accept.Error
+	}
+	switch reason {
+	case ReasonUnauthorized:
+		return fmt.Errorf("%w: %s", ErrRejected, reason)
+	case ReasonDuplicate:
+		return fmt.Errorf("%w: %s", ErrDuplicate, accept.GatewayID)
+	default:
+		return fmt.Errorf("%w: %s", ErrRefused, reason)
+	}
 }
 
 // ReadHello reads an agent's handshake off a raw connection.
