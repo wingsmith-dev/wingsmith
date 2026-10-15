@@ -1,8 +1,8 @@
 import datetime as dt
 
-from sqlalchemy import Integer
 from sqlalchemy import DateTime
 from sqlalchemy import Identity
+from sqlalchemy import BigInteger
 from sqlalchemy import func
 from sqlalchemy.orm import Mapped
 from sqlalchemy.orm import mapped_column
@@ -21,7 +21,8 @@ class BaseMixin(Base):
     updated_at: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=func.now(), nullable=True, sort_order=-2
     )
-    seq: Mapped[int] = mapped_column(Integer, Identity(start=1000, cycle=True), sort_order=-1)
+    seq: Mapped[int] = mapped_column(BigInteger, Identity(start=1000), sort_order=-1)
+    """Insertion order, and the cursor every list paginates on. 64-bit and never wraps."""
 
 
 class BaseView(Base):
