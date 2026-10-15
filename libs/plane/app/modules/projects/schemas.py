@@ -30,7 +30,7 @@ class ProjectTenantSchema(Struct):
 
 
 class ProjectSchema(Struct):
-    """A project: the tenancy unit `X-Hangar-Project` names.
+    """A project: the unit quota and priority hang off, beneath a tenant.
 
     `enabled` is declared on both halves of the hierarchy and they are not folded
     together: a project inside a disabled tenant is still a project someone
@@ -61,8 +61,8 @@ class ProjectCreateRequest(Struct):
 class ProjectUpdateRequest(Struct):
     """A partial update. An absent field is untouched; an explicit null clears.
 
-    `tenant` and `slug` are absent by design. A project's slug is what
-    `X-Hangar-Project` and every quota row point at, and moving a project between
+    `tenant` and `slug` are absent by design. A project's slug is what every
+    quota row points at, and moving a project between
     tenants would move its billing without moving its allocations.
     """
 

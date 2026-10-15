@@ -918,7 +918,7 @@ type ProjectTenant struct {
 	Enabled bool   `json:"enabled"`
 }
 
-// Project is the tenancy unit `X-Hangar-Project` names.
+// Project is the unit quota and priority hang off. It is not a request scope.
 // Tenant is the billing and isolation root a project hangs off. ProjectCount is
 // on the read shape because the only destructive question anyone asks of a
 // tenant is what deleting it would take with it.

@@ -28,9 +28,6 @@ export const BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000"
 export const API_PREFIX = "/v1"
 
-/** Scopes every request to one project, per `libs/packages/contract/API.md` §2. */
-const PROJECT = import.meta.env.VITE_API_PROJECT as string | undefined
-
 interface WireError {
   code: string
   message: string
@@ -139,7 +136,6 @@ async function doRequest<T>(
       headers: {
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(PROJECT ? { "X-Hangar-Project": PROJECT } : {}),
         ...(options.ifMatch ? { "If-Match": options.ifMatch } : {}),
         ...(options.idempotencyKey
           ? { "Idempotency-Key": options.idempotencyKey }

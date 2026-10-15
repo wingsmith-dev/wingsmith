@@ -94,7 +94,6 @@ def create_app() -> Litestar:
         allow_headers=[
             "Authorization",
             "Content-Type",
-            "X-Hangar-Project",
             "If-Match",
             "Idempotency-Key",
         ],

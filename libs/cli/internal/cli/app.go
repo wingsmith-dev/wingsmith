@@ -159,7 +159,7 @@ Nothing is running yet? Add --fake for a complete offline control plane.`,
 	g := &app.flags
 	f.StringVarP(&g.output, "output", "o", "", "output format: auto|human|wide|json|jsonl|yaml|tsv|name|template=…|jsonpath=…")
 	f.StringVar(&g.context, "context", "", "named context from the config file")
-	f.StringVar(&g.project, "project", "", "project to scope objects to")
+	f.StringVar(&g.project, "project", "", "project recorded in output metadata (not sent to the plane, which does not scope by it)")
 	f.StringVar(&g.server, "server", "", "control plane base URL")
 	f.StringVar(&g.token, "token", "", "API token (prefer HANGAR_TOKEN)")
 	f.StringVar(&g.configPath, "config", "", "path to the config file")

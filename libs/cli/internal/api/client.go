@@ -671,9 +671,9 @@ func (c *Client) send(ctx context.Context, method, path string, q url.Values, bo
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
-	if c.Scope != "" {
-		req.Header.Set("X-Hangar-Project", c.Scope)
-	}
+	// The configured project is not sent: the plane does not scope requests by
+	// it, and a header that reads as a boundary while enforcing none is worse
+	// than no header (libs/packages/contract/API.md §2).
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

@@ -74,7 +74,7 @@ export interface ProjectTenant {
   enabled: boolean
 }
 
-/** `ProjectSchema` — the tenancy unit `X-Hangar-Project` names. */
+/** `ProjectSchema` — the unit quota and priority hang off, beneath a tenant. */
 export interface Project {
   id: string
   tenant: ProjectTenant

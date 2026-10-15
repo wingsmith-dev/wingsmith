@@ -67,9 +67,9 @@ func TestALiveClientIsNotSimulated(t *testing.T) {
 	}
 }
 
-// TestEveryRequestCarriesTheCredentialAndScope. The project header is what scopes a listing; a
-// request that dropped it would quietly answer from the wrong tenancy.
-func TestEveryRequestCarriesTheCredentialAndScope(t *testing.T) {
+// TestEveryRequestCarriesTheCredentialButNoProjectHeader. The plane does not scope requests by
+// project, so sending X-Hangar-Project would read as a boundary that nothing enforces.
+func TestEveryRequestCarriesTheCredentialButNoProjectHeader(t *testing.T) {
 	var got *http.Request
 	c, _ := serveJSON(t, func(w http.ResponseWriter, r *http.Request) {
 		got = r.Clone(r.Context())
@@ -81,8 +81,8 @@ func TestEveryRequestCarriesTheCredentialAndScope(t *testing.T) {
 	if h := got.Header.Get("Authorization"); h != "Bearer hgr_pat_secret" {
 		t.Errorf("Authorization = %q", h)
 	}
-	if h := got.Header.Get("X-Hangar-Project"); h != "prj_1" {
-		t.Errorf("X-Hangar-Project = %q, want the configured project", h)
+	if _, present := got.Header["X-Hangar-Project"]; present {
+		t.Error("X-Hangar-Project was sent although the plane does not enforce it")
 	}
 	if h := got.Header.Get("Accept"); h != "application/json" {
 		t.Errorf("Accept = %q", h)

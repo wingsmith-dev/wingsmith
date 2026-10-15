@@ -45,8 +45,8 @@ anywhere. `/health` and the OpenAPI routes are exempt.
 ## 2. Identity and scope
 
 - `Authorization: Bearer <token>` — required. Two kinds of token, one header.
-- `X-Hangar-Project: prj_...` — scopes the request to a project. Not yet enforced server-side;
-  reserved.
+- `X-Hangar-Project` is not part of the API. The plane does not scope requests by project, CORS
+  does not allow the header, and neither `hgr` nor the console sends it.
 
 Two principal kinds share the header:
 

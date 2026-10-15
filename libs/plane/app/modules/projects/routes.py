@@ -1,4 +1,7 @@
-"""Projects: the tenancy unit `X-Hangar-Project` names.
+"""Projects: the unit quota and priority hang off, beneath a tenant.
+
+Not a request scope: nothing reads a project header, and no request is
+filtered by project.
 
 A project carries its tenant as an embedded field rather than a link, so no reader
 has to join for it; `/v1/tenants` is where one is made. A path segment takes the

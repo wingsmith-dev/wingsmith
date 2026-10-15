@@ -90,7 +90,7 @@ export function ProjectForm({
       open={open}
       onOpenChange={onOpenChange}
       title={editing ? "Edit project" : "New project"}
-      description="The tenancy unit quota attaches to and X-Hangar-Project names."
+      description="The unit quota and priority attach to, beneath a tenant."
       error={error}
       pending={pending}
       disabled={!name || (!editing && (!tenant || !slug))}
