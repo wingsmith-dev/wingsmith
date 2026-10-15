@@ -158,7 +158,7 @@ func (k *KubeDiscoverer) controllers(ctx context.Context) (map[workloadKey]contr
 	out := map[workloadKey]controller{}
 
 	var deployments appsv1.DeploymentList
-	if err := k.Client.List(ctx, &deployments); err != nil {
+	if err := listAll(ctx, k.Client, &deployments); err != nil {
 		return nil, fmt.Errorf("list deployments: %w", err)
 	}
 	for i := range deployments.Items {
@@ -183,7 +183,7 @@ func (k *KubeDiscoverer) controllers(ctx context.Context) (map[workloadKey]contr
 	}
 
 	var sets appsv1.StatefulSetList
-	if err := k.Client.List(ctx, &sets); err != nil {
+	if err := listAll(ctx, k.Client, &sets); err != nil {
 		return nil, fmt.Errorf("list statefulsets: %w", err)
 	}
 	for i := range sets.Items {
@@ -330,8 +330,8 @@ func keys(in map[string]bool) []string {
 // of them describe the model, so the container asking for GPUs is the one that answers.
 //
 // Nothing here is interpreted. `--tensor-parallel-size 2` leaves as two strings in a list, and the
-// plane is what decides that means tensor parallelism, because an operator is the only thing that
-// knows Kubernetes but it is not the thing that has to know vLLM.
+// plane is what decides that means tensor parallelism. But the command line is redacted on the way
+// out: see commandShape and redactedArgs.
 func servingSpec(t *corev1.PodTemplateSpec) *WorkloadSpec {
 	c := servingContainer(t)
 	if c == nil {
@@ -339,8 +339,8 @@ func servingSpec(t *corev1.PodTemplateSpec) *WorkloadSpec {
 	}
 	out := &WorkloadSpec{
 		Image:        c.Image,
-		Command:      append([]string{}, c.Command...),
-		Args:         append([]string{}, c.Args...),
+		Command:      commandShape(c.Command),
+		Args:         redactedArgs(c.Args),
 		EnvNames:     envNames(c),
 		Requests:     quantities(c.Resources.Requests),
 		Limits:       quantities(c.Resources.Limits),
@@ -361,6 +361,70 @@ func servingContainer(t *corev1.PodTemplateSpec) *corev1.Container {
 		}
 	}
 	return nil
+}
+
+// servingFlags are the engine flags whose values discovery reports. They are what the plane reads
+// to propose a serving block for adoption, and none of them carries a credential. Every other
+// flag leaves as its name alone: an argument list is where a workload in any namespace may have
+// put a token or a password, and the control plane has no use for one.
+var servingFlags = map[string]bool{
+	"model": true, "served-model-name": true, "revision": true, "download-dir": true,
+	"max-model-len": true, "max-num-batched-tokens": true, "gpu-memory-utilization": true,
+	"tensor-parallel-size": true, "pipeline-parallel-size": true, "expert-parallel-size": true,
+	"data-parallel-size": true, "quantization": true, "dtype": true, "kv-cache-dtype": true,
+	"output-modalities": true, "stage-configs-path": true, "disaggregation-mode": true,
+}
+
+// redactedArgs keeps every flag name, the values of servingFlags, and nothing else: positional
+// arguments and other flags' values are dropped.
+func redactedArgs(args []string) []string {
+	out := []string{}
+	for i := 0; i < len(args); i++ {
+		token := args[i]
+		if !strings.HasPrefix(token, "--") {
+			continue
+		}
+		name, value, inline := strings.Cut(token, "=")
+		flag := strings.TrimPrefix(name, "--")
+		if !servingFlags[flag] {
+			out = append(out, name)
+			if !inline && i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
+				i++
+			}
+			continue
+		}
+		if inline {
+			out = append(out, name, value)
+			continue
+		}
+		out = append(out, name)
+		if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
+			out = append(out, args[i+1])
+			i++
+		}
+	}
+	return out
+}
+
+// commandShape keeps the program's name and the module it runs, `python3 -m dynamo.vllm` and no
+// more. A command can be a whole shell line with secrets in it; the plane needs only to tell which
+// engine entrypoint this is.
+func commandShape(command []string) []string {
+	if len(command) == 0 {
+		return []string{}
+	}
+	program := command[0]
+	if i := strings.LastIndex(program, "/"); i >= 0 {
+		program = program[i+1:]
+	}
+	out := []string{program}
+	for i := 1; i+1 < len(command); i++ {
+		if command[i] == "-m" {
+			out = append(out, "-m", command[i+1])
+			break
+		}
+	}
+	return out
 }
 
 // envNames lists what the container expects to find in its environment, names only.

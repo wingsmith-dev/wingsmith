@@ -10,6 +10,8 @@ import (
 	"unicode"
 
 	corev1 "k8s.io/api/core/v1"
+	apimeta "k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/hangar-dev/hangar/libs/operator/internal/devices"
@@ -90,11 +92,11 @@ var _ Discoverer = (*KubeDiscoverer)(nil)
 // type, so placement next to the call site keeps the grant traceable to its use.
 func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 	var nodes corev1.NodeList
-	if err := k.Client.List(ctx, &nodes); err != nil {
+	if err := listAll(ctx, k.Client, &nodes); err != nil {
 		return Snapshot{}, fmt.Errorf("list nodes: %w", err)
 	}
 	var pods corev1.PodList
-	if err := k.Client.List(ctx, &pods); err != nil {
+	if err := listAll(ctx, k.Client, &pods); err != nil {
 		return Snapshot{}, fmt.Errorf("list pods: %w", err)
 	}
 	workloads, err := k.discoverWorkloads(ctx, &pods)
@@ -139,6 +141,35 @@ func (k *KubeDiscoverer) Discover(ctx context.Context) (Snapshot, error) {
 		out.Nodes = append(out.Nodes, n)
 	}
 	return out, nil
+}
+
+// listPageSize is how many objects one LIST returns. Paging keeps each response, and the API
+// server's work per request, bounded on a large cluster.
+const listPageSize = 500
+
+// listAll fills list from every page of a LIST.
+func listAll(ctx context.Context, c client.Reader, list client.ObjectList, opts ...client.ListOption) error {
+	var items []runtime.Object
+	token := ""
+	for {
+		page, ok := list.DeepCopyObject().(client.ObjectList)
+		if !ok {
+			return fmt.Errorf("cannot copy %T", list)
+		}
+		pageOpts := append(append([]client.ListOption{}, opts...), client.Limit(listPageSize), client.Continue(token))
+		if err := c.List(ctx, page, pageOpts...); err != nil {
+			return err
+		}
+		got, err := apimeta.ExtractList(page)
+		if err != nil {
+			return err
+		}
+		items = append(items, got...)
+		if token = page.GetContinue(); token == "" {
+			break
+		}
+	}
+	return apimeta.SetList(list, items)
 }
 
 // allocatedByNode counts accelerators committed to work, from the cluster's own scheduling
