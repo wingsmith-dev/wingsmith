@@ -45,7 +45,7 @@ export function TenantForm({
   const [ingress, setIngress] = useState<TenantIngress>(
     tenant?.ingress ?? "internal"
   )
-  const [auth, setAuth] = useState<TenantAuth>(tenant?.auth ?? "none")
+  const [auth, setAuth] = useState<TenantAuth>(tenant?.auth ?? "api_key")
   const [host, setHost] = useState(tenant?.host ?? "")
 
   const pending = create.isPending || update.isPending
@@ -127,7 +127,7 @@ export function TenantForm({
           value={auth}
           onChange={(v) => setAuth(v as TenantAuth)}
           options={AUTH_OPTIONS}
-          hint="`public` with `none` is unauthenticated inference for anyone who finds the host."
+          hint="A tenant with a host or public ingress needs api_key; the plane refuses none there unless its operator opted in."
         />
       </FormGrid>
 
