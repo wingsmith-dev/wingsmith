@@ -105,6 +105,12 @@ def test_every_image_setting_is_a_plane_setting():
             assert harness.image_setting in names, harness.name
 
 
+def test_harness_images_have_no_default():
+    # No published image backs either harness yet, so an unset plane refuses rather than pulls.
+    assert Settings().BENCHMARK_CONFORMANCE_IMAGE == ""
+    assert Settings().BENCHMARK_EVALSCOPE_IMAGE == ""
+
+
 def test_harness_image_settings_load_from_the_environment():
     loaded = load_settings(
         {
