@@ -381,3 +381,41 @@ def test_lock_matches_the_pinned_dependencies():
 def test_changelog_has_an_entry_for_this_version():
     meta = yaml.safe_load((CHART / "Chart.yaml").read_text())
     assert f"## {meta['version']}\n" in (CHART / "CHANGELOG.md").read_text()
+
+
+# ── hub and tunnel TLS ───────────────────────────────────────────────────────
+
+PEM = "-----BEGIN CERTIFICATE-----\\nMIIB\\n-----END CERTIFICATE-----\\n"
+
+
+def test_plaintext_hub_is_refused_by_default(chart):
+    err = refusal(chart, **{"cluster.hubUrl": "ws://plane.local/v1/hub/sync"})
+    assert "hub.allowInsecure" in err
+    assert "wss://" in refusal(chart, **{"cluster.hubUrl": "https://plane.example.com"})
+
+
+def test_allow_insecure_accepts_ws_and_tells_the_operator(chart):
+    docs = render(chart, **{"cluster.hubUrl": "ws://plane.local/v1/hub/sync", "hub.allowInsecure": True})
+    data = get(docs, "ConfigMap", "hangar-operator")["data"]
+    assert data["HANGAR_HUB_ALLOW_INSECURE"] == "true"
+    assert "HANGAR_HUB_ALLOW_INSECURE" not in get(render(chart), "ConfigMap", "hangar-operator")["data"]
+
+
+def test_hub_ca_bundle_is_mounted_into_the_operator(chart):
+    docs = render(chart, **{"hub.caBundle": PEM})
+    assert get(docs, "ConfigMap", "hangar-operator")["data"]["HANGAR_HUB_CA_FILE"] == "/etc/hangar/hub-ca/ca.crt"
+    assert get(docs, "ConfigMap", "hangar-hub-ca")["data"]["ca.crt"].startswith("-----BEGIN")
+    op = get(docs, "Deployment", "hangar-operator")
+    assert container(op, "operator")["volumeMounts"][0]["mountPath"] == "/etc/hangar/hub-ca"
+    assert op["spec"]["template"]["spec"]["volumes"][0]["configMap"]["name"] == "hangar-hub-ca"
+
+
+def test_tunnel_server_name_and_ca_reach_the_agent(chart):
+    docs = render(chart, **{**AGENT_ON, "agent.gateway.serverName": "gw.internal",
+                            "agent.gateway.caBundle": PEM})
+    data = get(docs, "ConfigMap", "hangar-agent")["data"]
+    assert data["HANGAR_TUNNEL_SERVER_NAME"] == "gw.internal"
+    assert data["HANGAR_TUNNEL_CA_FILE"] == "/etc/hangar/tunnel-ca/ca.crt"
+    assert get(docs, "ConfigMap", "hangar-tunnel-ca")
+    agent = get(docs, "Deployment", "hangar-agent")
+    assert container(agent, "agent")["volumeMounts"][0]["mountPath"] == "/etc/hangar/tunnel-ca"

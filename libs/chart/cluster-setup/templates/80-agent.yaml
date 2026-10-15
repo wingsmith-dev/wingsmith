@@ -89,6 +89,12 @@ data:
   # HANGAR_TUNNEL_CONNS_PER_GATEWAY tunnels to each of them, left at the agent's
   # own default.
   HANGAR_TUNNEL_GATEWAY: {{ include "cluster-setup.gatewayAddress" . | quote }}
+  {{- with .Values.agent.gateway.serverName }}
+  HANGAR_TUNNEL_SERVER_NAME: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.agent.gateway.caBundle }}
+  HANGAR_TUNNEL_CA_FILE: /etc/hangar/tunnel-ca/ca.crt
+  {{- end }}
   # Empty means discover the frontend by label. Same variable name and same
   # precedence as the operator's, so a cluster that had to override it there
   # overrides it the same way here.
@@ -100,6 +106,18 @@ data:
   # default for the same reason.
   HANGAR_RESPONSE_HEADER_TIMEOUT: {{ . | quote }}
   {{- end }}
+{{- with .Values.agent.gateway.caBundle }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hangar-tunnel-ca
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" $ | nindent 4 }}
+data:
+  ca.crt: {{ . | quote }}
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -130,7 +148,7 @@ spec:
         # Hashed from the values rather than from the rendered ConfigMap the way
         # the operator's is, because that object lives in this same file and
         # including it here would render this annotation into its own input.
-        checksum/config: {{ printf "%s|%s|%s|%s|%s" .Values.cluster.id (include "cluster-setup.gatewayAddress" .) .Values.agent.frontendEndpoint .Values.cluster.logLevel .Values.agent.responseHeaderTimeout | sha256sum }}
+        checksum/config: {{ printf "%s|%s|%s|%s|%s|%s|%s|%s" .Values.cluster.id (include "cluster-setup.gatewayAddress" .) .Values.agent.frontendEndpoint .Values.cluster.logLevel .Values.agent.responseHeaderTimeout .Values.agent.gateway.serverName .Values.agent.gateway.caBundle (include "cluster-setup.workloadNamespace" .) | sha256sum }}
         # Same reasoning as the operator's: the token is a `secretKeyRef` resolved
         # once at pod start, so a rotation without this leaves live tunnels
         # authenticated by a credential the plane has already invalidated.
@@ -204,6 +222,12 @@ spec:
               port: probe
             initialDelaySeconds: 3
             periodSeconds: 10
+          {{- if .Values.agent.gateway.caBundle }}
+          volumeMounts:
+            - name: tunnel-ca
+              mountPath: /etc/hangar/tunnel-ca
+              readOnly: true
+          {{- end }}
           resources:
             {{- toYaml .Values.agent.resources | nindent 12 }}
           securityContext:
@@ -216,5 +240,11 @@ spec:
       # streams already open, and one of those is somebody's half-written
       # completion. A grace period below that turns the drain into a kill. The
       # operator's 30s is right for a reconciler and would sever generations here.
+      {{- if .Values.agent.gateway.caBundle }}
+      volumes:
+        - name: tunnel-ca
+          configMap:
+            name: hangar-tunnel-ca
+      {{- end }}
       terminationGracePeriodSeconds: 120
 {{- end }}

@@ -61,6 +61,12 @@ spec:
               port: health
             initialDelaySeconds: 3
             periodSeconds: 10
+          {{- if .Values.hub.caBundle }}
+          volumeMounts:
+            - name: hub-ca
+              mountPath: /etc/hangar/hub-ca
+              readOnly: true
+          {{- end }}
           resources:
             {{- toYaml .Values.operator.resources | nindent 12 }}
           securityContext:
@@ -68,4 +74,10 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+      {{- if .Values.hub.caBundle }}
+      volumes:
+        - name: hub-ca
+          configMap:
+            name: hangar-hub-ca
+      {{- end }}
       terminationGracePeriodSeconds: 30

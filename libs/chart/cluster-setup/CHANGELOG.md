@@ -22,5 +22,10 @@ upgrade sources; install fresh.
 - The operator's RBAC follows `cluster.readOnly` and
   `cluster.allowedOperations`: a read-only install gets no write access outside
   the release namespace.
+- `cluster.hubUrl` must be `wss://`. A `ws://` URL is refused unless
+  `hub.allowInsecure: true`, which also tells the operator to accept it; use it
+  for a local development plane only. `hub.caBundle`,
+  `agent.gateway.serverName` and `agent.gateway.caBundle` are new, for a plane
+  whose certificates come from a private CA.
 - `frontend.enabled` and `operator.frontend.enabled` are removed in favour of
   `frontend.mode`; the chart refuses either with migration instructions.

@@ -170,8 +170,12 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- fail "enrolmentToken.value is required: mint the cluster's token on the register screen and install from the values.yaml it renders. The operator Deployment reads the token from a Secret this chart creates, so without it the pod starts into CreateContainerConfigError. Set enrolmentToken.existing=true only if you created that Secret yourself." -}}
 {{- end -}}
 {{- end -}}
-{{- if not (or (hasPrefix "ws://" .Values.cluster.hubUrl) (hasPrefix "wss://" .Values.cluster.hubUrl)) -}}
-{{- fail "cluster.hubUrl must start with ws:// or wss://" -}}
+{{- if not (hasPrefix "wss://" .Values.cluster.hubUrl) -}}
+{{- if not (hasPrefix "ws://" .Values.cluster.hubUrl) -}}
+{{- fail "cluster.hubUrl must start with wss:// — it is the plane's hub endpoint, e.g. wss://plane.example.com/v1/hub/sync" -}}
+{{- else if not .Values.hub.allowInsecure -}}
+{{- fail "cluster.hubUrl is ws://, which sends this cluster's enrolment token in the clear. Use the hub's wss:// address, with hub.caBundle if its certificate is from a private CA. hub.allowInsecure=true accepts ws:// for a local development plane only." -}}
+{{- end -}}
 {{- end -}}
 {{- if .Values.imagePullSecret.create -}}
 {{- if not .Values.imagePullSecret.name -}}

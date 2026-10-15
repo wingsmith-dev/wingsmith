@@ -8,6 +8,12 @@ metadata:
 data:
   HANGAR_CLUSTER_ID: {{ .Values.cluster.id | quote }}
   HANGAR_HUB_URL: {{ .Values.cluster.hubUrl | quote }}
+  {{- if .Values.hub.allowInsecure }}
+  HANGAR_HUB_ALLOW_INSECURE: "true"
+  {{- end }}
+  {{- if .Values.hub.caBundle }}
+  HANGAR_HUB_CA_FILE: /etc/hangar/hub-ca/ca.crt
+  {{- end }}
   HANGAR_LOG_LEVEL: {{ .Values.cluster.logLevel | quote }}
   HANGAR_LOG_FORMAT: {{ .Values.cluster.logFormat | quote }}
   HANGAR_NAMESPACE: {{ .Release.Namespace | quote }}
@@ -76,3 +82,15 @@ data:
   HANGAR_DCGM_SELECTOR: {{ . | quote }}
   {{- end }}
   HANGAR_DCGM_TIMEOUT: {{ .Values.dcgm.timeout | quote }}
+{{- with .Values.hub.caBundle }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hangar-hub-ca
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" $ | nindent 4 }}
+data:
+  ca.crt: {{ . | quote }}
+{{- end }}

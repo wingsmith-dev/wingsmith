@@ -10,7 +10,9 @@
 cluster:
   # Must match the name of a cluster already declared in the plane.
   id: ""
-  # The plane's hub endpoint the operator dials, ws:// or wss://.
+  # The plane's hub endpoint the operator dials, as wss://. The operator sends
+  # the enrolment token on this connection, so plain ws:// is refused unless
+  # `hub.allowInsecure` is set.
   hubUrl: ""
   # e.g. ap-south-1. Stamped on every series as the `region` external label, so a
   # cluster that omits it is the one blank cell in a fleet-wide breakdown.
@@ -28,6 +30,15 @@ cluster:
   allowedOperations: ""
   logLevel: info
   logFormat: json
+
+# How the operator verifies the hub it dials.
+hub:
+  # Accept a ws:// `cluster.hubUrl`, sending the enrolment token in the clear.
+  # For a local development plane only; never on a network you do not own.
+  allowInsecure: false
+  # PEM bundle of the CA that signed the hub's certificate, for a plane whose
+  # certificate is not from a public CA. Empty uses the image's system roots.
+  caBundle: ""
 
 # This cluster's enrolment token: its identity to the plane, minted for this
 # cluster alone, on the register screen or with
@@ -237,6 +248,12 @@ agent:
     # from the handshake, so scaling it never edits this file.
     # e.g. hangar.example.com:443
     address: ""
+    # The name to verify the gateway's certificate against, when it differs
+    # from the host in `address`. Empty uses that host.
+    serverName: ""
+    # PEM bundle of the CA that signed the gateway's certificate, for a plane
+    # whose certificate is not from a public CA. Empty uses the system roots.
+    caBundle: ""
   # `host:port` or a URL. Empty discovers the Service carrying Dynamo's frontend
   # labels; set it only if this cluster fronts its models with something else.
   frontendEndpoint: ""
