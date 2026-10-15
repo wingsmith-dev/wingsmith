@@ -300,7 +300,7 @@ content-logging flag set.
 VERBOSE_LEVELS = frozenset({"debug", "trace", "notset"})
 """Log levels at which some engine on the serving path writes request content.
 
-Checked against the sources on 2026-10-06. Dynamo's frontend logs every chat,
+Checked against the engine sources. Dynamo's frontend logs every chat,
 completions and responses request whole at `trace` (`lib/llm/src/http/service/openai.rs`),
 and `DYN_LOG=debug` is mapped onto vLLM's and SGLang's Python loggers by
 `dynamo.runtime.logging`. vLLM at DEBUG logs streamed completion text in its tool
