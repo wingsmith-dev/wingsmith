@@ -375,8 +375,14 @@ var servingFlags = map[string]bool{
 	"output-modalities": true, "stage-configs-path": true, "disaggregation-mode": true,
 }
 
-// redactedArgs keeps every flag name, the values of servingFlags, and nothing else: positional
-// arguments and other flags' values are dropped.
+// RedactedValue stands in for a flag value discovery does not report. A placeholder rather than
+// nothing, so a reader of the argument list sees that the flag took a value and does not mistake
+// it for a boolean switch.
+const RedactedValue = "<redacted>"
+
+// redactedArgs keeps every flag name, the values of servingFlags, and RedactedValue in place of
+// every other flag's value. Positional arguments are dropped. A value is whatever follows a flag
+// and does not start with "--", the same pairing the plane uses to read the list back.
 func redactedArgs(args []string) []string {
 	out := []string{}
 	for i := 0; i < len(args); i++ {
@@ -388,7 +394,10 @@ func redactedArgs(args []string) []string {
 		flag := strings.TrimPrefix(name, "--")
 		if !servingFlags[flag] {
 			out = append(out, name)
-			if !inline && i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
+			if inline {
+				out = append(out, RedactedValue)
+			} else if i+1 < len(args) && !strings.HasPrefix(args[i+1], "--") {
+				out = append(out, RedactedValue)
 				i++
 			}
 			continue

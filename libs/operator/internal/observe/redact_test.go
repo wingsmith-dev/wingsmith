@@ -12,7 +12,8 @@ import (
 )
 
 // A workload's argument list is where a token can sit in plain text. Discovery keeps the serving
-// flags the plane reads and the names of the rest, and drops every other value.
+// flags the plane reads and the names of the rest, and replaces every other value with a
+// placeholder, so a flag that took a value never reads as a bare switch.
 func TestDiscoveryRedactsArgumentValues(t *testing.T) {
 	got := redactedArgs([]string{
 		"--model", "Qwen/Qwen3-32B",
@@ -21,14 +22,16 @@ func TestDiscoveryRedactsArgumentValues(t *testing.T) {
 		"--api-key=sk-secret",
 		"--enforce-eager",
 		"positional-secret",
+		"--trust-remote-code",
 		"--tensor-parallel-size", "4",
 	})
 	want := []string{
 		"--model", "Qwen/Qwen3-32B",
 		"--max-model-len", "32768",
-		"--hf-token",
-		"--api-key",
-		"--enforce-eager",
+		"--hf-token", RedactedValue,
+		"--api-key", RedactedValue,
+		"--enforce-eager", RedactedValue,
+		"--trust-remote-code",
 		"--tensor-parallel-size", "4",
 	}
 	if !reflect.DeepEqual(got, want) {
