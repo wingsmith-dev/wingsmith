@@ -203,14 +203,14 @@ func plane(ctx context.Context, args []string) error {
 	addr := fs.String("listen", "127.0.0.1:9901", "listen address")
 	cluster := fs.String("cluster", "cluster-transit", "the cluster id every token resolves to")
 	token := fs.String("token", "transit-enrolment-token", "the enrolment token accepted")
-	operator := fs.String("operator-token", "transit-operator-token", "the bearer the gateway must present")
+	service := fs.String("service-token", "transit-gateway-service-token", "the bearer the gateway must present (its HANGAR_GATEWAY_SERVICE_TOKEN)")
 	model := fs.String("model", "transit-model", "the endpoint name served")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	server := fakeplane.New(fakeplane.Config{
-		OperatorToken: *operator,
-		Clusters:      map[string]fakeplane.Cluster{*token: {ID: *cluster, Name: strings.TrimPrefix(*cluster, "cluster-")}},
+		ServiceToken: *service,
+		Clusters:     map[string]fakeplane.Cluster{*token: {ID: *cluster, Name: strings.TrimPrefix(*cluster, "cluster-")}},
 		Table: fakeplane.Table{
 			Revision: "transit-1",
 			Endpoints: []fakeplane.Endpoint{{

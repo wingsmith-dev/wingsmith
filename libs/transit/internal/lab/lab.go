@@ -5,7 +5,8 @@
 // agent binary from libs/agent, the tunnel between them from
 // libs/packages/tunnel, and a reverse proxy at each end exactly as production
 // wires them. Only two things are fakes, and both are outside the path — the
-// control plane, which the gateway asks two questions and never asks again, and
+// control plane, which the gateway reads two tables from and asks to resolve an
+// enrolment token on each dial, and
 // the serving frontend, which is replaced by a schedule so that the measurement
 // is of the transport rather than of a model.
 //
@@ -70,7 +71,7 @@ type Options struct {
 const (
 	clusterID    = "cluster-transit"
 	clusterName  = "transit"
-	planeToken   = "transit-operator-token"
+	serviceToken = "transit-gateway-service-token"
 	tunnelToken  = "transit-enrolment-token"
 	modelName    = "transit-model"
 	deploymentID = "deployment-transit"
@@ -108,8 +109,8 @@ func RunSynthetic(ctx context.Context, opts Options) (*Report, error) {
 	defer func() { _ = frontendSrv.Close() }()
 
 	plane := fakeplane.New(fakeplane.Config{
-		OperatorToken: planeToken,
-		Clusters:      map[string]fakeplane.Cluster{tunnelToken: {ID: clusterID, Name: clusterName}},
+		ServiceToken: serviceToken,
+		Clusters:     map[string]fakeplane.Cluster{tunnelToken: {ID: clusterID, Name: clusterName}},
 		Table: fakeplane.Table{
 			Revision: "transit-1",
 			Endpoints: []fakeplane.Endpoint{{
@@ -157,7 +158,7 @@ func RunSynthetic(ctx context.Context, opts Options) (*Report, error) {
 		"-gateways", "1",
 		"-resync", "60s",
 	)
-	gateway.Env = append(os.Environ(), "HANGAR_OPERATOR_TOKEN="+planeToken)
+	gateway.Env = append(os.Environ(), "HANGAR_GATEWAY_SERVICE_TOKEN="+serviceToken)
 	pipe(gateway, opts.Verbose, "gateway")
 	if err := gateway.Start(); err != nil {
 		return nil, fmt.Errorf("start the gateway: %w", err)
