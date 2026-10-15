@@ -115,7 +115,7 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 
 	// Capacity is checked before rendering rather than left to the scheduler, because the
 	// scheduler's answer to an impossible request is silence.
-	placed, err := schedulable(ctx, r.Client, dep, render.NodeSelector(dep, r.Render))
+	placed, err := schedulable(ctx, r.uncached(), dep, render.NodeSelector(dep, r.Render))
 	if err != nil {
 		return ctrl.Result{}, err
 	}

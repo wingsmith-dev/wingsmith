@@ -2,6 +2,7 @@ package reconcile
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 
@@ -102,7 +103,7 @@ type candidate struct {
 	devices int64
 }
 
-// schedulable reports whether this cluster could actually run one replica, and how it would lay it
+// schedulable reports whether this cluster has room for one replica now, and how it would lay it
 // out.
 //
 // This is the precondition that fails silently otherwise. A graph deployment asking for
@@ -114,15 +115,19 @@ type candidate struct {
 // eight idle accelerators advertises none of them until something tells Kubernetes they exist, and
 // from the scheduler's side that is indistinguishable from having no accelerators at all.
 //
+// Room means what the scheduler would see: a node's allocatable accelerators less what its
+// running pods already request, on nodes whose taints the worker tolerates. The deployment's own
+// pods are not counted against it, because a new generation replaces them.
+//
 // The unit is the tensor group, not the replica. A replica of two tensor groups is two pods that
 // may sit on two machines and exchange activations over the fabric, so a cluster of small nodes
 // can serve it; a single tensor group of two devices on one-device nodes cannot be served at all,
-// however many machines there are. Those are different answers and this used to give the second
-// one to both, which is how a fleet that could have run a model was told to check its device
-// plugin.
+// however many machines there are.
+//
+// The reader has to see pods in every namespace, since any of them can hold an accelerator.
 func schedulable(
 	ctx context.Context,
-	c client.Client,
+	c client.Reader,
 	dep wire.DeploymentDesired,
 	selector map[string]string,
 ) (fit, error) {
@@ -132,18 +137,23 @@ func schedulable(
 	if err := c.List(ctx, &nodes); err != nil {
 		return fit{}, fmt.Errorf("list nodes: %w", err)
 	}
+	inUse, err := requestedDevices(ctx, c, dep.DeploymentID)
+	if err != nil {
+		return fit{}, err
+	}
+	tolerations := workerTolerations(dep)
 
 	candidates := make([]candidate, 0, len(nodes.Items))
-	var largest int64
+	var largest, advertised int64
 	for i := range nodes.Items {
 		node := &nodes.Items[i]
-		if !nodeUsable(node) || !matchesSelector(node.Labels, selector) {
+		if !nodeUsable(node) || !matchesSelector(node.Labels, selector) || !tolerated(node, tolerations) {
 			continue
 		}
-		available := node.Status.Allocatable.Name(acceleratorResource, "").Value()
-		if available > largest {
-			largest = available
-		}
+		allocatable := node.Status.Allocatable.Name(acceleratorResource, "").Value()
+		advertised = max(advertised, allocatable)
+		available := max(allocatable-inUse[node.Name], 0)
+		largest = max(largest, available)
 		if available < 1 {
 			continue
 		}
@@ -151,14 +161,14 @@ func schedulable(
 	}
 
 	// A tensor group is indivisible, so no arrangement of machines helps if none of them holds
-	// one. This is the answer to the case that used to be reported for everything.
+	// one.
 	if largest < int64(want.Tensor) {
 		return fit{
 			Code: "NoSchedulableCapacity",
 			Reason: fmt.Sprintf(
 				"a tensor group of %d accelerators of class %s must fit inside one node and the largest "+
-					"usable node advertises %d%s",
-				want.Tensor, dep.Placement.DeviceClass, largest, devicePluginHint(largest)),
+					"usable node has %d free%s",
+				want.Tensor, dep.Placement.DeviceClass, largest, devicePluginHint(advertised)),
 		}, nil
 	}
 
@@ -172,9 +182,101 @@ func schedulable(
 		Code: "NoSchedulableCapacity",
 		Reason: fmt.Sprintf(
 			"one replica needs %d accelerators of class %s laid out as %d tensor groups of %d, and no "+
-				"set of usable nodes holds them%s",
-			want.Devices, dep.Placement.DeviceClass, want.Groups, want.Tensor, devicePluginHint(largest)),
+				"set of usable nodes has them free%s",
+			want.Devices, dep.Placement.DeviceClass, want.Groups, want.Tensor, devicePluginHint(advertised)),
 	}, nil
+}
+
+// requestedDevices sums, per node, the accelerators requested by pods that hold them: bound to a
+// node and not finished. Pods of the deployment being placed are left out.
+func requestedDevices(ctx context.Context, c client.Reader, deploymentID string) (map[string]int64, error) {
+	var pods corev1.PodList
+	if err := c.List(ctx, &pods); err != nil {
+		return nil, fmt.Errorf("list pods: %w", err)
+	}
+	out := map[string]int64{}
+	for i := range pods.Items {
+		pod := &pods.Items[i]
+		if pod.Spec.NodeName == "" || pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+			continue
+		}
+		if deploymentID != "" && pod.Labels[deploymentIDLabel] == deploymentID {
+			continue
+		}
+		out[pod.Spec.NodeName] += podDevices(pod)
+	}
+	return out, nil
+}
+
+// podDevices is what the scheduler charges a pod for accelerators: the larger of its containers'
+// sum and its largest init container, each read from requests and falling back to limits, which
+// is where an extended resource is usually declared.
+func podDevices(pod *corev1.Pod) int64 {
+	asked := func(c corev1.Container) int64 {
+		if q, ok := c.Resources.Requests[acceleratorResource]; ok {
+			return q.Value()
+		}
+		if q, ok := c.Resources.Limits[acceleratorResource]; ok {
+			return q.Value()
+		}
+		return 0
+	}
+	var sum, initMax int64
+	for _, c := range pod.Spec.Containers {
+		sum += asked(c)
+	}
+	for _, c := range pod.Spec.InitContainers {
+		initMax = max(initMax, asked(c))
+	}
+	return max(sum, initMax)
+}
+
+// defaultWorkerTolerations is what the renderer puts on every engine worker. It has to match
+// render's podSpec: a node whose taint the worker does not tolerate is capacity it cannot use.
+var defaultWorkerTolerations = []corev1.Toleration{{
+	Key:      "nvidia.com/gpu",
+	Operator: corev1.TolerationOpEqual,
+	Value:    "true",
+	Effect:   corev1.TaintEffectNoSchedule,
+}}
+
+// workerTolerations is the worker's tolerations after the serving block's pod overlay, which
+// replaces the list when it names one (a strategic merge has no merge key for tolerations).
+func workerTolerations(dep wire.DeploymentDesired) []corev1.Toleration {
+	raw, ok := dep.Serving.Overlay.PodSpec["tolerations"]
+	if !ok {
+		return defaultWorkerTolerations
+	}
+	body, err := json.Marshal(raw)
+	if err != nil {
+		return defaultWorkerTolerations
+	}
+	var out []corev1.Toleration
+	if err := json.Unmarshal(body, &out); err != nil {
+		return defaultWorkerTolerations
+	}
+	return out
+}
+
+// tolerated reports whether every taint that keeps a pod off a node is tolerated.
+func tolerated(node *corev1.Node, tolerations []corev1.Toleration) bool {
+	for i := range node.Spec.Taints {
+		taint := &node.Spec.Taints[i]
+		if taint.Effect != corev1.TaintEffectNoSchedule && taint.Effect != corev1.TaintEffectNoExecute {
+			continue
+		}
+		ok := false
+		for j := range tolerations {
+			if tolerations[j].ToleratesTaint(taint) {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // fitWithinOneDomain answers the same question with the replica confined to one fabric.

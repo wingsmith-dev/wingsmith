@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 
@@ -248,4 +250,91 @@ func renderedDevices(t *testing.T, component map[string]any) string {
 		t.Fatalf("read the device limit: %v", err)
 	}
 	return devices
+}
+
+// heldBy is a running pod on a node holding n accelerators, optionally one of this deployment's.
+func heldBy(name, node string, n int64, deploymentID string) *corev1.Pod {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "elsewhere", Labels: map[string]string{}},
+		Spec: corev1.PodSpec{
+			NodeName: node,
+			Containers: []corev1.Container{{
+				Name: "main",
+				Resources: corev1.ResourceRequirements{
+					Limits: corev1.ResourceList{acceleratorResource: *resource.NewQuantity(n, resource.DecimalSI)},
+				},
+			}},
+		},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+	if deploymentID != "" {
+		pod.Labels[deploymentIDLabel] = deploymentID
+	}
+	return pod
+}
+
+func TestAcceleratorsHeldByOtherPodsAreNotCapacity(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	_, out, _ := runReconcile(t, dep, art, completedPrefetch(),
+		gpuNode("gpu-0", 8, true), heldBy("other", "gpu-0", 7, "dep_01j9x2otherotherotherother"))
+
+	condition := readyCondition(t, out)
+	if condition.Reason != "NoSchedulableCapacity" {
+		t.Fatalf("seven of eight cards are held and a replica needs two; reason %s: %s",
+			condition.Reason, condition.Message)
+	}
+	if !strings.Contains(condition.Message, "1 free") {
+		t.Errorf("the message should say what is free, got %q", condition.Message)
+	}
+}
+
+func TestAFinishedPodHoldsNothing(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	done := heldBy("done", "gpu-0", 8, "")
+	done.Status.Phase = corev1.PodSucceeded
+	_, out, _ := runReconcile(t, dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true), done)
+
+	if condition := readyCondition(t, out); condition.Status != metav1.ConditionTrue {
+		t.Fatalf("a completed pod's cards are free; got %s: %s", condition.Reason, condition.Message)
+	}
+}
+
+// A new generation replaces the deployment's own pods, so the cards they hold are its to reuse.
+func TestTheDeploymentsOwnPodsAreNotCountedAgainstIt(t *testing.T) {
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	_, out, _ := runReconcile(t, dep, art, completedPrefetch(),
+		gpuNode("gpu-0", 2, true), heldBy("mine", "gpu-0", 2, testDeploymentID))
+
+	if condition := readyCondition(t, out); condition.Status != metav1.ConditionTrue {
+		t.Fatalf("the deployment's own cards must count as available to it; got %s: %s",
+			condition.Reason, condition.Message)
+	}
+}
+
+func TestATaintTheWorkerDoesNotTolerateRemovesTheNode(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		taint corev1.Taint
+		fits  bool
+	}{
+		{"the GPU taint the worker tolerates", corev1.Taint{Key: "nvidia.com/gpu", Value: "true", Effect: corev1.TaintEffectNoSchedule}, true},
+		{"a taint nothing tolerates", corev1.Taint{Key: "dedicated", Value: "training", Effect: corev1.TaintEffectNoSchedule}, false},
+		{"a preference only", corev1.Taint{Key: "dedicated", Value: "training", Effect: corev1.TaintEffectPreferNoSchedule}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+			art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+			node := gpuNode("gpu-0", 8, true)
+			node.Spec.Taints = []corev1.Taint{tc.taint}
+			_, out, _ := runReconcile(t, dep, art, completedPrefetch(), node)
+
+			condition := readyCondition(t, out)
+			if got := condition.Status == metav1.ConditionTrue; got != tc.fits {
+				t.Fatalf("fits = %v, want %v (%s: %s)", got, tc.fits, condition.Reason, condition.Message)
+			}
+		})
+	}
 }
