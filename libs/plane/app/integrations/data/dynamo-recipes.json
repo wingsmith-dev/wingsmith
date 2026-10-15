@@ -4119,126 +4119,6 @@
         }
       ]
     },
-    "example-org/Example-NVFP4": {
-      "model_id": "example-org/Example-NVFP4",
-      "deployments": [
-        {
-          "path": "recipes/example/sglang/agg-b200/deploy.yaml",
-          "backend": "sglang",
-          "mode": "agg",
-          "role": "worker",
-          "hardware": "b200",
-          "args": {
-            "trust-remote-code": "",
-            "model-path": "/model-cache/example-org/Example-NVFP4",
-            "served-model-name": "example-org/Example-NVFP4",
-            "tp": "8",
-            "quantization": "modelopt_fp4",
-            "attention-backend": "fa4",
-            "page-size": "128",
-            "fp4-gemm-backend": "flashinfer_trtllm",
-            "moe-runner-backend": "flashinfer_trtllm_routed",
-            "enable-torch-symm-mem": "",
-            "mamba-radix-cache-strategy": "extra_buffer",
-            "mem-fraction-static": "0.75",
-            "swa-full-tokens-ratio": "0.1",
-            "mamba-full-memory-ratio": "0.1",
-            "enable-multimodal": "",
-            "reasoning-parser": "example",
-            "tool-call-parser": "example",
-            "speculative-algorithm": "EAGLE",
-            "speculative-num-steps": "8",
-            "speculative-eagle-topk": "1",
-            "speculative-num-draft-tokens": "9",
-            "enable-multi-layer-eagle": "",
-            "speculative-use-rejection-sampling": ""
-          }
-        },
-        {
-          "path": "recipes/example/vllm/agg-gb300-agentic/deploy.yaml",
-          "backend": "vllm",
-          "mode": "agg",
-          "role": "worker",
-          "hardware": "gb300",
-          "args": {
-            "model": "/model-cache/example-org/Example-NVFP4",
-            "served-model-name": "example-org/Example-NVFP4",
-            "trust-remote-code": "",
-            "tokenizer-mode": "example",
-            "dyn-reasoning-parser": "example",
-            "dyn-tool-call-parser": "example",
-            "reasoning-parser": "example",
-            "dyn-enable-structural-tag": "",
-            "structured-outputs-config": "{\"enable_in_reasoning\": true}",
-            "tensor-parallel-size": "4",
-            "max-model-len": "1048576",
-            "speculative-config": "{\"method\":\"mtp\",\"num_speculative_tokens\":8}",
-            "gpu-memory-utilization": "0.92",
-            "kv-cache-memory-bytes": "109521666048",
-            "enable-prefix-caching": "",
-            "kernel-config.enable_flashinfer_autotune": "False",
-            "kv-events-config": "{\"enable_kv_cache_events\": true}",
-            "disaggregation-mode": "agg"
-          }
-        },
-        {
-          "path": "recipes/example/vllm/disagg-gb300-agentic/kustomize/base/deploy.yaml",
-          "backend": "vllm",
-          "mode": "disagg",
-          "role": "prefill",
-          "hardware": "gb300",
-          "args": {
-            "model": "/model-cache/example-org/Example-NVFP4",
-            "served-model-name": "example-org/Example-NVFP4",
-            "trust-remote-code": "",
-            "tokenizer-mode": "example",
-            "dyn-reasoning-parser": "example",
-            "dyn-tool-call-parser": "example",
-            "reasoning-parser": "example",
-            "dyn-enable-structural-tag": "",
-            "structured-outputs-config": "{\"enable_in_reasoning\": true}",
-            "tensor-parallel-size": "4",
-            "max-model-len": "1048576",
-            "speculative-config": "{\"method\":\"mtp\",\"num_speculative_tokens\":8}",
-            "gpu-memory-utilization": "0.92",
-            "kv-cache-memory-bytes": "109521666048",
-            "enable-prefix-caching": "",
-            "kernel-config.enable_flashinfer_autotune": "False",
-            "kv-events-config": "{\"enable_kv_cache_events\": true}",
-            "disaggregation-mode": "prefill",
-            "kv-transfer-config": "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_producer\",\"kv_connector_extra_config\":{\"num_threads\":8}}"
-          }
-        },
-        {
-          "path": "recipes/example/vllm/disagg-gb300-agentic/kustomize/base/deploy.yaml",
-          "backend": "vllm",
-          "mode": "disagg",
-          "role": "decode",
-          "hardware": "gb300",
-          "args": {
-            "model": "/model-cache/example-org/Example-NVFP4",
-            "served-model-name": "example-org/Example-NVFP4",
-            "trust-remote-code": "",
-            "tokenizer-mode": "example",
-            "dyn-reasoning-parser": "example",
-            "dyn-tool-call-parser": "example",
-            "reasoning-parser": "example",
-            "dyn-enable-structural-tag": "",
-            "structured-outputs-config": "{\"enable_in_reasoning\": true}",
-            "tensor-parallel-size": "4",
-            "max-model-len": "1048576",
-            "speculative-config": "{\"method\":\"mtp\",\"num_speculative_tokens\":8}",
-            "gpu-memory-utilization": "0.92",
-            "kv-cache-memory-bytes": "109521666048",
-            "enable-prefix-caching": "",
-            "kernel-config.enable_flashinfer_autotune": "False",
-            "kv-events-config": "{\"enable_kv_cache_events\": true}",
-            "disaggregation-mode": "decode",
-            "kv-transfer-config": "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"kv_consumer\",\"kv_connector_extra_config\":{\"num_threads\":8}}"
-          }
-        }
-      ]
-    },
     "zai-org/GLM-5.3-Flash": {
       "model_id": "zai-org/GLM-5.3-Flash",
       "deployments": [
@@ -4458,7 +4338,6 @@
     "nvidia/nvidia-nemotron-3.5-lightning-30b-a3b-nvfp4": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning-nvfp4": "nvidia/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-NVFP4",
     "openai/gpt-oss-120b": "openai/gpt-oss-120b",
-    "example-org/example-nvfp4": "example-org/Example-NVFP4",
     "zai-org/glm-5.3-flash": "zai-org/GLM-5.3-Flash"
   }
 }
