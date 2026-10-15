@@ -292,3 +292,22 @@ def test_benchmark_history_survives_its_deployment(scratch) -> None:
         requests = conn.execute("SELECT deployment_id, workload_id FROM ops_benchmark_request").fetchall()
     assert run == [(None, "svg_x", request)]
     assert requests == [(None, None)]
+
+
+def test_deleting_a_subject_deletes_its_policy_attachments(scratch) -> None:
+    _alembic(scratch, "upgrade", "ee98c5cc5d50")
+    with psycopg.connect(_dsn(scratch), autocommit=True) as conn:
+        project = _project(conn)
+        tenant = conn.execute("SELECT tenant_id FROM bind_project WHERE id = %s", (project,)).fetchone()[0]
+        policy = conn.execute("INSERT INTO bind_policy (uid, name) VALUES ('plc_t', 'p') RETURNING id").fetchone()[0]
+        attach = "INSERT INTO bind_policy_attachment (policy_id, subject_type, subject_id) VALUES (%s, %s, %s)"
+        conn.execute(attach, (policy, "tenant", tenant))
+        conn.execute(attach, (policy, "project", project))
+        conn.execute(attach, (policy, "cluster", uuid.uuid4()))
+
+    _alembic(scratch, "upgrade", "head")
+    attached = "SELECT subject_type FROM bind_policy_attachment ORDER BY subject_type"
+    with psycopg.connect(_dsn(scratch), autocommit=True) as conn:
+        assert [t for (t,) in conn.execute(attached).fetchall()] == ["project", "tenant"], "the orphan is gone"
+        conn.execute("DELETE FROM bind_tenant WHERE id = %s", (tenant,))
+        assert conn.execute(attached).fetchall() == [], "the cascaded project took its attachment too"

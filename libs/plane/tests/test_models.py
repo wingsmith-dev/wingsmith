@@ -1,4 +1,7 @@
 import importlib
+import importlib.util
+
+from pathlib import Path
 
 from sqlalchemy import inspect
 
@@ -312,3 +315,17 @@ def test_the_four_new_id_prefixes_are_registered() -> None:
     assert {ids.SERVING_QUOTA, ids.BENCHMARK_REQUEST, ids.ARTIFACT_BASELINE, ids.ALERT_THRESHOLD} <= ids.PREFIXES
     for prefix in (ids.SERVING_QUOTA, ids.BENCHMARK_REQUEST, ids.ARTIFACT_BASELINE, ids.ALERT_THRESHOLD):
         assert ids.is_uid(ids.new_uid(prefix))
+
+
+def test_every_policy_subject_type_has_a_detach_trigger() -> None:
+    """Attachments have no foreign key; a trigger per subject table deletes them with their subject."""
+    from app.modules.policies.repository import SUBJECTS
+
+    triggered: dict[str, str] = {}
+    for path in sorted((Path(__file__).parents[1] / "migrations" / "versions").glob("*.py")):
+        spec = importlib.util.spec_from_file_location(path.stem, path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        if getattr(module, "FUNCTION", None) == "bind_policy_attachment_detach":
+            triggered.update(module.SUBJECTS)
+    assert triggered == {name: model.__tablename__ for name, (model, _, _) in SUBJECTS.items()}

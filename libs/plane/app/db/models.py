@@ -1649,17 +1649,16 @@ class Policy(BaseMixin):
 
 
 class PolicyAttachment(BaseMixin):
-    """Binds a policy to a tenant, project, endpoint, or cluster.
+    """Binds a policy to a tenant, project, cluster, endpoint or workload.
 
-    A polymorphic pair of `subject_type` and `subject_id` rather than four
-    nullable foreign keys, because the set of attachable subjects is expected to
-    grow and each addition would otherwise be a column.
+    A polymorphic pair of `subject_type` and `subject_id` rather than a nullable
+    foreign key per subject type, because the set of attachable subjects is expected
+    to grow and each addition would otherwise be a column.
 
-    The cost is that the database cannot enforce the reference: `subject_id` has no
-    foreign key, and deleting the tenant, project, endpoint or cluster it names
-    leaves the attachment behind. Readers join on `(subject_type, subject_id)` and
-    an attachment whose subject is gone matches nothing, so it is inert rather than
-    wrong; it stays until the policy is deleted or the attachment is removed.
+    `subject_id` has no foreign key. Instead, an `AFTER DELETE` trigger on each subject
+    table (revision `9d05d968be9c`) deletes the attachments naming the deleted row,
+    cascaded deletes included. A new subject type needs a trigger in a new revision;
+    `tests/test_models.py` checks every type in `app.modules.policies` has one.
     """
 
     __tablename__ = "bind_policy_attachment"
