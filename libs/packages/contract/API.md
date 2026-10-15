@@ -1,10 +1,14 @@
-# The HTTP API
+# The HTTP API: conventions and semantics
 
-What `admin` and `hgr` talk to. The plane ↔ operator link is a different contract entirely
-([`PROTOCOL.md`](PROTOCOL.md)) and nothing here crosses it.
+What the console, `hgr`, a tenant's console session and the gateway talk to. The plane ↔ operator
+link is a different contract entirely ([`PROTOCOL.md`](PROTOCOL.md)) and nothing here crosses it.
 
-Two clients were built against invented shapes before this document existed, and they disagreed.
-This resolves those disagreements; where a client diverges, the client is wrong.
+This document is the rules and the reasons: the response shapes, who may call what, and what each
+group of routes means. The route-by-route reference — every path, parameter and schema — is
+generated from the plane itself into [`openapi.json`](openapi.json) and indexed in
+[`REFERENCE.md`](REFERENCE.md); `scripts/openapi.sh --check` fails when either has drifted from the
+plane or when a route group is missing from §6 below. Where a client diverges from either, the
+client is wrong.
 
 ---
 
@@ -40,61 +44,88 @@ carrying `unknown` (the offending names) and `accepted` (everything that route d
 default web-framework behaviour — ignore what you do not recognise — is the wrong one for a
 filtered collection: a misspelt, retired, or invented filter answers `200 OK` with the whole set,
 and the response is indistinguishable from a correctly filtered one. A silently ignored filter is
-a lie the caller cannot detect, and both clients shipped months of it. The accepted set is derived
+a lie the caller cannot detect. The accepted set is derived
 from the matched handler's own signature at request time, under each parameter's wire name, so
 aliases (`?class=`), repeated params (`?label=k=v&label=...`), and new filters need no registration
 anywhere. `/health` and the OpenAPI routes are exempt.
 
 ## 2. Identity and scope
 
-- `Authorization: Bearer <token>` — required. Two kinds of token, one header.
+- `Authorization: Bearer <token>` — required everywhere under `/v1` except the three `/v1/auth`
+  verbs below. `/health` and the OpenAPI routes are outside `/v1` and need no credential.
 - `X-Hangar-Project` is not part of the API. The plane does not scope requests by project, CORS
   does not allow the header, and neither `hgr` nor the console sends it.
 
-Two principal kinds share the header:
+Four principal kinds exist, and the kind is the whole of a principal's authority. What each kind
+may reach is decided in one function on the plane (`app.core.context.authorize`), deny by default,
+matched on the route template rather than the raw path. There are no per-route scopes or roles.
 
-- **operator** — cluster agents. The token is a static, per-deployment service credential,
-  compared to the configured value in constant time. Never rotated per-request, never derived from
-  anything sent over this API.
-- **admin** — humans, via `admin` and `hgr`. `POST /v1/auth/login` takes `{"password": "..."}` and
-  returns `{"access_token": "...", "refresh_token": "...", "expires_in": <seconds>}`. The access
-  token, not the password, is the bearer credential on every request after; it is short-lived and
-  signed, and it is prefixed `hgrs1` where a refresh token is prefixed `hgrr1`, so the two cannot be
-  confused. `POST /v1/auth/refresh` takes `{"refresh_token": "..."}` and answers with the same three
-  fields, **rotating the refresh token as it does so**: the one it was given stops working, so a
-  stolen refresh token and the real one cannot both stay valid. `POST /v1/auth/logout` takes the
-  same body, revokes it, and answers `204`. Sending the password itself as a per-request credential
-  is deliberately not supported: it would end up in proxy logs and could not be rotated
-  independently of the person who knows it.
+| Kind | Who | Credential | Reaches |
+|---|---|---|---|
+| `admin` | the operator of this plane, through the console or `hgr` | a session from `POST /v1/auth/login` with the admin password | every route except the gateway's three |
+| `tenant` | a tenant's own console session | a session from `POST /v1/auth/login` with the tenant's slug and a tenant token | `GET` under `/v1/serving` only |
+| `gateway` | the inference gateway | the service token in `HANGAR_GATEWAY_SERVICE_TOKEN` | `GET /v1/endpoints/resolved`, `GET /v1/gateway/tenants`, `POST /v1/clusters/tunnel-auth`, and nothing else |
+| `operator` | one cluster's operator | that cluster's enrolment token | no HTTP route at all; it opens hub sessions ([`PROTOCOL.md`](PROTOCOL.md)) |
 
-  **Login is budgeted.** Ten failed logins in a rolling minute, per process, and the route answers
-  `429 too_many_requests` without verifying a password — the check runs before bcrypt, because the
-  thing being bounded is the CPU an anonymous caller can buy and not only the guesses. A correct
-  password is refused for the rest of that window too, which is the accepted cost.
+A credential of the wrong kind for a route is `403 forbidden`; a missing, unrecognized, expired or
+tampered one is `401 not_authorized`. Both use the standard error envelope.
 
-A request with no token, an unrecognized token, or an expired or tampered session token gets
-`401 not_authorized` in the standard error envelope. `/health` is exempt so probes do not need
-credentials.
+**Human access is single-operator.** There is one admin identity and every admin session is that
+operator: Hangar does not model several people with different permissions over one fleet, and a
+team sharing a plane shares that identity. `POST /v1/auth/login` takes `{"password": "..."}` (with
+`slug` omitted or `"admin"`) and returns `{"access_token", "refresh_token", "expires_in", "kind",
+"tenant"}`. The access token, not the password, is the bearer credential on every request after; it
+is short-lived and signed, and it is prefixed `hgrs1` where a refresh token is prefixed `hgrr1`, so
+the two cannot be confused. `POST /v1/auth/refresh` takes `{"refresh_token": "..."}` and answers
+with the same fields, **rotating the refresh token as it does so**: the one it was given stops
+working, so a stolen refresh token and the real one cannot both stay valid. `POST /v1/auth/logout`
+takes the same body, ends the session — every refresh token rotated from it and every access token
+it issued — and answers `204`. Sending the password itself as a per-request credential is
+deliberately not supported: it would end up in proxy logs and could not be rotated independently of
+the person who knows it.
 
-A cluster's **enrolment token** is a third kind of credential and deliberately not a third principal
-kind. It authenticates that cluster's operator to the hub ([`PROTOCOL.md`](PROTOCOL.md)) and its
-serving agent to the gateway, and this API never accepts one in `Authorization`. The one route
-that takes it takes it in a request body, from an operator principal, and answers with a cluster
-identity rather than with a session (§6). Two principal kinds is a number small enough to review in
-one function; a third exists the moment something needs a permission model, and nothing does yet.
+**A tenant signs in with its slug and a tenant token** (`hgrt1...`, minted under
+`/v1/tenants/{ref}/tokens` and shown once): `{"slug": "acme", "password": "hgrt1..."}`. The answer
+carries `kind: "tenant"` and the tenant's slug, and the session reaches its own serving view and
+nothing else. Revoking the token or disabling the tenant ends its sessions on their next request,
+because a session token is checked against its live session on every call. A tenant API key
+(`hgrk1...`, `/v1/tenants/{ref}/keys`) is a different credential: it calls the gateway, never this
+API.
 
-**`ADMIN_AUTH=disabled`.** A day-1 deployment with no ingress — reached only by
-`kubectl port-forward` — can turn off the admin half of this check entirely; every request then
-resolves to a full-scope admin principal with no credential required. The hub's operator-token
-check has no equivalent switch and is never affected by this setting: it authorizes writing
-observed state for the whole fleet over a socket agents dial in on the network, which a
-port-forward does not protect. Turning `ADMIN_AUTH` off is an explicit operator choice, never a
-side effect of leaving credentials unset, and the plane logs a warning naming the exposure on every
-startup while it is active. Flip it back to `enabled` (or unset it outside local development, where
-it is the default) before this plane is ever reachable through anything but a port-forward.
+**Login is budgeted.** Ten failed logins in a rolling minute from one address, and the route
+answers `429 too_many_requests` without verifying a credential — the check runs before bcrypt,
+because the thing being bounded is the CPU an anonymous caller can buy and not only the guesses. A
+process-wide ceiling backs it for a caller spread across many addresses.
 
-Every handler resolves a caller identity through one function (`resolve_principal`), so a future
-OIDC/SSO integration replaces how a `Principal` is produced without touching a single route.
+**The gateway is a service principal, not an admin.** It reads the two tables it routes on and
+verifies agent tunnels, and an admin session is refused on all three of its routes: the tenant
+feed carries every tenant's live key hashes, which must never reach a console response, and
+tunnel verification turns an enrolment token into a cluster identity, which a human credential has
+no reason to do. Under `APP_ENV=local` with no token configured the plane accepts a fixed local
+token so a fresh checkout's gateway can start; outside `local` an unset token means no gateway
+principal resolves at all.
+
+**A cluster's enrolment token is the operator's credential and is bound to that cluster.** It
+authenticates the cluster's operator to the hub and its serving agent to the gateway, and this API
+never accepts one in `Authorization`. There is no shared or fleet-wide operator token: the hub
+refuses anything that is not a live enrolment token of an enabled cluster, and the session it opens
+writes observed state for that cluster only. The one HTTP route that handles an enrolment token
+takes it in a request body, from the gateway, and answers with a cluster identity rather than with
+a session (§6).
+
+**`ADMIN_AUTH=disabled`** turns off the admin half of this check for local development only: every
+request without a credential then resolves to the admin principal. The plane refuses to start with
+it outside `APP_ENV=local`, logs a warning naming the exposure on every startup while it is active,
+and it never affects the gateway, tenant or enrolment-token checks.
+
+**A browser write must come from an allowed origin and carry JSON.** A `POST`, `PUT`, `PATCH` or
+`DELETE` whose `Origin` names neither an origin in `ALLOWED_ORIGINS` nor the plane's own host is
+`403 forbidden`, and any request body that is not `application/json` is `415
+unsupported_media_type`. A caller that is not a browser sends no `Origin` and is unaffected.
+
+Every handler is authenticated by an app-wide guard rather than by naming a dependency, so a route
+written without asking for its caller is still checked, and a future OIDC/SSO integration replaces
+how a `Principal` is produced without touching a route.
 
 ## 3. Identifiers
 
@@ -132,8 +163,7 @@ visible in the field names:
 `phase` is declared — what we asked for, one of `pending | active | draining | disabled`.
 `reachable` and `sync` are observed — what is true right now.
 
-**This is the resolution of the biggest conflict between the two clients**, and it is not
-cosmetic. Folding reachability into phase as an `unreachable` value makes "the network is down"
+**The split is not cosmetic.** Folding reachability into phase as an `unreachable` value makes "the network is down"
 indistinguishable from "someone disabled this cluster." Those need different responses from a human
 and different behaviour from the placement layer, so they cannot share a field.
 
@@ -182,9 +212,11 @@ not created. Writing to an observed resource has no route and returns `405 metho
 | `/v1/workloads`, `/v1/endpoints` | declared, plus a read-only resolution and a read-only serving history — see below |
 | `/v1/deployments` | declared, per-cluster, read-mostly — see below |
 | `/v1/discovered` | observed, read-only, plus the decision verbs — see below |
-| `/v1/replicas`, `/v1/allocations` | observed, read-only |
+| `/v1/allocations` | observed, read-only |
 | `/v1/tenants`, `/v1/projects`, `/v1/quotas`, `/v1/priority-classes`, `/v1/policies` | declared |
 | `/v1/tenants/{ref}/tokens`, `/v1/tenants/{ref}/keys` | declared credential sub-resources — mint, list, revoke |
+| `/v1/serving-quotas` | declared traffic commitments per endpoint, plus a read-only resolution — see below |
+| `/v1/serving`, `/v1/tenants/{tenant}/serving` | a tenant's own serving view, read-only — see below |
 | `/v1/gateway/tenants` | read-only, unpaginated, belongs to no object — see below |
 | `/v1/components` | declared version, observed rollout |
 | `/v1/placement` | one dry-run verb, writes nothing — see below |
@@ -193,8 +225,11 @@ not created. Writing to an observed resource has no route and returns `405 metho
 | `/v1/events` | observed, read-only, append-only |
 | `/v1/metrics` | measurement, read-only, belongs to no object — see below |
 | `/v1/alerts` | derived, read-only apart from two lifecycle verbs — see below |
+| `/v1/alert-thresholds` | declared numbers the metric alert rules compare against — see below |
+| `/v1/alert-rules` | the catalogue of rules a threshold may name, read-only — see below |
 | `/v1/notification-channels` | declared, plus a `test` verb |
 | `/v1/system/config` | the process's own configuration, read-only — see below |
+| `/v1/auth` | the session verbs: `login`, `refresh`, `logout` — see §2 |
 
 **`GET /v1/system/config` is the plane telling you what it is running with**, and it is not an
 object in the model — it is the process, so it lives beside `/health` and `POST /v1/auth/login`
@@ -212,8 +247,8 @@ next one by default. Three consequences are binding on any implementation: a cre
 reported only as a boolean — never a value, a prefix, a length or a digest; `DATABASE_URL` is
 reported in parts and never as a string, so userinfo cannot travel; and the per-source `|token=`
 never appears, because a metrics source is public as endpoint, kind and label only. Admin
-principals only — an operator token is `403 forbidden`, since a cluster agent has no use for the
-plane's process configuration.
+principals only — the gateway's service token or a tenant session is `403 forbidden`, since neither
+has any use for the plane's process configuration.
 
 **An endpoint's `slug` is the model id clients send; its `name` is an internal handle.**
 `name` is in URLs, in metrics labels and in every link the console holds, and it is not patchable —
@@ -227,10 +262,6 @@ one that can be patched.
 target, which is the case that should be normal — an endpoint in front of one model answers to that
 model, and requiring a caller to type the name a second time is how the two come to differ.
 Declaring one is then unambiguously a request for an alias.
-
-There were four fields here — `name`, `model_slug`, `display_name`, and a `resolved_model_slug`
-computed on the way out purely to report which of the first two had won. That is what a nullable
-public identifier costs, and none of them on its own answered "what does a client send".
 
 The resolved table reports the slug as the endpoint's `name`, which is the key the gateway builds
 its route map on — so changing a public model id is a plane-side write and one gateway poll, with no
@@ -326,9 +357,9 @@ the trade a control plane exists to avoid. So the gateway posts `{"token": "hgro
 stored; no hash, prefix or length of the token appears in any response.
 
 The caller's own credential stays in `Authorization`, which is why the token being verified travels
-in the body — one request, two credentials, and only one of them belongs to the caller. **Operator
-principals only**: an admin session is `403 forbidden`, because a human credential that can turn
-tokens into identities is one that can sweep for them, and no screen asks this question. Every
+in the body — one request, two credentials, and only one of them belongs to the caller. **The
+gateway principal only**: an admin session is `403 forbidden`, because a human credential that can
+turn tokens into identities is one that can sweep for them, and no screen asks this question. Every
 refusal is `401 not_authorized` so a caller branches on one code, while the message says which
 refusal it was, since a person reading an agent's logs needs to know whether the token is wrong or
 the cluster is out of service.
@@ -382,9 +413,10 @@ one to act on. Filters: `cluster`, `architecture`, `present`. Not paginated — 
 bounded by the hardware that exists, not by use.
 
 **`/v1/alerts` is derived, which is a third kind alongside declared and observed.** Nothing on a
-cluster reports an alert and nothing declares one: the reactor computes them by reading observed
-state back against declared state, and by matching `/v1/events`. So there is no `POST /v1/alerts`
-and no `DELETE` — resolving is how an alert ends, and deleting one would erase the record that it
+cluster reports an alert and no caller creates one: the reactor computes them by reading observed
+state back against declared state, by matching `/v1/events`, and by comparing measurements against
+the thresholds declared under `/v1/alert-thresholds` (below). So there is no `POST /v1/alerts` and no
+`DELETE` — resolving is how an alert ends, and deleting one would erase the record that it
 happened. Two verbs write the one part a machine cannot know: `POST /v1/alerts/{ref}/acknowledge`
 (optional `note`; the acknowledger is the request principal and is never taken from the body) and
 `POST /v1/alerts/{ref}/resolve`.
@@ -415,6 +447,25 @@ manifest the only place that knob exists before promotion. An unparseable value 
 than obeyed, and a tuned alert records what changed it under `details.tuned_by`. Muting an alert
 that is already firing resolves it on the next tick, because absence from the evaluated set is what
 closes a condition.
+
+**`/v1/alert-thresholds` is the declared half of alerting: the numbers, not the alerts they
+produce.** The reactor has two families of rule. State and event rules are code and fire on their
+own. Metric rules — a deployment's TTFT p95, its output speed, a node's GPU temperature — compare a
+measurement against a number, and **no metric rule evaluates until a threshold row names it**: the
+rule supplies the metric and which direction is wrong, the row supplies the value, the lookback, how
+long it must hold and the severity. A row whose `subject.id` is null is the fleet default for its
+rule; a row naming a subject overrides it for that subject alone. `comparison` is not declarable,
+because which way a metric is wrong is not a commitment. `rule`, `subject_type` and `subject_id`
+are a row's identity and cannot be patched; moving a commitment is creating a different one.
+`lookback`, `for_seconds` and `severity` read back exactly as declared, null included, where null
+means "whatever the rule says". Filters: `rule`, `subject_type`, `subject`, `enabled`,
+`fleet_default`.
+
+`GET /v1/alert-rules` lists the metric rules a threshold may name — `name`, `metric`, `unit`,
+`comparison`, `subject_type`, `severity`, what it `measures`, a `suggested_value`, and the default
+`lookback` and `for_seconds`. It is derived from the rules compiled into the plane and stored
+nowhere, so the console never has to hardcode the vocabulary. Its own collection rather than a
+sub-path of `/v1/alert-thresholds`, so no literal segment competes with `{ref}`.
 
 **`/v1/notification-channels` never returns a webhook URL.** A Slack incoming webhook is a bearer
 credential in URL form, so `webhook_url` is write-only and reads back as `webhook_hint` — the host
@@ -456,6 +507,7 @@ at all, which is the first thing to check when a panel is empty. Everything else
 | `GET /v1/metrics/fleet` | `fleet` | `"fleet"` | **null** — every cluster at once |
 | `GET /v1/metrics/serving` | `serving` | `"serving"` | **null** — measured at the gateway |
 | `GET /v1/metrics/endpoints/{ref}` | `endpoint` | endpoint uid | **null** — an endpoint reaches no cluster |
+| `GET /v1/metrics/tenants/{ref}` | `tenant` | tenant uid | **null** — measured at the gateway |
 
 Every one of them takes `window`, `step`, `span` (seconds, default `3600`) and `series` (default
 `false`), and nothing else — `series=false` is the normal read and the points are only computed when
@@ -530,6 +582,42 @@ named by the quota's `availability_objective`. An entry says which gateway outco
 and which are not counted at all; `availability-2026.1` fails `shed`, `no_upstream`,
 `upstream_error`, `upstream_timeout` and `internal_error`, and leaves only `canceled` out. Entries
 are superseded and never edited, and the gateway failure expressions are rendered from them.
+
+**`/v1/serving-quotas` is traffic, and `/v1/quotas` is devices.** The names are close and the
+objects share nothing. A quota is a project's device ceiling per device class, checked by
+placement when a workload is admitted; its `guaranteed_devices` and `over_quota_weight` are recorded
+but not yet enforced, because nothing reserves a floor for one project against another or orders
+projects by weight. A serving quota is one endpoint's committed request
+rate, token rate and concurrency — `committed_rpm`, `committed_tpm`, `max_concurrent_requests`,
+`max_output_tokens`, `burst_rpm`, `ramp_up_seconds`, `on_exceed`, `queue_timeout_ms` — with the
+objective it is sold under: `success_rate_objective`, the frozen `availability_objective`
+definition and `objective_window_seconds`. There is at most one per endpoint, it is never
+auto-created, and `endpoint` cannot be patched. Every field is declared; there is no `usage`,
+because a serving quota's usage is measured per request at the gateway and read back under
+`/v1/metrics`. Each read carries `standard`, `{meets, shortfalls}`, which compares the declared
+numbers against the acceptance standard's floors — declared against declared, not a measurement.
+`PATCH` takes `If-Match` against `revision`. Filters: `endpoint`, `project`, `enforced`, `scope`.
+
+`GET /v1/serving-quotas/resolved` is what each gateway replica would enforce for a fleet of a
+stated size: `replicas` and `replica_index` (default a fleet of one), narrowed by `endpoint` or
+`workload`. `declared` is what was sold across the fleet and `effective` is one replica's share once
+`limit_scope` is applied; under `per_replica` the two are equal and a fleet of R admits up to R
+times what was sold. Unpaginated and `ETag`ged like the routing table, with the fleet size in the
+revision. A serving quota is recorded, not enforced: the gateway does not read this table yet and
+applies no per-tenant traffic cap from it.
+
+**`/v1/serving` is the only surface a tenant session reaches, and it only reads.** It answers what
+one tenant is being served: `GET /v1/serving` is every model with its `state` (`serving`,
+`degraded` or `paused`) and its ready and desired replicas in one read; `GET
+/v1/serving/models/{ref}` adds the limits it is served under and the protocols it answers;
+`.../metrics` is that model's traffic at the gateway, in the `/v1/metrics` shape and measured over
+this tenant's own requests; `.../sla` is the service-level report described under `/v1/metrics`
+above. Nothing on it takes a tenant from the caller — the scope comes off the principal — and a
+served model is deliberately not the endpoint object: targets, clusters, weights and failover order
+are ours and are not shown. An admin reads the same view for any tenant at
+`/v1/tenants/{tenant}/serving`, with the same three routes beneath it, rendered by the same service
+so the two cannot drift. `GET /v1/metrics/tenants/{ref}` is the admin's measurement of one tenant's
+traffic, with one breakdown row per endpoint.
 
 **`/v1/workloads` is what you create; `/v1/deployments` is what that became.** A Workload is the
 global declaration — a serving configuration, a total scale, a kind, a priority, and the regions or
@@ -647,16 +735,12 @@ nothing else sums, scales, or re-derives. Summing a share against a total, or di
 the other, is always a bug. The only legal summing is on the workload's own `scale.placed` and
 `scale.ready`, which the plane computes from its deployments.
 
-The unit of those three numbers is named by `kind`, because they count different things: `replicas`
-for `service`, `ranks` for `gang`, `completions` for `task`. A bare integer without the unit is
-unreadable, so `scale.unit` is on the read shape.
-
-**Kind also decides whether a workload may be split.** `service` and `task` are splittable —
-`8 = 5 + 3` is fine, and for a task splitting is the point. **`gang` is atomic**: its ranks must be
-co-scheduled, so a gang workload has exactly one Deployment, always. A gang that cannot fit in one
-cluster is a hard rejection with a per-cluster verdict, not a lower-ranked spread; a split gang is
-broken rather than degraded. The schema permits many deployments and the kind constrains gang to
-one.
+**`kind` is `service` today.** A workload is a long-running serving deployment, counted in
+replicas, and `scale.unit` on the read shape says so. `task` (run to completion) and `gang`
+(co-scheduled ranks) are reserved names for workload kinds on the roadmap: the schema carries
+`kind` and `gang_size` so that adding them is not a breaking change, but no operator renders either,
+so `POST /v1/workloads` refuses them with `409 invalid` rather than accepting a workload that would
+never run.
 
 `strategy` is `pack` (default) or `spread`. `pack` fills one cluster before opening another, which
 is why every existing single-cluster deployment is unchanged by this layering and why fanning out is
@@ -669,10 +753,9 @@ existence and not for capacity.
 `/v1/policies`, which now accepts `workload` as a subject. A second copy of those five lists on the
 workload would be a second answer to a question that already has one.
 
-**Nothing below a Workload branches on `kind`.** The per-cluster noun is singular across all three
-kinds — a task workload gets Deployments too, and there is no Job or Run type — because the
-supertype exists so that preemption and quota stay one code path instead of three. The only
-component entitled to read `kind` is the operator, deciding what to render.
+**Nothing below a Workload branches on `kind`.** The per-cluster noun is the Deployment, and there
+is no Job or Run type beside it. The only component that will be entitled to read `kind` is the
+operator, deciding what to render.
 
 **`/v1/deployments` is read-mostly.** `POST /v1/deployments` and `DELETE /v1/deployments/{ref}` do
 not exist: placement creates a deployment when it expands a workload and removes it when it stops
@@ -720,12 +803,9 @@ Releasing back to `observed` needs nothing and is always allowed: the plane lett
 to a cluster, so there is no gap to fail closed on. A deployment the plane created is `managed` from
 birth, having never been anything else.
 
-**`/v1/tenants` exists because a project cannot be created without one.** This document used to say
-there was no tenant collection and that a project carries its tenant as an embedded field. The
-second half still holds — a project always carries the tenant it hangs off, so no reader has to
-join — but the first half made an empty plane unusable: `POST /v1/projects` resolves `tenant` to an
-existing row, nothing in the API could create that row, and so the first project could never be
-made, and with it no quota, no deployment and no promotion. The collection is deliberately thin: a
+**`/v1/tenants` exists because a project cannot be created without one.** A project always carries
+the tenant it hangs off, so no reader has to join, and `POST /v1/projects` resolves `tenant` to an
+existing row. The collection is deliberately thin: a
 slug, a name and a switch. `slug` is absent from `PATCH` because it namespaces every project slug
 beneath it, and `DELETE` is refused with `409` while any project still hangs off the tenant — the
 foreign key cascades, and a delete that silently took quotas and allocations with it is not a delete
