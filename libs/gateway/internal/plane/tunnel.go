@@ -24,6 +24,10 @@ const tunnelAuthPath = "/v1/clusters/tunnel-auth"
 
 type tunnelAuthRequest struct {
 	Token string `json:"token"`
+	// Source is the agent's address as the listener keys it. The plane charges
+	// a failed verification to it, so one address's bad tokens throttle only
+	// that address and not every check this gateway makes.
+	Source string `json:"source,omitempty"`
 }
 
 type tunnelAuthResponse struct {
@@ -58,7 +62,7 @@ type tunnelAuthResponse struct {
 // against either: a cluster's own configuration holds the name, so returning the
 // uid alone refused every dial from a chart-installed agent.
 func (c *Client) VerifyTunnelToken(ctx context.Context, token string) (tunnel.Identity, error) {
-	body, err := json.Marshal(tunnelAuthRequest{Token: token})
+	body, err := json.Marshal(tunnelAuthRequest{Token: token, Source: tunnel.DialSource(ctx)})
 	if err != nil {
 		return tunnel.Identity{}, err
 	}
@@ -74,6 +78,14 @@ func (c *Client) VerifyTunnelToken(ctx context.Context, token string) (tunnel.Id
 		return tunnel.Identity{}, fmt.Errorf("plane tunnel-auth: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	// A throttled answer still carries the plane's verdict. The plane looks the
+	// token up before it consults the budget, so "unknown_token" on a 429 means
+	// the token names no cluster. Reading it as an outage would let anyone who
+	// keeps a source's budget spent keep a rotated token's tunnels open.
+	if resp.StatusCode == http.StatusTooManyRequests && verdictOf(resp.Body) == verdictUnknownToken {
+		return tunnel.Identity{}, fmt.Errorf("%w: the plane does not know it (answered while throttled)", tunnel.ErrRejected)
+	}
 
 	switch {
 	case resp.StatusCode == http.StatusOK:
