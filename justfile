@@ -264,9 +264,9 @@ cov *args:
 
 # ── Interop ───────────────────────────────────────────────────────────────────
 
-# The hub half of the interop harness, which the Go side launches; keep in step with
-# libs/operator/internal/interop/harness_test.go.
-_interop_hub := "test/interop/hub.py"
+# The hub half of the interop harness, which the Go side launches; keep in step with `hubScript`
+# in libs/operator/internal/interop/harness_test.go.
+_interop_hub := "libs/operator/internal/interop/testdata/hub.py"
 
 # Run the cross-language interop gate: the real Go client against the real Python hub
 interop *args:
@@ -379,9 +379,10 @@ bench *args:
     uv run --no-project --python 3.12 python dev/bench_plan.py >"$plan"
     {{_bench_py}} python -m hgrbench run "$plan" {{args}}
 
-# A suite is four harnesses against the same load points, from a plan committed in
-# libs/benchmarking/plans. `just bench` above is the quick one-harness check; this is the one that
-# answers how the endpoint behaves, and whether the tools agree about it. Flags only narrow a plan:
+# A suite is four harnesses against the same load points, from a plan that ships with hgrbench
+# (`just bench-plans` lists them). `just bench` above is the quick one-harness check; this is the
+# one that answers how the endpoint behaves, and whether the tools agree about it. Flags only
+# narrow a plan:
 #
 #   just bench-suite smoke                        # ~10 min, safe any time of day
 #   just bench-suite deep --hard                  # ~2 h, includes the saturation search
