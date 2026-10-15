@@ -28,6 +28,7 @@ from collections import deque
 from litestar.connection import ASGIConnection
 
 from app.config import settings
+from app.config.settings import trusted_proxies
 
 
 class FailureBudget:
@@ -101,10 +102,6 @@ class KeyedFailureBudget:
         self._budgets.clear()
 
 
-def _networks(raw: str) -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
-    return [ipaddress.ip_network(part.strip(), strict=False) for part in raw.split(",") if part.strip()]
-
-
 def _trusted(address: str, networks: list[ipaddress.IPv4Network | ipaddress.IPv6Network]) -> bool:
     try:
         ip = ipaddress.ip_address(address)
@@ -136,7 +133,7 @@ def client_address(connection: ASGIConnection) -> str:
     proxies configured the header is ignored entirely.
     """
     peer = connection.client.host if connection.client else ""
-    trusted = _networks(settings.TRUSTED_PROXIES)
+    trusted = trusted_proxies(settings)
     if trusted and _trusted(peer, trusted):
         chain = [hop.strip() for hop in connection.headers.get("X-Forwarded-For", "").split(",") if hop.strip()]
         for hop in reversed(chain):

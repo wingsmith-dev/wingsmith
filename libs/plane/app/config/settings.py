@@ -1,4 +1,5 @@
 import os
+import ipaddress
 
 from typing import Any
 from typing import get_args
@@ -404,6 +405,22 @@ def api_host(s: "Settings") -> str:
     return "127.0.0.1" if s.APP_ENV == "local" else "0.0.0.0"
 
 
+def trusted_proxies(s: "Settings") -> list[ipaddress.IPv4Network | ipaddress.IPv6Network]:
+    """`TRUSTED_PROXIES` parsed. Raises `RuntimeError` naming the entry that is
+    not an address or a CIDR, so `validate` stops the boot on it rather than
+    every sign-in failing with a 500."""
+    networks = []
+    for part in s.TRUSTED_PROXIES.split(","):
+        entry = part.strip()
+        if not entry:
+            continue
+        try:
+            networks.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError as exc:
+            raise RuntimeError(f"TRUSTED_PROXIES entry {entry!r} is not an address or a CIDR") from exc
+    return networks
+
+
 def resolved_admin_auth(s: "Settings") -> str:
     """The effective `ADMIN_AUTH` mode: always `enabled` outside `local`, where
     `disabled` is the default unless set."""
@@ -425,6 +442,7 @@ def validate(s: "Settings") -> None:
     """
     if s.ADMIN_AUTH not in ("", "enabled", "disabled"):
         raise RuntimeError(f"ADMIN_AUTH must be 'enabled' or 'disabled', got {s.ADMIN_AUTH!r}")
+    trusted_proxies(s)
 
     if s.APP_ENV == "local":
         return

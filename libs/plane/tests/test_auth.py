@@ -371,6 +371,15 @@ def test_validate_is_frictionless_in_local_with_nothing_configured():
     validate(Settings(APP_ENV="local"))
 
 
+def test_a_malformed_trusted_proxy_stops_the_boot():
+    """Otherwise it is read on every sign-in, and every sign-in is a 500."""
+    with pytest.raises(RuntimeError, match="'10.0.0.0/33'"):
+        validate(Settings(APP_ENV="local", TRUSTED_PROXIES="10.0.0.0/8, 10.0.0.0/33"))
+    with pytest.raises(RuntimeError, match="'ingress'"):
+        validate(Settings(APP_ENV="local", TRUSTED_PROXIES="ingress"))
+    validate(Settings(APP_ENV="local", TRUSTED_PROXIES=" 10.0.0.0/8 , fd00::/8, 192.0.2.1 ,"))
+
+
 # --- HTTP API wiring -----------------------------------------------------
 
 
