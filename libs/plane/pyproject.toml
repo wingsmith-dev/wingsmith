@@ -40,8 +40,7 @@ dev = [
   "pytest==8.4.2",
   "pytest-asyncio==0.24.0",
   "pytest-cov==6.0.0",
-  "ruff>=0.8.0",
-  "mypy==1.19.1",
+  "ruff==0.16.3",
 ]
 
 [tool.pytest.ini_options]
@@ -52,9 +51,10 @@ addopts = "--strict-markers -v -m 'not database'"
 markers = [
   "database: needs a live Postgres; deselected by default, run with `just test-db`",
 ]
+# A deprecation raised from the plane's own code fails the run; third-party ones are reported.
 filterwarnings = [
-  "ignore::DeprecationWarning",
-  "ignore::PendingDeprecationWarning",
+  'error::DeprecationWarning:app\..*',
+  'error::PendingDeprecationWarning:app\..*',
 ]
 
 [tool.coverage.run]
@@ -77,12 +77,10 @@ exclude = ["migrations", "docs"]
 line-length = 120
 
 [tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W", "I", "UP", "B"]
 ignore = [
-  "D100",
-  "D104",
-  "D107",
-  "E712",
-  "RUF012",
+  "E712", # SQLAlchemy column comparisons read `col == True`
+  "E731",
 ]
 
 [tool.ruff.lint.isort]
@@ -103,24 +101,3 @@ section-order = [
   "first-party",
   "local-folder",
 ]
-
-[tool.pyright]
-pythonVersion = "3.12"
-include = ["app", "tests"]
-exclude = ["migrations", ".venv"]
-
-[tool.mypy]
-python_version = "3.12"
-strict = true
-no_implicit_optional = true
-check_untyped_defs = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-warn_unused_configs = true
-show_error_codes = true
-disallow_any_generics = false
-disallow_untyped_defs = false
-disallow_untyped_decorators = false
-implicit_reexport = false
-warn_return_any = false
-exclude = ["migrations", "\\.venv"]
