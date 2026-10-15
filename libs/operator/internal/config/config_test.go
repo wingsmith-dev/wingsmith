@@ -21,6 +21,12 @@ func TestLoadDefaults(t *testing.T) {
 	if c.LivenessTimeout <= c.HeartbeatInterval {
 		t.Errorf("liveness timeout must exceed the heartbeat interval")
 	}
+	if c.PoolLabelKey != "hangar.dev/pool" || c.CacheTaintKey != "hangar.dev/cache" {
+		t.Errorf("pool label = %q, cache taint = %q, want the hangar.dev defaults", c.PoolLabelKey, c.CacheTaintKey)
+	}
+	if c.DCGMEndpoint != "" {
+		t.Errorf("dcgm endpoint = %q, want none until the cluster names one", c.DCGMEndpoint)
+	}
 }
 
 func TestLoadRejectsBadInput(t *testing.T) {
@@ -31,12 +37,13 @@ func TestLoadRejectsBadInput(t *testing.T) {
 		{"no cluster id", map[string]string{"HANGAR_HUB_URL": "wss://h/x"}},
 		{"no hub url", map[string]string{"HANGAR_CLUSTER_ID": "c"}},
 		{"inbound scheme", map[string]string{"HANGAR_CLUSTER_ID": "c", "HANGAR_HUB_URL": "https://h/x"}},
+		{"plaintext hub", map[string]string{"HANGAR_CLUSTER_ID": "c", "HANGAR_HUB_URL": "ws://h/x"}},
 		{"liveness below heartbeat", map[string]string{"HANGAR_CLUSTER_ID": "c", "HANGAR_HUB_URL": "wss://h/x", "HANGAR_HEARTBEAT_INTERVAL": "30s", "HANGAR_LIVENESS_TIMEOUT": "10s"}},
 		{"bad log level", map[string]string{"HANGAR_CLUSTER_ID": "c", "HANGAR_HUB_URL": "wss://h/x", "HANGAR_LOG_LEVEL": "loud"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, k := range []string{"HANGAR_CLUSTER_ID", "HANGAR_HUB_URL", "HANGAR_HEARTBEAT_INTERVAL", "HANGAR_LIVENESS_TIMEOUT", "HANGAR_LOG_LEVEL"} {
+			for _, k := range []string{"HANGAR_CLUSTER_ID", "HANGAR_HUB_URL", "HANGAR_HUB_ALLOW_INSECURE", "HANGAR_HEARTBEAT_INTERVAL", "HANGAR_LIVENESS_TIMEOUT", "HANGAR_LOG_LEVEL"} {
 				t.Setenv(k, "")
 			}
 			for k, v := range tc.env {
@@ -51,7 +58,8 @@ func TestLoadRejectsBadInput(t *testing.T) {
 
 func TestLoadOverrides(t *testing.T) {
 	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
-	t.Setenv("HANGAR_HUB_URL", "ws://localhost:8080/stream")
+	t.Setenv("HANGAR_HUB_URL", "ws://localhost:8001/v1/hub/sync")
+	t.Setenv("HANGAR_HUB_ALLOW_INSECURE", "true")
 	t.Setenv("HANGAR_LOG_LEVEL", "debug")
 	t.Setenv("HANGAR_SEND_QUEUE_SIZE", "8")
 	t.Setenv("HANGAR_BACKOFF_MAX", "1m")
@@ -149,5 +157,20 @@ func TestZeroFrontendReplicasIsRefusedRatherThanDefaulted(t *testing.T) {
 	_, err := Load()
 	if err == nil || !strings.Contains(err.Error(), "HANGAR_FRONTEND_ENABLED") {
 		t.Fatalf("error = %v, want one naming the way to render no frontend", err)
+	}
+}
+
+func TestPlaintextHubNeedsTheDevFlagAndIsWarnedAbout(t *testing.T) {
+	t.Setenv("HANGAR_CLUSTER_ID", "cluster-1")
+	t.Setenv("HANGAR_HUB_URL", "ws://localhost:8001/v1/hub/sync")
+	t.Setenv("HANGAR_HUB_ALLOW_INSECURE", "true")
+	t.Setenv("HANGAR_HUB_INSECURE_SKIP_VERIFY", "true")
+
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := c.Warnings(); len(got) != 2 {
+		t.Errorf("warnings = %v, want one for ws:// and one for skip-verify", got)
 	}
 }

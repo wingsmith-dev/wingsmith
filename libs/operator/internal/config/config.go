@@ -17,12 +17,16 @@ type Config struct {
 	// ClusterID is the plane-assigned identity of the cluster this operator instance runs in.
 	ClusterID string
 
-	// HubURL is the outbound WebSocket endpoint on the control plane. Only ws:// and wss:// are
-	// accepted; nothing ever connects inward.
+	// HubURL is the outbound WebSocket endpoint on the control plane. Nothing ever connects
+	// inward. wss:// is required unless HubAllowInsecure is set.
 	HubURL string
 
-	// EnrolmentToken is a static bearer token presented on dial. Auth is stubbed: the real
-	// credential and rotation model is still an open question.
+	// HubAllowInsecure permits a plaintext ws:// hub URL. The enrolment token travels on that
+	// connection as a bearer credential, so this is for local development only.
+	HubAllowInsecure bool
+
+	// EnrolmentToken is this cluster's enrolment token, presented as a bearer token on dial. The
+	// hub binds it to one cluster id; rotate it by issuing a new one from the plane.
 	EnrolmentToken string
 
 	// TLSInsecureSkipVerify disables hub certificate verification. Local development only.
@@ -253,8 +257,9 @@ type Config struct {
 	// DCGMEndpoint is the in-cluster DCGM exporter's metrics URL, which the observation loop
 	// scrapes for device identity — the true accelerator UUID, which Kubernetes does not carry
 	// anywhere (ADR 0007). It is read cluster-locally and only for identity; the measurements on
-	// those same series are telemetry and never enter the sync stream. Empty disables the
-	// scrape, leaving discovery on the annotation and synthetic-id fallbacks.
+	// those same series are telemetry and never enter the sync stream. Empty, the default,
+	// disables the scrape, leaving discovery on the annotation and synthetic-id fallbacks; where
+	// the exporter runs is a fact about the cluster, so the chart supplies it.
 	DCGMEndpoint string
 
 	// DCGMSelector overrides the labels used to find the exporter pods behind DCGMEndpoint.
@@ -331,6 +336,7 @@ func Load() (*Config, error) {
 	c := &Config{
 		ClusterID:             env("HANGAR_CLUSTER_ID", ""),
 		HubURL:                env("HANGAR_HUB_URL", ""),
+		HubAllowInsecure:      l.bool("HANGAR_HUB_ALLOW_INSECURE", false),
 		EnrolmentToken:        env("HANGAR_ENROLMENT_TOKEN", ""),
 		TLSCAFile:             env("HANGAR_HUB_CA_FILE", ""),
 		TLSInsecureSkipVerify: l.bool("HANGAR_HUB_INSECURE_SKIP_VERIFY", false),
@@ -351,10 +357,10 @@ func Load() (*Config, error) {
 		LeaderElection:        l.bool("HANGAR_LEADER_ELECTION", true),
 		Namespace:             env("HANGAR_NAMESPACE", "hangar-system"),
 		WorkloadNamespace:     env("HANGAR_WORKLOAD_NAMESPACE", "dynamo"),
-		PoolLabelKey:          env("HANGAR_POOL_LABEL_KEY", "hangar.io/pool"),
+		PoolLabelKey:          env("HANGAR_POOL_LABEL_KEY", "hangar.dev/pool"),
 		GPUPoolValue:          env("HANGAR_GPU_POOL_VALUE", "gpu"),
 		CachePoolValue:        env("HANGAR_CACHE_POOL_VALUE", "cache"),
-		CacheTaintKey:         env("HANGAR_CACHE_TAINT_KEY", "hangar.io/cache"),
+		CacheTaintKey:         env("HANGAR_CACHE_TAINT_KEY", "hangar.dev/cache"),
 		PrefetchCPU:           env("HANGAR_PREFETCH_CPU", ""),
 		PrefetchMemory:        env("HANGAR_PREFETCH_MEMORY", ""),
 		PrefetchMemoryLimit:   env("HANGAR_PREFETCH_MEMORY_LIMIT", ""),
@@ -382,7 +388,7 @@ func Load() (*Config, error) {
 		BenchmarkTimeout:      l.duration("HANGAR_BENCHMARK_TIMEOUT", 30*time.Minute),
 		BenchmarkCPU:          env("HANGAR_BENCHMARK_CPU", "500m"),
 		BenchmarkMemory:       env("HANGAR_BENCHMARK_MEMORY", "1Gi"),
-		DCGMEndpoint:          env("HANGAR_DCGM_ENDPOINT", "http://dcgm-exporter.platform.svc.cluster.local:9400/metrics"),
+		DCGMEndpoint:          env("HANGAR_DCGM_ENDPOINT", ""),
 		DCGMSelector:          env("HANGAR_DCGM_SELECTOR", ""),
 		DCGMTimeout:           l.duration("HANGAR_DCGM_TIMEOUT", 5*time.Second),
 	}
@@ -416,8 +422,15 @@ func (c *Config) validate() error {
 	if err != nil {
 		return fmt.Errorf("HANGAR_HUB_URL is not a URL: %w", err)
 	}
-	if u.Scheme != "ws" && u.Scheme != "wss" {
-		return fmt.Errorf("HANGAR_HUB_URL scheme must be ws or wss, got %q", u.Scheme)
+	switch u.Scheme {
+	case "wss":
+	case "ws":
+		if !c.HubAllowInsecure {
+			return fmt.Errorf("HANGAR_HUB_URL is plaintext ws://, which sends the enrolment token unencrypted; " +
+				"use wss://, or set HANGAR_HUB_ALLOW_INSECURE=true for local development")
+		}
+	default:
+		return fmt.Errorf("HANGAR_HUB_URL scheme must be wss (or ws with HANGAR_HUB_ALLOW_INSECURE=true), got %q", u.Scheme)
 	}
 	if c.SendQueueSize < 1 {
 		return fmt.Errorf("HANGAR_SEND_QUEUE_SIZE must be positive")
@@ -457,6 +470,18 @@ func (c *Config) validate() error {
 		return fmt.Errorf("HANGAR_LOG_FORMAT must be json or text")
 	}
 	return nil
+}
+
+// Warnings are settings that are valid but weaken the hub connection, for logging at startup.
+func (c *Config) Warnings() []string {
+	var out []string
+	if strings.HasPrefix(c.HubURL, "ws://") {
+		out = append(out, "HANGAR_HUB_URL is plaintext ws://; the enrolment token is sent unencrypted")
+	}
+	if c.TLSInsecureSkipVerify {
+		out = append(out, "HANGAR_HUB_INSECURE_SKIP_VERIFY is on; the hub certificate is not verified")
+	}
+	return out
 }
 
 func parseLevel(s string) (slog.Level, error) {

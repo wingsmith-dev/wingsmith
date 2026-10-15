@@ -50,6 +50,9 @@ func run() error {
 	}
 	log := newLogger(cfg).With("cluster_id", cfg.ClusterID, "version", version)
 	slog.SetDefault(log)
+	for _, warning := range cfg.Warnings() {
+		log.Warn(warning)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
