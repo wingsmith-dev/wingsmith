@@ -57,25 +57,25 @@ from app.modules.workloads.schemas import ParallelismSchema
 from app.modules.workloads.schemas import CapabilitiesSchema
 from app.modules.workloads.schemas import WorkloadServingSchema
 from app.modules.workloads.schemas import WorkloadServingRequest
-from app.modules.workloads.services import sizing_for
-from app.modules.workloads.services import check_floor
-from app.modules.workloads.services import check_shape
-from app.modules.workloads.services import check_router
-from app.modules.workloads.services import router_block
-from app.modules.workloads.services import serving_args
-from app.modules.workloads.services import serving_view
-from app.modules.workloads.services import apply_serving
-from app.modules.workloads.services import check_serving
-from app.modules.workloads.services import group_devices
-from app.modules.workloads.services import check_capacity
-from app.modules.workloads.services import check_topology
-from app.modules.workloads.services import declared_roles
-from app.modules.workloads.services import check_footprint
-from app.modules.workloads.services import serving_request
-from app.modules.workloads.services import check_quantization
-from app.modules.workloads.services import resolved_engine_args
-from app.modules.workloads.services import check_serving_request
-from app.modules.workloads.services import resolve_engine_runtime_image
+from app.modules.workloads.serving import router_block
+from app.modules.workloads.serving import serving_args
+from app.modules.workloads.serving import serving_view
+from app.modules.workloads.serving import apply_serving
+from app.modules.workloads.serving import group_devices
+from app.modules.workloads.serving import declared_roles
+from app.modules.workloads.serving import serving_request
+from app.modules.workloads.serving import resolved_engine_args
+from app.modules.workloads.serving import resolve_engine_runtime_image
+from app.modules.workloads.validation import sizing_for
+from app.modules.workloads.validation import check_floor
+from app.modules.workloads.validation import check_shape
+from app.modules.workloads.validation import check_router
+from app.modules.workloads.validation import check_serving
+from app.modules.workloads.validation import check_capacity
+from app.modules.workloads.validation import check_topology
+from app.modules.workloads.validation import check_footprint
+from app.modules.workloads.validation import check_quantization
+from app.modules.workloads.validation import check_serving_request
 
 
 EPOCH = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)

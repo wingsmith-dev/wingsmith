@@ -597,7 +597,7 @@ class WorkloadCreateRequest(Struct):
     `create`: a policy attached after the response has already missed the decision it
     was meant to constrain. What is created *is* a Policy — named after the workload and
     attached to it — so the constraint is discoverable, editable and enforced on every
-    later expansion by exactly the machinery §6.3 says owns it. Both lists empty means no
+    later expansion by the same machinery as any other policy. Both lists empty means no
     opinion, never "nothing allowed".
     """
 

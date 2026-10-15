@@ -16,6 +16,9 @@ import msgspec
 from app.core.ids import ARTIFACT
 from app.core.ids import new_uid
 from app.core.exceptions import Invalid
+from app.modules.workloads.views import UNITS
+from app.modules.workloads.views import _revision
+from app.modules.workloads.views import derive_phase
 from app.modules.workloads.routes import WorkloadRoutes
 from app.modules.workloads.schemas import CacheSchema
 from app.modules.workloads.schemas import ShapeSchema
@@ -28,14 +31,11 @@ from app.modules.workloads.schemas import WorkloadServingUpdate
 from app.modules.workloads.schemas import WorkloadUpdateRequest
 from app.modules.workloads.schemas import WorkloadServingRequest
 from app.modules.workloads.services import KINDS
-from app.modules.workloads.services import UNITS
 from app.modules.workloads.services import PHASES
 from app.modules.workloads.services import STRATEGIES
-from app.modules.workloads.services import _revision
-from app.modules.workloads.services import check_scale
-from app.modules.workloads.services import derive_phase
 from app.modules.policies.repository import SUBJECTS
 from app.modules.workloads.repository import WorkloadRepository
+from app.modules.workloads.validation import check_scale
 
 
 EPOCH = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)

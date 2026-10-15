@@ -25,10 +25,10 @@ from app.modules.workloads.schemas import WorkloadSchema
 from app.modules.workloads.schemas import ResourcesSchema
 from app.modules.workloads.schemas import ParallelismSchema
 from app.modules.workloads.schemas import WorkloadServingRequest
+from app.modules.workloads.serving import apply_serving
 from app.modules.workloads.services import WorkloadService
-from app.modules.workloads.services import apply_serving
-from app.modules.workloads.services import check_serving_request
 from app.modules.deployments.services import OBSERVED
+from app.modules.workloads.validation import check_serving_request
 
 from .derive import ServingDraft
 from .derive import derive

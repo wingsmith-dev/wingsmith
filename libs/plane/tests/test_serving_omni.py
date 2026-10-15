@@ -19,13 +19,13 @@ from app.modules.workloads.schemas import ServingSchema
 from app.modules.workloads.schemas import TopologySchema
 from app.modules.workloads.schemas import DiffusionSchema
 from app.modules.workloads.schemas import WorkloadServingRequest
-from app.modules.workloads.services import check_output
-from app.modules.workloads.services import check_topology
-from app.modules.workloads.services import declared_roles
-from app.modules.workloads.services import stored_serving
-from app.modules.workloads.services import check_serving_request
-from app.modules.workloads.services import check_host_architecture
-from app.modules.workloads.services import resolve_engine_runtime_image
+from app.modules.workloads.serving import declared_roles
+from app.modules.workloads.serving import stored_serving
+from app.modules.workloads.serving import resolve_engine_runtime_image
+from app.modules.workloads.validation import check_output
+from app.modules.workloads.validation import check_topology
+from app.modules.workloads.validation import check_serving_request
+from app.modules.workloads.validation import check_host_architecture
 
 from tests.test_serving import a_workload
 
