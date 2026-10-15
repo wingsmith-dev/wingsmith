@@ -65,6 +65,22 @@ export const useAuthStore = create<AuthState>()(
        * login the plane never saw.
        */
       signIn: async (password: string, slug = "admin") => {
+        // The offline plane has no auth endpoint, and a fixtures build exists to run with no
+        // backend at all, so it signs in as the admin without asking anyone. Tenant sessions
+        // need the plane to resolve the token and are refused here.
+        if (import.meta.env.VITE_API_MODE === "fixtures") {
+          if (slug !== "admin")
+            throw new Error("Fixtures mode signs in as admin only.")
+          set({
+            operator: ADMIN_OPERATOR,
+            accessToken: null,
+            refreshToken: null,
+            isAuthenticated: true,
+            kind: "admin",
+            tenant: null,
+          })
+          return
+        }
         const response = await fetch(`${BASE_URL}${API_PREFIX}/auth/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
