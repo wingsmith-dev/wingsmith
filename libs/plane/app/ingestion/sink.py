@@ -16,6 +16,8 @@ from typing import Any
 from logging import getLogger
 
 from sqlalchemy import select
+from sqlalchemy.exc import DataError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -62,6 +64,17 @@ from app.modules.benchmarks.follow import follows_operation
 
 logger = getLogger(__name__)
 
+
+PERMANENT = (MalformedObservation, IntegrityError, DataError)
+"""Failures a replay cannot fix, because the frame and the rows it names are what they are.
+
+A constraint violation is one: a component nobody declared, a device whose node was
+never reported, an identifier claimed by another cluster. Withholding the ack for one
+of these wedged the stream behind it until a person intervened, and the frames it
+held back were the ones that would have repaired the state — the node frame after
+its device, the release after the claim. Transient failures (a dropped connection, a
+timeout, a serialisation conflict) are not in here and are retried by the session.
+"""
 
 TERMINAL_OPERATION_PHASES = frozenset({"succeeded", "failed", "cancelled", "timed_out"})
 """Restated rather than imported from `app.modules.operations`: ingestion must not depend on a
@@ -297,8 +310,16 @@ class DatabaseSink:
         statement = statements.upsert_allocation(
             cluster_id, deployment[1], deployment[0], project_id, replica_id, payload
         ).returning(Allocation.id)
-        allocation_id = (await db.execute(statement)).scalar_one()
+        allocation_id = (await db.execute(statement)).scalar_one_or_none()
+        if allocation_id is None:
+            logger.warning(
+                "ingestion.allocation.foreign allocation=%s cluster=%s",
+                payload.allocation_id,
+                cluster_uid,
+            )
+            return False
         await db.execute(statements.release_allocation_devices(allocation_id, cluster_id, payload))
+        await db.execute(statements.release_devices_held_elsewhere(allocation_id, cluster_id, payload))
         await db.execute(statements.attach_allocation_devices(allocation_id, cluster_id, payload))
         return True
 
@@ -335,29 +356,35 @@ class DatabaseSink:
         """Applies one observed frame, or refuses it in one of two different ways.
 
         Raising withholds the ack and asks for a replay, which is the right
-        answer only when a replay could succeed. A malformed frame is a poison
-        frame: it would come back unchanged forever and the stream behind it
-        would never advance, so it is accepted, discarded and logged instead
-        (PROTOCOL.md 6b). The resync epoch is poisoned either way — a frame that
-        did not land is not evidence about what exists.
+        answer only when a replay could succeed. A poison frame would come back
+        unchanged forever and the stream behind it would never advance, so it is
+        accepted, discarded and logged instead (PROTOCOL.md 6b): a malformed
+        payload, and a frame the database refuses on a constraint (`PERMANENT`).
+        The resync epoch is poisoned either way — a frame that did not land is not
+        evidence about what exists.
         """
         try:
             tracked = await self._write(frame)
-        except MalformedObservation as exc:
+        except PERMANENT as exc:
             self._poison(frame)
-            logger.error(
-                "ingestion.rejected cluster=%s type=%s seq=%s id=%s reason=%s",
-                frame.cluster_id,
-                frame.type,
-                frame.seq,
-                frame.id,
-                exc,
-            )
+            self._dead_letter(frame, exc)
             return
         except Exception:
             self._poison(frame)
             raise
         self._record(frame, tracked)
+
+    @staticmethod
+    def _dead_letter(frame: SinkFrame, exc: Exception) -> None:
+        """Where a discarded frame goes: the log, at error, with enough to find it again."""
+        logger.error(
+            "ingestion.rejected cluster=%s type=%s seq=%s id=%s reason=%s",
+            frame.cluster_id,
+            frame.type,
+            frame.seq,
+            frame.id,
+            getattr(exc, "orig", None) or exc,
+        )
 
     async def _write(self, frame: SinkFrame) -> tuple[str, str] | None:
         async with self.sessions.begin() as db:
@@ -510,6 +537,13 @@ class DatabaseSink:
     # ----------------------------------------------------------------- events
 
     async def record_event(self, frame: SinkFrame) -> None:
+        """Records one event, discarding it the way `apply_observed` does when it can never apply."""
+        try:
+            await self._record_event(frame)
+        except PERMANENT as exc:
+            self._dead_letter(frame, exc)
+
+    async def _record_event(self, frame: SinkFrame) -> None:
         payload = frame.payload
         async with self.sessions.begin() as db:
             cluster_id = await self._enter(db, frame.cluster_id, frame.session_id)
@@ -541,6 +575,13 @@ class DatabaseSink:
             await db.execute(statements.upsert_sync_state(cluster_id, {"last_sync_at": now()}, bump=True))
 
     async def record_operation(self, frame: SinkFrame) -> None:
+        """Records operation progress, discarding it the way `apply_observed` does when it can never apply."""
+        try:
+            await self._record_operation(frame)
+        except PERMANENT as exc:
+            self._dead_letter(frame, exc)
+
+    async def _record_operation(self, frame: SinkFrame) -> None:
         payload = frame.payload
         if not isinstance(payload, OperationObserved):
             logger.debug("ingestion.operation.unhandled type=%s", frame.type)

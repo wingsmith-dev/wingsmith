@@ -436,6 +436,26 @@ def test_allocation_uses_the_cluster_minted_id() -> None:
     assert "uid = excluded.uid" not in sql
 
 
+def test_an_allocation_conflict_only_updates_a_row_of_the_same_cluster() -> None:
+    """`uid` is unique across clusters; a frame from one must not move another's allocation."""
+    sql, _ = compile_sql(
+        statements.upsert_allocation(
+            CLUSTER_ID, WORKLOAD_ID, DEPLOYMENT_ID, PROJECT_ID, REPLICA_ID, payload("allocation.observed")
+        )
+    )
+    assert "DO UPDATE SET" in sql and "WHERE bind_allocation.cluster_id = excluded.cluster_id" in sql
+
+
+def test_a_card_named_by_a_newer_allocation_is_released_from_the_older_one() -> None:
+    sql, _ = compile_sql(
+        statements.release_devices_held_elsewhere(ALLOCATION_ID, CLUSTER_ID, payload("allocation.observed"))
+    )
+    assert "UPDATE bind_allocation_device SET" in sql and "released_at=" in sql
+    assert "bind_allocation_device.allocation_id != " in sql
+    assert "bind_allocation_device.released_at IS NULL" in sql
+    assert "DELETE" not in sql
+
+
 def test_allocation_reads_its_device_class_back_from_the_devices() -> None:
     """Having the cluster restate it would create a second place for it to be wrong."""
     observed = payload("allocation.observed")

@@ -526,6 +526,11 @@ def upsert_allocation(
     it reopens one an earlier release closed — the alternative is a pod that is
     demonstrably running being recorded as finished for as long as it lives,
     because nothing else would ever clear the timestamp.
+
+    The conflict only updates a row of the same cluster. `uid` is unique across
+    the table, and a frame from one cluster naming another cluster's allocation
+    would otherwise move that row — and the devices under it — onto itself. Such
+    a frame updates nothing and returns no row, which the caller drops.
     """
     values: dict[str, Any] = {
         "uid": observed_uid(payload.allocation_id, ALLOCATION),
@@ -545,6 +550,7 @@ def upsert_allocation(
     return statement.on_conflict_do_update(
         index_elements=[Allocation.uid],
         set_={key: statement.excluded[key] for key in values if key not in {"uid", "cluster_id"}},
+        where=Allocation.cluster_id == statement.excluded.cluster_id,
     )
 
 
@@ -574,6 +580,29 @@ def attach_allocation_devices(allocation_id: UUID, cluster_id: UUID, payload: Al
         constraint="uq_bind_allocation_device",
         set_={"released_at": None},
         where=AllocationDevice.released_at.is_not(None),
+    )
+
+
+def release_devices_held_elsewhere(allocation_id: UUID, cluster_id: UUID, payload: AllocationObserved) -> Update:
+    """Takes the devices this frame names away from any other allocation still holding them.
+
+    An accelerator is held by at most one live allocation, and the index that says
+    so refuses the attach that follows if an earlier holder was never released —
+    a replica that went away without its last frame arriving, and the card handed
+    to the next pod. That refusal used to fail the frame on every replay. The
+    newest frame is the cluster's current answer about who holds the card, so the
+    earlier holder lets go of it here, stamped rather than deleted, like any release.
+    """
+    return (
+        update(AllocationDevice)
+        .where(
+            AllocationDevice.allocation_id != allocation_id,
+            AllocationDevice.released_at.is_(None),
+            AllocationDevice.device_id.in_(
+                select(Device.id).where(Device.cluster_id == cluster_id, Device.uid.in_(payload.device_ids))
+            ),
+        )
+        .values(released_at=parse_ts(payload.observed_at))
     )
 
 

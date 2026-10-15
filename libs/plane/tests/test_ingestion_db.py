@@ -19,7 +19,6 @@ import pytest
 from msgspec import json as msgjson
 from msgspec import structs
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 
 from app.auth import AuthManager
 from app.hub.sink import SinkFrame
@@ -589,12 +588,15 @@ async def test_an_operation_carrying_no_run_closes_nothing(sessions, cluster) ->
 # --------------------------------------------------------------------------- allocations
 
 
-async def report_allocation(sink: DatabaseSink, devices: list[str]) -> None:
+async def report_allocation(
+    sink: DatabaseSink, devices: list[str], allocation: str = ALLOCATION, cluster_uid: str = CLUSTER
+) -> None:
     """One `allocation.observed`, as the cluster restates it on every reconcile."""
     await sink.apply_observed(
         observed(
             "allocation.observed",
-            allocation_id=ALLOCATION,
+            cluster_uid,
+            allocation_id=allocation,
             deployment_id=DEPLOYMENT,
             project_id="prj_bench",
             replica_id=None,
@@ -697,6 +699,43 @@ async def test_an_allocation_reopens_when_its_devices_are_named_again(sessions, 
     assert await fetch(sessions, "SELECT phase FROM bind_allocation") == [("held",)]
 
 
+async def test_a_card_handed_to_the_next_pod_moves_to_its_allocation(sessions, cluster) -> None:
+    """The earlier holder's release never arrived; the attach used to fail on every replay."""
+    await seed_deployment(sessions, cluster)
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+    successor = "alc_01j9x2kkkkkkkkkkkkkkkkkkkm"
+    await report_allocation(sink, [DEVICE, DEVICE_B])
+
+    await report_allocation(sink, [DEVICE_B], allocation=successor)
+
+    assert await held_devices(sessions) == [(DEVICE, True), (DEVICE_B, False)]
+    rows = await fetch(
+        sessions,
+        "SELECT a.uid FROM bind_allocation_device m JOIN bind_allocation a ON a.id = m.allocation_id"
+        " JOIN supply_device d ON d.id = m.device_id WHERE d.uid = :d AND m.released_at IS NULL",
+        {"d": DEVICE_B},
+    )
+    assert [r.uid for r in rows] == [successor]
+
+
+async def test_another_clusters_frame_cannot_take_over_an_allocation(sessions, cluster) -> None:
+    await seed_deployment(sessions, cluster)
+    other = await seed_cluster(sessions, OTHER_CLUSTER, "other")
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+    await report_allocation(sink, [DEVICE, DEVICE_B])
+    async with sessions.begin() as db:
+        await db.execute(
+            text("UPDATE demand_deployment SET cluster_id = :other WHERE uid = :d"), {"other": other, "d": DEPLOYMENT}
+        )
+    await apply_supply(sink, OTHER_CLUSTER, node=OTHER_NODE, devices=OTHER_DEVICES, domain=OTHER_DOMAIN)
+
+    await report_allocation(sink, list(OTHER_DEVICES), cluster_uid=OTHER_CLUSTER)
+
+    assert await fetch(sessions, "SELECT cluster_id FROM bind_allocation") == [(cluster,)]
+
+
 # --------------------------------------------------------------------------- operations and components
 
 
@@ -753,10 +792,25 @@ async def test_a_component_frame_writes_the_observed_half(sessions, cluster) -> 
     assert rows == [("0.9.3", "healthy", True)]
 
 
-async def test_a_component_frame_for_an_undeclared_component_is_refused(sessions, cluster) -> None:
+async def test_a_component_frame_for_an_undeclared_component_is_dropped_and_acked(sessions, cluster) -> None:
+    """It can never apply, so replaying it would wedge every frame behind it (PROTOCOL 6b)."""
     sink = DatabaseSink(sessions)
-    with pytest.raises(IntegrityError):
-        await sink.apply_observed(observed("component.observed"))
+    await sink.apply_observed(observed("component.observed"))
+
+    assert await fetch(sessions, "SELECT count(*) FROM ops_component_status") == [(0,)]
+    await sink.apply_observed(observed("node.observed"))
+    assert await fetch(sessions, "SELECT count(*) FROM supply_node") == [(1,)], "the stream behind it moves"
+
+
+async def test_a_refused_frame_inside_a_snapshot_stops_that_snapshot_pruning(sessions, cluster) -> None:
+    sink = DatabaseSink(sessions)
+    await apply_supply(sink)
+    await sink.begin_resync(CLUSTER, "supply", "req-refused")
+    await sink.apply_observed(observed("component.observed", reply_to="req-refused"))
+
+    await sink.end_resync(CLUSTER, "req-refused", count=1, complete=True)
+
+    assert await fetch(sessions, "SELECT count(*) FROM supply_node") == [(1,)]
 
 
 # --------------------------------------------------------------------------- discovered
