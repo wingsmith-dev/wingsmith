@@ -4,9 +4,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: syncedresources.placeholder.hangar.dev
+  name: syncedresources.hangar.dev
 spec:
-  group: placeholder.hangar.dev
+  group: hangar.dev
   names:
     kind: SyncedResource
     listKind: SyncedResourceList
@@ -29,7 +29,9 @@ spec:
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: SyncedResource is the single placeholder CRD for this skeleton.
+        description: |-
+          SyncedResource is the operator's durable local copy of one piece of desired state received
+          from the plane.
         properties:
           apiVersion:
             description: |-
@@ -51,8 +53,8 @@ spec:
           spec:
             description: |-
               SyncedResourceSpec is the durable local copy of one piece of desired state received from the
-              hub. The payload is held opaquely on purpose: the operator skeleton must persist and reconcile
-              desired state without knowing the domain schema, which another track defines.
+              hub. The payload is held opaquely on purpose: the operator persists and reconciles desired
+              state without depending on the domain schema, which the plane owns.
             properties:
               adopt:
                 description: |-
@@ -186,7 +188,7 @@ spec:
               phase:
                 description: |-
                   Phase is a coarse reconcile outcome. It is not an operation: long-running, failable work
-                  is modelled separately by the object-model track.
+                  is modelled separately, as operations on the sync stream.
                 type: string
             type: object
         type: object

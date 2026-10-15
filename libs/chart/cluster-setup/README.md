@@ -138,11 +138,30 @@ The chart version is the compatibility unit: `appVersion` pins the operator
 image and the chart pins the Dynamo CRD, so a `helm upgrade` moves them
 together and the operator can never render into a CRD version it does not know.
 
+## CRDs
+
+The chart ships two CRDs in `crds/`, both in the `hangar.dev` API group at
+`v1alpha1`: `SyncedResource` (the operator's local copy of what the plane
+declared) and `StreamCheckpoint` (its resume cursor on the hub stream). They are
+the operator's own state, not an API for users to write to, and `v1alpha1`
+means what it says: the schema can change between releases without a
+conversion webhook. `hangar.dev` is an interim group name and may change before
+a stable release.
+
+Helm installs `crds/` on the first `helm install` and never touches it again: a
+`helm upgrade` does not update a CRD that changed, does not install a CRD that
+is new, and `helm uninstall` does not remove them. When a release notes a CRD
+change, apply it yourself before upgrading:
+
+```sh
+kubectl apply --server-side -f crds/
+```
+
 ## Maintaining
 
 The hangar CRDs in `crds/` are a copy of the source of truth in
-`libs/operator/deploy/crd/` — Helm never templates or upgrades a `crds/`
-directory, so run `just chart-sync-crds` whenever those change. `just
+`libs/operator/deploy/crd/`, so run `just chart-sync-crds` whenever those
+change. `just
 chart-lint` renders the chart offline; `just chart-push` packages and publishes
 it. The subcharts (`dcgm-exporter`, `dynamo-platform`) pull anonymously — no NGC
 account is needed. The Dynamo operator applies the `DynamoGraphDeployment` CRD
