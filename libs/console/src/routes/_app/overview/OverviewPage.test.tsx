@@ -23,7 +23,7 @@ describe("overview", () => {
       // Each card resolves once its drained query lands.
       const main = await screen.findByRole("main")
       const workloads = await within(main).findByText("Workloads", {
-        selector: "span",
+        selector: "div",
       })
       const card = workloads.closest("a")!
       expect(card).toHaveAttribute("href", "/workloads")

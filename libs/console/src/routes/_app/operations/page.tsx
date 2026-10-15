@@ -1,4 +1,5 @@
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
+import { StatTile } from "@/components/layout/stat-tile"
 import { DataTable } from "@/components/layout/data-table"
 import { PageHeader } from "@/components/layout/page-header"
 import { StatusDot } from "@/components/layout/status-dot"
@@ -71,22 +72,21 @@ export function OperationsPage() {
       <div className="space-y-4 p-4">
         {/* Summary tiles — the plane's read-time rollup, windowed by its clock. */}
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryTile
+          <StatTile
+            size="lg"
             label="Running"
             value={byPhase.running ?? 0}
             tone="warn"
           />
-          <SummaryTile
-            label="Queued"
-            value={byPhase.pending ?? 0}
-            tone="info"
-          />
-          <SummaryTile
+          <StatTile size="lg" label="Queued" value={byPhase.pending ?? 0} />
+          <StatTile
+            size="lg"
             label="Failed · 24h"
             value={counts?.failed_24h ?? 0}
             tone="danger"
           />
-          <SummaryTile
+          <StatTile
+            size="lg"
             label="Succeeded · 24h"
             value={counts?.succeeded_24h ?? 0}
             tone="ok"
@@ -184,37 +184,6 @@ export function OperationsPage() {
         </Tabs>
       </div>
     </div>
-  )
-}
-
-function SummaryTile({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: number
-  tone: "ok" | "warn" | "danger" | "info"
-}) {
-  const valueClass =
-    tone === "danger"
-      ? "text-destructive"
-      : tone === "ok"
-        ? "text-success"
-        : tone === "warn"
-          ? "text-warning"
-          : "text-foreground"
-  return (
-    <Card size="sm" className="gap-2 px-3">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-        {label}
-      </span>
-      <span
-        className={`font-heading text-2xl leading-none font-semibold tabular-nums ${valueClass}`}
-      >
-        {value}
-      </span>
-    </Card>
   )
 }
 

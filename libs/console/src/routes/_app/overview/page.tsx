@@ -1,4 +1,5 @@
 import { PageHeader } from "@/components/layout/page-header"
+import { StatTile } from "@/components/layout/stat-tile"
 import { anyTruncated } from "@/lib/paginate"
 import { deriveFleetAttention } from "@/modules/overview/attention"
 import {
@@ -26,7 +27,6 @@ import { CapacityPressure } from "./CapacityPressure"
 import { ClusterReachability } from "./ClusterReachability"
 import { NeedsAttention } from "./NeedsAttention"
 import { RecentOperations } from "./RecentOperations"
-import { StatCard } from "./StatCard"
 
 /** Above this share of the fleet allocated, a placement is a coin toss. */
 const TIGHT_PERCENT = 75
@@ -103,14 +103,16 @@ export function OverviewPage() {
 
       <div className="flex flex-col gap-5 p-4">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <StatCard
+          <StatTile
+            size="lg"
             label="Endpoints serving"
             value={serving?.serving ?? 0}
             footnote={
-              serving &&
-              `${serving.degraded} degraded · ${serving.down} down${
-                serving.idle > 0 ? ` · ${serving.idle} idle` : ""
-              }`
+              serving
+                ? `${serving.degraded} degraded · ${serving.down} down${
+                    serving.idle > 0 ? ` · ${serving.idle} idle` : ""
+                  }`
+                : null
             }
             tone={
               serving && serving.down > 0
@@ -123,25 +125,29 @@ export function OverviewPage() {
             isLoading={endpoints.isLoading || deployments.isLoading}
             error={endpoints.error ?? deployments.error}
           />
-          <StatCard
+          <StatTile
+            size="lg"
             label="Workloads"
             value={workloads.data?.length ?? 0}
             footnote={
-              footprint &&
-              `${footprint.ready} replicas across ${footprint.clusters} ${
-                footprint.clusters === 1 ? "cluster" : "clusters"
-              }`
+              footprint
+                ? `${footprint.ready} replicas across ${footprint.clusters} ${
+                    footprint.clusters === 1 ? "cluster" : "clusters"
+                  }`
+                : null
             }
             to="/workloads"
             isLoading={workloads.isLoading}
             error={workloads.error}
           />
-          <StatCard
+          <StatTile
+            size="lg"
             label="GPU allocated"
             value={`${allocation?.percent ?? 0}%`}
             footnote={
-              allocation &&
-              `${allocation.allocated} / ${allocation.total} devices`
+              allocation
+                ? `${allocation.allocated} / ${allocation.total} devices`
+                : null
             }
             tone={
               allocation && allocation.percent >= FULL_PERCENT
@@ -154,7 +160,8 @@ export function OverviewPage() {
             isLoading={devices.isLoading}
             error={devices.error}
           />
-          <StatCard
+          <StatTile
+            size="lg"
             label="Unschedulable"
             value={pending ?? 0}
             footnote="replicas pending > 10m"

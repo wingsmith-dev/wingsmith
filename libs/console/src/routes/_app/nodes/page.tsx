@@ -1,4 +1,5 @@
 import type { Column } from "@/components/layout/data-table"
+import { StatTile } from "@/components/layout/stat-tile"
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { PageHeader } from "@/components/layout/page-header"
 import { ResourceCell } from "@/components/layout/resource-cell"
@@ -6,7 +7,6 @@ import {
   NodeConditionLabel,
   NodeKindBadge,
 } from "@/components/supply/indicators"
-import { Card } from "@/components/ui/card"
 import { formatRelative } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { clusterLabel } from "@/modules/clusters/display"
@@ -22,36 +22,6 @@ const CORDONED = [
   { value: "true", label: "Cordoned" },
   { value: "false", label: "Schedulable" },
 ]
-
-/** One headline number over the loaded rows. */
-function SummaryTile({
-  label,
-  value,
-  tone,
-  note,
-}: {
-  label: string
-  value: React.ReactNode
-  tone?: "warn"
-  note?: string
-}) {
-  return (
-    <Card size="sm" className="gap-1.5 px-3">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-        {label}
-      </span>
-      <span
-        className={cn(
-          "font-heading text-2xl leading-none font-semibold tabular-nums",
-          tone === "warn" && "text-warning"
-        )}
-      >
-        {value}
-      </span>
-      {note && <span className="font-mono text-2xs text-warning">{note}</span>}
-    </Card>
-  )
-}
 
 /**
  * A GPU-by-GPU strip for one node's device rollup. Fault cells come from the
@@ -296,23 +266,27 @@ export function NodesPage() {
 
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryTile label="Nodes" value={fleet?.total ?? "—"} />
-          <SummaryTile
+          <StatTile size="lg" label="Nodes" value={fleet?.total ?? "—"} />
+          <StatTile
+            size="lg"
             label="Ready"
             value={fleet ? `${fleet.ready}/${fleet.total}` : "—"}
             tone={summary.stale > 0 ? "warn" : undefined}
-            note={
-              summary.stale > 0
-                ? `${summary.stale} stale · cluster unreachable`
-                : undefined
-            }
-          />
-          <SummaryTile
+          >
+            {summary.stale > 0 && (
+              <span className="font-mono text-2xs text-warning">
+                {summary.stale} stale · cluster unreachable
+              </span>
+            )}
+          </StatTile>
+          <StatTile
+            size="lg"
             label="Driver drift"
             value={summary.driftNodes}
             tone={summary.driftNodes > 0 ? "warn" : undefined}
           />
-          <SummaryTile
+          <StatTile
+            size="lg"
             label="Faulted GPUs"
             value={fleet?.faulted_devices ?? "—"}
             tone={fleet && fleet.faulted_devices > 0 ? "warn" : undefined}

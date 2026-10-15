@@ -1,4 +1,5 @@
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
+import { StatTile } from "@/components/layout/stat-tile"
 import { DataTable, type Column } from "@/components/layout/data-table"
 import { DeleteDialog, RowActions } from "@/components/layout/destructive"
 import { Dash, Id } from "@/components/layout/mono"
@@ -7,7 +8,6 @@ import { ResourceCell } from "@/components/layout/resource-cell"
 import { ResourceIcon } from "@/components/layout/resource-icon"
 import { StatusLabel, type StatusTone } from "@/components/layout/status-dot"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { formatBytes } from "@/modules/demand/display"
 import {
@@ -177,31 +177,6 @@ function columns(
   ]
 }
 
-interface TileProps {
-  label: string
-  value: React.ReactNode
-  tone?: "warn"
-}
-
-function SummaryTile({ label, value, tone }: TileProps) {
-  return (
-    <Card size="sm" className="gap-2 px-3">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-        {label}
-      </span>
-      <span
-        className={
-          tone === "warn"
-            ? "font-heading text-2xl leading-none font-semibold text-warning tabular-nums"
-            : "font-heading text-2xl leading-none font-semibold tabular-nums"
-        }
-      >
-        {value}
-      </span>
-    </Card>
-  )
-}
-
 /** Immutable and content-addressed: identity is the digest, not the name. */
 export function ArtifactsPage() {
   const [kind, setKind] = useState<string>(ALL)
@@ -253,13 +228,15 @@ export function ArtifactsPage() {
 
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryTile label="Artifacts" value={summary.count} />
-          <SummaryTile
+          <StatTile size="lg" label="Artifacts" value={summary.count} />
+          <StatTile
+            size="lg"
             label="Total storage"
             value={formatBytes(summary.storage)}
           />
-          <SummaryTile label="In use" value={summary.inUse} />
-          <SummaryTile
+          <StatTile size="lg" label="In use" value={summary.inUse} />
+          <StatTile
+            size="lg"
             label="Needs attention"
             value={summary.attention}
             tone="warn"

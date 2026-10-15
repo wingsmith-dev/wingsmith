@@ -101,33 +101,27 @@ export function NodeDetailPage() {
               <StatTile label="Status">
                 <NodeConditionLabel condition={node.condition} stale={stale} />
               </StatTile>
-              <StatTile label="Devices">
-                <span className="font-mono text-2xl leading-none font-semibold tabular-nums">
-                  {node.devices.total - unhealthyCount(node.devices)}/
-                  {node.devices.total}
-                </span>
-              </StatTile>
-              <StatTile label="Replicas">
-                <span className="font-mono text-2xl leading-none font-semibold tabular-nums">
-                  {nodeAllocations.length}
-                </span>
-              </StatTile>
+              <StatTile
+                label="Devices"
+                size="lg"
+                value={`${node.devices.total - unhealthyCount(node.devices)}/${node.devices.total}`}
+              />
+              <StatTile
+                label="Replicas"
+                size="lg"
+                value={nodeAllocations.length}
+              />
               <StatTile label="Uptime">
                 <span className="font-mono text-sm text-muted-foreground">
                   {node.joined_at ? formatRelative(node.joined_at) : "—"}
                 </span>
               </StatTile>
-              <StatTile label="ECC errors">
-                <span
-                  className={
-                    eccTotal > 0
-                      ? "font-mono text-2xl leading-none font-semibold text-warning tabular-nums"
-                      : "font-mono text-2xl leading-none font-semibold tabular-nums"
-                  }
-                >
-                  {eccTotal}
-                </span>
-              </StatTile>
+              <StatTile
+                label="ECC errors"
+                size="lg"
+                value={eccTotal}
+                tone={eccTotal > 0 ? "warn" : "default"}
+              />
             </div>
 
             <div className="flex flex-wrap items-center gap-3">

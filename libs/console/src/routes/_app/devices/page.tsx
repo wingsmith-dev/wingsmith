@@ -13,7 +13,9 @@ import {
 } from "@/modules/supply/queries"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useState } from "react"
-import { CountTile } from "@/components/layout/count-tile"
+import { StatTile } from "@/components/layout/stat-tile"
+import { ResourceIcon } from "@/components/layout/resource-icon"
+import { StatusDot, type StatusTone } from "@/components/layout/status-dot"
 import { GroupedDevices, type GroupMode } from "./GroupedDevices"
 import { TopologySummary } from "./TopologySummary"
 
@@ -91,16 +93,18 @@ export function DevicesPage() {
 
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <CountTile
-            kind="device"
+          <StatTile
+            size="lg"
+            icon={<ResourceIcon kind="device" className="size-3.5" />}
             label="Devices"
             value={totals.devices}
             to="/devices"
             isLoading={classesLoading}
             error={classesError}
           />
-          <CountTile
-            kind="device"
+          <StatTile
+            size="lg"
+            icon={<ResourceIcon kind="device" className="size-3.5" />}
             label="Allocated"
             value={allocated}
             detail={`/ ${totals.devices}`}
@@ -108,26 +112,28 @@ export function DevicesPage() {
             isLoading={classesLoading}
             error={classesError}
           />
-          <CountTile
-            kind="device"
+          <StatTile
+            size="lg"
+            icon={<ResourceIcon kind="device" className="size-3.5" />}
             label="Free"
             value={totals.free}
             to="/devices"
-            notes={[{ label: "allocatable", tone: "ok" }]}
             isLoading={classesLoading}
             error={classesError}
-          />
-          <CountTile
-            kind="device"
+          >
+            <TileNote tone="ok">allocatable</TileNote>
+          </StatTile>
+          <StatTile
+            size="lg"
+            icon={<ResourceIcon kind="device" className="size-3.5" />}
             label="Faulted"
             value={faulted}
             to="/devices"
-            notes={
-              faulted > 0 ? [{ label: "not healthy", tone: "warn" }] : undefined
-            }
             isLoading={classesLoading}
             error={classesError}
-          />
+          >
+            {faulted > 0 && <TileNote tone="warn">not healthy</TileNote>}
+          </StatTile>
         </div>
 
         <TopologySummary
@@ -232,6 +238,18 @@ function Swatch({ className, label }: { className: string; label: string }) {
     <span className="inline-flex items-center gap-1.5">
       <span className={`h-2.5 w-2 rounded-[2px] ${className}`} />
       {label}
+    </span>
+  )
+}
+
+function TileNote({
+  tone,
+  children,
+}: React.PropsWithChildren<{ tone: StatusTone }>) {
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-2xs text-muted-foreground">
+      <StatusDot tone={tone} />
+      {children}
     </span>
   )
 }
