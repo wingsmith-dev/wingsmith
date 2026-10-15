@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -65,11 +66,22 @@ type hub struct {
 	port int
 }
 
+// hubScript is the Python launcher that wraps the plane's hub with the control surface these
+// tests drive. It lives beside them so the gate needs nothing outside libs/.
+const hubScript = "libs/operator/internal/interop/testdata/hub.py"
+
 // startHub launches the Python hub on an ephemeral port and waits for /health.
+//
+// A checkout without the launcher skips rather than fails: the suite cannot say anything about
+// the hub without it, and a missing harness is not a protocol regression.
 func startHub(t *testing.T, args ...string) *hub {
 	t.Helper()
 	root := repoRoot()
-	full := append([]string{"run", "python", filepath.Join(root, "test", "interop", "hub.py"), "--port", "0"}, args...)
+	script := filepath.Join(root, filepath.FromSlash(hubScript))
+	if _, err := os.Stat(script); errors.Is(err, os.ErrNotExist) {
+		t.Skipf("interop hub launcher %s is not in this checkout; nothing to run against", hubScript)
+	}
+	full := append([]string{"run", "python", script, "--port", "0"}, args...)
 	cmd := exec.Command("uv", full...)
 	cmd.Dir = filepath.Join(root, "libs", "plane")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

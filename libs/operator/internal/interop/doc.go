@@ -5,8 +5,9 @@
 // The suite is behind the `interop` build tag and needs both toolchains, so `go test ./...`
 // leaves it alone. Run it with `just interop` from the repository root.
 //
-// It lives inside the operator module rather than beside the hub launcher in test/interop
-// because the client it drives is an internal package: Go's internal rule puts the driver here
-// or nowhere. The hub half of the harness — the process wiring and the control surface the tests
-// drive it through — is test/interop/hub.py.
+// It lives inside the operator module because the client it drives is an internal package: Go's
+// internal rule puts the driver here or nowhere. The hub half of the harness — the process wiring
+// and the control surface the tests drive it through — is testdata/hub.py beside this file, and it
+// has to enrol the test cluster with a per-cluster enrolment token, the only credential the hub
+// opens a session for. The launcher is not published yet, so the suite skips rather than fails.
 package interop
