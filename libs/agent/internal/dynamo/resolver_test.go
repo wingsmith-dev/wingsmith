@@ -457,8 +457,56 @@ func TestTwoFrontendsClaimingOneDeploymentIsStillAnErrorRatherThanAGuess(t *test
 			t.Fatalf("refresh err = %q, want it to name %s", refreshErr, want)
 		}
 	}
-	if _, err := resolver.URL(); !errors.Is(err, ErrNoFrontend) {
-		t.Fatalf("url = %v, want nothing loaded after a refusal", err)
+	if !errors.Is(refreshErr, ErrAmbiguousFrontend) {
+		t.Errorf("refresh err = %v, want ErrAmbiguousFrontend", refreshErr)
+	}
+	// The shared frontend in the same pass is still served, and the conflicted
+	// deployment is refused rather than sent to it.
+	if got, err := resolver.URL(); err != nil || !strings.Contains(got.Host, "inference-frontend") {
+		t.Fatalf("url = %v, %v, want the shared frontend from the same pass", got, err)
+	}
+	if _, err := resolver.URLFor("dep_01j9x2"); !errors.Is(err, ErrNoDeploymentFrontend) {
+		t.Fatalf("url for the conflicted deployment = %v, want ErrNoDeploymentFrontend", err)
+	}
+}
+
+// TestOneConflictedDeploymentDoesNotStallTheOthers pins that a conflict is
+// scoped to its own key. A deployment that gains a second frontend keeps the
+// address it had, and every other deployment, including one that moved in the
+// same pass, follows the cluster.
+func TestOneConflictedDeploymentDoesNotStallTheOthers(t *testing.T) {
+	ctx := context.Background()
+	client := services(t,
+		deploymentFrontend("a-frontend", "dep_a"),
+		deploymentFrontend("b-frontend", "dep_b"),
+	)
+	resolver, err := New(Config{Namespace: testNamespace, Services: client})
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	if err := resolver.Refresh(ctx); err != nil {
+		t.Fatalf("first refresh: %v", err)
+	}
+
+	// dep_a gains a second frontend; dep_b is redeployed under a new name.
+	if _, err := client.Create(ctx, deploymentFrontend("a-second-frontend", "dep_a"), metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Delete(ctx, "b-frontend", metav1.DeleteOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Create(ctx, deploymentFrontend("b-new-frontend", "dep_b"), metav1.CreateOptions{}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := resolver.Refresh(ctx); !errors.Is(err, ErrAmbiguousFrontend) {
+		t.Fatalf("second refresh = %v, want ErrAmbiguousFrontend", err)
+	}
+	if got, err := resolver.URLFor("dep_b"); err != nil || !strings.HasPrefix(got.Host, "b-new-frontend.") {
+		t.Errorf("dep_b = %v, %v, want the new frontend from this pass", got, err)
+	}
+	if got, err := resolver.URLFor("dep_a"); err != nil || !strings.HasPrefix(got.Host, "a-frontend.") {
+		t.Errorf("dep_a = %v, %v, want the address it had before the conflict", got, err)
 	}
 }
 

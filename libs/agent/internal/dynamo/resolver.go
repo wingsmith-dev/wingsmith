@@ -35,9 +35,8 @@ const componentFrontend = "Frontend"
 //
 // The operator stamps it on a component's pod template, and Dynamo copies a
 // component's pod-template labels onto the Service it derives from that
-// component — verified on cluster-site-c, where the worker Service
-// carries the deployment id and the project the operator set on the worker's
-// pods. That copy is the whole mechanism: without it there is nothing
+// component — verified on a live cluster, where the worker Service carries
+// the deployment id and the project the operator set on the worker's pods. That copy is the whole mechanism: without it there is nothing
 // on a Service to key on, and this hop would be back to asking each frontend
 // what models it serves.
 //
@@ -72,6 +71,12 @@ var ErrNoFrontend = errors.New("no inference frontend found in this cluster")
 // normally — the ordinary shape of the seconds after a deployment is created,
 // and the one case where retrying the same request shortly is exactly right.
 var ErrNoDeploymentFrontend = errors.New("no inference frontend for this deployment in this cluster")
+
+// ErrAmbiguousFrontend marks a discovery pass in which more than one Service
+// claimed the same deployment, or more than one claimed to be the shared
+// frontend. Those keys are skipped and every other key is served; Refresh
+// returns it so the conflict is reported, not so the pass is thrown away.
+var ErrAmbiguousFrontend = errors.New("more than one inference frontend claims the same deployment")
 
 // Services is the slice of Kubernetes this package needs. It is one method wide
 // so that the agent can hand it a typed client and a test can hand it a
@@ -138,6 +143,10 @@ type frontends struct {
 	shared *url.URL
 	// byDeployment is one frontend per deployment that renders its own.
 	byDeployment map[string]*url.URL
+	// conflicted is the keys more than one Service claimed in this pass. One
+	// that kept an address from the pass before is in byDeployment as well; one
+	// that did not is refused rather than sent to the shared frontend.
+	conflicted map[string]bool
 }
 
 func (f frontends) empty() bool { return f.shared == nil && len(f.byDeployment) == 0 }
@@ -244,6 +253,9 @@ func (r *Resolver) URLFor(deploymentID string) (*url.URL, error) {
 	if address, ok := r.current.byDeployment[deploymentID]; ok {
 		return address, nil
 	}
+	if r.current.conflicted[deploymentID] {
+		return nil, fmt.Errorf("%w: %s has more than one frontend", ErrNoDeploymentFrontend, deploymentID)
+	}
 	if r.current.shared != nil {
 		return r.current.shared, nil
 	}
@@ -258,23 +270,39 @@ func (r *Resolver) URLFor(deploymentID string) (*url.URL, error) {
 // A failed lookup leaves the set that is already loaded in place. An API
 // server that is unreachable, or a graph that is mid-redeploy, must not stop
 // traffic reaching frontends that are answering perfectly well.
+//
+// A pass in which some key is claimed twice is applied for every other key, and
+// the conflicted key keeps the address it had, if it had one. One misconfigured
+// deployment used to discard the whole pass, which froze every other
+// deployment on the cluster at whatever addresses were last seen.
 func (r *Resolver) Refresh(ctx context.Context) error {
 	if r.fixed != nil {
 		return nil
 	}
 
 	found, err := r.discover(ctx)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrAmbiguousFrontend) {
 		return err
 	}
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for key := range found.conflicted {
+		if key == "" {
+			if found.shared == nil {
+				found.shared = r.current.shared
+			}
+			continue
+		}
+		if previous, ok := r.current.byDeployment[key]; ok {
+			found.byDeployment[key] = previous
+		}
+	}
 	if before, after := r.current.describe(), found.describe(); before != after {
 		slog.Info("frontend: forwarding to", "frontends", after)
 	}
 	r.current = found
-	return nil
+	return err
 }
 
 // Run refreshes until the context ends. It returns as soon as the address is
@@ -287,7 +315,11 @@ func (r *Resolver) Run(ctx context.Context) {
 	ticker := time.NewTicker(r.interval)
 	defer ticker.Stop()
 	for {
-		if err := r.Refresh(ctx); err != nil && ctx.Err() == nil {
+		switch err := r.Refresh(ctx); {
+		case err == nil || ctx.Err() != nil:
+		case errors.Is(err, ErrAmbiguousFrontend):
+			slog.Warn("frontend: skipped frontends that claim the same deployment, serving the rest", "err", err)
+		default:
 			slog.Warn("frontend: discovery failed, keeping the last known addresses", "err", err)
 		}
 		select {
@@ -301,15 +333,12 @@ func (r *Resolver) Run(ctx context.Context) {
 // discover finds every Service selecting Dynamo's frontend component and keys
 // them by the deployment each one belongs to.
 //
-// Two frontends used to be an error and not a guess, and the refusal was right
-// while nothing on a Service said which model it fronted. What changed is that
-// something does: the operator renders a frontend into the same graph as its
-// worker and the ownership labels ride onto the Service, so plurality is now
-// answerable rather than ambiguous. What is still an error is two Services
-// claiming the same key — two shared frontends, or two frontends for one
-// deployment — because that is the original ambiguity with none of the new
-// information, and picking one would send traffic somewhere the caller did not
-// ask for.
+// Plurality is answerable because the operator renders a frontend into the same
+// graph as its worker and the ownership labels ride onto the Service. Two
+// Services claiming the same key — two shared frontends, or two frontends for
+// one deployment — is still not answerable, and picking one would send traffic
+// somewhere the caller did not ask for. That key is skipped and reported with
+// ErrAmbiguousFrontend; the rest of the pass stands.
 //
 // Finding nothing is still an error rather than an empty set, so that a cluster
 // whose API server has gone quiet keeps forwarding to the frontends it last
@@ -340,10 +369,13 @@ func (r *Resolver) discover(ctx context.Context) (frontends, error) {
 			ErrNoFrontend, r.namespace, ComponentLabel, componentFrontend)
 	}
 
-	discovered := frontends{byDeployment: map[string]*url.URL{}}
+	discovered := frontends{byDeployment: map[string]*url.URL{}, conflicted: map[string]bool{}}
+	var conflicts []error
 	for key, services := range found {
 		if len(services) > 1 {
-			return frontends{}, ambiguous(r.namespace, key, services)
+			discovered.conflicted[key] = true
+			conflicts = append(conflicts, ambiguous(r.namespace, key, services))
+			continue
 		}
 		address, err := serviceURL(services[0])
 		if err != nil {
@@ -355,7 +387,7 @@ func (r *Resolver) discover(ctx context.Context) (frontends, error) {
 		}
 		discovered.byDeployment[key] = address
 	}
-	return discovered, nil
+	return discovered, errors.Join(conflicts...)
 }
 
 // deploymentOf reads the routing key off a frontend Service, or empty for the
@@ -388,15 +420,15 @@ func ambiguous(namespace, deployment string, services []corev1.Service) error {
 
 	if deployment == "" {
 		return fmt.Errorf(
-			"%s holds %d shared inference frontends (%s) and nothing here can tell which one a "+
+			"%w: %s holds %d shared inference frontends (%s) and nothing here can tell which one a "+
 				"request belongs to; a frontend with no %s label is this cluster's fallback and "+
 				"there can be only one, so label the others or set the endpoint override",
-			namespace, len(services), strings.Join(names, ", "), DeploymentIDLabel)
+			ErrAmbiguousFrontend, namespace, len(services), strings.Join(names, ", "), DeploymentIDLabel)
 	}
 	return fmt.Errorf(
-		"%s holds %d inference frontends (%s) labelled %s=%s and nothing here can tell which one "+
+		"%w: %s holds %d inference frontends (%s) labelled %s=%s and nothing here can tell which one "+
 			"a request belongs to; set the endpoint override",
-		namespace, len(services), strings.Join(names, ", "), DeploymentIDLabel, deployment)
+		ErrAmbiguousFrontend, namespace, len(services), strings.Join(names, ", "), DeploymentIDLabel, deployment)
 }
 
 // serviceURL is the in-cluster address of one frontend Service.
