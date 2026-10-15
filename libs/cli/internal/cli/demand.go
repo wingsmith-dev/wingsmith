@@ -22,12 +22,11 @@ func artifactNoun() noun[api.Artifact] {
 		aliases: []string{"artifacts"},
 		group:   "demand",
 		short:   "Immutable, content-addressed model weights",
-		long: `An artifact is bytes, and its identity is the digest.
+		long: `An artifact is a set of model files identified by its digest.
 
-A fine-tune output, a private checkpoint, a quantized derivative and a LoRA
-adapter are all artifacts, which is why kind is a field rather than a
-different object. Locations are where the bytes can be fetched from; the
-control plane never carries them.`,
+Weights, fine-tunes, quantized copies and LoRA adapters are all artifacts,
+told apart by kind. Locations say where the files can be fetched from; the
+control plane never stores or serves them.`,
 		example: `  hgr artifact ls
   hgr artifact ls --kind adapter
   hgr artifact get llama-3.1-70b-instruct`,
@@ -154,13 +153,14 @@ func deploymentNoun() noun[api.Deployment] {
 		aliases: []string{"deployments", "deploy"},
 		group:   "demand",
 		short:   "One workload's share on one cluster",
-		long: `A deployment is one workload on one cluster: the unit the operator reconciles.
+		long: `A deployment is one workload on one cluster, the unit the operator
+reconciles.
 
-You do not create one. Placement creates it when it expands a workload, one per
-cluster the workload landed on, and the replica bounds on it are THIS CLUSTER'S
-share of the workload total — never the total. Serving, adapters, overrides and
-labels are workload facts and are read there; admission is here, because a
-workload can be running in one region and queued on quota in another.`,
+Placement creates deployments when it expands a workload, one per cluster the
+workload lands on. Its replica counts are that cluster's share of the
+workload's total. Serving settings, adapters, overrides and labels belong to
+the workload; admission is per deployment, because a workload can run in one
+cluster and wait on quota in another.`,
 		example: `  hgr deployment ls
   hgr deployment ls --cluster iad-1 --phase placed
   hgr deployment ls --workload chat
@@ -319,17 +319,17 @@ func workloadNoun() noun[api.Workload] {
 		name:    "workload",
 		aliases: []string{"workloads", "wkl"},
 		group:   "demand",
-		short:   "What you asked to run, across every cluster it may use",
-		long: `A workload is an artifact, the way to serve it, a priority and a total
-number of replicas. It does not name a cluster.
+		short:   "A model to serve, across every cluster it may use",
+		long: `A workload is an artifact, how to serve it, a priority and a total number
+of replicas. It does not name a cluster.
 
-Placement expands it into one deployment per cluster, and each deployment
-carries that cluster's share of the total. Serving one model in two regions is
-one workload with two deployments.
+Placement expands it into one deployment per cluster, each carrying that
+cluster's share of the total. Serving one model in two regions is one workload
+with two deployments.
 
-Workloads today are long-running inference services. Batch tasks and gang
-scheduled jobs are on the roadmap; the kind field is there for them, but
-nothing runs them yet.`,
+Workloads are long-running inference services. Batch tasks and gang-scheduled
+jobs are on the roadmap; the kind field exists for them, but nothing runs them
+yet.`,
 		example: `  hgr workload ls
   hgr workload ls --phase pending
   hgr workload get chat
@@ -605,21 +605,17 @@ func newWorkloadCreateCmd(app *App) *cobra.Command {
 		Use:     "create <name>",
 		Aliases: []string{"new", "run"},
 		Short:   "Declare something to run, without saying where",
-		Long: `Create a workload. The cluster is not an argument.
+		Long: `Create a workload. Placement picks the clusters.
 
---scale is the TOTAL across every cluster this workload may use — replicas for a
-service, ranks for a gang, completions for a task — and placement divides it.
---strategy pack fills one cluster before reaching for another, which is the
-default because it keeps a workload that fits in one cluster in one cluster;
---strategy spread levels it across everything it is allowed.
+--scale is the total number of replicas across every cluster the workload may
+use, and placement divides it. --strategy pack (the default) fills one cluster
+before using another; --strategy spread balances across all allowed clusters.
 
---cluster is the escape hatch, not the normal path: it pins the workload to one
-cluster, is never checked for capacity, and forces a single deployment. A gang is
-already single-cluster by construction, because its ranks are co-scheduled.
+--cluster pins the workload to one cluster with a single deployment and skips
+the capacity check. Use it when placement should not choose.
 
-The serving flags are the workload's own: there is no shared configuration to
-name and nothing to reuse by id. Two workloads given the same flags get the same
-serving_digest, which is the whole of what sharing used to buy.
+The serving flags belong to this workload. Two workloads created with the same
+flags get the same serving_digest.
 
 An image or video model runs on --engine omni (Dynamo's vLLM-Omni worker) and
 needs --output-modality image|video instead of --context-length. --model-class
@@ -866,10 +862,9 @@ func newWorkloadDeleteCmd(app *App) *cobra.Command {
 		Short:   "Stop running a workload everywhere",
 		Long: `Delete a workload and every cluster's share of it.
 
-This is the only delete in this part of the model. A deployment cannot be
-deleted on its own: taking a workload out of one cluster is ` + "`hgr workload drain`" + `,
-which drives that cluster's share to zero and removes the row once its replicas
-are gone.`,
+Deployments have no delete of their own. To take a workload out of one
+cluster, use ` + "`hgr workload drain`" + `, which drives that cluster's share to zero
+and removes the deployment once its replicas are gone.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -912,9 +907,8 @@ func newWorkloadScaleCmd(app *App) *cobra.Command {
 		Short: "Change a workload's total scale",
 		Long: `Scale a workload to a new total across every cluster it may use.
 
-An operation rather than a field write, because it is long-running and can fail:
-the new total has to find quota and capacity, and it can sit pending on quota
-indefinitely. --wait polls it to a terminal phase.`,
+This starts a workload.scale operation, because the new total has to find
+quota and capacity and can fail or wait. --wait polls it until it finishes.`,
 		Example: `  hgr workload scale chat 12
   hgr workload scale chat 12 --wait`,
 		Args: cobra.ExactArgs(2),
@@ -987,10 +981,9 @@ func newWorkloadDrainCmd(app *App) *cobra.Command {
 		Short: "Take a workload out of one cluster",
 		Long: `Remove one cluster from a workload.
 
-That cluster's share goes to zero, its endpoint targets are removed, and once
-its replicas are gone the deployment row is deleted and the remaining clusters
-are re-expanded to absorb the total. This is the reason a deployment has no
-delete of its own.`,
+That cluster's share goes to zero and its endpoint targets are removed. Once
+its replicas are gone the deployment is deleted, and the remaining clusters are
+re-expanded to carry the total.`,
 		Example: `  hgr workload drain chat --cluster sjc-1
   hgr workload drain chat --cluster sjc-1 --wait`,
 		Args: cobra.ExactArgs(1),
@@ -1080,17 +1073,15 @@ func newDeploymentEventsCmd(app *App) *cobra.Command {
 		Use:     "events <deployment>",
 		Aliases: []string{"timeline", "history"},
 		Short:   "What has happened to one deployment",
-		Long: `The whole story of a deployment, from being asked for to serving.
+		Long: `Every event for one deployment, from creation to serving.
 
-Both halves of it. deployment.created, deployment.scaled and deployment.deleted
-are things a person did; deployment.dispatched is the plane saying it delivered
-the declared state to a cluster; deployment.pending, deployment.placed and
-deployment.failed are what that cluster concluded when it tried to reconcile it.
+deployment.created, deployment.scaled and deployment.deleted are changes someone
+made. deployment.dispatched means the plane delivered the declared state to the
+cluster. deployment.pending, deployment.placed and deployment.failed are what
+the cluster reported when it reconciled it.
 
-This is the answer to "it says placed and nothing is happening". The status on
-` + "`hgr deployment get`" + ` only ever shows the latest conclusion, so a deployment that
-waited an hour on cold weights and one that came up instantly look identical
-once they are up.`,
+` + "`hgr deployment get`" + ` shows only the latest status; this shows how it got
+there, for example an hour spent waiting for weights to download.`,
 		Example: `  hgr deployment events chat
   hgr deployment events chat --since 1h
   hgr deployment events chat --severity error`,
@@ -1178,11 +1169,11 @@ func endpointNoun() noun[api.Endpoint] {
 		aliases: []string{"endpoints"},
 		group:   "demand",
 		short:   "The stable public name clients call",
-		long: `An endpoint is the name that does not move.
+		long: `An endpoint is the stable model name clients call.
 
-It spans clusters by construction — that is what the weighted target set and
-the failover order are for — so it carries no cluster at any depth. Deployments
-behind it are disposable; the endpoint is the contract.`,
+It routes to deployments in any cluster through weighted targets and a failover
+order, so it names no cluster itself. Deployments behind it can be replaced
+without clients noticing.`,
 		example: `  hgr endpoint ls
   hgr endpoint ls --project core
   hgr endpoint get chat`,

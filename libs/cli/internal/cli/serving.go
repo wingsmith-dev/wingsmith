@@ -332,8 +332,8 @@ func newServingQuotaResolvedCmd(app *App) *cobra.Command {
 		Long: `Show what one replica of an endpoint actually enforces.
 
 A per_replica limit is the same on every replica; a divided one is split across
-them, so what a single replica may serve depends on how many there are. This is
-the arithmetic the gateway does, asked of the plane rather than reproduced here.`,
+them, so what a single replica may serve depends on how many there are. The
+plane computes this the same way the gateway does.`,
 		Example: `  hgr serving-quota resolved chat --replicas 4
   hgr serving-quota resolved chat --replicas 4 --index 1`,
 		Args: cobra.ExactArgs(1),

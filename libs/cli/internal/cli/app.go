@@ -178,17 +178,26 @@ func newRootCmd(app *App) *cobra.Command {
 	root := &cobra.Command{
 		Use:   "hgr",
 		Short: "Hangar — control plane for many GPU clusters and many models",
-		Long: `hgr is the Hangar command line.
+		Long: `hgr is the Hangar command line. It talks only to the control plane's HTTP API.
 
-Enrol and operate GPU clusters, publish model artifacts, declare workloads and
-place deployments, and put endpoints in front of them — all through the Hangar
-control plane's API, which is the only thing this binary talks to.
+Most nouns are read-only here: ls and get for clusters, nodes, devices, pools,
+artifacts, deployments, projects, quotas, policies and the rest. The verbs that
+change things are:
 
-Every command is noun-verb and every command has a machine contract: pipe it
-to jq with -o json, or set HANGAR_AGENT=1 for a stable JSON envelope with
-suggested next actions.
+  workload         create, scale, pause, resume, drain, rm
+  operation        create (node drain, cordon, uncordon), cancel, wait
+  endpoint         sla
+  serving-quota    create, set, rm
+  alert-threshold  create, set, rm
+  benchmark        run, request
+  discovered       track, ignore, promote, rm, restore
 
-Nothing is running yet? Add --fake for a complete offline control plane.`,
+Enrolling clusters, publishing artifacts and editing endpoints, projects and
+policies are done in the console for now.
+
+Commands are noun-verb. -o json prints the API's own objects, and
+HANGAR_AGENT=1 wraps every result in a stable JSON envelope with suggested next
+commands. --fake answers from an offline copy of the plane.`,
 		SilenceUsage:      true,
 		SilenceErrors:     true,
 		DisableAutoGenTag: true,

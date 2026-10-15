@@ -18,7 +18,7 @@ func alertThresholdNoun() noun[api.AlertThreshold] {
 		name:    "alert-threshold",
 		aliases: []string{"alert-thresholds", "threshold", "thresholds"},
 		group:   "machinery",
-		short:   "When a metric crosses a line worth waking someone for",
+		short:   "Metric thresholds that raise an alert",
 		long: `An alert threshold is one rule, a subject to watch, and the value the metric
 must cross before it fires.
 
@@ -122,8 +122,8 @@ func newAlertThresholdCreateCmd(app *App) *cobra.Command {
 The rule names the metric and which direction is wrong; --value is the line it
 must cross. Omit --subject to set the fleet default for the rule's subject type;
 name one to hold a single deployment or node to a different line. --for is how
-long the metric must stay across before it fires, which is what keeps a momentary
-spike from paging anyone.`,
+long the metric must stay across the line before it fires, so a brief spike
+does not.`,
 		Example: `  hgr alert-threshold create deployment.ttft_high --value 2.5
   hgr alert-threshold create deployment.ttft_high --value 3 --subject dep_01m… --for 300 --severity error`,
 		Args: cobra.ExactArgs(1),
@@ -300,9 +300,8 @@ func newAlertRulesCmd(app *App) *cobra.Command {
 		Short:   "The metric rules a threshold may be declared on",
 		Long: `List the rules the plane will take a threshold for.
 
-Each names the metric, the unit its value is in, and which direction counts as
-wrong — asked of the plane so this is the same catalogue --value is validated
-against and there is no second answer to what a rule measures.`,
+Each names the metric, the unit of its value, and which direction is bad.
+This is the catalogue the plane validates --value against.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()

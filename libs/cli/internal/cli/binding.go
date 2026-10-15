@@ -18,12 +18,13 @@ func tenantNoun() noun[api.Tenant] {
 		name:    "tenant",
 		aliases: []string{"tenants"},
 		group:   "binding",
-		short:   "Tenancy — the billing root",
-		long: `A tenant is the billing and isolation root. Projects hang off it, quota
-attaches below them, and nothing can be deployed or promoted until one exists.
+		short:   "The top of the ownership tree",
+		long: `A tenant is the top of the ownership tree. Projects belong to a tenant and
+quota attaches to projects, so nothing can be deployed or promoted until a
+tenant exists.
 
-It is deliberately three fields. Access control, billing accounts and contacts
-are their own objects when they exist, not columns smuggled onto this one.`,
+A tenant also says how its inference traffic reaches the gateway (ingress,
+auth and host).`,
 		example: `  hgr tenant ls
   hgr tenant get acme`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.Tenant], error) {
@@ -73,13 +74,11 @@ func projectNoun() noun[api.Project] {
 		name:    "project",
 		aliases: []string{"projects"},
 		group:   "binding",
-		short:   "Tenancy — who owns what",
+		short:   "The unit quota and priority attach to",
 		long: `A project is the unit of tenancy that quota and priority attach to.
 
-Its tenant is embedded rather than linked, so a project always carries the root
-it hangs off; hgr tenant lists them. enabled and effective_enabled are both
-shown: a project inside a disabled tenant is still a project someone enabled,
-and the two switches answer different questions.`,
+Each project shows its tenant. enabled is the project's own switch;
+effective_enabled is false when either the project or its tenant is disabled.`,
 		example: `  hgr project ls
   hgr project ls --tenant acme
   hgr project get core`,
@@ -138,12 +137,12 @@ func quotaNoun() noun[api.Quota] {
 		aliases: []string{"quotas"},
 		group:   "binding",
 		short:   "Guaranteed floor and fair share, per project and device class",
-		long: `A quota is a guaranteed floor, an optional hard limit, and a fair-share
-weight above the floor — with usage beside it and never merged into it.
+		long: `A quota is a guaranteed number of devices, an optional hard limit, and a
+fair-share weight for capacity above the guarantee, with current usage beside
+it.
 
-A null cluster means the quota spans every cluster and usage is summed across
-all of them. over_limit and headroom are derived by the plane so that hgr and
-the console cannot disagree about what they mean.`,
+A quota with no cluster applies across every cluster, and its usage is summed
+across all of them. over_limit and headroom are computed by the plane.`,
 		example: `  hgr quota ls
   hgr quota ls --project core --class h100-80
   hgr quota ls -o json | jq '.items[] | select(.over_limit)'`,
@@ -217,13 +216,12 @@ func priorityClassNoun() noun[api.PriorityClass] {
 		name:    "priority-class",
 		aliases: []string{"priority-classes", "priority"},
 		group:   "binding",
-		short:   "What preempts what",
-		long: `A priority class is a value in a total ordering, plus two independent
-switches.
+		short:   "Admission order between workloads",
+		long: `A priority class is a value in an ordering, plus two switches: preemptible
+(workloads in it may be evicted) and preempts (they may evict others).
 
-preemptible and preempts are not one axis: a class can take capacity from
-others and still be safe from eviction itself, and folding them together would
-make production serving and best-effort batch the same kind of thing.`,
+Preemption is not implemented yet. The classes order admission today, and the
+switches are recorded for when it is.`,
 		example: `  hgr priority-class ls
   hgr priority-class ls --preempts
   hgr priority-class get production`,
@@ -275,12 +273,11 @@ func policyNoun() noun[api.Policy] {
 		aliases: []string{"policies"},
 		group:   "binding",
 		short:   "Placement constraints and what they bind to",
-		long: `A policy constrains where work may be placed.
+		long: `A policy limits where work may be placed.
 
-Allow-lists and deny-lists are separate rather than one signed set: an empty
-allow-list means "no opinion", not "nothing allowed", and a denial has to
-survive somebody widening the allow-list later. A policy with no attachments
-constrains nothing, which is why they are shown with it.`,
+Allow-lists and deny-lists are separate. An empty allow-list means no
+restriction, and a deny entry still applies when the allow-list is widened. A
+policy with no attachments has no effect, so attachments are shown with it.`,
 		example: `  hgr policy ls
   hgr policy ls --region eu-west-1
   hgr policy get eu-only`,

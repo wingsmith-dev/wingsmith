@@ -18,12 +18,11 @@ func newWhoamiCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "whoami",
 		Short: "Show what the CLI is pointed at, and whether it answers",
-		Long: `There is no identity endpoint on the plane, and this does not invent one.
+		Long: `Show the server and project the CLI is configured for, whether a token is
+stored, and whether the plane answers.
 
-Authentication is stubbed to a single static token that resolves to a single
-principal, so the only truthful answers are which server and project the CLI
-is configured for, whether a token is present, and whether the plane responds.
-When that changes, this command grows a user — not before.`,
+The plane has no identity endpoint. Human access is a single admin login
+(hgr login), so there is no user name to show.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()

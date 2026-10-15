@@ -25,17 +25,14 @@ func allocationNoun() noun[api.Allocation] {
 		aliases: []string{"allocations", "alloc"},
 		group:   "machinery",
 		short:   "Devices committed together to one workload",
-		long: `An allocation is the unit of commitment: a set of devices held together
-for one workload.
+		long: `An allocation is a set of devices held together for one workload.
 
-It is observed — placement decides it and the cluster reports it — so there is
-nothing to create or delete here. Released allocations stay listed because the
-row is how a finished allocation remains auditable; --live narrows to what is
-actually held right now.
+Allocations are observed: placement decides them and the cluster reports them,
+so there is nothing to create or delete here. Released allocations stay listed
+for auditing; --live shows only what is held now.
 
-gang_complete is the question worth asking: holding fewer live devices than
-the allocation asked for is a partially satisfied gang, which is a different
-situation from being released.`,
+gang_complete is false when the allocation holds fewer live devices than it
+asked for.`,
 		example: `  hgr allocation ls --live
   hgr allocation ls --cluster iad-1 --project core
   hgr allocation ls --device dev_01m0dj…
@@ -139,12 +136,11 @@ func componentNoun() noun[api.Component] {
 		aliases: []string{"components"},
 		group:   "machinery",
 		short:   "Declared cluster software versions and observed rollout",
-		long: `A component pairs the version we asked a cluster to run with the version
-it reports running.
+		long: `A component is a piece of cluster software with the version the plane asked
+for and the version the cluster reports running.
 
-They are a pair and never one nullable column, and behind is derived by the
-plane so nobody has to decide locally what it means. A component nobody has
-reported on counts as behind: silence is not evidence of a finished rollout.`,
+behind is computed by the plane. A component no cluster has reported on counts
+as behind.`,
 		example: `  hgr component ls --behind
   hgr component ls --cluster iad-1
   hgr component get scheduler`,
@@ -215,11 +211,11 @@ func eventNoun() noun[api.Event] {
 		aliases: []string{"events"},
 		group:   "machinery",
 		short:   "Append-only record of what happened",
-		long: `Events are observed and append-only: nothing declares one and nothing may
-edit one, so they carry no revision.
+		long: `Events are an append-only record of what happened. They cannot be edited and
+carry no revision.
 
-They are the first place to look when something changed and nobody remembers
-why. --since accepts a duration (30m) or an RFC 3339 timestamp.`,
+--since and --until take a duration (30m, meaning that long ago) or an RFC 3339
+timestamp.`,
 		example: `  hgr event ls --since 30m
   hgr event ls --cluster iad-1 --severity error
   hgr event ls --kind device.unhealthy --all`,
@@ -281,12 +277,12 @@ func operationNoun() noun[api.Operation] {
 		aliases: []string{"operations", "op"},
 		group:   "machinery",
 		short:   "Long-running imperative work: drain, cordon, scale, pause",
-		long: `An operation is the imperative surface, and the only one.
+		long: `An operation is a piece of long-running work: a type, a target, who asked
+and why, and its progress.
 
-There is no verb endpoint anywhere — no POST on a node's own path — because a
-call that returns 200 cannot express who asked, when, why, how many attempts
-it has made, or that it is still going. Everything imperative is created here
-with a type and a target, and then polled.`,
+Imperative changes go through operations rather than verbs on the object, so
+each one records who asked, the reason, the attempts, and the outcome. Create
+one, then poll it with get or wait.`,
 		example: `  hgr operation ls --phase running
   hgr operation create node.drain iad-1-n01 --reason firmware --wait
   hgr operation get opr_01m0dj…
@@ -406,17 +402,14 @@ func newOperationCreateCmd(app *App) *cobra.Command {
 		Use:     "create <type> <target>",
 		Aliases: []string{"new", "start"},
 		Short:   "Start an operation against a target",
-		Long: `Create an operation: a type and a target, never a verb on the target.
+		Long: `Create an operation from a type and a target.
 
-The cluster is derived from the target for anything that carries one, because
-two ways to say which cluster is two ways for them to disagree. --cluster is
-accepted only for targets that do not, and it is also what tells two objects of
-the same name in different clusters apart.
+The cluster comes from the target when the target belongs to one. --cluster is
+for targets that do not, and to tell apart two objects with the same name in
+different clusters.
 
-A target is an id or a name. A bare name is qualified with the kind the type
-acts upon before it is sent, because a target reference has to say what kind of
-thing it names — that is what makes node.drain against a device an error here
-rather than inside the cluster an hour later.
+A target is an id or a name. A bare name is sent as kind:name, using the kind
+the type acts on, so the plane can refuse a node.drain aimed at a device.
 
 The types are node.drain, node.cordon and node.uncordon, which the cluster's
 operator carries out, and workload.scale, workload.pause, workload.reshape and
@@ -484,11 +477,10 @@ func newOperationCancelCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "cancel <operation-id>",
 		Short: "Ask an operation to stop",
-		Long: `Cancellation, and deliberately not deletion.
+		Long: `Ask an operation to stop. The record is kept.
 
-Deleting the row would throw away who asked for this and why, which is the
-reason the object exists. A pending operation stops outright; a running one is
-marked and reaches its terminal phase when the cluster reports it.`,
+A pending operation is cancelled at once. A running one is marked, and reaches
+its final phase when the cluster reports back.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -512,8 +504,7 @@ func newOperationWaitCmd(app *App) *cobra.Command {
 		Short: "Poll an operation until it finishes",
 		Long: `Poll an operation until it reaches a terminal phase, printing each phase change.
 
-A drain can take a long time and can stall; the operation records why it
-stopped, so a failure is reported with the operation's own error. Exits 11
+A failure is reported with the operation's own error. Exits 11
 (OPERATION_FAILED) if the operation ends in anything but success, and 8
 (TIMEOUT) if it is still running when --wait-timeout runs out.`,
 		Example: `  hgr operation wait opr_01m0dj…

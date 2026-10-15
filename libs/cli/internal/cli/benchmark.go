@@ -31,10 +31,9 @@ on the run is how one is stopped. What the run holds that an operation cannot is
 the result, because a load generator emits nested JSON and an operation's result
 is a flat string map.
 
-The result is stored in the harness's own shape and is not normalised. Two runs
-compare when their harness and version match; across harnesses there is no shared
-definition to compare against, and this CLI does not invent one. Use -o json and
-jq to read a summary whose shape you know.`,
+The result is stored in the harness's own format and is not normalised. Runs
+are comparable when their harness and version match. Use -o json and jq to read
+a result.`,
 		example: `  hgr benchmark ls --deployment chat
   hgr benchmark run chat --param concurrency=64 --wait
   hgr benchmark get bmk_01m0dj…
@@ -622,15 +621,12 @@ func newBenchmarkRunCmd(app *App) *cobra.Command {
 		Short:   "Measure a deployment with a load generator",
 		Long: `Start a benchmark run against one deployment.
 
-The load is generated inside the cluster and aimed at that cluster's own
-inference endpoint. It never crosses the control plane — this command asks for a
-measurement and reads the result back, and no request it causes is made from
-here.
+The load is generated inside the cluster against that cluster's own inference
+endpoint. No load passes through the control plane or this machine.
 
 --param takes whatever the named harness accepts; 'hgr benchmark harnesses'
 lists them with their defaults. A parameter the harness does not accept is
-refused here rather than becoming a job that fails in a cluster ten minutes from
-now.
+refused before the run starts.
 
 --image overrides the harness's pinned image for this run alone. Leave it alone
 unless you are reaching for a release the plane has not pinned yet: runs that
@@ -694,8 +690,7 @@ func newBenchmarkHarnessCmd(app *App) *cobra.Command {
 		Short:   "What can be run, and what it accepts",
 		Long: `List the load generators the plane knows about and their parameters.
 
-Asked of the plane rather than compiled in, so this is the same table the plane
-validates --param against and there is no second answer to what AIPerf takes.`,
+This is the table the plane validates --param against.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()

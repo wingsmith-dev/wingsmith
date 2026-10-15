@@ -19,12 +19,12 @@ func clusterNoun() noun[api.Cluster] {
 		aliases: []string{"clusters"},
 		group:   "supply",
 		short:   "Enrolled GPU clusters and the state they report",
-		long: `A cluster is one installation we own and operate.
+		long: `A cluster is one Kubernetes cluster enrolled with the plane.
 
-The plane holds its enrolment identity, region, and capabilities; the
-cluster-resident operator dials out and reports back. Declared and observed
-are shown together and never merged: phase is what we asked for, reachable and
-sync are what is true right now.`,
+The plane holds its enrolment record, region and capabilities; the operator
+running in the cluster connects out and reports back. phase is what was
+declared; reachable and sync are what the plane observes now. The two are shown
+side by side.`,
 		example: `  hgr cluster ls
   hgr cluster ls --region us-east-1 --phase active
   hgr cluster ls --all -o json | jq '.items[].name'
@@ -113,13 +113,12 @@ func nodeNoun() noun[api.Node] {
 		aliases: []string{"nodes"},
 		group:   "supply",
 		short:   "Cluster members and the conditions they report",
-		long: `A node is one machine a cluster's operator reports as a member.
+		long: `A node is one machine a cluster's operator reports.
 
-Nodes are observed, never declared: they appear because a pool provisioned
-them. Cordon state is a boolean beside the condition and never a value of it —
-draining is an Operation, and the cordon is the fact it leaves behind.
+Nodes are observed, not declared. cordoned is shown beside the condition: a
+drain or cordon operation sets it.
 
-Capacity questions are answered per device; the counts here are a rollup.`,
+The device counts here are a rollup; hgr device ls has the per-device detail.`,
 		example: `  hgr node ls --cluster iad-1
   hgr node ls --pool h100-80-prod --condition ready
   hgr node ls --cordoned -o name
@@ -208,14 +207,12 @@ func deviceNoun() noun[api.Device] {
 		aliases: []string{"devices", "gpu"},
 		group:   "supply",
 		short:   "Individual accelerators — the schedulable unit",
-		long: `A device is one accelerator, and it is what actually gets scheduled.
+		long: `A device is one accelerator, the unit placement schedules.
 
-"Seven of eight healthy" is not something a node-level count can say, so every
-capacity question is answered here: per-device health, ECC and throttle state,
-memory, MIG profile, allocatability, and the topology domain it sits in.
+Each device shows its health, ECC and throttle state, memory, MIG profile,
+whether it can be allocated, and its topology domain.
 
-Utilization, temperature and throughput are telemetry and are deliberately not
-here — they go to the observability stack directly.`,
+Utilization, temperature and throughput are metrics and are not shown here.`,
 		example: `  hgr device ls --cluster iad-1
   hgr device ls --class h100-80 --health unhealthy
   hgr device ls --allocatable -o name
@@ -325,18 +322,16 @@ func deviceClassNoun() noun[api.DeviceClass] {
 		aliases:  []string{"device-classes", "class", "classes", "gpu-model"},
 		plurally: "device classes",
 		group:    "supply",
-		short:    "The GPU model catalog, and how much of each we own",
-		long: `A device class is the identity a GPU model is placed against.
+		short:    "The GPU model catalog and how many of each are installed",
+		long: `A device class names a GPU model for placement, for example h100-80.
 
-It is the string on a pool, a workload's shape, a quota and a device — and it is a
-dictionary entry, not something anyone declares or any cluster reports. The
-table lives in libs/packages/contract/devices.json and is shared with the
-operator, so a class is added by releasing both halves, never over the API.
+It is the string on a pool, a workload's shape, a quota and a device. The
+catalog lives in libs/packages/contract/devices.json and is shared with the
+operator, so a class is added by a release, not over the API.
 
-The listing is the union of two sets. A class with no devices is hardware we
-could take delivery of tomorrow. A class with "catalog no" is hardware nobody
-has named yet: it resolved to the slug of whatever the vendor called it, it is
-being scheduled onto, and it is the row to act on.`,
+The listing combines the catalog with what clusters report. A class with no
+devices is in the catalog but not installed anywhere. A class marked
+"catalog no" is installed but missing from the catalog, and should be added.`,
 		example: `  hgr device-class ls
   hgr device-class ls --present
   hgr device-class ls --cluster iad-1
@@ -439,12 +434,12 @@ func topologyNoun() noun[api.TopologyDomain] {
 		aliases: []string{"topology-domains", "domain", "domains"},
 		group:   "supply",
 		short:   "Sets of devices that share an interconnect",
-		long: `A topology domain is the authority on which devices share a fabric.
+		long: `A topology domain is a group of devices that share a fabric, such as one
+NVLink island.
 
-A device carries an embedded summary of its own domain for display; nesting,
-membership and bandwidth are answered here and only here — which is what
-"eight devices in one NVLink island" needs before a tensor-parallel workload
-can be placed.`,
+A device shows a summary of its own domain. Membership, nesting and bandwidth
+are here, and are what placement checks before putting a tensor-parallel
+workload on one domain.`,
 		example: `  hgr topology-domain ls --cluster iad-1
   hgr topology-domain ls --kind nvswitch
   hgr topology-domain ls --spans-nodes`,
@@ -506,14 +501,13 @@ func poolNoun() noun[api.Pool] {
 		name:    "pool",
 		aliases: []string{"pools"},
 		group:   "supply",
-		short:   "Declared provisioning specs that carve homogeneous slices",
-		long: `A pool is declared, not observed: a device class, a node shape, and size
-bounds.
+		short:   "Declared groups of identical nodes",
+		long: `A pool is a declared group of identical nodes in a cluster: a device class,
+a node shape, and size bounds.
 
-It exists so placement has something homogeneous to bind against — you cannot
-tensor-parallel across an A100 and an H100, so a mixed cluster is carved into
-pools that are not mixed. Membership underneath it is observed, and the two
-halves are shown apart.`,
+Pools give placement a set of matching devices to work with; a cluster with
+mixed hardware has one pool per kind. Which nodes are in a pool is observed,
+and is shown separately from the declaration.`,
 		example: `  hgr pool ls
   hgr pool ls --cluster iad-1 --class h100-80
   hgr pool get h100-80-prod`,

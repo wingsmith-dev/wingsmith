@@ -37,14 +37,12 @@ func discoveredNoun() noun[api.DiscoveredWorkload] {
 		aliases:  []string{"discoveries", "found"},
 		plurally: "discovered workloads",
 		group:    "demand",
-		short:    "Workloads already running that we never declared",
-		long: `What the operator found when it arrived: pods holding accelerators that this
-plane did not put there.
+		short:    "Workloads found running that the plane did not create",
+		long: `Workloads the operator found running that the plane did not create: pods
+holding accelerators.
 
-A discovery is a sighting, not a deployment. Tracking one adds it to the
-inventory and assigns it an owner — it does not declare it, does not render a
-serving spec against it, and never reaches the cluster. Nothing restarts, and a
-model whose weights are already loaded stays loaded.`,
+Tracking one adds it to the inventory with an owner. It does not change
+anything in the cluster, so nothing restarts.`,
 		example: `  hgr discovered ls
   hgr discovered ls --status new
   hgr discovered ls --cluster iad-1 -o wide
@@ -238,9 +236,8 @@ func newRemoveWorkloadCmd(app *App) *cobra.Command {
 		Short:   "Take a discovered workload off the list for good",
 		Long: `Remove a workload the operator found running from the discovered list.
 
-Nothing reaches the cluster and nothing observed is deleted: the workload keeps
-running exactly as it is, and the plane keeps seeing it. What is recorded is that
-you have dealt with it, so it stops appearing.
+Nothing changes in the cluster: the workload keeps running and the plane
+keeps seeing it. It only stops appearing in the list.
 
 ` + "`hgr discovered ls --status dismissed`" + ` shows what has been removed, and
 ` + "`hgr discovered restore`" + ` puts one back.`,
@@ -322,18 +319,14 @@ func newPromoteCmd(app *App) *cobra.Command {
 		Short: "Let the plane manage a workload it found running",
 		Long: `Promote a discovered workload into a workload the plane declares.
 
-What you get back is a workload pinned to the one cluster this is running in,
-with a single deployment that is that cluster's copy — so it appears under
-` + "`hgr workload`" + ` and is scaled and patched like any other. Nothing restarts to make
-that true: the deployment is pinned to the digest of what is running right now,
-and the cluster refuses to reconcile it while the live workload digests to
-anything else.
+The result is a workload pinned to the cluster it runs in, with one
+deployment, managed under ` + "`hgr workload`" + ` like any other. Promotion does not
+restart it: the deployment is pinned to the digest of what is running now.
 
-Changing the serving configuration or the overrides afterwards will roll it, as
-it should — that is a change you asked for. Promotion itself is not.
+Changing its serving configuration or overrides afterwards rolls it.
 
-Scale is not an argument. The bounds are taken from what the workload is already
-running, so cataloguing it cannot scale it as a side effect.`,
+The replica bounds are taken from what is running, so promotion never scales
+it.`,
 		Example: `  hgr discovered promote llama-70b-vllm --artifact llama-3.1-70b-instruct --project core
   hgr discovered promote qwen2-72b --artifact llama-3.1-70b-instruct --project core --name qwen-sjc`,
 		Args: cobra.ExactArgs(1),
