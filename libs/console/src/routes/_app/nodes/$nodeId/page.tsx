@@ -1,3 +1,4 @@
+import { StatTile } from "@/components/layout/stat-tile"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { InFlightOperations } from "@/components/machinery/in-flight"
 import { MetricsSection } from "@/components/metrics/metrics-section"
@@ -268,22 +269,6 @@ export function NodeDetailPage() {
         )}
       </div>
     </div>
-  )
-}
-
-function StatTile({
-  label,
-  children,
-}: React.PropsWithChildren<{ label: string }>) {
-  return (
-    <Card size="sm" className="gap-2">
-      <div className="flex flex-col gap-2 px-3">
-        <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-          {label}
-        </span>
-        <div className="flex min-h-7 items-center">{children}</div>
-      </div>
-    </Card>
   )
 }
 

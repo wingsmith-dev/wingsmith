@@ -1,3 +1,4 @@
+import { StatTile } from "@/components/layout/stat-tile"
 import { DataTable, type Column } from "@/components/layout/data-table"
 import { DeleteDialog, RowActions } from "@/components/layout/destructive"
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
@@ -83,33 +84,6 @@ function TargetBar({ enabled, total }: { enabled: number; total: number }) {
         />
       ))}
     </div>
-  )
-}
-
-/** One summary tile in the stat strip. */
-function StatTile({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string
-  value: string
-  tone?: "default" | "ok"
-}) {
-  return (
-    <Card size="sm" className="gap-1.5 px-4 py-3">
-      <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-        {label}
-      </div>
-      <div
-        className={cn(
-          "font-mono text-xl leading-none tabular-nums",
-          tone === "ok" && "text-success"
-        )}
-      >
-        {value}
-      </div>
-    </Card>
   )
 }
 

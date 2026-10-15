@@ -1,10 +1,11 @@
+import { StatTile } from "@/components/layout/stat-tile"
 import { DeleteDialog } from "@/components/layout/destructive"
 import { ALL, FilterSelect } from "@/components/layout/filter-select"
 import { PageHeader } from "@/components/layout/page-header"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import {} from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
-import { cn } from "@/lib/utils"
+import {} from "@/lib/utils"
 import { formatError } from "@/lib/format"
 import { CLUSTER_PHASES, clusterLabel } from "@/modules/clusters/display"
 import {
@@ -85,8 +86,13 @@ export function ClustersPage() {
 
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <StatCard label="Clusters" value={String(clusters.length)} />
-          <StatCard
+          <StatTile
+            size="lg"
+            label="Clusters"
+            value={String(clusters.length)}
+          />
+          <StatTile
+            size="lg"
             label="Nodes ready"
             value={
               rollups.isLoading
@@ -94,7 +100,8 @@ export function ClustersPage() {
                 : `${fleet.nodesReady}/${fleet.nodesTotal}`
             }
           />
-          <StatCard
+          <StatTile
+            size="lg"
             label="GPUs allocated"
             value={
               rollups.isLoading
@@ -102,7 +109,8 @@ export function ClustersPage() {
                 : `${fleet.gpusAllocated}/${fleet.gpusTotal}`
             }
           />
-          <StatCard
+          <StatTile
+            size="lg"
             label="Needs attention"
             value={String(needsAttention)}
             tone={needsAttention > 0 ? "warn" : undefined}
@@ -213,31 +221,5 @@ export function ClustersPage() {
         onConfirm={confirmDelete}
       />
     </div>
-  )
-}
-
-function StatCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: string
-  tone?: "warn"
-}) {
-  return (
-    <Card size="sm" className="gap-1.5 px-4">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-        {label}
-      </span>
-      <span
-        className={cn(
-          "font-heading text-2xl leading-none font-semibold tabular-nums",
-          tone === "warn" && "text-warning"
-        )}
-      >
-        {value}
-      </span>
-    </Card>
   )
 }

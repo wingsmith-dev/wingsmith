@@ -1,9 +1,10 @@
+import { Panel } from "@/components/layout/panel"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { PageHeader } from "@/components/layout/page-header"
 import { ResourceIcon } from "@/components/layout/resource-icon"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Badge } from "@/components/ui/badge"
-import { Card } from "@/components/ui/card"
+import {} from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -151,34 +152,6 @@ function SettingsNav({ current }: { current: SettingsSection }) {
         )
       )}
     </nav>
-  )
-}
-
-function Panel({
-  id,
-  title,
-  description,
-  action,
-  children,
-}: React.PropsWithChildren<{
-  id: string
-  title: string
-  description: string
-  action?: React.ReactNode
-}>) {
-  return (
-    <Card id={id} className="scroll-mt-20 gap-0 overflow-hidden p-0">
-      <div className="flex items-start justify-between gap-3 border-b bg-muted/30 px-4 py-3">
-        <div>
-          <h2 className="text-sm leading-none font-semibold">{title}</h2>
-          <p className="mt-1 font-mono text-2xs text-muted-foreground">
-            {description}
-          </p>
-        </div>
-        {action}
-      </div>
-      <div className="p-4">{children}</div>
-    </Card>
   )
 }
 

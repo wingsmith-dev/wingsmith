@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils"
 import { operationPhaseTone } from "@/modules/machinery/display"
 import type { Operation } from "@/modules/machinery/types"
 import { Link } from "@tanstack/react-router"
-import { Panel, PanelEmpty } from "./Panel"
+import { Panel, PanelEmpty } from "@/components/layout/panel"
 
 const DOT_TONE = {
   danger: "bg-destructive",

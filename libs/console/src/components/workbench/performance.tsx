@@ -1,6 +1,6 @@
 import { BandTable } from "@/components/benchmarks/band-table"
 import { LoadCurvePanel } from "@/components/benchmarks/curve"
-import { StatRow, StatTile } from "@/components/workbench/stats"
+import { StatRow, StatTile } from "@/components/layout/stat-tile"
 import {} from "@/components/benchmarks/summary-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { asStatBlock, kneeTile } from "@/modules/benchmarks/display"
@@ -53,20 +53,20 @@ export function PerformanceSuite({
             curve.data ? `Knee · ${curve.data.step_field}` : "Knee concurrency"
           }
           value={knee.value}
-          small={knee.small}
+          size={knee.small ? "sm" : "md"}
         />
         <StatTile
           label="Peak throughput"
           value={
             peak === null ? "—" : `${Math.round(peak).toLocaleString()} tok/s`
           }
-          small={peak === null}
+          size={peak === null ? "sm" : "md"}
         />
         <StatTile label="Graded runs" value={String(graded)} />
         <StatTile
           label="Warm-ups"
           value={String((runs ?? []).filter((run) => run.discard).length)}
-          small
+          size="sm"
         />
         <StatTile label="Steps" value={String(runs?.length ?? 0)} />
       </StatRow>

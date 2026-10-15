@@ -1,3 +1,4 @@
+import { StatTile } from "@/components/layout/stat-tile"
 import { MetricsSection } from "@/components/metrics/metrics-section"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Card } from "@/components/ui/card"
@@ -25,36 +26,6 @@ import { ClusterEvents } from "./ClusterEvents"
 import { ClusterIdentity } from "./Glance"
 import { Section, SectionEmpty } from "./Section"
 import { SyncCard } from "./SyncCard"
-
-function StatTile({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: React.ReactNode
-  tone?: "ok" | "warn"
-}) {
-  return (
-    <Card size="sm" className="gap-1.5 px-4 py-3.5">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-        {label}
-      </span>
-      <span
-        className={
-          "font-heading text-2xl leading-none font-semibold tabular-nums" +
-          (tone === "ok"
-            ? " text-success"
-            : tone === "warn"
-              ? " text-warning"
-              : "")
-        }
-      >
-        {value}
-      </span>
-    </Card>
-  )
-}
 
 /** GPU allocation bar, warm as it fills. */
 function UtilBar({ used, total }: { used: number; total: number }) {
@@ -381,6 +352,7 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <StatTile
+          size="lg"
           label="Status"
           value={humanize(cluster.phase)}
           tone={
@@ -390,6 +362,7 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
           }
         />
         <StatTile
+          size="lg"
           label="Nodes ready"
           value={
             rollup.data
@@ -403,6 +376,7 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
           }
         />
         <StatTile
+          size="lg"
           label="GPUs allocated"
           value={
             rollup.data
@@ -411,10 +385,12 @@ export function ClusterOverviewTab({ cluster }: { cluster: Cluster }) {
           }
         />
         <StatTile
+          size="lg"
           label="Deployments"
           value={rollup.data?.deployment_count ?? "—"}
         />
         <StatTile
+          size="lg"
           label="Replicas"
           value={`${replicasReady}/${replicasDesired}`}
           tone={replicasReady < replicasDesired ? "warn" : undefined}

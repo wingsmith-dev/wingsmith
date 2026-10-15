@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils"
 import { clusterLabel } from "@/modules/clusters/display"
 import type { ReachabilityRow } from "@/modules/overview/fleet"
 import { Link } from "@tanstack/react-router"
-import { Panel, PanelEmpty } from "./Panel"
+import { Panel, PanelEmpty } from "@/components/layout/panel"
 
 /**
  * Partly here to caveat everything above it. Every observed count on this page is

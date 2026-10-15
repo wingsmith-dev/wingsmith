@@ -42,7 +42,7 @@ function quantile(series: MetricSeries[], metric: string): MetricSeriesPoint[] {
   return series.find((curve) => curve.metric === metric)?.points ?? []
 }
 
-function Panel({
+function ChartPanel({
   title,
   note,
   series,
@@ -154,21 +154,21 @@ export function ServingCharts({ curves }: { curves: MetricSeries[] }) {
 
   return (
     <div className="grid gap-6 border-t p-5 lg:grid-cols-2">
-      <Panel title="Requests / sec" series={traffic} unit="per_second" />
-      <Panel title="Tokens / sec" series={tokens} unit="per_second" />
-      <Panel
+      <ChartPanel title="Requests / sec" series={traffic} unit="per_second" />
+      <ChartPanel title="Tokens / sec" series={tokens} unit="per_second" />
+      <ChartPanel
         title="Time to first token"
         series={ttft}
         unit="seconds"
         note="Measured at the gateway, so it excludes the network between you and the gateway. A client-side TTFT is this plus the round trip."
       />
-      <Panel
+      <ChartPanel
         title="Cached input"
         series={cache}
         unit="percent"
         note="Cached input tokens over input tokens, read off the same usage object your client sees as prompt_tokens_details.cached_tokens."
       />
-      <Panel
+      <ChartPanel
         title="Latency"
         className="lg:col-span-2"
         series={latency}

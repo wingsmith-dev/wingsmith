@@ -1,3 +1,5 @@
+import { StatTile } from "@/components/layout/stat-tile"
+import { STAT_TONE_CLASS, type StatTone } from "@/components/layout/stat-tone"
 import { DeploymentTimeline } from "@/components/demand/deployment-timeline"
 import { EndpointPolicyCard } from "@/components/demand/endpoint-policy"
 import { EndpointSurfaceCard } from "@/components/demand/endpoint-surface"
@@ -150,44 +152,6 @@ function Chart({
   )
 }
 
-/** The reading colour for a figure, shared by every number on this page. */
-type Tone = "default" | "ok" | "warn" | "danger"
-const TONE_CLASS: Record<Tone, string> = {
-  default: "",
-  ok: "text-success",
-  warn: "text-warning",
-  danger: "text-destructive",
-}
-
-/** One summary tile in the stat strip. */
-function StatTile({
-  label,
-  value,
-  tone = "default",
-  children,
-}: React.PropsWithChildren<{
-  label: string
-  value: string
-  tone?: Tone
-}>) {
-  return (
-    <Card size="sm" className="gap-1.5 px-3 py-3">
-      <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-        {label}
-      </div>
-      <div
-        className={cn(
-          "font-mono text-xl leading-none tabular-nums",
-          TONE_CLASS[tone]
-        )}
-      >
-        {value}
-      </div>
-      {children}
-    </Card>
-  )
-}
-
 /**
  * Where the console draws the line on an availability figure.
  *
@@ -196,7 +160,7 @@ function StatTile({
  * two numbers here are this console's reading colour and nothing else; they are
  * not an SLO and no acceptance term is checked against them.
  */
-function availabilityTone(percent: number | null): Tone {
+function availabilityTone(percent: number | null): StatTone {
   if (percent === null) return "default"
   if (percent >= 99.9) return "ok"
   return "warn"
@@ -282,7 +246,7 @@ function AvailabilityCard({
       <div
         className={cn(
           "font-mono text-xl leading-none tabular-nums",
-          TONE_CLASS[availabilityTone(percent)]
+          STAT_TONE_CLASS[availabilityTone(percent)]
         )}
       >
         {loading ? "…" : formatMetric(percent, "percent")}
@@ -299,7 +263,7 @@ function AvailabilityCard({
           <span
             className={cn(
               "font-mono text-2xs tabular-nums",
-              TONE_CLASS[availabilityTone(history)]
+              STAT_TONE_CLASS[availabilityTone(history)]
             )}
           >
             {historyLoading ? "…" : formatMetric(history, "percent")}

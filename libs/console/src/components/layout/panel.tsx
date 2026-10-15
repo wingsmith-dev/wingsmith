@@ -3,7 +3,10 @@ import { formatError } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
 interface PanelProps {
+  id?: string
   title: string
+  /** Beside the title: a count, a status. */
+  badge?: React.ReactNode
   /** The line under the title: what the panel counts, and over what window. */
   description?: React.ReactNode
   /** The header's right-hand slot — a link out, a tab row, a legend. */
@@ -19,8 +22,14 @@ interface PanelProps {
   children: React.ReactNode
 }
 
+/**
+ * A titled section of a page. Loading and failure are per-panel: a panel whose
+ * query failed says so and the rest of the page still answers its question.
+ */
 export function Panel({
+  id,
   title,
+  badge,
   description,
   action,
   tone = "default",
@@ -33,15 +42,19 @@ export function Panel({
 }: PanelProps) {
   return (
     <section
+      id={id}
       className={cn(
-        "flex flex-col gap-3.5 rounded-lg bg-card p-4 ring-1",
+        "flex scroll-mt-20 flex-col gap-3.5 rounded-lg bg-card p-4 ring-1",
         tone === "attention" ? "ring-amber-500/35" : "ring-foreground/10",
         className
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-heading text-sm font-semibold">{title}</h2>
+          <h2 className="flex items-center gap-2 font-heading text-sm font-semibold">
+            {title}
+            {badge}
+          </h2>
           {description && (
             <div className="mt-0.5 text-2xs text-muted-foreground">
               {description}

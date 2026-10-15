@@ -1,3 +1,4 @@
+import { StatTile } from "@/components/layout/stat-tile"
 import { TopologyBadge } from "@/components/demand/serving-topology"
 import { DataTable, type Column } from "@/components/layout/data-table"
 import { DeleteDialog, RowActions } from "@/components/layout/destructive"
@@ -7,7 +8,7 @@ import { PageHeader } from "@/components/layout/page-header"
 import { ResourceCell } from "@/components/layout/resource-cell"
 import { StatusLabel } from "@/components/layout/status-dot"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import {} from "@/components/ui/card"
 import { formatError, formatRelative, shortenId } from "@/lib/format"
 import { clusterLabel } from "@/modules/clusters/display"
 import { useClusterOptions } from "@/modules/clusters/queries"
@@ -190,14 +191,17 @@ export function WorkloadsPage() {
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <StatTile
+            size="lg"
             label="Workloads"
             value={list.isLoading ? "—" : list.loaded}
           />
           <StatTile
+            size="lg"
             label="Replicas running"
             value={list.isLoading ? "—" : `${readyReplicas}/${desiredReplicas}`}
           />
           <StatTile
+            size="lg"
             label="Needs attention"
             value={list.isLoading ? "—" : needsAttention}
             tone={needsAttention > 0 ? "warn" : undefined}
@@ -266,35 +270,5 @@ export function WorkloadsPage() {
         }
       />
     </div>
-  )
-}
-
-/** One headline number from the workloads list — a summary tile, not a link. */
-function StatTile({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: React.ReactNode
-  tone?: "warn"
-}) {
-  return (
-    <Card size="sm" className="gap-2">
-      <div className="flex flex-col gap-2 px-3">
-        <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-          {label}
-        </span>
-        <span
-          className={
-            tone === "warn"
-              ? "font-heading text-2xl leading-none font-semibold text-warning tabular-nums"
-              : "font-heading text-2xl leading-none font-semibold tabular-nums"
-          }
-        >
-          {value}
-        </span>
-      </div>
-    </Card>
   )
 }

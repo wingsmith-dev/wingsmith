@@ -1,5 +1,5 @@
 import { MockNotice } from "@/components/workbench/mock-notice"
-import { StatRow, StatTile } from "@/components/workbench/stats"
+import { StatRow, StatTile } from "@/components/layout/stat-tile"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { StatusLabel } from "@/components/layout/status-dot"
@@ -54,7 +54,7 @@ export function AgentSuite({ id }: { id: string }) {
         <StatTile
           label="Clients"
           value={String(new Set(sessions.map((s) => s.client)).size)}
-          small
+          size="sm"
         />
       </StatRow>
 
@@ -132,10 +132,10 @@ export function AgentRun({ id }: { id: string }) {
         <StatTile
           label="Outcome"
           value={session.completed ? "completed" : "broke"}
-          small
+          size="sm"
           tone={session.completed ? "ok" : "danger"}
         />
-        <StatTile label="Client" value={session.client} small />
+        <StatTile label="Client" value={session.client} size="sm" />
         <StatTile label="Turns" value={String(turns.length)} />
         <StatTile
           label="Tool calls"
@@ -144,7 +144,7 @@ export function AgentRun({ id }: { id: string }) {
         <StatTile
           label="Wall clock"
           value={formatMs(turns.reduce((sum, turn) => sum + turn.ms, 0))}
-          small
+          size="sm"
         />
       </StatRow>
 

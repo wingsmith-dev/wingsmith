@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { StatRow, StatTile } from "@/components/workbench/stats"
+import { StatRow, StatTile } from "@/components/layout/stat-tile"
 import { useBenchmark, useRequestRuns } from "@/modules/benchmarks/queries"
 import { formatMs } from "@/modules/benchmarks/display"
 import { Link } from "@tanstack/react-router"
@@ -79,13 +79,17 @@ export function EvaluationRun({ id }: { id: string }) {
       <StatRow>
         <StatTile label="Datasets" value={String(named.length)} />
         <StatTile label="Samples" value={totalSamples.toLocaleString()} />
-        <StatTile label="Wall clock" value={formatMs(totalLatencyMs)} small />
+        <StatTile
+          label="Wall clock"
+          value={formatMs(totalLatencyMs)}
+          size="sm"
+        />
         <StatTile
           label="Completed"
           value={
             run.finished_at ? new Date(run.finished_at).toLocaleString() : "—"
           }
-          small
+          size="sm"
         />
       </StatRow>
 

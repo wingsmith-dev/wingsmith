@@ -1,3 +1,4 @@
+import { StatTile } from "@/components/layout/stat-tile"
 import { DataTable, type Column } from "@/components/layout/data-table"
 import { DeleteDialog } from "@/components/layout/destructive"
 import { Field, FieldGrid } from "@/components/layout/field"
@@ -49,37 +50,6 @@ function Json({ value }: { value: unknown }) {
     <pre className="overflow-x-auto rounded-md border bg-muted/30 p-3 font-mono text-2xs">
       {JSON.stringify(value, null, 2)}
     </pre>
-  )
-}
-
-/** A headline number for the stat strip. Not a link — this is a detail page. */
-function StatCard({
-  label,
-  value,
-  tone,
-}: {
-  label: string
-  value: React.ReactNode
-  tone?: "ok" | "warn"
-}) {
-  return (
-    <Card size="sm" className="gap-1.5 px-3">
-      <span className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-        {label}
-      </span>
-      <span
-        className={
-          "font-heading text-xl leading-none font-semibold tabular-nums " +
-          (tone === "ok"
-            ? "text-success"
-            : tone === "warn"
-              ? "text-warning"
-              : "")
-        }
-      >
-        {value}
-      </span>
-    </Card>
   )
 }
 
@@ -181,13 +151,23 @@ export function ArtifactDetailPage() {
         {artifact && (
           <>
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-              <StatCard label="Size" value={formatBytes(artifact.size_bytes)} />
-              <StatCard label="Locations" value={artifact.locations.length} />
-              <StatCard
+              <StatTile
+                size="lg"
+                label="Size"
+                value={formatBytes(artifact.size_bytes)}
+              />
+              <StatTile
+                size="lg"
+                label="Locations"
+                value={artifact.locations.length}
+              />
+              <StatTile
+                size="lg"
                 label="Workloads"
                 value={usage.data?.workload_count ?? workloads.loaded}
               />
-              <StatCard
+              <StatTile
+                size="lg"
                 label="Verification"
                 value={artifact.verified ? "Verified" : "Unverified"}
                 tone={artifact.verified ? "ok" : "warn"}

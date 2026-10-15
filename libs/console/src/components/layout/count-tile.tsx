@@ -8,12 +8,12 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { formatError } from "@/lib/format"
 import { Link, type LinkProps } from "@tanstack/react-router"
 
-export interface TileNote {
+interface TileNote {
   label: string
   tone: StatusTone
 }
 
-interface StatTileProps {
+interface CountTileProps {
   kind: ResourceKind
   label: string
   value: React.ReactNode
@@ -30,7 +30,7 @@ interface StatTileProps {
  * and failure are per-tile: a tile whose query failed says so and the rest of
  * the page still answers its question.
  */
-export function StatTile({
+export function CountTile({
   kind,
   label,
   value,
@@ -39,7 +39,7 @@ export function StatTile({
   to,
   isLoading,
   error,
-}: StatTileProps) {
+}: CountTileProps) {
   return (
     <Card
       size="sm"

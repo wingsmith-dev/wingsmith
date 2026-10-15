@@ -1,10 +1,10 @@
+import { Panel } from "@/components/layout/panel"
 import { DataTable, type Column } from "@/components/layout/data-table"
 import { Field, FieldGrid } from "@/components/layout/field"
 import { StatusDot } from "@/components/layout/status-dot"
 import { WriteAction } from "@/components/layout/write-action"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatError } from "@/lib/format"
 import { cn } from "@/lib/utils"
@@ -116,7 +116,7 @@ export function LoadCurvePanel({
     return (
       <Panel
         title="Finding the inflection point"
-        subtitle="Latency and throughput across a ramp"
+        description="Latency and throughput across a ramp"
         action={action}
       >
         <NeverRamped placed={placed} onStartRamp={onStartRamp} />
@@ -274,7 +274,7 @@ function Drawn({
       <Panel
         title="Latency under load"
         badge={badge}
-        subtitle={`Time to first token, inter-token and end-to-end across a ${axis} ramp, derived under ${curve.criteria_version}`}
+        description={`Time to first token, inter-token and end-to-end across a ${axis} ramp, derived under ${curve.criteria_version}`}
         action={action}
       >
         <AxisChart
@@ -309,7 +309,7 @@ function Drawn({
 
       <Panel
         title="Throughput under load"
-        subtitle={`Tokens and requests per second across the same ${axis} steps`}
+        description={`Tokens and requests per second across the same ${axis} steps`}
       >
         <AxisChart
           curve={curve}
@@ -329,7 +329,10 @@ function Drawn({
         )}
       </Panel>
 
-      <Panel title="Steps" subtitle="Every step of the ramp, warm-ups included">
+      <Panel
+        title="Steps"
+        description="Every step of the ramp, warm-ups included"
+      >
         <StepTable curve={curve} />
       </Panel>
     </>
@@ -683,41 +686,6 @@ function StepTable({ curve }: { curve: BenchmarkCurve }) {
       rowKey={(point) => point.run}
       empty="This request expanded into no steps."
     />
-  )
-}
-
-/* ---- local chrome ----------------------------------------------------- */
-
-function Panel({
-  title,
-  badge,
-  subtitle,
-  action,
-  children,
-}: React.PropsWithChildren<{
-  title: string
-  badge?: React.ReactNode
-  subtitle?: string
-  action?: React.ReactNode
-}>) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              {title}
-              {badge}
-            </CardTitle>
-            {subtitle && (
-              <p className="mt-1 text-2xs text-muted-foreground">{subtitle}</p>
-            )}
-          </div>
-          {action}
-        </div>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
   )
 }
 

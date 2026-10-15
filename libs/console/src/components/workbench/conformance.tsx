@@ -1,5 +1,5 @@
 import { MockNotice } from "@/components/workbench/mock-notice"
-import { StatRow, StatTile } from "@/components/workbench/stats"
+import { StatRow, StatTile } from "@/components/layout/stat-tile"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -95,7 +95,7 @@ export function ConformanceSuite({
         <StatTile
           label="Reference"
           value={reference ?? "none"}
-          small
+          size="sm"
           tone={reference ? undefined : "warn"}
         />
       </StatRow>

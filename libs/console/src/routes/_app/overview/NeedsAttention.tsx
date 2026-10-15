@@ -7,7 +7,7 @@ import type { AttentionItem } from "@/modules/overview/attention"
 import { IconCheck } from "@tabler/icons-react"
 import { Link } from "@tanstack/react-router"
 import * as React from "react"
-import { Panel, PanelEmpty } from "./Panel"
+import { Panel, PanelEmpty } from "@/components/layout/panel"
 import { SegTabs } from "./SegTabs"
 
 type Filter = "all" | "discovered" | "health"

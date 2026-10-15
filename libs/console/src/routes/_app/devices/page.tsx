@@ -13,7 +13,7 @@ import {
 } from "@/modules/supply/queries"
 import { useNavigate, useSearch } from "@tanstack/react-router"
 import { useState } from "react"
-import { StatTile } from "../overview/StatTile"
+import { CountTile } from "@/components/layout/count-tile"
 import { GroupedDevices, type GroupMode } from "./GroupedDevices"
 import { TopologySummary } from "./TopologySummary"
 
@@ -91,7 +91,7 @@ export function DevicesPage() {
 
       <div className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <StatTile
+          <CountTile
             kind="device"
             label="Devices"
             value={totals.devices}
@@ -99,7 +99,7 @@ export function DevicesPage() {
             isLoading={classesLoading}
             error={classesError}
           />
-          <StatTile
+          <CountTile
             kind="device"
             label="Allocated"
             value={allocated}
@@ -108,7 +108,7 @@ export function DevicesPage() {
             isLoading={classesLoading}
             error={classesError}
           />
-          <StatTile
+          <CountTile
             kind="device"
             label="Free"
             value={totals.free}
@@ -117,7 +117,7 @@ export function DevicesPage() {
             isLoading={classesLoading}
             error={classesError}
           />
-          <StatTile
+          <CountTile
             kind="device"
             label="Faulted"
             value={faulted}

@@ -1,9 +1,8 @@
+import { STAT_TONE_CLASS, type StatTone } from "@/components/layout/stat-tone"
 import { Skeleton } from "@/components/ui/skeleton"
 import { formatError } from "@/lib/format"
 import { cn } from "@/lib/utils"
 import { Link, type LinkProps } from "@tanstack/react-router"
-
-export type StatTone = "default" | "ok" | "warn" | "danger"
 
 interface StatCardProps {
   label: string
@@ -15,13 +14,6 @@ interface StatCardProps {
   to?: LinkProps["to"]
   isLoading?: boolean
   error?: unknown
-}
-
-const TONE_CLASS: Record<StatTone, string> = {
-  default: "",
-  ok: "text-success",
-  warn: "text-warning",
-  danger: "text-destructive",
 }
 
 /**
@@ -53,7 +45,7 @@ export function StatCard({
         <span
           className={cn(
             "font-mono text-2xl leading-none font-semibold tabular-nums",
-            TONE_CLASS[tone]
+            STAT_TONE_CLASS[tone]
           )}
         >
           {value}

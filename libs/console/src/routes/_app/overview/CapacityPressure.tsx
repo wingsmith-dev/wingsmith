@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { CapacityRow } from "@/modules/overview/fleet"
 import { Link } from "@tanstack/react-router"
-import { Panel, PanelEmpty } from "./Panel"
+import { Panel, PanelEmpty } from "@/components/layout/panel"
 
 function fillTone(percent: number): string {
   if (percent >= 95) return "bg-destructive"

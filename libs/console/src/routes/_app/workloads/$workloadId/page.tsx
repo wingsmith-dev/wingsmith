@@ -1,3 +1,5 @@
+import { StatRow, StatTile } from "@/components/layout/stat-tile"
+import { Panel } from "@/components/layout/panel"
 import { benchmarkColumns } from "@/components/benchmarks/benchmark-columns"
 import { NewRunDialog } from "@/components/benchmarks/new-run"
 import { ActivityStream } from "@/components/demand/activity-stream"
@@ -376,7 +378,7 @@ export function WorkloadDetailPage() {
 
                   <Panel
                     title="Deployments"
-                    subtitle={`${workload.deployments.length} cluster${
+                    description={`${workload.deployments.length} cluster${
                       workload.deployments.length === 1 ? "" : "s"
                     } placement chose`}
                     action={
@@ -397,7 +399,7 @@ export function WorkloadDetailPage() {
 
                   <Panel
                     title="Endpoints"
-                    subtitle="Entrypoints routing traffic to this workload"
+                    description="Entrypoints routing traffic to this workload"
                   >
                     <DataTable
                       bare
@@ -520,7 +522,7 @@ export function WorkloadDetailPage() {
                 <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Serving & artifact"
-                    subtitle="How these weights are served. There is no object behind it — two workloads configured the same way carry the same digest."
+                    description="How these weights are served. There is no object behind it — two workloads configured the same way carry the same digest."
                     action={
                       <EditButton
                         label="Edit engine and hardware"
@@ -679,7 +681,7 @@ export function WorkloadDetailPage() {
                       : "Knee concurrency"
                   }
                   value={kneeTile(curve.data).value}
-                  small={kneeTile(curve.data).small}
+                  size={kneeTile(curve.data).small ? "sm" : "md"}
                 />
                 {/*
                   Rolled up by the plane per `serving_digest`, so it counts every
@@ -694,7 +696,11 @@ export function WorkloadDetailPage() {
                       ? `${Math.round(measured.data.peak_output_tokens_per_second).toLocaleString()} tok/s`
                       : "—"
                   }
-                  small={measured.data?.peak_output_tokens_per_second == null}
+                  size={
+                    measured.data?.peak_output_tokens_per_second == null
+                      ? "sm"
+                      : "md"
+                  }
                 />
                 <StatTile
                   label="Graded runs, this config"
@@ -712,7 +718,7 @@ export function WorkloadDetailPage() {
 
                   <Panel
                     title="Run history"
-                    subtitle="Every benchmark run taken against this workload's deployments"
+                    description="Every benchmark run taken against this workload's deployments"
                   >
                     <DataTable
                       columns={benchmarkColumns({
@@ -777,7 +783,7 @@ export function WorkloadDetailPage() {
                 <div className="flex min-w-0 flex-col gap-4">
                   <Panel
                     title="Topology"
-                    subtitle={`GPU allocation across ${
+                    description={`GPU allocation across ${
                       placement?.node_count ?? 0
                     } nodes in ${workload.deployments.length} clusters`}
                   >
@@ -798,7 +804,7 @@ export function WorkloadDetailPage() {
 
                   <Panel
                     title="Replica placement"
-                    subtitle="Node and GPU assignment for each live allocation"
+                    description="Node and GPU assignment for each live allocation"
                   >
                     <DataTable
                       columns={replicaColumns}
@@ -874,7 +880,7 @@ export function WorkloadDetailPage() {
               <div className="flex min-w-0 flex-col gap-4">
                 <Panel
                   title="Operations"
-                  subtitle="Scale, pause and drain — plane-local, each with its own phase"
+                  description="Scale, pause and drain — plane-local, each with its own phase"
                 >
                   <DataTable
                     columns={operationColumns()}
@@ -886,7 +892,7 @@ export function WorkloadDetailPage() {
 
                 <Panel
                   title="Revision history"
-                  subtitle="Every serving configuration this workload has held, newest first"
+                  description="Every serving configuration this workload has held, newest first"
                 >
                   <WorkloadRevisions workload={workload} />
                 </Panel>
@@ -897,7 +903,7 @@ export function WorkloadDetailPage() {
             <TabsContent value="logs" className="space-y-4">
               <Panel
                 title="Activity"
-                subtitle="Everything recorded against this workload, its deployments, its replicas and its weights"
+                description="Everything recorded against this workload, its deployments, its replicas and its weights"
               >
                 <ActivityStream
                   events={events.items}
@@ -1114,44 +1120,6 @@ function PanelLink({
   )
 }
 
-function StatRow({ children }: React.PropsWithChildren) {
-  return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-      {children}
-    </div>
-  )
-}
-
-function StatTile({
-  label,
-  value,
-  tone,
-  small,
-}: {
-  label: string
-  value: string
-  tone?: "ok" | "warn"
-  small?: boolean
-}) {
-  return (
-    <Card size="sm" className="gap-1.5 px-3">
-      <div className="font-mono text-2xs tracking-wider text-muted-foreground uppercase">
-        {label}
-      </div>
-      <div
-        className={cn(
-          "font-mono leading-none tabular-nums",
-          small ? "text-sm" : "text-xl",
-          tone === "ok" && "text-success",
-          tone === "warn" && "text-warning"
-        )}
-      >
-        {value}
-      </div>
-    </Card>
-  )
-}
-
 /** How many events the overview panels show before deferring to the Logs tab. */
 const RECENT_EVENTS = 5
 
@@ -1204,7 +1172,7 @@ function EngineArgsPanel({
     <Panel
       title="Engine arguments"
       badge={<EnforcementBadge kind="obeyed" />}
-      subtitle="What the engine is started with: the declared args, with the flags the typed serving block dictates laid over the top. Derived on every read and stored nowhere."
+      description="What the engine is started with: the declared args, with the flags the typed serving block dictates laid over the top. Derived on every read and stored nowhere."
       action={
         <div className="flex items-center gap-2">
           <Segmented
@@ -1279,39 +1247,6 @@ function Segmented<T extends string>({
   )
 }
 
-function Panel({
-  title,
-  badge,
-  subtitle,
-  action,
-  children,
-}: React.PropsWithChildren<{
-  title: string
-  badge?: React.ReactNode
-  subtitle?: string
-  action?: React.ReactNode
-}>) {
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle className="flex items-center gap-2 text-sm">
-              {title}
-              {badge}
-            </CardTitle>
-            {subtitle && (
-              <p className="mt-1 text-2xs text-muted-foreground">{subtitle}</p>
-            )}
-          </div>
-          {action}
-        </div>
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
-  )
-}
-
 /**
  * The Overview traffic chart — how much work is actually arriving.
  *
@@ -1347,7 +1282,7 @@ function TrafficPanel({
   return (
     <Panel
       title="Traffic"
-      subtitle="Requests the engines completed per second, across every cluster"
+      description="Requests the engines completed per second, across every cluster"
       action={<RangeTabs value={range} onChange={setRange} />}
     >
       {!placed ? (
@@ -1645,7 +1580,7 @@ function PerformanceView({
         <div className="flex min-w-0 flex-col gap-4">
           <Panel
             title="Throughput"
-            subtitle="Input and output tokens per second, summed over every replica"
+            description="Input and output tokens per second, summed over every replica"
           >
             {out.length > 1 || input.length > 1 ? (
               <>
@@ -1683,7 +1618,7 @@ function PerformanceView({
 
           <Panel
             title="Latency breakdown"
-            subtitle="Where a request spends its time, from the engines serving it"
+            description="Where a request spends its time, from the engines serving it"
           >
             <DataTable
               columns={latencyColumns}
@@ -1700,7 +1635,7 @@ function PerformanceView({
 
           <Panel
             title="GPU utilization"
-            subtitle="Hourly average across the cards this workload holds, last 7 days"
+            description="Hourly average across the cards this workload holds, last 7 days"
             action={<HeatmapLegend />}
           >
             {week.isLoading ? (
@@ -1744,7 +1679,7 @@ function PerformanceView({
 
           <Panel
             title="Efficiency"
-            subtitle="Derived from the utilization series above and the cards placement holds"
+            description="Derived from the utilization series above and the cards placement holds"
           >
             <FieldGrid>
               <Field label="Mean utilization (7d)">
@@ -1767,7 +1702,7 @@ function PerformanceView({
           {data.breakdown.length > 1 && (
             <Panel
               title="Per cluster"
-              subtitle="Each cluster's own figures, which is where a number that cannot cross clusters survives"
+              description="Each cluster's own figures, which is where a number that cannot cross clusters survives"
             >
               <div className="flex flex-col gap-3">
                 {data.breakdown.map((member) => (
