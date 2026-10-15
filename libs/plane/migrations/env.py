@@ -5,6 +5,7 @@ import importlib.util
 from logging.config import fileConfig
 
 from sqlalchemy import pool
+from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -25,6 +26,15 @@ if importlib.util.find_spec("app.db.models") is not None:
     importlib.import_module("app.db.models")
 
 target_metadata = Base.metadata
+
+MIGRATION_LOCK = 0x68616E676172
+"""Advisory lock key held for the length of an online migration run.
+
+Two `alembic upgrade` runs at once (two replicas starting, a Job retried while the
+first attempt is still running) would otherwise both read the same version and both
+apply the next revision. The lock is transaction-scoped: the second run blocks until
+the first commits, then reads the version the first one wrote and has nothing to do.
+"""
 
 
 def include_object(obj, name, type_, reflected, compare_to) -> bool:
@@ -55,6 +65,7 @@ def do_run_migrations(connection: Connection) -> None:
         version_table="_version",
     )
     with context.begin_transaction():
+        connection.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": MIGRATION_LOCK})
         context.run_migrations()
 
 
