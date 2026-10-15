@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { buildBoard, liveAssignments } from "./build"
-import * as make from "./fixture"
+import * as make from "@/test/board"
 import { planFromShares, planPlacement, replicasPlaced } from "./sandbox"
 import type { Assignments, Board } from "./types"
 

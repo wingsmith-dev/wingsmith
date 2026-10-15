@@ -5,7 +5,7 @@ import {
   fabricHardware,
   liveAssignments,
 } from "./build"
-import * as make from "./fixture"
+import * as make from "@/test/board"
 
 function fleet() {
   const iad = make.cluster("iad-1", "us-east-1")

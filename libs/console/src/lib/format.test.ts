@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   formatAbsolute,
   formatError,
-  formatPercent,
   formatRelative,
   shortenId,
 } from "./format"
@@ -58,25 +57,6 @@ describe("formatAbsolute", () => {
     const got = formatAbsolute("2026-08-23T12:00:00Z")
     expect(got).not.toBe("—")
     expect(got).toMatch(/2026/)
-  })
-})
-
-describe("formatPercent", () => {
-  it("is zero rather than NaN when there is nothing to divide by", () => {
-    // A NaN reaches the DOM as "NaN%", which reads as a bug in the fleet.
-    expect(formatPercent(0, 0)).toBe("0%")
-    expect(formatPercent(5, 0)).toBe("0%")
-  })
-
-  it("rounds to whole percentage points", () => {
-    expect(formatPercent(1, 3)).toBe("33%")
-    expect(formatPercent(2, 3)).toBe("67%")
-    expect(formatPercent(0, 8)).toBe("0%")
-    expect(formatPercent(8, 8)).toBe("100%")
-  })
-
-  it("does not clamp, because over-subscription is a real thing to show", () => {
-    expect(formatPercent(12, 8)).toBe("150%")
   })
 })
 

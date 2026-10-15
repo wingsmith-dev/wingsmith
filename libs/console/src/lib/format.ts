@@ -27,11 +27,6 @@ export function formatAbsolute(value: string | null): string {
   })
 }
 
-export function formatPercent(numerator: number, denominator: number): string {
-  if (denominator === 0) return "0%"
-  return `${Math.round((numerator / denominator) * 100)}%`
-}
-
 export function formatError(
   error: unknown,
   fallback = "Failed to load"

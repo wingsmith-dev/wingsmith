@@ -116,13 +116,6 @@ export function roleReadiness(
   }))
 }
 
-/** `1/1 prefill · 2/2 decode`, never `3 of 3`. */
-export function roleReadinessLabel(roles: RoleReadiness[]): string {
-  return roles
-    .map((role) => `${role.ready}/${role.desired} ${role.role}`)
-    .join(" · ")
-}
-
 /**
  * A deployment is ready only when EVERY role is.
  *

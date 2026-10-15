@@ -2,19 +2,17 @@
 // import.meta.glob, which would count every file as used, so they are not entries here; the
 // CSS compiler is off for the same reason (Tailwind scans every file for class names).
 export default {
+  // `!` marks a production entry. `knip --production` (the second half of `pnpm lint`) traces
+  // only those, so an export that only its own test imports is reported as unused.
   entry: [
-    "src/routes/**/route.tsx",
-    "src/routes/__root.tsx",
-    "src/routes/_app.tsx",
-    "src/routes/index.tsx",
-    "src/test/**/*.{ts,tsx}",
     // Generated shadcn components export their whole API whether or not it is used.
-    "src/components/ui/*.tsx",
+    "src/components/ui/*.tsx!",
+    "src/test/**/*.{ts,tsx}",
     "src/**/*.test.{ts,tsx}",
     "!src/no-invented-data.test.ts",
     "!src/text-contrast.test.ts",
   ],
-  project: ["src/**/*.{ts,tsx}"],
+  project: ["src/**/*.{ts,tsx}!"],
   // Still run by Vitest; listed so knip does not report them as orphans.
   ignore: ["src/no-invented-data.test.ts", "src/text-contrast.test.ts"],
   ignoreDependencies: [

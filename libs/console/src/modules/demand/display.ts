@@ -434,28 +434,6 @@ export const SERVING_FLAGS: Record<string, Record<string, string>> = {
   },
 }
 
-/**
- * Valueless flags a typed field cannot work without, per engine — the same table
- * the plane renders from.
- *
- * `--enable-multimodal` is what turns the multimodal components on at all, so a
- * per-modality cap without it caps a path that is switched off. It is one switch
- * for every modality, which is why both caps name it.
- *
- * These fill a gap rather than win one, which is the opposite of how a typed field
- * behaves: they are inferred and not declared, so an `engine_args` that spells one
- * out by hand keeps what it wrote.
- */
-export const SERVING_COMPANION_FLAGS: Record<
-  string,
-  Record<string, string[]>
-> = {
-  vllm: {
-    max_images_per_request: ["enable-multimodal"],
-    max_videos_per_request: ["enable-multimodal"],
-  },
-}
-
 /** How a typed serving field reads back to somebody looking at engine args. */
 const SERVING_FIELD_LABELS: Record<string, string> = {
   parser: "serving.reasoning.parser",
@@ -564,43 +542,6 @@ export function servingOverrides(
     })
   }
   return out
-}
-
-/** The valueless flags the typed serving block implies, on this engine. */
-export function servingCompanionArgs(
-  engine: string,
-  serving: ServingBehaviour
-): Record<string, string> {
-  const implied = SERVING_COMPANION_FLAGS[engine.trim().toLowerCase()] ?? {}
-  const args: Record<string, string> = {}
-  for (const field of Object.keys(MODALITY_LIMITS)) {
-    const limit = serving[field as keyof ServingBehaviour] as number | null
-    if (limit === null || limit === undefined) continue
-    for (const flag of implied[field] ?? []) args[flag] = ""
-  }
-  return args
-}
-
-/**
- * `engine_args` with the typed serving flags laid over the top. The plane sends
- * this as `resolved_engine_args` on every read; this is the same arithmetic for
- * a form that has not saved yet.
- *
- * Companion flags go underneath rather than over, so an `engine_args` that names
- * one keeps its own value.
- */
-export function resolvedEngineArgs(
-  engine: string,
-  engineArgs: Record<string, unknown>,
-  serving: ServingBehaviour
-): Record<string, string> {
-  const resolved: Record<string, string> = {
-    ...servingCompanionArgs(engine, serving),
-  }
-  for (const [key, value] of Object.entries(engineArgs ?? {})) {
-    resolved[String(key).replace(/^--/, "")] = String(value)
-  }
-  return { ...resolved, ...servingArgs(engine, serving) }
 }
 
 /**

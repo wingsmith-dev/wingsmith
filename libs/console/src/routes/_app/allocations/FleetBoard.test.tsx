@@ -1,5 +1,5 @@
 import { buildBoard, liveAssignments } from "@/modules/board/build"
-import * as make from "@/modules/board/fixture"
+import * as make from "@/test/board"
 import { useBoardStore } from "@/modules/board/store"
 import type { Board } from "@/modules/board/types"
 import { fireEvent, render, screen } from "@/test/render"

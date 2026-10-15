@@ -11,7 +11,6 @@ import {
   roleWorkers,
   recipeRoles,
   roleReadiness,
-  roleReadinessLabel,
   rolesAtGroupCount,
   rolesReady,
   scaleUnitFor,
@@ -131,7 +130,6 @@ describe("readiness is per role", () => {
         { role: "prefill", desired: 1, ready: 1 },
       ])
     )!
-    expect(roleReadinessLabel(roles)).toBe("1/1 prefill · 2/2 decode")
     expect(rolesReady(roles)).toBe(true)
   })
 

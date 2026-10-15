@@ -1,5 +1,5 @@
 import { render, screen } from "@/test/render"
-import { metricsInFamily } from "@/modules/metrics/catalogue"
+import { metricGroups } from "@/modules/metrics/catalogue"
 import userEvent from "@testing-library/user-event"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 
@@ -13,7 +13,8 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = () => {}
 })
 
-const ALL = metricsInFamily("inference").map((metric) => metric.name)
+const INFERENCE = metricGroups("inference").flatMap((group) => group.metrics)
+const ALL = INFERENCE.map((metric) => metric.name)
 
 async function open(
   props: Partial<Parameters<typeof MetricPicker>[0]> = {}
@@ -35,7 +36,7 @@ async function open(
 describe("MetricPicker", () => {
   it("offers every registered metric in the family, grouped", async () => {
     await open()
-    for (const metric of metricsInFamily("inference")) {
+    for (const metric of INFERENCE) {
       expect(
         screen.getByRole("menuitemcheckbox", {
           name: new RegExp(`${metric.name.replace(/\./g, "\\.")} · `),

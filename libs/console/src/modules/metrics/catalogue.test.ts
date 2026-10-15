@@ -3,28 +3,14 @@ import { describe, expect, it } from "vitest"
 import {
   CATALOGUE,
   DEFAULT_TILES,
-  isSummable,
   metricDefinition,
   metricGroups,
-  metricTitle,
-  sumAcross,
 } from "./catalogue"
 import { formatMetric } from "./format"
-import type { MetricSample } from "./types"
 
 /** The names the plane registered for these two, verbatim. */
 const AGGREGATE = "inference.output_tokens_per_second"
 const PER_STREAM = "inference.output_tokens_per_stream"
-
-function sample(metric: string, value: number | null): MetricSample {
-  const definition = metricDefinition(metric)
-  return {
-    metric,
-    title: definition?.title ?? metric,
-    unit: definition?.unit ?? "count",
-    value,
-  }
-}
 
 describe("catalogue", () => {
   it("carries every metric the plane's registry serves", () => {
@@ -134,18 +120,7 @@ describe("the two throughput measurements", () => {
     expect(metricDefinition(PER_STREAM)!.note).toMatch(/30 tokens\/second/i)
   })
 
-  it("sums the aggregate one and refuses to sum the per-stream one", () => {
-    const samples = [sample(AGGREGATE, 900), sample(AGGREGATE, 1100)]
-    expect(sumAcross(AGGREGATE, samples)).toBe(2000)
-
-    expect(isSummable(AGGREGATE)).toBe(true)
-    expect(isSummable(PER_STREAM)).toBe(false)
-    expect(() =>
-      sumAcross(PER_STREAM, [sample(PER_STREAM, 31), sample(PER_STREAM, 29)])
-    ).toThrow(/not summable/)
-  })
-
-  it("refuses to sum quantiles and per-request distributions too", () => {
+  it("marks quantiles and per-request distributions as not adding up", () => {
     for (const name of [
       "inference.ttft_p50",
       "inference.ttft_p90",
@@ -153,16 +128,8 @@ describe("the two throughput measurements", () => {
       "inference.prompt_tokens_per_request",
       "inference.generation_tokens_per_request",
     ]) {
-      expect(isSummable(name), name).toBe(false)
+      expect(metricDefinition(name)!.scale, name).not.toBe("aggregate")
     }
-  })
-
-  it("treats members that reported nothing as absent, not as zero", () => {
-    expect(sumAcross(AGGREGATE, [sample(AGGREGATE, null)])).toBeNull()
-    expect(sumAcross(AGGREGATE, [])).toBeNull()
-    expect(
-      sumAcross(AGGREGATE, [sample(AGGREGATE, null), sample(AGGREGATE, 40)])
-    ).toBe(40)
   })
 })
 
@@ -233,15 +200,19 @@ describe("the serving family", () => {
     }
   })
 
-  it("sums the rates and refuses to sum the quantiles", () => {
-    expect(isSummable("serving.requests_per_second")).toBe(true)
-    expect(isSummable("serving.requests_in_flight")).toBe(true)
+  it("marks the rates as adding up and the quantiles as not", () => {
+    expect(metricDefinition("serving.requests_per_second")!.scale).toBe(
+      "aggregate"
+    )
+    expect(metricDefinition("serving.requests_in_flight")!.scale).toBe(
+      "aggregate"
+    )
     for (const name of [
       "serving.latency_p99",
       "serving.availability",
       "serving.failure_ratio",
     ]) {
-      expect(isSummable(name), name).toBe(false)
+      expect(metricDefinition(name)!.scale, name).not.toBe("aggregate")
     }
   })
 })
@@ -293,19 +264,5 @@ describe("defaults", () => {
     ]) {
       expect(DEFAULT_TILES.inference, name).toContain(name)
     }
-  })
-})
-
-describe("metricTitle", () => {
-  it("prefers the catalogue's label to the one on the wire", () => {
-    expect(metricTitle(PER_STREAM, "Output tokens/sec")).toBe(
-      "Output tokens/sec, one stream"
-    )
-  })
-
-  it("keeps a metric the catalogue has never heard of", () => {
-    expect(metricTitle("inference.something_new", "Something new")).toBe(
-      "Something new"
-    )
   })
 })

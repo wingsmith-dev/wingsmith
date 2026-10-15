@@ -12,7 +12,7 @@
  * label and the console is where somebody reads it.
  */
 
-import type { MetricSample, MetricUnit } from "./types"
+import type { MetricUnit } from "./types"
 
 /**
  * `serving` is the front door's own account of a request and is not a third
@@ -506,15 +506,6 @@ export function metricDefinition(name: string): MetricDefinition | undefined {
   return BY_NAME.get(name)
 }
 
-/** The catalogue's label where there is one, the plane's where there is not. */
-export function metricTitle(name: string, fallback: string): string {
-  return BY_NAME.get(name)?.title ?? fallback
-}
-
-export function metricsInFamily(family: MetricFamily): MetricDefinition[] {
-  return CATALOGUE.filter((metric) => metric.family === family)
-}
-
 export interface MetricGroupList {
   group: MetricGroup
   label: string
@@ -543,35 +534,4 @@ export function metricGroups(
       ),
     }))
     .filter((entry) => entry.metrics.length > 0)
-}
-
-/**
- * Whether adding this metric up across members means anything.
- *
- * False for quantiles, for per-request distributions, and for the per-stream
- * throughput — summing that one turns "each caller sees 30 tokens a second"
- * into a fleet number that grows every time a replica is added.
- */
-export function isSummable(name: string): boolean {
-  return BY_NAME.get(name)?.scale === "aggregate"
-}
-
-/**
- * Sums one metric over a set of members, and refuses to do it for any metric
- * the catalogue does not call summable. Members that reported nothing are not
- * zeroes; if none of them reported, the answer is `null`.
- */
-export function sumAcross(
-  name: string,
-  samples: readonly MetricSample[]
-): number | null {
-  if (!isSummable(name)) {
-    throw new Error(`${name} is not summable across members`)
-  }
-  const values = samples
-    .filter((sample) => sample.metric === name)
-    .map((sample) => sample.value)
-    .filter((value): value is number => value !== null)
-  if (values.length === 0) return null
-  return values.reduce((total, value) => total + value, 0)
 }

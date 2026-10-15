@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { workloads } from "@/modules/offline/data"
-import {
-  resolvedEngineArgs,
-  servingCompanionArgs,
-  workloadOperationalStatus,
-} from "./display"
+import { servingArgs, workloadOperationalStatus } from "./display"
 
 import type { ServingBehaviour, Workload } from "./types"
 
@@ -25,59 +21,18 @@ const serving = (over: Partial<ServingBehaviour> = {}): ServingBehaviour =>
     ...over,
   }) as ServingBehaviour
 
-describe("companion flags", () => {
-  it("gives a modality cap the switch that turns multimodal on", () => {
-    // A cap without `--enable-multimodal` caps a path the engine has switched
-    // off, so the workload reads as configured and serves a text-only worker.
-    expect(
-      resolvedEngineArgs("vllm", {}, serving({ max_images_per_request: 4 }))
-    ).toEqual({
-      "limit-mm-per-prompt": '{"image": 4}',
-      "enable-multimodal": "",
-    })
-    expect(
-      resolvedEngineArgs("vllm", {}, serving({ max_videos_per_request: 1 }))
-    ).toEqual({
-      "limit-mm-per-prompt": '{"video": 1}',
-      "enable-multimodal": "",
-    })
-  })
-
+describe("modality caps", () => {
   it("renders two caps as one map and not as two flags", () => {
     expect(
-      resolvedEngineArgs(
+      servingArgs(
         "vllm",
-        {},
         serving({ max_images_per_request: 4, max_videos_per_request: 1 })
       )["limit-mm-per-prompt"]
     ).toBe('{"image": 4, "video": 1}')
   })
 
-  it("adds nothing on an engine that has no such switch", () => {
-    expect(
-      resolvedEngineArgs("sglang", {}, serving({ tool_call_parser: "qwen25" }))
-    ).toEqual({
-      "tool-call-parser": "qwen25",
-    })
-  })
-
-  it("leaves an explicitly declared companion flag alone", () => {
-    const resolved = resolvedEngineArgs(
-      "vllm",
-      { "--enable-multimodal": "true" },
-      serving({ max_images_per_request: 4 })
-    )
-    expect(resolved["enable-multimodal"]).toBe("true")
-    expect(resolved["limit-mm-per-prompt"]).toBe('{"image": 4}')
-  })
-
-  it("stays inert on a serving block that declares nothing", () => {
-    expect(servingCompanionArgs("vllm", serving())).toEqual({})
-    expect(
-      resolvedEngineArgs("vllm", { "--dtype": "bfloat16" }, serving())
-    ).toEqual({
-      dtype: "bfloat16",
-    })
+  it("renders nothing on a serving block that declares nothing", () => {
+    expect(servingArgs("vllm", serving())).toEqual({})
   })
 })
 

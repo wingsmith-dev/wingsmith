@@ -2,7 +2,7 @@ import type { Cluster } from "@/modules/clusters/types"
 import type { Allocation } from "@/modules/machinery/types"
 import type { Reservation } from "@/modules/placement/types"
 import type { Device, SupplyNode, TopologyDomain } from "@/modules/supply/types"
-import type { Brick } from "./types"
+import type { Brick } from "@/modules/board/types"
 
 /**
  * Board-shaped test data, built by hand.
