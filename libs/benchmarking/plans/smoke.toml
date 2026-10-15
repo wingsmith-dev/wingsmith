@@ -15,8 +15,9 @@ harnesses = ["aiperf", "vllm-bench", "guidellm"]
 
 [endpoint]
 url = "http://host.docker.internal:8080"
-token_env = "HANGAR_GATEWAY_TOKEN"
-# token_from_cluster = "my-cluster"  # kubectl context to read the token from when token_env is unset
+# A tenant API key when the endpoint is the gateway's public listener; leave it unset
+# for the internal listener, which takes none.
+token_env = "HANGAR_API_KEY"
 
 [[models]]
 name = "gpt-oss-120b"

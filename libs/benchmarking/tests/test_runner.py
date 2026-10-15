@@ -168,3 +168,28 @@ def test_the_suite_file_is_replaced_whole(tmp_path: Path) -> None:
 
     assert json.loads(store.suite_path.read_text())["run_id"] == "test"
     assert [path.name for path in store.root.iterdir()] == ["suite.json"]
+
+
+def test_a_dry_run_runs_nothing_sends_nothing_and_keeps_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from hgrbench import cli
+    from hgrbench.harnesses import base
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError(f"a dry run started a process or a request: {args}")
+
+    monkeypatch.setattr(runner_module, "host_arch", lambda: "amd64")
+    monkeypatch.setattr(runner_module.subprocess, "run", refuse)
+    monkeypatch.setattr(runner_module.subprocess, "Popen", refuse)
+    monkeypatch.setattr(base.subprocess, "run", refuse)
+    monkeypatch.setattr(runner_module.urlrequest, "urlopen", refuse)
+    monkeypatch.setenv("HANGAR_API_KEY", TOKEN)
+    results = tmp_path / "results"
+
+    assert cli.main(["run", "deep", "--hard", "--dry-run", "--results", str(results)]) == 0
+
+    out = capsys.readouterr().out
+    assert "would run" in out
+    assert TOKEN not in out
+    assert not results.exists()

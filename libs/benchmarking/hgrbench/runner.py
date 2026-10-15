@@ -86,37 +86,12 @@ class Runner:
     # ── setup ────────────────────────────────────────────────────────────────
 
     def resolve_token(self) -> str:
-        """The bearer token, from the environment or from the cluster secret.
+        """The bearer token, read once from the variable the plan names.
 
-        Read once per suite rather than per cell: a `kubectl` call per measurement
-        is a needless dependency on the cluster being reachable for the whole run,
-        and an SSO token that expires mid-suite should not fail cell 40 of 48.
+        Once per suite rather than per cell, so a variable changed mid-run cannot
+        give two cells of one suite two different identities.
         """
-        token = os.environ.get(self.plan.endpoint.token_env, "")
-        if token:
-            return token
-        cluster = self.plan.endpoint.token_from_cluster
-        if not cluster:
-            return ""
-        self.say(f"reading the endpoint token from the {cluster} cluster")
-        argv = [
-            "kubectl",
-            "--context",
-            cluster,
-            "-n",
-            self.plan.endpoint.namespace,
-            "get",
-            "secret",
-            self.plan.endpoint.secret,
-            "-o",
-            f"jsonpath={{.data.{self.plan.endpoint.token_env}}}",
-        ]
-        done = subprocess.run(argv, capture_output=True, text=True)
-        if done.returncode != 0:
-            raise RuntimeError(f"could not read {self.plan.endpoint.secret}: {done.stderr.strip()}")
-        import base64
-
-        return base64.b64decode(done.stdout).decode().strip()
+        return os.environ.get(self.plan.endpoint.token_env, "")
 
     def probe(self) -> None:
         """One request to the endpoint before spending an hour on it.
@@ -623,7 +598,12 @@ class Runner:
     # ── entry ────────────────────────────────────────────────────────────────
 
     def run(self) -> None:
-        """The whole suite: token, probe, images, matrix, saturation search."""
+        """The whole suite: token, probe, images, matrix, saturation search.
+
+        A dry run reads the token from the environment and nothing else: it sends
+        nothing to the endpoint, asks no registry for a digest and pulls or builds no
+        image, so the commands it prints name images by their pinned index digest.
+        """
         refuse_invalid(self.plan)
         self.token = self.resolve_token()
         if not self.options.dry_run:

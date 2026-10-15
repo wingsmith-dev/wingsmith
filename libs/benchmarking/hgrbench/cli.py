@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import sys
 import argparse
+import tempfile
 
 from pathlib import Path
 from datetime import UTC
@@ -74,8 +75,24 @@ def cmd_run(args: argparse.Namespace) -> int:
     for name in options.only_harness:
         registry.get(name)
 
+    if args.dry_run:
+        # Harnesses write their per-cell inputs as the commands are built, so a dry run
+        # gets a scratch directory that is gone when it returns: nothing lands under
+        # --results, and nothing is sent anywhere.
+        with tempfile.TemporaryDirectory(prefix="hgrbench-dry-run-") as scratch:
+            _run(plan, options, Path(scratch), args)
+        return 0
+    root = _run(plan, options, Path(args.results), args)
+    report = render(read_suite(root), root / "report.html")
+    print(f"\n{report}")
+    if not args.no_open:
+        _open(report)
+    return 0
+
+
+def _run(plan: Plan, options: Options, results: Path, args: argparse.Namespace) -> Path:
     stamp = datetime.now(UTC)
-    root = Path(args.results) / run_id(plan, stamp)
+    root = results / run_id(plan, stamp)
     suite = Suite(
         run_id=root.name,
         plan_name=plan.name,
@@ -94,19 +111,15 @@ def cmd_run(args: argparse.Namespace) -> int:
     suite.host["arch"] = runner.arch
 
     print(f"plan {plan.name}: {plan.description}")
-    print(f"results in {root}")
+    if options.dry_run:
+        print("dry run: every command is printed, none is run, and nothing is kept")
+    else:
+        print(f"results in {root}")
     if plan.knee.enabled and not args.hard:
         print("the saturation search is in this plan but off for this run; add --hard to include it")
 
     runner.run()
-
-    if args.dry_run:
-        return 0
-    report = render(read_suite(store.suite_path), root / "report.html")
-    print(f"\n{report}")
-    if not args.no_open:
-        _open(report)
-    return 0
+    return root
 
 
 def cmd_report(args: argparse.Namespace) -> int:

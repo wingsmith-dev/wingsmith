@@ -22,6 +22,10 @@ from dataclasses import field
 from dataclasses import dataclass
 
 
+DEFAULT_TOKEN_ENV = "HANGAR_API_KEY"
+ENDPOINT_KEYS = frozenset({"url", "probe_url", "token_env"})
+
+
 @dataclass(frozen=True)
 class Endpoint:
     """The serving surface under test, from both sides of the container boundary.
@@ -29,14 +33,15 @@ class Endpoint:
     `url` is resolved inside the container, `probe_url` from the host. They differ
     whenever the endpoint is a port-forward on this machine: a container reaches it
     at `host.docker.internal`, and the host cannot resolve that name at all.
+
+    `token_env` names the environment variable holding the bearer token, read once
+    when the run starts. Against the gateway's public listener that is a tenant API
+    key; its internal listener takes none, and the variable can stay unset.
     """
 
     url: str
     probe_url: str
-    token_env: str = "HANGAR_GATEWAY_TOKEN"
-    token_from_cluster: str = ""
-    namespace: str = "hangar"
-    secret: str = "hangar-secrets"
+    token_env: str = DEFAULT_TOKEN_ENV
 
 
 @dataclass(frozen=True)
@@ -199,14 +204,17 @@ class Cell:
 
 
 def _endpoint(raw: dict[str, Any]) -> Endpoint:
+    unknown = sorted(set(raw) - ENDPOINT_KEYS)
+    if unknown:
+        raise ValueError(
+            f"[endpoint] has no {', '.join(unknown)}; it takes {', '.join(sorted(ENDPOINT_KEYS))}, "
+            "and the token is read from the variable token_env names"
+        )
     url = raw.get("url", "http://host.docker.internal:8080")
     return Endpoint(
         url=url,
         probe_url=raw.get("probe_url", url.replace("host.docker.internal", "localhost")),
-        token_env=raw.get("token_env", "HANGAR_GATEWAY_TOKEN"),
-        token_from_cluster=raw.get("token_from_cluster", ""),
-        namespace=raw.get("namespace", "hangar"),
-        secret=raw.get("secret", "hangar-secrets"),
+        token_env=raw.get("token_env", DEFAULT_TOKEN_ENV),
     )
 
 
