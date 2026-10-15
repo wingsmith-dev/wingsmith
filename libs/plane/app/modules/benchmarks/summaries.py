@@ -107,7 +107,7 @@ AIPERF_0_4 = Adapter(
         # so it sits in `display` below, which `read` cannot see.
         Field(OUTPUT_SPEED_PER_STREAM, ("output_token_throughput_per_user", "avg"), TOKENS_PER_SECOND),
         Field(REQUEST_COUNT, ("request_count", "avg"), COUNT),
-        Field(ERROR_COUNT, ("error_count",), COUNT),
+        Field(ERROR_COUNT, ("error_request_count", "avg"), COUNT),
     ),
     display=(
         Field(TTFT_P95, ("time_to_first_token", "p95"), MILLISECONDS),

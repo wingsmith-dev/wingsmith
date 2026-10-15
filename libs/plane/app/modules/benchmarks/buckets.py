@@ -75,10 +75,9 @@ class BandReport(NamedTuple):
     load point inside it. `avg` is weighted by each run's request count, which
     is the one of the three that genuinely combines.
 
-    `incomplete` names the runs whose summary carried no TTFT at all. They are
-    listed rather than dropped, because a band that quietly measured half of
-    what it says it did is the failure the whole re-aggregation exists to make
-    visible.
+    `incomplete` names the runs whose summary carried no TTFT at all, or an average with no
+    request count to weight it by. They are listed rather than dropped, so a band that measured
+    less than it claims says so.
     """
 
     band: str
@@ -173,9 +172,12 @@ def _report(label: str, members: list[Sample]) -> BandReport:
         if p50.value is not None:
             worst_p50 = p50.value if worst_p50 is None else max(worst_p50, p50.value)
         if avg.value is not None:
-            share = count.value if count.value else 1.0
-            weighted += avg.value * share
-            weight += share
+            if count.value:
+                weighted += avg.value * count.value
+                weight += count.value
+            else:
+                # An average with no request count has no weight; guessing one would skew the band.
+                incomplete.append(entry.run_id)
         if count.value:
             requests += int(count.value)
 

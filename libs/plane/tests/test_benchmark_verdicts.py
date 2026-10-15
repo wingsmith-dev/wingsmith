@@ -36,13 +36,13 @@ from app.modules.benchmarks.services import request_phase
 CRITERIA = verdicts.ACCEPTANCE_2026_1
 
 
-def aiperf_summary(p90=1000.0, p50=500.0, avg=600.0, per_stream=140.0, requests=100):
+def aiperf_summary(p90=1000.0, p50=500.0, avg=600.0, per_stream=140.0, requests=100, errors=0):
     return {
         "time_to_first_token": {"unit": "ms", "p90": p90, "p50": p50, "avg": avg},
         "output_token_throughput_per_user": {"unit": "tokens/sec", "avg": per_stream},
         "output_token_throughput": {"unit": "tokens/sec", "avg": 8000.0},
-        "request_count": requests,
-        "error_count": 0,
+        "request_count": {"unit": "requests", "avg": requests},
+        "error_request_count": {"unit": "requests", "avg": errors},
     }
 
 
@@ -499,7 +499,9 @@ def run(uid, tokens, p90=None, p50=None, avg=None, requests=100, discard=False, 
     summary = None
     if p90 is not None or p50 is not None or avg is not None:
         ttft = {key: value for key, value in (("p90", p90), ("p50", p50), ("avg", avg)) if value is not None}
-        summary = {"time_to_first_token": ttft, "request_count": {"avg": requests}}
+        summary = {"time_to_first_token": ttft}
+        if requests is not None:
+            summary["request_count"] = {"avg": requests}
     return SimpleNamespace(
         uid=uid,
         harness="aiperf",
@@ -542,6 +544,23 @@ def test_a_bands_average_is_weighted_by_the_requests_behind_it():
     report = buckets.reaggregate(samples)[0]
     assert report.ttft_avg_ms == pytest.approx(1750.0)
     assert report.requests == 400
+
+
+def test_an_average_with_no_request_count_is_incomplete_rather_than_weighted_as_one():
+    samples = [
+        buckets.sample(run("bmk_1", 2000, p90=900.0, avg=1000.0, requests=100)),
+        buckets.sample(run("bmk_2", 3000, p90=1200.0, avg=9000.0, requests=None)),
+    ]
+    report = buckets.reaggregate(samples)[0]
+    assert report.ttft_avg_ms == pytest.approx(1000.0)
+    assert report.ttft_p90_ms == 1200.0
+    assert report.incomplete == ("bmk_2",)
+
+
+def test_aiperf_errors_are_the_failed_request_count():
+    adapter = summaries.adapter_for("aiperf", "0.12.0")
+    read = summaries.read(adapter, aiperf_summary(requests=100, errors=3), summaries.ERROR_COUNT)
+    assert read.value == 3
 
 
 def test_a_discarded_warm_up_is_excluded_from_every_band():
