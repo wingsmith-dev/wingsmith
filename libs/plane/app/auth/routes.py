@@ -38,6 +38,8 @@ from app.core.exceptions import TooManyRequests
 
 from .depends import auth_svc_generator
 from .manager import AuthManager
+from .schemas import ADMIN
+from .schemas import TENANT
 from .schemas import LoginRequest
 from .schemas import LoginResponse
 from .schemas import LogoutRequest
@@ -93,6 +95,16 @@ rate makes reachable. It is a loud line in the log long before it is a defence.
 """
 
 
+def _access_token(refresh_token: str, *, name: str, kind: str, scope: str | None = None) -> str:
+    """The access token for the session a freshly minted refresh token opened."""
+    parsed = AuthManager.parse_refresh_token(refresh_token)
+    assert parsed is not None
+    session_id, generation = parsed
+    return AuthManager.issue_session_token(
+        name=name, kind=kind, scope=scope, session_id=session_id, generation=generation
+    )
+
+
 class AuthRoutes(Controller):
     path = "/auth"
     tags = ["Main"]
@@ -123,11 +135,12 @@ class AuthRoutes(Controller):
                 logger.warning("auth.login_failed", extra={"slug": data.slug, "kind": "tenant", "client": address})
                 raise NotAuthorized("invalid credentials")
             tenant, token = resolved
+            refresh_token = await svc.create_refresh_token(name=tenant.slug, tenant_token_id=token.id)
             return LoginResponse(
-                access_token=AuthManager.issue_session_token(name=tenant.slug, kind="tenant", scope=tenant.uid),
-                refresh_token=await svc.create_refresh_token(name=tenant.slug, tenant_token_id=token.id),
+                access_token=_access_token(refresh_token, name=tenant.slug, kind=TENANT, scope=tenant.uid),
+                refresh_token=refresh_token,
                 expires_in=settings.SESSION_TTL_SECONDS,
-                kind="tenant",
+                kind=TENANT,
                 tenant=tenant.slug,
             )
 
@@ -140,10 +153,9 @@ class AuthRoutes(Controller):
             LOGIN_CEILING.fail()
             logger.warning("auth.login_failed", extra={"kind": "admin", "client": address})
             raise NotAuthorized("invalid credentials")
-        access_token = AuthManager.issue_session_token(name="admin")
         refresh_token = await svc.create_refresh_token(name="admin")
         return LoginResponse(
-            access_token=access_token,
+            access_token=_access_token(refresh_token, name="admin", kind=ADMIN),
             refresh_token=refresh_token,
             expires_in=settings.SESSION_TTL_SECONDS,
         )
@@ -164,4 +176,9 @@ class AuthRoutes(Controller):
 
     @post("/logout", status_code=status_codes.HTTP_204_NO_CONTENT)
     async def logout(self, data: LogoutRequest, svc: AuthService) -> None:
+        """Ends the session the refresh token belongs to, and every access token it issued.
+
+        `204` whether or not the token was known, so the route says nothing about
+        which tokens exist.
+        """
         await svc.revoke_refresh_token(data.refresh_token)

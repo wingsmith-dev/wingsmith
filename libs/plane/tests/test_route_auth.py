@@ -23,6 +23,10 @@ from app.core.context import TENANT_SURFACE
 from app.core.context import is_public
 
 
+SESSION = "0f5a4c1e9b3d4e7f8a2b6c9d1e3f5a7b"
+"""A session id for tokens that never reach a database."""
+
+
 GATEWAY_TOKEN = "route-walk-gateway-token"
 
 
@@ -58,8 +62,8 @@ PROTECTED = [(method, path) for method, path in _routes() if not is_public(_temp
 
 def _session(kind: str) -> str:
     if kind == "tenant":
-        return AuthManager.issue_session_token(name="globex", kind="tenant", scope="ten_01m1yd")
-    return AuthManager.issue_session_token(name="admin")
+        return AuthManager.issue_session_token(name="globex", kind="tenant", scope="ten_01m1yd", session_id=SESSION)
+    return AuthManager.issue_session_token(name="admin", session_id=SESSION)
 
 
 @pytest.fixture(scope="module")

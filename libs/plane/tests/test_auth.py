@@ -2,6 +2,10 @@
 API (`app.core.context`, `app.auth.routes`) and the hub (`app.hub.server`).
 """
 
+import json
+import time
+import uuid
+import base64
 import asyncio
 
 import pytest
@@ -10,9 +14,11 @@ from litestar.testing import TestClient
 from websockets.exceptions import InvalidStatus
 from websockets.asyncio.client import connect
 
+from app.db import engine as db_engine
 from app.auth import LOGIN_GUESSES
 from app.auth import LOCAL_GATEWAY_SERVICE_TOKEN
 from app.auth import AuthManager
+from app.auth import AuthService
 from app.config import settings
 from app.api.app import create_app
 from app.hub.server import serve_forever
@@ -26,6 +32,9 @@ from app.config.settings import validate
 from app.config.settings import resolved_admin_auth
 from app.core.exceptions import NotAuthorized
 
+
+SESSION = "0f5a4c1e9b3d4e7f8a2b6c9d1e3f5a7b"
+"""A session id for tokens that never reach a database."""
 
 PASSWORD = "correct horse battery staple"
 
@@ -48,6 +57,27 @@ def enable_admin_auth(monkeypatch, password: str = PASSWORD) -> None:
     monkeypatch.setattr(settings, "ADMIN_AUTH", "enabled")
     monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", AuthManager.hash_admin_password(password))
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "test-signing-secret")
+
+
+@pytest.fixture
+def plane_db(database, monkeypatch):
+    """Points the app's own engine at the migrated test database, never the dev one."""
+    monkeypatch.setattr(settings, "DATABASE_URL", database)
+    monkeypatch.setattr(db_engine, "_engine", None)
+    monkeypatch.setattr(db_engine, "_factory", None)
+    return database
+
+
+def signed(claims: dict) -> str:
+    """A session token with exactly these claims, correctly signed."""
+    payload = json.dumps(claims).encode()
+    encoded = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
+    return f"hgrs1.{encoded}.{AuthManager._sign(payload)}"
+
+
+def claims(**overrides) -> dict:
+    base = {"k": "admin", "n": "admin", "s": None, "sid": SESSION, "g": AuthManager.admin_generation()}
+    return {**base, "exp": int(time.time()) + 900, **overrides}
 
 
 # --- password hashing -------------------------------------------------------
@@ -73,7 +103,7 @@ def test_empty_hash_never_verifies():
 
 def test_session_token_round_trips(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
-    token = AuthManager.issue_session_token("admin")
+    token = AuthManager.issue_session_token("admin", session_id=SESSION)
     principal = AuthManager.verify_session_token(token)
     assert principal is not None
     assert principal.kind == "admin"
@@ -81,13 +111,13 @@ def test_session_token_round_trips(monkeypatch):
 
 def test_expired_session_token_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
-    token = AuthManager.issue_session_token("admin", ttl_seconds=-1)
+    token = AuthManager.issue_session_token("admin", session_id=SESSION, ttl_seconds=-1)
     assert AuthManager.verify_session_token(token) is None
 
 
 def test_tampered_session_signature_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
-    token = AuthManager.issue_session_token("admin")
+    token = AuthManager.issue_session_token("admin", session_id=SESSION)
     prefix, payload, signature = token.split(".")
     tampered = f"{prefix}.{payload}.{signature[:-1]}{'a' if signature[-1] != 'a' else 'b'}"
     assert AuthManager.verify_session_token(tampered) is None
@@ -95,7 +125,7 @@ def test_tampered_session_signature_is_rejected(monkeypatch):
 
 def test_tampered_session_payload_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
-    token = AuthManager.issue_session_token("admin")
+    token = AuthManager.issue_session_token("admin", session_id=SESSION)
     prefix, payload, signature = token.split(".")
     forged = f"{prefix}.{payload}extra.{signature}"
     assert AuthManager.verify_session_token(forged) is None
@@ -108,9 +138,62 @@ def test_malformed_session_token_is_rejected():
 
 def test_session_token_signed_under_a_different_secret_is_rejected(monkeypatch):
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit-a")
-    token = AuthManager.issue_session_token("admin")
+    token = AuthManager.issue_session_token("admin", session_id=SESSION)
     monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit-b")
     assert AuthManager.verify_session_token(token) is None
+
+
+def test_a_session_token_names_its_session(monkeypatch):
+    monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
+    principal = AuthManager.verify_session_token(AuthManager.issue_session_token("admin", session_id=SESSION))
+    assert principal is not None
+    assert principal.session_id == SESSION
+
+
+def test_no_session_is_minted_for_a_service_or_operator_kind():
+    for kind in ("gateway", "operator", "root"):
+        with pytest.raises(ValueError):
+            AuthManager.issue_session_token(kind, kind=kind, session_id=SESSION)
+
+
+@pytest.mark.parametrize("kind", ["gateway", "operator", "superuser", ""])
+def test_a_signed_session_of_any_other_kind_is_refused(monkeypatch, kind):
+    """Only `admin` and `tenant` are allowlisted; an unknown kind never falls through to admin."""
+    monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
+    assert AuthManager.verify_session_token(signed(claims(k=kind))) is None
+
+
+def test_a_signed_session_missing_or_adding_a_field_is_refused(monkeypatch):
+    monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
+    assert AuthManager.verify_session_token(signed(claims())) is not None
+    without_session = claims()
+    del without_session["sid"]
+    assert AuthManager.verify_session_token(signed(without_session)) is None
+    assert AuthManager.verify_session_token(signed(claims(scopes=["*"]))) is None
+
+
+def test_the_two_field_payload_is_refused(monkeypatch):
+    monkeypatch.setattr(settings, "SESSION_SIGNING_SECRET", "sekrit")
+    payload = f"admin:{int(time.time()) + 900}".encode()
+    encoded = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
+    assert AuthManager.verify_session_token(f"hgrs1.{encoded}.{AuthManager._sign(payload)}") is None
+
+
+def test_changing_the_admin_password_ends_every_admin_session(monkeypatch):
+    enable_admin_auth(monkeypatch)
+    token = AuthManager.issue_session_token("admin", session_id=SESSION)
+    assert AuthManager.verify_session_token(token) is not None
+    monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", AuthManager.hash_admin_password("a new password"))
+    assert AuthManager.verify_session_token(token) is None
+
+
+def test_a_refresh_token_carries_its_session_and_generation():
+    token, digest = AuthManager.mint_refresh_token(SESSION, "gen123")
+    assert token.startswith("hgrr1.")
+    assert AuthManager.parse_refresh_token(token) == (SESSION, "gen123")
+    assert digest == AuthManager.hash_refresh_token(token)
+    assert AuthManager.parse_refresh_token("hgrr1.onlyrandom") is None
+    assert AuthManager.parse_refresh_token(f"hgrs1.{SESSION}.gen.x") is None
 
 
 # --- resolve_gateway / resolve_principal -------------------------------------
@@ -174,7 +257,7 @@ def test_resolve_principal_with_admin_auth_enabled_rejects_wrong_token(monkeypat
 
 def test_resolve_principal_accepts_a_session_token_regardless_of_admin_auth_mode(monkeypatch):
     enable_admin_auth(monkeypatch)
-    token = AuthManager.issue_session_token("admin")
+    token = AuthManager.issue_session_token("admin", session_id=SESSION)
     principal = AuthManager.resolve_principal(token)
     assert principal.kind == "admin"
 
@@ -277,7 +360,7 @@ def test_validate_is_frictionless_in_local_with_nothing_configured():
 
 
 @pytest.mark.database
-def test_unauthenticated_request_succeeds_when_admin_auth_is_disabled():
+def test_unauthenticated_request_succeeds_when_admin_auth_is_disabled(plane_db):
     with TestClient(app=create_app()) as client:
         response = client.get("/v1/clusters")
     assert response.status_code == 200
@@ -333,7 +416,7 @@ def test_an_enrolment_token_is_401_on_the_http_api(monkeypatch):
 
 
 @pytest.mark.database
-def test_admin_login_succeeds_with_the_right_password(monkeypatch):
+def test_admin_login_succeeds_with_the_right_password(plane_db, monkeypatch):
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:
         response = client.post("/v1/auth/login", json={"password": PASSWORD})
@@ -376,7 +459,7 @@ def test_throttled_login_refuses_the_right_password_too(monkeypatch):
 
 
 @pytest.mark.database
-def test_a_correct_login_does_not_spend_the_budget(monkeypatch):
+def test_a_correct_login_does_not_spend_the_budget(plane_db, monkeypatch):
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:
         for _ in range(LOGIN_GUESSES.limit * 2):
@@ -434,7 +517,7 @@ def test_schema_is_not_served_outside_local(monkeypatch):
 
 
 @pytest.mark.database
-def test_session_token_from_login_is_accepted_on_a_protected_route(monkeypatch):
+def test_session_token_from_login_is_accepted_on_a_protected_route(plane_db, monkeypatch):
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:
         login = client.post("/v1/auth/login", json={"password": PASSWORD})
@@ -446,9 +529,154 @@ def test_session_token_from_login_is_accepted_on_a_protected_route(monkeypatch):
 def test_expired_session_token_is_401_on_a_protected_route(monkeypatch):
     enable_admin_auth(monkeypatch)
     with TestClient(app=create_app()) as client:
-        token = AuthManager.issue_session_token("admin", ttl_seconds=-1)
+        token = AuthManager.issue_session_token("admin", session_id=SESSION, ttl_seconds=-1)
         response = client.get("/v1/clusters", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401
+
+
+def test_a_session_that_has_ended_is_401_on_the_next_request(monkeypatch):
+    """Logout and revocation take effect at the guard, not when the access token expires."""
+    enable_admin_auth(monkeypatch)
+
+    async def ended(principal) -> bool:
+        return False
+
+    monkeypatch.setattr("app.core.context.session_is_live", ended)
+    token = AuthManager.issue_session_token("admin", session_id=SESSION)
+    with TestClient(app=create_app()) as client:
+        response = client.get("/v1/system/config", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
+
+
+def test_a_live_session_reaches_the_route(monkeypatch):
+    enable_admin_auth(monkeypatch)
+    seen = []
+
+    async def live(principal) -> bool:
+        seen.append(principal.session_id)
+        return True
+
+    monkeypatch.setattr("app.core.context.session_is_live", live)
+    token = AuthManager.issue_session_token("admin", session_id=SESSION)
+    with TestClient(app=create_app()) as client:
+        response = client.get("/v1/system/config", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+    assert seen == [SESSION]
+
+
+# --- sessions against the database ---------------------------------------
+
+
+def login(client: TestClient) -> dict:
+    response = client.post("/v1/auth/login", json={"password": PASSWORD})
+    assert response.status_code in (200, 201), response.text
+    return response.json()
+
+
+def bearer(token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.mark.database
+def test_refresh_rotates_the_pair_and_keeps_the_session(plane_db, monkeypatch):
+    enable_admin_auth(monkeypatch)
+    with TestClient(app=create_app()) as client:
+        first = login(client)
+        rotated = client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+        assert rotated.status_code in (200, 201)
+        second = rotated.json()
+        assert second["refresh_token"] != first["refresh_token"]
+        assert client.get("/v1/system/config", headers=bearer(second["access_token"])).status_code == 200
+        assert client.get("/v1/system/config", headers=bearer(first["access_token"])).status_code == 200
+
+
+@pytest.mark.database
+def test_reusing_a_rotated_refresh_token_ends_the_whole_session(plane_db, monkeypatch):
+    """Two parties hold the session when a rotated token comes back, so neither keeps it."""
+    enable_admin_auth(monkeypatch)
+    with TestClient(app=create_app()) as client:
+        first = login(client)
+        second = client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]}).json()
+        replay = client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]})
+        assert replay.status_code == 401
+        assert client.post("/v1/auth/refresh", json={"refresh_token": second["refresh_token"]}).status_code == 401
+        assert client.get("/v1/system/config", headers=bearer(second["access_token"])).status_code == 401
+
+
+@pytest.mark.database
+def test_logout_ends_the_session_and_its_access_tokens(plane_db, monkeypatch):
+    enable_admin_auth(monkeypatch)
+    with TestClient(app=create_app()) as client:
+        pair = login(client)
+        assert client.get("/v1/system/config", headers=bearer(pair["access_token"])).status_code == 200
+        assert client.post("/v1/auth/logout", json={"refresh_token": pair["refresh_token"]}).status_code == 204
+        assert client.get("/v1/system/config", headers=bearer(pair["access_token"])).status_code == 401
+        assert client.post("/v1/auth/refresh", json={"refresh_token": pair["refresh_token"]}).status_code == 401
+        assert client.post("/v1/auth/logout", json={"refresh_token": pair["refresh_token"]}).status_code == 204
+
+
+@pytest.mark.database
+def test_a_password_change_refuses_the_old_sessions_refresh(plane_db, monkeypatch):
+    enable_admin_auth(monkeypatch)
+    with TestClient(app=create_app()) as client:
+        pair = login(client)
+        monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", AuthManager.hash_admin_password("rotated"))
+        assert client.post("/v1/auth/refresh", json={"refresh_token": pair["refresh_token"]}).status_code == 401
+        assert client.get("/v1/system/config", headers=bearer(pair["access_token"])).status_code == 401
+
+
+@pytest.mark.database
+def test_rotation_never_extends_the_session(plane_db, monkeypatch):
+    """`REFRESH_TTL_SECONDS` is an absolute lifetime: every rotated row keeps the first row's expiry."""
+    enable_admin_auth(monkeypatch)
+    with TestClient(app=create_app()) as client:
+        token = login(client)["refresh_token"]
+        for _ in range(3):
+            token = client.post("/v1/auth/refresh", json={"refresh_token": token}).json()["refresh_token"]
+
+    session_id, _ = AuthManager.parse_refresh_token(token)
+
+    async def expiries():
+        from sqlalchemy import text
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        engine = create_async_engine(plane_db)
+        try:
+            async with engine.connect() as connection:
+                root = await connection.execute(
+                    text("SELECT expires_at FROM auth_refresh_token WHERE id = :id"), {"id": uuid.UUID(session_id)}
+                )
+                latest = await connection.execute(
+                    text("SELECT expires_at FROM auth_refresh_token WHERE token_hash = :hash"),
+                    {"hash": AuthManager.hash_refresh_token(token)},
+                )
+                return root.scalar_one(), latest.scalar_one()
+        finally:
+            await engine.dispose()
+
+    root, latest = asyncio.run(expiries())
+    assert root == latest
+
+
+@pytest.mark.database
+async def test_two_racing_refreshes_rotate_exactly_once(sessions, monkeypatch):
+    enable_admin_auth(monkeypatch)
+    async with sessions() as db:
+        token = await AuthService(db).create_refresh_token(name="admin")
+
+    async def rotate():
+        async with sessions() as db:
+            return await AuthService(db).rotate_refresh_token(token)
+
+    results = await asyncio.gather(rotate(), rotate())
+    assert sum(result is not None for result in results) == 1
+
+
+@pytest.mark.database
+async def test_a_refresh_token_in_the_old_format_is_refused(sessions, monkeypatch):
+    enable_admin_auth(monkeypatch)
+    async with sessions() as db:
+        assert await AuthService(db).rotate_refresh_token("hgrr1.some-random-value") is None
 
 
 def test_cors_allowed_origins_are_configurable(monkeypatch):

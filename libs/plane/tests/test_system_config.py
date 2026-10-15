@@ -19,6 +19,10 @@ from app.api.app import create_app
 from app.core.system_routes import effective_config
 
 
+SESSION = "0f5a4c1e9b3d4e7f8a2b6c9d1e3f5a7b"
+"""A session id for tokens that never reach a database."""
+
+
 SECRETS = {
     "GATEWAY_SERVICE_TOKEN": "sentinel-gateway-token-aaaa",
     "HF_TOKEN": "sentinel-hf-token-bbbb",
@@ -32,6 +36,11 @@ SECRETS = {
 }
 
 
+async def _live(principal) -> bool:
+    """The session store is a database; these tests are about the response, not the session."""
+    return True
+
+
 @pytest.fixture(autouse=True)
 def _configured(monkeypatch):
     for name, value in SECRETS.items():
@@ -39,11 +48,12 @@ def _configured(monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_PASSWORD_HASH", AuthManager.hash_admin_password("sentinel-password-gggg"))
     monkeypatch.setattr(settings, "ADMIN_AUTH", "enabled")
     monkeypatch.setattr(settings, "APP_ENV", "staging")
+    monkeypatch.setattr("app.core.context.session_is_live", _live)
     yield
 
 
 def admin_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {AuthManager.issue_session_token('admin')}"}
+    return {"Authorization": f"Bearer {AuthManager.issue_session_token('admin', session_id=SESSION)}"}
 
 
 def body() -> dict:
@@ -225,7 +235,7 @@ def test_config_requires_a_credential_when_admin_auth_is_enabled(monkeypatch):
 def test_config_accepts_an_admin_session_token(monkeypatch):
     monkeypatch.setattr(settings, "ADMIN_AUTH", "enabled")
     with TestClient(app=create_app()) as client:
-        token = AuthManager.issue_session_token("admin")
+        token = AuthManager.issue_session_token("admin", session_id=SESSION)
         response = client.get("/v1/system/config", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 200
 

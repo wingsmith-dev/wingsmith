@@ -31,13 +31,16 @@ class Principal(Struct):
     decided in one place, `app.core.context.authorize`, rather than by scopes a
     route would have to remember to check. `scope` narrows a kind to one object
     — the tenant's uid for a tenant, the cluster's uid for an operator — and is
-    empty for kinds that are not narrowed.
+    empty for kinds that are not narrowed. `session_id` names the signed-in
+    session an admin or tenant principal came from, which the guard checks is
+    still live; it is empty for a service credential.
     """
 
     id: str
     kind: PrincipalKind
     name: str
     scope: str | None = None
+    session_id: str | None = None
 
 
 class LoginRequest(Struct):
@@ -80,4 +83,8 @@ class RefreshResponse(Struct):
 
 
 class LogoutRequest(Struct):
+    """The refresh token of the session to end. Ending it revokes the whole
+    session: every refresh token rotated from it and every access token it
+    issued, which the guard stops accepting on the next request."""
+
     refresh_token: str

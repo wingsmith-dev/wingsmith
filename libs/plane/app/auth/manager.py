@@ -13,6 +13,7 @@ there is no shared operator credential.
 """
 
 import hmac
+import json
 import time
 import base64
 import hashlib
@@ -36,6 +37,9 @@ from .schemas import GATEWAY
 from .schemas import OPERATOR
 from .schemas import Principal
 
+
+_SESSION_CLAIMS = frozenset({"k", "n", "s", "sid", "g", "exp"})
+"""Exactly the fields a session token's payload carries."""
 
 _LOCAL_SIGNING_SECRET = secrets.token_urlsafe(32)
 """The per-process session key used under `APP_ENV=local` when none is configured."""
@@ -63,11 +67,12 @@ class AuthManager:
         )
 
     @staticmethod
-    def admin_principal(name: str = "admin") -> Principal:
+    def admin_principal(name: str = "admin", session_id: str | None = None) -> Principal:
         return Principal(
             id="00000000-0000-0000-0000-000000000002",
             kind=ADMIN,
             name=name,
+            session_id=session_id,
         )
 
     @staticmethod
@@ -84,7 +89,7 @@ class AuthManager:
         )
 
     @staticmethod
-    def tenant_principal(tenant_uid: str, slug: str) -> Principal:
+    def tenant_principal(tenant_uid: str, slug: str, session_id: str | None = None) -> Principal:
         """The identity a tenant's console session runs as.
 
         `scope` is the tenant's uid and is the whole of this principal's authority:
@@ -97,6 +102,7 @@ class AuthManager:
             kind=TENANT,
             name=slug,
             scope=tenant_uid,
+            session_id=session_id,
         )
 
     @staticmethod
@@ -231,14 +237,27 @@ class AuthManager:
         return token is not None and token.startswith(f"{ENROLMENT_PREFIX}.")
 
     @staticmethod
-    def mint_refresh_token() -> tuple[str, str]:
-        """Mints a refresh token: `(plaintext, sha256_hex)`.
+    def mint_refresh_token(session_id: str, generation: str) -> tuple[str, str]:
+        """Mints a refresh token for one session: `(plaintext, sha256_hex)`.
 
-        Only the hash is ever stored; the plaintext is returned to the client
-        once at login/rotate and cannot be recovered.
+        `hgrr1.<session id>.<generation>.<random>`. The session id names the
+        session's first row, which is where revocation and the absolute expiry
+        live; the generation names the credential the session was opened with.
+        Both are covered by the hash the token is looked up by, so neither can be
+        edited without the token ceasing to exist. Only the hash is stored.
         """
-        token = f"{REFRESH_PREFIX}.{secrets.token_urlsafe(32)}"
+        token = f"{REFRESH_PREFIX}.{session_id}.{generation}.{secrets.token_urlsafe(32)}"
         return token, AuthManager.hash_refresh_token(token)
+
+    @staticmethod
+    def parse_refresh_token(token: str | None) -> tuple[str, str] | None:
+        """`(session_id, generation)` from a well-formed refresh token, or `None`."""
+        if not token:
+            return None
+        parts = token.split(".")
+        if len(parts) != 4 or parts[0] != REFRESH_PREFIX or not all(parts[1:]):
+            return None
+        return parts[1], parts[2]
 
     @staticmethod
     def hash_refresh_token(token: str) -> str:
@@ -248,15 +267,13 @@ class AuthManager:
     @staticmethod
     def looks_like_refresh(token: str | None) -> bool:
         """Whether a token is shaped like a refresh token, without a lookup."""
-        return token is not None and token.startswith(f"{REFRESH_PREFIX}.")
+        return AuthManager.parse_refresh_token(token) is not None
 
     @staticmethod
     def hash_admin_password(password: str) -> str:
         """Bcrypt-hashes an admin password for `ADMIN_PASSWORD_HASH`.
 
-        Generate one with:
-
-            uv run python -c "from app.auth.manager import AuthManager; print(AuthManager.hash_admin_password('...'))"
+        From a shell: `uv run python -m app.auth hash` (see `app.auth.__main__`).
         """
         return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
@@ -292,33 +309,71 @@ class AuthManager:
         return base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
 
     @staticmethod
+    def admin_generation() -> str:
+        """Names the admin credential in force, so changing it ends every admin session.
+
+        A keyed digest of `ADMIN_PASSWORD_HASH`: a new password is a new bcrypt
+        hash with a new salt, so it is a new generation, and every session token
+        and refresh token carrying the old one stops verifying. Keyed with the
+        signing secret so the value says nothing about the hash it came from.
+        """
+        digest = hmac.new(
+            AuthManager.signing_secret().encode(),
+            b"admin-credential\0" + settings.ADMIN_PASSWORD_HASH.encode(),
+            hashlib.sha256,
+        )
+        return digest.hexdigest()[:16]
+
+    @staticmethod
     def issue_session_token(
         name: str,
-        ttl_seconds: int | None = None,
-        kind: str = "admin",
+        *,
+        session_id: str,
+        kind: str = ADMIN,
         scope: str | None = None,
+        generation: str | None = None,
+        ttl_seconds: int | None = None,
     ) -> str:
         """Mints a signed, expiring session token naming a principal.
 
         The payload carries the kind and the scope because the token is the only
         thing a request presents: a session that resolved to whatever the server
         chose to assume would make the tenant view a guess rather than a claim, and
-        the signature is what makes the claim safe to read back.
+        the signature is what makes the claim safe to read back. It also carries
+        the session it belongs to, so the guard can refuse it the moment that
+        session is revoked, and the credential generation, so a password change
+        ends it without a lookup. Only `admin` and `tenant` sessions exist.
         """
+        if kind not in (ADMIN, TENANT):
+            raise ValueError(f"no session is minted for a {kind!r} principal")
+        if generation is None:
+            generation = AuthManager.admin_generation() if kind == ADMIN else ""
         ttl = settings.SESSION_TTL_SECONDS if ttl_seconds is None else ttl_seconds
-        expires_at = int(time.time()) + ttl
-        payload = f"{name}:{kind}:{scope or ''}:{expires_at}".encode()
+        payload = json.dumps(
+            {
+                "k": kind,
+                "n": name,
+                "s": scope,
+                "sid": session_id,
+                "g": generation,
+                "exp": int(time.time()) + ttl,
+            },
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
         payload_b64 = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
-        signature = AuthManager._sign(payload)
-        return f"{SESSION_PREFIX}.{payload_b64}.{signature}"
+        return f"{SESSION_PREFIX}.{payload_b64}.{AuthManager._sign(payload)}"
 
     @staticmethod
     def verify_session_token(token: str) -> Principal | None:
-        """Verifies a session token's signature and expiry, constant-time.
+        """Verifies a session token's signature, shape, generation and expiry.
 
-        Returns `None` on any malformed, tampered, unsigned-for, or expired
-        token rather than raising, so `resolve_principal` can try it as one
-        option among several credential kinds.
+        Returns `None` on any malformed, tampered, unsigned-for, expired or
+        superseded token rather than raising, so `resolve_principal` can try it
+        as one option among several credential kinds. A payload that is not
+        exactly the current shape — an unknown kind, a missing field, the older
+        colon-separated form — is refused, never upgraded. Whether the session
+        has since been revoked is a database question the guard asks next.
         """
         parts = token.split(".")
         if len(parts) != 3 or parts[0] != SESSION_PREFIX:
@@ -328,31 +383,29 @@ class AuthManager:
             payload = base64.urlsafe_b64decode(payload_b64 + "=" * (-len(payload_b64) % 4))
         except Exception:  # noqa: BLE001 - any decode failure means "not a valid token"
             return None
-        expected_signature = AuthManager._sign(payload)
-        if not hmac.compare_digest(signature.encode(), expected_signature.encode()):
+        if not hmac.compare_digest(signature.encode(), AuthManager._sign(payload).encode()):
             return None
         try:
-            fields = payload.decode().split(":")
-        except UnicodeDecodeError:
-            return None
-        if len(fields) == 2:
-            # A session minted before the payload carried a kind. Admin, as it was
-            # then, so that shipping this does not sign every operator out.
-            fields = [fields[0], "admin", "", fields[1]]
-        if len(fields) != 4:
-            return None
-        name, kind, scope, expires_raw = fields
-        try:
-            expires_at = int(expires_raw)
+            claims = json.loads(payload)
         except ValueError:
             return None
-        if not name or time.time() >= expires_at:
+        if not isinstance(claims, dict) or set(claims) != _SESSION_CLAIMS:
             return None
-        if kind == "tenant":
-            if not scope:
+        kind, name, scope, session_id = claims["k"], claims["n"], claims["s"], claims["sid"]
+        generation, expires_at = claims["g"], claims["exp"]
+        if not (isinstance(name, str) and name and isinstance(session_id, str) and session_id):
+            return None
+        if not isinstance(generation, str) or not isinstance(expires_at, int) or time.time() >= expires_at:
+            return None
+        if kind == ADMIN:
+            if not hmac.compare_digest(generation.encode(), AuthManager.admin_generation().encode()):
                 return None
-            return AuthManager.tenant_principal(tenant_uid=scope, slug=name)
-        return AuthManager.admin_principal(name=name)
+            return AuthManager.admin_principal(name=name, session_id=session_id)
+        if kind == TENANT:
+            if not isinstance(scope, str) or not scope:
+                return None
+            return AuthManager.tenant_principal(tenant_uid=scope, slug=name, session_id=session_id)
+        return None
 
     @staticmethod
     def admin_auth_enabled() -> bool:

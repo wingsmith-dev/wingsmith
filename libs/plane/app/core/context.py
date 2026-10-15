@@ -37,7 +37,9 @@ from app.auth import TENANT
 from app.auth import GATEWAY
 from app.auth import Principal
 from app.auth import AuthManager
+from app.auth import AuthService
 from app.config import settings
+from app.db.engine import session_factory
 from app.db.session import provide_session
 from app.core.exceptions import Forbidden
 from app.core.exceptions import PlaneError
@@ -164,6 +166,11 @@ async def authenticate(connection: ASGIConnection, _: BaseRouteHandler) -> None:
     """App-wide guard: refuses cross-site writes, then resolves and authorizes the
     caller of every non-public route.
 
+    A session token is also checked against its session, one indexed read, so a
+    logout, a revoked tenant token or a disabled tenant takes effect on the next
+    request rather than when the access token expires. A service credential and
+    the local admin bypass carry no session and need no read.
+
     The principal is left on `connection.state` for `request_context` to hand to
     the handler, so it is resolved once per request.
     """
@@ -173,7 +180,15 @@ async def authenticate(connection: ASGIConnection, _: BaseRouteHandler) -> None:
         return
     principal = AuthManager.resolve_principal(AuthManager.bearer_token(connection.headers.get("Authorization")))
     authorize(principal, connection.scope.get("method", "GET"), route)
+    if principal.session_id is not None and not await session_is_live(principal):
+        raise NotAuthorized("this session has ended; sign in again")
     connection.state.principal = principal
+
+
+async def session_is_live(principal: Principal) -> bool:
+    """Whether the session behind a session token is still open."""
+    async with session_factory()() as db:
+        return await AuthService(db).session_is_live(principal)
 
 
 class RequestContext:

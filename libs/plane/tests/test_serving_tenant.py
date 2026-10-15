@@ -20,6 +20,10 @@ from app.core.exceptions import Forbidden
 from app.modules.serving.services import ServingService
 
 
+SESSION = "0f5a4c1e9b3d4e7f8a2b6c9d1e3f5a7b"
+"""A session id for tokens that never reach a database."""
+
+
 def _tenant_may(path: str, method: str = "GET") -> bool:
     try:
         authorize(AuthManager.tenant_principal(tenant_uid="ten_01m1yd", slug="globex"), method, path)
@@ -35,7 +39,7 @@ def _auth(monkeypatch):
 
 
 def tenant_session(uid: str = "ten_01m1yd", slug: str = "globex") -> str:
-    return AuthManager.issue_session_token(name=slug, kind="tenant", scope=uid)
+    return AuthManager.issue_session_token(name=slug, kind="tenant", scope=uid, session_id=SESSION)
 
 
 # --- the boundary -----------------------------------------------------------
@@ -91,21 +95,19 @@ def test_a_tenant_session_resolves_to_a_tenant_principal():
 
 def test_a_tenant_session_carrying_no_scope_is_refused():
     """A tenant principal with no tenant would be scoped to nothing, or to everything."""
-    token = AuthManager.issue_session_token(name="globex", kind="tenant", scope=None)
+    token = AuthManager.issue_session_token(name="globex", kind="tenant", scope=None, session_id=SESSION)
     assert AuthManager.verify_session_token(token) is None
 
 
-def test_a_session_minted_before_kinds_existed_still_reads_as_admin(monkeypatch):
-    """Shipping this must not sign every operator out."""
+def test_a_session_in_the_old_colon_separated_form_is_refused():
+    """An unknown payload shape is refused, never upgraded to admin."""
     import time
     import base64
 
     payload = f"admin:{int(time.time()) + 900}".encode()
     payload_b64 = base64.urlsafe_b64encode(payload).rstrip(b"=").decode()
     legacy = f"hgrs1.{payload_b64}.{AuthManager._sign(payload)}"
-    principal = AuthManager.verify_session_token(legacy)
-    assert principal is not None
-    assert principal.kind == "admin"
+    assert AuthManager.verify_session_token(legacy) is None
 
 
 def test_a_tenant_cannot_forge_its_scope_by_editing_the_payload():
