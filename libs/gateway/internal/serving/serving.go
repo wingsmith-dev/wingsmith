@@ -5,12 +5,14 @@
 // and readiness. The model-to-cluster table it reads is routing's, and the wire
 // into a cluster is libs/packages/tunnel's.
 //
-// It is deliberately thin. It does not authenticate callers, meter tokens, or
-// bill anyone — whoever puts a gateway in front of their users already has a
-// place where that happens, and doing it twice is how two systems end up
-// disagreeing about what a customer owes. What it does own is the one thing
-// only hangar knows: which clusters are serving a model right now, and how to
-// reach them.
+// It is deliberately thin. It identifies a caller's tenant (by listener, and on
+// the public listener by host and key), refuses a disabled tenant and bounds
+// each tenant's load, and does nothing past that: no user identity below the
+// tenant, no metering, no billing — whoever puts a gateway in front of their
+// users already has a place where that happens, and doing it twice is how two
+// systems end up disagreeing about what a customer owes. What it does own is
+// the one thing only hangar knows: which clusters are serving a model right
+// now, and how to reach them.
 //
 // Replica selection inside a cluster is not this hop's business either. The
 // serving runtime routes on live queue depth and KV-cache residency, which is

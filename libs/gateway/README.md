@@ -34,10 +34,9 @@ cluster, and the agent, which dials out to the gateway and carries inference req
 - **No catalog.** `GET /v1/models` lists names, not context lengths or quantization. Describing a
   model is the job of whatever is selling it.
 
-This used to say "no authentication" too. It is reversed for authentication only, and only in the
-shape ADR 0016 describes: which tenant a request belongs to, and whether it proved it. There is
-still no metering, no billing, and no user identity below the tenant — a tenant's own auth for its
-own users happens in front of this hop, exactly as it always has.
+Authentication is limited to the shape ADR 0016 describes: which tenant a request belongs to, and
+on the public listener whether it proved it with the tenant's key. There is no user identity below
+the tenant; a tenant's own auth for its own users happens in front of this hop.
 
 ## Tenancy and the two listeners
 
