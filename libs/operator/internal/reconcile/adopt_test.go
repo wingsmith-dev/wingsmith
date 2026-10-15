@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
@@ -12,6 +13,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -19,6 +21,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
+	"github.com/hangar-dev/hangar/libs/operator/internal/render"
 	"github.com/hangar-dev/hangar/libs/operator/internal/workload"
 )
 
@@ -355,5 +358,34 @@ func TestAnAdoptedWorkloadOutsideTheCachedNamespacesIsRead(t *testing.T) {
 				t.Fatalf("phase is %q, want %q", out.Status.Phase, tc.want)
 			}
 		})
+	}
+}
+
+// TestAManagedAdoptedDeploymentIsNeverRenderedAsASecondCopy: managed authority on an adopted
+// declaration used to send it down the render path, which put a second workload beside the one
+// already running. The adoption path wins, and the condition says how to hand it over.
+func TestAManagedAdoptedDeploymentIsNeverRenderedAsASecondCopy(t *testing.T) {
+	live := servingDeployment("ghcr.io/acme/vllm:0.9.1")
+	res := adoptedResource(workload.Fingerprint(&live.Spec.Template.Spec))
+	res.Spec.Authority = v1alpha1.AuthorityManaged
+	raw, err := json.Marshal(testDeploymentDesired())
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Spec.Payload = &apiextensionsv1.JSON{Raw: raw}
+
+	r, out := newReconciler(t, res, live)
+
+	if out.Status.Phase != "Adopted" {
+		t.Fatalf("phase is %q, want Adopted", out.Status.Phase)
+	}
+	if ready := conditionOf(out, "Ready"); ready == nil || !strings.Contains(ready.Message, "without adopt") {
+		t.Fatalf("the condition must say how to hand the workload over: %+v", out.Status.Conditions)
+	}
+	graph := &unstructured.Unstructured{}
+	graph.SetGroupVersionKind(render.GVK)
+	key := types.NamespacedName{Namespace: "dynamo", Name: render.WorkloadName(testDeploymentDesired())}
+	if err := r.Client.Get(context.Background(), key, graph); err == nil {
+		t.Fatalf("a graph deployment was rendered beside the adopted workload: %s", key)
 	}
 }

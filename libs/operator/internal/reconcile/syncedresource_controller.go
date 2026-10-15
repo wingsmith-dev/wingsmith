@@ -156,13 +156,16 @@ func (r *SyncedResourceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	// Authority is observed, so a plane that predates the field — or a payload that failed to
 	// decode into one — writes nothing to this cluster. Managed is the only value that opens the
 	// gate, and it has to be said out loud (ADR 0009).
-	if res.Spec.Authority != v1alpha1.AuthorityManaged {
-		if res.Spec.Adopt != nil {
-			return r.reconcileAdopted(ctx, &res)
-		}
-		if res.Spec.Kind == "deployment" {
-			return r.observed(ctx, &res)
-		}
+	//
+	// An adopted object takes the adoption path whatever its authority. Managed authority over an
+	// adopted workload would render a second copy of it beside the one already running, holding a
+	// second set of accelerators, and the demand resync already reads it as adopted. Handing an
+	// adopted workload over to management means re-declaring it without `adopt`.
+	if res.Spec.Adopt != nil {
+		return r.reconcileAdopted(ctx, &res)
+	}
+	if res.Spec.Authority != v1alpha1.AuthorityManaged && res.Spec.Kind == "deployment" {
+		return r.observed(ctx, &res)
 	}
 
 	// Every kind is re-examined on every pass rather than skipped once its revision has been
@@ -361,6 +364,10 @@ func (r *SyncedResourceReconciler) reconcileAdopted(ctx context.Context, res *v1
 		condition.Status = metav1.ConditionTrue
 		condition.Reason = "MatchesAdoptedFingerprint"
 		condition.Message = "running as adopted; no cluster work performed"
+		if res.Spec.Authority == v1alpha1.AuthorityManaged {
+			condition.Message += "; managed authority does not apply to an adopted workload, " +
+				"re-declare it without adopt to have this operator render it"
+		}
 		r.reportAdopted(ctx, res, adopt)
 	}
 	apimeta.SetStatusCondition(&res.Status.Conditions, condition)
