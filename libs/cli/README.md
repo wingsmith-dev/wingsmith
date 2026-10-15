@@ -1,17 +1,28 @@
 # `hgr`
 
-`hgr` is the Hangar command line: one Go binary that drives the control plane's HTTP API and
-nothing else. It never holds a kubeconfig, never dials a cluster, and never talks to the hub —
-the same rule the console follows, for the same reason.
+`hgr` is the Hangar command line: one Go binary that talks to the control plane's HTTP API and
+nothing else. It never holds a kubeconfig, never dials a cluster, and never talks to the hub,
+the same as the console.
 
-Every command is noun–verb (`hgr cluster ls`, `hgr cluster get iad-1`), and every command has a
-machine contract: humans read a table, scripts read `-o json`, agents read a stable envelope.
+Every command is noun–verb (`hgr cluster ls`, `hgr cluster get iad-1`). Humans read a table,
+scripts read `-o json`, and agents read a stable envelope.
 
-> **Status: 21 of the 24 `/v1` collections are implemented.** Each has `ls` and `get`, and
-> `operation` additionally has `create`, `cancel`, and `wait`. Not yet covered: `alerts`,
-> `notification-channels`, `replicas`. The wire types are reconciled field-for-field against the
-> plane's `schemas.py` and pinned by a corpus captured from a running server; nothing here is a
-> guess.
+**Status.** Every noun has `ls` and `get`. The commands that change something are:
+
+| Noun | Verbs |
+|---|---|
+| `workload` | `create`, `scale`, `pause`, `resume`, `drain`, `rm` |
+| `operation` | `create` (`node.drain`, `node.cordon`, `node.uncordon`, and the `workload.*` types), `cancel`, `wait` |
+| `serving-quota` | `create`, `set`, `rm` |
+| `alert-threshold` | `create`, `set`, `rm` |
+| `benchmark` | `run`, `request create` |
+| `discovered` | `track`, `ignore`, `promote`, `rm`, `restore` |
+
+Enrolling clusters, publishing artifacts, and editing endpoints, projects, quotas and policies
+are done in the console for now. Not covered at all yet: `alerts`, `notification-channels`.
+
+The wire types are checked field by field against the plane's OpenAPI schemas (see
+[Development](#development)).
 
 ---
 
@@ -22,7 +33,7 @@ Against a plane:
 ```sh
 go build -o bin/hgr ./cmd/hgr
 hgr config set context.server http://localhost:8000
-hgr config set context.token  hgr_pat_…
+hgr login                      # prompts for the admin password
 hgr whoami
 hgr cluster ls
 hgr device ls --cluster iad-1 --health unhealthy
@@ -48,28 +59,29 @@ sin-1  ap-southeast-1  pending               no         never_connected   never
 ↳ hgr cluster get iad-1  Inspect one
 ```
 
-`sjc-1` is the point of the whole layout: it is `active` because that is what we declared, and
-unreachable because that is what is true. Neither answer is allowed to overwrite the other.
+`sjc-1` shows why declared and observed state are kept apart: it is `active` because that is
+what was declared, and unreachable because that is what the plane sees.
 
 ```
 $ hgr --fake cluster get iad-1
 iad-1 clu_01m0dj00000000000000000001
 
 declared
-  display name  iad-1 region
-  region        us-east-1
-  zone          us-east-1b
-  residency     us
-  phase         active
-  capabilities  mig nvlink rdma
-  labels        fabric=nvswitch tier=prod
-  enrolled      210d
-  revision      1769023398698256
+  display name   iad-1 region
+  region         us-east-1
+  zone           us-east-1b
+  residency      us
+  metrics label  iad-1
+  phase          active
+  capabilities   mig nvlink rdma
+  labels         fabric=nvswitch tier=prod
+  enrolled       210d
+  revision       1773962191207025
 
 observed
   reachable   yes
   sync state  connected
-  agent       0.4.2
+  operator    0.4.2
   lag         340ms
   last sync   12s
   last seen   8s
@@ -96,20 +108,20 @@ grouped in help the way the model groups them.
 
 | Group | Nouns | Kind |
 |---|---|---|
-| Supply | `cluster`, `node`, `device`, `topology-domain`, `pool` | observed, except Cluster and Pool (declared halves too) |
+| Supply | `cluster`, `node`, `device`, `device-class`, `topology-domain`, `pool` | observed, except Cluster and Pool (declared halves too) |
 | Demand | `artifact`, `workload`, `deployment`, `endpoint`, `discovered` | declared, except Discovered (observed) |
-| Binding | `project`, `quota`, `priority-class`, `policy` | declared |
-| Machinery | `operation`, `allocation`, `component`, `event` | imperative, observed, and mixed |
+| Binding | `tenant`, `project`, `quota`, `serving-quota`, `priority-class`, `policy` | declared |
+| Machinery | `operation`, `allocation`, `component`, `event`, `benchmark`, `alert-threshold` | imperative, observed, and mixed |
 
-Plus CLI-local commands: `context`, `config`, `whoami`, `explain`, `version`.
+Plus CLI-local commands: `login`, `logout`, `context`, `config`, `whoami`, `explain`, `version`.
 
 `hgr endpoint sla <endpoint>` is the one measurement command: an endpoint's service level for the
 current month to date, a `--month YYYY-MM`, or a `--from`/`--to` range, with the verdict against the
 success-rate objective its serving quota declares (`GET /v1/metrics/endpoints/{ref}/sla`).
 
-Declared, observed, and operations stay three different things at the CLI surface too. An
-operation is never a status field: `hgr operation ls` is where drain, warm, and upgrade will
-live, not a `--drain` flag hiding on `cluster`.
+Declared state, observed state and operations stay separate at the CLI too. Draining a node is
+an operation (`hgr operation create node.drain …`), not a flag on `node`, so it has a record of
+who asked, why, and how it ended.
 
 ---
 
@@ -120,7 +132,7 @@ live, not a `--drain` flag hiding on `cluster`.
 | Mode | For |
 |---|---|
 | `auto` (default) | human table on a TTY, `json` when piped |
-| `human` / `wide` | table; `wide` reveals columns marked wide (id, agent version) |
+| `human` / `wide` | table; `wide` reveals columns marked wide (id, operator version) |
 | `json` | the stable machine contract, indented |
 | `jsonl` | one object per line, for streaming consumers |
 | `yaml` | same data, round-tripped through the JSON tags |
@@ -147,19 +159,17 @@ one envelope: `schema_version`, `ok`, `command`, `data`, `error`, `warnings`, `n
 
 ## The fake backend
 
-`internal/fake` is a complete, offline stand-in for the control plane. It exists so this track
-could be built and tested before the API exists, and it stays useful afterwards for demos, tests,
-and CI without a server.
+`internal/fake` is an offline stand-in for the control plane, for demos, tests and CI without a
+server.
 
-- **Selected by** `--fake`, `HANGAR_FAKE=1`, or `fake: true` in the config file. It is opt-in on
-  purpose: silently simulating a plane the caller believes is real is worse than failing to reach
-  one.
+- **Selected by** `--fake`, `HANGAR_FAKE=1`, or `fake: true` in the config file. It is opt-in, so
+  a command never answers from the fake when the caller expects a real plane. `login` and
+  `logout` never touch the network under `--fake`.
 - **Implements `api.Backend`**, the same interface the HTTP client implements. Commands cannot
   tell them apart, so a command tested against the fake is a command tested for real shape.
-- **Shaped like the server** — every field name, the envelope, cursor behaviour and the error
-  vocabulary match a real plane, and a test compares the fake's output key-for-key against a
-  corpus captured from one. A fixture that disagrees with the server is worse than no fixture:
-  it makes the client's tests pass while the client is broken.
+- **Shaped like the server** — field names, the envelope, cursor behaviour and the error
+  vocabulary match the plane, and a test compares the fake's output key-for-key against the
+  fixtures in `internal/api/testdata`.
 - **Seeded, not random** — four clusters in every phase, including an unreachable one and one
   that never connected, plus a cordoned node, an unhealthy device, a partially satisfied gang
   and a quota over its limit. `HANGAR_FAKE_STATE=/path/to/state.json` pins the state to a file
@@ -178,8 +188,9 @@ written `0600`.
 current_context: prod
 contexts:
   prod:
-    server: https://plane.hangar.dev
-    token: hgr_pat_…
+    server: https://plane.example.com
+    token: …          # written by hgr login
+    refresh_token: …  # written by hgr login
     project: default
 output: auto
 fake: false
@@ -197,10 +208,35 @@ Precedence is flag → environment → config file → default.
 | `--fake` | `HANGAR_FAKE` | `fake` |
 | `--agent` | `HANGAR_AGENT` | — |
 | `--timeout` | `HANGAR_TIMEOUT` | — |
+| `--wait-timeout` | `HANGAR_WAIT_TIMEOUT` | — |
 
-Auth is a bearer token, sent as `Authorization: Bearer …`. `hgr login` trades the admin password
-for a short-lived session token and stores it in the active context; a static operator token can be
-set with `hgr config set context.token` or `HANGAR_TOKEN` instead. No keychain yet.
+There is no default server: until one is set, every command that needs the plane fails with
+`USAGE` and says how to set it. `config`, `context`, `explain` and `version` work without a server
+or a token.
+
+The file is written atomically with mode `0600`, and an existing file with looser permissions is
+tightened on the next write. Values are checked when they are set, so a bad `output` cannot lock
+you out of `hgr config`.
+
+### Authentication
+
+Human access to a plane is a single admin login. `hgr login` reads the admin password from
+`--password-stdin`, else `HANGAR_ADMIN_PASSWORD`, else a no-echo prompt (never from an argument),
+and stores the access and refresh tokens in the active context together with the server it logged
+in to. The access token is short-lived; the CLI renews it with the refresh token when it expires,
+and `AUTH_EXPIRED` means the refresh token was refused too. `hgr logout` revokes the refresh token
+on the plane and clears both locally, and warns if the revoke failed.
+
+For CI, log in as the admin in the job and let the session expire with it:
+
+```sh
+printf '%s' "$HANGAR_ADMIN_PASSWORD" | hgr login --server "$HANGAR_SERVER" --password-stdin
+```
+
+Do not give CI the operator or gateway service credentials: those are narrow service principals
+for the cluster operator and the gateway, with no admin rights on the plane API. `HANGAR_TOKEN`
+and `--token` supply an access token without storing it. Tokens are never printed, in any output mode,
+and are redacted from the re-run commands suggested in errors. No keychain yet.
 
 ---
 
@@ -216,22 +252,24 @@ the same thing. `hgr explain` lists them; `hgr explain NOT_FOUND` describes one.
 | 2 | `USAGE`, `INPUT_REQUIRED` |
 | 3 | `AUTH_REQUIRED`, `AUTH_EXPIRED`, `FORBIDDEN` |
 | 4 | `NOT_FOUND` |
-| 5 | `CONFLICT`, `INVALID_STATE`, `AMBIGUOUS`, `CONFIRMATION_REQUIRED`, `INTERACTIVE_UNAVAILABLE`, `UNIMPLEMENTED` |
-| 6 | `QUOTA_EXCEEDED` |
-| 7 | `CAPACITY_UNAVAILABLE` |
+| 5 | `CONFLICT`, `INVALID_STATE`, `AMBIGUOUS`, `CONFIRMATION_REQUIRED` |
 | 8 | `TIMEOUT` |
 | 9 | `RATE_LIMITED` |
 | 10 | `SERVER_ERROR`, `NETWORK` |
+| 11 | `OPERATION_FAILED` — a waited operation or benchmark ended failed or cancelled |
 | 130 | `INTERRUPTED` |
+
+6 and 7 are unused. An unknown command, a wrong number of arguments and a bad flag are all
+`USAGE`.
 
 Human failures print the message, the cause, runnable fixes, and the code:
 
 ```
-✗ no token for context "default"
-  cause  looked in --token, HANGAR_TOKEN, and ~/.config/hangar/config.yaml
-  try    hgr config set context.token <token>  Store a token
+✗ no control plane URL configured for context "default"
+  cause  looked in --server, HANGAR_SERVER, and ~/.config/hangar/config.yaml
+  try    hgr config set context.server http://localhost:8000  Set one
          hgr cluster ls --fake  Or work offline
-  code   AUTH_REQUIRED · hgr explain AUTH_REQUIRED
+  code   USAGE · hgr explain USAGE
 ```
 
 ---
@@ -258,8 +296,8 @@ noun means adding one file under `internal/cli/` and one method per verb on `api
 ## The API this speaks
 
 Everything is `/v1` on the plane's HTTP API, as specified in
-[`libs/packages/contract/API.md`](../../libs/packages/contract/API.md) and implemented by `libs/plane`. The client was
-reconciled against the server's own `schemas.py`, and where the two disagreed the server won.
+[`libs/packages/contract/API.md`](../../libs/packages/contract/API.md) and implemented by `libs/plane`. Where the client
+and the plane's schemas disagree, the plane is right and the schema test fails.
 
 - **Envelope** — `{items, count, next_cursor}` on every list; a detail response is the object
   itself, unwrapped.
@@ -267,16 +305,23 @@ reconciled against the server's own `schemas.py`, and where the two disagreed th
   branches on: `not_found`, `conflict`, `invalid`, `invalid_request`, `not_authorized`,
   `forbidden`, `internal`.
 - **Identifiers** — prefixed, lowercase, 30 characters. A path segment takes an id or a name.
+  `get` also accepts a unique prefix; verbs that change or delete something take only a whole id
+  or name.
 - **Filters** — each endpoint declares its own; the client sends only the ones that endpoint
   accepts, because a parameter the server does not know is one it ignores in silence. Shared:
   `limit`, `cursor`, `search`, repeatable `label=k=v`.
 - **Declared and observed are never merged** — a cluster has a declared `phase` beside observed
   `reachable` and `sync`; a node has observed `condition`, `ready` and `cordoned` as three
   separate facts; a component has `desired_version` beside `status.observed_version`.
-- **No `/v1/whoami`** — auth is stubbed to one static principal, so `hgr whoami` reports the
-  configured context and whether `/health` answers, and invents no user.
-- **Writes** — `Idempotency-Key` on `POST /v1/operations`; `If-Match` against `revision` for
-  conditional updates.
+- **No `/v1/whoami`** — human access is a single admin, so `hgr whoami` reports the configured
+  context and whether `/health` answers.
+- **No project header** — the configured project is used as a listing filter and as the
+  project new workloads belong to. `X-Hangar-Project` is not sent; the plane does not scope
+  requests by it.
+- **Writes** — every `POST /v1/operations` carries an `Idempotency-Key`: `--idempotency-key`
+  when given, otherwise a fresh one per invocation, reported in the agent envelope's
+  `meta.idempotency_key` so a retry can reuse it. Conditional updates send `If-Match` against
+  `revision`.
 
 ## Development
 
@@ -285,10 +330,23 @@ go build ./... && go vet ./... && gofmt -l . && go test ./...
 go build -o bin/hgr ./cmd/hgr
 ```
 
-`internal/api/testdata/` is a corpus captured verbatim from a running plane. The unit tests
-decode it with `DisallowUnknownFields` and compare the client's own serialisation key-for-key,
-so a server-side schema change fails the build rather than silently dropping a field. Refresh it
-by curling each collection when the API changes.
+Two things keep the client in step with the plane:
+
+- `internal/api/testdata/plane-schemas.json` is every component schema in the plane's OpenAPI
+  document, reduced to field names and types. `TestWireTypesMatchThePlaneSchemas` checks each
+  wire type against its schema: a read type must have exactly the schema's fields, and a request
+  type may not send a field the plane does not accept. Regenerate it after changing a plane
+  schema (no database needed) and commit the result:
+
+  ```sh
+  cd libs/plane && APP_ENV=local uv run python ../cli/scripts/plane-schemas.py \
+      > ../cli/internal/api/testdata/plane-schemas.json
+  ```
+
+- The other files in `internal/api/testdata/` are example list responses, first captured from a
+  running plane and since kept in step with the schemas. The decode tests read them with
+  `DisallowUnknownFields` and compare the client's own serialisation key-for-key, and the fake's
+  output is compared against them too.
 
 The transport itself is exercised against a live plane when one is pointed at:
 
