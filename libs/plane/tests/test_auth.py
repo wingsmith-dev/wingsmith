@@ -19,6 +19,7 @@ from app.auth import LOGIN_GUESSES
 from app.auth import LOCAL_GATEWAY_SERVICE_TOKEN
 from app.auth import AuthManager
 from app.auth import AuthService
+from app.auth import service as auth_service
 from app.config import settings
 from app.api.app import create_app
 from app.hub.server import serve_forever
@@ -623,6 +624,7 @@ def test_refresh_rotates_the_pair_and_keeps_the_session(plane_db, monkeypatch):
 def test_reusing_a_rotated_refresh_token_ends_the_whole_session(plane_db, monkeypatch):
     """Two parties hold the session when a rotated token comes back, so neither keeps it."""
     enable_admin_auth(monkeypatch)
+    monkeypatch.setattr(auth_service, "REFRESH_RACE_GRACE_SECONDS", 0.0)
     with TestClient(app=create_app()) as client:
         first = login(client)
         second = client.post("/v1/auth/refresh", json={"refresh_token": first["refresh_token"]}).json()
@@ -699,6 +701,45 @@ async def test_two_racing_refreshes_rotate_exactly_once(sessions, monkeypatch):
 
     results = await asyncio.gather(rotate(), rotate())
     assert sum(result is not None for result in results) == 1
+
+    winner = next(result for result in results if result is not None)
+    refresh, access, _, _ = winner
+    principal = AuthManager.verify_session_token(access)
+    async with sessions() as db:
+        assert await AuthService(db).session_is_live(principal), "losing the race must not end the session"
+    async with sessions() as db:
+        assert await AuthService(db).rotate_refresh_token(refresh) is not None
+
+
+@pytest.mark.database
+async def test_a_late_copy_of_a_just_rotated_token_is_refused_without_ending_the_session(sessions, monkeypatch):
+    """A duplicated tab refreshing a moment after the original is a race, not a theft."""
+    enable_admin_auth(monkeypatch)
+    async with sessions() as db:
+        token = await AuthService(db).create_refresh_token(name="admin")
+    async with sessions() as db:
+        rotated = await AuthService(db).rotate_refresh_token(token)
+    async with sessions() as db:
+        assert await AuthService(db).rotate_refresh_token(token) is None
+    principal = AuthManager.verify_session_token(rotated[1])
+    async with sessions() as db:
+        assert await AuthService(db).session_is_live(principal)
+
+
+@pytest.mark.database
+async def test_a_copy_presented_after_the_grace_window_ends_the_session(sessions, monkeypatch):
+    enable_admin_auth(monkeypatch)
+    monkeypatch.setattr(auth_service, "REFRESH_RACE_GRACE_SECONDS", 0.0)
+    async with sessions() as db:
+        token = await AuthService(db).create_refresh_token(name="admin")
+    async with sessions() as db:
+        rotated = await AuthService(db).rotate_refresh_token(token)
+    await asyncio.sleep(0.01)
+    async with sessions() as db:
+        assert await AuthService(db).rotate_refresh_token(token) is None
+    principal = AuthManager.verify_session_token(rotated[1])
+    async with sessions() as db:
+        assert not await AuthService(db).session_is_live(principal)
 
 
 @pytest.mark.database

@@ -148,7 +148,9 @@ public. A missing or unknown credential is `401`; a valid credential of the wron
 
 **Sessions.** Login returns a short-lived access token (`hgrs1.`, `SESSION_TTL_SECONDS`) and a
 refresh token (`hgrr1.`). Refreshing rotates both atomically; presenting a refresh token that was
-already rotated ends the whole session. A session lasts at most `REFRESH_TTL_SECONDS` from sign-in,
+already rotated ends the whole session, unless it was rotated in the last ten seconds, which is two
+copies of one client (a duplicated tab) refreshing together: the late one gets `401` and the session
+stands. A session lasts at most `REFRESH_TTL_SECONDS` from sign-in,
 however often it is refreshed. The guard checks the session on every request, so
 `POST /v1/auth/logout` with `{"refresh_token": ...}`, a revoked tenant token or a disabled tenant ends
 access on the next request. Changing `ADMIN_PASSWORD_HASH` ends every admin session.

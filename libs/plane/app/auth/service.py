@@ -9,7 +9,11 @@ so a rotated token can be recognised when it is presented again.
 - Rotation is one conditional `UPDATE ... RETURNING`: of two requests racing
   with the same refresh token, exactly one rotates it.
 - Presenting a token that was already rotated is reuse, which means two parties
-  hold the session. The session is revoked, so both are signed out.
+  hold the session. The session is revoked, so both are signed out. The one
+  exception is a token rotated less than `REFRESH_RACE_GRACE_SECONDS` ago: that
+  is two copies of one client refreshing at once (a duplicated browser tab
+  carries its session storage with it), so the late one is refused and the
+  session the winner just rotated is left alone.
 - Rotation never extends the session: every row inherits the first row's expiry,
   so `REFRESH_TTL_SECONDS` is an absolute lifetime, not a sliding one.
 - A session is bound to the credential that opened it — the admin password's
@@ -26,7 +30,9 @@ import uuid
 from logging import getLogger
 from datetime import UTC
 from datetime import datetime
+from datetime import timedelta
 
+from sqlalchemy import func
 from sqlalchemy import select
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,6 +56,17 @@ TOUCH_INTERVAL_SECONDS = 60.0
 The field answers "is anybody still using this credential", which is a question
 about days. Writing it on every sign-in would put a write in the path of a read
 that a polling console repeats, for a resolution nobody reads.
+"""
+
+
+REFRESH_RACE_GRACE_SECONDS = 10.0
+"""How recently a token must have been rotated for presenting it again to count as
+a race rather than reuse.
+
+Two copies of one client refresh at the same moment, so this only has to cover
+a round trip and a little clock jitter. It is short because inside it a thief
+who rotated first is not caught by the victim's late refresh; past it, the same
+replay ends the session.
 """
 
 
@@ -180,21 +197,13 @@ class AuthService:
                 AuthRefreshToken.replaced_by.is_(None),
                 AuthRefreshToken.revoked_at.is_(None),
             )
-            .values(replaced_by=new_hash)
+            .values(replaced_by=new_hash, updated_at=func.now())
             .returning(AuthRefreshToken.name)
         )
         name = claimed.scalar_one_or_none()
         if name is None:
             await self.db.rollback()
-            reused = await self.db.execute(
-                select(AuthRefreshToken.id).where(
-                    AuthRefreshToken.token_hash == token_hash,
-                    AuthRefreshToken.replaced_by.is_not(None),
-                )
-            )
-            if reused.first() is not None:
-                logger.warning("auth.refresh_reused", extra={"session": session_id})
-                await self._revoke_session(session_id)
+            await self._refused_rotation(session_id, token_hash)
             return None
 
         self.db.add(
@@ -211,6 +220,29 @@ class AuthService:
             name=name, kind=kind, scope=scope, session_id=session_id, generation=generation
         )
         return new_plaintext, access_token, kind, slug
+
+    async def _refused_rotation(self, session_id: str, token_hash: str) -> None:
+        """Decides what a refresh token that could not be rotated means.
+
+        Rotated within `REFRESH_RACE_GRACE_SECONDS` (by the database's clock, the
+        same one that stamped the rotation), it lost a race with its own client and
+        the session stands. Rotated earlier, it is reuse and the session ends.
+        Never rotated at all, it was revoked, and there is nothing more to end.
+        """
+        result = await self.db.execute(
+            select(AuthRefreshToken.updated_at >= func.now() - timedelta(seconds=REFRESH_RACE_GRACE_SECONDS)).where(
+                AuthRefreshToken.token_hash == token_hash,
+                AuthRefreshToken.replaced_by.is_not(None),
+            )
+        )
+        row = result.first()
+        if row is None:
+            return
+        if row[0]:
+            logger.info("auth.refresh_raced", extra={"session": session_id})
+            return
+        logger.warning("auth.refresh_reused", extra={"session": session_id})
+        await self._revoke_session(session_id)
 
     async def revoke_refresh_token(self, plaintext: str) -> None:
         """Ends the session this refresh token belongs to. Idempotent.
