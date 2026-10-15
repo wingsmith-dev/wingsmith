@@ -43,7 +43,7 @@ func multipartContentType(contentType string) (boundary string, ok bool) {
 // body.
 //
 // File parts are skipped without being read. The body is already in memory
-// under maxRequestBodyBytes, and an audio upload is most of it — walking to the
+// under the body cap, and an audio upload is most of it — walking to the
 // field that names the model must not cost a second copy of the recording.
 func modelFromMultipart(body []byte, boundary string) (string, error) {
 	if boundary == "" {

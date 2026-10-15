@@ -87,6 +87,12 @@ does not learn whether a tenant is enabled.
 | `HANGAR_GATEWAY_TENANT_MAX_IN_FLIGHT` | requests one tenant may have in flight on one replica, default `1024`, `0` for no cap |
 | `HANGAR_GATEWAY_TENANT_RPS` / `HANGAR_GATEWAY_TENANT_BURST` | sustained requests per second one tenant may send to one replica, and the burst above it; unset means no rate limit |
 | `HANGAR_GATEWAY_PUBLIC_ALLOW_NO_AUTH` | `true` serves a public tenant declaring `auth: none`; off by default, so such a tenant gets `401` |
+| `HANGAR_GATEWAY_MAX_BODY_BYTES` | the largest request body accepted, default 100 MiB; a larger one is `413` |
+| `HANGAR_GATEWAY_MAX_BUFFERED_BYTES` | request bytes buffered at once across the replica, default 1000 MiB, `0` for no bound; a body that would pass it is `503 no_capacity`. Rewrites take further copies, so give the pod about twice this in memory |
+| `HANGAR_GATEWAY_READ_HEADER_TIMEOUT` | how long a caller may take to send its headers, default `10s` |
+| `HANGAR_GATEWAY_BODY_READ_TIMEOUT` | how long a caller may take to send its body once the headers are in, default `2m`; a stalled body is `408` |
+| `HANGAR_GATEWAY_WRITE_IDLE_TIMEOUT` | how long one write to the caller may block, default `2m`. Per write, so a long stream that keeps arriving is never cut; a caller that stops reading is |
+| `HANGAR_GATEWAY_DRAIN_DELAY` / `HANGAR_GATEWAY_DRAIN_TIMEOUT` / `HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT` | shutdown phases, default `5s` / `20s` / `5s`; see [Shutdown](#shutdown) |
 | `-log-upstream-bodies` / `HANGAR_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
 
 None of the last three is required and none is fatal by its absence, which is a deploy constraint
@@ -116,6 +122,20 @@ the in-flight cap to the edge's own concurrency, or set it to `0` there.
 
 These are protective limits. The serving quota an endpoint sells, which the plane publishes on the
 routing table as `limits`, is not enforced by the gateway yet.
+
+## Shutdown
+
+On `SIGTERM` the replica reports not-ready, keeps accepting for `HANGAR_GATEWAY_DRAIN_DELAY` while
+endpoint removal reaches every load balancer, then gives the internal and public listeners each the
+whole `HANGAR_GATEWAY_DRAIN_TIMEOUT` to finish what they are serving, concurrently. Whatever is still
+running when that ends is cut. The tunnel listener is drained after them, under its own
+`HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT`, because the requests being drained ride those tunnels.
+
+The defaults add up to 30 seconds, which fits Kubernetes' default termination grace period, and
+they bound how long a generation can survive a rollout. To carry longer generations through one,
+raise `HANGAR_GATEWAY_DRAIN_TIMEOUT` and set the pod's `terminationGracePeriodSeconds` to at least
+the sum of the three plus a few seconds. The agent's own drain on the cluster side is separate and
+needs the same treatment.
 
 ## What it never keeps
 

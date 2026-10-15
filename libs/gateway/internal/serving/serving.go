@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
@@ -33,21 +34,21 @@ import (
 	"github.com/hangar-dev/hangar/libs/packages/tunnel"
 )
 
-// maxRequestBodyBytes caps how much of a body is buffered to read its `model`.
-// Routing has to see the body, so this is the one place the gateway is not a
-// pure stream. A long-context prompt is legitimately large, not unbounded.
+// DefaultMaxBodyBytes caps how much of a body is buffered to read its `model`
+// when Config.MaxBodyBytes is zero. Routing has to see the body, so this is the
+// one place the gateway is not a pure stream. A long-context prompt is
+// legitimately large, not unbounded.
 //
-// It also caps an upload. At 100 MiB an hour of audio (~50 MiB) fits, which is
-// why it is this rather than the 32 MiB it was. The ceiling is memory, not
-// policy: the body stays resident for the whole upstream call so the request
-// remains replayable, one copy per request in flight (`tunnel.Replayable`
-// reuses this buffer rather than taking a second). Raise this and the
-// gateway's memory limit moves with it, or a handful of concurrent large
-// requests is an OOM rather than a 413.
+// It also caps an upload. At 100 MiB an hour of audio (~50 MiB) fits. The
+// ceiling is memory, not policy: the body stays resident for the whole
+// upstream call so the request remains replayable, one copy per request in
+// flight (`tunnel.Replayable` reuses this buffer rather than taking a second),
+// and a rewrite of the body takes another for as long as the request runs.
+// BodyBudget bounds the total across requests.
 //
 // The answer to an upload larger than this is still a presigned upload and a
 // job, not a bigger buffer on a synchronous hop.
-const maxRequestBodyBytes = 100 << 20
+const DefaultMaxBodyBytes = 100 << 20
 
 // Resolver is the routing lookup this handler needs.
 type Resolver interface {
@@ -93,6 +94,19 @@ type Config struct {
 	// without a key is a choice an operator makes on purpose, not one a
 	// tenant row makes for them.
 	AllowUnauthenticatedPublic bool
+	// MaxBodyBytes caps one request body. Zero takes DefaultMaxBodyBytes.
+	MaxBodyBytes int64
+	// BodyReadTimeout bounds how long a caller may take to send its body once
+	// the headers are in. Zero is no bound.
+	BodyReadTimeout time.Duration
+	// WriteIdleTimeout bounds how long one write to the caller may block, so a
+	// caller that stops reading cannot hold a stream, a tunnel window and a
+	// buffered body forever. It is per write and not per response: a long
+	// generation that keeps arriving is never cut. Zero is no bound.
+	WriteIdleTimeout time.Duration
+	// BodyBudget bounds the request bytes buffered across every request at
+	// once. Nil is no bound. Share one across every listener on a replica.
+	BodyBudget *BodyBudget
 }
 
 // New builds the gateway handler.
@@ -143,7 +157,7 @@ func New(cfg Config) http.Handler {
 	}
 	mux.Handle("/", routed)
 
-	return observed(cfg.Metrics, cfg.Probes, mux)
+	return observed(cfg.Metrics, cfg.Probes, cfg.WriteIdleTimeout, mux)
 }
 
 // modelEnvelope picks the routing key out of an otherwise untouched body.
@@ -201,28 +215,67 @@ func withModel(body []byte, model string) ([]byte, error) {
 	return json.Marshal(fields)
 }
 
-// readBody buffers the request body under the size cap.
-func readBody(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+// readBody buffers the request body under the size cap, the read deadline and
+// the shared buffer budget. The bytes it charged to the budget are released by
+// the returned func, which the caller runs once the request is finished.
+func readBody(w http.ResponseWriter, r *http.Request, limits bodyLimits) ([]byte, func(), bool) {
 	if r.Body == nil {
 		MarkOutcome(r, metrics.OutcomeClientError)
 		writeError(w, http.StatusBadRequest, "missing_body", "Request body is required.")
-		return nil, false
+		return nil, nil, false
 	}
 
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
+	maxBytes := limits.maxBytes
+	if maxBytes <= 0 {
+		maxBytes = DefaultMaxBodyBytes
+	}
+	if r.ContentLength > maxBytes {
+		MarkOutcome(r, metrics.OutcomeClientError)
+		writeError(w, http.StatusRequestEntityTooLarge, "request_too_large",
+			"Request body exceeds the maximum supported size.")
+		return nil, nil, false
+	}
+
+	// A deadline on the body alone, cleared once it is read. http.Server's own
+	// ReadTimeout would also be the deadline of the background read that
+	// watches for the caller hanging up during a stream, and expiring it there
+	// cancels a generation that is still being read.
+	if limits.readTimeout > 0 {
+		rc := http.NewResponseController(w)
+		if err := rc.SetReadDeadline(time.Now().Add(limits.readTimeout)); err == nil {
+			defer func() { _ = rc.SetReadDeadline(time.Time{}) }()
+		}
+	}
+
+	charged := &budgetReader{budget: limits.budget, reader: http.MaxBytesReader(w, r.Body, maxBytes)}
+	body, err := io.ReadAll(charged)
 	if err != nil {
+		charged.release()
+		// What is left of the body is still on the wire. Without this the
+		// server would try to drain it after the answer, which for a caller
+		// that has stopped sending never finishes.
+		w.Header().Set("Connection", "close")
 		var maxErr *http.MaxBytesError
-		if errors.As(err, &maxErr) {
+		switch {
+		case errors.As(err, &maxErr):
 			MarkOutcome(r, metrics.OutcomeClientError)
 			writeError(w, http.StatusRequestEntityTooLarge, "request_too_large",
 				"Request body exceeds the maximum supported size.")
-			return nil, false
+		case errors.Is(err, errBudgetSpent):
+			MarkOutcome(r, metrics.OutcomeShed)
+			writeError(w, http.StatusServiceUnavailable, "no_capacity",
+				"The gateway is buffering too many requests. Retry shortly.")
+		case errors.Is(err, os.ErrDeadlineExceeded):
+			MarkOutcome(r, metrics.OutcomeClientError)
+			writeError(w, http.StatusRequestTimeout, "request_timeout",
+				"The request body was not received in time.")
+		default:
+			MarkOutcome(r, metrics.OutcomeClientError)
+			writeError(w, http.StatusBadRequest, "unreadable_body", "Could not read the request body.")
 		}
-		MarkOutcome(r, metrics.OutcomeClientError)
-		writeError(w, http.StatusBadRequest, "unreadable_body", "Could not read the request body.")
-		return nil, false
+		return nil, nil, false
 	}
-	return body, true
+	return body, charged.release, true
 }
 
 // callerCredentialHeaders are what a caller presents to this hop and nothing
@@ -311,11 +364,24 @@ type statusRecorder struct {
 	http.ResponseWriter
 	status int
 	obs    *observation
+
+	// writeIdle, when set, is how long each write may block; rc arms it.
+	writeIdle time.Duration
+	rc        *http.ResponseController
 }
 
 func (s *statusRecorder) WriteHeader(code int) {
 	s.status = code
+	s.armWrite()
 	s.ResponseWriter.WriteHeader(code)
+}
+
+// armWrite moves the write deadline to writeIdle from now, before each write,
+// so it bounds one blocked write and never the length of a stream.
+func (s *statusRecorder) armWrite() {
+	if s.rc != nil {
+		_ = s.rc.SetWriteDeadline(time.Now().Add(s.writeIdle))
+	}
 }
 
 // Write stamps the first byte out. Headers arriving are not a token: an
@@ -325,6 +391,7 @@ func (s *statusRecorder) Write(b []byte) (int, error) {
 	if s.obs != nil && len(b) > 0 {
 		s.obs.stampFirstByte(time.Now())
 	}
+	s.armWrite()
 	return s.ResponseWriter.Write(b)
 }
 
@@ -341,11 +408,17 @@ func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter 
 // against anyone's availability, and counting a few thousand of them a day
 // against an endpoint's failure budget would make the budget meaningless in the
 // helpful direction.
-func observed(recorder *metrics.Recorder, probes *ProbeMarker, next http.Handler) http.Handler {
+func observed(recorder *metrics.Recorder, probes *ProbeMarker, writeIdle time.Duration, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		obs := &observation{start: start, origin: probes.Origin(r), recorder: recorder}
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK, obs: obs}
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK, obs: obs, writeIdle: writeIdle}
+		if writeIdle > 0 {
+			rec.rc = http.NewResponseController(w)
+			// A write deadline outlives the response on a kept-alive
+			// connection, and the next response would start already expired.
+			defer func() { _ = rec.rc.SetWriteDeadline(time.Time{}) }()
+		}
 		r = r.WithContext(context.WithValue(r.Context(), observationKey{}, obs))
 		r, ident := newIdentity(r)
 

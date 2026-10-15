@@ -14,6 +14,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -230,16 +231,28 @@ func main() {
 		Burst:       envInt("HANGAR_GATEWAY_TENANT_BURST"),
 	})
 	allowNoAuth := envBool("HANGAR_GATEWAY_PUBLIC_ALLOW_NO_AUTH")
+	bodyBudget := serving.NewBodyBudget(int64(envIntDefault("HANGAR_GATEWAY_MAX_BUFFERED_BYTES", defaultMaxBufferedBytes)))
+	maxBodyBytes := int64(envIntDefault("HANGAR_GATEWAY_MAX_BODY_BYTES", serving.DefaultMaxBodyBytes))
+	readHeaderTimeout := envDurationDefault("HANGAR_GATEWAY_READ_HEADER_TIMEOUT", 10*time.Second)
+	bodyReadTimeout := envDurationDefault("HANGAR_GATEWAY_BODY_READ_TIMEOUT", 2*time.Minute)
+	writeIdleTimeout := envDurationDefault("HANGAR_GATEWAY_WRITE_IDLE_TIMEOUT", 2*time.Minute)
+	drainDelay := envDurationDefault("HANGAR_GATEWAY_DRAIN_DELAY", 5*time.Second)
+	drainTimeout := envDurationDefault("HANGAR_GATEWAY_DRAIN_TIMEOUT", 20*time.Second)
+	tunnelDrainTimeout := envDurationDefault("HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT", 5*time.Second)
 
 	srv := &http.Server{
 		Addr: *listenAddr,
 		Handler: serving.New(serving.Config{
-			Router:  router,
-			Metrics: recorder,
-			Probes:  serving.NewProbeMarker(*probeToken),
-			Ready:   readiness,
-			Tenants: tenants,
-			Limiter: limiter,
+			Router:           router,
+			Metrics:          recorder,
+			Probes:           serving.NewProbeMarker(*probeToken),
+			Ready:            readiness,
+			Tenants:          tenants,
+			Limiter:          limiter,
+			MaxBodyBytes:     maxBodyBytes,
+			BodyReadTimeout:  bodyReadTimeout,
+			WriteIdleTimeout: writeIdleTimeout,
+			BodyBudget:       bodyBudget,
 			// Off unless asked for: zero retention of request content.
 			LogUpstreamBodies: *logUpstreamBodies,
 			// The ClusterIP port with no ingress (docs/decisions/0016). The
@@ -248,9 +261,11 @@ func main() {
 			// admits the edge alone (libs/gateway/deploy/networkpolicy.yaml).
 			Zone: serving.ZoneInternal,
 		}),
-		// No WriteTimeout: it is absolute rather than idle-based, so any value
-		// would sever long generations and SSE streams mid-token.
-		ReadHeaderTimeout: 10 * time.Second,
+		// No WriteTimeout or ReadTimeout: both are absolute, so any value would
+		// sever long generations and SSE streams mid-token. The body read
+		// deadline and the per-write idle deadline are set per request instead
+		// (BodyReadTimeout, WriteIdleTimeout).
+		ReadHeaderTimeout: readHeaderTimeout,
 		IdleTimeout:       120 * time.Second,
 	}
 
@@ -272,18 +287,22 @@ func main() {
 		publicSrv = &http.Server{
 			Addr: publicAddr,
 			Handler: serving.New(serving.Config{
-				Router:  router,
-				Metrics: recorder,
-				Probes:  serving.NewProbeMarker(*probeToken),
-				Ready:   readiness,
-				Tenants: tenants,
-				Limiter: limiter,
-				Zone:    serving.ZonePublic,
+				Router:           router,
+				Metrics:          recorder,
+				Probes:           serving.NewProbeMarker(*probeToken),
+				Ready:            readiness,
+				Tenants:          tenants,
+				Limiter:          limiter,
+				MaxBodyBytes:     maxBodyBytes,
+				BodyReadTimeout:  bodyReadTimeout,
+				WriteIdleTimeout: writeIdleTimeout,
+				BodyBudget:       bodyBudget,
+				Zone:             serving.ZonePublic,
 				// A tenant declaring `auth: none` is refused here unless the
 				// operator opts in.
 				AllowUnauthenticatedPublic: allowNoAuth,
 			}),
-			ReadHeaderTimeout: 10 * time.Second,
+			ReadHeaderTimeout: readHeaderTimeout,
 			IdleTimeout:       120 * time.Second,
 		}
 		go func() {
@@ -301,34 +320,60 @@ func main() {
 	slog.Info("gateway: shutting down")
 
 	// Not-ready first, and before anything is closed. Endpoint removal takes a
-	// few hundred milliseconds to reach every kube-proxy, and the requests that
-	// arrive inside those milliseconds are precisely the ones a rollout severs.
+	// while to reach every kube-proxy and load balancer, and the requests that
+	// arrive inside that window are precisely the ones a rollout severs, so the
+	// listeners keep accepting for drainDelay after readiness drops.
 	readiness.Drain()
+	slog.Info("gateway: draining", "delay", drainDelay, "timeout", drainTimeout, "tunnel_timeout", tunnelDrainTimeout)
+	time.Sleep(drainDelay)
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		slog.Error("gateway: shutdown failed", "err", err)
-	}
-	if publicSrv != nil {
-		if err := publicSrv.Shutdown(shutdownCtx); err != nil {
-			slog.Error("gateway: public shutdown failed", "err", err)
+	// Each request listener gets the whole drain budget, concurrently, rather
+	// than the second one getting whatever the first left over. A request
+	// still running when the budget ends is cut; the pod's grace period must
+	// cover drainDelay + drainTimeout + tunnelDrainTimeout and a few seconds.
+	var wg sync.WaitGroup
+	for _, s := range []struct {
+		name string
+		srv  *http.Server
+	}{{"internal", srv}, {"public", publicSrv}} {
+		if s.srv == nil {
+			continue
 		}
+		wg.Add(1)
+		go func(name string, srv *http.Server) {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
+			defer cancel()
+			if err := srv.Shutdown(ctx); err != nil {
+				slog.Error("gateway: shutdown did not finish in the drain budget, cutting what is left", "listener", name, "err", err)
+				_ = srv.Close()
+			}
+		}(s.name, s.srv)
 	}
+	wg.Wait()
+
 	// After the request path and not before it: the in-flight requests being
 	// drained above are being carried by these tunnels, and a GOAWAY sent first
-	// would cut the generations that Shutdown is waiting for.
+	// would cut the generations that Shutdown was waiting for.
 	if listener != nil {
-		if err := listener.Shutdown(shutdownCtx); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), tunnelDrainTimeout)
+		if err := listener.Shutdown(ctx); err != nil {
 			slog.Error("gateway: tunnel drain failed", "err", err)
 		}
+		cancel()
 	}
 	if metricsSrv != nil {
-		if err := metricsSrv.Shutdown(shutdownCtx); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := metricsSrv.Shutdown(ctx); err != nil {
 			slog.Error("gateway: metrics shutdown failed", "err", err)
 		}
+		cancel()
 	}
 }
+
+// defaultMaxBufferedBytes bounds the request bytes buffered at once across a
+// replica: ten bodies at the default size cap.
+const defaultMaxBufferedBytes = 10 * serving.DefaultMaxBodyBytes
 
 // defaultTunnelAddr is where cluster agents dial when nothing says otherwise.
 const defaultTunnelAddr = ":8443"
@@ -446,6 +491,21 @@ func envDuration(key string) time.Duration {
 	if err != nil || d < 0 {
 		slog.Warn("gateway: ignoring unreadable environment value", "key", key, "value", raw)
 		return 0
+	}
+	return d
+}
+
+// envDurationDefault reads a duration from the environment, returning def when
+// the variable is unset or unreadable. An explicit 0 is kept and means no bound.
+func envDurationDefault(key string, def time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d < 0 {
+		slog.Warn("gateway: ignoring unreadable environment value", "key", key, "value", raw)
+		return def
 	}
 	return d
 }

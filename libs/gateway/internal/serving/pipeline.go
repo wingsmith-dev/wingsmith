@@ -64,7 +64,7 @@ func routingStages(cfg Config) []stage {
 		stageVideoRetrieval,
 		stageSupportedPath,
 		stageTenantLimit(cfg.Limiter, ZonePublic),
-		stageReadBody,
+		stageReadBody(bodyLimits{maxBytes: cfg.MaxBodyBytes, readTimeout: cfg.BodyReadTimeout, budget: cfg.BodyBudget}),
 		stageParseEnvelope,
 		stageValidateModel,
 		stageValidateStopSequences,
@@ -152,14 +152,17 @@ func servedInZone(zone Zone, route routing.Route) bool {
 // Before the endpoint is known a request has no endpoint label, and it is not
 // given the model string it asked for: a free-text label is an unbounded axis
 // handed to whoever is calling.
-func stageReadBody(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
-	markEndpoint(r, metrics.EndpointUnknown, "")
-	body, ok := readBody(w, r)
-	if !ok {
-		return r, false
+func stageReadBody(limits bodyLimits) stage {
+	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
+		markEndpoint(r, metrics.EndpointUnknown, "")
+		body, release, ok := readBody(w, r, limits)
+		if !ok {
+			return r, false
+		}
+		req.release = append(req.release, release)
+		req.body = body
+		return r, true
 	}
-	req.body = body
-	return r, true
 }
 
 // stageParseEnvelope decides how the routing key is carried and extracts it.
