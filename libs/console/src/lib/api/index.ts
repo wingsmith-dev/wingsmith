@@ -1,7 +1,4 @@
-import "@/modules/fixtures"
-
 import { isReadOnly } from "@/modules/settings/store"
-import { fixtureTransport } from "./fixtures"
 import { httpTransport } from "./http"
 import { ReadOnlyError } from "./transport"
 import type {
@@ -16,10 +13,20 @@ import type {
  * opts into the offline stand-in. Defaulting the other way meant the HTTP path
  * was never exercised, and a transport nothing runs is a transport nothing
  * knows is broken.
+ *
+ * The mode is a build-time constant and the offline plane is reached only
+ * through a dynamic import inside its branch, so a normal build drops both the
+ * branch and the fixture corpus from the bundle.
  */
 export const transport: Transport =
   import.meta.env.VITE_API_MODE === "fixtures"
-    ? fixtureTransport
+    ? {
+        kind: "fixtures",
+        request: (method, path, options) =>
+          import("@/modules/fixtures").then((offline) =>
+            offline.fixtureTransport.request(method, path, options)
+          ),
+      }
     : httpTransport
 
 function call<T>(method: HttpMethod, path: string, options?: RequestOptions) {
@@ -81,11 +88,3 @@ export type {
   RequestOptions,
   Transport,
 } from "./transport"
-export {
-  FixtureQuery,
-  matchesLabels,
-  matchesSearch,
-  page,
-  registerFixtures,
-} from "./fixtures"
-export type { FixtureContext, FixtureRoute } from "./fixtures"

@@ -1,0 +1,38 @@
+# Rendered by 40-hangar-config.sh at container start.
+server {
+    listen 8080;
+    server_name _;
+    root /usr/share/nginx/html;
+    server_tokens off;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    # add_header in a location replaces the server-level set rather than adding to it, so every
+    # location includes the same snippet.
+    include /etc/nginx/hangar/security-headers.conf;
+
+    # Hashed filenames, so the content behind a URL never changes and the cache never has to be
+    # told about a deploy. index.html and config.js are the exceptions below: their names stay put,
+    # and a cached copy pins the browser to the previous build or the previous settings.
+    location /assets/ {
+        include /etc/nginx/hangar/security-headers.conf;
+        add_header Cache-Control "public, immutable" always;
+        expires 1y;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location = /index.html {
+        include /etc/nginx/hangar/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    location = /config.js {
+        include /etc/nginx/hangar/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+    }
+}
