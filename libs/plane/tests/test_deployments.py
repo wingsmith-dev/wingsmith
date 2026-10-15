@@ -191,8 +191,9 @@ def test_the_per_role_counts_reach_the_api_beside_the_scalars() -> None:
     is short — and for a 1P:2D group that is the whole question, because two ready
     decode workers and no prefill is `2 of 3` and serves nothing.
     """
-    status = _status(_status_row([{"role": "prefill", "desired": 1, "ready": 1},
-                                  {"role": "decode", "desired": 2, "ready": 1}]))
+    status = _status(
+        _status_row([{"role": "prefill", "desired": 1, "ready": 1}, {"role": "decode", "desired": 2, "ready": 1}])
+    )
     assert status is not None
     assert status.ready_replicas == 2 and status.desired_replicas == 3
     assert [(r.role, r.desired, r.ready) for r in status.roles] == [("prefill", 1, 1), ("decode", 2, 1)]
