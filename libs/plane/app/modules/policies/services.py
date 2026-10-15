@@ -82,9 +82,9 @@ class PolicyService:
     async def _resolve_attachments(self, rows: list[PolicyAttachment]) -> list[PolicyAttachmentSchema]:
         """Turns polymorphic keys into public references, one query per type.
 
-        `subject_id` has no foreign key, so a subject that no longer exists still
-        has a row here; it serialises with a null reference rather than being
-        dropped, because a dangling attachment is a fact about the policy.
+        `subject_id` has no foreign key; a trigger per subject table deletes an
+        attachment with its subject. A row that still resolves to nothing
+        serialises with a null reference rather than being dropped.
         """
         by_type: dict[str, list] = {}
         for row in rows:
