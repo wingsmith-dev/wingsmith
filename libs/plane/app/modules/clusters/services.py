@@ -4,6 +4,7 @@ import datetime as dt
 
 from uuid import UUID
 from typing import NoReturn
+from typing import get_args
 from logging import getLogger
 from collections import OrderedDict
 
@@ -32,6 +33,7 @@ from app.core.pagination import page
 from app.core.pagination import clamp_limit
 from app.core.pagination import decode_cursor
 
+from .schemas import ClusterPhase
 from .schemas import ClusterSchema
 from .schemas import ClusterSyncSchema
 from .schemas import ClusterSetupSchema
@@ -47,7 +49,7 @@ from .repository import ClusterRepository
 
 logger = getLogger(__name__)
 
-PHASES = frozenset({"pending", "active", "draining", "disabled"})
+PHASES = frozenset(get_args(ClusterPhase))
 
 RESERVED_NAMES = frozenset({"rollups", "tunnel-auth"})
 """Fixed segments under `/v1/clusters`. A cluster called `rollups` would be

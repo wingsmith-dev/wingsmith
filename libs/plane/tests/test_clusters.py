@@ -498,6 +498,46 @@ def test_an_unbounded_display_name_is_refused():
         decode({"name": "alpha", "region": "eu-west-1", "display_name": "x" * 201})
 
 
+@pytest.mark.parametrize("type_", [ClusterCreateRequest, ClusterUpdateRequest])
+def test_an_unknown_phase_is_refused_when_decoded(type_):
+    with pytest.raises(msgspec.ValidationError):
+        decode({"name": "alpha", "region": "eu-west-1", "phase": "retired"}, type_)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"labels": {"tier": "x" * 64}},
+        {"labels": {"k" * 254: "gold"}},
+        {"labels": {"tier": 1}},
+        {"labels": {f"k{i}": "v" for i in range(65)}},
+        {"capabilities": {"x" * 64: True}},
+        {"capabilities": {f"k{i}": True for i in range(65)}},
+    ],
+)
+def test_unbounded_labels_and_capabilities_are_refused(extra):
+    """Both land in JSONB untouched, so the request is the only place they are bounded."""
+    with pytest.raises(msgspec.ValidationError):
+        decode({"name": "alpha", "region": "eu-west-1", **extra})
+    with pytest.raises(msgspec.ValidationError):
+        decode(extra, ClusterUpdateRequest)
+
+
+def test_prefixed_labels_and_nested_capabilities_are_accepted():
+    data = decode(
+        {
+            "name": "alpha",
+            "region": "eu-west-1",
+            "phase": "active",
+            "labels": {"hangar.io/alert.severity": "warning", "tier": ""},
+            "capabilities": {"rdma": {"fabric": "ib", "gbps": 400}},
+        }
+    )
+    assert data.phase == "active"
+    assert data.labels["tier"] == ""
+    assert data.capabilities["rdma"]["gbps"] == 400
+
+
 @pytest.mark.parametrize("name", ["rollups", "tunnel-auth"])
 async def test_a_cluster_cannot_take_a_route_segment_as_its_name(name):
     """`GET /v1/clusters/rollups` is the rollup list, so a cluster called that is unreachable by name."""

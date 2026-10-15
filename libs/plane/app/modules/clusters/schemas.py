@@ -1,5 +1,7 @@
 import datetime as dt
 
+from typing import Any
+from typing import Literal
 from typing import Annotated
 
 from msgspec import Meta
@@ -28,6 +30,16 @@ LabelValue = Annotated[str, Meta(min_length=1, max_length=63, pattern=LABEL_VALU
 MetricsLabel = Annotated[str, Meta(max_length=63, pattern=r"^([A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?)?$(?!\n)")]
 """A label value, or empty to clear it."""
 DisplayName = Annotated[str, Meta(max_length=200)]
+
+ClusterPhase = Literal["pending", "active", "draining", "disabled"]
+"""Declared intent. Unknown values are refused when the body is decoded."""
+
+LabelKey = Annotated[str, Meta(min_length=1, max_length=253)]
+"""Room for a prefixed key such as `hangar.io/alert.severity`."""
+Labels = Annotated[dict[LabelKey, Annotated[str, Meta(max_length=63)]], Meta(max_length=64)]
+"""What placement and alert tuning match on: string to string, label-value sized, bounded in count."""
+Capabilities = Annotated[dict[Annotated[str, Meta(min_length=1, max_length=63)], Any], Meta(max_length=64)]
+"""Asserted and opaque to the plane; only the number of keys and their length are bounded."""
 
 
 class ClusterSyncSchema(Struct):
@@ -187,9 +199,9 @@ class ClusterCreateRequest(Struct):
     display_name: DisplayName | None = None
     zone: LabelValue | None = None
     residency: LabelValue | None = None
-    phase: str = "pending"
-    labels: dict = {}
-    capabilities: dict = {}
+    phase: ClusterPhase = "pending"
+    labels: Labels = {}
+    capabilities: Capabilities = {}
     metrics_label: MetricsLabel | None | UnsetType = UNSET
 
 
@@ -205,9 +217,9 @@ class ClusterUpdateRequest(Struct):
     region: LabelValue | UnsetType = UNSET
     zone: LabelValue | None | UnsetType = UNSET
     residency: LabelValue | None | UnsetType = UNSET
-    phase: str | UnsetType = UNSET
-    labels: dict | UnsetType = UNSET
-    capabilities: dict | UnsetType = UNSET
+    phase: ClusterPhase | UnsetType = UNSET
+    labels: Labels | UnsetType = UNSET
+    capabilities: Capabilities | UnsetType = UNSET
     metrics_label: MetricsLabel | None | UnsetType = UNSET
 
 
