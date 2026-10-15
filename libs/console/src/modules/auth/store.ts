@@ -157,14 +157,6 @@ export const useAuthStore = create<AuthState>()(
   )
 )
 
-// Earlier builds kept the pair in local storage. Drop any copy left behind so an
-// upgrade does not leave a live refresh token on disk.
-try {
-  localStorage.removeItem("hangar.auth")
-} catch {
-  // Storage can be unavailable (a sandboxed frame, a locked-down profile).
-}
-
 /**
  * The payload of a successful refresh. Called by the transport after it has
  * rotated the pair through `POST /v1/auth/refresh`.

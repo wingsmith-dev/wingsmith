@@ -10,9 +10,7 @@ import type {
 
 /**
  * The one-line seam. The real plane is the default; `VITE_API_MODE=fixtures`
- * opts into the offline stand-in. Defaulting the other way meant the HTTP path
- * was never exercised, and a transport nothing runs is a transport nothing
- * knows is broken.
+ * opts into the offline stand-in.
  *
  * The mode is a build-time constant and the offline plane is reached only
  * through a dynamic import inside its branch, so a normal build drops both the

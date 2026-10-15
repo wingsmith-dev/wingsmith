@@ -50,7 +50,7 @@ export interface WorkloadFilters {
   label?: string[]
 }
 
-/** No `type`: kind is a workload fact and a deployment no longer carries it. */
+/** No `type`: kind is a workload fact, not a deployment's. */
 export interface DeploymentFilters {
   cluster?: string
   workload?: string

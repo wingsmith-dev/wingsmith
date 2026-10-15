@@ -3,8 +3,8 @@ import { createFileRoute } from "@tanstack/react-router"
 import { DeploymentsPage } from "./page"
 
 /**
- * No `type`: kind is a workload fact and a deployment no longer carries one.
- * `phase` now reads the deployment's own `admission_phase`, which is per-cluster.
+ * No `type`: kind is a workload fact, not a deployment's. `phase` reads the
+ * deployment's own `admission_phase`, which is per-cluster.
  */
 export interface DeploymentsSearch {
   cluster?: string

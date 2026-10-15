@@ -281,7 +281,7 @@ export function ArtifactFitmentPanel({
   mode?: FitmentMode
   /**
    * The chosen footprint, in `select` mode. The whole footprint and not just the class,
-   * because a class is no longer the answer on its own — the count is part of it, and a
+   * because a class is not the answer on its own — the count is part of it, and a
    * row that highlighted on class alone could not say which of its layouts is picked.
    */
   selected?: ServingFootprint | null
