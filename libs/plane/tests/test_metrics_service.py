@@ -25,6 +25,7 @@ from app.modules.metrics.backend import Curve
 from app.modules.metrics.backend import Scope
 from app.modules.metrics.registry import BY_NAME
 from app.modules.metrics.registry import family
+from app.modules.metrics.services import TENANT_UNAVAILABLE
 from app.modules.metrics.services import MetricsService
 from app.modules.metrics.services import _merge
 
@@ -986,12 +987,9 @@ async def test_the_gateway_is_never_narrowed_by_a_cluster_label():
 
 
 async def test_no_gateway_store_says_so_rather_than_reporting_full_availability():
-    """Nothing scrapes the gateway's metrics port yet, so this is the day-one answer.
+    """With no store for the gateway, both routes answer with a reason and no samples.
 
-    `infra/80-gateway.yaml` exposes the port and no ServiceMonitor reads it. Until
-    one does, both routes have to answer with a reason and no samples — an
-    availability of 100% here would be a number nothing measured, and 0% would be
-    an outage nothing observed.
+    An availability of 100% would be a number nothing measured, and 0% an outage nothing observed.
     """
     svc = endpoint_service([Endpoint(uid=ENDPOINT, name="gemma-chat")])
     with with_sources(""), with_backend(StubBackend(samples={"serving.availability": 100.0})):
@@ -1004,3 +1002,23 @@ async def test_no_gateway_store_says_so_rather_than_reporting_full_availability(
         assert got.source is None
         assert got.unavailable
         assert "HANGAR_METRICS_SOURCES" in got.unavailable
+
+
+async def test_a_tenant_reads_its_endpoint_without_the_store_behind_it():
+    svc = endpoint_service([Endpoint(uid=ENDPOINT, name="gemma-chat")])
+    backend = StubBackend(samples={"serving.availability": 99.95})
+    with with_sources(SHARED), with_backend(backend):
+        got = await svc.tenant_endpoint(ENDPOINT)
+
+    assert got.source is None
+    assert got.cluster is None
+    assert [(s.metric, s.value) for s in got.samples] == [("serving.availability", 99.95)]
+
+
+async def test_a_tenant_gets_a_generic_reason_when_its_endpoint_cannot_be_measured():
+    svc = endpoint_service([Endpoint(uid=ENDPOINT, name="gemma-chat")])
+    with with_sources(""), with_backend(StubBackend()):
+        got = await svc.tenant_endpoint(ENDPOINT)
+
+    assert got.unavailable == TENANT_UNAVAILABLE
+    assert "HANGAR_METRICS_SOURCES" not in got.unavailable

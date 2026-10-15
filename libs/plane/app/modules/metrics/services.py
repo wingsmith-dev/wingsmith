@@ -121,11 +121,10 @@ GATEWAY = "gateway"
 NO_GATEWAY = "no metrics store for the plane to read the gateway's own series from; set HANGAR_METRICS_SOURCES"
 
 TENANT_UNAVAILABLE = "service level data is temporarily unavailable"
-"""What a tenant reads in place of the reason an SLA report could not be measured.
+"""What a tenant reads in place of the reason its metrics or SLA report could not be measured.
 
-The operator's reasons name clusters, quote the store's own error text and give
-configuration hints, none of which is the tenant's business and all of which
-describe the infrastructure behind the endpoint.
+The operator's reasons name clusters, quote the store's error text and give configuration hints,
+all of which describe the infrastructure behind the endpoint.
 """
 
 FLEET = "fleet"
@@ -803,6 +802,22 @@ class MetricsService:
             with_series=series,
             no_source=NO_GATEWAY,
         )
+
+    async def tenant_endpoint(
+        self,
+        ref: str,
+        window: str | None = None,
+        step: str | None = None,
+        span: int = 3600,
+        series: bool = False,
+    ) -> MetricsSchema:
+        """`endpoint` as the owning tenant reads it: no store address, and one generic reason."""
+        answer = await self.endpoint(ref, window, step, span, series)
+        answer.source = None
+        answer.cluster = None
+        if answer.unavailable:
+            answer.unavailable = TENANT_UNAVAILABLE
+        return answer
 
     async def endpoint_sla(self, ref: str, query: PeriodQuery, now: dt.datetime | None = None) -> SlaReportSchema:
         """One endpoint's service level over a period, against what its quota promised.

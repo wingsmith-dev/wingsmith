@@ -78,7 +78,7 @@ class ServingRoutes(Controller):
         """
         uid = await svc.metrics_ref(ref)
         metrics = MetricsService(db=context.db)
-        return Response(await metrics.endpoint(uid, window, step, span, series))
+        return Response(await metrics.tenant_endpoint(uid, window, step, span, series))
 
     @get("/models/{ref:str}/sla")
     async def model_sla(
@@ -140,7 +140,7 @@ class TenantServingRoutes(Controller):
     ) -> Response[MetricsSchema]:
         uid = await svc.metrics_ref(ref)
         metrics = MetricsService(db=context.db)
-        return Response(await metrics.endpoint(uid, window, step, span, series))
+        return Response(await metrics.tenant_endpoint(uid, window, step, span, series))
 
     @get("/models/{ref:str}/sla")
     async def model_sla(
