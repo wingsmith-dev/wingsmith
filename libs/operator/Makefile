@@ -33,6 +33,8 @@ build:
 .PHONY: vet
 vet:
 	go vet ./...
+	go vet -tags e2e ./internal/reconcile/
+	go vet -tags interop ./internal/interop/
 
 .PHONY: test
 test:

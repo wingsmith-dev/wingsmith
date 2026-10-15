@@ -231,8 +231,10 @@ func (l *live) prefetchDone(t *testing.T) {
 	ctx := context.Background()
 	job := &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      render.PrefetchJobName(testArtifactID),
+			Name:      render.PrefetchJobName(testArtifactDesired()),
 			Namespace: l.workloadNS,
+			// Found by this label, not by name, which is how the reconciler looks for it.
+			Labels: map[string]string{render.ArtifactLabel: testArtifactID},
 		},
 		Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{
