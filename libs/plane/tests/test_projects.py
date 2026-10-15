@@ -1,4 +1,5 @@
 import pytest
+import msgspec
 
 from app.core.ids import PROJECT
 from app.core.ids import new_uid
@@ -111,3 +112,20 @@ def test_no_label_filter_is_offered_because_projects_carry_none():
     import inspect
 
     assert "label" not in inspect.signature(ProjectRoutes.list_projects.fn).parameters
+
+
+@pytest.mark.parametrize("slug", ["Search", "search engine", "search\n", "s" * 64, ""])
+def test_a_project_slug_that_is_not_a_dns_label_is_refused(slug):
+    body = msgspec.json.encode({"tenant": "acme", "slug": slug, "name": "Search"})
+    with pytest.raises(msgspec.ValidationError):
+        msgspec.json.decode(body, type=ProjectCreateRequest)
+
+
+def test_a_project_s_references_and_name_are_bounded():
+    for body in (
+        {"tenant": "t" * 65, "slug": "search", "name": "Search"},
+        {"tenant": "acme", "slug": "search", "name": "x" * 201},
+        {"tenant": "acme", "slug": "search", "name": "Search", "default_priority_class": "p" * 65},
+    ):
+        with pytest.raises(msgspec.ValidationError):
+            msgspec.json.decode(msgspec.json.encode(body), type=ProjectCreateRequest)

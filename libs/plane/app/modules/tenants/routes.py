@@ -21,10 +21,10 @@ from app.core.schemas import ListResponse
 from .depends import tenant_svc_generator
 from .schemas import TenantSchema
 from .schemas import TenantTokenSchema
+from .schemas import TenantAPIKeySchema
 from .schemas import TenantCreateRequest
 from .schemas import TenantUpdateRequest
 from .schemas import TenantTokenCreateRequest
-from .schemas import TenantAPIKeySchema
 from .schemas import TenantAPIKeyCreateRequest
 from .services import TenantService
 

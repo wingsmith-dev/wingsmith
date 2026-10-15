@@ -6,7 +6,8 @@ import pytest
 from app.modules.gateway.routes import GatewayRoutes
 from app.modules.gateway.services import GatewayService
 
-EPOCH = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+
+EPOCH = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
 
 
 class FakeKey:

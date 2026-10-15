@@ -1,5 +1,6 @@
 import yaml
 import pytest
+import msgspec
 
 from app.config import settings
 from app.core.ids import CLUSTER
@@ -7,6 +8,8 @@ from app.core.ids import new_uid
 from app.core.exceptions import Invalid
 from app.modules.clusters.routes import ClusterRoutes
 from app.modules.clusters.schemas import ClusterRollupSchema
+from app.modules.clusters.schemas import ClusterCreateRequest
+from app.modules.clusters.schemas import ClusterUpdateRequest
 from app.modules.clusters.schemas import ClusterHeadroomSchema
 from app.modules.clusters.services import SetupValues
 from app.modules.clusters.services import ClusterService
@@ -428,3 +431,45 @@ def test_free_block_is_floored_at_one_when_devices_are_free_but_domainless():
 def test_domain_block_is_used_when_present():
     schema = _rollup(new_uid(CLUSTER), {"devices_total": 8, "devices_allocatable": 8, "largest_block": 4})
     assert schema.headroom.largest_contiguous_block == 4
+
+
+# --- what a request may carry ----------------------------------------------------
+
+
+def decode(body: dict, type_=ClusterCreateRequest):
+    return msgspec.json.decode(msgspec.json.encode(body), type=type_)
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Alpha", "alpha beta", "alpha\n", "-alpha", "a" * 64, "", "alpha;rm", "alpha_1", "alpha.example"],
+)
+def test_a_cluster_name_that_is_not_a_dns_label_is_refused(name):
+    """The name becomes the chart's `cluster.id`, a kube context in a shell line, and a metrics label."""
+    with pytest.raises(msgspec.ValidationError):
+        decode({"name": name, "region": "eu-west-1"})
+
+
+@pytest.mark.parametrize("region", ["eu west", "eu-west-1\n", "x" * 64, "", "eu:west"])
+def test_a_region_that_is_not_a_label_value_is_refused(region):
+    with pytest.raises(msgspec.ValidationError):
+        decode({"name": "alpha", "region": region})
+    with pytest.raises(msgspec.ValidationError):
+        decode({"region": region}, ClusterUpdateRequest)
+
+
+def test_a_well_formed_cluster_is_accepted():
+    data = decode({"name": "eu-west-1a", "region": "eu-west-1", "zone": "eu-west-1a", "metrics_label": ""})
+    assert (data.name, data.region, data.metrics_label) == ("eu-west-1a", "eu-west-1", "")
+
+
+def test_an_unbounded_display_name_is_refused():
+    with pytest.raises(msgspec.ValidationError):
+        decode({"name": "alpha", "region": "eu-west-1", "display_name": "x" * 201})
+
+
+@pytest.mark.parametrize("name", ["rollups", "tunnel-auth"])
+async def test_a_cluster_cannot_take_a_route_segment_as_its_name(name):
+    """`GET /v1/clusters/rollups` is the rollup list, so a cluster called that is unreachable by name."""
+    with pytest.raises(Invalid):
+        await ClusterService(db=None).create(ClusterCreateRequest(name=name, region="eu-west-1"))

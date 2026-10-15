@@ -1,8 +1,42 @@
 import datetime as dt
 
+from typing import Literal
+from typing import Annotated
+
+from msgspec import Meta
+
 from app.core.schemas import UNSET
 from app.core.schemas import Struct
 from app.core.schemas import UnsetType
+
+
+# msgspec matches with `re.search`, and Python's `$` also matches before a trailing
+# newline; the lookahead keeps "acme\n" from passing as "acme".
+DNS_LABEL = r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$(?!\n)"
+HOSTNAME = r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?(\.[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?)*$(?!\n)"
+
+Slug = Annotated[
+    str,
+    Meta(
+        min_length=1,
+        max_length=63,
+        pattern=DNS_LABEL,
+        description="A DNS label. Tenant slugs name a login and a gateway host; project slugs follow the same rule.",
+    ),
+]
+Name = Annotated[str, Meta(min_length=1, max_length=200)]
+Host = Annotated[
+    str,
+    Meta(
+        min_length=1,
+        max_length=253,
+        pattern=HOSTNAME,
+        description="The lowercase hostname the gateway's public listener matches against `Host`.",
+    ),
+]
+Ingress = Literal["internal", "public"]
+Auth = Literal["none", "api_key"]
+CredentialName = Annotated[str, Meta(max_length=100)]
 
 
 class TenantSchema(Struct):
@@ -27,12 +61,12 @@ class TenantSchema(Struct):
 
 
 class TenantCreateRequest(Struct):
-    slug: str
-    name: str
+    slug: Slug
+    name: Name
     enabled: bool = True
-    ingress: str = "internal"
-    auth: str = "none"
-    host: str | None = None
+    ingress: Ingress = "internal"
+    auth: Auth = "none"
+    host: Host | None = None
 
 
 class TenantUpdateRequest(Struct):
@@ -43,11 +77,11 @@ class TenantUpdateRequest(Struct):
     anything that points at them.
     """
 
-    name: str | UnsetType = UNSET
+    name: Name | UnsetType = UNSET
     enabled: bool | UnsetType = UNSET
-    ingress: str | UnsetType = UNSET
-    auth: str | UnsetType = UNSET
-    host: str | None | UnsetType = UNSET
+    ingress: Ingress | UnsetType = UNSET
+    auth: Auth | UnsetType = UNSET
+    host: Host | None | UnsetType = UNSET
 
 
 class TenantAPIKeySchema(Struct):
@@ -70,7 +104,7 @@ class TenantAPIKeySchema(Struct):
 class TenantAPIKeyCreateRequest(Struct):
     """`name` is for the human who has to decide later whether to revoke it."""
 
-    name: str = "default"
+    name: CredentialName = "default"
 
 
 class TenantTokenSchema(Struct):
@@ -94,4 +128,4 @@ class TenantTokenSchema(Struct):
 class TenantTokenCreateRequest(Struct):
     """`name` is for the human who has to decide later whether to revoke it."""
 
-    name: str = "console"
+    name: CredentialName = "console"

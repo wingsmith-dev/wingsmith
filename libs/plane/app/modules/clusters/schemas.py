@@ -1,8 +1,33 @@
 import datetime as dt
 
+from typing import Annotated
+
+from msgspec import Meta
+
 from app.core.schemas import UNSET
 from app.core.schemas import Struct
 from app.core.schemas import UnsetType
+
+
+# `$` in Python also matches before a trailing newline, and msgspec checks a pattern
+# with `re.search`; the lookahead is what keeps "alpha\n" from passing as "alpha".
+DNS_LABEL = r"^[a-z0-9]([-a-z0-9]{0,61}[a-z0-9])?$(?!\n)"
+LABEL_VALUE = r"^[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$(?!\n)"
+
+ClusterName = Annotated[
+    str,
+    Meta(
+        min_length=1,
+        max_length=63,
+        pattern=DNS_LABEL,
+        description="A DNS label: it becomes the chart's cluster.id, the kube context and the metrics label.",
+    ),
+]
+LabelValue = Annotated[str, Meta(min_length=1, max_length=63, pattern=LABEL_VALUE)]
+"""Region, zone and residency: Kubernetes label-value shape, which is what they are matched against."""
+MetricsLabel = Annotated[str, Meta(max_length=63, pattern=r"^([A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?)?$(?!\n)")]
+"""A label value, or empty to clear it."""
+DisplayName = Annotated[str, Meta(max_length=200)]
 
 
 class ClusterSyncSchema(Struct):
@@ -157,15 +182,15 @@ class ClusterCreateRequest(Struct):
     source until one is set.
     """
 
-    name: str
-    region: str
-    display_name: str | None = None
-    zone: str | None = None
-    residency: str | None = None
+    name: ClusterName
+    region: LabelValue
+    display_name: DisplayName | None = None
+    zone: LabelValue | None = None
+    residency: LabelValue | None = None
     phase: str = "pending"
     labels: dict = {}
     capabilities: dict = {}
-    metrics_label: str | None | UnsetType = UNSET
+    metrics_label: MetricsLabel | None | UnsetType = UNSET
 
 
 class ClusterUpdateRequest(Struct):
@@ -176,14 +201,14 @@ class ClusterUpdateRequest(Struct):
     corrected without a redeploy.
     """
 
-    display_name: str | None | UnsetType = UNSET
-    region: str | UnsetType = UNSET
-    zone: str | None | UnsetType = UNSET
-    residency: str | None | UnsetType = UNSET
+    display_name: DisplayName | None | UnsetType = UNSET
+    region: LabelValue | UnsetType = UNSET
+    zone: LabelValue | None | UnsetType = UNSET
+    residency: LabelValue | None | UnsetType = UNSET
     phase: str | UnsetType = UNSET
     labels: dict | UnsetType = UNSET
     capabilities: dict | UnsetType = UNSET
-    metrics_label: str | None | UnsetType = UNSET
+    metrics_label: MetricsLabel | None | UnsetType = UNSET
 
 
 class TunnelAuthRequest(Struct):
@@ -194,7 +219,7 @@ class TunnelAuthRequest(Struct):
     only one of them belongs to the caller.
     """
 
-    token: str
+    token: Annotated[str, Meta(max_length=512)]
 
 
 class TunnelIdentitySchema(Struct):
@@ -212,6 +237,6 @@ class TunnelIdentitySchema(Struct):
 class ClusterServingRequest(Struct):
     """A full replacement. Serving config is small enough that partial updates buy nothing."""
 
-    url: str
-    credential_id: str | None = None
+    url: Annotated[str, Meta(max_length=2048)]
+    credential_id: Annotated[str, Meta(max_length=64)] | None = None
     enabled: bool = True

@@ -48,6 +48,10 @@ logger = getLogger(__name__)
 
 PHASES = frozenset({"pending", "active", "draining", "disabled"})
 
+RESERVED_NAMES = frozenset({"rollups", "tunnel-auth"})
+"""Fixed segments under `/v1/clusters`. A cluster called `rollups` would be
+unreachable by name, because `GET /v1/clusters/rollups` is the rollup list."""
+
 TUNNEL_AUTH_GUESSES = FailureBudget(limit=20, window_seconds=60.0)
 """Failed agent verifications this process will answer in a rolling minute.
 
@@ -738,6 +742,8 @@ class ClusterService:
         """
         if data.phase not in PHASES:
             raise Invalid(f"unknown phase {data.phase!r}", {"allowed": sorted(PHASES)})
+        if data.name in RESERVED_NAMES:
+            raise Invalid(f"{data.name!r} is a reserved name", {"reserved": sorted(RESERVED_NAMES)})
         metrics_label = data.name if data.metrics_label is UNSET else data.metrics_label
         cluster = Cluster(
             uid=new_uid(CLUSTER),

@@ -1,8 +1,18 @@
 import datetime as dt
 
+from typing import Annotated
+
+from msgspec import Meta
+
 from app.core.schemas import UNSET
 from app.core.schemas import Struct
 from app.core.schemas import UnsetType
+from app.modules.tenants.schemas import Name
+from app.modules.tenants.schemas import Slug
+
+
+Ref = Annotated[str, Meta(min_length=1, max_length=64)]
+"""An id or a slug/name of something that already exists; looked up, never stored."""
 
 
 class ProjectTenantSchema(Struct):
@@ -41,10 +51,10 @@ class ProjectSchema(Struct):
 
 
 class ProjectCreateRequest(Struct):
-    tenant: str
-    slug: str
-    name: str
-    default_priority_class: str | None = None
+    tenant: Ref
+    slug: Slug
+    name: Name
+    default_priority_class: Ref | None = None
     enabled: bool = True
 
 
@@ -56,6 +66,6 @@ class ProjectUpdateRequest(Struct):
     tenants would move its billing without moving its allocations.
     """
 
-    name: str | UnsetType = UNSET
-    default_priority_class: str | None | UnsetType = UNSET
+    name: Name | UnsetType = UNSET
+    default_priority_class: Ref | None | UnsetType = UNSET
     enabled: bool | UnsetType = UNSET

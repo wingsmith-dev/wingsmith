@@ -1,5 +1,4 @@
-from datetime import datetime
-from datetime import timezone
+import datetime as dt
 
 from sqlalchemy import Row
 from sqlalchemy import select
@@ -24,10 +23,10 @@ from app.core.pagination import decode_cursor
 
 from .schemas import TenantSchema
 from .schemas import TenantTokenSchema
+from .schemas import TenantAPIKeySchema
 from .schemas import TenantCreateRequest
 from .schemas import TenantUpdateRequest
 from .schemas import TenantTokenCreateRequest
-from .schemas import TenantAPIKeySchema
 from .schemas import TenantAPIKeyCreateRequest
 from .repository import TenantRepository
 
@@ -39,6 +38,10 @@ def _revision(tenant: Tenant) -> str:
 
 INGRESS_VALUES = ("internal", "public")
 AUTH_VALUES = ("none", "api_key")
+
+RESERVED_SLUGS = frozenset({"admin"})
+"""`admin` is the slug the login form reads as the fleet operator, so a tenant
+holding it could never sign in as itself."""
 
 
 def _check_ingress_auth(ingress: str, auth: str) -> None:
@@ -105,6 +108,8 @@ class TenantService:
             raise Invalid("slug is required")
         if not data.name:
             raise Invalid("name is required")
+        if data.slug in RESERVED_SLUGS:
+            raise Invalid(f"{data.slug!r} is a reserved slug", {"reserved": sorted(RESERVED_SLUGS)})
         _check_ingress_auth(data.ingress, data.auth)
         tenant = Tenant(
             uid=new_uid(TENANT),
@@ -224,7 +229,7 @@ class TenantService:
         if token is None:
             raise NotFound(f"no token {token_ref!r} on tenant {ref!r}")
         if token.revoked_at is None:
-            token.revoked_at = datetime.now(tz=timezone.utc)
+            token.revoked_at = dt.datetime.now(dt.UTC)
             await self.db.commit()
 
     def _key(self, key: TenantAPIKey, slug: str, plaintext: str | None = None) -> TenantAPIKeySchema:
@@ -282,5 +287,5 @@ class TenantService:
         if key is None:
             raise NotFound(f"no key {key_ref!r} on tenant {ref!r}")
         if key.revoked_at is None:
-            key.revoked_at = datetime.now(tz=timezone.utc)
+            key.revoked_at = dt.datetime.now(dt.UTC)
             await self.db.commit()
