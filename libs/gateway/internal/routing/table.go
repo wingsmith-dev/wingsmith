@@ -122,6 +122,10 @@ type Route struct {
 	// same way Policy is — read on every request and refreshed on a timer,
 	// never fetched per request.
 	TenantID string
+	// Visibility is the endpoint's "public" or "private". Only a public
+	// endpoint is served on the public listener; a private one, the plane's
+	// default, answers on the internal listener alone.
+	Visibility string
 
 	totalWeight int
 	cursor      *picker
@@ -392,13 +396,14 @@ func (r *Router) Load(ctx context.Context) error {
 
 	for _, endpoint := range table.Endpoints {
 		route := Route{
-			ID:        endpoint.ID,
-			Name:      endpoint.Name,
-			Aliases:   endpoint.Aliases,
-			Strategy:  endpoint.RoutingStrategy,
-			Policy:    endpoint.Policy,
-			TenantID:  endpoint.TenantID,
-			Upstreams: make([]Upstream, 0, len(endpoint.Upstreams)),
+			ID:         endpoint.ID,
+			Name:       endpoint.Name,
+			Aliases:    endpoint.Aliases,
+			Strategy:   endpoint.RoutingStrategy,
+			Policy:     endpoint.Policy,
+			TenantID:   endpoint.TenantID,
+			Visibility: endpoint.Visibility,
+			Upstreams:  make([]Upstream, 0, len(endpoint.Upstreams)),
 		}
 
 		// Reported here rather than per request. A policy written against a

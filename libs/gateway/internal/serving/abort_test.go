@@ -25,6 +25,7 @@ func TestATruncatedStreamIsCountedAndStillAborts(t *testing.T) {
 		panic(http.ErrAbortHandler)
 	})
 	handler := New(Config{
+		Zone: ZoneInternal,
 		Router: stubResolver{routes: map[string]routing.Route{
 			"chat": handlerUpstream(t, "ep_1", "chat", "dep_1", "ap", truncating),
 		}},
@@ -57,6 +58,7 @@ func TestAPanicThatIsNotTheProxysAbortIndictsThisHop(t *testing.T) {
 		panic("nil map write, somewhere in here")
 	})
 	handler := New(Config{
+		Zone: ZoneInternal,
 		Router: stubResolver{routes: map[string]routing.Route{
 			"chat": handlerUpstream(t, "ep_1", "chat", "dep_1", "ap", buggy),
 		}},

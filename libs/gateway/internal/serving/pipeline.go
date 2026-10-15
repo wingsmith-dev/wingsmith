@@ -29,9 +29,8 @@ type requestState struct {
 	route       routing.Route
 	upstream    routing.Upstream
 	// zone and tenant are set by stageZone and stageTenantFromHost
-	// (tenant_stages.go). zone is ZoneInternal on every request until a
-	// second listener exists to ever set it otherwise; tenant is the zero
-	// Tenant until the public zone resolves one.
+	// (tenant_stages.go). tenant is the zero Tenant on the internal zone,
+	// which resolves none.
 	zone   Zone
 	tenant tenancy.Tenant
 }
@@ -48,21 +47,23 @@ type stage func(w http.ResponseWriter, r *http.Request, req *requestState) (*htt
 //
 // The tenant stages run first, ahead of the catalog: which tenant a caller
 // is scopes both /v1/models and routing (docs/decisions/0016), so both have to
-// come after zone, host and key are settled and not before. Every one of
-// them is a no-op unless zone is ZonePublic, which nothing in this build can
-// construct yet — see Zone in tenant_stages.go.
+// come after zone, host and key are settled and not before. The host, key and
+// enabled stages are no-ops on the internal zone, whose tenant is the
+// endpoint's and is checked once stageResolve has found it.
 func routingStages(resolver Resolver, tenants Tenants, zone Zone) []stage {
 	return []stage{
 		stageZone(zone),
 		stageTenantFromHost(tenants),
 		stageKeyCheck(tenants),
-		stageCatalog(resolver),
+		stageTenantEnabled,
+		stageCatalog(resolver, tenants),
 		stageVideoRetrieval,
 		stageReadBody,
 		stageParseEnvelope,
 		stageValidateModel,
 		stageValidateStopSequences,
 		stageResolve(resolver),
+		stageEndpointTenantEnabled(tenants),
 		stageCheckModality,
 		stageStripSteeringHints,
 		stageCheckPolicy,
@@ -95,10 +96,11 @@ func runPipeline(stages []stage, w http.ResponseWriter, r *http.Request) {
 // that can be the whole of a request; every stage after it assumes a body
 // worth routing.
 //
-// A tenant identified by the public zone sees its own catalog and nothing
-// past it (docs/decisions/0016); every other caller still sees the whole table,
-// exactly as before.
-func stageCatalog(resolver Resolver) stage {
+// A tenant identified by the public zone sees its own public endpoints and
+// nothing past them (docs/decisions/0016); an internal caller sees every
+// endpoint whose tenant is enabled. Neither sees a model a request would be
+// refused.
+func stageCatalog(resolver Resolver, tenants Tenants) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 		if r.Method != http.MethodGet || r.URL.Path != "/v1/models" {
 			return r, true
@@ -108,15 +110,29 @@ func stageCatalog(resolver Resolver) stage {
 		if req.zone == ZonePublic {
 			names = resolver.NamesForTenant(req.tenant.ID)
 		}
+		listed := make([]string, 0, len(names))
 		kinds := make(map[string]string, len(names))
 		for _, name := range names {
-			if route, err := resolver.Resolve(name); err == nil {
-				kinds[name] = routeModality(route)
+			route, err := resolver.Resolve(name)
+			if err != nil {
+				listed = append(listed, name)
+				continue
 			}
+			if !servedInZone(req.zone, route) || !tenantServing(tenants, route) {
+				continue
+			}
+			listed = append(listed, name)
+			kinds[name] = routeModality(route)
 		}
-		writeModelList(w, names, kinds)
+		writeModelList(w, listed, kinds)
 		return r, false
 	}
+}
+
+// servedInZone reports whether a route answers on a zone. A private endpoint,
+// which is the plane's default, answers on the internal listener only.
+func servedInZone(zone Zone, route routing.Route) bool {
+	return zone != ZonePublic || route.Visibility == visibilityPublic
 }
 
 // stageReadBody buffers the request body under the size cap.
@@ -215,11 +231,12 @@ func stageValidateStopSequences(w http.ResponseWriter, r *http.Request, req *req
 // Another tenant's model reads as "no such model" on the public zone, not as
 // a refusal that would confirm the endpoint exists at all (docs/decisions/0016) —
 // the same reasoning `ResolvedEndpointSchema`'s own doc comment gives for
-// dropping cross-tenant visibility at the plane rather than only here.
+// dropping cross-tenant visibility at the plane rather than only here. A
+// tenant's own private endpoint reads the same way there, for the same reason.
 func stageResolve(resolver Resolver) stage {
 	return func(w http.ResponseWriter, r *http.Request, req *requestState) (*http.Request, bool) {
 		route, err := resolver.Resolve(req.envelope.Model)
-		if err == nil && req.zone == ZonePublic && route.TenantID != req.tenant.ID {
+		if err == nil && req.zone == ZonePublic && (route.TenantID != req.tenant.ID || !servedInZone(req.zone, route)) {
 			err = routing.ErrUnknownEndpoint
 		}
 		if err != nil {

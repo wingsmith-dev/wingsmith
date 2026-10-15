@@ -32,6 +32,7 @@ func upstreamErrorLog(t *testing.T, status int, body string, logBodies bool) map
 	t.Cleanup(func() { slog.SetDefault(previous) })
 
 	handler := New(Config{
+		Zone:              ZoneInternal,
 		Router:            stubResolver{routes: map[string]routing.Route{"chat": routeTo(t, server.URL, nil)}},
 		LogUpstreamBodies: logBodies,
 	})

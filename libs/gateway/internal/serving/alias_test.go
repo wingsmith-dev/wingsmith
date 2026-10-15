@@ -25,7 +25,7 @@ func aliased(route routing.Route, aliases ...string) map[string]routing.Route {
 func TestAnAliasRoutesToTheSameUpstreamAsTheCanonical(t *testing.T) {
 	server, _ := upstreamServer(t)
 	route := proxyRoute(t, "ep_1", "kimi-k3", "dep_1", "ap", server.URL)
-	handler := New(Config{Router: stubResolver{routes: aliased(route, "moonshotai/kimi-k3")}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: aliased(route, "moonshotai/kimi-k3")}})
 
 	rec := post(t, handler, `{"model":"moonshotai/kimi-k3","messages":[]}`)
 	if rec.Code != http.StatusOK {
@@ -40,7 +40,7 @@ func TestAnAliasCannotWalkPastTheDenyRuleWrittenAgainstTheModelItPointsAt(t *tes
 	server, _ := upstreamServer(t)
 	pinned := routeTo(t, server.URL, nil)
 	pinned.Policy = kimiPolicy()
-	handler := New(Config{Router: stubResolver{routes: aliased(pinned, "chat-legacy")}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: aliased(pinned, "chat-legacy")}})
 
 	for _, model := range []string{"chat", "chat-legacy"} {
 		rec := post(t, handler, `{"model":"`+model+`","temperature":0.7}`)
@@ -56,7 +56,7 @@ func TestATermThatAdmitsTheCanonicalAdmitsItsAliasesToo(t *testing.T) {
 	server, _ := upstreamServer(t)
 	pinned := routeTo(t, server.URL, nil)
 	pinned.Policy = kimiPolicy()
-	handler := New(Config{Router: stubResolver{routes: aliased(pinned, "chat-legacy")}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: aliased(pinned, "chat-legacy")}})
 
 	for _, model := range []string{"chat", "chat-legacy"} {
 		rec := post(t, handler, `{"model":"`+model+`","temperature":1}`)
@@ -72,7 +72,7 @@ func TestUsageAndMetricsAreKeyedOnTheCanonicalWhateverTheCallerTyped(t *testing.
 	server, _ := upstreamServer(t)
 	recorder := metrics.New()
 	route := proxyRoute(t, "ep_1", "kimi-k3", "dep_1", "ap", server.URL)
-	handler := New(Config{Metrics: recorder, Router: stubResolver{routes: aliased(route, "moonshotai/kimi-k3")}})
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: aliased(route, "moonshotai/kimi-k3")}})
 
 	post(t, handler, `{"model":"moonshotai/kimi-k3"}`)
 
@@ -93,7 +93,7 @@ func TestTheResponseEchoesTheStringTheCallerSent(t *testing.T) {
 	// when the upstream declared no served name of its own.
 	server, _ := upstreamServer(t)
 	route := proxyRoute(t, "ep_1", "kimi-k3", "dep_1", "ap", server.URL)
-	handler := New(Config{Router: stubResolver{routes: aliased(route, "moonshotai/kimi-k3")}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: aliased(route, "moonshotai/kimi-k3")}})
 
 	rec := post(t, handler, `{"model":"moonshotai/kimi-k3","messages":[]}`)
 	var echoed struct {
@@ -109,7 +109,7 @@ func TestTheResponseEchoesTheStringTheCallerSent(t *testing.T) {
 
 func TestTheCatalogNeverListsAnAlias(t *testing.T) {
 	route := routing.NewRoute("kimi-k3", "weighted")
-	handler := New(Config{Router: canonicalsOnly{routes: aliased(route, "moonshotai/kimi-k3"), canonical: []string{"kimi-k3"}}})
+	handler := New(Config{Zone: ZoneInternal, Router: canonicalsOnly{routes: aliased(route, "moonshotai/kimi-k3"), canonical: []string{"kimi-k3"}}})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))

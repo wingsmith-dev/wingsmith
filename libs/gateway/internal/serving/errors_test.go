@@ -21,7 +21,7 @@ func refusalFor(t *testing.T, status int, upstreamBody, callerBody string) (*htt
 		_, _ = w.Write([]byte(upstreamBody))
 	}))
 	t.Cleanup(server.Close)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, server.URL, nil),
 	}}})
 
@@ -303,7 +303,7 @@ func TestAQuotedRefusalNamesTheModelTheCallerAskedFor(t *testing.T) {
 	t.Cleanup(server.Close)
 	route := routeTo(t, server.URL, nil)
 	route.Upstreams[0].ServedModelName = "Qwen/Qwen-Image-2512"
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{"chat": route}}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{"chat": route}}})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions",

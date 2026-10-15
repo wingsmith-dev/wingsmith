@@ -62,6 +62,7 @@ func globexRoute(t *testing.T, address string) routing.Route {
 	t.Helper()
 	route := routeTo(t, address, nil)
 	route.TenantID = "ten_globex"
+	route.Visibility = "public"
 	return route
 }
 
@@ -129,6 +130,7 @@ func TestAnotherTenantsModelIsNotFoundNotForbidden(t *testing.T) {
 	tenants := tenantsFor(t, globex())
 	acmesChat := routeTo(t, server.URL, nil)
 	acmesChat.TenantID = "ten_acme"
+	acmesChat.Visibility = "public"
 	handler := publicHandler(t, map[string]routing.Route{"chat": acmesChat}, tenants)
 
 	rec := httptest.NewRecorder()
@@ -143,6 +145,7 @@ func TestTheCatalogOnThePublicZoneListsOnlyThisTenantsModels(t *testing.T) {
 	tenants := tenantsFor(t, globex())
 	acmesChat := routeTo(t, server.URL, nil)
 	acmesChat.TenantID = "ten_acme"
+	acmesChat.Visibility = "public"
 	handler := publicHandler(t, map[string]routing.Route{
 		"chat":   globexRoute(t, server.URL),
 		"acme-x": acmesChat,
@@ -174,6 +177,7 @@ func TestATenantDeclaringNoAuthIsNotAskedForAKey(t *testing.T) {
 	tenants := tenantsFor(t, open)
 	route := routeTo(t, server.URL, nil)
 	route.TenantID = "ten_open"
+	route.Visibility = "public"
 	handler := publicHandler(t, map[string]routing.Route{"chat": route}, tenants)
 
 	rec := httptest.NewRecorder()
@@ -184,14 +188,13 @@ func TestATenantDeclaringNoAuthIsNotAskedForAKey(t *testing.T) {
 }
 
 func TestTheInternalZoneNeverConsultsTenantsEvenWhenSomeAreConfigured(t *testing.T) {
-	// The exact production shape today: a tenant exists, but Zone is left at
-	// its default (ZoneInternal, since no listener sets it otherwise) and the
-	// caller's Host is whatever Acme's edge happens to send — unrelated
-	// to any tenant's host. This must behave exactly as it did with no
-	// tenancy package at all.
+	// A tenant exists and the caller's Host is whatever the operator's edge
+	// happens to send, unrelated to any tenant's host. The internal zone must
+	// not start requiring tenants or keys.
 	server, _ := upstreamServer(t)
 	tenants := tenantsFor(t, globex())
 	handler := New(Config{
+		Zone:    ZoneInternal,
 		Router:  stubResolver{routes: map[string]routing.Route{"chat": routeTo(t, server.URL, nil)}},
 		Tenants: tenants,
 	})
@@ -201,4 +204,129 @@ func TestTheInternalZoneNeverConsultsTenantsEvenWhenSomeAreConfigured(t *testing
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 — the internal zone must not start requiring tenants or keys", rec.Code)
 	}
+}
+
+func disabled(tenant plane.GatewayTenant) plane.GatewayTenant {
+	tenant.Enabled = false
+	return tenant
+}
+
+func TestADisabledTenantIsRefusedOnThePublicZone(t *testing.T) {
+	server, _ := upstreamServer(t)
+	handler := publicHandler(t, map[string]routing.Route{"chat": globexRoute(t, server.URL)}, tenantsFor(t, disabled(globex())))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "tenant_disabled") {
+		t.Fatalf("status = %d, body = %s, want 403 tenant_disabled", rec.Code, rec.Body)
+	}
+
+	// Without the key it is still the key that is refused: whether a tenant is
+	// enabled is not something an unauthenticated caller gets to learn.
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 before the enabled check", rec.Code)
+	}
+}
+
+// TestADisabledTenantsEndpointIsRefusedOnTheInternalZone is the case that
+// matters most: the internal zone carries the edge's traffic for every tenant,
+// and a routing table that still lists a disabled tenant's endpoint must not
+// keep serving it.
+func TestADisabledTenantsEndpointIsRefusedOnTheInternalZone(t *testing.T) {
+	server, _ := upstreamServer(t)
+	route := globexRoute(t, server.URL)
+	route.Visibility = "private"
+
+	for _, test := range []struct {
+		name    string
+		tenants *tenancy.Store
+		status  int
+	}{
+		{name: "enabled", tenants: tenantsFor(t, globex()), status: http.StatusOK},
+		{name: "disabled", tenants: tenantsFor(t, disabled(globex())), status: http.StatusForbidden},
+		{name: "absent from the tenant feed", tenants: tenantsFor(t), status: http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := New(Config{
+				Router:  stubResolver{routes: map[string]routing.Route{"chat": route}},
+				Tenants: test.tenants,
+				Zone:    ZoneInternal,
+			})
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, requestTo("edge", `{"model":"chat"}`))
+			if rec.Code != test.status {
+				t.Fatalf("status = %d, body = %s, want %d", rec.Code, rec.Body, test.status)
+			}
+
+			catalog := httptest.NewRecorder()
+			handler.ServeHTTP(catalog, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
+			listed := strings.Contains(catalog.Body.String(), `"chat"`)
+			if listed != (test.status == http.StatusOK) {
+				t.Fatalf("catalog = %s, listed should be %v", catalog.Body, !listed)
+			}
+		})
+	}
+}
+
+func TestAnEndpointWithNoOwnerIsServedOnTheInternalZone(t *testing.T) {
+	server, _ := upstreamServer(t)
+	handler := New(Config{
+		Router:  stubResolver{routes: map[string]routing.Route{"chat": routeTo(t, server.URL, nil)}},
+		Tenants: tenantsFor(t),
+		Zone:    ZoneInternal,
+	})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, requestTo("edge", `{"model":"chat"}`))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+}
+
+// TestAPrivateEndpointIsNotServedOnThePublicZone pins what `visibility`
+// means: private, the plane's default, is internal-only, and on the public
+// listener it reads as a model that does not exist rather than a refusal.
+func TestAPrivateEndpointIsNotServedOnThePublicZone(t *testing.T) {
+	server, _ := upstreamServer(t)
+	route := globexRoute(t, server.URL)
+	route.Visibility = "private"
+	handler := publicHandler(t, map[string]routing.Route{"chat": route}, tenantsFor(t, globex()))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	req.Host = "globex.hangar.dev"
+	req.Header.Set("Authorization", "Bearer secret-key")
+	catalog := httptest.NewRecorder()
+	handler.ServeHTTP(catalog, req)
+	if strings.Contains(catalog.Body.String(), `"chat"`) {
+		t.Fatalf("catalog lists a private endpoint: %s", catalog.Body)
+	}
+}
+
+func TestATenantWithInternalIngressIsNotServedOnThePublicZone(t *testing.T) {
+	server, _ := upstreamServer(t)
+	tenant := globex()
+	tenant.Ingress = "internal"
+	handler := publicHandler(t, map[string]routing.Route{"chat": globexRoute(t, server.URL)}, tenantsFor(t, tenant))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, requestTo("globex.hangar.dev", `{"model":"chat"}`, "Authorization", "Bearer secret-key"))
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "unknown_host") {
+		t.Fatalf("status = %d, body = %s, want 404 unknown_host", rec.Code, rec.Body)
+	}
+}
+
+func TestAHandlerWithNoZoneIsRefused(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("New accepted a Config with no zone")
+		}
+	}()
+	New(Config{Router: stubResolver{}})
 }

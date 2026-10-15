@@ -449,7 +449,7 @@ func TestDefaultsReachTheUpstream(t *testing.T) {
 	}}
 	open := routeTo(t, server.URL, nil)
 
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"conforming": conforming,
 		"open":       open,
 	}}})
@@ -505,7 +505,7 @@ func TestARouteScopedRefusalDoesNotReachAnotherPathOnTheWire(t *testing.T) {
 
 	route := routeTo(t, server.URL, nil)
 	route.Policy = kimiPolicy()
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{"kimi": route}}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{"kimi": route}}})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, chatRoute,
@@ -888,7 +888,7 @@ func TestADropReachesTheUpstream(t *testing.T) {
 	conforming.Policy = &plane.Policy{Version: 2, Rules: []plane.Rule{
 		{Route: chatRoute, WhenPresent: "thinking.effort", Key: "reasoning_effort", Drop: true},
 	}}
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"conforming": conforming,
 	}}})
 

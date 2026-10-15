@@ -141,3 +141,22 @@ func TestRunResyncStopsWhenItsContextIsCancelled(t *testing.T) {
 		t.Fatal("RunResync did not stop after its context was cancelled")
 	}
 }
+
+func TestEveryTenantIsIndexedByIDWithItsEnabledFlag(t *testing.T) {
+	off := acme()
+	off.Enabled = false
+	source := &stubSource{tables: []plane.TenantTable{{Revision: "1-2", Tenants: []plane.GatewayTenant{globex(), off}}}}
+	store := New(source)
+	if err := store.Load(context.Background()); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	table := store.Current()
+	if tenant, ok := table.TenantByID("ten_globex"); !ok || !tenant.Enabled {
+		t.Fatalf("TenantByID(globex) = %+v, %v", tenant, ok)
+	}
+	// Indexed, not dropped: the serving stages refuse it with a 403 that says
+	// it is disabled, which they can only do if they can find it.
+	if tenant, ok := table.TenantByID("ten_acme"); !ok || tenant.Enabled {
+		t.Fatalf("TenantByID(acme) = %+v, %v, want it found and disabled", tenant, ok)
+	}
+}

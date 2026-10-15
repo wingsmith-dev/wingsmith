@@ -218,7 +218,7 @@ func TestPolicyRejectsBeforeReachingUpstream(t *testing.T) {
 	pinned.Policy = kimiPolicy()
 	open := routeTo(t, server.URL, nil)
 
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"pinned": pinned,
 		"open":   open,
 	}}})
@@ -570,7 +570,7 @@ func TestMalformedDeclarationIsRefusedOnTheWire(t *testing.T) {
 	conforming.Policy = dynamicToolsPolicy()
 	open := routeTo(t, server.URL, nil)
 
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"conforming": conforming,
 		"open":       open,
 	}}})

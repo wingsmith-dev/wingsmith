@@ -52,7 +52,7 @@ func modalityRoute(t *testing.T, name, address, modality string) routing.Route {
 
 func TestAPathTheUpstreamDoesNotAnswerIsRefused(t *testing.T) {
 	server, _ := upstreamServer(t)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat":  modalityRoute(t, "chat", server.URL, ""),
 		"image": modalityRoute(t, "image", server.URL, "image"),
 	}}})
@@ -80,7 +80,7 @@ func TestAPathTheUpstreamDoesNotAnswerIsRefused(t *testing.T) {
 }
 
 func TestTheCatalogReportsWhatEachModelGenerates(t *testing.T) {
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat":  modalityRoute(t, "chat", "http://127.0.0.1:1", ""),
 		"image": modalityRoute(t, "image", "http://127.0.0.1:1", "image"),
 	}}})
@@ -105,7 +105,7 @@ func TestTheCatalogReportsWhatEachModelGenerates(t *testing.T) {
 // this hop keeps video jobs, so the answer is a 404 that says what to call instead.
 func TestRetrievingAVideoJobSaysGenerationIsSynchronous(t *testing.T) {
 	server, seen := steeringUpstream(t)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"wan": modalityRoute(t, "wan", server.URL, "video"),
 	}}})
 

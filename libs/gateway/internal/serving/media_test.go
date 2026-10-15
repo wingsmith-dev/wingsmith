@@ -26,7 +26,7 @@ func mediaCall(t *testing.T, modality, path, request string, status int, respons
 	}))
 	t.Cleanup(server.Close)
 	recorder := metrics.New()
-	handler := New(Config{Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
 		"gen": modalityRoute(t, "gen", server.URL, modality),
 	}}})
 

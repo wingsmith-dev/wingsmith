@@ -34,7 +34,7 @@ func steeringUpstream(t *testing.T) (*httptest.Server, *arrival) {
 
 func sendThrough(t *testing.T, route routing.Route, body string, header http.Header) {
 	t.Helper()
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{"chat": route}}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{"chat": route}}})
 	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
 	for name, values := range header {
 		req.Header[name] = values

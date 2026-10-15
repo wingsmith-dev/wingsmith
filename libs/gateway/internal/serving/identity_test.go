@@ -106,7 +106,7 @@ func TestTheAccessLogNamesTheKeyOnARejectedRequest(t *testing.T) {
 // query that grouped by it.
 func TestTheAccessLogCarriesNoIdentityOnTheInternalZone(t *testing.T) {
 	server, _ := upstreamServer(t)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{"chat": routeTo(t, server.URL, nil)}}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{"chat": routeTo(t, server.URL, nil)}}})
 
 	lines := accessLines(t, func() {
 		rec := httptest.NewRecorder()

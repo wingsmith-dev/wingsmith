@@ -73,12 +73,12 @@ type Config struct {
 	// Ready, when set, gates `GET /readyz`. Nil means always ready, which is
 	// what a gateway whose upstreams all have addresses is.
 	Ready ReadinessChecker
-	// Tenants is the host-to-tenant and hash-to-tenant lookup (docs/decisions/0016).
-	// Nil is safe: with Zone left at its default every stage that reads it is
-	// a no-op regardless.
+	// Tenants is the host-to-tenant, hash-to-tenant and id-to-tenant lookup
+	// (docs/decisions/0016). Required on the public zone. Nil on the internal
+	// zone skips the disabled-tenant check, which only tests should do.
 	Tenants Tenants
-	// Zone says which listener this handler serves. Defaults to ZoneInternal,
-	// which is every listener that exists today.
+	// Zone says which listener this handler serves. Required: there is no
+	// default, so a listener that forgets to say cannot end up unauthenticated.
 	Zone Zone
 	// LogUpstreamBodies writes a discarded upstream error body to the log
 	// whole. Off by default and off in production: an engine's error can quote
@@ -99,6 +99,12 @@ type Config struct {
 // actually carry a request, which for a tunnelled cluster is a per-pod fact that
 // no load balancer can see for itself.
 func New(cfg Config) http.Handler {
+	if !cfg.Zone.valid() {
+		panic("serving: Config.Zone must be ZoneInternal or ZonePublic")
+	}
+	if cfg.Zone == ZonePublic && cfg.Tenants == nil {
+		panic("serving: the public zone needs a tenant table")
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

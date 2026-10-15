@@ -41,24 +41,33 @@ own users happens in front of this hop, exactly as it always has.
 
 ## Tenancy and the two listeners
 
-There is one binary, one routing table, and two listeners over it (docs/decisions/0016). Which one accepted
-a connection is the one fact about a caller nothing it sends can forge, and it is what the trust
-decision rests on — `internal/serving.Zone`.
+There is one binary, one routing table, and two listeners over it (docs/decisions/0016). Which one
+accepted a connection is the one fact about a caller nothing it sends can forge, and it is what the
+trust decision rests on — `internal/serving.Zone`. Every listener states its zone; there is no
+default, so a listener cannot end up unauthenticated by omission.
 
-- **The internal listener** (`-listen` / `HANGAR_GATEWAY_PUBLIC_LISTEN` unset) is a ClusterIP with no
-  ingress. Reaching it at all is the proof; a tenant behind it may declare `auth: none`. An operator's
-  own edge is `internal` + `none` — it authenticates and bills its own users, then calls here, and
-  nothing about that changed.
-- **The public listener** (`HANGAR_GATEWAY_PUBLIC_LISTEN`) sits behind a `*.hangar.example.com` wildcard. A
-  request there is identified by its `Host` header, checked against a key when the tenant declares
-  `auth: api_key`, and scoped to that tenant's own catalog and routing — another tenant's model reads
-  as `404`, never `403`. This is how a tenant reaches the gateway directly instead of through
-  the operator's own inference edge.
+- **The internal listener** (`-listen`, `:8080`) authenticates nobody. Reaching it is the proof; a
+  tenant behind it may declare `auth: none`, and a caller there can reach every enabled tenant's
+  endpoints. An operator's own edge is `internal` + `none`: it authenticates and bills its own users,
+  then calls here.
+- **The public listener** (`HANGAR_GATEWAY_PUBLIC_LISTEN`) sits behind a `*.hangar.example.com`
+  wildcard. A request there is identified by its `Host` header, checked against a key when the tenant
+  declares `auth: api_key`, and scoped to that tenant's own catalog and routing. Another tenant's
+  model reads as `404`, never `403`. Only a tenant whose `ingress` is `public` is served here, and
+  only its endpoints whose `visibility` is `public`; a `private` endpoint, the plane's default, is
+  served on the internal listener alone.
 
-`HANGAR_GATEWAY_TOKEN` and the shared-secret guard it configured are gone. Their job — is this hop
-being called by the system that is supposed to call it — is answered by which listener a caller
-reached, which is a stronger claim than a bearer token ever was: it cannot be copied out of one
-caller's config and pasted into another's.
+**The internal listener needs a NetworkPolicy.** Its trust is the network boundary, and Kubernetes
+has none by default: without a policy, any pod that can reach the gateway can call every tenant's
+models without a key. `deploy/networkpolicy.yaml` is an example that admits the edge to `:8080`,
+the ingress controller to the public listener, agents to the tunnel port and monitoring to
+`:9090`, and denies everything else. Adapt its selectors and apply it with the gateway.
+
+**A disabled tenant gets `403 tenant_disabled`** on both listeners. The gateway checks the tenant
+table itself rather than trusting the routing table to have dropped the tenant's endpoints, because
+the two refresh separately. An endpoint whose owner is missing from the tenant feed is refused the
+same way. On the public listener the check runs after the key check, so an unauthenticated caller
+does not learn whether a tenant is enabled.
 
 ## Configuration
 

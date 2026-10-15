@@ -72,7 +72,7 @@ func routeTo(t *testing.T, address string, headers http.Header) routing.Route {
 
 func TestBodyIsForwardedVerbatim(t *testing.T) {
 	server, _ := upstreamServer(t)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, server.URL, nil),
 	}}})
 
@@ -89,7 +89,7 @@ func TestBodyIsForwardedVerbatim(t *testing.T) {
 }
 
 func TestUnknownModelIsNotFoundAndEmptyRouteIsCapacity(t *testing.T) {
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routing.NewRoute("chat", "weighted"),
 	}}})
 
@@ -109,7 +109,7 @@ func TestUnknownModelIsNotFoundAndEmptyRouteIsCapacity(t *testing.T) {
 }
 
 func TestMalformedRequestsAreRejectedInTheOpenAIShape(t *testing.T) {
-	handler := New(Config{Router: stubResolver{}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{}})
 
 	for _, tc := range []struct {
 		name string
@@ -141,7 +141,7 @@ func TestAtMostFourStopSequencesReachTheEngine(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer server.Close()
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, server.URL, nil),
 	}}})
 
@@ -189,7 +189,7 @@ func errorFrom(t *testing.T, status int, header http.Header, body string) *httpt
 		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(server.Close)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, server.URL, nil),
 	}}})
 
@@ -308,7 +308,7 @@ func TestOnlyForwardedResponseHeadersLeaveTheGateway(t *testing.T) {
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer server.Close()
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, server.URL, nil),
 	}}})
 
@@ -358,7 +358,7 @@ func TestARedirectLeavesHereAsAPath(t *testing.T) {
 // response a caller can read without sending a request, and it used to name this
 // project.
 func TestTheCatalogDoesNotNameWhoRunsIt(t *testing.T) {
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{"chat": {}}}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{"chat": {}}}})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
 
@@ -378,7 +378,7 @@ func TestTheCatalogDoesNotNameWhoRunsIt(t *testing.T) {
 }
 
 func TestModelListIsAnsweredLocally(t *testing.T) {
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": {}, "code": {},
 	}}})
 
@@ -416,7 +416,7 @@ func TestCredentialHeadersAreStampedOnTheOutboundLegOnly(t *testing.T) {
 
 	headers := http.Header{}
 	headers.Set("X-Access-Token", "from-the-mount")
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, server.URL, headers),
 	}}})
 
@@ -433,7 +433,7 @@ func TestModelIsRewrittenToTheNameTheEngineAnswersTo(t *testing.T) {
 	server, _ := upstreamServer(t)
 	route := routeTo(t, server.URL, nil)
 	route.Upstreams[0].ServedModelName = "llama-3-3-70b-instruct-fp8-tp2-32k"
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{"chat": route}}})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{"chat": route}}})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions",
@@ -459,7 +459,7 @@ func TestModelIsRewrittenToTheNameTheEngineAnswersTo(t *testing.T) {
 
 func TestModelIsUntouchedWhenThePlaneNamesNoServedModel(t *testing.T) {
 	server, _ := upstreamServer(t)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, server.URL, nil),
 	}}})
 
@@ -554,7 +554,7 @@ func TestTheResolvedDeploymentIsForwardedAndACallersOwnIsNot(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			seen = nil
-			handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+			handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 				"chat": routeToDeployment(t, server.URL, tc.deployment),
 			}}})
 
@@ -620,7 +620,7 @@ func TestTheGatewaysOwnRefusalsCarryTheRightClass(t *testing.T) {
 		Host: "x.hangar.dev", KeyHashes: []string{keyHash("secret")},
 	})
 	handler := New(Config{
-		Router:  stubResolver{routes: map[string]routing.Route{"chat": {TenantID: "ten_x"}}},
+		Router:  stubResolver{routes: map[string]routing.Route{"chat": {TenantID: "ten_x", Visibility: "public"}}},
 		Tenants: tenants,
 		Zone:    ZonePublic,
 	})
@@ -664,7 +664,7 @@ func TestTheGatewaysOwnRefusalsCarryTheRightClass(t *testing.T) {
 // bodiless POST is a missing model.
 func TestABodilessRequestIsNotRefusedAsInvalidJSON(t *testing.T) {
 	server, _ := upstreamServer(t)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, server.URL, nil),
 	}}})
 

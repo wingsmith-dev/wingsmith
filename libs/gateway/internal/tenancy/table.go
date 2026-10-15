@@ -48,6 +48,7 @@ type Table struct {
 	revision  string
 	byHost    map[string]Tenant
 	byKeyHash map[string]Tenant
+	byID      map[string]Tenant
 }
 
 // TenantByHost resolves the tenant a request's Host header names.
@@ -62,25 +63,37 @@ func (t *Table) TenantByKeyHash(hash string) (Tenant, bool) {
 	return tenant, ok
 }
 
+// TenantByID resolves a tenant by its uid, which is how an endpoint names its
+// owner in the routing table.
+func (t *Table) TenantByID(id string) (Tenant, bool) {
+	tenant, ok := t.byID[id]
+	return tenant, ok
+}
+
 // Revision reports the table's current ETag.
 func (t *Table) Revision() string {
 	return t.revision
 }
 
 func empty() *Table {
-	return &Table{byHost: map[string]Tenant{}, byKeyHash: map[string]Tenant{}}
+	return &Table{byHost: map[string]Tenant{}, byKeyHash: map[string]Tenant{}, byID: map[string]Tenant{}}
 }
 
 // build turns the plane's feed into the two indexes Table serves from.
 //
 // A tenant with no host is skipped from byHost and reachable only by the
-// internal listener, which never consults it — an internal tenant needs no
-// host at all, since the listener itself is the claim.
+// internal listener — an internal tenant needs no host at all, since the
+// listener itself is the claim.
+//
+// A disabled tenant is indexed like any other. Refusing it is the serving
+// stages' job, so a disabled tenant gets a 403 that says so rather than reading
+// as a host or a key nobody has heard of.
 func build(resolved plane.TenantTable) *Table {
 	table := &Table{
 		revision:  resolved.Revision,
 		byHost:    make(map[string]Tenant, len(resolved.Tenants)),
 		byKeyHash: make(map[string]Tenant),
+		byID:      make(map[string]Tenant, len(resolved.Tenants)),
 	}
 	for _, gt := range resolved.Tenants {
 		tenant := Tenant{
@@ -91,6 +104,7 @@ func build(resolved plane.TenantTable) *Table {
 			Auth:    gt.Auth,
 			Host:    gt.Host,
 		}
+		table.byID[gt.ID] = tenant
 		if gt.Host != "" {
 			table.byHost[gt.Host] = tenant
 		}

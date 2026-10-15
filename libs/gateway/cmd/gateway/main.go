@@ -195,11 +195,9 @@ func main() {
 	go router.RunResync(ctx, *resync)
 
 	// Same failure posture as the routing table, and the same reason: coming
-	// up with nothing loaded would mean the tenant and key stages have never
-	// seen a tenant at all. Inert today regardless — Zone stays ZoneInternal
-	// below until a second listener exists to ever set it otherwise
-	// (docs/decisions/0016) — but loaded and refreshing from here on so that the
-	// listener swap is the only thing left to do when it lands.
+	// up with nothing loaded would mean the tenant stages have never seen a
+	// tenant at all, and the internal listener refuses an endpoint whose tenant
+	// it cannot find enabled.
 	tenants := tenancy.New(planeClient)
 	if err := tenants.Load(ctx); err != nil {
 		slog.Error("gateway: could not load the tenant table", "err", err)
@@ -236,10 +234,11 @@ func main() {
 			Tenants: tenants,
 			// Off unless asked for: zero retention of request content.
 			LogUpstreamBodies: *logUpstreamBodies,
-			// Zone is left at its default, ZoneInternal: this is the
-			// ClusterIP port with no ingress, the network boundary that
-			// used to be HANGAR_GATEWAY_TOKEN (docs/decisions/0016). An operator's own
-			// edge dials this one and is trusted by having reached it.
+			// The ClusterIP port with no ingress (docs/decisions/0016). The
+			// operator's own edge dials this one and is trusted by having
+			// reached it, which is only true behind a NetworkPolicy that
+			// admits the edge alone (libs/gateway/deploy/networkpolicy.yaml).
+			Zone: serving.ZoneInternal,
 		}),
 		// No WriteTimeout: it is absolute rather than idle-based, so any value
 		// would sever long generations and SSE streams mid-token.

@@ -66,7 +66,7 @@ func TestReadinessFollowsTheTunnelsThisReplicaHolds(t *testing.T) {
 // exactly what will not produce a tunnel.
 func TestLivenessAnswersWhileReadinessDoesNot(t *testing.T) {
 	readiness := NewReadiness(stubReach{{ClusterID: "clu_ap", Tunnelled: true}}, nil)
-	handler := New(Config{Router: stubResolver{}, Ready: readiness})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{}, Ready: readiness})
 
 	live := httptest.NewRecorder()
 	handler.ServeHTTP(live, httptest.NewRequest(http.MethodGet, "/healthz", nil))
@@ -86,7 +86,7 @@ func TestLivenessAnswersWhileReadinessDoesNot(t *testing.T) {
 
 func TestReadinessIsCountedButNotObservedAsTraffic(t *testing.T) {
 	recorder := metrics.New()
-	handler := New(Config{Router: stubResolver{}, Metrics: recorder, Ready: NewReadiness(stubReach{}, nil)})
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{}, Metrics: recorder, Ready: NewReadiness(stubReach{}, nil)})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))

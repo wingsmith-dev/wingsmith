@@ -55,6 +55,7 @@ func TestARequestTravelsDownARealTunnel(t *testing.T) {
 
 	recorder := metrics.New()
 	handler := New(Config{
+		Zone: ZoneInternal,
 		Router: stubResolver{routes: map[string]routing.Route{
 			"chat": handlerUpstream(t, "ep_1", "chat", "dep_1", "ap",
 				NewClusterHandler(ClusterConfig{ClusterID: "clu_ap", Tunnels: pool})),

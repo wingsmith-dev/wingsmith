@@ -1,0 +1,59 @@
+# Example NetworkPolicy for the gateway. Required, not optional.
+#
+# The internal listener (:8080) authenticates nobody: a caller is trusted for having reached the
+# port, and it can reach every enabled tenant's models. That is only true if the network says so.
+# Without a policy like this one, anything that can reach the pod can call it.
+#
+# Adjust the namespace, the pod labels and the selectors to your install, and keep the shape:
+#
+#   :8080  internal listener   your own inference edge only
+#   :8081  public listener     your ingress controller only (only if HANGAR_GATEWAY_PUBLIC_LISTEN is set)
+#   :8443  tunnel listener     anywhere the cluster agents dial from (they authenticate with an enrolment token)
+#   :9090  /metrics            your monitoring namespace only
+#
+# Everything else is denied, because a pod selected by any Ingress policy only accepts what some
+# policy admits.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hangar-gateway
+  namespace: hangar
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: hangar-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    # The edge that authenticates and bills its own users, then calls the internal listener.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: inference-edge
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: inference-edge
+      ports:
+        - port: 8080
+          protocol: TCP
+    # The public, tenant-identified listener, behind the ingress controller.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - port: 8081
+          protocol: TCP
+    # Cluster agents dial out to the tunnel listener from wherever their clusters are. Narrow the
+    # source if your agents arrive from known addresses (an ipBlock, or the load balancer's range).
+    - ports:
+        - port: 8443
+          protocol: TCP
+    # Prometheus scrape.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - port: 9090
+          protocol: TCP

@@ -150,7 +150,7 @@ func TestTheStandardsCarveOutIsInTheLabelsAndNotInTheStatusCode(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler := New(Config{Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
 		"limited": handlerUpstream(t, "ep_1", "chat", "dep_1", "ap", overLimit),
 		"shed":    handlerUpstream(t, "ep_1", "chat", "dep_1", "ap", shedding),
 		"chat":    handlerUpstream(t, "ep_1", "chat", "dep_1", "ap", fine),
@@ -255,7 +255,7 @@ func TestEveryRefusalThisHopIssuesNamesItsOwnOutcome(t *testing.T) {
 			if tc.resolver != nil {
 				resolver = tc.resolver
 			}
-			handler := New(Config{Metrics: recorder, Router: resolver})
+			handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: resolver})
 
 			post(t, handler, tc.body)
 
@@ -287,7 +287,7 @@ func TestAnUpstreamsOwnAnswerIsClassifiedByWhoseFaultItIs(t *testing.T) {
 			defer upstream.Close()
 
 			recorder := metrics.New()
-			handler := New(Config{Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
+			handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
 				"chat": proxyRoute(t, "ep_1", "chat", "dep_1", "ap", upstream.URL),
 			}}})
 
@@ -356,6 +356,7 @@ func TestProbeTrafficNeedsBothTheHeaderAndTheToken(t *testing.T) {
 	defer upstream.Close()
 
 	handler := New(Config{
+		Zone:    ZoneInternal,
 		Metrics: recorder,
 		Probes:  NewProbeMarker("older-token, newer-token"),
 		Router: stubResolver{routes: map[string]routing.Route{
@@ -384,7 +385,7 @@ func TestWithNoProbeTokenConfiguredEverythingIsLive(t *testing.T) {
 		t.Fatal("an unset probe token must not build a marker")
 	}
 	recorder := metrics.New()
-	handler := New(Config{Metrics: recorder, Router: stubResolver{}})
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{}})
 	post(t, handler, `{"model":"nope"}`, "X-Hangar-Origin", "probe")
 	if got := requests(t, recorder, map[string]string{"origin": "live"}); got != 1 {
 		t.Fatalf("live requests = %v, want 1", got)
@@ -393,7 +394,7 @@ func TestWithNoProbeTokenConfiguredEverythingIsLive(t *testing.T) {
 
 func TestTheKubeletProbeIsNobodysAvailability(t *testing.T) {
 	recorder := metrics.New()
-	handler := New(Config{Metrics: recorder, Router: stubResolver{}})
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{}})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/healthz", nil))
@@ -407,7 +408,7 @@ func TestTheKubeletProbeIsNobodysAvailability(t *testing.T) {
 
 func TestTheModelListIsCountedUnderTheCatalogLabel(t *testing.T) {
 	recorder := metrics.New()
-	handler := New(Config{Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{"chat": {}}}})
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{"chat": {}}}})
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/models", nil))
@@ -425,7 +426,7 @@ func TestTimeToFirstTokenIsOnlyMeasuredWhenAClusterProducedTheBytes(t *testing.T
 	defer upstream.Close()
 
 	recorder := metrics.New()
-	handler := New(Config{Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": proxyRoute(t, "ep_1", "chat", "dep_1", "ap", upstream.URL),
 	}}})
 
@@ -493,7 +494,7 @@ func TestTokensComeFromTheResponseTailAndStreamingStaysStreaming(t *testing.T) {
 			defer upstream.Close()
 
 			recorder := metrics.New()
-			handler := New(Config{Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
+			handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
 				"chat": proxyRoute(t, "ep_1", "chat", "dep_1", "ap", upstream.URL),
 			}}})
 
@@ -539,7 +540,7 @@ func TestTheUsageWindowIsTheTailAndNotTheWholeBody(t *testing.T) {
 	defer upstream.Close()
 
 	recorder := metrics.New()
-	handler := New(Config{Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": proxyRoute(t, "ep_1", "chat", "dep_1", "ap", upstream.URL),
 	}}})
 
@@ -563,7 +564,7 @@ func TestInFlightIsReleasedWhateverHappened(t *testing.T) {
 	defer upstream.Close()
 
 	recorder := metrics.New()
-	handler := New(Config{Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": proxyRoute(t, "ep_1", "chat", "dep_1", "ap", upstream.URL),
 	}}})
 
@@ -582,7 +583,7 @@ func TestTheHandlerWorksWithNoRecorderAtAll(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": proxyRoute(t, "ep_1", "chat", "dep_1", "ap", upstream.URL),
 	}}})
 

@@ -16,7 +16,7 @@ var uuidV4 = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-
 // the id a caller reads off the response is the id on the gateway's line and the id Dynamo logged.
 func TestEveryResponseCarriesTheIdTheAccessLogAndTheClusterSaw(t *testing.T) {
 	server, seen := steeringUpstream(t)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, server.URL, nil),
 	}}})
 
@@ -52,7 +52,7 @@ func TestACallersOwnRequestIdIsHonouredWhenItIsSane(t *testing.T) {
 		{strings.Repeat("a", maxRequestIDLen+1), false},
 	} {
 		server, seen := steeringUpstream(t)
-		handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+		handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 			"chat": routeTo(t, server.URL, nil),
 		}}})
 		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chat"}`))
@@ -76,7 +76,7 @@ func TestACallersOwnRequestIdIsHonouredWhenItIsSane(t *testing.T) {
 // TestAnErrorThisHopWritesItselfCarriesTheId covers the answers that never reach a proxy — a
 // refused body, an unknown model, a cluster that never answered.
 func TestAnErrorThisHopWritesItselfCarriesTheId(t *testing.T) {
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"chat": routeTo(t, "http://127.0.0.1:1", nil),
 	}}})
 	for _, body := range []string{`{`, `{"model":"nope"}`, `{"model":"chat"}`} {

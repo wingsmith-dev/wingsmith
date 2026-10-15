@@ -104,7 +104,7 @@ func fieldsOf(t *testing.T, body []byte, contentType string) (map[string]string,
 
 func TestAMultipartTranscriptionRoutesOnItsModelField(t *testing.T) {
 	server, _, forwarded := recordingUpstream(t)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"whisper": multipartRoute(t, server.URL, ""),
 	}}})
 
@@ -122,7 +122,7 @@ func TestAMultipartTranscriptionRoutesOnItsModelField(t *testing.T) {
 
 func TestAMultipartModelIsRewrittenToTheNameTheEngineAnswersTo(t *testing.T) {
 	server, seen, forwarded := recordingUpstream(t)
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"whisper": multipartRoute(t, server.URL, "openai-whisper-large-v3"),
 	}}})
 
@@ -146,7 +146,7 @@ func TestAMultipartModelIsRewrittenToTheNameTheEngineAnswersTo(t *testing.T) {
 }
 
 func TestAMultipartRequestWithNoModelFieldIsRejectedAsMissingModel(t *testing.T) {
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"whisper": routing.NewRoute("whisper", "weighted"),
 	}}})
 
@@ -163,7 +163,7 @@ func TestAMultipartRequestWithNoModelFieldIsRejectedAsMissingModel(t *testing.T)
 }
 
 func TestAnUnreadableMultipartBodyIsNotReportedAsBadJSON(t *testing.T) {
-	handler := New(Config{Router: stubResolver{routes: map[string]routing.Route{
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{
 		"whisper": routing.NewRoute("whisper", "weighted"),
 	}}})
 
