@@ -16,6 +16,7 @@ from litestar.di import Provide
 from litestar.testing import create_test_client
 
 from app.auth import AuthManager
+from app.config import settings
 from app.core.context import RequestContext
 from app.core.handlers import EXCEPTION_HANDLERS
 from app.core.throttle import FailureBudget
@@ -114,7 +115,8 @@ def test_the_budget_refuses_once_the_window_is_full():
 
 
 @pytest.fixture
-async def svc(sessions):
+async def svc(sessions, monkeypatch):
+    monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "wss://hangar.example/v1/hub/sync")
     async with sessions() as db:
         yield ClusterService(db)
 
@@ -123,8 +125,8 @@ async def svc(sessions):
 async def test_a_valid_token_resolves_to_its_own_cluster(svc):
     alpha = await svc.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
     beta = await svc.create(ClusterCreateRequest(name="beta", region="us-east-1"))
-    alpha_token = (await svc.issue_enrolment_token(alpha.id, host="hangar.example")).enrolment_token
-    beta_token = (await svc.issue_enrolment_token(beta.id, host="hangar.example")).enrolment_token
+    alpha_token = (await svc.issue_enrolment_token(alpha.id)).enrolment_token
+    beta_token = (await svc.issue_enrolment_token(beta.id)).enrolment_token
 
     identity = await svc.verify_tunnel_token(alpha_token)
     assert identity.cluster_id == alpha.id
@@ -136,7 +138,7 @@ async def test_a_valid_token_resolves_to_its_own_cluster(svc):
 @pytest.mark.database
 async def test_a_token_nobody_issued_is_refused(svc):
     created = await svc.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
-    await svc.issue_enrolment_token(created.id, host="hangar.example")
+    await svc.issue_enrolment_token(created.id)
 
     stranger, _ = AuthManager.mint_enrolment_token()
     with pytest.raises(NotAuthorized):
@@ -146,8 +148,8 @@ async def test_a_token_nobody_issued_is_refused(svc):
 @pytest.mark.database
 async def test_the_value_a_rotation_replaced_is_refused(svc):
     created = await svc.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
-    old = (await svc.issue_enrolment_token(created.id, host="hangar.example")).enrolment_token
-    new = (await svc.issue_enrolment_token(created.id, host="hangar.example")).enrolment_token
+    old = (await svc.issue_enrolment_token(created.id)).enrolment_token
+    new = (await svc.issue_enrolment_token(created.id)).enrolment_token
 
     assert (await svc.verify_tunnel_token(new)).cluster_id == created.id
     with pytest.raises(NotAuthorized):
@@ -158,7 +160,7 @@ async def test_the_value_a_rotation_replaced_is_refused(svc):
 async def test_a_disabled_cluster_is_refused_and_costs_nothing(svc):
     """Its retry loop must not spend the budget every other cluster's dials need."""
     created = await svc.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
-    token = (await svc.issue_enrolment_token(created.id, host="hangar.example")).enrolment_token
+    token = (await svc.issue_enrolment_token(created.id)).enrolment_token
     await svc.update(created.id, ClusterUpdateRequest(phase="disabled"))
 
     for _ in range(TUNNEL_AUTH_GUESSES.limit + 1):
@@ -171,7 +173,7 @@ async def test_a_disabled_cluster_is_refused_and_costs_nothing(svc):
 async def test_a_draining_cluster_still_gets_its_tunnel(svc):
     """Draining removes upstreams from the resolution; the tunnel carries what is in flight."""
     created = await svc.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
-    token = (await svc.issue_enrolment_token(created.id, host="hangar.example")).enrolment_token
+    token = (await svc.issue_enrolment_token(created.id)).enrolment_token
     await svc.update(created.id, ClusterUpdateRequest(phase="draining"))
 
     assert (await svc.verify_tunnel_token(token)).cluster_id == created.id

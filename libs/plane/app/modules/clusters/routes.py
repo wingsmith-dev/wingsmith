@@ -1,4 +1,3 @@
-from litestar import Request
 from litestar import Response
 from litestar import Controller
 from litestar import get
@@ -86,19 +85,17 @@ class ClusterRoutes(Controller):
 
     @get("/{ref:str}/setup")
     async def cluster_setup(
-        self, request: Request, context: RequestContext, svc: ClusterService, ref: str
+        self, context: RequestContext, svc: ClusterService, ref: str
     ) -> Response[ClusterSetupSchema]:
-        host = request.headers.get("host", "")
-        return Response(await svc.setup_instructions(ref, host))
+        return Response(await svc.setup_instructions(ref))
 
     @post("/{ref:str}/enrolment-token")
     async def issue_enrolment_token(
-        self, request: Request, context: RequestContext, svc: ClusterService, ref: str
+        self, context: RequestContext, svc: ClusterService, ref: str
     ) -> Response[ClusterSetupSchema]:
         """Mints or rotates the cluster's enrolment token; the plaintext is in
         the response once and never again."""
-        host = request.headers.get("host", "")
-        return Response(await svc.issue_enrolment_token(ref, host))
+        return Response(await svc.issue_enrolment_token(ref))
 
     @post("/tunnel-auth", status_code=200)
     async def verify_tunnel_token(

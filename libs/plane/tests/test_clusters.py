@@ -1,15 +1,20 @@
+import yaml
 import pytest
 
+from app.config import settings
 from app.core.ids import CLUSTER
 from app.core.ids import new_uid
+from app.core.exceptions import Invalid
 from app.modules.clusters.routes import ClusterRoutes
 from app.modules.clusters.schemas import ClusterRollupSchema
 from app.modules.clusters.schemas import ClusterHeadroomSchema
 from app.modules.clusters.services import SetupValues
+from app.modules.clusters.services import ClusterService
 from app.modules.clusters.services import _rollup
 from app.modules.clusters.services import _hub_url
 from app.modules.clusters.services import _setup_values
 from app.modules.clusters.services import _registry_host
+from app.modules.clusters.services import values_filename
 from app.modules.clusters.repository import ClusterRepository
 
 
@@ -32,8 +37,126 @@ def test_setup_endpoints_are_exposed():
     assert {"cluster_setup", "issue_enrolment_token"} <= handlers
 
 
-def test_hub_url_derives_from_request_host_when_unset():
-    assert _hub_url("host:8080") == "wss://host:8080/v1/hub/sync"
+def test_hub_url_is_the_configured_one(monkeypatch):
+    monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "wss://hub.example/v1/hub/sync")
+    monkeypatch.setattr(settings, "PUBLIC_HOST", "elsewhere.example")
+    assert _hub_url() == "wss://hub.example/v1/hub/sync"
+
+
+def test_hub_url_is_refused_when_unset_rather_than_guessed(monkeypatch):
+    """The request's Host header is the caller's to choose, so it is never a fallback."""
+    monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "")
+    monkeypatch.setattr(settings, "PUBLIC_HOST", "hangar.example")
+    with pytest.raises(Invalid) as refused:
+        _hub_url()
+    assert refused.value.detail == {"setting": "HANGAR_HUB_PUBLIC_URL"}
+
+
+def test_hub_url_must_be_a_websocket_url(monkeypatch):
+    monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "https://hub.example")
+    with pytest.raises(Invalid):
+        _hub_url()
+
+
+class FakeClusterRepo:
+    def __init__(self, cluster) -> None:
+        self.cluster = cluster
+
+    async def get(self, ref):
+        return self.cluster
+
+
+class FakeSession:
+    def __init__(self) -> None:
+        self.commits = 0
+
+    async def commit(self):
+        self.commits += 1
+
+    async def refresh(self, row):
+        return None
+
+
+class FakeCluster:
+    def __init__(self, name="alpha", region="eu-west-1", token_hash=None) -> None:
+        self.name = name
+        self.region = region
+        self.token_hash = token_hash
+        self.remote_write_hash = None
+
+
+def setup_service(cluster) -> ClusterService:
+    svc = ClusterService.__new__(ClusterService)
+    svc.db = FakeSession()
+    svc.repo = FakeClusterRepo(cluster)
+    return svc
+
+
+async def test_minting_without_a_hub_url_writes_nothing(monkeypatch):
+    """Refusing after the rotation would strand a working cluster on a dead token."""
+    monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "")
+    cluster = FakeCluster(token_hash="existing")
+    svc = setup_service(cluster)
+    with pytest.raises(Invalid):
+        await svc.issue_enrolment_token("alpha")
+    assert cluster.token_hash == "existing"
+    assert svc.db.commits == 0
+
+
+@pytest.fixture
+def hub(monkeypatch):
+    monkeypatch.setattr(settings, "HUB_PUBLIC_URL", "wss://hub.example/v1/hub/sync")
+    monkeypatch.setattr(settings, "IMAGE_PULL_SECRET_NAME", "registry-pull")
+    monkeypatch.setattr(settings, "IMAGE_PULL_SECRET_USERNAME", "machine-user")
+    monkeypatch.setattr(settings, "IMAGE_PULL_SECRET_TOKEN", "fleet-registry-token")
+    monkeypatch.setattr(settings, "IMAGE_PULL_SECRET_SHARE_TOKEN", False)
+
+
+async def test_the_fleet_registry_token_is_never_on_a_plain_read(hub, monkeypatch):
+    monkeypatch.setattr(settings, "IMAGE_PULL_SECRET_SHARE_TOKEN", True)
+    setup = await setup_service(FakeCluster()).setup_instructions("alpha")
+    assert "fleet-registry-token" not in setup.values_yaml
+    assert yaml.safe_load(setup.values_yaml)["imagePullSecret"]["token"] == ""
+
+
+async def test_the_fleet_registry_token_is_not_shared_at_mint_by_default(hub):
+    """The cluster is asked for a read-only token of its own instead."""
+    setup = await setup_service(FakeCluster()).issue_enrolment_token("alpha")
+    assert "fleet-registry-token" not in setup.values_yaml
+    secret = yaml.safe_load(setup.values_yaml)["imagePullSecret"]
+    assert secret == {
+        "create": True,
+        "name": "registry-pull",
+        "registry": "ghcr.io",
+        "username": "machine-user",
+        "token": "",
+    }
+    assert "read-only token for THIS" in setup.values_yaml
+
+
+async def test_the_fleet_registry_token_is_shared_at_mint_only_when_opted_in(hub, monkeypatch):
+    monkeypatch.setattr(settings, "IMAGE_PULL_SECRET_SHARE_TOKEN", True)
+    setup = await setup_service(FakeCluster()).issue_enrolment_token("alpha")
+    assert yaml.safe_load(setup.values_yaml)["imagePullSecret"]["token"] == "fleet-registry-token"
+
+
+async def test_the_values_file_is_named_after_the_cluster(hub):
+    """A bare values.yaml saved next to the chart overwrites the chart's own."""
+    setup = await setup_service(FakeCluster(name="alpha")).setup_instructions("alpha")
+    assert setup.values_filename == "hangar-alpha-values.yaml"
+    assert "-f hangar-alpha-values.yaml" in setup.helm_command
+    assert "values.yaml" not in setup.helm_command.replace("hangar-alpha-values.yaml", "")
+
+
+async def test_the_helm_command_quotes_a_hostile_cluster_name(hub):
+    """An older row the schema would now refuse still must not add a flag or a command."""
+    setup = await setup_service(FakeCluster(name="x; rm -rf ~")).setup_instructions("x")
+    assert "--kube-context 'x; rm -rf ~'" in setup.helm_command
+    assert "-f 'hangar-x; rm -rf ~-values.yaml'" in setup.helm_command
+
+
+def test_values_filename():
+    assert values_filename("eu-west-1a") == "hangar-eu-west-1a-values.yaml"
 
 
 def values(**overrides) -> SetupValues:
@@ -43,10 +166,38 @@ def values(**overrides) -> SetupValues:
 
 def test_setup_values_carry_identity_and_a_pinned_image():
     out = _setup_values(values(operator_image="ghcr.io/x/operator:sha7"))
-    assert "id: cid" in out
-    assert "hubUrl: wss://h/v1/hub/sync" in out
-    assert "repository: ghcr.io/x/operator" in out
-    assert "tag: sha7" in out
+    parsed = yaml.safe_load(out)
+    assert parsed["cluster"]["id"] == "cid"
+    assert parsed["cluster"]["hubUrl"] == "wss://h/v1/hub/sync"
+    assert parsed["operator"]["image"] == {"repository": "ghcr.io/x/operator", "tag": "sha7"}
+
+
+def test_setup_values_parse_back_to_what_was_filled_in():
+    out = _setup_values(values(gateway="tunnel.example:443", remote_write_url="https://m.example/write"))
+    parsed = yaml.safe_load(out)
+    assert parsed["agent"] == {"enabled": False, "gateway": {"address": "tunnel.example:443"}}
+    assert parsed["monitoring"] == {"enabled": True, "remoteWrite": {"url": "https://m.example/write"}}
+    assert parsed["frontend"] == {"mode": "none"}
+
+
+def test_setup_values_cannot_be_given_extra_keys_by_a_value():
+    """Each value is serialised, never spliced: a newline in a region is a string, not a key."""
+    out = _setup_values(values(region="eu\nreadOnly: true\nevil: 1", cluster_name="cid\n  token: x"))
+    parsed = yaml.safe_load(out)
+    assert parsed["cluster"]["region"] == "eu\nreadOnly: true\nevil: 1"
+    assert parsed["cluster"]["id"] == "cid\n  token: x"
+    assert parsed["cluster"]["readOnly"] is False
+    assert "evil" not in parsed
+
+
+def test_setup_values_keep_a_numeric_looking_tag_a_string():
+    parsed = yaml.safe_load(_setup_values(values(operator_image="ghcr.io/x/operator:1.10")))
+    assert parsed["operator"]["image"]["tag"] == "1.10"
+
+
+def test_setup_values_skip_an_image_with_no_tag():
+    """`registry:5000/operator` has a port, not a tag."""
+    assert "operator:" not in _setup_values(values(operator_image="registry:5000/operator"))
 
 
 def test_setup_values_register_a_cluster_that_reconciles():
@@ -83,26 +234,26 @@ def test_setup_values_fold_in_the_enrolment_token_only_when_given():
     without = _setup_values(values())
     assert "enrolmentToken:" not in without
     with_token = _setup_values(values(enrolment_token="hgro1.secret"))
-    assert "enrolmentToken:" in with_token
-    assert "value: hgro1.secret" in with_token
+    assert yaml.safe_load(with_token)["enrolmentToken"] == {"value": "hgro1.secret"}
 
 
-def test_setup_values_render_a_pull_secret_when_one_is_configured():
-    """Private operator and agent images need a credential, or the install cannot pull."""
+def test_setup_values_render_a_shared_pull_secret_when_one_is_given():
+    """Only reached when the plane opted in to sharing its token, at mint."""
     out = _setup_values(
         values(
-            pull_secret_name="ghcr-pull",
+            pull_secret_name="registry-pull",
             pull_secret_registry="ghcr.io",
             pull_secret_username="machine-user",
-            pull_secret_token="ghp_x",
+            pull_secret_token="tok_x",
         )
     )
-    lines = out.splitlines()
-    assert "imagePullSecret:" in lines
-    assert "  create: true" in lines
-    assert "  name: ghcr-pull" in lines
-    assert "  registry: ghcr.io" in lines
-    assert "  token: ghp_x" in lines
+    assert yaml.safe_load(out)["imagePullSecret"] == {
+        "create": True,
+        "name": "registry-pull",
+        "registry": "ghcr.io",
+        "username": "machine-user",
+        "token": "tok_x",
+    }
 
 
 def test_setup_values_omit_the_pull_secret_when_none_is_configured():
@@ -110,10 +261,18 @@ def test_setup_values_omit_the_pull_secret_when_none_is_configured():
     assert "imagePullSecret" not in _setup_values(values())
 
 
-def test_setup_values_omit_a_half_configured_pull_secret():
-    """A name with no token renders `auth` as the base64 of ":" — an ImagePullBackOff, not a refusal."""
-    assert "imagePullSecret" not in _setup_values(values(pull_secret_name="ghcr-pull"))
-    assert "imagePullSecret" not in _setup_values(values(pull_secret_token="ghp_x"))
+def test_setup_values_leave_a_named_pull_secret_blank_for_the_clusters_own_token():
+    """A name with no token is the default private-image setup, not a half-configured one."""
+    out = _setup_values(values(pull_secret_name="registry-pull", pull_secret_registry="ghcr.io"))
+    lines = out.splitlines()
+    secret = yaml.safe_load(out)["imagePullSecret"]
+    assert secret["create"] is True
+    assert secret["token"] == ""
+    assert lines.index("imagePullSecret:") > next(i for i, line in enumerate(lines) if "Edit below" in line)
+
+
+def test_setup_values_never_render_a_token_without_a_name():
+    assert "imagePullSecret" not in _setup_values(values(pull_secret_token="tok_x"))
 
 
 def test_setup_values_carry_the_region_inside_the_single_cluster_mapping():
@@ -128,16 +287,15 @@ def test_setup_values_carry_the_region_inside_the_single_cluster_mapping():
 def test_setup_values_enable_monitoring_with_the_configured_url():
     out = _setup_values(values(remote_write_url="https://metrics.example/api/v1/write"))
     assert "monitoring:" in out
-    assert "  enabled: true" in out
-    assert "  remoteWrite:" in out
-    assert "    url: https://metrics.example/api/v1/write" in out
+    assert yaml.safe_load(out)["monitoring"] == {
+        "enabled": True,
+        "remoteWrite": {"url": "https://metrics.example/api/v1/write"},
+    }
 
 
 def test_setup_values_disable_monitoring_when_no_url_is_configured():
     out = _setup_values(values())
-    assert "monitoring:" in out
-    assert "  enabled: false" in out
-    assert "remoteWrite:" not in out
+    assert yaml.safe_load(out)["monitoring"] == {"enabled": False}
 
 
 def test_setup_values_never_render_a_remote_write_credential():
@@ -171,7 +329,7 @@ def test_setup_values_leave_the_gateway_blank_in_the_nested_shape():
     """A flat `gateway: ""` is a string where the chart has a map — Helm refuses it outright."""
     out = _setup_values(values())
     assert "  gateway:" in out.splitlines()
-    assert '    address: ""' in out
+    assert yaml.safe_load(out)["agent"]["gateway"] == {"address": ""}
 
 
 def test_setup_values_pin_the_agent_image_only_alongside_a_gateway():

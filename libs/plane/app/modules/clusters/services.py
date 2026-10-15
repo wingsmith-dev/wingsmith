@@ -1,9 +1,12 @@
 import hmac
+import shlex
 import datetime as dt
 
 from uuid import UUID
 from typing import NoReturn
 from logging import getLogger
+
+import yaml
 
 from msgspec import UNSET
 from sqlalchemy.exc import IntegrityError
@@ -175,17 +178,27 @@ def _rollup(cluster_uid: str, row: dict | None) -> ClusterRollupSchema:
     )
 
 
-def _hub_url(host: str) -> str:
+def _hub_url() -> str:
     """The `wss://` URL the operator dials, written into the setup values.
 
-    An explicit `HUB_PUBLIC_URL` wins; otherwise `wss://{PUBLIC_HOST or host}` +
-    the hub path, so a command rendered behind a port-forward still names the real
-    origin while local and tests fall back to the request host.
+    Only ever `HUB_PUBLIC_URL`. It used to fall back to the `Host` header of the
+    request asking for the setup, which let whoever could reach the API with a
+    forged header decide where a new cluster's operator sends its enrolment
+    token. A plane that has not said where its hub is gets a refusal naming the
+    setting instead of a guess, and the refusal comes before anything is minted.
     """
-    if settings.HUB_PUBLIC_URL:
-        return settings.HUB_PUBLIC_URL
-    public = settings.PUBLIC_HOST or host
-    return f"wss://{public}{settings.HUB_PATH}"
+    url = settings.HUB_PUBLIC_URL.strip()
+    if not url:
+        raise Invalid(
+            "this plane has no public hub URL; set HANGAR_HUB_PUBLIC_URL to the wss:// address clusters dial",
+            {"setting": "HANGAR_HUB_PUBLIC_URL"},
+        )
+    if not url.startswith(("wss://", "ws://")):
+        raise Invalid(
+            "HANGAR_HUB_PUBLIC_URL must be a ws:// or wss:// URL",
+            {"setting": "HANGAR_HUB_PUBLIC_URL"},
+        )
+    return url
 
 
 def _registry_host(chart_ref: str) -> str:
@@ -196,14 +209,28 @@ def _registry_host(chart_ref: str) -> str:
     return chart_ref.removeprefix("oci://").split("/", 1)[0]
 
 
-class SetupValues(Struct):
-    """Everything the plane fills into a cluster's `values.yaml`.
+def values_filename(cluster_name: str) -> str:
+    """What the console saves the values as and the helm command reads.
 
-    A struct rather than five positional arguments, and the fields are exactly the
-    plane's half of the contract with the chart. Notably absent: any credential
-    for the metrics write ingress. The chart derives the basicAuth password from
-    the enrolment-token Secret it already creates, so username and password are
-    the chart's business and never travel through this file (ADR 0012).
+    Named after the cluster so it neither overwrites the chart's own
+    `values.yaml` when saved next to it nor gets mistaken for another cluster's.
+    """
+    return f"hangar-{cluster_name}-values.yaml"
+
+
+class SetupValues(Struct):
+    """Everything the plane fills into a cluster's values file.
+
+    A struct rather than a dozen positional arguments, and the fields are exactly
+    the plane's half of the contract with the chart. Notably absent: any
+    credential for the metrics write ingress. The chart derives the basicAuth
+    password from the enrolment-token Secret it already creates, so username and
+    password are the chart's business and never travel through this file (ADR 0012).
+
+    `pull_secret_token` is empty unless the plane is explicitly configured to
+    share its own registry token (`IMAGE_PULL_SECRET_SHARE_TOKEN`) and this is a
+    mint; otherwise a named pull secret is rendered as a blank for the cluster's
+    own read-only token.
     """
 
     cluster_name: str
@@ -220,25 +247,40 @@ class SetupValues(Struct):
     pull_secret_token: str = ""
 
 
+def _dump(mapping: dict) -> list[str]:
+    """One top-level block, serialised. Every value goes through here and never
+    through string formatting, so a name or a region cannot add a key."""
+    return yaml.safe_dump(mapping, sort_keys=False, default_flow_style=False, width=1_000_000).splitlines()
+
+
+def _image(reference: str) -> dict | None:
+    repository, _, tag = reference.rpartition(":")
+    if not (repository and tag) or "/" in tag:
+        return None
+    return {"repository": repository, "tag": tag}
+
+
 def _setup_values(values: SetupValues) -> str:
-    """The full editable `values.yaml` for the chart, as YAML text.
+    """The full editable values file for the chart, as YAML text.
 
     The top block is filled by the plane — cluster identity, `region`, `readOnly`,
     the pinned operator image, and (at mint only) the enrolment token. `region` and
     `readOnly` sit there rather than below the divider because they must share the
     one `cluster:` key; a second mapping would silently shadow the identity it
     carries. Below a divider is the cluster's own infra facts left blank with a
-    one-line comment each: pool labels, the RWX storage class, the HF token,
-    serving. The operator downloads this one file, edits the blanks, and runs
-    helm against it — no separate local values file and no need to know the
-    chart's schema. The chart refuses an install with any of those blanks still
-    empty, so a half-edited file fails at `helm upgrade` rather than at the pod.
+    comment each: pool labels, the RWX storage class, the HF token, serving, and
+    the registry token when the images are private. The operator downloads this
+    one file, edits the blanks, and runs helm against it. The chart refuses an
+    install with any of those blanks still empty, so a half-edited file fails at
+    `helm upgrade` rather than at the pod.
+
+    Each block is a dict passed through `yaml.safe_dump`; only the comments
+    between blocks are literal text.
 
     The HF token is the one blank that is opt-in rather than required: whether a
     cluster needs one depends on which models land there, and the operator mounts
     `hf-token-secret` with `Optional: true` in all three of its renders. So
-    `create` is emitted false — asking for the secret is what makes the token
-    mandatory, and a cluster serving open weights never has to think about it.
+    `create` is emitted false.
 
     The operator image is pinned from `OPERATOR_IMAGE` when set so an install
     records what it ran; unset leaves the chart's own appVersion. When
@@ -249,104 +291,89 @@ def _setup_values(values: SetupValues) -> str:
 
     The `agent:` block is plane-filled when `TUNNEL_GATEWAY` is configured,
     because the gateway's address is a fact about the plane's own deployment and
-    not about the cluster: rendering it is the difference between an operator
-    flipping two booleans and an operator having to ask somebody which hostname to
-    dial. One address and not a list of replicas, so that scaling the gateway
-    never reaches this file. It is still emitted off, because the chart refuses
-    an agent with no frontend to forward to, and the frontend cannot go on in a
-    first install — its CRD is applied at runtime by the Dynamo operator. With none
-    configured it falls below the divider as a blank with an example, so a plane
-    whose gateway is not reachable from outside yet still renders values that
-    install.
+    not about the cluster. One address and not a list of replicas, so that
+    scaling the gateway never reaches this file. It is still emitted off, because
+    the chart refuses an agent with no frontend to forward to, and the frontend
+    cannot go on in a first install — its CRD is applied at runtime by the Dynamo
+    operator. With none configured it falls below the divider as a blank.
 
-    The monitoring block is what makes telemetry work with no per-cluster step:
-    `enabled` plus the fleet's one write endpoint, and nothing else. When no
-    endpoint is configured it renders `enabled: false` with no url, because the
-    chart refuses to render an enabled agent without one — a deployment that has
-    no central store still gets installable values.
+    The monitoring block is `enabled` plus the fleet's one write endpoint, and
+    nothing else. When no endpoint is configured it renders `enabled: false`
+    with no url, because the chart refuses an enabled agent without one.
     """
     lines = [
-        "# Filled by the plane — cluster identity. Leave as-is, except `readOnly`.",
-        "cluster:",
-        f"  id: {values.cluster_name}",
-        f"  hubUrl: {values.hub_url}",
-        f"  region: {values.region}",
-        "  # Whether the operator may act on what the plane declares. False is the",
-        "  # working setting: the cluster was registered to be managed, and nothing is",
-        "  # declared on a cluster nobody has placed anything on yet, so installing",
-        "  # inert buys no safety and costs a silent stall — a read-only operator",
-        "  # enrols, reports, stays healthy, and quietly applies nothing. Set true to",
-        "  # park a cluster as an observer; the plane will say so on its sync card.",
-        "  readOnly: false",
-        "  allowedOperations: benchmark",
+        "# Filled by the plane: cluster identity. Leave as-is, except `readOnly`.",
+        "#",
+        "# `readOnly` is whether the operator may act on what the plane declares. False",
+        "# is the working setting: a read-only operator enrols, reports, stays healthy",
+        "# and quietly applies nothing. Set true to park a cluster as an observer; the",
+        "# plane will say so on its sync card.",
+        *_dump(
+            {
+                "cluster": {
+                    "id": values.cluster_name,
+                    "hubUrl": values.hub_url,
+                    "region": values.region,
+                    "readOnly": False,
+                    "allowedOperations": "benchmark",
+                }
+            }
+        ),
     ]
-    if values.operator_image:
-        repository, _, tag = values.operator_image.rpartition(":")
-        if repository and tag:
-            lines += [
-                "operator:",
-                "  image:",
-                f"    repository: {repository}",
-                f"    tag: {tag}",
-            ]
+    operator_image = _image(values.operator_image) if values.operator_image else None
+    if operator_image:
+        lines += _dump({"operator": {"image": operator_image}})
     if values.gateway:
+        agent: dict = {"enabled": False, "gateway": {"address": values.gateway}}
+        agent_image = _image(values.agent_image) if values.agent_image else None
+        if agent_image:
+            agent["image"] = agent_image
         lines += [
             "",
             "# How inference reaches this cluster. The agent dials out to the address below",
-            "# and nothing dials in, so there is no port to open and no name to publish",
-            "# here. One address however many gateway replicas the plane runs: each",
-            "# handshake says how many there are, and the agent redials until it holds a",
-            "# tunnel to every one. So this never has to change when the gateway scales.",
+            "# and nothing dials in, so there is no port to open here. One address however",
+            "# many gateway replicas the plane runs: each handshake says how many there",
+            "# are, and the agent redials until it holds a tunnel to every one.",
             "#",
             "# Off, because the agent has nothing to forward to yet. It proxies every",
-            "# request to a Dynamo frontend in this cluster, and a frontend is a",
-            "# DynamoGraphDeployment whose CRD the Dynamo operator only applies at runtime",
-            "# — so no frontend can go on in the first install, and the chart refuses an",
-            "# agent without one. Install once as rendered, then upgrade with",
-            "# `agent.enabled: true` and `frontend.mode` set, to start serving.",
-            "agent:",
-            "  enabled: false",
-            "  gateway:",
-            f"    address: {values.gateway}",
+            "# request to a Dynamo frontend in this cluster, whose CRD the Dynamo operator",
+            "# only applies at runtime, so no frontend can go on in the first install and",
+            "# the chart refuses an agent without one. Install once as rendered, then",
+            "# upgrade with `agent.enabled: true` and `frontend.mode` set, to start serving.",
+            *_dump({"agent": agent}),
         ]
-        if values.agent_image:
-            repository, _, tag = values.agent_image.rpartition(":")
-            if repository and tag:
-                lines += [
-                    "  image:",
-                    f"    repository: {repository}",
-                    f"    tag: {tag}",
-                ]
     if values.pull_secret_name and values.pull_secret_token:
         lines += [
             "",
-            "# The credential the operator and agent ServiceAccounts present to their",
-            "# registry, because those two images are not public. One credential for the",
-            "# whole fleet, not one per cluster, so rotating it is a helm upgrade",
-            "# everywhere — the cost of keeping the images private.",
-            "imagePullSecret:",
-            "  create: true",
-            f"  name: {values.pull_secret_name}",
-            f"  registry: {values.pull_secret_registry}",
-            f"  username: {values.pull_secret_username}",
-            f"  token: {values.pull_secret_token}",
+            "# The registry credential this plane is configured to share with every",
+            "# cluster (HANGAR_IMAGE_PULL_SECRET_SHARE_TOKEN). Shown at mint only.",
+            "# Prefer replacing it with a read-only token issued for this cluster alone.",
+            *_dump(
+                {
+                    "imagePullSecret": {
+                        "create": True,
+                        "name": values.pull_secret_name,
+                        "registry": values.pull_secret_registry,
+                        "username": values.pull_secret_username,
+                        "token": values.pull_secret_token,
+                    }
+                }
+            ),
         ]
     if values.enrolment_token:
         lines += [
             "",
-            "# Minted for this cluster and shown once. The chart creates the operator Secret from it.",
-            "enrolmentToken:",
-            f"  value: {values.enrolment_token}",
+            "# This cluster's own enrolment token, minted for it and shown once. The chart",
+            "# creates the operator Secret from it. The hub opens a session only for a",
+            "# per-cluster enrolment token, so no other credential belongs here.",
+            *_dump({"enrolmentToken": {"value": values.enrolment_token}}),
         ]
     if values.remote_write_url:
         lines += [
             "",
             "# Telemetry. The agent scrapes DCGM and Dynamo here and pushes to the central",
             "# store; the credential is the enrolment token, which the chart already holds.",
-            "monitoring:",
-            "  enabled: true",
-            "  remoteWrite:",
-            f"    url: {values.remote_write_url}",
+            *_dump({"monitoring": {"enabled": True, "remoteWrite": {"url": values.remote_write_url}}}),
         ]
     else:
         lines += [
@@ -354,8 +381,7 @@ def _setup_values(values: SetupValues) -> str:
             "# Telemetry is off: this plane has no central metrics store configured",
             "# (HANGAR_METRICS_REMOTE_WRITE_URL), and an agent with nowhere to push",
             "# would scrape the cluster and discard every sample.",
-            "monitoring:",
-            "  enabled: false",
+            *_dump({"monitoring": {"enabled": False}}),
         ]
     lines += [
         "",
@@ -365,67 +391,72 @@ def _setup_values(values: SetupValues) -> str:
         "#",
         "#   per-model  one frontend per model, on that model's own image, rendered by",
         "#              the operator into the model's own graph. The default, and what a",
-        "#              cluster ends on — a frontier model's runtime stops being a",
-        "#              fleet-wide lowest common denominator.",
+        "#              cluster ends on.",
         "#   shared     one frontend for the cluster; every model must be servable by",
         "#              its single image.",
         "#   none       no frontend. Required for THIS first install, whichever topology",
         "#              you want: the CRD is not registered until the Dynamo operator",
         "#              this install brings up has run once.",
         "#",
-        "# Left at none below for that reason. Set it on the upgrade that turns the",
+        "# Left at none for that reason; set per-model on the upgrade that turns the",
         "# agent on. Changing it later, once models are running, is not a config change:",
         "# every graph is deleted and re-rendered and every model reloads its weights.",
-        "frontend:",
-        "  mode: none   # per-model on the next upgrade",
+        *_dump({"frontend": {"mode": "none"}}),
         "",
-        "# How this cluster labels its node pools. `cacheValue` must name a pool that",
-        "# exists, or the model-prefetch jobs stay Pending.",
-        "pools:",
-        '  labelKey: ""     # e.g. example.com/pool',
-        '  gpuValue: ""     # the pool holding the GPU nodes, e.g. gpu',
-        '  cacheValue: ""   # the pool prefetch jobs run on, e.g. system',
+        "# How this cluster labels its node pools, e.g. labelKey example.com/pool,",
+        "# gpuValue gpu (the pool holding the GPU nodes), cacheValue system (the pool",
+        "# prefetch jobs run on). `cacheValue` must name a pool that exists, or the",
+        "# model-prefetch jobs stay Pending.",
+        *_dump({"pools": {"labelKey": "", "gpuValue": "", "cacheValue": ""}}),
         "",
-        "# The shared model-weight cache. Must be a ReadWriteMany class (a default",
-        "# class is usually RWO and breaks the shared mount) — e.g. an EFS-backed one.",
-        "modelCache:",
-        '  storageClass: ""   # e.g. efs-models',
-        "  accessMode: ReadWriteMany",
-        "  size: 500Gi",
+        "# The shared model-weight cache. Must be a ReadWriteMany class, e.g. an",
+        "# EFS-backed one: a default class is usually RWO and breaks the shared mount.",
+        *_dump({"modelCache": {"storageClass": "", "accessMode": "ReadWriteMany", "size": "500Gi"}}),
         "",
         "# Hugging Face token, only for gated weights. The operator mounts",
         "# hf-token-secret optionally, so leaving this off costs nothing until a model",
-        "# needs it — flip `create` and fill `value` then.",
-        "hfToken:",
-        "  create: false",
-        '  value: ""   # a Hugging Face token',
+        "# needs it; flip `create` and fill `value` then.",
+        *_dump({"hfToken": {"create": False, "value": ""}}),
     ]
+    if values.pull_secret_name and not values.pull_secret_token:
+        lines += [
+            "",
+            "# The operator and agent images are private. Issue a read-only token for THIS",
+            "# cluster (pull access to those packages and nothing else, with an expiry)",
+            "# and fill it in: one token per cluster means a leaked one is revoked without",
+            "# touching the rest of the fleet. The chart refuses an install with it blank.",
+            *_dump(
+                {
+                    "imagePullSecret": {
+                        "create": True,
+                        "name": values.pull_secret_name,
+                        "registry": values.pull_secret_registry,
+                        "username": values.pull_secret_username,
+                        "token": "",
+                    }
+                }
+            ),
+        ]
     if not values.gateway:
         lines += [
             "",
             "# How inference reaches this cluster. The agent dials out to the plane's",
-            "# gateway and nothing dials in, so there is nothing to open here — but a",
-            "# cluster with no agent serves nothing, however much is declared on it. This",
-            "# plane has no gateway address configured (HANGAR_TUNNEL_GATEWAY), so it has",
-            "# to be filled in by hand; ask for it rather than guessing, because a wrong",
-            "# one is a tunnel that never establishes.",
+            "# gateway and nothing dials in, so there is nothing to open here, but a",
+            "# cluster with no agent serves nothing. This plane has no gateway address",
+            "# configured (HANGAR_TUNNEL_GATEWAY), so fill it in by hand as host:port,",
+            "# e.g. hangar.example.com:443; ask for it rather than guessing, because a",
+            "# wrong one is a tunnel that never establishes.",
             "#",
-            "# One address, not a list of replicas: the gateway reports how many it runs in",
-            "# the handshake and the agent finds them all from this one name. Enable it",
-            "# together with `frontend.mode` on a later upgrade — the chart refuses an",
-            "# agent with no frontend to forward to, and no frontend can go on in the",
-            "# first install because its CRD is applied at runtime.",
-            "agent:",
-            "  enabled: false",
-            "  gateway:",
-            '    address: ""   # e.g. hangar.example.com:443',
+            "# Enable it together with `frontend.mode` on a later upgrade: the chart",
+            "# refuses an agent with no frontend to forward to, and no frontend can go on",
+            "# in the first install because its CRD is applied at runtime.",
+            *_dump({"agent": {"enabled": False, "gateway": {"address": ""}}}),
         ]
     lines += [
         "",
         "# Serving ingress. Leave disabled until a Dynamo frontend Service exists to",
         "# point the IngressRoute at; the plane can render it later from ClusterServing.",
-        "serving:",
-        "  enabled: false",
+        *_dump({"serving": {"enabled": False}}),
     ]
     return "\n".join(lines) + "\n"
 
@@ -473,30 +504,36 @@ class ClusterService:
             raise NotFound(f"no cluster {ref!r}")
         return self.schema(cluster)
 
-    def _render_setup(self, cluster: Cluster, host: str, enrolment_token: str | None) -> ClusterSetupSchema:
+    def _render_setup(self, cluster: Cluster, hub_url: str, enrolment_token: str | None) -> ClusterSetupSchema:
         """Builds the setup payload for a cluster, with or without a fresh token.
 
-        The `values.yaml` carries the plane-filled identity — cluster id, hub
-        URL, region, operator image, and the fleet's one metrics write endpoint
-        — plus a commented skeleton of the cluster's own
-        infra facts (pool labels, storage class, HF token, serving) for the
-        operator to edit in place. It is one downloadable file, not a merge.
-        Helm pulls the chart from its own registry, so the instructions work
-        even where the plane's ingress is not reachable from the operator's laptop.
+        The values file carries the plane-filled identity — cluster id, hub URL,
+        region, operator image, and the fleet's one metrics write endpoint — plus
+        a commented skeleton of the cluster's own infra facts (pool labels,
+        storage class, HF token, registry token, serving) for the operator to
+        edit in place. It is one downloadable file, not a merge. Helm pulls the
+        chart from its own registry, so the instructions work even where the
+        plane's ingress is not reachable from the operator's laptop.
 
         The command names `--kube-context` after the cluster rather than leaving
-        the target implicit. Omitted, helm installs a tier-2 — CRDs, webhooks, a
-        privileged DaemonSet — into whatever `kubectl` last pointed at, which is
-        as likely to be the plane's own cluster as the intended one, and nothing
-        about the output says which it was. The cluster's name is a guess at the
-        local context alias, but a wrong guess is `context "…" does not exist`
-        before anything is applied, which is the failure worth having.
+        the target implicit. Omitted, helm installs CRDs, webhooks and a
+        privileged DaemonSet into whatever `kubectl` last pointed at. The
+        cluster's name is a guess at the local context alias, but a wrong guess
+        is `context "…" does not exist` before anything is applied. Every
+        argument is shell-quoted, so a name the schema would refuse today but an
+        older row still carries cannot add a flag or a command.
 
         `enrolment_token` is the freshly minted plaintext (mint only); it is
         folded into the values so the chart creates the operator Secret, and is
         never returned again. `enrolment_token_set` reflects the stored hash.
+
+        The plane's own registry token is never rendered on a plain read. At mint
+        it is rendered only when `IMAGE_PULL_SECRET_SHARE_TOKEN` opts in; by
+        default a named pull secret is a blank the cluster fills with a
+        read-only token of its own, so one cluster's values leaking does not hand
+        out a credential every other cluster depends on.
         """
-        hub_url = _hub_url(host)
+        share_token = bool(enrolment_token) and settings.IMAGE_PULL_SECRET_SHARE_TOKEN
         values_yaml = _setup_values(
             SetupValues(
                 cluster_name=cluster.name,
@@ -510,28 +547,29 @@ class ClusterService:
                 pull_secret_name=settings.IMAGE_PULL_SECRET_NAME,
                 pull_secret_registry=settings.IMAGE_PULL_SECRET_REGISTRY,
                 pull_secret_username=settings.IMAGE_PULL_SECRET_USERNAME,
-                pull_secret_token=settings.IMAGE_PULL_SECRET_TOKEN,
+                pull_secret_token=settings.IMAGE_PULL_SECRET_TOKEN if share_token else "",
             )
         )
 
+        filename = values_filename(cluster.name)
         version = settings.SETUP_CHART_VERSION or None
         parts = [
             "helm upgrade --install hangar-cluster",
-            settings.SETUP_CHART_REF,
+            shlex.quote(settings.SETUP_CHART_REF),
         ]
         if version:
-            parts.append(f"--version {version}")
+            parts.append(f"--version {shlex.quote(version)}")
         parts += [
-            f"--kube-context {cluster.name}",
+            f"--kube-context {shlex.quote(cluster.name)}",
             "--namespace hangar-system --create-namespace",
-            "-f values.yaml",
+            f"-f {shlex.quote(filename)}",
         ]
         helm_command = " \\\n  ".join(parts)
 
         registry_login = None
         registry_login_gh = None
         if settings.SETUP_CHART_PRIVATE:
-            host_ = _registry_host(settings.SETUP_CHART_REF)
+            host_ = shlex.quote(_registry_host(settings.SETUP_CHART_REF))
             registry_login = f"helm registry login {host_}"
             if host_ == "ghcr.io":
                 registry_login_gh = (
@@ -541,6 +579,7 @@ class ClusterService:
         return ClusterSetupSchema(
             helm_command=helm_command,
             values_yaml=values_yaml,
+            values_filename=filename,
             chart_ref=settings.SETUP_CHART_REF,
             chart_version=version,
             registry_login=registry_login,
@@ -549,7 +588,7 @@ class ClusterService:
             enrolment_token_set=cluster.token_hash is not None,
         )
 
-    async def setup_instructions(self, ref: str, host: str) -> ClusterSetupSchema:
+    async def setup_instructions(self, ref: str) -> ClusterSetupSchema:
         """The chart install a person runs to make `ref` hangar-ready (no token).
 
         The enrolment token is minted separately (`issue_enrolment_token`) and
@@ -559,9 +598,9 @@ class ClusterService:
         cluster = await self.repo.get(ref)
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
-        return self._render_setup(cluster, host, enrolment_token=None)
+        return self._render_setup(cluster, _hub_url(), enrolment_token=None)
 
-    async def issue_enrolment_token(self, ref: str, host: str) -> ClusterSetupSchema:
+    async def issue_enrolment_token(self, ref: str) -> ClusterSetupSchema:
         """Mints (or rotates) `ref`'s enrolment token and returns it once.
 
         Stores only hashes; the plaintext is folded into the returned values and
@@ -573,20 +612,23 @@ class ClusterService:
         token up by and compares in constant time; `remote_write_hash` is a
         bcrypt verifier over the same string, which is the only shape Traefik's
         `basicAuth` middleware in front of the central metrics store can check
-        (ADR 0012). Both are written here so rotation stays a single act — a
-        cluster that rotates its token keeps pushing telemetry as soon as the
-        reactor's next pass rewrites the htpasswd.
+        (ADR 0012). Both are written here so rotation stays a single act.
+
+        The hub URL is resolved before anything is written: a plane with no
+        `HUB_PUBLIC_URL` refuses here rather than rotating a working cluster's
+        token and then failing to say where to use the new one.
         """
         cluster = await self.repo.get(ref)
         if cluster is None:
             raise NotFound(f"no cluster {ref!r}")
+        hub_url = _hub_url()
 
         token, token_hash = AuthManager.mint_enrolment_token()
         cluster.token_hash = token_hash
         cluster.remote_write_hash = AuthManager.hash_remote_write_token(token)
         await self.db.commit()
         await self.db.refresh(cluster)
-        return self._render_setup(cluster, host, enrolment_token=token)
+        return self._render_setup(cluster, hub_url, enrolment_token=token)
 
     def _spend_tunnel_guess(self, message: str) -> NoReturn:
         """Charges one failed verification to the budget and refuses.

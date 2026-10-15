@@ -77,9 +77,11 @@ class ClusterSchema(Struct):
 class ClusterSetupSchema(Struct):
     """Everything the register-cluster screen shows to make a cluster ready.
 
-    `values_yaml` is the per-cluster identity block (cluster id, hub URL, operator
-    image), merged by the operator with a local values file carrying the cluster's
-    own infra facts. `registry_login` is the `helm registry login` a private chart
+    `values_yaml` is one editable file: the plane-filled identity (cluster id, hub
+    URL, operator image) on top and the cluster's own infra facts as blanks below.
+    `values_filename` is the name the console saves it under and the helm command
+    reads, `hangar-<cluster>-values.yaml`, so it is never confused with the
+    chart's own `values.yaml`. `registry_login` is the `helm registry login` a private chart
     registry needs before the pull — `None` when the registry serves anonymously.
     `registry_login_gh` is the same login done with an existing `gh` session
     instead of a hand-made token, and is `None` for any registry that is not
@@ -94,6 +96,7 @@ class ClusterSetupSchema(Struct):
 
     helm_command: str
     values_yaml: str
+    values_filename: str
     chart_ref: str
     chart_version: str | None
     registry_login: str | None

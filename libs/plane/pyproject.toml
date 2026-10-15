@@ -20,6 +20,7 @@ dependencies = [
   "click==8.1.8",
   "rich==13.9.4",
   "bcrypt==4.3.0",
+  "pyyaml==6.0.3",
 ]
 
 [project.scripts]

@@ -315,15 +315,16 @@ async def test_a_cluster_registered_with_no_metrics_label_keeps_none(db: AsyncSe
     assert blank.metrics_label is None
 
 
-async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSession) -> None:
+async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSession, monkeypatch) -> None:
+    monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://hangar.example/v1/hub/sync")
     service = ClusterService(db)
     created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
 
-    setup = await service.setup_instructions(created.id, host="hangar.example")
+    setup = await service.setup_instructions(created.id)
     assert setup.enrolment_token is None
     assert setup.enrolment_token_set is False
 
-    issued = await service.issue_enrolment_token(created.id, host="hangar.example")
+    issued = await service.issue_enrolment_token(created.id)
     assert issued.enrolment_token is not None
     assert issued.enrolment_token_set is True
     assert f"value: {issued.enrolment_token}" in issued.values_yaml
@@ -331,39 +332,41 @@ async def test_enrolment_token_is_minted_once_rotated_and_resolvable(db: AsyncSe
     resolved = await service.repo.by_token_hash(AuthManager.hash_enrolment_token(issued.enrolment_token))
     assert resolved is not None and resolved.uid == created.id
 
-    rotated = await service.issue_enrolment_token(created.id, host="hangar.example")
+    rotated = await service.issue_enrolment_token(created.id)
     assert rotated.enrolment_token != issued.enrolment_token
     assert await service.repo.by_token_hash(AuthManager.hash_enrolment_token(issued.enrolment_token)) is None
     assert (
         await service.repo.by_token_hash(AuthManager.hash_enrolment_token(rotated.enrolment_token))
     ).uid == created.id
 
-    later = await service.setup_instructions(created.id, host="hangar.example")
+    later = await service.setup_instructions(created.id)
     assert later.enrolment_token is None
     assert later.enrolment_token_set is True
 
 
 async def test_enrolment_token_also_stores_a_bcrypt_verifier_and_rotation_replaces_both(
     db: AsyncSession,
+    monkeypatch,
 ) -> None:
     """One credential, two hashes: the hub's sha256 and the write ingress's bcrypt.
 
     Rotation must overwrite both or the two drift apart, and a cluster ends up
     authenticating to the hub with one token while pushing telemetry with another.
     """
+    monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://hangar.example/v1/hub/sync")
     service = ClusterService(db)
     created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
 
     row = await service.repo.get(created.id)
     assert row.remote_write_hash is None
 
-    issued = await service.issue_enrolment_token(created.id, host="hangar.example")
+    issued = await service.issue_enrolment_token(created.id)
     row = await service.repo.get(created.id)
     assert row.remote_write_hash is not None
     assert bcrypt.checkpw(issued.enrolment_token.encode(), row.remote_write_hash.encode())
     first = row.remote_write_hash
 
-    rotated = await service.issue_enrolment_token(created.id, host="hangar.example")
+    rotated = await service.issue_enrolment_token(created.id)
     row = await service.repo.get(created.id)
     assert row.remote_write_hash != first
     assert bcrypt.checkpw(rotated.enrolment_token.encode(), row.remote_write_hash.encode())
@@ -382,9 +385,10 @@ async def test_the_hub_resolves_an_enrolment_token_to_its_cluster(db: AsyncSessi
     operator's handshake with an internal error. Going through the hub entry
     point rather than the repository is the whole point of this test.
     """
+    monkeypatch.setattr("app.config.settings.HUB_PUBLIC_URL", "wss://hangar.example/v1/hub/sync")
     service = ClusterService(db)
     created = await service.create(ClusterCreateRequest(name="alpha", region="eu-west-1"))
-    issued = await service.issue_enrolment_token(created.id, host="hangar.example")
+    issued = await service.issue_enrolment_token(created.id)
     assert issued.enrolment_token is not None
 
     engine = create_async_engine(database, poolclass=NullPool)

@@ -260,17 +260,16 @@ class Settings:
     console and the hub can be separate names in front of separate Services, and
     in some deployments they are.
 
-    Used to build the operator's `HANGAR_HUB_URL` in the setup instructions when
-    it is not set explicitly. Empty falls back to the `Host` header of the
-    request being served, which is what a local `port-forward` or a test
-    presents; a deployment sets it so the rendered command names the real origin
-    rather than whatever host the request happened to arrive on.
+    Reported by the config endpoint. The setup values do not derive the hub
+    address from it: they take `HUB_PUBLIC_URL` and nothing else.
     """
 
     HUB_PUBLIC_URL: str = ""
     """The `wss://` URL cluster operators dial, written into the setup values.
-    Empty derives `wss://{PUBLIC_HOST}{HUB_PATH}` (or the request host); set it
-    when the operator-facing URL differs from the request origin.
+
+    Required for cluster setup. Empty refuses to render setup values or mint an
+    enrolment token rather than guessing the address from a request header,
+    which a caller controls.
     """
 
     OPERATOR_IMAGE: str = ""
@@ -299,13 +298,17 @@ class Settings:
     """The registry username. Not a secret, unlike the token beside it."""
 
     IMAGE_PULL_SECRET_TOKEN: str = ""
-    """The registry token, rendered into a cluster's values so the chart can build
-    the Secret. Read-only on packages is all it needs.
+    """The plane's own registry token. Never rendered into a cluster's values
+    unless `IMAGE_PULL_SECRET_SHARE_TOKEN` is set, and then only in the response
+    to an enrolment-token mint, never on a plain read of the setup."""
 
-    Unlike the enrolment token this is one credential shared by the whole fleet
-    rather than one per cluster, so it is held here and not minted per cluster —
-    and rotating it is a `helm upgrade` everywhere, which is the cost of keeping
-    the images private."""
+    IMAGE_PULL_SECRET_SHARE_TOKEN: bool = False
+    """Render `IMAGE_PULL_SECRET_TOKEN` into every cluster's values at mint.
+
+    Off by default. Shared, it is one credential copied into every cluster, and
+    rotating or revoking it is a `helm upgrade` everywhere. Off, a named pull
+    secret is rendered as a blank for a read-only token issued to that cluster
+    alone, which is the recommended setup when the images are private."""
 
     TUNNEL_GATEWAY: str = ""
     """The gateway address a cluster's agent dials, `host:port`, written into the
