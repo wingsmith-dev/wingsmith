@@ -617,3 +617,61 @@ func (timeoutError) Timeout() bool   { return true }
 func (timeoutError) Temporary() bool { return true }
 
 var _ net.Error = timeoutError{}
+
+// TestAReplayedBodyIsCounted drives the GetBody the transport calls when it
+// sends a request again, and expects one replay on the request's series.
+func TestAReplayedBodyIsCounted(t *testing.T) {
+	recorder := metrics.New()
+	replay := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.GetBody == nil {
+			t.Error("the forwarded request is not replayable")
+			return
+		}
+		body, err := r.GetBody()
+		if err != nil {
+			t.Errorf("GetBody: %v", err)
+			return
+		}
+		_ = body.Close()
+		w.WriteHeader(http.StatusOK)
+	})
+	route := routing.NewRoute("chat", "weighted", routing.NewUpstream("ap", 100, true, replay))
+	handler := New(Config{Zone: ZoneInternal, Metrics: recorder,
+		Router: stubResolver{routes: map[string]routing.Route{"chat": route}}})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chat"}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	series := gathered(t, recorder, "hangar_gateway_upstream_replays_total")
+	if len(series) != 1 || series[0].GetCounter().GetValue() != 1 {
+		t.Fatalf("replays = %v, want one series at 1", series)
+	}
+	if labels := seriesLabels(series[0]); labels["endpoint_name"] != "chat" {
+		t.Fatalf("labels = %v, want the request's endpoint", labels)
+	}
+}
+
+// Trace context is the caller's to propagate: the gateway forwards W3C
+// traceparent and tracestate untouched, so a trace started at the edge
+// continues into the cluster.
+func TestTraceContextReachesTheCluster(t *testing.T) {
+	seen := make(chan http.Header, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen <- r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+	handler := New(Config{Zone: ZoneInternal, Router: stubResolver{routes: map[string]routing.Route{"chat": routeTo(t, server.URL, nil)}}})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"chat"}`))
+	req.Header.Set("Traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	req.Header.Set("Tracestate", "vendor=opaque")
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	got := <-seen
+	if got.Get("Traceparent") != "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01" || got.Get("Tracestate") != "vendor=opaque" {
+		t.Fatalf("upstream saw traceparent %q tracestate %q", got.Get("Traceparent"), got.Get("Tracestate"))
+	}
+}

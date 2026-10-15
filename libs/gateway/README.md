@@ -296,6 +296,14 @@ the gateway keeps serving what it has, and that gauge climbing beside
 `hangar_gateway_routing_table_refresh_success` at 0 is exactly the shape of a plane outage seen
 from the data plane.
 
+`hangar_gateway_upstream_replays_total` counts request bodies sent to a cluster a second time
+because the transport retried them, usually when a tunnel or connection went away before the
+request was processed. `hangar_gateway_build_info{version}` names the running build. Per-tunnel
+stream use and the agent's own request metrics are not exported yet.
+
+The gateway does not start or record traces. A caller's `traceparent` and `tracestate` are forwarded
+to the cluster untouched, so a trace started at the edge continues into the serving runtime.
+
 Text usage is the upstream's own `usage` object, read from a 64 KiB tail of the response and
 written as `input_tokens`/`output_tokens` on the `gateway: request` line and
 `hangar_gateway_tokens_total`. Image and video generations have none — Dynamo 1.5.0's image and
@@ -366,6 +374,8 @@ No pricing, and nothing is added to the response body the caller sees.
   `/v1/audio/speech` is forwarded (`forwardedPaths` in `modality.go`), plus `GET /v1/models`, which
   is answered here. Anything else is `404 unsupported_path` before the body is read: an engine
   frontend serves admin, debug and metrics routes too, and none of them are a caller's to reach.
+  That includes vLLM's `/tokenize`, which `vllm bench serve` calls; through the gateway that call
+  gets a 404 and the benchmark carries on with a warning.
   Any non-`POST` to `/v1/videos` or `/v1/videos/*` is a `404 unsupported_path` saying generation is
   synchronous: Dynamo 1.5.0 has no video job store, and `POST /v1/videos` returns the finished video.
 - **A request with no body.** Not parsed as JSON. A bodiless `POST` is `400 missing_model`.

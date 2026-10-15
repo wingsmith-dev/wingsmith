@@ -501,6 +501,7 @@ func stageForward(w http.ResponseWriter, r *http.Request, req *requestState) (*h
 	r.TransferEncoding = nil
 
 	markUpstream(r, req.upstream.DeploymentID, req.upstream.ClusterName)
+	countReplays(r)
 	release := inFlight(r)
 	defer release()
 

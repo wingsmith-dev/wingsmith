@@ -76,6 +76,7 @@ type Recorder struct {
 	tokens      *prometheus.CounterVec
 	generated   *prometheus.CounterVec
 	inFlight    *prometheus.GaugeVec
+	replays     *prometheus.CounterVec
 	upstreamUp  *prometheus.GaugeVec
 
 	tunnels        *prometheus.GaugeVec
@@ -153,6 +154,11 @@ func New(opts ...Option) *Recorder {
 		Help: "Requests currently being proxied to a cluster.",
 	}, routedLabels)
 
+	r.replays = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "hangar_gateway_upstream_replays_total",
+		Help: "Times a request body was sent again to a cluster because the transport retried it, usually after a tunnel or connection went away before the request was processed. A rising rate with a flat error rate is churn the retry absorbed.",
+	}, routedLabels)
+
 	r.upstreamUp = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: "hangar_gateway_upstream_up",
 		Help: "1 when the plane's last table reported this deployment running. The plane's observation, not a probe of our own.",
@@ -211,7 +217,7 @@ func New(opts ...Option) *Recorder {
 
 	r.registry.MustRegister(
 		r.requests, r.duration, r.ttft, r.ttftByInput, r.tokens, r.generated,
-		r.inFlight, r.upstreamUp,
+		r.inFlight, r.replays, r.upstreamUp,
 		r.tunnels, r.tunnelDials, r.tunnelCoverage,
 		r.tableRefreshes, r.tableRefreshOK, r.tableEndpoints, r.tableConfirmUnx, age,
 		r.tunnelCertExpiry, r.buildInfo,
@@ -345,6 +351,11 @@ func (r *Recorder) InFlight(endpoint, endpointName string, origin Origin, deploy
 	gauge := r.inFlight.WithLabelValues(endpoint, endpointName, string(origin), deployment, cluster)
 	gauge.Inc()
 	return gauge.Dec
+}
+
+// UpstreamReplay counts one replay of a request body to a cluster.
+func (r *Recorder) UpstreamReplay(endpoint, endpointName string, origin Origin, deployment, cluster string) {
+	r.replays.WithLabelValues(endpoint, endpointName, string(origin), deployment, cluster).Inc()
 }
 
 // UpstreamSample is one address behind one endpoint, as the last table had it.

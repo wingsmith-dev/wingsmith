@@ -507,6 +507,28 @@ func isProbePath(path string) bool {
 
 // inFlight marks a request as being proxied for as long as it is, and returns
 // the release. A request with no recorder behind it releases nothing.
+// countReplays wraps the request's GetBody so every call to it, which the
+// transport makes only to send the body again, is counted against the request's
+// endpoint and upstream.
+func countReplays(r *http.Request) {
+	obs := observationFrom(r.Context())
+	getBody := r.GetBody
+	if obs == nil || obs.recorder == nil || getBody == nil {
+		return
+	}
+	r.GetBody = func() (io.ReadCloser, error) {
+		obs.mu.Lock()
+		endpoint, name, origin := obs.endpoint, obs.endpointName, obs.origin
+		deployment, cluster := obs.deployment, obs.cluster
+		obs.mu.Unlock()
+		if endpoint == "" {
+			endpoint = metrics.EndpointUnknown
+		}
+		obs.recorder.UpstreamReplay(endpoint, name, origin, deployment, cluster)
+		return getBody()
+	}
+}
+
 func inFlight(r *http.Request) func() {
 	obs := observationFrom(r.Context())
 	if obs == nil || obs.recorder == nil {
