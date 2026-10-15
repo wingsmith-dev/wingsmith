@@ -464,8 +464,8 @@ conformance-test *args:
 chart-sync-crds:
     #!/usr/bin/env bash
     set -euo pipefail
-    cp {{_operator}}/deploy/crd/placeholder.hangar.dev_syncedresources.yaml {{_chart}}/crds/
-    cp {{_operator}}/deploy/crd/sync.hangar.dev_streamcheckpoints.yaml {{_chart}}/crds/
+    cp {{_operator}}/deploy/crd/hangar.dev_syncedresources.yaml {{_chart}}/crds/
+    cp {{_operator}}/deploy/crd/hangar.dev_streamcheckpoints.yaml {{_chart}}/crds/
     echo "synced CRDs into {{_chart}}/crds"
 
 # Subchart tarballs are not vendored; template checks for them regardless of condition, so a
@@ -491,7 +491,9 @@ chart-lint:
     helm template lint "$work/chart" -n hangar-system "${req[@]}" \
       --set hfToken.create=true --set hfToken.value=hf_lint \
       --set serving.enabled=true --set serving.host=lint.example.com \
-      --set serving.clusterIssuer=letsencrypt-dns --set serving.backend.service=frontend >/dev/null
+      --set serving.clusterIssuer=letsencrypt-dns --set serving.backend.service=frontend \
+      --set 'serving.middlewares[0].name=lint-auth' \
+      --set 'networkPolicy.frontendFrom[0].namespaceSelector.matchLabels.kubernetes\.io/metadata\.name=traefik' >/dev/null
     # The frontend and the engine are configured separately, and either can pull a private runtime
     # image. In both cases the credential must be copied from the release namespace into the
     # workload namespace. The key is `frontend.imagePullSecrets` and not `operator.frontend.*`:
@@ -529,7 +531,7 @@ chart-lint:
          --set monitoring.remoteWrite.basicAuth.password=lint)
     helm template lint "$work/chart" -n hangar-system "${req[@]}" "${mon[@]}" "${own[@]}" >/dev/null
     # Off means nothing rendered, not an agent pointed nowhere.
-    if helm template lint "$work/chart" -n hangar-system "${req[@]}" | grep -q 'hangar-metrics-agent'; then
+    if helm template lint "$work/chart" -n hangar-system "${req[@]}" | grep -q '^  name: hangar-metrics-agent$'; then
       echo "the metrics agent renders with monitoring.enabled=false" >&2
       exit 1
     fi
@@ -590,6 +592,7 @@ chart-lint:
       exit 1
     fi
     echo "chart renders, and refuses each empty required value"
+    uv run --no-project --quiet --with pyyaml --with pytest pytest {{_chart}}/tests -q -p no:cacheprovider
 
 # Subcharts (dcgm-exporter, dynamo-platform) pull anonymously; only the push needs a login
 # (`helm registry login`). Chart.yaml's version is the release; a tag overrides appVersion, which
