@@ -3,8 +3,11 @@ package serving
 import (
 	"errors"
 	"io"
+	"net/http"
 	"sync"
 	"time"
+
+	"github.com/hangar-dev/hangar/libs/gateway/internal/metrics"
 )
 
 // bodyLimits is what stageReadBody enforces on one request body.
@@ -26,8 +29,11 @@ var errBudgetSpent = errors.New("gateway buffer budget spent")
 // budget, a body that would take the total past it is refused with 503
 // no_capacity as it arrives, and its bytes are returned at once.
 //
-// It counts bytes as they arrive, not the copies a rewrite of the body makes
-// afterwards, so size the gateway's memory limit at about twice the budget.
+// It counts more than the bytes that arrived. A request also holds, for its
+// whole life, working room equal to its body for the one stage at a time that
+// decodes it, and the latest copy a rewrite made (requestState.setBody). So a
+// request that is rewritten holds about three times its body against the
+// budget, and the budget is close to the request-body memory actually resident.
 type BodyBudget struct {
 	mu    sync.Mutex
 	used  int64
@@ -98,4 +104,38 @@ func (b *budgetReader) Read(p []byte) (int, error) {
 // release returns everything this reader charged. Safe to call more than once.
 func (b *budgetReader) release() {
 	b.once.Do(func() { b.budget.give(b.charged) })
+}
+
+// sameBytes reports whether two slices are the same bytes in memory, which is
+// how a stage that changed nothing hands the body back.
+func sameBytes(a, b []byte) bool {
+	return len(a) == len(b) && (len(a) == 0 || &a[0] == &b[0])
+}
+
+// setBody replaces the request body with a stage's rewrite of it, charging the
+// new copy to the buffer budget. The original stays charged by the reader that
+// buffered it, because the caller's own bytes are kept for error rendering; an
+// earlier rewrite is given back, because nothing holds it once replaced.
+//
+// It returns false, having answered 503, when the copy does not fit.
+func (req *requestState) setBody(w http.ResponseWriter, r *http.Request, next []byte) bool {
+	if sameBytes(next, req.body) {
+		return true
+	}
+	n := int64(len(next))
+	if !req.budget.take(n) {
+		refuseOverBudget(w, r)
+		return false
+	}
+	req.budget.give(req.copyCharge)
+	req.copyCharge = n
+	req.body = next
+	return true
+}
+
+// refuseOverBudget answers a request whose bytes do not fit the buffer budget.
+func refuseOverBudget(w http.ResponseWriter, r *http.Request) {
+	MarkOutcome(r, metrics.OutcomeShed)
+	writeError(w, http.StatusServiceUnavailable, "no_capacity",
+		"The gateway is buffering too many requests. Retry shortly.")
 }

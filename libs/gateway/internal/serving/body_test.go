@@ -41,8 +41,12 @@ func TestTheBodyCapIsConfigurable(t *testing.T) {
 // TestTheBufferBudgetRefusesAndReturnsItsBytes pins both halves: a body that
 // would take the total past the budget is a 503, and every byte charged comes
 // back, whether the request was refused or served.
+//
+// A body is charged twice while it is held, its bytes and the working room the
+// stages decode it in, so the 30-byte body is refused by a 40-byte budget and
+// the 16-byte one fits.
 func TestTheBufferBudgetRefusesAndReturnsItsBytes(t *testing.T) {
-	budget := NewBodyBudget(24)
+	budget := NewBodyBudget(40)
 	handler := chatHandler(t, Config{BodyBudget: budget})
 
 	rec := httptest.NewRecorder()
@@ -105,5 +109,36 @@ func TestAKeptAliveConnectionOutlivesTheWriteDeadline(t *testing.T) {
 			t.Fatalf("request %d: status = %d", i, resp.StatusCode)
 		}
 		time.Sleep(120 * time.Millisecond)
+	}
+}
+
+// TestARewrittenCopyIsChargedToTheBudget pins that the copy a rewrite makes is
+// counted: a body that fits with its working room is refused when the served
+// name rewrite needs a third copy the budget cannot hold, and every byte comes
+// back either way.
+func TestARewrittenCopyIsChargedToTheBudget(t *testing.T) {
+	body := `{"model":"chat","messages":[]}`
+	for _, tc := range []struct {
+		budget int64
+		status int
+	}{
+		{budget: int64(2 * len(body)), status: http.StatusServiceUnavailable},
+		{budget: int64(3*len(body) + 16), status: http.StatusOK},
+	} {
+		server, _ := upstreamServer(t)
+		route := routeTo(t, server.URL, nil)
+		route.Upstreams[0].ServedModelName = "served-name"
+		budget := NewBodyBudget(tc.budget)
+		handler := New(Config{Zone: ZoneInternal, BodyBudget: budget,
+			Router: stubResolver{routes: map[string]routing.Route{"chat": route}}})
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body)))
+		if rec.Code != tc.status {
+			t.Fatalf("budget %d: status = %d, body = %s, want %d", tc.budget, rec.Code, rec.Body, tc.status)
+		}
+		if used := budget.Used(); used != 0 {
+			t.Fatalf("budget %d: %d bytes left charged", tc.budget, used)
+		}
 	}
 }

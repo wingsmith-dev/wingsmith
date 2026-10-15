@@ -100,7 +100,7 @@ caller on the internet can send an unknown `Host`.
 | `HANGAR_GATEWAY_TENANT_RPS` / `HANGAR_GATEWAY_TENANT_BURST` | sustained requests per second one tenant may send to one replica, and the burst above it; unset means no rate limit |
 | `HANGAR_GATEWAY_PUBLIC_ALLOW_NO_AUTH` | `true` serves a public tenant declaring `auth: none`; off by default, so such a tenant gets `401` |
 | `HANGAR_GATEWAY_MAX_BODY_BYTES` | the largest request body accepted, default 100 MiB; a larger one is `413` |
-| `HANGAR_GATEWAY_MAX_BUFFERED_BYTES` | request bytes buffered at once across the replica, default 1000 MiB, `0` for no bound; a body that would pass it is `503 no_capacity`. Rewrites take further copies, so give the pod about twice this in memory |
+| `HANGAR_GATEWAY_MAX_BUFFERED_BYTES` | request-body memory held at once across the replica, default 1000 MiB, `0` for no bound; a request that would pass it is `503 no_capacity`. Each request is charged its body, the same again as working room for the stages that decode it, and the latest rewritten copy, so the limit is close to what is resident; leave the pod headroom above it for everything else |
 | `HANGAR_GATEWAY_READ_HEADER_TIMEOUT` | how long a caller may take to send its headers, default `10s` |
 | `HANGAR_GATEWAY_BODY_READ_TIMEOUT` | how long a caller may take to send its body once the headers are in, default `2m`; a stalled body is `408` |
 | `HANGAR_GATEWAY_WRITE_IDLE_TIMEOUT` | how long one write to the caller may block, default `2m`. Per write, so a long stream that keeps arriving is never cut; a caller that stops reading is |
@@ -262,7 +262,8 @@ The salt is spliced into the bytes that arrived rather than written by re-encodi
 request's `nvext` is the only part decoded (`splicedCacheSalt`). Re-encoding cost about 31 ms on a
 4 MB prompt and splicing about 5 ms, most of it the media check every request already paid
 (`BenchmarkCacheSaltLargeText`). A request carrying media, or a repeated `nvext`, still takes the
-full re-encode.
+full re-encode. The served-name rewrite is spliced the same way. The endpoint's policy terms and the
+media-decode strip still re-encode the top level, but only for a request they actually change.
 
 ## What it measures
 

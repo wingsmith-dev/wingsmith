@@ -36,6 +36,10 @@ type requestState struct {
 	// release is everything a stage holds for the life of the request, run in
 	// reverse once the pipeline returns: a tenant's admission, buffered bytes.
 	release []func()
+	// budget is the buffer budget the body was read under, and copyCharge what
+	// the current rewritten copy of it holds there (setBody).
+	budget     *BodyBudget
+	copyCharge int64
 }
 
 // stage is one step of routing a request to an upstream. It returns the
@@ -161,6 +165,18 @@ func stageReadBody(limits bodyLimits) stage {
 			return r, false
 		}
 		req.release = append(req.release, release)
+		// Working room for the stages that decode the body, one at a time, and
+		// the rewritten copy setBody charges later: see BodyBudget.
+		scratch := int64(len(body))
+		if !limits.budget.take(scratch) {
+			refuseOverBudget(w, r)
+			return r, false
+		}
+		req.budget = limits.budget
+		req.release = append(req.release, func() {
+			limits.budget.give(scratch)
+			limits.budget.give(req.copyCharge)
+		})
 		req.body = body
 		return r, true
 	}
@@ -285,8 +301,7 @@ func stageStripSteeringHints(w http.ResponseWriter, r *http.Request, req *reques
 	if len(removed) > 0 {
 		slog.Debug("gateway: removed caller routing hints", "fields", removed)
 	}
-	req.body = scrubbed
-	return r, true
+	return r, req.setBody(w, r, scrubbed)
 }
 
 // stageCheckPolicy refuses a request the endpoint's own terms do not allow.
@@ -330,8 +345,7 @@ func stageRewritePolicy(w http.ResponseWriter, r *http.Request, req *requestStat
 		writeError(w, http.StatusInternalServerError, "routing_error", "Unable to route this request.")
 		return r, false
 	}
-	req.body = conformed
-	return r, true
+	return r, req.setBody(w, r, conformed)
 }
 
 // stageCacheSalt writes the request's cache identity into `nvext.cache_salt`:
@@ -360,8 +374,7 @@ func stageCacheSalt(w http.ResponseWriter, r *http.Request, req *requestState) (
 	if written {
 		slog.Debug("gateway: wrote the cache salt", "model", req.envelope.Model)
 	}
-	req.body = salted
-	return r, true
+	return r, req.setBody(w, r, salted)
 }
 
 // requestCacheScope is the tenant scope a request's prefix cache is keyed by, or
@@ -430,7 +443,9 @@ func stageRewriteServedModel(w http.ResponseWriter, r *http.Request, req *reques
 		writeError(w, http.StatusInternalServerError, "routing_error", "Unable to route this request.")
 		return r, false
 	}
-	req.body = rewritten
+	if !req.setBody(w, r, rewritten) {
+		return r, false
+	}
 	return withServedName(r, served, req.envelope.Model), true
 }
 

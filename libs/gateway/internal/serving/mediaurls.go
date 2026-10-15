@@ -162,17 +162,27 @@ type mediaPart struct {
 // A `url` anywhere else is not fetched by anything: a citation, a web search
 // result or a tool schema in a conversation's history is text, and refusing it
 // would break a Responses or Messages client replaying its own history.
+//
+// `messages` and `input` are found by scanning the body's top-level keys and
+// walked in place, so a long conversation is not copied to be checked. Every
+// occurrence is walked when a key is repeated, since engines differ on which
+// one wins.
 func mediaRefs(path string, body []byte) []string {
-	var fields map[string]json.RawMessage
-	if json.Unmarshal(body, &fields) != nil {
-		return nil
-	}
 	var refs []string
 	for _, field := range []string{"messages", "input"} {
-		refs = appendPartRefs(refs, fields[field], 0)
+		_, spans, ok := topLevelValues(body, field)
+		if !ok {
+			return nil
+		}
+		for _, at := range spans {
+			refs = appendPartRefs(refs, body[at.start:at.end], 0)
+		}
 	}
 	if topLevelMediaPaths[path] {
-		refs = append(refs, topLevelMediaRefs(fields)...)
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(body, &fields) == nil {
+			refs = append(refs, topLevelMediaRefs(fields)...)
+		}
 	}
 	return refs
 }

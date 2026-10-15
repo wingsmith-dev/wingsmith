@@ -472,6 +472,37 @@ func TestModelIsUntouchedWhenThePlaneNamesNoServedModel(t *testing.T) {
 	}
 }
 
+// The ordinary rewrite splices the one value and keeps every other byte, key
+// order and spacing included.
+func TestWithModelSplicesTheValueInPlace(t *testing.T) {
+	for body, want := range map[string]string{
+		`{"model":"chat","messages":[{"role":"user","content":"model"}]}`: `{"model":"served","messages":[{"role":"user","content":"model"}]}`,
+		`{ "stream" : true , "model" : "chat" }`:                          `{ "stream" : true , "model" : "served" }`,
+		`{"nvext":{"model":"x"},"m\u006fdel":"chat"}`:                     `{"nvext":{"model":"x"},"m\u006fdel":"served"}`,
+		`{"model":"chat","prompt":"\"model\":\"chat\""}`:                  `{"model":"served","prompt":"\"model\":\"chat\""}`,
+	} {
+		out, err := withModel([]byte(body), "served")
+		if err != nil {
+			t.Fatalf("withModel(%s): %v", body, err)
+		}
+		if string(out) != want {
+			t.Errorf("withModel(%s) = %s, want %s", body, out, want)
+		}
+	}
+}
+
+// A repeated model is the one shape the splice leaves to the re-encode, which
+// collapses it to one value.
+func TestWithModelReencodesARepeatedModel(t *testing.T) {
+	out, err := withModel([]byte(`{"model":"a","model":"b"}`), "served")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(out) != `{"model":"served"}` {
+		t.Fatalf("out = %s", out)
+	}
+}
+
 func TestWithModelReplacesOnlyTheModel(t *testing.T) {
 	body := []byte(`{"model":"chat","temperature":0.7,"tools":[{"type":"function"}],"n":2}`)
 	out, err := withModel(body, "llama-tp2")

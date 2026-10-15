@@ -196,24 +196,28 @@ func withRouting(cfg Config) http.Handler {
 }
 
 // withModel returns the body with `model` replaced by the name the engine
-// answers to, leaving every other field exactly as the caller sent it.
+// answers to, leaving every other byte exactly as the caller sent it.
 //
-// Decoded one level deep only. The fields that matter here are large and
-// entirely opaque to this hop — `messages`, `tools`, `response_format` — so they
-// stay as raw bytes and are copied through rather than parsed and rebuilt. That
-// keeps the cost proportional to the number of top-level keys instead of to the
-// size of the conversation, and it means a body using some parameter this
-// gateway has never heard of survives the trip unaltered.
-//
-// Key order is not preserved, because JSON objects are unordered and no engine
-// may depend on it.
+// Spliced rather than re-encoded: the body is scanned once for its top-level
+// keys and the one value is replaced in place, so a long conversation is copied
+// once and never decoded. A body the scan does not take on (`model` repeated,
+// or structure it does not recognise) falls back to decoding one level deep and
+// re-encoding, which keeps the large fields as raw bytes and does not preserve
+// key order; JSON objects are unordered and no engine may depend on it.
 func withModel(body []byte, model string) ([]byte, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil {
-		return nil, err
-	}
 	encoded, err := json.Marshal(model)
 	if err != nil {
+		return nil, err
+	}
+	if _, spans, ok := topLevelValues(body, "model"); ok && len(spans) == 1 {
+		at := spans[0]
+		out := make([]byte, 0, len(body)-(at.end-at.start)+len(encoded))
+		out = append(out, body[:at.start]...)
+		out = append(out, encoded...)
+		return append(out, body[at.end:]...), nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
 		return nil, err
 	}
 	fields["model"] = encoded
@@ -267,9 +271,7 @@ func readBody(w http.ResponseWriter, r *http.Request, limits bodyLimits) ([]byte
 			writeError(w, http.StatusRequestEntityTooLarge, "request_too_large",
 				"Request body exceeds the maximum supported size.")
 		case errors.Is(err, errBudgetSpent):
-			MarkOutcome(r, metrics.OutcomeShed)
-			writeError(w, http.StatusServiceUnavailable, "no_capacity",
-				"The gateway is buffering too many requests. Retry shortly.")
+			refuseOverBudget(w, r)
 		case errors.Is(err, os.ErrDeadlineExceeded):
 			MarkOutcome(r, metrics.OutcomeClientError)
 			writeError(w, http.StatusRequestTimeout, "request_timeout",
