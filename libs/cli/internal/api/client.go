@@ -23,11 +23,14 @@ import (
 
 // Client is the live control plane transport.
 type Client struct {
-	Server  string
-	Token   string
-	Scope   string
-	HTTP    *http.Client
-	Version string
+	Server string
+	Token  string
+	// Project is the configured default project. It is reported by whoami and
+	// used as a listing filter by commands that take one; it is not sent as a
+	// header, because the plane does not scope requests by one.
+	DefaultProject string
+	HTTP           *http.Client
+	Version        string
 
 	// RefreshToken, when set, renews an expired session once: a 401 on any
 	// call outside /v1/auth is answered by trading it for a new pair and
@@ -48,11 +51,11 @@ func NewClient(server, token, project, version string, timeout time.Duration) (*
 		return nil, errs.Wrap(err, errs.CodeUsage, "invalid control plane URL %q", server)
 	}
 	return &Client{
-		Server:  strings.TrimRight(server, "/"),
-		Token:   token,
-		Scope:   project,
-		Version: version,
-		HTTP:    &http.Client{Timeout: timeout},
+		Server:         strings.TrimRight(server, "/"),
+		Token:          token,
+		DefaultProject: project,
+		Version:        version,
+		HTTP:           &http.Client{Timeout: timeout},
 	}, nil
 }
 
@@ -63,7 +66,7 @@ func (c *Client) Simulated() bool { return false }
 // login is scoped to its own serving view — so `/health` is the only thing
 // that can be truthfully asked.
 func (c *Client) Identity(ctx context.Context) (Identity, error) {
-	id := Identity{Server: c.Server, Project: c.Scope, HasToken: c.Token != ""}
+	id := Identity{Server: c.Server, Project: c.DefaultProject, HasToken: c.Token != ""}
 	var health struct {
 		Status bool `json:"status"`
 	}
@@ -737,9 +740,6 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
-	// The configured project is not sent: the plane does not scope requests by
-	// it, and a header that reads as a boundary while enforcing none is worse
-	// than no header (libs/packages/contract/API.md §2).
 	for k, v := range headers {
 		req.Header.Set(k, v)
 	}

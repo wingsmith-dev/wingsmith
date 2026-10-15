@@ -74,8 +74,7 @@ func projectNoun() noun[api.Project] {
 		aliases: []string{"projects"},
 		group:   "binding",
 		short:   "Tenancy — who owns what",
-		long: `A project is the unit quota and priority hang off. It is not a request
-scope: the plane does not filter by project.
+		long: `A project is the unit of tenancy that quota and priority attach to.
 
 Its tenant is embedded rather than linked, so a project always carries the root
 it hangs off; hgr tenant lists them. enabled and effective_enabled are both

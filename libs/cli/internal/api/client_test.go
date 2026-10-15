@@ -67,9 +67,9 @@ func TestALiveClientIsNotSimulated(t *testing.T) {
 	}
 }
 
-// TestEveryRequestCarriesTheCredentialButNoProjectHeader. The plane does not scope requests by
-// project, so sending X-Hangar-Project would read as a boundary that nothing enforces.
-func TestEveryRequestCarriesTheCredentialButNoProjectHeader(t *testing.T) {
+// TestEveryRequestCarriesTheCredential. No project header goes with it: the plane does not
+// scope a request by one, and sending it would suggest that it does.
+func TestEveryRequestCarriesTheCredential(t *testing.T) {
 	var got *http.Request
 	c, _ := serveJSON(t, func(w http.ResponseWriter, r *http.Request) {
 		got = r.Clone(r.Context())
@@ -82,7 +82,7 @@ func TestEveryRequestCarriesTheCredentialButNoProjectHeader(t *testing.T) {
 		t.Errorf("Authorization = %q", h)
 	}
 	if _, present := got.Header["X-Hangar-Project"]; present {
-		t.Error("X-Hangar-Project was sent although the plane does not enforce it")
+		t.Error("the configured project was sent as an X-Hangar-Project header")
 	}
 	if h := got.Header.Get("Accept"); h != "application/json" {
 		t.Errorf("Accept = %q", h)
@@ -110,9 +110,6 @@ func TestAnUnauthenticatedClientSendsNoAuthorizationHeader(t *testing.T) {
 	}
 	if _, present := got.Header["Authorization"]; present {
 		t.Error("an empty token was sent as a bearer credential")
-	}
-	if _, present := got.Header["X-Hangar-Project"]; present {
-		t.Error("an empty project was sent as a scope")
 	}
 }
 

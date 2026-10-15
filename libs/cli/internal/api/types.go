@@ -918,7 +918,6 @@ type ProjectTenant struct {
 	Enabled bool   `json:"enabled"`
 }
 
-// Project is the unit quota and priority hang off. It is not a request scope.
 // Tenant is the billing and isolation root a project hangs off. ProjectCount is
 // on the read shape because the only destructive question anyone asks of a
 // tenant is what deleting it would take with it.
@@ -933,6 +932,7 @@ type Tenant struct {
 	Revision     string     `json:"revision"`
 }
 
+// Project is the tenancy unit quota and priority attach to.
 type Project struct {
 	Tenant               ProjectTenant `json:"tenant"`
 	ID                   string        `json:"id"`
