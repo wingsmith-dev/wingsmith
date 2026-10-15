@@ -11,6 +11,10 @@ case "$mode" in
   hub)
     exec python -m app.hub "$@"
     ;;
+  reactor)
+    # Only for a hub run with HANGAR_REACTOR_ENABLED=false; by default the hub runs the reactor.
+    exec python -m app.reactor "$@"
+    ;;
   migrate)
     exec alembic "$@"
     ;;
