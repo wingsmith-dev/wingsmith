@@ -290,6 +290,19 @@ the wire. Changing it is a chart release, not a values edit.
 Release notes, including anything breaking or deprecated and any CRD you must
 apply by hand, are in [CHANGELOG.md](CHANGELOG.md).
 
+### Upgrading
+
+Run the plane and this chart from the same Hangar release. The hub does not
+check versions when an operator connects yet, so a plane and operator from
+different releases are not refused, only unsupported. To upgrade a cluster:
+
+1. Read the release's entry in the changelog, and apply its CRDs first if it
+   says they changed (see [CRDs](#crds)).
+2. `helm upgrade` with the same values file and the new `--version`. The
+   operator and serving agent move to the new `appVersion` with it.
+3. Leave `operator.image.tag` and `agent.image.tag` empty unless you build your
+   own, so the images follow the chart.
+
 ## CRDs
 
 The chart ships two CRDs in `crds/`, both in the `hangar.dev` API group at
