@@ -15,10 +15,18 @@ Two source trees, one runtime tree:
 
 | Dir | Committed | What |
 |---|---|---|
-| `upstream/` | yes, verbatim | fetched by `vendor.sh`; vLLM's code under Apache-2.0, headers intact |
+| `upstream/` | yes, verbatim | fetched by `vendor.sh`; vLLM's code under Apache-2.0, headers intact, with vLLM's `LICENSE` beside it |
 | `stubs/` | yes | `vllm.{logger,tokenizers,inputs,lora,multimodal,transformers_utils,utils}` — the part that is not reproducible |
 
 The Dockerfile COPYs both into `/bench`, so the split is visible in the repo and invisible at runtime.
+
+## Licence
+
+Everything vendored here is vLLM's, under the Apache License 2.0. The files in `upstream/` are
+unmodified and keep their own SPDX headers; `upstream/LICENSE` is vLLM's licence text at the same
+tag and ships in the image as `/bench/LICENSE`. The stubs, `main.py` and `sweep.py` are reduced or
+adapted versions of vLLM modules and carry an SPDX header saying so. `fakehealth.py` is this
+project's own. The repository's `NOTICE` records the attribution.
 
 ## What the stubs give up
 
@@ -32,11 +40,15 @@ The Dockerfile COPYs both into `/bench`, so the split is visible in the repo and
 ## Build
 
 ```sh
-./vendor.sh                              # fetch upstream/ at the pinned tag
+./vendor.sh                              # only when bumping the tag: re-fetch upstream/
 docker build -t hangar/vllm-bench:0.28.0 .
 ```
 
-`vendor.sh` writes only under `upstream/`. It never touches `stubs/`.
+`vendor.sh` writes only under `upstream/`. It never touches `stubs/`. `hgrbench` builds the image
+itself the first time a plan needs it.
+
+The base image is pinned by digest and every Python package by version in `requirements.txt`, which
+is compiled from `requirements.in`; the command to regenerate it is at the top of the file.
 
 ## Run
 
