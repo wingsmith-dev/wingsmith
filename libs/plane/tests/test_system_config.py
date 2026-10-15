@@ -124,6 +124,7 @@ def test_remote_write_reports_the_write_url_and_the_htpasswd_secret(monkeypatch)
     """Both are coordinates, not contents: a public ingress and a Secret's name."""
     monkeypatch.setattr(settings, "METRICS_REMOTE_WRITE_URL", "https://metrics.example/api/v1/write")
     monkeypatch.setattr(settings, "REMOTE_WRITE_AUTH_ENABLED", True)
+    monkeypatch.setattr(settings, "REMOTE_WRITE_AUTH_NAMESPACE", "platform")
     metrics = body()["metrics"]
     assert metrics["remote_write_url"] == "https://metrics.example/api/v1/write"
     assert metrics["remote_write_auth_secret"] == "platform/prom-remote-write-auth"
@@ -248,3 +249,11 @@ def test_config_refuses_the_gateway_token():
         )
     assert response.status_code == 403
     assert response.json()["code"] == "forbidden"
+
+
+def test_remote_write_auth_has_no_namespace_until_one_is_chosen():
+    """No deployment-specific default: enabled without a namespace, the reconciler stays idle."""
+    from app.config.settings import Settings
+
+    assert Settings().REMOTE_WRITE_AUTH_NAMESPACE == ""
+    assert Settings().REMOTE_WRITE_AUTH_ENABLED is False

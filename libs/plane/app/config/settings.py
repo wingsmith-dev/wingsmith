@@ -131,20 +131,27 @@ class Settings:
     """
 
     REMOTE_WRITE_AUTH_ENABLED: bool = False
-    """Whether the reactor reconciles the write ingress's htpasswd Secret.
+    """Whether the reactor keeps an htpasswd Secret for the metrics write endpoint.
+
+    Optional, and only for a receiver that checks HTTP basic auth against an
+    htpasswd file: every cluster's agent writes with its cluster id as the user
+    and its enrolment token as the password, and this Secret holds one bcrypt
+    line per cluster (ADR 0012). Any ingress or proxy that can read htpasswd from
+    a Secret can front the receiver; Traefik's `basicAuth` middleware is one.
 
     Off by default because it is the one thing the plane does that reaches outside
     its own namespace, and because it is inert without a service account to
-    authenticate with. Unset, or set with no in-cluster credential (local dev,
-    tests), the pass logs once and does nothing — never a crash loop.
+    authenticate with. Enabled without `REMOTE_WRITE_AUTH_NAMESPACE`, or with no
+    in-cluster credential (local dev, tests), the pass logs once and does nothing
+    — never a crash loop.
     """
 
-    REMOTE_WRITE_AUTH_NAMESPACE: str = "platform"
-    """Namespace of the Secret backing the write ingress's Traefik basicAuth
-    middleware. Defaults to where the central Prometheus and its ingress live."""
+    REMOTE_WRITE_AUTH_NAMESPACE: str = ""
+    """Namespace of that Secret, wherever the receiver's ingress reads it from.
+    No default: there is no namespace every deployment shares."""
 
     REMOTE_WRITE_AUTH_SECRET: str = "prom-remote-write-auth"
-    """Name of that Secret. The plane's Role is scoped to this one name."""
+    """Name of that Secret. The plane's Role should be scoped to this one name."""
 
     REMOTE_WRITE_AUTH_KEY: str = "users"
     """Key within it holding the htpasswd file. `users` is what Traefik's
@@ -302,9 +309,9 @@ class Settings:
     them all. Naming the replicas here instead would mean that scaling the gateway
     is an edit to the values of every cluster in the fleet.
 
-    This is the plane's own deployment fact — it is the public tunnel name of the
-    StatefulSet in `infra/80-gateway.yaml` — which is why it is configuration here
-    and not a column. Empty renders the agent block as a blank with an example,
+    This is the plane's own deployment fact — the public tunnel name of the
+    gateway's StatefulSet — which is why it is configuration here and not a
+    column. Empty renders the agent block as a blank with an example,
     because a cluster cannot be handed an address the plane does not know, and
     because values that install and serve nothing beat values that do not
     install."""
@@ -322,11 +329,20 @@ class Settings:
     and takes whatever the registry resolves as latest, which is fine for dev but
     should be pinned in a deployment."""
 
-    SETUP_CHART_PRIVATE: bool = True
+    SETUP_CHART_PRIVATE: bool = False
     """Whether the chart registry requires a `helm registry login` before the
     pull. When true the setup instructions carry that login step (the registry
-    host is derived from `SETUP_CHART_REF`); the GHCR package `just chart-push`
-    publishes to is private by default, so this defaults true."""
+    host is derived from `SETUP_CHART_REF`). The published chart is public, so
+    this is for a deployment that mirrors it into a private registry."""
+
+    BENCHMARK_CONFORMANCE_IMAGE: str = "ghcr.io/hangar-dev/conformance:0.1.0"
+    """Image the conformance harness (`hgrconform`) runs from. Pinned to a tag;
+    override it to run a mirrored or locally built copy."""
+
+    BENCHMARK_EVALSCOPE_IMAGE: str = "ghcr.io/hangar-dev/evalscope:1.11.1"
+    """Image the EvalScope harness runs from. Pinned to a tag, and the tag is
+    EvalScope's own release, because the harness's command line is written
+    against that release's CLI."""
 
     TRUSTED_PROXIES: str = ""
     """Comma-separated addresses or CIDRs of the proxies in front of the API whose
