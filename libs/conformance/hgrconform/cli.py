@@ -253,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("profile")
     run.add_argument("--reference", help="a second profile to diff against")
     run.add_argument("--probe", action="append", help="only this probe or group; repeatable")
-    run.add_argument("--heavy", action="store_true", help="include probes that send hundreds of requests")
+    run.add_argument("--heavy", action="store_true", help="include probes that send dozens of requests (eos.suppression: 50 by default)")
     run.add_argument("--verbose", action="store_true")
     run.set_defaults(func=cmd_run)
 

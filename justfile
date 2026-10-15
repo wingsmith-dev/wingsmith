@@ -421,7 +421,7 @@ bench-report run="":
 #   just conformance example                              # observe one endpoint
 #   just conformance gateway --reference <profile>        # and diff against the provider
 #   just conformance example --probe tools --probe cache  # narrow it
-#   just conformance example --heavy                      # include the 1000-sample probes
+#   just conformance example --heavy                      # include eos.suppression (50 samples)
 #
 # Uses the module's own virtualenv, which `just setup` creates.
 
