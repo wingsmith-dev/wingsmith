@@ -351,3 +351,33 @@ def test_rbac_names_the_hangar_dev_group(chart):
     groups = {g for rules in roles.values() for r in rules for g in r["apiGroups"]}
     assert "hangar.dev" in groups
     assert not any("placeholder" in g or g == "sync.hangar.dev" for g in groups)
+
+
+# ── versioning ───────────────────────────────────────────────────────────────
+
+
+def test_app_version_is_the_chart_version_and_images_default_to_it(chart):
+    import re
+
+    meta = yaml.safe_load((CHART / "Chart.yaml").read_text())
+    assert re.fullmatch(r"\d+\.\d+\.\d+", meta["version"])
+    assert meta["appVersion"] == meta["version"]
+    for dep in meta["dependencies"]:
+        assert re.fullmatch(r"\d+\.\d+\.\d+", dep["version"]), dep
+    docs = render(chart, **AGENT_ON)
+    for name, c in (("hangar-operator", "operator"), ("hangar-agent", "agent")):
+        spec = container(get(docs, "Deployment", name), c)
+        assert spec["image"].endswith(":" + meta["version"])
+        assert spec["imagePullPolicy"] == "IfNotPresent"
+
+
+def test_lock_matches_the_pinned_dependencies():
+    meta = yaml.safe_load((CHART / "Chart.yaml").read_text())
+    lock = yaml.safe_load((CHART / "Chart.lock").read_text())
+    pinned = {d["name"]: d["version"] for d in meta["dependencies"]}
+    assert {d["name"]: d["version"] for d in lock["dependencies"]} == pinned
+
+
+def test_changelog_has_an_entry_for_this_version():
+    meta = yaml.safe_load((CHART / "Chart.yaml").read_text())
+    assert f"## {meta['version']}\n" in (CHART / "CHANGELOG.md").read_text()

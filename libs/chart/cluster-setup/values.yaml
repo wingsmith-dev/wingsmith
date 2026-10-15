@@ -200,8 +200,10 @@ dcgm:
 operator:
   image:
     repository: ghcr.io/hangar-dev/operator
+    # Empty takes the chart's appVersion, so a chart version names one operator
+    # build. Set it only to run a build of your own.
     tag: ""
-    pullPolicy: Always
+    pullPolicy: IfNotPresent
   leaderElection: true
   engine:
     # Secrets in the workload namespace presented when pulling a workload's `engine_runtime_image`.
@@ -226,8 +228,9 @@ agent:
   replicas: 2
   image:
     repository: ghcr.io/hangar-dev/agent
+    # Empty takes the chart's appVersion, like the operator's.
     tag: ""
-    pullPolicy: Always
+    pullPolicy: IfNotPresent
   gateway:
     # The gateway's tunnel address as `host:port` — TLS assumed, no scheme. One
     # address however many replicas the gateway runs: the agent learns the rest

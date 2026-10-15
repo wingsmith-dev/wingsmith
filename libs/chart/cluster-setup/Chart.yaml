@@ -6,10 +6,11 @@ description: >-
   NATS, the DynamoGraphDeployment CRD), and the hangar operator.
 type: application
 
-# appVersion is the operator image tag; a helm upgrade moves it and the pinned
-# Dynamo CRD together so the operator and the CRD it renders into cannot skew.
-version: 0.1.2
-appVersion: "latest"
+# One version for the chart and the images it runs: appVersion is the default
+# tag for the operator and serving-agent images, and it always equals version.
+# Bump both together, and record the change in CHANGELOG.md.
+version: 0.3.0
+appVersion: "0.3.0"
 
 kubeVersion: ">=1.29.0-0"
 
@@ -22,7 +23,7 @@ keywords:
 dependencies:
   # The exporter the operator scrapes for device identity; a hard dependency.
   - name: dcgm-exporter
-    version: "4.*"
+    version: "4.8.3"
     repository: https://nvidia.github.io/dcgm-exporter/helm-charts
     condition: dcgm-exporter.enabled
 

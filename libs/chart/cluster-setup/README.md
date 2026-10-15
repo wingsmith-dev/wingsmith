@@ -61,10 +61,9 @@ component set immutable after creation, so every existing graph must be deleted
 and re-rendered, and every model reloads its weights. Pick before the first model
 lands.
 
-Replaced in 0.2.0: `frontend.enabled` and `operator.frontend.enabled` were two
-booleans, in two blocks, for one choice — they could be set to contradict each
-other, and they defaulted to the topology ADR 0013 replaced. The chart now fails
-with migration instructions if either is set.
+`frontend.enabled` and `operator.frontend.enabled` are gone: they were two
+booleans, in two blocks, for one choice, and could contradict each other. The
+chart fails with migration instructions if either is set.
 
 To pin the platform singletons off the GPU pool, the 1.4.x subcharts take:
 
@@ -157,9 +156,32 @@ equivalent to write access to that namespace.
 
 ## Versioning
 
-The chart version is the compatibility unit: `appVersion` pins the operator
-image and the chart pins the Dynamo CRD, so a `helm upgrade` moves them
-together and the operator can never render into a CRD version it does not know.
+The chart follows SemVer, and `appVersion` always equals `version`. The
+operator and serving-agent images default to that tag (`operator.image.tag`
+and `agent.image.tag` empty), with `pullPolicy: IfNotPresent`, so one chart
+version runs one build of each and a node never re-pulls a moving tag. Set a tag
+only to run a build of your own; a mismatched operator and chart is not a
+supported combination.
+
+What the chart does pin:
+
+| component | version |
+|---|---|
+| hangar operator, serving agent | `appVersion` |
+| `dynamo-platform` subchart (Dynamo operator, NATS) | 1.4.1 |
+| shared-mode frontend image (`frontend.shared.image.tag`) | 1.4.1, kept equal to the subchart |
+| `dcgm-exporter` subchart | 4.8.3 |
+| metrics agent (Prometheus, agent mode) | v3.5.5 |
+| Kubernetes | 1.29 or later |
+
+The Dynamo version is the one the operator renders `DynamoGraphDeployment`s
+for, and it is what an engine runtime image must be built against: a model's
+`engine_runtime_image` (and a per-model frontend image) has to come from the
+same Dynamo release as the platform, or the workers and the frontend disagree on
+the wire. Changing it is a chart release, not a values edit.
+
+Release notes, including anything breaking or deprecated and any CRD you must
+apply by hand, are in [CHANGELOG.md](CHANGELOG.md).
 
 ## CRDs
 
