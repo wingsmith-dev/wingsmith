@@ -239,8 +239,9 @@ func main() {
 	readHeaderTimeout := envDurationDefault("HANGAR_GATEWAY_READ_HEADER_TIMEOUT", 10*time.Second)
 	bodyReadTimeout := envDurationDefault("HANGAR_GATEWAY_BODY_READ_TIMEOUT", 2*time.Minute)
 	writeIdleTimeout := envDurationDefault("HANGAR_GATEWAY_WRITE_IDLE_TIMEOUT", 2*time.Minute)
-	// Hosts a request's remote media may be fetched from by an engine; unset
-	// allows every URL. See serving.MediaURLPolicy.
+	// Hosts a request's remote media may be fetched from by an engine. Unset,
+	// every public host is allowed and internal addresses are refused. See
+	// serving.MediaURLPolicy.
 	mediaURLs := serving.NewMediaURLPolicy(strings.Split(os.Getenv("HANGAR_GATEWAY_MEDIA_URL_HOSTS"), ","))
 	drain, grace := readDrainPlan()
 

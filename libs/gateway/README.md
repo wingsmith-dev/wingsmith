@@ -104,7 +104,7 @@ caller on the internet can send an unknown `Host`.
 | `HANGAR_GATEWAY_READ_HEADER_TIMEOUT` | how long a caller may take to send its headers, default `10s` |
 | `HANGAR_GATEWAY_BODY_READ_TIMEOUT` | how long a caller may take to send its body once the headers are in, default `2m`; a stalled body is `408` |
 | `HANGAR_GATEWAY_WRITE_IDLE_TIMEOUT` | how long one write to the caller may block, default `2m`. Per write, so a long stream that keeps arriving is never cut; a caller that stops reading is |
-| `HANGAR_GATEWAY_MEDIA_URL_HOSTS` | comma-separated hosts (`media.example.com`, `*.cdn.example.net`) a request's remote media may come from; unset allows every URL. See [Remote media](#remote-media) |
+| `HANGAR_GATEWAY_MEDIA_URL_HOSTS` | comma-separated hosts (`media.example.com`, `*.cdn.example.net`) a request's remote media may come from; unset allows public hosts and refuses internal ones. See [Remote media](#remote-media) |
 | `HANGAR_GATEWAY_SHUTDOWN_GRACE` | the pod's `terminationGracePeriodSeconds`, default `30s`; the drain phases are cut from it, see [Shutdown](#shutdown) |
 | `HANGAR_GATEWAY_DRAIN_DELAY` / `HANGAR_GATEWAY_DRAIN_TIMEOUT` / `HANGAR_GATEWAY_TUNNEL_DRAIN_TIMEOUT` | override one shutdown phase; at the default grace they are `5s` / `16s` / `5s` |
 | `-log-upstream-bodies` / `HANGAR_GATEWAY_LOG_UPSTREAM_BODIES` | write a discarded upstream error body to the log whole. **Off in production and must stay off**: an engine's error quotes the request it refused. A debugging switch for a cluster carrying no customer traffic; it warns on every start while on |
@@ -139,15 +139,29 @@ routing table as `limits`, is not enforced by the gateway yet.
 ## Remote media
 
 A multimodal request can name its image, video or audio by URL, and the engine fetches it from
-inside the serving cluster, from a GPU node, with whatever that network can reach. By default the
-gateway forwards every URL. Set `HANGAR_GATEWAY_MEDIA_URL_HOSTS` and a request whose `messages` or
-`input` names a remote media URL off that list (or one that is not `http`/`https`) is refused with
-`400 media_url_not_allowed` before it leaves this hop; `data:` URLs carry bytes and always pass.
-The check decodes `messages` and `input` once per request, so it costs time on a large prompt.
+inside the serving cluster, from a GPU node, with whatever that network can reach. The gateway
+checks every remote media URL before the request leaves this hop and refuses one it does not allow
+with `400 media_url_not_allowed`. `data:` URLs carry bytes and always pass.
 
-It does not replace the engine's own control (vLLM's `--allowed-media-domains`) or an egress
-NetworkPolicy on the worker namespace, which also cover traffic that did not come through this
-gateway. Use all three where tenants can send media URLs.
+- **By default** (`HANGAR_GATEWAY_MEDIA_URL_HOSTS` unset) a URL must be `http` or `https` and must not
+  name a private or cluster-internal host: loopback, private, link-local (including the cloud
+  metadata address), CGNAT and unspecified addresses, numeric host forms such as `127.1`,
+  single-label names such as `hangar-plane`, and names under `.local`, `.localhost`, `.internal`,
+  `.svc`, `.cluster.local`, `.lan` and `.home.arpa`. Every public host is allowed.
+- **With `HANGAR_GATEWAY_MEDIA_URL_HOSTS`** a URL must name a host on that list, and nothing else
+  passes. Listing a private host allows it.
+
+What is checked is where an engine fetches from: chat `image_url` / `video_url` / `audio_url` parts,
+Responses `input_image` and `input_file`, Anthropic `image` and `document` blocks with a `url`
+source, the same parts nested in tool results and function call outputs, and on `/v1/images/edits`
+and `/v1/videos` any top-level field other than the prompt written as a URL. A citation, a web
+search result or a tool schema in a conversation's history is not fetched by anything and is not
+checked. Multipart bodies carry their media as bytes and are not walked.
+
+The check is by name, so a public name that resolves to a private address gets through. It does not
+replace the engine's own control (vLLM's `--allowed-media-domains`) or an egress NetworkPolicy on
+the worker namespace, which also cover traffic that did not come through this gateway. Use all three
+where tenants can send media URLs.
 
 ## Scaling
 
