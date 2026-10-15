@@ -65,33 +65,14 @@ class Cluster(BaseMixin):
     token yet and its operator still authenticates with the shared fleet token."""
 
     remote_write_hash: Mapped[str | None] = mapped_column(String(72), nullable=True)
-    """Bcrypt hash of the *same* enrolment token, for the metrics write ingress.
-
-    Two verifiers over one credential: the hub compares `token_hash` in constant
-    time after an indexed lookup, and Traefik's `basicAuth` middleware in front of
-    the central Prometheus checks this one, because a crypt-style hash is the only
-    thing it can check. The reactor renders every non-null hash here into the
-    htpasswd Secret that middleware reads, so a cluster's telemetry credential and
-    its hub credential are the same string and rotate in one act (ADR 0012).
-
-    Null means no bcrypt verifier exists, and it cannot be backfilled — the
-    plaintext is unrecoverable. A cluster registered before this column existed
-    must re-issue its token to gain one."""
+    """Bcrypt hash of the same enrolment token, checked by the metrics write ingress (basic auth).
+    The reactor renders every non-null hash into the ingress htpasswd Secret. Null means the cluster
+    has no metrics credential until its token is re-issued; the plaintext cannot be recovered."""
 
     metrics_label: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    """The `cluster` label this cluster's series are stamped with in the shared store.
-
-    Not an address, so it breaks no invariant above: the plane still never dials a
-    cluster, and this names a value to match on inside a store the plane already
-    holds one endpoint for. It is declared state and it is the cluster's own fact —
-    `libs/chart/cluster-setup` writes `external_labels.cluster` from the same
-    `cluster.id` the plane renders into the install values, so on an enrolled
-    cluster this is that identity rather than a guess at it.
-
-    Null means "not observable", and it is honoured as such: metrics report no
-    source for the cluster rather than querying the shared store under a label
-    nobody has confirmed. A clean empty there would read as a healthy idle fleet,
-    which is the one wrong answer that looks right (ADR 0008, ADR 0011)."""
+    """The `cluster` label this cluster's series carry in the shared metrics store.
+    Written by the cluster-setup chart from the cluster id. Null means not observable: metrics report
+    no source rather than querying under an unconfirmed label."""
 
     sync_state: Mapped[ClusterSyncState | None] = relationship(
         "ClusterSyncState", back_populates="cluster", lazy="noload", uselist=False, cascade="all, delete-orphan"
@@ -413,17 +394,8 @@ class Artifact(BaseMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     """What a person calls these weights. `GPT-OSS 20B`, `Llama 3.1 70B Instruct`. Display only."""
     slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True, server_default="")
-    """What a machine calls them: `openai/gpt-oss-20b`, lowercase, organisation and all.
-
-    Stored rather than derived at read time, because the organisation only exists in the
-    location URI. Derived once, on the way in, from the artifact's preferred location:
-    `hf://openai/gpt-oss-20b` becomes `openai/gpt-oss-20b`. Lowercase because that is what a
-    caller types; the organisation is kept because a bare model name is not an id anybody can
-    look up.
-
-    Not unique. Two artifacts may be the same repository at different revisions or
-    quantisations; identity is the digest. This is what the model is *called*.
-    """
+    """Machine name, lowercase with its organisation: `hf://openai/gpt-oss-20b` -> `openai/gpt-oss-20b`.
+    Derived once from the preferred location. Not unique; identity is the digest."""
     kind: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weights", index=True)
     format: Mapped[str | None] = mapped_column(String(64), nullable=True)
     size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
@@ -436,15 +408,8 @@ class Artifact(BaseMixin):
         DBUUID, ForeignKey("bind_project.id", ondelete="SET NULL"), nullable=True, index=True
     )
     upstream: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    """Reference facts about the model as published upstream, asserted and never observed.
-
-    Context window, multimodality, parameter count as the publisher states them, plus the
-    provenance triple that says who asserted it, from where, and when. It is `metadata`'s
-    opposite in exactly the way `Workload.imported_args` is `Workload.engine_args`: one is a claim
-    about the world that somebody signed, the other is a scratchpad. Nothing here reaches a
-    cluster, nothing here is checked by ingestion, and a wrong value changes only what we told
-    somebody.
-    """
+    """Facts about the model as its publisher states them, with who asserted them, from where and when.
+    Asserted, never observed: nothing here reaches a cluster or is checked by ingestion."""
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, server_default="{}")
 
     baselines: Mapped[list[ArtifactBaseline]] = relationship(
@@ -583,61 +548,19 @@ class Workload(BaseMixin):
         DBUUID, ForeignKey("demand_artifact.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     serving_digest: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
-    """`svg_` + sha256 over the fields that decide what process runs. Derived, never accepted.
-
-    It answers one question — would this produce the same running engine — so it covers only
-    fields that reach a cluster. `imported_args` is observed, `capabilities` is asserted,
-    `served_model_name` is a name rather than a footprint, and scale and placement are not
-    properties of the configuration at all; none of them are in it. `app.core.serving` owns the
-    computation and is the only thing entitled to write this.
-
-    It is what a benchmark run points at. A digest cannot drift, where the `recipe_id` and
-    `recipe_version` it replaces named a mutable row.
-    """
+    """`svg_` + sha256 over the fields that decide what process runs; derived, never accepted.
+    Only `app.core.serving` writes it. Benchmark runs point at it."""
     engine: Mapped[str] = mapped_column(String(64), nullable=False)
-    """Which engine inside the runtime serves the weights — `vllm`, `sglang`, `trtllm`.
-
-    It names a module and a flag dialect, and nothing else. The operator launches
-    `python3 -m dynamo.<engine>`, and `SERVING_FLAGS` reads it to know that a
-    structured-output backend is `--guided-decoding-backend` on vLLM and
-    `--grammar-backend` on SGLang. It carries no version: the engine's own build is
-    whatever the runtime image was compiled with, which is `engine_runtime_version`'s business.
-    """
+    """The engine inside the runtime: `vllm`, `sglang` or `trtllm`. It picks the module and the flag
+    dialect and carries no version; see `engine_runtime_version`."""
     engine_runtime_version: Mapped[str] = mapped_column(String(64), nullable=False)
-    """A tag of the Dynamo runtime image, and never a version of the engine.
-
-    `1.4.1` is a Dynamo release. The vLLM inside it is on `0.28.0`, and the two count
-    in different sequences, which is the whole reason this field is not called
-    `engine_version` any more: under that name the obvious value to type was the
-    engine's number, and `vllm-runtime:0.28.0` is an address that has never existed.
-    A recipe's `min_vllm_version` is therefore evidence and never a value — it
-    constrains which runtime is new enough, not what goes here.
-
-    `resolve_engine_runtime_image` pastes it onto `ENGINE_RUNTIME_REPOS[engine]`. That is its
-    only use; nothing reads it to decide behaviour.
-    """
+    """A tag of the Dynamo runtime image (for example `1.4.1`), never the engine's own version.
+    Only used to resolve the image from `ENGINE_RUNTIME_REPOS[engine]`."""
     engine_runtime_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    """The whole address, when this workload pins one instead of having it derived.
-
-    Null is the ordinary case and means `engine` plus `engine_runtime_version` resolve it.
-    """
+    """A pinned runtime image address. Null means it is resolved from `engine` and `engine_runtime_version`."""
     frontend_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    """The image this model's own Dynamo frontend runs. Null means the cluster decides.
-
-    Separate from `engine_runtime_image` because a frontend and a worker are separately versioned
-    binaries that only happen to be published from one repository. The worker loads the weights;
-    the frontend tokenizes the request and registers the model, and the tables it needs to do that
-    are compiled into it. A model whose tokenizer only a newer frontend build understands needs a
-    different frontend and the same worker, and one field could not say that.
-
-    Null is this workload declining to have an opinion, not an instruction to reuse
-    `engine_runtime_image`. The operator resolves it against what that cluster runs its frontends on — a
-    local fact the plane does not hold and must not guess at — and only falls back to the runtime
-    image once that has declined too. So there is no `resolve_` for this field the way there is
-    for `engine_runtime_image`: the plane can derive a runtime image because `ENGINE_RUNTIME_REPOS` tells it
-    where workers come from, and nothing tells it the same about frontends, so an address invented
-    here is an `ImagePullBackOff` chosen by the wrong side of the wire.
-    """
+    """The image this model's Dynamo frontend runs. Null means the cluster's operator chooses, falling
+    back to the runtime image; the plane never derives one."""
     engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     imported_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     quantization: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -659,32 +582,14 @@ class Workload(BaseMixin):
     disk_gib: Mapped[int | None] = mapped_column(Integer, nullable=True)
     overlay: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     serving: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    """How the served API behaves: thinking mode, the reasoning and tool-call parsers, streaming
-    defaults, structured-output support, EOS suppression.
-
-    Every field here renders to a flag or a rendered value, travels inlined on
-    `deployment.desired`, and is obeyed by the cluster — which is the whole test for what belongs
-    here rather than in `capabilities`. Until this column existed these settings vanished into the
-    `engine_args` passthrough, where the plane could neither validate them nor say what it had
-    asked for.
-    """
+    """How the served API behaves: thinking mode, reasoning and tool-call parsers, streaming defaults,
+    structured output, EOS suppression. Every field renders to a flag the cluster obeys."""
     router: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    """How this workload's own Dynamo frontend routes between its workers.
-
-    `mode`, `queue_threshold`, `queue_policy` and `kv_overlap_score_credit`, each rendered as one
-    `DYN_ROUTER_*` variable on the frontend. Only declared keys are stored, so `{}` is the one way to
-    say nothing was declared, and nothing is what every workload from before the column says. Its own
-    column rather than a key inside `serving`, because `serving` is replaced whole by a patch that
-    only meant to change a parser, and a router setting that vanished with it would be a benchmark
-    configuration silently undone.
-    """
+    """Frontend routing settings (`mode`, `queue_threshold`, `queue_policy`, `kv_overlap_score_credit`),
+    each rendered as a `DYN_ROUTER_*` variable. Only declared keys are stored; `{}` declares nothing."""
     capabilities: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    """What this serving configuration can do, asserted and never rendered.
-
-    The same split as `engine_args` against `imported_args`, one level up: nothing here reaches a
-    cluster, because a cluster has no use for a claim about itself. A wrong value changes only
-    what we told somebody, and the only thing that can falsify it is a conformance run.
-    """
+    """What this serving configuration can do, asserted and never rendered to a cluster.
+    Only a conformance run can falsify it."""
     min_scale: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     max_scale: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     desired_scale: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
@@ -703,30 +608,8 @@ class Workload(BaseMixin):
     requires_single_topology_domain: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     topology_domain_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
     serving_topology: Mapped[str] = mapped_column(String(16), nullable=False, server_default="aggregated", index=True)
-    """`aggregated | disaggregated` — whether prefill and decode share an engine loop or are
-    separate processes exchanging a KV cache.
-
-    Named `serving_topology` and not `topology`, which is what it wants to be called, because
-    `topology_domain_kind` and `requires_single_topology_domain` are already on this object and
-    mean something entirely different: an NVLink or rack domain a placement has to fit inside.
-    Two unrelated senses of "topology" one line apart is a comment nobody reads and a bug
-    somebody writes.
-
-    Defaulted rather than nullable. There is no third state: a workload either is disaggregated
-    or is not, and a null would invent a "not yet decided" that nothing can render.
-
-    It is the discriminator every consumer branches on, and it is what makes "does `min_replicas`
-    count replicas or groups" a declared question rather than an inferred one. Under
-    `disaggregated`, `min_replicas` counts **groups** — one group being the per-role weights in
-    `roles` taken together — and the operator multiplies to get each role's process count.
-
-    In `serving_digest`, but only when disaggregated (`app.core.serving.serving_digest`). A
-    topology change changes *which* processes exist, which is a configuration change of the
-    largest available kind; a weight change only changes how many of a role there are, which is
-    what `min_replicas` already does and has never been hashed. Contributed conditionally so
-    that every aggregated workload's digest is byte-identical across the migration — the same
-    trick `engine_defaults` plays there, for the same reason.
-    """
+    """`aggregated` or `disaggregated` (prefill and decode as separate processes sharing a KV cache).
+    Under `disaggregated`, `min_replicas` counts groups of `roles`. In `serving_digest` only when disaggregated."""
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deadline_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -764,55 +647,15 @@ class WorkloadRole(BaseMixin):
         DBUUID, ForeignKey("demand_workload.id", ondelete="CASCADE"), nullable=False, index=True
     )
     role: Mapped[str] = mapped_column(String(16), nullable=False)
-    """`prefill | decode`. A closed set, validated on the way in.
-
-    The same argument `check_shape` makes about device classes: a shape without a class is not a
-    shape. A role outside the set renders a `disaggregation-mode` no engine accepts, and the
-    failure is a worker that will not start rather than a validation error somebody can read.
-    """
+    """`prefill` or `decode`; a closed set validated on write."""
     weight: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
-    """How many workers of this role are in one group. Positive, and free.
-
-    Deliberately NOT constrained coprime. That constraint was proposed so each ratio would have
-    exactly one spelling and `serving_digest` could not differ for two spellings of one
-    footprint — but the weights are not in the digest at all (they are scale, and `DIGEST_FIELDS`
-    has always excluded scale), so the argument it rested on is gone. What
-    coprimality costs is real: it makes "two prefill and two decode" inexpressible as such,
-    forcing it to be written `1:1` with two groups, which reinterprets a live number to say the
-    same thing.
-
-    A role's process count is `deployment.min_replicas * weight`. Any pair of per-role counts is
-    therefore reachable at one group, and the group only earns its keep when scaling load — bump
-    the count and both roles grow together, so the ratio is preserved by construction rather than
-    maintained by something.
-
-    **Kept out of `serving_digest`, and the reason is identity rather than restarts.**
-    `ops_benchmark_run.serving_digest` names the configuration a measurement was taken against,
-    and `DIGEST_FIELDS` is explicit that a run whose digest matches no workload "has lost the
-    only link back to what it measured". A weight in the hash would orphan every benchmark on a
-    model the moment somebody added one prefill worker — and those benchmarks are exactly what
-    anyone choosing a ratio would be reading.
-
-    Whether pods restart is not decided by the digest. Any declared change bumps the
-    deployment's generation, so the operator re-applies; what decides a restart is whether the
-    applied object changes a component's own spec.
-    """
+    """Workers of this role per group, positive. A role's process count is `min_replicas * weight`.
+    Not in `serving_digest`, so changing a ratio keeps the workload's benchmark history linked."""
     max_batch_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    """This role's `--max-num-batched-tokens`. Null inherits the workload's.
-
-    The one typed column in the per-role delta, and it is typed because the workload already
-    types it and `DERIVED_FLAGS` already spells it. Prefill wants 32768 and decode 2048 in the
-    published recipe, which is a 16x difference in the thing that decides how much work one
-    engine step does — not a knob to pass through untyped.
-    """
+    """This role's `--max-num-batched-tokens`. Null inherits the workload's."""
     engine_args: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    """This role's engine arguments, laid over the workload's.
-
-    Declared, like `Workload.engine_args`, and subject to the same rule: it may not name a
-    member of `DERIVED_FLAGS`, nor `disaggregation-mode` or `kv-transfer-config`, both of which
-    the operator now derives from the topology. A value for a derived flag arriving from here is
-    not a default, it is a contradiction of a decision already acted on.
-    """
+    """This role's engine arguments, laid over the workload's. May not set a `DERIVED_FLAGS` member,
+    `disaggregation-mode` or `kv-transfer-config`, which the operator derives."""
 
     workload: Mapped[Workload] = relationship("Workload", back_populates="roles", lazy="noload")
 
@@ -858,41 +701,14 @@ class WorkloadRevision(BaseMixin):
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     serving_digest: Mapped[str] = mapped_column(String(71), nullable=False, index=True)
     artifact_uid: Mapped[str] = mapped_column(String(40), nullable=False, server_default="")
-    """Which weights this configuration served, recorded rather than referenced.
-
-    A plain uid and not a foreign key: a revision is a statement about what happened, and a
-    history that could be made un-writable by an artifact somebody deleted would be a history
-    that stops recording exactly when the record starts to matter.
-
-    It is here rather than inside `snapshot` because `snapshot` is a patch body and the weights
-    are not patchable — `WorkloadServingUpdate` has no `artifact` field, deliberately, since
-    repointing a workload at other weights makes every deployment expanded from it mean
-    something else. Folding the two together would give a snapshot that no longer decodes as
-    the thing it exists to be resent as.
-    """
+    """The weights this configuration served, as a uid rather than a foreign key so the history
+    survives the artifact's deletion. Outside `snapshot` because weights are not patchable."""
     snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    """Why somebody made this change, in their own words.
-
-    The one mutable field on an otherwise append-only row, and the split is the point: what the
-    configuration *was* is a fact and cannot be edited, while why it was changed is frequently
-    only understood later — a parameter moved on a hunch and explained by the benchmark that
-    ran afterwards. Writable through the revision, and settable in the same breath as the change
-    by a `note` on the create, the patch or the reshape that files it.
-
-    Free text and never parsed. `reason` is the closed set naming which write this was, and the
-    two are not the same question: `reason` says a patch did it, this says the context window
-    was doubled because the eval suite was truncating.
-    """
+    """Free-text reason for the change, never parsed. The only mutable field on the row."""
     reason: Mapped[str] = mapped_column(String(32), nullable=False, server_default="updated")
-    """Which write appended this — `created`, `updated`, `reshaped`, `promoted` or `imported`.
-
-    `imported` is the one that is not a write at all. It is the configuration a workload was
-    already running when its history began, recorded from the pre-image the next edit read
-    before it changed anything. Without it, a workload older than this table would have its
-    first recorded revision be the state *after* the first edit — and the edit somebody wants
-    to undo is usually that one.
-    """
+    """Which write appended this: `created`, `updated`, `reshaped`, `promoted` or `imported`.
+    `imported` records the configuration a workload had before its history began."""
 
     workload: Mapped[Workload] = relationship("Workload", lazy="noload")
 
@@ -1019,23 +835,8 @@ class DeploymentStatus(BaseMixin):
     updated_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     unavailable_replicas: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     roles: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
-    """The same counts split by role, as the cluster reported them in one frame.
-
-    Stored rather than derived, and the derivation is what argues for the column.
-    `ready` per role could be counted over `demand_replica.role`, but `desired`
-    per role could not: it is the count this cluster rendered, which lives only in
-    the frame that reported it — a rollup over replica rows can say how many
-    prefill workers exist and never how many were asked for, which is precisely
-    the half that makes a shortfall legible. Recomputing one number and storing
-    the other would also split one internally consistent observation across two
-    sources taken at different instants, which is the reason the scalars above are
-    a column rather than a rollup in the first place.
-
-    JSONB and not a table, because nothing joins it, filters on it or aggregates
-    it: it is read whole, with its deployment, and displayed. Empty on an
-    aggregated deployment, which has one role and for which the scalars are
-    already the whole answer.
-    """
+    """Per-role counts (including desired) as the cluster reported them in the same frame as the
+    scalars. Read whole, never queried. Empty on an aggregated deployment."""
     reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -1073,42 +874,12 @@ class Replica(BaseMixin):
     ready: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     ready_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     role: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    """`prefill` or `decode`, and null for a replica of an aggregated deployment.
-
-    Nullable rather than defaulted to `decode`, because "this deployment has one
-    worker" and "this worker is the decode half of a pair" are different facts and
-    a default would erase the difference on every row that predates the column.
-
-    The cluster's own answer, read off the pod label the operator stamped, and the
-    workload's declared roles are not it: the declaration says what should exist,
-    this says what a running pod turned out to be, and a rollout is exactly the
-    interval in which the two disagree.
-    """
+    """`prefill` or `decode` as read off the pod label; null for an aggregated deployment."""
     engine_runtime_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    """The runtime tag this replica reports, which is the declared one echoed back.
-
-    The operator copies it off the deployment rather than reading it out of the
-    running process, so it corroborates nothing on its own. It is here because a
-    replica that outlives an edit to its workload still says which runtime it started
-    under, and that is the one question the workload's own column cannot answer.
-    """
+    """The runtime tag the operator copied from the deployment when this replica started."""
     serving_digest: Mapped[str | None] = mapped_column(String(71), nullable=True, index=True)
-    """The configuration this replica actually came up on, read off the annotation it was
-    rendered with.
-
-    The observed half of versioning, and the only one there is: `Workload.serving_digest` says
-    what the plane declared, and this says what a running process was started from. A rollout is
-    exactly the interval in which the two disagree, and so is a cluster whose agent has not
-    reconnected since the last edit.
-
-    Deliberately not a field on the workload. "Which version is live" has no scalar answer —
-    several are, during every roll and across every cluster — so it is counted over these rows
-    rather than stored as declared state with a second writer.
-
-    Nullable because a replica reported before this column existed has no answer, and because
-    an operator too old to stamp the annotation sends an empty string. Null is "not known",
-    never "the declared one".
-    """
+    """The serving digest this replica was rendered with, read off its annotation.
+    Compare with `Workload.serving_digest` to see a rollout in progress. Null means unknown."""
     observed_generation: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
     restart_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     started_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1200,8 +971,8 @@ class WorkloadAdoption(BaseMixin):
 class Endpoint(BaseMixin):
     """The stable public name clients call. Plane-only — it never syncs to a cluster.
 
-    Global where a deployment is per-cluster, and a contract where a deployment is
-    disposable. Keeping them separate is what allows weighted splits, canaries and
+    Global where a deployment is per-cluster, and a contract where a deployment comes
+    and goes with placement. Keeping them separate is what allows weighted splits, canaries and
     renaming without breaking clients; merging them would give one globally unique
     record N cluster-side writers. `routing_strategy` and `failover_order` are stored
     and returned, but automatic cross-cluster failover is on the roadmap, not built.
@@ -1235,31 +1006,15 @@ class Endpoint(BaseMixin):
     because an endpoint exists so that deployments can be replaced without anybody noticing and
     renaming it spends exactly that."""
     slug: Mapped[str] = mapped_column(String(255), nullable=False, index=True, server_default="")
-    """The model id clients send. `openai/gpt-oss-20b`.
-
-    Patchable where `name` is not, because `model` in an OpenAI request is a public contract: it
-    wants to read as the model, not as whatever the endpoint was called when it was made, and it
-    has to change without breaking the handle everything else holds. It is what the resolved table
-    reports, so changing it costs one gateway poll — no engine flag, no pod respec, nothing on any
-    cluster.
-
-    Defaulted from the artifact's slug when a caller declares none, which is the case that should
-    be normal: an endpoint in front of one model answers to that model's name, and saying so twice
-    is how the two drift. Declaring one is then an alias and reads as a deliberate act.
-    """
+    """The model id clients send, such as `openai/gpt-oss-20b`. Patchable, unlike `name`.
+    Defaults to the artifact's slug."""
     visibility: Mapped[str] = mapped_column(String(16), nullable=False, server_default="private")
     routing_strategy: Mapped[str] = mapped_column(String(32), nullable=False, server_default="weighted")
     failover_order: Mapped[list[UUID]] = mapped_column(ARRAY(DBUUID), nullable=False, server_default="{}")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     surface: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
-    """The terms on which the served API is exposed: which protocols answer at this name
-    (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`), how a caller authenticates, and the
-    rate-limit policy the gateway reads.
-
-    It sits here rather than on the workload because honouring any of it needs no engine flag and an
-    endpoint never syncs to a cluster. Some of it the gateway acts on and some of it is a
-    disclosure the gateway only reports; the schema layer says which, per field.
-    """
+    """How the served API is exposed: which protocols answer, how callers authenticate, and the
+    rate-limit policy the gateway reads. Never synced to a cluster."""
     labels: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
     targets: Mapped[list[EndpointTarget]] = relationship(
@@ -1330,19 +1085,8 @@ class EndpointTarget(BaseMixin):
     role: Mapped[str] = mapped_column(String(16), nullable=False, server_default="primary")
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     served_model_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    """What the engine behind this target answers to, when the plane's answer is wrong.
-
-    Null is the ordinary case and means "ask the deployment". This is the correction, and it
-    exists because the routing table is ours: the engine's name is invisible to clients, so the
-    only thing that matters is that this table agrees with the process. When it does not — a
-    workload carrying an `engine_args` override the plane derived around, an adopted workload
-    already serving under a name nobody here chose — the fix is a write here.
-
-    Per target rather than per endpoint because one endpoint fronts many deployments and they
-    need not agree; per target rather than on the deployment because the deployment is disposable
-    and this correction should outlive a configuration bump. The gateway rewrites the inbound `model` to
-    it, so changing it costs a routing-table poll and nothing restarts.
-    """
+    """Overrides the model name the engine behind this target answers to; null asks the deployment.
+    The gateway rewrites the inbound `model` to it."""
 
     endpoint: Mapped[Endpoint] = relationship("Endpoint", back_populates="targets", lazy="noload")
     deployment: Mapped[Deployment] = relationship("Deployment", lazy="noload")
@@ -1579,15 +1323,8 @@ class ServingQuota(BaseMixin):
     on_exceed: Mapped[str] = mapped_column(String(16), nullable=False, server_default="reject")
     queue_timeout_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     limit_scope: Mapped[str] = mapped_column(String(16), nullable=False, server_default="per_replica")
-    """Whether each gateway replica enforces the whole declared number or its share of it.
-
-    `per_replica` has every replica enforce the full limit, so a fleet of R admits up to R times
-    what was sold; `divided` has each enforce `limit / replicas`, so an uneven connection balance
-    refuses callers who are inside the limit they were sold. There is no shared counter and no
-    coordination hop in the request path, so one of those two error directions has to be chosen
-    rather than avoided. `per_replica` is the default because over-admission shows up in the usage
-    panel, while a spurious 429 refuses a caller who was inside the committed limit.
-    """
+    """`per_replica`: each gateway replica enforces the full limit (R replicas admit up to R times it).
+    `divided`: each enforces `limit / replicas`. There is no shared counter."""
     success_rate_objective: Mapped[float | None] = mapped_column(Numeric(6, 5), nullable=True)
     availability_objective: Mapped[str] = mapped_column(
         String(40), nullable=False, server_default="availability-2026.1"
@@ -1946,8 +1683,8 @@ class BenchmarkRun(BaseMixin):
     replaced a `recipe_id` and `recipe_version` pair that named a mutable row:
     a digest is the configuration rather than a handle on it, so a run cannot
     come to describe a configuration nobody measured. `engine_args` is still
-    snapshotted beside it, because the deployment is disposable and a run must
-    describe what it measured after that has gone.
+    snapshotted beside it, because a drain or re-expansion deletes the deployment
+    and a run must describe what it measured after that has gone.
 
     `operation_id` is nullable and `ON DELETE SET NULL`: the operation is how the
     run was carried out and the run is the record of it, so the record outlives
@@ -2032,12 +1769,9 @@ class Event(BaseMixin):
             postgresql_nulls_not_distinct=True,
         ),
     )
-    """One occurrence is cluster, type, subject kind, instant and message, and the replay of a
-    frame must land on the row it already wrote rather than beside it. `cluster_id` is null for
-    events the plane itself raises, and under the default rule two nulls never conflict — so
-    without `NULLS NOT DISTINCT` the constraint would exclude exactly the rows nothing else
-    de-duplicates. `message` is hashed because it is unbounded text and a btree entry over about
-    2.7kB is refused on insert: a long message must not turn a duplicate into a wedged stream."""
+    """One occurrence per cluster, type, subject kind, instant and message; a replayed frame is a no-op.
+    NULLS NOT DISTINCT covers plane-raised events (null cluster); `message` is hashed to bound the
+    index entry."""
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
@@ -2075,10 +1809,7 @@ class CacheEntry(BaseMixin):
             postgresql_nulls_not_distinct=True,
         ),
     )
-    """`node_id` is null for cluster-scoped residency, and by default Postgres considers two nulls
-    distinct — which would make the cluster-scoped row un-upsertable and insert a fresh duplicate on
-    every observation. `NULLS NOT DISTINCT` is what makes "the cluster tier holds this artifact" a
-    single row rather than an append-only log of the same fact."""
+    """NULLS NOT DISTINCT so cluster-scoped residency (null `node_id`) upserts into one row."""
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     cluster_id: Mapped[UUID] = mapped_column(
@@ -2160,13 +1891,8 @@ class AuthRefreshToken(BaseMixin):
     tenant_token_id: Mapped[UUID | None] = mapped_column(
         DBUUID, ForeignKey("bind_tenant_token.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    """The tenant credential this session was opened with, or null for an admin.
-
-    A foreign key rather than the tenant's uid, because the question a refresh has
-    to answer is not "does this tenant still exist" but "may this session still be
-    renewed" — and that is revoked one credential at a time. Revoking the token ends
-    every session it opened at the next refresh, and deleting the tenant ends them
-    outright."""
+    """The tenant credential this session was opened with, or null for an admin. Revoking the token
+    ends its sessions at the next refresh; deleting the tenant ends them outright."""
     expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     replaced_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -2262,14 +1988,7 @@ class Alert(BaseMixin):
     )
     subject_type: Mapped[str] = mapped_column(String(32), nullable=False)
     subject_uid: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    """The subject's public id, not its primary key — unlike `Event.subject_id`.
-
-    A deliberate departure. An alert outlives the row it is about: the node that
-    triggered it may have been pruned by the next snapshot, which is frequently
-    the whole point of the alert, and a foreign key would have deleted the alert
-    along with the evidence. A string that no longer resolves is the correct
-    outcome here and a dangling one everywhere else.
-    """
+    """The subject's public id rather than a foreign key, so the alert outlives the row it is about."""
 
     title: Mapped[str] = mapped_column(Text, nullable=False)
     details: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
@@ -2287,17 +2006,8 @@ class Alert(BaseMixin):
     notified_state: Mapped[str | None] = mapped_column(String(16), nullable=True)
     notified_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notify_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    """The last delivery failure, kept so a silently broken webhook is visible.
-
-    `notified_state` is what was last successfully announced, and the pair is the
-    whole delivery ledger: an alert is due for a notification when its current
-    `state` is notifiable and differs from `notified_state`. There is no delivery
-    table because there is one writer — only the reactor lease holder notifies —
-    and a second table would record, per channel, a fact this pair already
-    settles. The cost, stated plainly: adding a second channel later means either
-    a delivery table or accepting that one channel failing marks the alert
-    notified for both.
-    """
+    """The last delivery failure. An alert is due for notification when its notifiable `state`
+    differs from `notified_state`; with more than one channel, one failing marks it notified for all."""
 
 
 class AlertThreshold(BaseMixin):
