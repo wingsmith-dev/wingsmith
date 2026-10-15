@@ -74,7 +74,7 @@ export interface ProjectTenant {
   enabled: boolean
 }
 
-/** `ProjectSchema` — the unit quota and priority hang off, beneath a tenant. */
+/** `ProjectSchema` — the tenancy unit quota attaches to. */
 export interface Project {
   id: string
   tenant: ProjectTenant
