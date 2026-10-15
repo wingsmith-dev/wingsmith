@@ -5,7 +5,8 @@
 name = "example"
 base_url = "http://localhost:8080"
 model = "gpt-oss-120b"
-token_env = "HANGAR_GATEWAY_TOKEN"
+# The variable holding the bearer token. For a Hangar gateway, a tenant API key.
+token_env = "HANGAR_API_KEY"
 
 # What the endpoint claims about itself. Used where there is no reference endpoint
 # to diff against, and as a cross-check where there is.
@@ -13,8 +14,8 @@ context_window = 131072
 modalities = ["text"]
 protocols = ["chat_completions"]
 
-# Strings that would tell a customer who is really serving the request. Ours, not
-# the model vendor's — see probes/errors.py.
+# Strings that would tell a caller who is really serving the request: the names of
+# your own infrastructure, not the model vendor's. See probes/errors.py.
 leak_needles = ["hangar", "dynamo", "vllm", "internal.svc"]
 
 [thinking]

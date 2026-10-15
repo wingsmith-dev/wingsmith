@@ -1,8 +1,12 @@
-# Kimi K3 from Moonshot itself — the original model provider, and so the reference
-# every other Kimi K3 endpoint is judged against.
+# An example reference profile: a model from its original provider, which every
+# other endpoint serving that model is diffed against. Kimi K3 from Moonshot here;
+# write one like it for the model you serve.
 #
 #   export MOONSHOT_API_KEY=...
 #   just conformance <your-kimi-k3-profile> --reference moonshot-kimi-k3
+#
+# The claims below were read from the provider's own API and can change; re-check
+# them before trusting a diff against this profile.
 #
 # `api.moonshot.ai` is the international host. `api.moonshot.cn` is a separate
 # account namespace and rejects this key, so the two are not interchangeable.
@@ -19,8 +23,8 @@ token_env = "MOONSHOT_API_KEY"
 
 context_window = 1048576
 # `supports_video_in` is true in this endpoint's own /v1/models entry, and a base64
-# mp4 is answered 200 with a description of the video. Both were measured on
-# 2026-09-08; the claim is not taken from documentation.
+# mp4 is answered 200 with a description of the video. Both were measured against the
+# endpoint, not taken from documentation.
 modalities = ["text", "image", "video"]
 protocols = ["chat_completions", "responses", "messages"]
 timeout = 180.0

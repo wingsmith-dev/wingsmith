@@ -21,6 +21,9 @@ from dataclasses import field
 from dataclasses import dataclass
 
 
+# A Hangar tenant API key, when a profile names no variable of its own.
+DEFAULT_TOKEN_ENV = "HANGAR_API_KEY"
+
 THINKING_SYNTAXES = ("none", "kimi", "chat_template", "reasoning_effort", "system_prompt")
 
 
@@ -103,16 +106,16 @@ class Profile:
 
     `extra_body` is merged into every request this endpoint is sent, under whatever
     the probe set itself. It exists for the fields that select *which server* answers
-    rather than what is asked of it, and a broker is the case: OpenRouter serves one
-    model id from many upstreams and picks per request, so an unpinned reference is
-    not the model's original provider — it is whichever re-host was cheapest that
-    second. That is vendor knowledge of the purest kind, which is why it is a profile
-    field and not something a probe could ever be allowed to know.
+    rather than what is asked of it, and a broker is the case: a broker can serve one
+    model id from many upstreams and pick per request, so an unpinned reference is
+    not the model's original provider but whichever re-host it chose that second.
+    That is vendor knowledge of the purest kind, which is why it is a profile field
+    and not something a probe could ever be allowed to know.
 
     `routes` is the same idea for the URL. A probe names a surface by its canonical
     path — `/v1/messages` is the Anthropic surface, everywhere, by definition — and
-    the profile says where this vendor happens to mount it. Moonshot serves that one
-    from `/anthropic/v1/messages` and answers 404 at the canonical path; without the
+    the profile says where this vendor happens to mount it. A provider that serves
+    it from `/anthropic/v1/messages` answers 404 at the canonical path; without the
     rewrite the run records "this endpoint has no Anthropic surface", which is both
     false and exactly the kind of finding that survives review because it looks
     like data.
@@ -121,7 +124,7 @@ class Profile:
     name: str
     base_url: str
     model: str
-    token_env: str = "HANGAR_GATEWAY_TOKEN"
+    token_env: str = DEFAULT_TOKEN_ENV
     context_window: int = 0
     modalities: tuple[str, ...] = ("text",)
     protocols: tuple[str, ...] = ("chat_completions",)
@@ -158,7 +161,7 @@ def load_profile(path: Path) -> Profile:
         name=raw["name"],
         base_url=raw["base_url"].rstrip("/"),
         model=raw["model"],
-        token_env=raw.get("token_env", "HANGAR_GATEWAY_TOKEN"),
+        token_env=raw.get("token_env", DEFAULT_TOKEN_ENV),
         context_window=int(raw.get("context_window", 0)),
         modalities=tuple(raw.get("modalities", ["text"])),
         protocols=tuple(raw.get("protocols", ["chat_completions"])),

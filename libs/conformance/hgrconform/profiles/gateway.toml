@@ -1,22 +1,21 @@
-# Our own gateway, reached the way `just bench` reaches it: a port-forward on this
-# machine. Costs nothing to run against — it is our hardware — and it is the only
-# endpoint here that can be checked without a vendor key.
+# A Hangar gateway, reached through a port-forward of its public listener on this
+# machine, with a tenant API key. It needs no vendor key, so it is the profile to
+# start from when checking your own deployment.
 #
-#   kubectl -n hangar port-forward svc/hangar-gateway 8080:80
-#   export HANGAR_GATEWAY_TOKEN=$(kubectl -n hangar \
-#       get secret hangar-secrets -o jsonpath='{.data.HANGAR_GATEWAY_TOKEN}' | base64 -d)
+#   export HANGAR_API_KEY=<a tenant API key>
 #   just conformance gateway
+#   just conformance gateway --reference <a profile for the model's original provider>
 
 name = "gateway"
 base_url = "http://127.0.0.1:8080"
 model = "gpt-oss-120b"
-token_env = "HANGAR_GATEWAY_TOKEN"
+token_env = "HANGAR_API_KEY"
 
 context_window = 131072
 modalities = ["text"]
 protocols = ["chat_completions"]
 
-# What a customer must never see in an error body. These are the names of everything
+# What a caller must never see in an error body. These are the names of everything
 # between the gateway and the engine — if any of them reaches a 4xx body, that is a
 # finding today and it needs no reference endpoint to establish. Add the names your own
 # infrastructure goes by here, and to the gateway's HANGAR_GATEWAY_REDACT_NAMES.
