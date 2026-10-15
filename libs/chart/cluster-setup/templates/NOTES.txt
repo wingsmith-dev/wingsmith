@@ -17,7 +17,7 @@ Telemetry  : {{ if .Values.monitoring.enabled }}configured — agent -> {{ .Valu
    register screen or with POST /v1/clusters/{{ .Values.cluster.id }}/enrolment-token:
 
      kubectl -n {{ .Release.Namespace }} create secret generic {{ .Values.enrolmentToken.existingSecret }} \
-       --from-literal={{ .Values.enrolmentToken.secretKey }}=<this cluster's enrolment token, hgro1....>
+       --from-literal={{ .Values.enrolmentToken.secretKey }}=<this cluster's hgro1. enrolment token from the console's register screen>
 {{- end }}
 {{- if not .Values.hfToken.create }}
 
