@@ -100,10 +100,10 @@ func TestLoginRefusesAPasswordOnTheCommandLine(t *testing.T) {
 	cfg := fresh(t)
 	p := &testPlane{}
 	srv := p.serve(t)
-	if _, _, code := runWith(t, cfg, "login", "s3cret", "--server", srv.URL); code == 0 {
+	if _, _, code := runWith(t, cfg, "login", "s3cret", "--server", srv.URL); code != 2 {
 		t.Errorf("a positional password exited %d, want 2 (USAGE)", code)
 	}
-	if _, _, code := runWith(t, cfg, "login", "--password", "s3cret", "--server", srv.URL); code == 0 {
+	if _, _, code := runWith(t, cfg, "login", "--password", "s3cret", "--server", srv.URL); code != 2 {
 		t.Errorf("--password exited %d, want 2 (USAGE)", code)
 	}
 	if p.hits != 0 {

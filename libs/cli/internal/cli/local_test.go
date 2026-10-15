@@ -34,6 +34,8 @@ func TestLocalCommandsWorkOnAFreshInstall(t *testing.T) {
 		{"help"},
 		{"--help"},
 		{"completion", "bash"},
+		{},
+		{"cluster"},
 	} {
 		out, errOut, code := runWith(t, cfg, args...)
 		if code != 0 {
@@ -90,5 +92,29 @@ func TestABadStoredOutputDoesNotLockOutConfig(t *testing.T) {
 	}
 	if _, _, code := runWith(t, cfg, "config", "set", "output", "nonsense"); code != 2 {
 		t.Errorf("an invalid format was accepted: exit %d", code)
+	}
+}
+
+// Every invocation mistake is USAGE, exit 2: an unknown command, an unknown
+// subcommand of a noun, a wrong argument count, and an unknown flag.
+func TestInvocationMistakesAreUsageErrors(t *testing.T) {
+	for _, args := range [][]string{
+		{"nonsense"},
+		{"cluster", "nonsense"},
+		{"cluster", "ls", "extra"},
+		{"cluster", "ls", "--bogus"},
+		{"cluster", "get"},
+		{"config", "set", "output"},
+	} {
+		_, errOut, code := run(t, args...)
+		if code != 2 {
+			t.Errorf("hgr %s exited %d, want 2 (USAGE): %s", strings.Join(args, " "), code, errOut)
+		}
+		if !strings.Contains(errOut, "USAGE") {
+			t.Errorf("hgr %s did not say USAGE: %s", strings.Join(args, " "), errOut)
+		}
+	}
+	if _, _, code := run(t, "cluster"); code != 0 {
+		t.Errorf("a bare noun prints its help and exits %d, want 0", code)
 	}
 }

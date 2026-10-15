@@ -75,6 +75,10 @@ const (
 	// annotationLocal marks a command, and everything under it, that needs no
 	// backend at all.
 	annotationLocal = "local"
+	// annotationHelpOnly marks a command whose own run only prints help: the
+	// root and every noun with subcommands. Unlike local it does not reach the
+	// subcommands, which do talk to the plane.
+	annotationHelpOnly = "help_only"
 )
 
 // localCmd marks a command as never reaching the control plane.
@@ -187,9 +191,6 @@ Nothing is running yet? Add --fake for a complete offline control plane.`,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 			return app.setup(cmd)
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return cmd.Help()
-		},
 	}
 
 	f := root.PersistentFlags()
@@ -226,13 +227,51 @@ Nothing is running yet? Add --fake for a complete offline control plane.`,
 	register(app, root)
 	root.SetHelpCommandGroupID("meta")
 	root.SetCompletionCommandGroupID("meta")
+	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		return errs.New(errs.CodeUsage, "%s", err.Error()).
+			WithFix("See the flags", cmd.CommandPath()+" --help")
+	})
+	tighten(root)
 	return root
+}
+
+// tighten makes every invocation mistake a USAGE error. Left alone, cobra
+// returns untyped errors for a wrong argument count, which would surface as
+// INTERNAL, and prints help with exit 0 for an unknown subcommand of a noun.
+func tighten(cmd *cobra.Command) {
+	for _, c := range cmd.Commands() {
+		tighten(c)
+	}
+	if cmd.HasSubCommands() && cmd.Run == nil && cmd.RunE == nil {
+		if cmd.Annotations == nil {
+			cmd.Annotations = map[string]string{}
+		}
+		cmd.Annotations[annotationHelpOnly] = "true"
+		cmd.Args = cobra.ArbitraryArgs
+		cmd.RunE = func(c *cobra.Command, args []string) error {
+			if len(args) > 0 {
+				return errs.New(errs.CodeUsage, "unknown command %q for %q", args[0], c.CommandPath()).
+					WithFix("See the commands", c.CommandPath()+" --help")
+			}
+			return c.Help()
+		}
+		return
+	}
+	if validate := cmd.Args; validate != nil {
+		cmd.Args = func(c *cobra.Command, args []string) error {
+			if err := validate(c, args); err != nil {
+				return errs.New(errs.CodeUsage, "%s", err.Error()).
+					WithFix("See the usage", c.CommandPath()+" --help")
+			}
+			return nil
+		}
+	}
 }
 
 func (a *App) setup(cmd *cobra.Command) error {
 	g := a.flags
 	a.authOptional = cmd.Annotations[annotationAuthOptional] == "true"
-	a.local = isLocal(cmd)
+	a.local = isLocal(cmd) || cmd.Annotations[annotationHelpOnly] == "true"
 
 	cfg, err := config.Load(firstNonEmpty(g.configPath, os.Getenv("HANGAR_CONFIG")))
 	if err != nil {
