@@ -1,5 +1,5 @@
 import { create } from "zustand"
-import { persist } from "zustand/middleware"
+import { createJSONStorage, persist } from "zustand/middleware"
 import { setAuthToken, setRefreshToken, getRefreshToken } from "./token"
 import { BASE_URL, API_PREFIX } from "@/lib/api/http"
 
@@ -124,6 +124,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "hangar.auth",
+      // Session storage, not local storage: the pair survives a reload but not
+      // the tab, and is never shared with other tabs or left on disk after the
+      // browser closes. A stolen refresh token mints sessions until it is
+      // revoked, so it should live no longer than the page that uses it.
+      storage: createJSONStorage(() => sessionStorage),
       // The access token outlives a reload but not its own expiry, and nothing
       // here knows when that is. An expired one rehydrates, the refresh token
       // is used to mint a new pair on the next 401, and only if that fails is
@@ -135,6 +140,14 @@ export const useAuthStore = create<AuthState>()(
     }
   )
 )
+
+// Earlier builds kept the pair in local storage. Drop any copy left behind so an
+// upgrade does not leave a live refresh token on disk.
+try {
+  localStorage.removeItem("hangar.auth")
+} catch {
+  // Storage can be unavailable (a sandboxed frame, a locked-down profile).
+}
 
 /**
  * The payload of a successful refresh. Called by the transport after it has
