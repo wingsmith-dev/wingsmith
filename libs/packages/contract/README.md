@@ -17,6 +17,8 @@ source of truth for both.
 plane, run `scripts/openapi.sh` to regenerate both; `scripts/openapi.sh --check` writes nothing and
 fails when either is stale or when `API.md`'s resources table names a route group the plane does not
 serve, or misses one it does. It runs in the plane's environment through `uv` and needs no database.
+The plane's test suite runs the same check (`libs/plane/tests/test_contract_openapi.py`), so a route
+change that leaves either file stale fails CI.
 
 ## The protocol contract
 
@@ -56,7 +58,7 @@ because a string that is legitimate on the node label is not evidence about what
 An unmapped card is not an error. It falls back to slugifying the vendor string, which is stable
 and deterministic, and both sides log the miss once so the table can be grown.
 
-## Roadmap: shared Go types for the HTTP API
+## Roadmap: shared and generated types for the HTTP API
 
 The Go clients of the HTTP API — `hgr` (`libs/cli/internal/api`), the gateway
 (`libs/gateway/internal/plane`) and the operator (`libs/operator/internal/sync`) — each declare
@@ -66,4 +68,6 @@ source and fails when a JSON field or route exists on one side and not the other
 
 The intended end state is a Go module here holding the types for the routes more than one module
 reads (the resolved routing table, the gateway tenant table and tunnel verification), with `hgr`'s
-types generated from `openapi.json`. It is not built yet.
+types generated from `openapi.json`. The console's wire types
+(`libs/console/src/modules/*/types.ts`) are hand-written too and are meant to be generated from the
+same schema. Neither is built yet.
