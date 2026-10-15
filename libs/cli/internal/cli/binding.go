@@ -136,10 +136,14 @@ func quotaNoun() noun[api.Quota] {
 		name:    "quota",
 		aliases: []string{"quotas"},
 		group:   "binding",
-		short:   "Guaranteed floor and fair share, per project and device class",
-		long: `A quota is a guaranteed number of devices, an optional hard limit, and a
-fair-share weight for capacity above the guarantee, with current usage beside
-it.
+		short:   "Device ceiling per project and device class",
+		long: `A quota caps how many devices of one class a project may hold, with current
+usage beside it.
+
+Placement checks the ceiling when it admits a workload: limit, or the lower of
+limit and guaranteed when over-quota is not enabled. guaranteed is not reserved
+for the project against other projects, and the over-quota weight is recorded
+but nothing reads it: there is no fair-share division of spare capacity yet.
 
 A quota with no cluster applies across every cluster, and its usage is summed
 across all of them. over_limit and headroom are computed by the plane.`,

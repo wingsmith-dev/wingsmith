@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // The root help lists the verbs that change something, noun by noun. Every
@@ -42,7 +43,7 @@ func TestRootHelpListsTheRealWriteVerbs(t *testing.T) {
 		}
 	}
 	readOnly := map[string]bool{"ls": true, "get": true, "events": true, "harnesses": true,
-		"verdict": true, "rules": true, "resolved": true, "bands": true}
+		"verdict": true, "rules": true, "resolved": true, "bands": true, "sla": true, "wait": true}
 	for _, noun := range root.Commands() {
 		if noun.GroupID == "meta" || noun.GroupID == "" {
 			continue
@@ -69,4 +70,34 @@ func sub(cmd *cobra.Command, name string) *cobra.Command {
 		}
 	}
 	return nil
+}
+
+// Help describes what works today. Preemption, fair share and serving-quota
+// enforcement are not built, so no command or flag may describe them as if
+// they were.
+func TestHelpPromisesNothingUnbuilt(t *testing.T) {
+	unbuilt := []string{
+		"may be evicted for", "fair-share weight for", "guaranteed floor",
+		"the gateway refuses on", "before it bites", "same way the gateway does",
+		"no longer rate limited", "shadow mode",
+	}
+	check := func(where, text string) {
+		lower := strings.ToLower(text)
+		for _, phrase := range unbuilt {
+			if strings.Contains(lower, phrase) {
+				t.Errorf("%s says %q", where, phrase)
+			}
+		}
+	}
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		check(cmd.CommandPath(), cmd.Short+"\n"+cmd.Long+"\n"+cmd.Example)
+		cmd.LocalFlags().VisitAll(func(f *pflag.Flag) {
+			check(cmd.CommandPath()+" --"+f.Name, f.Usage)
+		})
+		for _, c := range cmd.Commands() {
+			walk(c)
+		}
+	}
+	walk(newRootCmd(&App{}))
 }

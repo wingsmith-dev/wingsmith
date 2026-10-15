@@ -185,8 +185,7 @@ artifacts, deployments, projects, quotas, policies and the rest. The verbs that
 change things are:
 
   workload         create, scale, pause, resume, drain, rm
-  operation        create (node drain, cordon, uncordon), cancel, wait
-  endpoint         sla
+  operation        create (node drain, cordon, uncordon), cancel
   serving-quota    create, set, rm
   alert-threshold  create, set, rm
   benchmark        run, request

@@ -23,11 +23,12 @@ func servingQuotaNoun() noun[api.ServingQuota] {
 and tokens a minute a caller may count on, the concurrency and output ceilings,
 and the objectives the commitment is held to.
 
-Every limit is nullable and a null is UNCOMMITTED, never zero — an endpoint with
-no quota at all is not rate limited, and an axis left unset is a promise nobody
-made rather than a promise of nothing. 'enforced' is the difference between a
-limit the gateway refuses on and one it only counts: shadow mode measures a
-commitment before it bites.`,
+Every limit is nullable and a null is UNCOMMITTED, never zero: an axis left
+unset is a promise nobody made rather than a promise of nothing.
+
+Serving quotas are advisory today. The gateway does not read them, so no request
+is refused, queued or counted against these numbers. 'enforced' records whether
+a limit should be enforced once something does.`,
 		example: `  hgr serving-quota ls
   hgr serving-quota ls --enforced=false
   hgr serving-quota get chat
@@ -50,7 +51,7 @@ commitment before it bites.`,
 			{Title: "concurrent", Align: ui.AlignRight},
 			{Title: "max out", Align: ui.AlignRight},
 			{Title: "scope"},
-			{Title: "enforcement"},
+			{Title: "enforce"},
 			{Title: "standard"},
 		},
 		row: func(s ui.Style, q api.ServingQuota) []string {
@@ -65,7 +66,7 @@ commitment before it bites.`,
 			cmd.Flags().StringVar(&f.endpoint, "endpoint", "", "limit to one endpoint")
 			f.byProject = true
 			cmd.Flags().StringVar(&f.scope, "scope", "", "filter by limit scope: per_replica|divided")
-			cmd.Flags().BoolVar(&f.enforced, "enforced", false, "only enforced quotas (--enforced=false for shadow mode)")
+			cmd.Flags().BoolVar(&f.enforced, "enforced", false, "only quotas marked to be enforced (--enforced=false for the rest)")
 		},
 		detail: servingQuotaDetail,
 		next: func(q api.ServingQuota) []errs.Action {
@@ -101,7 +102,7 @@ func servingQuotaDetail(app *App, w io.Writer, s ui.Style, q api.ServingQuota) {
 	kv.Add("on exceed", q.OnExceed)
 	kv.Add("queue timeout", queueMS(q.QueueTimeoutMS))
 	kv.Add("scope", q.LimitScope)
-	kv.Add("enforcement", enforcementWord(s, q.Enforced))
+	kv.Add("enforce", enforcementWord(s, q.Enforced))
 	kv.Add("revision", q.Revision)
 	kv.Render(w)
 
@@ -156,7 +157,7 @@ func (l *servingLimits) bind(cmd *cobra.Command) {
 	fl.Float64Var(&l.successRate, "success-rate-objective", 0, "success-rate objective, 0 to 1")
 	fl.StringVar(&l.availability, "availability-objective", "", "availability objective version")
 	fl.IntVar(&l.objectiveWindow, "objective-window-seconds", 0, "window the objectives are measured over")
-	fl.BoolVar(&l.enforced, "enforced", false, "refuse on exceed rather than only counting (shadow mode)")
+	fl.BoolVar(&l.enforced, "enforced", false, "mark the limits to be enforced (nothing enforces serving quotas yet)")
 }
 
 func (l *servingLimits) create(cmd *cobra.Command, endpoint string) api.ServingQuotaCreate {
@@ -225,10 +226,9 @@ func newServingQuotaCreateCmd(app *App) *cobra.Command {
 		Long: `Commit a serving quota on an endpoint. An endpoint carries at most one, so
 this is a create and 'hgr serving-quota set' is how it is changed afterwards.
 
-Every limit left unset stays uncommitted, which for an endpoint with no quota
-means no ceiling at all on that axis. --enforced is off by default: a fresh
-commitment starts in shadow mode, counted and reported but never refused, so it
-can be watched before it bites.`,
+Every limit left unset stays uncommitted. The limits are advisory: the gateway
+does not read serving quotas yet, so --enforced only records that they should be
+enforced once something does.`,
 		Example: `  hgr serving-quota create chat --committed-rpm 1000 --committed-tpm 10000000
   hgr serving-quota create chat --max-concurrent 256 --on-exceed queue --queue-timeout-ms 5000 --enforced`,
 		Args: cobra.ExactArgs(1),
@@ -260,8 +260,7 @@ func newServingQuotaSetCmd(app *App) *cobra.Command {
 keep the values they had.
 
 An axis cannot be returned to uncommitted here — that is a different intent, and
-'hgr serving-quota rm' removes the commitment entirely when there should be no
-ceiling at all.`,
+'hgr serving-quota rm' removes the commitment entirely.`,
 		Example: `  hgr serving-quota set chat --committed-rpm 2000
   hgr serving-quota set chat --enforced`,
 		Args: cobra.ExactArgs(1),
@@ -292,8 +291,8 @@ func newServingQuotaDeleteCmd(app *App) *cobra.Command {
 		Use:     "rm <endpoint|quota-id>",
 		Aliases: []string{"delete"},
 		Short:   "Remove an endpoint's committed limits entirely",
-		Long: `Delete a serving quota. The endpoint keeps serving; it is simply no longer
-rate limited, because an endpoint with no quota is uncommitted on every axis.`,
+		Long: `Delete a serving quota. The endpoint keeps serving and is uncommitted on
+every axis.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
@@ -313,7 +312,7 @@ rate limited, because an endpoint with no quota is uncommitted on every axis.`,
 				Data:    deleted(quota.ID, quota.EndpointName),
 				Names:   []string{quota.ID},
 				Human: func(w io.Writer, s ui.Style, width int) {
-					fmt.Fprintf(w, "%s is no longer rate limited\n", s.Bold(quota.EndpointName))
+					fmt.Fprintf(w, "%s has no committed limits\n", s.Bold(quota.EndpointName))
 				},
 			})
 		},
@@ -329,11 +328,11 @@ func newServingQuotaResolvedCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "resolved <endpoint>",
 		Short: "How the committed limits divide across replicas",
-		Long: `Show what one replica of an endpoint actually enforces.
+		Long: `Show how an endpoint's committed limits divide across its replicas.
 
 A per_replica limit is the same on every replica; a divided one is split across
-them, so what a single replica may serve depends on how many there are. The
-plane computes this the same way the gateway does.`,
+them, so what a single replica would serve depends on how many there are. This
+is the table a gateway would enforce from; no gateway reads it yet.`,
 		Example: `  hgr serving-quota resolved chat --replicas 4
   hgr serving-quota resolved chat --replicas 4 --index 1`,
 		Args: cobra.ExactArgs(1),
@@ -383,7 +382,7 @@ func resolvedServingTable(app *App, w io.Writer, s ui.Style, table api.ResolvedS
 		kv.Add("declared concurrent", committedInt(s, q.Declared.MaxConcurrentRequests))
 		kv.Add("effective concurrent", committedInt(s, q.Effective.MaxConcurrentRequests))
 		kv.Add("scope", q.Effective.LimitScope)
-		kv.Add("enforcement", enforcementWord(s, q.Effective.Enforced))
+		kv.Add("enforce", enforcementWord(s, q.Effective.Enforced))
 		if q.StarvedReplicas > 0 {
 			kv.Add("starved replicas", s.Amber(strconv.Itoa(q.StarvedReplicas)))
 		}
@@ -435,13 +434,13 @@ func queueMS(p *int) string {
 	return fmt.Sprintf("%dms", *p)
 }
 
-// enforcementWord is the one distinction a reader must never miss: an enforced
-// limit refuses, a shadow one only counts.
+// enforcementWord shows the enforced flag without suggesting anything acts on
+// it: nothing enforces serving quotas yet, so true only records the intent.
 func enforcementWord(s ui.Style, enforced bool) string {
 	if enforced {
-		return s.Green("enforced")
+		return "yes"
 	}
-	return s.Amber("shadow")
+	return s.Dim("no")
 }
 
 func standardWord(s ui.Style, std api.ServingQuotaStandard) string {

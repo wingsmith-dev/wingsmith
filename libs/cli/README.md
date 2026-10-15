@@ -12,7 +12,7 @@ scripts read `-o json`, and agents read a stable envelope.
 | Noun | Verbs |
 |---|---|
 | `workload` | `create`, `scale`, `pause`, `resume`, `drain`, `rm` |
-| `operation` | `create` (`node.drain`, `node.cordon`, `node.uncordon`, and the `workload.*` types), `cancel`, `wait` |
+| `operation` | `create` (`node.drain`, `node.cordon`, `node.uncordon`, and the `workload.*` types), `cancel` |
 | `serving-quota` | `create`, `set`, `rm` |
 | `alert-threshold` | `create`, `set`, `rm` |
 | `benchmark` | `run`, `request create` |

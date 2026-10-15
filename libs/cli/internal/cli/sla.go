@@ -119,7 +119,7 @@ func slaDetail(app *App, w io.Writer, s ui.Style, r api.SLAReport) {
 		}
 		kv.Add("verdict", slaVerdictWord(s, r.Met))
 		kv.Add("error budget", slaBudget(s, r.ErrorBudgetConsumed))
-		kv.Add("enforcement", enforcementWord(s, r.Objective.Enforced))
+		kv.Add("enforce", enforcementWord(s, r.Objective.Enforced))
 	}
 	kv.Add("definition", r.Definition)
 	kv.Render(w)

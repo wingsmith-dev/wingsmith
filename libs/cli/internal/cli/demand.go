@@ -755,7 +755,7 @@ how a distilled model gets its step count, because omni defaults every model to
 	fl.StringVar(&strategy, "strategy", "pack", "pack|spread")
 	fl.IntVar(&maxClusters, "max-clusters", 0, "cap how many clusters may hold a share")
 	fl.StringArrayVar(&floors, "floor", nil, "per-cluster minimum share (CLUSTER=N, repeatable)")
-	fl.BoolVar(&preemptible, "preemptible", false, "may be evicted for something of higher priority")
+	fl.BoolVar(&preemptible, "preemptible", false, "record the workload as preemptible; nothing preempts workloads yet")
 	fl.StringArrayVar(&adapters, "adapter", nil, "adapter artifact to load (repeatable)")
 	fl.StringArrayVarP(&labels, "label", "l", nil, "label (KEY=VALUE, repeatable)")
 	fl.BoolVar(&singleFabric, "single-fabric", false,
