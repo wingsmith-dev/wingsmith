@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -73,6 +74,21 @@ func (r *SyncedResourceReconciler) reconcileDeployment(ctx context.Context, res 
 	// spent its first minutes with the plane unable to say whether any cluster had even received
 	// it.
 	r.stage(res, dep, "Accepted", fmt.Sprintf("reconciling revision %d", res.Spec.Revision))
+
+	// The gates below admit a new apply and nothing else. A deployment already running from this
+	// declaration is past them, and re-checking it on every pass turned a transient answer — an
+	// artifact read that failed, a node cordoned for a drain, the deployment's own pods holding
+	// the accelerators the capacity check counts — into a running deployment reported as Waiting.
+	live, err := r.runningAsDeclared(ctx, dep)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if live != nil {
+		if err := r.holdOpen(ctx, res); err != nil {
+			return ctrl.Result{}, err
+		}
+		return r.afterApply(ctx, res, dep, live)
+	}
 
 	artifactID := servedArtifact(dep)
 	artifact, err := r.artifact(ctx, artifactID)
@@ -294,6 +310,41 @@ func (r *SyncedResourceReconciler) renderIsCurrent(
 		}
 	}
 	return true, nil
+}
+
+// runningAsDeclared returns the live graph deployment when it was already built from this
+// declaration's generation and serving digest, and nil when there is none or it was built from
+// something else.
+//
+// The layout is deliberately not compared. It is the capacity check's answer, and asking the
+// question again of a deployment that is running is what this exists to stop: a different answer
+// would move a serving model for no change anybody declared.
+func (r *SyncedResourceReconciler) runningAsDeclared(
+	ctx context.Context,
+	dep wire.DeploymentDesired,
+) (*unstructured.Unstructured, error) {
+	if dep.Serving.Digest == "" {
+		return nil, nil
+	}
+	live := &unstructured.Unstructured{}
+	live.SetGroupVersionKind(render.GVK)
+	key := types.NamespacedName{Namespace: r.Render.Namespace, Name: render.WorkloadName(dep)}
+	err := r.Client.Get(ctx, key, live)
+	switch {
+	case apierrors.IsNotFound(err), apimeta.IsNoMatchError(err):
+		return nil, nil
+	case err != nil:
+		return nil, fmt.Errorf("read graph deployment %s: %w", key.Name, err)
+	}
+	if !live.GetDeletionTimestamp().IsZero() || live.GetLabels()[deploymentIDLabel] != dep.DeploymentID {
+		return nil, nil
+	}
+	annotations := live.GetAnnotations()
+	if annotations[render.GenerationAnnotation] != strconv.FormatInt(dep.Generation, 10) ||
+		annotations[render.ServingDigestAnnotation] != dep.Serving.Digest {
+		return nil, nil
+	}
+	return live, nil
 }
 
 // pruneUnlabelled collects an object this operator rendered before it stamped the label that finds

@@ -1247,3 +1247,102 @@ func TestADeclaredChangeStillReachesTheCluster(t *testing.T) {
 			render.GenerationAnnotation, got, want)
 	}
 }
+
+// TestARunningDeploymentDoesNotRegressWhenAGateFails: the gates admit a new apply. Once the graph
+// is running from this declaration, losing the artifact's declared copy or the only usable node —
+// a drain cordons it — must not turn the deployment back into Waiting.
+func TestARunningDeploymentDoesNotRegressWhenAGateFails(t *testing.T) {
+	scheme := clientgoscheme.Scheme
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("scheme: %v", err)
+	}
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	node := gpuNode("gpu-0", 8, true)
+	objects := []client.Object{dep, art, completedPrefetch(), node}
+	for _, pod := range readyPods(2) {
+		objects = append(objects, pod)
+	}
+	c := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).WithStatusSubresource(dep).Build()
+	r := &SyncedResourceReconciler{
+		Client: c, Scheme: scheme, Log: slog.Default(),
+		Namespace: "hangar-system", Render: testRender,
+		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.Namespace, Name: dep.Name}}
+	ctx := context.Background()
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("first reconcile: %v", err)
+	}
+
+	if err := c.Delete(ctx, art); err != nil {
+		t.Fatal(err)
+	}
+	node.Spec.Unschedulable = true
+	if err := c.Update(ctx, node); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+
+	var out v1alpha1.SyncedResource
+	if err := c.Get(ctx, req.NamespacedName, &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Status.Phase != "Ready" {
+		t.Fatalf("a running deployment regressed to %s (%s)", out.Status.Phase, readyCondition(t, &out).Reason)
+	}
+}
+
+// TestANewGenerationIsStillGated: skipping the gates is for what is already running. A new
+// generation is a new apply, and waits like one.
+func TestANewGenerationIsStillGated(t *testing.T) {
+	scheme := clientgoscheme.Scheme
+	if err := v1alpha1.AddToScheme(scheme); err != nil {
+		t.Fatalf("scheme: %v", err)
+	}
+	dep := declared(t, "deployment", testDeploymentID, testDeploymentDesired())
+	art := declared(t, "artifact", testArtifactID, testArtifactDesired())
+	c := fake.NewClientBuilder().WithScheme(scheme).
+		WithObjects(dep, art, completedPrefetch(), gpuNode("gpu-0", 8, true)).WithStatusSubresource(dep).Build()
+	r := &SyncedResourceReconciler{
+		Client: c, Scheme: scheme, Log: slog.Default(),
+		Namespace: "hangar-system", Render: testRender,
+		ClusterID: "clu_01j9x2aaaaaaaaaaaaaaaaaaaa",
+	}
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Namespace: dep.Namespace, Name: dep.Name}}
+	ctx := context.Background()
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("first reconcile: %v", err)
+	}
+
+	next := testDeploymentDesired()
+	next.Generation++
+	raw, err := json.Marshal(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var current v1alpha1.SyncedResource
+	if err := c.Get(ctx, req.NamespacedName, &current); err != nil {
+		t.Fatal(err)
+	}
+	current.Spec.Payload = &apiextensionsv1.JSON{Raw: raw}
+	current.Spec.Revision++
+	if err := c.Update(ctx, &current); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Delete(ctx, art); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Reconcile(ctx, req); err != nil {
+		t.Fatalf("second reconcile: %v", err)
+	}
+	var out v1alpha1.SyncedResource
+	if err := c.Get(ctx, req.NamespacedName, &out); err != nil {
+		t.Fatal(err)
+	}
+	if got := readyCondition(t, &out).Reason; got != "ArtifactNotDeclared" {
+		t.Fatalf("a new generation skipped its gates: reason %s", got)
+	}
+}
