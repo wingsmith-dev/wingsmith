@@ -1,7 +1,9 @@
 package tunnel
 
 import (
+	"context"
 	"errors"
+	"net"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -108,4 +110,77 @@ func TestRevokeClosesAClustersTunnelsAndForgetsItsTokens(t *testing.T) {
 	if verifier.asked() != asked+1 {
 		t.Errorf("the plane was asked %d more times, want once", verifier.asked()-asked)
 	}
+}
+
+// breakableListener starts failing Accept with an error that is not temporary
+// once broken, the way a listener whose socket has gone bad does.
+type breakableListener struct {
+	net.Listener
+	broken atomic.Bool
+}
+
+func (l *breakableListener) Accept() (net.Conn, error) {
+	conn, err := l.Listener.Accept()
+	if l.broken.Load() {
+		if conn != nil {
+			_ = conn.Close()
+		}
+		return nil, errors.New("accept: the socket is gone")
+	}
+	return conn, err
+}
+
+// TestTunnelsOutliveAServeThatReturnedAndAreStillReverified pins the contract
+// the gateway relies on to bind the listener again instead of exiting: a Serve
+// that returns on an accept error must not stop the checks on tunnels it
+// already adopted, or a revoked token would keep them.
+func TestTunnelsOutliveAServeThatReturnedAndAreStillReverified(t *testing.T) {
+	t.Parallel()
+
+	verifier := &stubVerifier{clusters: map[string]string{"tok-ap": "clu_ap"}}
+	pool := newPool(t, PoolConfig{})
+	listener, err := NewListener(ListenerConfig{
+		Pool:             pool,
+		Verifier:         verifier,
+		CacheTTL:         time.Nanosecond,
+		ReverifyInterval: 20 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	inner, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	breakable := &breakableListener{Listener: inner}
+	served := make(chan error, 1)
+	go func() { served <- listener.Serve(context.Background(), breakable) }()
+
+	addr := inner.Addr().String()
+	if _, err := dialConnector(t, addr, Hello{Token: "tok-ap"}, echoHandler("pong")); err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	eventually(t, 5*time.Second, "the tunnel", func() bool { return pool.Live("clu_ap") == 1 })
+
+	breakable.broken.Store(true)
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = conn.Close()
+	select {
+	case err := <-served:
+		if err == nil {
+			t.Fatal("Serve returned nil on an accept error that is not temporary")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Serve did not return on an accept error that is not temporary")
+	}
+	if live := pool.Live("clu_ap"); live != 1 {
+		t.Fatalf("Serve returning closed tunnels: %d live, want 1", live)
+	}
+
+	verifier.revoke("tok-ap")
+	eventually(t, 5*time.Second, "the revoked tunnel to close", func() bool { return pool.Live("clu_ap") == 0 })
 }

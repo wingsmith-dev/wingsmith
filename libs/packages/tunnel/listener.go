@@ -218,6 +218,11 @@ type Listener struct {
 	// stopped closes when the listener stops accepting. It wakes an accept loop
 	// waiting for a handshake slot and cancels handshakes still in progress.
 	stopped chan struct{}
+	// life ends with the listener rather than with one Serve call, and bounds
+	// the re-verification of open tunnels. A Serve that returns on an accept
+	// error leaves its tunnels open, and they must go on being checked.
+	life    context.Context
+	endLife context.CancelFunc
 }
 
 // NewListener builds the listener. It does not bind: the caller supplies the
@@ -256,11 +261,14 @@ func NewListener(cfg ListenerConfig) (*Listener, error) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
+	life, endLife := context.WithCancel(context.Background())
 	return &Listener{
 		cfg:     cfg,
 		cache:   &tokenCache{ttl: cfg.CacheTTL, grace: cfg.CacheGrace, now: cfg.Now},
 		sources: newSourceGuard(cfg.MaxHandshakesPerSource, cfg.SourceFailures, cfg.SourceFailureWindow, cfg.Now),
 		stopped: make(chan struct{}),
+		life:    life,
+		endLife: endLife,
 	}, nil
 }
 
@@ -274,6 +282,10 @@ func NewListener(cfg ListenerConfig) (*Listener, error) {
 // connection reset before it was accepted — is waited out with a backoff, as
 // net/http does. Returning on one would take down a listener every agent
 // depends on over a condition that clears by itself.
+//
+// Any other Accept error is returned, and Serve may then be called again with
+// a new net.Listener. Tunnels adopted before it returned stay open and go on
+// being re-verified; only Shutdown or Close ends them.
 func (l *Listener) Serve(ctx context.Context, ln net.Listener) error {
 	l.mu.Lock()
 	if l.closing {
@@ -395,7 +407,7 @@ func (l *Listener) handle(ctx context.Context, conn net.Conn, release func()) {
 		"cluster", clusterID, "agent", hello.Agent, "remote", remote,
 		"capacity", adopted.Capacity(), "live", l.cfg.Pool.Live(clusterID))
 
-	l.watchToken(ctx, adopted, hello.Token)
+	l.watchToken(WithDialSource(l.life, DialSource(ctx)), adopted, hello.Token)
 	slog.Info("gateway: tunnel closed",
 		"cluster", clusterID, "remote", remote,
 		"held", time.Since(adopted.Opened).Round(time.Second).String(),
@@ -660,6 +672,7 @@ func (l *Listener) stopAccepting() {
 	l.mu.Lock()
 	if !l.closing {
 		close(l.stopped)
+		l.endLife()
 	}
 	l.closing = true
 	ln := l.ln
