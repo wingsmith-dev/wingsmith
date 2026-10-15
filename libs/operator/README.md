@@ -198,6 +198,7 @@ make test                # go test -race ./...
 make vet                 # go vet, including the e2e and interop suites
 make verify-manifests    # regenerate and fail if deploy/crd, deploy/rbac or deepcopy changed
 make kind-load deploy    # build, load into the kind cluster from dev/, apply
+just interop             # from the repository root: the Go client against the real Python hub
 ```
 
 `deploy/crd/` and `deploy/rbac/role.yaml` are generated from the kubebuilder markers by
@@ -206,4 +207,6 @@ make kind-load deploy    # build, load into the kind cluster from dev/, apply
 The sync loop's tests run against an in-process fake hub (`internal/sync/fakehub_test.go`). The
 reconciler's tests use controller-runtime's fake client; `internal/reconcile/e2e_test.go` (build
 tag `e2e`) runs against a real API server for what the fake cannot model, such as garbage
-collection and finalizers.
+collection and finalizers. There is no envtest suite yet, so that behaviour is only checked against
+a real cluster. The interop suite (build tag `interop`) starts the plane's hub through
+`internal/interop/testdata/hub.py`, which needs `uv` and the plane's environment.
