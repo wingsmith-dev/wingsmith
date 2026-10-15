@@ -659,7 +659,7 @@ func (c *Client) applyFrame(ctx context.Context, e *Envelope) error {
 			// accepted, discarded, and logged loudly, exactly like an unknown type or a
 			// malformed payload. The frame's sequence still advances.
 			c.log.Error("handler panicked; discarding frame per PROTOCOL 6b",
-				"type", e.Type, "seq", e.Seq, "panic", pe.value, "stack", string(pe.stack))
+				"type", e.Type, "seq", seqString(e.Seq), "panic", pe.value, "stack", string(pe.stack))
 			return nil
 		}
 		if attempt >= c.applyAttempts {
@@ -667,7 +667,7 @@ func (c *Client) applyFrame(ctx context.Context, e *Envelope) error {
 				e.Type, seqString(e.Seq), attempt, err)
 		}
 		c.log.Warn("handler rejected frame; retrying",
-			"type", e.Type, "seq", e.Seq, "attempt", attempt, "retry_in", delay, "error", err)
+			"type", e.Type, "seq", seqString(e.Seq), "attempt", attempt, "retry_in", delay, "error", err)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
