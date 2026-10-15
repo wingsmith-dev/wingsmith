@@ -4,4 +4,9 @@
 .env
 .env.*
 .DS_Store
-*.tgz
+# Anchored: a bare *.tgz also matched the subcharts `helm dependency build`
+# vendors into charts/, and the package then failed for missing dependencies.
+/*.tgz
+tests/
+__pycache__/
+.pytest_cache/
