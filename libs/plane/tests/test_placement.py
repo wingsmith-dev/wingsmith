@@ -1059,3 +1059,41 @@ def test_a_workload_never_preempts_itself():
     decision = place(request(4, priority_value=100, preempts=True), snap)
     assert decision.placed is True
     assert decision.preemption is None
+
+
+def test_placement_questions_answer_200_because_they_create_nothing():
+    from app.modules.placement.routes import PlacementRoutes
+
+    assert PlacementRoutes.preview_placement.status_code == 200
+    assert PlacementRoutes.preview_expansion.status_code == 200
+
+
+class _Refs:
+    def __init__(self, found):
+        self.found = found
+
+    async def workloads_by_ref(self, ref):
+        return self.found
+
+    async def projects_by_ref(self, ref):
+        return self.found
+
+
+async def test_a_name_two_workloads_share_is_refused_rather_than_picked():
+    from app.core.exceptions import Invalid
+    from app.core.exceptions import NotFound
+
+    service = PlacementService(db=None)
+    service.repo = _Refs([SimpleNamespace(uid="wkl_a"), SimpleNamespace(uid="wkl_b")])
+    with pytest.raises(Invalid):
+        await service._workload("serve")
+    with pytest.raises(Invalid):
+        await service._project("core")
+
+    service.repo = _Refs([])
+    with pytest.raises(NotFound):
+        await service._workload("serve")
+
+    one = SimpleNamespace(uid="wkl_a")
+    service.repo = _Refs([one])
+    assert await service._workload("serve") is one

@@ -1,6 +1,7 @@
 """Placement: which cluster a workload would go to, asked without creating one.
 
-Three routes, and none of them writes anything. Placement runs for real inside
+Three routes, and none of them writes anything, which is why the two POSTs answer
+200 rather than 201: they are questions sent with a body, and nothing is created. Placement runs for real inside
 deployment creation; this exists because "why did it not land in iad-1" is a
 question operators ask before they create anything, and the decision already
 carries the answer per cluster. `/expand` is the same question asked about a whole
@@ -34,13 +35,13 @@ class PlacementRoutes(Controller):
     path = "/placement"
     dependencies = {"svc": Provide(placement_svc_generator)}
 
-    @post("/preview")
+    @post("/preview", status_code=200)
     async def preview_placement(
         self, context: RequestContext, svc: PlacementService, data: PlacementPreviewRequest
     ) -> Response[PlacementDecision]:
         return Response(await svc.preview(data))
 
-    @post("/expand")
+    @post("/expand", status_code=200)
     async def preview_expansion(
         self, context: RequestContext, svc: PlacementService, data: PlacementExpandRequest
     ) -> Response[ExpansionDecision]:

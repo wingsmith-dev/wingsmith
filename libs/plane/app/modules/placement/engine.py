@@ -176,6 +176,11 @@ def _name_reasons(request: PlacementRequest, cluster: ClusterSnapshot) -> list[R
     Two deployments of the same workload in two clusters share a name and do not
     collide; a name held by a *different* workload does, and placement rejects the
     cluster rather than inventing a suffix that would then be the name nobody typed.
+
+    The namespace is the cluster's, not the tenant's: the deployment name is the
+    object name rendered into the cluster, so two tenants whose workloads share a
+    name cannot both run in one cluster. The rejection says the name is taken and
+    does not say by whom, so it names nothing that belongs to another tenant.
     """
     if request.deployment_name is None:
         return []
@@ -186,7 +191,7 @@ def _name_reasons(request: PlacementRequest, cluster: ClusterSnapshot) -> list[R
         Rejection(
             code=NAME_TAKEN,
             message=f"cluster {cluster.name} already has a deployment named {request.deployment_name!r}",
-            detail={"name": request.deployment_name, "held_by": owner},
+            detail={"name": request.deployment_name},
         )
     ]
 

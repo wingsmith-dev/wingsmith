@@ -82,7 +82,13 @@ class PlacementRepository:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
 
-    async def capacity(self, project_id: UUID, device_class: str, workload_id: UUID | None = None) -> CapacitySnapshot:
+    async def capacity(
+        self,
+        project_id: UUID,
+        device_class: str,
+        workload_id: UUID | None = None,
+        deployment_name: str | None = None,
+    ) -> CapacitySnapshot:
         """Everything placement is allowed to look at, for one project and device class.
 
         Narrowed to the device class on purpose. A control plane that snapshots
@@ -94,15 +100,19 @@ class PlacementRepository:
         committing to it, and the create path, which has no primary key until it
         flushes. Both are answered without workload-level policies, and create
         compensates by handing its own constraint straight to the expansion.
+
+        `deployment_name` is the one name whose owner placement has to know per
+        cluster. Without one nothing is checked for a name clash, which is right for a
+        preview that names no deployment.
         """
-        clusters = await self._clusters(device_class)
+        clusters = await self._clusters(device_class, deployment_name)
         return CapacitySnapshot(
             clusters=clusters,
             quotas=await self._quotas(project_id, device_class),
             policies=await self._policies(project_id, workload_id),
         )
 
-    async def _clusters(self, device_class: str) -> tuple[ClusterSnapshot, ...]:
+    async def _clusters(self, device_class: str, deployment_name: str | None = None) -> tuple[ClusterSnapshot, ...]:
         rows = (
             await self.db.execute(
                 select(Cluster, ClusterSyncState.reachable).outerjoin(
@@ -111,8 +121,8 @@ class PlacementRepository:
             )
         ).all()
         devices = await self._devices(device_class)
-        domains = await self._domains()
-        taken = await self._taken_names()
+        domains = await self._domains(list(devices))
+        taken = await self._taken_names(deployment_name)
         reserved = await self._reserved(device_class)
         return tuple(
             ClusterSnapshot(
@@ -352,29 +362,38 @@ class PlacementRepository:
             counted[deployment_id] = counted.get(deployment_id, 0) + 1
         return counted
 
-    async def _taken_names(self) -> dict[UUID, dict[str, str]]:
-        """Which deployment name is spoken for in which cluster, and by whom.
+    async def _taken_names(self, name: str | None) -> dict[UUID, dict[str, str]]:
+        """Which clusters already hold a deployment of this name, and for which workload.
 
         A deployment name is unique per cluster, so expanding a workload onto a
         cluster where a *different* workload already holds that name cannot succeed.
-        The map is carried into the snapshot so the check costs the engine a
-        dictionary lookup instead of a query.
+        Only the one name being placed is read; the map is carried into the snapshot so
+        the check costs the engine a dictionary lookup instead of a query.
         """
+        if name is None:
+            return {}
         rows = (
             await self.db.execute(
-                select(Deployment.cluster_id, Deployment.name, Workload.uid).join(
-                    Workload, Deployment.workload_id == Workload.id
-                )
+                select(Deployment.cluster_id, Deployment.name, Workload.uid)
+                .join(Workload, Deployment.workload_id == Workload.id)
+                .where(Deployment.name == name)
             )
         ).all()
         taken: dict[UUID, dict[str, str]] = {}
-        for cluster_id, name, workload_uid in rows:
-            taken.setdefault(cluster_id, {})[name] = workload_uid
+        for cluster_id, deployment_name, workload_uid in rows:
+            taken.setdefault(cluster_id, {})[deployment_name] = workload_uid
         return taken
 
-    async def _domains(self) -> dict[UUID, list[TopologyDomainSnapshot]]:
+    async def _domains(self, cluster_ids: list[UUID]) -> dict[UUID, list[TopologyDomainSnapshot]]:
+        """Topology domains of the clusters that have a device of the class being placed."""
+        if not cluster_ids:
+            return {}
         rows = (
-            await self.db.execute(select(TopologyDomain, TopologyDomain.parent_id).order_by(TopologyDomain.seq))
+            await self.db.execute(
+                select(TopologyDomain, TopologyDomain.parent_id)
+                .where(TopologyDomain.cluster_id.in_(cluster_ids))
+                .order_by(TopologyDomain.seq)
+            )
         ).all()
         parents = {d.id: d.uid for d, _ in rows}
         by_cluster: dict[UUID, list[TopologyDomainSnapshot]] = {}
@@ -504,11 +523,12 @@ class PlacementRepository:
         rows = (await self.db.execute(select(Cluster.id, Cluster.uid).where(Cluster.id.in_(ids)))).all()
         return {i: uid for i, uid in rows}
 
-    async def workload_by_ref(self, ref: str) -> Workload | None:
+    async def workloads_by_ref(self, ref: str) -> list[Workload]:
+        """Every workload a reference could mean, capped at two so the caller can refuse a plural."""
         result = await self.db.execute(
-            select(Workload).where((Workload.uid if is_uid(ref) else Workload.name) == ref).limit(1)
+            select(Workload).where((Workload.uid if is_uid(ref) else Workload.name) == ref).limit(2)
         )
-        return result.scalar_one_or_none()
+        return list(result.scalars())
 
     async def project(self, project_id: UUID) -> Project | None:
         return await self.db.get(Project, project_id)
@@ -531,10 +551,11 @@ class PlacementRepository:
         ).all()
         return {uid: replicas for uid, replicas in rows}
 
-    async def project_by_ref(self, ref: str) -> Project | None:
+    async def projects_by_ref(self, ref: str) -> list[Project]:
+        """A project slug is unique per tenant, so a bare slug can name two; capped at two."""
         column = Project.uid if is_uid(ref) else Project.slug
-        result = await self.db.execute(select(Project).where(column == ref).limit(1))
-        return result.scalar_one_or_none()
+        result = await self.db.execute(select(Project).where(column == ref).limit(2))
+        return list(result.scalars())
 
     async def priority_class_by_name(self, name: str) -> PriorityClass | None:
         result = await self.db.execute(select(PriorityClass).where(PriorityClass.name == name).limit(1))

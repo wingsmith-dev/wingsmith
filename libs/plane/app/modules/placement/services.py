@@ -45,6 +45,14 @@ the first person to paste it into a lookup would get a 404 and a wasted hour.
 """
 
 
+def _single[T](found: list[T], kind: str, ref: str) -> T:
+    if not found:
+        raise NotFound(f"no {kind} {ref!r}")
+    if len(found) > 1:
+        raise Invalid(f"{ref!r} names more than one {kind}; use its id", {"ref": ref, "kind": kind})
+    return found[0]
+
+
 class ShapeSource(Protocol):
     """Anything that can state a device shape: a `Workload`, or a bare preview request.
 
@@ -146,7 +154,7 @@ class PlacementService:
         demand = await self.demand(workload)
         capacity = snapshot
         if capacity is None:
-            capacity = await self.repo.capacity(workload.project_id, demand.device_class, workload.id)
+            capacity = await self.repo.capacity(workload.project_id, demand.device_class, workload.id, workload.name)
         decision = expand(demand, capacity)
         if not decision.splittable and not decision.shares:
             raise Invalid(decision.summary)
@@ -222,10 +230,7 @@ class PlacementService:
 
     async def preview_expansion(self, data: PlacementExpandRequest) -> ExpansionDecision:
         """The split a workload would get, asked without writing a row."""
-        workload = await self.repo.workload_by_ref(data.workload)
-        if workload is None:
-            raise NotFound(f"no workload {data.workload!r}")
-        return await self.expand(workload)
+        return await self.expand(await self._workload(data.workload))
 
     async def preview(self, data: PlacementPreviewRequest) -> PlacementDecision:
         """Answers the question without writing a row.
@@ -261,16 +266,12 @@ class PlacementService:
         return await self.decide(request, project.id)
 
     async def _workload(self, ref: str) -> Workload:
-        found = await self.repo.workload_by_ref(ref)
-        if found is None:
-            raise NotFound(f"no workload {ref!r}")
-        return found
+        """One workload by id or name. A name is unique only per project, so two matches are refused."""
+        return _single(await self.repo.workloads_by_ref(ref), "workload", ref)
 
     async def _project(self, ref: str) -> Project:
-        found = await self.repo.project_by_ref(ref)
-        if found is None:
-            raise NotFound(f"no project {ref!r}")
-        return found
+        """One project by id or slug. A slug is unique only per tenant, so two matches are refused."""
+        return _single(await self.repo.projects_by_ref(ref), "project", ref)
 
     async def _priority(self, ref: str | None, project: Project) -> PriorityClass:
         """Resolves priority the way the deployment service does, and for the same reason.

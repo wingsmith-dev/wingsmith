@@ -1998,7 +1998,9 @@ class WorkloadService:
         if exclude is not None or extra_policies:
             demand = await placement.demand(workload)
             workload_id = getattr(workload, "id", None)
-            capacity = await placement.repo.capacity(workload.project_id, demand.device_class, workload_id)
+            capacity = await placement.repo.capacity(
+                workload.project_id, demand.device_class, workload_id, workload.name
+            )
             snapshot = CapacitySnapshot(
                 clusters=tuple(c for c in capacity.clusters if exclude is None or c.uid != exclude),
                 quotas=capacity.quotas,
