@@ -1,0 +1,71 @@
+version: "2"
+
+# Shared by every Go module; CI runs it from each module's directory with --config.
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - misspell
+  settings:
+    errcheck:
+      exclude-functions:
+        # Writes to a terminal or a report buffer; a failed write has nowhere better to go.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        # Closing a response body or a connection on the way out: no caller acts on these errors.
+        - (io.Closer).Close
+        - (*github.com/coder/websocket.Conn).CloseNow
+    staticcheck:
+      checks:
+        - all
+        # Naming and doc-comment style, and the quick-fix suggestions: taste, not defects.
+        - -ST1000
+        - -ST1003
+        - -ST1016
+        - -ST1020
+        - -ST1021
+        - -ST1022
+        - -ST1023
+        - -QF*
+  exclusions:
+    generated: strict
+    # One config for every module, so the paths below are from the repository root (see
+    # relative-path-mode) and each module simply matches none of the others' entries.
+    rules:
+      # A test handler's write to its own recorder fails only if the test is already broken.
+      - path: _test\.go
+        linters: [errcheck]
+
+      # Findings that predate this config, each named so it can be fixed and its entry deleted.
+      # New code gets no entry here: fix the finding instead.
+      - path: libs/operator/internal/observe/dcgm\.go
+        linters: [errcheck]
+        text: io\.Copy
+      - path: libs/operator/internal/reconcile/(cache|deployment)_test\.go
+        linters: [staticcheck]
+        text: "SA1019: .*Result\\)\\.Requeue is deprecated"
+      - path: libs/operator/internal/sync/fakehub_test\.go
+        linters: [unused]
+        text: observedAcks
+      - path: libs/cli/internal/config/config\.go
+        linters: [errcheck]
+        text: e\.WithFix
+      - path: libs/cli/internal/fake/seed\.go
+        linters: [unused]
+        text: boolptr
+      - path: libs/gateway/internal/metrics/metrics\.go
+        linters: [unused]
+        text: tableConfirmed
+      - path: libs/gateway/internal/serving/policy\.go
+        linters: [unused]
+        text: supportedPolicyVersion
+      - path: libs/agent/internal/agent/supervisor\.go
+        linters: [ineffassign]
+        text: wait
+      - path: libs/agent/internal/dynamo/handler_test\.go
+        linters: [unused]
+        text: theResolverAnswersPerDeployment
+
+run:
+  timeout: 5m
+  relative-path-mode: gitroot
