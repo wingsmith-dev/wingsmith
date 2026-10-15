@@ -5,11 +5,13 @@ Three tables and one pure function, so none of this needs a database: a verdict 
 being testable this way it has stopped being derivable at read.
 """
 
+import json
 import math
 import uuid
 import datetime as dt
 
 from types import SimpleNamespace
+from pathlib import Path
 
 import pytest
 
@@ -561,6 +563,29 @@ def test_aiperf_errors_are_the_failed_request_count():
     adapter = summaries.adapter_for("aiperf", "0.12.0")
     read = summaries.read(adapter, aiperf_summary(requests=100, errors=3), summaries.ERROR_COUNT)
     assert read.value == 3
+
+
+# Verbatim upstream export: ai-dynamo/aiperf (Apache-2.0) at v0.12.0,
+# tests/unit/plot/fixtures/qwen_concurrency1/profile_export_aiperf.json.
+RECORDED_AIPERF = Path(__file__).parent / "data" / "aiperf-0.12.0-profile-export.json"
+
+
+def test_the_aiperf_adapter_reads_a_recorded_export():
+    summary = json.loads(RECORDED_AIPERF.read_text())
+    adapter = summaries.adapter_for("aiperf", "0.12.0")
+
+    assert summaries.read(adapter, summary, summaries.REQUEST_COUNT).value == 64
+    assert summaries.read(adapter, summary, summaries.TTFT_P90).value == pytest.approx(32.5407818)
+    assert summaries.read(adapter, summary, summaries.TTFT_AVG).value == pytest.approx(30.814987671875)
+    assert summaries.read(adapter, summary, summaries.OUTPUT_SPEED_PER_STREAM).value == pytest.approx(54.9676321)
+    # AIPerf writes a null error count on a clean run.
+    assert summaries.read(adapter, summary, summaries.ERROR_COUNT).value is None
+
+    sample = buckets.Sample("bmk_1", "aiperf", "0.12.0", 2000, False, summary)
+    report = buckets.reaggregate([sample])[0]
+    assert report.requests == 64
+    assert report.incomplete == ()
+    assert report.ttft_avg_ms == pytest.approx(30.814987671875)
 
 
 def test_a_discarded_warm_up_is_excluded_from_every_band():
