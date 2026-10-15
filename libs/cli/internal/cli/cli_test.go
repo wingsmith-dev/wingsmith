@@ -427,7 +427,7 @@ func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
 	}
 
 	out, _, code := run(t, "discovered", "promote", "llama-70b-vllm",
-		"--artifact", "llama-3.1-70b", "--project", "core", "-o", "json")
+		"--artifact", "llama-3.1-70b-instruct", "--project", "core", "-o", "json")
 	if code != 0 {
 		t.Fatalf("promote exit %d: %s", code, out)
 	}
@@ -451,7 +451,7 @@ func TestPromotionPinsTheDigestItWasShown(t *testing.T) {
 func TestPromotionAdoptsTheScaleItFound(t *testing.T) {
 	t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
 	out, _, code := run(t, "discovered", "promote", "qwen2-72b",
-		"--artifact", "llama-3.1-70b", "--project", "core", "-o", "json")
+		"--artifact", "llama-3.1-70b-instruct", "--project", "core", "-o", "json")
 	if code != 0 {
 		t.Fatalf("promote exit %d: %s", code, out)
 	}

@@ -50,7 +50,7 @@ model whose weights are already loaded stays loaded.`,
   hgr discovered ls --cluster iad-1 -o wide
   hgr discovered track llama-70b-vllm --project core
   hgr discovered rm llama-70b-vllm
-  hgr discovered promote llama-70b-vllm --artifact llama-3.1-70b --project core`,
+  hgr discovered promote llama-70b-vllm --artifact llama-3.1-70b-instruct --project core`,
 		list: func(ctx context.Context, b api.Backend, o api.ListOpts) (api.Page[api.DiscoveredWorkload], error) {
 			return b.DiscoveredWorkloads(ctx, o)
 		},
@@ -340,8 +340,8 @@ it should — that is a change you asked for. Promotion itself is not.
 
 Scale is not an argument. The bounds are taken from what the workload is already
 running, so cataloguing it cannot scale it as a side effect.`,
-		Example: `  hgr discovered promote llama-70b-vllm --artifact llama-3.1-70b --project core
-  hgr discovered promote qwen2-72b --artifact llama-3.1-70b --project core --name qwen-sjc`,
+		Example: `  hgr discovered promote llama-70b-vllm --artifact llama-3.1-70b-instruct --project core
+  hgr discovered promote qwen2-72b --artifact llama-3.1-70b-instruct --project core --name qwen-sjc`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if artifact == "" || project == "" {

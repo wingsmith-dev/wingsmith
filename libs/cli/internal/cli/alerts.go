@@ -211,7 +211,7 @@ a different threshold.`,
 			}
 			ctx, cancel := app.RequestContext()
 			defer cancel()
-			threshold, err := alertThresholdNoun().resolve(ctx, app, args[0])
+			threshold, err := alertThresholdNoun().resolveExact(ctx, app, args[0])
 			if err != nil {
 				return err
 			}
@@ -271,7 +271,7 @@ stops firing until another is declared.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
 			defer cancel()
-			threshold, err := alertThresholdNoun().resolve(ctx, app, args[0])
+			threshold, err := alertThresholdNoun().resolveExact(ctx, app, args[0])
 			if err != nil {
 				return err
 			}

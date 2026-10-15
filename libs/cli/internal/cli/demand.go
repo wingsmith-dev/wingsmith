@@ -874,7 +874,7 @@ are gone.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
 			defer cancel()
-			wl, err := workloadNoun().resolve(ctx, app, args[0])
+			wl, err := workloadNoun().resolveExact(ctx, app, args[0])
 			if err != nil {
 				return err
 			}
@@ -1000,7 +1000,7 @@ delete of its own.`,
 			}
 			ctx, cancel := app.RequestContext()
 			defer cancel()
-			c, err := clusterNoun().resolve(ctx, app, cluster)
+			c, err := clusterNoun().resolveExact(ctx, app, cluster)
 			if err != nil {
 				return err
 			}
@@ -1026,7 +1026,7 @@ func (a *App) runWorkloadOperation(cmd *cobra.Command, opType, ref string, param
 	ctx, cancel := a.RequestContext()
 	defer cancel()
 
-	wl, err := workloadNoun().resolve(ctx, a, ref)
+	wl, err := workloadNoun().resolveExact(ctx, a, ref)
 	if err != nil {
 		return err
 	}

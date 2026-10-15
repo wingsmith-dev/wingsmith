@@ -285,6 +285,22 @@ func (n noun[T]) getCmd(app *App) *cobra.Command {
 // that guesses at ambiguous input eventually guesses wrong — so the guessing,
 // and the AMBIGUOUS error when there is nothing to guess, happen here.
 func (n noun[T]) resolve(ctx context.Context, app *App, ref string) (T, error) {
+	return n.lookup(ctx, app, ref, strings.HasPrefix)
+}
+
+// resolveExact is resolve for a verb that changes or destroys something. It
+// matches a whole id or name and never a prefix: `workload rm ch` deleting
+// `chat` because nothing else started with "ch" is a guess nobody asked for.
+func (n noun[T]) resolveExact(ctx context.Context, app *App, ref string) (T, error) {
+	item, err := n.lookup(ctx, app, ref, func(key, ref string) bool { return key == ref })
+	if errs.As(err) != nil && errs.As(err).Code == errs.CodeNotFound {
+		err = errs.As(err).WithCause("a verb that changes something needs the full id or name, never a prefix").
+			WithFix("Find the full name", "hgr "+n.name+" ls")
+	}
+	return item, err
+}
+
+func (n noun[T]) lookup(ctx context.Context, app *App, ref string, match func(key, ref string) bool) (T, error) {
 	item, err := n.get(ctx, app.Backend, ref)
 	if err == nil {
 		return item, nil
@@ -299,7 +315,7 @@ func (n noun[T]) resolve(ctx context.Context, app *App, ref string) (T, error) {
 	var hits []T
 	for _, candidate := range page.Items {
 		for _, key := range n.keys(candidate) {
-			if key != "" && strings.HasPrefix(key, ref) {
+			if key != "" && match(key, ref) {
 				hits = append(hits, candidate)
 				break
 			}

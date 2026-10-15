@@ -235,7 +235,7 @@ can be watched before it bites.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
 			defer cancel()
-			endpoint, err := endpointNoun().resolve(ctx, app, args[0])
+			endpoint, err := endpointNoun().resolveExact(ctx, app, args[0])
 			if err != nil {
 				return err
 			}
@@ -272,7 +272,7 @@ ceiling at all.`,
 			}
 			ctx, cancel := app.RequestContext()
 			defer cancel()
-			quota, err := servingQuotaNoun().resolve(ctx, app, args[0])
+			quota, err := servingQuotaNoun().resolveExact(ctx, app, args[0])
 			if err != nil {
 				return err
 			}
@@ -298,7 +298,7 @@ rate limited, because an endpoint with no quota is uncommitted on every axis.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx, cancel := app.RequestContext()
 			defer cancel()
-			quota, err := servingQuotaNoun().resolve(ctx, app, args[0])
+			quota, err := servingQuotaNoun().resolveExact(ctx, app, args[0])
 			if err != nil {
 				return err
 			}

@@ -166,9 +166,11 @@ func collect[T any](b *Backend, items []T, opts api.ListOpts, keep func(T) bool)
 	return paginate(kept, opts)
 }
 
-// find resolves a reference to exactly one object. A reference is an id, a
-// name, or a unique prefix of either: prefix resolution is the client's job,
-// per libs/packages/contract/API.md §3, so the fake does it here too.
+// find resolves a reference to exactly one object by its whole id or name.
+// The API does not match prefixes (libs/packages/contract/API.md §3) and
+// neither does the fake: prefix resolution is the command layer's, which does
+// it for reads and refuses it for verbs that change something. A fake that
+// matched prefixes itself would hide that difference from every test.
 func find[T any](b *Backend, noun string, items []T, ref string, keys func(T) []string) (T, error) {
 	var zero T
 	if err := b.injected(); err != nil {
@@ -177,33 +179,15 @@ func find[T any](b *Backend, noun string, items []T, ref string, keys func(T) []
 	if strings.TrimSpace(ref) == "" {
 		return zero, errs.New(errs.CodeUsage, "a %s name or id is required", noun)
 	}
-	var hits []T
-	var labels []string
 	for _, it := range items {
-		ks := keys(it)
-		for _, k := range ks {
+		for _, k := range keys(it) {
 			if k == ref {
 				return it, nil
 			}
 		}
-		for _, k := range ks {
-			if k != "" && strings.HasPrefix(k, ref) {
-				hits = append(hits, it)
-				labels = append(labels, ks[0])
-				break
-			}
-		}
 	}
-	switch len(hits) {
-	case 1:
-		return hits[0], nil
-	case 0:
-		return zero, errs.New(errs.CodeNotFound, "no %s named %q", noun, ref).
-			WithFix("List them", "hgr "+noun+" ls")
-	default:
-		return zero, errs.New(errs.CodeAmbiguous, "%q matches %d %ss", ref, len(hits), noun).
-			WithCause(strings.Join(labels, ", "))
-	}
+	return zero, errs.New(errs.CodeNotFound, "no %s named %q", noun, ref).
+		WithFix("List them", "hgr "+noun+" ls")
 }
 
 // --- predicate helpers -----------------------------------------------------
