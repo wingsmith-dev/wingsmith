@@ -393,7 +393,7 @@ function ResolveError({ error }: { error: unknown }) {
   return (
     <div className="space-y-1 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
       <p>{formatError(error, "Could not read that repo")}</p>
-      <p className="text-2xs opacity-80">
+      <p className="text-2xs">
         {missing
           ? "No such repo on HuggingFace. Check the owner and name."
           : "Accept the licence on HuggingFace, then give the plane a token with access."}

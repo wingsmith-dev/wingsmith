@@ -45,10 +45,7 @@ export function Step({
   const body = answered ? answer : ready ? children : null
 
   return (
-    <Card
-      size="sm"
-      className={cn("transition-opacity", !ready && "opacity-50")}
-    >
+    <Card size="sm">
       <CardHeader>
         <div className="flex items-start gap-2.5">
           <div
@@ -65,7 +62,12 @@ export function Step({
           </div>
 
           <div className="min-w-0 flex-1">
-            <h2 className="text-sm leading-tight font-semibold tracking-tight">
+            <h2
+              className={cn(
+                "text-sm leading-tight font-semibold tracking-tight",
+                !ready && "text-muted-foreground"
+              )}
+            >
               {title}
             </h2>
             {hint && (

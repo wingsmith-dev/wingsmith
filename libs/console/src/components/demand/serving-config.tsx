@@ -198,8 +198,7 @@ export function ServingPrecedence({
         {overrides.map((override) => (
           <li key={override.flag}>
             --{override.flag}: {override.effective} from {override.field},{" "}
-            <span className="line-through opacity-70">{override.ignored}</span>{" "}
-            ignored
+            <span className="line-through">{override.ignored}</span> ignored
           </li>
         ))}
       </ul>

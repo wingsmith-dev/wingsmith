@@ -80,7 +80,7 @@ export function DeleteDialog({
               onConfirm()
             }}
             disabled={pending || readOnly}
-            className="bg-destructive text-white hover:bg-destructive/90"
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
             {pending ? "Deleting…" : "Delete"}
           </AlertDialogAction>
@@ -153,7 +153,7 @@ export function ConfirmDialog({
             disabled={pending || readOnly}
             className={
               tone === "destructive"
-                ? "bg-destructive text-white hover:bg-destructive/90"
+                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 : undefined
             }
           >

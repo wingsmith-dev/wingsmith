@@ -83,7 +83,7 @@ export function Holders({ board }: { board: Board | undefined }) {
             onMouseLeave={() => highlightWorkload(null)}
             className={cn(
               "flex items-center gap-2 rounded-md px-1.5 py-1 transition-opacity hover:bg-accent/40",
-              dim && "opacity-40"
+              !!highlight && !dim && "bg-accent/60"
             )}
           >
             <span

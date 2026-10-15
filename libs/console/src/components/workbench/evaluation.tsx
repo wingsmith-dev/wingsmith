@@ -54,7 +54,7 @@ export function EvaluationRun({ id }: { id: string }) {
     )
   if (error || !run)
     return (
-      <div className="rounded-lg border bg-card p-6 text-center text-xs text-red-600">
+      <div className="rounded-lg border bg-card p-6 text-center text-xs text-destructive">
         Could not load the run.
       </div>
     )
@@ -210,7 +210,7 @@ export function EvaluationSuite({ id }: { id: string }) {
                   <Link
                     to="/workbench/$runId"
                     params={{ runId: run.id }}
-                    className="w-32 shrink-0 truncate font-mono text-xs text-blue-600 hover:underline dark:text-blue-400"
+                    className="w-32 shrink-0 truncate font-mono text-xs text-primary hover:underline"
                   >
                     {run.id.slice(-10)}
                   </Link>

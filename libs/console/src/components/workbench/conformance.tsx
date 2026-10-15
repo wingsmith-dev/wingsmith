@@ -39,7 +39,7 @@ const OUTCOME_STYLE: Record<
   },
   differs: {
     dot: "bg-red-500",
-    text: "text-red-600 dark:text-red-400",
+    text: "text-destructive",
     label: "differs",
   },
   "not-observed": {

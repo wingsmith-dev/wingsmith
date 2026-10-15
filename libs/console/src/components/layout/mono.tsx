@@ -122,7 +122,7 @@ function highlightYaml(line: string, key: number): React.ReactNode {
   return (
     <span key={key}>
       {indent}
-      <span className="text-sky-600 dark:text-sky-400">{name}</span>
+      <span className="text-sky-700 dark:text-sky-400">{name}</span>
       {colon}
       {val && <span className="text-success">{val}</span>}
       {comment && (

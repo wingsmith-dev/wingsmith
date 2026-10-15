@@ -16,6 +16,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    // text-contrast.test.ts reads the theme tokens as text. Without this vitest
+    // hands every .css import back empty, `?raw` included.
+    css: { include: [/src\/index\.css/] },
     include: ["src/**/*.test.{ts,tsx}"],
     coverage: {
       provider: "v8",

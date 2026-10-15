@@ -582,12 +582,12 @@ function LayoutChoices({
                   disabled={layout.supply_short}
                   onClick={() => onPick(layout)}
                   className={cn(
-                    "flex flex-col items-start rounded-md border px-2 py-1 text-left transition-colors",
+                    "flex flex-col items-start rounded-md border px-2 py-1 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                     picked
                       ? "border-primary bg-primary/10"
                       : "border-border hover:border-primary/50 hover:bg-primary/5",
                     layout.supply_short &&
-                      "cursor-not-allowed opacity-50 hover:border-border hover:bg-transparent"
+                      "hover:border-border hover:bg-transparent"
                   )}
                 >
                   <span className="font-mono text-xs tabular-nums">
@@ -701,7 +701,7 @@ function FitRow({
         className={cn(
           "border-b last:border-0",
           choosable && ACTIVATION_FOCUS,
-          (!fit.fits || fit.supply_short) && "opacity-55",
+          (!fit.fits || fit.supply_short) && "bg-muted/40",
           choosable && "cursor-pointer hover:bg-primary/5",
           selected && "bg-primary/10 hover:bg-primary/10",
           choices && "border-b-0"

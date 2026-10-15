@@ -33,7 +33,8 @@ Target WCAG 2.1 AA. Never rely on color alone for status, preserve keyboard navi
 
 How the contrast part is held in code:
 
-- `text-muted-foreground` is the faintest text colour. It holds at least 4.5:1 on `background`, `card` and `muted` in both themes. Hierarchy comes from size, weight and position, not from fading text further.
-- No opacity modifier on a text colour (`text-muted-foreground/60` and the like). Disabled controls are the exception WCAG allows, through `disabled:opacity-50`.
-- Warning and success text use the `warning` and `success` tokens, which are set per theme. Raw palette colours such as `text-amber-500` read on one theme and fail on the other.
-- `src/text-contrast.test.ts` fails the suite if either of the last two comes back.
+- Every text token (`foreground`, `muted-foreground`, `primary`, `destructive`, `warning`, `success`) holds at least 4.5:1 on every surface token (`background`, `card`, `popover`, `muted`, `secondary`, `accent`, `sidebar`, `sidebar-accent`) in both themes. The tone tokens also hold it on their own `/5`, `/10` and `/15` tints, which is where badges and callouts put them. The filled pairs (`primary-foreground` on `primary`, `destructive-foreground` on `destructive`) hold it too, which is why the dark theme's filled buttons use dark text.
+- `text-muted-foreground` is the faintest text colour. Hierarchy comes from size, weight and position, not from fading text further.
+- No opacity modifier on a text colour (`text-muted-foreground/60` and the like), and no `opacity-*` on anything that contains text. Disabled controls are the exception WCAG allows, through `disabled:opacity-50`; icons, sparklines and device bricks may be dimmed because they carry no text.
+- Tone text uses the theme tokens. A raw palette text colour (`text-sky-700`) is only for categorical colour, always paired with a `dark:` shade on the same line, and both shades must hold 4.5:1 on the surfaces and on their own `-500/10` wash.
+- `src/text-contrast.test.ts` measures all of this from `src/index.css` and Tailwind's palette, and scans the source for faded text, so a token change or a stray class fails the suite.

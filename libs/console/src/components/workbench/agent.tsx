@@ -104,7 +104,7 @@ function SessionLine({ session }: { session: AgentSession }) {
         {formatMs(session.ms)}
       </span>
       {session.failure && (
-        <p className="w-full pl-1 font-mono text-2xs text-red-600 dark:text-red-400">
+        <p className="w-full pl-1 font-mono text-2xs text-destructive">
           {session.failure}
         </p>
       )}

@@ -472,7 +472,7 @@ function ClusterCard({
       <div
         className={cn(
           "flex items-center gap-3 px-3 py-2.5",
-          empty && "opacity-60"
+          empty && "bg-muted/40"
         )}
       >
         <button
@@ -589,8 +589,7 @@ function FabricRow({
         ACTIVATION_FOCUS,
         "hover:bg-accent/40",
         selected && "bg-accent/60",
-        fit?.ok && "bg-emerald-500/5 ring-1 ring-emerald-500/40 ring-inset",
-        fit && !fit.ok && "opacity-50"
+        fit?.ok && "bg-emerald-500/5 ring-1 ring-emerald-500/40 ring-inset"
       )}
     >
       <div className="min-w-0 basis-72 pr-4">
@@ -602,7 +601,12 @@ function FabricRow({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+      <div
+        className={cn(
+          "flex flex-wrap items-center gap-x-2.5 gap-y-1",
+          fit && !fit.ok && "opacity-50"
+        )}
+      >
         {children}
       </div>
 
