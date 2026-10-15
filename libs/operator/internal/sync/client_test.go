@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"strings"
@@ -913,5 +914,96 @@ func TestALargeResyncArrivesWholeAndOutsideTheHandshakeDeadline(t *testing.T) {
 	}
 	if got := handler.budget(); got <= handshakeTimeout {
 		t.Fatalf("resync must not run under the handshake deadline, it had %s", got)
+	}
+}
+
+// stallingResync blocks in Resync until released and records the frames it is handed after.
+type stallingResync struct {
+	recorder
+	entered  chan struct{}
+	released chan struct{}
+}
+
+func (s *stallingResync) Resync(ctx context.Context) error {
+	select {
+	case s.entered <- struct{}{}:
+	default:
+	}
+	select {
+	case <-s.released:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return s.recorder.Resync(ctx)
+}
+
+// TestTheHubsSnapshotDoesNotSilenceTheKeepaliveDuringAResync: the hub streams its snapshot while
+// the operator's own resync is still running, and none of it can apply until that finishes. A
+// reader that waited for the applier stopped reading once a few hundred frames were waiting, and
+// with it stopped answering the hub's keepalive, which is what the hub drops a session for.
+func TestTheHubsSnapshotDoesNotSilenceTheKeepaliveDuringAResync(t *testing.T) {
+	const n = 1000
+	h := newFakeHub(t)
+	handler := &stallingResync{entered: make(chan struct{}, 1), released: make(chan struct{})}
+	opts := testOptions(h)
+	opts.Handler = handler
+	opts.LivenessTimeout = 30 * time.Second
+	startWith(t, opts)
+	var release stdsync.Once
+	t.Cleanup(func() { release.Do(func() { close(handler.released) }) })
+
+	select {
+	case <-handler.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the resync never started")
+	}
+	pushed := make(chan struct{})
+	go func() {
+		defer close(pushed)
+		for i := 0; i < n; i++ {
+			h.push(fmt.Sprintf("d%d", i))
+		}
+	}()
+	select {
+	case <-pushed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the operator stopped reading the hub's snapshot during its resync")
+	}
+	if err := h.keepalive(2 * time.Second); err != nil {
+		t.Fatalf("the hub's keepalive went unanswered during a resync: %v", err)
+	}
+
+	release.Do(func() { close(handler.released) })
+	eventually(t, 10*time.Second, "every snapshot frame applied", func() bool { return len(handler.seenSeqs()) == n })
+	for i, seq := range handler.seenSeqs() {
+		if seq != uint64(i+1) {
+			t.Fatalf("frame %d applied out of order: seq %d", i, seq)
+		}
+	}
+	if h.connectionCount() != 1 {
+		t.Fatalf("the session was dropped during the resync: %d connections", h.connectionCount())
+	}
+}
+
+func TestTheInboundBacklogEndsTheSessionPastItsBound(t *testing.T) {
+	q := newInboundQueue(2, 1<<20)
+	e := mustEnvelope(t, typeDesired, wire.DeploymentDesired{DeploymentID: "d"})
+	for i := 0; i < 2; i++ {
+		if err := q.push(inbound{env: e, handle: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := q.push(inbound{env: e, handle: true}); !errors.Is(err, errInboundOverflow) {
+		t.Fatalf("a backlog past its frame bound must fail, got %v", err)
+	}
+	if _, err := q.pop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	small := newInboundQueue(100, len(e.Payload))
+	if err := small.push(inbound{env: e}); err != nil {
+		t.Fatal(err)
+	}
+	if err := small.push(inbound{env: e}); !errors.Is(err, errInboundOverflow) {
+		t.Fatalf("a backlog past its byte bound must fail, got %v", err)
 	}
 }

@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	stdsync "sync"
 )
 
@@ -181,6 +182,63 @@ func (q *sendQueue) signal() {
 	select {
 	case q.notify <- struct{}{}:
 	default:
+	}
+}
+
+// errInboundOverflow ends a session whose inbound backlog has passed its bound.
+var errInboundOverflow = errors.New("sync: inbound backlog past its bound; ending the session so the resume replays it")
+
+// inboundQueue is the backlog between the reader and the applier. Push never blocks, so the
+// reader is never held up by the handler; it fails instead once the backlog passes either bound.
+type inboundQueue struct {
+	mu        stdsync.Mutex
+	notify    chan struct{}
+	items     []inbound
+	bytes     int
+	maxFrames int
+	maxBytes  int
+}
+
+func newInboundQueue(maxFrames, maxBytes int) *inboundQueue {
+	return &inboundQueue{notify: make(chan struct{}, 1), maxFrames: maxFrames, maxBytes: maxBytes}
+}
+
+func (q *inboundQueue) push(in inbound) error {
+	size := len(in.env.Payload)
+	q.mu.Lock()
+	if len(q.items) >= q.maxFrames || q.bytes+size > q.maxBytes {
+		n := len(q.items)
+		q.mu.Unlock()
+		return fmt.Errorf("%w (%d frames waiting)", errInboundOverflow, n)
+	}
+	q.items = append(q.items, in)
+	q.bytes += size
+	q.mu.Unlock()
+	select {
+	case q.notify <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+// pop blocks until a frame is waiting or the context is done.
+func (q *inboundQueue) pop(ctx context.Context) (inbound, error) {
+	for {
+		q.mu.Lock()
+		if len(q.items) > 0 {
+			in := q.items[0]
+			q.items[0] = inbound{}
+			q.items = q.items[1:]
+			q.bytes -= len(in.env.Payload)
+			q.mu.Unlock()
+			return in, nil
+		}
+		q.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return inbound{}, ctx.Err()
+		case <-q.notify:
+		}
 	}
 }
 

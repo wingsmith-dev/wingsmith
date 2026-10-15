@@ -27,13 +27,20 @@ const maxFrameBytes = 8 << 20
 // seconds is closed.
 const handshakeTimeout = 10 * time.Second
 
-// applyQueueDepth is how many accepted frames may be waiting on the handler before the reader
-// feels it.
+// applyBacklogFrames and applyBacklogBytes bound the frames accepted from the hub and still waiting
+// on the handler.
 //
-// It absorbs a burst — a snapshot stream is the shape that arrives faster than it applies — without
-// letting a permanently stuck handler buffer the whole stream into memory. Slowness that outlasts
-// this buffer reaches the reader, and from there the liveness timeout, which is the intended path.
-const applyQueueDepth = 256
+// The reader never waits on the handler. It is the only goroutine that answers the hub's
+// keepalive, so a reader blocked behind a slow apply, or behind a resync that has not started
+// applying yet, stops answering and the hub drops the session. Instead the backlog grows, and the
+// bounds are the backstop: a backlog past either ends the session, and the resume replays from the
+// durable cursor. A stuck handler cannot fill it unnoticed, because applyTimeout and
+// applyAttempts end the session first; what the bounds catch is a hub streaming far faster than
+// the cluster can apply.
+const (
+	applyBacklogFrames = 1 << 16
+	applyBacklogBytes  = 256 << 20
+)
 
 // applyTimeout bounds one call into the handler, and checkpointTimeout one durable cursor write.
 //
@@ -378,7 +385,7 @@ func (c *Client) session(ctx context.Context) error {
 		c.mu.Unlock()
 	}()
 
-	apply := make(chan inbound, applyQueueDepth)
+	apply := newInboundQueue(applyBacklogFrames, applyBacklogBytes)
 	errCh := make(chan error, 4)
 	var wg stdsync.WaitGroup
 	wg.Add(4)
@@ -534,11 +541,10 @@ type inbound struct {
 //
 // It reads, orders, and answers pings, and does nothing else. Everything that touches Kubernetes —
 // applying a frame, checkpointing a cursor — happens on applyLoop, because this goroutine sitting
-// inside conn.Read is the only thing that makes the library emit a pong. Doing an apply inline
-// stops the pongs for as long as the apply takes, and the hub closes a session that has not ponged
-// within 20 seconds. That is not a hypothetical: it killed the first production session during the
-// leader-election burst at startup.
-func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn, apply chan<- inbound) error {
+// inside conn.Read is the only thing that makes the library emit a pong. Doing an apply inline, or
+// waiting for the applier to take a frame, stops the pongs for as long as that takes, and the hub
+// closes a session that has not ponged within 20 seconds.
+func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn, apply *inboundQueue) error {
 	for {
 		e, err := readEnvelope(ctx, conn)
 		if err != nil {
@@ -584,10 +590,8 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn, apply chan<
 			continue
 		}
 
-		select {
-		case apply <- inbound{env: e, handle: handle}:
-		case <-ctx.Done():
-			return ctx.Err()
+		if err := apply.push(inbound{env: e, handle: handle}); err != nil {
+			return err
 		}
 	}
 }
@@ -596,16 +600,16 @@ func (c *Client) readLoop(ctx context.Context, conn *websocket.Conn, apply chan<
 // order the reader accepted them.
 //
 // It is a goroutine of its own so that a slow apply costs throughput and not the session. The
-// channel in front of it is bounded, so sustained slowness still reaches the reader in the end —
-// and when it does, the heartbeat's liveness timeout ends the session and the next resume replays
-// from the last checkpoint, which is the recoverable direction.
+// backlog in front of it is bounded, so sustained slowness still ends the session in the end, and
+// the next resume replays from the last checkpoint, which is the recoverable direction.
 //
 // On a fresh session the handler's Resync runs here first, before any frame is applied, so the
 // snapshot the hub streams lands in the epoch Resync opens. It runs after the handshake rather
-// than inside it, under a deadline of its own, and with the writer already draining the queue:
-// the handshake allows ten seconds, and a writer that has not started leaves every frame the
-// resync produces sitting in the queue.
-func (c *Client) applyLoop(ctx context.Context, apply <-chan inbound, fresh bool) error {
+// than inside it, under a deadline of its own, with the writer already draining the queue and the
+// reader still answering the hub: the handshake allows ten seconds, a writer that has not started
+// leaves every frame the resync produces sitting in the queue, and the hub's snapshot arrives
+// while this runs and waits in the backlog.
+func (c *Client) applyLoop(ctx context.Context, apply *inboundQueue, fresh bool) error {
 	if fresh {
 		resyncCtx, cancel := context.WithTimeout(ctx, resyncTimeout)
 		err := c.safeResync(resyncCtx)
@@ -615,11 +619,9 @@ func (c *Client) applyLoop(ctx context.Context, apply <-chan inbound, fresh bool
 		}
 	}
 	for {
-		var in inbound
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case in = <-apply:
+		in, err := apply.pop(ctx)
+		if err != nil {
+			return err
 		}
 		e := in.env
 
