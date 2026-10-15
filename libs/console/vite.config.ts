@@ -22,7 +22,9 @@ export default defineConfig(({ mode }) => {
       TanStackRouterVite({
         routesDirectory: "./src/routes",
         generatedRouteTree: "./src/routeTree.gen.ts",
-        routeFileIgnorePattern: "(^|/)(page\\.tsx|[A-Z][^/]*\\.tsx)$",
+        // page.tsx, PascalCase components and tests sit beside routes without being routes.
+        routeFileIgnorePattern:
+          "(^|/)(page\\.tsx|[A-Z][^/]*\\.tsx|[^/]*\\.test\\.tsx?)$",
         // Each route's component loads when the route is first visited, not
         // with the shell.
         autoCodeSplitting: true,
