@@ -447,3 +447,65 @@ def test_nats_has_resources():
     values = yaml.safe_load((CHART / "values.yaml").read_text())
     resources = values["dynamo-platform"]["nats"]["container"]["merge"]["resources"]
     assert resources["requests"] and resources["limits"]["memory"]
+
+
+# ── network policy and the serving route ────────────────────────────────────
+
+
+def _policies(docs):
+    return {(d["metadata"]["namespace"], d["metadata"]["name"]): d
+            for d in docs if d["kind"] == "NetworkPolicy"}
+
+
+def test_network_policies_are_on_by_default(chart):
+    policies = _policies(render(chart, **AGENT_ON))
+    assert set(policies) == {
+        ("hangar-system", "hangar-operator"),
+        ("hangar-system", "hangar-agent"),
+        ("dynamo", "hangar-inference-frontend"),
+        ("hangar-system", "hangar-nats"),
+    }
+    for p in policies.values():
+        assert p["spec"]["policyTypes"] == ["Ingress"]
+    frontend = policies[("dynamo", "hangar-inference-frontend")]["spec"]
+    assert frontend["podSelector"] == {"matchLabels": {"nvidia.com/dynamo-component": "Frontend"}}
+    peers = frontend["ingress"][0]["from"]
+    assert {"podSelector": {}} in peers
+    release = [p for p in peers if "namespaceSelector" in p][0]
+    assert release["namespaceSelector"]["matchLabels"] == {"kubernetes.io/metadata.name": "hangar-system"}
+    nats = policies[("hangar-system", "hangar-nats")]["spec"]
+    assert nats["podSelector"]["matchLabels"]["app.kubernetes.io/name"] == "nats"
+    assert {"namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "dynamo"}}} in nats["ingress"][0]["from"]
+    operator = policies[("hangar-system", "hangar-operator")]["spec"]
+    assert "from" not in operator["ingress"][0]
+    assert operator["ingress"][0]["ports"] == [{"port": "health", "protocol": "TCP"}]
+
+
+def test_network_policies_can_be_turned_off(chart):
+    assert not _policies(render(chart, **{"networkPolicy.enabled": False}))
+
+
+SERVING = {
+    "serving.enabled": True,
+    "serving.host": "models.example.com",
+    "serving.clusterIssuer": "issuer",
+    "serving.backend.service": "frontend",
+}
+
+
+def test_serving_route_without_auth_middleware_is_refused(chart):
+    err = refusal(chart, **{**SERVING, "networkPolicy.enabled": False})
+    assert "serving.middlewares" in err
+
+
+def test_serving_route_carries_its_middleware_and_needs_a_policy_peer(chart):
+    values = {**SERVING, "serving.middlewares[0].name": "auth",
+              "serving.middlewares[0].namespace": "traefik"}
+    assert "networkPolicy.frontendFrom" in refusal(chart, **values)
+    docs = render(chart, **values, **{
+        "networkPolicy.frontendFrom[0].namespaceSelector.matchLabels.team": "edge"})
+    route = get(docs, "IngressRoute", "hangar-serving", "dynamo")
+    assert route["spec"]["routes"][0]["middlewares"] == [{"name": "auth", "namespace": "traefik"}]
+    peers = _policies(docs)[("dynamo", "hangar-inference-frontend")]["spec"]["ingress"][0]["from"]
+    assert {"namespaceSelector": {"matchLabels": {"team": "edge"}}} in peers
+    render(chart, **SERVING, **{"serving.allowUnauthenticated": True, "networkPolicy.enabled": False})

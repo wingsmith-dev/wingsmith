@@ -27,6 +27,10 @@ spec:
   routes:
     - match: Host(`{{ .Values.serving.host }}`)
       kind: Rule
+      {{- with .Values.serving.middlewares }}
+      middlewares:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       services:
         - name: {{ .Values.serving.backend.service }}
           port: {{ .Values.serving.backend.port }}

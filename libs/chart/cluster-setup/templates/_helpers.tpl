@@ -215,6 +215,12 @@ helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
 {{- if and .Values.serving.enabled (not .Values.serving.backend.service) -}}
 {{- fail "serving.enabled is true but serving.backend.service is empty — set it to the Dynamo frontend Service name" -}}
 {{- end -}}
+{{- if and .Values.serving.enabled (not .Values.serving.middlewares) (not .Values.serving.allowUnauthenticated) -}}
+{{- fail "serving.enabled is true but serving.middlewares is empty — the route would put an inference frontend, which authenticates nobody, on a public hostname. Name a Traefik Middleware that authenticates callers (serving.middlewares: [{name: ..., namespace: ...}]), or set serving.allowUnauthenticated=true if that is really intended." -}}
+{{- end -}}
+{{- if and .Values.serving.enabled .Values.networkPolicy.enabled (not .Values.networkPolicy.frontendFrom) -}}
+{{- fail "serving.enabled is true with networkPolicy.enabled, but networkPolicy.frontendFrom is empty — the frontend policy would drop every request the route forwards. Add the ingress controller's namespace, e.g. networkPolicy.frontendFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: traefik}}}]." -}}
+{{- end -}}
 {{- if .Values.monitoring.enabled -}}
 {{- if not .Values.monitoring.remoteWrite.url -}}
 {{- fail "monitoring.enabled is true but monitoring.remoteWrite.url is empty — set it to the central store's write endpoint (https://metrics.example.com/api/v1/write). An agent with no remote_write scrapes the cluster and discards every sample, which looks like a healthy install and produces empty console panels." -}}

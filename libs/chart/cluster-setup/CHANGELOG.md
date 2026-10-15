@@ -27,5 +27,12 @@ upgrade sources; install fresh.
   for a local development plane only. `hub.caBundle`,
   `agent.gateway.serverName` and `agent.gateway.caBundle` are new, for a plane
   whose certificates come from a private CA.
+- Ingress NetworkPolicies for the operator, serving agent, inference
+  frontends and NATS are on by default (`networkPolicy.enabled`). Anything
+  else that must reach a frontend or NATS goes in `networkPolicy.frontendFrom`
+  or `networkPolicy.natsFrom`.
+- `serving.enabled` requires an authenticating Traefik Middleware in
+  `serving.middlewares` (or `serving.allowUnauthenticated: true`), and, with
+  network policy on, the ingress controller in `networkPolicy.frontendFrom`.
 - `frontend.enabled` and `operator.frontend.enabled` are removed in favour of
   `frontend.mode`; the chart refuses either with migration instructions.

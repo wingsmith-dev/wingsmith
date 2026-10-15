@@ -1,0 +1,92 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $workloads := include "cluster-setup.workloadNamespace" . }}
+# What each policy admits, and why egress is left open: values.yaml, networkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hangar-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: hangar-operator
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: health
+          protocol: TCP
+{{- if .Values.agent.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hangar-agent
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "cluster-setup.servingAgentSelectorLabels" . | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: probe
+          protocol: TCP
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hangar-inference-frontend
+  namespace: {{ $workloads }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      nvidia.com/dynamo-component: Frontend
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        # Benchmark jobs, the planner and anything else this namespace runs.
+        - podSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Release.Namespace }}
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [hangar-agent, hangar-operator, hangar-metrics-agent, dynamo-operator]
+        {{- with .Values.networkPolicy.frontendFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- if and (index .Values "dynamo-platform" "enabled") (index .Values "dynamo-platform" "global" "nats" "install") }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hangar-nats
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "cluster-setup.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: nats
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector: {}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $workloads }}
+        {{- with .Values.networkPolicy.natsFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}
+{{- end }}

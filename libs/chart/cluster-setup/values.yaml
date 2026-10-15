@@ -433,20 +433,59 @@ frontend:
       capabilities:
         drop: ["ALL"]
 
-# The pre-tunnel way in, off on every cluster we run. `backend.service` is the
-# Dynamo frontend Service, whose name is not knowable until a deployment exists —
-# so leave this disabled, or let the plane render it from ClusterServing.url.
+# A public Traefik route straight to a frontend, the way in before the tunnel.
+# Off by default and not needed with the serving agent. `backend.service` is the
+# Dynamo frontend Service, whose name is not knowable until a deployment exists.
+#
+# The frontend authenticates nobody, so the route must carry at least one
+# Traefik Middleware that does (forwardAuth, basicAuth, ipAllowList, ...),
+# named here as `{name, namespace}`; the chart refuses a route without one
+# unless `allowUnauthenticated` says that is intended. With `networkPolicy`
+# on, add the ingress controller to `networkPolicy.frontendFrom` too.
 serving:
   enabled: false
   host: ""
   clusterIssuer: ""
   entryPoints:
     - websecure
+  middlewares: []
+  allowUnauthenticated: false
   backend:
     service: ""
     # Empty means the workload namespace.
     namespace: ""
     port: 8000
+
+# ── Network policy ────────────────────────────────────────────────────────────
+
+# Ingress NetworkPolicies for what this chart installs, on by default. They need
+# a CNI that enforces NetworkPolicy; on one that does not they are inert.
+#
+#   operator, serving agent  only their probe and metrics ports. Neither serves
+#                            anything else; requests reach the agent down
+#                            connections it dialled out.
+#   inference frontends      pods labelled `nvidia.com/dynamo-component:
+#                            Frontend` in the workload namespace, reachable
+#                            from that namespace and from the serving agent,
+#                            operator and metrics agent. The frontend
+#                            authenticates nobody, so nothing else may reach it.
+#   NATS                     reachable from the workload and release
+#                            namespaces only. Dynamo's NATS has no client
+#                            authentication of its own (the Dynamo operator
+#                            hands every pod an unauthenticated URL), so this
+#                            policy is what keeps other namespaces off it.
+#
+# Most CNIs exempt the kubelet's probes from NetworkPolicy; on one that does
+# not, add the node CIDR to `frontendFrom` as an ipBlock.
+#
+# Egress is not restricted: the hub, the gateway, the API server and the model
+# registries differ per cluster. Add peers (NetworkPolicyPeer objects) to
+# `frontendFrom` or `natsFrom` for anything else that must connect, such as an
+# ingress controller when `serving.enabled`.
+networkPolicy:
+  enabled: true
+  frontendFrom: []
+  natsFrom: []
 
 # ── Telemetry ─────────────────────────────────────────────────────────────────
 
