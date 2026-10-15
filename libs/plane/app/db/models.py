@@ -2012,8 +2012,9 @@ class Event(BaseMixin):
 
     `subject_type` / `subject_id` is polymorphic and has no foreign key, on purpose:
     an event is history and must outlive the node, device or deployment it is about.
-    Nothing deletes events today, so the table grows until an operator prunes it by
-    `occurred_at`; the reactor only reads forward from its `last_event_seq` cursor.
+    The table only grows on its own. `app.db.retention` (the image's `prune-events`
+    mode, run on a schedule) deletes events past a retention window once the reactor's
+    `last_event_seq` cursor has passed them.
     """
 
     __tablename__ = "ops_event"
