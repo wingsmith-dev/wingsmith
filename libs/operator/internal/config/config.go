@@ -191,6 +191,7 @@ type Config struct {
 
 	// FrontendGlobalDynamoNamespace puts every component of a graph, frontend and workers, in
 	// the shared Dynamo namespace. On by default; off narrows each graph to its own namespace.
+	// Only read with FrontendEnabled: the cluster-wide frontend needs workers in the shared one.
 	FrontendGlobalDynamoNamespace bool
 
 	// DCGMEndpoint is the in-cluster DCGM exporter's metrics URL, scraped for device identity

@@ -149,7 +149,8 @@ type Options struct {
 
 	// FrontendGlobalNamespace sets globalDynamoNamespace on every component of the graph, the
 	// workers as well as the frontend: a frontend in a narrower namespace than its workers would
-	// discover none of them. Nil means true, the shared Dynamo namespace.
+	// discover none of them. Nil means true, the shared Dynamo namespace. Only read when
+	// FrontendEnabled; the cluster-wide frontend always needs the workers in the global namespace.
 	FrontendGlobalNamespace *bool
 }
 
@@ -1554,7 +1555,13 @@ func checkFrontendSurvivedOverlay(obj *unstructured.Unstructured, in Inputs) err
 }
 
 // globalNamespace is the globalDynamoNamespace every component of a graph renders with.
+//
+// Without per-model frontends the setting does not apply: the only frontend is the cluster-wide
+// one, which lives in the global namespace, and workers anywhere else would be invisible to it.
 func globalNamespace(opts Options) bool {
+	if !opts.FrontendEnabled {
+		return true
+	}
 	if opts.FrontendGlobalNamespace != nil {
 		return *opts.FrontendGlobalNamespace
 	}

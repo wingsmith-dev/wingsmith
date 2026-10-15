@@ -724,6 +724,21 @@ func TestTheFrontendReplicaCountAndNamespaceAreClusterSettings(t *testing.T) {
 	}
 }
 
+// With no per-model frontend, the cluster-wide one in the global namespace is the only thing that
+// can discover the workers, so the namespace setting cannot take them out of it.
+func TestWorkersStayGlobalUnderTheClusterWideFrontend(t *testing.T) {
+	opts := testOptions()
+	opts.FrontendEnabled = false
+	opts.FrontendGlobalNamespace = ptr(false)
+	obj, err := DynamoGraphDeployment(testInputs(), opts)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if worker := componentNamed(t, obj, WorkerComponent); worker["globalDynamoNamespace"] != true {
+		t.Fatalf("the worker left the namespace the cluster-wide frontend discovers in: %v", worker["globalDynamoNamespace"])
+	}
+}
+
 // A memory ceiling and no CPU one: the frontend copies every token of every response, so a CPU
 // limit is latency on the data path.
 func TestTheFrontendResourcesDefaultToWhatTheClusterFrontendRunsIn(t *testing.T) {
