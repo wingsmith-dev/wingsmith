@@ -180,12 +180,18 @@ uv run python -m app.auth hash
 
 ## Migrations
 
-```bash
-uv run alembic revision --autogenerate -m "..."
-uv run alembic upgrade head
-```
+Requires Postgres 15 or later. To upgrade a running plane, back up the database, run
+`migrate upgrade head` with the new image to completion, and only then roll out api, hub
+and reactor on the new image; some revisions rename or drop columns, so expect a short
+window of API errors between the two steps. [`migrations/README.md`](migrations/README.md)
+has the details: the revisions that refuse to run, downgrades, and the expand/contract
+rules for writing new migrations.
 
-`migrations/env.py` imports `app.db.models` only if it exists.
+```bash
+uv run alembic upgrade head
+uv run alembic check                # fails if the models and the schema disagree
+uv run alembic revision --autogenerate -m "..."
+```
 
 ## Checks
 

@@ -60,6 +60,11 @@ Some revisions refuse to run rather than guess:
 - `730d51320227` lists duplicate fleet-wide quotas or credentials and stops.
   Delete all but one of each before upgrading.
 
+One revision deletes rows without asking: `9d05d968be9c` removes policy
+attachments whose tenant, project, cluster, endpoint or workload no longer
+exists. They point at nothing, and from that revision on the database deletes
+an attachment together with its subject.
+
 
 Downgrades
 ----------
