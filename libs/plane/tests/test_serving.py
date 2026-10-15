@@ -1417,7 +1417,7 @@ def test_an_overlay_env_that_logs_request_content_is_refused(entry, where):
         {"name": "VLLM_LOGGING_LEVEL", "value": "WARNING"},
         {"name": "VLLM_DEBUG_LOG_API_SERVER_RESPONSE", "value": "False"},
         {"name": "NCCL_DEBUG", "value": "INFO"},
-        {"name": "HF_TOKEN", "valueFrom": {"secretKeyRef": {"name": "hf", "key": "token"}}},
+        {"name": "VLLM_HOST_IP", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}},
     ],
 )
 def test_an_overlay_env_that_logs_no_request_content_is_untouched(entry):
@@ -1668,6 +1668,31 @@ def test_hashing_an_unrendered_field_as_unset_keeps_every_other_digest_where_it_
         OverlaySchema(
             dynamo={"components": [{"name": "Worker", "podTemplate": {"spec": {"hostIPC": True}}}]},
         ),
+        OverlaySchema(dynamo={"components": [{"name": "Worker", "replicas": 4}]}),
+        OverlaySchema(
+            pod_spec={"containers": [{"name": "main", "resources": {"limits": {"nvidia.com/gpu": 8}}}]},
+        ),
+        OverlaySchema(
+            pod_spec={
+                "containers": [
+                    {"name": "main", "env": [{"name": "T", "valueFrom": {"secretKeyRef": {"name": "s", "key": "k"}}}]}
+                ]
+            }
+        ),
+        OverlaySchema(
+            pod_spec={
+                "containers": [
+                    {
+                        "name": "main",
+                        "env": [{"name": "T", "valueFrom": {"configMapKeyRef": {"name": "c", "key": "k"}}}],
+                    }
+                ]
+            }
+        ),
+        OverlaySchema(dynamo={"envs": [{"name": "T", "valueFrom": {"secretKeyRef": {"name": "s", "key": "k"}}}]}),
+        OverlaySchema(pod_spec={"tolerations": [{"operator": "Exists"}]}),
+        OverlaySchema(pod_spec={"nodeSelector": {"node-role.kubernetes.io/control-plane": ""}}),
+        OverlaySchema(pod_spec={"affinity": {"nodeAffinity": {}}}),
     ],
 )
 def test_an_overlay_outside_the_allowlist_is_refused(overlay):
@@ -1678,20 +1703,21 @@ def test_an_overlay_outside_the_allowlist_is_refused(overlay):
 def test_an_overlay_inside_the_allowlist_is_accepted():
     overlay = OverlaySchema(
         pod_spec={
-            "nodeSelector": {"pool": "a"},
-            "tolerations": [{"key": "gpu", "operator": "Exists"}],
-            "containers": [{"name": "main", "env": [{"name": "NCCL_DEBUG", "value": "INFO"}], "args": ["--x"]}],
+            "terminationGracePeriodSeconds": 120,
+            "containers": [
+                {
+                    "name": "main",
+                    "env": [
+                        {"name": "NCCL_DEBUG", "value": "INFO"},
+                        {"name": "VLLM_HOST_IP", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}},
+                    ],
+                    "args": ["--x"],
+                }
+            ],
         },
         dynamo={
             "annotations": {"nvidia.com/deployment-strategy": "Recreate"},
-            "components": [
-                {
-                    "name": "Frontend",
-                    "type": "frontend",
-                    "replicas": 1,
-                    "podTemplate": {"metadata": {"labels": {"a": "b"}}, "spec": {"containers": [{"name": "main"}]}},
-                }
-            ],
+            "envs": [{"name": "DYN_LOG", "value": "info"}],
         },
     )
     check_serving_request(a_request(overlay=overlay), an_artifact())

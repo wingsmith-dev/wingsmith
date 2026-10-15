@@ -151,9 +151,11 @@ class OverlaySchema(Struct):
     `pod_spec` merges over the rendered pod with strategic-merge semantics;
     `dynamo` merges over the rendered graph deployment, where maps merge and
     lists replace. Both are checked against the keys in
-    `app.modules.workloads.validation` before anything is stored: scheduling,
-    container args, env, resources and probes are allowed; security contexts, host
-    namespaces, volumes and service accounts are refused.
+    `app.modules.workloads.validation` before anything is stored: container args,
+    command, literal env, ports and probes, and the graph's annotations and shared env,
+    are allowed. Resources, scheduling, Secret and ConfigMap env references, graph
+    components, security contexts, host namespaces, volumes and service accounts are
+    refused.
     """
 
     pod_spec: dict = {}
