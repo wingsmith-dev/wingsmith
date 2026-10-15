@@ -16,10 +16,18 @@ alone cannot express "the one that runs here".
 **The bearer token is passed as a container environment variable and expanded by a
 shell inside the container.** The `docker run` argv names the variable and never
 carries its value (`-e HGR_BENCH_TOKEN`, inherited from the docker CLI's own
-environment). Put the value in the argv and it is in `ps` and in shell history on
-the host. The one harness that has no header flag at all (GuideLLM)
-still takes it this way, because its `api_key=` attribute is expanded by the
-in-container shell rather than by ours.
+environment), so the docker CLI's command line, the commands this runner records
+and its logs never hold the token. The one harness that has no header flag at all
+(GuideLLM) still takes it this way, because its `api_key=` attribute is expanded by
+the in-container shell rather than by ours.
+
+That is as far as it goes. The in-container shell expands the variable into the
+argv of the tool it starts — AIPerf's `-H`, GuideLLM's `--backend`, `vllm bench
+serve`'s `--header` and the vLLM sweep's `--bench-cmd` — because none of them takes
+the token from its environment for every request it sends.
+On a Linux host, where container processes share the host's process table, those
+command lines are visible to anyone who can run `ps` there. Use a token scoped to
+the endpoint under test, on a host you trust.
 """
 
 from __future__ import annotations
