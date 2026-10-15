@@ -21,7 +21,8 @@ import (
 type Zone int
 
 const (
-	zoneUnset Zone = iota
+	// The zero Zone is no zone at all; New refuses it.
+	_ Zone = iota
 	// ZoneInternal is the unauthenticated serving port: a ClusterIP with no
 	// ingress, reached only by the operator's own edge. A tenant on this zone
 	// may declare auth: none, because the zone itself is the proof — which
