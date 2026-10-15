@@ -214,7 +214,9 @@ class Settings:
     """
 
     ADMIN_PASSWORD_HASH: str = ""
-    """Bcrypt hash of the admin password, e.g. `python -m app.auth.manager hash`."""
+    """Bcrypt hash of the admin password. Generate one with `uv run python -m app.auth hash`
+    (or `docker run --rm -it <plane image> python -m app.auth hash`), which prompts for the
+    password rather than taking it as an argument. Changing it ends every admin session."""
 
     SESSION_SIGNING_SECRET: str = ""
     """HMAC key signing session tokens. Required outside `local`, where the plane
@@ -225,12 +227,14 @@ class Settings:
     SESSION_TTL_SECONDS: int = 900
     """Lifetime of a session token minted by `POST /v1/auth/login`."""
 
-    REFRESH_TTL_SECONDS: int = 2592000
-    """Lifetime of a refresh token minted alongside a session token.
+    REFRESH_TTL_SECONDS: int = 604800
+    """Absolute lifetime of a signed-in session, from sign-in.
 
-    Thirty days: long enough that an operator signs in once a month, short
-    enough that a compromised refresh token does not outlive a quarterly
-    password rotation. Stored server-side, so revocation works regardless.
+    Refreshing rotates the tokens but never extends this: past it, the person
+    signs in again. Seven days, so a stolen refresh token is worth a week at most
+    even if nobody notices it. Sessions are stored server-side, so logout,
+    reuse of a rotated token, a password change or a revoked tenant token end one
+    sooner (`app.auth.service`).
     """
 
     PUBLIC_HOST: str = ""

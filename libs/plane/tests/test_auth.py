@@ -866,3 +866,27 @@ async def test_hub_rejects_bad_tokens_even_when_admin_auth_is_disabled(monkeypat
         assert excinfo.value.response.status_code == 401
 
     await _run_hub_and(settings.HUB_PORT, attempt())
+
+
+# --- the hash command ----------------------------------------------------
+
+
+def test_the_hash_command_prints_a_hash_that_verifies(monkeypatch, capsys):
+    from io import StringIO
+
+    from app.auth.__main__ import main
+
+    monkeypatch.setattr("sys.stdin", StringIO(f"{PASSWORD}\n"))
+    assert main(["hash", "--stdin"]) == 0
+    digest = capsys.readouterr().out.strip()
+    assert AuthManager.verify_admin_password(PASSWORD, digest)
+
+
+def test_the_hash_command_refuses_a_short_password(monkeypatch, capsys):
+    from io import StringIO
+
+    from app.auth.__main__ import main
+
+    monkeypatch.setattr("sys.stdin", StringIO("short\n"))
+    assert main(["hash", "--stdin"]) == 1
+    assert capsys.readouterr().out == ""

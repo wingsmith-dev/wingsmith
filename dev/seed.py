@@ -25,15 +25,6 @@ import websockets
 API = os.environ.get("HANGAR_API", "http://localhost:8000")
 HUB = os.environ.get("HANGAR_HUB", "ws://localhost:8001/v1/hub/sync")
 
-OPERATOR_TOKEN = os.environ.get("HANGAR_OPERATOR_TOKEN", "hangar-local-operator-token")
-"""`app.core.auth.LOCAL_OPERATOR_TOKEN` — what the hub accepts when APP_ENV is `local`.
-
-The hub's operator-token check has no disable switch, so an unauthenticated seeder is a 401
-before the upgrade rather than a cluster that connects and says nothing.
-"""
-
-HUB_HEADERS = {"Authorization": f"Bearer {OPERATOR_TOKEN}"}
-
 ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"
 
 
@@ -503,7 +494,14 @@ async def seed_observed(ids: dict[str, str]) -> None:
         for name, cluster_id in ids.items():
             if name not in NODES:
                 continue
-            socket = await stack.enter_async_context(websockets.connect(HUB, additional_headers=HUB_HEADERS))
+            # The hub accepts only a cluster's own enrolment token, so each fake cluster mints one,
+            # the way a real cluster is handed one at registration.
+            setup = post(f"/clusters/{cluster_id}/enrolment-token", {})
+            if not setup or not setup.get("enrolment_token"):
+                print(f"  ! no enrolment token for {name}; skipping its observed state")
+                continue
+            headers = {"Authorization": f"Bearer {setup['enrolment_token']}"}
+            socket = await stack.enter_async_context(websockets.connect(HUB, additional_headers=headers))
             await Reporter(cluster_id).run(socket, name)
         # Held open on purpose: `reachable` is cleared when the socket drops, and placement
         # refuses an unreachable cluster before it looks at capacity.
