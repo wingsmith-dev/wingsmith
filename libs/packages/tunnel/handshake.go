@@ -165,13 +165,17 @@ func refusal(accept Accept) error {
 	if reason == "" {
 		reason = accept.Error
 	}
+	detail := reason
+	if accept.Error != "" && accept.Error != reason {
+		detail = reason + ": " + accept.Error
+	}
 	switch reason {
 	case ReasonUnauthorized:
-		return fmt.Errorf("%w: %s", ErrRejected, reason)
+		return fmt.Errorf("%w: %s", ErrRejected, detail)
 	case ReasonDuplicate:
 		return fmt.Errorf("%w: %s", ErrDuplicate, accept.GatewayID)
 	default:
-		return fmt.Errorf("%w: %s", ErrRefused, reason)
+		return fmt.Errorf("%w: %s", ErrRefused, detail)
 	}
 }
 
