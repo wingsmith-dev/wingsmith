@@ -1,0 +1,27 @@
+name: Feature request
+description: Something Hangar should do that it does not do today.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check docs/roadmap.md first; larger features already planned are listed there.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What you would like Hangar to do. A sketch of the API or behaviour is enough.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds you use now, or other designs you considered.

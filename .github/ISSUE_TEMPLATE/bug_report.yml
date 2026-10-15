@@ -1,0 +1,58 @@
+name: Bug report
+description: Something in Hangar does not behave the way it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go through private reporting, not here. See SECURITY.md.
+        Please remove hostnames, tokens and other credentials from anything you paste.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - plane (api, hub, reactor)
+        - operator
+        - gateway
+        - agent / tunnel
+        - console
+        - cli (hgr)
+        - chart (cluster-setup)
+        - benchmarking / transit / conformance
+        - docs
+        - not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest set of steps, requests or configuration that shows the problem.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      description: The commit SHA you built from, or the image or chart version.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Kubernetes version, Dynamo version, GPU types, how the plane is deployed.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log lines from the components involved.
+      render: text
