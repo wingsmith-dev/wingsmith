@@ -1,0 +1,13 @@
+// One workspace over every Go module, so editors and `go` resolve the local tunnel package
+// without a replace. Each go.mod keeps its replace directives, so a module still builds on its
+// own (the Docker builds see no go.work).
+go 1.25.0
+
+use (
+	./libs/agent
+	./libs/cli
+	./libs/gateway
+	./libs/operator
+	./libs/packages/tunnel
+	./libs/transit
+)
