@@ -61,7 +61,7 @@ class NotificationChannelRoutes(Controller):
     async def delete_channel(self, context: RequestContext, svc: NotificationChannelService, ref: str) -> None:
         await svc.delete(ref)
 
-    @post("/{ref:str}/test")
+    @post("/{ref:str}/test", status_code=200)
     async def test_channel(
         self, context: RequestContext, svc: NotificationChannelService, ref: str
     ) -> Response[NotificationTestResult]:

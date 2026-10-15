@@ -72,7 +72,7 @@ class DeploymentRoutes(Controller):
     ) -> Response[DeploymentSchema]:
         return Response(await svc.update(ref, data, if_match=if_match))
 
-    @post("/{ref:str}/authority")
+    @post("/{ref:str}/authority", status_code=200)
     async def set_deployment_authority(
         self,
         context: RequestContext,

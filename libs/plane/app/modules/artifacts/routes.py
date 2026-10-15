@@ -127,7 +127,7 @@ class ArtifactRoutes(Controller):
             )
         )
 
-    @post("/{ref:str}/refresh")
+    @post("/{ref:str}/refresh", status_code=200)
     async def refresh_artifact(
         self, context: RequestContext, svc: ArtifactService, ref: str
     ) -> Response[ArtifactRefreshSchema]:

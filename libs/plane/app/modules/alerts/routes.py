@@ -75,13 +75,13 @@ class AlertRoutes(Controller):
     async def get_alert(self, context: RequestContext, svc: AlertService, ref: str) -> Response[AlertSchema]:
         return Response(await svc.get(ref))
 
-    @post("/{ref:str}/acknowledge")
+    @post("/{ref:str}/acknowledge", status_code=200)
     async def acknowledge_alert(
         self, context: RequestContext, svc: AlertService, ref: str, data: AlertAcknowledgeRequest
     ) -> Response[AlertSchema]:
         return Response(await svc.acknowledge(ref, data))
 
-    @post("/{ref:str}/resolve")
+    @post("/{ref:str}/resolve", status_code=200)
     async def resolve_alert(self, context: RequestContext, svc: AlertService, ref: str) -> Response[AlertSchema]:
         return Response(await svc.resolve(ref))
 

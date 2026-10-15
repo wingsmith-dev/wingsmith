@@ -169,6 +169,47 @@ def test_framework_404_and_405_carry_contract_codes():
     assert (not_allowed.status_code, not_allowed.json()["code"]) == (405, "method_not_allowed")
 
 
+# POST routes that create a resource. Every other POST is an action on an existing one and answers 200.
+CREATES = {
+    "/v1/alert-thresholds",
+    "/v1/artifacts",
+    "/v1/artifacts/{ref:str}/baselines",
+    "/v1/auth/login",
+    "/v1/auth/refresh",
+    "/v1/benchmarks",
+    "/v1/benchmarks/requests",
+    "/v1/clusters",
+    "/v1/clusters/{ref:str}/enrolment-token",
+    "/v1/components",
+    "/v1/discovered/{ref:str}/promote",
+    "/v1/endpoints",
+    "/v1/notification-channels",
+    "/v1/operations",
+    "/v1/policies",
+    "/v1/pools",
+    "/v1/priority-classes",
+    "/v1/projects",
+    "/v1/quotas",
+    "/v1/serving-quotas",
+    "/v1/tenants",
+    "/v1/tenants/{ref:str}/keys",
+    "/v1/tenants/{ref:str}/tokens",
+    "/v1/workloads",
+}
+
+
+def _post_routes():
+    for route in create_app().routes:
+        entry = getattr(route, "route_handler_map", {}).get("POST")
+        if entry is not None:
+            yield route.path, (entry[0] if isinstance(entry, tuple) else entry).status_code
+
+
+def test_only_creates_answer_201():
+    created = {path for path, status in _post_routes() if status == 201}
+    assert created == CREATES
+
+
 def test_unknown_query_parameter_is_rejected_with_the_contract_envelope():
     with TestClient(app=create_app(), base_url="http://127.0.0.1:8000") as client:
         response = client.get("/v1/nodes", params={"status": "ready"})
