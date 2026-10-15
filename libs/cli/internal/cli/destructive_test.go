@@ -34,3 +34,28 @@ func TestDestructiveVerbsNeverResolveByPrefix(t *testing.T) {
 		t.Fatalf("rm by the full name exited %d: %s", code, errOut)
 	}
 }
+
+// Every rm says what it removed in every machine format.
+func TestDeletesEmitAResult(t *testing.T) {
+	for _, format := range []string{"json", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			t.Setenv("HANGAR_FAKE_STATE", filepath.Join(t.TempDir(), "state.json"))
+			for _, args := range [][]string{
+				{"workload", "rm", "chat", "--yes"},
+				{"serving-quota", "rm", "chat", "--yes"},
+				{"discovered", "rm", "llama-70b-vllm"},
+			} {
+				out, errOut, code := run(t, append(args, "-o", format)...)
+				if code != 0 {
+					t.Fatalf("%v exit %d: %s", args, code, errOut)
+				}
+				if !strings.Contains(out, "chat") && !strings.Contains(out, "llama-70b-vllm") {
+					t.Errorf("%v -o %s does not name what it removed: %q", args, format, out)
+				}
+				if !strings.Contains(out, "deleted") && !strings.Contains(out, "removed") {
+					t.Errorf("%v -o %s printed no result: %q", args, format, out)
+				}
+			}
+		})
+	}
+}

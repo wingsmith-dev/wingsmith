@@ -259,6 +259,7 @@ you have dealt with it, so it stops appearing.
 			}
 			return app.Emit(&output.Result{
 				Command: cmdPath(cmd),
+				Data:    map[string]any{"id": found.ID, "name": found.Name, "removed": true},
 				Names:   []string{found.ID},
 				Human: func(w io.Writer, s ui.Style, width int) {
 					fmt.Fprintf(w, "%s removed — still running, never touched\n", s.Bold(found.Name))

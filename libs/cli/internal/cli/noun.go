@@ -542,6 +542,13 @@ func parseDurationInstant(raw, what string, direction time.Duration) (*time.Time
 
 // --- shared rendering ------------------------------------------------------
 
+// deleted is what every rm emits in a machine format: the object that is gone,
+// by id and by name. An rm that printed nothing under -o json would leave a
+// script unable to tell success from a command that never ran.
+func deleted(id, name string) map[string]any {
+	return map[string]any{"id": id, "name": name, "deleted": true}
+}
+
 func columnTitles(cols []ui.Column) []string {
 	out := make([]string, 0, len(cols))
 	for _, c := range cols {

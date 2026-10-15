@@ -884,6 +884,7 @@ are gone.`,
 			}
 			return app.Emit(&output.Result{
 				Command: cmdPath(cmd),
+				Data:    deleted(wl.ID, wl.Name),
 				Names:   []string{wl.ID},
 				Human: func(w io.Writer, s ui.Style, width int) {
 					fmt.Fprintf(w, "%s deleted\n", s.Bold(wl.Name))

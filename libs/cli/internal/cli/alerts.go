@@ -283,6 +283,7 @@ stops firing until another is declared.`,
 			}
 			return app.Emit(&output.Result{
 				Command: cmdPath(cmd),
+				Data:    deleted(threshold.ID, threshold.Rule),
 				Names:   []string{threshold.ID},
 				Human: func(w io.Writer, s ui.Style, width int) {
 					fmt.Fprintf(w, "%s threshold deleted\n", s.Bold(threshold.Rule))

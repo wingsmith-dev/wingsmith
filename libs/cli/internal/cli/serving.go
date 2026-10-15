@@ -310,6 +310,7 @@ rate limited, because an endpoint with no quota is uncommitted on every axis.`,
 			}
 			return app.Emit(&output.Result{
 				Command: cmdPath(cmd),
+				Data:    deleted(quota.ID, quota.EndpointName),
 				Names:   []string{quota.ID},
 				Human: func(w io.Writer, s ui.Style, width int) {
 					fmt.Fprintf(w, "%s is no longer rate limited\n", s.Bold(quota.EndpointName))
