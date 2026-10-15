@@ -566,12 +566,16 @@ def _fit_contiguous(request: PlacementRequest, cluster: ClusterSnapshot, supply:
 
     `units` counts whole copies of the request over the burnt-down domains, never
     over the cluster total: two four-device units do not fit in two domains of six.
+    A unit with a tensor group also needs each group inside one node, so a domain
+    holds only as many units as its nodes' free devices can form groups for: a
+    fabric with two free devices on each of two nodes holds no tensor-four unit.
     """
     fit = _Fit()
     domains = {d.uid: d for d in cluster.domains}
     free_by_domain = _group_by_domain(supply.free, domains, request.domain_kind)
     all_by_domain = _group_by_domain(supply.candidates, domains, request.domain_kind)
-    remaining = _burn(free_by_domain, supply.reserved)
+    rooms = _burn_nodes(free_by_domain, supply.reserved)
+    remaining = {uid: sum(room.values()) for uid, room in rooms.items()}
     fit.largest_domain_free = max(remaining.values(), default=0)
     needed = max(request.device_count, 1)
 
@@ -579,17 +583,48 @@ def _fit_contiguous(request: PlacementRequest, cluster: ClusterSnapshot, supply:
         fit.reasons.append(_capacity_rejection(request, cluster, supply, needed))
         return fit
 
-    exact = sorted((remaining.get(uid, 0), uid) for uid in all_by_domain if remaining.get(uid, 0) >= needed)
+    want = max(request.tensor_parallel, 1)
+    per_unit = max(-(-needed // want), 1)
+
+    def units_in(uid: str) -> int:
+        units = remaining.get(uid, 0) // needed
+        if want >= 2:
+            units = min(units, sum(count // want for count in rooms.get(uid, {}).values()) // per_unit)
+        return units
+
+    exact = sorted((remaining.get(uid, 0), uid) for uid in all_by_domain if units_in(uid) >= 1)
     if exact:
         size, uid = exact[0]
         fit.domain = uid
         fit.domain_identifier = domains[uid].identifier if uid in domains else uid
         fit.domain_free = size
         fit.slack = size - needed
-        fit.units = min(sum(count // needed for count in remaining.values()), supply.available // needed)
+        fit.units = min(sum(units_in(uid) for uid in rooms), supply.available // needed)
         return fit
 
     kind = request.domain_kind or "topology"
+    if want >= 2 and fit.largest_domain_free >= needed:
+        fit.reasons.append(
+            Rejection(
+                code=INSUFFICIENT_TOPOLOGY,
+                message=(
+                    f"cluster {cluster.name} has {fit.largest_domain_free} available {request.device_class} in its "
+                    f"largest {kind} domain, but no {kind} domain has room for {per_unit} tensor group(s) of {want} "
+                    f"in one node{_owed_note(supply)}"
+                ),
+                detail={
+                    "largest_domain_free_devices": fit.largest_domain_free,
+                    "free_devices": len(supply.free),
+                    "reserved_devices": supply.reserved_devices,
+                    "available_devices": supply.available,
+                    "requested_devices": needed,
+                    "domain_kind": request.domain_kind,
+                    "tensor_parallel": want,
+                    "tensor_groups_requested": per_unit,
+                },
+            )
+        )
+        return fit
     fit.reasons.append(
         Rejection(
             code=INSUFFICIENT_TOPOLOGY,
@@ -648,14 +683,40 @@ def _burn(
     Ties are broken on the domain uid so the same snapshot always burns the same
     fabrics, which is what keeps two identical questions getting the same answer.
     """
-    remaining = {uid: len(group) for uid, group in free_by_domain.items()}
-    if not remaining:
-        return remaining
+    return {uid: sum(room.values()) for uid, room in _burn_nodes(free_by_domain, reserved).items()}
+
+
+def _burn_nodes(
+    free_by_domain: dict[str, list[DeviceSnapshot]],
+    reserved: tuple[ReservedUnit, ...],
+) -> dict[str, dict[str, int]]:
+    """`_burn`, kept per node: the free devices each node of each domain has left.
+
+    Each pending fabric-bound unit is charged to the same domain `_burn` would pick,
+    and inside it to the roomiest nodes first, the pessimistic reading `_node_groups`
+    uses, since a reservation names no node either. `_burn` is the per-domain total
+    of this.
+    """
+    rooms: dict[str, dict[str, int]] = {}
+    for uid, group in free_by_domain.items():
+        room = rooms.setdefault(uid, {})
+        for device in group:
+            room[device.node] = room.get(device.node, 0) + 1
+    if not rooms:
+        return rooms
     bound = sorted((u for u in reserved if u.requires_single_domain), key=lambda u: (-u.devices, u.deployment or ""))
     for unit in bound:
-        uid = max(remaining, key=lambda k: (remaining[k], k))
-        remaining[uid] = max(remaining[uid] - unit.devices, 0)
-    return remaining
+        uid = max(rooms, key=lambda k: (sum(rooms[k].values()), k))
+        room = rooms[uid]
+        owed = unit.devices
+        while owed > 0:
+            node = max(room, key=lambda k: (room[k], k), default=None)
+            if node is None or room[node] <= 0:
+                break
+            taken = min(room[node], owed)
+            room[node] -= taken
+            owed -= taken
+    return rooms
 
 
 def _owed_note(supply: _Supply) -> str:

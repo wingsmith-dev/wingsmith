@@ -1097,3 +1097,59 @@ async def test_a_name_two_workloads_share_is_refused_rather_than_picked():
     one = SimpleNamespace(uid="wkl_a")
     service.repo = _Refs([one])
     assert await service._workload("serve") is one
+
+
+def test_a_single_domain_tensor_group_needs_its_free_devices_on_one_node():
+    """Four free devices in one fabric, two per node, hold no tensor-four unit."""
+    busy = DeviceHold(workload="other", project="proj_b", priority_value=0, preemptible=False)
+    doms = (nvlink("dom-a", "nvl-a", spans_nodes=True),)
+    devs = [
+        DeviceSnapshot(
+            uid=f"c1-{node}-{i}", node=node, device_class="h100", domain="dom-a", held_by=busy if i < 2 else None
+        )
+        for node in ("n0", "n1")
+        for i in range(4)
+    ]
+    snap = CapacitySnapshot(clusters=(cluster("c1", "iad-1", devs, doms),))
+
+    decision = place(request(4, tensor_parallel=4, requires_single_domain=True, domain_kind="nvlink"), snap)
+
+    assert decision.placed is False
+    reason = verdict_for(decision, "iad-1").reasons[0]
+    assert reason.code == codes.INSUFFICIENT_TOPOLOGY
+    assert reason.detail["largest_domain_free_devices"] == 4
+    assert reason.detail["tensor_groups_requested"] == 1
+
+
+def test_single_domain_units_are_counted_by_the_tensor_groups_each_node_can_form():
+    """Three free devices on each of two nodes in one fabric hold two tensor-two units, not three."""
+    doms = (nvlink("dom-a", "nvl-a", spans_nodes=True),)
+    devs = devices("a", count=3, node="n0", domain="dom-a", prefix="x") + devices(
+        "a", count=3, node="n1", domain="dom-a", prefix="y"
+    )
+    snapshot = supply(cluster("clu_a", "iad-1", devs, doms))
+    decision = expand(
+        demand(
+            unit_device_count=2, tensor_parallel=2, desired_scale=3, requires_single_domain=True, domain_kind="nvlink"
+        ),
+        snapshot,
+    )
+    assert shares_of(decision) == {"iad-1": 2}
+    assert decision.shortfall == 1
+
+
+def test_a_reserved_single_domain_unit_is_charged_to_the_roomiest_node_of_its_fabric():
+    """A pending four-device unit is charged to n0's six, leaving two free on each node: no tensor-four unit fits."""
+    doms = (nvlink("dom-a", "nvl-a", spans_nodes=True),)
+    devs = devices("c1", count=6, node="n0", domain="dom-a", prefix="x") + devices(
+        "c1", count=2, node="n1", domain="dom-a", prefix="y"
+    )
+    owed = ReservedUnit(
+        workload="wl_other", project="proj_b", device_class="h100", devices=4, requires_single_domain=True
+    )
+    snap = CapacitySnapshot(clusters=(cluster("c1", "iad-1", devs, doms, reserved=(owed,)),))
+
+    assert place(request(2, tensor_parallel=2, requires_single_domain=True, domain_kind="nvlink"), snap).placed is True
+    decision = place(request(4, tensor_parallel=4, requires_single_domain=True, domain_kind="nvlink"), snap)
+    assert decision.placed is False
+    assert codes_for(decision, "iad-1") == [codes.INSUFFICIENT_TOPOLOGY]
