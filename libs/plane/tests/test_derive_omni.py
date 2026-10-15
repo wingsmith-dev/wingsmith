@@ -1,8 +1,7 @@
 """Reading and promoting a hand-applied vLLM-Omni worker.
 
-The spec is the Z-Image-Turbo worker applied by hand on cluster-site-a (namespace
-imgtest) on 2026-09-23, whose promotion was refused because a diffusion model has no
-`--max-model-len` to read.
+The spec is a hand-applied Z-Image-Turbo worker. Its promotion used to be refused
+because a diffusion model has no `--max-model-len` to read.
 """
 
 import pytest

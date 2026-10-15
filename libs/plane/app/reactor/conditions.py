@@ -8,10 +8,9 @@ about the alert row (`first_seen_at`) rather than something this module has to
 persist.
 
 Every condition here answers a question the founding object model left to a human reading a
-dashboard, and the four were chosen from one incident: a spot node went away, the
-deployment on it stopped serving, and the plane stayed green for seventeen hours
-because a cluster with nothing on it looks exactly like a cluster with nothing
-wrong with it.
+dashboard. The case they cover: a spot node goes away, the deployment on it stops
+serving, and nothing turns red, because a cluster with nothing on it looks exactly
+like a cluster with nothing wrong with it.
 """
 
 import datetime as dt

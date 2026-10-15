@@ -5,9 +5,8 @@ Revises: e8b4f6a2d3c7
 Create Date: 2026-08-20 19:20:00.000000
 
 Three tables for one gap. The plane recorded every fact needed to know that a
-deployment had been down for seventeen hours — replica counts, cluster
-reachability, an append-only event log — and had nothing that ever read them back
-and said so. `ops_alert` is that reading, made durable so it can be acknowledged;
+deployment was down — replica counts, cluster reachability, an append-only event
+log — and had nothing that ever read them back and said so. `ops_alert` is that reading, made durable so it can be acknowledged;
 `ops_notification_channel` is where it gets sent; `ops_reactor_state` is the lease
 and cursor that keep exactly one process doing either.
 

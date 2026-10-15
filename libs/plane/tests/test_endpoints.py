@@ -871,7 +871,7 @@ KIMI_POLICY_V1 = {
         "deny": ["tool_choice.named_while_thinking"],
     }
 }
-"""What a Moonshot endpoint answered 400 to, in the language it was written in.
+"""An older stored shape of a provider denial rule, kept in the language it was written in.
 
 Kept as a fixture because it is what is actually stored. Nothing writes this
 shape any more, and everything still has to read it."""

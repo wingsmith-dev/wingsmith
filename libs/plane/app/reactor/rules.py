@@ -93,8 +93,7 @@ CONDITION_WINDOWS = {
 
 Five minutes for reachability because a hub rollout is measured in seconds and a
 real disconnect is not. Fifteen for everything to do with replicas, which is past
-an image pull, a model load, and a node coming up, and well short of the seventeen
-hours that prompted any of this.
+an image pull, a model load, and a node coming up.
 """
 
 

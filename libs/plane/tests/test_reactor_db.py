@@ -1,8 +1,7 @@
-"""The reactor against a real Postgres, driven by the incident that produced it.
+"""The reactor against a real Postgres.
 
-One spot GPU node in one cluster. The node goes away, the workload on it stops
-serving, and — before any of this existed — Hangar stayed green for seventeen
-hours. Each test here is one of the ways that silence was possible.
+One spot GPU node in one cluster. The node goes away and the workload on it stops
+serving; each test here checks that the plane says so.
 """
 
 import uuid
@@ -156,7 +155,7 @@ async def test_an_unreachable_cluster_is_reported_once_not_twice(sessions, clust
 
 
 async def test_a_condition_waits_before_it_fires_and_then_fires(sessions, cluster):
-    """Pending is silent; seventeen hours is not. The `for` window is why one tick is not an alert."""
+    """Pending is silent until the `for` window has passed, so one tick is not an alert."""
     await connect(sessions, cluster)
     await seed_node(sessions, cluster)
     await seed_workload(sessions, cluster, ready=0)

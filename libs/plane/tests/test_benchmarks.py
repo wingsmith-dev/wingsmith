@@ -568,7 +568,7 @@ def test_the_request_filter_is_aliased_away_from_litestars_own_name() -> None:
     It is never None, so the filter it fed was applied on every call and every
     `GET /v1/benchmarks` answered 500 with `cannot adapt type 'Request' using
     placeholder '%s'`. The bug is invisible in a unit test of the service and
-    only shows against a database, which is why it reached production.
+    only shows against a database.
     """
     import inspect
 

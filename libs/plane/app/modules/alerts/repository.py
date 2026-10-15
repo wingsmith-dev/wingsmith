@@ -38,7 +38,7 @@ class AlertRepository:
 
         With one difference that matters: an alert is mutable, so `seq` orders by
         when it was first opened rather than by when it last changed. That is the
-        wanted behaviour — an alert firing for seventeen hours should not keep
+        wanted behaviour — an alert firing for hours should not keep
         jumping to the top of the list every time the evaluator touches it — and
         `last_seen_at` is returned for anyone who needs recency instead.
         """
