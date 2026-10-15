@@ -403,3 +403,26 @@ def test_an_ipv6_caller_is_charged_as_its_slash_64(monkeypatch):
     monkeypatch.setattr(settings, "TRUSTED_PROXIES", "")
     assert client_address(peer("2001:db8:1:2:aaaa::1")) == client_address(peer("2001:db8:1:2:bbbb::9"))
     assert client_address(peer("2001:db8:1:2::1")) != client_address(peer("2001:db8:1:3::1"))
+
+
+def test_revision_follows_the_last_write_and_if_match_refuses_an_older_one():
+    import datetime as dt
+
+    from types import SimpleNamespace
+
+    from app.core.revision import revision
+    from app.core.revision import check_if_match
+    from app.core.exceptions import Conflict
+
+    created = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
+    row = SimpleNamespace(created_at=created, updated_at=None)
+    first = revision(row)
+    check_if_match(row, first, "thing")
+    check_if_match(row, None, "thing")
+
+    row.updated_at = created + dt.timedelta(microseconds=1)
+    assert revision(row) != first
+    with pytest.raises(Conflict) as caught:
+        check_if_match(row, first, "thing")
+    assert caught.value.detail == {"revision": revision(row)}
+    assert caught.value.message == "thing changed since it was read"

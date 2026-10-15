@@ -16,6 +16,7 @@ from app.core.vram import shape_metadata
 from app.db.models import Artifact
 from app.db.models import ArtifactBaseline
 from app.db.models import ArtifactLocation
+from app.core.revision import revision
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -45,7 +46,6 @@ from app.modules.artifacts.services import KINDS
 from app.modules.artifacts.services import DEFAULT_FITMENT_LIMIT
 from app.modules.artifacts.services import ArtifactService
 from app.modules.artifacts.services import ArtifactBaselineService
-from app.modules.artifacts.services import _revision
 from app.modules.artifacts.services import check_locations
 from app.modules.artifacts.repository import ArtifactRepository
 
@@ -121,9 +121,9 @@ def test_locations_are_a_child_collection_keyed_by_uri_not_by_id():
 
 
 def test_revision_is_derived_from_the_last_write_not_stored():
-    assert _revision(Artifact(created_at=EPOCH, updated_at=None)) == str(int(EPOCH.timestamp() * 1_000_000))
+    assert revision(Artifact(created_at=EPOCH, updated_at=None)) == str(int(EPOCH.timestamp() * 1_000_000))
     later = Artifact(created_at=EPOCH, updated_at=EPOCH + dt.timedelta(seconds=1))
-    assert _revision(later) != _revision(Artifact(created_at=EPOCH, updated_at=None))
+    assert revision(later) != revision(Artifact(created_at=EPOCH, updated_at=None))
 
 
 def test_lineage_and_project_are_resolved_in_the_same_statement(repo):
@@ -659,11 +659,11 @@ async def test_a_refresh_that_finds_nothing_new_changes_nothing_and_says_so():
     """No write, so nobody's `If-Match` goes stale because somebody pressed the button."""
     artifact = registered()
     await refresh_service(artifact).refresh("gpt-oss-20b")
-    before = _revision(artifact)
+    before = revision(artifact)
 
     result = await refresh_service(artifact).refresh("gpt-oss-20b")
     assert result.changed == []
-    assert _revision(artifact) == before
+    assert revision(artifact) == before
 
 
 async def test_a_refresh_leaves_the_labels_a_person_put_on_the_artifact():

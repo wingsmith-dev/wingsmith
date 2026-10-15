@@ -5,6 +5,8 @@ from app.core.ids import PRIORITY_CLASS
 from app.core.ids import new_uid
 from app.db.models import PriorityClass
 from app.core.schemas import ListResponse
+from app.core.revision import revision
+from app.core.revision import check_if_match
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -16,11 +18,6 @@ from .schemas import PriorityClassSchema
 from .schemas import PriorityClassCreateRequest
 from .schemas import PriorityClassUpdateRequest
 from .repository import PriorityClassRepository
-
-
-def _revision(priority_class: PriorityClass) -> str:
-    stamp = priority_class.updated_at or priority_class.created_at
-    return str(int(stamp.timestamp() * 1_000_000))
 
 
 def precedence(classes: list[PriorityClass]) -> list[PriorityClass]:
@@ -49,7 +46,7 @@ class PriorityClassService:
             description=priority_class.description,
             created_at=priority_class.created_at,
             updated_at=priority_class.updated_at,
-            revision=_revision(priority_class),
+            revision=revision(priority_class),
         )
 
     async def _one(self, ref: str, lock: bool = False) -> PriorityClass:
@@ -116,8 +113,7 @@ class PriorityClassService:
         self, ref: str, data: PriorityClassUpdateRequest, if_match: str | None = None
     ) -> PriorityClassSchema:
         priority_class = await self._one(ref, lock=True)
-        if if_match is not None and if_match != _revision(priority_class):
-            raise Conflict("priority class changed since it was read", {"revision": _revision(priority_class)})
+        check_if_match(priority_class, if_match, "priority class")
 
         fields = data.to_dict(exclude_unset=True)
         if "value" in fields:

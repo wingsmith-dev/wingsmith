@@ -8,6 +8,8 @@ from app.core.ids import new_uid
 from app.db.models import Component
 from app.db.models import ComponentStatus
 from app.core.schemas import ListResponse
+from app.core.revision import revision
+from app.core.revision import check_if_match
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -35,12 +37,6 @@ Deliberately not `null`: a client that has to branch on the absence of the
 observed half will forget to, and "never reported" and "reported unhealthy" are
 both answers to the same question.
 """
-
-
-def _revision(component: Component) -> str:
-    """The value `If-Match` is checked against, derived from the last write."""
-    stamp = component.updated_at or component.created_at
-    return str(int(stamp.timestamp() * 1_000_000))
 
 
 def _status(status: ComponentStatus | None) -> ComponentStatusSchema:
@@ -90,7 +86,7 @@ class ComponentService:
             enabled=component.enabled,
             created_at=component.created_at,
             updated_at=component.updated_at,
-            revision=_revision(component),
+            revision=revision(component),
             status=observed,
             behind=is_behind(component.desired_version, observed.observed_version),
         )
@@ -171,8 +167,7 @@ class ComponentService:
         """
         row = await self._one(ref, cluster, lock=True)
         component = row[0]
-        if if_match is not None and if_match != _revision(component):
-            raise Conflict("component changed since it was read", {"revision": _revision(component)})
+        check_if_match(component, if_match, "component")
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
         if "desired_version" in fields and not fields["desired_version"]:

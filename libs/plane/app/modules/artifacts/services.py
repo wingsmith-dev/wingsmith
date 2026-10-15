@@ -29,6 +29,8 @@ from app.core.devices import DeviceClass
 from app.core.devices import DeviceTable
 from app.core.schemas import ListResponse
 from app.core.serving import artifact_slug
+from app.core.revision import revision
+from app.core.revision import check_if_match
 from app.core.exceptions import Invalid
 from app.core.exceptions import Conflict
 from app.core.exceptions import NotFound
@@ -96,12 +98,6 @@ for, and the repo has none. `verified` *is* here, and it is the one field
 `ArtifactUpdateRequest` refuses — verification is resolving the bytes, and this is
 where the bytes get resolved.
 """
-
-
-def _revision(row: Artifact | ArtifactBaseline) -> str:
-    """The value `If-Match` is checked against, derived from the last write."""
-    stamp = row.updated_at or row.created_at
-    return str(int(stamp.timestamp() * 1_000_000))
 
 
 def _upstream(row: Artifact) -> ArtifactUpstreamSchema:
@@ -485,7 +481,7 @@ class ArtifactService:
             metadata=artifact.metadata_,
             created_at=artifact.created_at,
             updated_at=artifact.updated_at,
-            revision=_revision(artifact),
+            revision=revision(artifact),
             locations=[_location(loc) for loc in artifact.locations],
             upstream=_upstream(artifact),
         )
@@ -707,8 +703,7 @@ class ArtifactService:
         the row it is about to replace.
         """
         artifact, _, _ = await self._one(ref, lock=True)
-        if if_match is not None and if_match != _revision(artifact):
-            raise Conflict("artifact changed since it was read", {"revision": _revision(artifact)})
+        check_if_match(artifact, if_match, "artifact")
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
         if "kind" in fields and fields["kind"] not in KINDS:
@@ -806,7 +801,7 @@ class ArtifactBaselineService:
             note=row.note,
             created_at=row.created_at,
             updated_at=row.updated_at,
-            revision=_revision(row),
+            revision=revision(row),
         )
 
     async def _artifact(self, ref: str) -> Artifact:
@@ -897,8 +892,7 @@ class ArtifactBaselineService:
         """
         artifact = await self._artifact(ref)
         row = await self._one(artifact, baseline, lock=True)
-        if if_match is not None and if_match != _revision(row):
-            raise Conflict("baseline changed since it was read", {"revision": _revision(row)})
+        check_if_match(row, if_match, "baseline")
 
         fields = {k: v for k, v in data.to_dict().items() if v is not UNSET}
         for name in IGNORED_PROVENANCE:
