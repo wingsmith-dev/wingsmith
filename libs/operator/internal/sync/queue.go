@@ -9,6 +9,14 @@ import (
 // ErrQueueClosed is returned once the queue has been closed.
 var ErrQueueClosed = errors.New("sync: send queue closed")
 
+// ErrQueueOverflow is returned when the queue is at its hard limit. The writer ends the session
+// when it sees it, because a frame the queue could not admit is one a stream or a reply is missing.
+var ErrQueueOverflow = errors.New("sync: send queue at its hard limit")
+
+// minQueueLimit is the smallest hard limit, whatever the configured soft bound. It is sized for a
+// full resync of a large cluster, whose correlated frames can neither be replaced nor dropped.
+const minQueueLimit = 16384
+
 // outbound is a queued frame together with the subject it describes. The subject is what makes
 // replacement possible: two frames of the same type about the same object are two readings of one
 // thing, and only the newer one is worth sending.
@@ -20,18 +28,30 @@ type outbound struct {
 // sendQueue is the bounded outbound buffer between the operator's producers and the single
 // WebSocket writer. It is the only backpressure point on the send path.
 //
-// The policy is PROTOCOL §6, operator -> hub half, and is not configurable: observed state is a
-// snapshot of the present, so a full queue replaces the oldest frame with the same type and
-// subject rather than appending. Falling behind degrades resolution, never correctness. Events
-// are exempt — a lost event cannot be re-derived from a later one — so they are dropped from the
-// tail and the loss is counted.
+// The policy is PROTOCOL §6, operator -> hub half, and is not configurable. Below the soft bound
+// every frame is appended. At or above it:
+//
+//   - an event is dropped from the tail and counted: a lost event cannot be re-derived, but a
+//     backlog of them is not worth stalling the stream for;
+//   - an uncorrelated observation replaces the queued frame with the same type and subject, since
+//     the newer reading supersedes the older one;
+//   - everything else is appended: stream openers and terminators, frames that belong to a
+//     correlated stream, operation and benchmark reports, and an observation of a subject not
+//     already queued. None of these is ever evicted to make room for another frame, because each
+//     carries something no later frame restates.
+//
+// Above the soft bound the queue grows only by frames that cannot be replaced, so its size is
+// bounded by the cluster's own inventory. The hard limit is the backstop: a Push that would pass
+// it fails, and the writer ends the session.
 type sendQueue struct {
-	mu      stdsync.Mutex
-	notify  chan struct{}
-	items   []*outbound
-	cap     int
-	closed  bool
-	dropped uint64
+	mu         stdsync.Mutex
+	notify     chan struct{}
+	items      []*outbound
+	cap        int
+	limit      int
+	closed     bool
+	overflowed bool
+	dropped    uint64
 }
 
 func newSendQueue(capacity int) *sendQueue {
@@ -42,11 +62,12 @@ func newSendQueue(capacity int) *sendQueue {
 		notify: make(chan struct{}, 1),
 		items:  make([]*outbound, 0, capacity),
 		cap:    capacity,
+		limit:  max(capacity*16, minQueueLimit),
 	}
 }
 
-// Push enqueues a frame, applying the §6 overflow policy when the queue is full. It never blocks
-// and, apart from a closed queue, never fails: the policy is the answer to a slow hub.
+// Push enqueues a frame, applying the §6 policy when the queue is past its soft bound. It never
+// blocks. It fails only on a closed queue or at the hard limit.
 func (q *sendQueue) Push(item *outbound) error {
 	q.mu.Lock()
 	defer func() {
@@ -64,19 +85,38 @@ func (q *sendQueue) Push(item *outbound) error {
 		q.dropped++
 		return nil
 	}
-	if i := q.indexOf(item.env.Type, item.subject); i >= 0 {
-		q.items[i] = item
-		return nil
+	if replaceable(item) {
+		if i := q.indexOf(item); i >= 0 {
+			q.items[i] = item
+			return nil
+		}
 	}
-	q.items = append(q.items[1:], item)
-	q.dropped++
+	if len(q.items) >= q.limit {
+		q.overflowed = true
+		return ErrQueueOverflow
+	}
+	q.items = append(q.items, item)
 	return nil
 }
 
-// indexOf finds the oldest queued frame describing the same subject with the same type.
-func (q *sendQueue) indexOf(t MessageType, subject string) int {
+// replaceable reports whether a newer frame may take a queued frame's place. Only a standalone
+// reading qualifies: a frame inside a correlated stream is counted by its stream.end, and the
+// stream controls and error frames each say something once.
+func replaceable(item *outbound) bool {
+	if item.env.ReplyTo != nil {
+		return false
+	}
+	switch item.env.Type {
+	case TypeResyncBegin, TypeStreamEnd, TypeError:
+		return false
+	}
+	return true
+}
+
+// indexOf finds the queued frame a replaceable item supersedes.
+func (q *sendQueue) indexOf(item *outbound) int {
 	for i, existing := range q.items {
-		if existing.env.Type == t && existing.subject == subject {
+		if existing.env.Type == item.env.Type && existing.subject == item.subject && replaceable(existing) {
 			return i
 		}
 	}
@@ -84,9 +124,17 @@ func (q *sendQueue) indexOf(t MessageType, subject string) int {
 }
 
 // Pop blocks until a frame is available, the queue is closed, or the context is done.
+//
+// A Push refused at the hard limit is reported to the next Pop, once, so the writer ends the
+// session; the frames already queued stay for the next one.
 func (q *sendQueue) Pop(ctx context.Context) (*outbound, error) {
 	for {
 		q.mu.Lock()
+		if q.overflowed {
+			q.overflowed = false
+			q.mu.Unlock()
+			return nil, ErrQueueOverflow
+		}
 		if len(q.items) > 0 {
 			item := q.items[0]
 			q.items = q.items[1:]

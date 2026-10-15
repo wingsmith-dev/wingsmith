@@ -687,26 +687,96 @@ func TestBackpressureReplacesTheSameSubject(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if q.Len() != 2 {
+		t.Fatalf("a repeated subject must replace rather than grow the queue: %d", q.Len())
+	}
 	other := mustEnvelope(t, "device.observed", wire.DeviceObserved{DeviceID: "dev_2"})
 	if err := q.Push(&outbound{env: other, subject: "dev_2"}); err != nil {
 		t.Fatal(err)
 	}
-	if q.Len() != 2 {
-		t.Fatalf("queue exceeded its bound: %d", q.Len())
-	}
-	if q.Dropped() != 1 {
-		t.Fatalf("only the unrelated subject evicts, got %d drops", q.Dropped())
+	if q.Dropped() != 0 {
+		t.Fatalf("an observation of another subject must never evict one, got %d drops", q.Dropped())
 	}
 	seen := map[string]int{}
-	for i := 0; i < 2; i++ {
+	for q.Len() > 0 {
 		item, err := q.Pop(context.Background())
 		if err != nil {
 			t.Fatal(err)
 		}
 		seen[item.subject]++
 	}
-	if seen["dev_1"] != 1 || seen["dev_2"] != 1 {
-		t.Fatalf("each subject must survive exactly once: %v", seen)
+	if seen["dev_1"] != 2 || seen["dev_2"] != 1 {
+		t.Fatalf("every subject must survive: %v", seen)
+	}
+}
+
+// TestBackpressureNeverEvictsAStreamOrAReport fills the queue past its soft bound with the frames
+// that used to be evicted from the head — a stream's opener and terminator, its correlated frames,
+// and an operation's terminal report — and checks every one of them is still sent, in order.
+func TestBackpressureNeverEvictsAStreamOrAReport(t *testing.T) {
+	q := newSendQueue(2)
+	push := func(typ MessageType, subject, replyTo string) {
+		t.Helper()
+		e := mustEnvelope(t, typ, wire.NodeObserved{NodeID: subject})
+		if replyTo != "" {
+			e.ReplyTo = &replyTo
+		}
+		if err := q.Push(&outbound{env: e, subject: subject}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	push(TypeResyncBegin, "", "")
+	push("node.observed", "nod_1", "req")
+	push("node.observed", "nod_2", "req")
+	// An uncorrelated reading of a subject the stream already carries must not take the
+	// stream's frame: the stream declared its count.
+	push("node.observed", "nod_1", "")
+	push(TypeStreamEnd, "", "req")
+	push("operation.observed", "opr_1", "")
+
+	var got []string
+	for q.Len() > 0 {
+		item, err := q.Pop(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		tag := item.env.Type + ":" + item.subject
+		if item.env.ReplyTo != nil {
+			tag += "@" + *item.env.ReplyTo
+		}
+		got = append(got, tag)
+	}
+	want := []string{
+		"resync.begin:", "node.observed:nod_1@req", "node.observed:nod_2@req",
+		"node.observed:nod_1", "stream.end:@req", "operation.observed:opr_1",
+	}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Fatalf("queue lost or reordered frames:\n got %v\nwant %v", got, want)
+	}
+	if q.Dropped() != 0 {
+		t.Fatalf("nothing here may be dropped, got %d", q.Dropped())
+	}
+}
+
+func TestBackpressureHardLimitEndsTheSession(t *testing.T) {
+	q := newSendQueue(1)
+	q.limit = 3
+	for i := 0; i < 3; i++ {
+		e := mustEnvelope(t, "node.observed", wire.NodeObserved{})
+		e.ReplyTo = replyTo("req")
+		if err := q.Push(&outbound{env: e, subject: string(rune('a' + i))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := mustEnvelope(t, TypeStreamEnd, wire.StreamEnd{})
+	if err := q.Push(&outbound{env: e}); !errors.Is(err, ErrQueueOverflow) {
+		t.Fatalf("a push past the hard limit must fail, got %v", err)
+	}
+	if _, err := q.Pop(context.Background()); !errors.Is(err, ErrQueueOverflow) {
+		t.Fatalf("the writer must be told, got %v", err)
+	}
+	if _, err := q.Pop(context.Background()); err != nil {
+		t.Fatalf("the queued frames stay for the next session, got %v", err)
 	}
 }
 
