@@ -110,11 +110,12 @@ func run() error {
 	cursor := checkpoint.NewCRDStore(directClient, cfg.Namespace)
 
 	store := &reconcile.Store{
-		Client:     mgr.GetClient(),
-		Reader:     mgr.GetAPIReader(),
-		Namespace:  cfg.Namespace,
-		Log:        log,
-		Checkpoint: cursor,
+		Client:            mgr.GetClient(),
+		Reader:            mgr.GetAPIReader(),
+		Namespace:         cfg.Namespace,
+		Log:               log,
+		Checkpoint:        cursor,
+		ReleaseFinalizers: cfg.ReadOnly,
 	}
 	observer := observe.New(&observe.Observer{
 		ClusterID:       cfg.ClusterID,

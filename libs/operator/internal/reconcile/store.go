@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/hangar-dev/hangar/libs/operator/api/v1alpha1"
 	"github.com/hangar-dev/hangar/libs/operator/internal/checkpoint"
@@ -58,6 +59,12 @@ type Store struct {
 	// tests want. The revision check reads through it, because a cached copy one write behind
 	// would let an older revision pass the check and overwrite a newer one.
 	Reader client.Reader
+
+	// ReleaseFinalizers is set in read-only mode, where no reconciler runs to tear down what a
+	// deleted deployment rendered and remove its finalizer. Without it, a declaration deleted
+	// while the operator is read-only stays Terminating forever. With it, the finalizer is
+	// removed and whatever was rendered earlier is left in place for a person to remove.
+	ReleaseFinalizers bool
 
 	// Checkpoint marks the local view as an invalid resume base for the duration of a resync
 	// epoch. Without it, a crash part-way through a snapshot would leave a half-pruned local
@@ -113,7 +120,7 @@ func (s *Store) apply(ctx context.Context, d desiredState) error {
 		if err := s.Client.Delete(ctx, obj); err != nil && !apierrors.IsNotFound(err) {
 			return err
 		}
-		return nil
+		return s.releaseIfReadOnly(ctx, key)
 	}
 
 	// Read uncached and written under an optimistic lock, so the revision compared is the one
@@ -139,6 +146,9 @@ func (s *Store) apply(ctx context.Context, d desiredState) error {
 		}
 
 		if !existing.DeletionTimestamp.IsZero() {
+			if err := s.releaseIfReadOnly(ctx, key); err != nil {
+				return err
+			}
 			return fmt.Errorf("%s: %w", d.Name, errTerminating)
 		}
 		if existing.Spec.Revision > d.Revision {
@@ -161,6 +171,34 @@ func (s *Store) reader() client.Reader {
 		return s.Reader
 	}
 	return s.Client
+}
+
+// releaseIfReadOnly removes the teardown finalizer from a declaration being deleted, when no
+// reconciler is running to do it.
+func (s *Store) releaseIfReadOnly(ctx context.Context, key types.NamespacedName) error {
+	if !s.ReleaseFinalizers {
+		return nil
+	}
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		var obj v1alpha1.SyncedResource
+		switch err := s.reader().Get(ctx, key, &obj); {
+		case apierrors.IsNotFound(err):
+			return nil
+		case err != nil:
+			return err
+		}
+		if obj.DeletionTimestamp.IsZero() || !controllerutil.ContainsFinalizer(&obj, renderedFinalizer) {
+			return nil
+		}
+		patch := client.MergeFromWithOptions(obj.DeepCopy(), client.MergeFromWithOptimisticLock{})
+		controllerutil.RemoveFinalizer(&obj, renderedFinalizer)
+		if err := s.Client.Patch(ctx, &obj, patch); err != nil {
+			return err
+		}
+		s.Log.Warn("read-only: released a deleted declaration without tearing down what it rendered",
+			"name", key.Name)
+		return nil
+	})
 }
 
 // Resync implements sync.Handler. The hub could not honour the resume point, so the local copy is
@@ -233,6 +271,9 @@ func (s *Store) prune(ctx context.Context, present map[string]struct{}) (int, er
 		}
 		if err := s.Client.Delete(ctx, item); err != nil && !apierrors.IsNotFound(err) {
 			return n, fmt.Errorf("prune %s: %w", item.Name, err)
+		}
+		if err := s.releaseIfReadOnly(ctx, client.ObjectKeyFromObject(item)); err != nil {
+			return n, fmt.Errorf("release %s: %w", item.Name, err)
 		}
 		n++
 	}

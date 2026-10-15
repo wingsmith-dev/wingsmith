@@ -314,6 +314,45 @@ func TestARedeclarationOnATerminatingResourceIsWithheld(t *testing.T) {
 	}
 }
 
+// TestReadOnlyReleasesTheFinalizerOnADeletedDeclaration: with no reconciler running, nothing else
+// would ever remove the teardown finalizer, so a deletion would hang in Terminating forever.
+func TestReadOnlyReleasesTheFinalizerOnADeletedDeclaration(t *testing.T) {
+	held := &v1alpha1.SyncedResource{
+		ObjectMeta: metav1.ObjectMeta{Namespace: testNS, Name: "dep-a", Finalizers: []string{renderedFinalizer}},
+		Spec:       v1alpha1.SyncedResourceSpec{Kind: "deployment", Revision: 1},
+	}
+	s, c := newStore(t, []client.Object{held}, nil)
+	s.ReleaseFinalizers = true
+
+	if err := s.Handle(context.Background(), deleted(t, "dep_a", 2)); err != nil {
+		t.Fatal(err)
+	}
+	if names := localNames(t, c); len(names) != 0 {
+		t.Fatalf("the deleted declaration is still there: %v", names)
+	}
+}
+
+// TestReadOnlyRedeclarationCompletesTheDeletionFirst: the same release lets a declaration that
+// arrived while its previous copy was terminating land on the retry.
+func TestReadOnlyRedeclarationCompletesTheDeletionFirst(t *testing.T) {
+	s, c := newStore(t, []client.Object{terminating("dep-a", 1)}, nil)
+	s.ReleaseFinalizers = true
+
+	if err := s.Handle(context.Background(), desired(t, "dep_a", 2)); !errors.Is(err, errTerminating) {
+		t.Fatalf("first attempt must be withheld, got %v", err)
+	}
+	if err := s.Handle(context.Background(), desired(t, "dep_a", 2)); err != nil {
+		t.Fatalf("the retry must create the new copy: %v", err)
+	}
+	var got v1alpha1.SyncedResource
+	if err := c.Get(context.Background(), client.ObjectKey{Namespace: testNS, Name: "dep-a"}, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.Spec.Revision != 2 || !got.DeletionTimestamp.IsZero() {
+		t.Fatalf("want a live copy at revision 2, got revision %d deleting=%v", got.Spec.Revision, !got.DeletionTimestamp.IsZero())
+	}
+}
+
 // TestTheRevisionCheckReadsPastAStaleCache: the cache can be a write behind. Compared against it,
 // an older revision looked newer than what was stored and overwrote it.
 func TestTheRevisionCheckReadsPastAStaleCache(t *testing.T) {
