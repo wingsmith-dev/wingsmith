@@ -223,13 +223,29 @@ def test_alert_threshold_scope_is_unique_with_nulls_not_distinct() -> None:
     assert not table.columns["subject_uid"].foreign_keys
 
 
-def test_the_device_quota_scope_constraint_is_left_alone() -> None:
-    """Its nullable `cluster_id` has the same latent hole and is deliberately out of scope."""
+def test_a_fleet_wide_quota_or_credential_is_unique_in_its_scope() -> None:
+    """A null `cluster_id` or `scope_id` is one scope, not a fresh one per row."""
     from app.db.models import Quota
+    from app.db.models import Credential
 
-    table = inspect(Quota).local_table
-    constraint = next(c for c in table.constraints if c.name == "uq_bind_quota_scope")
-    assert [c.name for c in constraint.columns] == ["project_id", "cluster_id", "device_class"]
+    for model, name, columns in (
+        (Quota, "uq_bind_quota_scope", ["project_id", "cluster_id", "device_class"]),
+        (Credential, "uq_ops_credential_scope_name", ["scope_type", "scope_id", "name"]),
+    ):
+        table = inspect(model).local_table
+        constraint = next(c for c in table.constraints if c.name == name)
+        assert [c.name for c in constraint.columns] == columns
+        assert constraint.dialect_options["postgresql"]["nulls_not_distinct"] is True
+
+
+def test_seq_is_a_bigint_identity_that_does_not_cycle() -> None:
+    from sqlalchemy import BigInteger
+
+    from app.db.models import Event
+
+    column = inspect(Event).local_table.columns["seq"]
+    assert isinstance(column.type, BigInteger)
+    assert not column.identity.cycle
 
 
 def test_benchmark_request_is_declared_and_holds_no_phase_or_verdict() -> None:

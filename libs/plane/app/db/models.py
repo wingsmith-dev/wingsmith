@@ -1524,7 +1524,17 @@ class Quota(BaseMixin):
     """
 
     __tablename__ = "bind_quota"
-    __table_args__ = (UniqueConstraint("project_id", "cluster_id", "device_class", name="uq_bind_quota_scope"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "cluster_id",
+            "device_class",
+            name="uq_bind_quota_scope",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+    """`cluster_id` is null for a fleet-wide quota, and `NULLS NOT DISTINCT` is what makes a
+    second fleet-wide quota for the same project and class a conflict rather than a second row."""
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     uid: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
@@ -2109,7 +2119,16 @@ class Credential(BaseMixin):
     """
 
     __tablename__ = "ops_credential"
-    __table_args__ = (UniqueConstraint("scope_type", "scope_id", "name", name="uq_ops_credential_scope_name"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "scope_type",
+            "scope_id",
+            "name",
+            name="uq_ops_credential_scope_name",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+    """`scope_id` is null for a fleet-scoped credential; `NULLS NOT DISTINCT` keeps its name unique."""
 
     id: Mapped[UUID] = mapped_column(DBUUID, primary_key=True, server_default=dUUID)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
