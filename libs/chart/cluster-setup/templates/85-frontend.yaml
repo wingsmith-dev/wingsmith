@@ -71,6 +71,10 @@ spec:
           # no accelerator, and the GPU pool is tainted, so it lands on ordinary
           # nodes without being told to. Pinning it to the system pool would only
           # add a value that has to be right on every cluster.
+          {{- with .Values.frontend.shared.podSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with .Values.frontend.imagePullSecrets }}
           # Only needed when the image above is not the anonymous nvcr.io default.
           # A pull Secret is namespaced and the kubelet reads it from the pod's own
@@ -112,4 +116,8 @@ spec:
                 {{- end }}
               resources:
                 {{- toYaml .Values.frontend.shared.resources | nindent 16 }}
+              {{- with .Values.frontend.shared.securityContext }}
+              securityContext:
+                {{- toYaml . | nindent 16 }}
+              {{- end }}
 {{- end }}

@@ -214,6 +214,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 65534
         fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: prometheus
           image: "{{ .Values.monitoring.agent.image.repository }}:{{ .Values.monitoring.agent.image.tag }}"
@@ -244,6 +246,12 @@ spec:
             initialDelaySeconds: 30
           resources:
             {{- toYaml .Values.monitoring.agent.resources | nindent 12 }}
+          # It writes only the WAL, on the emptyDir below.
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: config
               mountPath: /etc/prometheus

@@ -419,3 +419,31 @@ def test_tunnel_server_name_and_ca_reach_the_agent(chart):
     assert get(docs, "ConfigMap", "hangar-tunnel-ca")
     agent = get(docs, "Deployment", "hangar-agent")
     assert container(agent, "agent")["volumeMounts"][0]["mountPath"] == "/etc/hangar/tunnel-ca"
+
+
+# ── pod hardening ────────────────────────────────────────────────────────────
+
+
+def test_metrics_agent_container_is_hardened(chart):
+    agent = get(render(chart, **MONITORING_ON), "Deployment", "hangar-metrics-agent")
+    pod = agent["spec"]["template"]["spec"]
+    assert pod["securityContext"]["seccompProfile"]["type"] == "RuntimeDefault"
+    sc = container(agent, "prometheus")["securityContext"]
+    assert sc == {"allowPrivilegeEscalation": False, "readOnlyRootFilesystem": True,
+                  "capabilities": {"drop": ["ALL"]}}
+
+
+def test_shared_frontend_container_is_hardened(chart):
+    docs = render(chart, **{"frontend.mode": "shared"})
+    dgd = get(docs, "DynamoGraphDeployment", "inference")
+    spec = dgd["spec"]["components"][0]["podTemplate"]["spec"]
+    assert spec["securityContext"]["seccompProfile"]["type"] == "RuntimeDefault"
+    sc = spec["containers"][0]["securityContext"]
+    assert sc["allowPrivilegeEscalation"] is False
+    assert sc["capabilities"] == {"drop": ["ALL"]}
+
+
+def test_nats_has_resources():
+    values = yaml.safe_load((CHART / "values.yaml").read_text())
+    resources = values["dynamo-platform"]["nats"]["container"]["merge"]["resources"]
+    assert resources["requests"] and resources["limits"]["memory"]

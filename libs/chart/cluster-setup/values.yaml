@@ -421,6 +421,18 @@ frontend:
       limits:
         memory: 2Gi
 
+    # The frontend holds no device and needs no capability. Not runAsNonRoot:
+    # the upstream runtime image's user is not set by this chart, so add
+    # `runAsNonRoot: true` (and `runAsUser`) once you have checked the image you
+    # run.
+    podSecurityContext:
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop: ["ALL"]
+
 # The pre-tunnel way in, off on every cluster we run. `backend.service` is the
 # Dynamo frontend Service, whose name is not knowable until a deployment exists —
 # so leave this disabled, or let the plane render it from ClusterServing.url.
@@ -531,6 +543,15 @@ hfToken:
 # twice in one file and let the copies drift. This label is identical on every
 # cluster.
 #
+# It runs as root with CAP_SYS_ADMIN, the subchart's default, because DCGM needs
+# it to read the profiling counters (DCGM_FI_PROF_*: SM and tensor-core
+# activity). So the release namespace cannot enforce the `baseline` or
+# `restricted` Pod Security level; label it `privileged`, or give the exporter
+# its own namespace. A cluster that does not want a root exporter can set
+# `securityContext: {runAsNonRoot: true, runAsUser: 1000, capabilities: {drop:
+# [ALL]}}` here and loses only the profiling series; the operator's device
+# identity does not depend on them.
+#
 # serviceMonitor needs CRDs this chart does not install, and turning it on with
 # `monitoring.enabled` is refused — it would either fail to apply or double-scrape.
 # Enable it only for a cluster running its own kube-prometheus-stack.
@@ -617,6 +638,15 @@ dynamo-platform:
           limits:
             memory: 512Mi
   nats:
+    # Sized for one replica carrying Dynamo's request and KV-event traffic.
+    container:
+      merge:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            memory: 1Gi
     config:
       cluster:
         enabled: false
