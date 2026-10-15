@@ -808,6 +808,10 @@ def malformed_frame(reply_to: str | None = None) -> SinkFrame:
     return structs.replace(frame, payload=broken)
 
 
+def open_epoch(sink: DatabaseSink, request_id: str, cluster: str = CLUSTER) -> ResyncEpoch:
+    return sink._epochs[cluster][request_id][1]
+
+
 def test_the_database_sink_satisfies_the_protocols() -> None:
     assert isinstance(DatabaseSink(), Sink)
     assert isinstance(DatabaseDesiredSource(), DesiredSource)
@@ -859,7 +863,7 @@ async def test_a_failed_write_raises_and_poisons_the_open_epoch() -> None:
     await sink.begin_resync(CLUSTER, "supply", "req-1")
     with pytest.raises(RuntimeError):
         await sink.apply_observed(observed_frame("node.observed", reply_to="req-1"))
-    assert sink._epochs["req-1"].poisoned is True
+    assert open_epoch(sink, "req-1").poisoned is True
     assert sessions.commits == 0
 
 
@@ -878,8 +882,8 @@ async def test_an_untracked_type_still_counts_toward_the_snapshot() -> None:
     sink = DatabaseSink(FakeSessions())
     await sink.begin_resync(CLUSTER, "supply", "req-2")
     await sink.apply_observed(observed_frame("capacity.observed", reply_to="req-2"))
-    assert sink._epochs["req-2"].received == 1
-    assert sink._epochs["req-2"].present[NODE] == set()
+    assert open_epoch(sink, "req-2").received == 1
+    assert open_epoch(sink, "req-2").present[NODE] == set()
 
 
 async def test_a_whole_snapshot_issues_one_scoped_delete_per_pruned_kind() -> None:
@@ -971,7 +975,60 @@ async def test_frames_outside_an_epoch_are_not_counted() -> None:
     sink = DatabaseSink(FakeSessions())
     await sink.begin_resync(CLUSTER, "supply", "req-5")
     await sink.apply_observed(observed_frame("node.observed"))
-    assert sink._epochs["req-5"].received == 0
+    assert open_epoch(sink, "req-5").received == 0
+
+
+async def test_a_reply_cannot_reach_another_clusters_snapshot() -> None:
+    sink = DatabaseSink(FakeSessions())
+    await sink.begin_resync("clu_other", "supply", "req-x")
+
+    await sink.apply_observed(observed_frame("node.observed", reply_to="req-x"))
+
+    assert open_epoch(sink, "req-x", cluster="clu_other").received == 0
+
+
+async def test_a_cluster_holds_only_a_few_open_snapshots() -> None:
+    sink = DatabaseSink(FakeSessions())
+    for index in range(10):
+        await sink.begin_resync(CLUSTER, "supply", f"req-{index}")
+
+    assert list(sink._epochs[CLUSTER]) == ["req-6", "req-7", "req-8", "req-9"]
+
+
+async def test_a_departed_session_takes_its_open_snapshots_with_it() -> None:
+    """Nothing will ever close them; they used to stay in hub memory for the life of the process."""
+    sink = DatabaseSink(FakeSessions())
+    await sink.begin_resync(CLUSTER, "supply", "req-a", "ses-a")
+    await sink.begin_resync(CLUSTER, "supply", "req-b", "ses-b")
+
+    await sink.mark_disconnected(CLUSTER, None, "ses-a")
+
+    assert list(sink._epochs[CLUSTER]) == ["req-b"]
+
+
+async def test_a_snapshot_is_closed_only_by_the_session_that_opened_it() -> None:
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
+    await sink.begin_resync(CLUSTER, "supply", "req-a", "ses-a")
+
+    await sink.end_resync(CLUSTER, "req-a", 0, True, "ses-b")
+
+    assert "req-a" in sink._epochs[CLUSTER]
+    assert not [s for s in sessions.executed if str(s).upper().startswith("DELETE")]
+
+
+async def test_a_row_a_live_frame_wrote_during_a_snapshot_is_not_pruned_by_it() -> None:
+    """The snapshot names what existed when it started; what joined since arrives live."""
+    sessions = FakeSessions()
+    sink = DatabaseSink(sessions)
+    await sink.begin_resync(CLUSTER, "supply", "req-l")
+    live = observed_frame("node.observed")
+
+    await sink.apply_observed(live)
+
+    epoch = open_epoch(sink, "req-l")
+    assert epoch.received == 0, "a live frame is not part of the count the sender declared"
+    assert live.payload.node_id in epoch.present[NODE]
 
 
 async def test_marking_a_cluster_connected_writes_only_sync_state() -> None:

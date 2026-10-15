@@ -49,6 +49,15 @@ class ResyncEpoch:
         self.received += 1
         self.present[kind].add(uid)
 
+    def keep(self, kind: str, uid: str) -> None:
+        """Protects a row a live frame wrote while the snapshot was open, without counting it.
+
+        The snapshot names what existed when the cluster started sending it. Something
+        that appeared afterwards arrives as a live frame instead, and is just as present;
+        pruning against the snapshot alone would delete it.
+        """
+        self.present[kind].add(uid)
+
     def poison(self) -> None:
         self.poisoned = True
 

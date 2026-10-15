@@ -80,6 +80,9 @@ TERMINAL_OPERATION_PHASES = frozenset({"succeeded", "failed", "cancelled", "time
 """Restated rather than imported from `app.modules.operations`: ingestion must not depend on a
 module's service layer, and this is the one fact it needs from it."""
 
+MAX_OPEN_EPOCHS = 4
+"""Open snapshots one cluster may have at once. A peer only ever needs one; the rest are leaks."""
+
 SUPPLY_SCOPES = frozenset({"supply", "all"})
 DEMAND_SCOPES = frozenset({"demand", "all"})
 
@@ -179,7 +182,13 @@ class DatabaseSink:
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession] | None = None) -> None:
         self._sessions = sessions
-        self._epochs: dict[str, ResyncEpoch] = {}
+        self._epochs: dict[str, dict[str, tuple[str | None, ResyncEpoch]]] = {}
+        """Open snapshots, by cluster and then by request, with the session each arrived on.
+
+        Keyed by cluster so a `reply_to` can only ever reach its own cluster's snapshot,
+        bounded per cluster, and dropped when the session that opened them goes away —
+        an epoch nothing will ever close used to stay in memory for the life of the hub.
+        """
 
     # ----------------------------------------------------------------- sessions
 
@@ -610,13 +619,21 @@ class DatabaseSink:
     # ----------------------------------------------------------------- resync
 
     async def begin_resync(self, cluster_id: str, scope: str, request_id: str, session_id: str | None = None) -> None:
-        self._epochs[request_id] = ResyncEpoch(cluster_uid=cluster_id, scope=scope, request_id=request_id)
+        open_epochs = self._epochs.setdefault(cluster_id, {})
+        while len(open_epochs) >= MAX_OPEN_EPOCHS:
+            stale = next(iter(open_epochs))
+            open_epochs.pop(stale)
+            logger.warning("ingestion.resync.evicted cluster=%s request=%s", cluster_id, stale)
+        open_epochs[request_id] = (
+            session_id,
+            ResyncEpoch(cluster_uid=cluster_id, scope=scope, request_id=request_id),
+        )
         logger.info("ingestion.resync.begin cluster=%s scope=%s request=%s", cluster_id, scope, request_id)
 
     async def end_resync(
         self, cluster_id: str, request_id: str, count: int, complete: bool, session_id: str | None = None
     ) -> None:
-        epoch = self._epochs.pop(request_id, None)
+        epoch = self._close_epoch(cluster_id, request_id, session_id)
         decision = decide(epoch, count, complete)
         if not decision.prune or epoch is None:
             logger.warning(
@@ -682,8 +699,35 @@ class DatabaseSink:
             allocations.rowcount,
         )
 
+    def _close_epoch(self, cluster_id: str, request_id: str, session_id: str | None) -> ResyncEpoch | None:
+        """Takes one snapshot out of the open set. A different session's snapshot is not this one's to close."""
+        open_epochs = self._epochs.get(cluster_id)
+        if not open_epochs:
+            return None
+        entry = open_epochs.get(request_id)
+        if entry is None or (session_id is not None and entry[0] not in (None, session_id)):
+            return None
+        open_epochs.pop(request_id)
+        if not open_epochs:
+            self._epochs.pop(cluster_id, None)
+        return entry[1]
+
+    def _forget_epochs(self, cluster_id: str, session_id: str | None) -> None:
+        """Drops the snapshots a departed session left open. Nothing will ever close them."""
+        open_epochs = self._epochs.get(cluster_id)
+        if not open_epochs:
+            return
+        for request_id in [r for r, (owner, _) in open_epochs.items() if session_id is None or owner == session_id]:
+            open_epochs.pop(request_id)
+            logger.info("ingestion.resync.abandoned cluster=%s request=%s", cluster_id, request_id)
+        if not open_epochs:
+            self._epochs.pop(cluster_id, None)
+
     def _epoch_for(self, frame: SinkFrame) -> ResyncEpoch | None:
-        return self._epochs.get(frame.reply_to) if frame.reply_to else None
+        if not frame.reply_to:
+            return None
+        entry = self._epochs.get(frame.cluster_id, {}).get(frame.reply_to)
+        return entry[1] if entry else None
 
     def _record(self, frame: SinkFrame, tracked: tuple[str, str] | None) -> None:
         """Counts a frame into its epoch, whether or not the type is prunable.
@@ -691,9 +735,16 @@ class DatabaseSink:
         Every frame the snapshot carried has to be counted, because the count is
         checked against the sender's declared total. A type ingestion does not
         yet write still arrived.
+
+        A live frame — one that answers no snapshot — still lands while a snapshot
+        of its cluster is open, and what it wrote must survive that snapshot's
+        prune. It is kept by every open epoch of its cluster without being counted.
         """
         epoch = self._epoch_for(frame)
         if epoch is None:
+            if tracked is not None:
+                for _, open_epoch in self._epochs.get(frame.cluster_id, {}).values():
+                    open_epoch.keep(*tracked)
             return
         if tracked is None:
             epoch.received += 1
@@ -733,6 +784,7 @@ class DatabaseSink:
         self, cluster_uid: str, error: str | None = None, session_id: str | None = None
     ) -> None:
         """The observed half of a cluster going away, unless another session has already taken it over."""
+        self._forget_epochs(cluster_uid, session_id)
         moment = now()
         await self._sync_state(
             cluster_uid,
