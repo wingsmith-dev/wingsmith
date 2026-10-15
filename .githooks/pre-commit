@@ -5,6 +5,7 @@ root="$(git rev-parse --show-toplevel)"
 # The whole tree as well: a leak committed with the hooks off, or forced past .gitignore, blocks
 # every commit after it until it is removed.
 "$root/scripts/check-leaks.sh" tree
+"$root/scripts/check-prose.sh" staged
 if command -v gitleaks >/dev/null; then
   gitleaks protect --staged --redact --no-banner
 fi

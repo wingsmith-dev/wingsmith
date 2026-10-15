@@ -1,0 +1,5 @@
+# Hits check-prose.sh accepts: one extended regex per line, matched against `path:line:text`.
+# Keep each entry as narrow as the case it allows, and say why above it.
+
+# Alembic writes the revision's creation time into every migration header.
+^libs/plane/migrations/versions/[^:]+\.py:[0-9]+:Create Date: 
