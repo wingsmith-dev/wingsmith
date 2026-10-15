@@ -134,8 +134,8 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                     <>
                       <p className="text-2xs leading-relaxed text-amber-500">
                         Shown once — copy it now. It is folded into the
-                        <code> values.yaml</code> below, so the chart creates
-                        the operator secret; you won't see it again.
+                        <code> {view.values_filename}</code> below, so the chart
+                        creates the operator secret; you won't see it again.
                       </p>
                       <CopyableBlock value={freshToken} />
                     </>
@@ -158,9 +158,9 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                   ) : (
                     <div className="space-y-1.5">
                       <p className="text-2xs leading-relaxed text-muted-foreground/50">
-                        Generate the per-cluster token the operator
-                        authenticates with. It is shown once and baked into the
-                        values below.
+                        Generate this cluster's own enrolment token, the only
+                        credential the hub accepts from its operator. It is
+                        shown once and baked into the values below.
                       </p>
                       <Button
                         size="sm"
@@ -183,13 +183,15 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <p className="text-2xs font-medium">
-                      2. Save as <code>values.yaml</code> and edit
+                      2. Save as <code>{view.values_filename}</code> and edit
                     </p>
                     <Button
                       variant="ghost"
                       size="sm"
                       className="h-5 px-1.5 text-2xs"
-                      onClick={() => downloadValues(view.values_yaml)}
+                      onClick={() =>
+                        downloadValues(view.values_yaml, view.values_filename)
+                      }
                     >
                       Download
                     </Button>
@@ -254,12 +256,15 @@ export function ConnectClusterCard({ cluster }: { cluster: Cluster }) {
   )
 }
 
-/** Save the rendered values as a `values.yaml` file the operator edits and runs helm against. */
-function downloadValues(yaml: string) {
+/**
+ * Save the rendered values under the per-cluster name the helm command reads,
+ * so it never overwrites the chart's own `values.yaml` or another cluster's.
+ */
+function downloadValues(yaml: string, filename: string) {
   const url = URL.createObjectURL(new Blob([yaml], { type: "text/yaml" }))
   const a = document.createElement("a")
   a.href = url
-  a.download = "values.yaml"
+  a.download = filename
   a.click()
   URL.revokeObjectURL(url)
 }
