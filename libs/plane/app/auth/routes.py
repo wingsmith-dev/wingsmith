@@ -14,13 +14,16 @@ follow, and both are load-bearing rather than defensive habit:
   process — the console's polling and the gateway's routing-table read
   included.
 - Failures are budgeted and logged. One shared password with no lockout and no
-  log line is a guessing oracle nobody is watching.
+  log line is a guessing oracle nobody is watching. The budgets are charged to
+  the caller's address and the account it named, so a caller that spends one
+  locks out itself and not the operator signing in from somewhere else.
 """
 
 import asyncio
 
 from logging import getLogger
 
+from litestar import Request
 from litestar import Controller
 from litestar import post
 from litestar import status_codes
@@ -28,6 +31,8 @@ from litestar.di import Provide
 
 from app.config import settings
 from app.core.throttle import FailureBudget
+from app.core.throttle import KeyedFailureBudget
+from app.core.throttle import client_address
 from app.core.exceptions import NotAuthorized
 from app.core.exceptions import TooManyRequests
 
@@ -43,34 +48,43 @@ from .service import AuthService
 
 logger = getLogger(__name__)
 
-LOGIN_GUESSES = FailureBudget(limit=10, window_seconds=60.0)
-"""Failed logins this process will answer in a rolling minute.
+LOGIN_GUESSES = KeyedFailureBudget(limit=10, window_seconds=60.0)
+"""Failed admin logins one caller may make in a rolling minute, keyed by address.
 
-Ten is far above what a human mistyping one shared password produces and far
-below what guessing it needs.
+Ten is far above what a human mistyping one password produces and far below what
+guessing it needs.
 
 Consulted *before* the hash is verified, unlike the tunnel-auth budget. That is
 the difference between bounding guesses and bounding work: an exhausted budget
 answers 429 without spending bcrypt, which is the only thing that stops an
-anonymous caller from buying 300ms of this process's CPU per request. The cost
-is that a correct password is also refused for the rest of the window — a real
-denial of service against the operator, and the right trade only because the
-window is a minute and the alternative is a denial of service against the whole
-plane.
+anonymous caller from buying 300ms of this process's CPU per request. Because it
+is keyed by the caller's address (`app.core.throttle.client_address`), spending
+it refuses that caller only; the operator signing in from anywhere else is
+unaffected.
 
 Per-process like every other budget here (see `app.core.throttle`) — two
 replicas mean twice the limit, which is fine for a window whose purpose is to be
 slow and loud rather than exact.
 """
 
+LOGIN_CEILING = FailureBudget(limit=200, window_seconds=60.0)
+"""Failed admin logins this process answers in a rolling minute from everyone.
 
-TENANT_GUESSES = FailureBudget(limit=60, window_seconds=60.0)
-"""Failed tenant sign-ins this process will answer in a rolling minute.
+A backstop on bcrypt work for a caller spread across many addresses, set far
+enough above `LOGIN_GUESSES` that one caller, or a handful, never reaches it.
+Reaching it refuses every admin login for the rest of the window; that is a
+denial of service only a distributed caller can buy, in exchange for keeping the
+process's CPU for everyone else's requests.
+"""
 
-Its own budget rather than a share of `LOGIN_GUESSES`, and the reason is who gets
-locked out. One budget across both kinds would let anyone spend the operator's
-allowance with sixty wrong tenant tokens and leave the fleet unable to sign in
-during an incident — a denial of service handed to an anonymous caller.
+
+TENANT_GUESSES = KeyedFailureBudget(limit=60, window_seconds=60.0)
+"""Failed tenant sign-ins one caller may make against one tenant in a rolling minute.
+
+Its own budget rather than a share of `LOGIN_GUESSES`, so wrong tenant tokens
+never spend the operator's allowance. Keyed by the caller's address and the
+tenant slug, so one caller cannot lock a tenant out for everyone, nor one tenant's
+users lock out another sharing their address.
 
 Six times the admin limit because the two paths bound different things. There the
 budget bounds *work*, since a guess costs a bcrypt; here it costs one indexed
@@ -85,7 +99,7 @@ class AuthRoutes(Controller):
     dependencies = {"svc": Provide(auth_svc_generator)}
 
     @post("/login")
-    async def login(self, data: LoginRequest, svc: AuthService) -> LoginResponse:
+    async def login(self, request: Request, data: LoginRequest, svc: AuthService) -> LoginResponse:
         """One form, two credentials, told apart by the slug the caller names.
 
         `admin` is the fleet operator and costs a bcrypt verification. Anything else
@@ -97,20 +111,18 @@ class AuthRoutes(Controller):
         such tenant" from "wrong token" at an unauthenticated form is an enumeration
         oracle for the tenant list.
         """
+        address = client_address(request)
         if data.slug and data.slug != "admin":
-            if TENANT_GUESSES.spent():
-                logger.warning("auth.login_throttled", extra={"kind": "tenant"})
+            key = f"{address}|{data.slug}"
+            if TENANT_GUESSES.spent(key):
+                logger.warning("auth.login_throttled", extra={"kind": "tenant", "client": address})
                 raise TooManyRequests("too many failed sign-ins; retry shortly")
             resolved = await svc.resolve_tenant_token(data.password)
-            if resolved is None:
-                TENANT_GUESSES.fail()
-                logger.warning("auth.login_failed", extra={"slug": data.slug, "kind": "tenant"})
+            if resolved is None or resolved[0].slug != data.slug:
+                TENANT_GUESSES.fail(key)
+                logger.warning("auth.login_failed", extra={"slug": data.slug, "kind": "tenant", "client": address})
                 raise NotAuthorized("invalid credentials")
             tenant, token = resolved
-            if tenant.slug != data.slug:
-                TENANT_GUESSES.fail()
-                logger.warning("auth.login_failed", extra={"slug": data.slug, "kind": "tenant"})
-                raise NotAuthorized("invalid credentials")
             return LoginResponse(
                 access_token=AuthManager.issue_session_token(name=tenant.slug, kind="tenant", scope=tenant.uid),
                 refresh_token=await svc.create_refresh_token(name=tenant.slug, tenant_token_id=token.id),
@@ -119,12 +131,14 @@ class AuthRoutes(Controller):
                 tenant=tenant.slug,
             )
 
-        if LOGIN_GUESSES.spent():
-            logger.warning("auth.login_throttled")
+        key = f"{address}|admin"
+        if LOGIN_GUESSES.spent(key) or LOGIN_CEILING.spent():
+            logger.warning("auth.login_throttled", extra={"kind": "admin", "client": address})
             raise TooManyRequests("too many failed logins; retry shortly")
         if not await asyncio.to_thread(AuthManager.verify_admin_password, data.password, settings.ADMIN_PASSWORD_HASH):
-            LOGIN_GUESSES.fail()
-            logger.warning("auth.login_failed")
+            LOGIN_GUESSES.fail(key)
+            LOGIN_CEILING.fail()
+            logger.warning("auth.login_failed", extra={"kind": "admin", "client": address})
             raise NotAuthorized("invalid credentials")
         access_token = AuthManager.issue_session_token(name="admin")
         refresh_token = await svc.create_refresh_token(name="admin")

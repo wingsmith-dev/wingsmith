@@ -1,10 +1,15 @@
+from types import SimpleNamespace
+
 import pytest
 
 from litestar.testing import TestClient
 from litestar.testing import create_test_client
 
 from app.core import ids
+from app.config import settings
 from app.api.app import create_app
+from app.core.throttle import KeyedFailureBudget
+from app.core.throttle import client_address
 from app.core.exceptions import Invalid
 from app.core.pagination import MAX_LIMIT
 from app.core.pagination import page
@@ -278,3 +283,50 @@ def test_an_adopted_artifact_is_named_by_its_reference_digest():
 
     assert artifact_slug("hf:Qwen/Qwen3-Embedding-8B", []) == "qwen/qwen3-embedding-8b"
     assert artifact_slug("sha256:beef", []) == ""
+
+
+# --- failure budgets and the caller's address ---------------------------------
+
+
+def peer(host: str, forwarded: str | None = None) -> SimpleNamespace:
+    headers = {"X-Forwarded-For": forwarded} if forwarded is not None else {}
+    return SimpleNamespace(client=SimpleNamespace(host=host), headers=headers)
+
+
+def test_a_keyed_budget_charges_only_the_key_that_failed():
+    budget = KeyedFailureBudget(limit=2, window_seconds=60.0)
+    budget.fail("a")
+    budget.fail("a")
+    assert budget.spent("a")
+    assert not budget.spent("b")
+
+
+def test_a_keyed_budget_holds_at_most_max_keys():
+    budget = KeyedFailureBudget(limit=1, window_seconds=60.0, max_keys=3)
+    for key in "abcde":
+        budget.fail(key)
+    assert len(budget._budgets) == 3
+    assert not budget.spent("a")
+    assert budget.spent("e")
+
+
+def test_forwarded_for_is_ignored_without_trusted_proxies(monkeypatch):
+    monkeypatch.setattr(settings, "TRUSTED_PROXIES", "")
+    assert client_address(peer("10.0.0.5", "203.0.113.7")) == "10.0.0.5"
+
+
+def test_forwarded_for_is_read_from_the_right_through_trusted_hops(monkeypatch):
+    """The leftmost entry is whatever the caller wrote; the first untrusted hop from the right is not."""
+    monkeypatch.setattr(settings, "TRUSTED_PROXIES", "10.0.0.0/8")
+    assert client_address(peer("10.0.0.5", "198.51.100.1, 203.0.113.7, 10.1.2.3")) == "203.0.113.7"
+
+
+def test_forwarded_for_from_an_untrusted_peer_is_ignored(monkeypatch):
+    monkeypatch.setattr(settings, "TRUSTED_PROXIES", "10.0.0.0/8")
+    assert client_address(peer("192.0.2.9", "203.0.113.7")) == "192.0.2.9"
+
+
+def test_an_ipv6_caller_is_charged_as_its_slash_64(monkeypatch):
+    monkeypatch.setattr(settings, "TRUSTED_PROXIES", "")
+    assert client_address(peer("2001:db8:1:2:aaaa::1")) == client_address(peer("2001:db8:1:2:bbbb::9"))
+    assert client_address(peer("2001:db8:1:2::1")) != client_address(peer("2001:db8:1:3::1"))

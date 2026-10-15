@@ -324,6 +324,16 @@ class Settings:
     host is derived from `SETUP_CHART_REF`); the GHCR package `just chart-push`
     publishes to is private by default, so this defaults true."""
 
+    TRUSTED_PROXIES: str = ""
+    """Comma-separated addresses or CIDRs of the proxies in front of the API whose
+    `X-Forwarded-For` the plane believes, e.g. the ingress controller's pod range.
+
+    Used to charge failed sign-ins to the caller rather than to the proxy
+    (`app.core.throttle.client_address`). Empty ignores the header, so every
+    caller behind a proxy shares one budget: set it whenever the API sits behind
+    one, or one caller's failures lock out everyone else behind it too.
+    """
+
     ALLOWED_ORIGINS: str = "http://localhost:5273,http://127.0.0.1:5273"
     """Comma-separated origins the API's CORS policy accepts. Empty disallows
     every browser origin; there is no `*` option.
