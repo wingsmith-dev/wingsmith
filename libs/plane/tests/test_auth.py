@@ -914,10 +914,29 @@ async def test_resolve_connection_refuses_a_token_that_is_not_enrolment_shaped()
 # --- hub -----------------------------------------------------------------
 
 
+async def _until_listening(port: int, server_task: asyncio.Task, timeout: float = 5.0) -> None:
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while True:
+        if server_task.done():
+            server_task.result()
+            raise RuntimeError("the hub stopped before it accepted a connection")
+        try:
+            _, writer = await asyncio.open_connection("127.0.0.1", port)
+        except OSError:
+            if loop.time() > deadline:
+                raise
+            await asyncio.sleep(0.01)
+            continue
+        writer.close()
+        await writer.wait_closed()
+        return
+
+
 async def _run_hub_and(port: int, coro):
     stop: asyncio.Future[None] = asyncio.get_running_loop().create_future()
     server_task = asyncio.create_task(serve_forever(stop))
-    await asyncio.sleep(0.1)
+    await _until_listening(port, server_task)
     try:
         return await coro
     finally:
