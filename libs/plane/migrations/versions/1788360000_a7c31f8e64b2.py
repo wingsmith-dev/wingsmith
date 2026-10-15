@@ -38,29 +38,33 @@ backfilled from its own recipe, so attribution survives even for runs whose reci
 workload ever named.
 
 `Recipe.name`, `Recipe.version` and `Recipe.lifecycle` are dropped and not replaced. A
-workload has a name; a serving configuration no longer needs one of its own. If a
-named, versioned, sellable configuration is wanted later it is a catalog object
-pointing at a `serving_digest` — the open question in the founding object model §344 — and it is
-not this.
+workload has a name; a serving configuration no longer needs one of its own.
 
-Irreversible in one respect, stated plainly: `downgrade()` rebuilds the table and the
-columns, but every recipe comes back named `<workload name>` at version 1 with
-lifecycle `published`, and workloads that shared a recipe come back holding one each.
-The names and the sharing are not recoverable because nothing after this migration
-records them.
+The digest backfill uses a frozen copy of `serving_digest` as it was when this revision
+was written, not the live function: a migration that imports application code breaks
+whenever that code grows a field the schema at this point in history does not have.
+
+`downgrade()` rebuilds the table and the columns, but not the names or the sharing:
+every workload gets a recipe of its own, named after the workload, at lifecycle
+`published`. Nothing after this migration records what a recipe was called or which
+workloads shared it.
 
 """
 
 
+import json
+import hashlib
+
+from uuid import UUID
+from typing import Any
 from typing import Union
+from decimal import Decimal
 from typing import Sequence
 
 import sqlalchemy as sa
 
 from alembic import op
 from sqlalchemy.dialects import postgresql
-
-from app.core.serving import serving_digest
 
 
 revision: str = "a7c31f8e64b2"
@@ -104,60 +108,64 @@ rows in it cannot take a non-null column in one step, and inventing a default to
 it possible would write a value nobody chose into every existing workload.
 """
 
-DIGEST_SOURCE = """
-    SELECT r.id AS recipe_id,
-           a.uid AS artifact_uid,
-           r.engine,
-           -- Aliased to the attribute names `serving_digest` reads today. The columns
-           -- were renamed by `f1a7c94e2b68` long after this migration ran, and this one
-           -- imports the live function on purpose, so the row it is handed has to keep
-           -- the shape that function expects. The digest is unchanged either way: its
-           -- hash keys are frozen at `engine_version` and `engine_image` for ever.
-           r.engine_version AS engine_runtime_version,
-           r.engine_image AS engine_runtime_image,
-           r.frontend_image,
-           r.engine_args, r.quantization, r.dtype,
-           r.tensor_parallel, r.pipeline_parallel, r.expert_parallel,
-           r.context_length, r.max_batch_tokens,
-           r.kv_cache_dtype, r.kv_cache_fraction,
-           r.prefix_cache_enabled, r.prefix_cache_config,
-           r.device_class, r.device_count, r.device_memory_mib_min,
-           r.cpu_cores, r.memory_mib, r.disk_gib,
-           r.overlay, r.serving,
-           -- Not a recipe column and never was: `serving_topology` arrived with
-           -- disaggregation, long after this migration ran. It is selected as a literal for
-           -- the same reason the renames above are aliased — this migration imports the live
-           -- `serving_digest`, so the row has to keep the shape that function expects, and a
-           -- row missing the attribute is an `AttributeError` on the next fresh database.
-           -- The literal is the truth about this point in history: every recipe here was
-           -- aggregated, and `serving_digest` omits the field entirely for those, so the
-           -- digests this backfill writes are byte-identical to the ones it wrote the first
-           -- time it ran.
-           'aggregated' AS serving_topology
+DIGEST_FIELDS = (
+    "engine",
+    "engine_version",
+    "engine_image",
+    "frontend_image",
+    "engine_args",
+    "quantization",
+    "dtype",
+    "tensor_parallel",
+    "pipeline_parallel",
+    "expert_parallel",
+    "context_length",
+    "max_batch_tokens",
+    "kv_cache_dtype",
+    "kv_cache_fraction",
+    "prefix_cache_enabled",
+    "prefix_cache_config",
+    "device_class",
+    "device_count",
+    "device_memory_mib_min",
+    "cpu_cores",
+    "memory_mib",
+    "disk_gib",
+    "overlay",
+    "serving",
+)
+"""The digest's hash keys at this revision. They are also the `demand_recipe` column names
+here, so the row can be read by name. The live digest still hashes under these keys."""
+
+DIGEST_SOURCE = f"""
+    SELECT r.id AS recipe_id, a.uid AS artifact_uid, {", ".join("r." + name for name in DIGEST_FIELDS)}
       FROM demand_recipe r
       JOIN demand_artifact a ON a.id = r.artifact_id
 """
 
 
-class _Artifact:
-    """Just enough artifact for `serving_digest`: the uid it hashes, and a slug that is None.
+def _canonical(value: Any) -> Any:
+    if isinstance(value, (Decimal, UUID)):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _canonical(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_canonical(item) for item in value]
+    return value
 
-    The slug is not selected and must not be — `demand_artifact.slug` is created by
-    `1788370000_e4b9d2a15c73`, one revision after this one, so at this point in history the
-    column does not exist and no artifact has a slug. `None` is therefore not a stand-in for a
-    value this cannot reach; it is the value.
 
-    It is here at all because `serving_digest` grew a read this stub did not have. The docstring
-    used to say the function "reads only the uid", which was true when it was written and became
-    an `AttributeError` on every fresh database the day `served_model_name` started falling back
-    through the slug. Same failure as `serving_topology` above and the same fix: a stub that is a
-    subset of what the live function reads is a migration that crashes later, so it presents
-    every attribute and lets the values say what was true then.
+def serving_digest(row: Any) -> str:
+    """Frozen copy of `app.core.serving.serving_digest` as of this revision.
+
+    `svg_` + sha256 over canonical JSON of the artifact uid and `DIGEST_FIELDS`. Every
+    recipe at this point is aggregated and declares no router, and for those the live
+    function produces the same digest.
     """
-
-    def __init__(self, uid: str) -> None:
-        self.uid = uid
-        self.slug = None
+    payload: dict[str, Any] = {"artifact": str(row.artifact_uid)}
+    for name in DIGEST_FIELDS:
+        payload[name] = _canonical(getattr(row, name))
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    return "svg_" + hashlib.sha256(body.encode("utf-8")).hexdigest()
 
 
 BACKFILL = """
@@ -166,36 +174,13 @@ BACKFILL = """
       FROM unnest(CAST(:ids AS uuid[]), CAST(:digests AS text[])) AS d(recipe_id, digest)
      WHERE d.recipe_id = t.recipe_id
 """
-"""Both backfills, which differ only in the table they write.
-
-The casts are load-bearing and were not there the first time. A bare
-`unnest(:ids)` sends an untyped parameter, and Postgres cannot choose between the
-`unnest` overloads for it — `function unnest(unknown) is not unique`. Casting the
-result instead of the argument (`unnest(:ids)::uuid`) does not help, because the
-ambiguity is in resolving the call, not in the type that comes out of it.
-
-The two-argument `unnest(a, b) AS d(...)` form is used rather than two `unnest`
-calls in one select list, because the pair-wise form is what this actually means:
-the Nth id goes with the Nth digest. Two calls side by side happen to line up for
-equal-length arrays and stop meaning anything if that ever changes.
-"""
+"""Both backfills, which differ only in the table they write. The casts are required:
+a bare `unnest(:ids)` is an untyped parameter and Postgres cannot pick an overload."""
 
 
 def _digests(bind: sa.engine.Connection) -> dict[str, str]:
-    """`{recipe_id: serving_digest}`, computed by the application's own function.
-
-    Imported rather than reimplemented here. A digest written by a migration that
-    disagrees with the one the plane computes on the next write is a benchmark
-    attributed to a configuration nobody ran, and it would fail silently — so there
-    is one implementation and this calls it. The row's attribute access is what
-    `serving_digest` wants, and it reads nothing off a workload that a recipe did not
-    also have. The empty `roles` is the same statement as the `serving_topology` literal in
-    `DIGEST_SOURCE`: recipes predate roles, so there are none to pass and none to hash.
-    """
-    return {
-        str(row.recipe_id): serving_digest(row, _Artifact(row.artifact_uid), ())
-        for row in bind.execute(sa.text(DIGEST_SOURCE))
-    }
+    """`{recipe_id: serving_digest}` for every recipe."""
+    return {str(row.recipe_id): serving_digest(row) for row in bind.execute(sa.text(DIGEST_SOURCE))}
 
 
 def upgrade() -> None:
@@ -275,22 +260,16 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """Rebuilds the table and the columns. Does not rebuild the names or the sharing.
-
-    Every recipe comes back named after the workload that carried it, at version 1 and
-    lifecycle `published`, one per workload. Nothing after `upgrade()` records what a
-    recipe was called or which workloads shared it, so there is nothing to restore
-    them from and inventing them would be worse than saying so.
-    """
+    """Rebuilds `demand_recipe` as it stood at `d8f1a4c96b23`, one recipe per workload."""
     bind = op.get_bind()
 
     op.create_table(
         "demand_recipe",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("uid", sa.String(length=40), nullable=False, unique=True),
-        sa.Column("seq", sa.BigInteger(), autoincrement=True, nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("seq", sa.Integer(), sa.Identity(start=1000, cycle=True), nullable=False),
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column("uid", sa.String(length=40), nullable=False, unique=True),
         sa.Column("artifact_id", postgresql.UUID(as_uuid=True), nullable=False),
         sa.Column("name", sa.String(length=255), nullable=False),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
@@ -306,8 +285,15 @@ def downgrade() -> None:
         sa.ForeignKeyConstraint(["artifact_id"], ["demand_artifact.id"], ondelete="RESTRICT"),
         sa.UniqueConstraint("name", "version", name="uq_demand_recipe_name_version"),
     )
+    op.create_index("ix_demand_recipe_artifact_id", "demand_recipe", ["artifact_id"])
+    op.create_index("ix_demand_recipe_device_class", "demand_recipe", ["device_class"])
+    op.create_index("ix_demand_recipe_lifecycle", "demand_recipe", ["lifecycle"])
 
+    # The recipe id is minted on the workload first, so the insert below needs no join
+    # back by name, and two workloads with one name in different projects become two
+    # versions of one recipe name rather than a unique-constraint violation.
     op.add_column("demand_workload", sa.Column("recipe_id", postgresql.UUID(as_uuid=True), nullable=True))
+    bind.execute(sa.text("UPDATE demand_workload SET recipe_id = gen_random_uuid()"))
 
     columns = ", ".join(name for name, _k, _n, _d in MOVED)
     bind.execute(
@@ -317,28 +303,20 @@ def downgrade() -> None:
                 id, uid, artifact_id, name, version, lifecycle, served_model_name,
                 requires_single_topology_domain, topology_domain_kind, {columns}
             )
-            SELECT gen_random_uuid(),
+            SELECT w.recipe_id,
                    'rec_' || substr(replace(gen_random_uuid()::text, '-', ''), 1, 26),
-                   w.artifact_id, w.name, 1, 'published', w.served_model_name,
+                   w.artifact_id, w.name,
+                   row_number() OVER (PARTITION BY w.name ORDER BY w.created_at, w.id),
+                   'published', w.served_model_name,
                    w.requires_single_topology_domain, w.topology_domain_kind, {columns}
               FROM demand_workload w
-            """
-        )
-    )
-    bind.execute(
-        sa.text(
-            """
-            UPDATE demand_workload w
-               SET recipe_id = r.id
-              FROM demand_recipe r
-             WHERE r.name = w.name AND r.artifact_id = w.artifact_id
             """
         )
     )
     op.alter_column("demand_workload", "recipe_id", existing_type=postgresql.UUID(as_uuid=True), nullable=False)
     op.create_index("ix_demand_workload_recipe_id", "demand_workload", ["recipe_id"])
     op.create_foreign_key(
-        "fk_demand_workload_recipe_id",
+        "demand_workload_recipe_id_fkey",
         "demand_workload",
         "demand_recipe",
         ["recipe_id"],
@@ -348,6 +326,25 @@ def downgrade() -> None:
 
     op.add_column("ops_benchmark_run", sa.Column("recipe_id", postgresql.UUID(as_uuid=True), nullable=True))
     op.add_column("ops_benchmark_run", sa.Column("recipe_version", sa.Integer(), nullable=True))
+    bind.execute(
+        sa.text(
+            """
+            UPDATE ops_benchmark_run b
+               SET recipe_id = w.recipe_id, recipe_version = 1
+              FROM demand_workload w
+             WHERE w.serving_digest = b.serving_digest
+            """
+        )
+    )
+    op.create_index("ix_ops_benchmark_run_recipe_id", "ops_benchmark_run", ["recipe_id"])
+    op.create_foreign_key(
+        "ops_benchmark_run_recipe_id_fkey",
+        "ops_benchmark_run",
+        "demand_recipe",
+        ["recipe_id"],
+        ["id"],
+        ondelete="SET NULL",
+    )
     op.drop_index("ix_ops_benchmark_run_serving_digest", table_name="ops_benchmark_run")
     op.drop_column("ops_benchmark_run", "serving_digest")
 
@@ -360,5 +357,9 @@ def downgrade() -> None:
     for name, _kind, _nullable, _default in MOVED:
         op.drop_column("demand_workload", name)
     op.alter_column(
-        "demand_workload", "requires_single_topology_domain", existing_type=sa.Boolean(), nullable=True
+        "demand_workload",
+        "requires_single_topology_domain",
+        existing_type=sa.Boolean(),
+        nullable=True,
+        server_default=None,
     )

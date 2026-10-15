@@ -6,11 +6,10 @@ Create Date: 2026-08-20 18:40:00.000000
 
 Every deployment carries a priority class — the column is not nullable, and that is
 the design: preemption should be a policy change later rather than a migration across
-every workload. The consequence nobody had walked into until a plane was empty is that
-a fresh install could not create a deployment at all. `POST /v1/deployments` and
-`.../promote` both fall back to the class marked default, there was none, and the
-request failed with `no priority class was given and none is marked default` — a
-correct message about a state the plane put itself in.
+every workload. Without a seeded default a fresh install could not create a
+deployment at all: `POST /v1/deployments` and `.../promote` both fall back to the
+class marked default, and with none the request failed with `no priority class was
+given and none is marked default`.
 
 Two classes, because one is not a priority system: `standard` is what everything gets
 and is the default, `batch` is preemptible and preempts nothing. Values are 100 and 10,
@@ -21,14 +20,15 @@ already, and a migration that inserted a second default would change what every
 deployment without an explicit class resolves to.
 """
 
+import os
+import time
+
 from typing import Sequence
 from typing import Union
 
 import sqlalchemy as sa
 
 from alembic import op
-from app.core.ids import PRIORITY_CLASS
-from app.core.ids import new_uid
 
 
 revision: str = "d7a3e5f9c1b6"
@@ -38,6 +38,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 SEEDED = ("standard", "batch")
+
+_ALPHABET = "0123456789abcdefghjkmnpqrstvwxyz"
+
+
+def _encode(value: int, length: int) -> str:
+    out = [""] * length
+    for i in range(length - 1, -1, -1):
+        out[i] = _ALPHABET[value & 0x1F]
+        value >>= 5
+    return "".join(out)
+
+
+def _priority_class_uid() -> str:
+    """A `prc_` ULID, minted here so the migration does not import application code."""
+    now = int(time.time() * 1000)
+    return f"prc_{_encode(now, 10)}{_encode(int.from_bytes(os.urandom(10), 'big'), 16)}"
 
 
 def upgrade() -> None:
@@ -55,7 +71,7 @@ def upgrade() -> None:
             " (:batch_uid, 'batch', 10, true, false, false,"
             "  'Runs on what is idle and yields to anything that is not.')"
         ),
-        {"standard_uid": new_uid(PRIORITY_CLASS), "batch_uid": new_uid(PRIORITY_CLASS)},
+        {"standard_uid": _priority_class_uid(), "batch_uid": _priority_class_uid()},
     )
 
 
