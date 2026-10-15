@@ -82,8 +82,8 @@ type ListOpts struct {
 }
 
 // Identity is what the CLI can say about the caller. The plane has no
-// `/v1/whoami`: authentication is stubbed to one static token, so identity is
-// the configured context plus whether the server answers at all.
+// `/v1/whoami`: human access is a single admin who logs in for a session, so
+// identity is the configured context plus whether the server answers at all.
 type Identity struct {
 	Server    string `json:"server"`
 	Project   string `json:"project,omitempty"`
